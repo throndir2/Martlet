@@ -46,6 +46,8 @@ internal static class ThinkLongerCheck
         var effort = settings.HowHard == ThinkEffort.High ? GenerationSupport.ReasoningEffortHigh : GenerationSupport.ReasoningEffortOn;
         var (deep, deepState) = DeepThinkingSettings.Read(dataDirectory);
         var plan = DeepThinkingPlan.For(deep, loaded.Settings?.Setup?.Routes ?? []);
+        var pool = DeepThinkingPool.For(deep, loaded.Settings?.Setup?.Routes ?? []);
+        var places = ThinkLonger.Places(pool);
         (SetupRouteType? Type, string? Origin) deepRoute = deep.Place switch
         {
             DeepThinkingPlace.Host => (SetupRouteType.GatewayOllama, null),
@@ -64,8 +66,8 @@ internal static class ThinkLongerCheck
             thinking = route is null ? null : new
             {
                 routeType = route.RouteType?.ToString() ?? "OpenAi", model = route.ModelId, supportsTools, toolsRejected = rejected,
-                offered = settings.On && supportsTools && !rejected && plan.Available,
-                researchOffered = settings.Researches && supportsTools && !rejected && plan.Available,
+                offered = settings.On && supportsTools && !rejected && pool.Plan.Available,
+                researchOffered = settings.Researches && supportsTools && !rejected && pool.Plan.Available,
                 onThisPc = local
             },
             deepThinking = new
@@ -81,9 +83,22 @@ internal static class ThinkLongerCheck
                 sends = deepRoute.Type == SetupRouteType.GatewayOllama ? "{\"think\":true}"
                     : GenerationSupport.ReasoningJson(deepRoute.Type, deepRoute.Origin, true, effort),
                 outputTokens = ThinkLonger.OutputTokens(settings.HowHard),
-                carriesTools = !deep.Separate
+                carriesTools = !deep.Separate,
+                // Every place it thinks on (the one chosen first, then each computer ticked Think here too): several thinks run at
+                // once, one on each usable place, the one sharing least with the conversation (lowest rank) first.
+                pool = new
+                {
+                    places = pool.Spots.Select(spot => new
+                    {
+                        computer = spot.Computer, where = spot.Settings.Separate ? spot.Settings.Describe() : route?.ModelId,
+                        place = spot.Settings.Place.ToString(), hostRole = spot.Settings.OnHostRole, available = spot.Plan.Available,
+                        rank = spot.Plan.Rank, checksFit = spot.Plan.ChecksFit, why = spot.Plan.Why
+                    }),
+                    usable = places.Count, maxThinks = ThinkLonger.Kind(settings, places.Count).MaxActive,
+                    available = pool.Plan.Available, why = pool.Plan.Why
+                }
             },
-            tools = ThinkLonger.Definitions(settings).Concat(settings.Researches ? [WebResearch.Definition] : []).Select(tool => new
+            tools = ThinkLonger.Definitions(settings, places.Count).Concat(settings.Researches ? [WebResearch.Definition] : []).Select(tool => new
             {
                 name = tool.Name, description = tool.Description, parameters = JsonNode.Parse(tool.ParametersJson)
             }).ToArray(),
@@ -136,14 +151,15 @@ internal static class ThinkLongerCheck
         var parallel = await ParallelAsync(fixture, other, cancellation);
         var sideBySide = await SideBySideAsync(cancellation);
         var host = HostFit();
+        var pool = await PoolAsync(reasoning, cancellation);
         return new
         {
-            ok = flow.Ok && limits.Ok && plans.Ok && parallel.Ok && sideBySide.Ok && host.Ok,
+            ok = flow.Ok && limits.Ok && plans.Ok && parallel.Ok && sideBySide.Ok && host.Ok && pool.Ok,
             endpoint = fixture.BaseUrl,
             note = "Fixture endpoints on 127.0.0.1 with canned replies (NOT AI) and a fixture Ollama model list; the scheduler, runner, " +
                 "tool texts, request layout, Deep thinking plan, side-by-side fit, runtime and adapter are Martlet's own.",
             flow = flow.Report, limits = limits.Report, plans = plans.Report, parallel = parallel.Report,
-            sideBySide = sideBySide.Report, hostFit = host.Report
+            sideBySide = sideBySide.Report, hostFit = host.Report, pool = pool.Report
         };
     }
 
@@ -272,6 +288,98 @@ internal static class ThinkLongerCheck
             request = new { tools = sent?["tools"] is not null, thinking = sent?["chat_template_kwargs"]?.ToJsonString(), messages = messages.Count,
                 taskLast = last.Contains(TaskText, StringComparison.Ordinal) }
         });
+    }
+
+    // ---------- Deep thinking on several computers at once ----------
+
+    // The production pool (DeepThinkingPool, ThinkLonger.Places) of three paired computers' Deep thinking roles: diva and
+    // ripley do none of the conversation's jobs, imouto also speaks. The production job list places each think on a free
+    // place (BackgroundJobs.Start with the pool): think-1 on diva, think-2 on ripley (both working at once, each on its own
+    // fixture endpoint standing in for that computer, through a runtime of its own as the desktop's slots do), think-3 on
+    // imouto, and a fourth is refused as busy naming each place; once they finish every place is free and the next goes to diva.
+    private static async Task<(bool Ok, object Report)> PoolAsync(TimeSpan reasoning, CancellationToken cancellation)
+    {
+        var settings = new ThinkLongerSettings();
+        var localThinking = Chat(SetupRole.Llm, GenerationSupport.LocalOllamaChatBaseUrl, "gemma4:e4b");
+        var routes = new[] { localThinking, Gateway(SetupRole.Tts, SetupRouteType.GatewayF5, "imouto", "https://imouto.local:9443") };
+        static DeepThinkingSettings Role(string id) => Host(id) with { HostRouteId = SelfHostSetup.DeepThinkingRouteId };
+        var deep = Role("diva").WithPool([Role("imouto"), Role("ripley")]);
+        var pool = DeepThinkingPool.For(deep, routes);
+        var places = ThinkLonger.Places(pool);
+        var kind = ThinkLonger.Kind(settings, places.Count);
+        var fixtures = new Dictionary<string, Fixture>(StringComparer.Ordinal);
+        foreach (var place in places) fixtures[place.Id] = new Fixture(reasoning);
+        var runtimes = new List<ConversationRuntime>();
+        try
+        {
+            using var jobs = new BackgroundJobs();
+            var conversationInput = new BoundedTextInput(Asked, Persona, [new(TextHistoryRole.User, "Hi!"), new(TextHistoryRole.Assistant, "Hey!")],
+                tools: ThinkLonger.Definitions(settings, places.Count));
+            BackgroundJobStart Start() => jobs.Start(kind, ThinkLonger.Label(TaskText), (job, token) =>
+            {
+                var fixture = fixtures[job.Place!.Id];
+                var runtime = ConversationRuntime.Create(new NoCredentials());
+                lock (runtimes) runtimes.Add(runtime);
+                var bounds = new ThinkBounds(BoundedTextInput.HardMaxInputUtf8Bytes, BoundedTextInput.HardMaxHistoryMessages, 24_576, Tools: false);
+                return new BackgroundThink(runtime, left =>
+                {
+                    var input = ThinkLonger.Fit(ThinkLonger.Input(conversationInput, Acknowledged, TaskText, null, null), bounds);
+                    return (new ConversationRequest(input, new TextModelSelection(ChatCompletionsSetup.Alias, Model),
+                        ThinkLonger.Limits(ReplyLimits, settings.HowHard, left), ThinkLonger.TurnLimits(left),
+                        chat: new ChatCompletionsTarget(fixture.BaseUrl, true),
+                        generation: new GenerationSettings { Reasoning = true, ReasoningEffort = GenerationSupport.ReasoningEffortOn }),
+                        new Permissions(ChatCompletionsSetup.BaseUri(fixture.BaseUrl)));
+                }).RunAsync(job, token);
+            }, places);
+            var first = Start();
+            var second = Start();
+            var waited = Stopwatch.StartNew();
+            bool BothThinking() => first.Job?.Place is { } a && second.Job?.Place is { } b &&
+                fixtures[a.Id].Count("think", inFlight: true) == 1 && fixtures[b.Id].Count("think", inFlight: true) == 1;
+            while (!BothThinking() && waited.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(10, cancellation);
+            var together = BothThinking();
+            var third = Start();
+            var fourth = Start();
+            var heldWhileBusy = jobs.Places.Leases.Select(lease => new { place = lease.Place.Name, by = lease.Holder }).ToArray();
+            BackgroundJob[] started = [.. new[] { first, second, third }.Where(s => s.Started).Select(s => s.Job!)];
+            waited.Restart();
+            while (started.Any(job => !job.Finished) && waited.Elapsed < TimeSpan.FromSeconds(30)) await Task.Delay(20, cancellation);
+            var freed = jobs.Places.Leases.Count == 0;
+            var again = Start();
+            var againPlace = again.Job?.Place?.Name;
+            if (again.Job is { } fifth) jobs.Cancel(fifth.Id, BackgroundJob.CanceledByMartlet);
+            // Each started think's request on its own computer's fixture; the first two overlapping in time.
+            var spans = started.Select(job => fixtures[job.Place!.Id].Served("think").FirstOrDefault()).ToArray();
+            var overlapped = started.Length >= 2 && started[1].StartedUtc < started[0].FinishedUtc && started[0].StartedUtc < started[1].FinishedUtc;
+            var expected = new[] { "diva", "ripley", "imouto" };
+            var ok = pool.Usable.Count == 3 && places.Count == 3 && kind.MaxActive == 3 &&
+                started.Length == 3 && started.Select(job => job.Place!.Name).SequenceEqual(expected) &&
+                together && overlapped && started.All(job => job.State == BackgroundJobState.Succeeded && job.Result == Lyrics) &&
+                fourth.Refusal == "busy" && expected.All(name => fourth.Message?.Contains("on " + name, StringComparison.Ordinal) == true) &&
+                heldWhileBusy.Length == 3 && freed && againPlace == "diva" && spans.All(s => s is { Aborted: false });
+            return (ok, new
+            {
+                ok,
+                configured = pool.Spots.Select(spot => new
+                {
+                    computer = spot.Computer, where = spot.Settings.Describe(), available = spot.Plan.Available, rank = spot.Plan.Rank, why = spot.Plan.Why
+                }),
+                maxThinks = kind.MaxActive, plan = pool.Plan.Why,
+                tool = ThinkLonger.Description(settings, places.Count),
+                placed = started.Select(job => new
+                {
+                    id = job.Id, place = job.Place!.Name, state = job.State.ToString(), finishedAfterMs = (long)job.Elapsed.TotalMilliseconds
+                }),
+                thinkingAtOnce = together, overlapped,
+                heldWhileBusy, refused = new { refusal = fourth.Refusal, message = fourth.Message, toldModel = ThinkLonger.Refused(fourth) },
+                freedAfter = freed, nextPlacedOn = againPlace
+            });
+        }
+        finally
+        {
+            foreach (var runtime in runtimes) await runtime.DisposeAsync();
+            foreach (var fixture in fixtures.Values) await fixture.DisposeAsync();
+        }
     }
 
     // A think on a paired computer: a long conversation fitted into its gateway's 16 KiB and 16 messages (the newest kept, the

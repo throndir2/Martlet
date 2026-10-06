@@ -49,7 +49,7 @@ public partial class MainWindow
         var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         var deep = store is null ? new DeepThinkingSettings() : DeepThinkingSettings.Load(store.DataDirectory);
         var routes = homeSettings?.Setup?.Routes ?? [];
-        var plan = DeepThinkingPlan.For(deep, routes);
+        var plan = DeepThinkingPool.For(deep, routes).Plan;
         var on = ThinkLongerSettings.Of(homeSettings?.Generation).On;
         var current = PlaceOf(deep, on);
         var place = deepPlaceShown ?? current;
@@ -128,7 +128,8 @@ public partial class MainWindow
     private static string DeepThinkingNow(DeepThinkingSettings deep, SetupRoute? route, DeepThinkingPlan plan, bool on)
     {
         if (!on) return "Off. Martlet answers everything right away and never thinks in the background.";
-        var where = deep.Separate ? deep.Describe() : route is null ? "the Thinking model (not set up yet)" : $"the Thinking model ({route.ModelId})";
+        var where = deep.Pool is { Count: > 0 } ? deep.DescribeAll().Replace("the Thinking model", route is null ? "the Thinking model" : $"the Thinking model ({route.ModelId})")
+            : deep.Separate ? deep.Describe() : route is null ? "the Thinking model (not set up yet)" : $"the Thinking model ({route.ModelId})";
         return plan.Available ? $"Thinks on {where}, in parallel with the conversation."
             : $"On, but it can't think on {where}, so Martlet doesn't offer to think things over. Choose another place below.";
     }
@@ -204,7 +205,8 @@ public partial class MainWindow
             status,
             TerminalRow("How hard", effort), TerminalRow("Time limit", time), TerminalRow("How often", perHour),
             TerminalRow("Share it", when),
-            Note("It thinks with Thinking steps on, whatever replies use; one think runs at a time. Stop (Esc) doesn't end it: its " +
+            Note("It thinks with Thinking steps on, whatever replies use; one think runs at a time on each place it thinks on (tick " +
+                "Think here too on more of your computers to think about several things at once). Stop (Esc) doesn't end it: its " +
                 "Cancel in the talk window, closing the conversation or the time limit do. A paid provider may charge for its thinking.",
                 new Thickness(0, 8, 0, 0)));
     }
@@ -360,12 +362,35 @@ public partial class MainWindow
                 id: "DeepThinkingUseHost-" + host.HostId);
             use.IsEnabled = !inUse;
             buttons.Children.Add(use);
+            // Several computers think at once, one think each: this one besides the place chosen above.
+            var pooled = deep.Places.Any(p => p.Place == DeepThinkingPlace.Host && p.HostId == host.HostId);
+            var also = new CheckBox
+            {
+                Content = "Think here too", IsChecked = pooled, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0),
+                IsEnabled = pooled || usable && check?.Reachable == true,
+                ToolTip = "Deep thinking also thinks on this computer, so several thinks run at once, one on each computer."
+            };
+            AutomationProperties.SetName(also, $"Think on {host.HostId} too");
+            AutomationProperties.SetAutomationId(also, "DeepThinkingPool-" + host.HostId);
+            also.Click += (_, _) =>
+            {
+                if (also.IsChecked == true) UseDeepHostAsync(host, alsoHere: true).Forget();
+                else RemoveDeepHostAsync(host.HostId).Forget();
+            };
+            buttons.Children.Add(also);
             var row = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
             DockPanel.SetDock(buttons, Dock.Right);
             row.Children.Add(buttons);
             row.Children.Add(text);
             stack.Add(row);
         }
+        var places = deep.Places.Count;
+        var pool = Note(!on ? "Deep thinking is off."
+            : places == 1 ? $"Thinks on one place ({deep.Describe()}): one think at a time. Tick Think here too on more computers to think about several things at once."
+            : $"Thinks on {places} places at once ({deep.DescribeAll()}): each new think goes to a free one, the one sharing least with the conversation first.",
+            new Thickness(0, 0, 0, 8));
+        AutomationProperties.SetAutomationId(pool, "DeepThinkingPoolStatus");
+        stack.Insert(1, pool);
         stack.Add(Row(hosts.Count == 0 ? PageButton("Add a computer", () => RunNodeAction(NodeAction.AddComputer), primary: true, id: "DeepThinkingAddComputer")
             : PageButton("Check computers", () => RunNodeAction(NodeAction.CheckHost), id: "DeepThinkingCheckHosts")));
         stack.Add(Note("The conversation so far (what fits in its 16 KiB) and the task go to that computer through its paired, pinned " +
@@ -392,7 +417,9 @@ public partial class MainWindow
         await UseDeepHostAsync(host);
     }
 
-    private async Task UseDeepHostAsync(PairedHost host)
+    /// <summary>Thinks on <paramref name="host"/>: in place of where it thinks now, or with <paramref name="alsoHere"/> as one more
+    /// place, so several thinks run at once (where it thinks now becomes this computer when it can't think there).</summary>
+    private async Task UseDeepHostAsync(PairedHost host, bool alsoHere = false)
     {
         if (closing) return;
         ActionText.Text = $"Checking {host.HostId}...";
@@ -423,6 +450,16 @@ public partial class MainWindow
                 HostCredentialId = HostPairingCredential.ToGuid(host.Pairing.CredentialId), HostRouteId = own ? route.RouteId : null,
                 ChosenAt = DateTimeOffset.Now
             };
+            if (alsoHere)
+            {
+                var current = DeepThinkingSettings.Load(store!.DataDirectory);
+                // Same as Thinking where it can't think is no place to keep: this computer takes its place.
+                var keep = current.Separate || DeepThinkingPlan.For(current.Single, homeSettings?.Setup?.Routes ?? []).Available;
+                var pooled = keep ? current.WithPool([.. current.Pool ?? [], next]) : next.WithPool(current.Pool ?? []);
+                await SaveDeepThinkingAsync(pooled, null, $"Deep thinking now thinks on {host.HostId} too ({route.ModelId}): " +
+                    $"{pooled.Places.Count} place{(pooled.Places.Count == 1 ? "" : "s")} think at once.", keepPool: false);
+                return;
+            }
             await SaveDeepThinkingAsync(next, null, own ? $"Deep thinking now runs on {host.HostId}'s Deep thinking role ({route.ModelId})."
                 : $"Deep thinking now runs on {host.HostId} ({route.ModelId}).");
         }
@@ -431,6 +468,17 @@ public partial class MainWindow
         {
             ActionText.Text = error.Message;
         }
+    }
+
+    /// <summary>Stops thinking on <paramref name="hostId"/> (Think here too unticked): the next place takes its turn when it was
+    /// the first, and Same as Thinking when it was the only one.</summary>
+    private async Task RemoveDeepHostAsync(string hostId)
+    {
+        if (store is null || closing) return;
+        var current = DeepThinkingSettings.Load(store.DataDirectory);
+        var left = current.Places.Where(p => !(p.Place == DeepThinkingPlace.Host && p.HostId == hostId)).ToArray();
+        var next = left.Length == 0 ? new DeepThinkingSettings { ChosenAt = DateTimeOffset.Now } : left[0].WithPool(left.Skip(1));
+        await SaveDeepThinkingAsync(next, null, $"Deep thinking no longer thinks on {hostId}.", keepPool: false);
     }
 
     /// <summary>A second model in Ollama on this PC, beside Thinking's: Ollama runs each model in its own process, so it thinks in
@@ -605,12 +653,14 @@ public partial class MainWindow
 
     /// <summary>Saves where Deep thinking runs on this PC (deep-thinking.json). A new key is written to Windows Credential Manager
     /// first and removed again if the file can't be saved; the key it replaces is removed after. The next think uses it.</summary>
-    private async Task SaveDeepThinkingAsync(DeepThinkingSettings next, SecretLease? key, string done)
+    private async Task SaveDeepThinkingAsync(DeepThinkingSettings next, SecretLease? key, string done, bool keepPool = true)
     {
         if (store is null || closing) return;
         var profile = homeSettings?.Profile.Id ?? Guid.Empty;
         var vault = new WindowsCredentialStore();
         var old = DeepThinkingSettings.Load(store.DataDirectory);
+        // A new place to think keeps the other computers ticked Think here too.
+        if (keepPool) next = next.WithPool(old.Pool ?? []);
         CredentialBinding? written = null;
         try
         {
@@ -626,15 +676,15 @@ public partial class MainWindow
             }
             if (!next.Save(store.DataDirectory)) throw new InvalidOperationException("Couldn't save Deep thinking. Check access to Martlet's data folder.");
             written = null;
-            if (old.CredentialId is { } oldKey && oldKey != next.CredentialId && profile != Guid.Empty)
+            if (old.CredentialId is { } oldKey && next.Places.All(p => p.CredentialId != oldKey) && profile != Guid.Empty)
             {
                 var oldBinding = old.Binding(profile, oldKey);
                 await Task.Run(() => vault.Delete(oldBinding), CancellationToken.None);
             }
             deepPlaceShown = null;
             conversation?.ReloadDeepThinking();
-            var plan = DeepThinkingPlan.For(next, homeSettings?.Setup?.Routes ?? []);
-            ErrorLog.Info($"Deep thinking: now on {next.Describe()}; {(plan.Available ? "in parallel with the conversation" : "can't run there")}. {plan.Why}");
+            var plan = DeepThinkingPool.For(next, homeSettings?.Setup?.Routes ?? []).Plan;
+            ErrorLog.Info($"Deep thinking: now on {next.DescribeAll()}; {(plan.Available ? "in parallel with the conversation" : "can't run there")}. {plan.Why}");
             var turnedOn = !ThinkLongerSettings.Of(homeSettings?.Generation).On && await SetThinkLongerAsync(true);
             ActionText.Text = done + (turnedOn ? " Deep thinking is on again." : "") +
                 (plan.Available ? " It thinks alongside the conversation." : " " + plan.Why);

@@ -205,6 +205,16 @@ internal static class ResearchCheck
         var refusals = Enumerable.Range(0, WebResearch.Kind.MaxPerHour + 1)
             .Select(_ => hourly.Start(WebResearch.Kind, "x", (_, _) => Task.FromResult(BackgroundJobOutcome.Done("x"))))
             .Select(start => { Thread.Sleep(30); return start.Refusal; }).ToArray();
+        // Placed on Deep thinking's places (ThinkLonger.Places): a think holding the only place keeps research from starting
+        // (the message names it); with a second place free, research runs there.
+        using var placed = new BackgroundJobs();
+        var hold = new TaskCompletionSource<BackgroundJobOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
+        BackgroundPlace[] one = [new("diva", "diva")], two = [new("diva", "diva"), new("imouto", "imouto", 1)];
+        var holder = placed.Start(ThinkLonger.Kind(new(), 2), "holds diva", (_, token) => hold.Task.WaitAsync(token), one);
+        var blocked = placed.Start(WebResearch.Kind, "x", (_, token) => hold.Task.WaitAsync(token), one);
+        var elsewhere = placed.Start(WebResearch.Kind, "x", (_, token) => hold.Task.WaitAsync(token), two);
+        var researchPlace = elsewhere.Job?.Place?.Name;
+        hold.TrySetResult(BackgroundJobOutcome.Done("done"));
         using var broken = new BackgroundJobs();
         var failing = broken.Start(WebResearch.Kind, "x", async (job, token) =>
         {
@@ -216,11 +226,14 @@ internal static class ResearchCheck
         while (!failing.Finished && waited.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(10, cancellation);
         var ok = first.Started && second.Refusal == "busy" && think.Started && canceled is not null && first.Job!.State == BackgroundJobState.Canceled &&
             refusals[^1] == "hourly_limit" && refusals[..^1].All(r => r is null) &&
-            failing.State == BackgroundJobState.Failed && failing.Problem?.Contains("web search", StringComparison.Ordinal) == true;
+            failing.State == BackgroundJobState.Failed && failing.Problem?.Contains("web search", StringComparison.Ordinal) == true &&
+            holder.Job?.Place?.Name == "diva" && blocked.Refusal == "busy" && blocked.Message?.Contains("diva", StringComparison.Ordinal) == true &&
+            researchPlace == "imouto";
         return (ok, new
         {
             ok, secondRefused = second.Refusal, secondTold = second.Started ? null : WebResearch.Refused(second), thinkBeside = think.Started,
-            canceled = first.Job?.State.ToString(), hourly = refusals, failedSearch = failing.Problem
+            canceled = first.Job?.State.ToString(), hourly = refusals, failedSearch = failing.Problem,
+            placement = new { thinkOn = holder.Job?.Place?.Name, researchRefused = blocked.Refusal, refusedBecause = blocked.Message, researchOn = researchPlace }
         });
     }
 
