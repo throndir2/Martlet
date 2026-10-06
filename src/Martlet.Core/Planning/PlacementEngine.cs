@@ -139,6 +139,9 @@ public static class PlacementEngine
             var cpu = machine.Cpu.Capacity * CpuOversubscription - machine.Cpu.Used;
             var disk = machine.Disk.Capacity > 0 ? machine.Disk.Free : double.MaxValue;
             var gpus = machine.Gpus.Select(g => g.Vram.Free).ToArray();
+            if (ComponentRanking.Of(option.Component).Necessity == ComponentNecessity.Optional)
+                foreach (var voice in machine.Items.Where(i => i.Component == PlanComponent.Voice && i.GpuIndex is not null))
+                    gpus[voice.GpuIndex!.Value] = 0;
             for (var i = 0; i < 64; i++)
             {
                 var ramNeed = option.Peak.RamGb;
@@ -333,10 +336,12 @@ public static class PlacementEngine
             option.ProviderId is { } provider && request.ConfiguredProviders.Contains(provider, StringComparer.OrdinalIgnoreCase);
 
         /// <summary>Whether a hosted option may be planned: never when the user keeps everything local; configured providers
-        /// always; free sign-up providers for Thinking and Deep thinking (the user can get a key for free).</summary>
+        /// always; free sign-up providers for anything but the audio path (voice, listening and lip-sync would send the
+        /// user's voice or Martlet's to a free tier, whose terms ask not to).</summary>
         private bool ExternalAllowed(ComponentOption option) =>
             !option.IsLocal && Preference != HostingPreference.PreferLocal &&
-            (Configured(option) || option.FreeTier && option.Component is PlanComponent.Thinking or PlanComponent.DeepThinking);
+            (Configured(option) || option.FreeTier &&
+                option.Component is not (PlanComponent.Voice or PlanComponent.Listening or PlanComponent.LipSync));
 
         private static int ReliabilityPenalty(ComponentOption option) => option.Reliability switch
         {
@@ -374,9 +379,12 @@ public static class PlacementEngine
                 if (node.Spec.Platform == "macos" && option.Gpu == GpuRequirement.Nvidia) continue;
                 if (node.CpuCapacity * CpuOversubscription - node.CpuUsed < option.Steady.CpuThreads) continue;
                 if (node.DiskCapacity > 0 && node.DiskCapacity - node.DiskUsed < option.Peak.DiskGb) continue;
+                var optional = ComponentRanking.Of(option.Component).Necessity == ComponentNecessity.Optional;
                 var cards = option.UsesGpu
                     ? node.Cards.Where(c => GpuMatches(option, c.Spec.Vendor, c.Spec.VramGb) && c.Free(allowGameCards) >= option.GpuGb &&
-                        !c.Exclusive && (option.CanShareGpu || c.Used == 0)).Cast<Card?>()
+                        !c.Exclusive && (option.CanShareGpu || c.Used == 0) &&
+                        // Optional jobs burst the card's compute; next to the voice they would make it start late.
+                        !(optional && node.Items.Any(i => i.GpuIndex == c.Index && i.Component == PlanComponent.Voice))).Cast<Card?>()
                     : [null];
                 foreach (var card in cards)
                 {

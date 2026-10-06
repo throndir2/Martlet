@@ -2082,6 +2082,33 @@ the talk window (chat text isn't returned by `ui_snapshot`), and `logs_tail`
 `contains` `Reply acted` reads *Reply acted: {nod} (written [nod]).* next to
 *Character gesture 'nod' played for {nod}.*
 
+`recommend_plan` runs the placement engine ([Recommendations](RECOMMENDATIONS.md))
+and returns what should run where. Give `machines` (up to 16 of `{id, name,
+gpus: [{name, vendor, vramGb, usedGb, unified}], ramGb, cpuThreads, platform,
+architecture, diskFreeGb, primary, games, battery}`); without a `primary`
+machine it detects this PC (memory and threads from the runtime, NVIDIA cards
+and their current use from `nvidia-smi`; `games` keeps its card for games).
+With an absolute `dataDirectory` it adds the paired hosts in that directory's
+`host-hardware.json` (`sources` says what it used). `preference` is `balanced`
+(default), `local` or `hosted`; `providers` lists provider ids with a saved key
+(`nvidia-build`, `google-ai-studio`, `openrouter`, `openai`); `wanted` limits the
+components; `thinkingFirst` plans latency first. It returns `ranking` and
+`claimOrder`, `assignments` (each component's `Primary` and its `Fallback`
+chain: `option`, `hosting`, `provider`, `machine`, `gpu` and `why`),
+`machines` (per card `vram`, plus `ram`, `cpu` and `disk` gauges with
+`capacity` after headroom, `used` and `percent`, and the `items` on it),
+`dropped` (with `reason` and `why`), `suggestions` (`RunLocally`, `Upgrade`,
+`Add`, `Move`, `SignUp`, `AddFallback`, `Drop`, `Downgrade`) and `notes`. `join`
+(one machine) adds `joining`: what changes when it joins the network; `current`
+(`[{component, option, machine}]`) is today's setup, kept where it runs, and
+`mode` `measure` reports it as it is without replanning. `afford` (option ids,
+default the local Deep thinking models) counts spare copies across the network
+and per machine; `catalog` adds the footprint catalog. It saves and contacts
+nothing, for example
+`{"machines":[{"id":"pc","primary":true,"gpus":[{"name":"RTX 4060","vramGb":8}],"ramGb":16,"cpuThreads":12}]}`
+plans Chatterbox Turbo on the card, Thinking on NVIDIA Build with Google Gemini
+behind it, Parakeet and loudness lip-sync, and suggests signing up for both.
+
 `chattiness_status` reads Companion › Vision › **How often it comments** (the
 same choice as Listening › Watch along) from a data directory's
 `talk-preferences.json` (optional absolute `dataDirectory`, default the current

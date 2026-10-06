@@ -943,6 +943,33 @@ internal sealed class McpServer(DesktopAutomation desktop)
             reply = new { type = "string", maxLength = 4096 },
             messages = new { type = "array", maxItems = 16, items = new { type = "object" } }
         }),
+        Tool("recommend_plan", "Machine-aware recommendations: the placement engine (Martlet.Core.Planning; docs/RECOMMENDATIONS.md) " +
+            "ranks Thinking, Voice, Listening, Character, Lip-sync, Deep thinking, Singing and Pictures and places each on the given " +
+            "machines or a hosted provider. Without a primary machine it detects this PC (memory and threads from the runtime, NVIDIA " +
+            "cards and their current use from nvidia-smi); with dataDirectory it adds the paired hosts in its host-hardware.json. " +
+            "machines: up to 16 of {id, name, gpus: [{name, vendor, vramGb, usedGb, unified}], ramGb, cpuThreads, platform " +
+            "(windows|linux|macos), architecture, diskFreeGb, primary, games, battery}. preference: balanced (default), local or " +
+            "hosted; providers: configured provider ids (nvidia-build, google-ai-studio, openrouter, openai); wanted: component " +
+            "names (default all); thinkingFirst: latency first; current: today's [{component, option, machine}] (mode measure " +
+            "reports it as-is); join: a machine to evaluate joining; afford: option ids to count spare copies of (default the " +
+            "local Deep thinking models); catalog: include the footprint catalog. Returns the ranking, claim order, assignments " +
+            "(primary and fallback chain, each with why), per-machine usage gauges (capacity after headroom, used, percent) and " +
+            "items, dropped parts with reasons, suggestions (RunLocally, Upgrade, Add, Move, SignUp, AddFallback, Drop, " +
+            "Downgrade), notes, joining suggestions and spare counts. Reads only those facts; saves and contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" },
+            machines = new { type = "array", maxItems = 16, items = new { type = "object" } },
+            preference = new { type = "string", @enum = new[] { "balanced", "local", "hosted" } },
+            providers = new { type = "array", maxItems = 32, items = new { type = "string" } },
+            wanted = new { type = "array", maxItems = 32, items = new { type = "string" } },
+            thinkingFirst = new { type = "boolean" },
+            games = new { type = "boolean" },
+            current = new { type = "array", maxItems = 32, items = new { type = "object" } },
+            mode = new { type = "string", @enum = new[] { "plan", "measure" } },
+            join = new { type = "object" },
+            afford = new { type = "array", maxItems = 32, items = new { type = "string" } },
+            catalog = new { type = "boolean" }
+        }),
         Tool("chattiness_status", "Companion > Vision > How often it comments (the same choice as Listening > Watch along) as saved " +
             "in a data directory's talk-preferences.json: the choice (Quiet, Normal, Chatty or Martlet decides; Normal by default), " +
             "whether vision (on by default) and hearing the PC are on (replies are told about Martlet decides only while one is), " +
@@ -1334,6 +1361,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "discord_call_check" => await DiscordCallCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "discord_text_check" => await DiscordTextCheck.RunAsync(DataDirectory(arguments), arguments, cancellation),
+                "recommend_plan" => RecommendPlan.Run(arguments, OptionalString(arguments, "dataDirectory") is not null ? DataDirectory(arguments) : null),
                 "chattiness_status" => await ChattinessCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "vision_history_check" => await VisionHistoryCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
