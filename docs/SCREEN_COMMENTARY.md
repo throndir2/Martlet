@@ -40,7 +40,8 @@ your setup can't.
    tooltip says how the last look went (*nothing to say*, *commented*), how
    many monitors the whole screen spans and what wanted your attention but
    wasn't looked at.
-   Captures are never added to the history; only remarks are.
+   Captures are never added to the history; what Martlet saw in them is (see
+   [What Martlet saw stays in the conversation](#what-martlet-saw-stays-in-the-conversation)).
 4. A **pacer** decides when to take a real look, the way a person would:
    - never while you are talking to Martlet (hands-free speech, typing, a
      reply playing) and not for a while after (12-30 s);
@@ -128,6 +129,47 @@ cost more. If the Thinking model rejects the picture, Martlet asks again with
 your words only and says so on your message; a model Martlet doesn't know can
 see also stops vision with the fix, like a rejected look. Memory never gets the
 picture.
+
+## What Martlet saw stays in the conversation
+
+Pictures are never kept, but what Martlet saw in them is, so later replies know
+what was on screen (*"what was that game I was playing?"*) and the companion
+answers your words, what the PC plays, what it sees and finished background
+work as one conversation.
+
+- **Every look**, passed or not, becomes one exchange in the conversation the
+  next replies send: a line that starts with `[Screen]` (or `[Camera]`) and says
+  where Martlet looked and what it saw, then its remark or `[pass]`, such as
+  *[Screen] You looked at the user's active window "Program.cs - Visual Studio
+  Code": a code editor, a build running.* The source and the window's title (or
+  the camera's name) are cleaned the way the look's prompt gets them; a look a
+  notification or a flashing taskbar button started says so in brackets.
+- **Passes don't pile up.** A look Martlet passes on takes the place of the
+  exchange just before it when that is also a passed look, so a quiet stretch
+  keeps only its last look; a remark (or anything said in between) ends the
+  stretch. Only the end of the next request changes, which is new anyway, so
+  the prompt cache keeps the start.
+- **A message with a picture** keeps a line after its words: *[Screen] With
+  this message you saw the user's whole screen (active window "Discord"): a
+  chat app with a new message.* A picture the model rejected leaves no line.
+- **What it saw** comes from the reply itself, adding no wait: a look, and a
+  reply whose message came with a picture, is told (Companion › Prompts ›
+  *What you saw*, the same on every request, so the instructions stay the same)
+  to end with `[seen: a few words]`, after its last sentence or after
+  `[pass]`. It is a control tag like the chattiness tags: never shown, spoken,
+  captioned or kept as Martlet's words, and as soon as what follows a finished
+  sentence can only be it (`[see...`), that sentence goes to the voice. Its
+  words (one line, at most 120 characters) go in the `[Screen]` line instead.
+  Empty the prompt and the line says only where Martlet looked.
+- **Never your words.** Like `[PC audio]` lines, `[Screen]` and `[Camera]` lines
+  are never read as what you said: memory, learning names, the record of
+  conversations and the smart home leave them out (memory reads only the latest
+  exchange; earlier lines are context).
+- **Seeing it.** The talk window still hides passed looks. The desktop log writes
+  *Vision: the conversation keeps a screen glance (passed, described, in place of
+  the passed look before it).* (never the title or the words), and Martlet MCP's
+  `vision_history_check` rehearses it all with the production code
+  ([MCP](MCP.md)).
 
 ## Notifications and taskbar buttons
 

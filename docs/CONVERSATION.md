@@ -145,7 +145,7 @@ model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
    camera glance instructions, messages (including the one sent
    when a notification pops up or a taskbar button flashes) and chattiness
    lines (including *Martlet decides* and *Chattiness right now*), *Screen with your message* (sent with what you type or say while
-   vision is on), the background work notes and the Thinking longer task, the
+   vision is on), *What you saw* (the `[seen: ...]` tag a look or a reply with a picture ends with), the background work notes and the Thinking longer task, the
    Remembering and Learning names requests and the prompt
    that joins them, and the smart home notes. Each
    one is editable; a saved edit replaces the built-in text wherever it is used
@@ -223,7 +223,15 @@ reads the entire conversation again before every reply (on a 12B model, about
   glance instructions there instead.
 - **The conversation so far** follows, each earlier message exactly as it was
   sent, with its notes (a paired host gets the plain messages and the notes
-  with its instructions, as before).
+  with its instructions, as before). What Martlet saw is part of it: every
+  screen glance and camera look, passed or not, is an exchange whose line
+  starts with `[Screen]` or `[Camera]` (where it looked and what it saw, from
+  the look's own `[seen: ...]` tag; passed looks in a row keep only the last),
+  and a message that came with a picture keeps such a line after its words.
+  Pictures are never kept, and these lines are never your words: memory,
+  learning names, the record of conversations and the smart home leave them
+  out, as they do `[PC audio]` lines ([Screen
+  commentary](SCREEN_COMMENTARY.md#what-martlet-saw-stays-in-the-conversation)).
 - **The message** comes last and ends with Martlet's **notes** between
   `[MARTLET_NOTES]` labels, only when something is new: lorebook entries and
   remembered facts not already in the notes of an earlier message the request
@@ -339,8 +347,10 @@ at the chosen effort (*Medium* or *High*: `reasoning_effort` medium/high for
 Ollama on this PC, OpenAI and Gemini, OpenRouter's `reasoning.effort`, the chat
 template's `enable_thinking` elsewhere, a paired computer's Ollama `think`;
 the OpenAI route's models just write it out), whatever replies use. It has its
-own bounds: 8,192 output tokens (Medium) or 16,384 (High), up to 65,534 stream
-events and the time limit (2, 5 or 10 minutes) for the whole job. It is never
+own bounds: 8,192 output tokens (Medium) or 16,384 (High) and up to 65,534 stream
+events. It has no time limit: it runs until it is done or canceled (its request
+gets the providers' ceiling of a day; on a paired computer, the gateway route's
+longest request, 15 minutes). It is never
 spoken. Its message continues a reply's request (Companion › Prompts ›
 *Thinking longer: the task*); the picture or recording the message went with
 isn't sent again.
@@ -467,10 +477,10 @@ for 0:12*, `LiveJobState-<id>`); the desktop log notes each start with where it
 was placed (*placed on diva, 1 of 2 places busy*), fit check and end
 (`Background thinking:`) and a *Thinking input (Background thinking)* line.
 Stop (Esc) ends a reply, never a think; the task's Cancel, `cancel_thinking`,
-closing the conversation, quitting Martlet or the time limit do. At most one
+closing the conversation or quitting Martlet do (there is no time limit). At most one
 think runs at a time on each place it thinks on (one place: one at a time; a
-call beyond that is refused and Martlet is told to wait or cancel one) and at
-most 3, 6 (default) or 12 start in any hour.
+call beyond that is refused and Martlet is told to wait or cancel one); there is
+no limit on how many start in an hour.
 **Delivery.** When a job finishes (or fails, or runs out of time) its result is
 added at the end of the conversation as a new message, never by rewriting
 anything before it:
@@ -502,8 +512,9 @@ think_longer is the first kind and a song is next. A kind is a
 `BackgroundJobKind(Name, MaxActive, MaxPerHour, TimeLimit, Offer, Doing)`:
 `Name` is lowercase letters and the job IDs' prefix (`think-1`, `song-1`),
 `MaxActive` how many of that kind may run at once (other kinds run alongside),
-`MaxPerHour` how many may start in any hour, `TimeLimit` how long one may take
-(up to 30 minutes), `Offer` marks a result to offer before using it (a song:
+`MaxPerHour` how many may start in any hour (null: no hourly limit), `TimeLimit`
+how long one may take (up to 30 minutes; null: no time limit, as for a think),
+`Offer` marks a result to offer before using it (a song:
 *wanna hear it?*), and `Doing` is what the talk window calls a running one
 (*Making a song*). To add one:
 
@@ -639,7 +650,7 @@ a background think on Deep thinking that continues the reply's request exactly
 like think_longer's (Thinking steps On, alongside the conversation, checking a
 second model in Ollama on this PC fits beside Thinking's first; Companion ›
 Prompts › *Singing: writing the song*; its own runtime and authorization, and
-*Thinking input (Song lyrics)* in the log; at most Thinking longer's time limit).
+*Thinking input (Song lyrics)* in the log; within the song's own 15 minutes).
 Where Deep thinking can't think (Thinking's own model on this PC or a paired
 computer, which can't think something over while it answers), the result asks
 the reply to write the lyrics itself and call `sing_song` again with them. Then
@@ -775,7 +786,7 @@ game/call audio. Capturing other people requires their permission.
 | STT | At most one request, 800,044 WAV bytes, 30-second request, 4096 transcript characters |
 | LLM | At most one request, 4096 user characters; current user + persona + style + reply-length instruction + the conversation so far within the context size (Companion › Replies, 2,048-2,000,000 estimated tokens: blank is 100,000 for a cloud model within its known limit, 8,192 on a paired host, Ollama's context length on this PC; at most 8 MiB of UTF-8 and 4,096 earlier messages, 16 KiB and 16 on a paired host), 1,024 requested output tokens by default as a ceiling (16-2,048 via Companion > Replies, which also sets optional sampling: temperature, top P/K, min P and repetition penalties, each sent only to routes whose API accepts it, and Thinking steps), 16,384 response characters, 45-second request |
 | Conversation runtime | At most 90 seconds; existing bounded two-segment pending queue, one active TTS/playback segment |
-| Background think (think_longer) | One at a time on each Deep thinking place (up to 8), 3/6/12 an hour; its own text-only runtime and authorization, never spoken; Thinking steps On at Medium or High; 8,192 or 16,384 output tokens, 65,534 stream events and 16 MiB; the time limit (2, 5 or 10 minutes) for the whole job; at most one declined tool round |
+| Background think (think_longer) | One at a time on each Deep thinking place (up to 8), no hourly limit; its own text-only runtime and authorization, never spoken; Thinking steps On at Medium or High; 8,192 or 16,384 output tokens, 65,534 stream events and 16 MiB; no time limit (the request gets the providers' one-day ceiling, a paired computer's route its 15 minutes); at most one declined tool round |
 | TTS | At most eight requests, 1536 input UTF-8 bytes each / 12,288 total; 10 seconds / 240,000 samples reserved per request, 80 seconds / 1,920,000 samples total; at most 20 seconds per request. Reaching this budget ends speech for the reply, not the reply's text |
 | Content and timeline | Current bounded input/transcript/answer/refusal in memory; 32 metadata timeline entries, existing bounded engine event rings; no audio files or ordinary content logs; finished exchanges (the user's own words and the reply, never audio, glances or what the PC plays) go to the [record of conversations](MEMORY.md#conversation-history) on this PC only while memory and *Keep a record of my conversations* are on |
 
@@ -1294,7 +1305,8 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   names and Home Assistant only ever read your own words: a message that is only
   what the PC played gets none of them, nor MCP tools unless it brings up
   finished work (then it gets the tools a report gets), and earlier `[PC audio]`
-  lines are left out of what remembering reads. The sound is never saved.
+  lines (and `[Screen]`/`[Camera]` lines about what Martlet saw) are left out of
+  what remembering reads. The sound is never saved.
 - **Echo.** Through speakers the microphone also hears what the PC plays; keep
   [echo reduction](#echo-reduction) on (or use headphones) so it isn't taken
   for you. The Companion card's status says so when echo reduction is off.

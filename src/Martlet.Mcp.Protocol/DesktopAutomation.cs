@@ -203,6 +203,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // for a Windows computer whose voice engine shares its graphics card with other roles, the warning that it can fall
         // behind (SelectedDeviceSharedGpu, fixed wording with role and engine names).
         "SelectedDeviceRelease", "SelectedDeviceUpdate", "SelectedDeviceSharedGpu",
+        // A managed host's outside access ("2 outside addresses; pairing codes from outside home refused; every connection
+        // treated as outside home."): counts and choices only, never the addresses.
+        "SelectedDeviceOutside",
         "VisionStatus", "VisionDisclosure", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "F5VoicesStatus",
         // Companion › Vision's Now line: whether vision is on (the default) and what Martlet looks at (your whole screen by
         // default, your active window, or a camera's name or host without its path or password) and how often it comments.
@@ -311,7 +314,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // that, and each task's status reads through LiveJobState- below). The song panel's line (the song's id, state,
         // position, line number and section, lead-in, vamps, ducking, or
         // where and why it stopped; never its title or words: LiveSongLine holds those).
-        "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort", "ThinkLongerTime", "ThinkLongerPerHour",
+        "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort",
         "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingSameStatus",
         "DeepThinkingKeyStatus", "DeepThinkingPoolStatus", "LiveTasks", "LiveJobs", "LiveSong",
         // Companion › Prompts: how many internal prompts are edited or emptied, and the estimated tokens of all prompts together
