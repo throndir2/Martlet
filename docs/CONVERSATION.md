@@ -435,8 +435,11 @@ conversation](#singing-in-conversation)).
 
 ## Singing in conversation
 
-*"Martlet, sing me a song."* Martlet answers in character (*"Sure, I'll sing you
-a song, give me a few minutes while I figure out the lyrics and beat!"*), makes
+*"Martlet, sing me a song."* Martlet answers in character (*"Ooh, I'd love to!
+Let me work on a song for you."*) and calls `sing_song` in that same reply,
+choosing what the song is about itself when the user didn't say (small models
+told to talk first and call afterwards, or given a line to say, often said they'd
+sing and never called it, so nothing was made). It makes
 the song in the background while the conversation carries on, brings it up when
 it's ready (*"Nice job on killing that noob! Oh, and that song's ready, wanna
 hear?"*) and sings it on a yes. It is offered while singing is set up (Companion
