@@ -1352,8 +1352,9 @@ public partial class MainWindow
             (showing ? ", on your desktop." : ", hidden."), null, "SetupCharacterNow", characterCleanupProblem));
 
         var locked = avatar.PlacementLocked;
-        var resetPosition = showing ? PageButton("Reset position", () => ResetCharacterPositionAsync().Forget(), id: "SetupCharacterResetPosition") : null;
-        if (resetPosition is not null) resetPosition.IsEnabled = !locked;
+        // Reset stays available while hidden once a place is saved, in case the character got lost off screen.
+        var resetPosition = showing || avatar.Placement is not null
+            ? PageButton("Reset position", () => ResetCharacterPositionAsync().Forget(), id: "SetupCharacterResetPosition") : null;
         var modelCard = Card(Heading("Character model"),
             Note("Choose a character model, then adjust its size, position and motion. Choices save on their own and a showing character switches right away.", new Thickness(0, 0, 0, 8)),
             Row(PageButton(showing ? "Hide character" : "Show character", () => RunNodeAction(NodeAction.ToggleCharacter), primary: !showing, id: "SetupCharacterToggle"),
@@ -1365,7 +1366,7 @@ public partial class MainWindow
                     () => SetCharacterLockAsync(!avatar.PlacementLocked).Forget(), id: "SetupCharacterLock") : null));
         if (modelCard.Child is Panel modelPanel)
         {
-            var placementNote = Note(CharacterPlacementText(), new Thickness(0, 4, 0, 0));
+            var placementNote = characterPlacementNote = Note(CharacterPlacementText(), new Thickness(0, 4, 0, 0));
             AutomationProperties.SetAutomationId(placementNote, "SetupCharacterPlacement");
             modelPanel.Children.Add(placementNote);
         }

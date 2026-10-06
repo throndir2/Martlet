@@ -1449,9 +1449,11 @@ instructions), `character` (from `avatar.json`: `model` `built-in` with
 `builtInCharacter`, or `own model` with `ownModelType` `.vrm` or
 `.model3.json`, never the path; `renderer`, `lipSync`, `autoShow` and
 `lipSyncHost`, the paired host's ID), `placement` (from
-`character-placement.json`, this PC only: `state` `none` when the character's
-position is unlocked, or `loaded` with `locked`, `left`, `top`, `width` and
-`height` in device-independent pixels; see the character overlay below), `voice`
+`character-placement.json`, this PC only: `state` `none` when no position is
+saved (the character shows at its default spot), or `loaded` with `locked`,
+`left`, `top`, `width` and `height` in device-independent pixels, and
+`screen` (the monitor's device name, such as `\\.\DISPLAY2`), `screenLeft` and
+`screenTop` (its spot on that monitor's work area); see the character overlay below), `voice`
 (from `talk-preferences.json`: `state` `none`, `loaded` or `unreadable`,
 `speakReplies`, Companion › Voice's *Speak Martlet's replies aloud*, on unless
 saved off, `muted`, its opposite, which the overlay menu's *Mute voice* and
@@ -2743,21 +2745,37 @@ menu's `CharacterLockPosition` (*Lock position*, carried out by Martlet: *The
 character's menu chose 'lock'.*) lock it where it is; all need
 `--allow-ui-effects` because they save `character-placement.json` (see
 `character_status`'s `placement`). Locked, `movable` is false and `ui_move` is
-refused; the overlay ignores dragging, the arrow keys and Home; its
-`CharacterResetPosition`, Home's `ResetCharacterPosition` and Companion's
-`SetupCharacterResetPosition` are disabled; and zoom (the wheel, the menu or
+refused; the overlay ignores dragging, the arrow keys and Home, and its own
+`CharacterResetPosition` is disabled; and zoom (the wheel, the menu or
 `SetupCharacterZoomIn`) only zooms the camera, keeping the overlay's bounds.
 The same `ToggleCharacterLock` and `SetupCharacterLock` then read *Unlock
 character position* and *Unlock position* (also while the character is
 hidden), and the overlay menu's `CharacterLockPosition` reads *Unlock
 position* (carried out by Martlet: *The character's menu chose 'unlock'.*);
 each unlocks it. `SetupCharacterPlacement` says whether the position is locked and
-where (device-independent pixels), and `SetupCharacterView` ends with
+where (device-independent pixels and the monitor), and `SetupCharacterView` ends with
 *Position locked.* when the overlay reports it. A locked character shows at
 its locked place again after Hide/Show or a Martlet restart (at its default
 spot, still locked, if that place is no longer on a screen); the desktop log
 records *Character position locked at ...* and *Character position unlocked.*,
 and `avatar-renderer` *The character's position is locked.*
+
+**Remembering where the character is**: whenever the character is dragged,
+nudged, resized, zoomed or sent home (`ui_move` included), the overlay asks
+Martlet (request `placed`, never logged as a menu choice) to read its place
+(renderer command `where`) and save it in `character-placement.json`, locked
+or not, with the monitor it is on; the desktop log records *Character position
+saved at ... on DISPLAY2.* The next showing (Hide/Show, a restart, a shutdown
+or an update) puts it back on that monitor at the same spot, with the
+character's middle kept on the monitor's work area; if that monitor is gone,
+where it was when that spot is still on a screen, else its default spot
+(`avatar-renderer` logs *The character is back where it was left on
+DISPLAY2.*). Home's `ResetCharacterPosition` and Companion's
+`SetupCharacterResetPosition` (*Reset position*, need `--allow-ui-effects`)
+show while the character shows or a place is saved: showing, they move it to
+the lower-right of the main screen even when locked (it stays locked there)
+and save that; hidden, they forget the saved place so it next shows at its
+default spot, unlocked (`placement.state` `none`).
 
 The same page's *Speech bubbles and subtitles* card has the checkboxes
 `SetupCharacterSpeechBubbles` (on by default) and `SetupCharacterSubtitles`

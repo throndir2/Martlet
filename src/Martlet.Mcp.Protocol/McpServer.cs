@@ -2475,8 +2475,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }
     }
 
-    /// <summary>character-placement.json in a data directory (Martlet.Desktop's CharacterPlacementStore): whether the character's
-    /// position is locked on this PC and where (device-independent pixels). No file means unlocked.</summary>
+    /// <summary>character-placement.json in a data directory (Martlet.Desktop's CharacterPlacementStore): where the character
+    /// was last left on this PC (device-independent pixels), on which monitor and whether it is locked there. No file means it
+    /// shows at its default spot.</summary>
     private static object CharacterPlacement(string directory)
     {
         var path = Path.Combine(directory, "character-placement.json");
@@ -2491,7 +2492,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             return new
             {
                 state = "loaded", locked = root.TryGetProperty("Locked", out var locked) && locked.ValueKind == JsonValueKind.True,
-                left = Number("Left"), top = Number("Top"), width = Number("Width"), height = Number("Height")
+                left = Number("Left"), top = Number("Top"), width = Number("Width"), height = Number("Height"),
+                screen = root.TryGetProperty("Screen", out var screen) && screen.ValueKind == JsonValueKind.String ? screen.GetString() : null,
+                screenLeft = Number("ScreenLeft"), screenTop = Number("ScreenTop")
             };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)

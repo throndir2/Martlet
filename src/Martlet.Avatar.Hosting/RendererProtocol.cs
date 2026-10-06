@@ -23,8 +23,9 @@ public sealed record RendererAction(string Kind, string Name, bool On = true)
 {
     public static IReadOnlyList<string> Kinds { get; } = ["expression", "motion", "gesture"];
 }
-/// <summary>Starts the renderer. A locked <paramref name="Placement"/> puts the overlay back where it was locked (when that
-/// spot is still on a screen) and locks it again. <paramref name="ThemeColors"/> are a character palette's colors by role
+/// <summary>Starts the renderer. A saved <paramref name="Placement"/> puts the overlay back where it was last left, on the same
+/// screen when that screen is still connected (else where it was, when that spot is still on a screen), and locks it again
+/// when it was locked. <paramref name="ThemeColors"/> are a character palette's colors by role
 /// (#RRGGBB; null for Martlet's own palette of that lightness). <paramref name="VoiceMuted"/>: Martlet's voice is muted (its
 /// replies aren't spoken), so the overlay's menu offers to unmute it (see <see cref="RendererVoice"/>).</summary>
 public sealed record RendererLoad(AvatarProfile Profile, string ResourceRevision, bool DarkTheme, RendererPlacement? Placement = null,
@@ -40,15 +41,21 @@ public sealed record RendererVoice(bool Muted);
 /// </summary>
 public sealed record RendererLock(bool Locked);
 /// <summary>Where the character overlay is: its window's top-left corner and the character frame's width and height, in
-/// device-independent pixels, and whether its place is locked.</summary>
-public sealed record RendererPlacement(bool Locked, double Left, double Top, double Width, double Height)
+/// device-independent pixels, and whether its place is locked. <paramref name="Screen"/> names the monitor it is on (Windows'
+/// device name, such as <c>\\.\DISPLAY2</c>) and <paramref name="ScreenLeft"/>, <paramref name="ScreenTop"/> its top-left
+/// relative to that monitor's work area, so it goes back to the same monitor even after the screens are rearranged.</summary>
+public sealed record RendererPlacement(bool Locked, double Left, double Top, double Width, double Height, string? Screen = null,
+    double? ScreenLeft = null, double? ScreenTop = null)
 {
     private const double Farthest = 100_000;
 
     /// <summary>Finite, positive size and within any plausible desktop.</summary>
     [JsonIgnore]
     public bool IsValid => double.IsFinite(Left) && double.IsFinite(Top) && double.IsFinite(Width) && double.IsFinite(Height) &&
-        Math.Abs(Left) < Farthest && Math.Abs(Top) < Farthest && Width is > 0 and < Farthest && Height is > 0 and < Farthest;
+        Math.Abs(Left) < Farthest && Math.Abs(Top) < Farthest && Width is > 0 and < Farthest && Height is > 0 and < Farthest &&
+        (Screen is null || (Screen.Length is > 0 and <= 64 && !Screen.Any(char.IsControl))) &&
+        (ScreenLeft is null || (double.IsFinite(ScreenLeft.Value) && Math.Abs(ScreenLeft.Value) < Farthest)) &&
+        (ScreenTop is null || (double.IsFinite(ScreenTop.Value) && Math.Abs(ScreenTop.Value) < Farthest));
 }
 /// <summary>The overlay's palette: Martlet's own light or dark one, or a character palette's <paramref name="Colors"/> by role
 /// (#RRGGBB).</summary>
@@ -86,11 +93,12 @@ public sealed record RendererLook(string Target, double X, double Y);
 /// separate request pipe (never as a command reply): "hide" the character, "open" Martlet's window, "talk" (open the talk
 /// window), show the character's "settings", "lock" its place where it is or "unlock" it (Martlet saves it and sends
 /// <see cref="RendererLock"/>), or "mute" or "unmute" Martlet's voice (Martlet saves it and sends <see cref="RendererVoice"/>).
-/// Zoom, position and keep-on-top stay inside the overlay.
+/// "placed" says the character was moved or resized and has settled: Martlet then asks where it is ("where", replied to with
+/// <see cref="RendererPlacement"/>) and saves that on this PC. Zoom, position and keep-on-top stay inside the overlay.
 /// </summary>
 public sealed record RendererRequest(string Action)
 {
-    public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings", "lock", "unlock", "mute", "unmute"];
+    public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings", "lock", "unlock", "mute", "unmute", "placed"];
 }
 /// <summary>
 /// The character frame's size in device-independent pixels, its top relative to the top of its screen's work area
