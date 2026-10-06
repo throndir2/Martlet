@@ -498,7 +498,7 @@ The job's result is the title, the summary and how to show it
 (`perform_creation` with the report's ID), and as an `Offer` kind it is brought
 up to be offered first. On a yes, `perform_creation` writes the report as a
 plain web page in `research-reports` in the data folder and opens it in the
-browser. The chip shows *Researching: <topic>* with its step (*Searching the
+browser. The talk window's task list shows it as *Research* with its step (*Searching the
 web*, *Reading pages (2 of at most 8)*, *Thinking it over*, *Writing the
 report*); the desktop log notes each start, step failure and end with counts only
 (`Web research:` searches, pages, bytes, model steps), never the topic, a query,
