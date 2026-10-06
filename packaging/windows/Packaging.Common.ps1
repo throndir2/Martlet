@@ -252,7 +252,7 @@ function Assert-PublishLayout([string]$Root, [ValidateSet('Internal', 'PublicUns
     foreach ($file in @((Get-PackagingChannel $Channel).help, 'help\TROUBLESHOOTING.md', 'notices\DEPENDENCIES.txt',
             'prerequisites\Install-Prerequisites.ps1', 'notices\NAudio-THIRD-PARTY-NOTICES.txt', 'notices\WebRTC-APM-NOTICES.txt',
             'notices\Audio2Face-Protos-LICENSE.txt', 'notices\Audio2Face-THIRD-PARTY-NOTICES.md', 'notices\F5-Voices-NOTICES.txt',
-            'notices\Voice-Recognition-NOTICES.txt',
+            'notices\Voice-Recognition-NOTICES.txt', 'notices\Discord-Voice-NOTICES.txt',
             'notices\Microsoft.WindowsDesktop.App\LICENSE.txt', 'notices\WPF-THIRD-PARTY-NOTICES.txt',
             'notices\WinForms-THIRD-PARTY-NOTICES.txt', 'notices\Inno-Setup-LICENSE.txt')) {
         $null = Get-RequiredFile (Join-Path $Root $file)
@@ -260,6 +260,11 @@ function Assert-PublishLayout([string]$Root, [ValidateSet('Internal', 'PublicUns
     if ($Channel -ceq 'PublicUnsigned') { $null = Get-RequiredFile (Join-Path $Root 'help\LICENSE.txt') }
     # Voice recognition is part of Martlet: its models ship exactly as pinned (the Desktop build downloads and checks them).
     foreach ($model in $pins.voiceModels) { Assert-Sha256 (Join-Path $Root $model.path) $model.sha256 }
+    # Pinned upstream native downloads ship unmodified beside the app (the build downloads and checks them).
+    foreach ($native in $pins.nativeDownloads) {
+        Assert-Sha256 (Join-Path $Root $native.path) $native.sha256
+        Assert-X64Pe (Join-Path $Root $native.path)
+    }
     foreach ($notice in $pins.notices) {
         $null = Get-RequiredFile (Join-Path $Root "notices\$($notice.file)")
         Assert-Sha256 (Join-Path $Root "notices\$($notice.file)") $notice.sha256
@@ -1179,6 +1184,9 @@ function Test-PackageProvenance([string]$Root, $Provenance,
         }
     }
     foreach ($file in $fileMap.Values) {
+        # Pinned upstream native downloads (toolchain.json nativeDownloads, e.g. Discord's libdave), each exactly its pinned bytes.
+        $nativeDownload = @($pins.nativeDownloads | Where-Object { $_.path -ceq $file.path -and $_.sha256 -ceq $file.sha256 -and $_.bytes -eq $file.bytes }).Count -eq 1
+        if ($nativeDownload) { continue }
         if ($file.path -imatch '\.(dll|exe)$' -and -not $origins.ContainsKey($file.path) -and -not $projectAssets.Contains($file.path)) {
             throw "Unowned shipped binary: $($file.path)"
         }
@@ -1210,7 +1218,8 @@ function Test-PackageProvenance([string]$Root, $Provenance,
         @{ source = 'src\Martlet.Avatar.Audio2Face\THIRD-PARTY-NOTICES.md'; target = 'notices\Audio2Face-THIRD-PARTY-NOTICES.md' },
         @{ source = 'src\Martlet.Avatar.Audio2Face\Protos\LICENSE-2.0.txt'; target = 'notices\Audio2Face-Protos-LICENSE.txt' },
         @{ source = 'src\Martlet.F5\BundledVoices\NOTICES.txt'; target = 'notices\F5-Voices-NOTICES.txt' },
-        @{ source = 'src\Martlet.Sherpa\VOICE-RECOGNITION-NOTICES.txt'; target = 'notices\Voice-Recognition-NOTICES.txt' })) {
+        @{ source = 'src\Martlet.Sherpa\VOICE-RECOGNITION-NOTICES.txt'; target = 'notices\Voice-Recognition-NOTICES.txt' },
+        @{ source = 'src\Martlet.Discord\DISCORD-VOICE-NOTICES.txt'; target = 'notices\Discord-Voice-NOTICES.txt' })) {
         $sourceNotice = @($Provenance.source.files | Where-Object path -CEQ $notice.source)
         if ($sourceNotice.Count -ne 1 -or -not $fileMap.ContainsKey($notice.target) -or
             $sourceNotice[0].sha256 -cne $fileMap[$notice.target].sha256 -or $sourceNotice[0].bytes -ne $fileMap[$notice.target].bytes) {

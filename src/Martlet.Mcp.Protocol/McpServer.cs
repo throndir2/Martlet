@@ -688,6 +688,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             martletDirectory = new { type = "string" },
             speechDirectory = new { type = "string" }
         }),
+        Tool("discord_voice_check", "Discord voice (Companion > Discord) without Discord: loads libdave.dll (DAVE, Discord's " +
+            "mandatory end-to-end voice encryption, which NetCord calls) from this server and from martletDirectory (the desktop " +
+            "build or install, where it ships) and runs an offline DAVE session (protocol version, MLS key package, frame encryptor " +
+            "and decryptor); checks the managed Opus codec. Then pushes one utterance a Windows voice says (rendered to memory, " +
+            "never played) through the production voice path with a fake transport: 48 kHz stereo Opus packets as a Discord client " +
+            "sends them, per-speaker ordering, decoding, 16 kHz downsampling and endpointing (DiscordVoiceConversation), FIXTURE " +
+            "speech-to-text and a FIXTURE reply engine (NOT AI), the reply spoken by a Windows voice into memory and encoded back " +
+            "to Opus frames, decoded again to measure them; then a second person talks over a long reply (barge-in must stop it). " +
+            "Returns natives, utterance (heardMs, turn: addressed, source), reply (frames, spokenMs, level, Speaking on/off) and " +
+            "bargeIn. No Discord connection, network, microphone, speaker, provider or credential.", new
+        {
+            martletDirectory = new { type = "string" }
+        }),
         Tool("model_ability_check", "What Thinking models were found to hear (recorded audio) and see (pictures): model-abilities.json in " +
             "a data directory, also shared with the owner's other computers as the model-abilities setting. Then rehearses the production " +
             "detection (ModelContextProbe) against fixture servers on 127.0.0.1 shaped like OpenRouter's model list " +
@@ -1211,6 +1224,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "hearing_check" => await HearingCheck.RunAsync(OptionalString(arguments, "modelId"), DataDirectory(arguments), cancellation),
                 "straight_voice_check" => await StraightVoiceCheck.RunAsync(MartletDirectory(arguments), SpeechDirectory(arguments),
                     OptionalBool(arguments, "live") ?? false, OptionalString(arguments, "model"), cancellation),
+                "discord_voice_check" => await DiscordVoiceCheck.RunAsync(OptionalString(arguments, "martletDirectory") is null ? null : MartletDirectory(arguments), cancellation),
                 "model_ability_check" => await ModelAbilityCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "baseUrl"),
                     OptionalString(arguments, "modelId"), OptionalBool(arguments, "test") ?? false, cancellation),
                 "spoken_reply_check" => await SpokenReplyCheck.RunAsync(OptionalString(arguments, "voiceFailure"),

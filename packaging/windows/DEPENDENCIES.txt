@@ -49,7 +49,7 @@ Microsoft, Jean-Marc Valin, Gregory Maxwell, Mark Borgerding, Timothy B.
 Terriberry, Logan Stromberg and others). Neither has a NuGet dependency on .NET
 10. Both archives and both DLLs are pinned in toolchain.json;
 notices\NVorbis-LICENSE.txt and Concentus-LICENSE.txt are the complete license
-files from each archive. Martlet uses only Concentus' managed decoder and never
+files from each archive. Martlet uses only Concentus' managed codec and never
 loads a native opus.dll, so none is redistributed. They decode only files the
 owner chooses on this PC; only the resulting PCM WAV is stored or shared, and
 Doctor never decodes them.
@@ -66,6 +66,17 @@ Desktop also includes Martlet.Discord (authored) and NetCord 1.0.0-beta.28
 archive is pinned in toolchain.json; notices\NetCord-LICENSE.txt is the complete
 MIT license from the package's declared source commit
 52bc355e8e866f1cb8433334e37d9f566b91a265.
+
+Discord voice: Desktop ships libdave.dll, Discord's official unmodified libdave
+v1.2.1 Windows x64 build (MIT, Discord; statically links mlspp BSD-2-Clause,
+nlohmann/json MIT and BoringSSL), which NetCord calls for DAVE, Discord's
+mandatory end-to-end voice encryption. The Martlet.Discord build downloads
+libdave-Windows-X64-boringssl.zip from github.com/discord/libdave releases,
+checks its pinned SHA-256 and extracts bin/libdave.dll; toolchain.json
+nativeDownloads pins the archive and the DLL, and packaging checks the shipped
+bytes again. notices\Discord-Voice-NOTICES.txt carries all four licenses as
+shipped in that archive. Discord voice encodes and decodes Opus with Concentus'
+managed codec (no opus.dll) and needs no libsodium.
 
 Desktop also includes Martlet.EchoCancellation (authored) and, for Companion >
 Listening > Reduce echo from my speakers, WebRTC's acoustic echo canceller:
