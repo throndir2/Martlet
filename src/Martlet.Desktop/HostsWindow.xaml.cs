@@ -765,6 +765,26 @@ public partial class HostsWindow : ThemedWindow
         StatusText.Text = $"Forgot {host.HostId} on this PC. To remove this PC from the host too, revoke {host.Pairing.DeviceId} in the host console.";
     });
 
+    /// <summary>Away from home: paste the owner's invite and sign in (<see cref="SignInJoinWindow"/>); the pairing is kept
+    /// like any other.</summary>
+    private void JoinWithInvite_Click(object sender, RoutedEventArgs e)
+    {
+        var device = DeviceIdText.Text.Trim();
+        new SignInJoinWindow(device, async (pairing, secret) =>
+        {
+            var host = await SavePairingAsync(pairing, secret, HostSetupMethod.Agent, null, null);
+            try { await CheckAsync(host.Pairing, Hardware, _ => { }, lifetime.Token); }
+            catch (Exception error) when (error is InvalidOperationException or Audio2FaceHostException) { }
+        }) { Owner = this }.ShowDialog();
+    }
+
+    /// <summary>The selected host's sign-in settings and invite (<see cref="SignInSettingsWindow"/>).</summary>
+    private void SignInSettings_Click(object sender, RoutedEventArgs e)
+    {
+        if (paired is not { } host) { StatusText.Text = "No Martlet host paired."; return; }
+        new SignInSettingsWindow(host.Pairing, pairings.DataDirectory) { Owner = this }.ShowDialog();
+    }
+
     private async Task ActionAsync(string what, Func<Task> action)
     {
         if (!acting.Add(what)) { StatusText.Text = "That is still running."; return; }

@@ -23,6 +23,29 @@ normal supported product path. Live2D's Expandable Application review (required
 because users can load their own models) has been applied for by the owner; a
 public release bundling Live2D waits for that approval.
 
+## Character profiles
+
+A character profile switches who Martlet is in one step: its **look** (the
+built-in character or one of your characters from Companion › Character), its
+**voice** (one of your voices from Companion › Voice › Voices, spoken by the
+voice-cloning engines) and its **personality** (a persona from Companion ›
+Personality). Make and edit them in **Companion › Profiles**; *New profile...*
+starts as whatever Martlet uses now. A profile may keep the current look or voice
+instead of setting one. Switch from the Profiles page, Home's **Character** box
+or the **Character profile** submenu of Martlet's icon by the clock.
+
+Profiles are saved with the personality settings (`companion.characters` in
+`settings.json`), so they travel to your other Martlet computers with the shared
+settings. They name the look and voice by their shared IDs: switching saves the
+look on this PC (as Companion › Character does), chooses the voice on all your
+computers (as *Use* in Voices does) and selects the personality, and an open
+conversation takes the new voice and personality before its next reply. A part
+that can't switch yet (a look still copying to this PC, a removed voice) stays
+as it was and Martlet says why. The profile in use is worked out from what
+Martlet actually uses, so changing the look, voice or personality by hand shows
+"A mix of your own" until a profile matches again. Removing a persona removes the
+profiles built on it.
+
 ## Emotes and motions
 
 Models don't share a standard for emotes. VRM 1.0 has optional preset emotions

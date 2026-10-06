@@ -14,9 +14,11 @@ public enum BackgroundJobState { Waiting, Running, Paused, Succeeded, Failed, Ti
 /// "think"; later "song"): its <paramref name="Name"/> (lowercase, the job IDs' prefix: think-1, song-1), how many may run at
 /// once, how many may start in any hour, how long one may take, whether its result is something to <paramref name="Offer"/>
 /// (a song to play: Martlet asks first and a later tool acts on the user's yes) rather than simply share, and what the talk
-/// window calls a running one (<paramref name="Doing"/>: "Thinking about", then its label).</summary>
+/// window calls a running one (<paramref name="Doing"/>: "Thinking about", then its label). A <paramref name="Notice"/> kind isn't
+/// work but something to tell the user at a time (a due reminder): its result is what to tell them, it is always brought up as
+/// soon as Martlet is free, and it has its own prompts.</summary>
 public sealed record BackgroundJobKind(string Name, int MaxActive, int MaxPerHour, TimeSpan TimeLimit, bool Offer = false,
-    string Doing = "Working on")
+    string Doing = "Working on", bool Notice = false)
 {
     public void Validate()
     {
@@ -252,6 +254,12 @@ public sealed class BackgroundJobs : IDisposable
     /// <summary>Whether a finished job is waiting that Martlet should bring up on its own (not only one the user stopped).</summary>
     public bool HasNews { get { lock (gate) return jobs.Any(job => job.Delivery == BackgroundDeliveryState.Pending && !job.Quiet); } }
 
+    /// <summary>Whether a notice (a due reminder) waits: it is brought up as soon as Martlet is free, whenever finished work is.</summary>
+    public bool HasNotice
+    {
+        get { lock (gate) return jobs.Any(job => job.Delivery == BackgroundDeliveryState.Pending && !job.Quiet && job.Kind.Notice); }
+    }
+
     /// <summary>How many jobs of <paramref name="kind"/> started in the last hour.</summary>
     public int StartedWithinHour(string kind)
     {
@@ -372,13 +380,15 @@ public sealed class BackgroundJobs : IDisposable
 
     /// <summary>Takes the finished jobs waiting to be brought up, for one reply to carry. <paramref name="onItsOwn"/>: a reply
     /// Martlet starts by itself, which happens only when there is news (a job the user stopped waits for their next message).
+    /// <paramref name="noticesOnly"/>: only notices (due reminders), when other finished work waits for the user's next message.
     /// Null when nothing waits.</summary>
-    public BackgroundDelivery? Take(bool onItsOwn)
+    public BackgroundDelivery? Take(bool onItsOwn, bool noticesOnly = false)
     {
         BackgroundDelivery? taken = null;
         lock (gate)
         {
-            var waiting = jobs.Where(job => job.Delivery == BackgroundDeliveryState.Pending).OrderBy(job => job.FinishedUtc).ToArray();
+            var waiting = jobs.Where(job => job.Delivery == BackgroundDeliveryState.Pending && (!noticesOnly || job.Kind.Notice))
+                .OrderBy(job => job.FinishedUtc).ToArray();
             if (waiting.Length > 0 && (!onItsOwn || waiting.Any(job => !job.Quiet)))
             {
                 var moved = waiting.Where(job => job.MoveDelivery(BackgroundDeliveryState.Pending, BackgroundDeliveryState.Reserved)).ToArray();
@@ -455,21 +465,45 @@ public sealed class BackgroundJobs : IDisposable
     }
 
     /// <summary>The message of the reply Martlet starts on its own to bring up <paramref name="finished"/> jobs (Companion ›
-    /// Prompts › Background work finished): its note with the results, shortened until a request can carry it.</summary>
+    /// Prompts › Background work finished, and Reminder due for due reminders): its note with the results, shortened until a
+    /// request can carry it.</summary>
     public static BoundedTextInput ReportMessage(PromptSettings? prompts, IReadOnlyList<BackgroundJob> finished)
     {
+        var notices = finished.Where(job => job.Kind.Notice).ToArray();
+        var work = finished.Where(job => !job.Kind.Notice).ToArray();
         for (var limit = 10_000; ; limit /= 2)
         {
-            var text = PromptSettings.Fill(prompts, PromptCatalog.BackgroundDone, ("results", Results(finished, limit)))!;
+            var text = string.Join("\n\n", new[]
+            {
+                notices.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.ReminderDue, ("reminders", Notices(notices, limit))),
+                work.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.BackgroundDone, ("results", Results(work, limit)))
+            }.OfType<string>());
             try { return new(text); }
             catch (ContractException) when (limit > 500) { }
         }
     }
 
     /// <summary>What goes in the notes of the user's next message about <paramref name="finished"/> jobs not brought up yet
-    /// (Companion › Prompts › Background work finished, with your message), or null when that prompt was emptied.</summary>
-    public static string? ReportNotes(PromptSettings? prompts, IReadOnlyList<BackgroundJob> finished) =>
-        PromptSettings.Fill(prompts, PromptCatalog.BackgroundDoneNotes, ("results", Results(finished, 6_000)));
+    /// (Companion › Prompts › Background work finished, with your message, and Reminder due, with your message), or null when
+    /// those prompts were emptied.</summary>
+    public static string? ReportNotes(PromptSettings? prompts, IReadOnlyList<BackgroundJob> finished)
+    {
+        var notices = finished.Where(job => job.Kind.Notice).ToArray();
+        var work = finished.Where(job => !job.Kind.Notice).ToArray();
+        var text = string.Join("\n\n", new[]
+        {
+            notices.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.ReminderDueNotes, ("reminders", Notices(notices, 4_000))),
+            work.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.BackgroundDoneNotes, ("results", Results(work, 6_000)))
+        }.Where(part => !string.IsNullOrWhiteSpace(part)));
+        return text.Length == 0 ? null : text;
+    }
+
+    /// <summary>The due notices (reminders) as the conversation is told about them, one per line.</summary>
+    public static string Notices(IEnumerable<BackgroundJob> notices, int limit = 4_000)
+    {
+        var text = string.Join("\n", notices.Select(job => "- " + (job.Result ?? job.Label)));
+        return text.Length > limit ? text[..limit].TrimEnd() + "…" : text;
+    }
 
     /// <summary>Stops every job for good (Martlet is closing).</summary>
     public void Dispose()

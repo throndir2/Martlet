@@ -8,7 +8,12 @@ using Martlet.Core.Network;
 namespace Martlet.Avatar.Audio2Face.Remote;
 
 /// <summary>A desktop that paired with a host and asks to join the host's Martlet network, as that host reports it to members.</summary>
-public sealed record HostJoinRequest(string HostId, string DeviceId, string DisplayName, string Key, string CheckNumber, DateTimeOffset RequestedAt);
+public sealed record HostJoinRequest(string HostId, string DeviceId, string DisplayName, string Key, string CheckNumber, DateTimeOffset RequestedAt)
+{
+    /// <summary>Who this desktop signed in as to pair with the host (an allowed identity or the owner account), as the host
+    /// attests; null when it paired another way. A member desktop lets such a request in without a check number.</summary>
+    public HostSignInAttestation? SignIn { get; init; }
+}
 
 /// <summary>A computer paired with a host, as that host reports it: when its current pairing was made and when it last made
 /// a signed request (null when it hasn't since the host's gateway started).</summary>
@@ -110,8 +115,13 @@ public sealed partial class Audio2FaceHostConnection
                     var key = join.GetProperty("key").GetString()!;
                     Audio2FaceHostClient.RequireIdentifier(device, "device ID");
                     if (!NetworkKey.IsPublicKey(key)) throw new FormatException();
+                    HostSignInAttestation? signIn = null;
+                    if (join.TryGetProperty("sign_in", out var attested) && attested.ValueKind == JsonValueKind.Object)
+                        signIn = new(attested.GetProperty("provider").GetString()!, attested.GetProperty("subject").GetString()!,
+                            HostSignInClient.Clean(attested.TryGetProperty("label", out var label) ? label.GetString() : null),
+                            attested.GetProperty("at").GetDateTimeOffset());
                     joins.Add(new(pairing.HostId, device, NetworkRoster.CleanName(join.GetProperty("display_name").GetString(), device), key,
-                        join.GetProperty("check_number").GetString()!, join.GetProperty("requested_at").GetDateTimeOffset()));
+                        join.GetProperty("check_number").GetString()!, join.GetProperty("requested_at").GetDateTimeOffset()) { SignIn = signIn });
                 }
             List<HostPairedDevice>? devices = null;
             if (root.TryGetProperty("devices", out var paired) && paired.ValueKind == JsonValueKind.Array)

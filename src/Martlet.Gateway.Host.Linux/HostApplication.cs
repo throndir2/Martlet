@@ -48,7 +48,7 @@ internal sealed class NativeHostPlatform : IHostPlatform
             {
                 "audio2face" => new Martlet.Gateway.Audio2Face.Audio2FaceRelayWorker(role.Endpoint, role.Model, "nim"),
                 "ollama" => new Martlet.Gateway.Ollama.OllamaRelayWorker(role.Endpoint, role.Model),
-                "deep-thinking" => Martlet.Gateway.Ollama.OllamaRelayWorker.DeepThinking(role.Endpoint, role.Model),
+                "deep-thinking" => Martlet.Gateway.Ollama.OllamaRelayWorker.DeepThinking(role.Endpoint, role.Model, slots: role.Slots),
                 "f5" => new Martlet.Gateway.F5.F5RelayWorker(role.Endpoint, role.Model),
                 "xtts" => Martlet.Gateway.Xtts.XttsRelay.Create(role.Endpoint, role.Model),
                 "chatterbox" => Martlet.Gateway.F5.ChatterboxRelay.Create(role.Endpoint, role.Model),
@@ -407,6 +407,8 @@ internal static class HostApplication
                     (changed ? " Restart the service to apply it; member desktops add the outside addresses to your network on their next sync." : ""));
                 return 0;
             }
+            if (HostSignIn.Handles(options.Command))
+                return HostSignIn.Run(options, config, approval, directory, platform.Input, output);
             if (options.Command is "serve" or "health")
             {
                 if (approval is null) throw new HostApprovalException();
@@ -445,6 +447,7 @@ internal static class HostApplication
                         owner.RecordActivity("WARN", "exposure.json is invalid, so this host uses the defaults (no outside addresses, pairing only from home). " +
                             "Set it again with martlet-host owner-exposure.");
                     }
+                    owner.AttachSignIn(new ControlSignInStorage(directory));
                     var (networkState, networkId) = owner.NetworkState;
                     owner.RecordActivity("INFO", networkState switch
                     {
@@ -454,7 +457,8 @@ internal static class HostApplication
                     });
                     AttachCommands(owner, directory);
                     owner.RecordActivity("INFO", config.Roles.Count == 0 ? "Serving with no roles."
-                        : "Serving roles: " + string.Join(", ", config.Roles.Select(r => $"{r.Kind} ({r.Model})")) + ".");
+                        : "Serving roles: " + string.Join(", ", config.Roles.Select(r =>
+                            r.Slots > 1 ? $"{r.Kind} ({r.Model}, {r.Slots} at once)" : $"{r.Kind} ({r.Model})")) + ".");
                 }
                 await owner.StartAsync(cancellation);
                 CheckApproval(directory, config, approval);
