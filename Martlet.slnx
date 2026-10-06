@@ -10,6 +10,7 @@
     <Project Path="src/Martlet.Credentials.Windows/Martlet.Credentials.Windows.csproj" />
     <Project Path="src/Martlet.Desktop/Martlet.Desktop.csproj" />
     <Project Path="src/Martlet.Diagnostics/Martlet.Diagnostics.csproj" />
+    <Project Path="src/Martlet.Discord/Martlet.Discord.csproj" />
     <Project Path="src/Martlet.Doctor/Martlet.Doctor.csproj" />
     <Project Path="src/Martlet.EchoCancellation/Martlet.EchoCancellation.csproj" />
     <Project Path="src/Martlet.Home/Martlet.Home.csproj" />
@@ -39,6 +40,7 @@
     <Project Path="tests/Martlet.Core.Tests/Martlet.Core.Tests.csproj" />
     <Project Path="tests/Martlet.Conversation.Tests/Martlet.Conversation.Tests.csproj" />
     <Project Path="tests/Martlet.Desktop.Tests/Martlet.Desktop.Tests.csproj" />
+    <Project Path="tests/Martlet.Discord.Tests/Martlet.Discord.Tests.csproj" />
     <Project Path="tests/Martlet.Doctor.Tests/Martlet.Doctor.Tests.csproj" />
     <Project Path="tests/Martlet.Gateway.Trust.Tests/Martlet.Gateway.Trust.Tests.csproj" />
     <Project Path="tests/Martlet.Memory.Tests/Martlet.Memory.Tests.csproj" />

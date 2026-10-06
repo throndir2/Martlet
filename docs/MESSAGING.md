@@ -67,7 +67,8 @@ How it works:
 
 A new app implements `IMessagingTransport` (connect, receive, send, typing,
 longest message) and reuses `MessagingBridge` for pairing, the allow-list,
-typing, splitting and retries. Candidates: Discord (a bot over its Gateway
-WebSocket, DMs only), Matrix (`/sync` long polling, no public address needed)
-and Signal through `signal-cli`. WhatsApp's Business API needs a public webhook
-and a business account, so it is not a good fit for a personal PC.
+typing, splitting and retries. Discord has its own, richer foundation (servers,
+channels, people and chat modes) in [Discord](DISCORD.md). Other candidates:
+Matrix (`/sync` long polling, no public address needed) and Signal through
+`signal-cli`. WhatsApp's Business API needs a public webhook and a business
+account, so it is not a good fit for a personal PC.

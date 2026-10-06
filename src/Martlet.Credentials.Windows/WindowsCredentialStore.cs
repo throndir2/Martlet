@@ -146,6 +146,31 @@ public sealed class WindowsCredentialStore(ICredentialNative native) : ICredenti
 
     private static string HomeAssistantTarget(Guid credentialId) => $"Martlet/v3/home-assistant/{credentialId:N}";
 
+    // Discord bot token for Martlet's own Discord app; one per saved setup.
+    public CredentialError WriteDiscordBotToken(Guid credentialId, SecretLease secret)
+    {
+        if (credentialId == Guid.Empty) return CredentialError.InvalidInput;
+        if (!native.IsSupported) return CredentialError.UnsupportedPlatform;
+        var error = CredentialError.InvalidInput;
+        secret.Use(value => error = Map(native.Write(DiscordTarget(credentialId), value)));
+        return error;
+    }
+
+    public CredentialReadResult ReadDiscordBotToken(Guid credentialId)
+    {
+        if (credentialId == Guid.Empty) return new(CredentialError.InvalidInput, null);
+        if (!native.IsSupported) return new(CredentialError.UnsupportedPlatform, null);
+        var result = Map(native.Read(DiscordTarget(credentialId), out var secret));
+        if (result != CredentialError.None) { secret?.Dispose(); return new(result, null); }
+        return secret is null ? new(CredentialError.Unavailable, null) : new(result, secret);
+    }
+
+    public CredentialError DeleteDiscordBotToken(Guid credentialId) =>
+        credentialId == Guid.Empty ? CredentialError.InvalidInput
+            : native.IsSupported ? Map(native.Delete(DiscordTarget(credentialId))) : CredentialError.UnsupportedPlatform;
+
+    private static string DiscordTarget(Guid credentialId) => $"Martlet/v3/discord-bot/{credentialId:N}";
+
     // A value an MCP server in mcp.json needs (an API key for its environment or headers), referenced there as ${secret:NAME}.
     // The scope is one mcp.json file; the value is kept base64url-encoded so any text fits the credential format.
     public const int MaxMcpSecretBytes = SecretLease.MaximumLength / 4 * 3;

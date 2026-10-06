@@ -96,7 +96,7 @@ public partial class MainWindow
             var reachable = reads.Where(r => r.Ok).ToArray();
             settingsHosts = (reachable.Count(r => settingsCopies.GetValueOrDefault(r.HostId).Digest == digest), hosts.Count,
                 reads.Count(r => !r.Ok && !r.Old), reads.Count(r => r.Old));
-            foreach (var key in result.Recorded)
+            foreach (var key in result.Recorded.Where(k => !SharedPc.IsRoleKey(k)))
                 ErrorLog.Info(SharedPc.IsKey(key)
                     ? $"Shared settings: told your other computers that this PC is a {(Role == DeviceRole.Host ? "host" : "companion")} PC" +
                       (ThisPcHost() is { } own ? $" and runs {own.HostId}." : ".")
@@ -143,7 +143,7 @@ public partial class MainWindow
         SmartHomeKey => "what Martlet may do with Home Assistant",
         UpdatesKey => "app updates",
         ModelAbilitiesKey => "what Thinking models hear and see",
-        _ when SharedPc.IsKey(key) => "whether this PC is a companion or a host",
+        _ when SharedPc.IsKey(key) || SharedPc.IsRoleKey(key) => "whether this PC is a companion or a host",
         _ => key
     };
 
@@ -208,6 +208,9 @@ public partial class MainWindow
         ActionText.Text = settingsLastChange;
         if (applied.Any(a => a.Key == AppSettingsSections.Lorebooks)) homeLore = null;
         await RefreshHomeAsync();
+        // A route taken from another computer is not a choice made here, so who does what doesn't record it as one.
+        if (applied.Any(a => a.Key is AppSettingsSections.Thinking or AppSettingsSections.Listening or AppSettingsSections.Speaking))
+            foreach (var job in clusterObserved.Keys.ToArray()) clusterObserved[job] = ObservedJob(job);
         if (characterChanged && avatar.IsShowing && Role == DeviceRole.Companion && !closing)
         {
             characterChanged = false;
@@ -227,7 +230,7 @@ public partial class MainWindow
             SettingsSyncWaitingText.Visibility = Visibility.Collapsed;
             return;
         }
-        var shared = settingsNode.Document.Settings.Count(s => !SharedPc.IsKey(s.Key));
+        var shared = settingsNode.Document.Settings.Count(s => !SharedSettings.IsDeviceKey(s.Key));
         string text;
         if (!clusterEnabled) text = "Settings stay on this PC while this is off; changes made here are shared when you turn it on.";
         else if (settingsCheckedAt is not { } checkedAt) text = "Settings: checking your hosts...";
@@ -280,6 +283,12 @@ public partial class MainWindow
             Task.FromResult<SharedLocal?>(new(new SharedPc(Role == DeviceRole.Host ? SharedPc.HostRole : SharedPc.CompanionRole,
                 ThisPcHost()?.HostId).Write(), null, false, DateTimeOffset.UtcNow)),
             (_, _) => Task.FromResult(SharedApply.Done));
+        // Whether this PC is a companion or a host PC: this PC records its own choice, and follows it when another computer
+        // asks it to switch (Make it a host PC on that computer's Devices map).
+        yield return new DelegateSection(SharedPc.RoleKey(ClusterDevice), "Companion or host PC", _ =>
+            Task.FromResult<SharedLocal?>(new(SharedPc.WriteRole(Role), null, deviceRole is null,
+                FileTime(Path.Combine(directory, DeviceRolePreference.FileName)))),
+            (setting, _) => Task.FromResult(FollowRoleRequest(setting)));
         yield return new DelegateSection(CharacterKey, "Character", ReadCharacterAsync, ApplyCharacterAsync);
         yield return new DelegateSection(TalkKey, "How you talk", _ =>
         {
@@ -585,14 +594,41 @@ internal sealed record SharedPc(string Role, string? Host)
     };
 
     /// <summary>The shared setting's name for a device ID: lowercase letters, digits, dots and hyphens only.</summary>
-    internal static string Key(string deviceId)
+    internal static string Key(string deviceId) => Name(Prefix, deviceId);
+
+    /// <summary>The name of the entry that says whether a computer is a companion or a host PC ("role.desktop-b"). That
+    /// computer records its own choice there and follows it when another computer writes it (Make it a host PC on the Devices
+    /// map), so any of your computers can switch any other.</summary>
+    internal static string RoleKey(string deviceId) => Name(SharedSettings.RolePrefix, deviceId);
+
+    private static string Name(string prefix, string deviceId)
     {
         var clean = new string(deviceId.ToLowerInvariant().Select(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c is '-' or '.' ? c : '-').ToArray());
-        var key = Prefix + clean;
+        var key = prefix + clean;
         return key.Length > 64 ? key[..64] : key;
     }
 
-    internal static bool IsKey(string key) => SharedSettings.IsDeviceKey(key);
+    internal static bool IsKey(string key) => key.StartsWith(Prefix, StringComparison.Ordinal);
+
+    internal static bool IsRoleKey(string key) => key.StartsWith(SharedSettings.RolePrefix, StringComparison.Ordinal);
+
+    /// <summary>A role entry's value: "host" or "companion" as JSON text.</summary>
+    internal static string WriteRole(DeviceRole role) => JsonSerializer.Serialize(role == Desktop.DeviceRole.Host ? HostRole : CompanionRole);
+
+    /// <summary>The role a role entry asks for, or null when it is unreadable (written by a newer Martlet, say).</summary>
+    internal static DeviceRole? ReadRole(string value)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<string>(value) switch
+            {
+                CompanionRole => Desktop.DeviceRole.Companion,
+                HostRole => Desktop.DeviceRole.Host,
+                _ => null
+            };
+        }
+        catch (JsonException) { return null; }
+    }
 
     internal DeviceRole? DeviceRole => Role switch
     {

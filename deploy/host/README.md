@@ -366,8 +366,9 @@ network and being allowed on one of your other computers (check number on both
 screens). So for a Linux machine you set up over SSH from one PC, the whole
 network can use it right away.
 
-**SSH hosts** pair by themselves: **Add this computer** (or **Pair over SSH** on
-the Pair step) runs `martlet-host --yes pair --device-id <this PC>
+**SSH hosts** pair by themselves: **Set up over SSH** in Devices > Add a computer
+(Martlet runs the host in Docker when that account can use Docker, otherwise
+natively on Ubuntu) runs `martlet-host --yes pair --device-id <this PC>
 --name <this PC>` there. The gateway starts its listener, prints the one-use
 code on one line and waits; Martlet reads the code from the output (it is never
 shown or logged; Docker runs the engine with `--log-driver none`), redeems it
@@ -375,7 +376,7 @@ and stores the device secret in Windows Credential Manager, and the host
 restarts its gateway. If redeeming fails, Martlet sends `cancel` so the host
 stops waiting at once.
 
-**This PC:** **Pair automatically** runs the same unattended pairing on this PC's
+**This PC:** **Set up this PC** runs the same unattended pairing on this PC's
 Docker Desktop. To pair *another* desktop with this PC's host, the host
 dashboard's **Show a pairing code** shows this PC's address and a short code in
 large type (never logged) with a **Copy code** button; type both on the other
@@ -400,7 +401,9 @@ host's roles paused, like an abandoned `martlet-host console`: the next
 `martlet-host` command names it as busy and says to stop it with
 `docker stop <name>`.
 
-In Martlet choose **Devices > Add a computer > Enter a pairing code**, type the
+A host that Martlet on another of your computers runs or reaches over SSH usually needs none of this:
+Martlet lists that computer under *Martlet on your network* and pairs after you press Allow there. Otherwise, in
+Martlet choose **Devices > Add a computer > Enter a pairing code**, type the
 address and code, and press **Pair with host**. The host finishes and restarts
 its gateway by itself; there is no console and no device ID to copy. Codes use
 the digits 2-9 and letters other than `I` and `O`, ignore case, spaces and

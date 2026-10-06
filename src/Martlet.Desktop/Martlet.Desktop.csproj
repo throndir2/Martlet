@@ -34,6 +34,8 @@
     <ProjectReference Include="..\Martlet.Home\Martlet.Home.csproj" />
     <!-- Martlet in messaging apps (Companion › Messaging): Telegram's Bot API. -->
     <ProjectReference Include="..\Martlet.Messaging\Martlet.Messaging.csproj" />
+    <!-- Martlet's Discord bot (NetCord), hosted in this process: DiscordService. -->
+    <ProjectReference Include="..\Martlet.Discord\Martlet.Discord.csproj" />
     <ProjectReference Include="..\Martlet.Sherpa\Martlet.Sherpa.csproj" />
     <!-- Voice recognition (Martlet.Sherpa) is part of Martlet: the unmodified sherpa-onnx 1.13.8 runtime with ONNX Runtime
          (sherpa-onnx-c-api.dll, onnxruntime.dll) ships beside Martlet.Desktop.exe. -->

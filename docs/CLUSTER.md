@@ -5,7 +5,8 @@ PC and it is the same Martlet: the same companion with the same personality,
 settings, memories, people, voices and characters, the same Home Assistant and
 the same API keys. Each computer is either a **companion PC** (where you talk
 to Martlet) or a **host PC** (it lends its graphics card), and you can switch a
-computer between the two in one click. Adding a host to your
+computer between the two in one click, on that computer or from any other
+([Switching another computer](#switching-another-computer-between-companion-and-host)). Adding a host to your
 [Martlet network](NETWORK.md) adds what it can do (thinking, listening,
 speaking, lip-sync, Home Assistant, keeping everyone's logs) to the whole app; jobs move
 between hosts on the spot and fail over when a host stops answering.
@@ -88,7 +89,11 @@ hosts**) the desktop:
    records them as its newest choice;
 2. checks every paired host: its routes and its copy of the plan;
 3. merges every copy into its own and adds any job nobody has recorded yet
-   from what this PC does now;
+   from what this PC does now, when that is a real choice (a host does it, or
+   lip-sync is off). A computer that just joined never records Martlet's
+   defaults, so they can't override what your other computers chose when the
+   plan reaches it a check later (before this, a new PC's default *Setup
+   choice* could replace the host your computers used);
 4. records the roles each reachable host runs;
 5. applies failover (below);
 6. follows the plan: each job moves to the planned host with this PC's own
@@ -105,13 +110,47 @@ they adopt the newest change from any computer.
 
 A PC set up as a host (*Use as a Martlet host*) uses no jobs, so it only takes
 steps 2, 3 and 7: it receives the plan (so it shows who does what) and passes it
-on. It never records, fails over or follows a job. Its Devices
+on. It never fails over or follows a job, and records only a job that was set up
+to run on it (below). Its Devices
 map draws each job where the plan puts it for your companion PCs (on the host
 that does it, on the cloud service of the shared route, or on the companion
 PCs for a route that runs on each of them), so it shows the same picture as
 your main PC rather than the Setup choice it kept from before it became a host.
 Before this, a
 host PC skipped the sync entirely.
+
+### The computer a job was set up on does it
+
+Martlet is one app: a job set up on one computer is done by that computer for
+all of them, whether it is a companion or a host PC, so a computer you make the
+companion later (or one you just added) uses it rather than needing its own
+copy. **Thinking with Ollama on this PC** on a computer that runs a host service
+of its own (paired here, or a host PC's own) counts as that computer doing
+Thinking through its host service: the plan names its host (*diva-host*), every
+other computer follows it like any host, and the computer itself keeps
+talking to its own Ollama directly, so its replies never take the extra hop.
+
+- Choosing *This PC* for Thinking on such a computer records it at once.
+- A setup made before this (the shared `thinking` route is Ollama on the
+  computer itself, chosen on that computer, while the plan leaves Thinking to
+  each computer's own choice) is taken on by that computer on its next check,
+  as a companion or a host PC. A plan entry newer than its last look at the
+  shared settings waits a check, so a change made elsewhere (a cloud provider,
+  say) is seen first and wins.
+- Its host service needs the Ollama role for the others to use it. Until then
+  they keep what they use now and their Companion › Thinking says why; the
+  computer's own Devices row says to add Ollama to its host service, and a host
+  PC's Home puts **Add Ollama** first under *Add roles* (*Your computers use this
+  PC for thinking, so add Ollama here*). Its model can differ from the
+  computer's own Ollama model.
+- Companion › Thinking, Voice and Listening on a computer that hasn't followed
+  yet show *Another of your computers* and the network's host (*Your Martlet
+  network does thinking on diva-host, as chosen on desktop-diva. This PC
+  switches to it as soon as it can: pair diva-host with this PC first.*),
+  not Martlet's default *This PC*.
+- Listening and Speaking on *This PC* can already run through the computer's
+  own host service, and then the plan names it the same way. A Windows voice,
+  Parakeet or whisper inside Martlet runs on each companion PC.
 
 ## Failover
 
@@ -141,6 +180,8 @@ row says where it came from.
 | Host model differs | The new route records the model the host advertises; the failover confirmation says the model may differ |
 | Host older than cluster sync | Still usable and a failover candidate; it keeps no copy, and the status line suggests **Update host** |
 | New host paired | It receives the plan and appears as a node on the next check |
+| New computer joins, or one becomes the companion | It follows the plan (the hosts your computers use) once paired; its own defaults are never recorded over it |
+| Thinking set up on a companion PC that becomes a host PC | It keeps doing Thinking for your computers through its host service ([above](#the-computer-a-job-was-set-up-on-does-it)); its Home asks for the Ollama role when its host service lacks it |
 | Host forgotten here | Its node gets a tombstone; a desktop still paired with it re-adds it |
 | Unreadable or malformed copy | A desktop starts empty and a host ignores it; both are restored from the other copies |
 | User change racing a check | Checks never follow while a role change runs, and user changes always merge into the newest plan |
@@ -181,6 +222,7 @@ NVIDIA Build and its old key.
 | `updates` | Looking for updates, how often, installing them as soon as they're downloaded, keeping hosts on the newest version | |
 | `model-abilities` | What Thinking models hear (recordings) and see (pictures), as Martlet found out: from the server's own model metadata when a model is chosen, tested or checked, from Companion › Listening › **Test hearing**, or from a model refusing a recording (`model-abilities.json`). Found out once, on any computer, for all of them; a computer checking its own Ollama later replaces it | |
 | `pc.<device ID>` | One per computer, written only by that computer: whether it is a companion or a host PC and the host service Martlet runs on it, so every [Devices map](NETWORK.md#who-is-connected) draws it the same way. Never applied anywhere, not counted as a shared setting, and the first to leave when a copy is full (64 entries), so a computer retired long ago never pushes out a setting | |
+| `role.<device ID>` | One per computer: whether it should be a companion or a host PC. That computer records its own choice there, and any other computer writes it to switch it ([Switching another computer](#switching-another-computer-between-companion-and-host)). Like `pc.<device ID>`, not counted as a shared setting and among the first to leave when a copy is full | |
 
 Conversations are not shared; what Martlet makes from them is (the [shared creations](#the-shared-creations)).
 
@@ -193,7 +235,7 @@ These describe the computer itself, so they never travel:
 | Microphone, speakers, cameras, video addresses, microphone sensitivity, echo reduction, hearing what the PC plays | This PC's devices |
 | Watch my screen or a camera (on or off, what it looks at) | It captures this PC's screen or camera, so it is chosen at that screen |
 | Where the character and its speech bubble sit, and the character's zoom | This PC's screens |
-| Companion PC or host PC, the host service on it, *When Martlet starts* and closing choices, Start with Windows | What this computer is for and how it starts |
+| Companion PC or host PC, the host service on it, *When Martlet starts* and closing choices, Start with Windows | What this computer is for and how it starts (another of your computers can still [switch it](#switching-another-computer-between-companion-and-host)) |
 | Paired hosts, SSH keys, *Let my other computers find this PC*, *Let my other paired computers update Martlet here* | How this computer reaches others, and who may reach it |
 | Where memory is stored | A folder on this PC (the memories travel) |
 | Installed engines and models: Ollama models, Parakeet, a whisper package, Windows voices, MCP servers (`mcp.json`) and their secrets | Programs on this PC; a shared route that needs one this PC lacks waits and says why |
@@ -275,6 +317,37 @@ automatic installs and turning off recognizing voices recorded as `updates` and
 computers with real paired hosts, a real Credential Manager across them, the
 emotes, Voice ID and smart-home sections between real computers, and the Linux
 host's file are **NOT RUN**.
+
+### Switching another computer between companion and host
+
+On the Devices map, another of your computers that says what it is (its
+`pc.<device ID>`) offers **Make it a host PC** (or, on a host PC, **Make it a
+companion PC**) on its row. After a confirmation this PC writes that computer's
+`role.<device ID>` entry and gives it to your hosts at once; that computer
+follows it on its next settings sync (within 15 seconds while Martlet runs
+there, or when Martlet starts there next), exactly as if you had chosen *Use as
+a Martlet host* on it: it ends a conversation and hides the character, keeps its
+companion choices for later, and shows its host dashboard, which sets up its host
+service if it has none yet (installing Docker Desktop may still need someone at
+that PC once). It waits while Martlet is replying or hearing you there and
+switches right after. Until it has switched, its row says who asked and when,
+and the command becomes **Keep it a companion PC**, which withdraws the ask.
+
+Each computer also records its own choice in its `role.<device ID>`, so the
+newest choice wins wherever it was made: a computer switched back on itself
+stays switched back, and an ask from elsewhere made later wins again. The ask
+travels with the shared settings, so it needs *Keep Martlet the same on all my
+computers* on and a host both computers sync with. A computer on a Martlet
+older than this keeps the entry unread until it is updated (its row keeps
+saying it was asked), and one that never said what it is offers no switch.
+
+Checked locally: the merge rules with a unit test, and through MCP on disposable
+data folders: a desktop whose shared settings held another computer's ask
+switched to *Host PC* on its own and recorded it in `pc.<device ID>`, and a
+desktop in a fixture network (a signed roster with a second member) showed
+*Make it a host PC* on that member, wrote `role.desktop-b` after the
+confirmation and then showed the waiting ask and *Keep it a companion PC*. Two
+real computers switching each other through a real host is **NOT RUN**.
 
 ## The shared memories
 

@@ -764,6 +764,29 @@ Docker host, and leave device discovery to HA. Hyper-V's lack of USB
 passthrough is from general Hyper-V knowledge, not rechecked. Nothing was run
 against a real Home Assistant.
 
+## S51: web search and deep research, 2026-10-06
+
+Sources are listed with the [deep research plan](DEEP_RESEARCH.md#sources).
+**Verified upstream:** the Bing Search API retired on 2025-08-11; Google's
+Custom Search JSON API is closed to new customers and shuts down on 2027-01-01.
+DuckDuckGo has no official full-results API. SearXNG returns JSON only when
+`json` is listed under `search: formats:`. Its limiter blocks automated clients
+on public instances. Brave's free plan is now a $5 monthly credit, Tavily gives
+1,000 free credits a month, and Exa gives a $10 monthly credit. Ollama's
+`web_search`/`web_fetch` need an Ollama account key, with a free tier whose
+quota isn't published. OpenAI's `o3-deep-research`/`o4-mini-deep-research`
+run on Responses with `background: true`. OpenRouter deprecated `:online` in
+favour of the `openrouter:web_search` server tool. Open-source research agents
+loop plan → search → read → compress → reflect, with 3-10 queries a round and
+2-5 rounds. **Consequence:** deep research is a `research` background job that
+drives its own JSON-step loop on Deep thinking, because a request is capped at
+8 tool rounds and a paired computer's route takes no tools. It searches through
+a provider seam, with self-hosted SearXNG as the free default, keyed APIs and
+paid provider-native research as opt-ins, and reads pages through an
+SSRF-guarded fetcher. Per-query prices for OpenAI Deep Research and Gemini's
+research agent, and local-model tool-calling rankings, come from third parties
+and are unverified. Nothing was run against a real backend.
+
 ## Linux service state custody and durable I/O (H03b3)
 
 **Accessed 2026-09-23.** Primary upstream contracts, not native Martlet evidence:

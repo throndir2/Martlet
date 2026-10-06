@@ -677,17 +677,27 @@ public partial class MainWindow
         if (state?.Roles is not { } installed)
             return new("roles", "Add roles", "Add tasks this host can handle once the host service runs. " + nvidia, false, true, []);
         string Name(string kind) => HostRoles.All.FirstOrDefault(r => r.Kind == kind)?.Name ?? kind;
-        var missing = HostRoles.All.Where(r => !installed.Contains(r.Kind, StringComparer.Ordinal)).ToList();
+        // Jobs your Martlet network gives this PC (it was set up to do them, as a companion or a host PC) need their roles here.
+        var needed = clusterEnabled && state.HostId is { } self
+            ? ClusterJobs.All.Where(j => clusterPlan.For(j)?.HostId == self).Select(j => (Job: j, Kind: ClusterSync.RoleKind(j)))
+                .Where(n => !installed.Contains(n.Kind, StringComparer.Ordinal)).ToList()
+            : [];
+        var missing = HostRoles.All.Where(r => !installed.Contains(r.Kind, StringComparer.Ordinal))
+            .OrderBy(r => needed.Any(n => n.Kind == r.Kind) ? 0 : 1).ToList();
         IReadOnlyList<StepCommand> commands =
         [
-            .. missing.Select((r, i) => new StepCommand($"Add {r.Name}", () => LaunchHost(r.Add), installed.Count == 0 && i == 0)),
+            .. missing.Select((r, i) => new StepCommand($"Add {r.Name}", () => LaunchHost(r.Add),
+                needed.Any(n => n.Kind == r.Kind) || installed.Count == 0 && i == 0)),
             .. HostRoles.All.Where(r => installed.Contains(r.Kind, StringComparer.Ordinal))
                 .Select(r => new StepCommand($"Remove {r.Name}", () => LaunchHost(r.Remove)))
         ];
+        var asked = needed.Count == 0 ? ""
+            : $"Your computers use this PC for {JoinNames([.. needed.Select(n => n.Job)])}, so add " +
+              $"{JoinNames([.. needed.Select(n => Name(n.Kind))])} here; until then they keep what they use now. ";
         return new("roles", "Add roles",
-            installed.Count == 0 ? "No roles yet. Add tasks this host can handle. " + nvidia
-                : $"Runs {JoinNames([.. installed.Select(Name)])}. Add or remove roles any time.",
-            installed.Count > 0, true, commands);
+            asked + (installed.Count == 0 ? "No roles yet. Add tasks this host can handle. " + nvidia
+                : $"Runs {JoinNames([.. installed.Select(Name)])}. Add or remove roles any time."),
+            installed.Count > 0 && needed.Count == 0, true, commands);
     }
 
     private HomeStep UpdateStep(LocalHostServiceState? state, bool setUp)
@@ -1468,8 +1478,8 @@ public partial class MainWindow
             case NodeAction.ToggleCharacter: Character_Click(this, args); break;
             case NodeAction.Prerequisites: Prerequisites_Click(this, args); break;
             case NodeAction.HostThisPc: SetUpThisPcHostAsync().Forget(); break;
-            case NodeAction.AddComputer: OpenHosts(null, 0); break;
-            case NodeAction.ManageHost: OpenHosts(null, 2, FindHost(argument)); break;
+            case NodeAction.AddComputer: OpenHosts(0); break;
+            case NodeAction.ManageHost: OpenHosts(1, FindHost(argument)); break;
             case NodeAction.CheckHost:
                 var hosts = NetworkMap.Hosts(Inputs());
                 CheckHostsAsync(argument is null ? hosts : hosts.Where(h => h.HostId == argument).ToArray()).Forget();
@@ -1498,13 +1508,15 @@ public partial class MainWindow
             case NodeAction.ShutdownHost: if (FindHost(argument) is { } shutdown) OpenPrepare(shutdown, PrepareStart.Shutdown); break;
             case NodeAction.WakeHost: if (FindHost(argument) is { } wake) OpenPrepare(wake, PrepareStart.Wake); break;
             case NodeAction.PrepareComputer: OpenPrepare(null, PrepareStart.Status); break;
+            case NodeAction.MakeHostPc: RequestRoleAsync(argument, DeviceRole.Host).Forget(); break;
+            case NodeAction.MakeCompanionPc: RequestRoleAsync(argument, DeviceRole.Companion).Forget(); break;
         }
     }
 
-    private void OpenHosts(HostSetupMethod? method, int step, PairedHost? manage = null)
+    private void OpenHosts(int step, PairedHost? manage = null)
     {
         if (store is null || setupService is null || closing) return;
-        new HostsWindow(new AvatarProfileStore(store.DataDirectory), setupService, method, step, manage) { Owner = this }.ShowDialog();
+        new HostsWindow(new AvatarProfileStore(store.DataDirectory), setupService, step, manage) { Owner = this }.ShowDialog();
         RefreshHomeAsync().Forget();
     }
 

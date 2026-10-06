@@ -16,7 +16,7 @@
                             AutomationProperties.AutomationId="HostsNext"/>
                     <Button Content="_Close" IsCancel="True" Click="Close_Click" AutomationProperties.AutomationId="HostsClose"/>
                 </StackPanel>
-                <TextBlock x:Name="StatusText" VerticalAlignment="Center" Margin="0,0,16,0" AutomationProperties.LiveSetting="Polite"
+                <TextBlock x:Name="StatusText" VerticalAlignment="Center" Margin="0,0,16,0" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
                            AutomationProperties.AutomationId="HostStatus"/>
             </DockPanel>
         </Border>
@@ -25,23 +25,23 @@
                 BorderThickness="0,0,1,0" Padding="14,24">
             <StackPanel>
                 <TextBlock Text="Add a computer" FontSize="20" FontWeight="SemiBold" Margin="10,0,0,4"/>
-                <TextBlock Style="{DynamicResource Muted}" FontSize="12" Margin="10,0,0,20"
+                <TextBlock Style="{DynamicResource Muted}" FontSize="12" Margin="10,0,0,20" TextWrapping="Wrap"
                            Text="Use another PC to run heavy Martlet jobs."/>
-                <RadioButton x:Name="Rail0" GroupName="Rail" Style="{DynamicResource RailStep}" Tag="1" Content="Where it runs" Checked="Rail_Checked"
-                             AutomationProperties.AutomationId="HostsStepWhere"/>
-                <RadioButton x:Name="Rail1" GroupName="Rail" Style="{DynamicResource RailStep}" Tag="2" Content="Install" Checked="Rail_Checked"
-                             AutomationProperties.AutomationId="HostsStepInstall"/>
-                <RadioButton x:Name="Rail2" GroupName="Rail" Style="{DynamicResource RailStep}" Tag="3" Content="Pair" Checked="Rail_Checked"
-                             AutomationProperties.AutomationId="HostsStepPair"/>
-                <RadioButton x:Name="Rail3" GroupName="Rail" Style="{DynamicResource RailStep}" Tag="4" Content="Roles" Checked="Rail_Checked"
+                <RadioButton x:Name="Rail0" GroupName="Rail" Style="{DynamicResource RailStep}" Tag="1" Content="Connect" Checked="Rail_Checked"
+                             AutomationProperties.AutomationId="HostsStepConnect"/>
+                <RadioButton x:Name="Rail1" GroupName="Rail" Style="{DynamicResource RailStep}" Tag="2" Content="Roles" Checked="Rail_Checked"
                              AutomationProperties.AutomationId="HostsStepRoles"/>
             </StackPanel>
         </Border>
 
         <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="34,28" MaxWidth="760" HorizontalAlignment="Left">
-                <StackPanel x:Name="MethodStep">
-                    <Border x:Name="NearbyCard" Style="{DynamicResource CardStyle}" Margin="0,0,0,22" AutomationProperties.AutomationId="NearbyCard">
+                <StackPanel x:Name="ConnectStep">
+                    <TextBlock Text="Connect a computer" Style="{DynamicResource PageTitle}"/>
+                    <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,18" TextWrapping="Wrap"
+                               Text="Pick a Martlet host on your network, or set up a new one. Then choose which jobs it runs."/>
+
+                    <Border x:Name="NearbyCard" Style="{DynamicResource CardStyle}" AutomationProperties.AutomationId="NearbyCard">
                         <StackPanel>
                             <DockPanel>
                                 <Button x:Name="NearbyFindButton" DockPanel.Dock="Right" Content="_Find again" Click="NearbyFind_Click" VerticalAlignment="Top"
@@ -49,7 +49,7 @@
                                 <StackPanel>
                                     <TextBlock Text="Martlet on your network" FontWeight="SemiBold" FontSize="16"/>
                                     <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
-                                               Text="Another of your computers that runs a host (or reaches one over SSH) can let this PC use it. Pick it, then press Allow on that computer once both show the same check number. Nothing to type."/>
+                                               Text="Pick a computer, then press Allow on it when both show the same check number. Nothing to type."/>
                                 </StackPanel>
                             </DockPanel>
                             <!-- One row per Martlet that answered, built in code (NearbyItem-n, NearbyConnect-n). -->
@@ -68,146 +68,96 @@
                                     </StackPanel>
                                 </DockPanel>
                             </Border>
-                        </StackPanel>
-                    </Border>
-                    <TextBlock Text="Where will the host run?" Style="{DynamicResource PageTitle}"/>
-                    <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,18"
-                               Text="Choose where the host runs. Martlet can set it up over SSH or show you the commands."/>
-                    <RadioButton x:Name="ThisPcMethod" GroupName="Method" Style="{DynamicResource ChoiceCard}" Tag="&#xE770;" Checked="Method_Changed"
-                                 AutomationProperties.AutomationId="HostMethodThisPc" AutomationProperties.Name="This PC, with Docker Desktop">
-                        <StackPanel>
-                            <TextBlock Text="This PC, with Docker Desktop" FontSize="16" FontWeight="SemiBold"/>
-                            <TextBlock Style="{DynamicResource Muted}"
-                                       Text="Use this Windows PC as a host. Martlet starts Docker Desktop and asks Windows to allow connections from your private network."/>
-                        </StackPanel>
-                    </RadioButton>
-                    <RadioButton x:Name="SshDockerMethod" GroupName="Method" Style="{DynamicResource ChoiceCard}" Tag="&#xE7F4;" Checked="Method_Changed"
-                                 AutomationProperties.AutomationId="HostMethodSshDocker" AutomationProperties.Name="Another computer over SSH, using Docker">
-                        <StackPanel>
-                            <TextBlock Text="Another computer over SSH, using Docker" FontSize="16" FontWeight="SemiBold"/>
-                            <TextBlock Style="{DynamicResource Muted}" Text="For a Linux PC that already has Docker. Martlet signs in once, then sets it up for you."/>
-                        </StackPanel>
-                    </RadioButton>
-                    <RadioButton x:Name="SshNativeMethod" GroupName="Method" Style="{DynamicResource ChoiceCard}" Tag="&#xE7F4;" Checked="Method_Changed"
-                                 AutomationProperties.AutomationId="HostMethodSshNative" AutomationProperties.Name="Another computer over SSH, native Ubuntu install">
-                        <StackPanel>
-                            <TextBlock Text="Another computer over SSH, native Ubuntu" FontSize="16" FontWeight="SemiBold"/>
-                            <TextBlock Style="{DynamicResource Muted}" Text="For Ubuntu 24.04 without Docker. Martlet installs and runs the host over SSH."/>
-                        </StackPanel>
-                    </RadioButton>
-                    <RadioButton x:Name="OnHostMethod" GroupName="Method" Style="{DynamicResource ChoiceCard}" Tag="&#xE756;" Checked="Method_Changed"
-                                 AutomationProperties.AutomationId="HostMethodOnHost" AutomationProperties.Name="Another computer: pair with the code it shows">
-                        <StackPanel>
-                            <TextBlock Text="Another computer: pair with its code" FontSize="16" FontWeight="SemiBold"/>
-                            <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap"
-                                       Text="A Windows PC with Martlet (Use as a Martlet host) sets itself up and shows a pairing code. Once paired, this PC updates it and installs roles there through Martlet on that PC; nothing to type there."/>
-                        </StackPanel>
-                    </RadioButton>
-                    <Border Style="{DynamicResource CardStyle}" Background="{DynamicResource SoftBrush}" Margin="0,10,0,0">
-                        <DockPanel>
-                            <Button DockPanel.Dock="Right" Content="_Enter a pairing code" Click="EnterCode_Click" VerticalAlignment="Center"
-                                    Margin="16,0,0,0" AutomationProperties.AutomationId="HostsEnterCode"/>
-                            <StackPanel>
-                                <TextBlock Text="Already set up a host?" FontWeight="SemiBold" FontSize="15"/>
-                                <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
-                                           Text="Pair using the address and code shown on the host."/>
+                            <DockPanel Margin="0,14,0,0">
+                                <Button x:Name="EnterCodeButton" DockPanel.Dock="Right" Content="_Enter a pairing code" Click="EnterCode_Click"
+                                        VerticalAlignment="Center" Margin="16,0,0,0" AutomationProperties.AutomationId="HostsEnterCode"/>
+                                <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" VerticalAlignment="Center"
+                                           Text="Not listed? Guest Wi-Fi, a VPN, another subnet or a firewall can hide it. Enter the address and pairing code it shows instead."/>
+                            </DockPanel>
+                            <StackPanel x:Name="ManualPanel" Visibility="Collapsed" Margin="0,12,0,0" AutomationProperties.AutomationId="ManualPanel">
+                                <TextBlock x:Name="PairCodeHelp" Style="{DynamicResource Muted}" Margin="0,0,0,10" TextWrapping="Wrap"
+                                           AutomationProperties.AutomationId="PairCodeHelp"
+                                           Text="On the other computer, choose Show a pairing code in Martlet (or run martlet-host pair on a Linux host), then enter the address and code it shows. The code works until it's used or canceled there."/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="16"/>
+                                        <ColumnDefinition Width="200"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <Label Target="{Binding ElementName=PairAddressText}" Content="Host _address" Padding="0,0,0,4"/>
+                                        <TextBox x:Name="PairAddressText" FontSize="16" AutomationProperties.AutomationId="PairAddress"
+                                                 AutomationProperties.Name="Host address shown with the code"
+                                                 ToolTip="The address shown on the host, like 192.168.1.20"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <Label Target="{Binding ElementName=PairingCodeBox}" Content="C_ode" Padding="0,0,0,4"/>
+                                        <TextBox x:Name="PairingCodeBox" FontSize="16" FontFamily="Consolas" MaxLength="2048" KeyDown="PairingCode_KeyDown"
+                                                 AutomationProperties.AutomationId="PairingCode" AutomationProperties.Name="Pairing code from the host"
+                                                 ToolTip="The code shown on the host, like K7QM-4XPA"/>
+                                    </StackPanel>
+                                    <Button x:Name="PairHostButton" Grid.Column="3" Content="_Pair with host" Click="Pair_Click" Style="{DynamicResource PrimaryButton}"
+                                            VerticalAlignment="Bottom" Margin="12,0,0,0" AutomationProperties.AutomationId="PairHost"/>
+                                </Grid>
                             </StackPanel>
-                        </DockPanel>
+                        </StackPanel>
                     </Border>
-                </StackPanel>
 
-                <StackPanel x:Name="InstallStep" Visibility="Collapsed">
-                    <TextBlock Text="Install the host" Style="{DynamicResource PageTitle}"/>
-                    <TextBlock x:Name="MethodSummaryText" Style="{DynamicResource Muted}" Margin="0,6,0,16"/>
-                    <Border x:Name="DockerPanel" Style="{DynamicResource CardStyle}" Background="{DynamicResource SoftBrush}">
+                    <TextBlock Text="Or set up a new host" FontWeight="SemiBold" FontSize="16" Margin="0,22,0,10"/>
+                    <Border Style="{DynamicResource CardStyle}" AutomationProperties.AutomationId="NewHostThisPc">
                         <DockPanel>
-                            <Button x:Name="InstallDockerButton" DockPanel.Dock="Right" Content="I_nstall Docker Desktop" Click="InstallDocker_Click"
-                                    VerticalAlignment="Center" Margin="12,0,0,0" AutomationProperties.AutomationId="InstallDockerDesktop"/>
+                            <Button x:Name="SetupThisPcButton" DockPanel.Dock="Right" Content="Set up _this PC" Click="SetupThisPc_Click"
+                                    VerticalAlignment="Center" Margin="16,0,0,0" AutomationProperties.AutomationId="SetupThisPc"/>
                             <StackPanel>
-                                <TextBlock Text="Docker Desktop" FontWeight="SemiBold"/>
-                                <TextBlock x:Name="DockerStateText" Style="{DynamicResource Muted}"/>
+                                <TextBlock Text="This PC" FontWeight="SemiBold" FontSize="15"/>
+                                <TextBlock x:Name="DockerStateText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                           AutomationProperties.AutomationId="DockerState"/>
                             </StackPanel>
                         </DockPanel>
                     </Border>
-                    <StackPanel x:Name="SshPanel">
-                        <Label Target="{Binding ElementName=SshTargetText}" Content="SSH _target (user@computer)"/>
-                        <DockPanel>
-                            <Button DockPanel.Dock="Right" Content="Reset SSH _trust" Click="ResetSshTrust_Click" Margin="8,0,0,0"
-                                    ToolTip="Reset saved SSH trust for this computer"
-                                    AutomationProperties.AutomationId="ResetSshTrust"/>
-                            <TextBox x:Name="SshTargetText" LostFocus="SshTarget_LostFocus" TextChanged="Target_Changed"
-                                     AutomationProperties.AutomationId="SshTarget"/>
-                        </DockPanel>
-                    </StackPanel>
-                    <Label Target="{Binding ElementName=AddressText}" Content="Host's private _network address"/>
-                    <TextBox x:Name="AddressText" TextChanged="Target_Changed" AutomationProperties.AutomationId="HostAddress"/>
-                    <TextBlock Style="{DynamicResource Muted}" Margin="0,8,0,14"
-                               Text="Martlet runs the command for automated setups and shows progress here. Manual setups use the command below."/>
-                    <WrapPanel>
-                        <Button x:Name="SetupButton" Content="Set _up host" Click="Setup_Click" Style="{DynamicResource PrimaryButton}" Padding="20,10" Margin="0,0,10,8"
-                                AutomationProperties.AutomationId="SetupHost"/>
-                        <Button Content="Host _status" Click="Status_Click" Margin="0,0,10,8" AutomationProperties.AutomationId="HostStatusCommand"/>
-                    </WrapPanel>
-                    <Expander Header="Show the command" Margin="0,6,0,0" AutomationProperties.AutomationId="HostCommandSection">
-                        <TextBox x:Name="CommandText" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" MinHeight="90" Margin="0,8,0,0"
-                                 AutomationProperties.AutomationId="HostCommand"/>
-                    </Expander>
-                </StackPanel>
-
-                <StackPanel x:Name="PairStep" Visibility="Collapsed">
-                    <TextBlock Text="Pair this PC with the host" Style="{DynamicResource PageTitle}"/>
-                    <TextBlock Style="{DynamicResource Muted}" Margin="0,6,0,18"
-                               Text="You only need to pair once. This PC reconnects automatically."/>
-                    <Border x:Name="PairAutoCard" Style="{DynamicResource CardStyle}">
-                        <DockPanel>
-                            <Button x:Name="PairConsoleButton" DockPanel.Dock="Right" Content="_Pair automatically" Click="PairConsole_Click"
-                                    Style="{DynamicResource PrimaryButton}" VerticalAlignment="Center" Margin="16,0,0,0"
-                                    AutomationProperties.AutomationId="PairConsole"/>
-                            <StackPanel>
-                                <TextBlock Text="Pair automatically" FontWeight="SemiBold" FontSize="15"/>
-                                <TextBlock x:Name="PairConsoleText" Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                            </StackPanel>
-                        </DockPanel>
-                    </Border>
-                    <Border Style="{DynamicResource CardStyle}">
+                    <Border Style="{DynamicResource CardStyle}" AutomationProperties.AutomationId="NewHostSsh">
                         <StackPanel>
-                            <TextBlock x:Name="PairCodeTitle" FontWeight="SemiBold" FontSize="15" AutomationProperties.AutomationId="PairCodeTitle"/>
-                            <TextBlock x:Name="PairCodeHelp" Style="{DynamicResource Muted}" Margin="0,4,0,12" TextWrapping="Wrap"
-                                       AutomationProperties.AutomationId="PairCodeHelp"/>
-                            <Expander x:Name="PairCommandSection" Header="Show the command for the host" Margin="0,0,0,12"
-                                      AutomationProperties.AutomationId="PairCommandSection">
-                                <TextBox x:Name="PairCommandText" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" Margin="0,8,0,0"
-                                         AutomationProperties.AutomationId="PairCommand"/>
+                            <TextBlock Text="A Linux computer over SSH" FontWeight="SemiBold" FontSize="15"/>
+                            <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,10"
+                                       Text="Martlet signs in once, runs the host in Docker when the computer has it (or installs it natively on Ubuntu 24.04), then connects automatically."/>
+                            <Label Target="{Binding ElementName=SshTargetText}" Content="SSH _target (user@computer)" Padding="0,0,0,4"/>
+                            <DockPanel>
+                                <Button x:Name="SetupButton" DockPanel.Dock="Right" Content="Set up over _SSH" Click="Setup_Click"
+                                        Style="{DynamicResource PrimaryButton}" Margin="8,0,0,0" AutomationProperties.AutomationId="SetupHost"/>
+                                <Button DockPanel.Dock="Right" Content="Reset SSH _trust" Click="ResetSshTrust_Click" Margin="8,0,0,0"
+                                        ToolTip="Reset saved SSH trust for this computer"
+                                        AutomationProperties.AutomationId="ResetSshTrust"/>
+                                <TextBox x:Name="SshTargetText" LostFocus="SshTarget_LostFocus" KeyDown="SshTarget_KeyDown"
+                                         AutomationProperties.AutomationId="SshTarget"/>
+                            </DockPanel>
+                            <Expander Header="Its private network address" Margin="0,10,0,0" AutomationProperties.AutomationId="HostAddressSection">
+                                <StackPanel Margin="0,8,0,0">
+                                    <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,6"
+                                               Text="Filled in automatically from the computer. Change it only if your other computers reach it at a different address."/>
+                                    <TextBox x:Name="AddressText" AutomationProperties.AutomationId="HostAddress"/>
+                                </StackPanel>
                             </Expander>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="16"/>
-                                    <ColumnDefinition Width="220"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <Label Target="{Binding ElementName=PairAddressText}" Content="Host _address" Padding="0,0,0,4"/>
-                                    <TextBox x:Name="PairAddressText" FontSize="16" AutomationProperties.AutomationId="PairAddress"
-                                             AutomationProperties.Name="Host address shown with the code"
-                                             ToolTip="The address shown on the host, like 192.168.1.20"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="2">
-                                    <Label Target="{Binding ElementName=PairingCodeBox}" Content="C_ode" Padding="0,0,0,4"/>
-                                    <TextBox x:Name="PairingCodeBox" FontSize="16" FontFamily="Consolas" MaxLength="2048" KeyDown="PairingCode_KeyDown"
-                                             AutomationProperties.AutomationId="PairingCode" AutomationProperties.Name="Pairing code from the host"
-                                             ToolTip="The code shown on the host, like K7QM-4XPA"/>
-                                </StackPanel>
-                            </Grid>
-                            <Button x:Name="PairHostButton" Content="Pair with _host" Click="Pair_Click" Style="{DynamicResource PrimaryButton}"
-                                    HorizontalAlignment="Left" Margin="0,14,0,0" AutomationProperties.AutomationId="PairHost"/>
                         </StackPanel>
                     </Border>
+                    <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,0"
+                               Text="Another Windows PC? Install Martlet there and choose Use as a Martlet host on its Home page. It then appears under Martlet on your network."/>
+                </StackPanel>
+
+                <StackPanel x:Name="RolesStep" Visibility="Collapsed">
+                    <TextBlock Text="Choose jobs for this host" Style="{DynamicResource PageTitle}"/>
+                    <TextBlock x:Name="RolesSummaryText" Style="{DynamicResource Muted}" Margin="0,6,0,18" TextWrapping="Wrap"
+                               AutomationProperties.AutomationId="RolesSummaryText"/>
                     <Border Style="{DynamicResource CardStyle}" Background="{DynamicResource SoftBrush}">
                         <StackPanel>
-                            <TextBlock Text="Paired host" FontWeight="SemiBold" FontSize="15"/>
-                            <TextBlock x:Name="PairedText" Style="{DynamicResource Muted}" Margin="0,4,0,10" TextWrapping="Wrap"
+                            <DockPanel>
+                                <ComboBox x:Name="HostChoice" DockPanel.Dock="Right" MinWidth="200" SelectionChanged="HostChoice_Changed"
+                                          AutomationProperties.AutomationId="HostChoice" AutomationProperties.Name="Host to configure"/>
+                                <TextBlock Text="Host" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <TextBlock x:Name="PairedText" Style="{DynamicResource Muted}" Margin="0,8,0,10" TextWrapping="Wrap"
                                        AutomationProperties.AutomationId="PairedHost"/>
-                            <WrapPanel>
+                            <WrapPanel x:Name="HostButtons">
                                 <Button Content="Chec_k host" Click="Check_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="CheckHost"/>
                                 <Button Content="_Update host" Click="UpdateHost_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="UpdateHost"
                                         ToolTip="Update the host. Pairings and jobs stay"/>
@@ -215,35 +165,18 @@
                             </WrapPanel>
                         </StackPanel>
                     </Border>
+                    <!-- One card per role in HostRoles.All, built in code. -->
+                    <StackPanel x:Name="RoleCards"/>
                     <Expander Header="This PC's device ID" Margin="0,4,0,0" AutomationProperties.AutomationId="DeviceIdSection">
                         <StackPanel Margin="0,8,0,0">
                             <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"
-                                       Text="How this PC appears on the host. Martlet sends it automatically when pairing."/>
+                                       Text="How this PC appears on the host. Martlet sends it automatically when connecting."/>
                             <DockPanel>
                                 <Button Content="Cop_y" Click="CopyDeviceId_Click" DockPanel.Dock="Right" Margin="8,0,0,0"/>
                                 <TextBox x:Name="DeviceIdText" AutomationProperties.AutomationId="DeviceId" AutomationProperties.Name="This PC's device ID"/>
                             </DockPanel>
                         </StackPanel>
                     </Expander>
-                </StackPanel>
-
-                <StackPanel x:Name="RolesStep" Visibility="Collapsed">
-                    <TextBlock Text="Choose jobs for this host" Style="{DynamicResource PageTitle}"/>
-                    <TextBlock x:Name="RolesSummaryText" Style="{DynamicResource Muted}" Margin="0,6,0,18"/>
-                    <!-- One card per role in HostRoles.All, built in code. -->
-                    <StackPanel x:Name="RoleCards"/>
-                    <Border Style="{DynamicResource CardStyle}" Opacity="0.75">
-                        <StackPanel>
-                            <DockPanel>
-                                <Border DockPanel.Dock="Right" Style="{DynamicResource Chip}" VerticalAlignment="Top">
-                                    <TextBlock Text="Coming later" Style="{DynamicResource ChipText}"/>
-                                </Border>
-                                <TextBlock Text="More roles" FontSize="17" FontWeight="SemiBold"/>
-                            </DockPanel>
-                            <TextBlock Style="{DynamicResource Muted}" Margin="0,4,0,0"
-                                       Text="More host jobs will appear here in a future update."/>
-                        </StackPanel>
-                    </Border>
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>

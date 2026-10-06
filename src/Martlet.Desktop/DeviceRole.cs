@@ -8,7 +8,7 @@ internal enum DeviceRole { Companion, Host }
 /// <summary>Saves the welcome-tour choice in device-role.txt next to the other local preferences. Absent means first run.</summary>
 internal static class DeviceRolePreference
 {
-    private const string FileName = "device-role.txt";
+    internal const string FileName = "device-role.txt";
 
     internal static DeviceRole? Load(string directory)
     {

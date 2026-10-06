@@ -185,6 +185,7 @@
           "Martlet.Conversation": "[0.44.0, )",
           "Martlet.Credentials.Windows": "[0.44.0, )",
           "Martlet.Diagnostics": "[0.44.0, )",
+          "Martlet.Discord": "[0.44.0, )",
           "Martlet.EchoCancellation": "[0.44.0, )",
           "Martlet.F5": "[0.44.0, )",
           "Martlet.Home": "[0.44.0, )",
@@ -203,6 +204,13 @@
         "type": "Project",
         "dependencies": {
           "Martlet.Core": "[0.44.0, )"
+        }
+      },
+      "martlet.discord": {
+        "type": "Project",
+        "dependencies": {
+          "Martlet.Core": "[0.44.0, )",
+          "NetCord": "[1.0.0-beta.28, )"
         }
       },
       "martlet.doctor": {
@@ -309,6 +317,12 @@
         "dependencies": {
           "NAudio.Core": "3.1.0"
         }
+      },
+      "NetCord": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.0-beta.28, )",
+        "resolved": "1.0.0-beta.28",
+        "contentHash": "yTNehgXwYrSYAt4PbQsnnEVUiupSm27MsHZ9T18QfrUv0SJEma7QzI4239JQ77+kZbla/19x0jcaeJ63YuxSJA=="
       },
       "NVorbis": {
         "type": "CentralTransitive",
