@@ -18,14 +18,15 @@
     <!-- hearing_check rehearses the production Chat Completions adapter against a loopback fixture. -->
     <ProjectReference Include="..\Martlet.Providers\Martlet.Providers.csproj" />
     <ProjectReference Include="..\Martlet.Conversation\Martlet.Conversation.csproj" />
+    <!-- discord_text_check runs the production Discord text pipeline with a fake transport. -->
+    <ProjectReference Include="..\Martlet.Discord\Martlet.Discord.csproj" />
     <!-- echo_check rehearses the production echo reduction (EchoReducer and the WebRTC canceller) with fixture devices. -->
     <ProjectReference Include="..\Martlet.EchoCancellation\Martlet.EchoCancellation.csproj" />
     <!-- utterance_filter_check synthesizes its spoken fixtures with a Windows voice (nothing is played). -->
     <PackageReference Include="System.Speech" />
     <!-- character_models reads the desktop's shared character list and copies (SharedCharacterModels). -->
     <ProjectReference Include="..\Martlet.Avatar.Hosting\Martlet.Avatar.Hosting.csproj" />
-    <!-- discord_status and discord_check read Companion › Discord's setup and its bot token's presence, and connect it once. -->
-    <ProjectReference Include="..\Martlet.Discord\Martlet.Discord.csproj" />
+    <!-- discord_status and discord_check read Companion › Discord's setup and whether its bot token is saved, and connect it once. -->
     <ProjectReference Include="..\Martlet.Credentials.Windows\Martlet.Credentials.Windows.csproj" />
   </ItemGroup>
   <!-- character_theme uses the desktop's own texture decoding and window sample with Martlet's real styles. The

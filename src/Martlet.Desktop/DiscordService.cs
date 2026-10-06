@@ -20,6 +20,8 @@ internal sealed partial class DiscordService : IAsyncDisposable
         this.vault = vault;
         preferences = DiscordPreferences.Load(directory);
         Bot.Changed += _ => Changed?.Invoke();
+        // Each feature attaches its handlers and adds its slash commands to Bot.Commands (one shared registration).
+        AttachText();
         WatchAuthors();
     }
 

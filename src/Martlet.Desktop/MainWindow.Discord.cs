@@ -189,6 +189,7 @@ public partial class MainWindow
                 children.Add(Row(PageButton("Open my bot's page", () => OpenInBrowser(new Uri(DiscordInvite.ApplicationPage(saved.ApplicationId))),
                     link: true, id: "DiscordFixIntent")));
         }
+        children.Add(Status(discord.TextStatusLine, "DiscordTextStatus"));
         children.Add(Row(reconnect));
         return Card([.. children]);
     }

@@ -1817,6 +1817,31 @@ quiet (Martlet decides).*) and in
 `logs_tail` as *Chattiness: Martlet went from normal to quiet (your message;
 Martlet decides).* It reads no credentials and contacts nothing.
 
+`discord_text_check` feeds simulated Discord messages through the production
+[Discord](DISCORD.md) text pipeline (`DiscordTextChat` in `src\Martlet.Discord`,
+the one the desktop's bot uses) with a fake transport and a fixture reply engine
+(NOT AI, NOT Discord; no token, no network). Without `messages` it runs fixed
+`scenarios` on fixture preferences (each with `name`, `passed` and `detail`;
+`passed` is all of them): DMs from the owner, a known person and a stranger, a
+Mentions channel's chatter, @mention, name and reply to Martlet, a Sometimes
+channel the engine passes on, an Off channel, an Always channel, another bot, a
+long reply split under 2,000 characters with `@everyone` neutralized, `/martlet`
+in a group DM and a turn dropped as stale when a newer message arrives while
+Martlet thinks. With `messages` (1-16 objects: `text`, `place` `server` or `dm`,
+`author` `owner`, `known`, `stranger` or `bot`, `mention`, `replyToMartlet`,
+`channelId`, `command` for `/martlet`) it uses the data directory's
+`discord.json` (optional absolute `dataDirectory`; a missing owner is a fixture
+ID) and returns each `outcome` (`Answered`, `Passed`, `NotConsidered`,
+`IgnoredBot`, `Dropped`, `NoEngine`, `Failed`), `mode`, `addressed`, what was
+`sent` (`quoted` when sent as a Discord reply, `viaCommand`) and `recentLines`.
+`reply` (up to 4,096 characters) replaces the fixture's answer. Both return
+`preferences` (counts and modes only) and `stats`, the same counts as the
+desktop's Companion › Discord `DiscordTextStatus` line (*Text chat: 3 seen, 2
+considered, 1 answered, 1 passed, 0 dropped, 0 failed. Last reply: DM. Last
+problem: none.*; no message text, names or IDs). The live bot logs each
+answered, passed, dropped or failed turn as *Discord text: Answered (Mentions,
+addressed), 1 message(s)*.
+
 ### Latency
 
 Every reply writes one *Reply latency* line to the desktop log: how long from
@@ -3684,7 +3709,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check` and `straight_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `chattiness_status`, `discord_text_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
