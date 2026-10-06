@@ -1,5 +1,9 @@
 # Platforms: what each device can do
 
+> **2026-10-06:** a Linux desktop companion and a .NET Mac companion/host are
+> now planned; see [Linux and macOS desktop companion](DESKTOP_LINUX_MACOS.md)
+> (slices DX01-DX05). The tables below are updated as those slices land.
+
 **Status, 2026-10-01.** Only the **Windows companion** and **Linux / Windows
 Docker hosts** exist today. Everything marked *planned* comes from the
 [iOS](IOS.md), [macOS](MACOS.md) and [Android](ANDROID.md) plans and has not
