@@ -144,6 +144,9 @@
       "martlet.memory": {
         "type": "Project"
       },
+      "martlet.messaging": {
+        "type": "Project"
+      },
       "martlet.participation": {
         "type": "Project"
       },

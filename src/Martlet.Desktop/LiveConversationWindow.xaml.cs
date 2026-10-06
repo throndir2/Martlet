@@ -124,6 +124,11 @@ public partial class LiveConversationWindow : ThemedWindow
     // Typed text waits here while an idle listen or a screen remark hands the app slot over.
     private string? pendingText;
     private ChatMessage? pendingMessage;
+    // Messages from paired chats in messaging apps (Companion › Messaging) wait here for the app slot, in order; each gets the
+    // reply's text (or why there is none) once its turn finishes.
+    private sealed record RemoteAsk(string Text, ChatMessage Bubble, bool Speak, TaskCompletionSource<string> Reply);
+    private readonly List<RemoteAsk> remoteQueue = [];
+    private (LiveConversationOperation Operation, RemoteAsk Ask)? remoteAnswering;
     private string? reloadReason;
     // The load that runs now takes a changed setup in an open conversation (said once in the log).
     private bool following;
@@ -441,12 +446,18 @@ public partial class LiveConversationWindow : ThemedWindow
         if (closed) return;
         Settle();
         Collect();
-        if (loading is not null || locked) return;
+        if (loading is not null) return;
+        // While Windows is locked only messages from paired chats are answered (text only, never aloud).
+        if (locked)
+        {
+            if (!operations.IsRunning) TryRemote();
+            return;
+        }
         KeepListening();
         Interrupt();
         if (operations.IsRunning)
         {
-            if (pendingText is not null || reloadReason is not null) YieldSlot();
+            if (pendingText is not null || reloadReason is not null || remoteQueue.Count > 0) YieldSlot();
             return;
         }
         // The reply may have released the slot just now; settle it before anything replaces it.
@@ -466,7 +477,12 @@ public partial class LiveConversationWindow : ThemedWindow
             LoadAsync().Forget();
             return;
         }
-        if (!Available) return;
+        if (!Available)
+        {
+            // Loaded without a Thinking setup: a message from a chat is told so instead of waiting for nothing.
+            if (ready && controller.Configuration is null) FailRemote("Martlet isn't set up to think yet. Set up Thinking in Companion on your PC.");
+            return;
+        }
         if (pendingText is { } text)
         {
             pendingText = null;
@@ -481,8 +497,99 @@ public partial class LiveConversationWindow : ThemedWindow
             return;
         }
         if (TryAnswer()) return;
+        if (TryRemote()) return;
         if (TryReport()) return;
         TryStartCommentary();
+    }
+
+    // ---------- messages from paired chats (Companion › Messaging) ----------
+
+    /// <summary>A message from a paired chat in a messaging app: it shows in the history as from <paramref name="from"/>, waits
+    /// for Martlet like typed text and gets the reply's text (or why there is none). It is text only: no screen picture goes with
+    /// it, and the reply is said aloud only with <paramref name="speak"/> while Windows isn't locked.</summary>
+    internal Task<string> AskFromMessage(string text, string from, bool speak, CancellationToken token)
+    {
+        if (closed) return Task.FromResult(RemoteCantAnswer);
+        var ask = new RemoteAsk(text, Add(ChatRole.User, text, from), speak,
+            new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously));
+        var registration = token.Register(() => Dispatcher.BeginInvoke(() =>
+        {
+            if (remoteQueue.Remove(ask)) ask.Bubble.AddNote("Not answered in time.");
+            ask.Reply.TrySetCanceled(token);
+        }));
+        ask.Reply.Task.ContinueWith(_ => registration.Dispose(), TaskScheduler.Default);
+        remoteQueue.Add(ask);
+        activityAt = clock.GetTimestamp();
+        reportHeld = false;
+        follow = true;
+        Pump();
+        RenderActions();
+        return ask.Reply.Task;
+    }
+
+    /// <summary>Messages from paired chats waiting for Martlet.</summary>
+    internal int RemoteWaiting => remoteQueue.Count;
+
+    private const string RemoteCantAnswer = "Martlet can't talk right now. Try again in a moment.";
+
+    private bool TryRemote()
+    {
+        while (remoteQueue.Count > 0)
+        {
+            var ask = remoteQueue[0];
+            remoteQueue.RemoveAt(0);
+            if (ask.Reply.Task.IsCompleted) continue;
+            if (ready && controller.Configuration is null)
+            {
+                ask.Bubble.AddNote("Not answered: Thinking isn't set up.");
+                ask.Reply.TrySetResult("Martlet isn't set up to think yet. Set up Thinking in Companion on your PC.");
+                continue;
+            }
+            try
+            {
+                owned = controller.Start(ask.Text, ask.Speak && !locked && Voice, microphone: false, approved: true, remote: true);
+                remoteAnswering = (owned, ask);
+                typed = (owned, ask.Bubble);
+                yielded = null;
+                answeredAt = clock.GetTimestamp();
+                pacer?.NoteConversation();
+                Observe();
+                return true;
+            }
+            catch (LiveActionException error) when (error.Code == "conversation.ownership_busy")
+            {
+                remoteQueue.Insert(0, ask);
+                return false;
+            }
+            catch (Exception error) when (error is LiveActionException or ContractException)
+            {
+                var why = error is LiveActionException live ? Remedy(live.Code) : Remedy("conversation.invalid_input");
+                ask.Bubble.AddNote("Not answered.");
+                ask.Reply.TrySetResult("Martlet couldn't answer: " + why);
+            }
+        }
+        return false;
+    }
+
+    private void FailRemote(string why)
+    {
+        foreach (var ask in remoteQueue)
+        {
+            ask.Bubble.AddNote("Not answered.");
+            ask.Reply.TrySetResult(why);
+        }
+        remoteQueue.Clear();
+    }
+
+    // A finished turn that answered a message from a chat sends its text back (or why there is none).
+    private void FinishRemote(LiveConversationOperation done)
+    {
+        if (remoteAnswering is not { } answering || !ReferenceEquals(answering.Operation, done)) return;
+        remoteAnswering = null;
+        var content = done.Turn?.Content;
+        var text = content?.Text?.Trim() is { Length: > 0 } said ? said : content?.Refusal?.Trim() ?? "";
+        if (text.Length > 0) answering.Ask.Reply.TrySetResult(text);
+        else answering.Ask.Reply.TrySetResult(Outcome(done) is { } why ? "Martlet couldn't answer: " + why : "(Martlet had nothing to say.)");
     }
 
     // ---------- background work (think_longer) ----------
@@ -495,7 +602,8 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool reportHeld;
 
     /// <summary>You are talking, or something you said or typed is about to be answered.</summary>
-    private bool UserBusy => MicBusy || heardQueue.Count > 0 || pendingText is not null || mouseHeld || keyHeld || Recording || pcHeld.Count > 0;
+    private bool UserBusy => MicBusy || heardQueue.Count > 0 || pendingText is not null || mouseHeld || keyHeld || Recording || pcHeld.Count > 0 ||
+        remoteQueue.Count > 0;
 
     /// <summary>How long since you last talked with Martlet here (spoke, typed or a turn finished), or null before anything.</summary>
     internal TimeSpan? SinceActivity => UserBusy ? TimeSpan.Zero : activityAt == 0 ? null : clock.GetElapsedTime(activityAt);
@@ -1333,6 +1441,7 @@ public partial class LiveConversationWindow : ThemedWindow
             restarts = 0;
         }
         notice = Outcome(done) ?? (code is "runtime.Completed" or "listen.passed" ? null : notice);
+        FinishRemote(done);
         // The setup was changed elsewhere (Companion is usable while this window is open): load it before the next turn.
         if (code == "conversation.configuration_changed") reloadReason ??= "Your setup changed.";
     }
@@ -2464,6 +2573,9 @@ public partial class LiveConversationWindow : ThemedWindow
         listening = false;
         StopListening(keepHeard: false);
         StopAll("conversation.closed", keepContext: false);
+        FailRemote(RemoteCantAnswer);
+        if (remoteAnswering is { } answering) answering.Ask.Reply.TrySetResult(RemoteCantAnswer);
+        remoteAnswering = null;
         // Ending the conversation ends its background work: nothing is brought up any more.
         controller.EndBackgroundWork();
         attentionWatcher.Stop();
