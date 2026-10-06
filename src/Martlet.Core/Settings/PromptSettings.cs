@@ -41,6 +41,7 @@ public static class PromptCatalog
     public const string CommentaryScreen = "commentary_screen";
     public const string CommentaryCamera = "commentary_camera";
     public const string SeenWithMessage = "seen_with_message";
+    public const string SeenTag = "seen_tag";
     public const string ChattinessQuiet = "chattiness_quiet";
     public const string ChattinessNormal = "chattiness_normal";
     public const string ChattinessChatty = "chattiness_chatty";
@@ -457,6 +458,17 @@ public static class PromptCatalog
             "me?\"); otherwise answer normally. Never describe it unprompted, never mention images or screenshots, and never read " +
             "out private details from it (messages, emails, numbers) unless they ask about them.",
             ["source"]),
+        new(SeenTag, VisionGroup, "What you saw",
+            "Added to every screen glance and camera look, and to replies whose message comes with a picture, after their own " +
+            "instructions; it never changes, so the instructions stay the same. The reply ends with [seen: ...]: a few words on " +
+            "what the picture shows, never shown or spoken. Martlet keeps them in the conversation (as a [Screen] or [Camera] " +
+            "line) instead of the picture, which is never kept. {silent} is the word for staying quiet. Empty it and the " +
+            "conversation keeps only where Martlet looked.",
+            "When you get a picture, end your answer (also after [{silent}]) with [seen: a few words on what it shows right " +
+            "now], like [seen: a racing game, final lap, they're in first]: at most 12 plain words, once, at the very end. It is " +
+            "never shown or spoken; it only helps you remember what you saw. Never put private details in it (messages, emails, " +
+            "names in them, numbers).",
+            ["silent"]),
 
         new(MemoryCapture, BackgroundGroup, "Remembering",
             "Asks the Thinking model what to remember after each reply. Martlet reads the REMEMBER, UPDATE and FORGET lines it answers; " +

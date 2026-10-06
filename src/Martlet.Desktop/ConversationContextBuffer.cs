@@ -28,11 +28,15 @@ internal sealed class ConversationContextBuffer
     private sealed class Entry(string user, string assistant, string? sent)
     {
         internal string User { get; set; } = user;
-        internal string Assistant { get; } = assistant;
+        internal string Assistant { get; set; } = assistant;
         internal string? Sent { get; set; } = sent;
         internal int Utf8Bytes { get; set; } = Bytes(user, assistant, sent);
         internal Task? Filling { get; set; }
+        // A look Martlet took on its own and passed on (VisionHistory): the next one it passes on takes its place.
+        internal bool PassedLook { get; set; }
     }
+
+    private Entry? newest;
 
     private static int Bytes(string user, string assistant, string? sent) =>
         checked(Encoding.UTF8.GetByteCount(sent ?? user) + Encoding.UTF8.GetByteCount(assistant));
@@ -55,10 +59,33 @@ internal sealed class ConversationContextBuffer
     {
         var entry = new Entry(user, assistant, sent);
         entries.Enqueue(entry);
+        newest = entry;
         utf8Bytes += entry.Utf8Bytes;
         while (entries.Count > MaximumTurns || utf8Bytes > MaximumUtf8Bytes)
             RemoveOldest();
         return entry;
+    }
+
+    /// <summary>Keeps a look Martlet took on its own (a screen glance or camera look, <see cref="VisionHistory"/>): what it
+    /// looked at and saw, then its remark or [pass]. Passes don't pile up: a look it <paramref name="passed"/> on takes the place
+    /// of the newest exchange when that is also a passed look, so only the last of a quiet stretch stays (only the end of
+    /// the next request changes, and that end is new anyway). Returns whether it replaced one.</summary>
+    internal bool AddLook(string user, string assistant, bool passed)
+    {
+        if (passed && newest is { PassedLook: true } last && entries.Count > 0)
+        {
+            utf8Bytes -= last.Utf8Bytes;
+            last.User = user;
+            last.Assistant = assistant;
+            last.Sent = null;
+            last.Utf8Bytes = Bytes(user, assistant, null);
+            utf8Bytes += last.Utf8Bytes;
+            while (utf8Bytes > MaximumUtf8Bytes && entries.Count > 0)
+                RemoveOldest();
+            return true;
+        }
+        ((Entry)Add(user, assistant)).PassedLook = passed;
+        return false;
     }
 
     /// <summary>Marks a kept exchange whose words are on their way: <paramref name="filling"/> ends once <see cref="Fill"/> has
@@ -96,6 +123,7 @@ internal sealed class ConversationContextBuffer
     {
         removed += entries.Count;
         entries.Clear();
+        newest = null;
         utf8Bytes = 0;
     }
 
@@ -114,5 +142,6 @@ internal sealed class ConversationContextBuffer
             return;
         removed++;
         utf8Bytes -= removedEntry.Utf8Bytes;
+        if (entries.Count == 0) newest = null;
     }
 }
