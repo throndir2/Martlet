@@ -87,7 +87,7 @@
                     <StackPanel>
                         <TextBlock Text="Invite" FontWeight="SemiBold" FontSize="15"/>
                         <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,8"
-                                   Text="The invite tells a computer away from home where this host answers and which key to expect. It holds no secret; signing in is what lets a computer in. Add the address this host answers on from outside (a name or address with its port, for example home.example.net:9443)."/>
+                                   Text="The invite tells a computer away from home where this host answers and which key to expect. It holds no secret; signing in is what lets a computer in. It starts with the outside addresses your network has for this host (Your Martlet network › Outside addresses); set them there so the computer keeps reaching the host after it joins."/>
                         <TextBlock Text="Outside address(es), separated by spaces"/>
                         <TextBox x:Name="InviteAddressText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInInviteAddress"/>
                         <Button Content="_Make invite" Click="MakeInvite_Click" HorizontalAlignment="Left" AutomationProperties.AutomationId="SignInInviteMake"/>

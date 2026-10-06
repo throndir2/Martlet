@@ -26,6 +26,13 @@ public partial class SignInSettingsWindow : ThemedWindow
         this.host = host;
         this.dataDirectory = dataDirectory;
         HeadingText.Text = $"Sign-in from outside: {host.HostId}";
+        // The invite carries the outside addresses the network already has for this host (Your Martlet network › Outside addresses).
+        try
+        {
+            if (NetworkIdentity.Load(dataDirectory).Roster?.Host(host.HostId) is { Removed: false, Addresses: { Count: > 0 } outside })
+                InviteAddressText.Text = string.Join(" ", outside);
+        }
+        catch (Exception error) when (error is IOException or ContractException or UnauthorizedAccessException) { }
         Closed += (_, _) => lifetime.Cancel();
         Loaded += async (_, _) => await RunAsync(async connection => Show(await connection.ReadSignInSettingsAsync(lifetime.Token)), "Reading");
     }

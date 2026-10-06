@@ -14,7 +14,7 @@ namespace Martlet.Core.Network;
 public sealed record NetworkInvite
 {
     public const string Prefix = "martlet-invite-v1.";
-    public const int MaximumAddresses = 8;
+    public const int MaximumAddresses = NetworkRoster.MaximumAddresses;
     private const int MaximumLength = 4096;
 
     public required string HostId { get; init; }
@@ -84,31 +84,22 @@ public sealed record NetworkInvite
             "The invite's network ID is invalid.");
     }
 
-    /// <summary>A host and port someone outside can reach: "name:port", "1.2.3.4:port" or "[v6]:port" (port 1-65535).</summary>
-    public static bool IsAddress(string? address)
-    {
-        if (address is not { Length: > 3 and <= 260 }) return false;
-        var colon = address.LastIndexOf(':');
-        if (colon <= address.LastIndexOf(']') || colon == address.Length - 1 || !address[(colon + 1)..].All(char.IsAsciiDigit) ||
-            address.Length - colon > 6 || int.Parse(address[(colon + 1)..], System.Globalization.CultureInfo.InvariantCulture) is < 1 or > 65535)
-            return false;
-        var host = address[..colon];
-        if (host.StartsWith('['))
-            return host.EndsWith(']') && System.Net.IPAddress.TryParse(host[1..^1], out var v6) &&
-                v6.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6;
-        return Uri.CheckHostName(host) is UriHostNameType.Dns or UriHostNameType.IPv4;
-    }
+    /// <summary>A host and port someone outside can reach, in <see cref="NetworkRoster.NormalizeAddress"/>'s canonical form
+    /// ("name:port", "1.2.3.4:port" or "[v6]:port"), as the roster keeps a host's outside addresses.</summary>
+    public static bool IsAddress(string? address) => address is not null && NetworkRoster.NormalizeAddress(address) == address;
 
-    /// <summary>"name:port" from what a person types: a bare name or address gets <paramref name="defaultPort"/>; an https://
-    /// prefix and trailing slash are dropped. Null when it can't be an address.</summary>
+    /// <summary>"name:port" from what a person types: like <see cref="NetworkRoster.NormalizeAddress"/>, but a bare name or
+    /// address gets <paramref name="defaultPort"/>. Null when it can't be an address.</summary>
     public static string? NormalizeAddress(string? text, int defaultPort = 9443)
     {
+        if (NetworkRoster.NormalizeAddress(text) is { } exact) return exact;
         var value = (text ?? "").Trim().TrimEnd('/');
-        if (value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) value = value[8..];
+        if (value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) value = value[8..].TrimEnd('/');
         if (value.Length == 0) return null;
-        var hasPort = value.StartsWith('[') ? value.LastIndexOf(':') > value.IndexOf(']') : value.Count(c => c == ':') == 1;
-        if (!hasPort) value = (value.Contains(':') && !value.StartsWith('[') ? "[" + value + "]" : value) + ":" + defaultPort;
-        return IsAddress(value) ? value : null;
+        var bracketed = value.StartsWith('[') && value.EndsWith(']');
+        var bareV6 = !value.StartsWith('[') && value.Count(c => c == ':') > 1;
+        if (!bracketed && !bareV6 && value.Contains(':')) return null;
+        return NetworkRoster.NormalizeAddress((bareV6 ? "[" + value + "]" : value) + ":" + defaultPort);
     }
 
     public override string ToString() => $"Invite to {HostId}";

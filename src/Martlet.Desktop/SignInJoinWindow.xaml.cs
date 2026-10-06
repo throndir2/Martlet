@@ -93,6 +93,9 @@ public partial class SignInJoinWindow : ThemedWindow
             }
             PasswordText.Clear();
             CodeText.Clear();
+            // Until this PC is in the network (whose roster carries the host's outside addresses), reach the host where the
+            // invite says it answers from outside.
+            HostRoutes.Set(result.Pairing.Origin, result.Pairing.HostId, invite.Addresses);
             await keep(result.Pairing, result.Secret);
             StatusText.Text = $"Signed in as {result.Identity}. This PC is paired with {result.Pairing.HostId} and joins your Martlet network by " +
                 "itself as soon as one of your computers at home syncs (no check number needed).";

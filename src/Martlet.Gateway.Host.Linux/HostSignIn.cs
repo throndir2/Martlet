@@ -29,14 +29,19 @@ internal static class HostSignIn
                     network = roster.NetworkId;
             }
             catch (Martlet.Core.Contracts.ContractException) { }
+            // Without --address, the outside addresses set with owner-exposure (the ones the network advertises).
+            IReadOnlyList<string> addresses = options.Addresses;
+            if (addresses.Count == 0)
+                try { addresses = HostExposure.Read(directory).Outside; }
+                catch (HostInputException) { }
             var invite = new NetworkInvite
             {
                 HostId = config.HostId, SpkiFingerprint = approval.SpkiFingerprint, Origin = config.Binding.Origin.CanonicalOrigin,
-                Addresses = options.Addresses, NetworkId = network, Label = options.Label
+                Addresses = addresses, NetworkId = network, Label = options.Label
             };
-            if (options.Addresses.Count == 0)
-                output.WriteLine("No --address given: this invite only works where the home address is reachable. Add the address " +
-                    "this host answers on from outside (name:port) for a computer away from home.");
+            if (addresses.Count == 0)
+                output.WriteLine("This host has no outside address (owner-exposure --outside) and none was given (--address): this " +
+                    "invite only works where the home address is reachable.");
             output.WriteLine(invite.Write());
             return 0;
         }
