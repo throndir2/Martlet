@@ -153,14 +153,15 @@ internal static class ThinkLongerCheck
         var host = HostFit();
         var pool = await PoolAsync(reasoning, cancellation);
         var moment = await MomentAsync(fixture, cancellation);
+        var broker = await BrokerAsync(cancellation);
         return new
         {
-            ok = flow.Ok && limits.Ok && plans.Ok && parallel.Ok && sideBySide.Ok && host.Ok && pool.Ok && moment.Ok,
+            ok = flow.Ok && limits.Ok && plans.Ok && parallel.Ok && sideBySide.Ok && host.Ok && pool.Ok && moment.Ok && broker.Ok,
             endpoint = fixture.BaseUrl,
             note = "Fixture endpoints on 127.0.0.1 with canned replies (NOT AI) and a fixture Ollama model list; the scheduler, runner, " +
                 "tool texts, request layout, Deep thinking plan, side-by-side fit, moment plan, runtime and adapter are Martlet's own.",
             flow = flow.Report, limits = limits.Report, plans = plans.Report, parallel = parallel.Report,
-            sideBySide = sideBySide.Report, hostFit = host.Report, pool = pool.Report, moment = moment.Report
+            sideBySide = sideBySide.Report, hostFit = host.Report, pool = pool.Report, moment = moment.Report, broker = broker.Report
         };
     }
 
@@ -259,6 +260,70 @@ internal static class ThinkLongerCheck
                 carries, jobsTaken = delivery?.Jobs.Count, newsAfter = jobs.HasNews, delivery = new { song = songJob?.Delivery.ToString(), report = reportJob?.Delivery.ToString() },
                 momentInstruction = moment, sameStartAsAPlainReply = stableStart, sharedStartCharacters = stableStart ? through : 0
             }
+        });
+    }
+
+    // ---------- the background broker: which computer a think goes to, and the line ----------
+
+    // The owner's example with the production broker and scheduler (fixture runners, no network): a companion PC and three hosts,
+    // one general, one kept for image generation and one that sings. Thinks go to the general computer first, then the others;
+    // a fourth waits in line; a song holds the singing computer; the first computer to free up takes the next in line.
+    private static async Task<(bool Ok, object Report)> BrokerAsync(CancellationToken cancellation)
+    {
+        using var jobs = new BackgroundJobs();
+        var general = new BackgroundPlace("host:general", "general");
+        var images = new BackgroundPlace("host:images", "images") { Duties = ["image generation"] };
+        var singer = new BackgroundPlace("host:singer", "singer") { Duties = ["singing"] };
+        IReadOnlyList<BackgroundPlace> pool = [singer, images, general];
+        var kind = ThinkLonger.Kind(new ThinkLongerSettings(), ThinkLonger.Slots(pool));
+        var gates = new Dictionary<string, TaskCompletionSource>();
+        Func<BackgroundJob, CancellationToken, Task<BackgroundJobOutcome>> Run(string name)
+        {
+            var gate = gates[name] = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            return async (job, token) =>
+            {
+                await gate.Task.WaitAsync(token);
+                return BackgroundJobOutcome.Done($"{name} on {job.Place?.Name}");
+            };
+        }
+        async Task Until(Func<bool> done)
+        {
+            var waited = Stopwatch.StartNew();
+            while (!done() && waited.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(20, cancellation);
+        }
+        var timer = Stopwatch.StartNew();
+        var starts = new[] { "a", "b", "c", "d" }.Select(name => jobs.Start(kind, name, Run(name), pool, wait: true)).ToArray();
+        var decidedMs = timer.Elapsed.TotalMilliseconds;
+        var placed = starts.Select(s => s.Job?.Place?.Name).ToArray();
+        var queued = starts[3].Queued;
+        // A song starts on the singing computer (its think carries on), then that think finishes: the song still holds the
+        // singing computer, so the one in line keeps waiting.
+        var song = jobs.Places.Hold(singer, "song-1");
+        gates["b"].SetResult();
+        await Until(() => starts[1].Job!.Finished);
+        await Task.Delay(100, cancellation);
+        var waitingDuringSong = starts[3].Job!.Place is null;
+        // The general computer frees up: the one in line goes there.
+        gates["a"].SetResult();
+        await Until(() => starts[3].Job!.Place is not null);
+        var nextOn = starts[3].Job!.Place?.Name;
+        song.Dispose();
+        foreach (var gate in gates.Values) gate.TrySetResult();
+        await Until(() => starts.All(s => s.Job!.Finished));
+        var ok = placed is ["general", "singer", "images", null] && queued == "think-1 on general, think-2 on singer and think-3 on images" &&
+            waitingDuringSong && nextOn == "general" && starts.All(s => s.Job!.State == BackgroundJobState.Succeeded) &&
+            jobs.Places.Leases.Count == 0 && jobs.Places.Line.Count == 0 && decidedMs < 50;
+        return (ok, new
+        {
+            ok,
+            places = pool.Select(p => new { p.Name, p.Rank, p.Slots, p.Duties, p.Standing }),
+            maxActive = kind.MaxActive,
+            placed,
+            queuedBehind = queued,
+            waitedWhileTheSongHeldTheSinger = waitingDuringSong,
+            nextInLineRanOn = nextOn,
+            decidedMs = Math.Round(decidedMs, 2),
+            note = "Deterministic: no model is asked; every choice is the production BackgroundPlaces order."
         });
     }
 

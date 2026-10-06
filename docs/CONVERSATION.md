@@ -477,10 +477,25 @@ for 0:12*, `LiveJobState-<id>`); the desktop log notes each start with where it
 was placed (*placed on diva, 1 of 2 places busy*), fit check and end
 (`Background thinking:`) and a *Thinking input (Background thinking)* line.
 Stop (Esc) ends a reply, never a think; the task's Cancel, `cancel_thinking`,
-closing the conversation or quitting Martlet do (there is no time limit). At most one
-think runs at a time on each place it thinks on (one place: one at a time; a
-call beyond that is refused and Martlet is told to wait or cancel one); there is
-no limit on how many start in an hour.
+closing the conversation or quitting Martlet do (there is no time limit). Each
+place runs as many thinks at once as it has slots (one on a computer of yours
+unless its Deep thinking role says it runs more, four on a cloud provider);
+when every place is busy a new think waits in line (*waiting for a free
+computer*) and runs on the first place that frees up, first come, first served.
+As many thinks may wait as can run; there is no limit on how many start in an
+hour.
+
+**Which computer thinks** is decided by a deterministic broker
+(`BackgroundPlaces`), never by a model, so placing a think takes microseconds.
+A new think goes to a free slot on the place that shares least with the
+conversation (its rank: none of the conversation's jobs, the voice or
+listening, Thinking, Thinking's graphics card on this PC). Among places of the
+same rank, a computer kept free for other work (the one that sings, Companion ›
+Voice › Singing, and the one that makes pictures) comes after the general
+ones. Then the least busy place, then the order you chose them in. While a song
+is being made, its computer is held whole, so no think is placed there until
+the song is done (thinks already running there carry on); lyrics are written
+first, on a place of their own from the same broker.
 **Delivery.** When a job finishes (or fails, or runs out of time) its result is
 added at the end of the conversation as a new message, never by rewriting
 anything before it:
@@ -538,14 +553,23 @@ how long one may take (up to 30 minutes; null: no time limit, as for a think),
    job list picks the best free place atomically with the limits, holds it
    until the job finishes (whatever its kind: places are shared by every kind
    started on them) and refuses `busy` naming what holds each place when none
-   is free; `runAsync` reads `job.Place`. Deep thinking's places are
+   is free (with `wait: true` it starts waiting in line instead:
+   `BackgroundJobStart.Queued` says what holds the places, and it runs on the
+   first that frees up); `runAsync` reads `job.Place`. Deep thinking's places are
    `ThinkLonger.Places(DeepThinkingPool.For(deepThinkingSettings, routes))`,
    and `pool.Find(job.Place.Id)` gives that place's settings (a paired
    computer's route or an endpoint) to build the request with, as
    `ThinkLongerAsync` does. A step that needs a place for a while asks
    `jobs.Places.TryAcquire(places, holder, share)` (with `share`, the least
    busy place when none is free) and disposes the `BackgroundPlaceLease`. Set
-   the kind's `MaxActive` to the number of places (at most 8).
+   the kind's `MaxActive` to the places' slots, doubled for the line (at most
+   8). A place also has `Slots` (how many jobs it runs at once) and `Duties`
+   (other work its computer is kept free for, so it goes last among its rank).
+   A step waits for a place with `jobs.Places.AcquireAsync(pool, holder,
+   token)`, and other work on a computer keeps background work off it with
+   `jobs.Places.Hold(place, holder)`; dispose either to free it. A new kind of
+   on-demand work on a computer (image generation) adds that computer to
+   `BackgroundDuties` so thinks go there last.
 3. Return something like `ThinkLonger.Started(job, toldUser)` to the model.
 4. Background work runs in parallel with the conversation, never in turns with
    it: run it where it doesn't hold up a reply (a song made by a host role on a
