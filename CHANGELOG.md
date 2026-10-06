@@ -9,6 +9,8 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- A Mac can be a Martlet host: its `macos-setup` command runs Martlet's host in the background while you're logged in and lends your other computers the Mac's own Ollama and whisper.cpp, on its graphics chip on Apple silicon. Jobs that need an NVIDIA GPU are never offered there. Not yet tried on a real Mac. ([#482](https://github.com/throndir2/Martlet/pull/482))
+- The Docker host image now also builds for Apple-silicon Macs and other ARM64 computers (CPU only). ([#482](https://github.com/throndir2/Martlet/pull/482))
 - Martlet for Mac (coming with the Mac download) can float the character over full-screen games, talk while you hold a push-to-talk key in any app, keep your keys in the Mac's keychain, watch your screen after you allow it, start at login and show what it is doing in the menu bar. It also finds Ollama, LM Studio or Docker Model Runner running on the Mac. ([#480](https://github.com/throndir2/Martlet/pull/480))
 - People keeps the last 5 clips of each voice you haven't named yet, so you can play them and hear who it is. They stay on this PC and are deleted once you name the voice. ([#477](https://github.com/throndir2/Martlet/pull/477))
 

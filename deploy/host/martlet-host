@@ -56,6 +56,14 @@
 # Each system change is confirmed first (typed "yes", or --yes when Martlet desktop already asked the owner).
 set -euo pipefail
 
+# macOS: not a Linux host (and its bash 3.2 can't run this script). The Mac host is Martlet's gateway under launchd.
+if [ "$(uname -s)" = Darwin ] && [ "${MARTLET_HOST_MODE:-native}" != docker ]; then
+  printf '%s\n' "This is a Mac: use the Mac host instead (docs/MACOS.md, \"The Mac host\"):" \
+    "  /Applications/Martlet.app/Contents/Resources/host/Martlet.Gateway.Host.Linux macos-setup" \
+    "or the Docker method in Docker Desktop (CPU only)." >&2
+  exit 1
+fi
+
 if [[ "${1:-}" == --yes ]]; then shift; export MARTLET_ASSUME_YES=1; fi
 
 HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"

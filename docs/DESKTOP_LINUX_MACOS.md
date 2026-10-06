@@ -120,7 +120,7 @@ and macOS jobs that attach to the same `v<version>` release, with no tests:
 | DX01 | `Martlet.Companion` Avalonia app: settings, typed and push-to-talk conversation with cloud and loopback Chat Completions, OpenAI listening/speaking, cross-platform audio, character window with the web bundles, catalog guardrails, platform-service interfaces, MCP reachability | `src/Martlet.Companion`, catalog companion rows |
 | DX02 | Linux integration: overlay (X11/XWayland, layer-shell), hotkey (X11 + portal), Secret Service, tray, autostart, screen capture (X11 + portal) | `src/Martlet.Platform.Linux` |
 | DX03 | macOS integration: floating panel behaviors, Carbon hotkey, Keychain, menu bar, ScreenCaptureKit, Apple silicon/Intel detection, loopback Ollama/LM Studio detection | `src/Martlet.Platform.MacOS` |
-| DX04 | Mac host: .NET gateway on macOS (launchd, macOS custody backend, native Ollama/whisper Metal relays, machine report), plus arm64 host images so Docker on a Mac works CPU-only | gateway, persistence, host setup, `deploy/` |
+| DX04 | Mac host: .NET gateway on macOS (launchd, macOS custody backend, native Ollama/whisper Metal relays, machine report), plus arm64 host images so Docker on a Mac works CPU-only. **Built** ([The Mac host](MACOS.md#the-mac-host-dx04)): `osx-arm64`/`osx-x64` publish and the arm64 host image build; runtime on a Mac NOT RUN (no Mac) | gateway, persistence, host setup, `deploy/` |
 | DX05 | Linux and macOS installers in the release build | `packaging/linux`, `packaging/macos`, `windows-release.yml` |
 
 DX01 lands its interfaces first; DX02, DX03 and DX05 build on them. DX04 is

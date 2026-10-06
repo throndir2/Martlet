@@ -45,6 +45,12 @@ public sealed record GatewayMachineReport
     public string? Architecture { get; init; }
     /// <summary>Device features such as apple-intelligence, gemini-nano, foreground-only or battery.</summary>
     public IReadOnlyList<string>? Features { get; init; }
+    /// <summary>Macs: the chip, for example "Apple M2 Pro" or an Intel processor name.</summary>
+    public string? Chip { get; init; }
+    /// <summary>Macs with Apple silicon: memory is shared by the processor and the GPU.</summary>
+    public bool? UnifiedMemory { get; init; }
+    /// <summary>Macs: how much memory the GPU may use for models (Metal's recommended working set), in GB.</summary>
+    public double? GpuWorkingSetGb { get; init; }
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -75,12 +81,13 @@ public sealed record GatewayMachineReport
         (Features is null || Features is { Count: <= 16 } && Features.All(f => f is { Length: > 0 and <= 32 } &&
             f.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '-'))) &&
         Text(OperatingSystem, required: true) && Text(Kernel) && Text(Processor) && Text(ContainerRuntime) && Text(Cuda) &&
+        Text(Chip) && GpuWorkingSetGb is null or (> 0 and <= 65_536) &&
         NvidiaContainers is null or "yes" or "no" or "unknown" &&
         ProcessorThreads is null or (> 0 and <= 4096) &&
         MemoryGb is null or (> 0 and <= 65_536) &&
         Gpus is { Count: <= 16 } &&
         Gpus.All(gpu => gpu is not null && Text(gpu.Name, required: true) && Text(gpu.Driver) &&
-            gpu.Vendor is "nvidia" or "amd" or "intel" or "other" &&
+            gpu.Vendor is "nvidia" or "amd" or "intel" or "apple" or "other" &&
             gpu.MemoryMb is null or (> 0 and <= 1_048_576) &&
             gpu.PowerLimitW is null or (> 0 and <= 10_000) && gpu.PowerDefaultW is null or (> 0 and <= 10_000));
 

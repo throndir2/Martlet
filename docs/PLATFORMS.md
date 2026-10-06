@@ -61,13 +61,13 @@ macOS 14, iOS/iPadOS 26, Android 8.0.
 
 ## Devices that do jobs (hosts)
 
-| Job or feature | Linux (Docker or native with systemd, x86_64) | Windows (Docker Desktop, This PC) | macOS (the Martlet app) | iPhone / iPad | Android |
+| Job or feature | Linux (Docker or native with systemd, x86_64) | Windows (Docker Desktop, This PC) | macOS (Martlet's Mac host) | iPhone / iPad | Android |
 | --- | --- | --- | --- | --- | --- |
-| Thinking: Ollama | **Works** (NVIDIA makes it fast; small models on the CPU) | **Works** | Planned (MA02): native, on the GPU on Apple silicon; Intel CPU-only, 1-4B | Impossible: Apple Intelligence does the thinking there | Not planned: no Ollama for Android; a LiteRT or llama.cpp model serves the same route |
+| Thinking: Ollama | **Works** (NVIDIA makes it fast; small models on the CPU) | **Works** | **Built** (DX04, not yet run on a Mac): relays to native Ollama, on the GPU (Metal) on Apple silicon; Intel CPU-only, 1-4B | Impossible: Apple Intelligence does the thinking there | Not planned: no Ollama for Android; a LiteRT or llama.cpp model serves the same route |
 | Thinking: Apple Intelligence | Impossible | Impossible | Planned (MA02; Apple silicon, macOS 26+) | Planned (IO03; Apple Intelligence devices, iOS 26+) | Impossible |
 | Thinking: MLX models (including vision) | Impossible | Impossible | Planned (MA02; Apple silicon) | - | - |
 | Thinking: Gemini Nano, LiteRT or llama.cpp | - | - | - | - | Planned (AN04): LiteRT and llama.cpp in the background; Gemini Nano **only while the Hosting screen is in front** |
-| Listening: whisper | **Works** (CPU is fine; NVIDIA faster) | **Works** | Planned (MA02): Metal on Apple silicon; base/small on Intel | Not planned: Apple speech instead | Planned (AN04): tiny/base on old phones |
+| Listening: whisper | **Works** (CPU is fine; NVIDIA faster) | **Works** | **Built** (DX04, not yet run on a Mac): whisper.cpp from Homebrew, Metal on Apple silicon; base/small on Intel | Not planned: Apple speech instead | Planned (AN04): tiny/base on old phones |
 | Listening: Parakeet | **Works** (CPU; English or 25 European languages) | **Works** | - | - | - |
 | Listening: Apple speech | Impossible | Impossible | Planned (MA02; macOS 26, unverified on Intel) | Planned (IO03, iOS 26+) | Impossible |
 | Listening: Android speech | - | - | - | - | Planned (AN04; Android 13+, unverified that it can take the desktop's audio) |
@@ -75,11 +75,11 @@ macOS 14, iOS/iPadOS 26, Android 8.0.
 | Speaking: device voices | - | - | Planned (MA03): Apple voices, Personal Voice after you confirm on the Mac | Planned (IO04): Apple voices, Personal Voice after you confirm on the phone | Planned (AN05): Android voices |
 | Lip-sync: Audio2Face | **Works**: NVIDIA GPU with **4 GB+** | **Works**: NVIDIA 4 GB+ | Impossible: no NVIDIA GPU | Impossible | Impossible |
 | Microphone and speaker for another computer (satellite) | Not planned | Not planned | Planned (MA09) | Planned (IO10) | Planned (AN06): old 3-4 GB phones are enough |
-| Keeps hosting in the background | **Yes** | **Yes**, while Docker Desktop runs | Planned: yes, as a login agent | **No**: only while Martlet is open on the screen | Planned (AN03): yes, with a notification, even with the screen off |
-| Roles installed and removed from your desktop | **Yes** (SSH or console) | **Yes** | No: switched on in Martlet on the Mac | No: switched on in Martlet on the device | No: switched on in Martlet on the device |
+| Keeps hosting in the background | **Yes** | **Yes**, while Docker Desktop runs | **Built** (DX04): yes, as a launchd agent while you are logged in | **No**: only while Martlet is open on the screen | Planned (AN03): yes, with a notification, even with the screen off |
+| Roles installed and removed from your desktop | **Yes** (SSH or console) | **Yes** | No: chosen on the Mac with `macos-setup` | No: switched on in Martlet on the device | No: switched on in Martlet on the device |
 
 A Mac can also be a **Linux host**: Docker Desktop for Mac runs the host engine
-on the CPU only (MA10, which needs the ARM64 image of PL04 on Apple silicon),
+on the CPU only (MA10; the host image now builds for ARM64, DX04, but has not run on a Mac),
 and an old Intel Mac reinstalled with Ubuntu is a normal Linux host today
 (T2 models need the t2linux kernel; never run on Mac hardware).
 
@@ -88,8 +88,9 @@ Audio2Face needs an NVIDIA GPU with 4 GB+ and F5 needs 6 GB+. Ollama and
 whisper run on any CPU, and a GPU makes them faster. Apple Intelligence
 requires the [Apple Intelligence devices](https://support.apple.com/en-us/121115).
 Gemini Nano needs one of Google's supported phones. ARM64 Linux computers
-such as a Raspberry Pi are **unknown**: the host image and role images have
-only been built for x86_64 (PL04).
+such as a Raspberry Pi are **unknown**: the host image builds for ARM64 (DX04)
+and Ollama's image is multi-architecture, but the pinned whisper.cpp image is
+x86_64 only and nothing has been qualified on ARM64 (PL04).
 
 ## Using the hardware you already own
 
@@ -104,8 +105,8 @@ their plan's slices.
 | Any old phone with a camera | A camera for Watch my screen through Phone Link, DroidCam, Camo, iVCam or an IP-camera app | Today, on Windows |
 | Old Intel Mac reinstalled with Ubuntu | Linux host for whisper or a small model on the CPU | Today (never run on Mac hardware) |
 | Raspberry Pi or other ARM Linux | Small whisper or Ollama host once the images are built for ARM64 | PL04 |
-| Apple-silicon Mac (16 GB+ ideal, 8 GB works for small models) | Companion with a floating character; host for Ollama/whisper.cpp on the GPU, F5 on MLX, Apple speech, voices and Apple Intelligence | MA02-MA07 |
-| Intel Mac (2018-2020, last macOS is 26) | Companion with cloud thinking; host for CPU whisper, Apple voices, satellite microphone | MA02-MA09 |
+| Apple-silicon Mac (16 GB+ ideal, 8 GB works for small models) | Companion with a floating character; host for Ollama/whisper.cpp on the GPU (built: DX04), later F5 on MLX, Apple speech, voices and Apple Intelligence | DX04 (host), MA03-MA07 |
+| Intel Mac (2018-2020, last macOS is 26) | Companion with cloud thinking; host for CPU whisper (built: DX04), later Apple voices and satellite microphone | DX04 (host), MA03-MA09 |
 | iPhone 15 Pro or later, iPad with M-series | Companion while gaming on it; host for thinking, listening and speaking while the app is open | IO03-IO09 |
 | Older iPhone or iPad on iOS 26 (no Apple Intelligence) | Companion with cloud thinking; host for listening and speaking while the app is open; satellite microphone | IO03-IO10 |
 | Recent Android phone (supported flagship, 8 GB+) | Companion while gaming; host for listening, speaking and LiteRT/llama.cpp thinking with the screen off | AN03-AN10 |
@@ -194,10 +195,11 @@ them count as Linux.
 | Field | Values | Sent by |
 | --- | --- | --- |
 | `method` | `docker`, `native`, `app` (the host runs inside the Martlet app on a Mac, phone or tablet) | every host |
-| `platform` | `linux`, `windows`, `macos`, `ios`, `android` (what the roles run on) | `martlet-host` sends `linux`; app hosts send their own |
+| `platform` | `linux`, `windows`, `macos`, `ios`, `android` (what the roles run on) | `martlet-host` sends `linux`; the Mac host sends `macos`; app hosts send their own |
 | `os_version` | for example `26.1`, `14` | app hosts |
 | `architecture` | `x64`, `arm64` | every host |
 | `features` | up to 16 of `apple-intelligence`, `gemini-nano`, `foreground-only`, `battery` | app hosts |
+| `chip`, `unified_memory`, `gpu_working_set_gb` | for example `Apple M2 Pro`, `true`, `21.3` (Metal's recommended working set, which model suggestions use) | the Mac host (DX04) |
 
 ## Decisions (2026-10-01)
 
@@ -225,6 +227,6 @@ The details are in each plan: [iOS](IOS.md#decisions-2026-10-01),
 | PL01 | Platform catalog, coverage card, guardrails in the Windows app, impact-aware forget/remove, machine report platform fields | Done in this change; device results NOT RUN |
 | PL02 | Use Windows speech, Windows voices and whisper.cpp in conversations (today they can be saved but are refused) | Planned |
 | PL03 | Setup advisor asks about Macs, phones, tablets and old PCs, and recommends jobs for them from this catalog | Planned |
-| PL04 | ARM64 Linux hosts (Raspberry Pi 5 class, Docker Desktop on Apple silicon): host and role images for arm64, then qualification. Shared with MA10 | Planned |
+| PL04 | ARM64 Linux hosts (Raspberry Pi 5 class, Docker Desktop on Apple silicon): host and role images for arm64, then qualification. Shared with MA10 | Host image builds for arm64 (DX04); role images and qualification planned |
 | PL05 | Conversation window shows the coverage card before a turn instead of failing at dispatch | Planned |
 | IO, MA, AN | Platform apps: [iOS](IOS.md#delivery-slices) IO01-IO11, [macOS](MACOS.md#delivery-slices) MA01-MA10, [Android](ANDROID.md#delivery-slices) AN01-AN11 | Planned |
