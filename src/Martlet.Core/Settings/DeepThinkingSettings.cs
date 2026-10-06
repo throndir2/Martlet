@@ -335,9 +335,11 @@ public sealed record DeepThinkingPool(IReadOnlyList<DeepThinkingSpot> Spots)
             if (Spots.Count == 1 || usable.Count == 0) return Spots[0].Plan;
             if (usable.Count == 1) return usable[0].Plan;
             var names = usable.Select(spot => spot.Computer).Distinct(StringComparer.Ordinal).ToArray();
-            return new(true, $"Up to {usable.Count} thinks run at once alongside the conversation, one on each of its places (" +
+            var slots = usable.Sum(spot => spot.Settings.ThinksAtOnce);
+            return new(true, $"Up to {slots} thinks run at once alongside the conversation on its places (" +
                 (names.Length == 1 ? names[0] : $"{string.Join(", ", names[..^1])} and {names[^1]}") +
-                "); each new one goes to the free place that shares least with the conversation.",
+                "); each new one goes to a free place that shares least with the conversation and isn't kept for other work, " +
+                "and waits its turn when all are busy.",
                 Rank: usable.Min(spot => spot.Plan.Rank));
         }
     }
