@@ -296,7 +296,7 @@ internal sealed partial class DiscordService
         var status = Bot.Status;
         var guild = client?.Cache.Guilds.GetValueOrDefault(guildId);
         var nickname = guild?.Users.GetValueOrDefault(status.BotId)?.Nickname;
-        string[] names = [.. new[] { "Martlet", status.BotName, nickname }.OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase)];
+        string[] names = [.. new[] { "Martlet", nickname }.OfType<string>().Concat(Names()).Distinct(StringComparer.OrdinalIgnoreCase)];
         var preferences = Preferences;
         return new(preferences.VoiceChat, names, Humans(client, guildId, channelId, null), status.BotId, id =>
         {

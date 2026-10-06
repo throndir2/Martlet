@@ -291,6 +291,16 @@
       "sha256": "14d7016ad68e7394d6e6b78d96cc2ae431c905287b89674cfdf021e79e62b8ba"
     }
   ],
+  "nativeDownloads": [
+    {
+      "path": "Desktop\\libdave.dll",
+      "archiveUrl": "https://github.com/discord/libdave/releases/download/v1.2.1%2Fcpp/libdave-Windows-X64-boringssl.zip",
+      "archiveSha256": "eb4a7bbcd755b916d306cc6364a64de63c62355296e3779b262f9a6afae8ea2f",
+      "entry": "bin/libdave.dll",
+      "bytes": 1903104,
+      "sha256": "50783c26946dc7699bd2097c3dceab1b65fd61788687d6cc00d9e1262ee8bebe"
+    }
+  ],
   "inno": {
     "version": "7.1.0",
     "url": "https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe",
