@@ -21,7 +21,7 @@ namespace Martlet.Desktop;
 /// <summary>The Companion page's pages: the one place each choice that shapes Martlet is made, listed by group in a side list.
 /// Home and Devices link here. A new page adds its value here (in list order) and one arm each in GroupOf, TabTitle, TabGlyph,
 /// TabIntro and RenderTab.</summary>
-internal enum CompanionTab { Thinking, DeepThinking, Voice, Listening, Vision, LipSync, Character, Personality, Prompts, Lorebook, Memory, People, Replies, Tools, SmartHome }
+internal enum CompanionTab { Thinking, DeepThinking, Voice, Listening, Vision, LipSync, Character, Personality, Prompts, Lorebook, Memory, People, Replies, Tools, Pictures, SmartHome }
 
 /// <summary>The side list's groups, in order: how it works (where each job runs), who it is (look, personality, what it knows)
 /// and what it does (how it answers and acts). A group with no pages yet is not shown.</summary>
@@ -115,6 +115,7 @@ public partial class MainWindow
         CompanionTab.Character or CompanionTab.Personality or CompanionTab.Prompts or CompanionTab.Lorebook or CompanionTab.Memory or CompanionTab.People => CompanionGroup.WhoItIs,
         CompanionTab.Replies => CompanionGroup.WhatItDoes,
         CompanionTab.Tools => CompanionGroup.WhatItDoes,
+        CompanionTab.Pictures => CompanionGroup.WhatItDoes,
         CompanionTab.SmartHome => CompanionGroup.WhatItDoes,
         _ => CompanionGroup.WhatItDoes
     };
@@ -142,6 +143,7 @@ public partial class MainWindow
         CompanionTab.People => "People",
         CompanionTab.Replies => "Replies",
         CompanionTab.Tools => "Tools",
+        CompanionTab.Pictures => "Pictures",
         CompanionTab.SmartHome => "Smart home",
         _ => section.ToString()
     };
@@ -163,6 +165,7 @@ public partial class MainWindow
         CompanionTab.People => "\uE716",
         CompanionTab.Replies => "\uE8F2",
         CompanionTab.Tools => "\uE90F",
+        CompanionTab.Pictures => "\uE8B9",
         CompanionTab.SmartHome => "\uEC26",
         _ => "\uE76E"
     };
@@ -184,6 +187,7 @@ public partial class MainWindow
         CompanionTab.People => "Teach Martlet whose voices it hears and the names they use.",
         CompanionTab.Replies => "Control reply length and creativity.",
         CompanionTab.Tools => "Let Martlet run terminal commands and use MCP tools while you talk, and choose when it must ask first.",
+        CompanionTab.Pictures => "Let Martlet draw pictures when you ask: on your own graphics card with ComfyUI, or with a paid cloud provider.",
         CompanionTab.SmartHome => "Find, set up or install Home Assistant, share it with your other computers, and let Martlet control your home when you ask.",
         _ => ""
     };
@@ -349,6 +353,7 @@ public partial class MainWindow
             case CompanionTab.Replies: RenderRepliesTab(body); break;
             case CompanionTab.DeepThinking: RenderDeepThinkingTab(body); break;
             case CompanionTab.Tools: RenderToolsTab(body); break;
+            case CompanionTab.Pictures: RenderPicturesTab(body); break;
             case CompanionTab.SmartHome: RenderSmartHomeTab(body); break;
             default: throw new UnreachableException($"The Companion page {section} has no content.");
         }

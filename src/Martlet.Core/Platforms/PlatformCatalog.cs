@@ -349,6 +349,13 @@ public static class PlatformCatalog
             Impossible(Ios, Host, "singing needs an NVIDIA GPU; iPhones and iPads have none"),
             Impossible(Android, Host, "singing needs an NVIDIA GPU; phones and tablets have none")
         ]),
+        new("pictures", Feature, "Pictures: ComfyUI with Z-Image Turbo",
+        [
+            Works(Linux, Host, "", Nvidia8), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia8),
+            Impossible(Mac, Host, "the pictures worker is built for NVIDIA CUDA"),
+            Impossible(Ios, Host, "pictures need an NVIDIA GPU; iPhones and iPads have none"),
+            Impossible(Android, Host, "pictures need an NVIDIA GPU; phones and tablets have none")
+        ]),
         new("f5-mlx", ClusterJobs.Speaking, "F5 voice cloning on a Mac (MLX)",
         [
             Planned(Mac, Host, "MA03", "serves the existing F5 route; 16 GB+ suggested", AppleSilicon),
@@ -470,6 +477,7 @@ public static class PlatformCatalog
         "gpt-sovits" => "gpt-sovits",
         "dia" => "dia",
         "singing" => "singing",
+        "pictures" => "pictures",
         "audio2face" => "audio2face",
         _ => null
     };

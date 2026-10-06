@@ -32,7 +32,8 @@ public enum GatewayInferenceKind
     PerceptionVlm,
     Audio2Face,
     Transcription,
-    Song
+    Song,
+    Picture
 }
 
 public enum GatewayInferenceEventKind
@@ -545,6 +546,56 @@ public sealed partial class GatewayInferenceRoute
     /// <summary>At most this much PCM (base64 in the event's JSON text) per event of a <c>result</c> page.</summary>
     public const int SongMaximumEventPcmBytes = 96_000;
 
+    /// <summary>
+    /// The pictures host role's ComfyUI relay (<c>workers/pictures</c>): one request is one bounded ComfyUI API operation.
+    /// <c>prompt</c> submits an API-format workflow, <c>history</c> and <c>queue</c> mirror ComfyUI, <c>view</c> pages one
+    /// output image as JSON text events, <c>cancel</c> deletes or interrupts a prompt, and <c>status</c> reports readiness,
+    /// provisioned models, devices and queue counts. No path or URL is accepted from the client.
+    /// </summary>
+    public static GatewayInferenceRoute Picture(
+        string destinationId,
+        string workerId,
+        string modelId,
+        string modelRevision,
+        string modelSha256)
+    {
+        GatewayRules.Token(modelId, 128);
+        GatewayRules.Token(modelRevision, 128);
+        GatewayRules.Sha256(modelSha256);
+        return new(
+            GatewayInferenceKind.Picture,
+            GatewayRole.Voice,
+            PictureRouteId,
+            PicturePath,
+            PictureContractId,
+            PictureContractVersion,
+            destinationId,
+            workerId,
+            "1.0.0",
+            modelId,
+            modelRevision,
+            modelSha256,
+            IdentityDigest(PictureContractId, PictureContractVersion, workerId, modelId, modelRevision, modelSha256),
+            maximumRequestBytes: PictureMaximumPromptBytes + 4 * 1024,
+            maximumInputBytes: PictureMaximumPromptBytes,
+            maximumOutputBytes: PictureMaximumPageBytes * 4 / 3 + 64 * 1024,
+            maximumEventBytes: PictureMaximumEventImageBytes * 4 / 3 + 8 * 1024,
+            maximumEvents: PictureMaximumPageBytes / PictureMaximumEventImageBytes + 16,
+            maximumStreamBytes: 8 * 1024 * 1024,
+            maximumDuration: TimeSpan.FromSeconds(60),
+            GatewayCancellationCapability.RequestAbort);
+    }
+
+    public const string PictureRouteId = "martlet.gateway.picture.v1";
+    public const string PicturePath = "/martlet/v1/inference/picture";
+    public const string PictureContractId = "martlet.picture-relay";
+    public const string PictureContractVersion = "1.0";
+    public const int PictureMaximumPromptBytes = 256 * 1024;
+    public const int PictureMaximumHistoryBytes = 512 * 1024;
+    public const int PictureMaximumPageBytes = 3 * 1024 * 1024;
+    public const int PictureMaximumFileBytes = 32 * 1024 * 1024;
+    public const int PictureMaximumEventImageBytes = 180_000;
+
     private static GatewayCancellationCapability Map(F5CancellationCapability capability) =>
         capability switch
         {
@@ -841,6 +892,51 @@ public sealed record GatewaySongStart(string Lyrics, string Style, int DurationS
     public override string ToString() => "Gateway song start (content omitted)";
 }
 
+public enum GatewayPictureOperation
+{
+    Status,
+    Prompt,
+    History,
+    Queue,
+    View,
+    Cancel,
+    Free
+}
+
+/// <summary>One bounded operation against the host's ComfyUI API relay.</summary>
+public sealed class GatewayPicturePayload : GatewayInferencePayload
+{
+    internal GatewayPicturePayload(
+        GatewayPictureOperation operation,
+        JsonElement? prompt = null,
+        string? promptId = null,
+        string? filename = null,
+        string? subfolder = null,
+        string? imageType = null,
+        long offset = 0,
+        int maximum = 0)
+    {
+        Operation = operation;
+        Prompt = prompt;
+        PromptId = promptId;
+        Filename = filename;
+        Subfolder = subfolder;
+        ImageType = imageType;
+        Offset = offset;
+        Maximum = maximum;
+    }
+
+    public GatewayPictureOperation Operation { get; }
+    public JsonElement? Prompt { get; }
+    public string? PromptId { get; }
+    public string? Filename { get; }
+    public string? Subfolder { get; }
+    public string? ImageType { get; }
+    public long Offset { get; }
+    public int Maximum { get; }
+    internal override void Clear() { }
+}
+
 public sealed class GatewayInferenceRequest
 {
     internal GatewayInferenceRequest(
@@ -1102,6 +1198,10 @@ public interface ISongGatewayInferenceWorker : IGatewayInferenceWorker
 {
 }
 
+public interface IPictureGatewayInferenceWorker : IGatewayInferenceWorker
+{
+}
+
 internal static class GatewayInferenceEventValidator
 {
     internal static void Validate(
@@ -1149,12 +1249,12 @@ internal static class GatewayInferenceEventValidator
             case GatewayInferenceEventKind.TextDelta:
                 GatewayRules.Require(
                     request.Route.Kind is GatewayInferenceKind.OllamaChat or GatewayInferenceKind.Transcription
-                        or GatewayInferenceKind.Song &&
+                        or GatewayInferenceKind.Song or GatewayInferenceKind.Picture &&
                     payloadLength > 0 &&
                     item.ErrorCode is null &&
                     IsUtf8(item.Payload.Span) &&
                     HasNoF5Metadata(item) &&
-                    (request.Route.Kind != GatewayInferenceKind.Song || IsJsonObject(item.Payload)),
+                    (request.Route.Kind is not (GatewayInferenceKind.Song or GatewayInferenceKind.Picture) || IsJsonObject(item.Payload)),
                     "stream.invalid");
                 break;
             case GatewayInferenceEventKind.AudioFrame:
@@ -1383,6 +1483,7 @@ internal static class GatewayInferenceEventValidator
                     // No text means no speech was recognized; that is a completed transcription.
                     break;
                 case GatewayInferenceKind.Song:
+                case GatewayInferenceKind.Picture:
                     GatewayRules.Require(dataEvents > 0, "stream.invalid");
                     break;
             }

@@ -186,6 +186,13 @@
                                         </TextBox.Template>
                                     </TextBox>
                                 </Border>
+                                <!-- A picture Martlet shows (draw_picture or perform_creation). Click to open it full size. -->
+                                <Border x:Name="PictureFrame" Visibility="Collapsed" CornerRadius="12" Margin="0,6,0,0" ClipToBounds="True"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" HorizontalAlignment="Left">
+                                    <Image Source="{Binding Picture}" MaxWidth="420" MaxHeight="420" Stretch="Uniform" Cursor="Hand"
+                                           RenderOptions.BitmapScalingMode="HighQuality" MouseLeftButtonUp="Picture_Click"
+                                           AutomationProperties.AutomationId="LivePicture" AutomationProperties.Name="{Binding Text}"/>
+                                </Border>
                                 <TextBlock x:Name="NoteText" Text="{Binding Note}" Style="{DynamicResource Muted}" FontSize="12" Margin="6,4,6,0"/>
                             </StackPanel>
                             <DataTemplate.Triggers>
@@ -222,6 +229,9 @@
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding HasNote}" Value="False">
                                     <Setter TargetName="NoteText" Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding HasPicture}" Value="True">
+                                    <Setter TargetName="PictureFrame" Property="Visibility" Value="Visible"/>
                                 </DataTrigger>
                             </DataTemplate.Triggers>
                         </DataTemplate>

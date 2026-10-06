@@ -655,6 +655,41 @@ internal static class GatewayClientJson
         return payload;
     }
 
+    private static Dictionary<string, object?> PicturePayload(GatewayPicturePayload picture)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["operation"] = picture.Operation switch
+            {
+                GatewayPictureOperation.Status => "status",
+                GatewayPictureOperation.Prompt => "prompt",
+                GatewayPictureOperation.History => "history",
+                GatewayPictureOperation.Queue => "queue",
+                GatewayPictureOperation.View => "view",
+                GatewayPictureOperation.Free => "free",
+                _ => "cancel"
+            }
+        };
+        switch (picture.Operation)
+        {
+            case GatewayPictureOperation.Prompt:
+                payload["prompt"] = picture.Prompt ?? throw new GatewayProtocolException("request.invalid");
+                break;
+            case GatewayPictureOperation.History:
+            case GatewayPictureOperation.Cancel:
+                payload["prompt_id"] = picture.PromptId;
+                break;
+            case GatewayPictureOperation.View:
+                payload["filename"] = picture.Filename;
+                payload["subfolder"] = picture.Subfolder ?? "";
+                payload["type"] = picture.ImageType;
+                payload["offset"] = picture.Offset;
+                payload["maximum"] = picture.Maximum;
+                break;
+        }
+        return payload;
+    }
+
     internal static byte[] Request(GatewayInferenceRequest request)
     {
         object payload = request.Payload switch
@@ -686,6 +721,7 @@ internal static class GatewayClientJson
                 pcm_base64 = Convert.ToBase64String(speech.Pcm.Span)
             },
             GatewaySongPayload song => SongPayload(song),
+            GatewayPicturePayload picture => PicturePayload(picture),
             _ => throw new GatewayProtocolException("request.invalid")
         };
         var document = new Dictionary<string, object?>
