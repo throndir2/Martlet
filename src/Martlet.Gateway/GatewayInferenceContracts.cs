@@ -72,7 +72,8 @@ public sealed partial class GatewayInferenceRoute
         int maximumStreamBytes,
         TimeSpan maximumDuration,
         GatewayCancellationCapability cancellation,
-        PerceptionWorkerIdentity? perceptionIdentity = null)
+        PerceptionWorkerIdentity? perceptionIdentity = null,
+        int maximumConcurrency = 1)
     {
         GatewayRules.Defined(kind);
         GatewayRules.Defined(requiredRole);
@@ -98,6 +99,10 @@ public sealed partial class GatewayInferenceRoute
             maximumDuration > TimeSpan.Zero &&
             maximumDuration <= GatewayInferenceProtocol.MaximumJobDuration, "worker.invalid");
         GatewayRules.Defined(cancellation);
+        // Only the Deep thinking role's own Ollama runs several requests at once (its OLLAMA_NUM_PARALLEL slots).
+        GatewayRules.Require(maximumConcurrency == 1 || kind == GatewayInferenceKind.OllamaChat &&
+            routeId == Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId &&
+            maximumConcurrency is > 1 and <= Martlet.Core.Settings.SelfHostSetup.DeepThinkingMaximumSlots, "worker.invalid");
 
         Kind = kind;
         RequiredRole = requiredRole;
@@ -121,6 +126,7 @@ public sealed partial class GatewayInferenceRoute
         MaximumDuration = maximumDuration;
         Cancellation = cancellation;
         PerceptionIdentity = perceptionIdentity;
+        MaximumConcurrency = maximumConcurrency;
     }
 
     public GatewayInferenceKind Kind { get; }
@@ -143,20 +149,23 @@ public sealed partial class GatewayInferenceRoute
     public int MaximumEvents { get; }
     public int MaximumStreamBytes { get; }
     public TimeSpan MaximumDuration { get; }
-    public int MaximumConcurrency => 1;
+    /// <summary>How many requests the route's worker runs at once: one, or the Deep thinking role's slots.</summary>
+    public int MaximumConcurrency { get; }
     public bool Streaming => true;
     public GatewayCancellationCapability Cancellation { get; }
     internal PerceptionWorkerIdentity? PerceptionIdentity { get; }
 
     /// <summary>A host's own loopback Ollama: the conversation model (<c>ollama</c> role), or with <paramref name="deepThinking"/>
-    /// the deep-thinking role's second Ollama, which has its own route and path but the same native-chat contract.</summary>
+    /// the deep-thinking role's second Ollama, which has its own route and path but the same native-chat contract and runs
+    /// <paramref name="slots"/> thinks at once (its OLLAMA_NUM_PARALLEL).</summary>
     public static GatewayInferenceRoute OllamaChat(
         string destinationId,
         string workerId,
         OllamaChatModelSelection selection,
         string modelRevision,
         string modelSha256,
-        bool deepThinking = false)
+        bool deepThinking = false,
+        int slots = 1)
     {
         ArgumentNullException.ThrowIfNull(selection);
         GatewayRules.Token(modelRevision, 128);
@@ -189,7 +198,8 @@ public sealed partial class GatewayInferenceRoute
             maximumStreamBytes: 4 * 1024 * 1024,
             // A reply's own deadline is far shorter; a background think (think_longer) may take up to fifteen minutes.
             maximumDuration: GatewayInferenceProtocol.MaximumJobDuration,
-            GatewayCancellationCapability.RequestAbort);
+            GatewayCancellationCapability.RequestAbort,
+            maximumConcurrency: slots);
     }
 
     public static GatewayInferenceRoute F5Synthesis(

@@ -57,6 +57,9 @@ public static class SelfHostSetup
     /// native-chat contract as <see cref="OllamaRouteId"/>, so a host can think things over beside the conversation's model.</summary>
     public const string DeepThinkingRouteId = "martlet.gateway.deep-thinking-chat.v1";
     public const string DeepThinkingPath = "/martlet/v1/inference/deep-thinking-chat";
+    /// <summary>The most thinks a host's Deep thinking role runs at once (its Ollama's <c>OLLAMA_NUM_PARALLEL</c>, advertised as
+    /// the route's maximum concurrency); each one beyond the first takes another context's worth of graphics memory.</summary>
+    public const int DeepThinkingMaximumSlots = 4;
     public const string F5RouteId = "martlet.gateway.f5-synthesis.v1";
     public const string SttRouteId = "martlet.gateway.transcription.v1";
     public const string OllamaContractId = "ollama-native-chat-v034-text";
