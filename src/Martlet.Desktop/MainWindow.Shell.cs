@@ -951,7 +951,7 @@ public partial class MainWindow
 
     private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
         HardwareStore?.Load() ?? [], homeHosts, hostUpdates.Notes, HostUsers(), clusterEnabled ? clusterPlan : null, OtherComputers(),
-        DeepThinkingHosts());
+        DeepThinkingHosts(), HostOutsideFacts());
 
     /// <summary>The paired computers whose Deep thinking role this PC thinks with, while Deep thinking is on.</summary>
     private IReadOnlyCollection<string>? DeepThinkingHosts() =>
@@ -1514,6 +1514,7 @@ public partial class MainWindow
             case NodeAction.PrepareComputer: OpenPrepare(null, PrepareStart.Status); break;
             case NodeAction.MakeHostPc: RequestRoleAsync(argument, DeviceRole.Host).Forget(); break;
             case NodeAction.MakeCompanionPc: RequestRoleAsync(argument, DeviceRole.Companion).Forget(); break;
+            case NodeAction.OutsideAccess: if (FindHost(argument) is { } exposed) EditHostExposureAsync(exposed).Forget(); break;
         }
     }
 

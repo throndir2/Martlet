@@ -58,7 +58,7 @@ internal static class SongsCheck
             kind = new
             {
                 name = SongTools.Kind.Name, maxActive = SongTools.Kind.MaxActive, perHour = SongTools.Kind.MaxPerHour,
-                timeLimitMinutes = SongTools.Kind.TimeLimit.TotalMinutes, offer = SongTools.Kind.Offer, doing = SongTools.Kind.Doing
+                timeLimitMinutes = SongTools.Kind.TimeLimit?.TotalMinutes, offer = SongTools.Kind.Offer, doing = SongTools.Kind.Doing
             },
             tools = SongTools.Definitions.Select(tool => new
             {

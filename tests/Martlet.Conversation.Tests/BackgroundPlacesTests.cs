@@ -84,8 +84,8 @@ public sealed class BackgroundPlacesTests
     public void The_tool_says_how_many_think_at_once_from_the_settings()
     {
         var settings = new ThinkLongerSettings();
-        Assert.Contains("One at a time, 6 an hour.", ThinkLonger.Description(settings), StringComparison.Ordinal);
-        Assert.Contains("Up to 3 at once, 6 an hour.", ThinkLonger.Description(settings, 3), StringComparison.Ordinal);
+        Assert.Contains("One at a time.", ThinkLonger.Description(settings), StringComparison.Ordinal);
+        Assert.Contains("Up to 3 at once.", ThinkLonger.Description(settings, 3), StringComparison.Ordinal);
         Assert.Equal(ThinkLonger.MaxPlaces, ThinkLonger.Kind(settings, 50).MaxActive);
         Assert.Equal(1, ThinkLonger.Kind(settings, 0).MaxActive);
     }

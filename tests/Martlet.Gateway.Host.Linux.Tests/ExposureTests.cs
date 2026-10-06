@@ -17,12 +17,12 @@ public sealed class ExposureTests
 
         using var shown = new StringWriter();
         Assert.Equal(0, await Run(platform, shown));
-        Assert.Contains("outside addresses: none; pairing from outside home: refused", shown.ToString());
+        Assert.Contains("outside addresses: none; pairing codes from outside home: refused", shown.ToString());
 
         using var set = new StringWriter();
         Assert.Equal(0, await Run(platform, set, "--outside", "GPU-Box.tailnet.ts.net:9443", "--outside", "100.101.102.103:9443",
             "--allow-pairing-outside-home", "yes"));
-        Assert.Contains("now has outside addresses: gpu-box.tailnet.ts.net:9443, 100.101.102.103:9443; pairing from outside home: allowed",
+        Assert.Contains("now has outside addresses: gpu-box.tailnet.ts.net:9443, 100.101.102.103:9443; pairing codes from outside home: allowed",
             set.ToString());
         Assert.True(platform.Fs.Parent.Children.ContainsKey("exposure.json"));
 
@@ -40,7 +40,7 @@ public sealed class ExposureTests
 
         using var cleared = new StringWriter();
         Assert.Equal(0, await Run(platform, cleared, "--clear-outside", "--treat-all-as-outside", "yes"));
-        Assert.Contains("outside addresses: none; pairing from outside home: allowed; treat every connection as outside home: yes", cleared.ToString());
+        Assert.Contains("outside addresses: none; pairing codes from outside home: allowed; treat every connection as outside home: yes", cleared.ToString());
     }
 
     [Theory]

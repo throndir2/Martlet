@@ -692,9 +692,11 @@ throwaway certificate) on `127.0.0.1`, a desktop that pairs while at home
 through its paired client, then the host told to treat every connection as
 outside home, and a stranger's pinned HTTPS client. It runs
 `src\Martlet.NodeLinkCheck` (mode `exposure`, `ExposureRehearsal.cs`) and returns
-`{exitCode, report}` like `network_selftest`. Its steps: a pairing card used
-from outside is refused (`pair.outside_home`) and stays open; once the owner
-allows pairing from outside the same card pairs; five failed requests lock the
+`{exitCode, report}` like `network_selftest`. Its steps: a typed pairing code
+used from outside is refused (`pair.outside_home`, also as the desktop's code
+pairing sees it) and stays open; a one-use card opened for one named device
+pairs from outside without the opt-in; once the owner allows typed codes from
+outside the same code pairs; five failed requests lock the
 address out (`auth.throttled`, `Retry-After` 1 s) and the next failure doubles
 it, after which the paired desktop's signed requests work again; liveness
 answers 120 requests a minute per outside address; and the paired desktop reads
@@ -1095,7 +1097,12 @@ an automatic `update` stops with `MARTLET-BUSY` naming all three adds; a
 waiting `--yes update` holds back a role change asked for after it
 (`later-change-waits-for-update`); once the adds are killed every waiting
 change continues (`waiting-changes-continue`); and no records are left in
-`engine.holders/` (`ended-changes-leave-no-records`). The desktop's reader
+`engine.holders/` (`ended-changes-leave-no-records`). With a fake `dotnet` and
+`systemctl`, `exposure` without options asks the gateway once and restarts
+nothing (`exposure-prints`), with options and no `--yes` or terminal it stops
+with *Nothing changed.* (`exposure-asks-first`), and `--yes exposure --outside
+... --treat-all-as-outside yes` passes exactly those options to the gateway's
+`owner-exposure` and restarts it (`exposure-saves-and-restarts`). The desktop's reader
 (`HostEngineBusy.Read`) reads the engine's real busy line. It then checks the
 Docker method's launcher and engine against a fake `docker` CLI (state in
 `/tmp/fake`): an automatic `setup` while an `add` engine session runs in the
@@ -2135,7 +2142,7 @@ Ollama relay) is checked by `OllamaRelayTests`; real cloud providers are NOT RUN
 `think_longer_status` shows Companion › **Deep thinking** as replies use it
 (optional absolute `dataDirectory`, default the current user's): `settings`,
 `thinkLonger` (`enabled`, on by default and turned off by *Where it thinks* ›
-*Off*; `effort` *Medium* or *High*; `minutes` 2, 5 or 10; `perHour` 3, 6 or 12;
+*Off*; `effort` *Medium* or *High*; `timeLimit` and `hourlyLimit` *none*;
 `delivery` *WhenFree* or *NextMessage*; `chosen`), `thinking` (the Thinking
 route's `routeType`, `model`, `supportsTools`, `toolsRejected` from
 `tools-unsupported.json`, `offered` (only where Deep thinking can run),
@@ -2210,7 +2217,10 @@ next message carry it too. `limits`: one think at a time (the second is refused
 with what the model is told) beside a song job, the user's Cancel (mentioned
 only with the next message, kept when that reply didn't happen), the time limit
 (`TimedOut`), the hourly limit, Martlet's own cancel (nothing to bring up) and
-the conversation ending (dropped). `plans`: the production `DeepThinkingPlan`
+the conversation ending (dropped), all on a fixture kind with limits; and
+`deepThinkingUnlimited`: Deep thinking's own kind has no time or hourly limit
+(`timeLimit`/`hourlyLimit` *none*, 20 thinks `startedInARow`, one still running
+past the fixture's time limit, `requestTimeHours` 24). `plans`: the production `DeepThinkingPlan`
 for thirteen setups (Same as Thinking with Thinking on this PC, on OpenRouter or
 on a paired computer; OpenRouter with Thinking local; Ollama on this PC with
 another model or Thinking's own beside Thinking local, or with the voice on
@@ -2587,6 +2597,14 @@ than this PC, its status *Update available* is a button,
 `SelectedDeviceHealthAction` (returned: its status and what it does, for
 example *Update available: Update to Martlet 0.40.0*); clicking it runs the
 same update as `NodeAction-UpdateHost`, so it needs `--allow-ui-effects`. For a
+paired host Martlet manages (this PC's host service, or one over SSH), `SelectedDeviceOutside`
+(in *Details*) returns its outside access in counts and choices only (*2 outside
+addresses; pairing codes from outside home refused; every connection treated as
+outside home.*), and `NodeAction-OutsideAccess` opens the *Outside access* dialog
+(`HostInput-addresses`, `HostInput-allowCodes`, `HostInput-treatAll`, on by
+default for Docker hosts; `HostInputCancel` closes it, `HostInputOk` runs
+`martlet-host exposure` and restarts the host's gateway, so it needs
+`--allow-ui-effects`). For a
 paired host, `SelectedDeviceRelease` (in *Details*) returns its Martlet release
 as this PC knows it, kept current by the release every host announces on each
 network sync (`0.22.0, up to date`, `Needs update from 0.21.0 to 0.22.0`), and
@@ -3620,11 +3638,12 @@ runs on this PC and can't think something over while it answers you. ...*,
 does none of the conversation's jobs, so a think runs there alongside the
 conversation.*), `ThinkLongerStatus`
 (*On. When a task needs it, Martlet says it'll think it over and works on it in
-the background (Medium effort, up to 5 minutes, at most 6 an hour) while you keep
+the background (Medium effort, no time limit, no limit on how many) while you keep
 talking, then brings it up as soon as it's free.*, *Off. ...*, or what keeps it
 from working: no Thinking, a paired host's model, a model that turned tools
-down, nowhere to think in parallel) and the choices `ThinkLongerEffort`,
-`ThinkLongerTime`, `ThinkLongerPerHour` and `ThinkLongerDelivery` (returned;
+down, nowhere to think in parallel) and the choices `ThinkLongerEffort` and
+`ThinkLongerDelivery` (returned; a think has no time limit or hourly limit, so
+there is no choice for either;
 `ui_select` on them saves the reply settings, so it needs
 `--allow-ui-effects`); *Where it thinks* with the passive options
 `DeepPlace-Off`, `DeepPlace-Same`, `DeepPlace-Computer`, `DeepPlace-ThisPc` and

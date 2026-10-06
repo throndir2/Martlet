@@ -27,8 +27,23 @@ public sealed class GenerationSettingsTests
         Assert.Throws<ContractException>(() => (settings with { Generation = new GenerationSettings() }).Validate());
     }
 
+    [Fact]
+    public void Old_deep_thinking_time_and_hourly_limits_still_load_and_are_dropped()
+    {
+        // Older versions saved a time limit (2, 5 or 10 minutes) and an hourly limit (3, 6 or 12); a think has neither now.
+        var old = CompanionSettings.Begin(null) with
+        {
+            Generation = new() { ThinkLonger = new() { Minutes = 10, PerHour = 3, Effort = ThinkEffort.High } }
+        };
+        var json = Encoding.UTF8.GetString(ContractJson.Write(old));
+        var read = SettingsJson.Read(Encoding.UTF8.GetBytes(json));
+        read.Generation!.ThinkLonger!.Validate();
+        var normalized = ThinkLongerSettings.Normalize(read.Generation.ThinkLonger);
+        Assert.Equal(new ThinkLongerSettings { Effort = ThinkEffort.High }, normalized);
+        Assert.Null(ThinkLongerSettings.Normalize(new ThinkLongerSettings { Minutes = 7, PerHour = 100 }));
+    }
+
     [Theory]
-    [InlineData(2.5, null, null, null)]
     [InlineData(null, 0.0, null, null)]
     [InlineData(null, null, 8, null)]
     [InlineData(null, null, 2048, 2048)]

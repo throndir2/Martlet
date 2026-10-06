@@ -255,17 +255,18 @@ pinned key and `GET /health/live`, without a credential.
 
 **The gateway's guard** (`GatewayGuard.cs`), always on:
 
-- Requests are classed by route: `health` (liveness), `pair` (pairing cards and
-  typed codes), `join` (a member desktop's signed key), `signin` (sign-in
+- Requests are classed by route: `health` (liveness), `pair` (one-use cards),
+  `pair-code` (typed codes), `join` (a member desktop's signed key), `signin` (sign-in
   points) and `credential` (everything signed or with an API key). The source
   is the connection's address, never a forwarded header: `loopback`, `home`
   (private and link-local addresses) or `outside` (anything else, including
   overlay addresses such as Tailscale's 100.64.0.0/10).
-- **Pairing stays at home.** A pairing card or typed code used from outside
+- **Typed codes stay at home.** A short typed pairing code used from outside
   home is refused (`pair.outside_home`, 403) unless the owner turns on *Allow
-  pairing from outside home*; a short code can be guessed over the internet.
-  Joining and pairing by itself use the desktop's network key, which can't be
-  guessed, so they work from anywhere. Enrolling a new laptop from outside is
+  typed pairing codes from outside home*; a short code could be guessed over
+  the internet. A one-use card opened for one named device (a 32-byte token, as
+  Martlet uses to pair with its own host service), joining and pairing by itself
+  (the desktop's network key) can't be guessed, so they work from anywhere. Enrolling a new laptop from outside is
   what sign-in is for.
 - **Lockout.** Failed authentication (`auth.*`, `pairing.*`, `network.denied`,
   `key.*`, sign-in failures) counts per route class and source address, and for
@@ -291,9 +292,25 @@ pinned key and `GET /health/live`, without a credential.
   (`IGatewayRequestGuard.TryAdmit` and `Record`).
 
 Exposure choices (`GatewayExposure`): *internet reachable* (limits apply to
-every source), *allow pairing from outside home* (off by default) and *treat
-every connection as outside home* (for a host behind a port proxy or TCP relay
-that hides the real source).
+every source), *allow typed pairing codes from outside home* (off by default)
+and *treat every connection as outside home* (for a host behind a port proxy or
+TCP relay that hides the real source, such as a gateway Docker publishes).
+
+**This PC's host service and other hosts Martlet manages.** On the Devices map,
+select this PC (or a host Martlet reaches over SSH) and choose **Outside access**
+(`NodeAction-OutsideAccess`): outside addresses, *Allow typed pairing codes from
+outside home* and *Treat every connection as coming from outside home*. Martlet
+runs `martlet-host exposure` there (`--outside`, `--clear-outside`,
+`--allow-pairing-outside-home`, `--treat-all-as-outside`), which saves
+`exposure.json` through the gateway and restarts it; the network's next sync
+signs the addresses into the roster. Docker publishes the gateway's port, so a
+Docker host sees every connection, from home or outside, as coming from Docker's
+own address: the dialog keeps *Treat every connection as coming from outside
+home* on for Docker hosts. Then typed pairing codes need *Allow typed pairing
+codes from outside home* even at home; Martlet pairing with its own host
+service (a one-use card) doesn't. The Devices map's *Outside home* detail
+(`SelectedDeviceOutside`) shows the count of outside addresses and, once read
+from the host, its two choices.
 
 ## Joining from outside home by signing in
 
