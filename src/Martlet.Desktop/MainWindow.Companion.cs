@@ -1524,7 +1524,28 @@ public partial class MainWindow
         var shown = await captions.PreviewAsync("Hi! While I talk, what I say shows up here.");
         if (closing) return;
         ShowSpeechDisplay(shown is null ? "Couldn't show the preview. Show the character and try again."
-            : $"Preview shown {BubbleWhere(shown)}.");
+            : $"Preview shown {BubbleWhere(shown)}" +
+              $"{BubbleTheme(shown, SelectedTheme.Name(), key => TryFindResource(key) as System.Windows.Media.Brush, SystemParameters.HighContrast)}.");
+    }
+
+    /// <summary>Whether the shown bubble is drawn in the palette Martlet's windows use now (<paramref name="brush"/> by resource
+    /// key): its fill, outline, text and halo are the palette's Surface, Accent, Text and Glow (no halo in high contrast).
+    /// Empty when the overlay didn't say which colors it used.</summary>
+    internal static string BubbleTheme(RendererBubble bubble, string palette, Func<string, System.Windows.Media.Brush?> brush, bool highContrast)
+    {
+        if (bubble.Colors is not { } drawn) return "";
+        var differing = new List<string>();
+        void Check(string part, string? actual, string? role)
+        {
+            var expected = role is null ? null
+                : brush(role + "Brush") is System.Windows.Media.SolidColorBrush solid ? $"#{solid.Color.R:X2}{solid.Color.G:X2}{solid.Color.B:X2}" : "";
+            if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase)) differing.Add($"{part} {actual ?? "none"}");
+        }
+        Check("fill", drawn.Fill, "Surface");
+        Check("outline", drawn.Outline, "Accent");
+        Check("text", drawn.Text, "Text");
+        Check("halo", drawn.Halo, highContrast ? null : "Glow");
+        return differing.Count == 0 ? $", in the {palette} colors" : $", but not in the {palette} colors ({string.Join(", ", differing)})";
     }
 
     internal static string BubbleWhere(RendererBubble bubble) => bubble.Placement switch

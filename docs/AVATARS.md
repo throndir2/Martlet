@@ -78,7 +78,11 @@ what each one is.
   `{tag}`. The tags are removed from the chat, captions and the voice, and the
   character acts each one where it was written: timed within its sentence as
   it plays, after the last sentence for a tag at the end, or at once for a reply
-  that isn't spoken. An expression shows for at least 4 seconds and until its
+  that isn't spoken. A tag written another way counts too (`[nod]`, `(nod)`,
+  `*nods*` or `[shakes head]`; see
+  [other spellings](CONVERSATION.md#voice-tags)), and the talk window notes
+  under the reply what it set off (*Emotes: nod, blush.*, with any tone or
+  sound the voice made). An expression shows for at least 4 seconds and until its
   sentence ends (at most 12 seconds) unless another replaces it; motions and
   gestures play once. VRM has no motions of its own (VRMA isn't supported), so
   it uses its expressions and the gestures.
@@ -160,7 +164,8 @@ Opening Setup temporarily hides the character and restores it afterwards.
 
 Settings › Appearance can color Martlet after the character this PC shows: the
 *Character light/dark* palettes come from the colors of its textures by
-Martlet's rules. The overlay's menus and speech bubble follow the palette too ([Character palettes](UI_DESIGN.md#character-palettes)).
+Martlet's rules. The overlay's menus and speech bubble follow the palette too, the bubble wholly (fill, outline, text and
+halo; [Character palettes](UI_DESIGN.md#character-palettes)).
 
 The **Advanced** section holds the Audio2Face endpoint used by Automatic mode and
 the Audio2Face-only lane: inspect actual targets, use the mapping helper and

@@ -111,8 +111,9 @@ public partial class MainWindow
             bargeIn.Checked += (_, _) => SaveTalk(Talk with { BargeIn = true });
             bargeIn.Unchecked += (_, _) => SaveTalk(Talk with { BargeIn = false });
             children.Add(bargeIn);
-            var bargeInAbout = Note("Optional, off by default: Martlet doesn't listen while it speaks, and Stop (or Esc) in the talk window " +
-                "interrupts it. Turn this on and Martlet keeps listening while it speaks; talking over it with real words stops the reply " +
+            var bargeInAbout = Note("Optional, off by default. Either way Martlet keeps listening while it speaks (with Reduce echo from " +
+                "my speakers on) and answers what you said once it finishes; Stop (or Esc) in the talk window interrupts it. Turn this " +
+                "on and talking over it with real words stops the reply " +
                 "and answers what you say: a word like \"stop\" or \"wait\" (or Martlet's name) right away, otherwise a few words. A hum, a " +
                 "cough, laughter, a quick \"yeah\" or \"mm-hmm\" and what this PC plays never stop it. With Parakeet on this PC as Listening, " +
                 "Martlet checks your words while you talk; otherwise once you pause. " +
@@ -151,7 +152,7 @@ public partial class MainWindow
 
     /// <summary>Companion › Listening › Reduce echo from my speakers (on by default): while the microphone listens, Martlet also
     /// reads what this PC plays and removes it from the microphone, so on speakers it doesn't hear its own voice, a video or music
-    /// as you talking. The status line says how the last listen went.</summary>
+    /// as you talking, and always listening can go on while Martlet speaks. The status line says how the last listen went.</summary>
     private Border EchoCard()
     {
         var reduce = new CheckBox { Content = "Reduce echo from my speakers", IsChecked = Talk.ReduceEcho, Margin = new Thickness(0, 0, 0, 6) };
@@ -163,8 +164,9 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(status, "TalkReduceEchoStatus");
         return Card(Heading("Speakers and echo"), reduce, status,
             Note("While the microphone listens, Martlet also hears what this PC plays (its own voice, videos, music) and removes " +
-                "that from the microphone first, so it works without headphones. That sound is only used to cancel the echo, on this " +
-                "PC; it is never saved or sent.", new Thickness(0, 0, 0, 0)));
+                "that from the microphone first, so it works without headphones and keeps listening to you while it speaks. Without " +
+                "it (or when it can't run), always listening pauses while Martlet speaks so it doesn't hear itself. That sound is " +
+                "only used to cancel the echo, on this PC; it is never saved or sent.", new Thickness(0, 0, 0, 0)));
     }
 
     internal static (string Text, bool Problem) EchoStatus(bool on, EchoReductionReport? report) => !on

@@ -42,6 +42,11 @@ internal sealed class RendererWindow : Window
     // shown text then returns its old size (an empty bubble) and the next speech would overflow a tiny bubble.
     private readonly TextBlock speechMeasure = SpeechText();
     private readonly System.Windows.Shapes.Path speechShape = new() { StrokeThickness = 2, StrokeLineJoin = PenLineJoin.Round };
+    // The bubble's soft halo takes the palette's Glow, like the halos behind Martlet's mascot; Windows' high contrast drops it.
+    private readonly System.Windows.Media.Effects.DropShadowEffect speechHalo = new()
+    {
+        BlurRadius = 18, ShadowDepth = 2, Direction = 270, Opacity = 0.9
+    };
     private readonly Canvas speechCanvas = new();
     private readonly ScaleTransform speechPop = new(1, 1);
     private RendererSay speechPlacement = new(null);
@@ -151,6 +156,8 @@ internal sealed class RendererWindow : Window
         if (palette is not null) Resources.MergedDictionaries.Remove(palette);
         palette = AppearancePalette.Create(dark, highContrast, colors);
         Resources.MergedDictionaries.Add(palette);
+        speechHalo.Color = ((SolidColorBrush)palette["GlowBrush"]).Color;
+        speechShape.Effect = highContrast ? null : speechHalo;
     }
 
     private void SystemAppearanceChanged(object? sender, PropertyChangedEventArgs e)
@@ -513,14 +520,16 @@ internal sealed class RendererWindow : Window
     // Beyond the longest sentence Martlet speaks at once (1,536 UTF-8 bytes); only bounds an arbitrary request.
     private const int MaximumSpeechCharacters = 2000;
 
+    // Martlet's own typeface (its windows' AppWindowStyle), a little larger to read over a game.
     private static TextBlock SpeechText() => new()
     {
         TextWrapping = TextWrapping.Wrap, MaxWidth = SpeechWidth, FontSize = 15, LineHeight = 21,
-        FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI"), TextAlignment = TextAlignment.Left
+        FontFamily = new FontFamily("Segoe UI"), TextAlignment = TextAlignment.Left
     };
 
-    // One continuous outline (rounded body unioned with a curved, tapering tail) with a soft shadow, so the bubble reads as
-    // a single comic-style shape rather than a box with a triangle stuck on.
+    // One continuous outline (rounded body unioned with a curved, tapering tail) with a soft halo, so the bubble reads as a
+    // single comic-style shape rather than a box with a triangle stuck on. It is drawn wholly in Martlet's palette (Martlet's
+    // own or the character's): a Surface card with an Accent outline, Text and a Glow halo (see ApplyOverlayTheme).
     private Popup CreateSpeechBubble()
     {
         speechText.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
@@ -528,10 +537,6 @@ internal sealed class RendererWindow : Window
         AutomationProperties.SetLiveSetting(speechText, AutomationLiveSetting.Polite);
         speechShape.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "SurfaceBrush");
         speechShape.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "AccentBrush");
-        speechShape.Effect = new System.Windows.Media.Effects.DropShadowEffect
-        {
-            BlurRadius = 14, ShadowDepth = 3, Direction = 270, Opacity = 0.3, Color = Colors.Black
-        };
         speechCanvas.Children.Add(speechShape);
         speechCanvas.Children.Add(speechText);
         speechCanvas.RenderTransform = speechPop;
@@ -542,7 +547,7 @@ internal sealed class RendererWindow : Window
         return speechBubble;
     }
 
-    private RendererBubble ShowSpeech(RendererSay say)
+    internal RendererBubble ShowSpeech(RendererSay say)
     {
         speechPlacement = say;
         if (string.IsNullOrWhiteSpace(say.Text))
@@ -566,13 +571,19 @@ internal sealed class RendererWindow : Window
             speechPop.BeginAnimation(ScaleTransform.ScaleXProperty, pop);
             speechPop.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
         }
-        // Lay the open bubble out now so the reply says whether the text as shown really lies inside the bubble's body.
+        // Lay the open bubble out now so the reply says whether the text as shown really lies inside the bubble's body, and in
+        // which colors it is drawn.
         speechCanvas.UpdateLayout();
         return speechShown = speechShown with
         {
             TextFits = speechText.ActualWidth <= speechShown.Width - BubblePadX * 2 + 1 &&
-                speechText.ActualHeight <= speechShown.Height - BubblePadY * 2 + 1
+                speechText.ActualHeight <= speechShown.Height - BubblePadY * 2 + 1,
+            Colors = new(BrushHex(speechShape.Fill), BrushHex(speechShape.Stroke), BrushHex(speechText.Foreground),
+                speechShape.Effect is System.Windows.Media.Effects.DropShadowEffect halo ? Hex(halo.Color) : null)
         };
+
+        static string BrushHex(Brush? brush) => brush is SolidColorBrush solid ? Hex(solid.Color) : "";
+        static string Hex(Color color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}";
     }
 
     // By default the bubble follows the character's head through moves, zoom and pan: beside the head on whichever side has

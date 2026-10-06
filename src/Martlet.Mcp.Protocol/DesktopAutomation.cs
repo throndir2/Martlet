@@ -513,6 +513,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
                     ["selected"] = element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var item)
                         ? ((SelectionItemPattern)item).Current.IsSelected : null
                 };
+                // A status line's details sit in its tooltip, its accessible help text (the talk window's LiveContext: the
+                // tokens and the last reply's cache use).
+                if (value is not null && element.Current.ControlType == ControlType.Text && element.Current.HelpText is { Length: > 0 } help)
+                    entry["help"] = help;
                 // A control ui_move can move (the character overlay's MoveAvatar), and whether it can move now: false while the
                 // character's position is locked.
                 if (element.TryGetCurrentPattern(TransformPattern.Pattern, out var transform))

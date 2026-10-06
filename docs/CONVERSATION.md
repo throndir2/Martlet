@@ -440,8 +440,11 @@ conversation](#singing-in-conversation)).
 
 ## Singing in conversation
 
-*"Martlet, sing me a song."* Martlet answers in character (*"Sure, I'll sing you
-a song, give me a few minutes while I figure out the lyrics and beat!"*), makes
+*"Martlet, sing me a song."* Martlet answers in character (*"Ooh, I'd love to!
+Let me work on a song for you."*) and calls `sing_song` in that same reply,
+choosing what the song is about itself when the user didn't say (small models
+told to talk first and call afterwards, or given a line to say, often said they'd
+sing and never called it, so nothing was made). It makes
 the song in the background while the conversation carries on, brings it up when
 it's ready (*"Nice job on killing that noob! Oh, and that song's ready, wanna
 hear?"*) and sings it on a yes. It is offered while singing is set up (Companion
@@ -517,8 +520,8 @@ Martlet, stop singing". play_song with from=resume restarts that line.*
 end leaves *You finished singing ...*.
 
 **While it sings** the song keeps going (`PlaybackMode.Song`). Always listening
-keeps listening when barge-in or echo reduction is on (the song is taken out of
-what the microphone hears), otherwise it holds off as for a reply; hearing what
+keeps listening when barge-in is on or echo reduction works (the song is taken
+out of what the microphone hears), otherwise it holds off as for a reply; hearing what
 this PC plays holds off unless Windows leaves Martlet out. What is heard passes
 the utterance filter and goes to the Thinking model with the *Said while you
 were singing* note (the song and where it is), so Martlet answers only when
@@ -712,9 +715,12 @@ voice pipeline never waits for a whole reply:
   between sentences. A voice failure on the next sentence surfaces only when
   playback reaches it, so what is already playing finishes; then the voice
   stops for the rest of the reply while its text keeps streaming.
-- **Barge-in.** Optional and off by default. With always listening, ticking
-  *Let me interrupt Martlet by talking* in Companion › Listening keeps the
-  microphone open while Martlet speaks. Talking over a reply with real words
+- **Barge-in.** Optional and off by default. Always listening keeps the
+  microphone open while Martlet speaks either way (whenever echo reduction
+  works; see [listening while Martlet speaks](#hands-free-voice-activity-and-voice-id)),
+  so what you say then is heard and answered after the reply. Ticking
+  *Let me interrupt Martlet by talking* in Companion › Listening also lets you
+  stop a reply by talking over it. Talking over a reply with real words
   stops it: the Thinking request is canceled, the queued audio is dropped and
   what you said is answered next, with the reply so far kept in context. Only
   the microphone can do this, and only with words (`BargeInPolicy`, the one
@@ -755,8 +761,9 @@ voice pipeline never waits for a whole reply:
   after the reply; restarting a reply because you kept talking applies only
   before Martlet starts saying it. Through speakers this relies on echo
   reduction (on by default); if Martlet still stops itself, use headphones or
-  turn the choice off. With it off (the default), listening holds off while
-  Martlet speaks, and Stop, Esc or the talk button still interrupt. Preferences
+  turn the choice off. With it off (the default), talking while Martlet speaks
+  is still heard (with echo reduction working) and answered after the reply, but
+  never stops it; Stop, Esc or the talk button interrupt. Preferences
   saved before barge-in became opt-in had it on only because it was the old
   default, so it starts off once after updating; tick it again to use it.
 - **What is said aloud decides what stops it.** Each reply carries a playback
@@ -884,7 +891,10 @@ video, music or game playing on the PC.
   changed) or the canceller can't load, Martlet listens without echo
   reduction, says why under the check box and logs it once (*Echo reduction:
   …*); otherwise the log notes *Echo reduction is on*. Turning the choice off
-  restarts listening without it.
+  restarts listening without it. Echo reduction is also what lets always
+  listening go on while Martlet speaks: without it (off, or not running) and
+  without barge-in, listening pauses while Martlet speaks so it doesn't hear
+  itself.
 
 ## Thinking models that hear and see
 
@@ -964,7 +974,9 @@ the processor before you hear Martlet (except the quick check of something short
 below); elsewhere it starts at once. Its words:
 
 - **Talk window.** Your bubble shows *(your voice; transcribing…)* until the
-  words come, then the words. One the word check wouldn't count as words keeps
+  words come, then the words. When speech-to-text couldn't transcribe it, the
+  bubble goes away and nothing takes its place (Martlet's reply, if any,
+  stays). One the word check wouldn't count as words keeps
   them with a note (*Word check: not words. Thinking heard it anyway.*): Thinking
   already heard it and decided, often with `[pass]`.
 - **The conversation.** The exchange is kept as soon as the reply ends and the
@@ -1096,7 +1108,7 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   the microphone is still hearing or transcribing you, what the PC played
   waits for your words (at most 8 seconds) so your voice played back never
   shows; a line let go before your words came is still removed once they do.
-  The `LivePcAudio` line then adds *This PC plays your voice back too; Martlet
+  The `LivePcAudio` line's tooltip then adds *This PC plays your voice back too; Martlet
   left out N line(s) of it.* and the desktop log says so once.
 - **Never remembered or acted on.** Memory recall and remembering, learning
   names, Home Assistant and MCP tools only ever read your own words: a message
@@ -1111,9 +1123,9 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   unanswered.
 
 The talk window's `LivePcAudio` line says whether Martlet hears the PC now
-(without its own voice, or only on the output you hear while it pauses for
-Martlet's voice), how many lines of your own voice played back it left out, or
-why it can't. The Companion card's status names the other output in use.
+(*Also hearing this PC.*) or why it can't; its tooltip says how (without its
+own voice, or only on the output you hear while it pauses for Martlet's voice)
+and how many lines of your own voice played back it left out. The Companion card's status names the other output in use.
 `pc_audio_check` in
 [Martlet MCP](MCP.md) reads the choice, asks Windows whether Martlet can be
 left out without recording anything, says which outputs are in use and what
@@ -1146,6 +1158,20 @@ VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
   tag arrives split across stream deltas. Any other registered engine's tag is
   dropped without silencing its sentence, so OpenAI, Windows voices, F5 and
   XTTS never read "[laugh]" aloud.
+- **Other spellings.** Models sometimes write a tag they were given in other
+  brackets or as a stage direction. Those spellings count as the tag itself
+  (`VoiceTags.Spellings`): its words in any of `[ ]`, `( )`, `{ }` and
+  `< >`; a sound's or tone's cue the same way (`[laugh]` for Dia's
+  `(laughs)`); words joined by spaces, underscores or hyphens alike; and, for
+  sounds and character tags, the action a stage direction writes (`[nods]`,
+  `*nods*`, `(sighs)`, `*clears throat*`). So `[nod]` for `{nod}` plays the
+  nod and `*laughs*` is spoken as Chatterbox's `[laugh]` (or Dia's `(laughs)`),
+  instead of the tag showing in the chat and silencing the rest of its line.
+  Tones of voice take only other brackets, never `*...*`, and emphasis such as
+  `*so*` is left alone. When two tags share a spelling, the speaking voice's
+  own tag wins, then the character's, then another engine's: `[happy]` is
+  Chatterbox's tone while Chatterbox speaks and the character's `{happy}` emote
+  otherwise.
 - **Chat and captions.** The chat, the saved conversation and the speech
   bubble/captions never show tags: they are stripped as the reply streams, and
   captions strip the spoken piece's tags.
@@ -1157,9 +1183,17 @@ VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
   segmenter and the chat drop like another engine's tags. Both reach the
   character through the runtime's `CharacterCueFeed`, timed within the sentence
   as it starts playing (or at once for a reply that isn't spoken).
+- **Under the reply.** The talk window notes how a reply was acted out under
+  its bubble (`ReplyTag.Note`): *Tone: happy. Sound: laugh. Emotes: nod,
+  blush.*, each part only when the reply wrote one: the tones and sounds its
+  voice performed and the character tags it wrote. The desktop log has
+  *Reply acted: {nod} (written [nod]), [laugh].* (tag names and spellings only,
+  never the words).
 
 `voice_tags` in [Martlet MCP](MCP.md) shows all of these for any engine (with
-`characterTags`, the character cues too).
+`characterTags`, the character cues too, plus `acted` and `note`), and
+`spoken_reply_check` with `characterTags` runs them through the production
+runtime.
 
 ## Hands-free voice activity and Voice ID
 
@@ -1187,10 +1221,22 @@ the data folder.
 - Listening never stops by itself. It runs on its own slot beside replies
   (`LiveListener`): it records one utterance at a time and transcribes each, in
   order, while it already listens for the next, so nothing said while Martlet
-  thinks is lost. Each utterance is still its own action: a fresh authorization,
-  capture epoch, Voice ID check and STT request. It holds off only while Martlet
-  speaks (a reply or a remark, plus 300 ms for the room's echo), so it never
-  hears itself, and while other setup work (a microphone test, Voice ID
+  thinks or speaks is lost. Each utterance is still its own action: a fresh
+  authorization, capture epoch, Voice ID check and STT request. It goes on
+  while Martlet speaks (a reply, a remark or a song) whenever it can tell
+  Martlet's own voice from yours: [echo reduction](#echo-reduction) works (on
+  by default; what is mostly the speakers' sound is let go like a cough) or
+  barge-in is on. What you say then shows in the history at once and is
+  answered once the reply finishes (with barge-in, real words stop it instead);
+  the desktop log notes *Always listening heard you while Martlet spoke; ...*
+  (never the words).
+  Without either (echo reduction off, or it couldn't start or was lost: no
+  speaker audio, the canceller failed), it holds off while Martlet speaks (plus
+  300 ms for the room's echo) so it never hears itself and answers its own
+  words; the talk window's listening button then reads *Not listening while
+  Martlet speaks*. Each capture's own echo state decides (`EchoTimeline.Reducing`,
+  `EchoReducer.Works`), and before one opens the last capture's report does.
+  It also holds off while other setup work (a microphone test, Voice ID
   enrollment) owns the app slot. Idle listening restarts the bounded capture
   every 12 seconds; nothing is uploaded when nobody spoke.
 - What it hears appears in the history right away. Once you pause, everything

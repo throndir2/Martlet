@@ -40,7 +40,7 @@ public static class SongTools
     public const string StopParametersJson =
         """{"type":"object","properties":{"reason":{"type":"string"}},"additionalProperties":false}""";
 
-    public const string SingDescription = "Make a song sung in your voice, in the background (minutes). Tell the user first. One at a time.";
+    public const string SingDescription = "Make a song sung in your voice, in the background (minutes). Call it as soon as the user asks for a song. One at a time.";
     public const string PlayDescription = "Sing a finished song now, from any point (the band leads in). Only after the user said yes.";
     public const string StopDescription = "Stop singing, musically.";
 

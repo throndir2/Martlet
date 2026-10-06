@@ -98,6 +98,24 @@ public sealed class IntegrationTests
         Assert.DoesNotContain(events, e => e.Text?.Contains("chattiness", StringComparison.OrdinalIgnoreCase) == true);
     }
 
+    [Fact]
+    public async Task A_character_tag_in_the_wrong_brackets_still_acts_and_the_rest_of_its_line_is_still_spoken()
+    {
+        await using var h = new Harness();
+        h.Answer("Oh, look at all that activity! [n", "od] What are you working on right now?");
+        var request = Harness.Request();
+        var turn = h.Start(new ConversationRequest(request.Input, request.Model, request.TextLimits, request.Limits, request.Speech,
+            characterTags: ["{nod}", "{blush}"]));
+        var result = await Harness.Finish(turn);
+        Assert.Equal(ConversationState.Completed, result.State);
+        Assert.Equal("Oh, look at all that activity! What are you working on right now?", turn.Content.Text);
+        Assert.Equal(["Oh, look at all that activity!", "What are you working on right now?"],
+            h.Permissions.SpeechActions.Select(action => action.Input.Text));
+        var acted = Assert.Single(turn.Acted);
+        Assert.Equal(new ReplyTag("{nod}", Martlet.Core.Settings.VoiceTagKind.Character, "nod", "[nod]"), acted);
+        Assert.Equal("Emote: nod.", ReplyTag.Note(turn.Acted));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
