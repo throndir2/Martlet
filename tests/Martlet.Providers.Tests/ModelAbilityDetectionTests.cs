@@ -29,6 +29,21 @@ public sealed class ModelAbilityDetectionTests
     }
 
     [Fact]
+    public void Nvidia_builds_hosted_omni_model_hears_and_its_text_only_siblings_do_not()
+    {
+        const string nvidia = ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl;
+        Assert.Equal(HearingSupport.Supported,
+            HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, nvidia, "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", null));
+        Assert.Equal(HearingSupport.Supported, HearingModelCatalog.Classify("nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"));
+        Assert.Equal(HearingSupport.Unsupported, HearingModelCatalog.Classify("nvidia/nemotron-3-super-120b-a12b"));
+        Assert.Equal(HearingSupport.Unsupported, HearingModelCatalog.Classify(ChatCompletionsEndpointCatalog.NvidiaBuildDefaultModelId));
+        // NVIDIA switched its Gemma 3n endpoints off on 2026-07-27, so a route on one hears nothing.
+        Assert.NotNull(ChatCompletionsEndpointCatalog.RetiredOn(nvidia, "google/gemma-3n-e4b-it"));
+        Assert.NotNull(ChatCompletionsEndpointCatalog.RetiredOn(nvidia, "google/gemma-3n-e2b-it"));
+        Assert.Null(ChatCompletionsEndpointCatalog.RetiredOn(nvidia, "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"));
+    }
+
+    [Fact]
     public void What_was_found_overrides_the_name_but_never_the_route()
     {
         var found = Found(ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, "google/gemini-2.5-flash", false, null);

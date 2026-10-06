@@ -24,10 +24,11 @@ public static class ChatCompletionsEndpointCatalog
         Array.AsReadOnly<ChatCompletionsEndpointOption>(
         [
             new("OpenRouter", OpenRouterBaseUrl, "google/gemma-4-26b-a4b-it", []),
-            // Retired IDs checked on 2026-10-01 (HTTP 410 Gone), including Martlet's earlier default.
+            // Retired IDs checked on 2026-10-01 (HTTP 410 Gone), including Martlet's earlier default; the Gemma 3n models were
+            // deprecated on 2026-07-27 and are gone from /v1/models (checked 2026-10-06, docs/HOSTED_THINKING.md).
             new("NVIDIA Build", NvidiaBuildBaseUrl, NvidiaBuildDefaultModelId,
                 ["meta/llama-3.3-70b-instruct", "meta/llama-4-maverick-17b-128e-instruct", "microsoft/phi-4-multimodal-instruct",
-                 "nvidia/nemotron-nano-12b-v2-vl"])
+                 "nvidia/nemotron-nano-12b-v2-vl", "google/gemma-3n-e4b-it", "google/gemma-3n-e2b-it"])
         ]);
 
     public static ChatCompletionsEndpointOption? Named(string? baseUrl) =>
