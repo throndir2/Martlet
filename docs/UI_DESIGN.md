@@ -298,36 +298,38 @@ service on this PC:
 
 ### 5. Add a computer (Martlet hosts wizard)
 
-The long form became a four-step wizard with a step rail:
+The long form became a two-step wizard with a step rail: connect a host, then
+choose its jobs.
 
-1. **Where it runs**: first a *Martlet on your network* card. Opening the
+1. **Connect**: first a *Martlet on your network* card. Opening the
    wizard sends Martlet's discovery query and lists the owner's other
    computers that can share a host this PC isn't paired with yet (*GAMING-PC
    (192.168.1.31): gaming-pc-host · Martlet 0.17.0* with *Connect*), plus
    *Find again*. *Connect* shows a large check number and *Stop asking*; the
    other computer asks *Allow* or *Deny* with the same number, then sends a
    one-use code for each host and this PC pairs with them by itself
-   ([how](ARCHITECTURE.md#finding-your-other-computers)). Below it, large cards
-   for *This PC (Docker Desktop)*, *Another
-   computer over SSH (Docker)*, *Another computer over SSH (Ubuntu, native)*
-   and *I'll type the commands myself*, plus *Enter a pairing code* for a host
-   that is already set up (straight to Pair).
-2. **Install**: only the fields that method needs, *Set up host* (*Add this
-   computer* for SSH: connect, check Docker, set up, pair and read the machine
-   report in a run window with live output, *Hide* and *Cancel task*), and the
-   exact command in a *Show the command* expander.
-3. **Pair**: *Pair automatically* (*Pair over SSH* for SSH hosts) when Martlet
-   can reach the host; otherwise (or as the alternative) the host's address and
-   the short code it shows, then *Pair with host*. The command to run on the
-   host is in an expander, *Check*, *Update* and *Forget* act on the paired
-   host, and this PC's device ID sits in a collapsed expander (nothing to copy).
-   Pairing adds the host to `hosts.json` (every paired host and how Martlet
-   reaches it; nonsecret, secrets stay in Windows Credential Manager). Pairing
-   hands the host no job (re-pairing keeps the ones it had): it stands by
-   until you hand it a job from a job row's *Done by* on the Devices page. Lip-sync goes to a host only
-   once it runs Audio2Face, or with its install in the same step.
-4. **Roles**: role cards (Audio2Face today; planned roles shown as coming soon),
-   with *Add*, *Remove* and *Host status*.
+   ([how](ARCHITECTURE.md#finding-your-other-computers)). When a host isn't
+   listed (guest Wi-Fi or client isolation, a VPN, another subnet, a firewall
+   blocking UDP/TCP 9444, or discovery turned off there), *Enter a pairing
+   code* shows the host's address and short code fields and *Pair with host*;
+   they open by themselves when nobody answers. Below it, *Or set up a new
+   host*: *This PC* (*Set up this PC*: Docker Desktop, installed on request,
+   firewall, setup and pairing in one run window) and *A Linux computer over
+   SSH* (one SSH target and *Set up over SSH*: connect, then run the host in
+   Docker when that account can use Docker, directly or with sudo, otherwise
+   natively on Ubuntu 24.04; set up, pair and read the machine report in a run
+   window). Its private address is filled in from the computer and sits in a
+   collapsed expander. Another Windows PC needs no SSH: Martlet there sets
+   itself up (*Use as a Martlet host*) and then appears in the network list.
+   Any successful connection moves on to Roles. Pairing adds the host to
+   `hosts.json` (every paired host and how Martlet reaches it; nonsecret,
+   secrets stay in Windows Credential Manager) and hands it no job: it stands
+   by until you hand it a job here or from a job row's *Done by* on the
+   Devices page.
+2. **Roles**: which paired host (a picker when there are several), *Check*,
+   *Update* and *Forget* for it, its role cards with *Add* and *Remove* (run
+   over SSH, on this PC, or through Martlet on that computer), and this PC's
+   device ID in a collapsed expander.
 
 ### 6. Talk (conversation)
 

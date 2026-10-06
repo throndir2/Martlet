@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <InternalsVisibleTo Include="Martlet.Discord.Tests" />
+    <InternalsVisibleTo Include="Martlet.Desktop" />
+    <InternalsVisibleTo Include="Martlet.Desktop.Tests" />
+    <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
+    <PackageReference Include="NetCord" />
+  </ItemGroup>
+</Project>

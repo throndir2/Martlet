@@ -452,7 +452,9 @@ the copy's `revision` and `count`, and for each shared setting its `key`
 (`thinking`, `listening`, `speaking`, `thinking-fallback`, `companion`,
 `replies`, `prompts`, `memory`, `lorebooks`, `character`, `character-actions`,
 `talk`, `speech-display`, `appearance`, `voice-recognition`, `voice-id`,
-`smart-home`, `updates`, a computer's own `pc.<device ID>`, or a newer
+`smart-home`, `updates`, a computer's own `pc.<device ID>`, a computer's
+`role.<device ID>` (`companion` or `host`: written by that computer, or by
+another one asking it to switch), or a newer
 Martlet's), `updatedBy`, `updatedAt`,
 `revision`, `usesKey`, `characters`, `off` (the value is null) and `here`:
 `same` when this PC had exactly that value at its last sync, `different` while
@@ -461,8 +463,9 @@ setting. `value` is shown only for non-personal settings: each job's route
 (`type`, `origin`, `model`, `voice`), the fallback's `origin` and `model`,
 memory, how you talk, speech bubbles and subtitles, the theme, recognizing
 voices (`on`), what Martlet may do with Home Assistant (`control`,
-`allow_sensitive`, `model_tools`) and app updates (`checks`,
-`interval_minutes`, `auto_install`, `auto_update_hosts`). It never returns keys,
+`allow_sensitive`, `model_tools`), app updates (`checks`,
+`interval_minutes`, `auto_install`, `auto_update_hosts`) and each computer's
+`pc.<device ID>` (`role`, `host`) and `role.<device ID>`. It never returns keys,
 key digests, personality, prompt, lorebook or emote text, or the Voice ID
 voiceprint, and contacts nothing.
 
@@ -621,6 +624,23 @@ user's; the script supplies its disposable one): `state` (`none`, `loaded` or
 `id`, `name`, `scopes`, `createdBy`, `createdAt`, `expiresAt`, `revoked`,
 `expired`, `updatedBy` and `hasVerifier`. It never returns a key or its
 verifier (Martlet keeps no key) and contacts nothing.
+
+`exposure_selftest` (no arguments) rehearses a host reachable from outside
+home ([NETWORK](NETWORK.md#reaching-your-network-from-outside-home)) with the
+production code: one real gateway (`lab-exposure`, Kestrel, pinned TLS, a
+throwaway certificate) on `127.0.0.1`, a desktop that pairs while at home
+through its paired client, then the host told to treat every connection as
+outside home, and a stranger's pinned HTTPS client. It runs
+`src\Martlet.NodeLinkCheck` (mode `exposure`, `ExposureRehearsal.cs`) and returns
+`{exitCode, report}` like `network_selftest`. Its steps: a pairing card used
+from outside is refused (`pair.outside_home`) and stays open; once the owner
+allows pairing from outside the same card pairs; five failed requests lock the
+address out (`auth.throttled`, `Retry-After` 1 s) and the next failure doubles
+it, after which the paired desktop's signed requests work again; liveness
+answers 120 requests a minute per outside address; and the paired desktop reads
+the security audit (`ReadSecurityAuditAsync`: refused, success, failure and
+throttled entries with their source) and the host log lines naming each source.
+Not covered: a real internet source, a router port forward or an overlay.
 
 `api_selftest` (no arguments) rehearses API keys for software outside the
 network end to end with the production code: two real gateways
@@ -2337,7 +2357,11 @@ other computer uses it yet.*). Job owners are `ThinkingOwner`, `ListeningOwner`,
 and `LipSyncOwner`, device commands `NodeAction-<action>`
 (`NodeAction-InstallRole-<role>`, `NodeAction-ChangeRole-<role>` (*Change ... settings*, on the row of a role the host
 runs: its dialog shows what the role runs with now, so it needs `--allow-ui-effects`) and `NodeAction-RemoveRole-<role>` for host
-roles), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
+roles; on another of your computers that said what it is, `NodeAction-MakeHostPc` (*Make it a host PC*) or
+`NodeAction-MakeCompanionPc` (*Make it a companion PC*, or *Keep it a companion PC* while an ask to become a host PC waits),
+which switch that computer, so they need `--allow-ui-effects` and then `ConfirmationYes`; while the ask waits,
+its `DeviceComponentDetail-member` ends with *Asked by this PC at ... to become a host PC: it switches the next time
+Martlet there syncs its settings ...*), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
 default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text), `SettingsSyncStatus` (text: how many
 settings are shared, on how many hosts they are the same, when checked and
@@ -2498,18 +2522,22 @@ Devices' `AddComputer` (and Settings' `OpenHosts`, and on a new PC Home's
 wizard (`HostsWindow`, titled *Martlet - add a computer*; the click may return
 `completed: false` while that dialog stays open). Pairing needs no saved
 settings: on a fresh data directory the wizard opens with `HostStatus` *No
-Martlet host paired.* and `PairHost` goes straight to the host. Its rail steps
-(`HostsStepWhere`, `HostsStepInstall`, `HostsStepPair`, `HostsStepRoles`),
-`HostsBack`, `HostsNext`, `HostsClose`, the method cards (`HostMethodThisPc`,
-`HostMethodSshDocker`, `HostMethodSshNative`, `HostMethodOnHost`; choosing one
-moves on to Install), `HostsEnterCode` (straight to Pair for a host that already
-shows a code) and the `HostCommandSection`, `PairCommandSection` and
-`DeviceIdSection` expanders only change what the wizard shows, so they are
-passive clicks. Snapshots return `HostStatus` (the wizard's status line: what
+Martlet host paired.* and `PairHost` goes straight to the host. It has two
+steps. Its rail steps (`HostsStepConnect`, `HostsStepRoles`), `HostsBack`,
+`HostsNext`, `HostsClose`, `HostsEnterCode` (*Enter a pairing code*: shows the
+address and code fields, which also open by themselves when nobody answers on
+the network) and the `HostAddressSection` and `DeviceIdSection` expanders only
+change what the wizard shows, so they are passive clicks. `SetupThisPc` (*Set
+up this PC*) and `SetupHost` (*Set up over SSH*, with `SshTarget`; Martlet
+picks Docker or native Ubuntu from what the computer has) set up and pair a
+new host and need `--allow-ui-effects`; a successful connection of any kind
+moves to Roles. Snapshots return `HostStatus` (the wizard's status line: what
 pairing did, or why it was refused, such as *That code doesn't match...* or *No
-Martlet host answered at ...*), `PairedHost`, and `PairCodeTitle`/`PairCodeHelp`
-(*Enter the code shown on the host* when Martlet can't reach the host, *Or enter a
-code from the host* next to `PairConsole` otherwise). `PairAddress` and
+Martlet host answered at ...*), `DockerState` (whether Docker Desktop is
+running, installed or missing), `PairCodeHelp`, `PairedHost` (the host the
+Roles step acts on; `HostChoice` picks another when several are paired) and
+`RolesSummaryText` (how its roles run, or *Connect a computer first...*).
+`AddRole-<role>`/`RemoveRole-<role>` act on that host. `PairAddress` and
 `PairingCode` take the host's address and short code (`ui_set_text`, so
 `--allow-ui-effects`), and `PairHost` pairs; a successful pairing stores a
 device secret in Windows Credential Manager, so verification stops at refused
@@ -2531,7 +2559,7 @@ number, `Step-join-<device ID>-0` is **Allow** and `Step-join-<device ID>-1`
 **Turn down** (both change the network, so they need `--allow-ui-effects`).
 
 *Martlet on your network* ([how it works](ARCHITECTURE.md#finding-your-other-computers))
-is the first card of the wizard's *Where it runs* step. Opening the wizard on
+is the first card of the wizard's *Connect* step. Opening the wizard on
 that step (so `AddComputer`) and `NearbyFind` (*Find again*) send Martlet's
 discovery query to port 9444 on loopback and the local network's broadcast
 addresses and list who answers; they pair nothing and change nothing, so they

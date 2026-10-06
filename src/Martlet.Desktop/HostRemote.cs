@@ -100,11 +100,19 @@ internal sealed partial class HostRemote(HostShell shell)
     internal static bool NeedsSudo(HostSetupMethod method, HostProbe probe) =>
         method == HostSetupMethod.SshNative ? probe.Sudo != "none" : !probe.DockerAccess && probe.Sudo != "none";
 
+    /// <summary>How Martlet sets up a Linux computer: in Docker when it has Docker this account can use (directly or with
+    /// sudo), otherwise natively on Ubuntu. Anything else gets the Docker method, whose <see cref="Blocker"/> says what's missing.</summary>
+    internal static HostSetupMethod Choose(HostProbe probe) =>
+        probe.Docker && (probe.DockerAccess || probe.Sudo != "none") ? HostSetupMethod.SshDocker
+        : probe.OperatingSystem?.Contains("Ubuntu", StringComparison.OrdinalIgnoreCase) == true ? HostSetupMethod.SshNative
+        : HostSetupMethod.SshDocker;
+
     /// <summary>Plain-language reason a computer cannot be set up with this method yet, or null.</summary>
     internal static string? Blocker(HostSetupMethod method, HostProbe probe, string target) => method switch
     {
         HostSetupMethod.SshDocker when !probe.Docker =>
-            $"Docker is not installed on {target}. Install Docker Engine there, then try again.",
+            $"Docker is not installed on {target}, and it runs {probe.OperatingSystem ?? "an unknown system"} rather than Ubuntu " +
+            "(which Martlet sets up without Docker). Install Docker Engine there, then try again.",
         HostSetupMethod.SshDocker when !probe.DockerAccess && probe.Sudo == "none" =>
             $"The account on {target} can't use Docker. Use an account with Docker access or sudo.",
         HostSetupMethod.SshNative when probe.OperatingSystem?.Contains("Ubuntu", StringComparison.OrdinalIgnoreCase) != true =>
@@ -183,8 +191,8 @@ internal sealed partial class HostRemote(HostShell shell)
             $"{target} can't reach the internet. Martlet sends a computer without internet access what its gateway needs, " +
             "but not yet the Docker images and models a role needs. Connect it to the internet to add this role.",
         (HostSetupMethod.SshDocker, _) =>
-            $"{target} can't reach the internet. Martlet sends what a computer without internet access needs only with the " +
-            "native Ubuntu method: choose Another computer over SSH, native Ubuntu install.",
+            $"{target} can't reach the internet. Martlet sends what a computer without internet access needs only to an Ubuntu " +
+            "host it runs without Docker. Connect it to the internet, or set it up on Ubuntu without Docker.",
         _ => null
     };
 

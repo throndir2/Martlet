@@ -1477,8 +1477,8 @@ public partial class MainWindow
             case NodeAction.ToggleCharacter: Character_Click(this, args); break;
             case NodeAction.Prerequisites: Prerequisites_Click(this, args); break;
             case NodeAction.HostThisPc: SetUpThisPcHostAsync().Forget(); break;
-            case NodeAction.AddComputer: OpenHosts(null, 0); break;
-            case NodeAction.ManageHost: OpenHosts(null, 2, FindHost(argument)); break;
+            case NodeAction.AddComputer: OpenHosts(0); break;
+            case NodeAction.ManageHost: OpenHosts(1, FindHost(argument)); break;
             case NodeAction.CheckHost:
                 var hosts = NetworkMap.Hosts(Inputs());
                 CheckHostsAsync(argument is null ? hosts : hosts.Where(h => h.HostId == argument).ToArray()).Forget();
@@ -1507,13 +1507,15 @@ public partial class MainWindow
             case NodeAction.ShutdownHost: if (FindHost(argument) is { } shutdown) OpenPrepare(shutdown, PrepareStart.Shutdown); break;
             case NodeAction.WakeHost: if (FindHost(argument) is { } wake) OpenPrepare(wake, PrepareStart.Wake); break;
             case NodeAction.PrepareComputer: OpenPrepare(null, PrepareStart.Status); break;
+            case NodeAction.MakeHostPc: RequestRoleAsync(argument, DeviceRole.Host).Forget(); break;
+            case NodeAction.MakeCompanionPc: RequestRoleAsync(argument, DeviceRole.Companion).Forget(); break;
         }
     }
 
-    private void OpenHosts(HostSetupMethod? method, int step, PairedHost? manage = null)
+    private void OpenHosts(int step, PairedHost? manage = null)
     {
         if (store is null || setupService is null || closing) return;
-        new HostsWindow(new AvatarProfileStore(store.DataDirectory), setupService, method, step, manage) { Owner = this }.ShowDialog();
+        new HostsWindow(new AvatarProfileStore(store.DataDirectory), setupService, step, manage) { Owner = this }.ShowDialog();
         RefreshHomeAsync().Forget();
     }
 

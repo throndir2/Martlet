@@ -5,7 +5,8 @@ PC and it is the same Martlet: the same companion with the same personality,
 settings, memories, people, voices and characters, the same Home Assistant and
 the same API keys. Each computer is either a **companion PC** (where you talk
 to Martlet) or a **host PC** (it lends its graphics card), and you can switch a
-computer between the two in one click. Adding a host to your
+computer between the two in one click, on that computer or from any other
+([Switching another computer](#switching-another-computer-between-companion-and-host)). Adding a host to your
 [Martlet network](NETWORK.md) adds what it can do (thinking, listening,
 speaking, lip-sync, Home Assistant, keeping everyone's logs) to the whole app; jobs move
 between hosts on the spot and fail over when a host stops answering.
@@ -221,6 +222,7 @@ NVIDIA Build and its old key.
 | `updates` | Looking for updates, how often, installing them as soon as they're downloaded, keeping hosts on the newest version | |
 | `model-abilities` | What Thinking models hear (recordings) and see (pictures), as Martlet found out: from the server's own model metadata when a model is chosen, tested or checked, from Companion › Listening › **Test hearing**, or from a model refusing a recording (`model-abilities.json`). Found out once, on any computer, for all of them; a computer checking its own Ollama later replaces it | |
 | `pc.<device ID>` | One per computer, written only by that computer: whether it is a companion or a host PC and the host service Martlet runs on it, so every [Devices map](NETWORK.md#who-is-connected) draws it the same way. Never applied anywhere, not counted as a shared setting, and the first to leave when a copy is full (64 entries), so a computer retired long ago never pushes out a setting | |
+| `role.<device ID>` | One per computer: whether it should be a companion or a host PC. That computer records its own choice there, and any other computer writes it to switch it ([Switching another computer](#switching-another-computer-between-companion-and-host)). Like `pc.<device ID>`, not counted as a shared setting and among the first to leave when a copy is full | |
 
 Conversations are not shared; what Martlet makes from them is (the [shared creations](#the-shared-creations)).
 
@@ -233,7 +235,7 @@ These describe the computer itself, so they never travel:
 | Microphone, speakers, cameras, video addresses, microphone sensitivity, echo reduction, hearing what the PC plays | This PC's devices |
 | Watch my screen or a camera (on or off, what it looks at) | It captures this PC's screen or camera, so it is chosen at that screen |
 | Where the character and its speech bubble sit, and the character's zoom | This PC's screens |
-| Companion PC or host PC, the host service on it, *When Martlet starts* and closing choices, Start with Windows | What this computer is for and how it starts |
+| Companion PC or host PC, the host service on it, *When Martlet starts* and closing choices, Start with Windows | What this computer is for and how it starts (another of your computers can still [switch it](#switching-another-computer-between-companion-and-host)) |
 | Paired hosts, SSH keys, *Let my other computers find this PC*, *Let my other paired computers update Martlet here* | How this computer reaches others, and who may reach it |
 | Where memory is stored | A folder on this PC (the memories travel) |
 | Installed engines and models: Ollama models, Parakeet, a whisper package, Windows voices, MCP servers (`mcp.json`) and their secrets | Programs on this PC; a shared route that needs one this PC lacks waits and says why |
@@ -315,6 +317,37 @@ automatic installs and turning off recognizing voices recorded as `updates` and
 computers with real paired hosts, a real Credential Manager across them, the
 emotes, Voice ID and smart-home sections between real computers, and the Linux
 host's file are **NOT RUN**.
+
+### Switching another computer between companion and host
+
+On the Devices map, another of your computers that says what it is (its
+`pc.<device ID>`) offers **Make it a host PC** (or, on a host PC, **Make it a
+companion PC**) on its row. After a confirmation this PC writes that computer's
+`role.<device ID>` entry and gives it to your hosts at once; that computer
+follows it on its next settings sync (within 15 seconds while Martlet runs
+there, or when Martlet starts there next), exactly as if you had chosen *Use as
+a Martlet host* on it: it ends a conversation and hides the character, keeps its
+companion choices for later, and shows its host dashboard, which sets up its host
+service if it has none yet (installing Docker Desktop may still need someone at
+that PC once). It waits while Martlet is replying or hearing you there and
+switches right after. Until it has switched, its row says who asked and when,
+and the command becomes **Keep it a companion PC**, which withdraws the ask.
+
+Each computer also records its own choice in its `role.<device ID>`, so the
+newest choice wins wherever it was made: a computer switched back on itself
+stays switched back, and an ask from elsewhere made later wins again. The ask
+travels with the shared settings, so it needs *Keep Martlet the same on all my
+computers* on and a host both computers sync with. A computer on a Martlet
+older than this keeps the entry unread until it is updated (its row keeps
+saying it was asked), and one that never said what it is offers no switch.
+
+Checked locally: the merge rules with a unit test, and through MCP on disposable
+data folders: a desktop whose shared settings held another computer's ask
+switched to *Host PC* on its own and recorded it in `pc.<device ID>`, and a
+desktop in a fixture network (a signed roster with a second member) showed
+*Make it a host PC* on that member, wrote `role.desktop-b` after the
+confirmation and then showed the waiting ask and *Keep it a companion PC*. Two
+real computers switching each other through a real host is **NOT RUN**.
 
 ## The shared memories
 

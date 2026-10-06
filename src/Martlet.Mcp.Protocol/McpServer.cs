@@ -327,6 +327,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "Checks scopes (read, voice, manage), refusals (no key, wrong key, endpoints keys may never use), sync to a second host and " +
             "a restart, last-used reports, revocation mid-reply, stale copies and expiry. Loopback only; writes nothing to disk or the " +
             "credential vault.", new { }),
+        Tool("exposure_selftest", "Rehearse a host reachable from outside home end to end with the production code: one real gateway " +
+            "on 127.0.0.1 (pinned TLS) told to treat every connection as outside home, a desktop paired at home through its paired " +
+            "client, and a stranger's pinned HTTPS client. Checks that pairing from outside is refused until the owner allows it, " +
+            "guessing is locked out with a doubling Retry-After, routes anyone may call have a per-address budget, and the paired " +
+            "desktop reads the security audit (/martlet/v1/security/audit) and the host log lines naming each source. Loopback only; " +
+            "writes nothing to disk.", new { }),
         Tool("deep_thinking_role_selftest", "Rehearse the Deep thinking host role end to end with the production code: one real " +
             "gateway on 127.0.0.1 (pinned TLS) serving a host's Thinking route (the ollama role) and the deep-thinking role's own route " +
             "(martlet.gateway.deep-thinking-chat.v1), each relay over its own fixture Ollama (NOT AI), and a simulated desktop using " +
@@ -1008,6 +1014,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "app_update_check" => await AppUpdateCheck.RunAsync(NodeLinkCheckProgram(), cancellation),
                 "api_keys_status" => ApiKeysStatus(arguments),
                 "api_selftest" => await NodeLinkCheckAsync(cancellation, "api"),
+                "exposure_selftest" => await NodeLinkCheckAsync(cancellation, "exposure"),
                 "deep_thinking_role_selftest" => await NodeLinkCheckAsync(cancellation, "deep-thinking"),
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
@@ -2105,7 +2112,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     return new { origin = parsed.RootElement.GetProperty("origin").GetString(), model = parsed.RootElement.GetProperty("model").GetString() };
                 }
                 if (setting.Key is "memory" or "appearance" or "talk" or "speech-display" or "voice-recognition" or "smart-home" or "updates" or
-                    "model-abilities")
+                    "model-abilities" || Martlet.Core.Sync.SharedSettings.IsDeviceKey(setting.Key))
                 {
                     using var parsed = JsonDocument.Parse(setting.Value);
                     return parsed.RootElement.Clone();

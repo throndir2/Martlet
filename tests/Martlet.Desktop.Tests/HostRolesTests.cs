@@ -296,6 +296,31 @@ public sealed class HostRolesTests
     }
 
     [Fact]
+    public void Another_companion_PC_can_be_made_a_host_PC_from_the_map_and_an_ask_shows_until_it_switches()
+    {
+        NetworkNode Pc(MartletComputer computer) =>
+            NetworkMap.Build(new(MachineInfo.Unknown, DeviceRole.Host, null, null, false, new Dictionary<string, HostCheck>(),
+                Computers: [computer])).Single(n => n.Id == "pc:" + computer.DeviceId);
+        var companion = new MartletComputer("desktop-b", "DESK-B", ComputerStanding.Member, null, true, Role: DeviceRole.Companion);
+
+        var make = Assert.Single(Pc(companion).Commands, c => c.Component == DeviceComponent.Member);
+        Assert.Equal((NodeAction.MakeHostPc, "Make it a host PC", "desktop-b"), (make.Action, make.Label, make.Argument));
+
+        // While the ask waits, the computer's line says so and the command withdraws it.
+        var asked = Pc(companion with { Asked = DeviceRole.Host, AskedBy = "this PC", AskedAt = DateTimeOffset.UtcNow });
+        Assert.Contains(asked.Roles, r => r.Component == DeviceComponent.Member &&
+            r.Detail.Contains("Asked by this PC", StringComparison.Ordinal) && r.Detail.Contains("to become a host PC", StringComparison.Ordinal));
+        var keep = Assert.Single(asked.Commands, c => c.Component == DeviceComponent.Member);
+        Assert.Equal((NodeAction.MakeCompanionPc, "Keep it a companion PC"), (keep.Action, keep.Label));
+
+        // A host PC can be made a companion PC again; a computer that hasn't said what it is, or asks to join, gets neither.
+        Assert.Contains(Pc(companion with { Role = DeviceRole.Host }).Commands, c => c.Action == NodeAction.MakeCompanionPc && c.Label == "Make it a companion PC");
+        Assert.DoesNotContain(Pc(companion with { Role = null }).Commands, c => c.Action is NodeAction.MakeHostPc or NodeAction.MakeCompanionPc);
+        Assert.DoesNotContain(Pc(companion with { Standing = ComputerStanding.Asking, CheckNumber = "123456", Through = "gpu-a" }).Commands,
+            c => c.Action is NodeAction.MakeHostPc or NodeAction.MakeCompanionPc);
+    }
+
+    [Fact]
     public void Add_a_computer_offers_only_ways_to_add_one_each_saying_what_it_does()
     {
         NetworkNode Add(DeviceRole role) =>

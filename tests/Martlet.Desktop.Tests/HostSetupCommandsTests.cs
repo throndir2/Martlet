@@ -85,13 +85,20 @@ public sealed class HostSetupCommandsTests
         var probe = new HostProbe(false, false, "password", "Ubuntu 24.04.1 LTS", "x86_64", "192.168.1.20", "gpu");
         Assert.Contains("Docker is not installed", HostRemote.Blocker(HostSetupMethod.SshDocker, probe, "me@gpu"));
         Assert.Null(HostRemote.Blocker(HostSetupMethod.SshNative, probe, "me@gpu"));
+        // One SSH choice: Docker when the account can use it (directly or with sudo), otherwise native on Ubuntu.
+        Assert.Equal(HostSetupMethod.SshNative, HostRemote.Choose(probe));
+        Assert.Equal(HostSetupMethod.SshDocker, HostRemote.Choose(probe with { Docker = true }));
+        Assert.Equal(HostSetupMethod.SshNative, HostRemote.Choose(probe with { Docker = true, Sudo = "none" }));
+        Assert.Equal(HostSetupMethod.SshDocker, HostRemote.Choose(probe with { Docker = true, DockerAccess = true, Sudo = "none", OperatingSystem = "Debian 12" }));
+        var debian = probe with { OperatingSystem = "Debian GNU/Linux 12" };
+        Assert.Contains("Install Docker Engine", HostRemote.Blocker(HostRemote.Choose(debian), debian, "me@gpu"));
         Assert.True(HostRemote.NeedsSudo(HostSetupMethod.SshDocker, probe with { Docker = true }));
         Assert.False(HostRemote.NeedsSudo(HostSetupMethod.SshDocker, probe with { Docker = true, DockerAccess = true }));
 
         // A computer without internet access: Martlet sends a native host what setup and update need, and says plainly what it can't send.
         Assert.Null(HostRemote.OfflineBlocker(HostSetupMethod.SshNative, HostVerb.Setup, "me@gpu"));
         Assert.Null(HostRemote.OfflineBlocker(HostSetupMethod.SshNative, HostVerb.Update, "me@gpu"));
-        Assert.Contains("native Ubuntu method", HostRemote.OfflineBlocker(HostSetupMethod.SshDocker, HostVerb.Setup, "me@gpu"));
+        Assert.Contains("Ubuntu host it runs without Docker", HostRemote.OfflineBlocker(HostSetupMethod.SshDocker, HostVerb.Setup, "me@gpu"));
         Assert.Contains("Docker images and models", HostRemote.OfflineBlocker(HostSetupMethod.SshNative, HostVerb.Add, "me@gpu"));
     }
 

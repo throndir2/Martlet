@@ -72,7 +72,10 @@ is matched by name (*DIVA* runs `diva-host`). A host PC uses no jobs, so its map
 cloud service, a job that runs on each companion PC on those PCs) rather than
 the Setup choice it kept from before it became a host. Before this, a host PC's
 map showed only itself and its own old choices, and no computer showed the
-other desktops.
+other desktops. On any computer, another member's row on the map has **Make it
+a host PC** (or **Make it a companion PC**) to [switch that
+computer](CLUSTER.md#switching-another-computer-between-companion-and-host)
+from here.
 
 ## A PC set up as a host
 
@@ -154,6 +157,99 @@ Limits, by design for a home network:
   setups travel as [shared settings](CLUSTER.md#one-martlet-on-every-computer)
   through the network's hosts.
 
+## Reaching your network from outside home
+
+A laptop at work or on the road can be a companion (microphone, speakers,
+character) while Thinking, voices and listening keep running on the hosts at
+home. Martlet's trust model does not change: every connection is pinned TLS to
+the host key in the roster, every request is signed with a per-device
+credential, and pairing still needs the owner. What changes is *how the laptop
+reaches the hosts* and *who else can knock*.
+
+**Threat model.** At home only computers on your network can reach a host. Once
+a host is reachable from outside, anyone on the internet can open a TLS
+connection to it. They cannot read or forge traffic (pinned TLS, signed
+requests, one-use pairing windows), so what they can do is *guess*: short
+pairing codes, credentials, sign-in passwords and one-time codes; and *flood*
+the routes anyone may call. Martlet answers with the gateway's guard (below)
+and by keeping pairing codes on the home network. A stolen laptop is handled as
+before: remove it from the network and every host revokes it.
+
+**Routes, in order of preference.**
+
+1. **Overlay network (recommended):** Tailscale, ZeroTier or your own
+   WireGuard. The laptop and hosts share a private network wherever they are,
+   nothing is open to the internet, and pinned TLS works unchanged (the overlay
+   address is just another way to the same host key). Add each host's overlay
+   address (for example `100.101.102.103:9443` or `gpu-box.tailnet.ts.net:9443`)
+   as an outside address.
+2. **Port forward on your router:** forward one public TCP port to a host's
+   gateway port and add `your-name.example.net:<port>` (or your public IP) as
+   that host's outside address. Turn on the host's *reachable from outside*
+   protection (it is on whenever a host has outside addresses). Use a dynamic
+   DNS name if your public IP changes. Forward only the gateway port, never a
+   role service.
+3. **Not supported:** HTTP tunnels and reverse proxies that end TLS themselves
+   (Cloudflare Tunnel's HTTP mode, ngrok HTTP, nginx `proxy_pass https://`).
+   They present their own certificate, so the host key pin fails by design.
+   Only plain TCP passthrough (Cloudflare Spectrum or a TCP tunnel, nginx
+   `stream`) keeps the pin; if you use one, the host can't see the real source
+   address, so set *treat every connection as outside home* on it.
+
+**Several hosts.** Each host the laptop should use from outside needs its own
+outside address (its own forwarded port, or its overlay address). The simplest
+workable setup is an overlay on every host; with port forwarding, forward one
+port per host (for example 9443 and 9444). A host with no outside address is
+simply not used while away.
+
+**Which address a desktop uses.** A host keeps its home address in the roster
+and gets any number of owner-set outside addresses (hostname or IP with a port).
+The desktop tries the home address first and the outside addresses only when it
+doesn't answer, always pinned to the same host key, and remembers the address
+that worked so the home path never waits on an outside one.
+
+**The gateway's guard** (`GatewayGuard.cs`), always on:
+
+- Requests are classed by route: `health` (liveness), `pair` (pairing cards and
+  typed codes), `join` (a member desktop's signed key), `signin` (sign-in
+  points) and `credential` (everything signed or with an API key). The source
+  is the connection's address, never a forwarded header: `loopback`, `home`
+  (private and link-local addresses) or `outside` (anything else, including
+  overlay addresses such as Tailscale's 100.64.0.0/10).
+- **Pairing stays at home.** A pairing card or typed code used from outside
+  home is refused (`pair.outside_home`, 403) unless the owner turns on *Allow
+  pairing from outside home*; a short code can be guessed over the internet.
+  Joining and pairing by itself use the desktop's network key, which can't be
+  guessed, so they work from anywhere. Enrolling a new laptop from outside is
+  what sign-in is for.
+- **Lockout.** Failed authentication (`auth.*`, `pairing.*`, `network.denied`,
+  `key.*`, sign-in failures) counts per route class and source address, and for
+  sign-in also per account: five free failures in 15 minutes, then the address
+  or account is locked out for 1 s, doubling with each further failure up to 15
+  minutes (`auth.throttled`, 429, with `Retry-After`). A success clears it.
+- **Budget.** Each outside address may make 120 requests a minute to the routes
+  anyone may call (liveness, pairing, joining, sign-in).
+- **Limits.** Pairing and sign-in bodies are at most 8 KB and must arrive within
+  10 seconds (`request.timeout`); request headers within 5 seconds; 64
+  connections at once.
+- Requests from this computer and the home network to signed routes pass the
+  guard without a lookup, so the conversation path never slows down. Once a host
+  is *reachable from outside*, the limits apply to every source.
+- **Audit.** Every decision (success, failure, throttled, refused: route class,
+  source address and kind, code, device or account, never a secret) is kept in
+  the last 256 entries, served to paired desktops at
+  `GET /martlet/v1/security/audit`, and written to the host log (`Refused a
+  pairing attempt from ...`, `Locked out ... from ...`, `Throttled ...`), which
+  the Diagnostics page and MCP `logs_tail` show. Failed requests in the host log
+  name their source address.
+- Sign-in points register their routes through the same guard
+  (`IGatewayRequestGuard.TryAdmit` and `Record`).
+
+Exposure choices (`GatewayExposure`): *internet reachable* (limits apply to
+every source), *allow pairing from outside home* (off by default) and *treat
+every connection as outside home* (for a host behind a port proxy or TCP relay
+that hides the real source).
+
 ## Where it lives
 
 | Piece | Location |
@@ -163,7 +259,8 @@ Limits, by design for a home network:
 | Desktop sync | `Martlet.Avatar.Audio2Face` `Remote/NetworkSync.cs` (`NetworkSyncEngine`, `NetworkLocalState`; `ReadOnlyAsync` for a host PC that only watches), `Remote/HostNetwork.cs` (client calls, pairing by itself) and `Remote/HostRelease.cs` (what an announced release means to this PC) |
 | Desktop UI | `MainWindow.Network.cs`, the **Your Martlet network** card on the Devices page; `NetworkMap.cs` draws the network's computers on the Devices map; `MainWindow.HostReleases.cs` takes the releases hosts announce; the host PC's Home steps in `MainWindow.Shell.cs`; `NetworkIdentity.cs` for the key and `network.json` |
 | Diagnostics | The desktop log records the network as this PC sees it whenever it changes (membership, requests to join, who each host is paired with) and each host's note (`Martlet network: ...` lines on the Diagnostics page or MCP `logs_tail`) |
-| MCP | `network_status` (this PC's network from a data directory) and `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`); card IDs in [MCP](MCP.md) |
+| MCP | `network_status` (this PC's network from a data directory), `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`) and `exposure_selftest` (the gateway's guard for a host reachable from outside home, `Martlet.NodeLinkCheck exposure`); card IDs in [MCP](MCP.md) |
+| Outside home | `Martlet.Gateway` `GatewayGuard.cs` (guard, exposure choices, audit) and `GatewaySecurityAudit.cs` (`GET /martlet/v1/security/audit`); desktop `Remote/HostSecurity.cs` (`ReadSecurityAuditAsync`) |
 
 Apps and scripts outside the network (Home Assistant, your own scripts) don't
 join it: they use [API keys](API.md), which belong to the network too. A key

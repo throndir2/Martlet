@@ -28,14 +28,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // A tool call's Deny in the talk window only declines the waiting call (an MCP tool or a terminal command); it runs
         // nothing. Allow once and Always allow run it, so they need --allow-ui-effects.
         "LiveToolDeny",
-        // Add a computer: opening the wizard, moving between its steps and choosing how a host is reached only change what it
-        // shows; its Set up, Pair and role buttons do the work. The Devices map's Add a computer details open the same wizard
+        // Add a computer: opening the wizard, moving between its two steps (Connect, Roles) and showing the address-and-code
+        // fields or the SSH address only change what it shows; its Connect, Set up and role buttons do the work. The Devices map's Add a computer details open the same wizard
         // from their + (SelectedDeviceAdd) and their first choice card, and so does Home's Connect to your other computers on a
         // new PC (HomeConnectComputers).
-        "AddComputer", "OpenHosts", "SelectedDeviceAdd", "NodeAction-AddComputer", "HomeConnectComputers", "HostsStepWhere",
-        "HostsStepInstall", "HostsStepPair", "HostsStepRoles", "HostsBack", "HostsNext",
-        "HostsClose", "HostsEnterCode", "HostMethodThisPc", "HostMethodSshDocker", "HostMethodSshNative", "HostMethodOnHost",
-        "HostCommandSection", "PairCommandSection", "DeviceIdSection",
+        "AddComputer", "OpenHosts", "SelectedDeviceAdd", "NodeAction-AddComputer", "HomeConnectComputers", "HostsStepConnect",
+        "HostsStepRoles", "HostsBack", "HostsNext", "HostsClose", "HostsEnterCode", "HostAddressSection", "DeviceIdSection",
         // The setup advisor (Home's Get a setup recommendation): opening it, moving between its steps, picking a goal and
         // closing it only change what it shows (the answers stay in memory); its plan's Install on this PC buttons do the work.
         "OpenSetupAdvisor", "AdvisorBack", "AdvisorNext", "AdvisorClose", "GoalBalanced", "GoalSmartest", "GoalFastest", "GoalPrivate",
@@ -286,7 +284,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SetupCloudKeyStatus-Thinking", "SetupCloudKeyStatus-Voice", "SetupCloudKeyStatus-Listening",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
         "LogSummary", "LogShareStatus", "LogDetail",
-        "HostStatus", "PairedHost", "PairCodeTitle", "PairCodeHelp", "HostRunPairAddress", "NetworkStatus",
+        "HostStatus", "PairedHost", "PairCodeHelp", "DockerState", "RolesSummaryText", "HostRunPairAddress", "NetworkStatus",
         // A run window's pairing panel: the note on how long the code works (fixed text) and its Copy code button's label
         // ("Copy code", then "Copied" or "Couldn't copy"); never the code (HostRunPairCode). Clicking HostRunPairCopy puts the
         // code on the clipboard, so it needs --allow-ui-effects.
