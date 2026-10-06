@@ -86,7 +86,8 @@ internal static class DiscordCallCheck
             {
                 on = saved.On, capture = saved.Capture.ToString(), seeSpeakers = saved.SeeSpeakers, ownerNameSet = saved.OwnerName is not null,
                 output = plan.OutputName, alsoSpeakers = saved.AlsoSpeakers, bargeIn = saved.BargeIn,
-                cameraBackground = saved.CameraBackground.ToString()
+                cameraBackground = saved.CameraBackground.ToString(), cameraPicture = saved.CameraPicture?.ToString(),
+                cameraPictureSaved = DiscordCallPreferences.HasPicture(dataDirectory)
             },
             doctor = new
             {

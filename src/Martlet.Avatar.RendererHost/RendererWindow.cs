@@ -288,8 +288,8 @@ internal sealed class RendererWindow : Window
             var brush = new SolidColorBrush(color);
             brush.Freeze();
             camera ??= (Left, Top, Width, Height, Topmost);
-            Background = brush;
-            viewport.Background = brush;
+            Background = CameraPicture(request.Picture) ?? (Brush)brush;
+            viewport.Background = request.Picture is null ? brush : Brushes.Transparent;
             var area = SystemParameters.WorkArea;
             Width = Math.Min(960, area.Width);
             Height = Width * 9 / 16;
@@ -309,6 +309,44 @@ internal sealed class RendererWindow : Window
             Title = "Martlet character overlay";
         }
         SendView();
+    }
+
+    // The camera view's picture, filling the window; null (the color shows) when there's none or it can't be read.
+    private static ImageBrush? CameraPicture(string? path)
+    {
+        if (path is null) return null;
+        try
+        {
+            if (!Path.IsPathFullyQualified(path)) throw new InvalidDataException("The camera picture's path isn't a full path.");
+            var file = new FileInfo(path);
+            if (!file.Exists || file.Length is 0 or > 24 * 1024 * 1024) throw new InvalidDataException("The camera picture is missing or too large.");
+            var bytes = File.ReadAllBytes(path);
+            int width;
+            using (var probe = new MemoryStream(bytes, writable: false))
+                width = System.Windows.Media.Imaging.BitmapDecoder.Create(probe, System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreColorProfile |
+                    System.Windows.Media.Imaging.BitmapCreateOptions.DelayCreation, System.Windows.Media.Imaging.BitmapCacheOption.None).Frames[0].PixelWidth;
+            var image = new System.Windows.Media.Imaging.BitmapImage();
+            using (var stream = new MemoryStream(bytes, writable: false))
+            {
+                image.BeginInit();
+                image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                image.CreateOptions = System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreColorProfile;
+                if (width > 1920) image.DecodePixelWidth = 1920;
+                image.StreamSource = stream;
+                image.EndInit();
+            }
+            image.Freeze();
+            var brush = new ImageBrush(image) { Stretch = Stretch.UniformToFill, AlignmentX = AlignmentX.Center, AlignmentY = AlignmentY.Center };
+            brush.Freeze();
+            ErrorLog.Info($"Camera view: on a {image.PixelWidth}x{image.PixelHeight} picture.");
+            return brush;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or NotSupportedException or InvalidDataException or
+            FileFormatException or ArgumentException or InvalidOperationException)
+        {
+            ErrorLog.Warn($"Camera view: couldn't show its picture ({error.Message}), so it shows its color.");
+            return null;
+        }
     }
     // Martlet's voice is muted (its replies aren't spoken); Martlet says so on load and whenever it changes.
     private bool voiceMuted;
