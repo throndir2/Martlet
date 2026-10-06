@@ -245,6 +245,13 @@ public partial class ConversationHistoryWindow : ThemedWindow
     {
         if (busy || editing is not { } item) return;
         var text = EditText.Text;
+        if (text.Trim() == (item.Side == HistorySide.User ? item.Exchange.User : item.Exchange.Reply).Trim())
+        {
+            StopEditing();
+            RenderButtons();
+            StatusText.Text = "Nothing changed. " + StatusText.Text;
+            return;
+        }
         if (string.IsNullOrWhiteSpace(text) && !confirm(this, "The new text is empty, so the message will be deleted. Delete it?", "Delete message"))
             return;
         var there = There;

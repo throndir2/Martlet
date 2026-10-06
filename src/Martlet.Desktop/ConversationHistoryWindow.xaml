@@ -39,7 +39,7 @@
                          AutomationProperties.Name="Words to search for" />
             </DockPanel>
             <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="0,8,0,4" AutomationProperties.AutomationId="HistoryWindowStatus"
-                       AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Conversation history status" />
+                       AutomationProperties.LiveSetting="Polite" />
             <CheckBox x:Name="AlsoThere" IsChecked="True" Margin="0,2" AutomationProperties.AutomationId="HistoryAlsoThere">
                 <TextBlock TextWrapping="Wrap"
                            Text="Also delete and edit in Telegram and Discord when they allow it (WhatsApp doesn't let Martlet; changes wait in a queue at each app's pace)" />
@@ -48,8 +48,7 @@
                 <Button DockPanel.Dock="Right" x:Name="PlatformCancelButton" Content="Stop waiting changes" Click="PlatformCancel_Click"
                         Padding="10,3" Margin="8,0,0,0" AutomationProperties.AutomationId="HistoryPlatformCancel" />
                 <TextBlock x:Name="PlatformText" TextWrapping="Wrap" VerticalAlignment="Center"
-                           AutomationProperties.AutomationId="HistoryPlatformStatus" AutomationProperties.LiveSetting="Polite"
-                           AutomationProperties.Name="Changes waiting for messaging apps" />
+                           AutomationProperties.AutomationId="HistoryPlatformStatus" AutomationProperties.LiveSetting="Polite" />
             </DockPanel>
         </StackPanel>
         <WrapPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">

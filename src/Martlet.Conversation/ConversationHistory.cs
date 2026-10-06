@@ -204,9 +204,10 @@ public sealed partial class ConversationHistory
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException) { bad++; }
             }
-            // Duplicate ids (a copied file) keep the first; the newest exchanges are indexed when there are too many.
+            // Duplicate ids (a copied file) keep the first; the newest exchanges are indexed when there are too many. Exchanges made
+            // at the same moment keep the order they were written in.
             var unique = read.GroupBy(exchange => exchange.Id).Select(group => group.First())
-                .OrderBy(exchange => exchange.At).ThenBy(exchange => exchange.Id).ToList();
+                .OrderBy(exchange => exchange.At).ToList();
             var dropped = Math.Max(0, unique.Count - MaximumIndexedExchanges);
             var built = Index.Of(unique.Skip(dropped));
             lock (gate)

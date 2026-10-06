@@ -546,20 +546,30 @@ default), `recording` and `recallWhenMentioned` (memory on and `keep`), `tool`
 (whether replies are offered `search_conversations`, whether the Thinking route
 does function calling, and the tool exactly as the model gets it with its
 `utf8Bytes` and `estimatedTokens`), `prompt` (Companion > Prompts > *Past
-conversations* as sent) and `record` (`files`, `bytes`, `conversations`,
-`exchanges`, `skippedLines`, `notIndexed`, `oldest`, `newest`). Never what was
+conversations* as sent), `record` (`files`, `bytes`, `conversations`,
+`exchanges`, `skippedLines`, `notIndexed`, `oldest`, `newest` and `apps`, the
+exchanges per app: `pc`, `telegram`, `discord`, `whatsapp`) and
+`platformChanges` (`conversations\platform-changes.json`: `pending`,
+`pendingByApp`, `done`, `refused`, `gaveUp`, `lastProblem`). Never what was
 said; it contacts nothing.
 
 `conversation_history_check` (optional `bulkExchanges`, 1,000-100,000, default
-20,000) rehearses the record with the production code (`ConversationHistory`
-and `PastConversations` in `src\Martlet.Conversation`) on synthetic
+20,000) rehearses the record with the production code (`ConversationHistory`,
+`PastConversations` and `HistoryPlatforms` in `src\Martlet.Conversation`) on synthetic
 conversations in a disposable folder and returns `{passed, failures, steps,
 tool}`: recording exchanges into month files, a line cut short by a crash
 skipped after a restart, an ordinary message recalling nothing, *Do you
 remember what I said about Kyoto?* and *What did we talk about yesterday?*
 bringing back the right exchanges (never the conversation going on) with the
 notes' size, `search_conversations` by words and by time and what it tells the
-model, deleting one conversation and everything, and reading `bulkExchanges`
+model, deleting one conversation and everything, exchanges from Telegram and
+Discord keeping their app, chat and message IDs over a restart (Discord never
+recalled in the talk window), what deleting and editing one message asks of
+each app (Telegram for 48 hours, never your Discord DM messages, an edited
+reply cut to its pieces), editing and deleting single messages, the queue of
+changes for the apps (`PlatformChanges` with a fixture app, not Telegram or
+Discord: its pace, a slow-down waited out, a refusal dropped, an unconnected
+app waiting, kept over a restart, *Stop waiting changes*), and reading `bulkExchanges`
 exchanges with the time recall takes (`recallMedianMs`, `recallMaxMs`) and the
 time an ordinary message's check takes (`ordinaryMessageCheckMs`). It is not a
 real conversation or Thinking model; the desktop's tests and `ui_*` tools cover
@@ -1725,12 +1735,20 @@ and how many conversations and exchanges it holds since when; never what was
 said) and the checkboxes `HistoryKeep` and `HistorySearch` (toggling either
 saves `conversation-history.json`, so it needs `--allow-ui-effects`).
 `OpenHistory` opens the history window and `HistoryClose` closes it;
-`HistorySearchRun` and `HistoryShowAll` only filter what it lists. Its
-`HistoryWindowStatus` reads as text (counts, or what a search found);
-`HistorySearchText` takes a search through `ui_set_text`, while the list
-(`HistoryConversations`) and what was said (`HistoryExchanges`) are not
-readable values. `HistoryDeleteConversation` and `HistoryDeleteAll` ask first
-(No by default) and need `--allow-ui-effects`. Each editor's footer line, `CompanionSaveState`,
+`HistorySearchRun` and `HistoryShowAll` only filter what it lists, and
+`HistoryEditMessage` only opens the editor (`HistoryEditCancel` closes it). Its
+`HistoryWindowStatus` reads as text (counts per app, or what a search or the
+last change did) and `HistoryPlatformStatus` reads the changes waiting for
+Telegram and Discord (*2 changes waiting for Discord (not connected; they go
+once it is).*). `HistorySearchText` and `HistoryEditText` take text through
+`ui_set_text`; `HistoryAppFilter` (*All apps*, *This PC*, *Telegram*,
+*Discord*, *WhatsApp*), `HistoryConversations` (items named *Conversation 2
+(Telegram)*) and `HistoryMessages` (items named *Message 3: Martlet ·
+Discord*) take `ui_select`; what was said is not a readable value.
+`HistoryAlsoThere` (on) makes deletes and edits also queue changes for the
+apps. `HistoryEditSave`, `HistoryDeleteMessage`, `HistoryDeleteConversation`,
+`HistoryDeleteAll` and `HistoryPlatformCancel` write (deletes ask first, No by
+default) and need `--allow-ui-effects`. Each editor's footer line, `CompanionSaveState`,
 `AvatarSaveState` and `LorebookSaveState`, reads *All changes saved.*,
 *Saving...*, *Not saved yet: <why>* (for example an empty persona name, all
 response styles at zero, or *Choose your model file: an existing .vrm or

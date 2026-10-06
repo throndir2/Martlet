@@ -271,7 +271,7 @@ public sealed class ConversationHistoryDesktopTests
                 // Delete Martlet's reply here and in Discord: both its pieces are queued; the person's message stays.
                 messages.SelectedIndex = 1;
                 Click(window, "DeleteMessageButton");
-                await Until(() => history.Platforms.Status.Pending == 2);
+                await Until(() => history.Platforms.Status.Pending == 2 && Control<TextBlock>(window, "StatusText").Text.StartsWith("Deleted the message."));
                 Assert.Equal(["Delete message"], asked);
                 Assert.Equal(["5002", "5003"], history.Platforms.Pending.Select(change => change.Message));
                 Assert.Equal("", history.Store.Exchanges(channel).Single().Reply);
@@ -285,7 +285,7 @@ public sealed class ConversationHistoryDesktopTests
                 Assert.Equal(Visibility.Visible, Control<StackPanel>(window, "EditorPanel").Visibility);
                 Control<TextBox>(window, "EditText").Text = "Hi Sam, good to hear from you!";
                 Click(window, "EditSaveButton");
-                await Until(() => history.Platforms.Status.Pending == 3);
+                await Until(() => history.Platforms.Status.Pending == 3 && Control<TextBlock>(window, "StatusText").Text.StartsWith("Saved the edit."));
                 var edit = history.Platforms.Pending[^1];
                 Assert.Equal((PlatformChangeKind.Edit, "102", "Hi Sam, good to hear from you!"), (edit.Kind, edit.Message, edit.Text));
                 Assert.NotNull(history.Store.FindMessage(HistoryApps.Telegram, "42", "101")!.Edited);

@@ -27,6 +27,7 @@ public sealed class HistoryAppsTests : IDisposable
         var id = Guid.NewGuid();
         await history.AppendAsync(conversation, HistoryInputKind.Typed, "Hi from Telegram", "Hello!", "Sam",
             new HistorySource(HistoryApps.Telegram, "42", null, "Sam", ["101"]), id);
+        clock.Now = clock.Now.AddMinutes(1);
         await history.AppendAsync(conversation, HistoryInputKind.Typed, "Hi here", "Hey!", null, new HistorySource(HistoryApps.Pc));
         var found = history.FindMessage(HistoryApps.Telegram, "42", "101");
         Assert.Equal(id, found?.Id);
@@ -54,7 +55,9 @@ public sealed class HistoryAppsTests : IDisposable
         await history.LoadAsync();
         var conversation = Guid.NewGuid();
         var kept = await history.AppendAsync(conversation, HistoryInputKind.Typed, "Tell me about otters", "Otters hold hands.", null);
+        clock.Now = clock.Now.AddMinutes(1);
         var edited = await history.AppendAsync(conversation, HistoryInputKind.Typed, "And penguins?", "Penguins waddle.", null);
+        clock.Now = clock.Now.AddMinutes(1);
         var gone = await history.AppendAsync(conversation, HistoryInputKind.Typed, "Goodbye walrus", "Bye!", null);
 
         var (before, after) = await history.ChangeAsync(edited.Id, exchange => exchange with { Reply = "Penguins slide on their bellies.", Edited = clock.Now });
