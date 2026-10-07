@@ -21,6 +21,12 @@ public sealed record BackgroundPlace(string Id, string Name, int Rank = 0)
     /// <summary>Other work its computer is kept free for, in a word or two each ("singing", "image generation"); empty when none.</summary>
     public IReadOnlyList<string> Duties { get; init; } = [];
 
+    /// <summary>What a Thinking pool member can do (text, pictures, recordings); text only unless its model is known to do more.</summary>
+    public ThinkingCapability Can { get; init; } = ThinkingCapability.Text;
+
+    /// <summary>The model a Thinking pool member runs (its model ID), when known.</summary>
+    public string? Model { get; init; }
+
     /// <summary>Where it stands in line for new work, lowest first: its rank, and a place kept free for other duties just after the
     /// places of the same rank without any. Deterministic: the same places and the same load always pick the same place.</summary>
     public int Standing => Rank * 2 + (Duties.Count > 0 ? 1 : 0);
@@ -45,15 +51,18 @@ public sealed class BackgroundPlaceLease : IDisposable
     private readonly BackgroundPlaces owner;
     private int released;
 
-    internal BackgroundPlaceLease(BackgroundPlaces owner, BackgroundPlace place, string holder, bool whole = false)
+    internal BackgroundPlaceLease(BackgroundPlaces owner, BackgroundPlace place, string holder, bool whole = false, ThinkingJobKind? kind = null)
     {
         this.owner = owner;
         Place = place;
         Holder = holder;
         Whole = whole;
+        Kind = kind;
     }
 
     public BackgroundPlace Place { get; }
+    /// <summary>The Thinking pool job kind that holds it, when it was asked for with a <see cref="ThinkingDemand"/>.</summary>
+    public ThinkingJobKind? Kind { get; }
     /// <summary>Who holds it: a job ID such as think-2.</summary>
     public string Holder { get; }
     /// <summary>Whether it holds the whole place (every slot), such as a song being made on that computer.</summary>
@@ -73,10 +82,15 @@ public sealed class BackgroundPlaceLease : IDisposable
 /// or <see cref="AcquireAsync"/> to wait in line) and releases it when done; other work its computer does (a song) holds the
 /// place for a while (<see cref="Hold"/>) so nothing else lands there. Every choice is deterministic and instant (no model is
 /// asked): a free slot on the place with the lowest <see cref="BackgroundPlace.Standing"/>, then the least busy, then the pool's
-/// order. Waiters are served first come, first served, each as soon as a place of its own pool frees up. Thread-safe.</summary>
+/// order. Waiters are served highest priority first (<see cref="ThinkingDemand.Priority"/>), then first come, first served, each
+/// as soon as a place of its own pool frees up. A demand with <see cref="ThinkingDemand.KeepLastFree"/> never takes the last free
+/// slot of its pool while that pool has two or more slots (the Thinking pool's slot for fast jobs). Thread-safe.</summary>
 public sealed class BackgroundPlaces
 {
-    private sealed record Waiter(IReadOnlyList<BackgroundPlace> Pool, string Holder, TaskCompletionSource<BackgroundPlaceLease> Done);
+    private sealed record Waiter(IReadOnlyList<BackgroundPlace> Pool, string Holder, TaskCompletionSource<BackgroundPlaceLease> Done,
+        ThinkingDemand? Demand, long Order);
+
+    private long order;
 
     private readonly object gate = new();
     private readonly List<BackgroundPlaceLease> leases = [];
@@ -89,7 +103,16 @@ public sealed class BackgroundPlaces
     public IReadOnlyList<BackgroundPlaceLease> Leases { get { lock (gate) return [.. leases]; } }
 
     /// <summary>Who waits for a place now, first in line first.</summary>
-    public IReadOnlyList<string> Line { get { lock (gate) return [.. waiters.Select(w => w.Holder)]; } }
+    public IReadOnlyList<string> Line { get { lock (gate) return [.. Ordered().Select(w => w.Holder)]; } }
+
+    /// <summary>The Thinking pool job kinds waiting now, first in line first.</summary>
+    public IReadOnlyList<ThinkingJobKind> WaitingKinds
+    {
+        get { lock (gate) return [.. Ordered().Where(w => w.Demand is not null).Select(w => w.Demand!.Kind)]; }
+    }
+
+    // Highest priority first, then first come. Called under the gate.
+    private IEnumerable<Waiter> Ordered() => waiters.OrderByDescending(w => w.Demand?.Priority ?? 0).ThenBy(w => w.Order);
 
     /// <summary>How many hold place <paramref name="id"/> now.</summary>
     public int Load(string id)
@@ -100,22 +123,23 @@ public sealed class BackgroundPlaces
     /// <summary>Where <paramref name="holder"/> is in line (1 is next), or 0 when it isn't waiting.</summary>
     public int Position(string holder)
     {
-        lock (gate) return waiters.FindIndex(w => w.Holder == holder) + 1;
+        lock (gate) return Ordered().ToList().FindIndex(w => w.Holder == holder) + 1;
     }
 
     /// <summary>Takes the best free place in <paramref name="pool"/> for <paramref name="holder"/> (see the class summary). With
     /// <paramref name="share"/>, the least busy place when none is free (work that may wait on a busy place). Null when none (or
     /// <paramref name="pool"/> is empty).</summary>
-    public BackgroundPlaceLease? TryAcquire(IReadOnlyList<BackgroundPlace> pool, string holder, bool share = false)
+    public BackgroundPlaceLease? TryAcquire(IReadOnlyList<BackgroundPlace> pool, string holder, bool share = false, ThinkingDemand? demand = null)
     {
-        var lease = Acquire(pool, holder, share);
+        var lease = Acquire(pool, holder, share, demand);
         if (lease is not null) Changed?.Invoke();
         return lease;
     }
 
     /// <summary>Takes the best free place in <paramref name="pool"/> for <paramref name="holder"/>, waiting in line until one
     /// frees up when all are busy. Canceling <paramref name="token"/> leaves the line.</summary>
-    public Task<BackgroundPlaceLease> AcquireAsync(IReadOnlyList<BackgroundPlace> pool, string holder, CancellationToken token)
+    public Task<BackgroundPlaceLease> AcquireAsync(IReadOnlyList<BackgroundPlace> pool, string holder, CancellationToken token,
+        ThinkingDemand? demand = null)
     {
         Check(pool, holder);
         ContractRules.Require(pool.Count > 0, "A background job's pool has at least one place.");
@@ -125,12 +149,12 @@ public sealed class BackgroundPlaces
         lock (gate)
         {
             // Nobody earlier in line can use a free place (they'd have taken it), so a free one here is this holder's.
-            if (Choose(pool, share: false) is { } free)
+            if (Choose(pool, share: false, demand) is { } free)
             {
-                now = new BackgroundPlaceLease(this, free, holder);
+                now = new BackgroundPlaceLease(this, free, holder, kind: demand?.Kind);
                 leases.Add(now);
             }
-            waiter = new(pool, holder, new(TaskCreationOptions.RunContinuationsAsynchronously));
+            waiter = new(pool, holder, new(TaskCreationOptions.RunContinuationsAsynchronously), demand, ++order);
             if (now is null) waiters.Add(waiter);
         }
         Changed?.Invoke();
@@ -167,14 +191,14 @@ public sealed class BackgroundPlaces
     }
 
     // Without raising Changed (the job list raises its own once the job is in its list).
-    internal BackgroundPlaceLease? Acquire(IReadOnlyList<BackgroundPlace> pool, string holder, bool share)
+    internal BackgroundPlaceLease? Acquire(IReadOnlyList<BackgroundPlace> pool, string holder, bool share, ThinkingDemand? demand = null)
     {
         Check(pool, holder);
         lock (gate)
         {
-            var choice = Choose(pool, share);
+            var choice = Choose(pool, share, demand);
             if (choice is null) return null;
-            var lease = new BackgroundPlaceLease(this, choice, holder);
+            var lease = new BackgroundPlaceLease(this, choice, holder, kind: demand?.Kind);
             leases.Add(lease);
             return lease;
         }
@@ -199,8 +223,9 @@ public sealed class BackgroundPlaces
 
     // The deterministic choice: a free slot on the place with the lowest standing, then the least busy, then the pool's order;
     // with share and none free, the least busy place by its share of slots (a whole hold last). Called under the gate.
-    private BackgroundPlace? Choose(IReadOnlyList<BackgroundPlace> pool, bool share)
+    private BackgroundPlace? Choose(IReadOnlyList<BackgroundPlace> pool, bool share, ThinkingDemand? demand = null)
     {
+        if (demand is { KeepLastFree: true } && !LeavesFastSlot(demand.Pool ?? pool)) return null;
         var candidates = pool.Select((place, order) => (place, order, used: Used(place))).ToArray();
         var free = candidates.Where(c => c.used < c.place.Slots)
             .OrderBy(c => c.place.Standing).ThenBy(c => c.used).ThenBy(c => c.order).Select(c => c.place).FirstOrDefault();
@@ -208,6 +233,15 @@ public sealed class BackgroundPlaces
         return candidates.OrderBy(c => leases.Any(l => l.Whole && l.Place.Id == c.place.Id))
             .ThenBy(c => (double)c.used / c.place.Slots).ThenBy(c => c.place.Standing).ThenBy(c => c.order)
             .Select(c => c.place).FirstOrDefault();
+    }
+
+    // Whether a long job may take a slot of whole: always with one slot in all, else only while two or more are free (one stays
+    // free for fast jobs). Called under the gate.
+    private bool LeavesFastSlot(IReadOnlyList<BackgroundPlace> whole)
+    {
+        var distinct = whole.DistinctBy(place => place.Id).ToArray();
+        if (distinct.Sum(place => place.Slots) < 2) return true;
+        return distinct.Sum(place => Math.Max(0, place.Slots - Used(place))) >= 2;
     }
 
     /// <summary>What holds the places of <paramref name="pool"/> now, in words: "think-1 on diva and think-2 on ripley".</summary>
@@ -233,13 +267,13 @@ public sealed class BackgroundPlaces
             removed = leases.Remove(lease);
             if (removed)
                 // First come, first served: each waiter in turn takes a free place of its own pool, if one is free now.
-                for (var i = 0; i < waiters.Count; i++)
+                foreach (var waiter in Ordered().ToArray())
                 {
-                    if (Choose(waiters[i].Pool, share: false) is not { } free) continue;
-                    var next = new BackgroundPlaceLease(this, free, waiters[i].Holder);
+                    if (Choose(waiter.Pool, share: false, waiter.Demand) is not { } free) continue;
+                    var next = new BackgroundPlaceLease(this, free, waiter.Holder, kind: waiter.Demand?.Kind);
                     leases.Add(next);
-                    served.Add((waiters[i], next));
-                    waiters.RemoveAt(i--);
+                    served.Add((waiter, next));
+                    waiters.Remove(waiter);
                 }
         }
         foreach (var (waiter, next) in served)

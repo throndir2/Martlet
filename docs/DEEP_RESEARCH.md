@@ -15,7 +15,7 @@ a new subsystem.
 | Piece | Where | What research reuses |
 | --- | --- | --- |
 | Background jobs | `Martlet.Conversation.BackgroundJobs`, [Background job API](CONVERSATION.md#background-job-api-for-new-kinds-of-background-work) | A `research` kind: limits, cancel, time limit, the talk window chip, delivery of results into the conversation |
-| Deep thinking | `ThinkLonger`, `BackgroundThink`, `DeepThinkingPlan` | The model that runs the loop, beside the conversation (cloud, a second Ollama model, a paired computer's Deep thinking role) |
+| Deep thinking | `ThinkLonger`, `BackgroundThink`, `DeepThinkingPlan` | The model that runs the loop, beside the conversation (cloud, a second Ollama model, a paired computer's Thinking pool role) |
 | Function calling and MCP | `TextTools`, `McpToolService`, `Martlet.Mcp.Client` | The reply's `research` tool; any search MCP server the owner adds |
 | Creations | [Creations](CREATIONS.md) | A `report` kind keeps the finished report on every computer |
 | Host roles | [Cluster](CLUSTER.md), [Network](NETWORK.md) | A self-hosted search engine as a host role on a Docker or Linux host |
@@ -100,7 +100,7 @@ chat, so it stays opt-in.
 
 All backends sit behind one seam, `IWebSearchProvider.SearchAsync(query, count,
 token) -> [{title, url, snippet, content?}]`. The owner turns each on under
-Companion › Deep thinking › *Web research*, and research sends every query to
+Companion › Thinking pool › *Web research*, and research sends every query to
 every enabled backend. Keys go in Windows Credential Manager, like other provider
 keys.
 

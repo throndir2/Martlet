@@ -274,7 +274,7 @@ public sealed class HostRolesTests
         var routed = roles.Where(r => r.Conf.Any(line => line.StartsWith("gateway_kind=", StringComparison.Ordinal))).ToArray();
         Assert.Equal(routed.Select(r => r.Kind).Order(StringComparer.Ordinal), HostRoles.All.Select(r => r.Kind).Order(StringComparer.Ordinal));
         Assert.All(routed, r => Assert.Contains("gateway_kind=" + r.Kind, r.Conf));
-        Assert.Contains(HostRoles.All, r => r.Kind == HostRoles.DeepThinking && r.Name == "Deep thinking" &&
+        Assert.Contains(HostRoles.All, r => r.Kind == HostRoles.DeepThinking && r.Name == "Thinking pool" &&
             r.RouteId == Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId);
         // The one route-less role, Home Assistant, is set up from Smart home on a Linux host (Docker Desktop can't run it).
         Assert.Equal([HomeAssistantHosts.Role], roles.Except(routed).Select(r => r.Kind));
@@ -301,21 +301,21 @@ public sealed class HostRolesTests
                 DeepThinkingHosts: deepThinkingHost is null ? null : [deepThinkingHost])).Single(n => n.Id == "host:" + id);
 
         var a = Host("gpu-a", null);
-        Assert.Contains(a.Roles, r => r.Chip == "Deep thinking" && r.Detail == "Ready (qwen3-8b). Choose it in Companion > Deep thinking to use it.");
+        Assert.Contains(a.Roles, r => r.Chip == "Thinking pool" && r.Detail == "Ready (qwen3-8b). Tick Join the Thinking pool in Companion > Thinking pool to use it.");
         Assert.Contains(a.Commands, c => c.Action == NodeAction.Companion && c.Argument == nameof(CompanionTab.DeepThinking) &&
             c.Component == DeviceComponent.Standby(HostRoles.DeepThinking));
         Assert.Contains(a.Commands, c => c.Action == NodeAction.RemoveRole && c.Argument == "gpu-a/deep-thinking");
         Assert.DoesNotContain(a.Commands, c => c.Action == NodeAction.InstallRole && c.Argument == "gpu-a/deep-thinking");
         // A role it runs can have its settings (its model...) changed from here, on that role's row.
         Assert.Contains(a.Commands, c => c.Action == NodeAction.ChangeRole && c.Argument == "gpu-a/deep-thinking" &&
-            c.Label == "Change Deep thinking settings" && c.Component == DeviceComponent.Standby(HostRoles.DeepThinking));
+            c.Label == "Change Thinking pool settings" && c.Component == DeviceComponent.Standby(HostRoles.DeepThinking));
         Assert.Contains(a.Commands, c => c.Action == NodeAction.ChangeRole && c.Argument == "gpu-a/ollama");
         Assert.DoesNotContain(Host("gpu-b", null).Commands, c => c.Action == NodeAction.ChangeRole);
         var thinking = Host("gpu-a", "gpu-a");
-        Assert.Contains(thinking.Roles, r => r.Chip == "Deep thinking" && r.Detail == "Thinks things over in the background for this PC (qwen3-8b).");
+        Assert.Contains(thinking.Roles, r => r.Chip == "Thinking pool" && r.Detail == "Thinks things over in the background for this PC (qwen3-8b).");
         Assert.DoesNotContain(thinking.Commands, c => c.Action == NodeAction.Companion && c.Argument == nameof(CompanionTab.DeepThinking));
         Assert.Contains(Host("gpu-b", null).Commands, c => c.Action == NodeAction.InstallRole && c.Argument == "gpu-b/deep-thinking" &&
-            c.Label == "Install Deep thinking");
+            c.Label == "Install Thinking pool");
     }
 
     [Fact]
