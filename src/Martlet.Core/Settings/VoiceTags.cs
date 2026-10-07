@@ -163,9 +163,11 @@ public static class VoiceTags
     public const string SoundsHeading = "Non-word sounds (write one inline, exactly where the sound happens):";
 
     /// <summary>Heads the engine's tones of voice in <see cref="Catalog"/>. Each spoken piece is synthesized on its own, so a
-    /// tone reaches only the sentence it starts.</summary>
+    /// tone reaches only the sentence it starts; a reply that should stay in a tone (asked to whisper) starts each sentence
+    /// with it.</summary>
     public const string TonesHeading =
-        "Tones of voice (write one at the very start of a sentence; that whole sentence, and only that one, is said in that tone):";
+        "Tones of voice (write one at the very start of a sentence; that whole sentence, and only that one, is said in that " +
+        "tone, so to keep a tone start every sentence with it):";
 
     /// <summary>The engine's tags as the Thinking prompt lists them (its {tags}): the non-word sounds, then the tones of voice,
     /// each group under a heading saying where its tags go and each tag on its own line with when to use it. A group the engine
