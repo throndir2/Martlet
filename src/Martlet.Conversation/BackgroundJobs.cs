@@ -352,9 +352,7 @@ public sealed class BackgroundJobs : IDisposable
             if (disposed) return new(null, "closed", "Martlet is closing, so it can't start anything now.");
             var running = jobs.Where(job => job.Kind.Name == kind.Name && !job.Finished).ToArray();
             if (running.Length >= kind.MaxActive)
-                return new(null, "busy", pool is not null
-                    ? $"{Places.Busy(pool)} {(running.Length == 1 ? "is" : "are")} still running, and only {kind.MaxActive} " +
-                      $"{kind.Name}{(kind.MaxActive == 1 ? "" : "s")} run{(kind.MaxActive == 1 ? "s" : "")} at once (one on each place)."
+                return new(null, "busy", pool is not null ? Full(kind, pool, running.Length)
                     : running.Length == 1
                     ? $"{running[0].Id} is still running and only one {kind.Name} runs at a time." : $"{running.Length} are still running.",
                     running[0]);
@@ -381,6 +379,19 @@ public sealed class BackgroundJobs : IDisposable
         if (job.Queued is not { } line) return new(job);
         var held = Places.HeldForConversation(line, kind.Demand(line));
         return new(job, Queued: held ? "the conversation, which needs them while the user talks with you" : Places.Busy(line)) { ForConversation = held };
+    }
+
+    // The refusal when as many jobs of kind run or wait on pool as it allows: the real numbers (how many run or wait, and how many
+    // run at once: the places' slots, one fewer for a kind that leaves the pool's last free slot for quick jobs), then what holds
+    // the places now. Called under the gate.
+    private string Full(BackgroundJobKind kind, IReadOnlyList<BackgroundPlace> pool, int count)
+    {
+        var slots = pool.DistinctBy(place => place.Id).Sum(place => place.Slots);
+        var atOnce = Math.Min(kind.MaxActive, kind.Demand(pool) is { KeepLastFree: true } ? DeepThinkingPool.AtOnce(slots) : slots);
+        var busy = Places.Busy(pool);
+        return $"Martlet already has {count} {kind.Name}{(count == 1 ? "" : "s")} running or waiting, and it runs " +
+            (atOnce == 1 ? "one at a time." : $"up to {atOnce} at once.") + (busy == "nothing" ? "" : $" Running now: {busy}.") +
+            (count == 1 ? " Wait for it to finish." : " Wait for one to finish.");
     }
 
     // A job started in line waits for a place of its pool (its time limit hasn't started yet); false when it was canceled or no
