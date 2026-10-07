@@ -17,7 +17,8 @@ Each release's section here is also its notes on GitHub.
 - The Devices page now shows how much memory each job usually holds and the most it takes while it works hardest, such as *12-14 GB*: Thinking models hold the same amount all the time, while voices grow as they speak. A computer whose jobs usually fit but can run out when they're all busy now says it's *tight* instead of over-full, so you can tell what runs well from what probably won't. ([#538](https://github.com/throndir2/Martlet/pull/538))
 
 ### Fixed
-- The blush and the symbols Martlet draws over your character's face now stay on the face while the head turns, tilts, sways, breathes or follows your mouse, and a turned head's far cheek gets a narrower blush that fades as it turns away. ([#542](https://github.com/throndir2/Martlet/pull/542))
+- The blush and the symbols Martlet draws over your character's face now stay on the face while the head turns, tilts, sways, breathes or follows your mouse, and a turned head's far cheek gets a narrower blush that fades as it turns away. ([#543](https://github.com/throndir2/Martlet/pull/543))
+- When you stop Martlet partway through a sentence, an emote it hadn't reached yet, such as a wink, no longer plays anyway. When Martlet pauses because you talk over it, the emote waits and plays at the same point in the speech once it goes on. ([#542](https://github.com/throndir2/Martlet/pull/542))
 - Chatterbox Turbo is no longer listed with emotions it can't perform: of its tones, only whispering changes the voice. ([#539](https://github.com/throndir2/Martlet/pull/539))
 
 ## [0.53.0] - 2026-10-07
