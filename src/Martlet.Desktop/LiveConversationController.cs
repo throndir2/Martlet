@@ -22,7 +22,27 @@ internal sealed record LiveConversationStatus(string Code, bool Finished = false
 
 /// <summary>Talking over Martlet stopped it: why (<see cref="BargeInPolicy"/>), how long after the user's voice began that was
 /// decided, how many quick checks of their words it took and when (controller clock) their voice began.</summary>
-internal sealed record TalkOverResult(BargeInDecision Decision, TimeSpan After, int Checks, long StartedAt);
+internal sealed record TalkOverResult(BargeInDecision Decision, TimeSpan After, int Checks, long StartedAt,
+    BargeInRuling? Ruling = null, TimeSpan? Paused = null);
+
+/// <summary>A reply paused because the user talked over it (Pause and decide): the pause's state, the paused turn, what the
+/// quick check decided, when the user's voice began and after how many checks. Finished once (stop or play on).</summary>
+internal sealed class HeldReply(BargeInHold hold, ConversationTurn turn, BargeInDecision decision, long startedAt, int checks)
+{
+    private int finished;
+    internal BargeInHold Hold { get; } = hold;
+    internal ConversationTurn Turn { get; } = turn;
+    internal BargeInDecision Decision { get; } = decision;
+    internal long StartedAt { get; } = startedAt;
+    internal int Checks { get; } = checks;
+    internal bool Finished => Volatile.Read(ref finished) != 0;
+    internal bool TryFinish() => Interlocked.Exchange(ref finished, 1) == 0;
+}
+
+/// <summary>One barge-in decision, for the talk window's line and MCP (never what was said): when, what decided it, the
+/// verdict and why, which judge and how long it took, how long the reply was paused and what happened to it.</summary>
+internal sealed record BargeInRecord(DateTimeOffset At, BargeInSource Source, BargeInVerdict Verdict, string Reason, string Judge,
+    TimeSpan JudgeTime, TimeSpan? Paused, string Outcome);
 
 /// <summary>A picture Martlet shows in the talk window: its creation key, title, encoded bytes and whether it is a FIXTURE.</summary>
 internal sealed record ShownPicture(string Key, string Title, byte[] Image, bool Fixture);
@@ -38,10 +58,11 @@ internal sealed record ShownPicture(string Key, string Title, byte[] Image, bool
 // microphone first (Companion › Listening › Reduce echo from my speakers), so speakers work without headphones. Pc: listens to
 // what this PC plays instead of the microphone (Companion › Listening › Hear what this PC plays): never Voice ID, voice
 // recognition, a recording for Thinking or memory. WordCheck: how readily what was heard counts as words (Companion › Listening ›
-// Word check; UtteranceFilter and BargeInPolicy).
+// Word check; UtteranceFilter and BargeInPolicy). BargeInStyle: with BargeIn, whether words that aren't a clear cue pause the
+// reply while a judge decides (PauseAndDecide, the default; BargeInJudging) or stop it at once (StopAtOnce).
 internal sealed record ListeningOptions(bool HandsFree, VoiceActivitySettings Activity, bool RequireVoiceId, bool Hear = false,
     bool BargeIn = false, bool ReduceEcho = false, bool Pc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal,
-    bool Straight = false, bool HearLocalOnly = false)
+    bool Straight = false, bool HearLocalOnly = false, BargeInBehavior BargeInStyle = BargeInBehavior.PauseAndDecide)
 {
     internal static TimeSpan IdleRestart => TimeSpan.FromSeconds(12);
     internal static TimeSpan MinimumUtterance => TimeSpan.FromMilliseconds(450);
@@ -212,6 +233,10 @@ internal sealed class LiveConversationOperation
     /// <summary>Why talking over Martlet stopped it, and how long after the user's voice began that was decided.</summary>
     internal TalkOverResult? TalkOver { get => Volatile.Read(ref talkOver); set => Volatile.Write(ref talkOver, value); }
     private TalkOverResult? talkOver;
+    /// <summary>The reply this utterance paused (Pause and decide) until the judge, the user's silence or their talking on
+    /// decides; null when it paused nothing.</summary>
+    internal HeldReply? Held { get => Volatile.Read(ref held); set => Volatile.Write(ref held, value); }
+    private HeldReply? held;
     private int stoppedSong;
     /// <summary>This utterance asked Martlet to stop singing, and the song stopped.</summary>
     internal bool StoppedSong { get => Volatile.Read(ref stoppedSong) != 0; set => Volatile.Write(ref stoppedSong, value ? 1 : 0); }
@@ -1148,10 +1173,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 utterance.Publish(new("listen.ignored", Finished: true));
                 return;
             }
-            // Said over Martlet: its words may stop the reply (a quick check while it was said may already have decided).
+            // Said over Martlet: its words may stop the reply (a quick check while it was said may already have decided, or paused
+            // it for the judge).
             if (options is { BargeIn: true, Pc: false } && Speaking is { } mode)
-                utterance.Interrupts = utterance.TalkOver?.Decision ??
-                    (BargeInPolicy.Decide(result.Text, words, options.WordCheck, mode) is { Interrupt: true } decision ? decision : null);
+                utterance.Interrupts = await InterruptsAsync(utterance, result.Text, words, options, mode,
+                    result.Evidence?.MeanProbability).ConfigureAwait(false);
             // Said while Martlet sings: asking it to stop ends the song musically; a quick check may already have, and then
             // the note quotes everything that was said.
             if (!options.Pc && !StopSongIfAsked(utterance, result.Text, words, options.WordCheck) && utterance.StoppedSong)
@@ -3576,6 +3602,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     speakerSum.Add(speakerSum[^1] + (loud && speakers ? 1 : 0));
                     explainedSum.Add(explainedSum[^1] + (speakers ? 1 : 0));
                     talkOver?.Process(loud, speakers);
+                    // Paused for what was said over Martlet: how long the user talks on decides too (BargeInHold).
+                    operation.Held?.Hold.Frame(loud && !speakers);
                     // Talking over Martlet: once the voice has gone on long enough (or a short word just ended), what was said so
                     // far is checked for words without waiting for the pause.
                     if (bargeIn.Gate?.Process(loud, speakers, checking is { IsCompleted: false }) == true && !operation.TalkingOver &&
@@ -3642,6 +3670,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         {
             CryptographicOperations.ZeroMemory(frame);
             operation.VoiceLevel = -100;
+            // The user's voice ended (or listening stopped): a paused reply plays on once its verdict is not for Martlet.
+            operation.Held?.Hold.Ended();
         }
 
         // The utterance starts here: when its voice began, on the controller's clock (each frame is 20 ms of it).
@@ -3726,7 +3756,29 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 StopSongIfAsked(operation, heard.Text, context, options.WordCheck);
                 if (!options.BargeIn) return;
                 var decision = BargeInPolicy.Decide(heard.Text, context, options.WordCheck, mode);
+                // Already paused for earlier words: the judge looks again at the longer ones (a stop word stops it now). Once
+                // that pause decided to stop, the talk window stops the reply; later checks change nothing.
+                if (operation.Held is { } held)
+                {
+                    if (held.Finished)
+                    {
+                        if (held.Hold.Outcome == BargeInOutcome.Stop) return;
+                    }
+                    else
+                    {
+                        await JudgeHeldAsync(operation, held, heard.Text, context, options, heard.Evidence?.MeanProbability).ConfigureAwait(false);
+                        return;
+                    }
+                }
                 if (!decision.Interrupt) return;
+                // Pause and decide: words that aren't a clear cue pause the reply at once, and a judge decides.
+                if (!decision.Cue && options.BargeInStyle == BargeInBehavior.PauseAndDecide && mode == PlaybackMode.Reply &&
+                    Hold(operation, decision, startedAt, checks) is { } paused)
+                {
+                    await JudgeHeldAsync(operation, paused, heard.Text, context, options, heard.Evidence?.MeanProbability).ConfigureAwait(false);
+                    return;
+                }
+                Remember(Immediate(decision));
                 operation.TalkOver = new(decision, clock.GetElapsedTime(startedAt), checks, startedAt);
                 operation.TalkingOver = true;
             }
@@ -3734,6 +3786,151 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             catch (Exception error) when (error is not OutOfMemoryException) { }
             finally { CryptographicOperations.ZeroMemory(pcm); }
         });
+    }
+
+    // ---------- pause and decide (BargeInJudging) ----------
+
+    // The judge of words said over a paused reply: the local rules now; the Thinking pool's model judge when it is wired in.
+    private IBargeInJudge bargeInJudge = RulesBargeInJudge.Instance;
+    // A paused reply the judge (or the user talking on) decided to stop: the talk window takes it (TakeHeldStop) and stops the
+    // reply the way talking over it always did.
+    private TalkOverResult? heldStop;
+    private readonly Queue<BargeInRecord> bargeIns = new();
+
+    /// <summary>The judge of words said over a paused reply (the local rules by default).</summary>
+    internal IBargeInJudge BargeInJudge
+    {
+        get => Volatile.Read(ref bargeInJudge);
+        set => Volatile.Write(ref bargeInJudge, value ?? RulesBargeInJudge.Instance);
+    }
+
+    /// <summary>The last few barge-in decisions, newest last (never what was said).</summary>
+    internal IReadOnlyList<BargeInRecord> BargeIns { get { lock (bargeIns) return [.. bargeIns]; } }
+
+    /// <summary>A paused reply that is to stop now, taken once by the talk window.</summary>
+    internal TalkOverResult? TakeHeldStop() => Interlocked.Exchange(ref heldStop, null);
+
+    private void Remember(BargeInRecord record)
+    {
+        lock (bargeIns)
+        {
+            if (bargeIns.Count == 5) bargeIns.Dequeue();
+            bargeIns.Enqueue(record);
+        }
+    }
+
+    // A clear cue, Stop at once or a song: stopped without a judge.
+    private BargeInRecord Immediate(BargeInDecision decision) => new(clock.GetUtcNow(),
+        decision.Cue ? BargeInSource.Cue : BargeInSource.Judge, BargeInVerdict.Interrupt, decision.Reason,
+        decision.Cue ? "none" : "stop at once", TimeSpan.Zero, null, "stopped");
+
+    // Pauses the reply being said for words said over it (Pause and decide) and watches the pause until it stops or plays on.
+    // Returns null when nothing could be paused (no reply speaking, or it is paused already).
+    private HeldReply? Hold(LiveConversationOperation operation, BargeInDecision decision, long startedAt, int checks)
+    {
+        ConversationTurn? turn;
+        lock (gate)
+            turn = active is { Worker: not null, Playback: PlaybackMode.Reply } reply && !reply.OwnershipReleased ? reply.Turn : null;
+        if (turn is null || !turn.Pause()) return null;
+        var held = new HeldReply(new BargeInHold(clock), turn, decision, startedAt, checks);
+        operation.Held = held;
+        ErrorLog.Info($"Barge-in: Martlet paused its reply {clock.GetElapsedTime(startedAt).TotalMilliseconds:0} ms after you started " +
+            $"talking over it ({decision.Reason}); the {BargeInJudge.Name} judge decides whether it stops or plays on.");
+        Task.Run(() => WatchHoldAsync(operation, held)).Forget();
+        return held;
+    }
+
+    // The judge rules on what was said so far (within BargeInJudging.Deadline, or the local rules decide); the pause then stops
+    // or plays on as soon as it can tell.
+    private async Task JudgeHeldAsync(LiveConversationOperation operation, HeldReply held, string? text, UtteranceContext context,
+        ListeningOptions options, double? confidence)
+    {
+        var reply = held.Turn.Content.Text;
+        var input = new BargeInJudgeInput(text ?? "", held.Turn.Sentence, reply.Length <= 400 ? reply : reply[^400..], context,
+            options.WordCheck, confidence);
+        BargeInRuling ruling;
+        try { ruling = await BargeInJudging.RuleAsync(BargeInJudge, input, clock, cancellationToken: operation.OriginalCaller).ConfigureAwait(false); }
+        // Listening stopped: the pause's own limit decides.
+        catch (OperationCanceledException) { return; }
+        held.Hold.Rule(ruling);
+        Settle(operation, held);
+    }
+
+    // Checks a paused reply every 20 ms until it stops or plays on, so the time limit and the user's silence after their
+    // utterance ended decide even when nothing else happens. A pause never outlasts BargeInJudging.MaximumPause.
+    private async Task WatchHoldAsync(LiveConversationOperation operation, HeldReply held)
+    {
+        try
+        {
+            while (!held.Finished)
+            {
+                Settle(operation, held);
+                if (held.Finished) return;
+                await Task.Delay(TimeSpan.FromMilliseconds(BargeInHold.FrameMilliseconds), clock).ConfigureAwait(false);
+            }
+        }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            if (held.TryFinish()) held.Turn.Resume();
+        }
+    }
+
+    // Acts once on a pause's outcome: plays the reply on from where it paused, or hands the stop to the talk window.
+    private void Settle(LiveConversationOperation operation, HeldReply held)
+    {
+        if (held.Turn.Completion.IsCompleted)
+        {
+            held.TryFinish();
+            return;
+        }
+        var hold = held.Hold;
+        var outcome = hold.Evaluate();
+        if (outcome == BargeInOutcome.Pending || !held.TryFinish()) return;
+        var ruling = hold.Ruling;
+        var why = hold.Why ?? held.Decision.Reason;
+        var source = hold.Source ?? BargeInSource.Limit;
+        var judged = ruling is null ? "no verdict" : ruling.Source == BargeInSource.Cue ? "a clear cue"
+            : $"the {ruling.Judge} judge in {ruling.JudgeTime.TotalMilliseconds:0} ms{(ruling.Source == BargeInSource.Timeout ? " after the model judge's deadline" : "")}";
+        Remember(new(clock.GetUtcNow(), source, outcome == BargeInOutcome.Stop ? BargeInVerdict.Interrupt : BargeInVerdict.NotForMe,
+            why, ruling?.Judge ?? "none", ruling?.JudgeTime ?? TimeSpan.Zero, hold.Paused, outcome == BargeInOutcome.Stop ? "stopped" : "resumed"));
+        if (outcome == BargeInOutcome.Resume)
+        {
+            held.Turn.Resume();
+            ErrorLog.Info($"Barge-in: Martlet resumed its reply after a {hold.Paused.TotalMilliseconds:0} ms pause: what you said " +
+                $"wasn't for it ({why}; {(source == BargeInSource.Limit ? "the pause reached its limit" : judged)}; " +
+                $"{hold.Voice.TotalMilliseconds:0} ms of your voice during the pause).");
+            return;
+        }
+        var result = new TalkOverResult(held.Decision with { Reason = why }, clock.GetElapsedTime(held.StartedAt), held.Checks,
+            held.StartedAt, ruling, hold.Paused);
+        operation.TalkOver = result;
+        Volatile.Write(ref heldStop, result);
+    }
+
+    // What an utterance's whole transcript does to a reply it was said over: a quick check may already have decided; a reply it
+    // paused is left to the judge (a stop word still stops it); otherwise Pause and decide pauses and judges it now (the user
+    // is quiet, so it stops or plays on at once), and Stop at once (or a cue, or a song) stops it.
+    private async Task<BargeInDecision?> InterruptsAsync(LiveConversationOperation utterance, string? text, UtteranceContext words,
+        ListeningOptions options, PlaybackMode mode, double? confidence)
+    {
+        if (utterance.TalkOver is { } over) return over.Decision;
+        var decision = BargeInPolicy.Decide(text, words, options.WordCheck, mode);
+        if (utterance.Held is { } held)
+        {
+            if (held.Finished) return utterance.TalkOver?.Decision ?? (decision.Cue ? decision : null);
+            await JudgeHeldAsync(utterance, held, text, words, options, confidence).ConfigureAwait(false);
+            return utterance.TalkOver?.Decision;
+        }
+        if (!decision.Interrupt) return null;
+        if (!decision.Cue && options.BargeInStyle == BargeInBehavior.PauseAndDecide && mode == PlaybackMode.Reply &&
+            Hold(utterance, decision, utterance.SpeechStartedAt == 0 ? clock.GetTimestamp() : utterance.SpeechStartedAt, 0) is { } paused)
+        {
+            paused.Hold.Ended();
+            await JudgeHeldAsync(utterance, paused, text, words, options, confidence).ConfigureAwait(false);
+            return utterance.TalkOver?.Decision;
+        }
+        Remember(Immediate(decision));
+        return decision;
     }
 
     private async Task<BoundedWaveAudio?> CaptureAsync(LiveConversationOperation operation)

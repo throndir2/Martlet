@@ -296,7 +296,7 @@ public partial class MainWindow
         {
             var prefs = Talk;
             var value = new SharedTalk(prefs.HandsFree, prefs.PauseIndex, prefs.SpeakReplies, prefs.HearVoice == true, prefs.BargeIn, prefs.ScreenChattiness,
-                prefs.WordCheck, prefs.TranscribeFirst, prefs.HearVoice, SharedTalk.ThreeWayHearing);
+                prefs.WordCheck, prefs.TranscribeFirst, prefs.HearVoice, SharedTalk.ThreeWayHearing, prefs.BargeInStyle);
             var path = Path.Combine(directory, "talk-preferences.json");
             return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(value, SharedJson), null, !File.Exists(path), FileTime(path)));
         }, (setting, _) =>
@@ -308,7 +308,8 @@ public partial class MainWindow
                 SpeakReplies = value.SpeakReplies, HearVoice = value.Hearing, BargeIn = value.BargeIn,
                 ScreenChattiness = (int)ChattinessTags.Choice(value.ScreenChattiness),
                 WordCheck = Enum.IsDefined(value.WordCheck) ? value.WordCheck : ListeningSensitivity.Normal,
-                TranscribeFirst = value.TranscribeFirst
+                TranscribeFirst = value.TranscribeFirst,
+                BargeInStyle = Enum.IsDefined(value.BargeInStyle) ? value.BargeInStyle : Martlet.Conversation.BargeInBehavior.PauseAndDecide
             });
             return Task.FromResult(SharedApply.Done);
         });
@@ -466,11 +467,13 @@ public partial class MainWindow
     private sealed record SharedUpdates(bool Checks, int IntervalMinutes, bool AutoInstall, bool AutoUpdateHosts);
 
     // TranscribeFirst: Companion › Listening › When Thinking can hear you (an older computer leaves it out: straight, the default).
+    // BargeInStyle: Companion › Listening › When you talk over Martlet (an older computer leaves it out: pause and decide).
     // HearVoice is what an older computer reads (on only when chosen); HearChoice is Let Thinking hear my voice as chosen (null:
     // never chosen, on only while the recording stays on that computer), sent with HearVersion so a copy from an older computer,
     // whose off was only its default, leaves it unchosen.
     private sealed record SharedTalk(bool HandsFree, int PauseIndex, bool SpeakReplies, bool HearVoice, bool BargeIn, int ScreenChattiness,
-        ListeningSensitivity WordCheck = ListeningSensitivity.Normal, bool TranscribeFirst = false, bool? HearChoice = null, int HearVersion = 0)
+        ListeningSensitivity WordCheck = ListeningSensitivity.Normal, bool TranscribeFirst = false, bool? HearChoice = null, int HearVersion = 0,
+        Martlet.Conversation.BargeInBehavior BargeInStyle = Martlet.Conversation.BargeInBehavior.PauseAndDecide)
     {
         internal const int ThreeWayHearing = 1;
         internal bool? Hearing => HearVersion >= ThreeWayHearing ? HearChoice : HearVoice ? true : null;

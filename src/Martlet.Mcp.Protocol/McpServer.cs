@@ -810,7 +810,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "time: half its audio, a 1.5 s pause, then the rest, as Chatterbox streams on a busy graphics card; every piece must " +
             "still be spoken whole and the latency line must say the pauses, voice.pauses and voice.pausedMs) or none; muted " +
             "instead has the user mute Martlet's voice (the character's Mute voice) as the failAt-th piece is asked, which ends " +
-            "only what is said aloud and is not a failure (voice.muted); text-only sends the reply with no voice at all (Speak " +
+            "only what is said aloud and is not a failure (voice.muted); paused pauses the reply once its first audio played, as " +
+            "Pause and decide does when you talk over it, holds it 1 s and plays it on: ok also needs no samples played while paused, " +
+            "the next piece still made meanwhile (voice.hold), every piece said once (nothing made again) and the " +
+            "latency line saying it paused and resumed; text-only sends the reply with no voice at all (Speak " +
             "Martlet's replies aloud off), so every sentence goes to the captions; a fixture speaker opens no " +
             "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
             "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
@@ -953,6 +956,42 @@ internal sealed class McpServer(DesktopAutomation desktop)
                         expectInterrupt = new { type = "boolean" }
                     },
                     required = new[] { "text" },
+                    additionalProperties = false
+                }
+            }
+        }),
+        Tool("barge_in_check", "Companion > Listening > When you talk over Martlet: simulates words said over a reply and returns the " +
+            "production verdict (BargeInJudging with the local rules judge). A clear cue (a stop word, Martlet's name) stops at once and " +
+            "is never judged; other words that the quick check would stop on pause the reply and the judge says interrupt (stop and " +
+            "answer) or notForMe (a backchannel, agreeing, laughing along, Martlet's own words heard back: play on from where it " +
+            "paused). samples: heard with optional sentence (what Martlet is saying), recentReply, voicedMs and expectVerdict " +
+            "(interrupt or notForMe); default: a fixed set with the verdict each must give. Each sample returns verdict, reason, " +
+            "source (Cue, Judge), judge, judgeMs and the action with the saved choice. deadlines: a fixture model judge (NOT AI) " +
+            "slower than the deadline (judgeDelayMs, default 1000; deadlineMs, default 400) must give way to the rules within the " +
+            "deadline, and one in time must be used. holds: what a pause does on a simulated clock (quiet after notForMe plays on; " +
+            "talking on past 1.5 s stops; interrupt stops; no verdict plays on at the pause's limit). Also returns the saved choice " +
+            "(behavior PauseAndDecide or StopAtOnce from talk-preferences.json, bargeIn, wordCheck) and the timings. ok when every " +
+            "expectation held. Nothing is recorded or played; nothing leaves this PC.", new
+        {
+            dataDirectory = new { type = "string" },
+            deadlineMs = new { type = "integer", minimum = 1, maximum = 5000 },
+            judgeDelayMs = new { type = "integer", minimum = 0, maximum = 10000 },
+            samples = new
+            {
+                type = "array", maxItems = 64,
+                items = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        name = new { type = "string", maxLength = 64 },
+                        heard = new { type = "string", maxLength = 1024 },
+                        sentence = new { type = "string", maxLength = 1024 },
+                        recentReply = new { type = "string", maxLength = 1024 },
+                        voicedMs = new { type = "integer", minimum = 0, maximum = 30000 },
+                        expectVerdict = new { type = "string", @enum = new[] { "interrupt", "notForMe" } }
+                    },
+                    required = new[] { "heard" },
                     additionalProperties = false
                 }
             }
@@ -1390,6 +1429,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
                 "utterance_filter_check" => await UtteranceFilterCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
                     SpeechDirectory(arguments), cancellation),
+                "barge_in_check" => await BargeInCheck.RunAsync(arguments, DataDirectory(arguments), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "discord_call_check" => await DiscordCallCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "discord_text_check" => await DiscordTextCheck.RunAsync(DataDirectory(arguments), arguments, cancellation),

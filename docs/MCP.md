@@ -2109,7 +2109,15 @@ line saying *The voice paused N times for X ms in all, waiting for its next
 audio.* with at least one pause per piece of about the gap each. Before the
 playback fix, a pause that long ended the voice after 1 s
 (`PlaybackFailed`, `StreamTruncated`): a paired host making speech slower than
-real time cut each reply short. It reads no
+real time cut each reply short. With `paused`, the reply pauses once its first
+audio has played (`ConversationTurn.Pause`, as *Pause and decide* does when you
+talk over it), stays paused for 1 s and plays on (`Resume`): `ok` also needs
+`voice.hold` to show no samples played while paused (`SamplesBefore` equals
+`SamplesAfter`), the next piece made by the end of the pause (`MadeAfter` at
+least 2: synthesis runs one piece ahead of playback and goes on while paused),
+every piece said once (nothing made again), `timings` with one
+pause and one resume, and the latency line ending *, paused N ms when you
+talked over it, then resumed*. It reads no
 credentials and nothing leaves loopback. A real
 paired host's voice failing is NOT reproduced; the talk window then notes
 *The voice failed, so this wasn't spoken.* or *The voice stopped partway, so
@@ -2334,11 +2342,15 @@ audio from the reply's start), `firstAudio` (from the moment that counts for
 you), `firstWordsFromReplyStart` and `firstAudioFromReplyStart` (each `{Count,
 Median, P90, Min, Max}` in ms), `steps` (the same for every step),
 `slowestSteps` (the five with the largest median), `voicePauses` (`replies`
-whose voice paused, `pauses` in all and `pausedMs` statistics) and `newest` (each reply's
+whose voice paused, `pauses` in all and `pausedMs` statistics), `pausedForYou`
+(replies paused because you talked over them with *When you talk over Martlet*
+on *Pause and decide*: `replies`, how many `resumed` and `stopped`, and
+`pausedMs` statistics, read from *, paused N ms when you talked over it, then
+resumed* or *, paused N ms, then stopped when you talked over it*) and `newest` (each reply's
 `at`, `measured`, `totalMs`, `from`, `steps`, `firstWordsMs`, `firstAudioMs`,
 `spokenPieces`, `firstPieceSpeechSeconds`, `firstPieceMadeMs`, `voicePauses`,
 `voicePausedMs`, `models`,
-`interrupted`, `legacy`). It only reads the log: no audio, network or provider
+`interrupted`, `restarted`, `pausedForYouMs`, `resumed`, `legacy`). It only reads the log: no audio, network or provider
 request.
 
 `context_check` shows the Thinking model's [context](CONVERSATION.md) as
@@ -2819,6 +2831,34 @@ needs every expectation met: words kept, non-words and noise dropped, stop
 words and the question stopping Martlet, backchannels and non-words never.
 Nothing is recorded or played and nothing leaves this PC; without Parakeet,
 `audio.ran` is false with the reason.
+
+`barge_in_check` checks [pause and decide](CONVERSATION.md#voice-latency-streaming-overlap-and-barge-in)
+(Companion › Listening › **When you talk over Martlet**; optional absolute
+`dataDirectory`, default the current user's). It simulates words said over a
+reply and returns the production verdict (`BargeInJudging.RuleAsync` with
+`RulesBargeInJudge`) for `samples` (up to 64 of `heard`, with optional
+`sentence` (what Martlet is saying), `recentReply`, `voicedMs` (default 900)
+and `expectVerdict` `interrupt` or `notForMe`), by default a fixed set: a stop
+word and Martlet's name (a clear cue, never judged), "Yeah.", agreeing,
+laughing along and Martlet's own sentence heard back (not for Martlet), and a
+question and a new request (for Martlet). Each sample returns `verdict`,
+`reason`, `source` (`Cue` or `Judge`), `judge`, `judgeMs`,
+`quickCheckInterrupts`, `cue` and `action` with the saved choice (*keeps
+playing*, *stops at once*, *pauses, then stops* or *pauses, then plays on*).
+`deadlines` runs a fixture model judge (NOT AI) slower than the deadline
+(`judgeDelayMs`, default 1000; `deadlineMs`, default 400): the local rules
+must decide (`source` `Timeout`) within about the deadline; a judge in time
+must be used (`source` `Judge`). `holds` runs `BargeInHold` frame by frame on
+a simulated clock: quiet after a not-for-Martlet verdict plays on, talking on
+past 1.5 s stops, an interrupt verdict stops, and no verdict plays on at the
+pause's 4 s limit; each with `outcome`, `why`, `source`, `pausedMs` and
+`voiceMs`. It returns `behavior` (`PauseAndDecide` or `StopAtOnce`) with
+`behaviorSource`, `bargeIn`, `wordCheck`, `timings` (`deadlineMs`,
+`keepTalkingLimitMs`, `quietToResumeMs`, `maximumPauseMs`,
+`voiceBeforeCheckMs`, `resumeFadeMs`) and `ok` when every expectation held.
+Nothing is recorded or played and nothing leaves this PC. `spoken_reply_check`
+`paused` rehearses the pause and resume through the production runtime; the
+talk window's `LiveBargeIn` shows the last real decision.
 
 `discord_call_check` checks [Martlet in your own Discord calls](DISCORD.md#martlet-in-your-own-calls)
 (Companion › Discord › **Martlet in your Discord calls**; optional absolute
@@ -4337,12 +4377,29 @@ and off by default, that Martlet keeps listening while it speaks either way
 Martlet takes: real words, a word like "stop" or "wait" right away, never a hum,
 a cough, laughter, a quick "yeah" or what this PC plays, checked while you talk
 with Parakeet on this PC and otherwise once you pause; `utterance_filter_check`
-rehearses it with Parakeet and `echo_check`'s `talkOver` the voice gate). In the
+rehearses it with Parakeet and `echo_check`'s `talkOver` the voice gate), then
+`TalkBargeInBehavior` (*When you talk over Martlet*: *Pause and decide
+(recommended)*, the default, or *Stop at once*; choosing one with `ui_select`
+saves `talk-preferences.json`, so it needs `--allow-ui-effects`) and
+`TalkBargeInBehaviorAbout` (returned: that a clear word or Martlet's name still
+stops at once, other words pause Martlet at once and it decides, words for it
+stop the reply, a backchannel, agreeing, laughing, side talk or a TV leave it
+playing on from where it paused, and talking on stops it; `barge_in_check`
+returns the verdicts). In the
+talk window, `LiveBargeIn` (shown once you talked over Martlet with barge-in on)
+says what happened the last time, never the words: *Talked over at 14:02:11:
+paused 430 ms, then resumed (not for Martlet: agreeing or laughing along; rules
+judge, 1 ms).* or *... stopped at once (for Martlet: a stop word; a clear
+cue).* In the
 talk window, what always listening ignored shows in `LiveHistory` as a faded
 note (*Ignored "Mmm" (not words).*), and the desktop log (`logs_tail`) has
 *Always listening ignored what it heard: ...*, *Always listening heard you
-while Martlet spoke; ...* (said while a reply played, without barge-in) and *Barge-in: Martlet stopped its
-reply N ms after you started talking over it (...)*, never the words. Each
+while Martlet spoke; ...* (said while a reply played, without barge-in), *Barge-in: Martlet paused its
+reply N ms after you started talking over it (...); the rules judge decides
+...*, *Barge-in: Martlet resumed its reply after a N ms pause: what you said
+wasn't for it (...)* and *Barge-in: Martlet stopped its
+reply N ms after you started talking over it (...; paused N ms first, then the
+rules judge (N ms) said it was for Martlet; ...)*, never the words. Each
 message in `LiveHistory` has an automation ID for whose it is, never its words:
 `LiveMessage-You`, `LiveMessage-Martlet`, `LiveMessage-Note` or
 `LiveMessage-PcAudio`; so `ui_snapshot` shows, for example, that something
@@ -4674,7 +4731,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `straight_voice_check` and `discord_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
