@@ -144,6 +144,27 @@ public sealed class HostRolesTests
         Assert.Equal(LipSyncHandler.ThisPc, NetworkMap.LipSync(avatar with { RemoteHost = null }));
     }
 
+    [Fact]
+    public void Map_shows_this_PCs_own_host_service_trouble_on_this_PC_and_never_offers_lip_sync_back_to_itself()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var own = new PairedHost { Pairing = Remote("imouto-host", "127.0.0.1"), Method = HostSetupMethod.ThisPcDocker };
+        var checks = new Dictionary<string, HostCheck> { ["imouto-host"] = new(false, "Not reachable.") };
+        var avatar = scope.Profile() with { RemoteHost = own.Pairing };
+        var pc = NetworkMap.Build(new(MachineInfo.Unknown, DeviceRole.Companion, null, avatar, false, checks, Hosts: [own],
+            OwnHostTrouble: "Docker Desktop isn't running")).Single(n => n.Id == "this-pc");
+        Assert.Equal(NodeHealth.Attention, pc.Health);
+        Assert.Equal("Host service not working", pc.HealthText);
+        Assert.Contains(pc.Roles, r => r.Component == DeviceComponent.HostService &&
+            r.Detail.StartsWith("Not working: Docker Desktop isn't running.", StringComparison.Ordinal));
+        Assert.Contains(pc.Commands, c => c.Action == NodeAction.LipSyncThisPc && c.Label == "Do lip-sync without the host service");
+        Assert.DoesNotContain(pc.Commands, c => c.Label == "Take lip-sync back to this PC");
+
+        var silent = NetworkMap.Build(new(MachineInfo.Unknown, DeviceRole.Companion, null, avatar, false, checks, Hosts: [own]))
+            .Single(n => n.Id == "this-pc");
+        Assert.Equal("Host service not answering", silent.HealthText);
+    }
+
     private static string RolesDirectory()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)

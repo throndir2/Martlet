@@ -3336,7 +3336,7 @@ heading, and `HealthAllClear` shows when nothing needs attention. Each item's
 title `HealthIssue-<id>` returns its level, title and detail (*Problem: Ollama
 isn't running on this PC. ...*); ids include `data-folder`, `settings`,
 `thinking-setup`, `thinking-retired`, `ollama`, `job-<job>` (coverage, for
-example `job-listening`), `docker`, `failed-thinking`, `failed-listening`,
+example `job-listening`), `host-service`, `failed-thinking`, `failed-listening`,
 `failed-voice` (a reply's text arrived but speaking it failed),
 `microphone`, `microphone-blocked`, `speakers`, `listening-setup`,
 `voice-setup`, `audio2face`, `webview2`, `vision`, `vision-source`,
@@ -3347,9 +3347,24 @@ are `HealthOpen-<id>-<fix>` when they only open a page or hide the item
 `HealthOpen-crash-dismiss`) and `HealthFix-<id>-<fix>` when they do something
 (start or install software, check a host, install an update), which needs
 `--allow-ui-effects`. Tiles `HealthCheck-<part>` (`thinking`, `listening`,
-`voice`, `lipsync`, `microphone`, `speakers`, `character`, `devices`, `tools`,
-`updates`, `app`) return *<Part>: OK*, *needs attention* or *not checked or
+`voice`, `lipsync`, `microphone`, `speakers`, `character`, `devices`,
+`hostservice`, `tools`, `updates`, `app`) return *<Part>: OK*, *needs attention* or *not checked or
 not set up* with the state, and clicking one only opens its page.
+A companion PC paired with a host service on this PC (`DeviceRoleSummary`
+reads *Companion PC + host*) reads that host service from this PC's Docker as
+the host dashboard does (every 30 seconds while the window shows, not while a
+conversation replies or hears you): `HealthCheck-hostservice` shows its stage
+(*Not set up yet*, *Waiting for Docker Desktop*, *Host service stopped*,
+*Host is running*), and while it isn't ready `HealthIssue-host-service` says
+why and which of this PC's jobs stop (they no longer show as `job-<job>`
+items), with the host dashboard's next step as `HealthFix-host-service-repair-0`
+(Install or Start Docker Desktop, Set up or Start host service), then
+`HealthFix-host-service-check` and `HealthOpen-host-service-show`. On Devices,
+`Node-this-pc` and `SelectedDeviceHealth` read *Host service not working* (or
+*not answering*), and coverage names it *This PC's host service*, never by its
+host ID. To see it, pair a disposable data directory's `hosts.json` with
+this PC's LAN address (`method` `ThisPcDocker`) on a PC whose Docker has no
+`martlet-host-gateway` container.
 `HealthRecheck` re-reads settings, devices and this PC's own loopback services
 (Ollama when Thinking uses it) and contacts no other computer, so it is
 passive. To see a problem on a disposable data directory, put invalid JSON in

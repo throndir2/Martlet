@@ -79,7 +79,7 @@ internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSe
     IReadOnlyList<PairedHost>? Hosts = null, IReadOnlyDictionary<string, string>? HostUpdates = null,
     IReadOnlyDictionary<string, IReadOnlyList<HostUser>>? HostUsers = null, ClusterPlan? Plan = null,
     IReadOnlyList<MartletComputer>? Computers = null, IReadOnlyCollection<string>? DeepThinkingHosts = null,
-    IReadOnlyDictionary<string, string>? HostOutside = null);
+    IReadOnlyDictionary<string, string>? HostOutside = null, string? OwnHostTrouble = null);
 
 /// <summary>A computer paired with a host, in words ("IMOUTO (desktop-imouto), active now"); <paramref name="ThisPc"/> marks
 /// this PC itself.</summary>
@@ -430,10 +430,12 @@ internal static class NetworkMap
 
         var lipSync = LipSync(inputs.Avatar);
         var companion = inputs.Role == DeviceRole.Companion;
+        string? ownHostId = null;
         foreach (var paired in Hosts(inputs))
         {
             var host = paired.Address;
             var local = host == machine.LanAddress || IsLoopback(host);
+            if (local) ownHostId = paired.HostId;
             var target = local ? thisPc : Node("host:" + paired.HostId, NodeKind.Host, paired.HostId, host, ComputerGlyph);
             target.PairedHostId = paired.HostId;
             var check = inputs.HostChecks.GetValueOrDefault(paired.HostId);
@@ -485,6 +487,17 @@ internal static class NetworkMap
                     : others.Length == 0 ? ". No other computer uses it yet." : ". Used by " + string.Join("; ", others) + ".");
                 // A host PC already lists its host service: one row says what it is and who uses it.
                 var listed = thisPc.Roles.FindIndex(r => r.Component == DeviceComponent.HostService);
+                // This PC reads its own host service from Docker; a companion PC that also hosts shows when it can't work.
+                if (inputs.OwnHostTrouble is { } trouble)
+                {
+                    detail = $"Not working: {trouble}. " + detail;
+                    thisPc.Worsen(NodeHealth.Attention, "Host service not working");
+                }
+                else if (check?.Reachable == false)
+                {
+                    detail = "Not answering. " + detail;
+                    thisPc.Worsen(NodeHealth.Attention, "Host service not answering");
+                }
                 var row = new HostedRole("Host", "Martlet host service",
                     listed >= 0 && !machine.DockerRunning ? $"{thisPc.Roles[listed].Detail}. {detail}" : detail, DeviceComponent.HostService);
                 if (listed >= 0) thisPc.Roles[listed] = row;
@@ -705,7 +718,9 @@ internal static class NetworkMap
                     thisPc.Commands.Add(new(NodeAction.Companion, "Set up lip-sync here", Argument: "LipSync", Component: DeviceComponent.LipSync));
                     break;
                 default:
-                    thisPc.Commands.Add(new(NodeAction.LipSyncThisPc, "Take lip-sync back to this PC"));
+                    // Lip-sync by this PC's own host service is already on this PC: the way back is without the host service.
+                    thisPc.Commands.Add(new(NodeAction.LipSyncThisPc, inputs.Avatar!.RemoteHost!.HostId == ownHostId
+                        ? "Do lip-sync without the host service" : "Take lip-sync back to this PC"));
                     break;
             }
             var audio = inputs.Settings?.Audio is { } devices

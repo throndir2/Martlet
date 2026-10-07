@@ -73,6 +73,23 @@ public static partial class LocalHostService
     [GeneratedRegex(@"\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z")]
     private static partial Regex HostIdPattern();
 
+    /// <summary>Why this PC's host service can't do its jobs, in a few words ("Docker Desktop isn't running"), or null when it
+    /// is ready.</summary>
+    public static string? Trouble(LocalHostServiceState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        return state.Stage switch
+        {
+            LocalHostServiceStage.DockerMissing => "Docker Desktop isn't installed",
+            LocalHostServiceStage.DockerNotRunning => "Docker Desktop isn't running",
+            LocalHostServiceStage.NotSetUp => "it isn't set up on this PC",
+            LocalHostServiceStage.Stopped => "it is stopped",
+            _ when state.AddressOnThisPc == false => "this PC's network address changed since it was set up",
+            _ when state.Answering != true => "it runs but isn't answering on your network yet",
+            _ => null
+        };
+    }
+
     private static string Docker => OperatingSystem.IsWindows() && File.Exists(DockerDesktopStatus.DockerPath) ? DockerDesktopStatus.DockerPath : "docker";
 
     public static async Task<LocalHostServiceState> ProbeAsync(CancellationToken token)
