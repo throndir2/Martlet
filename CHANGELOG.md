@@ -26,6 +26,7 @@ Each release's section here is also its notes on GitHub.
 - Intimate touch zones now react by default. Turn off **Include intimate zones** in Companion › Character › Touch zones to leave them out. ([#522](https://github.com/throndir2/Martlet/pull/522))
 
 ### Fixed
+- Adding a Linux computer as a host works again when its Docker has no buildx plugin, instead of stopping with "failed to parse platform". ([#534](https://github.com/throndir2/Martlet/pull/534))
 - Touch zone detection finds the groin zone when the vision model calls it the crotch, pelvis or between the legs. ([#519](https://github.com/throndir2/Martlet/pull/519))
 
 ## [0.52.0] - 2026-10-06
