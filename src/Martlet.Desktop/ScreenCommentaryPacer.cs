@@ -78,6 +78,12 @@ internal sealed class ScreenCommentaryPacer
     internal void ObserveFrame(double change) =>
         novelty = Math.Clamp(novelty * 0.8 + Math.Clamp(change, 0, 1) * 2.5, 0, 1);
 
+    /// <summary>Feeds how much the text on the screen changed in the newest read (0 = the same words, 1 = none in common), from
+    /// Companion › Reading: new text (a score, "Victory", a new message) makes a look more likely even when the picture barely
+    /// changed.</summary>
+    internal void ObserveText(double change) =>
+        novelty = Math.Clamp(novelty + Math.Clamp(change, 0, 1) * 0.6, 0, 1);
+
     /// <summary>The user and Martlet are talking (speech heard, a typed or spoken turn, a reply playing).</summary>
     internal void NoteConversation() => lastConversation = clock.GetTimestamp();
 

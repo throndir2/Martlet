@@ -690,6 +690,20 @@ internal static class GatewayClientJson
         return payload;
     }
 
+    private static Dictionary<string, object?> OcrPayload(GatewayOcrPayload ocr)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["operation"] = ocr.Operation == GatewayOcrOperation.Status ? "status" : "read"
+        };
+        if (ocr.Operation == GatewayOcrOperation.Read)
+        {
+            payload["media_type"] = ocr.MediaType;
+            payload["image_base64"] = Convert.ToBase64String(ocr.Image.Span);
+        }
+        return payload;
+    }
+
     internal static byte[] Request(GatewayInferenceRequest request)
     {
         object payload = request.Payload switch
@@ -722,6 +736,7 @@ internal static class GatewayClientJson
             },
             GatewaySongPayload song => SongPayload(song),
             GatewayPicturePayload picture => PicturePayload(picture),
+            GatewayOcrPayload ocr => OcrPayload(ocr),
             _ => throw new GatewayProtocolException("request.invalid")
         };
         var document = new Dictionary<string, object?>

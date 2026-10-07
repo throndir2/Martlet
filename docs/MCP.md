@@ -222,6 +222,28 @@ refusal for the model. The owner never presses Play: see
 [Creations](CREATIONS.md). The Tools page's *Recent tool use* lists each call
 (`Martlet > perform_creation: performed`), never titles or options.
 
+### Reading
+
+Companion › Reading ([Reading](READING.md)) chooses where Martlet reads the text
+on the screen while it watches: Windows OCR on this PC (the default), the `ocr`
+host role (route `martlet.gateway.ocr.v1`, [Reading host role](OCR_HOST.md)) or
+off. The local server's `reading_check` reads a data directory's `reading.json`
+(`dataDirectory`), then reads a drawn 1024 x 576 test picture with known text
+(`HEALTH 87 / 100`, `Score: 12450`, `VICTORY`, a chat line) with Windows OCR on
+this PC, as watching does. It returns the lines, the joined text, the missing
+words and the milliseconds (the first read and a second one). With `endpoint`, a
+Reading worker on loopback such as `http://127.0.0.1:50087/`, it also calls the
+worker's `GET /status` and `POST /read` with the same picture as a PNG. It never
+captures the real screen.
+
+Desktop automation: Companion › Reading's `ReadingPlace-<place>` and
+`ReadingHost-<host>` choices are passive clicks. `ReadingNow`, `ReadingLast`,
+`ReadingTestState`, `ReadingWindowsState`, `ReadingEngine`, `ReadingFeatures`,
+`ReadingHostState` and the labels of `ReadingSetUp`, `ReadingUseHost`,
+`ReadingUseThisPc`, `ReadingTurnOff` and `ReadingTest` are safe values. Read my
+screen now (`ReadingTest`) captures the screen, so it needs
+`--allow-ui-effects`. The text it read (`ReadingTestText`) is never returned.
+
 ### Pictures
 
 While Companion › Pictures has a place (or `MARTLET_PICTURES_FIXTURE=1`), every

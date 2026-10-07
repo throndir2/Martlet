@@ -1,0 +1,43 @@
+Third-party components used by the Martlet OCR worker image. They are installed at build time from PyPI. None are stored in this repository.
+
+RapidOCR 1.4.4 and rapidocr_onnxruntime 1.4.4
+  https://github.com/RapidAI/RapidOCR
+  License: Apache-2.0
+  Includes PaddleOCR PP-OCRv4 ONNX models.
+  PaddleOCR and PP-OCRv4 license: Apache-2.0
+
+ONNX Runtime 1.30.0
+  https://onnxruntime.ai
+  License: MIT
+
+OpenCV Python headless 5.0.0.93
+  https://opencv.org
+  License: Apache-2.0
+
+NumPy 2.5.3
+  https://numpy.org
+  License: BSD-3-Clause
+
+pyclipper 1.4.0
+  https://github.com/fonttools/pyclipper
+  License: MIT
+
+Shapely 2.1.2
+  https://shapely.readthedocs.io
+  License: BSD-3-Clause
+
+Pillow 12.3.0
+  https://python-pillow.org
+  License: MIT-CMU and HPND
+
+PyYAML 6.0.3
+  https://pyyaml.org
+  License: MIT
+
+six 1.17.0
+  https://github.com/benjaminp/six
+  License: MIT
+
+tqdm 4.70.1
+  https://tqdm.github.io
+  License: MPL-2.0 and MIT

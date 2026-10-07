@@ -13,16 +13,24 @@ public sealed partial class Audio2FaceHostConnection
 
     /// <summary>Sends one operation to the host's ComfyUI picture relay and returns the JSON object of each text event.
     /// Gateway and transport failures throw <see cref="Audio2FaceHostException"/>.</summary>
-    public async Task<IReadOnlyList<JsonElement>> PictureOperationAsync(HostRoute route, IReadOnlyDictionary<string, object> payload,
+    public Task<IReadOnlyList<JsonElement>> PictureOperationAsync(HostRoute route, IReadOnlyDictionary<string, object> payload,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(route);
         ArgumentNullException.ThrowIfNull(payload);
         if (route.RouteId != PictureRouteId || route.Path != PicturePath)
             throw new ArgumentException("The route is not the host's pictures.", nameof(route));
+        return JsonOperationAsync(route, payload, TimeSpan.FromSeconds(50), "picture", cancellationToken);
+    }
+
+    /// <summary>Sends one JSON operation to a host route whose answer is JSON text events (pictures, reading) and returns the
+    /// JSON object of each text event. <paramref name="what"/> names the route in errors.</summary>
+    private async Task<IReadOnlyList<JsonElement>> JsonOperationAsync(HostRoute route, IReadOnlyDictionary<string, object> payload,
+        TimeSpan longest, string what, CancellationToken cancellationToken)
+    {
         var ids = new CorrelationIds { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
         var now = clock.GetUtcNow();
-        var deadline = now + TimeSpan.FromSeconds(Math.Min(50, route.MaximumDuration.TotalSeconds - 1));
+        var deadline = now + TimeSpan.FromSeconds(Math.Min(longest.TotalSeconds, route.MaximumDuration.TotalSeconds - 1));
         var body = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>
         {
             ["protocol_version"] = new Dictionary<string, int> { ["major"] = 2, ["minor"] = 0 },
@@ -35,7 +43,7 @@ public sealed partial class Audio2FaceHostConnection
             ["payload"] = payload
         });
         if (body.Length > route.MaximumRequestBytes)
-            throw new Audio2FaceHostException("request.too_large", "The picture request is too large for the host's pictures route.");
+            throw new Audio2FaceHostException("request.too_large", $"The {what} request is too large for the host's {what} route.");
         using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + route.Path)
         {
             Content = Audio2FaceHostClient.JsonContent(body)
@@ -50,7 +58,7 @@ public sealed partial class Audio2FaceHostConnection
             throw Audio2FaceHostClient.Remote(failure.RootElement);
         }
         if (response.Content.Headers.ContentType?.MediaType != "application/x-ndjson")
-            throw new Audio2FaceHostException("response.invalid", "The host returned an invalid picture stream.");
+            throw new Audio2FaceHostException("response.invalid", $"The host returned an invalid {what} stream.");
         await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token).ConfigureAwait(false);
         using var reader = new StreamReader(stream, new UTF8Encoding(false, true));
         var objects = new List<JsonElement>();
@@ -59,7 +67,7 @@ public sealed partial class Audio2FaceHostConnection
         {
             total += line.Length + 1;
             if (line.Length > route.MaximumEventBytes * 2 || total > route.MaximumStreamBytes)
-                throw new Audio2FaceHostException("stream.limit", "The host's picture stream exceeded its bounds.");
+                throw new Audio2FaceHostException("stream.limit", $"The host's {what} stream exceeded its bounds.");
             var (text, terminal) = ParseChatEvent(line, ids);
             if (text is not null)
             {
@@ -71,11 +79,11 @@ public sealed partial class Audio2FaceHostConnection
                 }
                 catch (JsonException)
                 {
-                    throw new Audio2FaceHostException("stream.invalid", "The host's picture stream was invalid.");
+                    throw new Audio2FaceHostException("stream.invalid", $"The host's {what} stream was invalid.");
                 }
             }
             if (terminal) return objects;
         }
-        throw new Audio2FaceHostException("stream.truncated", "The host's picture stream ended early.");
+        throw new Audio2FaceHostException("stream.truncated", $"The host's {what} stream ended early.");
     }
 }

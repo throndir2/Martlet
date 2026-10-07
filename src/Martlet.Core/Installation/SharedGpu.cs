@@ -18,6 +18,10 @@ public static class SharedGpu
         ("singing", "Singing"), ("pictures", "Pictures")
     ];
 
+    /// <summary>The host roles that never use the graphics card (Reading runs RapidOCR on the processor), so they never share
+    /// it with a voice engine.</summary>
+    public static readonly IReadOnlyList<string> ProcessorOnlyRoles = ["ocr"];
+
     /// <summary>Whether a host runs its roles on Windows: this PC's host service (Docker Desktop), or a host whose report says
     /// Windows or a WSL 2 kernel ("5.15.167.4-microsoft-standard-WSL2").</summary>
     public static bool OnWindows(bool thisPc, HostHardware? report) =>

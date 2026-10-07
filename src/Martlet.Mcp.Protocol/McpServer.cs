@@ -607,6 +607,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             endpoint = new { type = "string", maxLength = 64 },
             text = new { type = "string", maxLength = 300 }
         }),
+        Tool("reading_check", "Companion › Reading (docs/READING.md): read reading.json for a data directory (where Martlet reads " +
+            "the text on the screen: Windows OCR on this PC, a host's Reading role or off) and read a drawn test picture with known " +
+            "text (HEALTH 87 / 100, Score: 12450, VICTORY, a chat line) through Windows OCR on this PC, as watching does: lines, " +
+            "the joined text, missing words and milliseconds. With endpoint (a Reading role's worker on loopback, such as " +
+            "http://127.0.0.1:50087/) that worker's GET /status and POST /read read the same picture as a PNG. Never captures the " +
+            "real screen.", new
+        {
+            dataDirectory = new { type = "string" },
+            endpoint = new { type = "string", maxLength = 64 }
+        }),
         Tool("pictures_status", "Read Companion › Pictures for a data directory: where Martlet draws (pictures.json: off, " +
             "Martlet's Pictures host role, the owner's ComfyUI at an address, OpenRouter or NVIDIA Build; the workflow, checkpoint or " +
             "model; whether an own key is saved, never the key), the loaded custom workflow's node count, the picture creations " +
@@ -1344,6 +1354,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "model"), cancellation),
                 "singing_status" => await SingingStatusAsync(arguments, cancellation),
                 "singing_check" => await SingingCheckAsync(arguments, cancellation),
+                "reading_check" => await ReadingCheck.RunAsync(
+                    OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments),
+                    OptionalString(arguments, "endpoint"), cancellation),
                 "pictures_status" => PicturesCheck.Status(DataDirectory(arguments)),
                 "pictures_check" => await PicturesCheck.RunAsync(OptionalString(arguments, "place"), OptionalString(arguments, "address"),
                     OptionalString(arguments, "workflow"), OptionalString(arguments, "checkpoint"), OptionalString(arguments, "workflowFile"),
