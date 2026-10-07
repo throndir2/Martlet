@@ -29,7 +29,7 @@ internal static class VoiceEngineCheck
     private const int SampleRate = 24_000;
 
     internal static async Task<(bool Ok, object Report)> RunAsync(string engineKey, string endpointText, string? text,
-        CancellationToken token)
+        string? styleDirectory, CancellationToken token)
     {
         var engine = SpeechEngines.ForKey(engineKey)
             ?? throw new ArgumentException($"engine must be one of {string.Join(", ", SpeechEngines.All.Select(e => e.Key))}.");
@@ -39,6 +39,9 @@ internal static class VoiceEngineCheck
         var sentence = string.IsNullOrWhiteSpace(text) ? DefaultText(engine) : text.Trim();
         var voice = F5BundledVoices.All.FirstOrDefault(v => SpeechEngines.ReferenceProblem(engine, v.Check().DurationMilliseconds) is null)
             ?? F5BundledVoices.Default;
+        // What the desktop sends Chatterbox Original: the style saved in its data directory, else Resemble's suggestions.
+        var style = engine == SpeechEngines.ChatterboxOriginal
+            ? styleDirectory is { Length: > 0 } ? ChatterboxStyle.Load(styleDirectory) : ChatterboxStyle.Default : null;
 
         var before = await StatusAsync(endpoint, token);
         var watch = Stopwatch.StartNew();
@@ -59,7 +62,7 @@ internal static class VoiceEngineCheck
             watch.Restart();
             await foreach (var frame in connection.StreamSpeechAsync(route,
                 new CorrelationIds { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() }, 1,
-                DateTimeOffset.UtcNow.AddMinutes(4), reference, sentence, token))
+                DateTimeOffset.UtcNow.AddMinutes(4), reference, sentence, token, style))
             {
                 firstAudioMs ??= watch.Elapsed.TotalMilliseconds;
                 for (var i = 0; i + 1 < frame.Length; i += 2)
@@ -98,6 +101,8 @@ internal static class VoiceEngineCheck
             route = engine.RouteId,
             voice = voice.Key,
             text = sentence,
+            // Chatterbox Original's General and Expressive exaggeration and CFG weight sent with the sentence.
+            style = style?.Describe(),
             statusBefore = before,
             seconds = Math.Round(seconds, 2),
             sampleRate = SampleRate,
@@ -118,6 +123,8 @@ internal static class VoiceEngineCheck
     private static string DefaultText(SpeechEngine engine) =>
         engine.Tags.FirstOrDefault(tag => tag.Kind == VoiceTagKind.Sound) is { } sound
             ? $"That's hilarious {sound.Text} okay, so where were we?"
+            : engine.Tags.FirstOrDefault(tag => tag.Cue == "expressive") is { } expressive
+            ? $"Hello! This is a quick check of my voice. {expressive.Text} And this sentence is said with feeling!"
             : "Hello! This is a quick check of my voice.";
 
     // The same relay per role kind as Martlet.Gateway.Host.Linux's HostApplication.RoleWorker, with each engine's default model.
@@ -125,7 +132,7 @@ internal static class VoiceEngineCheck
     {
         "f5" => new F5RelayWorker(endpoint, F5RelayWorker.DefaultModel),
         "xtts" => Martlet.Gateway.Xtts.XttsRelay.Create(endpoint, Martlet.Gateway.Xtts.XttsRelay.DefaultModel),
-        "chatterbox" => ChatterboxRelay.Create(endpoint, ChatterboxRelay.DefaultModel),
+        "chatterbox" or "chatterbox-original" or "chatterbox-nano" => ChatterboxRelay.Create(endpoint, engine.DefaultModel),
         "gpt-sovits" => Martlet.Gateway.GptSovits.GptSovitsRelay.Create(endpoint, Martlet.Gateway.GptSovits.GptSovitsRelay.DefaultModel),
         "dia" => Martlet.Gateway.Dia.DiaRelay.Create(endpoint, Martlet.Gateway.Dia.DiaRelay.DefaultModel),
         _ => throw new ArgumentException($"No relay for the {engine.HostRoleKind} role.")
@@ -153,6 +160,8 @@ internal static class VoiceEngineCheck
             // Chatterbox's whisper (level_db, parts): how many sentences it has whispered since it started.
             object? whisper = root.TryGetProperty("whisper", out var whispered) && whispered.ValueKind == JsonValueKind.Object
                 ? whispered.Clone() : null;
+            // Chatterbox Original's default style and how many sentences it has said expressively.
+            object? style = root.TryGetProperty("style", out var styled) && styled.ValueKind == JsonValueKind.Object ? styled.Clone() : null;
             return new
             {
                 answered = true,
@@ -160,9 +169,13 @@ internal static class VoiceEngineCheck
                 state = Text("state"),
                 ready = root.TryGetProperty("ready", out var ready) && ready.ValueKind == JsonValueKind.True,
                 error = Text("error"),
+                // The service's model and the device it runs on (cuda:0 or cpu).
+                model = Text("model"),
+                device = Text("device"),
                 runtime,
                 idleCheck,
-                whisper
+                whisper,
+                style
             };
         }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)

@@ -108,9 +108,33 @@ public sealed partial class FootprintCatalog
         },
         new()
         {
+            Id = "chatterbox-original", Component = PlanComponent.Voice, DisplayName = "Chatterbox Original", ModelId = "chatterbox-original",
+            HostRoleKind = "chatterbox-original", Gpu = GpuRequirement.Nvidia, MinGpuGb = 6, Platforms = DockerNvidia,
+            Steady = new(3.9, 3, 1, 11.2), Peak = new(4.8, 3.5, 1.5, 11.2), QualityTier = 3, FirstWordMs = 2000,
+            Source = $"Estimate: 3.2 GB of pinned weights (t3_cfg, s3gen, ve) plus Turbo's measured overhead, two decoding rows for CFG; image as Turbo's ({Doc})"
+        },
+        new()
+        {
+            Id = "chatterbox-nano", Component = PlanComponent.Voice, DisplayName = "Chatterbox Nano", ModelId = "chatterbox-nano",
+            HostRoleKind = "chatterbox-nano", Gpu = GpuRequirement.Nvidia, MinGpuGb = 4, Platforms = DockerNvidia,
+            Steady = new(2.6, 2.5, 1, 9.9), Peak = new(3.1, 3, 1.5, 9.9), QualityTier = 3, FirstWordMs = 450,
+            Source = $"Estimate: 1.9 GB of pinned weights (t3_nano_v1, s3gen_meanflow, ve) plus Turbo's measured overhead; image as Turbo's ({Doc})"
+        },
+        new()
+        {
             Id = WindowsVoiceId, Component = PlanComponent.Voice, DisplayName = "Windows voices", RunsInApp = true, Platforms = WindowsOnly,
             Steady = new(0, 0.1, 0.9, 0), Peak = new(0, 0.2, 1, 0), QualityTier = 1, FirstWordMs = 50, Evidence = FootprintEvidence.Measured,
             Source = $"Measured: System.Speech on an i7-13700K, 0.17 GB with its PowerShell host, 0.9 threads while speaking ({Doc})"
+        },
+        // After the Windows voices and no higher: on the processor Nano needs about 8 free threads to speak faster than real time
+        // (and pauses when other work takes them), so the planner never picks it over them; the owner chooses it in Companion › Voice.
+        new()
+        {
+            Id = "chatterbox-nano-cpu", Component = PlanComponent.Voice, DisplayName = "Chatterbox Nano on the processor",
+            ModelId = "chatterbox-nano", HostRoleKind = "chatterbox-nano", Platforms = DockerNvidia,
+            Steady = new(0, 3.3, 8, 9.9), Peak = new(0, 4.1, 8, 9.9), QualityTier = 1, FirstWordMs = 1400, Evidence = FootprintEvidence.Measured,
+            Source = $"Measured on an i7-13700K, PyTorch on the CPU: whole pieces at 0.51x real time with 8 threads on the performance cores, " +
+                $"1.05x with 15 cores busy elsewhere; 3.3 GB, 4.1 GB while loading (docs/CHATTERBOX_VOICE.md, {Doc})"
         },
         new()
         {

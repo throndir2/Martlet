@@ -29,6 +29,14 @@ Automatic mode tries local Audio2Face, then a paired host with Audio2Face, then 
 
 **Companion › Character › Emotes and motions** lists model actions and gestures. Martlet can name them with Thinking. Reply tags such as `{nod}` are removed from chat and performed by the character.
 
+## Where the character looks
+
+Right-click the character and open **Eyes**, or use **Companion › Character › Where the character looks**, to choose what its eyes usually do: as its personality decides (the default), follow your mouse, follow your mouse only when it's near, look straight ahead, or watch the window you're using. With **Let the character change it** on, the character can change that in its replies, and it stays that way until it changes it again.
+
+## Touch temperament
+
+When you save a personality, Thinking decides how the character reacts to touches on each part of its body, and where its eyes usually go. A shy, passive character can ignore your mouse and most touches, then blush and look at your mouse when you touch it somewhere it cares about. Edit it under **Companion › Character › Touch temperament**.
+
 ## Profiles
 
 Character profiles combine look, voice and personality. Switch from **Companion › Profiles**, Home's **Character** box or the tray icon menu.

@@ -268,11 +268,45 @@ are never saved, logged, put in local memory or support bundles.
 
 ## Where the character looks
 
-The character's head and eyes follow your mouse. Companion › Vision › **Where
-the character looks** can instead let **Martlet decide** (off by default; saved
-on this PC as `DecideGaze` in `talk-preferences.json`). While vision watches your
-active window or whole screen and the character shows, every new screenshot (every
-3 seconds) is a chance to look somewhere else:
+The character's **usual gaze** is what its head and eyes do when nothing else
+draws them. Choose it on Companion › Character › **Where the character looks**
+or on the character's right-click menu, under **Eyes** (saved on this PC as
+`GazeUsual` in `talk-preferences.json`):
+
+- **As the personality decides** (the default): the persona's touch
+  temperament holds a gaze that the Thinking model picks from the personality
+  when you save it ([Touch temperament](AVATARS.md#touch-temperament)). Until
+  then the character follows your mouse.
+- **Follow your mouse**: everywhere on the screen.
+- **Follow your mouse when it's near**: only while the pointer is over the
+  character or within half the character's width around it; otherwise it
+  looks straight ahead.
+- **Look straight ahead**: it ignores the pointer.
+- **Watch the window you're using**: it looks at the middle of the window in
+  front (the last one you used while its own menu is open; none for the
+  desktop or the taskbar).
+
+**Let the character change it** (on by default; `GazeFree`) lets replies change
+where the character looks. Every reply is told the usual gaze and five tags
+(Companion › Prompts › *Where you look*; empty it to turn this off):
+`{look mouse}`, `{look near}`, `{look ahead}`, `{look window}` and
+`{look usual}`. A tag changes the gaze until a reply changes it again,
+`{look usual}` goes back, and your own new choice (or turning this off) ends
+it. The tags are never shown, spoken or kept as emotes. The instructions change
+only when the usual gaze does, so prompt caches keep working; while a reply's
+choice holds the eyes, the newest message gets a short note instead
+(Companion › Prompts › *Where you look now*, a context board note).
+
+A touch can turn the eyes to your mouse for a few seconds, whatever the gaze,
+as the persona's temperament says for that part.
+
+### Glances at your screen
+
+Companion › Vision › **Glances at your screen** can also let **Martlet decide**
+(off by default; saved on this PC as `DecideGaze` in `talk-preferences.json`).
+While vision watches your active window or whole screen and the character
+shows, every new screenshot (every 3 seconds) is a chance to look somewhere
+else for a moment:
 
 - **Something new in one place.** Martlet compares the screenshot with the one
   before it as a 32×18 grid of average greys (far too coarse to carry content;
@@ -285,7 +319,8 @@ active window or whole screen and the character shows, every new screenshot (eve
   notification behind it does, its own breathing and head turns don't), and its
   speech bubble and menus never do. It glances at most every 6 seconds and tires
   of a spot that keeps changing (a video): looking there again waits 20 seconds,
-  then 40 and so on, up to two minutes.
+  then 40 and so on, up to two minutes. While a touch turns the eyes to your
+  mouse, glances wait.
 - **What the Thinking model picks.** A look Martlet already takes (above) also
   offers nine look tags, `{look top left}` to `{look bottom right}`, for the
   ninths of the picture (Companion › Prompts › *Where the character looks*;
@@ -294,12 +329,12 @@ active window or whole screen and the character shows, every new screenshot (eve
   timed with the remark, and works with `[pass]` too, so Martlet can look at
   something without saying anything. Tags are never shown, spoken or kept in the
   conversation. They are offered only when they fit beside the character's emote
-  tags (128 at most) and never with replies to you, so the time to Martlet's
-  first word and the conversation's prompt cache don't change.
-- Otherwise, **your mouse**.
+  and gaze tags (128 at most) and never with replies to you, so the time to
+  Martlet's first word and the conversation's prompt cache don't change.
+- Otherwise, **its usual gaze**.
 
 No extra request is sent and nothing leaves this PC for it beyond the looks
-vision already takes. With a camera the character follows your mouse. The talk
+vision already takes. With a camera the character keeps its usual gaze. The talk
 window's line under the vision status says what the eyes are on and when they
 last looked away (*Glancing at something new at the bottom right of your
 screen.*, *Looking at your mouse: much of the screen changed at once.*).

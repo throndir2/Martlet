@@ -39,7 +39,7 @@ internal sealed record HostJob(SetupRole Role, SetupRouteType RouteType, string 
         Disclosure = F5Speaking.Disclosure + (engine.Key == SpeechEngines.Xtts.Key
             ? " XTTS-v2's model (Coqui Public Model License) allows noncommercial use only."
             : $" {engine.Name}'s model licence: {engine.WeightsLicense}." +
-              (engine.Key == SpeechEngines.Chatterbox.Key ? " Every reply carries Resemble AI's inaudible Perth watermark." : ""))
+              (SpeechEngines.IsChatterbox(engine) ? " Every reply carries Resemble AI's inaudible Perth watermark." : ""))
     };
 
     internal static IReadOnlyList<HostJob> All => [Thinking, Listening, Speaking];

@@ -15,7 +15,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
     /// which lists its keys.</summary>
     private static readonly IReadOnlyDictionary<string, int> VoiceEnginePorts = new Dictionary<string, int>(StringComparer.Ordinal)
     {
-        ["chatterbox"] = 50083, ["f5"] = 50080, ["xtts"] = 50081, ["gpt-sovits"] = 50082, ["dia"] = 50084
+        ["chatterbox"] = 50083, ["chatterbox-original"] = 50089, ["chatterbox-nano"] = 50088, ["f5"] = 50080, ["xtts"] = 50081,
+        ["gpt-sovits"] = 50082, ["dia"] = 50084
     };
 
     private static readonly object[] Tools =
@@ -577,18 +578,24 @@ internal sealed class McpServer(DesktopAutomation desktop)
             temperament = new { type = "string" }, personaId = new { type = "string" }, personality = new { type = "string" },
             repeats = new { type = "integer", minimum = 1 }
         }),
-        Tool("character_gaze", "Where the character looks (Companion > Vision > Where the character looks; docs/SCREEN_COMMENTARY.md " +
-            "\"Where the character looks\"): the saved choice in a data directory's talk-preferences.json (mouse unless Martlet " +
-            "decides), then a rehearsal of the production decision (Martlet.Avatar.Hosting CharacterGaze and GazeDirector) on " +
+        Tool("character_gaze", "Where the character looks (Companion > Character > Where the character looks, the overlay's Eyes " +
+            "menu and Companion > Vision > Glances at your screen; docs/SCREEN_COMMENTARY.md \"Where the character looks\"): usual " +
+            "is the usual gaze saved in a data directory's talk-preferences.json (GazeUsual: personality, mouse, near, ahead or " +
+            "window; GazeFree: whether the character may change it in replies), the persona's gaze from character-temperaments.json " +
+            "(the active persona, or personaId), the gaze that applies and who set it, what every reply is told about it and the " +
+            "note while its own choice holds the eyes. aim rehearses the production CharacterGaze.Aim the overlay runs for each " +
+            "gaze (a mouse far from and near the character, a window, a touch's look at the mouse, a glance). saved is the glances " +
+            "choice (DecideGaze: usual gaze unless Martlet decides), then a rehearsal of the production decision " +
+            "(Martlet.Avatar.Hosting CharacterGaze and GazeDirector) on " +
             "generated 1920x1080 pictures (NOT screenshots; nothing is captured): a notification popping up, the same spot again soon " +
             "and later, another change right after a glance, a notification behind the character, the character's own motion, its " +
             "speech bubble, a new scene, a change by the mouse and changes all over, each with the expected and actual verdict and " +
-            "the spot looked at (ok: all as expected). Also where each look tag points on one and two screens, the screen glance's " +
-            "look instructions (the data directory's edited prompts included) and what the production segmenter makes of glance " +
-            "answers that start with a look tag (spoken, shown, quiet, the look cue); answer replaces the sample answers. Reads " +
-            "only; contacts nothing.", new
+            "the spot looked at (ok: all scenarios and aims as expected). Also where each look tag points on one and two screens, " +
+            "the gaze tags, the screen glance's look instructions (the data directory's edited prompts included) and what the " +
+            "production segmenter makes of answers with look tags (spoken, shown, quiet, the look and gaze cues); answer replaces " +
+            "the sample answers. Reads only; contacts nothing.", new
         {
-            dataDirectory = new { type = "string" }, answer = new { type = "string", maxLength = 2000 }
+            dataDirectory = new { type = "string" }, answer = new { type = "string", maxLength = 2000 }, personaId = new { type = "string" }
         }),
         Tool("character_theme", "A character model's colors and palettes as Settings > Appearance makes them (docs/UI_DESIGN.md " +
             "\"Character palettes\"): modelPath (a .model3.json or .vrm on this PC), else the model dataDirectory's avatar.json shows, " +
@@ -699,17 +706,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
             phrases = new { type = "array", maxItems = 8, items = new { type = "string", maxLength = 200 } }
         }),
         Tool("voice_engine_check", "Speak one sentence with a self-hosted voice engine's loopback service (a host role's service, " +
-            "default chatterbox on http://127.0.0.1:50083; f5 50080, xtts 50081, gpt-sovits 50082, dia 50084) through the production " +
+            "default chatterbox on http://127.0.0.1:50083; chatterbox-original 50089, chatterbox-nano 50088, f5 50080, xtts 50081, " +
+            "gpt-sovits 50082, dia 50084) through the production " +
             "path: the engine's own gateway relay inside a real gateway on 127.0.0.1 (pinned TLS, pairing) and the desktop's paired " +
             "client, with a starter voice as the reference (nothing played or recorded). Returns the service's /status before and " +
-            "after (state, error, runtime versions such as torch and CUDA, Chatterbox's whispered parts), the audio length, time to " +
+            "after (state, error, model, device, runtime versions such as torch and CUDA, Chatterbox's whispered parts, Chatterbox " +
+            "Original's style), the audio length, time to " +
             "first audio, total time, real-time factor, peak and RMS level, how much of it is voiced (voicedShare: near 0 for a " +
-            "whisper, so text starting with [whispering] shows Chatterbox whispering), or the failure code and message. Loopback " +
-            "only; runs Martlet.NodeLinkCheck.", new
+            "whisper, so text starting with [whispering] shows Chatterbox whispering), or the failure code and message. For " +
+            "chatterbox-original it sends the General and Expressive style saved in dataDirectory (chatterbox-style.json, as " +
+            "Companion › Voice saves it), else Resemble's suggestions, and returns it as style. Loopback only; runs " +
+            "Martlet.NodeLinkCheck.", new
         {
             engine = new { type = "string", @enum = VoiceEnginePorts.Keys.ToArray() },
             endpoint = new { type = "string", maxLength = 64 },
-            text = new { type = "string", maxLength = 300 }
+            text = new { type = "string", maxLength = 300 },
+            dataDirectory = new { type = "string" }
         }),
         Tool("reading_check", "Companion › Reading (docs/READING.md): read reading.json for a data directory (where Martlet reads " +
             "the text on the screen: Windows OCR on this PC, a host's Reading role or off) and read a drawn test picture with known " +
@@ -1579,7 +1591,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_models" => CharacterModels(arguments),
                 "character_profiles" => CharacterProfiles(arguments),
                 "character_actions" => await CharacterActionsCheckAsync(arguments, cancellation),
-                "character_gaze" => GazeCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer")),
+                "character_gaze" => GazeCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer"), OptionalString(arguments, "personaId")),
                 "character_physical_check" => PhysicalCheck.Run(DataDirectory(arguments), OptionalString(arguments, "modelId"),
                     OptionalString(arguments, "stroke"), OptionalString(arguments, "changes"), OptionalBool(arguments, "noticeAll") ?? true),
                 "character_touch_zones" => await TouchZonesCheck.RunAsync(DataDirectory(arguments),
@@ -1891,9 +1903,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
         if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttp ||
             !System.Net.IPAddress.TryParse(uri.Host, out var address) || !System.Net.IPAddress.IsLoopback(address))
             throw new ArgumentException("endpoint must be a numeric loopback address such as http://127.0.0.1:50083/.");
-        string[] command = OptionalString(arguments, "text") is { Length: > 0 } text
+        var text = OptionalString(arguments, "text") is { Length: > 0 } said ? said : "-";
+        var styleDirectory = OptionalString(arguments, "dataDirectory") is { Length: > 0 } data ? data : null;
+        if (styleDirectory is not null && !Path.IsPathFullyQualified(styleDirectory))
+            throw new ArgumentException("dataDirectory must be an absolute path.");
+        string[] command = styleDirectory is null
             ? ["voice-engine", engine, uri.GetLeftPart(UriPartial.Authority) + "/", text]
-            : ["voice-engine", engine, uri.GetLeftPart(UriPartial.Authority) + "/"];
+            : ["voice-engine", engine, uri.GetLeftPart(UriPartial.Authority) + "/", text, styleDirectory];
         return await NodeLinkCheckAsync(TimeSpan.FromMinutes(6), cancellation, command);
     }
 
@@ -2861,8 +2877,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             @default = fallback.Key, defaultName = fallback.Name, defaultFemale = fallback.Female, defaultCute = fallback.Cute,
             cute = Martlet.F5.F5BundledVoices.All.Where(voice => voice.Cute).Select(voice => voice.Key).ToArray(), starters, library, list, speaking,
-            engines, otherVoices, chosenEngine = Martlet.Core.Settings.SpeechEngines.ForKey(chosen)?.Key ?? Martlet.Core.Settings.SpeechEngines.Default.Key
+            engines, otherVoices, chosenEngine = Martlet.Core.Settings.SpeechEngines.ForKey(chosen)?.Key ?? Martlet.Core.Settings.SpeechEngines.Default.Key,
+            // Chatterbox Original's General and Expressive style as Companion › Voice saved it (Resemble's suggestions until then).
+            chatterboxStyle = ChatterboxStyleReport(directory)
         };
+
+        static object ChatterboxStyleReport(string directory)
+        {
+            var style = Martlet.Core.Settings.ChatterboxStyle.Load(directory);
+            return new
+            {
+                saved = File.Exists(Path.Combine(directory, Martlet.Core.Settings.ChatterboxStyle.FileName)),
+                generalExaggeration = style.GeneralExaggeration, generalCfgWeight = style.GeneralCfgWeight,
+                expressiveExaggeration = style.ExpressiveExaggeration, expressiveCfgWeight = style.ExpressiveCfgWeight,
+                summary = style.Describe()
+            };
+        }
 
         // What a voice can do: cloning, sounds and emotions (yes, partly or no), the tags that do it and the rundown's words.
         static object Abilities(Martlet.Core.Settings.VoiceAbilities abilities, IReadOnlyList<Martlet.Core.Settings.VoiceTag> tags) => new

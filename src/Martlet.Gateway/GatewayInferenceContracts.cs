@@ -829,7 +829,8 @@ public sealed class GatewayF5SynthesisPayload : GatewayInferencePayload
         byte[] referenceAudio,
         GatewayF5TextChunk[] chunks,
         string? referenceLanguage = null,
-        IReadOnlyList<Martlet.Core.Voices.SpeakingVoiceClip>? referenceClips = null)
+        IReadOnlyList<Martlet.Core.Voices.SpeakingVoiceClip>? referenceClips = null,
+        Martlet.Core.Settings.ChatterboxStyle? voiceStyle = null)
     {
         PresetId = presetId;
         ReferenceRevision = referenceRevision;
@@ -838,6 +839,7 @@ public sealed class GatewayF5SynthesisPayload : GatewayInferencePayload
         TranscriptRevision = transcriptRevision;
         ReferenceLanguage = referenceLanguage;
         ReferenceClips = referenceClips;
+        VoiceStyle = voiceStyle;
         this.referenceAudio = referenceAudio;
         this.chunks = chunks;
         Chunks = Array.AsReadOnly(this.chunks);
@@ -853,6 +855,9 @@ public sealed class GatewayF5SynthesisPayload : GatewayInferencePayload
     /// <summary>For a voice made from several recordings and an engine that learns from each (XTTS-v2, GPT-SoVITS), where
     /// each lies in <see cref="ReferenceAudio"/> and its words; null when the engine gets the recording as one.</summary>
     public IReadOnlyList<Martlet.Core.Voices.SpeakingVoiceClip>? ReferenceClips { get; }
+    /// <summary>Chatterbox Original's General and Expressive exaggeration and CFG weight, when the client sent them (only that
+    /// engine's route accepts them); null keeps Resemble's defaults.</summary>
+    public Martlet.Core.Settings.ChatterboxStyle? VoiceStyle { get; }
     public ReadOnlyMemory<byte> ReferenceAudio => referenceAudio;
     public IReadOnlyList<GatewayF5TextChunk> Chunks { get; }
 

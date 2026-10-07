@@ -321,6 +321,8 @@ public partial class MainWindow
         if (!saved.Save.Saved) throw new InvalidOperationException(saved.Summary);
         homeSettings = saved.Settings;
         FollowSavedSetup(saved.Save.Revision, reason);
+        // Another persona may be in use now, with another usual gaze.
+        avatar.Gaze.Refresh();
         return saved.Settings.Companion!;
     }
 

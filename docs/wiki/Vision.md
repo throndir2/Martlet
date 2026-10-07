@@ -28,6 +28,6 @@ Vision can use webcams, capture cards, phone-as-webcam apps, IP camera sources a
 
 ## Character gaze
 
-**Companion › Vision › Where the character looks** can let Martlet decide where the character looks while Vision watches.
+**Companion › Vision › Glances at your screen** can let Martlet glance at something new on your screen while Vision watches. What the character's eyes usually do is chosen under **Companion › Character › Where the character looks**.
 
 More detail: [Screen commentary](https://github.com/throndir2/Martlet/blob/main/docs/SCREEN_COMMENTARY.md), [Smart home cameras](https://github.com/throndir2/Martlet/blob/main/docs/SMART_HOME.md), [Avatars](https://github.com/throndir2/Martlet/blob/main/docs/AVATARS.md).
