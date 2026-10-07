@@ -4,6 +4,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
+using Martlet.Core.Platforms;
 using Martlet.Core.Settings;
 using Martlet.Providers;
 
@@ -301,6 +302,12 @@ internal interface IScreenDigestThinker
 {
     /// <summary>Whether a Thinking model that sees, other than the live conversation's own route, can take digest jobs.</summary>
     bool CanSee { get; }
+    /// <summary>Whether such a model may start a digest job now: while you talk with Martlet, only one that shares no hardware
+    /// with the conversation may (the live floor). False skips the summary before any picture is prepared.</summary>
+    bool MayStartNow => CanSee;
+    /// <summary>Whether a model that sees shares no hardware with the live conversation: the summary right after you start to
+    /// speak runs only there.</summary>
+    bool SeesBesideConversation => CanSee;
     /// <summary>Runs one job and returns the model's answer. Throws when it fails; canceled when the job got stale.</summary>
     Task<string?> DigestAsync(ScreenDigestJob job, CancellationToken cancellation);
 }
@@ -417,13 +424,14 @@ internal sealed class ScreenDigester
     }
 
     /// <summary>Called right after you start to speak: starts a summary at once when no fresh one is there and the pictures
-    /// changed since the last one. Returns the job, or null. The reply never waits for it.</summary>
+    /// changed since the last one. Returns the job, or null. The reply never waits for it, and while you talk only a member
+    /// that shares no hardware with the conversation takes it (<see cref="IScreenDigestThinker.MayStartNow"/>).</summary>
     internal Task? UserSpeaking()
     {
         lock (gate)
         {
             var now = clock.GetUtcNow();
-            if (!Ready(now)) return null;
+            if (!thinker.SeesBesideConversation || !Ready(now)) return null;
             if (answered is { } fresh && now - fresh <= timing.Fresh) return null;
             if (started is { } last && now - last < timing.SpeechGap) return null;
             return StartLocked(now, "speech");
@@ -435,7 +443,9 @@ internal sealed class ScreenDigester
         if (!on || running is { IsCompleted: false } || !thinker.CanSee) return false;
         ring.Prune(now);
         if (ring.Count < 2 || ring.NewestAt <= covered) return false;
-        return failed is not { } failure || now - failure >= timing.FailureWait;
+        if (failed is { } failure && now - failure < timing.FailureWait) return false;
+        // No member may take it now (the live floor holds the ones the conversation uses): no picture is prepared for nothing.
+        return thinker.MayStartNow;
     }
 
     private Task StartLocked(DateTimeOffset now, string reason)
@@ -465,12 +475,13 @@ internal sealed class ScreenDigester
                 lock (gate) problem = "The Screen summary over time prompt is empty, so no summaries are made.";
                 return;
             }
-            var job = await Task.Run(() =>
+            // The contact sheet is made below normal priority, so the conversation's own work on this PC comes first.
+            var job = await LowPriority.RunAsync(() =>
             {
                 var sheet = ScreenDigestSheet.Compose(picked) ?? throw new OperationCanceledException();
                 try { return new ScreenDigestJob(message, ScreenDigestSheet.Encode(sheet.Pixels, sheet.Width, sheet.Height), picked.Length, picked[0].At, picked[^1].At, reason); }
                 finally { Array.Clear(sheet.Pixels); }
-            }, linked.Token).ConfigureAwait(false);
+            }, linked.Token, "Martlet screen summary").ConfigureAwait(false);
             var reply = await by.DigestAsync(job, linked.Token).ConfigureAwait(false);
             var now = clock.GetUtcNow();
             lock (gate)

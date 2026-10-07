@@ -35,6 +35,11 @@ public sealed record BackgroundJobKind(string Name, int MaxActive, int? MaxPerHo
     /// pool's last free slot for fast jobs (<see cref="ThinkingDemand"/>). Null: no Thinking pool rules.</summary>
     public ThinkingJobKind? PoolKind { get; init; }
 
+    /// <summary>Whether its runner yields to the live conversation: it stops when the live floor needs its place
+    /// (<see cref="BackgroundJob.Stopping"/>), keeps what it has, waits for a place again (<see cref="BackgroundJobs.ReseatAsync"/>)
+    /// and goes on there. A kind whose runner doesn't is never stopped.</summary>
+    public bool Yields { get; init; }
+
     internal ThinkingDemand? Demand(IReadOnlyList<BackgroundPlace> pool) => PoolKind is { } kind ? ThinkingDemand.For(kind, pool) : null;
 }
 
@@ -87,6 +92,27 @@ public sealed class BackgroundJob
 
     /// <summary>The places it waits for while every one is busy (it starts on the first that frees up), else null.</summary>
     internal IReadOnlyList<BackgroundPlace>? Queued { get; init; }
+
+    /// <summary>The pool of places it was started on, or null.</summary>
+    internal IReadOnlyList<BackgroundPlace>? Pool { get; init; }
+
+    /// <summary>Canceled when the live conversation needs the place it holds (a kind that <see cref="BackgroundJobKind.Yields"/>):
+    /// its runner stops, keeps what it has and asks <see cref="BackgroundJobs.ReseatAsync"/> for a place again.</summary>
+    public CancellationToken Stopping => Volatile.Read(ref lease)?.Stopping ?? CancellationToken.None;
+
+    /// <summary>How many times the live conversation stopped it.</summary>
+    public int Preemptions => Volatile.Read(ref preemptions);
+    private int preemptions;
+
+    /// <summary>What a job says while it waits for the live conversation to let its place go (state Paused).</summary>
+    public const string WaitingForConversation = "waiting for the conversation";
+
+    // Lets the place go (the live floor stopped the job there), so it can wait in line for the next one.
+    internal void Unseat()
+    {
+        Interlocked.Exchange(ref lease, null)?.Dispose();
+        Interlocked.Increment(ref preemptions);
+    }
 
     // The place it waited for, taken; false when the job already finished (the place goes straight back).
     internal bool Seat(BackgroundPlaceLease taken)
@@ -190,11 +216,14 @@ public sealed class BackgroundJob
 
 /// <summary>Why a job didn't start: <c>busy</c> (as many of its kind as allowed are running), <c>hourly_limit</c>, <c>closed</c>
 /// (Martlet is closing) or <c>off</c> (its feature is turned off), with what to tell the model. A job that started in line for a
-/// place has <paramref name="Queued"/>: what holds the places it waits for, in words.</summary>
+/// place has <paramref name="Queued"/>: what holds the places it waits for, in words; <see cref="ForConversation"/> when a place
+/// is free but the live conversation needs it while the user talks with Martlet.</summary>
 public sealed record BackgroundJobStart(BackgroundJob? Job, string? Refusal = null, string? Message = null, BackgroundJob? Running = null,
     string? Queued = null)
 {
     public bool Started => Job is not null;
+    /// <summary>It waits for the conversation (the live floor keeps its places free while the user talks with Martlet).</summary>
+    public bool ForConversation { get; init; }
 }
 
 /// <summary>Finished jobs on their way into the conversation: <see cref="Complete"/> once the reply that carries them was added
@@ -335,19 +364,23 @@ public sealed class BackgroundJobs : IDisposable
             var number = numbers.GetValueOrDefault(kind.Name) + 1;
             var id = $"{kind.Name}-{number}";
             BackgroundPlaceLease? lease = null;
-            if (pool is not null && (lease = Places.Acquire(pool, id, share: false, kind.Demand(pool))) is null && !wait)
+            // A free place the live conversation needs makes the job wait for the conversation, never a refusal.
+            if (pool is not null && (lease = Places.Acquire(pool, id, share: false, kind.Demand(pool), kind.Yields)) is null && !wait &&
+                !Places.HeldForConversation(pool, kind.Demand(pool)))
                 return new(null, "busy", $"Every place it can run on is busy: {Places.Busy(pool)}." +
                     (kind.Demand(pool) is { KeepLastFree: true } && pool.Sum(p => p.Slots) >= 2 ? " The last free slot stays free for quick jobs." : ""),
                     running.FirstOrDefault() ?? jobs.FirstOrDefault(job => !job.Finished));
             numbers[kind.Name] = number;
-            job = new(kind, id, label.Trim(), clock, lease) { Changed = Notify, Queued = pool is not null && lease is null ? pool : null };
+            job = new(kind, id, label.Trim(), clock, lease) { Changed = Notify, Queued = pool is not null && lease is null ? pool : null, Pool = pool };
             jobs.Add(job);
             starts.Add((kind.Name, clock.GetUtcNow()));
             Trim();
         }
         _ = Task.Run(() => RunAsync(job, run));
         Notify();
-        return new(job, Queued: job.Queued is not null ? Places.Busy(job.Queued) : null);
+        if (job.Queued is not { } line) return new(job);
+        var held = Places.HeldForConversation(line, kind.Demand(line));
+        return new(job, Queued: held ? "the conversation, which needs them while the user talks with you" : Places.Busy(line)) { ForConversation = held };
     }
 
     // A job started in line waits for a place of its pool (its time limit hasn't started yet); false when it was canceled or no
@@ -360,6 +393,12 @@ public sealed class BackgroundJobs : IDisposable
         using var waiting = CancellationTokenSource.CreateLinkedTokenSource(job.Cancellation.Token, patience.Token);
         void Line()
         {
+            // A free place the live conversation needs: it waits for the conversation, not for other work.
+            if (Places.HeldForConversation(job.Id))
+            {
+                job.Report(BackgroundJobState.Waiting, BackgroundJob.WaitingForConversation);
+                return;
+            }
             var position = Places.Position(job.Id);
             if (position > 0) job.Report(BackgroundJobState.Waiting, position == 1 ? "waiting for a free computer (next in line)"
                 : $"waiting for a free computer ({position} in line)");
@@ -367,7 +406,7 @@ public sealed class BackgroundJobs : IDisposable
         Places.Changed += Line;
         try
         {
-            var seated = Places.AcquireAsync(pool, job.Id, waiting.Token, job.Kind.Demand(pool));
+            var seated = Places.AcquireAsync(pool, job.Id, waiting.Token, job.Kind.Demand(pool), job.Kind.Yields);
             Line();
             return job.Seat(await seated.ConfigureAwait(false));
         }
@@ -424,6 +463,23 @@ public sealed class BackgroundJobs : IDisposable
         Volatile.Write(ref job.cancelReason, by);
         job.Cancellation.Cancel();
         return job;
+    }
+
+    /// <summary>The live floor stopped <paramref name="job"/> on its place (<see cref="BackgroundJob.Stopping"/>) and its runner
+    /// stopped: this lets that place go, says Paused (<see cref="BackgroundJob.WaitingForConversation"/>) and waits in line for
+    /// the best place of the job's pool the floor allows (a place the live conversation doesn't use first), then says Running.
+    /// The job's time limit keeps running meanwhile. Canceling <paramref name="token"/> (or the job) throws
+    /// <see cref="OperationCanceledException"/>.</summary>
+    public async Task ReseatAsync(BackgroundJob job, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+        var pool = job.Pool ?? throw new InvalidOperationException("The job wasn't started on a pool of places.");
+        job.Report(BackgroundJobState.Paused, BackgroundJob.WaitingForConversation);
+        job.Unseat();
+        Notify();
+        var lease = await Places.AcquireAsync(pool, job.Id, token, job.Kind.Demand(pool), job.Kind.Yields).ConfigureAwait(false);
+        if (!job.Seat(lease)) throw new OperationCanceledException(token);
+        job.Report(BackgroundJobState.Running);
     }
 
     /// <summary>The conversation ended (its window closed, Martlet is quitting): every running job stops, and nothing that

@@ -28,9 +28,10 @@ internal sealed class PcSoundDigest : IDisposable
     /// <param name="martletAudible">Martlet's own voice may be in what the PC plays right now.</param>
     /// <param name="pool">An audio-capable Thinking pool member's judge, or null when the pool has none.</param>
     /// <param name="board">Where each line goes for the next reply (the context board, source "sound").</param>
+    /// <param name="held">The live conversation needs the pool judge's hardware now (the live floor): the digest skips its turn.</param>
     internal PcSoundDigest(PcSoundBuffer buffer, Func<bool> martletAudible, Func<ISoundJudge?>? pool = null,
         ContextBoard? board = null, string? dataDirectory = null, ISoundJudge? cpuJudge = null,
-        string? appDirectory = null, SoundDigestOptions? options = null)
+        string? appDirectory = null, SoundDigestOptions? options = null, Func<bool>? held = null)
     {
         this.pool = pool ?? (() => null);
         this.board = board;
@@ -38,7 +39,7 @@ internal sealed class PcSoundDigest : IDisposable
         clock = buffer.Clock;
         if (cpuJudge is null && SoundTagger.Included(appDirectory)) cpu = new CpuSoundJudge(new SoundTagger(appDirectory));
         var fallback = cpuJudge ?? cpu;
-        scheduler = new SoundDigestScheduler(buffer, () => this.pool() ?? fallback, martletAudible, Post, options);
+        scheduler = new SoundDigestScheduler(buffer, () => this.pool() ?? fallback, martletAudible, Post, options, held);
         scheduler.Changed += WriteStatus;
     }
 

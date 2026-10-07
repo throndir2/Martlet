@@ -66,7 +66,7 @@ internal sealed partial class LiveConversationController
     private IReadOnlyList<BackgroundPlace> PoolMembers()
     {
         var plan = PoolPlan(Configuration?.Routes ?? []);
-        return [.. ThinkLonger.Places(plan, BackgroundDuties.Of(dataDirectory), PoolCan).Where(place => place.Id != "thinking")];
+        return [.. ThinkLonger.Places(plan, BackgroundDuties.Of(dataDirectory), PoolCan, HostRouteGpus.For).Where(place => place.Id != "thinking")];
     }
 
     private DeepThinkingPool PoolPlan(IReadOnlyList<SetupRoute> routes) =>
@@ -104,11 +104,15 @@ internal sealed partial class LiveConversationController
             var own = new DeepThinkAuthorization(target, request, configured?.Profile ?? Guid.Empty, thinking, vault, clock,
                 clock.GetUtcNow() + job.Timeout + TimeSpan.FromSeconds(5), media: true);
             Volatile.Write(ref slot.Authorization, own);
+            var began = System.Diagnostics.Stopwatch.GetTimestamp();
             var started = ThinkRuntime(slot).Start(request, own, token);
             var terminal = await started.Completion.ConfigureAwait(false);
             await started.OwnershipRelease.ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             var outcome = ThinkLonger.Outcome(terminal, started.Content.Text);
+            // The member's computer keeps its graphics card for a live turn: the job waits and goes on later, never a failure.
+            if (outcome.Result is null && member.Place == DeepThinkingPlace.Host && HostLiveHolds.Since(member.HostId!, began))
+                return ThinkingAnswer.Held($"{place.Name} keeps its graphics card for a live conversation");
             return outcome.Result is { } text ? ThinkingAnswer.Done(text, outcome.Cut)
                 : ThinkingAnswer.Failed($"{place.Name}: {outcome.Problem}");
         }
@@ -140,6 +144,9 @@ internal sealed partial class LiveConversationController
                 }),
                 slots = status.Slots, free = status.Free, keepsFastSlot = status.KeepsFastSlot,
                 running = status.Running, waiting = status.Waiting, guidance = status.Guidance,
+                // The live floor: its level, jobs waiting only for the conversation (held), and jobs it stopped this turn and in all.
+                floor = status.Floor, waitingForConversation = status.Held, stoppedThisTurn = status.StoppedNow, stopped = status.Stopped,
+                sharesLive = status.SharesLive,
                 warnings = ThinkingPoolWarnings.For(plan, Configuration?.Routes ?? [])
             }, new JsonSerializerOptions { WriteIndented = true });
             var path = Path.Combine(dataDirectory, PoolStatusFile);

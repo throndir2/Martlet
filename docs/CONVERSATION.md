@@ -446,7 +446,8 @@ thinks and research count against the same slots:
 4. Long kinds never take the pool's last free slot while the pool has two or
    more slots: that slot stays for fast kinds (`BargeInJudge`,
    `EndOfTurnJudge`, `Digest`). With exactly one slot, long kinds may take it,
-   and fast jobs wait until their deadline. There is no preemption.
+   and fast jobs wait until their deadline. Only the
+   [live floor](#the-live-floor-the-live-turn-comes-first) stops running jobs.
 
 | Kind (`ThinkingJobKind`) | Priority (`ThinkingPriority`) | Fast |
 | --- | --- | --- |
@@ -487,8 +488,8 @@ ThinkingJobResult result = await pool.RunAsync(new ThinkingJob
     Reasoning = false                         // null: the model's default
 }, token);
 
-// result.Outcome: Succeeded, NoMember, Stale, Failed or TimedOut.
-// result.Text, result.Member (computer name), result.MemberId, result.Model, result.Problem, result.Attempts.
+// result.Outcome: Succeeded, NoMember, Stale, Failed, TimedOut or Preempted (a summary the live floor stopped: dropped).
+// result.Text, result.Member (computer name), result.MemberId, result.Model, result.Problem, result.Attempts, result.Preemptions.
 BackgroundPlace? first = pool.Find(ThinkingJobKind.Digest, ThinkingCapability.Text | ThinkingCapability.Audio); // Name, Model; null: no member
 ThinkingPoolStatus status = pool.Status();     // members, slots, free, KeepsFastSlot, Running/Waiting by kind, Guidance
 ```
@@ -504,6 +505,115 @@ a place as `ThinkLonger`).
 running and waiting jobs by kind, guidance and warnings; never a job's text).
 MCP's `thinking_pool_status` reads it with the settings and plan, and
 `thinking_pool_check` rehearses the board ([MCP](MCP.md)).
+
+### The live floor: the live turn comes first
+
+When you say real words to Martlet, or address it by name, the reply's time
+to its first audio comes before all background work. Windows gives no
+graphics card priority between processes, so Martlet does it with its own
+scheduling: it holds new background work, stops running work, and lets that
+work go on later. The **live floor** (`LiveFloor`, Martlet.Conversation) has
+three levels:
+
+| Level | Starts when | Ends when |
+| --- | --- | --- |
+| Idle | Nothing below holds the floor. | |
+| Listening | The microphone hears your voice (a frame the speakers don't explain: never Martlet's own voice and never what this PC plays). | 6 seconds without your voice, or at once when the speech was only a sound or filler (the word check dropped it). |
+| Live | A quick transcript has real words (`LiveFloor.RealWords`: the word check keeps them and they are more than backchannel words such as "yeah" or "mm-hmm"), or you say Martlet's name; the talk button; a reply to you starts (said, typed, a touch, a paired chat, people in your Discord call). | The reply's voice is all made (`ConversationTurn.Synthesized`) or the reply stops, then a 2-second grace for a fast answer; 8 seconds after words that no reply followed. Real words said over Martlet make it Live again. |
+
+In a participation mode that answers only when addressed, words make the
+floor Live early only when they name Martlet; otherwise the reply makes it
+Live when it starts. When the participation policy turns down what you said,
+your words no longer hold the floor (`LiveFloor.Dismiss`).
+
+**What the conversation runs on.** `LiveResources` lists the live Thinking,
+voice and listening routes, each on a computer (`this-pc`, a home computer
+such as `lan:192.168.1.20`, or a cloud provider, which shares nothing with your
+computers) and its graphics cards when the host says (route metadata `gpus`).
+A pool member **shares** the conversation's hardware when it is on the same
+computer and the graphics cards match; when either side doesn't know its
+cards, the same computer is enough. The conversation model's own place (the
+empty-pool fallback) always shares.
+
+**What the floor does** (`LiveFloorRules`, the broker's `BackgroundPlaces.Rules`),
+on members that share the conversation's hardware only; other members never
+wait, and while the floor isn't Idle they get new work first:
+
+| Kind | Listening | Live |
+| --- | --- | --- |
+| `BargeInJudge`, `EndOfTurnJudge` | Start, on a member that shares nothing first. | The same. |
+| `Digest` (screen or sound summary) | Doesn't start. | Doesn't start; a running one stops and its result is dropped (`ThinkingJobOutcome.Preempted`). |
+| `Memory`, `Naming` (touch temperament too) | Doesn't start. | Doesn't start; a running one stops and waits in line again. |
+| `TouchZones` | Doesn't start. | Doesn't start; a running one goes on. |
+| `ThinkLonger`, `Research` | Doesn't start. | Doesn't start; a running one stops, keeps what it wrote, says *Paused: waiting for the conversation* and goes on later on any free member (one that shares nothing first). |
+
+Listening never stops running work. A job that waits only because of the
+floor shows as *waiting for the conversation* (the board's `Held` kinds, the
+task list's job state). Research and thinks started while their only places
+are kept for the conversation wait instead of being refused
+(`BackgroundJobStart.ForConversation`).
+
+**Going on from what it wrote.** A stopped think keeps the text its request
+wrote (`BackgroundThink.Partial`). Where the next place's server continues an
+unfinished assistant message (Ollama, on its own port 11434:
+`ThinkLonger.ContinuesInPlace`), the next request ends with that text as the
+assistant's own message (`BoundedTextInput.Continuation`) and Thinking steps
+off, and the server writes on from there; the two parts are joined
+(`ThinkResume.Join`). Elsewhere it starts again with the text as context
+(`ThinkLonger.ResumeNote`) and writes the whole result.
+`YieldingThink.RunAsync` runs this loop for `think_longer` and each research
+step.
+
+**The live route's fallbacks.** Remembering, learning names, emote naming and
+touch temperament on the conversation's own Thinking model (when the pool
+can't take them) start only while the floor is Idle and no reply runs, and stop
+and run again later when the floor goes Live (`HelperJobs.Floor`). On a paired
+host they are background requests in the work queue
+([Sharing work](CLUSTER.md#sharing-work-between-your-computers)): a live reply
+never waits behind one.
+
+**Screen and sound summaries.** The screen summary that starts when you begin
+to speak runs only on a vision member that shares nothing with the
+conversation, and no contact sheet is made while no member may take a summary.
+The sound digest skips its turn (`SoundDigestStep.Held`) while no member that
+hears may start one. The contact sheet, the screenshot's JPEG for the Reading
+role, Windows OCR and the CPU sound tagger run below normal thread priority
+(`LowPriority.RunAsync`).
+
+**Paired hosts.** When the floor goes Live, Martlet asks every paired host
+that serves a live route to keep those graphics cards free of pool work
+(`ILiveGpuHold.HoldAsync` with the route IDs and 10 seconds), renews it every
+5 seconds while Live and lets it go at Idle. A host that refuses pool work for
+a live turn (`job.busy` with detail `live`) or stops it (`job.preempted`) gives
+`WorkRefusal.Preempted`: the job waits and goes on later, never a failure.
+Until a host supports holds, the desktop uses `NoLiveGpuHold`.
+
+**Observability.** The desktop log says each change ("Live floor: Live (the
+transcript had real words)."), each stopped job and, at Idle, what the floor
+did that turn. The reply latency line ends with what it held and stopped
+(`Live floor: held 2 pool jobs, stopped 1 (think longer).`). The desktop
+writes `live-floor.json` (level, live resources, which members share them,
+held and stopped jobs by kind this turn and in all, holds, last changes; never
+what was said). MCP's `live_floor_status` reads it with the settings, and
+`live_floor_check` rehearses the floor with fixture inputs ([MCP](MCP.md)).
+
+```csharp
+// Martlet.Conversation: the floor and its observers.
+LiveFloor floor = conversation.LiveFloor;          // LiveConversationController.LiveFloor (the desktop's)
+LiveFloorLevel level = floor.Level;                // Idle, Listening or Live (lock-free)
+floor.Changed += change => { /* change.From, change.To, change.Why, change.At; raised in order */ };
+floor.Heard();                                     // the user's voice (call per frame; cheap)
+floor.NotWords("a sound, not words");             // the speech was only a sound or filler: Listening ends
+floor.Words("real words");                         // Live for 8 s, or until a reply takes over
+LiveFloorReply reply = floor.BeginReply("a reply to what you typed started");
+reply.End("the reply's voice was made");          // then a 2-second grace
+floor.Dismiss();                                   // Martlet won't answer what was heard
+floor.Clear();                                     // the conversation ended: Idle at once
+bool words = LiveFloor.RealWords(text, utteranceContext, ListeningSensitivity.Normal);
+
+LiveFloorRules rules = conversation.LiveFloorRules;   // the broker's rules; Resources, Period and Total counts
+string? note = rules.Period.Describe();             // "held 2 pool jobs, stopped 1 (think longer)"
+```
 
 ## Thinking longer and background work
 

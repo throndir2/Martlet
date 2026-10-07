@@ -250,6 +250,25 @@ public sealed class SoundDigestTests
         Assert.Equal("listener-model", digest.Status.Judge);
     }
 
+    [Fact]
+    public void While_the_live_conversation_needs_the_judges_hardware_the_digest_prepares_nothing()
+    {
+        var time = new ManualTime();
+        var buffer = new PcSoundBuffer(clock: time);
+        var judge = new Judge(SoundJudgeKind.Pool);
+        var held = true;
+        using var digest = new SoundDigestScheduler(buffer, () => judge, () => false, _ => { }, Manual, held: () => held) { On = true };
+        Play(buffer, time, 10);
+        Assert.Equal(SoundDigestStep.Held, digest.Tick());
+        Assert.Equal(SoundDigestStep.Held, digest.Tick());
+        Assert.Equal(0, judge.Calls);
+        Assert.Equal(0, digest.Status.Runs);
+        Assert.Equal(SoundDigestStep.Held, digest.Status.LastStep);
+        held = false;
+        Assert.Equal(SoundDigestStep.Started, digest.Tick());
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref judge.Calls) == 1, 5000));
+    }
+
     // ---------- a fixture loopback on a simulated clock (like pc_audio_check's) ----------
 
     private sealed class SimulatedClock : TimeProvider

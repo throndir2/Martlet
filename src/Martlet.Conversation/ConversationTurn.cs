@@ -24,6 +24,7 @@ public sealed class ConversationTurn
     private readonly TaskCompletionSource stopSignal = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<ConversationSnapshot> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource synthesized = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly VoiceTagStripper shown;
     // The control tags the reply wrote, in order (ConversationRequest.ControlTags); guarded by Sync like the text.
     private readonly List<string> controls = [];
@@ -91,6 +92,10 @@ public sealed class ConversationTurn
     public CorrelationIds TextIds { get; }
     public Task<ConversationSnapshot> Completion => completion.Task;
     public Task OwnershipRelease => release.Task;
+    /// <summary>Completes once the reply's voice is all made (every sentence synthesized, or the voice stopped), or for a reply
+    /// that isn't spoken once its text is written, or when the turn ends: only playback may be left (the live floor's end of a
+    /// reply).</summary>
+    public Task Synthesized => synthesized.Task;
     public ChannelReader<ConversationEvent> Events => events.Reader;
     public ConversationSnapshot Snapshot { get { lock (Sync) return GetSnapshot(); } }
     public ConversationContent Content { get { lock (Sync) return new(text.ToString(), refusal); } }
@@ -235,7 +240,12 @@ public sealed class ConversationTurn
 
     private async Task WorkAsync()
     {
-        await Task.WhenAll(GuardStageAsync(GenerateAsync), GuardStageAsync(SpeakAsync)).ConfigureAwait(false);
+        var writing = GuardStageAsync(GenerateAsync);
+        // A reply that isn't spoken has nothing more to make once its text is written.
+        if (request.Speech is null) _ = writing.ContinueWith(_ => synthesized.TrySetResult(), CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        await Task.WhenAll(writing, GuardStageAsync(SpeakAsync)).ConfigureAwait(false);
+        synthesized.TrySetResult();
     }
 
     private async Task GuardStageAsync(Func<Task> operation)
@@ -833,7 +843,12 @@ public sealed class ConversationTurn
                 }
             }
         }
-        finally { ready.TryComplete(); }
+        finally
+        {
+            ready.TryComplete();
+            // Every sentence is made (or the voice stopped): only playback is left.
+            synthesized.TrySetResult();
+        }
     }
 
     private SpeechTake? Reserve(string segment, SpeechOutput voice, IReadOnlyList<SpeechCue>? cues = null)
@@ -1208,6 +1223,7 @@ public sealed class ConversationTurn
                 refused ? ConversationState.Refused : ConversationState.Completed;
             Emit(ConversationEventKind.State);
             completion.TrySetResult(GetSnapshot());
+            synthesized.TrySetResult();
             if (released) events.Writer.TryComplete();
         }
     }

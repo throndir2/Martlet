@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
+using Martlet.Conversation;
 using Martlet.Providers;
 
 // Also built into Martlet's MCP server (helper_jobs_check), in its own namespace.
@@ -67,7 +68,9 @@ internal readonly record struct HelperResult(string? Answer, string? Failure, bo
 
 /// <summary>Runs helper jobs: on a free Thinking pool member when the pool has one that can take the job, so they never compete
 /// with the reply for the conversation's model and its prompt cache. Without one, on the conversation's own Thinking route as
-/// before, but only once no reply is running or speaking. Keeps the last route of each kind (helper-jobs.json, for MCP).</summary>
+/// before, but only once no reply is running or speaking and the live floor (<see cref="Floor"/>) is Idle; when the floor goes
+/// Live while it runs, it stops and runs again once the conversation is quiet. Keeps the last route of each kind
+/// (helper-jobs.json, for MCP).</summary>
 internal sealed class HelperJobs(Func<IHelperJobPool?> pool, Func<bool> replyBusy, string? dataDirectory)
 {
     /// <summary>The helper-jobs.json status file in the data directory (kinds, routes, outcomes and times; never a prompt or
@@ -78,6 +81,10 @@ internal sealed class HelperJobs(Func<IHelperJobPool?> pool, Func<bool> replyBus
     private readonly object gate = new();
     private readonly object fileGate = new();
     private readonly Dictionary<HelperJobKind, HelperRoute> last = [];
+
+    /// <summary>The live floor the fallback on the conversation's own Thinking route waits for (it starts only while Idle and
+    /// stops when the floor goes Live); null: only whether a reply runs decides.</summary>
+    internal LiveFloor? Floor { get; init; }
 
     internal static HelperJobPriority PriorityOf(HelperJobKind kind) =>
         kind == HelperJobKind.TouchZones ? HelperJobPriority.Normal : HelperJobPriority.Low;
@@ -126,12 +133,40 @@ internal sealed class HelperJobs(Func<IHelperJobPool?> pool, Func<bool> replyBus
         }
         else if (pool() is not null) why = $"no Thinking pool member can take {(capability == HelperCapability.Vision ? "a picture" : "it")}";
         var waited = Stopwatch.StartNew();
-        while (replyBusy()) await Task.Delay(IdleCheck, token).ConfigureAwait(false);
-        var waitedMs = waited.ElapsedMilliseconds;
-        ErrorLog.Info($"{purpose}: runs on the conversation's Thinking model ({why}) after waiting {waitedMs} ms for the reply to finish.");
-        var (text, failure) = await fallback(token).ConfigureAwait(false);
-        Record(new(kind, false, null, Outcome(text, failure), DateTimeOffset.UtcNow, waitedMs));
-        return new(text, failure, false);
+        var again = 0;
+        while (true)
+        {
+            // Never beside a reply or while you talk with Martlet: the conversation's own model is busy with you then.
+            while (replyBusy() || Floor is { Level: not LiveFloorLevel.Idle }) await Task.Delay(IdleCheck, token).ConfigureAwait(false);
+            var waitedMs = waited.ElapsedMilliseconds;
+            if (again == 0) ErrorLog.Info($"{purpose}: runs on the conversation's Thinking model ({why}) after waiting {waitedMs} ms for the reply to finish.");
+            using var live = CancellationTokenSource.CreateLinkedTokenSource(token);
+            var stopped = 0;
+            // The live turn comes first: the floor going Live stops it, and it runs again later. The request closes off the
+            // floor's thread.
+            void Follow(LiveFloorChange change)
+            {
+                if (change.To == LiveFloorLevel.Live && Interlocked.Exchange(ref stopped, 1) == 0) _ = live.CancelAsync();
+            }
+            var floor = Floor;
+            if (floor is not null) floor.Changed += Follow;
+            (string? Answer, string? Failure) answer;
+            try { answer = await fallback(live.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested && Volatile.Read(ref stopped) != 0) { answer = (null, null); }
+            finally
+            {
+                if (floor is not null) floor.Changed -= Follow;
+            }
+            if (Volatile.Read(ref stopped) != 0 && !token.IsCancellationRequested)
+            {
+                again++;
+                ErrorLog.Info($"{purpose}: stopped on the conversation's Thinking model for the conversation; it runs again once the conversation is quiet.");
+                continue;
+            }
+            var (text, failure) = answer;
+            Record(new(kind, false, null, Outcome(text, failure), DateTimeOffset.UtcNow, waitedMs));
+            return new(text, failure, false);
+        }
     }
 
     private static string Outcome(string? answer, string? failure) =>

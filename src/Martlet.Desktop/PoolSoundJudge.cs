@@ -15,6 +15,11 @@ internal sealed class PoolSoundJudge(ThinkingPool pool, BackgroundPlace member) 
     internal static PoolSoundJudge? For(ThinkingPool? pool) =>
         pool?.Find(ThinkingJobKind.Digest, Needs) is { } member ? new PoolSoundJudge(pool, member) : null;
 
+    /// <summary>Whether the pool has members that hear but the live floor lets none of them start a summary now (they share the
+    /// conversation's hardware while you talk): the digest skips its turn rather than prepare a clip no member takes.</summary>
+    internal static bool Held(ThinkingPool? pool) =>
+        pool is not null && pool.CanRun(ThinkingJobKind.Digest, Needs) && !pool.Board.MayStartNow(ThinkingJobKind.Digest, Needs);
+
     public string Name => member.Model is { Length: > 0 } model ? $"{model} on {member.Name}" : member.Name;
     public SoundJudgeKind Kind => SoundJudgeKind.Pool;
 

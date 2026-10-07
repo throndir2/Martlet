@@ -38,6 +38,17 @@ public sealed record Audio2FaceHostPairing
 public sealed class Audio2FaceHostException(string code, string message) : Exception(message)
 {
     public string Code { get; } = code;
+
+    /// <summary>The host's optional detail for the code, in one word: <see cref="LiveDetail"/> on a <c>job.busy</c> means the
+    /// graphics card is kept free for a live conversation turn. Null when the host gave none.</summary>
+    public string? Detail { get; init; }
+
+    /// <summary>The detail of a <c>job.busy</c> refusal of pool work while a live turn holds the graphics card.</summary>
+    public const string LiveDetail = "live";
+
+    /// <summary>The host kept its graphics card for a live conversation turn: pool work waits and goes on later, never a failure
+    /// (a <c>job.busy</c> with detail live before it started, or <c>job.preempted</c> while it ran).</summary>
+    public bool HeldForLive => Code == "job.preempted" || Code == "job.busy" && Detail == LiveDetail;
 }
 
 public sealed record Audio2FaceHostRoute(
@@ -505,8 +516,10 @@ public static class Audio2FaceHostClient
     internal static Audio2FaceHostException Remote(JsonElement failure)
     {
         var code = failure.TryGetProperty("code", out var value) ? value.GetString() ?? "host.failed" : "host.failed";
-        var remedy = failure.TryGetProperty("remedy", out var detail) ? " " + detail.GetString() : "";
-        return new Audio2FaceHostException(code, $"The Martlet host refused the request ({code}).{remedy}");
+        var remedy = failure.TryGetProperty("remedy", out var help) ? " " + help.GetString() : "";
+        var detail = failure.TryGetProperty("detail", out var word) && word.ValueKind == JsonValueKind.String &&
+            word.GetString() is { Length: > 0 and <= 32 } said && said.All(char.IsAsciiLetterOrDigit) ? said : null;
+        return new Audio2FaceHostException(code, $"The Martlet host refused the request ({code}).{remedy}") { Detail = detail };
     }
 }
 
@@ -576,7 +589,16 @@ public sealed partial class Audio2FaceHostConnection : IDisposable
                     TimeSpan.FromMilliseconds(route.GetProperty("maximum_duration_milliseconds").GetInt64()),
                     Text("cancellation"),
                     route.TryGetProperty("maximum_concurrency", out var concurrency) && concurrency.ValueKind == JsonValueKind.Number &&
-                        concurrency.TryGetInt32(out var slots) && slots is > 0 and <= Martlet.Core.Settings.SelfHostSetup.DeepThinkingMaximumSlots ? slots : 1));
+                        concurrency.TryGetInt32(out var slots) && slots is > 0 and <= Martlet.Core.Settings.SelfHostSetup.DeepThinkingMaximumSlots ? slots : 1)
+                {
+                    // Which graphics cards serve the route (empty: not known, so the whole computer) and its lane (live or pool).
+                    Gpus = route.TryGetProperty("gpus", out var gpus) && gpus.ValueKind == JsonValueKind.Array
+                        ? [.. gpus.EnumerateArray().Take(16).Where(g => g.ValueKind == JsonValueKind.String)
+                            .Select(g => g.GetString()!.Trim()).Where(g => g.Length is > 0 and <= 128 && !g.Any(char.IsControl)).Distinct(StringComparer.Ordinal)]
+                        : [],
+                    Lane = route.TryGetProperty("lane", out var lane) && lane.ValueKind == JsonValueKind.String &&
+                        lane.GetString() is HostRoute.LiveLane or HostRoute.PoolLane ? lane.GetString()! : ""
+                });
             }
             return routes;
         }

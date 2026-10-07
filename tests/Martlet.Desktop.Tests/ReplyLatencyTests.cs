@@ -43,6 +43,24 @@ public sealed class ReplyLatencyTests
     }
 
     [Fact]
+    public void What_the_live_floor_held_and_stopped_is_said_in_the_line_and_read_back_by_latency_report()
+    {
+        var clock = TimeProvider.System;
+        var line = ReplyLatency.Describe(null, clock.GetTimestamp(), clock, Reply(new ConversationTimings()), "Thinking qwen3:8b",
+            floor: "held 2 pool jobs, stopped 1 (think longer)")!;
+        Assert.Contains(" Live floor: held 2 pool jobs, stopped 1 (think longer). Models: Thinking qwen3:8b.", line);
+        var parsed = LatencyReport.Parse(DateTimeOffset.Now, line)!;
+        Assert.Equal("held 2 pool jobs, stopped 1 (think longer)", parsed.Floor);
+        Assert.Equal("Thinking qwen3:8b", parsed.Models);
+        // Without models, and without a live floor part.
+        Assert.Equal("stopped 1 (digest)", LatencyReport.Parse(DateTimeOffset.Now, ReplyLatency.Describe(null, clock.GetTimestamp(), clock,
+            Reply(new ConversationTimings()), null, floor: "stopped 1 (digest)")!)!.Floor);
+        var plain = ReplyLatency.Describe(null, clock.GetTimestamp(), clock, Reply(new ConversationTimings()), "Thinking qwen3:8b")!;
+        Assert.DoesNotContain("Live floor", plain);
+        Assert.Null(LatencyReport.Parse(DateTimeOffset.Now, plain)!.Floor);
+    }
+
+    [Fact]
     public async Task A_reply_with_a_voice_slower_than_real_time_is_spoken_whole()
     {
         // Production conversation runtime and playback sink with a fixture voice (NOT AI) that pauses 1.5 s mid-piece.
