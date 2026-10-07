@@ -82,7 +82,9 @@ paused with nothing made again; the voice (Chatterbox) is usually the slowest
 step, so making the rest again would add seconds. Pausing adds nothing before
 the first audio: the judge runs only while you talk over a reply that is
 already playing, the local rules judge takes well under a millisecond, and a
-model judge has at most 400 ms before the rules decide.
+model judge (a Thinking pool member) has at most 400 ms before the rules decide.
+The pool judge never uses the conversation's own Thinking route, so it never
+evicts the conversation from a local model's prompt cache.
 
 ## Where the time goes today
 
