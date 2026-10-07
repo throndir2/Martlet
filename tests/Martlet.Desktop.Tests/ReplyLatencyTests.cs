@@ -43,6 +43,61 @@ public sealed class ReplyLatencyTests
     }
 
     [Fact]
+    public void A_reply_started_early_is_said_in_the_line_and_read_back_by_latency_report()
+    {
+        var clock = TimeProvider.System;
+        var stopped = clock.GetTimestamp() - 2 * clock.TimestampFrequency;
+        var started = stopped + (long)(0.262 * clock.TimestampFrequency);
+        var timeline = new ReplyTimeline(clock, ReplyTimeline.YouStopped, stopped) { Early = new(true, 2, 1) };
+        timeline.Mark(ReplyLatency.EndOfSpeech, stopped + (long)(1.6 * clock.TimestampFrequency));
+        var promoted = ReplyLatency.Describe(timeline, started, clock, Reply(new ConversationTimings(StartedEarly: true)), null,
+            floor: "held 1 pool job")!;
+        // Next to what the live floor did, which the reply held from its start.
+        Assert.Contains("Started early at 262 ms, promoted (started early 2 times, 1 cancelled). Live floor: held 1 pool job.", promoted);
+        var parsed = LatencyReport.Parse(DateTimeOffset.Now, promoted)!;
+        Assert.Equal("held 1 pool job", parsed.Floor);
+        Assert.Equal(262, parsed.StartedEarlyMs);
+        Assert.Equal(2, parsed.EarlyStarts);
+        Assert.Equal(1, parsed.EarlyCancelled);
+        // The end of the turn counts as one of the steps, in the order things happened.
+        Assert.Contains(ReplyLatency.EndOfSpeech, parsed.Steps.Keys);
+
+        timeline.Early = new(false, 1, 1);
+        var restarted = LatencyReport.Parse(DateTimeOffset.Now,
+            ReplyLatency.Describe(timeline, stopped + 2 * clock.TimestampFrequency, clock, Reply(new()), null)!)!;
+        Assert.Null(restarted.StartedEarlyMs);
+        Assert.Equal(1, restarted.EarlyStarts);
+        Assert.Equal(1, restarted.EarlyCancelled);
+
+        var summary = System.Text.Json.JsonSerializer.SerializeToElement(LatencyReport.Summarize([parsed, restarted])).GetProperty("early");
+        Assert.Equal(2, summary.GetProperty("replies").GetInt32());
+        Assert.Equal(1, summary.GetProperty("promoted").GetInt32());
+        Assert.Equal(3, summary.GetProperty("starts").GetInt32());
+        Assert.Equal(2, summary.GetProperty("cancelled").GetInt32());
+    }
+
+    [Fact]
+    public async Task The_early_reply_check_promotes_the_reply_started_early_and_its_first_audio_comes_much_sooner()
+    {
+        // Production gates, held turn, Chat Completions adapter, host voice stream and playback sink with fixtures (NOT AI).
+        var result = System.Text.Json.JsonSerializer.SerializeToElement(
+            await EarlyReplyCheck.RunAsync("incomplete", thinkingMs: 150, voiceMs: 200, sttMs: 60, judgeMs: 20, CancellationToken.None));
+        Assert.True(result.GetProperty("ok").GetBoolean(), result.ToString());
+        var scenario = result.GetProperty("scenarios")[0];
+        Assert.True(scenario.GetProperty("savedMs").GetDouble() >= 200, result.ToString());
+        var early = scenario.GetProperty("withEarlyReplies");
+        Assert.Equal("promoted", early.GetProperty("outcome").GetString());
+        Assert.Equal(0, early.GetProperty("playedBeforeTurnEnded").GetInt32());
+        Assert.Equal(1, early.GetProperty("thinkingRequests").GetInt32());
+        Assert.Contains("ms, promoted.", early.GetProperty("latencyLine").GetString());
+        // The reply started early held the live floor when the turn ended, and no reply held it once the reply was done.
+        var floor = early.GetProperty("liveFloor");
+        Assert.Equal("Live", floor.GetProperty("atTurnEnd").GetString());
+        Assert.Equal(1, floor.GetProperty("repliesAtTurnEnd").GetInt32());
+        Assert.Equal(0, floor.GetProperty("repliesWhenDone").GetInt32());
+    }
+
+    [Fact]
     public void What_the_live_floor_held_and_stopped_is_said_in_the_line_and_read_back_by_latency_report()
     {
         var clock = TimeProvider.System;

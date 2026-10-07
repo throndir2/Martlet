@@ -96,6 +96,10 @@ internal sealed class LiveConversationConfiguration
     internal static bool InNetwork(SetupRoute? route) =>
         MainWindow.IsLocalOllama(route) || ContextBudget.IsInNetwork(route?.RouteType, route?.Origin);
 
+    /// <summary>Martlet's voice is a cloud provider's (OpenAI speech, paid per use) rather than this PC's Windows voice or a
+    /// paired Martlet host's engine.</summary>
+    internal bool CloudVoice => Routes.SingleOrDefault(r => r.Role == SetupRole.Tts) is { RouteType: SetupRouteType.OpenAi };
+
     /// <summary>Thinking runs on this PC (Ollama or another OpenAI-compatible server on loopback). Such a server keeps only a
     /// few conversations in its prompt cache, so a request with another start would push the conversation out of it.</summary>
     internal bool LocalThinking => LocalOllama || Routes.SingleOrDefault(r => r.Role == SetupRole.Llm) is { RouteType: SetupRouteType.ChatCompletions } chat &&

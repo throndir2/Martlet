@@ -235,6 +235,30 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             martletDirectory = new { type = "string" }
         }),
+        Tool("early_reply_check", "Companion > Listening > Start replies early, rehearsed headless in real time with the production " +
+            "EndOfTurnGate, EarlyReplyGate, request comparison (EarlyAsk) and the conversation runtime's held turn (StartEarly, " +
+            "Release) through the Chat Completions adapter, a paired host's voice stream and the playback sink. FIXTURES, NOT AI: a " +
+            "quick transcript after sttMs (default 90), a judge answer after judgeMs (26), a Chat Completions endpoint on 127.0.0.1 " +
+            "whose first words come after thinkingMs (200) and a host voice whose first audio comes after voiceMs (350); speakers " +
+            "open no device. scenario (default all): incomplete (the judge finds the pause unfinished and the longer 1600 ms pause " +
+            "ends the turn), plain (no judge: the 800 ms pause), complete (the judge ends the turn at about 300 ms), resumed (you go " +
+            "on talking 700 ms into the pause, then pause again) or changed (the final transcript differs from the quick one). " +
+            "Each runs with replies started early and without: per run the decisions with their times, when the turn ended, the " +
+            "first audio after the turn ended, starts, cancelled, the outcome (promoted or changed), Thinking requests and aborted " +
+            "ones, voice pieces, samples played and captions shown before the turn ended (both 0), the live floor (production " +
+            "LiveFloor fed as the desktop feeds it: its level and reply holds when the turn ended and once the reply was done, its " +
+            "changes among the decisions) and the reply latency line; " +
+            "savedMs per scenario. ok when each scenario does what it should (promoted, let go or restarted as described, nothing " +
+            "heard before the turn ended, the floor Live and held by the one reply started early when the turn ended and by none " +
+            "once the reply was done, and for incomplete, plain and resumed the first audio at least 60% of thinkingMs + " +
+            "voiceMs sooner). Nothing is recorded, played or sent off this PC.", new
+        {
+            scenario = new { type = "string", @enum = new[] { "all", "incomplete", "plain", "complete", "resumed", "changed" } },
+            thinkingMs = new { type = "integer", minimum = 0, maximum = 3000 },
+            voiceMs = new { type = "integer", minimum = 0, maximum = 3000 },
+            sttMs = new { type = "integer", minimum = 0, maximum = 1000 },
+            judgeMs = new { type = "integer", minimum = 0, maximum = 500 }
+        }),
         Tool("parakeet_check", "Companion > Listening > Parakeet in Martlet: load each Parakeet model downloaded in speechDirectory " +
             "(optional absolute path, default the data directory's speech folder, where the desktop downloads them; or name them in " +
             "models) through the production ParakeetEngine with the sherpa-onnx runtime from martletDirectory, and transcribe phrases " +
@@ -1563,6 +1587,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "turn_judge_check" => await TurnJudgeCheck.RunAsync(arguments, MartletDirectory(arguments), cancellation),
+                "early_reply_check" => await EarlyReplyCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "thinkingMs"),
+                    OptionalInt(arguments, "voiceMs"), OptionalInt(arguments, "sttMs"), OptionalInt(arguments, "judgeMs"), cancellation),
                 "parakeet_check" => await ParakeetCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
                     OptionalString(arguments, "speechDirectory") is not null ? SpeechDirectory(arguments) : Path.Combine(DataDirectory(arguments), "speech"),
                     cancellation),

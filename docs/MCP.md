@@ -2624,7 +2624,8 @@ speech* when it found the turn unfinished or was slow), *recording*, *Voice ID*,
 *tools*, *Home Assistant*, *building the request*, *Thinking authorization*,
 *Thinking connection*, *Thinking before reasoning* and *hidden reasoning* (or
 *Thinking first words* when no reasoning was streamed), *first sentence*,
-*voice authorization*, *voice synthesis*, *playback start* and *speakers*
+*voice authorization*, *voice synthesis*, *promoted* (a reply started early
+taken as the reply), *playback start* and *speakers*
 (steps that didn't happen are left out). It goes on with the time to the first
 words and audio from the reply's start, the number of spoken pieces, how much
 speech the first piece held and how long it took to make, when the speakers ran
@@ -2646,11 +2647,18 @@ whose voice paused, `pauses` in all and `pausedMs` statistics), `pausedForYou`
 (replies paused because you talked over them with *When you talk over Martlet*
 on *Pause and decide*: `replies`, how many `resumed` and `stopped`, and
 `pausedMs` statistics, read from *, paused N ms when you talked over it, then
-resumed* or *, paused N ms, then stopped when you talked over it*) and `newest` (each reply's
+resumed* or *, paused N ms, then stopped when you talked over it*), `early`
+(replies started early with Companion › Listening › *Start replies early*:
+`replies` whose turn started any, how many were `promoted`, `starts` and
+`cancelled` in all, `startedAtMs` statistics of how far into your pause the
+promoted ones started, and `firstAudioPromoted` and `firstAudioOthers`
+statistics, read from *Started early at N ms, promoted* and *Started early N
+times, M cancelled*) and `newest` (each reply's
 `at`, `measured`, `totalMs`, `from`, `steps`, `firstWordsMs`, `firstAudioMs`,
 `spokenPieces`, `firstPieceSpeechSeconds`, `firstPieceMadeMs`, `voicePauses`,
 `voicePausedMs`, `models`,
-`interrupted`, `restarted`, `pausedForYouMs`, `resumed`, `liveFloor` (what the live floor held and stopped for
+`interrupted`, `restarted`, `pausedForYouMs`, `resumed`, `startedEarlyMs`,
+`earlyStarts`, `earlyCancelled`, `liveFloor` (what the live floor held and stopped for
 that turn, from *Live floor: held 2 pool jobs, stopped 1 (think longer).*, else null), `legacy`). It only reads the log: no audio, network or provider
 request.
 
@@ -2671,6 +2679,43 @@ judge time of at most 100 ms and every gate case as expected; agreement on a
 synthetic voice is informative only. Without the model or the runtime it
 returns `ran: false` with the reason. Nothing is recorded, played, downloaded
 or sent.
+
+`early_reply_check` rehearses Companion › Listening › *Start replies early*
+(see [Voice latency](VOICE_LATENCY.md#starting-replies-early)) headless, in
+real time (20 ms frames), with the production `EndOfTurnGate`,
+`EarlyReplyGate`, request comparison (`EarlyAsk`) and the conversation
+runtime's held turn (`ConversationRuntime.StartEarly`,
+`ConversationTurn.Release`) through the Chat Completions adapter, a paired
+host's voice stream and the playback sink. FIXTURES, NOT AI: a quick
+transcript after `sttMs` (default 90), a judge answer after `judgeMs` (26), a
+Chat Completions endpoint on 127.0.0.1 whose first words come after
+`thinkingMs` (200) and stream for 1.5 s, and a host voice whose first audio
+comes after `voiceMs` (350); the speakers open no device. `scenario` (default
+`all`): `incomplete` (the judge finds the pause unfinished and the 1.6 s pause
+ends the turn), `plain` (no judge: the 800 ms pause), `complete` (the judge
+ends the turn at about 300 ms), `resumed` (you go on talking 700 ms into the
+pause, then pause again) or `changed` (the final transcript differs from the
+quick one). Each runs twice, with replies started early (`withEarlyReplies`)
+and `without`, and returns per run `decisions` (each with `atMs` from when you
+stopped talking), `turnEndedMs`, `firstAudioAfterTurnEndMs`, `startedEarly`,
+`cancelled`, `outcome` (`promoted` or `changed`) and `reason`,
+`thinkingRequests`, `abortedRequests`, `askedWith`, `letGo` (each reply let
+go: its `state`, `mayHavePlayed` and `textCharacters`), `voicePieces`,
+`firstVoiceAskedMs`, `playedBeforeTurnEnded` and `shownBeforeTurnEnded` (both
+0), `liveFloor` (the production `LiveFloor`, fed as the desktop feeds it:
+`atTurnEnd`, its level when the turn ended, `repliesAtTurnEnd` and
+`repliesWhenDone`, how many replies held it then and once the reply was done;
+its changes are among the `decisions`) and the reply `latencyLine`, plus
+`savedMs` per scenario. `ok` when each
+scenario does what it should: promoted with one request (`incomplete`,
+`plain`), let go once with its request aborted and the second start promoted
+(`resumed`), let go and started again with the final words (`changed`),
+nothing started or promoted for `complete`; nothing heard or shown before
+the turn ended, every reply let go `Canceled` with nothing played, the live
+floor `Live` and held by the one reply started early when the turn ended and
+by no reply once the reply was done, and for
+`incomplete`, `plain` and `resumed` the first audio sooner by at least 60% of
+`thinkingMs` + `voiceMs`. Nothing is recorded, played or sent off this PC.
 
 `context_board` rehearses the [context board](CONVERSATION.md#context-board)
 with the production board, request layout and Chat Completions adapter
@@ -4948,6 +4993,23 @@ this PC (loaded in 1519 ms). Last 4 pauses: 2 finished, 1 unfinished, 1 left
 to the pause; judge median 30 ms. Last: complete after 280 ms of silence.*,
 updated after each decision; the desktop log has one *End of turn: ...* line
 per decision, and `turn_judge_check` runs the judge headless),
+then `TalkEarlyReplies` (*Start replies early (recommended)*, on by default),
+with it on `TalkEarlyRepliesCloud` (*Also for cloud models (may add a small
+cost)*, off by default) and `TalkEarlyVoice` (*Prepare the voice early too*,
+on by default); their `checkedState` is the saved choice, and `ui_toggle` on
+any of them needs `--allow-ui-effects` because it saves
+`talk-preferences.json` (an open talk window restarts listening with it).
+`TalkEarlyRepliesStatus` (returned, never words or audio: *Off. Martlet starts
+each reply once you finished talking.*, *On, but replies start early only with
+Parakeet on this PC as Listening.*, *On, but not with this setup: Thinking is a
+cloud model; turn on Also for cloud models ...*, or *On. Thinking runs on your
+own computer; the first spoken words are prepared early too. Last 3: 1 taken as
+the reply, 1 let go because you went on talking, 1 let go for another reason.
+Last: changed after 900 ms.*, updated after each reply started early; the
+desktop log has its *Early reply: ...* lines, and `early_reply_check`
+rehearses it headless) and `TalkEarlyRepliesAbout` (returned: what it does,
+that nothing shows or is said before your turn ends, that it needs Parakeet on
+this PC and why cloud models need the second box),
 then `TalkBargeIn` (*Let me interrupt Martlet by
 talking*, optional and off by default; its `checkedState` is the saved choice, and
 `ui_toggle` on it needs `--allow-ui-effects` because it saves

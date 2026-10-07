@@ -141,6 +141,7 @@ public partial class MainWindow : ThemedWindow
                 characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, history: conversationHistory, singing: singing,
                 board: contextBoard, turnJudge: SmartTurnJudge.Bundled());
             conversation.TurnDecided += () => Dispatcher.BeginInvoke(ShowTurnJudge);
+            conversation.EarlyDecided += () => Dispatcher.BeginInvoke(ShowEarlyReplies);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
             conversation.VoiceVolume = Talk.VoiceVolume;
             conversation.ChattinessDecided += (_, _) => Dispatcher.BeginInvoke(FollowChattiness);

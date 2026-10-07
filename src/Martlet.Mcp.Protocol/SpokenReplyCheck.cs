@@ -563,14 +563,14 @@ internal static class SpokenReplyCheck
         }
     }
 
-    private sealed class NoCredentials : IProviderCredentialSource
+    internal sealed class NoCredentials : IProviderCredentialSource
     {
         public ValueTask<BoundProviderCredential?> ResolveAsync(ProviderCredentialBinding binding, CancellationToken cancellationToken) =>
             ValueTask.FromResult<BoundProviderCredential?>(null);
     }
 
     // Allows exactly what was asked, bound to the fixture endpoint and fixture host, as the desktop's own authorization does.
-    private sealed class Permissions(Uri baseUri, HostSpeechTarget voice) : IConversationAuthorizationSource
+    internal sealed class Permissions(Uri baseUri, HostSpeechTarget voice) : IConversationAuthorizationSource
     {
         public ValueTask<AuthorizedTextOperation?> AuthorizeTextAsync(TextAuthorizationAction action, CancellationToken cancellationToken)
         {

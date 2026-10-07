@@ -85,12 +85,15 @@ internal sealed partial class LiveConversationController
     }
 
     /// <summary>A reply to the user (what they said or typed, a touch, a message from a paired chat, people in your Discord call)
-    /// holds the floor until its voice is made or it stops; Martlet's own reports and replies to what this PC played don't.</summary>
+    /// holds the floor until its voice is made or it stops; Martlet's own reports and replies to what this PC played don't. A
+    /// reply started early holds it from its start, before the turn ends (let go, it ends its hold at once).</summary>
     private void BeginFloorReply(LiveConversationOperation operation)
     {
-        if (operation.Report || operation.PcAudio && operation.UserWords is null && !operation.DiscordCall || operation.FloorReply is not null)
+        if (operation.Report || operation.PcAudio && operation.UserWords is null && !operation.DiscordCall || operation.FloorReply is not null ||
+            operation.Early is { LetGo: true })
             return;
-        operation.FloorReply = floor.BeginReply(operation.Touch ? "a reply to a touch started" : operation.Remote ? "a reply to a message started"
+        operation.FloorReply = floor.BeginReply(operation.Early is not null ? "a reply started early"
+            : operation.Touch ? "a reply to a touch started" : operation.Remote ? "a reply to a message started"
             : operation.Spoken || operation.Authorization.Microphone ? "a reply to what you said started"
             : operation.PcAudio ? "a reply in your Discord call started" : "a reply to what you typed started");
     }
