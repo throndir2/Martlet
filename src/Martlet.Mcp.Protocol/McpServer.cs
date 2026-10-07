@@ -1127,6 +1127,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             reasoningMs = new { type = "integer", minimum = 200, maximum = 3000 }
         }),
+        Tool("thinking_pool_status", "Companion > Thinking pool from a data directory: thinking-pool.json (or what Martlet would make " +
+            "from the older deep-thinking.json, without writing it): each member (a paired computer's Thinking pool role or Ollama, " +
+            "a model in Ollama on this PC or an OpenAI-compatible endpoint; never a key) with its slots, whether it sees pictures " +
+            "or hears recordings, whether it can run and why; Use the conversation model when the pool is empty; the usable slots " +
+            "and whether one is kept free for fast jobs (judges and summaries); each job kind's priority, whether it is fast and " +
+            "whether a member can run it (the cheap CanRun answer); guidance (such as 1 slot: long thinking can delay screen and " +
+            "sound summaries); warnings about likely slowdowns (a member beside the conversation's Thinking model or the voice); " +
+            "and the desktop's thinking-pool-status.json (running and waiting jobs by kind, never a job's text). Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("thinking_pool_check", "Rehearse the Thinking pool's job board (ThinkingJobBoard over BackgroundPlaces, the production " +
+            "code) with simulated members, NOT models: an empty pool answering no member at once, a picture going to the member " +
+            "that sees and a recording finding none, two slots where a second long job waits while a judge takes the last free " +
+            "slot, one slot where waiting jobs run highest priority first (barge-in judge, digest, research), a busy member passed " +
+            "over for the next, a stale judge dropped, and deep-thinking.json read once into thinking-pool.json. In-process; " +
+            "reads nothing.", new { }),
         Tool("work_sharing_status", "Devices > Sharing work from a data directory: the choices (work-sharing.json, the work-sharing " +
             "shared setting: for Speaking, Thinking, Listening and Deep thinking whether it is shared when its computer is busy, " +
             "the order chosen (this-pc being each companion PC's own host service) and the computers never used; which computers " +
@@ -1409,6 +1426,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "reminders_status" => await RemindersCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "reminders_check" => await RemindersCheck.RunAsync(cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "thinking_pool_status" => await ThinkingPoolCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "thinking_pool_check" => await ThinkingPoolCheck.RunAsync(cancellation),
                 "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),
                 "work_sharing_check" => await WorkSharingCheck.RunAsync(cancellation),
                 "discord_reply_status" => DiscordReplyCheck.Status(DataDirectory(arguments)),

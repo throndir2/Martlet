@@ -111,8 +111,8 @@ public partial class MainWindow
         tabAutoSave = autoSave;
         page.Children.Add(Card(Heading("Thinking longer"),
             Note("Martlet can think a hard task through in the background while you keep talking. Choose where and how on " +
-                "Deep thinking.", new Thickness(0, 0, 0, 0)),
-            Row(PageButton("Open Deep thinking", () => OpenCompanion(CompanionTab.DeepThinking), link: true, id: "RepliesOpenDeepThinking"))));
+                "Thinking pool.", new Thickness(0, 0, 0, 0)),
+            Row(PageButton("Open Thinking pool", () => OpenCompanion(CompanionTab.DeepThinking), link: true, id: "RepliesOpenDeepThinking"))));
         thinking.SelectionChanged += (_, _) => { tabEdited = true; autoSave.Changed(); };
         AddRepliesRow(grid, new Label { Content = "T_hinking steps", Target = thinking, Padding = new Thickness(0, 8, 8, 0), VerticalAlignment = VerticalAlignment.Top },
             thinking, ThinkingRange, ThinkingHelp, route is null ? null : (ThinkingUseText(route, place!), "RepliesThinkingStatus",

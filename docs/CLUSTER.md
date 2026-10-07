@@ -65,8 +65,8 @@ another host** choice.
 - The plan holds no secrets or conversation data: host IDs, HTTPS origins,
   model names, flags and stamps only. JSON, snake case, schema 1, at most
   16 KiB, 8 jobs and 32 hosts; unknown fields and newer schemas are rejected.- **Background work across computers** is the speaking computer's own choice,
-  not a job in the plan. Companion › Deep thinking may think on several paired
-  computers at once (each one's Deep thinking role, ticked *Think here too*,
+  not a job in the plan. Companion › Thinking pool may think on several paired
+  computers at once (each one's Thinking pool role, ticked *Join the Thinking pool*,
   plus the place chosen first: `Pool` in that PC's `deep-thinking.json`, never
   shared). The computer you talk to keeps answering; each background think goes
   to a free one of those computers, the one sharing least with the conversation
@@ -201,7 +201,7 @@ then the others, fewest plan jobs first. Per job you can:
 
 And per computer, *Keep a computer for one companion PC* (**Every companion
 PC** or **Only** one): no other companion PC sends it work, whatever their
-order. Deep thinking keeps its own places (Companion › Deep thinking), but a
+order. Deep thinking keeps its own places (Companion › Thinking pool), but a
 computer unticked for it or kept for another companion PC can't run a think
 from this PC.
 

@@ -89,7 +89,7 @@ public partial class MainWindow
     private void FollowDeepThinkingModels(IEnumerable<string> hostIds, List<string> events)
     {
         if (store is null || closing) return;
-        var deep = DeepThinkingSettings.Load(store.DataDirectory);
+        var deep = ThinkingPoolSettings.Load(store.DataDirectory).Places;
         foreach (var id in hostIds)
         {
             if (hostChecks.GetValueOrDefault(id) is not { Reachable: true, Routes: { } routes } ||
@@ -97,15 +97,15 @@ public partial class MainWindow
                 continue;
             try
             {
-                if (!next.Save(store.DataDirectory)) continue;
+                if (!ThinkingPoolSettings.SavePlaces(store.DataDirectory, next)) continue;
             }
             catch (ContractException) { continue; }
             var was = deep.Places.First(p => p.HostId == id).ModelId;
             var now = next.Places.First(p => p.HostId == id).ModelId;
             deep = next;
-            conversation?.ReloadDeepThinking();
-            ErrorLog.Info($"Deep thinking: {id} now thinks with {now} (was {was}).");
-            events.Add($"Deep thinking on {id} now thinks with {now}.");
+            conversation?.ReloadThinkingPool();
+            ErrorLog.Info($"Thinking pool: {id} now thinks with {now} (was {was}).");
+            events.Add($"The Thinking pool on {id} now thinks with {now}.");
             if (openTab == CompanionTab.DeepThinking && !tabEdited) RenderTab();
         }
     }

@@ -132,7 +132,7 @@ public partial class MainWindow
     private static string TabTitle(CompanionTab section) => section switch
     {
         CompanionTab.Thinking => "Thinking",
-        CompanionTab.DeepThinking => "Deep thinking",
+        CompanionTab.DeepThinking => "Thinking pool",
         CompanionTab.Voice => "Voice",
         CompanionTab.Listening => "Listening",
         CompanionTab.Vision => "Vision",
@@ -184,7 +184,7 @@ public partial class MainWindow
     private static string TabIntro(CompanionTab section) => section switch
     {
         CompanionTab.Thinking => "Choose where Martlet thinks and which model it uses. This PC keeps conversations local.",
-        CompanionTab.DeepThinking => "Thinking answers you. Deep thinking works out hard tasks in the background, ideally on another machine, so Martlet keeps talking.",
+        CompanionTab.DeepThinking => "Thinking answers you. The Thinking pool works out hard tasks and other background jobs on your other models, ideally on another machine, so Martlet keeps talking.",
         CompanionTab.Voice => "Choose how Martlet speaks and where speech is generated.",
         CompanionTab.Listening => "Choose the microphone, push-to-talk mode and speech recognition.",
         CompanionTab.Vision => "Choose whether Martlet can see your screen or camera once you press Start watching.",
