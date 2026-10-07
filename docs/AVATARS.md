@@ -267,8 +267,8 @@ touched it. Companion › Character › **Touch zones** lists the zones of the
 model it shows: the top of the head (a head pat), hair, forehead, face, cheeks,
 nose, chin, shoulders, arms, hands, stomach, legs and feet, and extras such as
 animal ears, a tail or wings. Intimate zones (lips, ears, neck, chest,
-waist, hips, groin, buttocks and inner thighs) are found too but react only
-with **Include intimate zones** on, which is off by default.
+waist, hips, groin, buttocks and inner thighs) react too while
+**Include intimate zones** is on, which it is by default; turn it off to leave them out.
 
 - **Detect zones** takes one picture of the character as it stands and sends it
   (never the model's files) to the Thinking model, which must be able to see

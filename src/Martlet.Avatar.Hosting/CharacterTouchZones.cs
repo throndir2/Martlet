@@ -78,7 +78,7 @@ public sealed record CharacterTouchZoneSettings
     public string? DetectedBy { get; init; }
     public DateTimeOffset? DetectedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
-    public bool IncludeIntimate { get; init; }
+    public bool IncludeIntimate { get; init; } = true;
     public TouchZoneBox? Crop { get; init; }
     public IReadOnlyList<CharacterTouchZone> Zones { get; init; } = [];
 
@@ -351,7 +351,7 @@ public static class CharacterTouchZones
         return new()
         {
             ModelId = modelId, DetectedBy = CharacterTouchZoneSettings.ByVision, DetectedAt = now.ToUniversalTime(), UpdatedAt = now.ToUniversalTime(),
-            IncludeIntimate = saved?.IncludeIntimate ?? false, Crop = crop, Zones = merged
+            IncludeIntimate = saved?.IncludeIntimate ?? true, Crop = crop, Zones = merged
         };
     }
 
