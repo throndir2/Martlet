@@ -76,6 +76,35 @@ test("a blush the model can't show is drawn over the face, held until turned off
   assert.equal(posts.at(-1).started, false);
 });
 
+test("Martlet's overlay emotes play on any model, a held one reported as the held gesture", async () => {
+  const posts = [];
+  class Renderer {
+    load() { return Promise.resolve({ expressions: [] }); }
+    resize() {}
+    update() {}
+    setView() {}
+    dispose() {}
+    playGesture() { return false; }
+    endGesture() {}
+    get gestureState() { return {}; }
+    faceAnchor() { return { x: 250, y: 100, width: 80, angle: 0, cheekLeft: { x: 230, y: 115 }, cheekRight: { x: 270, y: 115 },
+      eyeLeft: { x: 234, y: 100 }, eyeRight: { x: 266, y: 100 }, mouth: { x: 250, y: 130 }, top: { x: 250, y: 50 } }; }
+  }
+  const { send } = await page(Renderer, posts);
+  await send({ kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm" } });
+  for (const name of ["sweat", "anger", "hearts", "sparkles", "tears", "gloom", "question", "exclaim", "sleepy", "music"]) {
+    await send({ kind: "action", data: { kind: "gesture", name } });
+    assert.equal(posts.at(-1).started, true, name);
+    assert.equal(posts.at(-1).overlay, true, name);
+  }
+  await send({ kind: "action", data: { kind: "gesture", name: "gloom", hold: true } });
+  assert.equal(posts.at(-1).gesture.held, "gloom");
+  await send({ kind: "action", data: { kind: "gesture", name: "sleepy", hold: true } });
+  assert.equal(posts.at(-1).gesture.held, "sleepy", "holding another lets the one held before go");
+  await send({ kind: "action", data: { kind: "gesture", name: "sleepy", on: false, hold: true } });
+  assert.equal(posts.at(-1).gesture.held, undefined);
+});
+
 test("shared Live2D/VRM page leaves the desktop visible behind the canvas", async () => {
   const html = await readFile(new URL("index.html", import.meta.url), "utf8");
   assert.match(html, /html,body\{[^}]*background:transparent[;}]/);
