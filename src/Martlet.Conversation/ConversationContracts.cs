@@ -282,13 +282,15 @@ public sealed record SequenceIssueInfo(Martlet.Core.Streaming.SequenceIssue Issu
 /// happened): the Thinking request sent (after its authorization), the provider's response headers, its first hidden reasoning,
 /// the first speakable piece staged for the voice, the first voice request sent, the voice's first audio received, the first
 /// piece fully synthesized (and how much speech it holds) and the first audio handed to the speakers; and how many times the
-/// speakers ran dry mid-piece waiting for the voice's next audio (a voice slower than real time pauses), and for how long.
+/// speakers ran dry mid-piece waiting for the voice's next audio (a voice slower than real time pauses), and for how long; and
+/// how many times it paused because the user talked over it (<see cref="ConversationTurn.Pause"/>), how many of those it
+/// resumed after and how long it stayed paused in all.
 /// Diagnostics only (the desktop log's reply latency line); nothing depends on them.</summary>
 public sealed record ConversationTimings(
     TimeSpan? TextRequestAfter = null, TimeSpan? TextResponseAfter = null, TimeSpan? FirstReasoningAfter = null,
     TimeSpan? FirstSegmentAfter = null, TimeSpan? SpeechRequestAfter = null, TimeSpan? FirstSpeechAudioAfter = null,
     TimeSpan? FirstPieceSynthesizedAfter = null, TimeSpan? FirstPieceSpeech = null, TimeSpan? PlaybackStartedAfter = null,
-    int VoiceWaits = 0, TimeSpan VoiceWaited = default);
+    int VoiceWaits = 0, TimeSpan VoiceWaited = default, int PausesForYou = 0, int Resumes = 0, TimeSpan PausedForYou = default);
 
 public sealed class ConversationContent(string text, string? refusal)
 {

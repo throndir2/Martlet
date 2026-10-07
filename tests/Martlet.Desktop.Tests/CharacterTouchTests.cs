@@ -50,6 +50,14 @@ public sealed class CharacterTouchTests
         Assert.False((touch with { X = double.NaN }).IsValid);
         Assert.False((touch with { Drawables = [.. Enumerable.Range(0, 9).Select(i => $"D{i}")] }).IsValid);
         Assert.False((touch with { Bone = "head\n" }).IsValid);
+        Assert.False(read.Held);
+        Assert.False(message.Data.TryGetProperty("held", out _));
+        var held = RendererProtocol.Data<CharacterTouch>(RendererProtocol.Message("touch", Guid.NewGuid(), touch with { HeldMilliseconds = 750 }));
+        Assert.Equal(750, held.HeldMilliseconds);
+        Assert.True(held.Held && held.IsValid);
+        Assert.False((touch with { HeldMilliseconds = 599 }).Held);
+        Assert.False((touch with { HeldMilliseconds = -1 }).IsValid);
+        Assert.False((touch with { HeldMilliseconds = CharacterTouch.MaximumHeldMilliseconds + 1 }).IsValid);
     }
 
     [Theory]

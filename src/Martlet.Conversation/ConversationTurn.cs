@@ -77,6 +77,13 @@ public sealed class ConversationTurn
     private string? activeTool, fellBackAfter;
     private long reservedSamples, accepted, submitted, consumed, eventSequence, dropped;
     private bool mayHavePlayed;
+    // Paused for the user (Pause): the playing sentence's run, and every one started before Resume, is paused; synthesis and
+    // the text go on and buffer. Guarded by Sync.
+    private bool paused;
+    private long pausedAt;
+    private int pauses, resumes;
+    private TimeSpan pausedTime;
+    private string? sentence;
 
     public Guid SessionId => Owner.SessionId;
     public Guid TurnId { get; } = Guid.NewGuid();
@@ -141,6 +148,43 @@ public sealed class ConversationTurn
     {
         CancelByUser();
         return Completion;
+    }
+
+    /// <summary>The sentence Martlet is saying aloud right now (its words, without voice tags), or null between sentences.</summary>
+    public string? Sentence { get { lock (Sync) return sentence; } }
+
+    /// <summary>Whether what Martlet says aloud is paused (<see cref="Pause"/>).</summary>
+    public bool Paused { get { lock (Sync) return paused; } }
+
+    /// <summary>Pauses what Martlet says aloud, at once, without losing anything: the sentence playing stops reading audio
+    /// and keeps what is buffered, and a sentence that starts meanwhile starts paused. The Thinking text and the voice's
+    /// synthesis go on and buffer, so <see cref="Resume"/> plays on from the same sample with no new synthesis. Returns
+    /// false for a reply that isn't spoken, has finished or is paused already.</summary>
+    public bool Pause()
+    {
+        lock (Sync)
+        {
+            if (request.Speech is null || paused || invalidated || workFinished || terminal || speaking.IsCancellationRequested) return false;
+            paused = true;
+            pausedAt = Clock.GetTimestamp();
+            pauses++;
+            playback?.Pause();
+            return true;
+        }
+    }
+
+    /// <summary>Plays on from where <see cref="Pause"/> stopped. Returns false when it wasn't paused.</summary>
+    public bool Resume()
+    {
+        lock (Sync)
+        {
+            if (!paused) return false;
+            paused = false;
+            pausedTime += Clock.GetElapsedTime(pausedAt);
+            resumes++;
+            playback?.Resume();
+            return true;
+        }
     }
 
     private void CancelByUser()
@@ -985,7 +1029,9 @@ public sealed class ConversationTurn
                         CheckActive();
                         speaking.Token.ThrowIfCancellationRequested();
                         run = Owner.StartPlayback(this, take.Ids, voice.Output, Deadline(window), speaking.Token);
+                        if (paused) run.Pause();
                         playback = run;
+                        sentence = VoiceTags.Strip(take.Text).Trim();
                         playbackStartedAfter ??= Clock.GetElapsedTime(startedAt);
                         speechRequest = take.Ids.RequestId;
                         speechObservation = Owner.GeneratedSpeech?.Begin(run, frame.Format);
@@ -1039,6 +1085,7 @@ public sealed class ConversationTurn
                     quarantined |= !final.DeviceReleased || final.Error?.Code == ErrorCode.AudioPlaybackFailed;
                     lastPlayback = final;
                     playback = null;
+                    sentence = null;
                     speechObservation = null;
                     speechRequest = null;
                     if (!invalidated && !textComplete)
@@ -1188,7 +1235,8 @@ public sealed class ConversationTurn
             speechLimitReached, failedProvider, fellBackAfter, audioRejected, firstTextAfter, firstAudioAfter, imageRejected,
             speechFailure, new(textRequestAfter, textResponseAfter, firstReasoningAfter, firstSegmentAfter, speechRequestAfter,
                 firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter,
-                voiceWaits + (currentPlayback?.Underruns ?? 0), voiceWaited + (currentPlayback?.UnderrunTime ?? TimeSpan.Zero)),
+                voiceWaits + (currentPlayback?.Underruns ?? 0), voiceWaited + (currentPlayback?.UnderrunTime ?? TimeSpan.Zero),
+                pauses, resumes, pausedTime + (paused ? Clock.GetElapsedTime(pausedAt) : TimeSpan.Zero)),
             inputTokens, cachedInputTokens,
             reasoningRejected, voiceMuted);
     }

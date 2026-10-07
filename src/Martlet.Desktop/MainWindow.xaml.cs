@@ -107,6 +107,7 @@ public partial class MainWindow : ThemedWindow
         avatar.Gaze.Decides = Talk.DecideGaze;
         characterActions = new(store?.DataDirectory);
         characterTouchZones = new(store?.DataDirectory);
+        characterTemperaments = new(store?.DataDirectory);
         characterThemes = new(store?.DataDirectory);
         if (setupService is not null)
         {
@@ -141,6 +142,7 @@ public partial class MainWindow : ThemedWindow
         }
         WireCharacterActions();
         WireCharacterTouchZones();
+        WireCharacterPhysical();
         WireCharacterThemes();
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
         this.startupError = startupError;
@@ -350,9 +352,13 @@ public partial class MainWindow : ThemedWindow
     private async Task OpenCompanionWindowAsync(bool importCard)
     {
         if (companionService is null || closing || saving || model?.IsRunning == true) return;
+        var personalities = homeSettings?.Companion?.Personas.ToDictionary(p => p.Id, p => p.Text);
         new CompanionWindow(companionService, setupOperations, importCardOnOpen: importCard, lorebooks: lorebooks) { Owner = this }.ShowDialog();
         homeLore = null;
+        // The window's last save can still be finishing; the refresh would be skipped and miss a changed personality.
+        for (var i = 0; i < 50 && setupOperations.IsRunning && !closing; i++) await Task.Delay(100);
         await RefreshAsync();
+        PersonalitiesSaved(personalities);
     }
 
     private async Task OpenLorebooksAsync(bool import = false)
@@ -484,9 +490,17 @@ public partial class MainWindow : ThemedWindow
         {
             if (avatar.IsShowing)
             {
-                if (await StopAvatarSafelyAsync()) ActionText.Text = "Character hidden.";
+                if (await StopAvatarSafelyAsync())
+                {
+                    ActionText.Text = "Character hidden.";
+                    NoticeCharacterChange(global::Martlet.Conversation.PhysicalKind.Hidden);
+                }
             }
-            else await ShowSavedCharacterAsync(onlyIfAutoShow: false);
+            else
+            {
+                await ShowSavedCharacterAsync(onlyIfAutoShow: false);
+                if (avatar.IsShowing) NoticeCharacterChange(global::Martlet.Conversation.PhysicalKind.Shown);
+            }
         }
         finally
         {
@@ -601,6 +615,7 @@ public partial class MainWindow : ThemedWindow
             var place = await avatar.LockPlacementAsync(locked, lifetime.Token);
             var saved = CharacterPlacementStore.Save(store?.DataDirectory, place);
             if (closing) return;
+            NoticeCharacterChange(locked ? global::Martlet.Conversation.PhysicalKind.Locked : global::Martlet.Conversation.PhysicalKind.Unlocked);
             ErrorLog.Info(locked && place is { } at
                 ? $"Character position locked at {at.Left:0}, {at.Top:0} ({at.Width:0} × {at.Height:0})" +
                     (at.Screen is { } screen ? $" on {CharacterScreen(screen)}." : ".")

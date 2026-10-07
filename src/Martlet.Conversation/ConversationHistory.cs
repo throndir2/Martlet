@@ -13,7 +13,9 @@ public enum HistoryInputKind
 {
     Typed,
     Spoken,
-    Report
+    Report,
+    /// <summary>Martlet reacting to the user touching the desktop character with nothing said; the user side is the touch line.</summary>
+    Touch
 }
 
 /// <summary>The apps an exchange can come from: this PC's talk window, or a chat in a messaging app.</summary>
@@ -678,6 +680,7 @@ public sealed partial class ConversationHistory
         "typed" => HistoryInputKind.Typed,
         "spoken" => HistoryInputKind.Spoken,
         "report" => HistoryInputKind.Report,
+        "touch" => HistoryInputKind.Touch,
         _ => null
     };
 
@@ -697,7 +700,10 @@ public sealed partial class ConversationHistory
         internal static Line From(HistoryExchange exchange) => new()
         {
             V = Schema, Id = exchange.Id, Conversation = exchange.ConversationId, At = exchange.At,
-            Kind = exchange.Kind switch { HistoryInputKind.Spoken => "spoken", HistoryInputKind.Report => "report", _ => "typed" },
+            Kind = exchange.Kind switch
+            {
+                HistoryInputKind.Spoken => "spoken", HistoryInputKind.Report => "report", HistoryInputKind.Touch => "touch", _ => "typed"
+            },
             Speaker = exchange.Speaker, User = exchange.User, Reply = exchange.Reply, Source = SourceLine.From(exchange.Source),
             Edited = exchange.Edited
         };
