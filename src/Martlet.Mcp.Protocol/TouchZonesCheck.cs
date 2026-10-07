@@ -17,7 +17,7 @@ internal static class TouchZonesCheck
 
     internal static async Task<object> RunAsync(string dataDirectory, bool explicitDirectory, string? modelPath, string? modelId, string? answer,
         int? width, int? height, string? crop, string? probe, string? touch, bool save, bool? includeIntimate, string? snapshotPath,
-        CancellationToken cancellation)
+        CancellationToken cancellation, string? temperamentAnswer = null, string? personaId = null, string? personality = null, int? repeats = null)
     {
         CharacterActionCatalog? catalog = null;
         string? problem = null;
@@ -66,17 +66,25 @@ internal static class TouchZonesCheck
             wrote = $"Saved {detected.Zones.Count} zones for the model in {CharacterTouchZones.FileName}" + (snapshotPath is null ? "." : " with the snapshot.");
         }
         var settings = saved ?? detected;
+        // The persona's touch temperament: a simulated Thinking answer, else the one saved for personaId in the data directory.
+        var persona = Guid.TryParse(personaId, out var parsedPersona) ? parsedPersona : Guid.Empty;
+        var temperament = temperamentAnswer is not null
+            ? CharacterTouchTemperaments.Parse(temperamentAnswer, persona == Guid.Empty ? Guid.NewGuid() : persona,
+                personality is null ? null : CharacterTouchTemperaments.Digest(personality), CharacterTouchTemperament.ByThinking, DateTimeOffset.Now)
+            : persona == Guid.Empty ? null : CharacterTouchTemperaments.Load(dataDirectory, persona);
+        var touches = Math.Max(1, repeats ?? 1);
         object? match = null;
         if (touch is not null)
         {
             var given = JsonSerializer.Deserialize<CharacterTouch>(touch, Web) ?? throw new ArgumentException("touch must be a CharacterTouch object.");
             var found = CharacterTouchZones.Match(settings, given);
-            match = found is null ? new { zone = (string?)null, how = (string?)null, coarse = given.CoarseZone, plays = Array.Empty<string>(), tells = (string?)null }
+            match = found is null ? new { zone = (string?)null, how = (string?)null, coarse = given.CoarseZone, plays = Array.Empty<string>(), notices = false, noticed = (string?)null }
                 : new
                 {
                     zone = found.Zone.Id, name = found.Zone.Name, how = found.How, coarse = given.CoarseZone,
-                    plays = CharacterTouchZones.Plan(found.Zone, catalog).Select(s => $"{s.Kind}: {s.Name}").ToArray(),
-                    tells = CharacterTouchZones.Narration(found.Zone), rests = found.Zone.Reaction.CooldownSeconds
+                    plays = CharacterTouchZones.React(found.Zone, catalog, temperament, touches).Actions.Select(s => $"{s.Kind}: {s.Name}").ToArray(),
+                    reaction = Reaction(CharacterTouchZones.React(found.Zone, catalog, temperament, touches)), repeats = touches,
+                    notices = found.Zone.Reaction.Notices, noticed = Noticed(found.Zone, given), rests = found.Zone.Reaction.CooldownSeconds
                 };
         }
         return new
@@ -98,13 +106,46 @@ internal static class TouchZonesCheck
                 each = settings.Zones.Select(z => new
                 {
                     z.Id, z.Name, z.Enabled, active = settings.Active(z), drawables = z.Drawables.Count, z.Bones,
-                    plays = z.Reaction.Actions is null ? "default: " + string.Join(" + ", CharacterTouchZones.Plan(z, catalog).Select(s => s.Name))
-                        : string.Join(" + ", CharacterTouchZones.Plan(z, catalog).Select(s => s.Name)),
-                    tells = CharacterTouchZones.Narration(z)
+                    plays = CharacterTouchZones.React(z, catalog, temperament, 1) is var r && r.From == TouchReactionPlan.FromOwner
+                        ? string.Join(" + ", r.Actions.Select(s => s.Name)) : r.From + ": " + string.Join(" + ", r.Actions.Select(s => s.Name)),
+                    notices = z.Reaction.Notices, hint = CharacterTouchZones.Narration(z)
                 }).ToArray()
+            },
+            temperament = new
+            {
+                request = new
+                {
+                    instructions = CharacterTouchTemperaments.DecisionInstructions,
+                    text = personality is null ? null : CharacterTouchTemperaments.DecisionRequest(personality)
+                },
+                vocabulary = CharacterTouchTemperaments.Vocabulary, attitudes = CharacterTouchTemperaments.AttitudeWords,
+                read = temperamentAnswer is null ? (bool?)null : temperament is not null,
+                used = temperament is null ? null : new
+                {
+                    temperament.Source, summary = CharacterTouchTemperaments.Summary(temperament),
+                    groups = temperament.Groups.ToDictionary(g => g.Key, g => Entry(g.Value)),
+                    zones = temperament.Zones.ToDictionary(z => z.Key, z => Entry(z.Value)),
+                    escalation = temperament.Escalation
+                }
             },
             match
         };
+    }
+
+    private static object Entry(TouchTemperamentEntry entry) =>
+        new { attitude = CharacterTouchTemperaments.AttitudeWord(entry.Attitude), reactions = entry.Reactions, linger = entry.LingerSeconds };
+
+    private static object Reaction(TouchReactionPlan plan) => new { from = plan.From, attitude = plan.Attitude, escalated = plan.Escalated, linger = plan.LingerSeconds };
+
+    // What the Thinking model hears about this one touch when Martlet notices the zone (the ledger's line), or null.
+    private static string? Noticed(CharacterTouchZone zone, CharacterTouch touch)
+    {
+        if (!zone.Reaction.Notices) return null;
+        var ledger = new Martlet.Conversation.TouchLedger();
+        ledger.Record(new(touch.Held ? Martlet.Conversation.PhysicalKind.Hold : CharacterTouchZones.Pats(zone) ? Martlet.Conversation.PhysicalKind.Pat
+            : Martlet.Conversation.PhysicalKind.Tap, TimeSpan.Zero, CharacterTouchZones.Part(zone), zone.Name.ToLowerInvariant(),
+            Hint: CharacterTouchZones.Narration(zone)));
+        return ledger.Drain(TimeSpan.Zero)?.Line;
     }
 
     private static object Describe(CharacterTouchZone zone) => new

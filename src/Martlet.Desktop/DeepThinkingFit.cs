@@ -63,6 +63,29 @@ internal static class DeepThinkingFit
         return result;
     }
 
+    /// <summary>The warning for a Deep thinking model that would share a graphics card with a Thinking model: on
+    /// <paramref name="where"/>, which runs Thinking's <paramref name="thinking"/> (null: no Thinking model there, so no warning)
+    /// and has <paramref name="cards"/> dedicated graphics cards. Two models that run at the same time share one card's memory
+    /// speed and compute, so each runs at about half speed; Martlet recommends one graphics card for each Thinking model.</summary>
+    internal static string? SharedCard(string where, string? thinking, int cards)
+    {
+        if (thinking is null || cards >= 2) return null;
+        var on = cards == 0 ? "its processor (no graphics card)" : "its only graphics card";
+        return $"{where} already runs a Thinking model ({thinking}) on {on}. A Deep thinking model there shares it: while both run, " +
+               "each runs at about half speed, so replies can start later. We recommend one graphics card for each Thinking model: " +
+               "put Deep thinking on another computer with its own graphics card, or on a cloud provider.";
+    }
+
+    /// <summary><see cref="SharedCard(string, string?, int)"/> for a paired host: its Thinking model from its Ollama role in
+    /// <paramref name="offers"/>, and its dedicated graphics cards from <paramref name="hardware"/> (one when it hasn't reported).</summary>
+    internal static string? SharedCard(string hostId, HostHardware? hardware, IReadOnlyDictionary<string, string>? offers) =>
+        SharedCard(hostId, offers?.GetValueOrDefault(HostRoles.Ollama) is { } alias ? Tag(alias) : null,
+            hardware is null ? 1 : DedicatedCards(hardware.Gpus.Select(g => (g.Vendor, g.MemoryGb))));
+
+    /// <summary>How many of <paramref name="gpus"/> (vendor or name, memory) are dedicated graphics cards a model can run on.</summary>
+    internal static int DedicatedCards(IEnumerable<(string VendorOrName, double? MemoryGb)> gpus) =>
+        gpus.Count(g => SetupAdvisor.Classify(g.VendorOrName, g.MemoryGb) != AdvisorGpu.None);
+
     /// <summary>The Ollama tag of a model a host route names by its alias ("gemma4-e4b" is gemma4:e4b), when it is one the role
     /// offers; otherwise the alias itself.</summary>
     internal static string Tag(string alias) =>

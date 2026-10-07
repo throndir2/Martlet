@@ -25,7 +25,7 @@ namespace Martlet.Desktop;
 public partial class MainWindow
 {
     private const string CharacterKey = "character", TalkKey = "talk", SpeechDisplayKey = "speech-display", AppearanceKey = "appearance",
-        CharacterActionsKey = "character-actions", VoiceRecognitionKey = "voice-recognition", VoiceIdKey = "voice-id",
+        CharacterActionsKey = "character-actions", TouchTemperamentKey = "touch-temperament", VoiceRecognitionKey = "voice-recognition", VoiceIdKey = "voice-id",
         SmartHomeKey = "smart-home", UpdatesKey = "updates", ModelAbilitiesKey = "model-abilities";
     private static readonly JsonSerializerOptions SharedJson = new()
     {
@@ -139,6 +139,7 @@ public partial class MainWindow
         SpeechDisplayKey => "speech bubbles and subtitles",
         AppearanceKey => "the theme",
         CharacterActionsKey => "emotes and motions",
+        TouchTemperamentKey => "touch temperaments",
         VoiceRecognitionKey => "recognizing voices",
         VoiceIdKey => "Voice ID",
         SmartHomeKey => "what Martlet may do with Home Assistant",
@@ -352,6 +353,18 @@ public partial class MainWindow
             await CharacterActions.ReplaceAllAsync(directory, setting.Value, token);
             if (characterActions.Current is not null)
                 await characterActions.LoadAsync(avatar.IsShowing ? avatar.InspectedProfile : homeAvatar, force: true, token);
+            return SharedApply.Done;
+        });
+        // Each persona's touch temperament travels with the personas, so every computer's character reacts to touch the same way.
+        yield return new DelegateSection(TouchTemperamentKey, "Touch temperament", _ =>
+        {
+            var path = CharacterTouchTemperaments.Path(directory);
+            return Task.FromResult<SharedLocal?>(new(CharacterTouchTemperaments.Share(directory), null, !CharacterTouchTemperaments.HasAny(directory), FileTime(path)));
+        }, async (setting, token) =>
+        {
+            if (characterTemperaments.Busy) return SharedApply.Waiting("The Thinking model is deciding a touch temperament on this PC.");
+            await CharacterTouchTemperaments.ReplaceAllAsync(directory, setting.Value, token);
+            characterTemperaments.Reload();
             return SharedApply.Done;
         });
         yield return new DelegateSection(VoiceRecognitionKey, "Recognizing voices", _ =>
