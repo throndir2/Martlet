@@ -110,9 +110,9 @@ public static class CharacterTouchZones
 
     private static readonly string[][] HeadPat = [["lean_in", "tilt"], ["smile", "happy"]];
     private static readonly string[][] Face = [["tilt", "nod"], ["smile", "happy"]];
-    private static readonly string[][] Cheek = [["blush"], ["smile", "shy"]];
+    private static readonly string[][] Cheek = [["blush"], ["shy", "smile"]];
     private static readonly string[][] Intimate = [["blush"], ["flinch", "surprise", "gasp"]];
-    private static readonly string[][] Tickle = [["flinch", "surprise"], ["laugh", "chuckle"]];
+    private static readonly string[][] Tickle = [["flinch", "surprise"], ["giggle", "laugh", "chuckle"]];
     private static readonly string[][] Arm = [["tilt", "nod"], ["smile", "happy"]];
     private static readonly string[][] Hand = [["smile", "happy"], ["nod"]];
     private static readonly string[][] Leg = [["surprise", "flinch"], ["pout", "tilt"]];
