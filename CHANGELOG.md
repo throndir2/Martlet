@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Every character can now blush: a model without a blush of its own gets a soft pink glow drawn on its cheeks, on Live2D and VRM alike. ([#511](https://github.com/throndir2/Martlet/pull/511))
 - The character now reacts to every sound and tone the voice makes: it laughs, sighs, gasps, coughs, hums, cries, glowers and more along with the voice, on any Live2D or VRM model, without lengthening replies. ([#507](https://github.com/throndir2/Martlet/pull/507))
 
 ## [0.51.0] - 2026-10-06
