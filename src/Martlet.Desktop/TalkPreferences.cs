@@ -28,6 +28,11 @@ namespace Martlet.Desktop;
 // digest describes its non-speech sound in one line for the next reply (PcSoundDigest); it never runs without HearPc.
 // Companion › Vision › Screen summary over time (ScreenSummary, on by default): while Martlet watches and the Thinking pool has
 // a member that sees, a background job sums up what changed on the screen for the next reply (ScreenDigester).
+// Companion › Listening › Start replies early (EarlyReplies, on by default): with Parakeet on this PC, a reply starts at the
+// end-of-turn check point on the quick transcript and is taken once the turn ends with the same words (EarlyReplyOptions). Only
+// for Thinking on the user's own computers unless EarlyRepliesCloud (Also for cloud models, off by default: a reply let go there
+// may still cost its input); EarlyVoice (on by default) prepares the first spoken words too, for a paid cloud voice only with
+// EarlyRepliesCloud.
 // Companion › Character › Where the character looks (also the character's right-click Eyes menu): its usual gaze (GazeUsual: a
 // GazeMode, or null, the default, for as the personality decides) and whether the character may change where it looks in its
 // replies (GazeFree, on by default).
@@ -37,9 +42,14 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
     bool BargeIn = false, bool ReduceEcho = true, bool HearPc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal,
     bool DecideGaze = false, bool TranscribeFirst = false, double VoiceVolume = 1.0,
     Martlet.Conversation.BargeInBehavior BargeInStyle = Martlet.Conversation.BargeInBehavior.PauseAndDecide, bool JudgeTurns = true,
-    bool DescribePcSounds = true, bool ScreenSummary = true, Martlet.Avatar.Hosting.GazeMode? GazeUsual = null, bool GazeFree = true)
+    bool DescribePcSounds = true, bool ScreenSummary = true, bool EarlyReplies = true, bool EarlyRepliesCloud = false,
+    bool EarlyVoice = true, Martlet.Avatar.Hosting.GazeMode? GazeUsual = null, bool GazeFree = true)
 {
     private const string FileName = "talk-preferences.json";
+
+    /// <summary>Companion › Listening › Start replies early, for always listening.</summary>
+    internal Martlet.Conversation.EarlyReplyOptions EarlyReplyOptions =>
+        new() { Enabled = EarlyReplies, Cloud = EarlyRepliesCloud, Voice = EarlyVoice };
 
     /// <summary>Whether Thinking hears your recording with the Thinking route <paramref name="thinking"/>, and why: your own
     /// choice (ticked or turned off) always wins; never chosen, it is on only while the recording stays on this PC

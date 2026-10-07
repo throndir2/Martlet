@@ -138,6 +138,15 @@ public sealed class ConversationRuntime : IAsyncDisposable
     public ConversationTurn Start(ConversationRequest request, IConversationAuthorizationSource authorization,
         CancellationToken cancellationToken = default) => StartCore(request, authorization, null, false, cancellationToken);
 
+    /// <summary>Starts a reply early, before the user's turn is confirmed (Companion › Listening › Start replies early): its
+    /// Thinking request streams at once and, with <paramref name="prepareVoice"/>, its first spoken piece is synthesized, but
+    /// nothing is shown in the captions, acted by the character, done by a tool or played until
+    /// <see cref="ConversationTurn.Release"/> lets it go on as the reply. One that is never released is stopped like any
+    /// other turn (<see cref="ConversationTurn.StopAsync"/>), with nothing said or done.</summary>
+    public ConversationTurn StartEarly(ConversationRequest request, IConversationAuthorizationSource authorization,
+        bool prepareVoice, CancellationToken cancellationToken = default) =>
+        StartCore(request, authorization, null, false, cancellationToken, early: true, prepareVoice: prepareVoice);
+
     public ConversationTurn Retry(ConversationTurn previous, ConversationRequest request,
         IConversationAuthorizationSource authorization, bool acknowledgeEarlierSpeech,
         CancellationToken cancellationToken = default)
@@ -154,7 +163,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
     }
 
     private ConversationTurn StartCore(ConversationRequest request, IConversationAuthorizationSource authorization,
-        Guid? retryOf, bool earlierSpeech, CancellationToken cancellationToken)
+        Guid? retryOf, bool earlierSpeech, CancellationToken cancellationToken, bool early = false, bool prepareVoice = true)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(authorization);
@@ -174,7 +183,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
             if (active is not null && (!active.Completion.IsCompleted || !active.OwnershipRelease.IsCompleted || active.Snapshot.Quarantined))
                 throw new InvalidOperationException("The previous turn still owns work or playback is quarantined.");
             ContractRules.Require(epoch < int.MaxValue - 1, "The conversation epoch range is exhausted.");
-            active = new(this, request, authorization, ++epoch, retryOf, earlierSpeech);
+            active = new(this, request, authorization, ++epoch, retryOf, earlierSpeech, early, prepareVoice);
             active.Begin(cancellationToken);
             return active;
         }

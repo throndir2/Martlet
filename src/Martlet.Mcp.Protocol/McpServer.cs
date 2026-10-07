@@ -235,6 +235,30 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             martletDirectory = new { type = "string" }
         }),
+        Tool("early_reply_check", "Companion > Listening > Start replies early, rehearsed headless in real time with the production " +
+            "EndOfTurnGate, EarlyReplyGate, request comparison (EarlyAsk) and the conversation runtime's held turn (StartEarly, " +
+            "Release) through the Chat Completions adapter, a paired host's voice stream and the playback sink. FIXTURES, NOT AI: a " +
+            "quick transcript after sttMs (default 90), a judge answer after judgeMs (26), a Chat Completions endpoint on 127.0.0.1 " +
+            "whose first words come after thinkingMs (200) and a host voice whose first audio comes after voiceMs (350); speakers " +
+            "open no device. scenario (default all): incomplete (the judge finds the pause unfinished and the longer 1600 ms pause " +
+            "ends the turn), plain (no judge: the 800 ms pause), complete (the judge ends the turn at about 300 ms), resumed (you go " +
+            "on talking 700 ms into the pause, then pause again) or changed (the final transcript differs from the quick one). " +
+            "Each runs with replies started early and without: per run the decisions with their times, when the turn ended, the " +
+            "first audio after the turn ended, starts, cancelled, the outcome (promoted or changed), Thinking requests and aborted " +
+            "ones, voice pieces, samples played and captions shown before the turn ended (both 0), the live floor (production " +
+            "LiveFloor fed as the desktop feeds it: its level and reply holds when the turn ended and once the reply was done, its " +
+            "changes among the decisions) and the reply latency line; " +
+            "savedMs per scenario. ok when each scenario does what it should (promoted, let go or restarted as described, nothing " +
+            "heard before the turn ended, the floor Live and held by the one reply started early when the turn ended and by none " +
+            "once the reply was done, and for incomplete, plain and resumed the first audio at least 60% of thinkingMs + " +
+            "voiceMs sooner). Nothing is recorded, played or sent off this PC.", new
+        {
+            scenario = new { type = "string", @enum = new[] { "all", "incomplete", "plain", "complete", "resumed", "changed" } },
+            thinkingMs = new { type = "integer", minimum = 0, maximum = 3000 },
+            voiceMs = new { type = "integer", minimum = 0, maximum = 3000 },
+            sttMs = new { type = "integer", minimum = 0, maximum = 1000 },
+            judgeMs = new { type = "integer", minimum = 0, maximum = 500 }
+        }),
         Tool("parakeet_check", "Companion > Listening > Parakeet in Martlet: load each Parakeet model downloaded in speechDirectory " +
             "(optional absolute path, default the data directory's speech folder, where the desktop downloads them; or name them in " +
             "models) through the production ParakeetEngine with the sherpa-onnx runtime from martletDirectory, and transcribe phrases " +
@@ -555,17 +579,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" }, modelId = new { type = "string" }, stroke = new { type = "string" },
             changes = new { type = "string" }, noticeAll = new { type = "boolean" }
         }),
-        Tool("character_touch_zones", "Companion > Character > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones; docs/AVATARS.md " +
-            "\"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate), the vision request sent with the " +
-            "character's snapshot, what the production parser makes of answer (a simulated vision reply: JSON boxes as fractions, " +
-            "pixels of a width x height picture or Qwen-style 0..1000 bbox_2d grounding) bound to probe (a simulated renderer zones " +
-            "probe: {\"drawables\":[{\"id\",\"left\",\"top\",\"right\",\"bottom\"}],\"bones\":[{\"bone\",\"x\",\"y\"}]} in page " +
-            "fractions) with crop (\"left,top,width,height\": where the snapshot sat on the page), the zones saved for the model " +
-            "(modelPath, modelId or the model dataDirectory's avatar.json shows) in character-touch-zones.json, and with touch (a " +
-            "CharacterTouch: {\"x\",\"y\",\"hitAreas\",\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\"}) the zone it " +
-            "lands in, how it was found, what it plays and what it tells the character. save writes the parsed zones (and " +
-            "snapshotPath, a PNG, as their picture; includeIntimate sets Include intimate zones) into an explicit, disposable " +
-            "dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
+        Tool("character_touch_zones", "Companion > Character > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones and TouchZoneDetection; " +
+            "docs/AVATARS.md \"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate), the step-by-step vision " +
+            "requests (parts on the whole character, zones on each close-up, checks of the numbered boxes), what the production parser makes " +
+            "of answer (a simulated vision reply about the whole picture: JSON boxes as fractions or named edges, pixels of a width x height " +
+            "picture or Qwen-style 0..1000 bbox_2d grounding) bound to probe (a simulated renderer zones probe: {\"drawables\":[{\"id\",\"left\"," +
+            "\"top\",\"right\",\"bottom\"}],\"bones\":[{\"bone\",\"x\",\"y\"}]} in page fractions) with crop (\"left,top,width,height\": where the " +
+            "snapshot sat on the page), the zones saved for the model (modelPath, modelId or the model dataDirectory's avatar.json shows) in " +
+            "character-touch-zones.json with what its last detection sent, and with touch (a CharacterTouch: {\"x\",\"y\",\"hitAreas\"," +
+            "\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\",\"wholeX\",\"wholeY\"}) the zone it lands in, how it was found, what it " +
+            "plays and what it tells the character. detect runs the production detection on snapshotPath (a PNG of the character, transparent " +
+            "around it), composing and encoding every picture it would send (previewDirectory keeps them), with a FIXTURE - NOT AI stand-in " +
+            "that answers from answer's zones (guess, a wrong first answer, makes the checks correct it; checks sets the rounds, 0 to 5); it " +
+            "reports each request, the steps and how far the found boxes are from answer's. save writes the parsed (or detected) zones (and " +
+            "snapshotPath as their picture, and with detect the pictures sent; includeIntimate sets Include intimate zones) into an explicit, " +
+            "disposable dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
             "{\"attitude\":2,\"reactions\":[\"hearts\",\"blush\"],\"linger\":3}},\"zones\":{...},\"escalation\":{\"after\":3,...}}) or " +
             "personaId (the temperament saved in the dataDirectory's character-temperaments.json) decides what the touch plays when the " +
             "zone has no pick of its own, with repeats (touches in a row, for escalation); personality shows the request Thinking gets. " +
@@ -576,7 +604,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             crop = new { type = "string" }, probe = new { type = "string" }, touch = new { type = "string" },
             save = new { type = "boolean" }, includeIntimate = new { type = "boolean" }, snapshotPath = new { type = "string" },
             temperament = new { type = "string" }, personaId = new { type = "string" }, personality = new { type = "string" },
-            repeats = new { type = "integer", minimum = 1 }
+            repeats = new { type = "integer", minimum = 1 }, detect = new { type = "boolean" }, guess = new { type = "string" },
+            previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 }
         }),
         Tool("character_gaze", "Where the character looks (Companion > Character > Where the character looks, the overlay's Eyes " +
             "menu and Companion > Vision > Glances at your screen; docs/SCREEN_COMMENTARY.md \"Where the character looks\"): usual " +
@@ -835,7 +864,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "to the Thinking model (id, group, title, placeholders) and whether it uses the built-in text, is edited or is emptied " +
             "(sent as nothing), with its character count and estimated tokens (Martlet's own request-size estimate, about a token " +
             "per three UTF-8 bytes), plus the tokens of all prompts together. With id, also returns that one prompt's effective text " +
-            "(the saved edit or the built-in text) exactly as Martlet uses it. Read-only.", new
+            "(the saved edit or the built-in text) exactly as Martlet uses it. shortFirstSentence: Companion > Replies > Short " +
+            "first sentence (on by default) and what closes a spoken and an unspoken reply's instructions with it, exactly as the " +
+            "desktop sends them. Read-only.", new
         {
             dataDirectory = new { type = "string" },
             id = new { type = "string", maxLength = 64 }
@@ -1556,6 +1587,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "turn_judge_check" => await TurnJudgeCheck.RunAsync(arguments, MartletDirectory(arguments), cancellation),
+                "early_reply_check" => await EarlyReplyCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "thinkingMs"),
+                    OptionalInt(arguments, "voiceMs"), OptionalInt(arguments, "sttMs"), OptionalInt(arguments, "judgeMs"), cancellation),
                 "parakeet_check" => await ParakeetCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
                     OptionalString(arguments, "speechDirectory") is not null ? SpeechDirectory(arguments) : Path.Combine(DataDirectory(arguments), "speech"),
                     cancellation),
@@ -1600,7 +1633,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "crop"), OptionalString(arguments, "probe"), OptionalString(arguments, "touch"),
                     OptionalBool(arguments, "save") ?? false, OptionalBool(arguments, "includeIntimate"), OptionalString(arguments, "snapshotPath"),
                     cancellation, OptionalString(arguments, "temperament"), OptionalString(arguments, "personaId"), OptionalString(arguments, "personality"),
-                    OptionalInt(arguments, "repeats")),
+                    OptionalInt(arguments, "repeats"), OptionalBool(arguments, "detect") ?? false, OptionalString(arguments, "guess"),
+                    OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks")),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
@@ -3285,6 +3319,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         if (id is not null && Martlet.Core.Settings.PromptCatalog.Find(id) is null) throw new ArgumentException($"Unknown prompt '{id}'.");
         var loaded = await new Martlet.Core.Settings.SettingsStore(DataDirectory(arguments)).LoadAsync(cancellation);
         var prompts = loaded.Settings?.Prompts;
+        var generation = loaded.Settings?.Generation;
         var state = loaded.State switch
         {
             Martlet.Core.Settings.SettingsLoadState.Loaded => "loaded",
@@ -3308,7 +3343,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             state, problem = loaded.Error?.Summary, total = list.Length,
             edited = list.Count(p => p.state == "edited"), emptied = list.Count(p => p.state == "empty"),
             tokens = list.Sum(p => p.tokens), prompts = list,
-            prompt = id is null ? null : new { id, state = Of(id), text = Martlet.Core.Settings.PromptSettings.Text(prompts, id) }
+            prompt = id is null ? null : new { id, state = Of(id), text = Martlet.Core.Settings.PromptSettings.Text(prompts, id) },
+            // Companion › Replies › Short first sentence (on by default) and what closes a reply's instructions with it, exactly
+            // as the desktop sends it (the production PromptSettings.ReplyClosing): for a spoken reply the short first sentence
+            // prompt, then reply length; for a reply that isn't spoken, reply length alone. The same every time, so caches keep it.
+            shortFirstSentence = new
+            {
+                on = Martlet.Core.Settings.GenerationSettings.StartsShort(generation),
+                chosen = generation?.ShortFirstSentence is not null,
+                prompt = Of(Martlet.Core.Settings.PromptCatalog.ShortFirstSentence),
+                spokenClosing = Martlet.Core.Settings.PromptSettings.ReplyClosing(prompts, generation, true, Martlet.Conversation.StayQuiet.Marker),
+                unspokenClosing = Martlet.Core.Settings.PromptSettings.ReplyClosing(prompts, generation, false, Martlet.Conversation.StayQuiet.Marker)
+            }
         };
     }
 

@@ -106,7 +106,14 @@ internal sealed class LocalVoices : IDisposable
         if (!Active) return HeardVoices.None;
         SpeakerEngine current;
         lock (gate) current = engine ??= new SpeakerEngine(appDirectory);
-        var analysis = current.Analyze(samples);
+        // The same utterance was already analyzed for a reply started early (Identify): who spoke is known.
+        (byte[] Hash, SpeakerAnalysis Analysis)? earlier;
+        lock (gate)
+        {
+            earlier = identified;
+            identified = null;
+        }
+        var analysis = earlier is { } early && early.Hash.AsSpan().SequenceEqual(Hash(samples)) ? early.Analysis : current.Analyze(samples);
         var heard = new List<HeardVoice>();
         var spans = new List<(string Id, double Start, double End)>();
         var repaired = 0;
@@ -166,6 +173,48 @@ internal sealed class LocalVoices : IDisposable
         if (heard.Any(h => h.Voice is not null)) Changed?.Invoke();
         return new(heard, analysis.Overlap);
     }
+
+    /// <summary>Who spoke in one utterance as <see cref="Recognize"/> would say it, without changing anything: nothing is
+    /// learned, added, repaired, kept or saved. A reply started early (Companion › Listening › Start replies early) uses it
+    /// before the turn ends; <see cref="Recognize"/> of exactly the same samples then reuses this analysis (only its SHA-256
+    /// is kept to tell them apart, never audio). A voice new to the list has no tag yet, so it reads as one that couldn't be
+    /// told apart.</summary>
+    internal HeardVoices Identify(float[] samples)
+    {
+        if (!Active) return HeardVoices.None;
+        SpeakerEngine current;
+        lock (gate) current = engine ??= new SpeakerEngine(appDirectory);
+        var analysis = current.Analyze(samples);
+        var hash = Hash(samples);
+        lock (gate)
+        {
+            identified = (hash, analysis);
+            var heard = new List<HeardVoice>();
+            foreach (var speaker in analysis.Speakers)
+            {
+                var match = roster.Identify(speaker.Voiceprint);
+                if (match.Kind == VoiceMatchKind.Known && heard.Any(h => h.Voice?.Id == match.Voice!.Id))
+                    match = match with { Kind = VoiceMatchKind.Unsure };
+                heard.Add(match.Kind == VoiceMatchKind.Known
+                    ? new(roster.Resolve(match.Voice!.Id), match.Kind, match.Score, speaker.CleanSeconds, false)
+                    : new(null, VoiceMatchKind.Unsure, match.Score, speaker.CleanSeconds, false));
+            }
+            if (heard.Count == 0 && analysis.Whole is { } whole)
+            {
+                var match = roster.Identify(whole);
+                heard.Add(match.Kind == VoiceMatchKind.Known
+                    ? new(roster.Resolve(match.Voice!.Id), match.Kind, match.Score, analysis.SpeechSeconds, false)
+                    : new(null, match.Kind, match.Score, analysis.SpeechSeconds, false));
+            }
+            return new(heard, analysis.Overlap);
+        }
+    }
+
+    // The last utterance Identify analyzed: its samples' SHA-256 and who was heard in it.
+    private (byte[] Hash, SpeakerAnalysis Analysis)? identified;
+
+    private static byte[] Hash(float[] samples) =>
+        System.Security.Cryptography.SHA256.HashData(System.Runtime.InteropServices.MemoryMarshal.AsBytes(samples.AsSpan()));
 
     /// <summary>Keeps what each voice the owner hasn't named yet said as its newest clip, copied now (the caller clears the
     /// samples) and written in the background, so recognition never waits for the disk.</summary>

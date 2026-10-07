@@ -70,6 +70,13 @@ public sealed record GenerationSettings : IContract
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ThinkLongerSettings? ThinkLonger { get; init; }
 
+    /// <summary>Companion › Replies › Short first sentence: whether every spoken reply is asked to begin with a short first
+    /// sentence (Companion › Prompts › Short first sentence), so the voice can start sooner. Null (nothing chosen) is On, the
+    /// default (<see cref="DefaultShortFirstSentence"/>); false turns it off. Never sent to a provider: it only adds the prompt
+    /// to the instructions (<see cref="PromptSettings.ReplyClosing"/>).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? ShortFirstSentence { get; init; }
+
     /// <summary>How hard a request with <see cref="Reasoning"/> On thinks, for routes that take an effort (OpenAI's
     /// <c>reasoning_effort</c>, OpenRouter's <c>reasoning.effort</c>): "medium" or "high". Only a background think sets it
     /// (<see cref="ThinkLongerSettings.Effort"/>); never saved, and null sends the route's usual On.</summary>
@@ -79,10 +86,13 @@ public sealed record GenerationSettings : IContract
     /// <summary>Thinking steps when none is chosen: Off, so a reasoning model answers straight away.</summary>
     public const bool DefaultReasoning = false;
 
+    /// <summary>Short first sentence when none is chosen: On.</summary>
+    public const bool DefaultShortFirstSentence = true;
+
     [JsonIgnore]
     public bool IsDefault => Temperature is null && TopP is null && TopK is null && MinP is null && RepeatPenalty is null &&
         FrequencyPenalty is null && PresencePenalty is null && MaxReplyTokens is null && ContextTokens is null && Reasoning is null &&
-        ThinkLonger is null;
+        ThinkLonger is null && ShortFirstSentence is null;
 
     /// <summary>The reply token budget requested from the model (the default when unset).</summary>
     [JsonIgnore]
@@ -90,6 +100,9 @@ public sealed record GenerationSettings : IContract
 
     /// <summary>Whether Thinking steps is on for <paramref name="settings"/> (unset is Off).</summary>
     public static bool ThinkingSteps(GenerationSettings? settings) => settings?.Reasoning ?? DefaultReasoning;
+
+    /// <summary>Whether spoken replies are asked for a short first sentence with <paramref name="settings"/> (unset is On).</summary>
+    public static bool StartsShort(GenerationSettings? settings) => settings?.ShortFirstSentence ?? DefaultShortFirstSentence;
 
     /// <summary>The settings a request sends: <paramref name="settings"/> with Thinking steps resolved (unset is Off).</summary>
     public static GenerationSettings WithReasoning(GenerationSettings? settings) =>

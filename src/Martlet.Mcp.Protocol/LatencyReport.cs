@@ -33,6 +33,10 @@ internal static partial class LatencyReport
     private static partial Regex PausedForYou();
     [GeneratedRegex(@"Models: (?<models>.*)\.$")]
     private static partial Regex Models();
+    [GeneratedRegex(@"Started early at (?<at>\d+) ms, promoted(?: \(started early (?<starts>\d+) times?, (?<cancelled>\d+) cancelled\))?\.")]
+    private static partial Regex Promoted();
+    [GeneratedRegex(@"Started early (?<starts>\d+) times?, (?<cancelled>\d+) cancelled\.")]
+    private static partial Regex StartedEarly();
     // What the live floor did to background work for the turn ("held 2 pool jobs, stopped 1 (think longer)").
     [GeneratedRegex(@"Live floor: (?<floor>.*?)\.(?: Models: |$)")]
     private static partial Regex Floor();
@@ -40,7 +44,8 @@ internal static partial class LatencyReport
     internal sealed record Reply(DateTimeOffset At, string Measured, double? TotalMs, string? From, IReadOnlyDictionary<string, double> Steps,
         double? FirstWordsMs, double? FirstAudioMs, int? SpokenPieces, double? FirstPieceSpeechSeconds, double? FirstPieceMadeMs,
         string? Models, bool Interrupted, bool Legacy, bool Restarted = false, int VoicePauses = 0, double VoicePausedMs = 0,
-        double? PausedForYouMs = null, bool Resumed = false, string? Floor = null);
+        double? PausedForYouMs = null, bool Resumed = false, double? StartedEarlyMs = null, int EarlyStarts = 0, int EarlyCancelled = 0,
+        string? Floor = null);
 
     internal static object Read(string? dataDirectory, int? replies)
     {
@@ -92,12 +97,25 @@ internal static partial class LatencyReport
                 stopped = parsed.Count(r => r.PausedForYouMs is not null && r.Interrupted),
                 pausedMs = Stats(parsed.Where(r => r.PausedForYouMs is not null).Select(r => r.PausedForYouMs!.Value))
             },
+            // Replies started early (Companion › Listening › Start replies early): how many were promoted, how far into your
+            // pause they started, and the starts their turns let go of; the first audio of promoted replies and of the others.
+            early = new
+            {
+                replies = parsed.Count(r => r.EarlyStarts > 0),
+                promoted = parsed.Count(r => r.StartedEarlyMs is not null),
+                starts = parsed.Sum(r => r.EarlyStarts),
+                cancelled = parsed.Sum(r => r.EarlyCancelled),
+                startedAtMs = Stats(parsed.Where(r => r.StartedEarlyMs is not null).Select(r => r.StartedEarlyMs!.Value)),
+                firstAudioPromoted = Stats(spoken.Where(r => r.StartedEarlyMs is not null).Select(r => r.TotalMs!.Value)),
+                firstAudioOthers = Stats(spoken.Where(r => r.StartedEarlyMs is null).Select(r => r.TotalMs!.Value))
+            },
             newest = parsed.Reverse().Select(r => new
             {
                 at = r.At, measured = r.Measured, totalMs = r.TotalMs, from = r.From, steps = r.Steps, firstWordsMs = r.FirstWordsMs,
                 firstAudioMs = r.FirstAudioMs, spokenPieces = r.SpokenPieces, firstPieceSpeechSeconds = r.FirstPieceSpeechSeconds,
                 firstPieceMadeMs = r.FirstPieceMadeMs, voicePauses = r.VoicePauses, voicePausedMs = r.VoicePausedMs, models = r.Models,
                 interrupted = r.Interrupted, restarted = r.Restarted, pausedForYouMs = r.PausedForYouMs, resumed = r.Resumed,
+                startedEarlyMs = r.StartedEarlyMs, earlyStarts = r.EarlyStarts, earlyCancelled = r.EarlyCancelled,
                 liveFloor = r.Floor, legacy = r.Legacy
             }).ToArray()
         };
@@ -137,6 +155,13 @@ internal static partial class LatencyReport
         var pauses = VoicePauses().Match(rest);
         var models = Models().Match(rest);
         var held = PausedForYou().Match(rest);
+        // A reply started early and promoted, or the replies a turn started early and let go before this one started.
+        var promoted = Promoted().Match(rest);
+        var started = promoted.Success ? null : StartedEarly().Match(rest);
+        var earlyStarts = promoted.Success ? promoted.Groups["starts"].Success ? (int)Number(promoted.Groups["starts"].Value)!.Value : 1
+            : started is { Success: true } ? (int)Number(started.Groups["starts"].Value)!.Value : 0;
+        var earlyCancelled = promoted is { Success: true } && promoted.Groups["cancelled"].Success ? (int)Number(promoted.Groups["cancelled"].Value)!.Value
+            : started is { Success: true } ? (int)Number(started.Groups["cancelled"].Value)!.Value : 0;
         var floor = Floor().Match(rest);
         return new(at, line.Groups["what"].Value, Number(line.Groups["total"].Value), line.Groups["from"].Value.Trim(), steps,
             start.Success ? Number(start.Groups["words"].Value) : null,
@@ -148,6 +173,7 @@ internal static partial class LatencyReport
             pauses.Success ? (int)Number(pauses.Groups["pauses"].Value)!.Value : 0,
             pauses.Success ? Number(pauses.Groups["ms"].Value)!.Value : 0,
             held.Success ? Number(held.Groups["ms"].Value) : null, held.Success && held.Value.EndsWith("resumed", StringComparison.Ordinal),
+            promoted.Success ? Number(promoted.Groups["at"].Value) : null, earlyStarts, earlyCancelled,
             floor.Success ? floor.Groups["floor"].Value : null);
     }
 

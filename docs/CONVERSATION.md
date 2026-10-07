@@ -219,8 +219,9 @@ reads the entire conversation again before every reply (on a 12B model, about
   doesn't change from message to message: the persona (with its style when it
   has one), tools, voice tags, the smart home tools prompt, who-is-talking,
   always-listening, what-this-PC-plays, recording and picture prompts as each
-  message needs them, and the reply length last. A screen glance has its
-  glance instructions there instead.
+  message needs them, then, for a spoken reply, the *Short first sentence*
+  prompt, and the reply length last. A screen glance has its glance
+  instructions there instead.
 - **The conversation so far** follows, each earlier message exactly as it was
   sent, with its notes (a paired host gets the plain messages and the notes
   with its instructions, as before). What Martlet saw is part of it: every
@@ -526,6 +527,18 @@ In a participation mode that answers only when addressed, words make the
 floor Live early only when they name Martlet; otherwise the reply makes it
 Live when it starts. When the participation policy turns down what you said,
 your words no longer hold the floor (`LiveFloor.Dismiss`).
+
+**Replies started early.** A reply that starts early (Companion › Listening ›
+*Start replies early*, see [Hands-free voice activity](#hands-free-voice-activity-and-voice-id)) holds the
+floor from its start, before your turn ends
+(`BeginReply("a reply started early")`). The quick transcript it starts on
+made the floor Live a moment before, so it never calls `Words` again. Its
+request goes to a paired host as live work (`WorkPriority.Live`), as any
+reply's does. Taken as the reply, it keeps the same hold, which ends once its
+voice is made (`ConversationTurn.Synthesized`), so it is never counted twice.
+Let go, it ends its hold at once (*the reply started early was let go*); the
+2-second grace, then your voice, hold the floor while you go on talking. The
+reply latency line says *Started early ...* just before its *Live floor* part.
 
 **What the conversation runs on.** `LiveResources` lists the live Thinking,
 voice and listening routes, each on a computer (`this-pc`, a home computer
@@ -1305,6 +1318,18 @@ voice pipeline never waits for a whole reply:
   (`.`, `?`, `!` followed by a space), a new line and the end of the reply
   break a reply into pieces; commas, semicolons and dashes never do, so each
   piece is one or more whole sentences, which sounds more natural.
+- **Short first sentence.** Companion › Replies › *Short first sentence* (on
+  by default) asks every spoken reply to begin with a few words (*"Oh, nice
+  one!"*, *"Hmm, good question."*) and then go on. The voice gets a piece as
+  soon as its sentence is written, so a short first sentence reaches the voice
+  after a few words instead of a whole long sentence. The prompt (Companion ›
+  Prompts › *Short first sentence*) goes just before *Reply length* in the
+  instructions and is the same text every time, so prompt caches keep it;
+  turning it off or on changes the start of the requests once. A reply that
+  isn't spoken never gets it. The rules for pieces don't change: a short first
+  sentence still waits for the next few words, in case they are a short ending
+  to say with it (*Where the voice pauses*, below). MCP's `prompts_status`
+  shows the setting and what closes a spoken reply's instructions.
 - **Where each persona's voice pauses.** Each piece is said on its own, so a
   break in the wrong place sounds awkward ("That was a wonderful idea. |
   Cutie!"). Personality › **Where the voice pauses** sets, per persona, which
@@ -1962,6 +1987,33 @@ the data folder.
   without a quick transcript or an answer in time, your pause decides). Other
   judges plug in the same way through `IEndOfTurnJudge` and
   `EndOfTurnJudges.WithFallback`.
+- **Start replies early** (on by default, Companion › Listening › How you
+  talk) starts the reply at that same short pause, as soon as the quick
+  transcript (Parakeet on this PC) has real words, without waiting for the
+  verdict (`EarlyReplyGate`, `ConversationRuntime.StartEarly`). It is built
+  exactly as the talk window will ask for it (`EarlyReplyPlan`: only while
+  nothing else waits for a reply) and *held*: Thinking streams and, with
+  **Prepare the voice early too** (on), the first spoken piece is made, but
+  nothing shows, plays, acts or calls a tool. When the turn ends in that pause
+  and the talk window asks for the same request (`EarlyAsk`), it is promoted
+  (`ConversationTurn.Release`): no second request, its words show and its
+  first piece plays at once. Your own voice coming back, the turn ending in a
+  later pause, other words or something else going with them (a picture, what
+  this PC played, typed text) let it go: its request and voice work stop, and
+  the next pause starts another (at most three a turn). Only a reply that is
+  taken commits to answering, lets go of old history, consumes the context
+  board's consume-on-read notes or reaches the history, memory, the talk
+  window and the reply latency line. **Also for cloud models (may add a small
+  cost)** (off by default) allows it with a cloud Thinking model, which charges
+  for a request let go; a paid cloud voice is prepared early only with it, and
+  a held reply asks the Thinking fallback (*If Thinking fails*) only once it is
+  taken.
+  Barge-in never sees a held reply as Martlet speaking, and it holds the
+  [live floor](#the-live-floor-the-live-turn-comes-first) from its start (let
+  go, it ends that hold at once). The desktop log has
+  *Early reply: ...* lines, the reply latency line *Started early at 262 ms,
+  promoted.*, and Companion › Listening's status counts the newest outcomes
+  ([Voice latency](VOICE_LATENCY.md#starting-replies-early)).
 - Listening never stops by itself. It runs on its own slot beside replies
   (`LiveListener`): it records one utterance at a time and transcribes each, in
   order, while it already listens for the next, so nothing said while Martlet

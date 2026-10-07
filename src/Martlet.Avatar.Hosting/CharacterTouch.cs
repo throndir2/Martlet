@@ -14,10 +14,12 @@ namespace Martlet.Avatar.Hosting;
 /// most to the hit triangle, or of its nearest humanoid ancestor; <paramref name="Node"/> the actual node (a spring-bone hair
 /// joint, say); <paramref name="Hair"/> whether that node is a non-humanoid descendant of the head; <paramref name="Mesh"/> and
 /// <paramref name="Material"/> the hit mesh and material names. <paramref name="HeldMilliseconds"/>: how long the press lasted
-/// (0 when unknown); <see cref="HoldMilliseconds"/> or more is a hold.
+/// (0 when unknown); <see cref="HoldMilliseconds"/> or more is a hold. <paramref name="WholeX"/> and <paramref name="WholeY"/>:
+/// where the same point of the character sits with the character framed whole (no zoom, no pan), as fractions of the page;
+/// touch zones found in a whole-character snapshot compare with these, so a zoomed or panned view still lands right.
 /// </summary>
 public sealed record CharacterTouch(double X, double Y, IReadOnlyList<string> HitAreas, IReadOnlyList<string> Drawables, string? Bone,
-    string? Node, bool Hair, string? Mesh, string? Material, int HeldMilliseconds = 0)
+    string? Node, bool Hair, string? Mesh, string? Material, int HeldMilliseconds = 0, double? WholeX = null, double? WholeY = null)
 {
     public const int MaximumHitAreas = 32, MaximumDrawables = 8, MaximumName = 256;
     /// <summary>A press held at least this long without moving is a hold, not a tap.</summary>
@@ -29,8 +31,18 @@ public sealed record CharacterTouch(double X, double Y, IReadOnlyList<string> Hi
     [JsonIgnore]
     public bool Held => HeldMilliseconds >= HoldMilliseconds;
 
-    /// <summary>The zones <see cref="CoarseZone"/> reports.</summary>
+    /// <summary>The touch zones <see cref="CoarseZone"/> reports.</summary>
     public static IReadOnlyList<string> Zones { get; } = ["head", "hair", "face", "body", "arm", "hand", "leg", "foot"];
+
+    /// <summary>Where a point of the page (fractions, +y down) sits with the character framed whole (no zoom, no pan), for a view
+    /// zoomed by <paramref name="zoom"/> and panned by <paramref name="x"/>, <paramref name="y"/> in a frame spanning
+    /// <paramref name="frame"/> of the page's width: the renderers draw the frame's clip space as fitted * zoom + (x * frame, y).</summary>
+    public static (double X, double Y) Unframed(double pageX, double pageY, double zoom, double x, double y, double frame)
+    {
+        zoom = zoom > 0 && double.IsFinite(zoom) ? zoom : 1;
+        double nx = (2 * pageX - 1 - x * frame) / zoom, ny = (1 - 2 * pageY - y) / zoom;
+        return ((nx + 1) / 2, (1 - ny) / 2);
+    }
 
     // Checked in this order, so "hair" and "face" win over the head they sit on, and a hand over its arm.
     private static readonly (string Zone, string[] Words)[] Keywords =
@@ -56,6 +68,7 @@ public sealed record CharacterTouch(double X, double Y, IReadOnlyList<string> Hi
     /// <summary>Finite fractions near the page, bounded lists and names without control characters.</summary>
     [JsonIgnore]
     public bool IsValid => double.IsFinite(X) && double.IsFinite(Y) && X is >= -0.01 and <= 1.01 && Y is >= -0.01 and <= 1.01 &&
+        WholeX is null or (>= -4 and <= 5) && WholeY is null or (>= -4 and <= 5) &&
         HeldMilliseconds is >= 0 and <= MaximumHeldMilliseconds && HitAreas is { Count: <= MaximumHitAreas } && Drawables is { Count: <= MaximumDrawables } &&
         HitAreas.Concat(Drawables).All(Safe) && new[] { Bone, Node, Mesh, Material }.All(name => name is null || Safe(name));
 
