@@ -260,6 +260,12 @@ export class Live2DAdapter {
     return this.#resources?.animator?.setExpression(name) ?? false;
   }
 
+  /** Turns a lingering expression on or off. Held expressions layer with each other and with `setExpression`'s. */
+  holdExpression(name: string, on: boolean): boolean {
+    this.#ready();
+    return this.#resources?.animator?.holdExpression?.(name, on) ?? false;
+  }
+
   /** Martlet's gestures this model has the standard parameters for. */
   get gestures(): readonly Gesture[] { return this.animated ? supportedGestures(this.#parameters.map(p => p.id)) : []; }
 

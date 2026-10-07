@@ -41,6 +41,7 @@ function createAnimator(structural: CubismModel, assets: AnimatorAssets): Animat
   released.push(() => motionManager.release());
   const expressionManager = new CubismExpressionMotionManager();
   released.push(() => expressionManager.release());
+  const held = new Map<string, CubismExpressionMotionManager>();
 
   const motions = new Map<string, CubismMotion[]>();
   for (const [group, entries] of Object.entries(assets.motions)) {
@@ -135,6 +136,9 @@ function createAnimator(structural: CubismModel, assets: AnimatorAssets): Animat
       model.saveParameters();
       if (!motionUpdated) eyeBlink?.updateParameters(model, deltaSeconds);
       expressionManager.updateMotion(model, deltaSeconds);
+      // Each lingering expression has its own manager, which reads the parameters as the ones before left them, so they
+      // layer (as VTube Studio's toggles do) instead of replacing each other.
+      for (const manager of held.values()) manager.updateMotion(model, deltaSeconds);
       for (const target of look) model.addParameterValueById(target.handle, input.lookX * target.x + input.lookY * target.y);
       if (angleZ) model.addParameterValueById(angleZ, input.lookX * input.lookY * -30);
       if (input.gesture) for (const [name, value] of Object.entries(input.gesture))
@@ -158,6 +162,25 @@ function createAnimator(structural: CubismModel, assets: AnimatorAssets): Animat
       const expression = expressions.get(name);
       if (!expression) return false;
       expressionManager.startMotion(expression, false);
+      return true;
+    },
+    holdExpression(name: string, on: boolean): boolean {
+      if (!alive) return false;
+      const expression = expressions.get(name);
+      if (!expression) return false;
+      let manager = held.get(name);
+      if (!on) {
+        // Fades out; the manager stays for the next time it is turned on.
+        if (manager) { if (blank) manager.startMotion(blank, false); else manager.stopAllMotions(); }
+        return true;
+      }
+      if (!manager) {
+        manager = new CubismExpressionMotionManager();
+        const created = manager;
+        released.push(() => created.release());
+        held.set(name, manager);
+      }
+      manager.startMotion(expression, false);
       return true;
     },
     release(): void {

@@ -1074,15 +1074,21 @@ It returns `renderer`, `key` (first 16 hex digits of the model's ID), `files`
 model3.json, with their model-relative file names, and the `Idle` group made
 from VTube Studio's idle animation), `saved`, `detectedBy` (`names` or
 `thinking`), `actions` (each one's `n` as in `CharacterActionName-<n>`, `id`,
-`kind`, `name`, `detail`, `tag`, `cue`, `use`, `enabled` and whether replies
+`kind`, `name`, `detail`, `tag`, `cue`, `use`, `enabled`, `mode` (`brief`, or
+`lingering`: stays on after `{tag}` until `{/tag}`), `modeSaved` (false while it
+is the default), `vtsToggle` (a VTube Studio ToggleExpression hotkey turns it
+on) and whether replies
 are `offered` it for `engine`, a voice engine key, `none` or absent for a voice
 without tags), `replyPrompt` and `replyTags` (what replies get while the
-character shows) and `namingPrompt` (`instructions` and the numbered `list` the
-Thinking model is sent). With `voiceTag`, a voice's tag such as `[laugh]` or
-`(sighs)` or a reply tag such as `{nod}`, `setsOff` lists what it sets off
-(`kind` and `name`, such as the `laugh` voice emote; one expression and one
-motion picked at random when several share a cue). With `answer`, a simulated Thinking reply such as
-`1: blush | - | when shy`, `parsed` shows what the production parser makes of
+character shows; lingering emotes add their `{/tag}` off tags) and `namingPrompt` (`instructions` and the numbered `list` the
+Thinking model is sent). With `showing`, the lingering emotes the character
+would show now (`["glasses", "blush:12"]`, minutes after the colon),
+`showingNote` is the line the newest message's notes get (*Your character is
+showing {blush} (12 min), ...*); it never goes in the instructions. With `voiceTag`, a voice's tag such as `[laugh]` or
+`(sighs)` or a reply tag such as `{nod}` or `{/blush}`, `setsOff` lists what it sets off
+(`kind`, `name` and `holds`, whether it lingers, such as the `laugh` voice emote; one expression and one
+motion picked at random when several share a cue) and `turnsOff` the lingering emote an off tag turns off. With `answer`, a simulated Thinking reply such as
+`1: blush | - | stays | when shy` (the mode may be left out), `parsed` shows what the production parser makes of
 it (`read`, `problem`, `actions`, `prompt`). Model-authored names only, never
 the model's path; it reads and contacts nothing else.
 
@@ -3773,12 +3779,22 @@ now: wink playing, shy held.*), also in `logs_tail` `desktop` as *Character expr
 (its name and kind; a status field), `CharacterActionOn-<n>` (check box),
 `CharacterActionTag-<n>` (an English tag; a tag in another script reads *Not
 saved: ... use up to 24 English letters (a-z) ...*), `CharacterActionCue-<n>` (combo box: `(none)` or a
-cue such as `laugh`), `CharacterActionUse-<n>` and `CharacterActionTry-<n>`
-(plays it on the showing character; disabled while it is hidden). Editing a row
+cue such as `laugh`), `CharacterActionUse-<n>`, `CharacterActionMode-<n>` (the
+*Stays on* check box, its mode as `checkedState`: on for a lingering emote) and `CharacterActionTry-<n>`
+(plays it on the showing character, or turns a lingering one on; its label, a
+status field, reads *Turn off* while that lingering emote is on, and clicking it
+then turns it off; disabled while it is hidden). `CharacterActionsHeld` reads
+the lingering emotes on now (*On now: Glasses (12 min), Blushing (just now).
+Clear emotes on the character's menu turns them off.* or *No lingering emotes
+are on.*); `CharacterActionsLast` then reads *Turned on the expression ...* or
+*Turned off ...*, and `logs_tail` `desktop` *Character expression 'Glasses' held
+for a try.* `CharacterActionsClear` (*Clear emotes*) and the character overlay
+menu's `CharacterClearEmotes` turn every lingering emote off (*Cleared 2
+lingering emotes for Clear emotes ...*). Editing a row
 saves `character-actions.json`, `CharacterActionsDetect` (*Name them with
 Thinking*) sends the model's emote and motion names and details to the Thinking
-model, `CharacterActionsReset` goes back to the model's own names, and Try plays
-on the overlay, so all of them need `--allow-ui-effects`. The first time a model
+model, `CharacterActionsReset` goes back to the model's own names, and Try,
+Turn off and Clear emotes change the overlay, so all of them need `--allow-ui-effects`. The first time a model
 shows with a Thinking model set up, Martlet names its emotes once on its own.
 `character_actions` reads the same settings headlessly.
 

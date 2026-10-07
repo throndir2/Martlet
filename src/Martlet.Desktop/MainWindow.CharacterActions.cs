@@ -17,9 +17,11 @@ public partial class MainWindow
     private bool loadingCharacterActions, namingCharacterActions;
     private TextBlock? characterActionsLast;
 
-    /// <summary>The reply instructions and tags for the showing character's emotes and motions (null while it is hidden).</summary>
+    /// <summary>The reply instructions and tags for the showing character's emotes and motions (null while it is hidden), with
+    /// the lingering emotes it shows now for the newest message's notes.</summary>
     private CharacterActionPrompt? CharacterActionPromptFor(SpeechEngine? engine, PromptSettings? prompts) =>
-        avatar.IsShowing && characterActions.For(avatar.InspectedProfile?.ModelPath) is { } catalog ? catalog.Prompt(engine, prompts) : null;
+        avatar.IsShowing && characterActions.For(avatar.InspectedProfile?.ModelPath) is { } catalog
+            ? catalog.Prompt(engine, prompts, avatar.Held.Current, DateTimeOffset.Now) : null;
 
     private void WireCharacterActions()
     {
@@ -27,14 +29,44 @@ public partial class MainWindow
         avatar.ActionPlayed += () => Dispatcher.InvokeAsync(() =>
         {
             if (characterActionsLast is not null) characterActionsLast.Text = avatar.LastAction ?? "";
+            if (characterActionsHeld is not null) characterActionsHeld.Text = HeldText();
+            foreach (var (id, button) in characterActionTries)
+            {
+                var label = avatar.Held.Holds(id) ? "Turn off" : "Try";
+                button.Content = label;
+                AutomationProperties.SetName(button, label);
+            }
         });
-        characterActions.Changed += () => Dispatcher.InvokeAsync(() =>
+        characterActions.Changed += () =>
         {
-            if (closing || openTab != CompanionTab.Character || CompanionContent.IsKeyboardFocusWithin) return;
-            // Another model's emotes replace the rows at once; the same model's re-render waits until nothing is being edited.
-            var model = characterActions.Current?.Inventory.ModelId;
-            if (!tabEdited || model != renderedActionsModel) RenderTab();
-        });
+            // An emote the owner turned off or made brief stops lingering.
+            avatar.ReconcileHeldAsync(lifetime.Token).Forget();
+            Dispatcher.InvokeAsync(() =>
+            {
+                if (closing || openTab != CompanionTab.Character || CompanionContent.IsKeyboardFocusWithin) return;
+                // Another model's emotes replace the rows at once; the same model's re-render waits until nothing is being edited.
+                var model = characterActions.Current?.Inventory.ModelId;
+                if (!tabEdited || model != renderedActionsModel) RenderTab();
+            });
+        };
+    }
+
+    private TextBlock? characterActionsHeld;
+    private readonly List<(string Id, Button Button)> characterActionTries = [];
+
+    /// <summary>The lingering emotes the character shows now, in words (Companion › Character › Emotes and motions).</summary>
+    private string HeldText()
+    {
+        var held = avatar.Held.Current;
+        return held.Count == 0 ? "No lingering emotes are on." : "On now: " + string.Join(", ", held.Select(h =>
+            $"{h.Source.Name} ({CharacterActions.Age(DateTimeOffset.Now - h.Since)})")) + ". Clear emotes on the character's menu turns them off.";
+    }
+
+    /// <summary>Clear emotes (the character's right-click menu or Companion › Character): turns off every lingering emote.</summary>
+    private async Task ClearCharacterEmotesAsync()
+    {
+        try { await avatar.ClearHeldAsync("Clear emotes", lifetime.Token); }
+        catch (OperationCanceledException) { }
     }
 
     private string? renderedActionsModel;
@@ -117,6 +149,10 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(characterActionsLast, "CharacterActionsLast");
         AutomationProperties.SetLiveSetting(characterActionsLast, AutomationLiveSetting.Polite);
         stack.Add(characterActionsLast);
+        characterActionsHeld = Note(HeldText(), new Thickness(0, 0, 0, 4));
+        AutomationProperties.SetAutomationId(characterActionsHeld, "CharacterActionsHeld");
+        AutomationProperties.SetLiveSetting(characterActionsHeld, AutomationLiveSetting.Polite);
+        stack.Add(characterActionsHeld);
         var saveState = Note("", new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(saveState, "CharacterActionsSaveState");
         AutomationProperties.SetLiveSetting(saveState, AutomationLiveSetting.Polite);
@@ -127,10 +163,13 @@ public partial class MainWindow
         name.IsEnabled = conversation is not null && !characterActions.Busy && CharacterActions.Nameable(catalog.Inventory).Count > 0;
         AutomationProperties.SetHelpText(name, "Sends the model's emote and motion names and what they change (never its files) to your Thinking model.");
         var reset = PageButton("Use the model's own names", () => ResetCharacterActionsAsync().Forget(), id: "CharacterActionsReset");
-        stack.Add(Row(name, reset));
+        var clear = PageButton("Clear emotes", () => ClearCharacterEmotesAsync().Forget(), id: "CharacterActionsClear");
+        AutomationProperties.SetHelpText(clear, "Turns off every lingering emote the character shows now.");
+        stack.Add(Row(name, reset, clear));
 
         var showing = avatar.IsShowing && characterActions.For(avatar.InspectedProfile?.ModelPath) is not null;
-        var rows = new List<(CharacterActionSource Source, CheckBox On, TextBox Tag, ComboBox Cue, TextBox Use)>();
+        var rows = new List<(CharacterActionSource Source, CheckBox On, TextBox Tag, ComboBox Cue, TextBox Use, CheckBox Stays)>();
+        characterActionTries.Clear();
         var autoSave = new AutoSave(async () =>
         {
             var current = characterActions.Current;
@@ -142,7 +181,8 @@ public partial class MainWindow
                     Id = r.Source.Id, Enabled = r.On.IsChecked == true,
                     Tag = r.Tag.Text.Trim().Trim('{', '}').Trim().ToLowerInvariant() is { Length: > 0 } tag ? tag : null,
                     Use = r.Use.Text.Trim() is { Length: > 0 } use ? use : null,
-                    Cue = r.Cue.SelectedItem as string is { } cue && cue != NoCue ? cue : null
+                    Cue = r.Cue.SelectedItem as string is { } cue && cue != NoCue ? cue : null,
+                    Mode = r.Stays.IsChecked == true ? CharacterActions.Lingering : CharacterActions.Brief
                 }).ToArray()
             };
             var why = await characterActions.SaveAsync(settings, lifetime.Token);
@@ -185,15 +225,28 @@ public partial class MainWindow
             var use = new TextBox { Text = action.Use ?? "", MinWidth = 260, MaxLength = CharacterActionCatalog.MaximumUseLength };
             AutomationProperties.SetName(use, $"When to use {source.Name}");
             AutomationProperties.SetAutomationId(use, $"CharacterActionUse-{n}");
-            var tryIt = PageButton("Try", () => TryCharacterActionAsync(source).Forget(), id: $"CharacterActionTry-{n}");
+            var stays = new CheckBox
+            {
+                Content = "Stays on", IsChecked = CharacterActions.Lingers(source, action), VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(12, 0, 0, 0)
+            };
+            AutomationProperties.SetName(stays, $"{source.Name} stays on until turned off");
+            AutomationProperties.SetAutomationId(stays, $"CharacterActionMode-{n}");
+            AutomationProperties.SetHelpText(stays, "On: a reply's tag turns it on and it stays until the reply writes the tag with a slash, " +
+                "such as {/glasses}. Off: it shows for a moment.");
+            var tryIt = PageButton(avatar.Held.Holds(source.Id) ? "Turn off" : "Try", () => TryCharacterActionAsync(source).Forget(),
+                id: $"CharacterActionTry-{n}");
             tryIt.MinWidth = 60;
             tryIt.IsEnabled = showing;
+            characterActionTries.Add((source.Id, tryIt));
             on.Checked += (_, _) => Edited();
             on.Unchecked += (_, _) => Edited();
+            stays.Checked += (_, _) => Edited();
+            stays.Unchecked += (_, _) => Edited();
             tag.TextChanged += (_, _) => Edited();
             use.TextChanged += (_, _) => Edited();
             cue.SelectionChanged += (_, _) => Edited();
-            rows.Add((source, on, tag, cue, use));
+            rows.Add((source, on, tag, cue, use, stays));
 
             var header = new DockPanel { Margin = new Thickness(0, 10, 0, 0) };
             DockPanel.SetDock(tryIt, Dock.Right);
@@ -208,6 +261,7 @@ public partial class MainWindow
             fields.Children.Add(cue);
             fields.Children.Add(new Label { Content = "When to use", Target = use, Padding = new Thickness(12, 4, 6, 4) });
             fields.Children.Add(use);
+            fields.Children.Add(stays);
             stack.Add(header);
             stack.Add(fields);
             stack.Add(Note(source.Detail, new Thickness(24, 2, 0, 0)));
@@ -237,9 +291,17 @@ public partial class MainWindow
                 : $" Linked to voice cues (with a voice that makes sounds and tones): {string.Join("; ", linked)}.");
     }
 
+    /// <summary>Try: plays an emote or motion once, or turns a lingering one on (Turn off turns it off again), as a reply's
+    /// {tag} and {/tag} would.</summary>
     private async Task TryCharacterActionAsync(CharacterActionSource source)
     {
-        try { await avatar.PlayActionAsync(source, "a try", null, lifetime.Token); }
+        try
+        {
+            if (avatar.Held.Holds(source.Id)) await avatar.StopActionAsync(source, "a try", lifetime.Token);
+            else
+                await avatar.PlayActionAsync(source, "a try", null, lifetime.Token,
+                    hold: characterActions.For(avatar.InspectedProfile?.ModelPath)?.Lingers(source) == true);
+        }
         catch (Exception error) when (error is OperationCanceledException or System.IO.IOException or InvalidOperationException or
             System.IO.InvalidDataException or TimeoutException)
         {

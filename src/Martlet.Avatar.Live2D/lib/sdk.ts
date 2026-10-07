@@ -83,6 +83,8 @@ export interface Animator {
   update(deltaSeconds: number, input: AnimatorInput): void;
   playMotion(group: string): boolean;
   setExpression(name: string | null): boolean;
+  /** Turns a lingering expression on or off; held ones layer over each other and the one `setExpression` shows. */
+  holdExpression?(name: string, on: boolean): boolean;
   readonly motionGroups: readonly string[];
   readonly expressions: readonly string[];
   release(): void;
