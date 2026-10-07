@@ -360,7 +360,7 @@ public partial class LiveConversationWindow : ThemedWindow
         if (before.HandsFree != next.HandsFree || before.Sensitivity != next.Sensitivity || before.PauseIndex != next.PauseIndex ||
             before.VoiceId != next.VoiceId || before.HearVoice != next.HearVoice || before.BargeIn != next.BargeIn ||
             before.ReduceEcho != next.ReduceEcho || before.WordCheck != next.WordCheck || before.TranscribeFirst != next.TranscribeFirst ||
-            before.BargeInStyle != next.BargeInStyle)
+            before.BargeInStyle != next.BargeInStyle || before.JudgeTurns != next.JudgeTurns)
         {
             StopListening(keepHeard: true);
             listening = Available && next.HandsFree && !listenPaused && MicrophoneUsable;
@@ -904,7 +904,7 @@ public partial class LiveConversationWindow : ThemedWindow
         },
         preferences.VoiceId, HearsVoice.On, preferences.BargeIn, preferences.ReduceEcho, WordCheck: preferences.WordCheck,
         Straight: handsFree && HearsVoice.On && !preferences.TranscribeFirst, HearLocalOnly: HearsVoice.LocalOnly,
-        BargeInStyle: preferences.BargeInStyle);
+        BargeInStyle: preferences.BargeInStyle, JudgeTurns: preferences.JudgeTurns);
 
     // Whether Thinking hears your recording (Companion › Listening): your own choice, or never chosen, only while the recording
     // stays on this PC (LocalOnly: the conversation checks that again before it sends one).
@@ -1335,7 +1335,7 @@ public partial class LiveConversationWindow : ThemedWindow
             BargeInSource.Cue => "a clear cue",
             BargeInSource.KeptTalking => "you kept talking",
             BargeInSource.Limit => "the pause reached its limit",
-            BargeInSource.Timeout => $"model judge too slow, rules decided in {record.JudgeTime.TotalMilliseconds:0} ms",
+            BargeInSource.Timeout => $"the rules decided in {record.JudgeTime.TotalMilliseconds:0} ms",
             _ => record.Judge == "stop at once" ? "Stop at once" : $"{record.Judge} judge, {record.JudgeTime.TotalMilliseconds:0} ms"
         };
         return $"Talked over at {at}: {what} ({verdict}: {record.Reason}; {by}).";

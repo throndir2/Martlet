@@ -36,7 +36,43 @@ its own P/Invoke code (Martlet.Sherpa); no managed sherpa-onnx package is used.
    (Copyright (c) 2022 CNRS) ships beside it as
    voice-recognition\pyannote-segmentation-3-0\LICENSE. No changes were made.
 
-5. Zipformer small audio tagging model, trained on AudioSet
+5. Smart Turn v3.2, the end-of-turn judge
+   (turn-detection\smart-turn-v3.2-cpu.onnx,
+   SHA-256 2bb026316b14a660486a75b1733cd3fbab8c2fd0314dc9af7be49f8cca967e4f)
+   By Daily (Pipecat), https://github.com/pipecat-ai/smart-turn
+   Model: https://huggingface.co/pipecat-ai/smart-turn-v3
+   (revision f766f81d3cfdf7737ac64aad813d91bbfd56bf93), int8 CPU export.
+   License: BSD 2-Clause (model card and repository), reproduced below.
+   No changes were made to the model. Martlet's own C# code computes the same
+   Whisper-style log-mel features as Pipecat's Smart Turn code; no Pipecat or
+   Hugging Face source code is included.
+
+   BSD 2-Clause License
+
+   Copyright (c) 2024-2025, Daily
+
+   Redistribution and use in source and binary forms, with or without
+   modification, are permitted provided that the following conditions are met:
+
+   1. Redistributions of source code must retain the above copyright notice, this
+      list of conditions and the following disclaimer.
+
+   2. Redistributions in binary form must reproduce the above copyright notice,
+      this list of conditions and the following disclaimer in the documentation
+      and/or other materials provided with the distribution.
+
+   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+   AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+   IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+   DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+   FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+   DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+   SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+   CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+   OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+6. Zipformer small audio tagging model, trained on AudioSet
    (sound-tagging\model.int8.onnx,
    SHA-256 69304b8a1b96bbe6b7d16c24079f0732c65faf3568a14cb82a8238c709afe76c)
    By the k2-fsa / Next-gen Kaldi team (icefall, https://github.com/k2-fsa/icefall/pull/1421).
@@ -46,7 +82,7 @@ its own P/Invoke code (Martlet.Sherpa); no managed sherpa-onnx package is used.
    Martlet uses it for Companion > Listening > Describe PC sounds when no
    Thinking pool model can hear.
 
-6. AudioSet class labels
+7. AudioSet class labels
    (sound-tagging\class_labels_indices.csv,
    SHA-256 cdd1049833c4b86127c2773ac0d14a2754b6a6d0d1798002ed5c66e699708429)
    The AudioSet ontology's display names, by Google LLC,

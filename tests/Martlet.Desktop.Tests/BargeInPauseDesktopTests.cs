@@ -79,6 +79,8 @@ public sealed class BargeInPauseDesktopTests
             Assert.True(result.GetProperty("ok").GetBoolean(), result.ToString());
             Assert.Equal("PauseAndDecide", result.GetProperty("behavior").GetString());
             Assert.Equal(4, result.GetProperty("holds").GetArrayLength());
+            Assert.Equal(3, result.GetProperty("modelJudge").GetArrayLength());
+            Assert.True(result.GetProperty("modelJudgeOk").GetBoolean());
             Assert.Equal("Timeout", result.GetProperty("deadlines")[0].GetProperty("source").GetString());
         }
         finally { Directory.Delete(directory, recursive: true); }

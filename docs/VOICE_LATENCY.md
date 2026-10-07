@@ -41,6 +41,7 @@ after 5585 ms from the reply's start, 2 spoken pieces. First piece: 1.20 s of sp
 | Step | What the time was spent on |
 | --- | --- |
 | end of speech | The pause always listening waits for before it decides you stopped (Companion › Listening; 800 ms by default) |
+| end-of-turn wait, end-of-turn judge | Instead of *end of speech* when the [end-of-turn judge](#the-end-of-turn-judge) decided: the 260 ms pause before it is asked, then its answer (when it judged the turn unfinished or was slow, *end of speech* follows) |
 | recording | Closing the recording and cutting out the speech |
 | Voice ID, speech-to-text | Checking it's you (when on), then transcribing (waits behind an earlier utterance) |
 | voice recognition | Waiting for who spoke (at most 3 s) |
@@ -81,7 +82,9 @@ paused with nothing made again; the voice (Chatterbox) is usually the slowest
 step, so making the rest again would add seconds. Pausing adds nothing before
 the first audio: the judge runs only while you talk over a reply that is
 already playing, the local rules judge takes well under a millisecond, and a
-model judge has at most 400 ms before the rules decide.
+model judge (a Thinking pool member) has at most 400 ms before the rules decide.
+The pool judge never uses the conversation's own Thinking route, so it never
+evicts the conversation from a local model's prompt cache.
 
 ## Where the time goes today
 
@@ -602,6 +605,66 @@ a quiet graphics card for the desktop comparison (another program used it).
 - **Listening:** no one listened to the replies; the voice audio is saved with
   each run for that.
 
+## The end-of-turn judge
+
+**2026-10-07.** The plain pause (800 ms by default) was the largest single
+wait. Always listening now asks an end-of-turn judge after **260 ms** of
+silence (`EndOfTurnGate` in Martlet.Conversation):
+
+1. Smart Turn v3.2 (Pipecat, BSD 2-Clause; the 8.7 MB int8 CPU model ships in
+   `Desktop\turn-detection\`) hears the last 8 s of what you said, from just
+   before your voice began to now, and gives the chance that you finished. It
+   runs through the ONNX Runtime that ships with sherpa-onnx, on two processor
+   threads, with Martlet's own Whisper-style features (`WhisperFeatures`, the
+   same numbers as Pipecat's to 3 decimals).
+2. With Parakeet on this PC as Listening, a quick transcript of exactly the
+   speech that would be kept (pre-roll to the pause plus the 200 ms tail)
+   starts at the same moment.
+3. **Complete** (above 0.5): the turn ends now. Speech-to-text reuses the quick
+   transcript when the kept audio is byte for byte what it transcribed, so
+   there is no second transcription (*End of turn: speech-to-text reused the
+   quick transcript ...* in the log).
+4. **Incomplete**: listening goes on for up to twice the plain pause (at least
+   1.6 s, at most 5 s), so trailing off mid-thought is cut off less. Talking
+   again asks again at the next pause.
+5. Smart Turn missing or failed: a Thinking-pool member reads the quick
+   transcript instead (`PoolTurnJudge`, an `EndOfTurnJudge` job with a 500 ms
+   budget). No judge at all, an error, or no answer before the plain pause
+   ends: the plain pause decides, exactly as with the judge off. The log says
+   why.
+
+Each decision writes *End of turn: complete (Smart Turn v3.2, 0.93) after 280
+ms of silence; judge 31 ms.* (or *incomplete*, *you went on talking*, *slow*,
+*failed*, *not judged*). The reply latency line then starts with *end-of-turn
+wait 260, end-of-turn judge 40* instead of *end of speech 800*. Companion ›
+Listening shows the newest decisions (`TalkJudgeTurnsStatus`), and MCP's
+`turn_judge_check` runs the bundled model and the gate headless
+([MCP](MCP.md#latency)). Other judges plug in behind Smart Turn through
+`IEndOfTurnJudge` and `EndOfTurnJudges.WithFallback`, as the Thinking-pool one
+does. Smart Turn runs once while it loads, so the first pause isn't slower.
+
+**Measured on this PC** (Intel i7-13700K, no NVIDIA card; MCP
+`turn_judge_check` on the Release build): the model loads in about 1.5 s in
+the background when listening starts (60 s once on a cold disk right after the
+build), and judges in **26 ms median** (25-40 ms, features included). It got
+all six Windows-voice phrases right: three finished questions at 0.92-0.98,
+three that trail off ("... and", "... we could", "... about is") at 0.01-0.19.
+
+| End of speech | Before | After |
+| --- | --- | --- |
+| A finished turn | 800 ms (the plain pause) | 260 ms + the judge (26 ms median) + up to 20 ms for the next frame: about 300-330 ms |
+| Speech-to-text with Parakeet on this PC | starts after the pause | started at 260 ms; reused, so usually done when the turn ends |
+| An unfinished turn | 800 ms (and a cut-off) | up to 1,600 ms, to let you finish |
+| Judge off, missing, failed or slow | 800 ms | 800 ms |
+
+**NOT RUN:** *Reply latency* lines before and after with a real conversation.
+This PC has no microphone, no Thinking model or voice it can use without real
+credentials (no Ollama, no local model) and no Parakeet download, so no reply
+ran. The judge, the gate and the transcript reuse were measured and tested
+separately (above, and the tests in Martlet.Conversation.Tests,
+Martlet.Audio.Tests and Martlet.Desktop.Tests). The Thinking request is
+unchanged, so the *Thinking input* prompt-cache numbers can't move.
+
 ## How others get fast
 
 Research summary (sources checked 2026-10-03; vendor claims marked):
@@ -643,7 +706,7 @@ Research summary (sources checked 2026-10-03; vendor claims marked):
 
 | Stage | Before | Now | Floor with this pipeline | How |
 | --- | --- | --- | --- | --- |
-| End of speech | 800 ms | 800 ms (500 ms setting) | 200-300 ms | Smart Turn v3 with a shorter pause |
+| End of speech | 800 ms | about 300-330 ms when the judge hears a finished turn (260 ms pause + 25-50 ms judge); 800 ms with it off | 200-300 ms | Done: Smart Turn v3.2 ([the end-of-turn judge](#the-end-of-turn-judge)) |
 | Speech-to-text | not logged | logged | 0-150 ms | Parakeet 110M (about 90 ms) on a short utterance, or none: a Thinking model that hears takes the recording |
 | Desktop prep | about 115 ms | about 115 ms | 30-50 ms | Event-driven talk window instead of its 100 ms tick, faster memory recall |
 | Thinking to first sentence | 3-8 s | provider's time to first words with Thinking steps Off | 150-250 ms | Gemma 4 E2B on this PC measured 140-240 ms; a fast provider; preemptive start |
@@ -667,9 +730,11 @@ backchannel at once would make most of the rest feel instant.
 2. **Update hosts to this version** so `imouto-host` rebuilds Chatterbox
    (image `:4`) with the speed-ups and streaming: the first audio of every
    piece after about 0.35-0.4 s, and no 7 s first reply.
-3. **Shorter, smarter end of turn.** Choose the 500 ms pause today; add a
-   turn-detection model (Smart Turn v3) so 200-300 ms doesn't cut you off.
-   Martlet already restarts a reply when you keep talking.
+3. **Shorter, smarter end of turn.** Done: Companion › Listening › **Judge
+   when I finish talking** (on by default) asks Smart Turn v3.2 after a 260 ms
+   pause and answers a finished turn at once, reusing the quick transcript it
+   started then ([the end-of-turn judge](#the-end-of-turn-judge)). Martlet
+   already restarts a reply when you keep talking.
 4. **Start Thinking early.** Send the transcript at a short pause and keep the
    reply if nothing else is said (the restart already exists).
 5. **A faster Thinking route.** A non-reasoning or fast model, OpenRouter
