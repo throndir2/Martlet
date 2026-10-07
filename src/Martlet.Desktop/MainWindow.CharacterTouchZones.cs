@@ -110,24 +110,50 @@ public partial class MainWindow
         talk.Physical(new PhysicalEvent(kind, conversation.TouchNow, zone, label, detail, hint, zones));
     }
 
+    private CancellationTokenSource? detectTouchZones;
+    private bool showTouchZonesSent;
+    private const double TouchZonesPictureHeight = 600, TouchZonesPictureWidth = 440;
+
+    // A picture file decoded once at about the size it shows (the snapshot can be 2048 pixels tall).
+    private static BitmapImage PictureAt(string path)
+    {
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        // Detect again writes a new picture under the same name.
+        bitmap.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+        bitmap.DecodePixelHeight = (int)(TouchZonesPictureHeight * 2);
+        bitmap.UriSource = new Uri(path);
+        bitmap.EndInit();
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    private static void OpenTouchZonePictures(string folder)
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"\"{folder}\"") { UseShellExecute = false })?.Dispose(); }
+        catch (System.ComponentModel.Win32Exception) { }
+    }
+
     private async Task DetectTouchZonesAsync()
     {
         if (conversation is null || detectingTouchZones) return;
         detectingTouchZones = true;
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        detectTouchZones = stop;
         try
         {
             characterTouchZones.Follow(characterActions.For(avatar.InspectedProfile?.ModelPath)?.Inventory.ModelId);
-            // MARTLET_TOUCH_ZONES_FIXTURE: a file whose text stands in for the Thinking model's answer (FIXTURE - NOT AI), so MCP
-            // verification runs the real snapshot, probe, binding and saving without a vision request.
+            // Each step's picture goes to a Thinking pool member that can see, else to the conversation's Thinking model after
+            // any reply. MARTLET_TOUCH_ZONES_FIXTURE answers them instead (FIXTURE - NOT AI); see CharacterTouchZoneService.
             var talk = conversation;
-            var fixture = Environment.GetEnvironmentVariable(CharacterTouchZoneService.FixtureVariable);
-            Func<string, string, string, Martlet.Providers.BoundedImage?, CancellationToken, Task<(string? Answer, string? Failure)>> ask =
-                fixture is { Length: > 0 } ? (_, _, _, _, _) => Task.FromResult<(string?, string?)>((File.Exists(fixture) ? File.ReadAllText(fixture) : null, null))
-                : (purpose, instructions, text, image, token) => talk.AskHelperAsync(HelperJobKind.TouchZones, purpose, instructions, text, image, token);
-            await characterTouchZones.DetectAsync(avatar, ask, lifetime.Token);
+            await characterTouchZones.DetectAsync(avatar,
+                (purpose, instructions, text, image, token) => talk.AskHelperAsync(HelperJobKind.TouchZones, purpose, instructions, text, image, token),
+                stop.Token);
         }
         finally
         {
+            detectTouchZones = null;
             detectingTouchZones = false;
             tabEdited = false;
             if (!closing && openTab == CompanionTab.Character) RenderTab();
@@ -146,8 +172,12 @@ public partial class MainWindow
             Heading("Touch zones"),
             Note("Click the character (a click, not a drag) and it reacts to where you touched it: a pat on the head, a poke on " +
                 "the cheek, holding its hand. With its position locked, drag across it to stroke it: each part you cross reacts, " +
-                "and Martlet hears about it, like your moves and zooms. Detect zones sends one picture of the character to your Thinking model, which marks " +
-                "where each part is; Martlet then ties each zone to the model's own parts so it follows the character as it moves. " +
+                "and Martlet hears about it, like your moves and zooms. Detect zones shows your Thinking model pictures of the " +
+                "character (never its files) on a plain backdrop with a grid: first the whole character, to find its head, body and " +
+                "legs, then a close-up of each, to mark its zones. Then the model checks its own boxes, drawn and numbered on the " +
+                "close-up, and corrects them until it says they are right. Between steps Martlet fits each box to the character's " +
+                "pixels, puts left and right back the right way round and points out boxes that look wrong. It then ties each zone " +
+                "to the model's own parts so it follows the character as it moves. " +
                 "Choose what each zone plays, whether Martlet notices it and how long it rests. Martlet notices adds up your touches " +
                 "and tells your Thinking model: with what you say next, or, when you say nothing, in a short reply of its own about " +
                 "a second after your last touch. Changes save as you make them, for this model.", new Thickness(0, 0, 0, 8))
@@ -190,8 +220,31 @@ public partial class MainWindow
             () => DetectTouchZonesAsync().Forget(), id: "TouchZonesDetect");
         detect.IsEnabled = !busy && conversation is not null && avatar.IsShowing && catalog is not null &&
             (thinking?.Vision() != VisionSupport.Unsupported || conversation.Helpers.PoolHas(HelperCapability.Vision));
-        AutomationProperties.SetHelpText(detect, "Sends one picture of the character (never its files) to your Thinking model, which marks where its parts are.");
-        stack.Add(Row(detect));
+        AutomationProperties.SetHelpText(detect, "Shows your Thinking model pictures of the character (never its files), step by step, to find and check where its parts are.");
+        Button? stopDetecting = null;
+        if (busy && detectTouchZones is { } running)
+        {
+            // Stop only stops asking: the zones found until then stay.
+            stopDetecting = PageButton("Stop", () =>
+            {
+                try { running.Cancel(); }
+                catch (ObjectDisposedException) { }
+            }, id: "TouchZonesStop");
+            AutomationProperties.SetHelpText(stopDetecting, "Stops finding zones. The zones found until then are kept.");
+        }
+        stack.Add(Row(detect, stopDetecting));
+        if (characterTouchZones.Sent is { } sent)
+        {
+            var seen = Note(sent.Describe(), new Thickness(0, 4, 0, 4));
+            AutomationProperties.SetAutomationId(seen, "TouchZonesSent");
+            stack.Add(seen);
+            if (characterTouchZones.SentFolder is { } sentFolder)
+            {
+                var open = PageButton("Open the pictures", () => OpenTouchZonePictures(sentFolder), id: "TouchZonesSentOpen");
+                AutomationProperties.SetHelpText(open, "Opens the folder with every picture Thinking saw in the last detection.");
+                stack.Add(Row(open));
+            }
+        }
         if (catalog is null) return Card([.. stack]);
 
         var modelId = catalog.Inventory.ModelId;
@@ -236,17 +289,29 @@ public partial class MainWindow
         {
             try
             {
-                var bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.UriSource = new Uri(picture);
-                bitmap.EndInit();
-                var scale = Math.Min(480.0 / bitmap.PixelHeight, 400.0 / bitmap.PixelWidth);
+                var bitmap = PictureAt(picture);
+                var scale = Math.Min(TouchZonesPictureHeight / bitmap.PixelHeight, TouchZonesPictureWidth / bitmap.PixelWidth);
                 (width, height) = (bitmap.PixelWidth * scale, bitmap.PixelHeight * scale);
                 canvas.Width = width;
                 canvas.Height = height;
-                canvas.Children.Add(new Image { Source = bitmap, Width = width, Height = height, Stretch = Stretch.Fill });
+                var image = new Image { Source = bitmap, Width = width, Height = height, Stretch = Stretch.Fill };
+                canvas.Children.Add(image);
                 canvas.Background = new SolidColorBrush(Color.FromArgb(0x18, 0x80, 0x80, 0x80));
+                // The whole character as Thinking saw it: the same framing, on its backdrop with the grid.
+                if (characterTouchZones.SentWholePicture is { } seenPath)
+                {
+                    var seen = PictureAt(seenPath);
+                    var view = new CheckBox
+                    {
+                        Content = "Show the picture Thinking saw (on a plain backdrop, with its grid)", IsChecked = showTouchZonesSent,
+                        Margin = new Thickness(0, 8, 0, 0)
+                    };
+                    AutomationProperties.SetAutomationId(view, "TouchZonesSentView");
+                    view.Checked += (_, _) => { showTouchZonesSent = true; image.Source = seen; };
+                    view.Unchecked += (_, _) => { showTouchZonesSent = false; image.Source = bitmap; };
+                    if (showTouchZonesSent) image.Source = seen;
+                    stack.Add(view);
+                }
             }
             catch (Exception error) when (error is IOException or NotSupportedException or UriFormatException or InvalidOperationException) { width = height = 0; }
         }

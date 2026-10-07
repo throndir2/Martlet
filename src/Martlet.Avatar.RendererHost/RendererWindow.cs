@@ -676,12 +676,14 @@ internal sealed partial class RendererWindow : Window
         Math.Round(viewX * FrameFraction / 2, 4), Math.Round(viewY / 2, 4), camera is not null);
 
     // The camera is in the frame's clip space; frame tells the renderer how much of its canvas width the frame spans.
-    private void SendView()
+    private void SendView() => PostView(viewZoom, viewX, viewY);
+
+    private void PostView(double zoom, double x, double y)
     {
         try
         {
             browser.CoreWebView2?.PostWebMessageAsJson(JsonSerializer.Serialize(
-                new { kind = "view", data = new { zoom = viewZoom, x = viewX, y = viewY, frame = FrameFraction } }, RendererProtocol.Json));
+                new { kind = "view", data = new { zoom, x, y, frame = FrameFraction } }, RendererProtocol.Json));
         }
         catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
     }
@@ -986,8 +988,8 @@ internal sealed partial class RendererWindow : Window
     }
 
     /// <summary>One answer of the page's hit test at <paramref name="x"/>, <paramref name="y"/>: whether it found the character
-    /// and what is there. Malformed names are dropped.</summary>
-    private static (bool Hit, CharacterTouch Touch) ReadTouch(JsonElement answer, double x, double y)
+    /// and what is there, and where that point sits with the character framed whole. Malformed names are dropped.</summary>
+    private (bool Hit, CharacterTouch Touch) ReadTouch(JsonElement answer, double x, double y)
     {
         static string? Name(JsonElement owner, string property) =>
             owner.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String &&
@@ -999,11 +1001,13 @@ internal sealed partial class RendererWindow : Window
                     .Select(item => item.GetString()!).Where(text => text.Length is > 0 and <= CharacterTouch.MaximumName && !text.Any(char.IsControl))
                     .Take(most).ToArray()
                 : [];
-        if (answer.ValueKind != JsonValueKind.Object) return (false, new(x, y, [], [], null, null, false, null, null));
+        var (wholeX, wholeY) = Unframed(x, y);
+        if (answer.ValueKind != JsonValueKind.Object) return (false, new(x, y, [], [], null, null, false, null, null, 0, wholeX, wholeY));
         var hit = answer.TryGetProperty("hit", out var found) && found.ValueKind == JsonValueKind.True;
         return (hit, new CharacterTouch(x, y, Names(answer, "hitAreas", CharacterTouch.MaximumHitAreas),
             Names(answer, "drawables", CharacterTouch.MaximumDrawables), Name(answer, "bone"), Name(answer, "node"),
-            answer.TryGetProperty("hair", out var hair) && hair.ValueKind == JsonValueKind.True, Name(answer, "mesh"), Name(answer, "material")));
+            answer.TryGetProperty("hair", out var hair) && hair.ValueKind == JsonValueKind.True, Name(answer, "mesh"), Name(answer, "material"),
+            0, wholeX, wholeY));
     }
 
     private async void SendTouch(CharacterTouch touch)
@@ -1474,13 +1478,31 @@ internal sealed partial class RendererWindow : Window
     }
 
     /// <summary>A picture of the character as it shows now: WebView2's capture of the page, cropped to the character's opaque
-    /// pixels (a head-and-shoulders square for a portrait), scaled down and encoded as a PNG small enough for one message.</summary>
+    /// pixels (a head-and-shoulders square for a portrait), scaled down and encoded as a PNG small enough for one message. A
+    /// whole picture (touch zones) frames the character whole for the capture (no zoom, no pan) and probes its drawables or
+    /// bones in that framing, then puts the view back.</summary>
     private async Task<RendererPicture> SnapshotAsync(RendererSnapshot request)
     {
         failure.ThrowIfFailed();
         var edge = Math.Clamp(request.Edge, RendererSnapshot.MinimumEdge, RendererSnapshot.MaximumEdge);
         using var captured = new MemoryStream();
-        await browser.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, captured);
+        RendererZoneProbe? probe = null;
+        var reframe = request.Whole && (viewZoom != 1 || viewX != 0 || viewY != 0);
+        try
+        {
+            if (reframe)
+            {
+                PostView(1, 0, 0);
+                // A few frames for the page to draw the new framing.
+                await Task.Delay(250, lifetime.Token);
+            }
+            await browser.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, captured);
+            if (request.Whole) probe = await ProbeAsync();
+        }
+        finally
+        {
+            if (reframe) SendView();
+        }
         captured.Position = 0;
         var frame = System.Windows.Media.Imaging.BitmapFrame.Create(captured, System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreColorProfile,
             System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
@@ -1517,7 +1539,9 @@ internal sealed partial class RendererWindow : Window
             crop = new(x0, y0, Math.Min(width, right + pad + 1) - x0, Math.Min(height, bottom + pad + 1) - y0);
         }
         var cropped = new System.Windows.Media.Imaging.CroppedBitmap(source, crop);
-        foreach (var size in new[] { edge, Math.Min(edge, 384), Math.Min(edge, 256), Math.Min(edge, 160) }.Distinct())
+        // The probe travels in the same message as the picture.
+        var reserve = probe is null ? 0 : JsonSerializer.SerializeToUtf8Bytes(probe, RendererProtocol.Json).Length;
+        foreach (var size in new[] { edge, 1536, 1024, 768, 512, 384, 256, 160 }.Where(size => size <= edge).Distinct())
         {
             var scale = Math.Min(1, (double)size / Math.Max(crop.Width, crop.Height));
             var scaled = new System.Windows.Media.Imaging.TransformedBitmap(cropped, new ScaleTransform(scale, scale));
@@ -1526,12 +1550,31 @@ internal sealed partial class RendererWindow : Window
             using var png = new MemoryStream();
             encoder.Save(png);
             // Base64 grows by a third; the reply must stay well inside one renderer message.
-            if (png.Length * 4 / 3 < RendererProtocol.MaximumMessageBytes - 4096)
+            if (png.Length * 4 / 3 < RendererProtocol.MaximumMessageBytes - 4096 - reserve)
                 return new(Convert.ToBase64String(png.GetBuffer(), 0, (int)png.Length), scaled.PixelWidth, scaled.PixelHeight,
-                    (double)crop.X / width, (double)crop.Y / height, (double)crop.Width / width, (double)crop.Height / height);
+                    (double)crop.X / width, (double)crop.Y / height, (double)crop.Width / width, (double)crop.Height / height, probe);
         }
         throw new InvalidDataException("The character's picture is too large.");
     }
+
+    // Where the model's drawables (Live2D) or humanoid bones (VRM) are now, as fractions of the page; null when the page can't say.
+    private async Task<RendererZoneProbe?> ProbeAsync()
+    {
+        try
+        {
+            var result = await BrowserAsync("zones", new { });
+            return result.ValueKind == JsonValueKind.Object && (result.TryGetProperty("drawables", out _) || result.TryGetProperty("bones", out _))
+                ? result.Deserialize<RendererZoneProbe>(RendererProtocol.Json) : null;
+        }
+        catch (Exception error) when (error is JsonException or InvalidDataException or TimeoutException)
+        {
+            ErrorLog.Warn($"Couldn't read where the character's parts are: {error.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>Where a point of the page (fractions) sits with the character framed whole (no zoom, no pan).</summary>
+    private (double X, double Y) Unframed(double x, double y) => CharacterTouch.Unframed(x, y, viewZoom, viewX, viewY, FrameFraction);
 
     private void FailRenderer()
     {

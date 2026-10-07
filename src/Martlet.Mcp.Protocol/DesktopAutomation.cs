@@ -34,6 +34,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // nothing. Stop singing only ends the song playing (musically). Nothing in the talk window plays a song. Its background
         // tasks chip (LiveTasks) and the task list's close button (LiveTasksClose) only open and close the list.
         "LiveStop", "LiveRefreshContext", "LiveSongStop", "LiveTasks", "LiveTasksClose",
+        // Companion › Character › Touch zones' Stop only stops finding zones; it sends nothing (the zones found until then were
+        // already saved).
+        "TouchZonesStop",
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
         // Companion › Pictures' Check only asks the saved place whether it can draw now (a cloud provider: only whether a key is
@@ -353,11 +356,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "CharacterActionsStatus", "CharacterActionsNaming", "CharacterActionsOffered", "CharacterActionsLast", "CharacterActionsSaveState",
         "CharacterActionsHeld",
         // Companion › Character › Touch zones: how many zones the shown model has, how many are in use and who found them, whether
-        // the Thinking model can see (and where pictures go), how Detect zones went, which zone the last touch landed in and what
-        // it played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows and default reaction).
-        // Detect zones sends the character's picture to Thinking, Try plays on the character and the rest save, so those need
-        // --allow-ui-effects.
-        "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState",
+        // the Thinking model can see (and where pictures go), how Detect zones went (each step while it runs), what the last
+        // detection sent (how many pictures, how large, what they showed), which zone the last touch landed in and what it
+        // played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows and default reaction).
+        // Detect zones sends the character's pictures to Thinking, Try plays on the character, Open the pictures opens Explorer,
+        // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
+        "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
         // Companion › Character › Touch temperament: who decided the active persona's temperament (built-in, the Thinking model,
         // FIXTURE - NOT AI or the owner), its attitude per group and part ("head loves, torso hates, ...", its eyes and the parts
         // whose touch turns them to your mouse), how deciding went and whether edits saved. Each line's attitude
