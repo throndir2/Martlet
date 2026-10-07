@@ -1,7 +1,8 @@
 import { LIMITS, LocalModelBundle, pngDimensions, scaledSize } from "./assets.js";
 import { boundedInteger, Diagnostic, finite, Live2DError, requireCondition } from "./diagnostics.js";
-import { type Face, faceFeatures, faceFromBox, faceFromHint, faceFromLayout, type FaceHint, faceSource, type FaceSource,
-  bounds, headRoll, type Point, turnFace } from "./face.js";
+import { type Carrier, type CheekFrame, type Face, faceFeatures, type FaceFeatures, faceFromBox, faceFromHint, faceFromLayout,
+  type FaceHint, faceSource, type FaceSource, bounds, HEAD_ANGLES, headRoll, pinFace, type PinnedFace, type Point,
+  POSE_PARAMETERS, trackFace, turnFace } from "./face.js";
 import { BLUSH_PARAMETERS, type Gesture, GesturePlayer, type GestureState, isGesture, supportedGestures } from "./gestures.js";
 import { Capabilities, ChannelMapping, inspectParameters, MappingPlan, Parameter } from "./mapping.js";
 import { checkRuntime, type Animator, type AnimatorAssets, CubismMoc, CubismModel, CubismRenderer, SdkModules } from "./sdk.js";
@@ -163,6 +164,10 @@ export class Live2DAdapter {
   #modelTop: number | undefined;
   #faceSource: FaceSource | undefined;
   #faceHint: Face | undefined;
+  #carriers: readonly Carrier[] = [];
+  #pinned: PinnedFace | undefined;
+  #hintPinned: PinnedFace | undefined;
+  #faceProbeMilliseconds = 0;
   #eyeBlinkIds: readonly string[] = [];
   #lipSyncIds: readonly string[] = [];
 
@@ -310,23 +315,67 @@ export class Live2DAdapter {
 
   /**
    * Refines where the face is with what vision found (fractions of the model's canvas, 0,0 at its top left, y down; the
-   * width a fraction of its width); undefined goes back to Martlet's estimate.
+   * width a fraction of its width); undefined goes back to Martlet's estimate. Vision sees the pose drawn now, so the hint
+   * is pinned to the mesh vertices where they are now and then follows them like the estimate.
    */
   setFaceHint(hint: FaceHint | undefined): void {
     const model = this.#resources?.model;
     this.#faceHint = hint && model ? faceFromHint(hint, model.getCanvasWidth(), model.getCanvasHeight()) : undefined;
+    const now = model ? this.#carriers.map(c => {
+      const vertices = model.getDrawableVertices(c.drawable);
+      return { ...c, x: vertices[2 * c.vertex]!, y: vertices[2 * c.vertex + 1]! };
+    }) : [];
+    this.#hintPinned = this.#faceHint ? pinFace(this.#faceHint, now) : undefined;
+  }
+
+  /** How many mesh vertices the face is pinned to (0: it follows the head's angles instead), and how long finding them took
+   *  when the model loaded. */
+  get faceTracking(): { readonly carriers: number; readonly milliseconds: number } {
+    return { carriers: this.#carriers.length, milliseconds: Math.round(this.#faceProbeMilliseconds) };
   }
 
   /**
    * Where the face is now, in the canvas's drawing-buffer pixels (y down), for drawings over it: its middle, width, roll
    * (radians, clockwise), the cheeks, eyes and mouth (left and right as the viewer sees them) and the top of the head.
-   * Estimated (see face.ts); undefined before a model shows.
+   * Pinned to the model's meshes (`tracking` "mesh", with each cheek's surface: one face width across and down it), so it
+   * follows whatever moves the head; otherwise estimated from the head's angles ("estimate"). Undefined before a model shows.
    */
   faceAnchor(): { x: number; y: number; width: number; angle: number; cheekLeft: Point; cheekRight: Point; eyeLeft: Point;
-    eyeRight: Point; mouth: Point; top: Point } | undefined {
+    eyeRight: Point; mouth: Point; top: Point; tracking: "mesh" | "estimate";
+    cheekLeftFrame?: { right: Point; down: Point; visible: number }; cheekRightFrame?: { right: Point; down: Point; visible: number } }
+    | undefined {
     const model = this.#resources?.model;
+    if (!model || this.#loading) return undefined;
+    const pinned = this.#faceHint ? this.#hintPinned : this.#pinned;
+    const tracked = pinned && trackFace(pinned, i => model.getDrawableVertices(i));
+    let features: FaceFeatures | undefined = tracked && tracked.width > 0 ? tracked : undefined;
+    if (!features) {
+      const face = this.#estimatedFace(model);
+      if (!face) return undefined;
+      features = faceFeatures(face);
+    }
+    const { width, height } = this.#canvas;
+    const scale = this.#fitScale(model) * this.#view.zoom, aspect = width / height;
+    const point = (p: Point): Point => ({
+      x: ((p.x * scale / aspect + this.#view.x * this.#view.frame) + 1) / 2 * width,
+      y: (1 - (p.y * scale + this.#view.y)) / 2 * height,
+    });
+    // Model units to canvas pixels: the same across and down, with y turned down.
+    const step = scale / aspect * width / 2;
+    const vector = (v: Point): Point => ({ x: v.x * step, y: -v.y * step });
+    const frame = (f: CheekFrame) => ({ right: vector(f.right), down: vector(f.down), visible: 1 });
+    const middle = point(features);
+    return { x: middle.x, y: middle.y, width: features.width * step, angle: -features.roll,
+      cheekLeft: point(features.cheekLeft), cheekRight: point(features.cheekRight), eyeLeft: point(features.eyeLeft),
+      eyeRight: point(features.eyeRight), mouth: point(features.mouth), top: point(features.top),
+      tracking: features === tracked ? "mesh" : "estimate",
+      ...(features === tracked ? { cheekLeftFrame: frame(tracked.cheekLeftFrame), cheekRightFrame: frame(tracked.cheekRightFrame) } : {}) };
+  }
+
+  /** The face estimated from the head's angles (or the box of its meshes now), for a model whose face couldn't be pinned. */
+  #estimatedFace(model: CubismModel): Face | undefined {
     const source = this.#faceSource;
-    if (!model || this.#loading || (!source && !this.#faceHint)) return undefined;
+    if (!source && !this.#faceHint) return undefined;
     const value = (id: string) => {
       const parameter = this.#parameters.find(p => p.id === id);
       return parameter && model.getParameterValueByIndex ? model.getParameterValueByIndex(parameter.index) : 0;
@@ -340,18 +389,7 @@ export class Live2DAdapter {
       const box = bounds(source!.drawables.map(i => model.getDrawableVertices(i)));
       face = box && faceFromBox(source!.kind, box, roll);
     }
-    if (!face || ![face.x, face.y, face.width, face.roll].every(Number.isFinite)) return undefined;
-    const features = faceFeatures(face);
-    const { width, height } = this.#canvas;
-    const scale = this.#fitScale(model) * this.#view.zoom, aspect = width / height;
-    const point = (p: Point): Point => ({
-      x: ((p.x * scale / aspect + this.#view.x * this.#view.frame) + 1) / 2 * width,
-      y: (1 - (p.y * scale + this.#view.y)) / 2 * height,
-    });
-    const middle = point(features);
-    return { x: middle.x, y: middle.y, width: features.width * scale / aspect * width / 2, angle: -features.roll,
-      cheekLeft: point(features.cheekLeft), cheekRight: point(features.cheekRight), eyeLeft: point(features.eyeLeft),
-      eyeRight: point(features.eyeRight), mouth: point(features.mouth), top: point(features.top) };
+    return face && [face.x, face.y, face.width, face.roll].every(Number.isFinite) ? face : undefined;
   }
 
   async load(bundle: LocalModelBundle): Promise<Capabilities> {
@@ -447,6 +485,11 @@ export class Live2DAdapter {
       this.update(0);
       this.#modelTop = visibleTop(model);
       this.#faceSource = this.#findFace(model, bundle);
+      const rest = this.#restFace(model);
+      const started = this.#services.now();
+      this.#carriers = rest ? this.#findCarriers(model, rest) : [];
+      this.#faceProbeMilliseconds = this.#services.now() - started;
+      this.#pinned = rest ? pinFace(rest, this.#carriers) : undefined;
       return this.#plan.capabilities;
     } catch (error) {
       if (this.#resources === resources) this.#release();
@@ -727,6 +770,82 @@ export class Live2DAdapter {
     });
   }
 
+  /** The face in the pose the model has now (at load: at rest), from how it was found. */
+  #restFace(model: CubismModel): Face | undefined {
+    const source = this.#faceSource;
+    if (!source) return undefined;
+    if (source.kind === "fixed") return source.face;
+    const box = bounds(source.drawables.map(i => model.getDrawableVertices(i)));
+    return box && faceFromBox(source.kind, box);
+  }
+
+  /**
+   * The vertices around `face` that ride the head rigidly. Live2D reports every mesh as it deforms it, so the model is asked:
+   * each head angle is moved in turn (what moves is the head), then every other parameter at once to its maximum and to its
+   * minimum (what moves then deforms on its own: hair physics, blinking, the eyes' gaze, the mouth, the brows). Every
+   * parameter is put back. A parameter that moves the whole head (a model's own position or head parameter) would leave
+   * nothing, so then each is tried alone and those are skipped. Empty when the model can't tell.
+   */
+  #findCarriers(model: CubismModel, face: Face): Carrier[] {
+    const read = model.getParameterValueByIndex?.bind(model);
+    if (!read) return [];
+    const reach = (1.5 * face.width) ** 2, candidates: Carrier[] = [];
+    for (let i = 0; i < model.getDrawableCount(); i++) {
+      if (!model.getDrawableDynamicFlagIsVisible(i) || model.getDrawableOpacity(i) < 0.05) continue;
+      const vertices = model.getDrawableVertices(i);
+      for (let v = 0; 2 * v + 1 < vertices.length; v++) {
+        const x = vertices[2 * v]!, y = vertices[2 * v + 1]!;
+        if ((x - face.x) ** 2 + (y - face.y) ** 2 <= reach) candidates.push({ drawable: i, vertex: v, x, y });
+      }
+    }
+    if (candidates.length < 3 || candidates.length > 60_000) return [];
+    const parameters = this.#parameters, base = parameters.map(p => read(p.index));
+    // How far each candidate moves with these parameters (positions in `parameters`) set, from the pose now.
+    const probe = (values: ReadonlyMap<number, number>): Float64Array => {
+      for (const [k, value] of values) model.setParameterValueByIndex(parameters[k]!.index, value);
+      model.update();
+      const moved = new Float64Array(candidates.length);
+      let last = -1, vertices: Float32Array | undefined;
+      candidates.forEach((c, n) => {
+        if (c.drawable !== last) { vertices = model.getDrawableVertices(c.drawable); last = c.drawable; }
+        moved[n] = Math.hypot(vertices![2 * c.vertex]! - c.x, vertices![2 * c.vertex + 1]! - c.y);
+      });
+      for (const k of values.keys()) model.setParameterValueByIndex(parameters[k]!.index, base[k]!);
+      return moved;
+    };
+    const turns = 0.02 * face.width, deforms = 0.01 * face.width;
+    const head = new Float64Array(candidates.length);
+    try {
+      for (const id of HEAD_ANGLES) {
+        const k = parameters.findIndex(p => p.id === id);
+        if (k < 0) continue;
+        const p = parameters[k]!, far = p.maximum - base[k]! >= base[k]! - p.minimum ? p.maximum : p.minimum;
+        probe(new Map([[k, far]])).forEach((d, n) => { head[n] = Math.max(head[n]!, d); });
+      }
+      const riding = head.filter(d => d > turns).length;
+      if (riding < 3) return [];
+      const others = parameters.flatMap((p, k) => POSE_PARAMETERS.has(p.id) || !(p.maximum > p.minimum) ? [] : [k]);
+      const rigid = new Uint8Array(candidates.length).fill(1);
+      const mark = (moved: Float64Array) => moved.forEach((d, n) => { if (d > deforms) rigid[n] = 0; });
+      mark(probe(new Map(others.map(k => [k, parameters[k]!.maximum]))));
+      mark(probe(new Map(others.map(k => [k, parameters[k]!.minimum]))));
+      if (candidates.filter((_, n) => head[n]! > turns && rigid[n]).length < 12 && others.length <= 256) {
+        rigid.fill(1);
+        for (const k of others)
+          for (const value of [parameters[k]!.maximum, parameters[k]!.minimum]) {
+            if (value === base[k]) continue;
+            const moved = probe(new Map([[k, value]]));
+            if (moved.filter((d, n) => d > deforms && head[n]! > turns).length >= 0.5 * riding) continue;
+            mark(moved);
+          }
+      }
+      return candidates.filter((_, n) => head[n]! > turns && rigid[n]);
+    } finally {
+      parameters.forEach((p, k) => model.setParameterValueByIndex(p.index, base[k]!));
+      model.update();
+    }
+  }
+
   #validateCanvas(): void {
     for (const dimension of [this.#canvas.width, this.#canvas.height]) {
       boundedInteger(dimension, LIMITS.canvasDimension, "canvas dimension");
@@ -789,6 +908,10 @@ export class Live2DAdapter {
     this.#modelTop = undefined;
     this.#faceSource = undefined;
     this.#faceHint = undefined;
+    this.#carriers = [];
+    this.#pinned = undefined;
+    this.#hintPinned = undefined;
+    this.#faceProbeMilliseconds = 0;
     this.#eyeBlinkIds = [];
     this.#lipSyncIds = [];
     if (!resources) return;

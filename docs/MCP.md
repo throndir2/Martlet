@@ -3897,6 +3897,37 @@ the coarse `zones` crossed) and `physical`. Without `points` it only reads.
 Companion › Character › Touch zones' `CharacterPhysicalLast` shows Martlet's
 summary.
 
+**Where Martlet draws over the face**: the blush glow (on a model without a
+blush of its own) and the overlay emotes are drawn around the face each time
+the renderer page draws a frame. A Live2D model's face is pinned to its own
+face meshes. When the model loads, the page moves each head angle
+(`ParamAngleX`, `ParamAngleY`, `ParamAngleZ`) to find the mesh vertices that
+turn with the head. Then it moves every other parameter to its limits, to drop
+the vertices that change shape on their own (hair physics, eyelids, eyes,
+mouth, brows), and puts every parameter back. In each frame the eyes, cheeks,
+mouth and top of the head move with those vertices, so they follow idle
+motions, body sway, breathing, the mouse, a look at a point and gestures as
+the model draws them. A model without the standard angle parameters uses the
+earlier estimate from its head angles. A VRM's face follows its posed head
+bone. Each blush lies on its cheek's surface: a turned head shows the near
+cheek wider and the far cheek narrower, and the far cheek fades out as it
+turns away. `character_face` reads this through UI Automation (`MoveAvatar`'s
+value `"face"`), `samples` times (1 to 60) `gapMs` apart (default 250). It
+changes nothing, so it needs no `--allow-ui-effects`. Each reading in `faces`
+has `n`, `found`, `tracking` (`mesh`, `bones` or `estimate`), `x`, `y` and
+`width` (fractions of the overlay's drawing, +y down), `tilt` (degrees,
+clockwise), `cheekLeft` and `cheekRight` (`x`, `y`, `visible` from 0 to 1,
+`across`, the cheek's width against the face's width, and the hit test there:
+`hit`, `drawables`, `bone`, `mesh`), `overlays` (the overlays showing) and
+`pinned` (Live2D: `carriers`, how many mesh vertices the face rides on, and
+`milliseconds`, how long finding them took at load). `summary` gives the
+`tracking` used, how far the face `moved` (`x`, `y`, `width`, `tilt`) and, for
+each cheek, `onCharacter` (the share of readings over the character),
+`mostlyOver` and `mostlyOverShare` (the topmost drawable, mesh or bone there
+most often, and for what share of readings), `visibleLeast` and `across`
+(`least`, `most`). `MoveAvatar`'s value in `ui_snapshot` shows the last
+reading as `face`.
+
 **Moves, zooms and other changes Martlet hears about**: the overlay notes each
 drag, arrow-key nudge, `ui_move`, zoom (wheel, menu, keys or Martlet's zoom
 buttons), reset zoom, pan of a zoomed view and Reset position, and once it has
@@ -4086,9 +4117,11 @@ tags replies get with the voice chosen now and which follow the voice's cues;
 ...*; for a gesture followed by what the renderer now plays and holds, *Gestures
 now: wink playing, shy held.*; an emote Martlet drew over the face itself, such
 as the blush glow on a model without a blush of its own, adds *drawn by Martlet
-over the face at 414, 88 (50 pixels wide, tilted 3°)* with the face's middle and
-width in the overlay's page pixels and the head's roll (clockwise; a Live2D head's
-roll is a damped share of `ParamAngleZ`, at most 12°), or *(not in view now)* when the face can't be found
+over the face at 414, 88 (50 pixels wide, tilted 3°, pinned to the face's meshes)* with the face's middle and
+width in the overlay's page pixels, the head's roll (clockwise) and how the face is followed (*pinned to the
+face's meshes* for Live2D, *following the head bone* for VRM, or *estimated from the head's angles* for a
+Live2D model without face meshes to pin to; a Live2D estimate's roll is a damped share of `ParamAngleZ`, at
+most 12°; see *Where Martlet draws over the face* and `character_face`), or *(not in view now)* when the face can't be found
 or faces away), also in `logs_tail` `desktop` as *Character expression '脸红'
 played for {blush}.* (*Character gesture 'blush' played for a try, drawn by
 Martlet over the face at ...*); and `CharacterActionsSaveState` *All changes saved.* or *Not saved:

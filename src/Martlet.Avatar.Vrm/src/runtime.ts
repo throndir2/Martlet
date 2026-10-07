@@ -56,6 +56,25 @@ export interface GesturePose {
 const cycle = (t: number, period: number) => Math.sin(2 * Math.PI * t / period);
 const smoothstep = (x: number) => { const c = Math.max(0, Math.min(1, x)); return c * c * (3 - 2 * c); };
 
+/** How far each cheek's surface turns out from the face's front, toward its side: about where an anime face's cheek is. */
+export const CHEEK_TURN = 35 * Math.PI / 180;
+
+/** A cheek as `project` (world to canvas pixels) shows it from a camera at `camera`: the canvas steps for one face width
+ *  (`width`) along `across` and `down` on its surface, and how much it shows (1 facing the camera, fading to 0 as it turns
+ *  edge-on or away). */
+export function cheekFrame(cheek: THREE.Vector3, across: THREE.Vector3, down: THREE.Vector3, normal: THREE.Vector3, width: number,
+  camera: THREE.Vector3, project: (world: THREE.Vector3) => { x: number; y: number }):
+  { right: { x: number; y: number }; down: { x: number; y: number }; visible: number } {
+  const step = 0.05;
+  const along = (direction: THREE.Vector3) => {
+    const to = project(cheek.clone().addScaledVector(direction, step * width));
+    const from = project(cheek.clone().addScaledVector(direction, -step * width));
+    return { x: (to.x - from.x) / (2 * step), y: (to.y - from.y) / (2 * step) };
+  };
+  const facing = normal.dot(camera.clone().sub(cheek).normalize());
+  return { right: along(across), down: along(down), visible: smoothstep((facing - 0.05) / 0.25) };
+}
+
 /** How far a flinch has jerked back `t` seconds in: snapping back within 80ms, then settling. */
 export function flinchJolt(t: number): number { return t < 0.08 ? smoothstep(t / 0.08) : Math.exp(-(t - 0.08) * 2.8); }
 
@@ -515,11 +534,14 @@ export class VrmRuntime {
   /**
    * The face in world space, for drawings over it: the middle of the eyes, the head's directions (`side` is the viewer's
    * right when it faces the camera) and the face's width. From the eye bones when the model has them, otherwise estimated
-   * from the head bone and the model's height. Undefined without a head bone.
+   * from the head bone and the model's height. Each cheek is a surface turned out to its side (CHEEK_TURN): `...Across` runs
+   * one unit along it toward the viewer's right (as wide as `side` from the front) and `...Normal` points out of it, so a
+   * turned head shows the near cheek wider and the far one narrower, and hides it. Undefined without a head bone.
    */
   faceGeometry(): { center: THREE.Vector3; side: THREE.Vector3; up: THREE.Vector3; forward: THREE.Vector3; width: number;
     eyeLeft: THREE.Vector3; eyeRight: THREE.Vector3; mouth: THREE.Vector3; top: THREE.Vector3;
-    cheekLeft: THREE.Vector3; cheekRight: THREE.Vector3 } | undefined {
+    cheekLeft: THREE.Vector3; cheekRight: THREE.Vector3; cheekLeftAcross: THREE.Vector3; cheekRightAcross: THREE.Vector3;
+    cheekLeftNormal: THREE.Vector3; cheekRightNormal: THREE.Vector3 } | undefined {
     const model = this.model;
     const head = model?.humanoid.getNormalizedBoneNode("head");
     if (!model || !head) return undefined;
@@ -542,9 +564,14 @@ export class VrmRuntime {
     } else center = at(head)!.addScaledVector(up, 0.45 * width).addScaledVector(forward, 0.45 * width);
     const point = (x: number, y: number, z: number) => center.clone().addScaledVector(side, x * width)
       .addScaledVector(up, y * width).addScaledVector(forward, z * width);
+    // The viewer's left cheek (the character's right) turns out toward -side, the viewer's right one toward +side.
+    const tan = Math.tan(CHEEK_TURN), cos = Math.cos(CHEEK_TURN), sin = Math.sin(CHEEK_TURN);
     return { center, side, up, forward, width,
       eyeLeft: viewerLeft ?? point(-0.2, 0, 0), eyeRight: viewerRight ?? point(0.2, 0, 0),
       cheekLeft: point(-0.28, -0.22, 0.08), cheekRight: point(0.28, -0.22, 0.08),
+      cheekLeftAcross: side.clone().addScaledVector(forward, tan), cheekRightAcross: side.clone().addScaledVector(forward, -tan),
+      cheekLeftNormal: forward.clone().multiplyScalar(cos).addScaledVector(side, -sin),
+      cheekRightNormal: forward.clone().multiplyScalar(cos).addScaledVector(side, sin),
       mouth: point(0, -0.42, 0.1), top: point(0, 0.75, -0.1) };
   }
 
