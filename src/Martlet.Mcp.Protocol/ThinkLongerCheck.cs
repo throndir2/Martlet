@@ -95,7 +95,7 @@ internal static class ThinkLongerCheck
                         place = spot.Settings.Place.ToString(), hostRole = spot.Settings.OnHostRole, available = spot.Plan.Available,
                         rank = spot.Plan.Rank, slots = spot.Settings.ThinksAtOnce, checksFit = spot.Plan.ChecksFit, why = spot.Plan.Why
                     }),
-                    usable = places.Count, maxThinks = ThinkLonger.Slots(places),
+                    usable = places.Count, maxThinks = ThinkLonger.Slots(places), atOnce = ThinkLonger.AtOnce(places),
                     available = pool.Plan.Available, why = pool.Plan.Why
                 }
             },
@@ -565,7 +565,10 @@ internal static class ThinkLongerCheck
             var againPlace = again.Job?.Place?.Name;
             if (again.Job is { } fourth) jobs.Cancel(fourth.Id, BackgroundJob.CanceledByMartlet);
             var thirdOn = third.Job?.Place?.Name;
+            var tool = ThinkLonger.Description(settings, ThinkLonger.Slots(places));
             var ok = pool.Usable.Count == 3 && places.Count == 3 && ThinkLonger.Slots(places) == 3 && kind.MaxActive == 6 &&
+                ThinkLonger.AtOnce(places) == 2 && tool.EndsWith("Up to 2 at once; more wait in line.", StringComparison.Ordinal) &&
+                pool.Plan.Why.StartsWith("Up to 2 thinks run at once", StringComparison.Ordinal) &&
                 started.Length == 3 && started[0].Place?.Name == "diva" && started[1].Place?.Name == "ripley" &&
                 together && overlapped && started.All(job => job.State == BackgroundJobState.Succeeded && job.Result == Lyrics) &&
                 heldWhileBusy.Length == 2 && thirdWaiting && third.Queued == "think-1 on diva and think-2 on ripley" &&
@@ -578,8 +581,7 @@ internal static class ThinkLongerCheck
                 {
                     computer = spot.Computer, where = spot.Settings.Describe(), available = spot.Plan.Available, rank = spot.Plan.Rank, why = spot.Plan.Why
                 }),
-                maxThinks = ThinkLonger.Slots(places), plan = pool.Plan.Why,
-                tool = ThinkLonger.Description(settings, ThinkLonger.Slots(places)),
+                maxThinks = ThinkLonger.Slots(places), atOnce = ThinkLonger.AtOnce(places), plan = pool.Plan.Why, tool,
                 placed = started.Select(job => new
                 {
                     id = job.Id, place = job.Place?.Name, state = job.State.ToString(), finishedAfterMs = (long)job.Elapsed.TotalMilliseconds

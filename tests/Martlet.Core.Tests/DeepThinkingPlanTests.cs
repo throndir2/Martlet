@@ -175,7 +175,10 @@ public sealed class DeepThinkingPlanTests
         Assert.Equal(["imouto", "ripley", "this PC"], pool.Usable.Select(s => s.Computer));
         Assert.Equal([1, 0, 1], pool.Usable.Select(s => s.Plan.Rank));
         Assert.True(pool.Plan.Available);
-        Assert.Contains("Up to 3 thinks run at once", pool.Plan.Why, StringComparison.Ordinal);
+        // Three slots in all: two thinks at once, because the last free slot stays free for quick jobs.
+        Assert.StartsWith("Up to 2 thinks run at once alongside the conversation on its places (imouto, ripley and this PC)", pool.Plan.Why,
+            StringComparison.Ordinal);
+        Assert.EndsWith("The last free slot stays free for quick jobs (judges and summaries).", pool.Plan.Why, StringComparison.Ordinal);
         Assert.Equal("ripley", pool.Find("host:ripley")!.Computer);
         // One place that can't think is the whole story when it is the only one.
         var only = DeepThinkingPool.For(Host("diva"), [divaThinks]);
@@ -187,5 +190,14 @@ public sealed class DeepThinkingPlanTests
         Assert.Equal("openrouter.ai", new DeepThinkingSettings().Computer(CloudThinking));
         Assert.Equal("this PC", new DeepThinkingSettings().Computer(LocalThinking));
         Assert.Equal("diva", new DeepThinkingSettings().Computer(divaThinks));
+    }
+
+    [Fact]
+    public void A_pool_runs_one_think_fewer_than_its_slots_at_once_and_keeps_the_last_for_quick_jobs()
+    {
+        Assert.Equal(new[] { 0, 1, 1, 2, 3, 8, 8 }, new[] { 0, 1, 2, 3, 4, 9, 64 }.Select(DeepThinkingPool.AtOnce));
+        // Two computers with one slot each: one think at a time, and the other slot stays free for quick jobs.
+        var two = DeepThinkingPool.For(Role("diva").WithPool([Role("ripley")]), [LocalThinking]);
+        Assert.StartsWith("One think runs at a time alongside the conversation on its places (diva and ripley)", two.Plan.Why, StringComparison.Ordinal);
     }
 }

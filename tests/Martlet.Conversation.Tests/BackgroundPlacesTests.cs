@@ -87,11 +87,49 @@ public sealed class BackgroundPlacesTests
     public void The_tool_says_how_many_think_at_once_from_the_settings()
     {
         var settings = new ThinkLongerSettings();
-        Assert.Contains("One at a time, more wait their turn.", ThinkLonger.Description(settings), StringComparison.Ordinal);
-        Assert.Contains("Up to 3 at once, more wait their turn.", ThinkLonger.Description(settings, 3), StringComparison.Ordinal);
-        // As many may wait in line as run at once, at most 8 in all.
+        // A long job never takes the pool's last free slot while it has two or more: N slots run N-1 thinks at once, one slot one.
+        Assert.EndsWith("One at a time; more wait in line.", ThinkLonger.Description(settings), StringComparison.Ordinal);
+        Assert.EndsWith("One at a time; more wait in line.", ThinkLonger.Description(settings, 2), StringComparison.Ordinal);
+        Assert.EndsWith("Up to 2 at once; more wait in line.", ThinkLonger.Description(settings, 3), StringComparison.Ordinal);
+        Assert.EndsWith("Up to 8 at once; more wait in line.", ThinkLonger.Description(settings, 50), StringComparison.Ordinal);
+        // Twice the slots may run or wait in line, at most 8 in all.
         Assert.Equal(ThinkLonger.MaxPlaces, ThinkLonger.Kind(settings, 50).MaxActive);
         Assert.Equal(6, ThinkLonger.Kind(settings, 3).MaxActive);
         Assert.Equal(2, ThinkLonger.Kind(settings, 0).MaxActive);
+    }
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(2, 1)]
+    [InlineData(3, 2)]
+    [InlineData(4, 3)]
+    public void The_tool_counts_only_the_thinks_the_broker_starts_at_once(int slots, int atOnce)
+    {
+        using var jobs = new BackgroundJobs();
+        var release = new TaskCompletionSource();
+        IReadOnlyList<BackgroundPlace> places = [Diva with { Slots = slots }];
+        var kind = ThinkLonger.Kind(new ThinkLongerSettings(), ThinkLonger.Slots(places));
+        var started = Enumerable.Range(0, slots + 1).Count(_ => jobs.Start(kind, "a task", Until(release.Task), places).Started);
+        Assert.Equal(atOnce, started);
+        Assert.Equal(atOnce, ThinkLonger.AtOnce(places));
+        Assert.EndsWith(atOnce == 1 ? "One at a time; more wait in line." : $"Up to {atOnce} at once; more wait in line.",
+            ThinkLonger.Description(new ThinkLongerSettings(), ThinkLonger.Slots(places)), StringComparison.Ordinal);
+        release.SetResult();
+    }
+
+    [Fact]
+    public void With_an_empty_pool_the_conversation_models_four_slots_run_three_thinks_at_once()
+    {
+        var cloud = new SetupRoute
+        {
+            RouteType = SetupRouteType.ChatCompletions, Role = SetupRole.Llm, ProviderAlias = ChatCompletionsSetup.Alias,
+            Origin = ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, ModelId = "x-ai/grok-4.3", ConfigurationRevision = Guid.NewGuid(), Enabled = true
+        };
+        var places = ThinkLonger.Places(new ThinkingPoolSettings().Plan([cloud]));
+        Assert.Equal(["thinking"], places.Select(place => place.Id));
+        Assert.Equal(DeepThinkingSettings.CloudThinksAtOnce, ThinkLonger.Slots(places));
+        Assert.Equal(3, ThinkLonger.AtOnce(places));
+        Assert.EndsWith("Up to 3 at once; more wait in line.", ThinkLonger.Description(new ThinkLongerSettings(), ThinkLonger.Slots(places)),
+            StringComparison.Ordinal);
     }
 }

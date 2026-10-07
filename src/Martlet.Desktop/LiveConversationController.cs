@@ -2741,7 +2741,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         {
             tools?.Record(server, ThinkLonger.Name, "queued " + started.Id, ThinkLonger.Label(task!), false);
             ErrorLog.Info($"Background thinking: {started.Id} waits in line ({jobs.Places.Position(started.Id)} in line) for one of " +
-                $"{places.Count} place{(places.Count == 1 ? "" : "s")} ({slots} at once; " +
+                $"{places.Count} place{(places.Count == 1 ? "" : "s")} ({ThinkLonger.AtOnce(places)} at once; " +
                 (start.ForConversation ? "the live floor keeps them free for the conversation" : $"busy: {start.Queued}") + $"; {terms})" +
                 (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
             return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.Started(started, toldUser, start.Queued, start.ForConversation)));
