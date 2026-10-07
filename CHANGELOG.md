@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Changed
+- Your character now shows its emotes more often and mixes them up: Martlet asks your Thinking model to use them freely and to try different ones. In Companion › Character › Emotes and motions, an empty *When to use* box now shows in grey the hint your Thinking model gets for that emote, and the card explains what the box is for. ([#540](https://github.com/throndir2/Martlet/pull/540))
 - The Devices page now shows how much memory each job usually holds and the most it takes while it works hardest, such as *12-14 GB*: Thinking models hold the same amount all the time, while voices grow as they speak. A computer whose jobs usually fit but can run out when they're all busy now says it's *tight* instead of over-full, so you can tell what runs well from what probably won't. ([#538](https://github.com/throndir2/Martlet/pull/538))
 
 ## [0.53.0] - 2026-10-07
