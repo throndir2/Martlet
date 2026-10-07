@@ -16,7 +16,9 @@ namespace Martlet.Mcp;
 /// told to wait (Update hosts now), no stale lock or record remains and the engine journal records it, an add whose
 /// image build fails says to run it again, and a role's variants (like the stt role's whisper and Parakeet engines) keep their
 /// own choices, GPU option and prepare step and switch only once the chosen one is prepared, and an ARM64 host refuses
-/// x86_64-only roles and runs a role's ARM64 overlay on the CPU. The desktop's own reader
+/// x86_64-only roles and runs a role's ARM64 overlay on the CPU, and warm (run when this PC becomes or starts as a host PC)
+/// starts the gateway and each installed role, runs its warm steps with its choices, reports a role that doesn't answer and
+/// leaves a role another change holds. The desktop's own reader
 /// (<see cref="HostEngineBusy"/>) then reads the engine's real busy line.</summary>
 internal static class HostEngineCheck
 {
@@ -80,7 +82,7 @@ internal static class HostEngineCheck
         var holderOk = holderRead?.StartsWith("installing chatterbox (martlet-host-add-", StringComparison.Ordinal) == true;
         steps.Add(new { name = "desktop-reads-holder-busy", ok = holderOk, detail = $"HostEngineBusy.Read: {holderRead ?? "(nothing)"}" });
         passed &= holderOk;
-        const int expected = 36;
+        const int expected = 38;
         if (steps.Count < expected)
         {
             passed = false;
@@ -477,5 +479,50 @@ internal static class HostEngineCheck
           has /tmp/arm/add2 "runs its ARM64 build on the CPU" && has /tmp/arm/describe2 'role.title=' &&
           ! has /tmp/arm/describe2 'role.accelerator=' && ok=1 || ok=0
         step arm64-overlay-runs-on-cpu "$ok" "add with gpu asked on an aarch64 host: files $files; $(grep MARTLET_ACCELERATOR /tmp/d/roles/fixture-arm/.env); $(tr '\n' ';' < /tmp/variant/calls)"
+
+        # warm (Martlet runs it when this PC becomes or starts as a host PC, after starting Docker Desktop): starts the gateway
+        # and every installed role as it was added, waits until each listens and runs its warm steps with its choices filled
+        # in; a role that doesn't answer is reported (exit 1) while the others carry on, and a role another change holds is
+        # left to that change. Its own fixture host, so the roles added above don't count.
+        mkdir -p /tmp/warm /tmp/wc/roles /tmp/wd/private/state /tmp/wd/gateway "${E%/*}/roles/fixture-warm" "${E%/*}/roles/fixture-cold"
+        : > /tmp/wd/gateway/Martlet.Gateway.Host.Linux.dll
+        printf 'host_id=check-host\nlan_ip=192.168.1.20\nport=9443\n' > /tmp/wc/host.env
+        printf '%s\n' 'title=Fixture warm (FIXTURE, installs nothing)' requires=docker 'choice=FW_MODEL|Model|m1 m2|m1' model_from=FW_MODEL \
+          'post_start=svc|never-on-warm' 'warm=svc|warm-it {FW_MODEL}' > "${E%/*}/roles/fixture-warm/role.conf"
+        printf '%s\n' 'title=Fixture cold (FIXTURE, installs nothing)' requires=docker port=50993 ready_timeout_minutes=0 \
+          'warm=svc|never-runs' > "${E%/*}/roles/fixture-cold/role.conf"
+        for r in fixture-warm fixture-cold; do
+          printf 'services: {}\n' > "${E%/*}/roles/$r/compose.yaml"
+          mkdir -p "/tmp/wd/roles/$r"; printf 'services: {}\n' > "/tmp/wd/roles/$r/compose.yaml"
+        done
+        printf 'FW_MODEL=m2\n' > /tmp/wd/roles/fixture-warm/.env
+        : > /tmp/wd/roles/fixture-cold/.env
+        printf 'kind=fixture\nendpoint=http://127.0.0.1:50993/\nmodel=fixture-cold\n' > /tmp/wc/roles/fixture-cold.role
+        printf 'kind=fixture\nmodel=m2\n' > /tmp/wc/roles/fixture-warm.role
+        mkdir -p /tmp/warm/bin
+        cat > /tmp/warm/bin/docker <<'FAKE'
+        #!/bin/bash
+        [[ "$1" == compose && "$2" != version ]] || exit 0
+        a="$*"; echo "${PWD##*/}|${a#*compose.yaml }" >> /tmp/warm/calls
+        exit 0
+        FAKE
+        printf '%s\n' '#!/bin/bash' 'echo "$*" >> /tmp/warm/systemctl' '[[ "$2" == is-active ]] && exit 3' 'exit 0' > /tmp/warm/bin/systemctl
+        chmod 755 /tmp/warm/bin/docker /tmp/warm/bin/systemctl
+        Wm() { : > /tmp/warm/calls; : > /tmp/warm/systemctl; MARTLET_HOST_CONFIG=/tmp/wc MARTLET_HOST_DATA=/tmp/wd PATH="/tmp/warm/bin:$PATH" timeout 30 "$E" --yes warm </dev/null >/tmp/warm/out 2>&1; }
+        Wm; rc=$?
+        calls="$(tr '\n' ';' < /tmp/warm/calls)"
+        [[ $rc == 1 && "$calls" == "fixture-cold|up -d --no-build;fixture-warm|up -d --no-build;fixture-warm|exec -T svc warm-it m2;" ]] &&
+          grep -q '^--user start martlet-host-gateway.service' /tmp/warm/systemctl && has /tmp/warm/out "Running and warmed up: fixture-warm." &&
+          has /tmp/warm/out "Not ready: fixture-cold" && has /tmp/warm/out "fixture-cold didn't answer on 127.0.0.1:50993" && ok=1 || ok=0
+        step warm-starts-and-warms-roles "$ok" "warm: exit $rc; $calls gateway: $(tr '\n' ';' < /tmp/warm/systemctl)"
+
+        mkdir -p /tmp/wc/locks; : > /tmp/wc/locks/role-fixture-warm.lock
+        flock /tmp/wc/locks/role-fixture-warm.lock sleep 20 & held=$!
+        sleep 1
+        Wm; rc=$?
+        kill $held 2>/dev/null; wait $held 2>/dev/null
+        calls="$(tr '\n' ';' < /tmp/warm/calls)"
+        [[ $rc == 1 && "$calls" == "fixture-cold|up -d --no-build;" ]] && has /tmp/warm/out "Another change is working on fixture-warm now" && ok=1 || ok=0
+        step warm-leaves-held-role "$ok" "warm while another change holds fixture-warm's lock: exit $rc; $calls $(grep -m1 -oE 'Another change is working on [^(]*' /tmp/warm/out || echo 'not skipped')"
         """;
 }

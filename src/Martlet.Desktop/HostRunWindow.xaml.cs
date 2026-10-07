@@ -109,9 +109,10 @@ public partial class HostRunWindow : ThemedWindow
     /// <paramref name="join"/>, a run with the same title that is still working is brought forward (shown again when it was
     /// hidden) and waited for instead of starting the same work a second time (a second click on the same step); its summary
     /// is returned. <paramref name="keeper"/>: the window the run stays with when <paramref name="owner"/> closes first
-    /// (Martlet's main window unless given).</summary>
+    /// (Martlet's main window unless given). <paramref name="hidden"/>: a run Martlet starts by itself works without showing
+    /// its window, as if hidden (Background tasks shows it; a question it asks shows it too).</summary>
     internal static async Task<string?> RunAsync(Window owner, string title, Func<HostRunWindow, Task<string>> job, bool join = false,
-        Window? keeper = null)
+        Window? keeper = null, bool hidden = false)
     {
         if (join && runs.FirstOrDefault(run => run.title == title) is { } same)
         {
@@ -121,7 +122,8 @@ public partial class HostRunWindow : ThemedWindow
         }
         var window = new HostRunWindow(title) { Owner = owner };
         window.OutliveOwner(owner, keeper ?? Application.Current?.MainWindow);
-        window.Show();
+        if (hidden) window.hiddenByUser = true;
+        else window.Show();
         return await window.RunAsync(job);
     }
 

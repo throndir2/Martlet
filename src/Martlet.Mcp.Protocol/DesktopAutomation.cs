@@ -477,6 +477,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // its status line ("Start Docker Desktop: Waiting for Docker Desktop to start..."; run titles and status lines only,
         // never output or pairing codes).
         "HostServiceStatus", "HostStepsHeading", "HostStepsSummary", "HostRunsNow",
+        // What Martlet did by itself when this PC became (or started as) a host PC: started Docker Desktop and the host roles and
+        // loaded their models, or why it didn't (Docker Desktop not installed, Windows not ready, no roles yet). Fixed text and
+        // role names only.
+        "HostAutoStart",
         // The confirmation and host-input dialogs' Copy buttons read "Copy", then "Copied" (or "Couldn't copy") for a few
         // seconds after a click; never what they copied. The problem dialog's heading (its report, ProblemText, can hold paths).
         // A host role's dialog heading says whether it adds the role or changes one the host runs ("Change deep-thinking on
