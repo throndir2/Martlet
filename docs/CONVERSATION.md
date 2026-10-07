@@ -1255,7 +1255,9 @@ voice pipeline never waits for a whole reply:
   already took, at most 100 ms, plays out), and a sentence that starts meanwhile
   starts paused. The Thinking text and the voice's synthesis go on and buffer,
   so playing on (`Resume`) starts at once from the exact sample where it
-  paused, with a 10 ms fade-in and nothing made again. A judge then decides
+  paused, with a 10 ms fade-in and nothing made again. The character's emotes
+  that the reply hasn't reached wait too, and play at the same point in the
+  speech. A judge then decides
   (`IBargeInJudge`, through `BargeInJudging.RuleAsync`): *interrupt* stops the
   reply as before and what you said is answered next; *not for Martlet* plays
   it on. The judge reads Martlet's current sentence (`ConversationTurn.Sentence`),
@@ -1767,7 +1769,14 @@ VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
   [character tags](AVATARS.md#emotes-and-motions) such as `{blush}`, which the
   segmenter and the chat drop like another engine's tags. Both reach the
   character through the runtime's `CharacterCueFeed`, timed within the sentence
-  as it starts playing (or at once for a reply that isn't spoken).
+  as it starts playing (or at once for a reply that isn't spoken). Each cue
+  waits for its moment on the reply's own clock (`CharacterCueLine.ReachedAsync`).
+  The clock stands still while the reply is paused, so a cue keeps its place in
+  the speech. The clock stops when the reply is stopped, replaced or fails, so
+  the character doesn't act the cues the reply hasn't reached. The desktop log
+  then says *Character cue {wink} wasn't acted: the reply stopped before it got
+  there.* Muting the voice drops no cues: the reply goes on in the captions, and
+  so do its cues.
 - **Under the reply.** The talk window notes how a reply was acted out under
   its bubble (`ReplyTag.Note`): *Tone: happy. Sound: laugh. Emotes: nod,
   blush.*, each part only when the reply wrote one: the tones and sounds its

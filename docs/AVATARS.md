@@ -106,7 +106,10 @@ what each one is.
   `{tag}`. The tags are removed from the chat, captions and the voice, and the
   character acts each one where it was written: timed within its sentence as
   it plays, after the last sentence for a tag at the end, or at once for a reply
-  that isn't spoken. A tag written another way counts too (`[nod]`, `(nod)`,
+  that isn't spoken. When the reply pauses because you talk over it, the tags
+  still to come wait, so each keeps its place in the speech. When the reply is
+  stopped, the character doesn't act the tags it hasn't reached. A tag written
+  another way counts too (`[nod]`, `(nod)`,
   `*nods*` or `[shakes head]`; see
   [other spellings](CONVERSATION.md#voice-tags)), and the talk window notes
   under the reply what it set off (*Emotes: nod, blush.*, with any tone or
