@@ -51,6 +51,9 @@ internal sealed class ScreenFrame(byte[] pixels, int width, int height, string t
         throw new InvalidOperationException("The screen image could not be made small enough.");
     }
 
+    /// <summary>A copy of the pixels (BGRA32, top-down) for reading the text on them off the UI thread; null once cleared.</summary>
+    internal byte[]? CopyPixels() => Volatile.Read(ref pixels) is { } owned ? (byte[])owned.Clone() : null;
+
     internal void Clear()
     {
         if (Interlocked.Exchange(ref pixels, null) is { } owned) Array.Clear(owned);

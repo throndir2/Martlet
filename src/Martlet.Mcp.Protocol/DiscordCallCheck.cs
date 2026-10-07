@@ -213,7 +213,7 @@ internal static class DiscordCallCheck
     });
 
     /// <summary>A BGRA32 picture drawn with GDI into memory (works on a locked or headless desktop, unlike WPF's renderer).</summary>
-    private sealed class FixturePicture : IDisposable
+    internal sealed class FixturePicture : IDisposable
     {
         private readonly nint dc, bitmap, previous, bits;
         public int Width { get; }

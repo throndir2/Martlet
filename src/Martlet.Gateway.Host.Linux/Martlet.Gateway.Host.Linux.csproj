@@ -14,6 +14,7 @@
     <ProjectReference Include="..\Martlet.Gateway.Stt\Martlet.Gateway.Stt.csproj" />
     <ProjectReference Include="..\Martlet.Gateway.Singing\Martlet.Gateway.Singing.csproj" />
     <ProjectReference Include="..\Martlet.Gateway.Pictures\Martlet.Gateway.Pictures.csproj" />
+    <ProjectReference Include="..\Martlet.Gateway.Ocr\Martlet.Gateway.Ocr.csproj" />
     <InternalsVisibleTo Include="Martlet.Gateway.Host.Linux.Tests" />
     <InternalsVisibleTo Include="Martlet.Gateway.Host.Linux.Native.Tests" />
   </ItemGroup>

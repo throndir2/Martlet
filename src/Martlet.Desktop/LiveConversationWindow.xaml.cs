@@ -165,6 +165,12 @@ public partial class LiveConversationWindow : ThemedWindow
     // the last look went (lookFailed: shown on the line too) and what wanted your attention go in its tooltip. Checks every 3 s
     // never go into the history.
     private string? sight, lookNote, waitNote, captureNote, visionProblem, attentionNote;
+    // Companion › Reading: reads the text on each changed screenshot of the screen (never a camera) off the UI thread; what it
+    // read last (or why it couldn't) goes in the vision line's tooltip and the newest text goes with a glance. readingFile: when
+    // reading.json was written, so a new choice takes effect at the next capture.
+    private ScreenReader? reader;
+    private DateTime readingFile;
+    private string? readNote;
     private bool seeing, twinkling, lookFailed;
     // How many monitors the whole screen spans at the latest check, for the vision line's tooltip.
     private int monitors;
@@ -2284,6 +2290,7 @@ public partial class LiveConversationWindow : ThemedWindow
         seeing = lookFailed = false;
         monitors = 0;
         lastCheck = null;
+        StartReading();
         // Watching the whole screen also notices what wants your attention: a notification, a flashing taskbar button.
         if (source.Kind == WatchKind.ActiveScreen)
         {
@@ -2294,6 +2301,52 @@ public partial class LiveConversationWindow : ThemedWindow
 
     /// <summary>How fresh the newest picture must be to go with what you type or say.</summary>
     internal static TimeSpan SeenFreshness => TimeSpan.FromSeconds(10);
+
+    /// <summary>Reads the text on the screen the way Companion › Reading chose (reading.json): Windows OCR on this PC by default,
+    /// a host's Reading role, or not at all. Only the screen is read, never a camera.</summary>
+    private void StartReading()
+    {
+        reader?.Dispose();
+        reader = null;
+        readNote = null;
+        var directory = controller.DataDirectory;
+        readingFile = ReadingWritten(directory);
+        if (watchSource.IsScreen) reader = ScreenReader.For(directory, clock);
+    }
+
+    private static DateTime ReadingWritten(string? directory)
+    {
+        if (directory is null) return default;
+        try { return System.IO.File.GetLastWriteTimeUtc(System.IO.Path.Combine(directory, Martlet.Core.Reading.ReadingSettings.FileName)); }
+        catch (Exception error) when (error is System.IO.IOException or UnauthorizedAccessException) { return default; }
+    }
+
+    /// <summary>Reads the newest screenshot when Companion › Reading's reader is free and the picture changed (or a while
+    /// passed). The read's text change feeds the pacer once it is done; nothing waits for it.</summary>
+    private void ReadScreen(ScreenFrame frame)
+    {
+        if (ReadingWritten(controller.DataDirectory) != readingFile) StartReading();
+        if (reader?.Offer(frame) is not { } reading) return;
+        ReadDoneAsync(reader, reading).Forget();
+    }
+
+    private async Task ReadDoneAsync(ScreenReader from, Task<ScreenRead?> reading)
+    {
+        var read = await reading;
+        if (closed || !watching || pacer is null || !ReferenceEquals(from, reader)) return;
+        if (read is not null)
+        {
+            pacer.ObserveText(read.Change);
+            readNote = read.Describe();
+        }
+        else if (from.Problem is { } problem) readNote = problem;
+        else return;
+        ScreenReader.LastReport = readNote;
+    }
+
+    /// <summary>The text Companion › Reading read on the screen in the last <see cref="SeenFreshness"/>, for a glance.</summary>
+    private string? ReadText() =>
+        watchSource.IsScreen && reader?.Latest is { Text.Length: > 0 } read && clock.GetUtcNow() - read.At <= SeenFreshness ? read.Text : null;
     /// <summary>How long something that wants your attention waits for Martlet to be free before it is let go.</summary>
     internal static TimeSpan AttentionPatience => TimeSpan.FromSeconds(60);
 
@@ -2338,7 +2391,8 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         monitors > 1 ? $"Your whole screen is {monitors} monitors." : null,
         lookNote,
-        attentionNote
+        attentionNote,
+        readNote
     }.Where(note => note is not null));
 
     // Runs on the UI timer: notices conversation and what wants your attention, collects finished glances and schedules the
@@ -2424,6 +2478,7 @@ public partial class LiveConversationWindow : ThemedWindow
             DropLatest();
             latestFrame = frame;
             latestAt = clock.GetTimestamp();
+            if (source.IsScreen) ReadScreen(frame);
             // With each new screenshot of your screen Martlet may decide to look at something on it instead of your mouse.
             if (source.IsScreen) Gaze?.Observe(frame);
             var busy = commentary is { OwnershipReleased: false } || pendingText is not null || operations.IsRunning || Conversing;
@@ -2519,7 +2574,8 @@ public partial class LiveConversationWindow : ThemedWindow
             var image = frame.Encode();
             // An address's host is not useful to the model; a camera's or window's name is.
             commentary = controller.StartCommentary(image, watchSource.Kind == WatchKind.Url ? "" : frame.Title, SavedChoice,
-                Voice, screenApproved: true, watchSource, attention: about, look: watchSource.IsScreen && Gaze?.Offer(frame) == true);
+                Voice, screenApproved: true, watchSource, attention: about, look: watchSource.IsScreen && Gaze?.Offer(frame) == true,
+                screenText: ReadText());
             if (about is not null) pacer?.NoteAttention();
             waitNote = null;
             return true;
@@ -2604,6 +2660,9 @@ public partial class LiveConversationWindow : ThemedWindow
     {
         watching = lookWanted = false;
         pacer = null;
+        reader?.Dispose();
+        reader = null;
+        readNote = null;
         Gaze?.Stop();
         DropAttentionFrame();
         DropLatest();
@@ -2773,6 +2832,8 @@ public partial class LiveConversationWindow : ThemedWindow
         timer.Stop();
         warmup?.Dispose();
         warmup = null;
+        reader?.Dispose();
+        reader = null;
         sessionEvents.LockedChanged -= SessionSwitch;
         controller.MemoryCaptured -= MemoryCaptured;
         controller.PictureShown -= PictureShown;

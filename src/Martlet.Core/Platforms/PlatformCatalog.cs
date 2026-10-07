@@ -392,6 +392,20 @@ public static class PlatformCatalog
             Impossible(Ios, Host, "pictures need an NVIDIA GPU; iPhones and iPads have none"),
             Impossible(Android, Host, "pictures need an NVIDIA GPU; phones and tablets have none")
         ]),
+        new("ocr", Feature, "Reading: RapidOCR reads the text on your screen (on the processor)",
+        [
+            Works(Linux, Host, "on the CPU (x86_64 or ARM64); no graphics card needed"),
+            Works(Win, Host, "through Docker Desktop (This PC's host service)"),
+            NotPlanned(Mac, Host, "a Mac reads with the Mac host's own tools later; a Mac running Docker or Ubuntu is a Linux host"),
+            NotPlanned(Ios, Host, "iPhones and iPads don't watch a screen for Martlet"),
+            NotPlanned(Android, Host, "phones and tablets don't watch a screen for Martlet")
+        ]),
+        new("windows-ocr", Feature, "Reading: Windows OCR on this PC (the default)",
+        [
+            Works(Win, You, "built into Windows 10 and 11, on the processor; needs a Windows language with text recognition"),
+            Impossible(Mac, You, "Windows OCR runs only on Windows"), Impossible(Linux, You, "Windows OCR runs only on Windows"),
+            Impossible(Ios, You, "Windows OCR runs only on Windows"), Impossible(Android, You, "Windows OCR runs only on Windows")
+        ]),
         new("f5-mlx", ClusterJobs.Speaking, "F5 voice cloning on a Mac (MLX)",
         [
             Planned(Mac, Host, "MA03", "serves the existing F5 route; 16 GB+ suggested", AppleSilicon),
@@ -517,6 +531,7 @@ public static class PlatformCatalog
         "dia" => "dia",
         "singing" => "singing",
         "pictures" => "pictures",
+        "ocr" => "ocr",
         "audio2face" => "audio2face",
         _ => null
     };

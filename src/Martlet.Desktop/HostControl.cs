@@ -72,6 +72,7 @@ internal static class HostRoles
     internal const string Dia = "dia";
     internal const string Singing = "singing";
     internal const string Pictures = "pictures";
+    internal const string Ocr = "ocr";
 
     /// <summary>The host role of the voice engine chosen for Speaking (<see cref="SpeakingEngineChoice"/>).</summary>
     internal static string Speaking => SpeakingEngineChoice.Current.HostRoleKind;
@@ -132,7 +133,11 @@ internal static class HostRoles
             "The lyrics, style and the voice's recording go there. Songs take a few minutes; it frees the graphics card when idle."),
         new(Pictures, "Draws", "Pictures", "an NVIDIA GPU with at least 8 GB",
             Audio2FaceHostConnection.PictureRouteId, "pictures",
-            "Draws the picture descriptions Martlet writes on that host with ComfyUI and frees the graphics card when idle.")
+            "Draws the picture descriptions Martlet writes on that host with ComfyUI and frees the graphics card when idle."),
+        new(Ocr, "Reads", "Reading", "Docker; it runs on the processor (no graphics card needed)",
+            Audio2FaceHostConnection.OcrRouteId, "reading",
+            "Reads the text on your screen with RapidOCR on that host while Martlet watches it. Screenshots go there, are read in " +
+            "memory and are not kept.")
     ];
 
     internal static HostRoleInfo Get(string kind) => All.FirstOrDefault(r => r.Kind == kind) ??

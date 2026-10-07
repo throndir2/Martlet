@@ -33,7 +33,8 @@ public enum GatewayInferenceKind
     Audio2Face,
     Transcription,
     Song,
-    Picture
+    Picture,
+    Ocr
 }
 
 public enum GatewayInferenceEventKind
@@ -93,7 +94,7 @@ public sealed partial class GatewayInferenceRoute
         GatewayRules.Require(maximumRequestBytes is > 0 and <= GatewayInferenceProtocol.MaximumRequestBytes &&
             maximumInputBytes is > 0 && maximumInputBytes <= maximumRequestBytes &&
             maximumOutputBytes is > 0 && maximumOutputBytes <= 8 * 1024 * 1024 &&
-            maximumEventBytes is > 0 and <= 262_144 &&
+            maximumEventBytes is > 0 and <= 512 * 1024 &&
             maximumEvents is > 1 and <= 16_384 &&
             maximumStreamBytes >= maximumEventBytes &&
             maximumStreamBytes <= 8 * 1024 * 1024 &&
@@ -606,6 +607,51 @@ public sealed partial class GatewayInferenceRoute
     public const int PictureMaximumFileBytes = 32 * 1024 * 1024;
     public const int PictureMaximumEventImageBytes = 180_000;
 
+    /// <summary>
+    /// The OCR host role's RapidOCR relay (<c>workers/ocr</c>): one request reads text from one bounded PNG or JPEG.
+    /// The relay returns a single JSON text event with the status or reading result.
+    /// </summary>
+    public static GatewayInferenceRoute Ocr(
+        string destinationId,
+        string workerId,
+        string modelId,
+        string modelRevision,
+        string modelSha256)
+    {
+        GatewayRules.Token(modelId, 128);
+        GatewayRules.Token(modelRevision, 128);
+        GatewayRules.Sha256(modelSha256);
+        return new(
+            GatewayInferenceKind.Ocr,
+            GatewayRole.Voice,
+            OcrRouteId,
+            OcrPath,
+            OcrContractId,
+            OcrContractVersion,
+            destinationId,
+            workerId,
+            "1.0.0",
+            modelId,
+            modelRevision,
+            modelSha256,
+            IdentityDigest(OcrContractId, OcrContractVersion, workerId, modelId, modelRevision, modelSha256),
+            maximumRequestBytes: OcrMaximumImageBytes * 4 / 3 + 8 * 1024,
+            maximumInputBytes: OcrMaximumImageBytes,
+            maximumOutputBytes: OcrMaximumResultBytes + 4096,
+            maximumEventBytes: OcrMaximumResultBytes + 4096,
+            maximumEvents: 8,
+            maximumStreamBytes: 1024 * 1024,
+            maximumDuration: TimeSpan.FromSeconds(20),
+            GatewayCancellationCapability.RequestAbort);
+    }
+
+    public const string OcrRouteId = "martlet.gateway.ocr.v1";
+    public const string OcrPath = "/martlet/v1/inference/ocr";
+    public const string OcrContractId = "martlet.ocr-relay";
+    public const string OcrContractVersion = "1.0";
+    public const int OcrMaximumImageBytes = 4 * 1024 * 1024;
+    public const int OcrMaximumResultBytes = 256 * 1024;
+
     private static GatewayCancellationCapability Map(F5CancellationCapability capability) =>
         capability switch
         {
@@ -947,6 +993,30 @@ public sealed class GatewayPicturePayload : GatewayInferencePayload
     internal override void Clear() { }
 }
 
+public enum GatewayOcrOperation
+{
+    Status,
+    Read
+}
+
+/// <summary>One bounded operation against the host's RapidOCR relay.</summary>
+public sealed class GatewayOcrPayload : GatewayInferencePayload
+{
+    private readonly byte[] image;
+
+    internal GatewayOcrPayload(GatewayOcrOperation operation, byte[]? image = null, string? mediaType = null)
+    {
+        Operation = operation;
+        this.image = image ?? [];
+        MediaType = mediaType;
+    }
+
+    public GatewayOcrOperation Operation { get; }
+    public ReadOnlyMemory<byte> Image => image;
+    public string? MediaType { get; }
+    internal override void Clear() => CryptographicOperations.ZeroMemory(image);
+}
+
 public sealed class GatewayInferenceRequest
 {
     internal GatewayInferenceRequest(
@@ -1212,6 +1282,10 @@ public interface IPictureGatewayInferenceWorker : IGatewayInferenceWorker
 {
 }
 
+public interface IOcrGatewayInferenceWorker : IGatewayInferenceWorker
+{
+}
+
 internal static class GatewayInferenceEventValidator
 {
     internal static void Validate(
@@ -1259,12 +1333,13 @@ internal static class GatewayInferenceEventValidator
             case GatewayInferenceEventKind.TextDelta:
                 GatewayRules.Require(
                     request.Route.Kind is GatewayInferenceKind.OllamaChat or GatewayInferenceKind.Transcription
-                        or GatewayInferenceKind.Song or GatewayInferenceKind.Picture &&
+                        or GatewayInferenceKind.Song or GatewayInferenceKind.Picture or GatewayInferenceKind.Ocr &&
                     payloadLength > 0 &&
                     item.ErrorCode is null &&
                     IsUtf8(item.Payload.Span) &&
                     HasNoF5Metadata(item) &&
-                    (request.Route.Kind is not (GatewayInferenceKind.Song or GatewayInferenceKind.Picture) || IsJsonObject(item.Payload)),
+                    (request.Route.Kind is not (GatewayInferenceKind.Song or GatewayInferenceKind.Picture or GatewayInferenceKind.Ocr) ||
+                        IsJsonObject(item.Payload)),
                     "stream.invalid");
                 break;
             case GatewayInferenceEventKind.AudioFrame:
@@ -1338,7 +1413,7 @@ internal static class GatewayInferenceEventValidator
                 break;
             case GatewayInferenceEventKind.Failed:
                 GatewayRules.Require(payloadLength == 0 &&
-                    item.ErrorCode is "worker.unavailable" or "worker.failed" or
+                    item.ErrorCode is "worker.unavailable" or "worker.failed" or "request.invalid" or
                         "context.unavailable" or "job.deadline" or "job.canceled",
                     "stream.invalid");
                 RequireNoF5Metadata(item);
@@ -1494,6 +1569,7 @@ internal static class GatewayInferenceEventValidator
                     break;
                 case GatewayInferenceKind.Song:
                 case GatewayInferenceKind.Picture:
+                case GatewayInferenceKind.Ocr:
                     GatewayRules.Require(dataEvents > 0, "stream.invalid");
                     break;
             }

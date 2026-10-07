@@ -156,6 +156,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Pictures' "Where it draws" options ("PicturesPlace-Host", "PicturesPlace-ComfyUi") and its computer pills
         // ("PicturesHost-this-pc") only show that place's card; its own buttons commit.
         "PicturesPlace-", "PicturesHost-",
+        // Companion › Reading's "Where it reads" options ("ReadingPlace-ThisPc", "ReadingPlace-Host") and its computer pills
+        // ("ReadingHost-this-pc") only show that place's card; its own buttons commit.
+        "ReadingPlace-", "ReadingHost-",
         // People's "What Martlet remembers about them" ("PeopleMemories-3") only opens Memory showing that voice's facts.
         "PeopleMemories-",
         // Creations: choosing a creation in the list ("Creation-3f2a9c1b7d04", its short id) only shows its text and details.
@@ -313,6 +316,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "PicturesNow", "PicturesTestState", "PicturesEngine", "PicturesFeatures", "PicturesHostState", "PicturesSetUp", "PicturesUseHost",
         "PicturesComfyAddress", "PicturesComfyState", "PicturesComfyConnect", "PicturesWorkflow", "PicturesLoadWorkflow", "PicturesUseComfy",
         "PicturesModel", "PicturesKeyStatus", "PicturesUseCloud", "PicturesTurnOff", "PicturesCheck", "PicturesTest",
+        // Companion › Reading: where Martlet reads the text on the screen (ReadingNow), the newest read while watching and the
+        // Read my screen now result (ReadingLast, ReadingTestState: how many lines, which engine, milliseconds and when, or why
+        // it couldn't), whether Windows can read text here, the Reading role on the shown computer (title, chips, where it
+        // stands) and the buttons' labels. The text read from a real screen (ReadingTestText) is never returned.
+        "ReadingNow", "ReadingLast", "ReadingTestState", "ReadingWindowsState", "ReadingEngine", "ReadingFeatures", "ReadingHostState",
+        "ReadingSetUp", "ReadingUseHost", "ReadingUseThisPc", "ReadingTurnOff", "ReadingTest",
         "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings", "F5AddVoiceRecording", "F5AddVoiceAbout",
         // Companion › Character › Your characters: how many characters of the owner's own and what this PC shows (never a
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
