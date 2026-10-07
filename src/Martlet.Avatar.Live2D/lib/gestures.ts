@@ -21,7 +21,9 @@ export const GESTURE_REQUIREMENTS: Readonly<Record<Gesture, readonly string[]>> 
   bow: angleY,
   sway: ["ParamBodyAngleZ"],
   smile: ["ParamEyeLSmile", "ParamEyeRSmile"],
-  blush: ["ParamCheek"],
+  // Every model blushes: with ParamCheek when it has it, otherwise Martlet draws a glow on the cheeks (the renderer page's
+  // overlay; see BLUSH_PARAMETERS).
+  blush: [],
   surprise: ["ParamBrowLY", "ParamBrowRY"],
   laugh: angleY, chuckle: angleY, sigh: angleY, gasp: angleY, cough: angleY, clear_throat: angleY, groan: angleZ, sniff: angleY,
   shush: angleY, inhale: angleY, exhale: angleY, mumble: angleX, hum: angleZ, sneeze: angleY, whistle: angleZ,
@@ -39,6 +41,15 @@ const DURATION: Readonly<Record<Gesture, number>> = Object.freeze({
 export function isGesture(name: string): name is Gesture {
   return (GESTURES as readonly string[]).includes(name);
 }
+
+/** The parameters the model's own blush needs; without them the adapter declines and the page draws one instead. */
+export const BLUSH_PARAMETERS: readonly string[] = Object.freeze(["ParamCheek"]);
+
+/** Gestures that can be held: their fade in seconds. Held, they stay fully faded in; released, they fade out as long. */
+export const GESTURE_HOLD: Readonly<Partial<Record<Gesture, number>>> = Object.freeze({ blush: 0.6 });
+
+/** How long a gesture lasts, in seconds. */
+export const gestureSeconds = (name: Gesture): number => DURATION[name];
 
 /** The gestures a model with `parameterIds` can play. */
 export function supportedGestures(parameterIds: Iterable<string>): readonly Gesture[] {

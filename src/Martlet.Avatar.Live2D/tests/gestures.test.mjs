@@ -3,11 +3,11 @@ import test from "node:test";
 import { GESTURES, gestureFrame, isGesture, supportedGestures } from "../dist/index.js";
 
 test("a model gets only the gestures whose standard parameters it has", () => {
-  assert.deepEqual(supportedGestures(["ParamAngleX", "ParamAngleY"]), ["nod", "shake", "bow", "laugh", "chuckle", "sigh", "gasp",
+  assert.deepEqual(supportedGestures(["ParamAngleX", "ParamAngleY"]), ["nod", "shake", "bow", "blush", "laugh", "chuckle", "sigh", "gasp",
     "cough", "clear_throat", "sniff", "shush", "inhale", "exhale", "mumble", "sneeze", "fear", "crying"]);
   assert.deepEqual(supportedGestures(["ParamAngleX", "ParamAngleY", "ParamAngleZ", "ParamBodyAngleZ", "ParamEyeLSmile",
     "ParamEyeRSmile", "ParamCheek", "ParamBrowLY", "ParamBrowRY"]), [...GESTURES]);
-  assert.deepEqual(supportedGestures(["ParamEyeLSmile"]), []);
+  assert.deepEqual(supportedGestures(["ParamEyeLSmile"]), ["blush"], "every model blushes (drawn when it has no ParamCheek)");
   assert.equal(isGesture("wave"), false);
   assert.equal(isGesture("laugh"), true);
 });

@@ -323,6 +323,32 @@ test("Martlet's gestures play on the humanoid bones and return to idle", async (
   assert.ok(bone("spine").rotation.x > 0.3, "the spine bends forward");
 });
 
+test("blush shows an authored cheek expression, held until released, and the face is found from the eye bones", async () => {
+  const runtime = new VrmRuntime(); await runtime.load(fixture()); runtime.startIdle();
+  assert.ok(runtime.gestures.includes("blush"));
+  assert.equal(runtime.playGesture("blush"), false, "no blush of its own: the page draws one");
+  const face = runtime.face()!;
+  assert.ok(face.eyeRight.x > face.eyeLeft.x, "the character's left eye is on the viewer's right");
+  assert.ok(face.cheekRight.x > face.center.x && face.cheekLeft.x < face.center.x && face.cheekLeft.y < face.center.y);
+  assert.ok(Math.abs(face.width - 0.08 * 2.3) < 1e-6 && face.forward.z > 0.99);
+  runtime.dispose();
+
+  const { document, bin } = fixtureDocument();
+  (document.extensions.VRMC_vrm.expressions.custom as Record<string, unknown>).CheekRed = { morphTargetBinds: [{ node: 17, index: 7, weight: 1 }] };
+  const own = new VrmRuntime(); await own.load(encodeGlb(document, bin)); own.startIdle();
+  const vrm = (own as unknown as { model: { expressionManager: { getValue(name: string): number } } }).model;
+  assert.equal(own.playGesture("blush", true), true);
+  for (let i = 0; i < 100; i++) own.update(0.1);
+  assert.ok(vrm.expressionManager.getValue("CheekRed")! > 0.99, "held, it stays");
+  assert.equal(own.releaseGesture("blush"), true);
+  for (let i = 0; i < 20; i++) own.update(0.1);
+  assert.ok(vrm.expressionManager.getValue("CheekRed")! < 0.01);
+  assert.equal(own.playGesture("blush"), true);
+  for (let i = 0; i < 50; i++) own.update(0.1);
+  assert.ok(vrm.expressionManager.getValue("CheekRed")! < 0.01, "not held, it ends by itself");
+  own.dispose();
+});
+
 test("voice emotes move the head, spine, shoulders and arms and return to idle", async () => {
   const runtime = new VrmRuntime(); await runtime.load(fixture()); runtime.startIdle();
   const vrm = (runtime as unknown as { model: { humanoid: { getNormalizedBoneNode(name: string): THREE.Object3D } } }).model;

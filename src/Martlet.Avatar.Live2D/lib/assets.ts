@@ -36,6 +36,8 @@ export interface ModelDescription {
   readonly expressions: readonly { readonly name: string; readonly file: string }[];
   readonly physics?: string;
   readonly pose?: string;
+  /** Authored hit areas (an ArtMesh ID and a name); Martlet runs no hit-test actions, but a head area locates the face. */
+  readonly hitAreas: readonly { readonly id: string; readonly name: string }[];
   readonly diagnostics: readonly Diagnostic[];
 }
 
@@ -255,12 +257,12 @@ export class LocalModelBundle {
         "INVALID_MODEL_JSON", "Layout values must be finite.");
       diagnostics.push({ code: "INACTIVE_LAYOUT", message: "Uses canvas-fit framing; authored Layout is not applied." });
     }
+    const hitAreas: { id: string; name: string }[] = [];
     if (root.HitAreas !== undefined) {
       for (const value of array(root.HitAreas, 128, "HitAreas")) {
         const hit = object(value, "hit area");
         keys(hit, ["Id", "Name"], "hit area");
-        identifier(hit.Id);
-        identifier(hit.Name);
+        hitAreas.push(Object.freeze({ id: identifier(hit.Id), name: identifier(hit.Name) }));
       }
       diagnostics.push({ code: "INACTIVE_HIT_AREAS", message: "No hit-test actions or scripts are executed." });
     }
@@ -271,6 +273,7 @@ export class LocalModelBundle {
       expressions: Object.freeze(expressions.map(e => Object.freeze(e))),
       ...(optional.Physics ? { physics: optional.Physics } : {}),
       ...(optional.Pose ? { pose: optional.Pose } : {}),
+      hitAreas: Object.freeze(hitAreas),
       diagnostics: Object.freeze(diagnostics.map(d => Object.freeze(d))),
     });
   }

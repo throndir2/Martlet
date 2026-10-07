@@ -54,6 +54,7 @@ public sealed class CharacterGestureTests
         Assert.Equal(["{smile}", "{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{blush}"], prompt.Tags);
         Assert.Contains("{tilt_head} - tilt your head, for curiosity or confusion", prompt.Instructions);
         Assert.Contains("ParamAngleZ", inventory.Find("gesture:tilt")!.Detail);
+        Assert.Contains("(moves ParamCheek)", inventory.Find("gesture:blush")!.Detail);
     }
 
     [Fact]
@@ -64,16 +65,28 @@ public sealed class CharacterGestureTests
             "}},\"expressions\":{\"preset\":{\"happy\":{},\"aa\":{}}}}}}");
         var inventory = CharacterActionInventory.From(AvatarRenderer.Vrm, "m.vrm", [new("m.vrm", glb, "model/gltf-binary")]);
 
-        Assert.Equal(["nod", "shake", "tilt", "bow", "sway", "wave", "bounce", "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat",
+        Assert.Equal(["nod", "shake", "tilt", "bow", "sway", "blush", "wave", "bounce", "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat",
             "groan", "sniff", "shush", "inhale", "exhale", "mumble", "hum", "sneeze", "whistle", "sarcastic", "angry", "fear", "crying",
             "whispering"], Gestures(inventory));
         var prompt = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null)).Prompt(null, null);
         Assert.NotNull(prompt);
         Assert.Contains("{wave}", prompt.Tags);
         Assert.Contains("{happy}", prompt.Tags);
-        Assert.DoesNotContain("{blush}", prompt.Tags);
+        Assert.Contains("{blush}", prompt.Tags);
+        Assert.Contains("draws a pink glow on the cheeks, following the head bone", inventory.Find("gesture:blush")!.Detail);
         Assert.DoesNotContain("{shrug}", prompt.Tags);
         Assert.Contains("rightUpperArm", inventory.Find("gesture:wave")!.Detail);
+    }
+
+    [Fact]
+    public void AnActionTheRendererDrewOverTheFaceSaysWhere()
+    {
+        static System.Text.Json.JsonElement Reply(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement;
+        Assert.Null(AvatarController.Drawn(Reply("{\"started\":true}")));
+        Assert.Equal(", drawn by Martlet over the face at 250, 100 (80 pixels wide)",
+            AvatarController.Drawn(Reply("{\"started\":true,\"overlay\":true,\"face\":{\"x\":250,\"y\":100,\"width\":80}}")));
+        Assert.Equal(", drawn by Martlet over the face (not in view now)",
+            AvatarController.Drawn(Reply("{\"started\":true,\"overlay\":true,\"face\":null}")));
     }
 
     [Fact]
@@ -98,7 +111,8 @@ public sealed class CharacterGestureTests
 
         // Voice emotes follow the voice and never lengthen the reply instructions; the reply gestures stay offered.
         var silent = catalog.Prompt(null, null)!.Tags;
-        Assert.Equal(["{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{smile}", "{surprised}"], silent);
+        Assert.Equal(["{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{smile}", "{blush}", "{surprised}"], silent);
+        Assert.Contains("draws a pink glow on the cheeks", inventory.Find("gesture:blush")!.Detail);
         var chatterbox = catalog.Prompt(Martlet.Core.Settings.SpeechEngines.Chatterbox, null)!.Tags;
         Assert.DoesNotContain("{surprised}", chatterbox);
         Assert.DoesNotContain("{laugh}", chatterbox);

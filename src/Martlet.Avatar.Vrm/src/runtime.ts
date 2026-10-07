@@ -8,7 +8,7 @@ type BoneName = Parameters<VRM["humanoid"]["getNormalizedBoneNode"]>[0];
 
 /** Martlet's own gestures, played on any VRM that has the humanoid bones they move. After the reply gestures come the voice
  *  emotes, played when the voice makes their sound or tone (laugh, sigh, gasp...). */
-export const VRM_GESTURES = Object.freeze(["nod", "shake", "tilt", "bow", "sway", "wave", "shrug", "bounce",
+export const VRM_GESTURES = Object.freeze(["nod", "shake", "tilt", "bow", "sway", "wave", "shrug", "bounce", "blush",
   "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat", "groan", "sniff", "shush", "inhale", "exhale", "mumble", "hum",
   "sneeze", "whistle", "happy", "sarcastic", "angry", "fear", "crying", "whispering", "dramatic"] as const);
 export type VrmGesture = typeof VRM_GESTURES[number];
@@ -16,18 +16,23 @@ const head: readonly BoneName[] = ["head"], headSpine: readonly BoneName[] = ["h
 const GESTURE_BONES: Readonly<Record<VrmGesture, readonly BoneName[]>> = Object.freeze({
   nod: head, shake: head, tilt: head, bow: ["spine"], sway: ["spine"],
   wave: ["rightUpperArm", "rightLowerArm"], shrug: ["leftUpperArm", "rightUpperArm", "leftLowerArm", "rightLowerArm"], bounce: ["hips"],
+  // An authored blush or cheek expression when the model has one; otherwise the page draws a glow on the cheeks, found
+  // from the head (see faceAnchor).
+  blush: head,
   laugh: headSpine, chuckle: head, sigh: headSpine, gasp: headSpine, cough: headSpine, clear_throat: head, groan: head, sniff: head,
   shush: headSpine, inhale: headSpine, exhale: headSpine, mumble: head, hum: head, sneeze: headSpine, whistle: head,
   happy: headSpine, sarcastic: head, angry: headSpine, fear: headSpine, crying: headSpine, whispering: headSpine,
   dramatic: ["head", "leftUpperArm", "rightUpperArm"],
 });
 const GESTURE_SECONDS: Readonly<Record<VrmGesture, number>> = Object.freeze({
-  nod: 1.1, shake: 1.2, tilt: 1.8, bow: 2, sway: 2.4, wave: 2.4, shrug: 1.8, bounce: 1.2,
+  nod: 1.1, shake: 1.2, tilt: 1.8, bow: 2, sway: 2.4, wave: 2.4, shrug: 1.8, bounce: 1.2, blush: 4,
   laugh: 2, chuckle: 1.4, sigh: 2.4, gasp: 1.6, cough: 1.5, clear_throat: 1.2, groan: 2.2, sniff: 1, shush: 2, inhale: 1.6,
   exhale: 1.8, mumble: 2, hum: 2.6, sneeze: 1.6, whistle: 2, happy: 2.4, sarcastic: 1.8, angry: 2.4, fear: 2, crying: 3,
   whispering: 2.2, dramatic: 2.4,
 });
 const GESTURE_FADE: Partial<Record<VrmGesture, number>> = { bounce: 0.15, gasp: 0.12, fear: 0.15, cough: 0.1, sniff: 0.1, sneeze: 0.1 };
+/** A custom expression that is the model's own blush. */
+const BLUSH_EXPRESSION = /blush|cheek|照れ|赤面|頬|脸红|臉紅|홍조/i;
 
 /** How a voice emote moves the body `t` seconds in at weight `w`: head yaw (gx, right) and pitch (gy, up) like the look,
  *  head roll (tilt), spine bend (forward) and lean (sideways), shoulders (up) and arms opened out to the sides (open). */
@@ -295,7 +300,9 @@ export class VrmRuntime {
   private composedAge = Number.POSITIVE_INFINITY;
   private readonly actions = new Map<string, { target: number; value: number }>();
   private gesture: { name: VrmGesture; seconds: number } | undefined;
+  private blush: { name: string; seconds: number; hold: boolean } | undefined;
   private hipsRest: number | undefined;
+  private faceWidth = 0.14;
 
   get capabilities(): VrmCapabilities | undefined { return this.inspected; }
   get scene(): THREE.Group | undefined { return this.model?.scene; }
@@ -339,13 +346,66 @@ export class VrmRuntime {
   }
 
   /** Starts one of Martlet's gestures (see `gestures`), replacing one already playing: head gestures, a bow, a sway, a wave,
-   *  a shrug, an excited bounce or a voice emote (a laugh, a sigh, a gasp...). */
-  playGesture(name: string): boolean {
+   *  a shrug, an excited bounce or a voice emote (a laugh, a sigh, a gasp...). A blush shows the model's own blush or cheek
+   *  expression for 4 seconds, or while `hold` until `releaseGesture`; false when it has none (the page draws one). */
+  playGesture(name: string, hold = false): boolean {
     const model = this.loaded();
     if (!(this.gestures as readonly string[]).includes(name)) return false;
+    if (name === "blush") {
+      const reserved: readonly string[] = [...mouthPresets, ...blinkPresets, ...gazePresets];
+      const own = model.expressionManager?.expressions.map(e => e.expressionName)
+        .find(n => !reserved.includes(n) && BLUSH_EXPRESSION.test(n));
+      if (!own || !this.setAction(own, true)) return false;
+      this.blush = { name: own, seconds: 0, hold };
+      return true;
+    }
     if (name === "bounce") this.hipsRest ??= model.humanoid.getNormalizedBoneNode("hips")?.position.y;
     this.gesture = { name: name as VrmGesture, seconds: 0 };
     return true;
+  }
+
+  /** Releases a held blush (see playGesture); true when one was showing. */
+  releaseGesture(name: string): boolean {
+    if (name !== "blush" || !this.blush) return false;
+    this.setAction(this.blush.name, false);
+    this.blush = undefined;
+    return true;
+  }
+
+  /**
+   * The face in world space, for drawings over it: the middle of the eyes, the head's directions (`side` is the viewer's
+   * right when it faces the camera) and the face's width. From the eye bones when the model has them, otherwise estimated
+   * from the head bone and the model's height. Undefined without a head bone.
+   */
+  face(): { center: THREE.Vector3; side: THREE.Vector3; up: THREE.Vector3; forward: THREE.Vector3; width: number;
+    eyeLeft: THREE.Vector3; eyeRight: THREE.Vector3; mouth: THREE.Vector3; top: THREE.Vector3;
+    cheekLeft: THREE.Vector3; cheekRight: THREE.Vector3 } | undefined {
+    const model = this.model;
+    const head = model?.humanoid.getNormalizedBoneNode("head");
+    if (!model || !head) return undefined;
+    head.updateWorldMatrix(true, false);
+    const rotation = head.getWorldQuaternion(new THREE.Quaternion());
+    // VRM 1.0 faces +Z with the character's left (the viewer's right) at +X.
+    const side = new THREE.Vector3(1, 0, 0).applyQuaternion(rotation), up = new THREE.Vector3(0, 1, 0).applyQuaternion(rotation);
+    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(rotation);
+    const at = (node: THREE.Object3D | null | undefined) => {
+      if (!node) return undefined;
+      node.updateWorldMatrix(true, false);
+      return node.getWorldPosition(new THREE.Vector3());
+    };
+    // The character's left eye is on the viewer's right.
+    const viewerRight = at(model.humanoid.getNormalizedBoneNode("leftEye")), viewerLeft = at(model.humanoid.getNormalizedBoneNode("rightEye"));
+    let width = this.faceWidth, center: THREE.Vector3;
+    if (viewerRight && viewerLeft && viewerRight.distanceTo(viewerLeft) > 1e-4) {
+      width = Math.max(viewerRight.distanceTo(viewerLeft) * 2.3, width * 0.4);
+      center = viewerRight.clone().add(viewerLeft).multiplyScalar(0.5);
+    } else center = at(head)!.addScaledVector(up, 0.45 * width).addScaledVector(forward, 0.45 * width);
+    const point = (x: number, y: number, z: number) => center.clone().addScaledVector(side, x * width)
+      .addScaledVector(up, y * width).addScaledVector(forward, z * width);
+    return { center, side, up, forward, width,
+      eyeLeft: viewerLeft ?? point(-0.2, 0, 0), eyeRight: viewerRight ?? point(0.2, 0, 0),
+      cheekLeft: point(-0.28, -0.22, 0.08), cheekRight: point(0.28, -0.22, 0.08),
+      mouth: point(0, -0.42, 0.1), top: point(0, 0.75, -0.1) };
   }
 
   /** The playing gesture and how far into it, advanced by `deltaSeconds`; undefined once it is over. */
@@ -359,6 +419,8 @@ export class VrmRuntime {
   }
 
   private updateActions(model: VRM, deltaSeconds: number): void {
+    const blush = this.blush;
+    if (blush && !blush.hold && (blush.seconds += deltaSeconds) >= GESTURE_SECONDS.blush - 0.6) this.releaseGesture("blush");
     const expressions = model.expressionManager;
     if (!expressions) return;
     for (const [name, state] of this.actions) {
@@ -439,6 +501,9 @@ export class VrmRuntime {
       this.releaseModel();
       this.model = result.vrm;
       this.inspected = result.capabilities;
+      // A face is about a twelfth as wide as the figure is tall.
+      const box = new THREE.Box3().setFromObject(result.vrm.scene);
+      this.faceWidth = box.isEmpty() ? 0.14 : Math.max(0.01, 0.09 * (box.max.y - box.min.y));
       return result.capabilities;
     } finally { this.pending = false; }
   }
@@ -655,6 +720,6 @@ export class VrmRuntime {
       releaseResources(this.model.scene);
     }
     this.model = undefined; this.inspected = undefined; this.selection = undefined; this.revision = undefined; this.inputMode = undefined;
-    this.actions.clear(); this.gesture = undefined; this.hipsRest = undefined;
+    this.actions.clear(); this.gesture = undefined; this.blush = undefined; this.hipsRest = undefined;
   }
 }

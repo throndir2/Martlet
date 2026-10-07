@@ -167,14 +167,28 @@ internal sealed partial class AvatarController : IAsyncDisposable
         var reply = await current.SendAsync("action", new RendererAction(kind, source.Name), token).ConfigureAwait(false);
         var started = reply.Data.ValueKind == System.Text.Json.JsonValueKind.Object && reply.Data.TryGetProperty("started", out var value) &&
             value.ValueKind == System.Text.Json.JsonValueKind.True;
+        var drawn = started ? Drawn(reply.Data) : null;
         var when = DateTime.Now.ToString("T", System.Globalization.CultureInfo.CurrentCulture);
         Volatile.Write(ref lastAction, started
-            ? $"Played the {kind} \"{source.Name}\" for {reason} at {when}."
+            ? $"Played the {kind} \"{source.Name}\" for {reason} at {when}{drawn}."
             : $"The character couldn't play the {kind} \"{source.Name}\" ({reason}, {when}).");
-        ErrorLog.Info(started ? $"Character {kind} '{source.Name}' played for {reason}." : $"Character {kind} '{source.Name}' didn't play ({reason}).");
+        ErrorLog.Info(started ? $"Character {kind} '{source.Name}' played for {reason}{drawn}." : $"Character {kind} '{source.Name}' didn't play ({reason}).");
         ActionPlayed?.Invoke();
         if (started && source.Kind == CharacterActionKind.Expression) HoldExpression(current, source.Name, finished);
         return started;
+    }
+
+    /// <summary>", drawn by Martlet over the face at x, y (n pixels wide)" when the renderer drew the action itself (an overlay
+    /// such as the blush glow, for a model without its own), or null.</summary>
+    internal static string? Drawn(System.Text.Json.JsonElement data)
+    {
+        if (data.ValueKind != System.Text.Json.JsonValueKind.Object || !data.TryGetProperty("overlay", out var overlay) ||
+            overlay.ValueKind != System.Text.Json.JsonValueKind.True) return null;
+        if (data.TryGetProperty("face", out var face) && face.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            face.TryGetProperty("x", out var x) && x.TryGetDouble(out var left) && face.TryGetProperty("y", out var y) &&
+            y.TryGetDouble(out var top) && face.TryGetProperty("width", out var width) && width.TryGetDouble(out var size))
+            return System.FormattableString.Invariant($", drawn by Martlet over the face at {left:0}, {top:0} ({size:0} pixels wide)");
+        return ", drawn by Martlet over the face (not in view now)";
     }
 
     private void HoldExpression(IAvatarRenderer target, string name, Task? finished)

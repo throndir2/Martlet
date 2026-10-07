@@ -1,7 +1,11 @@
 import { Live2DAdapter, LocalModelBundle } from "../../Martlet.Avatar.Live2D/lib/index.ts";
 import { VrmAvatarAdapter } from "../../Martlet.Avatar.Vrm/src/index.ts";
+import { activeOverlays, attachOverlay, clearOverlays, hasOverlay, registerBlush, renderOverlay, startOverlay, stopOverlay,
+  toCssAnchor } from "./overlay.js";
 
 const canvas = document.getElementById("avatar");
+attachOverlay(document.getElementById("overlay"));
+registerBlush();
 let adapter, renderer, revision, configurationId, active = false, last = 0, failed = false, reportedTop, expression;
 let view = { zoom: 1, x: 0, y: 0 };
 const post = value => window.chrome.webview.postMessage(value);
@@ -17,6 +21,25 @@ const resource = name => fetch(`asset/${encodePath(name)}`).then(response => {
 const reason = error => String(error?.message ?? error).replace(/[\u0000-\u001f]/g, " ").slice(0, 300);
 const mouth = new Set(["aa", "ih", "ou", "ee", "oh"]);
 const blink = new Set(["blink", "blinkLeft", "blinkRight"]);
+// Where the face is in the page's CSS pixels (see overlay.js), or undefined.
+const face = () => {
+  const anchor = adapter?.faceAnchor?.();
+  return anchor && toCssAnchor(anchor, canvas.clientWidth / Math.max(1, canvas.width), canvas.clientHeight / Math.max(1, canvas.height));
+};
+// One of Martlet's gestures: the model's own when it has it (Live2D's ParamCheek blush, a VRM's blush expression), otherwise
+// one Martlet draws over the face (overlay.js). A held one stays until it is turned off.
+function gesture(name, on, hold) {
+  if (!on) {
+    adapter.releaseGesture?.(name);
+    stopOverlay(name);
+    return { started: true };
+  }
+  if (renderer === "Live2D" ? adapter.gesture(name, hold) : adapter.playGesture(name, hold)) return { started: true };
+  if (!hasOverlay(name)) return { started: false };
+  const anchor = face();
+  return { started: startOverlay(name, { hold }), overlay: true,
+    face: anchor ? { x: Math.round(anchor.x), y: Math.round(anchor.y), width: Math.round(anchor.width) } : null };
+}
 window.chrome.webview.addEventListener("message", async ({ data: message }) => {
   if (message.kind === "look") {
     // Fire-and-forget cursor follow from the host window; never replies and never fails the renderer.
@@ -102,7 +125,7 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
       // expression that isn't the one showing changes nothing.
       const kind = String(data.kind), name = String(data.name), on = data.on !== false;
       let started = false;
-      if (kind === "gesture") started = on ? (renderer === "Live2D" ? adapter.gesture(name) : adapter.playGesture(name)) : true;
+      if (kind === "gesture") { post(gesture(name, on, data.hold === true)); return; }
       else if (kind === "motion") started = on && renderer === "Live2D" ? adapter.playMotion(name) : false;
       else if (kind === "expression") {
         if (renderer === "Live2D") {
@@ -115,6 +138,7 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
     else throw new Error("Unsupported command.");
   } catch (error) {
     active = false; failed = true;
+    clearOverlays();
     try { adapter?.dispose(); }
     finally { post(message.kind === "load" ? { error: "avatar.model_rejected", detail: reason(error) } : { error: "avatar.renderer_rejected" }); }
   }
@@ -128,7 +152,10 @@ function draw(now) {
       if (renderer === "Vrm") adapter.resize(width, height);
       else if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
       adapter.update(Math.min(0.1, last ? (now - last) / 1000 : 0));
-    } catch { failed = true; active = false; post({ error: "avatar.renderer_failed" }); }
+    } catch { failed = true; active = false; clearOverlays(); post({ error: "avatar.renderer_failed" }); }
+    // Martlet's drawings over the face; only looks for the face while one shows.
+    try { if (!failed) renderOverlay(activeOverlays().length ? face() : undefined, Math.min(0.1, last ? (now - last) / 1000 : 0)); }
+    catch { clearOverlays(); }
     // Unsolicited, fire-and-forget: where the top of the head sits, so the host's zoom keeps it in view.
     try {
       const top = adapter.contentTop;
