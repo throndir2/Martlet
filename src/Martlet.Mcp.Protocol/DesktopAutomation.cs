@@ -356,6 +356,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // What Martlet noticed (zones with Martlet notices on) that waits for a reply and when a touch reply would start, and
         // which reply took the last touches and what the Thinking model was told (zone names and the touch line, no words).
         "TouchZonesNoticed", "TouchZonesNoticedLast",
+        // Touch zones' line on the last stroke across the locked character (zones crossed, pace, passes, seconds, samples on the
+        // character) or the last move, zoom, pan, lock, hide or show, as Martlet's touch ledger heard it. Fixed wording and zone
+        // names only.
+        "CharacterPhysicalLast",
         // Companion › Listening › Speakers and echo: whether echo reduction is on and how the last listen went (or why it couldn't
         // run). The TalkReduceEcho check box saves the choice, so it needs --allow-ui-effects.
         "TalkReduceEchoStatus",
@@ -363,6 +367,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // quick "yeah" or what this PC plays). Fixed text. Word check: the chosen option (Relaxed, Normal or Sensitive; choosing
         // one with ui_select saves talk-preferences.json, so it needs --allow-ui-effects) and its fixed explanation.
         "TalkBargeInAbout", "TalkWordCheck", "TalkWordCheckAbout",
+        // Companion › Listening › When you talk over Martlet: the chosen option (Pause and decide or Stop at once; choosing one
+        // with ui_select saves talk-preferences.json, so it needs --allow-ui-effects) and its fixed explanation. In the talk
+        // window, LiveBargeIn: the last time you talked over Martlet, whether it paused, stopped or played on, the verdict, what
+        // decided it and how long the judge and the pause took (never what was said).
+        "TalkBargeInBehavior", "TalkBargeInBehaviorAbout", "LiveBargeIn",
         // Companion › Listening › Watch along: whether Martlet also hears what this PC plays and whether its own voice is left
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
         // now, or why it can't). Never what was heard.
@@ -419,6 +428,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort",
         "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingLocalShare", "DeepThinkingSameStatus",
         "DeepThinkingKeyStatus", "DeepThinkingPoolStatus", "LiveTasks", "LiveJobs", "LiveSong",
+        // Companion › Thinking pool › Pool members: the member count and usable slots, the guidance ("1 slot: long thinking can
+        // delay screen and sound summaries; add a second slot for the full experience."), the likely-slowdown warnings (a member
+        // beside the conversation's Thinking model or the voice), and the Use the conversation model when the pool is empty box
+        // (ticking it saves thinking-pool.json, so it needs --allow-ui-effects). Each member's line reads through
+        // ThinkingPoolMember- below.
+        "ThinkingPoolSummary", "ThinkingPoolGuidance", "ThinkingPoolWarnings", "ThinkingPoolUseConversationModel",
         // Companion › Deep thinking › Web research (off by default): whether Martlet may search the web when asked and why it
         // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
         // needs --allow-ui-effects.
@@ -633,11 +648,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // reads the role's settings there and opens its dialog, so it needs --allow-ui-effects). Thinking's, Listening's and
         // Lip-sync's computers have the same button for the role they run ("SetupChangeHost-thinking-diva" reads "Change model:
         // conversation model on diva (now gemma4-e4b)").
-        // Each paired computer's Think here too box ("DeepThinkingPool-diva" reads "Think on diva too" and whether it is ticked;
-        // ticking it saves deep-thinking.json, so it needs --allow-ui-effects).
+        // Each paired computer's Join the Thinking pool box ("DeepThinkingPool-diva" reads "Join the Thinking pool on diva" and
+        // whether it is ticked; ticking it saves thinking-pool.json, so it needs --allow-ui-effects). Each pool member's line
+        // ("ThinkingPoolMember-0" reads "diva's Thinking pool (qwen3-8b): 2 slots; text only."), its slot choice
+        // (ThinkingPoolSlots-0) and its Remove button (ThinkingPoolRemove-0); both save thinking-pool.json, so they need
+        // --allow-ui-effects.
         // Each paired computer's shared-card warning, when Deep thinking there shares one graphics card with its Thinking model
         // ("DeepThinkingShare-diva" reads "diva: diva already runs a Thinking model (gemma4:e4b) on its only graphics card. ...").
         "DeepThinkingHost-", "DeepThinkingShare-", "DeepThinkingAddRole-", "DeepThinkingChangeModel-", "DeepThinkingPool-", "SetupChangeHost-",
+        "ThinkingPoolMember-", "ThinkingPoolSlots-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...").
         "AppearanceColor-", "AppearancePreview-",
@@ -983,6 +1002,37 @@ internal sealed class DesktopAutomation(bool allowEffects)
         }
         var waiting = Text("TouchZonesNoticed");
         return waiting is null ? null : new { waiting, last = Text("TouchZonesNoticedLast"), zone = Text("TouchZonesLast") };
+    }
+
+    /// <summary>Strokes the showing, locked character along <paramref name="points"/> (fractions 0..1 of the overlay's drawing; needs
+    /// --allow-ui-effects) through MoveAvatar's UI Automation value ("stroke:ms;x,y;..."), then waits for the overlay's stroke
+    /// record; without points it only reads the last one. Returns the overlay's reading (last tap, last stroke, last change).</summary>
+    internal async Task<object> StrokeCharacterAsync((double X, double Y)[]? points, int stepMs)
+    {
+        var element = Find("MoveAvatar");
+        if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            throw new InvalidOperationException("The character overlay can't be stroked through UI Automation.");
+        var value = (ValuePattern)pattern;
+        static object? Read(string text) => string.IsNullOrEmpty(text) ? null : System.Text.Json.JsonDocument.Parse(text).RootElement.Clone();
+        static string? Stroke(string text) => string.IsNullOrEmpty(text) ? null :
+            System.Text.Json.JsonDocument.Parse(text).RootElement is { ValueKind: System.Text.Json.JsonValueKind.Object } root &&
+            root.TryGetProperty("stroke", out var stroke) ? stroke.GetRawText() : null;
+        if (points is null) return new { stroked = false, last = Read(value.Current.Value) };
+        if (!allowEffects) throw new InvalidOperationException("Stroking the character requires --allow-ui-effects.");
+        if (points.Length is < 2 or > 200) throw new ArgumentException("Give 2 to 200 points.");
+        if (points.Any(p => p.X is not (>= 0 and <= 1) || p.Y is not (>= 0 and <= 1))) throw new ArgumentException("x and y are fractions from 0 to 1.");
+        if (stepMs is < 10 or > 2000) throw new ArgumentException("stepMs is 10 to 2000.");
+        if (value.Current.IsReadOnly) throw new InvalidOperationException("The character can't be stroked until it has loaded.");
+        var before = Stroke(value.Current.Value);
+        value.SetValue("stroke:" + string.Join(";", new[] { stepMs.ToString(System.Globalization.CultureInfo.InvariantCulture) }
+            .Concat(points.Select(p => FormattableString.Invariant($"{p.X},{p.Y}")))));
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        var limit = TimeSpan.FromMilliseconds(points.Length * stepMs + 3000);
+        string after;
+        while (Stroke(after = value.Current.Value) == before && waited.Elapsed < limit) await Task.Delay(50);
+        return Stroke(after) == before
+            ? new { stroked = false, last = Read(after), note = "The overlay didn't finish the stroke in time." }
+            : new { stroked = true, last = Read(after) };
     }
 
     /// <summary>Moves a movable control (the character overlay's MoveAvatar, like dragging the character) by dx, dy screen

@@ -8,7 +8,8 @@ namespace Martlet.Desktop;
 // How the user talks with Martlet, chosen in Companion (Listening, Voice and Vision) and used by the talk window while it is
 // open: always listening or push-to-talk, whether replies are spoken, whether Thinking also hears the recording (HearVoice:
 // on, off, or null when never chosen, which means on only while the recording stays on this PC; see HearVoiceFor), whether
-// talking over a reply stops it (BargeIn, opt-in and off by default), how readily what is heard counts as
+// talking over a reply stops it (BargeIn, opt-in and off by default) and how (BargeInStyle: pause and decide by default, or
+// stop at once), how readily what is heard counts as
 // words (WordCheck: Relaxed, Normal by default, or Sensitive), whether what the PC plays is removed
 // from the microphone (ReduceEcho, on by default), whether always listening also hears what the PC plays (HearPc, off by
 // default) and whether (and at what) Martlet may look (Watch, on by default, and ScreenScope, a WatchKind: your whole
@@ -27,7 +28,8 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
     int ScreenChattiness = 1, int ScreenScope = (int)WatchKind.ActiveScreen, string CameraId = "", string CameraName = "",
     string VideoAddress = "", bool SpeakReplies = true, bool Watch = true, int Version = 0, bool? HearVoice = null,
     bool BargeIn = false, bool ReduceEcho = true, bool HearPc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal,
-    bool DecideGaze = false, bool TranscribeFirst = false, double VoiceVolume = 1.0, bool ScreenSummary = true)
+    bool DecideGaze = false, bool TranscribeFirst = false, double VoiceVolume = 1.0,
+    Martlet.Conversation.BargeInBehavior BargeInStyle = Martlet.Conversation.BargeInBehavior.PauseAndDecide, bool ScreenSummary = true)
 {
     private const string FileName = "talk-preferences.json";
 
@@ -65,6 +67,7 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
                 VideoAddress = WatchSource.WithoutCredentials(loaded.VideoAddress ?? ""),
                 WordCheck = Enum.IsDefined(loaded.WordCheck) ? loaded.WordCheck : ListeningSensitivity.Normal,
                 VoiceVolume = Martlet.Audio.PcmGain.Clamp(loaded.VoiceVolume),
+                BargeInStyle = Enum.IsDefined(loaded.BargeInStyle) ? loaded.BargeInStyle : Martlet.Conversation.BargeInBehavior.PauseAndDecide,
                 Version = CurrentVersion
             };
         }

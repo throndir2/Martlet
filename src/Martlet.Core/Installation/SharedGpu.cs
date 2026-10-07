@@ -14,7 +14,7 @@ public static class SharedGpu
     /// NVIDIA one, which a voice engine needs (Thinking, Deep thinking and Listening run on the processor without one).</summary>
     public static readonly IReadOnlyList<(string Kind, string Name)> OtherGpuRoles =
     [
-        ("audio2face", "Lip-sync"), ("ollama", "Thinking"), ("deep-thinking", "Deep thinking"), ("stt", "Listening"),
+        ("audio2face", "Lip-sync"), ("ollama", "Thinking"), ("deep-thinking", "Thinking pool"), ("stt", "Listening"),
         ("singing", "Singing"), ("pictures", "Pictures")
     ];
 

@@ -26,6 +26,20 @@ public sealed class TouchLedgerTests
     }
 
     [Fact]
+    public void StrokesAndMovesReadPlainly()
+    {
+        var ledger = new TouchLedger();
+        for (var pass = 0; pass < 4; pass++) ledger.Record(new(PhysicalKind.Stroke, S(1), "your hair", "hair", "slowly"));
+        ledger.Record(new(PhysicalKind.Moved, S(2), Detail: "to their other monitor"));
+        ledger.Record(new(PhysicalKind.Zoomed, S(3), Detail: "in on your face"));
+        var burst = ledger.Drain(S(3))!;
+        Assert.Equal("They slowly stroked your hair 4 times, then moved you to their other monitor, then zoomed in on your face.", burst.Line);
+        Assert.Equal("(touch: hair stroke x4, moved, zoomed)", burst.HistoryLine);
+        Assert.True(burst.StartsTurn);
+        Assert.Equal("stroked your hair back and forth", PhysicalKinds.Phrase(PhysicalKind.Stroke, "your hair", "back and forth"));
+    }
+
+    [Fact]
     public void EveryKindHasWordsAndOnlyTouchesStartAReply()
     {
         foreach (var kind in Enum.GetValues<PhysicalKind>())
