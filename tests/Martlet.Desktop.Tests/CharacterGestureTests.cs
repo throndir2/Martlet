@@ -90,6 +90,8 @@ public sealed class CharacterGestureTests
         Assert.Null(AvatarController.Drawn(Reply("{\"started\":true}")));
         Assert.Equal(", drawn by Martlet over the face at 250, 100 (80 pixels wide)",
             AvatarController.Drawn(Reply("{\"started\":true,\"overlay\":true,\"face\":{\"x\":250,\"y\":100,\"width\":80}}")));
+        Assert.Equal(", drawn by Martlet over the face at 250, 100 (80 pixels wide, tilted -4°)",
+            AvatarController.Drawn(Reply("{\"started\":true,\"overlay\":true,\"face\":{\"x\":250,\"y\":100,\"width\":80,\"tilt\":-4}}")));
         Assert.Equal(", drawn by Martlet over the face (not in view now)",
             AvatarController.Drawn(Reply("{\"started\":true,\"overlay\":true,\"face\":null}")));
     }

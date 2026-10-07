@@ -19,6 +19,7 @@ Each release's section here is also its notes on GitHub.
 - The character now reacts to every sound and tone the voice makes: it laughs, sighs, gasps, coughs, hums, cries, glowers and more along with the voice, on any Live2D or VRM model, without lengthening replies. ([#507](https://github.com/throndir2/Martlet/pull/507))
 
 ### Fixed
+- Drawn emotes such as the blush, gloom lines and hearts stay on a Live2D character's head when it tilts, instead of swinging off to the side. ([#517](https://github.com/throndir2/Martlet/pull/517))
 - When you ask Martlet to whisper with the Chatterbox Turbo voice, it now really whispers. Chatterbox ignored its whisper tag, so Martlet now turns those sentences into a quiet, breathy whisper itself, and a whispered reply stays whispered from sentence to sentence. Update your host to get it. ([#509](https://github.com/throndir2/Martlet/pull/509))
 
 ## [0.51.0] - 2026-10-06

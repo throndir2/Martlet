@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Live2DAdapter, LocalModelBundle, faceFeatures, faceFromBox, faceFromLayout, faceSource, turnFace } from "../dist/index.js";
+import { Live2DAdapter, LocalModelBundle, faceFeatures, faceFromBox, faceFromLayout, faceSource, headRoll, turnFace } from "../dist/index.js";
 import { environment, files } from "./fixtures.mjs";
 
 test("the face is found from a head hit area, then face or cheek meshes, then the top of the model", () => {
@@ -26,12 +26,20 @@ test("the estimate from the top of the model sits in the head, a little below th
   assert.ok(features.top.y > face.y && features.mouth.y < features.cheekLeft.y);
 });
 
+test("the head's roll is a damped, clamped share of ParamAngleZ, not its full degrees", () => {
+  assert.equal(headRoll(0), 0);
+  assert.ok(headRoll(30) > 0 && headRoll(30) < 12.0001 * Math.PI / 180, String(headRoll(30)));
+  assert.ok(Math.abs(headRoll(10) - 3.5 * Math.PI / 180) < 1e-9);
+  assert.equal(headRoll(-90), -headRoll(90));
+  assert.equal(headRoll(Number.NaN), 0);
+});
+
 test("a fixed face follows the head's angles and rolls its features", () => {
   const face = { x: 0, y: 0, width: 1, roll: 0 };
   assert.ok(turnFace(face, 30, 0, 0).x > 0.1);
   assert.ok(turnFace(face, 0, 30, 0).y > 0.05);
   const rolled = turnFace(face, 0, 0, 20);
-  assert.ok(rolled.x < 0 && Math.abs(rolled.roll - 20 * Math.PI / 180) < 1e-9);
+  assert.ok(rolled.x < 0 && Math.abs(rolled.roll - headRoll(20)) < 1e-9);
   const features = faceFeatures(rolled);
   assert.ok(features.cheekRight.y > features.cheekLeft.y, "a counterclockwise roll lifts the viewer's right cheek");
   const box = faceFromBox("head", { minX: -1, maxX: 1, minY: 0, maxY: 2 });

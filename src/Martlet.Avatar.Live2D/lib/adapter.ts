@@ -1,7 +1,7 @@
 import { LIMITS, LocalModelBundle, pngDimensions, scaledSize } from "./assets.js";
 import { boundedInteger, Diagnostic, finite, Live2DError, requireCondition } from "./diagnostics.js";
 import { type Face, faceFeatures, faceFromBox, faceFromHint, faceFromLayout, type FaceHint, faceSource, type FaceSource,
-  bounds, type Point, turnFace } from "./face.js";
+  bounds, headRoll, type Point, turnFace } from "./face.js";
 import { BLUSH_PARAMETERS, type Gesture, GesturePlayer, type GestureState, isGesture, supportedGestures } from "./gestures.js";
 import { Capabilities, ChannelMapping, inspectParameters, MappingPlan, Parameter } from "./mapping.js";
 import { checkRuntime, type Animator, type AnimatorAssets, CubismMoc, CubismModel, CubismRenderer, SdkModules } from "./sdk.js";
@@ -331,7 +331,7 @@ export class Live2DAdapter {
       const parameter = this.#parameters.find(p => p.id === id);
       return parameter && model.getParameterValueByIndex ? model.getParameterValueByIndex(parameter.index) : 0;
     };
-    const roll = value("ParamAngleZ") * Math.PI / 180;
+    const roll = headRoll(value("ParamAngleZ"));
     let face: Face | undefined;
     if (this.#faceHint) face = turnFace(this.#faceHint, value("ParamAngleX"), value("ParamAngleY"), value("ParamAngleZ"));
     else if (source!.kind === "fixed") face = turnFace(source!.face, value("ParamAngleX"), value("ParamAngleY"), value("ParamAngleZ"));
