@@ -53,13 +53,15 @@ internal sealed partial class LiveConversationController
     {
         floor = new LiveFloor(clock);
         floorRules = new LiveFloorRules(floor).Attach(jobs.Places);
+        // The paired hosts' signed hold client; a controller without a data directory (tests) asks no host.
+        gpuHold = dataDirectory is null ? NoLiveGpuHold.Instance : LiveGpuHolds.Shared;
         floor.Changed += FloorChanged;
-        floorRules.StoppedWork += lease =>
+        floorRules.StoppedWork += lease => Task.Run(() =>
         {
             ErrorLog.Info($"Live floor: stopped {lease.Holder} on {lease.Place.Name} for the conversation" +
                 (lease.Kind == ThinkingJobKind.Digest ? "; its summary is dropped." : "; it goes on later."));
             WriteFloorStatus();
-        };
+        });
     }
 
     // What the conversation runs on now (its Thinking, voice and listening routes), for the floor's rules.
@@ -68,13 +70,18 @@ internal sealed partial class LiveConversationController
 
     private void FloorChanged(LiveFloorChange change)
     {
-        // A new turn: what the conversation runs on, with the graphics cards the hosts said serve it since (when they say).
-        if (change.From == LiveFloorLevel.Idle) UseLiveResources(Configuration);
+        // The rules already acted (LiveFloorRules); what follows never runs on the caller's thread, which may be the
+        // microphone loop or the reply's own path.
         var did = change.To == LiveFloorLevel.Idle ? floorRules.Period.Describe() : null;
-        ErrorLog.Info($"Live floor: {change.To} ({change.Why})" + (did is null ? "." : $"; this turn it {did}."));
         if (change.To == LiveFloorLevel.Live) HoldGpus();
         else if (change.To == LiveFloorLevel.Idle) ReleaseGpus();
-        WriteFloorStatus();
+        Task.Run(() =>
+        {
+            // A new turn: what the conversation runs on, with the graphics cards the hosts said serve it since (when they say).
+            if (change.From == LiveFloorLevel.Idle) UseLiveResources(Configuration);
+            ErrorLog.Info($"Live floor: {change.To} ({change.Why})" + (did is null ? "." : $"; this turn it {did}."));
+            WriteFloorStatus();
+        });
     }
 
     /// <summary>A reply to the user (what they said or typed, a touch, a message from a paired chat, people in your Discord call)
@@ -145,24 +152,25 @@ internal sealed partial class LiveConversationController
         Task.Run(() => HoldAsync(stop.Token)).Forget();
     }
 
-    private void ReleaseGpus() => Interlocked.Exchange(ref holding, null)?.Cancel();
+    private void ReleaseGpus() => _ = Interlocked.Exchange(ref holding, null)?.CancelAsync();
 
     private async Task HoldAsync(CancellationToken token)
     {
         var hold = GpuHold;
-        HashSet<string> held = new(StringComparer.Ordinal);
+        HashSet<string> asked = new(StringComparer.Ordinal);
         try
         {
             while (!token.IsCancellationRequested)
             {
-                // Renewed only while Live; Listening lets the hold run out, Idle ends it.
+                // Renewed only while Live; Listening lets the hold run out, Idle ends it. A host problem never throws here: the
+                // live turn goes on without the hold.
                 if (floor.Level == LiveFloorLevel.Live)
                     foreach (var (host, routes) in floorRules.Resources.Hosts)
                     {
                         try
                         {
                             await hold.HoldAsync(host, routes, HoldTime, token).ConfigureAwait(false);
-                            if (held.Add(host)) Volatile.Write(ref heldHosts, [.. held]);
+                            if (asked.Add(host)) Volatile.Write(ref heldHosts, [.. asked]);
                         }
                         catch (OperationCanceledException) when (token.IsCancellationRequested) { return; }
                         catch (Exception error) when (error is not OutOfMemoryException)
@@ -180,7 +188,7 @@ internal sealed partial class LiveConversationController
         {
             Volatile.Write(ref heldHosts, []);
             using var release = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-            foreach (var host in held)
+            foreach (var host in asked)
             {
                 try { await hold.ReleaseAsync(host, release.Token).ConfigureAwait(false); }
                 catch (Exception error) when (error is not OutOfMemoryException) { }
@@ -214,7 +222,12 @@ internal sealed partial class LiveConversationController
                 holds = new
                 {
                     client = GpuHold.GetType().Name, live = Volatile.Read(ref holding) is not null, hosts = resources.Hosts.Select(h => h.HostId),
-                    held = Volatile.Read(ref heldHosts), problem = Volatile.Read(ref holdProblem)
+                    asked = Volatile.Read(ref heldHosts),
+                    // What the hosts granted (the signed client knows; older hosts grant nothing).
+                    granted = GpuHold is HostLiveGpuHold signed
+                        ? resources.Hosts.Select(h => new { hostId = h.HostId, until = signed.HeldUntil(h.HostId) }).Where(h => h.until is not null).ToArray()
+                        : null,
+                    problem = Volatile.Read(ref holdProblem)
                 },
                 workQueue = new { stoppedBackground = WorkQueue.Shared.Stopped },
                 changes = floor.Recent.Select(c => new { at = c.At, from = c.From.ToString(), to = c.To.ToString(), why = c.Why })
