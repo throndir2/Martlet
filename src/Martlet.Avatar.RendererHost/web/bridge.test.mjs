@@ -105,6 +105,39 @@ test("Martlet's overlay emotes play on any model, a held one reported as the hel
   assert.equal(posts.at(-1).gesture.held, undefined);
 });
 
+test("the face Martlet draws over is read unprompted for MCP: how it is followed, where and what is under each cheek", async () => {
+  const posts = [];
+  class Renderer {
+    load() { return Promise.resolve({ expressions: [] }); }
+    resize() {}
+    update() {}
+    setView() {}
+    dispose() {}
+    playGesture() { return false; }
+    endGesture() {}
+    get gestureState() { return {}; }
+    hitTest(x) { return x < 0.5 ? { bone: "head", mesh: "Face" } : undefined; }
+    faceAnchor() { return { x: 250, y: 100, width: 80, angle: Math.PI / 18, tracking: "bones",
+      cheekLeft: { x: 230, y: 115 }, cheekRight: { x: 270, y: 115 },
+      cheekLeftFrame: { right: { x: 100, y: 0 }, down: { x: 0, y: 80 }, visible: 1 },
+      cheekRightFrame: { right: { x: 40, y: 0 }, down: { x: 0, y: 80 }, visible: 0.25 } }; }
+  }
+  const { send } = await page(Renderer, posts);
+  await send({ kind: "face", data: { id: 1 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { faceReading: { id: 1, found: false } }, "nothing before a model shows");
+  await send({ kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm" } });
+  await send({ kind: "action", data: { kind: "gesture", name: "blush" } });
+  assert.equal(posts.at(-1).face.tracking, "bones", "the reply says how the face is followed");
+  await send({ kind: "face", data: { id: 2 } });
+  const reading = JSON.parse(JSON.stringify(posts.at(-1))).faceReading;
+  assert.deepEqual([reading.id, reading.found, reading.tracking, reading.x, reading.y, reading.width, reading.tilt],
+    [2, true, "bones", 0.5, 0.2, 0.16, 10]);
+  assert.deepEqual(reading.cheekLeft, { x: 0.46, y: 0.23, visible: 1, across: 1.25, hit: true, drawables: [], bone: "head", mesh: "Face" });
+  assert.deepEqual([reading.cheekRight.visible, reading.cheekRight.across, reading.cheekRight.hit], [0.25, 0.5, false]);
+  assert.deepEqual(reading.overlays, ["blush"]);
+  assert.ok(!posts.some(post => post.error));
+});
+
 test("shared Live2D/VRM page leaves the desktop visible behind the canvas", async () => {
   const html = await readFile(new URL("index.html", import.meta.url), "utf8");
   assert.match(html, /html,body\{[^}]*background:transparent[;}]/);

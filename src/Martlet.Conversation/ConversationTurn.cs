@@ -85,6 +85,9 @@ public sealed class ConversationTurn
     private int pauses, resumes;
     private TimeSpan pausedTime;
     private string? sentence;
+    // How long this reply has played, which its character cues are timed by: it pauses and resumes with the reply, and it
+    // stops when the reply is stopped, replaced or fails, so a cue the reply hasn't reached is never acted.
+    private readonly CharacterCueClock cueClock;
 
     public Guid SessionId => Owner.SessionId;
     public Guid TurnId { get; } = Guid.NewGuid();
@@ -111,13 +114,14 @@ public sealed class ConversationTurn
         IConversationAuthorizationSource authorization, long epoch, Guid? retryOf, bool earlierSpeech)
     {
         Owner = owner;
+        cueClock = new(Clock);
         this.request = request;
         this.authorization = authorization;
         // The speaking voice's own tags: a spelling it shares with another tag means what it means to the speech segmenter.
         IReadOnlyList<VoiceTag> voiceTags = request.Speech is null ? [] : SpeechEngines.TagsForModel(request.HostSpeech?.ModelId);
         // A reply that isn't spoken has no sentence timing: its character tags act as soon as the words arrive.
         shown = new(request.CharacterTags, request.Speech is null && owner.CharacterCues is { } feed
-            ? tag => feed.Post([new(tag, TimeSpan.Zero)], Task.CompletedTask) : null,
+            ? tag => feed.Post([new(tag, TimeSpan.Zero)], Task.CompletedTask, cueClock) : null,
             request.ControlTags, controls.Add, voiceTags,
             tag => { if (ReplyTag.Of(tag, voiceTags) is { } act) acted.Add(act); });
         captioner = request.Speech is null && owner.SpokenText is not null
@@ -174,6 +178,7 @@ public sealed class ConversationTurn
             pausedAt = Clock.GetTimestamp();
             pauses++;
             playback?.Pause();
+            cueClock.Pause();
             return true;
         }
     }
@@ -188,6 +193,7 @@ public sealed class ConversationTurn
             pausedTime += Clock.GetElapsedTime(pausedAt);
             resumes++;
             playback?.Resume();
+            cueClock.Resume();
             return true;
         }
     }
@@ -213,6 +219,7 @@ public sealed class ConversationTurn
         segments.Writer.TryComplete();
         // Capture-scoped handle: never use sink-wide Stop, even during delayed teardown.
         _ = playback?.StopAsync();
+        cueClock.Stop();
         SetState(userStopped ? ConversationState.Canceled : text.Length > 0 ? ConversationState.Partial : ConversationState.Failed);
         stopSignal.TrySetResult();
         callbacks = stop.CancelAsync();
@@ -980,7 +987,8 @@ public sealed class ConversationTurn
     }
 
     // The character acts on a sentence's cues as it starts playing, each one about where it was written: its share of the
-    // sentence's words, of the sentence's audio length when that is known (otherwise of a natural reading pace).
+    // sentence's words, of the sentence's audio length when that is known (otherwise of a natural reading pace). The cues
+    // follow the reply's cue clock, so a pause holds them and a stop drops the ones not yet acted.
     private void PostCues(SpeechTake take, int? sampleRate, Task finished)
     {
         if (Owner.CharacterCues is not { } feed || take.Cues is not { Count: > 0 } cues) return;
@@ -988,7 +996,7 @@ public sealed class ConversationTurn
         var length = Math.Max(1, take.Text.Length);
         var seconds = sampleRate is > 0 && take.FinalSamples is { } samples ? samples / (double)sampleRate.Value : length / 14.0;
         feed.Post(cues.Select(cue => new CharacterCue(cue.Tag,
-            TimeSpan.FromSeconds(Math.Clamp(seconds * cue.Offset / length, 0, 30)))).ToArray(), finished);
+            TimeSpan.FromSeconds(Math.Clamp(seconds * cue.Offset / length, 0, 30)))).ToArray(), finished, cueClock);
     }
 
     // Captions (speech bubble, subtitles) for words the voice couldn't say, one sentence after another for about as long as

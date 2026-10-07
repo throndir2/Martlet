@@ -182,6 +182,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
             points = new { type = "array", items = new { type = "array", items = new { type = "number", minimum = 0, maximum = 1 }, minItems = 2, maxItems = 2 } },
             stepMs = new { type = "integer", minimum = 10, maximum = 2000 }
         }),
+        Tool("character_face", "Read where Martlet draws over the showing character's face (its own blush glow and overlay emotes " +
+            "such as hearts or a sweat drop), samples times (1 to 60, default 1) gapMs apart (0 to 5000, default 250), as each frame " +
+            "is drawn. Each reading (faces) has n, found, tracking (mesh: pinned to the Live2D model's own face meshes; bones: a " +
+            "VRM's head bone; estimate: a Live2D model's head angles, when no face meshes were found), x, y and width (fractions of " +
+            "the character overlay's drawing, +y down), tilt (degrees, clockwise), cheekLeft and cheekRight (x, y; visible, 0 to " +
+            "1 as the cheek turns away; across, the cheek's width against the face's, below 1 on a turned head's far cheek; and " +
+            "the renderer's hit test there: hit, drawables, bone, mesh), the overlays showing and pinned (Live2D: carriers, the " +
+            "mesh vertices the face rides on, and milliseconds, how long finding them took at load). summary says which tracking " +
+            "was used, how far the face moved (x, y, width, tilt) and, per cheek, the share of readings over the character, " +
+            "what it was mostly over and for what share, the least it showed and its across range. Reading changes nothing, so " +
+            "it needs no --allow-ui-effects.", new
+        {
+            samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumFaceSamples },
+            gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
+        }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
             "[x, y, width, height] in physical screen pixels) and whether Martlet still runs. \"open\" and \"menu\" send the icon " +
@@ -902,7 +917,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "only what is said aloud and is not a failure (voice.muted); paused pauses the reply once its first audio played, as " +
             "Pause and decide does when you talk over it, holds it 1 s and plays it on: ok also needs no samples played while paused, " +
             "the next piece still made meanwhile (voice.hold), every piece said once (nothing made again) and the " +
-            "latency line saying it paused and resumed; text-only sends the reply with no voice at all (Speak " +
+            "latency line saying it paused and resumed (with characterTags, also no cue acted while paused: a cue that falls in " +
+            "the pause waits for it); stopped has the user stop the reply (Stop, or talking over it) as the failAt-th piece starts " +
+            "playing, and ok then needs the reply canceled and no cue acted after the stop (character.stoppedAtMs; the cues still " +
+            "waiting are dropped); text-only sends the reply with no voice at all (Speak " +
             "Martlet's replies aloud off), so every sentence goes to the captions; a fixture speaker opens no " +
             "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
             "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
@@ -922,7 +940,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "[\"{nod}\", \"{blush}\"]) the reply is offered the desktop character's tags as while the character shows: character " +
             "returns what the reply's tags did (acted: each tag, its kind, name and the other spelling the reply used, such as " +
             "[nod] or *nods* for {nod}), the note the talk window shows under the reply (\"Tone: happy. Emotes: nod.\") and each cue " +
-            "the character got (tag, atMs when its sentence started playing, delayMs into that sentence), and ok also needs every " +
+            "the character got (tag, atMs when its sentence started playing, delayMs into that sentence, and actedMs when the " +
+            "character acted it, waiting for it as the desktop's character does, or dropped when the reply stopped first), and ok " +
+            "also needs every " +
             "spelling of the tags out of reply.text and voice.pieces and, with voiceFailure none, slow or text-only, a cue for " +
             "every tag acted. Loopback only; reads no credentials.", new
         {
@@ -1519,6 +1539,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 OptionalInt(arguments, "holdMs"), OptionalInt(arguments, "repeat"), OptionalInt(arguments, "gapMs"), Taps(arguments),
                 OptionalInt(arguments, "settleMs")),
                 "character_stroke" => await desktop.StrokeCharacterAsync(StrokePoints(arguments), OptionalInt(arguments, "stepMs") ?? 40),
+                "character_face" => await desktop.FaceCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "turn_judge_check" => await TurnJudgeCheck.RunAsync(arguments, MartletDirectory(arguments), cancellation),

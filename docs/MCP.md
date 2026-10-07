@@ -2240,7 +2240,9 @@ then the rest, as Chatterbox streams on a busy host's graphics card)
 or `none`; `muted` instead has the user mute Martlet's voice (what the
 character's *Mute voice* does, `ConversationTurn.MuteVoice`) as the
 `failAt`-th piece is asked, and `text-only` sends the reply with no voice at
-all (*Speak Martlet's replies aloud* off); a fixture speaker opens no device and plays nothing. It returns
+all (*Speak Martlet's replies aloud* off); `stopped` has the user stop the
+reply (Stop, or talking over it: `ConversationTurn.StopAsync`) as the
+`failAt`-th piece starts playing; a fixture speaker opens no device and plays nothing. It returns
 `reply` (`state`, `failure`, `textComplete`, `fullText`, `characters` of
 `servedCharacters`, and the fixture `text`) and `voice` (`stopped`, `why` (the
 turn's `SpeechFailure`), `muted` (the turn's `VoiceMuted`), `provider` and `failedJob`, `piecesAsked`,
@@ -2257,6 +2259,8 @@ the whole reply. With `muted`, `ok` needs the voice muted at that piece
 (`voice.muted`, no `SpeechFailure`, nothing more asked of the voice) and, with
 `text-only`, no voice request or speaker at all; both still need the whole
 text and captions that show all of it (every line unsaid for `text-only`).
+With `stopped`, `ok` needs the reply `Canceled` instead of completed, no voice
+failure and the `failAt`-th piece made; the text and the captions stop there.
 Before the fix this reported `Partial` with only the text up
 to the failed sentence, and the captions then showed nothing past the last
 spoken piece. With `reply` (up to 1,024 characters of one-line text) that text
@@ -2276,9 +2280,11 @@ talk over it), stays paused for 1 s and plays on (`Resume`): `ok` also needs
 `voice.hold` to show no samples played while paused (`SamplesBefore` equals
 `SamplesAfter`), the next piece made by the end of the pause (`MadeAfter` at
 least 2: synthesis runs one piece ahead of playback and goes on while paused),
-every piece said once (nothing made again), `timings` with one
+every piece said once (nothing made again: the pieces together say the reply's
+words once), `timings` with one
 pause and one resume, and the latency line ending *, paused N ms when you
-talked over it, then resumed*. It reads no
+talked over it, then resumed*. `voice.hold` also has `PausedAtMs` and
+`ResumedAtMs`, on the same clock as the character cues. It reads no
 credentials and nothing leaves loopback. A real
 paired host's voice failing is NOT reproduced; the talk window then notes
 *The voice failed, so this wasn't spoken.* or *The voice stopped partway, so
@@ -2338,10 +2344,17 @@ desktop character's tags as while the character shows
 tags did, from `ConversationTurn.Acted`, as `voice_tags` lists it: `tag`,
 `kind`, `name`, `written`), `note` (the line the talk window shows under the
 reply), `cues` (each cue the character got: `tag`, `atMs` when its sentence
-started playing and `delayMs` into that sentence) and `hidden`; `ok` also needs
+started playing, `delayMs` into that sentence, and `actedMs` when the
+character acted it or `dropped` when the reply stopped first), `dropped` (how
+many), `cuesOk`, `stoppedAtMs` (with `stopped`, when the stop came) and
+`hidden`. The check waits for each cue through `CharacterCueLine.ReachedAsync`,
+as the desktop's character does. `ok` also needs
 every [spelling](CONVERSATION.md#voice-tags) of the tags out of `reply.text`
 and `voice.pieces` and, with `voiceFailure` `none`, `slow` or `text-only`, a
-cue for every tag acted (`everyCue`). For example
+cue for every tag acted (`everyCue`) and every cue acted (`cuesOk`). With
+`paused`, `cuesOk` needs every cue acted and none while the reply was paused:
+a cue that falls in the pause waits for it. With `stopped`, `cuesOk` needs no
+cue acted after the stop: the cues still waiting are dropped. For example
 `{"voiceFailure":"none","characterTags":["{nod}","{shake_head}","{blush}"],"reply":"Oh, look at all that activity! [nod] What are you working on right now? I bet it's cool *blushes* tell me everything."}`
 spoke all three sentences, with `{nod}` (written `[nod]`) at the start of the
 second and `{blush}` (written `*blushes*`) 1071 ms into the third, and `note`
@@ -2349,6 +2362,19 @@ second and `{blush}` (written `*blushes*`) 1071 ms into the third, and `note`
 the talk window (chat text isn't returned by `ui_snapshot`), and `logs_tail`
 `contains` `Reply acted` reads *Reply acted: {nod} (written [nod]).* next to
 *Character gesture 'nod' played for {nod}.*
+
+For example, `{"voiceFailure":"paused","characterTags":["{wink}"],"reply":"Hey cutie (winks), I like you. Tell me all about your day."}`
+paused the reply from 330 to 1349 ms. The wink was due 643 ms into a sentence
+that started at 315 ms, inside the pause. It acted at 1989 ms, at the same
+point in the speech. With the cue clock's pause and stop taken out, the same
+call had the wink act at 1047 ms, during the pause (`cuesOk` false). With
+`stopped` and *Hey cutie, I like how you are (winks). Tell me all about your
+day.*, the stop came at 372 ms and the wink, due 2071 ms into its sentence, was
+`dropped`; without the cue clock it acted at 2446 ms, after the stop. With
+`failAt` 2 and *(winks) Hey cutie, I like you. Okay, I see you better now
+{wink} so tell me more.*, the first wink acted at once and the second, due
+151 ms after the stop, was dropped. In the desktop a dropped cue logs
+*Character cue {wink} wasn't acted: the reply stopped before it got there.*
 
 `chattiness_status` reads Companion › Vision › **How often it comments** (the
 same choice as Listening › Watch along) from a data directory's
@@ -3993,6 +4019,37 @@ the coarse `zones` crossed) and `physical`. Without `points` it only reads.
 Companion › Character › Touch zones' `CharacterPhysicalLast` shows Martlet's
 summary.
 
+**Where Martlet draws over the face**: the blush glow (on a model without a
+blush of its own) and the overlay emotes are drawn around the face each time
+the renderer page draws a frame. A Live2D model's face is pinned to its own
+face meshes. When the model loads, the page moves each head angle
+(`ParamAngleX`, `ParamAngleY`, `ParamAngleZ`) to find the mesh vertices that
+turn with the head. Then it moves every other parameter to its limits, to drop
+the vertices that change shape on their own (hair physics, eyelids, eyes,
+mouth, brows), and puts every parameter back. In each frame the eyes, cheeks,
+mouth and top of the head move with those vertices, so they follow idle
+motions, body sway, breathing, the mouse, a look at a point and gestures as
+the model draws them. A model without the standard angle parameters uses the
+earlier estimate from its head angles. A VRM's face follows its posed head
+bone. Each blush lies on its cheek's surface: a turned head shows the near
+cheek wider and the far cheek narrower, and the far cheek fades out as it
+turns away. `character_face` reads this through UI Automation (`MoveAvatar`'s
+value `"face"`), `samples` times (1 to 60) `gapMs` apart (default 250). It
+changes nothing, so it needs no `--allow-ui-effects`. Each reading in `faces`
+has `n`, `found`, `tracking` (`mesh`, `bones` or `estimate`), `x`, `y` and
+`width` (fractions of the overlay's drawing, +y down), `tilt` (degrees,
+clockwise), `cheekLeft` and `cheekRight` (`x`, `y`, `visible` from 0 to 1,
+`across`, the cheek's width against the face's width, and the hit test there:
+`hit`, `drawables`, `bone`, `mesh`), `overlays` (the overlays showing) and
+`pinned` (Live2D: `carriers`, how many mesh vertices the face rides on, and
+`milliseconds`, how long finding them took at load). `summary` gives the
+`tracking` used, how far the face `moved` (`x`, `y`, `width`, `tilt`) and, for
+each cheek, `onCharacter` (the share of readings over the character),
+`mostlyOver` and `mostlyOverShare` (the topmost drawable, mesh or bone there
+most often, and for what share of readings), `visibleLeast` and `across`
+(`least`, `most`). `MoveAvatar`'s value in `ui_snapshot` shows the last
+reading as `face`.
+
 **Moves, zooms and other changes Martlet hears about**: the overlay notes each
 drag, arrow-key nudge, `ui_move`, zoom (wheel, menu, keys or Martlet's zoom
 buttons), reset zoom, pan of a zoomed view and Reset position, and once it has
@@ -4182,9 +4239,11 @@ tags replies get with the voice chosen now and which follow the voice's cues;
 ...*; for a gesture followed by what the renderer now plays and holds, *Gestures
 now: wink playing, shy held.*; an emote Martlet drew over the face itself, such
 as the blush glow on a model without a blush of its own, adds *drawn by Martlet
-over the face at 414, 88 (50 pixels wide, tilted 3°)* with the face's middle and
-width in the overlay's page pixels and the head's roll (clockwise; a Live2D head's
-roll is a damped share of `ParamAngleZ`, at most 12°), or *(not in view now)* when the face can't be found
+over the face at 414, 88 (50 pixels wide, tilted 3°, pinned to the face's meshes)* with the face's middle and
+width in the overlay's page pixels, the head's roll (clockwise) and how the face is followed (*pinned to the
+face's meshes* for Live2D, *following the head bone* for VRM, or *estimated from the head's angles* for a
+Live2D model without face meshes to pin to; a Live2D estimate's roll is a damped share of `ParamAngleZ`, at
+most 12°; see *Where Martlet draws over the face* and `character_face`), or *(not in view now)* when the face can't be found
 or faces away), also in `logs_tail` `desktop` as *Character expression '脸红'
 played for {blush}.* (*Character gesture 'blush' played for a try, drawn by
 Martlet over the face at ...*); and `CharacterActionsSaveState` *All changes saved.* or *Not saved:
