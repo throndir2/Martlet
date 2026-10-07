@@ -88,6 +88,74 @@ public sealed class RulesBargeInJudge : IBargeInJudge
     }
 }
 
+/// <summary>A model judge: asks a Thinking model (the Thinking pool's barge-in judge job) whether the words said over Martlet
+/// were for it. <c>ask</c> sends <see cref="Instructions"/> and <see cref="Prompt"/> and returns the model's answer (null when
+/// none). An answer that names no verdict throws, so <see cref="BargeInJudging.RuleAsync"/> lets the local rules decide, as it
+/// does when the model is slower than <see cref="BargeInJudging.Deadline"/>.</summary>
+public sealed class ModelBargeInJudge(Func<string, string, CancellationToken, Task<string?>> ask, string name = "model") : IBargeInJudge
+{
+    /// <summary>Few words out: the verdict is the first word.</summary>
+    public const int MaxOutputTokens = 16;
+
+    public const string Instructions =
+        "You decide whether words a person said while a voice assistant was talking were meant for the assistant. " +
+        "Answer INTERRUPT when they are for the assistant: a question, a request, a correction, a new topic, or wanting it to stop. " +
+        "Answer NOTFORME when they are not: a quick backchannel such as \"yeah\" or \"mm-hmm\", agreeing, laughing along, " +
+        "talking to someone else in the room, a TV, video or other audio, or the assistant's own words heard back. " +
+        "Answer with the one word INTERRUPT or NOTFORME first, then optionally a colon and at most five words why.";
+
+    public string Name => name;
+
+    /// <summary>What the model reads: the assistant's name, the sentence it is saying, the end of its reply so far, the words
+    /// heard over it and how sure speech-to-text was.</summary>
+    public static string Prompt(BargeInJudgeInput input)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        var text = new System.Text.StringBuilder();
+        var names = input.Context.Names.Prepend("Martlet").Distinct(StringComparer.OrdinalIgnoreCase);
+        text.Append("The assistant's name: ").AppendJoin(" or ", names).Append('\n');
+        if (!string.IsNullOrWhiteSpace(input.Sentence)) text.Append("The assistant is saying: \"").Append(input.Sentence.Trim()).Append("\"\n");
+        if (!string.IsNullOrWhiteSpace(input.RecentReply))
+            text.Append("The end of its reply so far: \"").Append(input.RecentReply.Trim()).Append("\"\n");
+        text.Append("Heard over it: \"").Append(input.Heard.Trim()).Append('"');
+        if (input.Confidence is { } confidence)
+            text.Append(System.Globalization.CultureInfo.InvariantCulture, $"\nSpeech-to-text confidence: {confidence:0.00}");
+        return text.ToString();
+    }
+
+    /// <summary>The verdict a model's answer names first (INTERRUPT, NOTFORME, "not for me"...), with its short reason; null
+    /// when it names none.</summary>
+    public static BargeInJudgment? Parse(string? answer)
+    {
+        if (string.IsNullOrWhiteSpace(answer)) return null;
+        var text = answer.Trim().TrimStart('*', '"', '\'', '`', '[', '(', ' ');
+        var squeezed = new string(text.TakeWhile(c => c is not (':' or '\n' or '.' or ',' or '-' or '—')).Where(char.IsLetter).ToArray());
+        BargeInVerdict? verdict = squeezed.ToUpperInvariant() switch
+        {
+            "INTERRUPT" or "INTERRUPTION" or "STOP" => BargeInVerdict.Interrupt,
+            "NOTFORME" or "NOTFORYOU" or "NOTFORTHEASSISTANT" or "IGNORE" or "CONTINUE" => BargeInVerdict.NotForMe,
+            _ => null
+        };
+        if (verdict is null) return null;
+        var colon = text.IndexOf(':');
+        var why = colon < 0 ? "" : new string(text[(colon + 1)..].Trim().TakeWhile(c => c != '\n').Take(60).ToArray()).Trim();
+        return new(verdict.Value, why.Length > 0 ? $"the model judge: {why}"
+            : verdict == BargeInVerdict.Interrupt ? "the model judge: for Martlet" : "the model judge: not for Martlet");
+    }
+
+    public async Task<BargeInJudgment> JudgeAsync(BargeInJudgeInput input, CancellationToken cancellationToken)
+    {
+        var answer = await ask(Instructions, Prompt(input), cancellationToken).ConfigureAwait(false);
+        // No answer at all: no model could take the job now (the pool has no free capable member).
+        if (answer is null) throw new BargeInJudgeUnavailableException();
+        return Parse(answer) ?? throw new InvalidOperationException("The model judge's answer named no verdict.");
+    }
+}
+
+/// <summary>No model could judge now (the Thinking pool has no capable member): the local rules decide at once, without waiting
+/// for <see cref="BargeInJudging.Deadline"/>.</summary>
+public sealed class BargeInJudgeUnavailableException() : Exception("No model judge is available.");
+
 /// <summary>The timings of pause and decide, and the ruling with its deadline: a cue never waits for a judge; a judge that
 /// doesn't answer within <see cref="Deadline"/> (or fails) gives way to the local rules.</summary>
 public static class BargeInJudging
@@ -120,8 +188,9 @@ public static class BargeInJudging
             return new(judged.Verdict, judged.Reason, BargeInSource.Judge, judge.Name, took);
         await stop.CancelAsync().ConfigureAwait(false);
         _ = answer.ContinueWith(static t => t.Exception, TaskScheduler.Default);
-        return new(rules.Verdict, rules.Reason + (answer.IsFaulted ? $"; the {judge.Name} judge failed" : $"; the {judge.Name} judge was too slow"),
-            BargeInSource.Timeout, "rules", took);
+        var why = answer.Exception?.InnerException is BargeInJudgeUnavailableException ? $"; no {judge.Name} judge was available"
+            : answer.IsFaulted ? $"; the {judge.Name} judge failed" : $"; the {judge.Name} judge was too slow";
+        return new(rules.Verdict, rules.Reason + why, BargeInSource.Timeout, "rules", took);
     }
 }
 
