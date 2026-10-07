@@ -384,6 +384,8 @@ public partial class MainWindow
             ContractException or JsonException or OperationCanceledException) { }
         finally { refreshingHome = false; }
         if (closing) return;
+        // Another persona may be in use now, with another usual gaze.
+        avatar.Gaze.Refresh();
         var hostIds = string.Join(",", homeHosts.Select(h => h.HostId + "/" + h.Pairing.CredentialId));
         try { homeHosts = HostRegistry.Load(store.DataDirectory, homeAvatar?.RemoteHost, machine.LanAddress ?? HostSetupCommands.ThisPcAddress()); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)

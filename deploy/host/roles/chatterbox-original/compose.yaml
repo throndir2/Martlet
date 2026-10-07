@@ -1,0 +1,24 @@
+# Martlet Chatterbox Original voice host service (the bot's speaking), loopback-only behind the Martlet gateway.
+# The same image as the chatterbox role, built on this host from Martlet's workers/chatterbox sources
+# (workers/chatterbox/host/Dockerfile), with the original 500M model. "martlet-host add chatterbox-original" adds
+# compose.gpu.yaml, then runs "martlet-chatterbox provision" (downloads and verifies the pinned model files into the
+# martlet-chatterbox-original-models volume) and "martlet-chatterbox warm". The service listens only on 127.0.0.1:50089.
+
+services:
+  chatterbox-original:
+    build:
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/chatterbox
+      dockerfile: host/Dockerfile
+    image: martlet-chatterbox:8
+    pull_policy: build
+    restart: unless-stopped
+    environment:
+      CHATTERBOX_MODEL: ${CHATTERBOX_MODEL:-chatterbox-original}
+      MARTLET_CHATTERBOX_PORT: "50089"
+    volumes:
+      - models:/opt/martlet-chatterbox/models
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}
+
+volumes:
+  models:
+    name: martlet-chatterbox-original-models

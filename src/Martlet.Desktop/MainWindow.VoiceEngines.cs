@@ -73,7 +73,9 @@ public partial class MainWindow
         var spots = SpeechEngines.All.Select(engine => (Engine: engine, Spot: Spot(engine, target, onThisPc, route, where))).ToList();
         var windowsInUse = onThisPc && route?.RouteType == SetupRouteType.LocalWindowsTts;
         var anyInUse = windowsInUse || spots.Any(s => s.Spot.InUse);
-        var recommended = spots.FirstOrDefault(s => s.Spot.Cannot is null).Engine;
+        // The first engine for the graphics card that can run here; on a computer without one a Windows voice stays the
+        // suggestion, though Chatterbox Nano can run on its processor.
+        var recommended = spots.FirstOrDefault(s => s.Spot.Cannot is null && s.Engine.NeedsGpu).Engine;
 
         var rows = new List<UIElement>();
         foreach (var (engine, spot) in spots.Where(s => s.Spot.Cannot is null))
@@ -166,12 +168,14 @@ public partial class MainWindow
         return new(inUse, ready, pending, cannot, state);
     }
 
-    /// <summary>Why this PC can't run <paramref name="engine"/>: no NVIDIA graphics card, or one with too little memory; null
-    /// when it can or Martlet hasn't read this PC's hardware yet.</summary>
+    /// <summary>Why this PC can't run <paramref name="engine"/>: an ARM64 processor, no NVIDIA graphics card, or one with too
+    /// little memory (an engine that runs on the processor too only needs the first); null when it can or Martlet hasn't read
+    /// this PC's hardware yet.</summary>
     private string? ThisPcCannot(SpeechEngine engine)
     {
         if (ReferenceEquals(machine, MachineInfo.Unknown)) return null;
         if (machine.ArmRefusal(Martlet.Core.Platforms.PlatformCatalog.EngineForHostRole(engine.HostRoleKind)) is { } arm) return arm;
+        if (!engine.NeedsGpu) return null;
         var nvidia = machine.Gpus.Where(g => g.IsNvidia).OrderByDescending(g => g.MemoryGb ?? 0).FirstOrDefault();
         if (nvidia is null)
             return $"Needs an NVIDIA graphics card; this PC has {(machine.Gpus.Count == 0 ? "none" : string.Join(", ", machine.Gpus.Select(g => g.Describe())))}.";
@@ -428,7 +432,7 @@ public partial class MainWindow
     /// <summary>The model's terms in a sentence or two: its licence, any restriction, and the voice-rights reminder.</summary>
     private static string EngineTerms(SpeechEngine engine) =>
         $"{engine.Name}'s model licence: {engine.WeightsLicense}{(engine.NonCommercial ? ", non-commercial use only" : "")}." +
-        (engine == SpeechEngines.Chatterbox ? " Every reply carries Resemble AI's inaudible watermark." : "") +
+        (SpeechEngines.IsChatterbox(engine) ? " Every reply carries Resemble AI's inaudible watermark." : "") +
         (engine == SpeechEngines.Dia ? " Nari Labs forbids using it to imitate real people without their permission." : "") +
         " Only use voices that are yours or that you have permission to use.";
 

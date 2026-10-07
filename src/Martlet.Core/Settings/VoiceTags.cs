@@ -89,7 +89,8 @@ public static class VoiceTags
         ["crying"] = ["cry", "cries", "sob", "sobs", "sobbing", "tearful", "tearfully", "teary"],
         ["whispering"] = ["whisper", "whispers", "whispered", "whispery", "whisper voice", "whispers softly", "in a whisper", "hushed",
             "hushed voice", "quietly", "softly", "lowers voice", "lowering voice"],
-        ["dramatic"] = ["dramatically", "theatrical", "theatrically"]
+        ["dramatic"] = ["dramatically", "theatrical", "theatrically"],
+        ["expressive"] = ["expressively", "animated", "animatedly", "excited", "excitedly", "enthusiastic", "enthusiastically"]
     };
 
     // The words as a stage direction writes the action: the first word in the third person ("nod": "nods", "blush": "blushes",

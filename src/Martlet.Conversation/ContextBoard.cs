@@ -46,6 +46,9 @@ public sealed class ContextBoard
 {
     /// <summary>The lingering emotes the desktop character shows now (Martlet posts it as it builds each request).</summary>
     public const string Character = "character";
+    /// <summary>Where the desktop character's eyes are while a reply's choice holds them (Martlet posts it as it builds each
+    /// request, and clears it while the eyes do their usual).</summary>
+    public const string Gaze = "gaze";
     /// <summary>A digest of the last seconds of the screen.</summary>
     public const string Screen = "screen";
     /// <summary>A line about the sounds this PC plays (music, game sounds, laughter).</summary>
@@ -65,7 +68,7 @@ public sealed class ContextBoard
     public static readonly TimeSpan MaximumAge = TimeSpan.FromHours(1);
 
     // The known sources come first, in this order; others follow by name.
-    private static readonly string[] Order = [Character, Screen, Sound, Touch];
+    private static readonly string[] Order = [Character, Gaze, Screen, Sound, Touch];
 
     private readonly object gate = new();
     private readonly Dictionary<string, ContextNote> notes = new(StringComparer.Ordinal);
@@ -126,7 +129,7 @@ public sealed class ContextBoard
         return removed;
     }
 
-    /// <summary>The fresh notes at <paramref name="now"/>, in the stable source order (<see cref="Character"/>,
+    /// <summary>The fresh notes at <paramref name="now"/>, in the stable source order (<see cref="Character"/>, <see cref="Gaze"/>,
     /// <see cref="Screen"/>, <see cref="Sound"/>, <see cref="Touch"/>, then others by name), within
     /// <see cref="MaximumUtf8Bytes"/>. Stale notes are dropped. Nothing is consumed: <see cref="MarkSent"/> does that once the
     /// request is sent.</summary>

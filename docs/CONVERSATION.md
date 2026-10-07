@@ -274,8 +274,9 @@ Ollama on this PC for them), and the talk window's context line ends with
 ## Context board
 
 The context board is where background sources keep their newest short note
-for the live conversation: what the character shows now, a digest of the last
-seconds of the screen, a line about the sounds this PC plays, touches on the
+for the live conversation: what the character shows now, where its eyes are
+while a reply's own choice holds them, a digest of the last seconds of the
+screen, a line about the sounds this PC plays, touches on the
 character. A reply or a look never waits for a source. As it builds its
 request, it takes a snapshot of the board, and the fresh notes go last in the
 message (see [the request layout](#prompt-caching-and-the-request-layout)).

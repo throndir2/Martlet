@@ -28,13 +28,16 @@ namespace Martlet.Desktop;
 // digest describes its non-speech sound in one line for the next reply (PcSoundDigest); it never runs without HearPc.
 // Companion › Vision › Screen summary over time (ScreenSummary, on by default): while Martlet watches and the Thinking pool has
 // a member that sees, a background job sums up what changed on the screen for the next reply (ScreenDigester).
+// Companion › Character › Where the character looks (also the character's right-click Eyes menu): its usual gaze (GazeUsual: a
+// GazeMode, or null, the default, for as the personality decides) and whether the character may change where it looks in its
+// replies (GazeFree, on by default).
 internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity = 0.5, int PauseIndex = 1, bool VoiceId = false,
     int ScreenChattiness = 1, int ScreenScope = (int)WatchKind.ActiveScreen, string CameraId = "", string CameraName = "",
     string VideoAddress = "", bool SpeakReplies = true, bool Watch = true, int Version = 0, bool? HearVoice = null,
     bool BargeIn = false, bool ReduceEcho = true, bool HearPc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal,
     bool DecideGaze = false, bool TranscribeFirst = false, double VoiceVolume = 1.0,
     Martlet.Conversation.BargeInBehavior BargeInStyle = Martlet.Conversation.BargeInBehavior.PauseAndDecide, bool JudgeTurns = true,
-    bool DescribePcSounds = true, bool ScreenSummary = true)
+    bool DescribePcSounds = true, bool ScreenSummary = true, Martlet.Avatar.Hosting.GazeMode? GazeUsual = null, bool GazeFree = true)
 {
     private const string FileName = "talk-preferences.json";
 
@@ -73,6 +76,7 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
                 WordCheck = Enum.IsDefined(loaded.WordCheck) ? loaded.WordCheck : ListeningSensitivity.Normal,
                 VoiceVolume = Martlet.Audio.PcmGain.Clamp(loaded.VoiceVolume),
                 BargeInStyle = Enum.IsDefined(loaded.BargeInStyle) ? loaded.BargeInStyle : Martlet.Conversation.BargeInBehavior.PauseAndDecide,
+                GazeUsual = loaded.GazeUsual is { } usual && Enum.IsDefined(usual) ? usual : null,
                 Version = CurrentVersion
             };
         }
