@@ -133,7 +133,8 @@ public partial class MainWindow : ThemedWindow
                 echoReducer: simulated is not null ? null
                     : new(microphones, new WasapiLoopbackReferenceFactory(), Martlet.EchoCancellation.WebRtcEchoCanceller.Create),
                 pcAudio: simulated is not null ? null : new Martlet.Audio.PcAudioCaptureFactory(discordCalls.Sources(new WasapiPcAudioSourceFactory())),
-                characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, history: conversationHistory, singing: singing);
+                characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, history: conversationHistory, singing: singing,
+                board: contextBoard);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
             conversation.VoiceVolume = Talk.VoiceVolume;
             conversation.ChattinessDecided += (_, _) => Dispatcher.BeginInvoke(FollowChattiness);

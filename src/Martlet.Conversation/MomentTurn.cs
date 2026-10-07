@@ -42,8 +42,10 @@ public static class MomentTurn
     };
 
     /// <summary>What one reply took, for the talk window and the desktop log (never what was said, seen or found): "your words,
-    /// 2 lines this PC played, the picture (a notification) and 1 finished job".</summary>
-    public static string Describe(bool user, int pcLines, bool picture, string? attention, int jobs, bool report = false)
+    /// 2 lines this PC played, the picture (a notification), 1 finished job and 2 context notes". <paramref name="contextNotes"/>
+    /// counts the context board's notes the request carried (<see cref="ContextBoard"/>).</summary>
+    public static string Describe(bool user, int pcLines, bool picture, string? attention, int jobs, bool report = false,
+        int contextNotes = 0)
     {
         var parts = new List<string>();
         if (user) parts.Add("your words");
@@ -52,6 +54,7 @@ public static class MomentTurn
         else if (attention is { Length: > 0 } noticed) parts.Add(noticed);
         if (jobs > 0) parts.Add(jobs == 1 ? "1 finished job" : $"{jobs} finished jobs");
         else if (report) parts.Add("finished work");
+        if (contextNotes > 0) parts.Add(contextNotes == 1 ? "1 context note" : $"{contextNotes} context notes");
         return parts.Count switch
         {
             0 => "nothing",

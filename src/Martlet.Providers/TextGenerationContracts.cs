@@ -85,13 +85,26 @@ public sealed class BoundedTextInput
     /// earlier messages, and are never part of history, so the start of every request stays the same.</summary>
     [JsonIgnore]
     public string? Notes { get; }
-    /// <summary>The instructions and the notes as one system text, for a route that takes no separate notes (a paired
-    /// host's gateway).</summary>
+    /// <summary>The context board's newest notes for this request only (what the character shows, a digest of the screen,
+    /// touches...): sent last, after <see cref="Notes"/>, and never kept in history (<see cref="KeptUserText"/>), so the
+    /// message the next request carries again is a start of what this one sent.</summary>
     [JsonIgnore]
-    public string? PersonalityWithNotes => Notes is null ? Personality : Personality is null ? Notes : Personality + "\n\n" + Notes;
-    /// <summary>The current message as a Chat Completions request sends it: the user's words, then the notes.</summary>
+    public string? Context { get; }
+    /// <summary>The instructions, the notes and the context notes as one system text, for a route that takes no separate
+    /// notes (a paired host's gateway).</summary>
     [JsonIgnore]
-    public string SentUserText => Notes is null ? UserText : UserText + "\n\n" + Notes;
+    public string? PersonalityWithNotes => JoinParts(Personality, Notes, Context);
+    /// <summary>The current message as a Chat Completions request sends it: the user's words, then the notes, then the
+    /// context notes.</summary>
+    [JsonIgnore]
+    public string SentUserText => JoinParts(UserText, Notes, Context)!;
+    /// <summary>The current message as the conversation keeps it for later requests: the user's words and the notes, without
+    /// the context notes. It is always the start of <see cref="SentUserText"/>.</summary>
+    [JsonIgnore]
+    public string KeptUserText => JoinParts(UserText, Notes, null)!;
+
+    private static string? JoinParts(string? first, string? second, string? third) =>
+        new[] { first, second, third }.Where(p => p is not null).ToArray() is { Length: > 0 } parts ? string.Join("\n\n", parts) : null;
     [JsonIgnore]
     public IReadOnlyList<TextHistoryMessage> History { get; }
     /// <summary>Optional image sent with the current user message only; never part of history.</summary>
@@ -123,7 +136,7 @@ public sealed class BoundedTextInput
 
     public BoundedTextInput(string userText, string? personality = null, IEnumerable<TextHistoryMessage>? history = null,
         BoundedImage? image = null, IEnumerable<TextToolDefinition>? tools = null, BoundedWaveAudio? audio = null,
-        string? notes = null)
+        string? notes = null, string? context = null)
     {
         ContractRules.Require(audio is null || audio.Duration.TotalSeconds <= HardMaxAudioSeconds,
             "The recording exceeds its duration bound.");
@@ -134,6 +147,8 @@ public sealed class BoundedTextInput
             bytes = checked(bytes + Count(personality, HardMaxInputUtf8Bytes));
         if (notes is not null)
             bytes = checked(bytes + Count(notes, HardMaxInputUtf8Bytes));
+        if (context is not null)
+            bytes = checked(bytes + Count(context, HardMaxInputUtf8Bytes));
         if (history is not null)
             foreach (var message in history)
             {
@@ -154,6 +169,7 @@ public sealed class BoundedTextInput
         UserText = userText;
         Personality = personality;
         Notes = notes;
+        Context = context;
         History = messages.AsReadOnly();
         Image = image;
         Audio = audio;
@@ -163,7 +179,7 @@ public sealed class BoundedTextInput
         Utf8Bytes = bytes;
         ToolUtf8Bytes = toolBytes;
         ToolTokenReservation = ToolReservation(toolBytes, definitions.Length, 0);
-        InputTokenReservation = TextReservation(bytes, messages.Count + PromptMessages(personality, notes)) +
+        InputTokenReservation = TextReservation(bytes, messages.Count + PromptMessages(personality, notes ?? context)) +
             (image is null ? 0 : BoundedImage.TokenReservation) + AudioReservation(audio) + ToolTokenReservation;
     }
 
@@ -206,7 +222,7 @@ public sealed class BoundedTextInput
         ArgumentNullException.ThrowIfNull(prompt);
         ArgumentNullException.ThrowIfNull(history);
         ContractRules.Require(prompt.History.Count == 0 && prompt.ToolRounds.Count == 0, "Fit history to a request without any.");
-        var promptMessages = PromptMessages(prompt.Personality, prompt.Notes);
+        var promptMessages = PromptMessages(prompt.Personality, prompt.Notes ?? prompt.Context);
         // The image, recording and tool reservations stay the same whatever history is sent.
         var others = prompt.InputTokenReservation - TextReservation(prompt.Utf8Bytes, promptMessages);
         var count = history.Count;
@@ -248,6 +264,7 @@ public sealed class BoundedTextInput
         UserText = words ?? origin.UserText;
         Personality = origin.Personality;
         Notes = origin.Notes;
+        Context = origin.Context;
         History = origin.History;
         Image = keepImage ? origin.Image : null;
         Audio = keepAudio ? origin.Audio : null;
