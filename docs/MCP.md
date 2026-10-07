@@ -2921,7 +2921,14 @@ pause's 4 s limit; each with `outcome`, `why`, `source`, `pausedMs` and
 `voiceMs`. It returns `behavior` (`PauseAndDecide` or `StopAtOnce`) with
 `behaviorSource`, `bargeIn`, `wordCheck`, `timings` (`deadlineMs`,
 `keepTalkingLimitMs`, `quietToResumeMs`, `maximumPauseMs`,
-`voiceBeforeCheckMs`, `resumeFadeMs`) and `ok` when every expectation held.
+`voiceBeforeCheckMs`, `resumeFadeMs`), `modelJudge` (the Thinking pool's model
+judge, `ModelBargeInJudge`, with fixture answers (NOT AI) in place of a pool
+member: a verdict is used (`source` `Judge`, `judge` *Thinking pool*), no
+member lets the rules decide at once (*no Thinking pool judge was available*)
+and an answer without a verdict lets them decide; each with `answer`,
+`verdict`, `source`, `reason`, `tookMs` and `promptLines`) and `ok` when every
+expectation held. `thinking_pool_status` says whether the pool has a member
+that can run the judge.
 Nothing is recorded or played and nothing leaves this PC. `spoken_reply_check`
 `paused` rehearses the pause and resume through the production runtime; the
 talk window's `LiveBargeIn` shows the last real decision.

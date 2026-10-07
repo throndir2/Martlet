@@ -3884,19 +3884,28 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     // ---------- pause and decide (BargeInJudging) ----------
 
-    // The judge of words said over a paused reply: the local rules now; the Thinking pool's model judge when it is wired in.
-    private IBargeInJudge bargeInJudge = RulesBargeInJudge.Instance;
+    // The judge of words said over a paused reply: null means the Thinking pool's model judge when the pool has a member that
+    // can run it, otherwise the local rules (BargeInJudge sets another).
+    private IBargeInJudge? bargeInJudge;
+    private ModelBargeInJudge? poolJudge;
     // A paused reply the judge (or the user talking on) decided to stop: the talk window takes it (TakeHeldStop) and stops the
     // reply the way talking over it always did.
     private TalkOverResult? heldStop;
     private readonly Queue<BargeInRecord> bargeIns = new();
 
-    /// <summary>The judge of words said over a paused reply (the local rules by default).</summary>
-    internal IBargeInJudge BargeInJudge
+    /// <summary>The judge of words said over a paused reply: the Thinking pool's model judge (<see cref="ModelBargeInJudge"/>
+    /// as a <see cref="ThinkingJobKind.BargeInJudge"/> job, the pool's highest priority) when a pool member can run it, else
+    /// the local rules. Setting it chooses another; null goes back to that default.</summary>
+    internal IBargeInJudge? BargeInJudge
     {
         get => Volatile.Read(ref bargeInJudge);
-        set => Volatile.Write(ref bargeInJudge, value ?? RulesBargeInJudge.Instance);
+        set => Volatile.Write(ref bargeInJudge, value);
     }
+
+    // The judge for the next ruling. Asking whether the pool can run it is cheap and takes no slot. The pool judge never uses
+    // the conversation's own route, so the reply's prompt cache is left alone.
+    private IBargeInJudge CurrentJudge() => BargeInJudge ??
+        (ThinkingPool.CanRun(ThinkingJobKind.BargeInJudge) ? poolJudge ??= ModelBargeInJudge.ForPool(ThinkingPool.RunAsync) : RulesBargeInJudge.Instance);
 
     /// <summary>The last few barge-in decisions, newest last (never what was said).</summary>
     internal IReadOnlyList<BargeInRecord> BargeIns { get { lock (bargeIns) return [.. bargeIns]; } }
@@ -3929,7 +3938,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var held = new HeldReply(new BargeInHold(clock), turn, decision, startedAt, checks);
         operation.Held = held;
         ErrorLog.Info($"Barge-in: Martlet paused its reply {clock.GetElapsedTime(startedAt).TotalMilliseconds:0} ms after you started " +
-            $"talking over it ({decision.Reason}); the {BargeInJudge.Name} judge decides whether it stops or plays on.");
+            $"talking over it ({decision.Reason}); the {CurrentJudge().Name} judge decides whether it stops or plays on.");
         Task.Run(() => WatchHoldAsync(operation, held)).Forget();
         return held;
     }
@@ -3943,7 +3952,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var input = new BargeInJudgeInput(text ?? "", held.Turn.Sentence, reply.Length <= 400 ? reply : reply[^400..], context,
             options.WordCheck, confidence);
         BargeInRuling ruling;
-        try { ruling = await BargeInJudging.RuleAsync(BargeInJudge, input, clock, cancellationToken: operation.OriginalCaller).ConfigureAwait(false); }
+        try { ruling = await BargeInJudging.RuleAsync(CurrentJudge(), input, clock, cancellationToken: operation.OriginalCaller).ConfigureAwait(false); }
         // Listening stopped: the pause's own limit decides.
         catch (OperationCanceledException) { return; }
         held.Hold.Rule(ruling);
@@ -3984,7 +3993,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var why = hold.Why ?? held.Decision.Reason;
         var source = hold.Source ?? BargeInSource.Limit;
         var judged = ruling is null ? "no verdict" : ruling.Source == BargeInSource.Cue ? "a clear cue"
-            : $"the {ruling.Judge} judge in {ruling.JudgeTime.TotalMilliseconds:0} ms{(ruling.Source == BargeInSource.Timeout ? " after the model judge's deadline" : "")}";
+            : $"the {ruling.Judge} judge in {ruling.JudgeTime.TotalMilliseconds:0} ms";
         Remember(new(clock.GetUtcNow(), source, outcome == BargeInOutcome.Stop ? BargeInVerdict.Interrupt : BargeInVerdict.NotForMe,
             why, ruling?.Judge ?? "none", ruling?.JudgeTime ?? TimeSpan.Zero, hold.Paused, outcome == BargeInOutcome.Stop ? "stopped" : "resumed"));
         if (outcome == BargeInOutcome.Resume)

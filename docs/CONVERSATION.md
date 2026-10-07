@@ -1186,14 +1186,20 @@ voice pipeline never waits for a whole reply:
   reply as before and what you said is answered next; *not for Martlet* plays
   it on. The judge reads Martlet's current sentence (`ConversationTurn.Sentence`),
   the reply's last 400 characters, your words so far and speech-to-text's
-  confidence. Today it is the local rules judge (`RulesBargeInJudge`): the
+  confidence. With a [Thinking pool](#the-thinking-pool) member that can run it,
+  the judge is a model: `ModelBargeInJudge` posts a `BargeInJudge` job (the
+  pool's highest priority, a fast kind that never waits behind long thinking
+  when the pool has two or more slots; 16 tokens out, no reasoning steps, never
+  the conversation's own route, so the reply's prompt cache is left alone) and
+  reads INTERRUPT or NOTFORME from the answer. A pool with no member lets the
+  local rules decide at once; no member free before the deadline, a failed job
+  or an answer that names no verdict lets them decide too. Otherwise it is the local rules judge (`RulesBargeInJudge`): the
   policy first (a backchannel, too few words or non-words are not for Martlet),
   then Martlet's own sentence heard back (three words in a row from it, or
   three different words all in it: a TV, a call or a missed echo) and words
   that only agree or laugh along ("yeah that's so true", "haha no way") are not
-  for Martlet; everything else is. A model judge from the Thinking pool can
-  take its place; one that doesn't answer within 400 ms
-  (`BargeInJudging.Deadline`), or fails, gives way to the rules. While paused,
+  for Martlet; everything else is. The model judge has 400 ms
+  (`BargeInJudging.Deadline`); a slower one gives way to the rules. While paused,
   `BargeInHold` watches your voice frame by frame: an interrupt verdict stops
   the reply, talking on for 1.5 s in all (`KeepTalkingLimit`) stops it
   whatever the verdict, and with a not-for-Martlet verdict 240 ms of quiet

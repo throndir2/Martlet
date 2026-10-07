@@ -1324,7 +1324,7 @@ public partial class LiveConversationWindow : ThemedWindow
             BargeInSource.Cue => "a clear cue",
             BargeInSource.KeptTalking => "you kept talking",
             BargeInSource.Limit => "the pause reached its limit",
-            BargeInSource.Timeout => $"model judge too slow, rules decided in {record.JudgeTime.TotalMilliseconds:0} ms",
+            BargeInSource.Timeout => $"the rules decided in {record.JudgeTime.TotalMilliseconds:0} ms",
             _ => record.Judge == "stop at once" ? "Stop at once" : $"{record.Judge} judge, {record.JudgeTime.TotalMilliseconds:0} ms"
         };
         return $"Talked over at {at}: {what} ({verdict}: {record.Reason}; {by}).";

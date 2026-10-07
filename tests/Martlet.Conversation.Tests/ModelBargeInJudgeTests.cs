@@ -1,3 +1,4 @@
+using Martlet.Core.Settings;
 using Martlet.Providers;
 
 namespace Martlet.Conversation.Tests;
@@ -72,6 +73,56 @@ public sealed class ModelBargeInJudgeTests
         Assert.Contains("no Thinking pool judge was available", ruling.Reason);
         // The simulated clock never moved: nothing waited for the 400 ms deadline.
         Assert.Equal(TimeSpan.Zero, ruling.JudgeTime);
+    }
+
+    [Fact]
+    public async Task The_pool_judge_posts_a_fast_barge_in_job_and_uses_the_members_verdict()
+    {
+        ThinkingJob? posted = null;
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [new BackgroundPlace("host:gpu", "gpu")], (_, job, _) =>
+        {
+            posted = job;
+            return Task.FromResult(ThinkingAnswer.Done("NOTFORME: talking to someone else"));
+        });
+        var ruling = await BargeInJudging.RuleAsync(ModelBargeInJudge.ForPool(board.RunAsync), Input("What about the weather tomorrow?"),
+            TimeProvider.System, TimeSpan.FromSeconds(30));
+        Assert.Equal(BargeInVerdict.NotForMe, ruling.Verdict);
+        Assert.Equal(BargeInSource.Judge, ruling.Source);
+        Assert.Equal("Thinking pool", ruling.Judge);
+        Assert.NotNull(posted);
+        Assert.Equal(ThinkingJobKind.BargeInJudge, posted.Kind);
+        Assert.True(ThinkingJobKinds.IsFast(posted.Kind));
+        Assert.Equal(ModelBargeInJudge.Instructions, posted.Instructions);
+        Assert.Contains("Heard over it: \"What about the weather tomorrow?\"", posted.Text);
+        Assert.Equal(BargeInJudging.Deadline, posted.Timeout);
+        Assert.True(posted.DropWhenStale);
+        Assert.Equal(ModelBargeInJudge.MaxOutputTokens, posted.MaxOutputTokens);
+        Assert.False(posted.Reasoning);
+    }
+
+    [Fact]
+    public async Task A_pool_without_a_member_lets_the_rules_decide_at_once()
+    {
+        var clock = new RuntimeClock();
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [], (_, _, _) => Task.FromResult(ThinkingAnswer.Done("INTERRUPT")));
+        var ruling = await BargeInJudging.RuleAsync(ModelBargeInJudge.ForPool(board.RunAsync), Input("Yeah that's so true."), clock)
+            .WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(BargeInSource.Timeout, ruling.Source);
+        Assert.Equal(BargeInVerdict.NotForMe, ruling.Verdict);
+        Assert.Contains("no Thinking pool judge was available", ruling.Reason);
+        Assert.Equal(TimeSpan.Zero, ruling.JudgeTime);
+    }
+
+    [Fact]
+    public async Task A_member_that_fails_lets_the_rules_decide()
+    {
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [new BackgroundPlace("host:gpu", "gpu")],
+            (_, _, _) => Task.FromResult(ThinkingAnswer.Failed("the model is loading")));
+        var ruling = await BargeInJudging.RuleAsync(ModelBargeInJudge.ForPool(board.RunAsync), Input("What about the weather tomorrow?"),
+            TimeProvider.System, TimeSpan.FromSeconds(30));
+        Assert.Equal(BargeInSource.Timeout, ruling.Source);
+        Assert.Equal(BargeInVerdict.Interrupt, ruling.Verdict);
+        Assert.Contains("judge failed", ruling.Reason);
     }
 
     [Fact]

@@ -1025,7 +1025,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "source (Cue, Judge), judge, judgeMs and the action with the saved choice. deadlines: a fixture model judge (NOT AI) " +
             "slower than the deadline (judgeDelayMs, default 1000; deadlineMs, default 400) must give way to the rules within the " +
             "deadline, and one in time must be used. holds: what a pause does on a simulated clock (quiet after notForMe plays on; " +
-            "talking on past 1.5 s stops; interrupt stops; no verdict plays on at the pause's limit). Also returns the saved choice " +
+            "talking on past 1.5 s stops; interrupt stops; no verdict plays on at the pause's limit). modelJudge: the Thinking pool's model " +
+            "judge with fixture answers (NOT AI): a verdict is used, no pool member lets the rules decide at once, an answer without " +
+            "a verdict lets them decide. Also returns the saved choice " +
             "(behavior PauseAndDecide or StopAtOnce from talk-preferences.json, bargeIn, wordCheck) and the timings. ok when every " +
             "expectation held. Nothing is recorded or played; nothing leaves this PC.", new
         {

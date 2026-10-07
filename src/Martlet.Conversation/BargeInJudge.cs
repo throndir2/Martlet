@@ -106,6 +106,30 @@ public sealed class ModelBargeInJudge(Func<string, string, CancellationToken, Ta
 
     public string Name => name;
 
+    /// <summary>The Thinking pool's judge: each ruling is a <see cref="ThinkingJobKind.BargeInJudge"/> job (the pool's highest
+    /// priority, a fast kind) on <paramref name="run"/> (<see cref="ThinkingJobBoard.RunAsync"/>), with
+    /// <see cref="MaxOutputTokens"/>, no reasoning steps, and dropped when no member frees up within
+    /// <see cref="BargeInJudging.Deadline"/>. No member (or none free in time) lets the local rules decide at once; a failed or
+    /// timed-out job lets them decide too.</summary>
+    public static ModelBargeInJudge ForPool(Func<ThinkingJob, CancellationToken, Task<ThinkingJobResult>> run, string name = "Thinking pool")
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        return new(async (instructions, text, token) =>
+        {
+            var result = await run(new ThinkingJob
+            {
+                Kind = ThinkingJobKind.BargeInJudge, Instructions = instructions, Text = text, Timeout = BargeInJudging.Deadline,
+                DropWhenStale = true, MaxOutputTokens = MaxOutputTokens, Reasoning = false
+            }, token).ConfigureAwait(false);
+            return result.Outcome switch
+            {
+                ThinkingJobOutcome.Succeeded => result.Text,
+                ThinkingJobOutcome.NoMember or ThinkingJobOutcome.Stale => null,
+                _ => throw new InvalidOperationException($"The Thinking pool's barge-in judge ended {result.Outcome}.")
+            };
+        }, name);
+    }
+
     /// <summary>What the model reads: the assistant's name, the sentence it is saying, the end of its reply so far, the words
     /// heard over it and how sure speech-to-text was.</summary>
     public static string Prompt(BargeInJudgeInput input)
