@@ -1092,6 +1092,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "canceling one, who says a due reminder (both offer, the PC used most recently takes it, the other stays quiet), the " +
             "conversation's wording through BackgroundJobs (on its own as soon as Martlet is free, or in the notes of the next " +
             "message), a PC alone taking it at once and one far too late let go. No model, network or credentials.", new { }),
+        Tool("helper_jobs_status", "Where Martlet's helper jobs ran last, from a data directory's helper-jobs.json (written by the " +
+            "desktop): for each kind (memory: remembering and learning names after a reply; action_naming: naming a character's " +
+            "emotes; touch_zones: finding its touch zones in one picture) its priority, whether it ran on a Thinking pool member " +
+            "(route pool, with the member) or on the conversation's own Thinking model after the reply finished speaking (route " +
+            "fallback, with how long it waited for the reply), how it ended and when. Never a prompt or answer. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("helper_jobs_check", "Rehearse the desktop's production helper-job router (HelperJobs) with a fixture Thinking pool and " +
+            "fixture answers (NOT AI): memory and emote naming go to a free text member, touch zones wait for a running reply and " +
+            "fall back while no member sees pictures, then go to a vision member, and memory falls back when no member is free. " +
+            "Returns each step's route, member, outcome and wait, and the helper-jobs.json it wrote. No model, network or credentials.",
+            new { }),
         Tool("think_longer_status", "Companion > Deep thinking > Thinking longer (think_longer: Martlet decides, sparingly, to think a " +
             "task through in the background while the conversation carries on), from a data directory: the settings replies use " +
             "(on by default, Off from Where it thinks; effort, time limit, hourly limit, when it shares the result) and whether any " +
@@ -1409,6 +1422,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "reminders_status" => await RemindersCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "reminders_check" => await RemindersCheck.RunAsync(cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "helper_jobs_status" => HelperJobsCheck.Status(DataDirectory(arguments)),
+                "helper_jobs_check" => await HelperJobsCheck.RunAsync(cancellation),
                 "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),
                 "work_sharing_check" => await WorkSharingCheck.RunAsync(cancellation),
                 "discord_reply_status" => DiscordReplyCheck.Status(DataDirectory(arguments)),

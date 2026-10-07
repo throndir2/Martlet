@@ -93,10 +93,11 @@ public partial class MainWindow
             characterTouchZones.Follow(characterActions.For(avatar.InspectedProfile?.ModelPath)?.Inventory.ModelId);
             // MARTLET_TOUCH_ZONES_FIXTURE: a file whose text stands in for the Thinking model's answer (FIXTURE - NOT AI), so MCP
             // verification runs the real snapshot, probe, binding and saving without a vision request.
+            var talk = conversation;
             var fixture = Environment.GetEnvironmentVariable(CharacterTouchZoneService.FixtureVariable);
             Func<string, string, string, Martlet.Providers.BoundedImage?, CancellationToken, Task<(string? Answer, string? Failure)>> ask =
                 fixture is { Length: > 0 } ? (_, _, _, _, _) => Task.FromResult<(string?, string?)>((File.Exists(fixture) ? File.ReadAllText(fixture) : null, null))
-                : conversation.AskThinkingAsync;
+                : (purpose, instructions, text, image, token) => talk.AskHelperAsync(HelperJobKind.TouchZones, purpose, instructions, text, image, token);
             await characterTouchZones.DetectAsync(avatar, ask, lifetime.Token);
         }
         finally
@@ -149,7 +150,7 @@ public partial class MainWindow
         var detect = PageButton(busy ? "Detecting..." : settings is { Zones.Count: > 0 } ? "Detect again" : "Detect zones",
             () => DetectTouchZonesAsync().Forget(), id: "TouchZonesDetect");
         detect.IsEnabled = !busy && conversation is not null && avatar.IsShowing && catalog is not null &&
-            thinking?.Vision() != VisionSupport.Unsupported;
+            (thinking?.Vision() != VisionSupport.Unsupported || conversation.Helpers.PoolHas(HelperCapability.Vision));
         AutomationProperties.SetHelpText(detect, "Sends one picture of the character (never its files) to your Thinking model, which marks where its parts are.");
         stack.Add(Row(detect));
         if (catalog is null) return Card([.. stack]);

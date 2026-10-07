@@ -86,7 +86,8 @@ public partial class MainWindow
             return;
         }
         if (avatar.IsShowing && conversation is not null && !namingCharacterActions && characterActions.Current is not null &&
-            homeSettings?.Setup?.Routes.Any(r => r.Role == SetupRole.Llm) == true && characterActions.ClaimAutomaticNaming())
+            (homeSettings?.Setup?.Routes.Any(r => r.Role == SetupRole.Llm) == true || conversation.Helpers.PoolHas(HelperCapability.Text)) &&
+            characterActions.ClaimAutomaticNaming())
             NameCharacterActionsAsync().Forget();
 
         async Task LoadAsync()
@@ -103,7 +104,9 @@ public partial class MainWindow
         namingCharacterActions = true;
         try
         {
-            await characterActions.NameAsync(conversation.AskThinkingAsync, homeSettings?.Prompts, lifetime.Token);
+            var talk = conversation;
+            await characterActions.NameAsync((purpose, instructions, text, token) =>
+                talk.AskHelperAsync(HelperJobKind.ActionNaming, purpose, instructions, text, null, token), homeSettings?.Prompts, lifetime.Token);
         }
         finally { namingCharacterActions = false; }
     }
