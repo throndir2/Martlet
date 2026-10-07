@@ -9,8 +9,15 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+<<<<<<< HEAD
 - Emotes can now stay on, like a VTuber's toggle: glasses, a blush, an angry face or any look set to "Stays on" stays until Martlet writes {/tag} to turn it off, several at once, and Martlet knows what is showing so it can decide. Choose per emote in Companion › Character › Emotes and motions; Clear emotes on the character's right-click menu turns them all off. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+=======
+- Click (without dragging) on your desktop character and it reacts: it plays the model's own tap motion for that part when it has one, or tilts its head, nods or looks surprised. ([#510](https://github.com/throndir2/Martlet/pull/510))
+>>>>>>> origin/main
 - The character now reacts to every sound and tone the voice makes: it laughs, sighs, gasps, coughs, hums, cries, glowers and more along with the voice, on any Live2D or VRM model, without lengthening replies. ([#507](https://github.com/throndir2/Martlet/pull/507))
+
+### Fixed
+- When you ask Martlet to whisper with the Chatterbox Turbo voice, it now really whispers. Chatterbox ignored its whisper tag, so Martlet now turns those sentences into a quiet, breathy whisper itself, and a whispered reply stays whispered from sentence to sentence. Update your host to get it. ([#509](https://github.com/throndir2/Martlet/pull/509))
 
 ## [0.51.0] - 2026-10-06
 

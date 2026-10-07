@@ -63,6 +63,9 @@ export function environment() {
     getDrawableVertices: () => new Float32Array([-1, -2, 1, -2, 1, 1.5, -1, 1.5]),
     getDrawableOpacity: () => 1,
     getDrawableDynamicFlagIsVisible: () => true,
+    getDrawableId: () => ({ getString: () => ({ s: "ArtMeshBody" }) }),
+    getDrawableVertexIndices: () => new Uint16Array([0, 1, 2, 0, 2, 3]),
+    getDrawableRenderOrders: () => new Int32Array([0]),
     update: () => calls.push(["model.update"]),
   };
   let started = false;

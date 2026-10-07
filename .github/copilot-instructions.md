@@ -48,8 +48,9 @@ publishes that section as the release notes. Full steps:
 [Changelog and release notes](../AGENTS.md#changelog-and-release-notes).
 
 Deliver actual production paths
-early, replace obsolete designs when warranted and minimize narration.
-Parallelize independent work with isolated ownership. Safety, consent and
+early and replace obsolete designs when warranted. Write responses, updates and
+developer docs in ASD-STE100 Simplified Technical English
+([rules](../AGENTS.md#write-in-simplified-technical-english)). Parallelize independent work with isolated ownership. Safety, consent and
 honest reporting remain mandatory.
 
 Never use Copilot Cloud (cloud/coding agent, cloud sessions, Copilot code

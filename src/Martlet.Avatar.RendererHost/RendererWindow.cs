@@ -107,6 +107,10 @@ internal sealed class RendererWindow : Window
         viewport.MouseDown += (_, e) => { if (e.ChangedButton == MouseButton.Middle) StartPan(e); };
         viewport.MouseMove += (_, e) => Pan(e.GetPosition(viewport));
         viewport.MouseUp += (_, _) => EndPan();
+        // A left press that comes up where it went down, soon enough, is a tap on the character (dragging, locked or panning).
+        viewport.MouseMove += (_, e) => TrackPress(e.GetPosition(viewport));
+        viewport.MouseLeftButtonUp += (_, e) => EndPress(e.GetPosition(viewport));
+        viewport.TouchAt = TouchAt;
         viewport.LostMouseCapture += (_, _) =>
         {
             if (panFrom is null) return;
@@ -758,13 +762,14 @@ internal sealed class RendererWindow : Window
     private void DragCharacter(object sender, MouseButtonEventArgs e)
     {
         if (e.ButtonState != MouseButtonState.Pressed) return;
+        press = (e.GetPosition(viewport), Environment.TickCount64);
         // In the camera view a drag moves the character within it; Shift+drag moves the window itself.
         if (camera is not null)
         {
             if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
             {
                 e.Handled = true;
-                DragMove();
+                DragWindow();
             }
             else StartPan(e);
             return;
@@ -775,10 +780,129 @@ internal sealed class RendererWindow : Window
             return;
         }
         e.Handled = true;
-        if (!placementLocked)
+        if (!placementLocked) DragWindow();
+    }
+
+    // ---------- tapping the character ----------
+
+    // Where (in the viewport) and when the left button went down on the character; cleared once it moves too far to be a tap.
+    private (Point At, long Since)? press;
+    private const long TapMilliseconds = 700;
+    private int touchId;
+    private (int Id, double X, double Y)? touchPending;
+
+    private static bool Moved(Point from, Point to) =>
+        Math.Abs(to.X - from.X) >= SystemParameters.MinimumHorizontalDragDistance ||
+        Math.Abs(to.Y - from.Y) >= SystemParameters.MinimumVerticalDragDistance;
+
+    /// <summary>Drags the overlay (Windows' own move loop, which returns on release). A press that moved it less than the system
+    /// drag distance is a tap instead: the jitter is undone and the place isn't saved.</summary>
+    private void DragWindow()
+    {
+        double left = Left, top = Top;
+        var held = press;
+        press = null;
+        DragMove();
+        if (held is { } h && !Moved(new Point(left, top), new Point(Left, Top)))
         {
-            DragMove();
-            PlacementChanged();
+            if (Left != left || Top != top) (Left, Top) = (left, top);
+            // Windows' move loop can end before the button comes up; then the release (or a move) decides.
+            if (PrimaryButtonDown()) press = h;
+            else if (Environment.TickCount64 - h.Since <= TapMilliseconds) Tap(h.At);
+            return;
+        }
+        PlacementChanged();
+    }
+
+    private static bool PrimaryButtonDown() =>
+        (GetAsyncKeyState(GetSystemMetrics(23) != 0 ? 0x02 : 0x01) & 0x8000) != 0;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
+
+    private void TrackPress(Point position)
+    {
+        if (press is { } held && Moved(held.At, position)) press = null;
+    }
+
+    /// <summary>The left button came up at <paramref name="at"/>: a short press that didn't move is a tap there.</summary>
+    private void EndPress(Point at)
+    {
+        if (press is not { } held) return;
+        press = null;
+        if (Environment.TickCount64 - held.Since <= TapMilliseconds && !Moved(held.At, at)) Tap(held.At);
+    }
+
+    private void Tap(Point at)
+    {
+        if (viewport.ActualWidth <= 0 || viewport.ActualHeight <= 0) return;
+        TouchAt(at.X / viewport.ActualWidth, at.Y / viewport.ActualHeight);
+    }
+
+    /// <summary>Asks the page what of the character is at <paramref name="x"/>, <paramref name="y"/> (fractions of the page, +y
+    /// down); its answer arrives unprompted (see <see cref="Touched"/>). A tap through UI Automation (Martlet's MCP
+    /// character_touch) comes here too.</summary>
+    private void TouchAt(double x, double y)
+    {
+        if (browser.CoreWebView2 is null || failure.Failed || closed) return;
+        x = Math.Round(Math.Clamp(x, 0, 1), 4);
+        y = Math.Round(Math.Clamp(y, 0, 1), 4);
+        var id = ++touchId;
+        touchPending = (id, x, y);
+        try
+        {
+            browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "touch", data = new { id, x, y } },
+                RendererProtocol.Json));
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
+    }
+
+    /// <summary>The page's hit test for the last tap: remembered for UI Automation and, when it found the character, sent to
+    /// Martlet on the request pipe. A malformed or stale answer is ignored; it never fails the renderer.</summary>
+    private void Touched(JsonElement answer)
+    {
+        if (touchPending is not { } pending || answer.ValueKind != JsonValueKind.Object ||
+            !answer.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.Number || !id.TryGetInt32(out var number) ||
+            number != pending.Id) return;
+        touchPending = null;
+        static string? Name(JsonElement owner, string property) =>
+            owner.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String &&
+            value.GetString() is { Length: > 0 } text && !text.Any(char.IsControl)
+                ? text[..Math.Min(text.Length, CharacterTouch.MaximumName)] : null;
+        static string[] Names(JsonElement owner, string property, int most) =>
+            owner.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Array
+                ? value.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.String)
+                    .Select(item => item.GetString()!).Where(text => text.Length is > 0 and <= CharacterTouch.MaximumName && !text.Any(char.IsControl))
+                    .Take(most).ToArray()
+                : [];
+        var hit = answer.TryGetProperty("hit", out var found) && found.ValueKind == JsonValueKind.True;
+        var touch = new CharacterTouch(pending.X, pending.Y, Names(answer, "hitAreas", CharacterTouch.MaximumHitAreas),
+            Names(answer, "drawables", CharacterTouch.MaximumDrawables), Name(answer, "bone"), Name(answer, "node"),
+            answer.TryGetProperty("hair", out var hair) && hair.ValueKind == JsonValueKind.True, Name(answer, "mesh"), Name(answer, "material"));
+        viewport.LastTouch = JsonSerializer.Serialize(new
+        {
+            n = pending.Id, x = touch.X, y = touch.Y, hit, zone = hit ? touch.CoarseZone : null, touch.HitAreas, touch.Drawables,
+            touch.Bone, touch.Node, touch.Hair, touch.Mesh, touch.Material
+        }, RendererProtocol.Json);
+        if (hit) SendTouch(touch);
+    }
+
+    private async void SendTouch(CharacterTouch touch)
+    {
+        if (!CanRequest) return;
+        try
+        {
+            await requesting.WaitAsync(lifetime.Token);
+            try
+            {
+                await RendererProtocol.WriteAsync(requests!, RendererProtocol.Message("touch", activation, touch), lifetime.Token)
+                    .WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
+            }
+            finally { requesting.Release(); }
+        }
+        catch (Exception error) when (error is IOException or ObjectDisposedException or OperationCanceledException or TimeoutException)
+        {
+            ErrorLog.Warn("A tap on the character couldn't reach Martlet.", error);
         }
     }
 
@@ -1066,6 +1190,12 @@ internal sealed class RendererWindow : Window
                             top.ValueKind != JsonValueKind.Number || !double.IsFinite(top.GetDouble()))
                             throw new InvalidDataException("Browser bounds are invalid.");
                         ApplyContentTop(top.GetDouble());
+                        return;
+                    }
+                    if (document.RootElement.TryGetProperty("touch", out var touch))
+                    {
+                        // Unsolicited answer to a tap; never a command reply.
+                        Touched(touch);
                         return;
                     }
                     failure.ThrowIfFailed();

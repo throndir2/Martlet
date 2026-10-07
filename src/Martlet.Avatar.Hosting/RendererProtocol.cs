@@ -116,7 +116,7 @@ public sealed record RendererLook(string Target, double X, double Y);
 /// <see cref="RendererPlacement"/>) and saves that on this PC. "clear" (Clear emotes) turns off every lingering emote the
 /// character shows. "framed" says the character was moved or zoomed within the camera
 /// view and has settled: Martlet then reads the view ("zoom" "status") and saves the framing. Zoom, position and keep-on-top
-/// stay inside the overlay.
+/// stay inside the overlay. Taps on the character travel on the same pipe as "touch" messages (<see cref="CharacterTouch"/>).
 /// </summary>
 public sealed record RendererRequest(string Action)
 {

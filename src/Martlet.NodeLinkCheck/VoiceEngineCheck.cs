@@ -2,10 +2,12 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using Martlet.Avatar.Audio2Face.Remote;
+using Martlet.Core.Audio;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Core.Voices;
@@ -43,6 +45,7 @@ internal static class VoiceEngineCheck
         double? firstAudioMs = null;
         long samples = 0, sumSquares = 0;
         var peak = 0;
+        var pcm = new List<short>();
         string? failure = null, problem = null;
         try
         {
@@ -65,6 +68,7 @@ internal static class VoiceEngineCheck
                     peak = Math.Max(peak, Math.Abs(sample));
                     sumSquares += (long)sample * sample;
                     samples++;
+                    pcm.Add((short)sample);
                 }
             }
         }
@@ -103,6 +107,8 @@ internal static class VoiceEngineCheck
             peakDbfs = Level(peak),
             rmsDbfs = Level(rms),
             audible,
+            // Near 0 for a whisper (Chatterbox's [whispering] sentences), about 0.6-0.9 for ordinary speech.
+            voicedShare = Voicing.VoicedShare(CollectionsMarshal.AsSpan(pcm), SampleRate),
             failure,
             problem,
             statusAfter = after
@@ -144,6 +150,9 @@ internal static class VoiceEngineCheck
             // Chatterbox's idle check (checks, every_seconds, fastest_ms, last_ms): how long running the model briefly took
             // while nobody spoke; a slow one means the card was busy or Windows had moved the model out of graphics memory.
             object? idleCheck = root.TryGetProperty("idle_check", out var idle) && idle.ValueKind == JsonValueKind.Object ? idle.Clone() : null;
+            // Chatterbox's whisper (level_db, parts): how many sentences it has whispered since it started.
+            object? whisper = root.TryGetProperty("whisper", out var whispered) && whispered.ValueKind == JsonValueKind.Object
+                ? whispered.Clone() : null;
             return new
             {
                 answered = true,
@@ -152,7 +161,8 @@ internal static class VoiceEngineCheck
                 ready = root.TryGetProperty("ready", out var ready) && ready.ValueKind == JsonValueKind.True,
                 error = Text("error"),
                 runtime,
-                idleCheck
+                idleCheck,
+                whisper
             };
         }
         catch (Exception error) when (error is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
