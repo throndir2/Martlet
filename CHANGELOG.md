@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.54.0] - 2026-10-07
+
 ### Added
 - Martlet answers sooner when it isn't sure you've finished talking: it starts working on its reply in the short pause after you speak and keeps it to itself until you're done, so the reply is ready the moment your turn ends. If you keep talking, it drops that start and tries again at your next pause, and nothing is shown or said before your turn ends. It's on by default for Thinking models on your own computers and needs Parakeet on this PC for listening; to use it with paid cloud models too, turn on **Also for cloud models** in Companion › Listening › Start replies early. ([#550](https://github.com/throndir2/Martlet/pull/550))
 - Martlet starts talking sooner: each spoken reply now begins with a few words, such as "Hmm, good question.", so its voice can start before the rest of the reply is written. Turn it off with **Short first sentence** in Companion › Replies, or change the words in Companion › Prompts. ([#549](https://github.com/throndir2/Martlet/pull/549))

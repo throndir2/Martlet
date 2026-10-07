@@ -50,13 +50,13 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.53.0
+## 🆕 What's new in 0.54.0
 
-- 🧠 **The Thinking pool**: Deep thinking is now one shared set of Thinking models for background work. Memory, emote naming and touch zones run there, so replies never slow down.
-- ✋ **Talk over Martlet**: it pauses at once and decides. Words meant for it stop the reply; a quick "yeah" or laughing along lets the reply play on from where it paused.
-- 👂 **Knows when you've finished talking**: a small model on your PC hears how you end a sentence, so Martlet answers sooner when you're done and waits when you trail off.
-- 🖥️ **Screen and sound summaries**: Martlet keeps a short summary of what changed on your screen and of what your PC plays, such as music, game sounds and laughter.
-- 🤚 **Touches Martlet notices**: stroke your locked character or pat a zone, and Martlet hears about it. The personality decides how the character reacts to each touch.
+- ⚡ **Replies start sooner**: Martlet starts its reply in the short pause after you speak, and each spoken reply begins with a few words, so its voice starts right away.
+- 🥇 **Your conversation comes first**: screen summaries, remembering and other background work wait while you talk, and Martlet hosts keep their graphics cards free for your reply.
+- 👀 **Choose where the character looks**: its eyes can follow your mouse, look straight ahead or watch the window you use, or its personality decides.
+- 🗣️ **Two more Chatterbox voices**: Chatterbox Original speaks calmly or expressively, and Chatterbox Nano runs even without a graphics card. Companion › Voice shows what each voice can do.
+- 🎯 **Better touch zones**: Detect zones finds your character's head, body and other parts much more accurately, and checks its own work.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
