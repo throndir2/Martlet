@@ -372,6 +372,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // last one's outcome and silence (never words or audio). The TalkJudgeTurns check box saves the choice, so it needs
         // --allow-ui-effects.
         "TalkJudgeTurnsStatus",
+        // Companion › Listening › How you talk › Start replies early: on or off, whether replies can start early with this setup
+        // (Parakeet on this PC, a Thinking model on the user's own computers or Also for cloud models, whether the voice is
+        // prepared too) and what became of the newest ones (taken as the reply, let go because you went on talking, let go for
+        // another reason; the last one's outcome and wait), never words or audio; and its fixed explanation. The TalkEarlyReplies,
+        // TalkEarlyRepliesCloud and TalkEarlyVoice check boxes save the choice, so they need --allow-ui-effects.
+        "TalkEarlyRepliesStatus", "TalkEarlyRepliesAbout",
         // Companion › Listening › When you talk over Martlet: the chosen option (Pause and decide or Stop at once; choosing one
         // with ui_select saves talk-preferences.json, so it needs --allow-ui-effects) and its fixed explanation. In the talk
         // window, LiveBargeIn: the last time you talked over Martlet, whether it paused, stopped or played on, the verdict, what

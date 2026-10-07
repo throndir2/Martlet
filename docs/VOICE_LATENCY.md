@@ -53,6 +53,7 @@ after 5585 ms from the reply's start, 2 spoken pieces. First piece: 1.20 s of sp
 | Thinking first words | Until the first word when no reasoning was streamed |
 | first sentence | Until the first piece the voice can say (a sentence; commas, semicolons and dashes never end a piece) |
 | voice authorization, voice synthesis | Per-piece permission; then until the voice's first audio arrives |
+| promoted | A reply [started early](#starting-replies-early) is taken as the reply: what it wrote shows, and its first piece, made meanwhile, plays |
 | playback start, speakers | Handing audio to the speakers until Windows plays it |
 
 Push-to-talk counts from letting go of the talk button, typed messages from
@@ -665,6 +666,103 @@ separately (above, and the tests in Martlet.Conversation.Tests,
 Martlet.Audio.Tests and Martlet.Desktop.Tests). The Thinking request is
 unchanged, so the *Thinking input* prompt-cache numbers can't move.
 
+## Starting replies early
+
+**2026-10-07.** When the judge says *Incomplete* but you are done, the turn
+ends only at the longer pause (1.6 s), and the whole reply pipeline (Thinking's
+first sentence, then the voice's first audio) still follows. With the judge off
+or missing, the plain pause (800 ms) waits the same way. Companion › Listening ›
+**Start replies early** (on by default) starts the reply at the end-of-turn
+check point instead, like LiveKit's *preemptive generation*, Deepgram's
+*speculative replies* and Pipecat's speculation gate:
+
+1. At the short pause (260 ms, `EndOfTurnOptions.JudgeAfter`), the quick
+   transcript of the speech so far starts (Parakeet on this PC; it starts even
+   without a judge now). When it comes back with real words
+   (`EarlyReplyGate.Worth`: the word check keeps it, and it isn't only a quick
+   backchannel such as *yeah*), the reply starts at once, built exactly as the
+   talk window will ask for it (`EarlyReplyPlan`), without waiting for the
+   verdict. It runs on the app slot like any reply, *held*
+   (`ConversationRuntime.StartEarly`): Thinking streams, and with *Prepare the
+   voice early too* the first spoken piece is made, but nothing shows, plays,
+   acts (character cues, captions) or calls a tool.
+2. The turn ends in the same pause and the talk window asks for the same
+   request (`EarlyAsk.Differs`: the same words, voice, recording, chattiness,
+   call and who spoke): the reply is **promoted**
+   (`ConversationTurn.Release`). What it wrote shows at once and its first
+   piece plays at once. There is no second request.
+3. Your own voice comes back during the pause (never what the speakers play,
+   with echo reduction), the turn ends in a later pause, the words differ,
+   or something else goes with them (a picture, what this PC played, typed
+   text): the reply is **let go**. Its Thinking stream and voice work stop,
+   nothing of it was shown or said, and the next pause starts another with the
+   longer words. At most three start in one turn
+   (`EarlyReplyOptions.MaximumStarts`).
+4. Only a reply that is taken does what a reply does: committing to answer
+   (the participation policy is only *asked* before), letting go of old
+   history, consuming the [context board](CONVERSATION.md#context-board)'s
+   consume-on-read notes (`MarkSent` runs at promotion, so a reply let go
+   leaves them for the next request), the history, memory and after-reply
+   work, the talk window's bubbles and the reply latency line. The request
+   bytes are the ones the turn would have sent, so prompt caches hold; a reply
+   let go leaves the same start in the cache for the next one.
+5. A cloud Thinking model charges for the input of a request that is let go,
+   so *Also for cloud models (may add a small cost)* is a separate choice, off
+   by default: without it, replies start early only with a Thinking model on
+   your own computers (this PC, a paired Martlet host, or a server on your
+   home network). A paid cloud voice (OpenAI speech) is prepared early only
+   with that choice too; a voice on this PC or a paired host is free.
+6. Barge-in never sees a held reply as Martlet speaking (`Speaking`,
+   `Held`), and listening goes on as usual. Home Assistant's Assist acts as it
+   answers, so a reply that would ask it never starts early.
+
+**What to expect.** On an *Incomplete* turn that you meant to end, the reply is
+ready when the longer pause ends the turn: the time to the first audio after
+the turn ended drops by about Thinking's first sentence plus the voice's first
+audio (0.6-0.8 s with a fast local model and Chatterbox). With the 800 ms plain
+pause it drops by about 0.5 s. A *Complete* turn ends about 300 ms into the
+pause, usually before the quick transcript comes back, so the gain there is
+small or none.
+
+**Observability.** The desktop log says *Early reply: started 262 ms into your
+pause (start 1 of 3; the quick transcript, the voice prepared too).* and, when
+it ends, *Early reply: promoted after 1340 ms; it started 262 ms into your pause
+(start 1), and its first piece was ready.* or *Early reply: let go after 420 ms
+(you went on talking); ...*. The reply latency line adds *Started early at 262
+ms, promoted.* (or *(started early 2 times, 1 cancelled)*, or for a reply that
+started normally after its turn let go of every start, *Started early 1 time, 1
+cancelled.*); the reply's own steps before the turn ended show among the end of
+the turn's, in the order they happened, then *promoted* when it was taken.
+Companion › Listening's `TalkEarlyRepliesStatus` counts the newest outcomes,
+and MCP's `latency_report` sums them (`early`). MCP's `early_reply_check`
+rehearses the gates, the held turn and the comparison in real time with
+fixtures ([MCP](MCP.md#latency)).
+
+**Measured on this PC** (MCP `early_reply_check`, Release build, FIXTURES, NOT
+AI: quick transcript after 90 ms, judge after 26 ms, Thinking's first words
+after 200 ms, the voice's first audio after 350 ms; real time, 20 ms frames).
+First audio after the turn ended:
+
+| Scenario | Without | Started early | Sooner by |
+| --- | --- | --- | --- |
+| *Incomplete*, then silence until the 1.6 s pause | 692 ms | 15 ms | 677 ms |
+| No judge, the plain 800 ms pause | 578 ms | 172 ms | 406 ms |
+| *Complete* at about 300 ms | 625 ms | 619 ms (nothing started early) | none |
+| You go on talking at 700 ms, then *Incomplete* again | 579 ms | 15 ms (2 starts, 1 let go, its request aborted) | 564 ms |
+| The final words differ from the quick transcript | 582 ms | 593 ms (let go, started again) | none |
+
+Nothing played or showed before the turn ended in any scenario, and every
+reply let go ended *Canceled* with nothing played.
+
+**NOT RUN:** *Reply latency* and *Thinking input* lines before and after with a
+real conversation: this PC has no microphone, no Thinking model or voice it can
+use without real credentials and no Parakeet download (starting replies early
+needs Parakeet on this PC as Listening). The desktop path was tested with
+fixtures instead (Martlet.Desktop.Tests: `EarlyReplyDesktopTests` and the talk
+window's `AlwaysListeningStartsTheReplyEarlyAndShowsItOnlyOnceYourTurnEnds`).
+The requests are the ones a turn sends, so prompt caching can't get worse; a
+request let go costs a local model only the work it did.
+
 ## How others get fast
 
 Research summary (sources checked 2026-10-03; vendor claims marked):
@@ -709,7 +807,7 @@ Research summary (sources checked 2026-10-03; vendor claims marked):
 | End of speech | 800 ms | about 300-330 ms when the judge hears a finished turn (260 ms pause + 25-50 ms judge); 800 ms with it off | 200-300 ms | Done: Smart Turn v3.2 ([the end-of-turn judge](#the-end-of-turn-judge)) |
 | Speech-to-text | not logged | logged | 0-150 ms | Parakeet 110M (about 90 ms) on a short utterance, or none: a Thinking model that hears takes the recording |
 | Desktop prep | about 115 ms | about 115 ms | 30-50 ms | Event-driven talk window instead of its 100 ms tick, faster memory recall |
-| Thinking to first sentence | 3-8 s | provider's time to first words with Thinking steps Off | 150-250 ms | Gemma 4 E2B on this PC measured 140-240 ms; a fast provider; preemptive start |
+| Thinking to first sentence | 3-8 s | provider's time to first words with Thinking steps Off; started at the 260 ms pause when [replies start early](#starting-replies-early), so often ready when the turn ends | 150-250 ms | Gemma 4 E2B on this PC measured 140-240 ms; a fast provider; done: preemptive start |
 | Voice to first audio | 1.2-4.2 s | 0.35-0.4 s | 0.25-0.3 s | Done: CUDA graph and streaming; a GPU the character doesn't share |
 | Playback | 30-50 ms | 30-50 ms | 30 ms | |
 | **Total** | **5.5-10 s** | **about 1.5-2.5 s** (estimate) | **about 0.7-1.2 s** | |
@@ -735,8 +833,10 @@ backchannel at once would make most of the rest feel instant.
    pause and answers a finished turn at once, reusing the quick transcript it
    started then ([the end-of-turn judge](#the-end-of-turn-judge)). Martlet
    already restarts a reply when you keep talking.
-4. **Start Thinking early.** Send the transcript at a short pause and keep the
-   reply if nothing else is said (the restart already exists).
+4. **Start Thinking early.** Done: Companion › Listening › **Start replies
+   early** (on by default) starts the reply on the quick transcript at the
+   260 ms pause, keeps it hidden and promotes it when the turn ends with the
+   same words ([starting replies early](#starting-replies-early)).
 5. **A faster Thinking route.** A non-reasoning or fast model, OpenRouter
    provider sorting by latency, or a small model on this PC or DIVA's GPU (no
    internet round trip): Gemma 4 E2B in Ollama gives its first speakable piece

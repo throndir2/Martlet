@@ -61,14 +61,19 @@ internal sealed record ShownPicture(string Key, string Title, byte[] Image, bool
 // Word check; UtteranceFilter and BargeInPolicy). BargeInStyle: with BargeIn, whether words that aren't a clear cue pause the
 // reply while a judge decides (PauseAndDecide, the default; BargeInJudging) or stop it at once (StopAtOnce). JudgeTurns: the
 // end-of-turn judge decides when the user finished talking (Companion › Listening › Judge when I finish talking, on by default;
-// EndOfTurnGate), with the plain pause as its fallback.
+// EndOfTurnGate), with the plain pause as its fallback. Early: Companion › Listening › Start replies early (EarlyReplyOptions;
+// off unless the talk window passes the choice): the reply starts at the end-of-turn check point on the quick transcript and is
+// promoted when the turn ends with the same words.
 internal sealed record ListeningOptions(bool HandsFree, VoiceActivitySettings Activity, bool RequireVoiceId, bool Hear = false,
     bool BargeIn = false, bool ReduceEcho = false, bool Pc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal,
     bool Straight = false, bool HearLocalOnly = false, BargeInBehavior BargeInStyle = BargeInBehavior.PauseAndDecide,
-    bool JudgeTurns = true)
+    bool JudgeTurns = true, EarlyReplyOptions? Early = null)
 {
     internal static TimeSpan IdleRestart => TimeSpan.FromSeconds(12);
     internal static TimeSpan MinimumUtterance => TimeSpan.FromMilliseconds(450);
+
+    /// <summary>Companion › Listening › Start replies early, as the talk window passed it (off when it didn't).</summary>
+    internal EarlyReplyOptions EarlyReplies => Early ?? EarlyReplyOptions.Off;
 
     /// <summary>Thinking may hear the recording with this configuration: Hear, and, when that is only the never-chosen default,
     /// the recording stays on this PC.</summary>
@@ -230,7 +235,13 @@ internal sealed class LiveConversationOperation
     internal bool Listen { get; init; }
     /// <summary>A reply to what always listening heard: the model may stay quiet ([pass]) when it wasn't meant for it.</summary>
     internal bool Spoken { get; init; }
-    internal double? SpokenConfidence { get; init; }
+    internal double? SpokenConfidence { get; set; }
+    /// <summary>A reply started early (Companion › Listening › Start replies early): what it was started with, and whether the
+    /// talk window took it as the reply once the turn ended. Null for a reply that started normally.</summary>
+    [JsonIgnore] internal EarlyReplyState? Early { get; init; }
+    /// <summary>For an utterance always listening records: the reply it started early, if any (the newest).</summary>
+    [JsonIgnore] internal LiveConversationOperation? EarlyStarted { get => Volatile.Read(ref earlyStarted); set => Volatile.Write(ref earlyStarted, value); }
+    private LiveConversationOperation? earlyStarted;
     /// <summary>The message includes lines heard from what the PC plays (each starts with
     /// <see cref="LiveConversationConfiguration.PcAudioMarker"/>): no Home Assistant without the user's own words and no tools
     /// unless they are there or the message brings up finished background work, and
@@ -936,6 +947,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (listening?.RequireVoiceId == true)
             voiceprint = voiceIdentity?.Current ?? throw new LiveActionException("voiceid.not_enrolled");
         caller.ThrowIfCancellationRequested();
+        // A reply started early for exactly this ask (Companion › Listening › Start replies early) is taken as the reply: no
+        // second request. One for anything else is let go, and this reply starts once it has left the app slot.
+        if (TryTakeEarly(text, voice, microphone, listening, spoken, heard, confidence, recording, seen, pcAudio, userWords, timeline,
+                playback, chattiness, words, hearLocalOnly, remote, bringUp, attention, look, discordCall) is { } early)
+            return early;
         // What goes straight to Thinking is the recording alone; its text only marks it until the words come.
         BoundedTextInput? input = microphone ? null : new(words is not null ? LiveConversationConfiguration.VoiceOnlyText : text ?? "");
         if (input is { UserText.Length: > 4096 }) throw new LiveActionException("conversation.input_limit");
@@ -1075,11 +1091,13 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         return null;
     }
 
-    /// <summary>Stops always listening: the utterance being recorded is discarded and one being transcribed is canceled.</summary>
+    /// <summary>Stops always listening: the utterance being recorded is discarded and one being transcribed is canceled, and a
+    /// reply started early for what it heard is let go.</summary>
     internal void StopListening(LiveListener listening)
     {
         listening.Revoke();
         listening.Worker.RequestCancellation();
+        if (!listening.Pc) LetGoEarly("listening stopped");
     }
 
     /// <summary>Whether this listener holds off right now. Hearing what this PC plays holds off only while Martlet speaks (or
@@ -1347,6 +1365,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 if (!token.IsCancellationRequested) listening.Post(Result(utterance));
                 listening.EndTranscribing();
             }
+            // What always listening heard was let go (not words, another voice, a failure): a reply started early for it goes too.
+            if (utterance.EarlyStarted is { } early && utterance.Status.Code != "listen.heard")
+                LetGoEarly(early, EarlyReplyRecord.Changed, "what you said was let go");
         }
     }
 
@@ -1401,6 +1422,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// <summary>The user's Refresh context: forget the kept exchanges and screen remarks; nothing else stops.</summary>
     internal bool ForgetContext()
     {
+        // A reply started early was built with what is forgotten now: it goes, and the reply starts again from the fresh context.
+        LetGoEarly("the context was refreshed");
         lock (gate)
         {
             if (context.Count == 0 && remarks.Count == 0) return false;
@@ -1657,8 +1680,13 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         while (!operation.Worker.Completion.IsCompleted && !operation.ExecutionFinished)
         {
             try { operation.Authorization.Check(); }
-            catch (OperationCanceledException) { Stop(operation); return; }
-            catch (LiveActionException error) { Stop(operation, error.Code); return; }
+            catch (Exception error) when (error is OperationCanceledException or LiveActionException)
+            {
+                // A reply started early and not taken is let go: the conversation, memory and history stay as they were.
+                if (operation.Early is { Promoted: false }) LetGoEarly(operation, EarlyReplyRecord.Cancelled, "the conversation stopped it");
+                else Stop(operation, (error as LiveActionException)?.Code ?? "conversation.canceled");
+                return;
+            }
             if (operation.TranscriptionExpired) { Stop(operation, "stt.deadline_exceeded"); return; }
             var turn = operation.Turn;
             if (turn is not null && !operation.Status.Finished)
@@ -1670,9 +1698,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     foreach (var words in spoken) words.Release();
                 operation.Publish(new("runtime." + snapshot.State, ProviderFailure: snapshot.ProviderFailure,
                     AudioFailure: snapshot.Playback?.Error?.Code));
+                // A reply started early isn't under way for the policy until it is taken: it commits then.
                 lock (gate)
                 {
-                    if (ReferenceEquals(active, operation) && !operation.Authorization.IsCanceled)
+                    if (ReferenceEquals(active, operation) && !operation.Authorization.IsCanceled && !turn.Held)
                         policy.SetState(new()
                         {
                             AuthorizationRevision = revision, CaptureAuthorized = operation.Authorization.Microphone || operation.Spoken,
@@ -1686,12 +1715,37 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
     }
 
+    // The participation policy for a reply to the user: receipt is NOW for a newly received transcript (never renew a
+    // queued, busy or expired intent). With commit, Martlet commits to answering (the reply's dispatch lease, the reason
+    // published); without, only whether it would answer now (a reply started early commits once it is taken).
+    private (bool Accepted, DispatchLease? Lease) Participate(LiveConversationOperation operation, BoundedTextInput input, bool commit)
+    {
+        var source = operation.Spoken ? InputSource.HandsFreeListening
+            : !operation.Authorization.Microphone ? InputSource.TypedControl
+            : operation.HandsFree ? InputSource.HandsFreeListening : InputSource.PushToTalkControl;
+        var intent = policy.CreateIntent(new(source,
+            new Transcript(input.UserText, confidence: operation.Transcription?.Confidence ?? operation.SpokenConfidence),
+            trustedTypedAddress: !operation.Authorization.Microphone && !operation.Spoken));
+        var decision = policy.Evaluate(intent);
+        if (!commit) return (decision.Kind == DecisionKind.Allow, null);
+        var dispatch = policy.TryCommit(decision);
+        operation.Publish(new("policy." + dispatch.Reason, Policy: dispatch.Reason, Finished: !dispatch.Accepted));
+        return (dispatch.Accepted, dispatch.Lease);
+    }
+
     private async Task<SetupWorkResult> RunAsync(LiveConversationOperation operation, BoundedTextInput? input, CancellationToken worker)
     {
         DispatchLease? lease = null;
+        // A reply started early (Companion › Listening › Start replies early): built and started as usual, but held, with what
+        // only a reply that is taken may do (committing to answer, letting go of old history, consuming the context board's
+        // notes, the log's lines) put off until the talk window takes it (taken).
+        var early = operation.Early;
+        var taken = false;
         try
         {
             await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
+            if (early is not null && !await PrepareEarlyAsync(operation, early, worker).ConfigureAwait(false))
+                return new(SetupWorkOutcome.Canceled);
             if (operation.Authorization.Microphone)
             {
                 var audio = await CaptureAsync(operation).ConfigureAwait(false);
@@ -1754,21 +1808,15 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             {
                 operation.Authorization.Check(worker);
                 // A report of finished background work (or a reaction to being touched) is Martlet's own, like a screen glance:
-                // the participation policy decides whether to answer the user, so it doesn't apply.
+                // the participation policy decides whether to answer the user, so it doesn't apply. A reply started early only
+                // checks that Martlet would answer now; it commits once it is taken.
                 if (!operation.OnItsOwn)
                 {
-                    // Receipt is NOW for a newly received transcript. Never renew a queued/busy/expired intent.
-                    var source = operation.Spoken ? InputSource.HandsFreeListening
-                        : !operation.Authorization.Microphone ? InputSource.TypedControl
-                        : operation.HandsFree ? InputSource.HandsFreeListening : InputSource.PushToTalkControl;
-                    var intent = policy.CreateIntent(new(source,
-                        new Transcript(input!.UserText, confidence: operation.Transcription?.Confidence ?? operation.SpokenConfidence),
-                        trustedTypedAddress: !operation.Authorization.Microphone && !operation.Spoken));
-                    var decision = policy.Evaluate(intent);
-                    var commit = policy.TryCommit(decision);
-                    operation.Publish(new("policy." + commit.Reason, Policy: commit.Reason, Finished: !commit.Accepted));
-                    if (!commit.Accepted) return new(SetupWorkOutcome.Completed);
-                    lease = commit.Lease;
+                    var (accepted, committed) = Participate(operation, input!, commit: early is null);
+                    // Not now: no reply (one started early goes, unless the talk window just took it: it commits then).
+                    if (!accepted && (early is null || LetGoEarly(operation, EarlyReplyRecord.Refused, "Martlet wouldn't answer it now")))
+                        return new(SetupWorkOutcome.Completed);
+                    lease = committed;
                 }
                 persona = operation.Authorization.Configuration.Persona;
                 style = persona is null ? null :
@@ -1848,6 +1896,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     home = house.ToolsTurn(configured.Prompts);
                 else if (own is not null)
                 {
+                    // Assist acts on the house as it answers: a reply started early never asks it before it is taken.
+                    if (early is not null && LetGoEarly(operation, EarlyReplyRecord.Refused, "Home Assistant's Assist answers it"))
+                        return new(SetupWorkOutcome.Canceled);
                     operation.Publish(new("home.asking"));
                     home = await house.HandleAsync(own, worker, configured.Prompts).ConfigureAwait(false);
                     operation.Authorization.Check(worker);
@@ -1949,8 +2000,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 operation.VoiceSent = request.Input.Audio is not null;
                 operation.ScreenSent = request.Input.Image is not null;
                 operation.Sent = request.Input;
-                // Exchanges this reply had to leave out are never sent again, so the next replies start the same way.
-                context.LetGoBefore(historyStart + (history.Count - usedHistory) / 2);
+                // Exchanges this reply had to leave out are never sent again, so the next replies start the same way (a reply
+                // started early lets go of them once it is taken).
+                var letGo = historyStart + (history.Count - usedHistory) / 2;
+                if (early is null) context.LetGoBefore(letGo);
+                else early.LetGoBefore = letGo;
                 operation.PersonaRevision = persona?.ConfigurationRevision;
                 operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;
@@ -1962,8 +2016,19 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // Exact-content commit, pause/consent state and immediate Start share this short, non-awaiting gate.
                 operation.ReplyStartedAt = clock.GetTimestamp();
                 operation.LatencyTimeline?.Mark("building the request", operation.ReplyStartedAt);
-                turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller);
+                turn = early is null ? runtime.Start(request, operation.Authorization, operation.OriginalCaller)
+                    : runtime.StartEarly(request, operation.Authorization, early.PrepareVoice, operation.OriginalCaller);
                 operation.Attach(turn);
+                if (straight && early is null)
+                    foreach (var words in operation.StraightWords!) words.ReplyStarted(operation.ReplyStartedAt);
+            }
+            // Started early: the request streams, held, until the talk window takes it as the reply or it is let go.
+            if (early is not null)
+            {
+                var (end, committed) = await TakenAsync(operation, early, turn, input!, worker).ConfigureAwait(false);
+                if (end is { } outcome) return new(outcome);
+                lease = committed;
+                taken = true;
                 if (straight)
                     foreach (var words in operation.StraightWords!) words.ReplyStarted(operation.ReplyStartedAt);
             }
@@ -1992,8 +2057,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 ErrorLog.Info("Voice path: straight to Thinking (your recording alone, no transcript); speech-to-text runs beside the reply.");
                 NoteWordsAsync(operation.StraightWords!).Forget();
                 // Something short might not be words (a cough, mm): Parakeet checks it now, beside the request, and the reply is
-                // dropped if it isn't words and nothing has played yet.
-                if (QuickCheck(operation)) CheckWordsBesideAsync(operation, turn).Forget();
+                // dropped if it isn't words and nothing has played yet. A reply started early was checked on its words already.
+                if (early is null && QuickCheck(operation)) CheckWordsBesideAsync(operation, turn).Forget();
             }
             else if (operation.VoiceSent) ErrorLog.Info("Voice path: transcribe first (your recording with the transcript).");
             var terminal = await turn.Completion.ConfigureAwait(false);
@@ -2159,6 +2224,16 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
         finally
         {
+            // A reply started early that was never taken said and did nothing: the touches it took wait for the next reply.
+            if (early is not null && !taken)
+            {
+                if (early.Waiting) LetGoEarly(operation, EarlyReplyRecord.Cancelled, "the conversation stopped it");
+                if (operation.Touches is { } untaken)
+                {
+                    touches.Restore(untaken);
+                    operation.Touches = null;
+                }
+            }
             // Whatever happened to the reply, the words of what it carried are transcribed now.
             if (operation.StraightWords is { } spoken)
                 foreach (var words in spoken) words.Release();
@@ -3837,6 +3912,16 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         EndOfTurnJudgement? judgement = null;
         Exception? judgeError = null;
         var decided = EndOfTurnStep.Wait;
+        // Companion › Listening › Start replies early: with Parakeet on this PC, a reply starts early on the quick transcript of
+        // the pause under way (without a judge, the quick transcript still starts at the same short pause) and is let go when
+        // the user's own voice comes back. Pauses are counted here for both.
+        var early = EarlyGateFor(operation);
+        LiveConversationOperation? earlyReply = null;
+        int pauses = 0, quickPause = -1, quickEnd = 0;
+        bool quickTried = false, earlyKept = false;
+        bool? quickWorth = null;
+        var quickFrames = Math.Max(1, (int)Math.Ceiling(EndOfTurn.JudgeAfter.TotalMilliseconds / 20));
+        var plainFrames = Math.Max(1, (int)Math.Round(settings.EndSilence.TotalMilliseconds / 20));
         var talkOver = operation.Listening.Pc ? null : new TalkOverDetector();
         // Quick checks of the words said over Martlet: for barge-in, and while it sings (to hear "stop singing" at once).
         var bargeIn = operation is { Listen: true, Listening.Pc: false } && (operation.Listening.BargeIn || singing is not null) &&
@@ -3864,7 +3949,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     if (!copied) break;
                     var speakers = echo?.Speakers((long)index * EnergyVoiceActivityDetector.FrameSamples, EnergyVoiceActivityDetector.FrameSamples) == true;
                     index++;
+                    var silenceBefore = detector.SilenceFrames;
                     var transition = detector.Process(frame);
+                    if (transition == VoiceActivityTransition.None && silenceBefore == 0 && detector.SilenceFrames > 0) pauses++;
                     operation.VoiceLevel = detector.LastLevelDb;
                     var loud = detector.LastFrameLoud;
                     userSum.Add(userSum[^1] + (loud && !speakers ? 1 : 0));
@@ -3897,6 +3984,23 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             transition = VoiceActivityTransition.SpeechEnded;
                         }
                     }
+                    if (early is not null && transition == VoiceActivityTransition.None && detector.Speaking && accepted >= 0)
+                    {
+                        if (detector.SilenceFrames == 0)
+                        {
+                            // The user's own voice came back in the pause (never what the speakers played): the reply started
+                            // early goes, and the next pause may start another.
+                            if (silenceBefore > 0 && !speakers && early.VoiceResumed() && earlyReply is { } resumed)
+                                LetGoEarly(resumed, EarlyReplyRecord.Cancelled, "you went on talking");
+                        }
+                        else
+                        {
+                            // Without a judge the quick transcript starts at the same short pause: a reply may start early on
+                            // it, and speech-to-text reuses it when the turn ends in this pause.
+                            if (turn is null && detector.SilenceFrames == quickFrames && quickFrames < plainFrames) QuickAtPause();
+                            if (!quickTried && quick is { Transcript.IsCompleted: true } && quickPause == pauses) TryEarly();
+                        }
+                    }
                     if (transition == VoiceActivityTransition.SpeechStarted)
                     {
                         if (accepted < 0) operation.Publish(new("mic.hearing_speech"));
@@ -3921,6 +4025,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             operation.LatencyTimeline = new ReplyTimeline(clock, ReplyTimeline.YouStopped, now - Math.Max(0, silence));
                             if (turn is not null) TurnEnded(now, silence);
                             else operation.LatencyTimeline.Mark(ReplyLatency.EndOfSpeech, now);
+                            if (early is not null) EarlyTurnEnded();
                         }
                         await run.ReleaseAsync().ConfigureAwait(false);
                         return Range(accepted, detector.SpeechEndFrame);
@@ -3932,6 +4037,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     }
                 }
                 while (true);
+                // A quick transcript that came between frames, or a start that found the conversation busy a moment ago (the
+                // reply let go before it still leaving), starts its reply early now rather than at the next frame.
+                if (early is not null && !quickTried && quick is { Transcript.IsCompleted: true } && quickPause == pauses &&
+                    detector is { Speaking: true, SilenceFrames: > 0 } && accepted >= 0)
+                    TryEarly();
                 // Always listening that can't tell Martlet's own voice from yours stops listening the moment Martlet starts
                 // speaking, unless you were already talking. Hearing the output you hear (Martlet's voice included) ends what it
                 // was hearing right there instead, so a video that was talking goes on without Martlet's own words.
@@ -3966,6 +4076,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             operation.VoiceLevel = -100;
             judgeCancel.Cancel();
             if (!ReferenceEquals(operation.QuickWords, quick)) DropQuick();
+            // Listening stopped (or the turn ended in another pause) before a reply started early was kept for this turn.
+            if (earlyReply is { } left && !earlyKept) LetGoEarly(left, EarlyReplyRecord.Cancelled, "your turn didn't end in that pause");
             // The user's voice ended (or listening stopped): a paused reply plays on once its verdict is not for Martlet.
             operation.Held?.Hold.Ended();
         }
@@ -3986,15 +4098,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         TimeSpan? Took() => judgeEndedAt > judgeStartedAt && judgeStartedAt != 0
             ? clock.GetElapsedTime(judgeStartedAt, judgeEndedAt) : null;
 
-        // After a short pause: the judge hears what was said so far (from its pre-roll to now, with the pause), and with Parakeet
-        // on this PC a quick transcript of exactly the speech that would be kept starts beside it, for speech-to-text to reuse.
-        void AskJudge()
+        // What was said so far, from its pre-roll to now (with the pause), and where in it the speech that would be kept lies
+        // (pre-roll to the pause, with the tail). The caller clears it.
+        (byte[] Heard, int Offset, int Length, int Kept) HeardSoFar()
         {
-            DropQuick();
-            judgement = null;
-            judgeError = null;
-            judgeEndedAt = 0;
-            judgedPause = turn!.Pause;
             var end = index - detector.SilenceFrames;
             var startSample = Math.Max(0, accepted * EnergyVoiceActivityDetector.FrameSamples - EnergyVoiceActivityDetector.Samples(settings.PreRoll));
             var endSample = end * EnergyVoiceActivityDetector.FrameSamples + EnergyVoiceActivityDetector.Samples(settings.Tail);
@@ -4009,21 +4116,94 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             }
             catch (OperationCanceledException) { }
             var offset = (startSample - firstFrame * EnergyVoiceActivityDetector.FrameSamples) * 2;
-            var length = frames * EnergyVoiceActivityDetector.FrameBytes - offset;
+            return (heard, offset, frames * EnergyVoiceActivityDetector.FrameBytes - offset, (endSample - startSample) * 2);
+        }
+
+        // With Parakeet on this PC, a quick transcript of exactly the speech that would be kept starts now: speech-to-text reuses
+        // it when the turn ends in this pause, and a reply may start early on it.
+        void StartQuick(byte[] heard, int offset, int length, int keptBytes, long at)
+        {
+            var configured = operation.Authorization.Configuration;
+            if (localWords is not { } local || !configured.LocalStt() || configured.SttHostTarget() is not null || length < keptBytes || keptBytes <= 0)
+                return;
+            var kept = heard.AsSpan(offset, keptBytes).ToArray();
+            var model = configured.Route(SetupRole.Stt).ModelId;
+            quickCancel = CancellationTokenSource.CreateLinkedTokenSource(operation.OriginalCaller);
+            Task<LocalTranscript> transcript;
+            try { transcript = local.TranscribeAsync(model, kept, quickCancel.Token); }
+            catch (Exception error) when (error is InvalidOperationException or ObjectDisposedException) { transcript = Task.FromException<LocalTranscript>(error); }
+            quick = new(model, kept, transcript, at);
+            quickPause = pauses;
+            quickEnd = index - detector.SilenceFrames;
+            quickTried = false;
+            quickWorth = null;
+        }
+
+        // Without a judge (off, or none can answer), the quick transcript still starts at the short pause the judge would be
+        // asked at, for a reply started early.
+        void QuickAtPause()
+        {
+            DropQuick();
+            var (heard, offset, length, kept) = HeardSoFar();
+            try { StartQuick(heard, offset, length, kept, clock.GetTimestamp()); }
+            finally { CryptographicOperations.ZeroMemory(heard); }
+        }
+
+        // The quick transcript of the pause under way is in: a reply starts early when it has real words and the conversation
+        // is free (StartEarly decides the rest; a busy slot, say the reply let go a moment ago, is tried again at the next
+        // frame).
+        void TryEarly()
+        {
+            if (quick!.Transcript is not { IsCompletedSuccessfully: true } done)
+            {
+                quickTried = true;
+                return;
+            }
+            var text = done.Result.Text?.Trim() ?? "";
+            var (voiced, speech) = Measure(accepted, quickEnd);
+            quickWorth ??= EarlyReplyGate.Worth(text, WordsContext(operation, voiced, done.Result.Evidence, speech), operation.Listening!.WordCheck);
+            if (!early!.TryStart(quickPause, pauses, detector.SilenceFrames > 0, quickWorth.Value))
+            {
+                quickTried = true;
+                return;
+            }
+            var pauseStartedAt = clock.GetTimestamp() - (long)(detector.SilenceFrames * 0.02 * clock.TimestampFrequency);
+            if (StartEarly(operation, quick, text, quickPause, early.Starts, pauseStartedAt, voiced) is { } started)
+            {
+                quickTried = true;
+                operation.EarlyStarted = earlyReply = started;
+            }
+            else early.NotStarted();
+        }
+
+        // The turn ended: a reply started early in this very pause waits for the talk window to take it (the same words and
+        // what goes with them are checked then); one from an earlier pause goes. Without a judge, speech-to-text reuses the
+        // quick transcript of this pause. The reply latency line says how many replies started early.
+        void EarlyTurnEnded()
+        {
+            if (turn is null && quick is not null && quickPause == pauses)
+            {
+                operation.QuickWords = quick;
+                quickCancel = null;
+            }
+            if (early!.Ended(pauses)) earlyKept = earlyReply is not null;
+            else if (earlyReply is { } waiting) LetGoEarly(waiting, EarlyReplyRecord.Cancelled, "you went on talking");
+            if (early.Starts > 0 && operation.LatencyTimeline is { } line) line.Early = new(false, early.Starts, early.Cancelled);
+        }
+
+        // After a short pause: the judge hears what was said so far (from its pre-roll to now, with the pause), and with Parakeet
+        // on this PC a quick transcript of exactly the speech that would be kept starts beside it, for speech-to-text to reuse.
+        void AskJudge()
+        {
+            DropQuick();
+            judgement = null;
+            judgeError = null;
+            judgeEndedAt = 0;
+            judgedPause = turn!.Pause;
+            var (heard, offset, length, keptBytes) = HeardSoFar();
             var silence = TimeSpan.FromMilliseconds(detector.SilenceFrames * 20);
             judgeStartedAt = clock.GetTimestamp();
-            var keptBytes = (endSample - startSample) * 2;
-            var configured = operation.Authorization.Configuration;
-            if (localWords is { } local && configured.LocalStt() && configured.SttHostTarget() is null && length >= keptBytes && keptBytes > 0)
-            {
-                var kept = heard.AsSpan(offset, keptBytes).ToArray();
-                var model = configured.Route(SetupRole.Stt).ModelId;
-                quickCancel = CancellationTokenSource.CreateLinkedTokenSource(operation.OriginalCaller);
-                Task<LocalTranscript> transcript;
-                try { transcript = local.TranscribeAsync(model, kept, quickCancel.Token); }
-                catch (Exception error) when (error is InvalidOperationException or ObjectDisposedException) { transcript = Task.FromException<LocalTranscript>(error); }
-                quick = new(model, kept, transcript, judgeStartedAt);
-            }
+            StartQuick(heard, offset, length, keptBytes, judgeStartedAt);
             var request = new EndOfTurnRequest(heard.AsMemory(offset, Math.Max(0, length)), silence,
                 quick?.Transcript.ContinueWith(t => t.IsCompletedSuccessfully ? (string?)t.Result.Text : null, TaskScheduler.Default));
             var token = judgeCancel.Token;
@@ -4086,11 +4266,14 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             }
         }
 
-        // The utterance starts here: when its voice began, on the controller's clock (each frame is 20 ms of it).
+        // The utterance starts here: when its voice began, on the controller's clock (each frame is 20 ms of it). A reply started
+        // early for the turn before this one is let go: the talk window answers both together.
         void Accept()
         {
             accepted = Onset();
             operation.SpeechStartedAt = clock.GetTimestamp() - (long)((index - accepted) * 0.02 * clock.TimestampFrequency);
+            if (EarlyReply is { Early: { } other } waiting && !ReferenceEquals(other.Utterance, operation))
+                LetGoEarly(waiting, EarlyReplyRecord.Cancelled, "you went on talking");
         }
 
         // The speech under way is someone's voice, not mostly what the speakers played (or the user has talked over them).
@@ -4101,14 +4284,20 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         int Onset() => SpeakersMostly(detector.SpeechStartFrame) && talkOver is { StretchStartFrame: >= 0 } over
             ? Math.Max(detector.SpeechStartFrame, over.StretchStartFrame) : detector.SpeechStartFrame;
 
-        // What is sent, how much of it was the user's voice (loud frames the speakers don't explain) and how long that voice went
-        // on (every frame from its onset to the silence that the speakers don't explain).
-        SpeechRange Range(int startFrame, int endFrame)
+        // How much of the speech between two frames was the user's voice (loud frames the speakers don't explain) and how long
+        // that voice went on (every frame from its onset to the silence that the speakers don't explain).
+        (TimeSpan Voiced, TimeSpan Speech) Measure(int startFrame, int endFrame)
         {
             var last = Math.Clamp(endFrame <= startFrame ? userSum.Count - 1 : endFrame, 0, userSum.Count - 1);
             var first = Math.Clamp(startFrame, 0, last);
-            operation.Voiced = TimeSpan.FromMilliseconds((userSum[last] - userSum[first]) * 20);
-            operation.Speech = TimeSpan.FromMilliseconds((last - first - (explainedSum[last] - explainedSum[first])) * 20);
+            return (TimeSpan.FromMilliseconds((userSum[last] - userSum[first]) * 20),
+                TimeSpan.FromMilliseconds((last - first - (explainedSum[last] - explainedSum[first])) * 20));
+        }
+
+        // What is sent, with how much of it was the user's voice and how long that voice went on (Measure).
+        SpeechRange Range(int startFrame, int endFrame)
+        {
+            (operation.Voiced, operation.Speech) = Measure(startFrame, endFrame);
             return new(
                 Math.Max(0, startFrame * EnergyVoiceActivityDetector.FrameSamples - EnergyVoiceActivityDetector.Samples(settings.PreRoll)),
                 endFrame * EnergyVoiceActivityDetector.FrameSamples + EnergyVoiceActivityDetector.Samples(settings.Tail));

@@ -1825,6 +1825,29 @@ the data folder.
   without a quick transcript or an answer in time, your pause decides). Other
   judges plug in the same way through `IEndOfTurnJudge` and
   `EndOfTurnJudges.WithFallback`.
+- **Start replies early** (on by default, Companion › Listening › How you
+  talk) starts the reply at that same short pause, as soon as the quick
+  transcript (Parakeet on this PC) has real words, without waiting for the
+  verdict (`EarlyReplyGate`, `ConversationRuntime.StartEarly`). It is built
+  exactly as the talk window will ask for it (`EarlyReplyPlan`: only while
+  nothing else waits for a reply) and *held*: Thinking streams and, with
+  **Prepare the voice early too** (on), the first spoken piece is made, but
+  nothing shows, plays, acts or calls a tool. When the turn ends in that pause
+  and the talk window asks for the same request (`EarlyAsk`), it is promoted
+  (`ConversationTurn.Release`): no second request, its words show and its
+  first piece plays at once. Your own voice coming back, the turn ending in a
+  later pause, other words or something else going with them (a picture, what
+  this PC played, typed text) let it go: its request and voice work stop, and
+  the next pause starts another (at most three a turn). Only a reply that is
+  taken commits to answering, lets go of old history, consumes the context
+  board's consume-on-read notes or reaches the history, memory, the talk
+  window and the reply latency line. **Also for cloud models (may add a small
+  cost)** (off by default) allows it with a cloud Thinking model, which charges
+  for a request let go; a paid cloud voice is prepared early only with it.
+  Barge-in never sees a held reply as Martlet speaking. The desktop log has
+  *Early reply: ...* lines, the reply latency line *Started early at 262 ms,
+  promoted.*, and Companion › Listening's status counts the newest outcomes
+  ([Voice latency](VOICE_LATENCY.md#starting-replies-early)).
 - Listening never stops by itself. It runs on its own slot beside replies
   (`LiveListener`): it records one utterance at a time and transcribes each, in
   order, while it already listens for the next, so nothing said while Martlet

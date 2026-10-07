@@ -38,6 +38,13 @@ public sealed class ConversationTurn
     private readonly Guid? retryOf;
     private readonly bool earlierSpeech;
     private Task callbacks = Task.CompletedTask, speechCallbacks = Task.CompletedTask;
+    // Started early (ConversationRuntime.StartEarly): completes on Release; null for a turn that started normally. While it
+    // waits, what shows or acts (captions and character cues of a reply that isn't spoken) waits in order in heldBack, tools
+    // and playback wait for it, and without its voice (holdVoice) synthesis waits too. heldBack is null once released.
+    private readonly TaskCompletionSource? hold;
+    private readonly bool holdVoice;
+    private List<Action>? heldBack;
+    private TimeSpan? releasedAfter;
     // Captions for words the voice couldn't say, shown one after another (ShowUnsaid).
     private Task unsaidCaptions = Task.CompletedTask;
     // A reply that isn't spoken still shows in the captions (speech bubble, subtitles), each sentence once it is written.
@@ -103,16 +110,23 @@ public sealed class ConversationTurn
     public IReadOnlyList<ReplyTag> Acted { get { lock (Sync) return [.. acted]; } }
 
     internal ConversationTurn(ConversationRuntime owner, ConversationRequest request,
-        IConversationAuthorizationSource authorization, long epoch, Guid? retryOf, bool earlierSpeech)
+        IConversationAuthorizationSource authorization, long epoch, Guid? retryOf, bool earlierSpeech, bool early = false,
+        bool prepareVoice = true)
     {
         Owner = owner;
         this.request = request;
         this.authorization = authorization;
+        if (early)
+        {
+            hold = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            holdVoice = !prepareVoice;
+            heldBack = [];
+        }
         // The speaking voice's own tags: a spelling it shares with another tag means what it means to the speech segmenter.
         IReadOnlyList<VoiceTag> voiceTags = request.Speech is null ? [] : SpeechEngines.TagsForModel(request.HostSpeech?.ModelId);
-        // A reply that isn't spoken has no sentence timing: its character tags act as soon as the words arrive.
+        // A reply that isn't spoken has no sentence timing: its character tags act as soon as the words arrive (once released).
         shown = new(request.CharacterTags, request.Speech is null && owner.CharacterCues is { } feed
-            ? tag => feed.Post([new(tag, TimeSpan.Zero)], Task.CompletedTask) : null,
+            ? tag => WhenReleased(() => feed.Post([new(tag, TimeSpan.Zero)], Task.CompletedTask)) : null,
             request.ControlTags, controls.Add, voiceTags,
             tag => { if (ReplyTag.Of(tag, voiceTags) is { } act) acted.Add(act); });
         captioner = request.Speech is null && owner.SpokenText is not null
@@ -155,6 +169,45 @@ public sealed class ConversationTurn
 
     /// <summary>Whether what Martlet says aloud is paused (<see cref="Pause"/>).</summary>
     public bool Paused { get { lock (Sync) return paused; } }
+
+    /// <summary>Started early (<see cref="ConversationRuntime.StartEarly"/>) and not released yet: its Thinking text streams
+    /// (and its first piece may be synthesized), but nothing shows, acts, calls a tool or plays.</summary>
+    public bool Held { get { lock (Sync) return heldBack is not null; } }
+
+    /// <summary>Lets a turn started early go on as the reply: what waited to show or act does so now, in order, its first
+    /// piece plays at once when it is ready, and tools may run. A reply that isn't spoken may have finished meanwhile; its
+    /// captions show now. Returns false for a turn that wasn't held, was released already or was stopped or failed.</summary>
+    public bool Release()
+    {
+        lock (Sync)
+        {
+            if (heldBack is not { } waiting || invalidated) return false;
+            heldBack = null;
+            releasedAfter = Clock.GetElapsedTime(startedAt);
+            // In order and before anything newer: the feeds take them without blocking or calling back.
+            foreach (var action in waiting) action();
+            hold!.TrySetResult();
+            Emit(ConversationEventKind.State);
+            return true;
+        }
+    }
+
+    // What shows or acts runs now, or once the turn is released when it was started early.
+    private void WhenReleased(Action action)
+    {
+        lock (Sync)
+        {
+            if (heldBack is { } waiting)
+            {
+                waiting.Add(action);
+                return;
+            }
+        }
+        action();
+    }
+
+    // Waits while the turn is held (started early and not released yet); a stopped turn ends the wait.
+    private Task WhileHeldAsync() => hold is { Task.IsCompleted: false } held ? held.Task.WaitAsync(stop.Token) : Task.CompletedTask;
 
     /// <summary>Pauses what Martlet says aloud, at once, without losing anything: the sentence playing stops reading audio
     /// and keeps what is buffered, and a sentence that starts meanwhile starts paused. The Thinking text and the voice's
@@ -672,10 +725,12 @@ public sealed class ConversationTurn
         }
     }
 
-    // Tool calls run one at a time; each result is cut to its share of what is left of the reply's tool budget.
+    // Tool calls run one at a time; each result is cut to its share of what is left of the reply's tool budget. A reply started
+    // early calls no tool until it is released: a tool may act on the world.
     private async Task<IReadOnlyList<TextToolResult>> CallToolsAsync(IConversationToolHost tools, IReadOnlyList<TextToolCall> calls,
         IReadOnlyList<TextToolRound> earlier)
     {
+        await WhileHeldAsync().ConfigureAwait(false);
         var available = BoundedTextInput.RemainingToolExchangeBytes(earlier) - calls.Sum(c => c.Utf8Bytes) - 4096;
         var share = Math.Max(256, available / calls.Count);
         var results = new List<TextToolResult>(calls.Count);
@@ -777,6 +832,8 @@ public sealed class ConversationTurn
         var broken = false;
         try
         {
+            // Started early without its voice: nothing is synthesized until the turn is released.
+            if (holdVoice) await WhileHeldAsync().ConfigureAwait(false);
             await foreach (var piece in segments.Reader.ReadAllAsync(stop.Token).ConfigureAwait(false))
             {
                 if (piece.Text is null)
@@ -935,6 +992,9 @@ public sealed class ConversationTurn
 
     private async Task PlayAllAsync(SpeechOutput voice, ChannelReader<SpeechTake> ready)
     {
+        // Started early: nothing plays, acts or shows until the turn is released, and the first piece waits here synthesized
+        // (synthesis runs one piece ahead, so only that one is made meanwhile).
+        await WhileHeldAsync().ConfigureAwait(false);
         await foreach (var take in ready.ReadAllAsync(stop.Token).ConfigureAwait(false))
         {
             if (take.CuesOnly)
@@ -998,15 +1058,16 @@ public sealed class ConversationTurn
         await shown.ConfigureAwait(false);
     }
 
-    // A reply that isn't spoken: each sentence goes to the captions once it is written, split and kept quiet ([pass]) the way
-    // the voice would say it. Captions never fail the reply: one that runs past its limits just stops showing.
+    // A reply that isn't spoken: each sentence goes to the captions once it is written (or, started early, once it is released),
+    // split and kept quiet ([pass]) the way the voice would say it. Captions never fail the reply: one that runs past its
+    // limits just stops showing.
     private void Caption(Func<SpeechSegmenter, IEnumerable<SpeechPiece>> next)
     {
         if (captioner is null || captionsEnded) return;
         try
         {
             foreach (var piece in next(captioner))
-                if (piece.Text is { } sentence) ShowUnsaid(sentence);
+                if (piece.Text is { } sentence) WhenReleased(() => ShowUnsaid(sentence));
         }
         catch (ConversationException) { captionsEnded = true; }
     }
@@ -1236,7 +1297,7 @@ public sealed class ConversationTurn
             speechFailure, new(textRequestAfter, textResponseAfter, firstReasoningAfter, firstSegmentAfter, speechRequestAfter,
                 firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter,
                 voiceWaits + (currentPlayback?.Underruns ?? 0), voiceWaited + (currentPlayback?.UnderrunTime ?? TimeSpan.Zero),
-                pauses, resumes, pausedTime + (paused ? Clock.GetElapsedTime(pausedAt) : TimeSpan.Zero)),
+                pauses, resumes, pausedTime + (paused ? Clock.GetElapsedTime(pausedAt) : TimeSpan.Zero), hold is not null, releasedAfter),
             inputTokens, cachedInputTokens,
             reasoningRejected, voiceMuted);
     }

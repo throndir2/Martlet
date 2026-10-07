@@ -27,10 +27,21 @@ public sealed class ReplyTimeline
     public string Origin { get { lock (gate) return origin; } }
     public long OriginAt { get { lock (gate) return originAt; } }
     public IReadOnlyList<(string Step, long At)> Steps { get { lock (gate) return steps.ToArray(); } }
+    /// <summary>The replies the turn started early (Companion › Listening › Start replies early), when it started any: whether
+    /// the reply is one of them, promoted, and how many started and were let go. Copied with the timeline.</summary>
+    public EarlyStarts? Early { get { lock (gate) return early; } set { lock (gate) early = value; } }
+    private EarlyStarts? early;
 
     public void Mark(string step, long? at = null)
     {
         lock (gate) steps.Add((step, at ?? Clock.GetTimestamp()));
+    }
+
+    /// <summary>Adds the steps another timeline marked, at their own times: what a reply started early did before the turn it
+    /// answers ended goes with that turn's own steps.</summary>
+    public void Mark(IEnumerable<(string Step, long At)> marked)
+    {
+        lock (gate) steps.AddRange(marked);
     }
 
     /// <summary>Counts from a later moment instead (push-to-talk: when the talk button was let go), forgetting earlier steps.</summary>
@@ -49,7 +60,7 @@ public sealed class ReplyTimeline
     {
         lock (gate)
         {
-            var copy = new ReplyTimeline(Clock, origin, originAt);
+            var copy = new ReplyTimeline(Clock, origin, originAt) { early = early };
             copy.steps.AddRange(steps);
             return copy;
         }
@@ -69,7 +80,10 @@ public sealed class ReplyTimeline
 /// words after 3300 ms and first audio after 5585 ms from the reply's start, 2 spoken pieces. First piece: 1.20 s of speech made
 /// in 1069 ms. The voice paused 2 times for 3120 ms in all, waiting for its next audio. Models: Thinking x-ai/grok-4.3, voice
 /// chatterbox-turbo, speech-to-text parakeet-tdt-0.6b-v3-int8.</c>
-/// The pauses are said only when the speakers ran dry mid-reply because the voice was made slower than real time.
+/// The pauses are said only when the speakers ran dry mid-reply because the voice was made slower than real time. A reply
+/// started early (<see cref="EarlyStarts"/>) adds <c>Started early at 262 ms, promoted.</c> (or how many starts the turn let
+/// go: <c>Started early 2 times, 2 cancelled.</c>), and its own steps show among the end of the turn's, in the order they
+/// happened.
 /// MCP's latency_report reads these lines; the models are the desktop's list of model IDs.</summary>
 public static class ReplyLatency
 {
@@ -90,6 +104,9 @@ public static class ReplyLatency
     public const string FirstSentence = "first sentence";
     public const string VoiceAuthorization = "voice authorization";
     public const string VoiceSynthesis = "voice synthesis";
+    // A reply started early (Companion › Listening › Start replies early) is taken as the reply: what it wrote shows, and its
+    // first piece, made meanwhile, plays.
+    public const string Promoted = "promoted";
     public const string PlaybackStart = "playback start";
     public const string Speakers = "speakers";
     // Shorter waits for the voice's next audio (the moment between a piece's last audio and its end) aren't heard as a pause.
@@ -97,14 +114,18 @@ public static class ReplyLatency
 
     /// <summary>The line for a finished reply, or null when nothing of it arrived (no words, no audio).</summary>
     /// <param name="timeline">What happened before the reply started; its last step is the reply's start
-    /// (<paramref name="replyStartedAt"/>).</param>
+    /// (<paramref name="replyStartedAt"/>). A reply started early and promoted (<see cref="ReplyTimeline.Early"/>) started
+    /// before the user's turn ended: then every step up to the first audio counts, in the order it happened, so the end of the
+    /// turn shows among the reply's own steps.</param>
     public static string? Describe(ReplyTimeline? timeline, long replyStartedAt, TimeProvider clock, ConversationSnapshot reply,
         string? models, bool interrupted = false, bool passed = false, bool restarted = false)
     {
         if (reply.FirstTextAfter is null && reply.FirstAudioAfter is null) return null;
         var steps = new List<(string Step, long At)>();
         long origin = timeline?.OriginAt ?? replyStartedAt;
-        if (timeline is not null) steps.AddRange(timeline.Steps.Where(step => step.At <= replyStartedAt));
+        var early = timeline?.Early;
+        var promoted = early is { Promoted: true };
+        if (timeline is not null) steps.AddRange(promoted ? timeline.Steps : timeline.Steps.Where(step => step.At <= replyStartedAt));
         var timings = reply.Timings ?? new ConversationTimings();
         long At(TimeSpan after) => replyStartedAt + (long)(after.TotalSeconds * clock.TimestampFrequency);
         void Add(string step, TimeSpan? after)
@@ -122,11 +143,14 @@ public static class ReplyLatency
         Add(FirstSentence, timings.FirstSegmentAfter);
         Add(VoiceAuthorization, timings.SpeechRequestAfter);
         Add(VoiceSynthesis, timings.FirstSpeechAudioAfter);
+        Add(Promoted, timings.ReleasedAfter);
         Add(PlaybackStart, timings.PlaybackStartedAfter);
         Add(Speakers, reply.FirstAudioAfter);
 
         var text = new StringBuilder(Prefix);
-        var end = reply.FirstAudioAfter is { } audio ? At(audio) : At(reply.FirstTextAfter!.Value);
+        // A reply started early shows its words only once it is taken as the reply.
+        var shown = reply.FirstTextAfter is { } written && timings.ReleasedAfter is { } released && released > written ? released : reply.FirstTextAfter;
+        var end = reply.FirstAudioAfter is { } audio ? At(audio) : At(shown!.Value);
         var what = reply.FirstAudioAfter is null ? "first words" : "first audio";
         var from = timeline?.Origin ?? ReplyTimeline.Asked;
         text.Append(CultureInfo.InvariantCulture, $"{what} {Milliseconds(end - origin, clock)} ms after {from} (");
@@ -157,6 +181,19 @@ public static class ReplyLatency
             if (timings.PausesForYou > 1) text.Append(CultureInfo.InvariantCulture, $" ({timings.PausesForYou} times)");
         }
         text.Append('.');
+        // Replies started early in this turn: the one this reply is (how far into the wait it started), and those let go.
+        if (early is { Starts: > 0 } started)
+        {
+            var times = started.Starts == 1 ? "time" : "times";
+            if (started.Promoted)
+            {
+                text.Append(CultureInfo.InvariantCulture, $" Started early at {Milliseconds(Math.Max(0, replyStartedAt - origin), clock)} ms, promoted");
+                if (started.Starts > 1)
+                    text.Append(CultureInfo.InvariantCulture, $" (started early {started.Starts} {times}, {started.Cancelled} cancelled)");
+                text.Append('.');
+            }
+            else text.Append(CultureInfo.InvariantCulture, $" Started early {started.Starts} {times}, {started.Cancelled} cancelled.");
+        }
         if (timings.FirstPieceSpeech is { } speech && timings.FirstPieceSynthesizedAfter is { } made && timings.SpeechRequestAfter is { } asked)
             text.Append(CultureInfo.InvariantCulture,
                 $" First piece: {speech.TotalSeconds:0.00} s of speech made in {Math.Max(0, (made - asked).TotalMilliseconds):0} ms.");

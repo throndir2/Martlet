@@ -99,6 +99,10 @@ public sealed class BoundedWaveAudio
     /// <summary>The whole WAV file, for a model that hears (Chat Completions <c>input_audio</c>).</summary>
     public string ToBase64() => Convert.ToBase64String(wave);
 
+    /// <summary>Whether <paramref name="other"/> holds exactly the same recording (format and samples).</summary>
+    public bool SameAudio(BoundedWaveAudio? other) =>
+        other is not null && (ReferenceEquals(this, other) || Format == other.Format && wave.AsSpan().SequenceEqual(other.wave));
+
     internal HttpContent CreateContent() => new ByteArrayContent(wave);
     internal ReadOnlyMemory<byte> Pcm => wave.AsMemory(44);
     public override string ToString() => nameof(BoundedWaveAudio);
