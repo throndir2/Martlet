@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- On a Martlet host where the Thinking pool shares a graphics card with your conversation, replies, voices and listening now always go first: the host stops a Thinking pool job on that card the moment a reply needs it and runs it on another computer or later, so your character's voice no longer slows down while it thinks in the background. *martlet-host status* and the host's log say when the Thinking pool shares a card, and how to give it one of its own. ([#541](https://github.com/throndir2/Martlet/pull/541))
 - Companion › Voice now shows a quick rundown for every voice: whether it copies your voice, laughs and sighs, and speaks with emotions, and whether it runs on your graphics card (with about how much of its memory it uses), on your processor or online. ([#539](https://github.com/throndir2/Martlet/pull/539))
 
 ### Changed

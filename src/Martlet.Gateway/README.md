@@ -476,7 +476,7 @@ nonce: TLS with the pinned host key protects them in transit.
 | `POST /martlet/v1/network/join` | Signed device body, any role | `display_name` and `key` (ECDSA P-256 SPKI); returns `state` (`pending` or `member`), `network_id` and `check_number` |
 | `POST /martlet/v1/network/deny` | Signed body of an active member desktop | `device_id`; returns `denied` |
 | `GET /martlet/v1/version` | Signed scoped device request, or any API key | Protocol `2.0`, gateway `0.2.0`, host ID, `martlet_version`, authorized role and explicit `credential_lifetime` (`paired` or retiring old key with deadline); for an API key also `api_key` (`id`, `name`, `scopes`, `expires_at`) |
-| `GET /martlet/v1/capabilities` | Signed scoped device request | Registry `martlet.gateway.inference-routes` `1.0`, at most 8 fixed routes and 16 status workers, filtered by role |
+| `GET /martlet/v1/capabilities` | Signed scoped device request | Registry `martlet.gateway.inference-routes` `1.0`, at most 8 fixed routes and 16 status workers, filtered by role. Each route also says where it runs and its lane ([GPU priority](#gpu-priority-live-turn-first)): `gpus` (string array of GPU UUIDs, CUDA indexes or `cpu`; empty means unknown, which counts as the whole host) and `lane` (`pool` for Deep thinking's route, `live` for every other). Hosts older than GPU priority send neither |
 | `GET /martlet/v1/status` | Signed scoped device request | Two-second cooperative cancellation for status reads for only that role |
 | `GET /martlet/v1/machine` | Signed scoped device request, any role | Host ID, the gateway's Martlet release `martlet_version` (so desktops can offer to update older hosts), plus the host-reported `machine` (method `docker`/`native`/`app`, optional `platform`, `os_version`, `architecture` and `features` ([platform fields](../../docs/PLATFORMS.md#machine-report-platform-fields)), OS, kernel, CPU, threads, memory, container runtime, `nvidia_containers`, driver `cuda` version, at most 16 GPUs with vendor/memory/driver and, for NVIDIA, power limit/default and persistence mode) or no `machine` when none was collected. Informational and unauthenticated by the host itself; grants no authority |
 | `GET /martlet/v1/cluster` | Signed scoped device request, any role | Host ID and this host's copy of the shared [cluster plan](../../docs/CLUSTER.md) (`plan`: who does each job, per-job failover, hosts and their roles). Nonsecret; the host never acts on it |
@@ -501,13 +501,16 @@ nonce: TLS with the pinned host key protects them in transit.
 | `POST /martlet/v1/api-keys` | Signed device body, any role (never an API key) | Strict schema-1 `ApiKeyList`, at most 32 KiB, merged per key (a revoked entry always wins, otherwise the newest stamp) into the host's copy, which is saved to `api-keys.json` when a storage is attached; returns the same document as GET |
 | `POST /martlet/v1/logs` | Signed device body, any role | Strict schema-1 `LogBatch` (at most 384 KiB, 1,000 lines, 64 streams): lines from the sending desktop's own logs and every other computer's lines it holds (other desktops' and other hosts'). Per stream (`source`/`component`) only lines with a `seq` newer than the newest kept are stored, so redelivery is harmless; lines whose source is not the sender record `relayed_by`. Returns `accepted` and the `marks` (newest `seq`) of every stream the batch names. Saved to `logs.json` when a storage is attached (`GatewayServer.AttachLogStorage`) |
 | `POST /martlet/v1/inference/ollama-chat` | Signed `voice` body plus action permission | Exact selected native-chat model/revision/artifacts; `input` plus optional `system` and `history` (`user`/`assistant`, at most 16) within one 16,384-byte text budget; bounded UTF-8 text events. `Martlet.Gateway.Ollama` relays it to the host's loopback Ollama (`ollama` host role) |
-| `POST /martlet/v1/inference/deep-thinking-chat` | Signed `voice` body plus action permission | Route `martlet.gateway.deep-thinking-chat.v1`, the same native-chat contract, payload and bounds as `ollama-chat`, relayed by `OllamaRelayWorker.DeepThinking` to the `deep-thinking` host role's own loopback Ollama (a second server beside the conversation model's), so Deep thinking's background thinks never queue behind replies. The role's slots (`OLLAMA_NUM_PARALLEL`, 1 to 4) are the route's `maximum_concurrency`: the gateway admits that many thinks at once and answers one more with `job.busy`; every other route stays at one |
+| `POST /martlet/v1/inference/deep-thinking-chat` | Signed `voice` body plus action permission | Route `martlet.gateway.deep-thinking-chat.v1`, the same native-chat contract, payload and bounds as `ollama-chat`, relayed by `OllamaRelayWorker.DeepThinking` to the `deep-thinking` host role's own loopback Ollama (a second server beside the conversation model's), so Deep thinking's background thinks never queue behind replies. The role's slots (`OLLAMA_NUM_PARALLEL`, 1 to 4) are the route's `maximum_concurrency`: the gateway admits that many thinks at once and answers one more with `job.busy`; every other route stays at one. It is the pool lane: on a graphics card that a live request or a hold keeps, a new think gets `job.busy` with `detail` `live` and a running think ends with `job.preempted` ([GPU priority](#gpu-priority-live-turn-first)) |
 | `POST /martlet/v1/inference/f5-synthesis` | Signed `voice` body plus action permission | Exact F5/reference identity, WAV/transcript/chunk bounds and contiguous 24 kHz PCM. `Martlet.Gateway.F5` relays it to the host's loopback F5 service (`f5` host role; route `F5Relay`: pinned model weights, discard-only cancellation). Every voice engine in `SpeechEngines` (XTTS-v2, GPT-SoVITS) has its own route and path on this contract; the reference length must fit the engine (GPT-SoVITS: 3-10 s), and an optional `reference_language` (`en`/`ja`) carries the recording's language for GPT-SoVITS. For a voice the shared speaking-voice list says was made from several recordings, an engine that learns from several (`MultipleReferences`: XTTS-v2, GPT-SoVITS) passes when one of them fits its bounds and its loopback service also gets `reference.clips` (`start_sample`, `sample_count`, `transcript` per recording); other engines clone the joined recording |
 | `POST /martlet/v1/inference/perception/ocr` | Signed `perception` body plus action permission | Selected P02 OCR identity and bounded selected-window frame |
 | `POST /martlet/v1/inference/perception/vlm` | Signed `perception` body plus action permission | Selected P02 VLM identity, frame and bounded question |
 | `POST /martlet/v1/inference/audio2face` | Signed `voice` body plus the host-enabled relay lease | At most 4 s of mono 16-bit generated-speech PCM (`sample_rate`, `pcm_base64`) relayed to the host's loopback Audio2Face service (the role's local open-source engine or NVIDIA's NIM); `face_frame` events carry ARKit blendshape JSON and chunk-relative `sample_offset` |
 | `POST /martlet/v1/inference/transcription` | Signed `voice` body plus the host-enabled relay lease | Kind `Transcription`, contract `martlet.transcription-relay` `1.0`: one microphone utterance of at most 30 s of 16 kHz mono 16-bit PCM (`sample_rate` 16000, `pcm_base64`, at most 960,000 PCM bytes); `text_delta` events carry the final transcript (at most 16 KiB UTF-8), then `completed`. No text event means no speech was recognized. `Martlet.Gateway.Stt` relays it to the host's loopback speech-to-text server (`stt` host role: whisper.cpp, or Martlet's Parakeet service on the same `/inference` contract) and keeps the audio in memory only |
 | `POST /martlet/v1/inference/cancel` | Signed owning credential/host/device/role | Local discard acknowledgment, bounded compute-cancellation report; no compute-stop claim |
+| `GET /martlet/v1/priority` | Signed scoped device request, or an API key with `read` | [GPU priority](#gpu-priority-live-turn-first) now: `routes` (`route_id`, `name`, `lane`, `gpus`, `running`, and for a pool route `held`: a request there would be turned away now), `gpus` (each card or `cpu`: `id`, `held`, how many `live` and `pool` requests run on it and how many `holds` keep it), `whole_host_held`, `holds` (`holder` device, `gpus`, `until`), the `preempted` and `refused` counts since the gateway started, the last 16 `last_preemptions` and `last_refusals` (`at`, `route_id`, `gpus`, `by`: what held the card) and placement `warnings`. Device and route IDs only |
+| `POST /martlet/v1/priority/hold` | Signed `voice` body (or a `voice` API key) | Exactly `{"routes":[route IDs],"ttl_ms":1..15000}` (1 to 16 distinct route IDs): keeps the graphics cards behind those routes free of pool work until now plus `ttl_ms` and stops pool work running on them at once. Returns `{"gpus":[...],"until":"<ISO 8601>"}`; empty `gpus` is the whole host (a route whose placement is unknown, or a route this host doesn't have). One hold per client credential, which a new call renews; at most 32 clients hold at once (one more gets `job.busy` with `detail` `holds`). Holds end on their own and never affect live requests |
+| `POST /martlet/v1/priority/release` | Signed `voice` body (or a `voice` API key) | Exactly `{}`: ends this client's hold at once; returns `released` (false when it had none) |
 
 Non-streaming responses are snake-case JSON and at most 64 KiB. Inference uses
 bounded pull-driven NDJSON. Authenticated operations
@@ -608,10 +611,60 @@ Perception worker identities and registry version remain **1.0**, separately.
 The pinned client still rejects redirects and cross-origin sends, and uses
 response-headers completion; callers own bounded stream reading/cancellation.
 
+## GPU priority (live turn first)
+
+Windows has no priority between programs on one graphics card, and NVIDIA MPS is
+Linux-only, so the gateway keeps priority itself, where the cards are. A live
+reply's time to first audio always comes before background work: a Chatterbox
+token takes about 11 ms alone and about 30 ms while another program uses the
+same RTX 4070 ([sharing the graphics card](../../docs/CHATTERBOX_VOICE.md#sharing-the-graphics-card)).
+
+- **Placement.** Each route says where its worker runs (`GatewayInferenceRoute.Gpus`,
+  set once with `PlaceOn` before registration and advertised as `gpus`): NVIDIA
+  GPU UUIDs (`GPU-...`, `MIG-...`) where known, else CUDA indexes (`0` to `63`),
+  or `cpu` alone; at most eight. The Linux host takes it from `gpus.json` beside
+  `host.json`, which `martlet-host` writes from the card each role was pinned to
+  (`CUDA_VISIBLE_DEVICES`) or `cpu` for a role added to run on the processor.
+  `gpus.json` is not part of the approved configuration: moving a role to another
+  card restarts the gateway without a new approval, and an invalid file is
+  ignored with a `gpus.invalid` note. The `ocr` role (Reading) always runs on the
+  processor. Empty means unknown and counts as the whole host.
+- **Lanes.** `lane` is `pool` for Deep thinking's route (the Thinking pool's
+  background work) and `live` for every other route: replies, voices,
+  listening, lip-sync, singing, pictures and reading.
+- **Held cards.** A card is held while a live request runs on it and while a
+  client's hold keeps it (`POST /martlet/v1/priority/hold`, 1 ms to 15 s,
+  renewed by calling again, ended by `POST /martlet/v1/priority/release` or on
+  its own). Two placements share a card when they name the same device or one
+  of them is unknown.
+- **Refusal.** A new pool request on a held card is turned away at once with
+  `job.busy` and `detail` `live` (HTTP 429). It never reaches the worker. A
+  pool request on a free card, and every live request, is admitted as before.
+- **Preemption.** When a live request is admitted or a hold starts, each pool
+  request running on a card it shares is canceled at once and ends with
+  `job.preempted`: a `failed` stream event when the stream had started, else
+  HTTP 409. The Ollama relay aborts its loopback request, and Ollama/llama.cpp
+  stop within one token or one 512-token prompt batch. Holds never touch live
+  requests.
+- **Status.** `GET /martlet/v1/priority` shows the GPU map, each card's hold
+  state, the holds, the last preemptions and refusals and placement warnings.
+  At start the gateway logs the GPU map, and a warning for each pool route that
+  shares a card with live routes, with the advice to pin each Ollama server to
+  its own GPU (`CUDA_VISIBLE_DEVICES`). Preemptions and refusals go into the
+  host log (the same kind within a minute is counted, not repeated).
+
+The desktop's `HostLiveGpuHold` (in `Martlet.Avatar.Audio2Face.Remote`, the
+`ILiveGpuHold` of `Martlet.Core.Cluster`) makes the hold and release calls. A
+host older than GPU priority answers `request.invalid`; the client then notes
+it once and leaves that host alone for ten minutes, and the live turn goes on.
+`gpu_priority_selftest` rehearses all of it on loopback ([MCP](../../docs/MCP.md)).
+
 ## Errors and audit boundary
 
 Every application error contains only protocol version, stable code, authored
-summary, exact remedy and a random trace ID. It never includes a supplied
+summary, exact remedy, an optional one-word `detail` (`live` on a pool-lane
+`job.busy` refused for a live turn, `holds` when the host already keeps 32
+holds) and a random trace ID. It never includes a supplied
 token, credential, signature, URL, request body, worker exception or stack.
 The required `IGatewayAuditSink` receives only trace ID, stable code and HTTP
 status; implementations must be thread-safe and nonthrowing. Framework request
@@ -646,6 +699,8 @@ operator actions are:
 | `auth.role` | Use a separately approved least-privilege role |
 | `action.denied` | Obtain the exact provider/action permission; permanent pairing is not approval |
 | `job.replay` | Use a new explicitly permitted action and request ID; a new nonce alone cannot duplicate a batch |
+| `job.busy` | The route's worker runs as many jobs as it can; with `detail` `live`, a live turn holds the graphics card of this pool-lane request: run it on another computer or after the live turn |
+| `job.preempted` | A live turn took the graphics card and stopped this pool-lane job: run it again on another computer or after the live turn |
 | `worker.*` | Keep only the named private worker unavailable and repair its local adapter/status |
 | `gateway.redirect_rejected` | Use the exact paired origin; never follow another destination |
 | `gateway.connection_failed`, `gateway.deadline` | Verify readiness/address/pin or the private path; never bypass TLS validation or retry indefinitely |

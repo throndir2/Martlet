@@ -195,7 +195,7 @@ internal sealed partial class GatewayHttpApplication
             {
                 throw new GatewayProtocolException(deadline.IsCancellationRequested
                     ? "job.deadline" : job.PermissionRevoked.IsCancellationRequested
-                        ? "action.denied" : "job.canceled");
+                        ? "action.denied" : job.CanceledCode);
             }
             catch (GatewayInferenceWorkerException error)
             {
@@ -394,7 +394,7 @@ internal sealed partial class GatewayHttpApplication
             }
             else if (failureCode is null && job.IsCancellationRequested)
             {
-                failureCode = "job.canceled";
+                failureCode = job.CanceledCode;
                 cancelWorker = true;
             }
             else if (failureCode is null && job.PermissionRevoked.IsCancellationRequested)
@@ -446,7 +446,7 @@ internal sealed partial class GatewayHttpApplication
                 if (terminal.Kind == GatewayInferenceEventKind.Failed)
                     failureCode = terminal.ErrorCode;
                 else if (terminal.Kind == GatewayInferenceEventKind.Canceled)
-                    failureCode = "job.canceled";
+                    failureCode = job.CanceledCode;
             }
 
             if (failureCode is not null)
@@ -505,7 +505,7 @@ internal sealed partial class GatewayHttpApplication
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested || job.IsCancellationRequested)
         {
             failureCode = deadline.IsCancellationRequested ? "job.deadline" :
-                job.PermissionRevoked.IsCancellationRequested ? "action.denied" : "job.canceled";
+                job.PermissionRevoked.IsCancellationRequested ? "action.denied" : job.CanceledCode;
             throw new GatewayProtocolException(failureCode);
         }
         finally

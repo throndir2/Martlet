@@ -451,13 +451,32 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "writes nothing to disk.", new { }),
         Tool("deep_thinking_role_selftest", "Rehearse the Deep thinking host role end to end with the production code: one real " +
             "gateway on 127.0.0.1 (pinned TLS) serving a host's Thinking route (the ollama role) and the deep-thinking role's own route " +
-            "(martlet.gateway.deep-thinking-chat.v1), each relay over its own fixture Ollama (NOT AI), and a simulated desktop using " +
-            "the desktop's paired client. Checks both routes and their models are advertised, Thinking's advertised route saves as the " +
+            "(martlet.gateway.deep-thinking-chat.v1), each relay over its own fixture Ollama (NOT AI) on its own graphics card, and a " +
+            "simulated desktop using the desktop's paired client. Checks both routes and their models are advertised, Thinking's advertised route saves as the " +
             "desktop's job route (handing Thinking to the host), a think on the Deep thinking route runs " +
             "while a reply streams on Thinking's route (the reply finishes first), each request reaches its own Ollama (the think " +
             "with Thinking steps on), two thinks run at once on the role's two slots (advertised as the route's maximum_concurrency) " +
             "while a reply streams and a third gets job.busy, and that the chat client refuses a mismatched route. Loopback only; writes nothing to disk or " +
             "the credential vault.", new { }),
+        Tool("gpu_priority_status", "Read GPU priority (live turn first) on every Martlet host paired in a desktop data directory " +
+            "(hosts.json), through each host's own gateway (pinned TLS; the pairing secret from Windows Credential Manager only signs " +
+            "the request, never returned): GET /martlet/v1/priority with each route's lane (live or pool) and graphics cards, each " +
+            "card's hold state (held, live and pool requests running, holds), whether the whole host is held, the holds, the preempted " +
+            "and refused counts, the last preemptions and refusals (what held the card) and placement warnings. A host older than " +
+            "GPU priority is reported as such. Read-only: takes no hold and starts no work; contacts only paired hosts.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("gpu_priority_selftest", "Rehearse GPU priority (live turn first) end to end with the production code: real gateways on " +
+            "127.0.0.1 (pinned TLS) with Thinking's Ollama relay (lane live) and the Deep thinking role's (lane pool) placed on graphics " +
+            "cards as martlet-host places them, each over its own fixture Ollama server on loopback (NOT AI, no GPU used), a simulated " +
+            "desktop with the desktop's paired client and its hold client (HostLiveGpuHold). Checks the host's GPU map and its warning " +
+            "to pin each Ollama server to its own GPU, that a live reply stops a running think on the same card at once (job.preempted, " +
+            "the Ollama request aborted), that a think is turned away while a live reply or a hold keeps the card (job.busy), holds " +
+            "(renew, release, a 1 s hold that ends on its own, a hold that stops running work), that live replies never wait, that a " +
+            "think on its own card runs on, and that an older host without holds leaves the live turn alone. Returns each step and the " +
+            "host's GET /martlet/v1/priority report (per-card hold state, holds, last preemptions and refusals, warnings). Loopback " +
+            "only; writes nothing to disk or the credential vault.", new { }),
         Tool("speaking_voices_selftest", "Rehearse the shared speaking voices end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, the real reference-voice relay route over a fixture voice service, NOT AI, with in-memory " +
             "speaking-voices.json and recordings) and two simulated desktops with real F5 voice stores in a temporary folder, using the " +
@@ -1511,6 +1530,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "outside_path_check" => await OutsidePathCheck.RunAsync(cancellation),
             "mac_host_check" => await MacHostCheck.RunAsync(cancellation),
                 "deep_thinking_role_selftest" => await NodeLinkCheckAsync(cancellation, "deep-thinking"),
+                "gpu_priority_selftest" => await NodeLinkCheckAsync(cancellation, "gpu-priority"),
+                "gpu_priority_status" => await GpuPriorityStatusAsync(arguments, cancellation),
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
                 "character_profiles" => CharacterProfiles(arguments),
@@ -2273,6 +2294,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 startsAtSignIn
             }
         };
+    }
+
+    /// <summary>gpu_priority_status: GPU priority (live turn first) on every host paired in the data directory, through
+    /// Martlet.NodeLinkCheck gpu-priority-status, which signs with the pairing secret from Windows Credential Manager and returns
+    /// no secret. Nothing is contacted when the data directory pairs no host.</summary>
+    private static async Task<object> GpuPriorityStatusAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var directory = DataDirectory(arguments);
+        if (!File.Exists(Path.Combine(directory, "hosts.json")))
+            return new { dataDirectory = directory, hosts = Array.Empty<object>(), note = "No host is paired in this data directory (no hosts.json)." };
+        return await NodeLinkCheckAsync(TimeSpan.FromMinutes(2), cancellation, ["gpu-priority-status", directory]);
     }
 
     /// <summary>This PC's own host service as the desktop's host dashboard reads it (<see cref="LocalHostService"/>). The

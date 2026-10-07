@@ -232,6 +232,10 @@ public sealed class OllamaRelayTests
             "{\"message\":{\"role\":\"assistant\",\"content\":\"rest on Sunday.\"},\"done\":true,\"done_reason\":\"stop\"}");
         await using var thinking = new OllamaRelayWorker(conversation.Endpoint, "gemma4:e4b");
         await using var deepWorker = OllamaRelayWorker.DeepThinking(deep.Endpoint, "qwen3:8b");
+        // Each Ollama server on its own graphics card, so the think runs beside the reply. On a shared card a live reply stops
+        // the think (live turn first, GpuPriorityTests).
+        thinking.Route.PlaceOn(["GPU-aaaa-0000"]);
+        deepWorker.Route.PlaceOn(["GPU-bbbb-1111"]);
 
         // Its own route ID and path, with the conversation model's contract and bounds, which clients accept like any route.
         Assert.Equal((Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId, Martlet.Core.Settings.SelfHostSetup.DeepThinkingPath,
