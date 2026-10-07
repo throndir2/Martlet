@@ -289,7 +289,7 @@ public partial class MainWindow
         {
             var (vram, ram, cpu) = plan.Share(component);
             var bars = new UniformGrid { Columns = 3 };
-            bars.Children.Add(Bar("Graphics memory", vram, plan.Specs.Gpus.Count > 0));
+            bars.Children.Add(Bar("Graphics memory", vram, plan.Specs.Gpus.Count > 0, plan.UsualVram(component)));
             bars.Children.Add(Bar("Memory", ram, true));
             bars.Children.Add(Bar("Processor", cpu, true));
             stack.Children.Add(bars);
@@ -302,14 +302,17 @@ public partial class MainWindow
         return card;
     }
 
-    private static StackPanel Bar(string label, int percent, bool available)
+    /// <summary>One share of this PC: "Graphics memory 31-35%" when the part usually holds less (<paramref name="usual"/>)
+    /// than the most it takes; the bar shows the most.</summary>
+    private static StackPanel Bar(string label, int percent, bool available, int? usual = null)
     {
         var panel = new StackPanel { Margin = new Thickness(0, 0, 12, 0) };
-        var text = new TextBlock { Text = available ? $"{label} {percent}%" : $"{label}: none", FontSize = 12 };
+        var share = $"{label} {WelcomePlan.Percents(usual ?? percent, percent)}";
+        var text = new TextBlock { Text = available ? share : $"{label}: none", FontSize = 12 };
         text.SetResourceReference(StyleProperty, "Muted");
         panel.Children.Add(text);
         var bar = new ProgressBar { Height = 6, Minimum = 0, Maximum = 100, Value = Math.Min(100, percent), Margin = new Thickness(0, 3, 0, 0) };
-        AutomationProperties.SetName(bar, $"{label} {percent}%");
+        AutomationProperties.SetName(bar, share);
         panel.Children.Add(bar);
         return panel;
     }

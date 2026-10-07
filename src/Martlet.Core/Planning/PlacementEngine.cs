@@ -292,7 +292,12 @@ public static class PlacementEngine
                       ?? node.Cards.OrderByDescending(c => c.Free).FirstOrDefault()
                     : null;
                 var use = option.Reserve;
-                if (card is null && option.UsesGpu) use = use with { RamGb = use.RamGb + use.VramGb, VramGb = 0 };
+                var usual = option.Usual;
+                if (card is null && option.UsesGpu)
+                {
+                    use = use with { RamGb = use.RamGb + use.VramGb, VramGb = 0 };
+                    usual = usual with { RamGb = usual.RamGb + usual.VramGb, VramGb = 0 };
+                }
                 if (card is not null)
                 {
                     card.Used += use.VramGb;
@@ -301,7 +306,7 @@ public static class PlacementEngine
                 node.RamUsed += use.RamGb;
                 node.CpuUsed += use.CpuThreads;
                 node.DiskUsed += use.DiskGb;
-                node.Items.Add(new(option.Component, option.Id, card?.Index, use));
+                node.Items.Add(new(option.Component, option.Id, card?.Index, use) { Usual = usual });
                 assignments.Add(new(current.Component, option, node.Spec.Id, card?.Index, role, "Runs today."));
             }
             foreach (var info in ComponentRanking.All.Where(i => !seen.Contains(i.Component)))
@@ -401,7 +406,7 @@ public static class PlacementEngine
                 node.RamUsed += use.RamGb;
                 node.CpuUsed += use.CpuThreads;
                 node.DiskUsed += use.DiskGb;
-                node.Items.Add(new(option.Component, option.Id, card?.Index, use));
+                node.Items.Add(new(option.Component, option.Id, card?.Index, use) { Usual = option.Usual });
                 assignment = new(option.Component, option, node.Spec.Id, card?.Index, role, why);
             }
             assignments.Add(assignment);

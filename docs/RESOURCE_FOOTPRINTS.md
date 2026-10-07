@@ -22,6 +22,18 @@ string names what else is estimated.
   busy threads). **Peak** is the most it takes at once; the planner reserves
   peak memory and steady processor threads. **Idle** CPU is what it uses
   loaded but unused (0 unless stated).
+- **Graphics memory is not the same all the time.** A model in Ollama holds
+  its weights, KV cache and compute buffers from the moment it loads, so its
+  steady and peak are the same. PyTorch engines (the voices, Singing,
+  Pictures) load their weights first and then grow while they work: each
+  request adds activations and buffers. PyTorch's allocator keeps freed memory
+  for the next request unless the engine gives it back (Chatterbox only after
+  it runs out; Singing between stages, and its worker reports
+  `peak_vram_mib`). So their peak is higher (Chatterbox 3.7 to
+  4.2 GB, Dia 4.4 to 9.8 GB). The Devices page shows both: a range from steady
+  to peak, *tight* when the steady amounts fit a card but the peaks do not, and
+  over when even the steady amounts do not fit
+  (`ComponentOption.Usual` beside `ComponentOption.Reserve`).
 - **CPU** is hardware threads kept busy (processor time per second), not cores
   reserved. A burst of 8 threads for 0.2 s per utterance is cheap on average.
 - **Disk** is download plus install: model files plus the host role's Docker

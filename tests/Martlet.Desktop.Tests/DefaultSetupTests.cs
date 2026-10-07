@@ -151,6 +151,10 @@ public sealed class DefaultSetupTests
         var plan = Recommend(12, HostingPreference.PreferLocal);
         var (vram, _, _) = plan.Share(PlanComponent.Voice);
         Assert.InRange(vram, 30, 40);
+        // The voice usually holds less of the card than the most it takes while it speaks; the wizard shows both.
+        var usual = plan.UsualVram(PlanComponent.Voice);
+        Assert.InRange(usual, 1, vram - 1);
+        Assert.Contains($"Uses {usual}-{vram}% graphics memory", plan.Describe(PlanComponent.Voice));
         Assert.Contains("% graphics memory", plan.Describe(PlanComponent.Thinking));
         var total = plan.Total();
         Assert.InRange(total.Vram, 1, 100);

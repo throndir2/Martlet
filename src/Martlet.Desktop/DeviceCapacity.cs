@@ -34,8 +34,13 @@ internal sealed record CapacityNeed(double GraphicsMemoryGb, double MemoryGb, do
         new(GraphicsMemoryGb + other.GraphicsMemoryGb, MemoryGb + other.MemoryGb, Threads + other.Threads, DiskGb + other.DiskGb);
 }
 
-/// <summary>A component placed on a device: its key (for automation IDs), plain name and planned footprint.</summary>
-internal sealed record CapacityComponent(string Key, string Name, CapacityNeed Need);
+/// <summary>A component placed on a device: its key (for automation IDs), plain name and planned footprint: <paramref name="Need"/>
+/// is the most it takes at once (what Martlet plans with), <paramref name="UsualNeed"/> what it usually holds (null: the same).</summary>
+internal sealed record CapacityComponent(string Key, string Name, CapacityNeed Need, CapacityNeed? UsualNeed = null)
+{
+    /// <summary>What it usually holds, never more than <see cref="Need"/>; it grows to <see cref="Need"/> while it works hardest.</summary>
+    internal double Usual(CapacityResource resource) => Math.Min((UsualNeed ?? Need).Of(resource), Need.Of(resource));
+}
 
 /// <summary>What a device itself reports in use right now (null: not reported). Live, unlike the planned footprints.</summary>
 internal sealed record CapacityLive(double? GraphicsMemoryUsedGb, double? MemoryUsedGb)
@@ -48,19 +53,30 @@ internal sealed record CapacityLive(double? GraphicsMemoryUsedGb, double? Memory
     };
 }
 
-/// <summary>One resource bar: the device's total, what its components are planned to take, what it reports in use now, and
-/// the share each component takes (percent of the total). <paramref name="Usable"/> is what Martlet may plan with after
-/// leaving room for the system (null: all of it); processor threads may be shared up to <see cref="DeviceCapacity.CpuSharing"/>.</summary>
+/// <summary>One job's part of a resource bar: the most it takes at once and what it usually holds, in percent of the total.</summary>
+internal sealed record CapacityShare(CapacityComponent Component, double Percent, double UsualPercent);
+
+/// <summary>One resource bar: the device's total, what its components are planned to take at most (<paramref name="Planned"/>)
+/// and usually (<paramref name="UsuallyPlanned"/>, null: the same), what it reports in use now, and the share each component
+/// takes (percent of the total). <paramref name="Usable"/> is what Martlet may plan with after leaving room for the system
+/// (null: all of it); processor threads may be shared up to <see cref="DeviceCapacity.CpuSharing"/>.</summary>
 internal sealed record CapacityBar(CapacityResource Resource, double? Total, double Planned, double? Live,
-    IReadOnlyList<(CapacityComponent Component, double Percent)> Shares, double? Usable = null)
+    IReadOnlyList<CapacityShare> Shares, double? Usable = null, double? UsuallyPlanned = null)
 {
+    /// <summary>What the jobs usually hold together; they grow to <see cref="Planned"/> while they work hardest.</summary>
+    internal double Usual => Math.Min(UsuallyPlanned ?? Planned, Planned);
     internal double? PlannedPercent => Total is > 0 ? DeviceCapacity.Percent(Planned, Total.Value) : null;
+    internal double? UsualPercent => Total is > 0 ? DeviceCapacity.Percent(Usual, Total.Value) : null;
     internal double? LivePercent => Total is > 0 && Live is { } live ? DeviceCapacity.Percent(live, Total.Value) : null;
     internal double? Headroom => (Usable ?? Total) is { } room ? Math.Round(Math.Max(0, room - Planned), 1) : null;
-    internal bool Over => (Usable ?? Total) is { } room &&
-        Planned > room * (Resource == CapacityResource.Processor ? DeviceCapacity.CpuSharing : 1) + 0.05;
+    /// <summary>The most the device can give its jobs (processor threads shared up to <see cref="DeviceCapacity.CpuSharing"/>).</summary>
+    internal double? Limit => (Usable ?? Total) is { } room ? room * (Resource == CapacityResource.Processor ? DeviceCapacity.CpuSharing : 1) : null;
+    /// <summary>Even what the jobs usually hold is more than the device can give.</summary>
+    internal bool Over => Limit is { } limit && Usual > limit + 0.05;
+    /// <summary>The jobs usually fit, but at their busiest they can need more than the device can give, and slow down or fail.</summary>
+    internal bool Tight => !Over && Limit is { } limit && Planned > limit + 0.05;
 
-    /// <summary>"Graphics memory: 14 of 24 GB planned (58%), 10 GB free. In use now: 9.5 GB (40%)."</summary>
+    /// <summary>"Graphics memory: 12-14 of 24 GB planned (50-58%), 10 GB free. In use now: 9.5 GB (40%)."</summary>
     internal string Text => DeviceCapacity.BarText(this);
 }
 
@@ -121,6 +137,21 @@ internal static class DeviceCapacity
 
     private static string Pct(double value) => value.ToString("0", CultureInfo.CurrentCulture) + "%";
 
+    /// <summary>"12-14" from what jobs usually hold and the most they take; just "14" when both read the same.</summary>
+    private static string Range(double usual, double most)
+    {
+        var (low, high) = (Number(usual), Number(most));
+        return low == high ? high : $"{low}-{high}";
+    }
+
+    /// <summary>"12-14 GB", or "14 GB" when both read the same.</summary>
+    private static string AmountRange(CapacityResource resource, double usual, double most) => Number(usual) == Number(most)
+        ? Amount(resource, most)
+        : $"{Range(usual, most)} {(resource == CapacityResource.Processor ? "threads" : "GB")}";
+
+    /// <summary>"50-58%", or "58%" when both read the same.</summary>
+    private static string PctRange(double usual, double most) => Pct(usual) == Pct(most) ? Pct(most) : $"{usual.ToString("0", CultureInfo.CurrentCulture)}-{Pct(most)}";
+
     /// <summary>Processor threads may be shared this much: jobs rarely work at the same moment (the engine's own factor).</summary>
     internal const double CpuSharing = Martlet.Core.Planning.PlacementEngine.CpuOversubscription;
 
@@ -130,35 +161,43 @@ internal static class DeviceCapacity
         {
             var total = specs.Total(resource);
             var shares = components.Where(c => c.Need.Of(resource) > 0)
-                .Select(c => (c, total is > 0 ? Percent(c.Need.Of(resource), total.Value) : 0d)).ToList();
+                .Select(c => new CapacityShare(c, total is > 0 ? Percent(c.Need.Of(resource), total.Value) : 0,
+                    total is > 0 ? Percent(c.Usual(resource), total.Value) : 0)).ToList();
             return new CapacityBar(resource, total, Math.Round(components.Sum(c => c.Need.Of(resource)), 2), live?.Used(resource), shares,
-                usable?.Total(resource));
+                usable?.Total(resource), Math.Round(components.Sum(c => c.Usual(resource)), 2));
         })];
 
     internal static string BarText(CapacityBar bar)
     {
         var label = Label(bar.Resource);
         if (bar.Total is not { } total || total <= 0)
-            return bar.Planned > 0 ? $"{label}: {Amount(bar.Resource, bar.Planned)} planned; this device hasn't reported how much it has."
+            return bar.Planned > 0 ? $"{label}: {AmountRange(bar.Resource, bar.Usual, bar.Planned)} planned; this device hasn't reported how much it has."
                 : $"{label}: not reported.";
         var room = bar.Usable ?? total;
-        var planned = $"{label}: {Number(bar.Planned)} of {Amount(bar.Resource, total)} planned ({Pct(bar.PlannedPercent!.Value)})";
+        var limit = bar.Limit!.Value;
+        var planned = $"{label}: {Range(bar.Usual, bar.Planned)} of {Amount(bar.Resource, total)} planned " +
+                      $"({PctRange(bar.UsualPercent!.Value, bar.PlannedPercent!.Value)})";
         var text = bar.Planned <= 0
             ? $"{label}: nothing planned of {Amount(bar.Resource, total)}, {(bar.Usable is null ? "all free" : $"{Amount(bar.Resource, room)} free for Martlet")}."
             : bar.Over
-                ? $"{planned}, {Amount(bar.Resource, bar.Planned - room * (bar.Resource == CapacityResource.Processor ? CpuSharing : 1))} more than it can give."
-                : bar.Planned > room
-                    ? $"{planned}: shared, as jobs rarely work at the same moment."
-                    : $"{planned}, {Amount(bar.Resource, bar.Headroom!.Value)} free{(bar.Usable is null ? "" : " for Martlet")}.";
+                ? $"{planned}, {AmountRange(bar.Resource, bar.Usual - limit, bar.Planned - limit)} more than it can give."
+                : bar.Tight
+                    ? $"{planned}, tight: at their busiest the jobs can need {Amount(bar.Resource, bar.Planned - limit)} more than it can give, " +
+                      "and slow down or fail."
+                    : bar.Planned > room
+                        ? $"{planned}: shared, as jobs rarely work at the same moment."
+                        : $"{planned}, {Amount(bar.Resource, bar.Headroom!.Value)} free{(bar.Usable is null ? "" : " for Martlet")}.";
         if (bar.Live is { } used) text += $" In use now: {Amount(bar.Resource, used)} ({Pct(bar.LivePercent!.Value)}).";
         return text;
     }
 
-    /// <summary>"Thinking: 33% graphics memory, 6% memory, 13% processor." (the resources it takes on this device).</summary>
+    /// <summary>"Voice (Dia): 37-82% graphics memory, 5-6% memory, 2% processor." (the resources it takes on this device: what it
+    /// usually holds and the most it takes, when they differ).</summary>
     internal static string ShareText(CapacityComponent component, IReadOnlyList<CapacityBar> bars)
     {
         var parts = bars.Where(b => b.Total is > 0 && Percent(component.Need.Of(b.Resource), b.Total.Value) >= 1)
-            .Select(b => $"{Pct(Percent(component.Need.Of(b.Resource), b.Total!.Value))} {Word(b.Resource)}").ToList();
+            .Select(b => $"{PctRange(Percent(component.Usual(b.Resource), b.Total!.Value), Percent(component.Need.Of(b.Resource), b.Total.Value))} " +
+                         Word(b.Resource)).ToList();
         if (parts.Count == 0)
             return bars.Any(b => b.Total is > 0) || Resources.All(r => component.Need.Of(r) <= 0)
                 ? $"{component.Name}: hardly any of this device's resources."
@@ -172,10 +211,13 @@ internal static class DeviceCapacity
         var known = bars.Where(b => b.Total is > 0).ToList();
         if (known.Count == 0) return "This device hasn't reported its hardware yet, so Martlet can't tell what is left.";
         var over = known.Where(b => b.Over).Select(b => Word(b.Resource)).ToList();
-        var free = string.Join(", ", known.Where(b => !b.Over).Select(b => b.Resource == CapacityResource.Processor
+        var tight = known.Where(b => b.Tight).Select(b => Word(b.Resource)).ToList();
+        var free = string.Join(", ", known.Where(b => !b.Over && !b.Tight).Select(b => b.Resource == CapacityResource.Processor
             ? $"{Number(b.Headroom!.Value)} processor thread{(Math.Abs(b.Headroom.Value - 1) < 0.05 ? "" : "s")}"
             : $"{Number(b.Headroom!.Value)} GB {Word(b.Resource)}{(b.Resource == CapacityResource.Disk ? " space" : "")}"));
         var text = free.Length > 0 ? $"Left free: {free}." : "";
+        if (tight.Count > 0)
+            text += (text.Length > 0 ? " " : "") + $"Tight on {string.Join(" and ", tight)}: at their busiest the jobs can need more than it has.";
         if (over.Count > 0) text += (text.Length > 0 ? " " : "") + $"Planned to use more {string.Join(" and ", over)} than it has.";
         return text;
     }
