@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { finite, integer, requireValid, type VrmCapabilities } from "./inspect.js";
 import { VrmRuntime } from "./runtime.js";
+import type { VrmHit } from "./touch.js";
 
 /** Host-driven WebGL renderer. Construct one per canvas; no hidden RAF or audio activation. */
 export class VrmAvatarAdapter extends VrmRuntime {
@@ -71,6 +72,17 @@ export class VrmAvatarAdapter extends VrmRuntime {
 
   /** Top of the character (top of the head) in fitted clip space, before view zoom/pan; 1 is the canvas top. */
   get contentTop(): number | undefined { return this.top; }
+
+  /** What of the posed character is at a point of the canvas (`x`, `y` fractions 0..1, origin top-left, +y down), through
+   *  the camera with its view zoom and pan; undefined when nothing is there. */
+  hitTest(x: number, y: number): VrmHit | undefined {
+    requireValid(!this.closed, "Renderer is disposed.");
+    finite(x, -1, 2, "touch x"); finite(y, -1, 2, "touch y");
+    this.camera.updateMatrixWorld();
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(2 * x - 1, 1 - 2 * y), this.camera);
+    return this.hitTestRay(raycaster);
+  }
 
   private updateProjection(): void {
     this.camera.updateProjectionMatrix();
