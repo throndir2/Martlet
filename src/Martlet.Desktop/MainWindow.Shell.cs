@@ -72,11 +72,11 @@ public partial class MainWindow
         // another run finishes (Docker Desktop starting, for example) ticks and the next ones open up.
         hostProbeTimer.Tick += (_, _) =>
         {
-            if (!closing && Role == DeviceRole.Host && IsVisible) CheckThisPcHostAsync().Forget();
+            if (!closing && IsVisible && HostsHere && !Talking) CheckThisPcHostAsync().Forget();
         };
         IsVisibleChanged += (_, _) =>
         {
-            if (!closing && IsVisible && Role == DeviceRole.Host && DateTime.UtcNow - hostProbedAt > TimeSpan.FromSeconds(10))
+            if (!closing && IsVisible && HostsHere && DateTime.UtcNow - hostProbedAt > TimeSpan.FromSeconds(10))
                 CheckThisPcHostAsync().Forget();
         };
         hostProbeTimer.Start();
@@ -127,7 +127,7 @@ public partial class MainWindow
         if (closing) return;
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
-        if (Role == DeviceRole.Host) CheckThisPcHostAsync().Forget();
+        if (HostsHere) CheckThisPcHostAsync().Forget();
     }
 
     // ---------- status line ----------
@@ -222,7 +222,7 @@ public partial class MainWindow
         QueueClusterSync();
         // Your other computers' Devices maps learn what this PC is now with the next settings sync.
         if (previous != role) QueueSettingsSync();
-        if (role == DeviceRole.Host) CheckThisPcHostAsync().Forget();
+        if (HostsHere) CheckThisPcHostAsync().Forget();
         // A companion PC that becomes a host PC starts Docker Desktop and its host roles by itself, warm for the first request.
         if (role == DeviceRole.Host && previous != role) StartHostRolesByItself();
     }
@@ -233,13 +233,53 @@ public partial class MainWindow
         CompanionHome.Visibility = host ? Visibility.Collapsed : Visibility.Visible;
         HostHome.Visibility = host ? Visibility.Visible : Visibility.Collapsed;
         NavCompanion.Visibility = host ? Visibility.Collapsed : Visibility.Visible;
-        ModeText.Text = host ? "Host PC" : "Companion PC";
-        RoleText.Text = host
-            ? "This PC is a Martlet host. Use it for heavier tasks from your main PC."
-            : "This is your companion PC. Talk with Martlet here.";
+        ShowMode();
         UseCompanionButton.IsEnabled = host;
         UseHostButton.IsEnabled = !host;
         if (host && NavCompanion.IsChecked == true) Navigate(NavHome);
+    }
+
+    /// <summary>The three ways a PC runs Martlet: a companion PC, a companion PC that also runs a host service for your
+    /// computers (its Home then checks that host service as a host PC's does), or a host PC.</summary>
+    private void ShowMode()
+    {
+        var host = Role == DeviceRole.Host;
+        var both = !host && ThisPcHost() is not null;
+        ModeText.Text = host ? "Host PC" : both ? "Companion PC + host" : "Companion PC";
+        RoleText.Text = host
+            ? "This PC is a Martlet host. Use it for heavier tasks from your main PC."
+            : both
+            ? "This is your companion PC. Talk with Martlet here. It also runs a host service, which Home keeps checking."
+            : "This is your companion PC. Talk with Martlet here.";
+    }
+
+    /// <summary>Whether this PC runs a host service of its own that Martlet should keep reading: it is a host PC, or a
+    /// companion PC paired with a host service on this PC.</summary>
+    private bool HostsHere => Role == DeviceRole.Host || ThisPcHost() is not null;
+
+    /// <summary>A conversation is replying or hearing you: background reads of this PC's host service wait.</summary>
+    private bool Talking => conversation?.Replying == true || openConversation?.HearingYou == true;
+
+    /// <summary>The step that gets this PC's own host service working again (start or install Docker Desktop, start or set
+    /// up the host service), as the host dashboard offers it; null when its last reading found it ready.</summary>
+    private StepCommand? OwnHostRepair()
+    {
+        if (hostState is not { Ready: false } state) return null;
+        var step = new[] { DockerStep(state), ServiceStep(state) }.FirstOrDefault(s => !s.Done);
+        return step?.Commands.FirstOrDefault(c => c.Primary) ?? step?.Commands.FirstOrDefault();
+    }
+
+    /// <summary>Reads this PC and its own host service again (Docker, then the host service's address) and checks the
+    /// pairing with it, so every place that shows it follows.</summary>
+    private async Task CheckOwnHostServiceAsync()
+    {
+        if (closing) return;
+        ActionText.Text = "Checking this PC's host service...";
+        await ReadMachineAsync();
+        await (hostProbe is { IsCompleted: false } reading ? reading : CheckThisPcHostAsync());
+        if (ThisPcHost() is { } own) await CheckHostsAsync([own]);
+        if (closing) return;
+        ActionText.Text = hostState is { } state ? HostServiceSentence(state) : "This PC's host service couldn't be read.";
     }
 
     private void UseCompanion_Click(object sender, RoutedEventArgs e) { SetRole(DeviceRole.Companion); Navigate(NavHome); }
@@ -359,6 +399,8 @@ public partial class MainWindow
         if (DevicesPage.IsVisible) RenderMap();
         CheckOwnLipSyncAsync().Forget();
         CheckLocalServicesAsync().Forget();
+        // A companion PC paired with its own host service reads it as the host dashboard does, once its pairings are known.
+        if (hostState is null && HostsHere) CheckThisPcHostAsync().Forget();
     }
 
     private static string Greeting() => DateTime.Now.Hour switch
@@ -372,6 +414,7 @@ public partial class MainWindow
     private void RenderHome()
     {
         GreetingText.Text = Greeting();
+        ShowMode();
         EvaluateCoverage();
         RenderHealth(force: true);
         RenderHost();
@@ -752,7 +795,7 @@ public partial class MainWindow
         do
         {
             hostProbeAgain = false;
-            if (closing || Role != DeviceRole.Host) return;
+            if (closing || !HostsHere) return;
             LocalHostServiceState state;
             try
             {
@@ -769,6 +812,7 @@ public partial class MainWindow
 
     private void ApplyHostState(LocalHostServiceState state)
     {
+        var wasReady = hostState?.Ready == true;
         hostState = state;
         hostProbedAt = DateTime.UtcNow;
         RememberThisPcHostRoles(state);
@@ -792,6 +836,16 @@ public partial class MainWindow
         HostFoundCurrent(ThisPcHostId, thisPcHostVersion);
         RenderHost();
         UpdateStayAwake();
+        // A companion PC that also hosts shows its host service on Home and the Devices map, and in each job it does.
+        if (Role == DeviceRole.Companion)
+        {
+            // Back up (Docker Desktop or the host service started): the jobs it does check it again rather than wait.
+            if (state.Ready && !wasReady && ThisPcHost() is { } own && hostChecks.GetValueOrDefault(own.HostId)?.Reachable == false)
+                CheckHostsAsync([own]).Forget();
+            RefreshCoverage();
+            RenderHealth();
+            if (DevicesPage.IsVisible) RenderMap();
+        }
     }
 
     /// <summary>What the last read of this PC's host service means, as one sentence for the status line.</summary>
@@ -953,7 +1007,7 @@ public partial class MainWindow
 
     private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
         HardwareStore?.Load() ?? [], homeHosts, hostUpdates.Notes, HostUsers(), clusterEnabled ? clusterPlan : null, OtherComputers(),
-        DeepThinkingHosts(), HostOutsideFacts());
+        DeepThinkingHosts(), HostOutsideFacts(), OwnHostTrouble());
 
     /// <summary>The paired computers whose Deep thinking role this PC thinks with, while Deep thinking is on.</summary>
     private IReadOnlyCollection<string>? DeepThinkingHosts() =>

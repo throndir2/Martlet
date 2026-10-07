@@ -128,14 +128,19 @@ public partial class MainWindow
         var check = hostChecks.GetValueOrDefault(hostId);
         bool? reachable = probe?.Reachable ?? check?.Reachable;
         var failover = clusterEnabled && clusterPlan.For(job)?.Failover == true;
+        var own = hostId == ThisPcHost()?.HostId;
         return new()
         {
             HostId = hostId, Paired = paired && FindHost(hostId) is not null, Reachable = reachable, Serves = HostServes(hostId, job, routeId),
             Engine = engine, SyncOn = clusterEnabled, Failover = failover,
             FailoverTarget = failover ? ClusterSync.FailoverTarget(clusterPlan, job, hostId, clusterProbes.Values, hardware) : null,
-            ForegroundOnly = PlatformDevice.FromHost(hostId, hardware.FirstOrDefault(h => h.HostId == hostId)).ForegroundOnly
+            ForegroundOnly = PlatformDevice.FromHost(hostId, hardware.FirstOrDefault(h => h.HostId == hostId)).ForegroundOnly,
+            ThisPc = own, Trouble = own ? OwnHostTrouble() : null
         };
     }
+
+    /// <summary>Why this PC's own host service can't work, from its last Docker reading, or null (ready, or not read yet).</summary>
+    private string? OwnHostTrouble() => hostState is { } state ? LocalHostService.Trouble(state) : null;
 
     /// <summary>Whether a host runs a job's role, from the background sync check or the last Check connection; null when
     /// it has not answered a check since Martlet started.</summary>
@@ -213,14 +218,7 @@ public partial class MainWindow
         foreach (var fix in job.Fixes)
         {
             if (fix == CoverageFix.OpenDevices && compact) continue;
-            var label = fix switch
-            {
-                CoverageFix.UseFallback => job.Job == ClusterJobs.LipSync ? "Take lip-sync back to this PC" : $"Use {job.Fallback} instead",
-                CoverageFix.CheckHost => $"Check {job.HostId} now",
-                CoverageFix.OpenSetup => $"Change {(job.Job == ClusterJobs.Speaking ? "voice" : job.Job)}",
-                CoverageFix.InstallRole => $"Install {HostRoles.Get(ClusterSync.RoleKind(job.Job)).Name} on {job.HostId}",
-                _ => "Open Devices"
-            };
+            var label = CoverageFixLabel(job, fix);
             var button = new Button { Content = label, Margin = new Thickness(0, 0, 8, 4), Padding = new Thickness(12, 6, 12, 6) };
             AutomationProperties.SetAutomationId(button, $"CoverageFix-{job.Job}-{fix}");
             var current = job;
@@ -265,7 +263,9 @@ public partial class MainWindow
         {
             case CoverageFix.UseFallback when job.Job == ClusterJobs.LipSync: AssignLipSyncAsync("this-pc").Forget(); break;
             case CoverageFix.UseFallback when HostJob.All.FirstOrDefault(j => j.Job == job.Job) is { } hostJob: AssignJobAsync(hostJob, "saved").Forget(); break;
+            case CoverageFix.CheckHost when job.OwnHost: CheckOwnHostServiceAsync().Forget(); break;
             case CoverageFix.CheckHost when FindHost(job.HostId) is { } host: CheckHostsAsync([host]).Forget(); break;
+            case CoverageFix.RepairHostService: OwnHostRepair()?.Run(); break;
             // Lip-sync re-checks the host and asks before installing Audio2Face; other roles install as on the Devices map.
             case CoverageFix.InstallRole when job.Job == ClusterJobs.LipSync: AssignLipSyncAsync("host:" + job.HostId).Forget(); break;
             case CoverageFix.InstallRole: RunHostRole($"{job.HostId}/{ClusterSync.RoleKind(job.Job)}", add: true); break;

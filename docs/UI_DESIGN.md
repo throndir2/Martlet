@@ -227,7 +227,8 @@ to bottom: the **map**, the **selected device** with what it does, and
     lists its jobs and says so.
   - **Give it more to do**: hand the device a job it doesn't do yet (*Hand
     thinking to this computer*...), *Run host services on this PC* or *Take
-    lip-sync back to this PC*. *Install or remove roles* (collapsed) holds a
+    lip-sync back to this PC* (*Do lip-sync without the host service* when
+    this PC's own host service does it). *Install or remove roles* (collapsed) holds a
     host's install and remove commands; an impossible role is explained in
     *Details* instead. Phones and tablets have no install, remove, update or
     SSH commands; their roles are switched on on the device.
