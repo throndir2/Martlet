@@ -14,7 +14,6 @@ export interface CubismModel {
   getCanvasWidth(): number;
   getCanvasHeight(): number;
   getDrawableCount(): number;
-  getDrawableId(index: number): { getString(): { s: string } };
   getDrawableVertexCount(index: number): number;
   getDrawableVertexIndexCount(index: number): number;
   getDrawableTextureIndex(index: number): number;

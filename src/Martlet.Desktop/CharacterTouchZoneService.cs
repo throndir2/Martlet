@@ -110,7 +110,7 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
 
     /// <summary>A touch on the showing character: the zone it landed in plays its reaction (unless the zone is resting) and may
     /// tell the character. Returns the match, or null.</summary>
-    internal TouchZoneMatch? React(CharacterTouch touch, CharacterActionCatalog? catalog, Func<CharacterActionSource, string, Task> play,
+    internal TouchZoneMatch? React(CharacterTouch touch, Func<CharacterTouchZone, IReadOnlyList<CharacterActionSource>> planFor, Func<CharacterActionSource, string, Task> play,
         Action<string> tell)
     {
         var match = CharacterTouchZones.Match(Current, touch);
@@ -133,7 +133,7 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
             }
             rested[zone.Id] = now + (long)(zone.Reaction.CooldownSeconds * 1000);
         }
-        var plan = CharacterTouchZones.Plan(zone, catalog);
+        var plan = planFor(zone);
         foreach (var source in plan) play(source, $"a touch on {zone.Name.ToLowerInvariant()}").Forget();
         var narration = CharacterTouchZones.Narration(zone);
         if (narration is not null) tell(narration);

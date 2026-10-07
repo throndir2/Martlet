@@ -57,7 +57,6 @@ export function environment() {
     getCanvasWidth: () => 2,
     getCanvasHeight: () => 4,
     getDrawableCount: () => 1,
-    getDrawableId: () => ({ getString: () => ({ s: "ArtMesh0" }) }),
     getDrawableVertexCount: () => 4,
     getDrawableVertexIndexCount: () => 6,
     getDrawableTextureIndex: () => 0,

@@ -39,7 +39,7 @@ public partial class MainWindow
             if (closing || openTab != CompanionTab.Character || CompanionContent.IsKeyboardFocusWithin || tabEdited) return;
             if (detectingTouchZones || characterTouchZones.Busy || renderedZonesModel != characterTouchZones.ModelId) RenderTab();
         });
-        avatar.Touched += OnCharacterTouched;
+        avatar.TouchRouter = OnCharacterTouched;
     }
 
     private string? renderedZonesModel;
@@ -48,12 +48,25 @@ public partial class MainWindow
 
     // Off the UI thread (the renderer's request relay): the zone's reaction plays at once; telling the character waits for the
     // conversation on the UI thread.
-    private void OnCharacterTouched(CharacterTouch touch)
+    private bool OnCharacterTouched(CharacterTouch touch)
     {
-        if (closing || !avatar.IsShowing) return;
+        if (closing || !avatar.IsShowing) return false;
         var catalog = characterActions.For(avatar.InspectedProfile?.ModelPath);
         characterTouchZones.Follow(catalog?.Inventory.ModelId ?? characterTouchZones.ModelId);
-        characterTouchZones.React(touch, catalog, PlayTouchAsync, text => Dispatcher.InvokeAsync(() => TellCharacter(text)));
+        characterTouchZones.React(touch, zone => TouchPlan(zone, catalog), PlayTouchAsync, text => Dispatcher.InvokeAsync(() => TellCharacter(text)));
+        return true;
+    }
+
+    /// <summary>What touching <paramref name="zone"/> plays: the owner's choice, or by default the model's own tap motion for
+    /// that part (TapHead, TapBody...) when it has one, then the zone's default emotes and gestures.</summary>
+    private IReadOnlyList<CharacterActionSource> TouchPlan(CharacterTouchZone zone, CharacterActionCatalog? catalog)
+    {
+        var plan = CharacterTouchZones.Plan(zone, catalog);
+        if (zone.Reaction.Actions is not null || catalog is null) return plan;
+        var part = CharacterTouchZones.Kind(zone.Id)?.Group == TouchZoneGroup.Head ? zone.Id.StartsWith("hair", StringComparison.Ordinal) ? "hair" : "head" : "body";
+        var motions = catalog.Entries.Where(e => e.Action.Enabled && e.Source.Kind == CharacterActionKind.Motion).Select(e => e.Source).ToArray();
+        return AvatarController.TouchMotion([.. motions.Select(m => m.Name)], part) is { } group && motions.FirstOrDefault(m => m.Name == group) is { } motion
+            ? [motion, .. plan.Where(s => s != motion)] : plan;
     }
 
     private async Task PlayTouchAsync(CharacterActionSource source, string reason)
@@ -188,7 +201,7 @@ public partial class MainWindow
                 bitmap.CacheOption = BitmapCacheOption.OnLoad;
                 bitmap.UriSource = new Uri(picture);
                 bitmap.EndInit();
-                var scale = Math.Min(360.0 / bitmap.PixelHeight, 300.0 / bitmap.PixelWidth);
+                var scale = Math.Min(480.0 / bitmap.PixelHeight, 400.0 / bitmap.PixelWidth);
                 (width, height) = (bitmap.PixelWidth * scale, bitmap.PixelHeight * scale);
                 canvas.Width = width;
                 canvas.Height = height;
@@ -261,7 +274,7 @@ public partial class MainWindow
 
     private void TryTouchZone(CharacterTouchZone zone, CharacterActionCatalog catalog)
     {
-        var plan = CharacterTouchZones.Plan(zone, catalog);
+        var plan = TouchPlan(zone, catalog);
         foreach (var source in plan) PlayTouchAsync(source, $"a try of {zone.Name.ToLowerInvariant()}").Forget();
         characterTouchZones.Note($"Tried {zone.Name}: " + (plan.Count == 0 ? "nothing to play on this model." : "played " + string.Join(", ", plan.Select(s => s.Name)) + ".") +
                 (CharacterTouchZones.Narration(zone) is { } line ? $" A touch also tells the character \"{line}\"." : ""));
@@ -310,6 +323,7 @@ public partial class MainWindow
                 Deleted = true;
                 View.Visibility = Visibility.Collapsed;
                 rectangle?.SetValue(UIElement.VisibilityProperty, Visibility.Collapsed);
+                label?.SetValue(UIElement.VisibilityProperty, Visibility.Collapsed);
                 edited();
             }, id: $"TouchZoneDelete-{number}");
             delete.MinWidth = 60;
@@ -343,10 +357,10 @@ public partial class MainWindow
             };
             AutomationProperties.SetName(narration, $"What touching {zone.Name} tells the character");
             AutomationProperties.SetAutomationId(narration, $"TouchZoneNarration-{number}");
-            rest = new TextBox { Text = zone.Reaction.CooldownSeconds.ToString("0.#", CultureInfo.CurrentCulture), Width = 44 };
+            rest = new TextBox { Text = zone.Reaction.CooldownSeconds.ToString("0.#", CultureInfo.CurrentCulture), Width = 72 };
             AutomationProperties.SetName(rest, $"Seconds {zone.Name} rests after a touch");
             AutomationProperties.SetAutomationId(rest, $"TouchZoneCooldown-{number}");
-            box = new TextBox { Text = BoxText(zone.Box), Width = 130 };
+            box = new TextBox { Text = BoxText(zone.Box), Width = 190 };
             AutomationProperties.SetName(box, $"Box of {zone.Name}: left, top, width, height in percent of the picture");
             AutomationProperties.SetAutomationId(box, $"TouchZoneBox-{number}");
 
@@ -415,12 +429,12 @@ public partial class MainWindow
                 var i => new[] { items[i - 2].Id }.Concat(second.SelectedIndex > 0 ? [items[second.SelectedIndex - 1].Id] : Array.Empty<string>())
                     .Distinct(StringComparer.Ordinal).ToArray()
             };
-            var label = name.Text.Trim();
+            var given = name.Text.Trim();
             var line = narration.Text.Trim();
             return zone with
             {
                 Enabled = on.IsChecked == true,
-                Label = label.Length == 0 || label == CharacterTouchZones.Kind(zone.Id)?.Label ? null : label,
+                Label = given.Length == 0 || given == CharacterTouchZones.Kind(zone.Id)?.Label ? null : given,
                 Box = ParsedBox() ?? zone.Box,
                 Reaction = new()
                 {
@@ -433,15 +447,16 @@ public partial class MainWindow
         }
 
         private Border? rectangle;
+        private TextBlock? label;
         private double pictureWidth, pictureHeight;
 
         /// <summary>Draws the zone's box on the picture; dragging it moves the box, dragging its corner resizes it.</summary>
         internal void Draw(Canvas canvas, double width, double height, Color color)
         {
             (pictureWidth, pictureHeight) = (width, height);
-            var label = new TextBlock
+            label = new TextBlock
             {
-                Text = zone.Name, Foreground = Brushes.White, FontSize = 10, Padding = new Thickness(2, 0, 2, 0),
+                Text = zone.Name, Foreground = Brushes.White, FontSize = 10, Padding = new Thickness(2, 0, 2, 0), TextWrapping = TextWrapping.NoWrap,
                 Background = new SolidColorBrush(Color.FromArgb(0xC0, color.R, color.G, color.B)), VerticalAlignment = VerticalAlignment.Top,
                 HorizontalAlignment = HorizontalAlignment.Left, IsHitTestVisible = false
             };
@@ -451,7 +466,6 @@ public partial class MainWindow
                 VerticalAlignment = VerticalAlignment.Bottom, Cursor = Cursors.SizeNWSE
             };
             var inside = new Grid();
-            inside.Children.Add(label);
             inside.Children.Add(grip);
             rectangle = new Border
             {
@@ -461,6 +475,7 @@ public partial class MainWindow
             AutomationProperties.SetAutomationId(rectangle, $"TouchZoneRect-{Number}");
             AutomationProperties.SetName(rectangle, zone.Name);
             canvas.Children.Add(rectangle);
+            canvas.Children.Add(label);
             Place();
             Point? from = null;
             var resizing = false;
@@ -498,6 +513,9 @@ public partial class MainWindow
             Canvas.SetTop(rectangle, b.Y * pictureHeight);
             rectangle.Width = Math.Max(4, b.Width * pictureWidth);
             rectangle.Height = Math.Max(4, b.Height * pictureHeight);
+            if (label is null) return;
+            Canvas.SetLeft(label, b.X * pictureWidth + 1);
+            Canvas.SetTop(label, b.Y * pictureHeight + 1);
         }
     }
 }

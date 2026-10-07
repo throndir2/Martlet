@@ -3592,7 +3592,7 @@ spring-bone or hair-named joint under the head), the mesh and the material.
 Martlet then reacts locally, without asking any model: the model's own tap
 motion when it has one (a group named like `TapHead`, `Tap@Head`, `TapBody`
 or `Tap`), else a head tilt (or nod) for the head, hair and face and a
-surprised look (or gasp or nod) elsewhere. The desktop log records *The
+surprised look (or gasp or nod) elsewhere; Companion › Character › Touch zones (`character_touch_zones`) replaces that with the reaction of the zone the tap lands in (`TouchZonesLast`). The desktop log records *The
 character was tapped on the body (hit areas Body).* and *Character motion
 'TapBody' played for a tap on the body.* `character_touch` taps it through
 UI Automation (`MoveAvatar`'s value, `"x,y"`) at `x`, `y` (fractions 0 to 1
