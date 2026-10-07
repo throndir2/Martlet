@@ -50,12 +50,13 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.51.0
+## 🆕 What's new in 0.52.0
 
-- 🐳 **Hosts start by themselves**: when Martlet starts on a host PC, it starts Docker Desktop if needed and loads every role's model, so your other computers aren't left waiting.
-- 🏠 **Companion PC + host**: a companion PC that also runs a host service checks it on Home and, when it stops working, says which jobs stop and offers the fix.
-- ⚡ **Faster setup**: adding a role, opening Windows Firewall and updating your hosts now happen side by side.
-- 📊 **Host hardware is back**: Devices shows the graphics card, memory and processor of hosts running in Docker Desktop again.
+- 👆 **Touch your character**: click it and it reacts. Your Thinking model marks touch zones such as the head, cheeks and hands, and each zone reacts its own way.
+- 😊 **Emotes that stay on**: glasses, a blush, a pout or an angry face can stay on until Martlet turns them off, and Martlet knows what is showing.
+- 💦 **Anime emote symbols**: sweat drops, hearts, sparkles, gloom lines and a sleepy Zzz appear over any Live2D or VRM character's face.
+- 😉 **New gestures and voice reactions**: winks, pouts, shy looks and head-pat leans, plus laughs, sighs and gasps along with the voice.
+- 📖 **Reads your screen**: while it watches, Martlet reads the text on your screen, such as a score or "Victory", set up in Companion › Reading.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
