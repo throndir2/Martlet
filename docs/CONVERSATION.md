@@ -1449,8 +1449,10 @@ VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
   that engine's tags in two groups: its non-word sounds (written inline where
   the sound happens) and its tones of voice (written at the start of a
   sentence; each spoken piece is synthesized on its own, so a tone reaches only
-  that sentence), one tag per line with when to use it. It asks for them
-  sparingly. Text-only replies and voices without tags never get it.
+  that sentence, and a reply that should keep a tone, such as one asked to
+  whisper, starts every sentence with it), one tag per line with when to use
+  it. It asks for them sparingly. Text-only replies and voices without tags
+  never get it.
 - **Segmenter.** The speech segmenter (which still silences lines with
   markdown, links, code or other bracketed text) lets the speaking engine's
   tags through, case-insensitively, in the engine's own spelling, even when a

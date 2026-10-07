@@ -222,6 +222,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // motions, physics; parameter IDs only, never paths), on Companion › Character and in the character window, which
         // also shows why a chosen model couldn't load; and the character window's status line.
         "SetupCharacterModel", "AvatarModelInfo",
+        // The character overlay's drag surface reads as its last tap's hit test (zone, hit areas, drawables, bone; model-authored
+        // names only, never paths); character_touch taps it.
+        "MoveAvatar",
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncDockerAbout", "LipSyncLoudnessTitle",
         // The selected device, its status and, when that status is a button ("Update available"), what clicking it does
         // ("Update available: Update to Martlet 0.40.0"). Clicking SelectedDeviceHealthAction updates the host, so it needs
@@ -326,8 +329,20 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "CharacterModelsStatus", "CharacterModelsShared", "CharacterModelAddProblem",
         // Companion › Character › Emotes and motions: how many the shown model has and who named them, the Thinking model's
         // naming progress, the tags offered to replies and what follows the voice's cues, the last one played (model-authored
-        // names only) and whether edits saved. Each row's name and kind (CharacterActionName-<n>, a model-authored name).
+        // names only) and whether edits saved. Each row's name and kind (CharacterActionName-<n>, a model-authored name), and
+        // its Try button's label (CharacterActionTry-<n>: "Try", or "Turn off" while that lingering emote is on). The lingering
+        // emotes on now and for how long (CharacterActionsHeld: "On now: Glasses (12 min)." or "No lingering emotes are on.").
+        // Each row's "Stays on" check box (CharacterActionMode-<n>) reports its mode as checkedState; changing it saves, and Try,
+        // Turn off, Clear emotes (CharacterActionsClear) and the overlay menu's Clear emotes (CharacterClearEmotes) change what
+        // the character shows, so they need --allow-ui-effects.
         "CharacterActionsStatus", "CharacterActionsNaming", "CharacterActionsOffered", "CharacterActionsLast", "CharacterActionsSaveState",
+        "CharacterActionsHeld",
+        // Companion › Character › Touch zones: how many zones the shown model has, how many are in use and who found them, whether
+        // the Thinking model can see (and where pictures go), how Detect zones went, which zone the last touch landed in and what
+        // it played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows and default reaction).
+        // Detect zones sends the character's picture to Thinking, Try plays on the character and the rest save, so those need
+        // --allow-ui-effects.
+        "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState",
         // Companion › Listening › Speakers and echo: whether echo reduction is on and how the last listen went (or why it couldn't
         // run). The TalkReduceEcho check box saves the choice, so it needs --allow-ui-effects.
         "TalkReduceEchoStatus",
@@ -571,7 +586,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// click; never the text it copies).</summary>
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
-    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "VoiceEngine", "SpeakingHost-", "SingingHost-",
+    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "TouchZoneState-", "VoiceEngine", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // The welcome wizard: each Martlet found ("WizardFound-0": name, address, version and hosts), each hardware line
         // ("WizardSpecRow-Vram") and each suggested part ("WizardPlanItem-Thinking": what, where, its % of graphics memory,
@@ -655,7 +670,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         return new { processId = pid, windows = windows.Select(window => window.Current.Name).ToArray(), inTray = !MainWindowVisible(windows) };
     }
 
-    internal object Snapshot(bool layout = false)
+    internal object Snapshot(bool layout = false, string? idPrefix = null)
     {
         var windows = ConnectedWindows();
         return new
@@ -685,7 +700,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 if (layout) (state["bounds"], state["workArea"]) = Placement(handle);
                 return state;
             }).ToArray(),
-            controls = Controls(windows).Select(control =>
+            controls = Controls(windows).Where(control => idPrefix is null ||
+                control.Item2.Current.AutomationId.StartsWith(idPrefix, StringComparison.Ordinal)).Select(control =>
             {
                 var (window, element) = control;
                 var id = element.Current.AutomationId;
@@ -889,6 +905,31 @@ internal sealed class DesktopAutomation(bool allowEffects)
     }
 
     internal const int MaximumMove = 10_000;
+
+    /// <summary>Taps the showing character at <paramref name="x"/>, <paramref name="y"/> (fractions 0..1 of the overlay's
+    /// drawing, +y down; needs --allow-ui-effects) through MoveAvatar's UI Automation value, like a click there, and waits for
+    /// the renderer's hit test; without a point it only reads the last tap. Returns the last tap as the overlay reports it.</summary>
+    internal async Task<object> TouchCharacterAsync(double? x, double? y)
+    {
+        if ((x is null) != (y is null)) throw new ArgumentException("Give both x and y, or neither to read the last tap.");
+        var element = Find("MoveAvatar");
+        if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            throw new InvalidOperationException("The character overlay can't be tapped through UI Automation.");
+        var value = (ValuePattern)pattern;
+        static object? Read(string text) => string.IsNullOrEmpty(text) ? null : System.Text.Json.JsonDocument.Parse(text).RootElement.Clone();
+        if (x is null) return new { touched = false, last = Read(value.Current.Value) };
+        if (!allowEffects) throw new InvalidOperationException("Tapping the character requires --allow-ui-effects.");
+        if (x is not (>= 0 and <= 1) || y is not (>= 0 and <= 1)) throw new ArgumentException("x and y are fractions from 0 to 1.");
+        if (value.Current.IsReadOnly) throw new InvalidOperationException("The character can't be tapped until it has loaded.");
+        var before = value.Current.Value;
+        value.SetValue(FormattableString.Invariant($"{x},{y}"));
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        string after;
+        while ((after = value.Current.Value) == before && waited.Elapsed < TimeSpan.FromSeconds(3)) await Task.Delay(50);
+        return after == before
+            ? new { touched = false, last = Read(after), note = "The renderer didn't answer the tap within 3 seconds." }
+            : new { touched = true, last = Read(after) };
+    }
 
     /// <summary>Moves a movable control (the character overlay's MoveAvatar, like dragging the character) by dx, dy screen
     /// pixels through UI Automation's Transform pattern, then reports where it was and is. Refused while it can't move, as

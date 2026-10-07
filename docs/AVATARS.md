@@ -72,8 +72,9 @@ what each one is.
 - **Naming** (Companion › Prompts › *Naming character emotes*): the first time a
   model shows, and on **Name them with Thinking**, the Thinking model gets that
   list (names and what they change, never files) and answers one line per item:
-  an English tag (`blush`), a voice cue or none, and when to use it. It can turn
-  off items that aren't feelings or gestures (hand poses, props, gore). Until
+  an English tag (`blush`), a voice cue or none, whether it stays on or is
+  brief, and when to use it. It can turn
+  off items that aren't feelings, gestures or looks (debug or effect switches, gore). Until
   then, tags come from the model's own names.
 - **English tags, any-language names**: tags are always lower-case English
   (`a-z`, digits, `_`, `-`), so every Thinking model can write them, while each
@@ -110,6 +111,42 @@ what each one is.
   sentence ends (at most 12 seconds) unless another replaces it; motions and
   gestures play once. VRM has no motions of its own (VRMA isn't supported), so
   it uses its expressions and the gestures.
+- **Lingering emotes**: an emote can stay on, like a VTuber's toggle hotkey.
+  Its **Stays on** box in Emotes and motions sets this. In
+  `character-actions.json` the mode is `lingering`; an unticked box is `brief`.
+  These expressions stay on by default:
+  - an expression that a VTube Studio *ToggleExpression* hotkey turns on;
+  - an expression whose name or tag names a look that stays (glasses, a hat, a
+    blush, an angry or sad face, tears, a dark face, an outfit or accessory).
+
+  Martlet's holdable gestures (pout, shy, look_away and drowsy) also stay on by
+  default. The renderer holds one gesture at a time, so a new held gesture
+  replaces the one before. A gesture that the renderer cannot hold plays once.
+  Motions and the other gestures are brief by default. The Thinking model's
+  naming also gives `stays` or `brief` for each item.
+- **Tags for lingering emotes**: a reply writes `{glasses}` to turn the emote
+  on. When it is already on, nothing changes. The reply writes `{/glasses}` to
+  turn it off. The reply prompt tells this on the line of each lingering emote.
+  Martlet removes off tags from the text like all other tags.
+- **Layers**: several lingering emotes can show at the same time. Live2D gives
+  each held expression its own Cubism expression manager, as VTube Studio does.
+  Thus the held expressions add to each other and to the passing emote. VRM
+  keeps held expressions on while passing ones fade in and out.
+- **What the reply model knows**: while lingering emotes show, the notes of the
+  newest message tell the reply model (Companion › Prompts › *Character emotes
+  showing now*). An example: *Your character is showing {glasses} (12 min),
+  {blush} (just now). Each stays on until you write its off tag ...*. This line
+  never goes into the instructions, so prompt caches stay valid. When no
+  lingering emote shows, Martlet adds nothing.
+- **How long they stay**: lingering emotes stay across replies. They come back
+  when the same model shows again. Martlet forgets them when another model
+  shows. An emote stops when the owner turns it off or makes it brief in the
+  settings. **Clear emotes** on the character's right-click menu (or in Emotes
+  and motions) turns all of them off. For a lingering row, **Try** turns the
+  emote on, and the button then shows **Turn off**.
+- **Renderer protocol**: `RendererAction(Kind, Name, On, Hold)`. With `Hold`,
+  an expression, gesture or overlay stays on until the same action comes with
+  `On` set to false.
 - **Global gestures**: Martlet's own gestures (`CharacterActionInventory.AllGestures`)
   play on any model whose rig has what they move, so replies are offered only
   the ones the shown model can do:
@@ -119,12 +156,30 @@ what each one is.
   | nod (`nod`), shake (`shake_head`), tilt (`tilt_head`) | `ParamAngleY`, `ParamAngleX`, `ParamAngleZ` | `head` bone |
   | bow (`bow`) | `ParamAngleY` | `spine` bone |
   | sway (`sway`) | `ParamBodyAngleZ` | `spine` bone |
-  | smile (`smile`), blush (`blush`), surprise (`surprised`) | `ParamEyeLSmile`/`ParamEyeRSmile`, `ParamCheek`, `ParamBrowLY`/`ParamBrowRY` | not offered (VRM uses its own emotion presets) |
+  | smile (`smile`), surprise (`surprised`) | `ParamEyeLSmile`/`ParamEyeRSmile`, `ParamBrowLY`/`ParamBrowRY` | not offered (VRM uses its own emotion presets) |
+  | blush (`blush`) | nothing (see below) | `head` bone |
   | wave (`wave`), shrug (`shrug`), bounce (`bounce`) | not offered (no standard arm or position parameters) | right arm, both arms, `hips` bones |
 
   Live2D parameters are read from the model's `.moc3`, VRM bones from its
   humanoid. A gesture is left out when the model's own emote or motion already
   has its tag (a model with its own `smile` keeps that one).
+
+  **Every model blushes.** The blush uses, in order: the model's own blush emote
+  (an expression named like `blush`, `脸红` or `照れ`, which then replaces the
+  gesture), a Live2D model's `ParamCheek`, a VRM's custom expression named like
+  `blush` or `cheek`, and otherwise a soft pink glow with a few faint strokes
+  that Martlet draws on the cheeks over the character. It fades in and out over
+  0.6 seconds and lasts 4 seconds, or stays while held (the renderer action's
+  `hold`) until turned off.
+- **Drawings over the character**: the renderer page draws Martlet's own
+  effects (the blush glow, and others built on it) on a second canvas laid
+  exactly over the model, following zoom, pan and the display's scale, so they
+  also show in pictures of the character. They are placed around where the face
+  is: a VRM's head and eye bones (nothing is drawn while it faces away); for
+  Live2D, which has no face landmarks, an authored head or face hit area, meshes
+  whose IDs name the face or cheeks, or else an estimate from the shape of the
+  top of the model, moved with `ParamAngleX`/`Y`/`Z`. The Live2D adapter's
+  `setFaceHint` lets a face found by vision refine the estimate.
 - **Voice emotes**: every sound and tone a voice engine makes has a global emote
   of its own, linked to that voice cue from the start, so any character reacts
   when the voice laughs, sighs or turns angry, even before it is named. The
@@ -150,12 +205,69 @@ what each one is.
   instructions stay as short as before; clear one's cue to offer it as a tag
   instead. The model's own emote with the same tag (a VRM's `happy` or `angry`
   preset) replaces it.
+- **Touch and mood gestures**: after the others come gestures for reacting to
+  a touch or showing a mood, offered to replies as tags like the global
+  gestures. They layer on idle, blinking, lip-sync and the look, and use the
+  VRM's preset expressions (`blinkLeft`, `relaxed`, `happy`, `surprised`,
+  `angry`, `blink`) when it has them:
+
+  | Gesture (tag) | What it does | Live2D needs | VRM needs |
+  | --- | --- | --- | --- |
+  | `wink` | one eye closes with a little smile and head tilt | `ParamEyeLOpen` | `head` (`blinkLeft`) |
+  | `pout` | the mouth turns down, the cheeks puff (`ParamCheekPuff`), the head turns aside | `ParamMouthForm` | `head` (`angry`, lightly) |
+  | `shy` | looks down and away with a half smile, peeking back | `ParamAngleX`, `ParamAngleY` | `head`, `spine` (`relaxed`) |
+  | `giggle` | quick little bounces with smiling eyes | `ParamAngleY` | `head`, `spine` (`happy`) |
+  | `flinch` | jerks back startled within 80 ms, then settles | `ParamAngleY` | `head`, `spine` (`surprised`) |
+  | `lean_in` | leans in with the head tilted and the eyes softly closing (a head pat) | `ParamAngleZ` | `head`, `spine` (`relaxed`) |
+  | `look_away` | turns the head and eyes aside, glancing back | `ParamAngleX` | `head` |
+  | `think` | looks up and to the side | `ParamAngleY` | `head` |
+  | `eye_roll` | the eyes roll up and over | `ParamEyeBallX`, `ParamEyeBallY` | `head` |
+  | `drowsy` | half-closed eyes, the head slowly nodding off and catching itself | `ParamEyeLOpen`, `ParamEyeROpen` | `head`, `spine` (`blink`) |
+
+  `pout`, `shy`, `look_away` and `drowsy` can be **held**: a renderer `action`
+  with `hold: true` eases into the pose and keeps it, gently alive, until an
+  `on: false` action for the same gesture eases it out (`Holdable` in
+  `AllGestures`). Without `hold` they play once. A gesture played while one is
+  held plays on top, the held pose easing back partway and resuming after; a
+  new held gesture crossfades from the last. The renderer's reply to a gesture
+  says which plays once and which is held (`gesture: {playing, held}`).
 - **Where it looks**: the head and eyes follow the mouse, or with Companion ›
   Vision › **Where the character looks** set to *Martlet decides*, glance at
   something that just changed on the watched screen or at the part of it a
   screen glance's Thinking model names with a look tag (`{look top right}`).
   Look tags are never emotes; see
   [Where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks).
+
+## Touch zones
+
+Click the character (a left click, not a drag) and it reacts to where you
+touched it. Companion › Character › **Touch zones** lists the zones of the
+model it shows: the top of the head (a head pat), hair, forehead, face, cheeks,
+nose, chin, shoulders, arms, hands, stomach, legs and feet, and extras such as
+animal ears, a tail or wings. Intimate zones (lips, ears, neck, chest,
+waist, hips, groin, buttocks and inner thighs) are found too but react only
+with **Include intimate zones** on, which is off by default.
+
+- **Detect zones** takes one picture of the character as it stands and sends it
+  (never the model's files) to the Thinking model, which must be able to see
+  (Companion › Vision says whether it can and where pictures go). It answers
+  with a box per zone; left and right are the character's own. Local vision
+  models such as Qwen2.5-VL on Ollama work, as do cloud ones. Nothing is sent
+  until you press it, and it is never on the conversation's path.
+- Martlet ties each zone to the model's own parts so it follows the character as
+  it moves: the Live2D drawables mostly inside its box, or the VRM humanoid
+  bones inside it (hair follows the head's hair). A click is matched to the
+  topmost part it hit, then the bone, then the smallest box around the point,
+  then the rough part of the body (head, face, body, arm, hand, leg, foot);
+  before any zones are found, clicks use that rough part.
+- Each zone plays its emotes and gestures (by default the model's own where it
+  has them: a head pat leans in or tilts and smiles, a cheek blushes, an
+  intimate zone blushes and flinches), can **Tell the character** (a reply,
+  like a message you typed, such as *\*gently pats your head\**) and rests a few
+  seconds before reacting again. Rename, turn off, move or resize (drag the box
+  or its corner on the picture, or type it), delete or add zones; **Try** plays
+  one. Zones are saved per model in `character-touch-zones.json`, with the
+  picture in `character-touch-zones\`.
 
 ## 1. Choose a renderer, analyzer and feature owners separately
 

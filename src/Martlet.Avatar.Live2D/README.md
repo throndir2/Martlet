@@ -43,8 +43,11 @@ the standard parameters for (`gestures`: `nod`, `shake`, `tilt`, `bow`, `sway`,
 `smile`, `blush`, `surprise`, and the voice emotes `laugh`, `chuckle`, `sigh`,
 `gasp`, `cough`, `clear_throat`, `groan`, `sniff`, `shush`, `inhale`, `exhale`,
 `mumble`, `hum`, `sneeze`, `whistle`, `happy`, `sarcastic`, `angry`, `fear`,
-`crying`, `whispering`, `dramatic`), added to the look-at angles and those parameters
-(`lib/gestures.ts`).
+`crying`, `whispering`, `dramatic`, then `wink`, `pout`, `shy`, `giggle`, `flinch`,
+`lean_in`, `look_away`, `think`, `eye_roll`, `drowsy`), added to the look-at angles and those parameters
+(`lib/gestures.ts`). `gesture(name, true)` holds `pout`, `shy`, `look_away` or
+`drowsy` until `endGesture(name)`; a gesture played meanwhile plays on top, and
+`gestureState` says which plays once and which is held.
 
 Licenses: Core is under the Live2D Proprietary Software License (redistributable
 file only, inside Martlet), the Framework under the Live2D Open Software License,
@@ -193,8 +196,11 @@ before physics/pose each frame, and loudness lip-sync is suppressed while a
 composed frame is fresh. Without `createAnimator` (for example test ports), no
 motion, physics or pose runs and all parameters are written each frame.
 Motion `Sound` files are validated but never played; Martlet's voice drives the mouth.
-Authored Layout/HitAreas are reported inactive; framing fits the model's canvas
-without stretching.
+Authored Layout is reported inactive; framing fits the model's canvas
+without stretching. Authored HitAreas are kept for tapping: `hitTest(x, y)`
+(canvas fractions, +y down) returns the HitAreas (by name) and the visible
+drawables (topmost first, at most 8) whose triangles contain the point, as posed
+in the last frame (`lib/touch.ts`); no authored hit-test script ever runs.
 
 ## Asset and lifecycle boundaries
 

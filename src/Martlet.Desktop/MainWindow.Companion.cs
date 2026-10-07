@@ -1418,6 +1418,7 @@ public partial class MainWindow
         page.Children.Add(modelCard);
         page.Children.Add(ProfilesLinkCard());
         page.Children.Add(CharacterActionsCard());
+        page.Children.Add(CharacterTouchZonesCard());
         page.Children.Add(CharacterModelsCard());
         page.Children.Add(SpeechDisplayCard());
         characterViewText = null;

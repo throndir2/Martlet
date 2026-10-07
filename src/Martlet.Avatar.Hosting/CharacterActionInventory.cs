@@ -17,9 +17,11 @@ public enum CharacterActionKind { Expression, Motion, Gesture }
 /// never gets it. The renderers (Martlet.Avatar.Live2D's gestures.ts, Martlet.Avatar.Vrm's runtime.ts) check the same.
 /// <see cref="Cue"/> is the voice cue (<see cref="Martlet.Core.Settings.VoiceTag.Cue"/>) it is linked to by default. A
 /// <see cref="VoiceOnly"/> gesture (a voice emote, such as a laugh or a cough) plays when the voice makes its sound or tone and
-/// isn't offered to replies as a tag while it keeps a cue, so replies' instructions don't grow.</summary>
+/// isn't offered to replies as a tag while it keeps a cue, so replies' instructions don't grow. A <see cref="Holdable"/> gesture
+/// can also be held (a renderer action with <c>hold</c>): eased into and kept, gently alive, until it is ended.</summary>
 public sealed record CharacterGesture(string Name, string Tag, string Use, string Does,
-    IReadOnlyList<string>? Live2DParameters, IReadOnlyList<string>? VrmBones, string? Cue = null, bool VoiceOnly = false)
+    IReadOnlyList<string>? Live2DParameters, IReadOnlyList<string>? VrmBones, string? Cue = null, bool VoiceOnly = false,
+    bool Holdable = false)
 {
     public string Id => "gesture:" + Name;
 }
@@ -27,8 +29,9 @@ public sealed record CharacterGesture(string Name, string Tag, string Use, strin
 /// <summary>One emote or motion a character model has. <see cref="Id"/> is stable for the model (<c>expression:F01</c>,
 /// <c>motion:TapBody</c>, <c>gesture:nod</c>); <see cref="Name"/> is what the renderer plays (the expression's name or
 /// motion group); <see cref="Detail"/> says what it changes, for the Thinking model and the owner (parameter IDs, their
-/// display names and values, shape names, the motion's length), never a path.</summary>
-public sealed record CharacterActionSource(string Id, CharacterActionKind Kind, string Name, string Detail);
+/// display names and values, shape names, the motion's length), never a path. <see cref="Toggle"/>: a VTube Studio
+/// ToggleExpression hotkey turns it on and off (a look meant to stay on).</summary>
+public sealed record CharacterActionSource(string Id, CharacterActionKind Kind, string Name, string Detail, bool Toggle = false);
 
 /// <summary>Every emote and motion of one character model, read from its files without showing it. <see cref="ModelId"/>
 /// is the model's ID as the shared character list computes it (<see cref="CharacterModelLibrary.ModelId"/>), so a model has
@@ -57,7 +60,7 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
             ["ParamBodyAngleZ"], Spine),
         new("smile", "smile", "smile with your eyes, for warmth or happiness", "smiles with the eyes and mouth for a few seconds",
             ["ParamEyeLSmile", "ParamEyeRSmile"], null),
-        new("blush", "blush", "blush, for embarrassment or being flattered", "blushes for a few seconds", ["ParamCheek"], null),
+        new("blush", "blush", "blush, for embarrassment or being flattered", "blushes for a few seconds", [], Head),
         new("surprise", "surprised", "raise your brows wide-eyed, for surprise", "raises the brows and widens the eyes",
             ["ParamBrowLY", "ParamBrowRY"], null, "surprised"),
         new("wave", "wave", "wave your hand, for hello or goodbye", "raises the right hand and waves", null, ["rightUpperArm", "rightLowerArm"]),
@@ -92,7 +95,27 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
         Voice("whispering", "whisper, for a secret or something hushed", "leans in with the head tilted, as if whispering",
             AngleZ, HeadSpine),
         Voice("dramatic", "dramatic, for playful theatrics", "throws the head back with a sweeping flourish", AngleZ,
-            ["head", "leftUpperArm", "rightUpperArm"])
+            ["head", "leftUpperArm", "rightUpperArm"]),
+        // Touch and mood gestures, after the rest so the reply instructions' earlier lines (and prompt caches) stay the same.
+        new("wink", "wink", "wink, for a playful joke, teasing or a shared secret", "winks one eye with a little smile and a head tilt",
+            ["ParamEyeLOpen"], Head),
+        new("pout", "pout", "pout, for playful sulking or mock annoyance", "pouts: the mouth turns down, the cheeks puff, the head turns aside",
+            ["ParamMouthForm"], Head, Holdable: true),
+        new("shy", "shy", "act shy, for being flattered, teased or touched gently",
+            "looks down and away bashfully with a half smile, peeking back now and then", ["ParamAngleX", "ParamAngleY"], HeadSpine,
+            Holdable: true),
+        new("giggle", "giggle", "giggle, for something cute or ticklish", "giggles: quick little bounces with smiling eyes", AngleY, HeadSpine),
+        new("flinch", "flinch", "flinch, when startled or poked unexpectedly", "jerks back startled, then settles", AngleY, HeadSpine),
+        new("lean_in", "lean_in", "lean in, for affection or enjoying a head pat", "leans in with the head tilted and the eyes softly closing",
+            AngleZ, HeadSpine),
+        new("look_away", "look_away", "look away, for embarrassment or dodging a question",
+            "turns the head and eyes aside, glancing back now and then", AngleX, Head, Holdable: true),
+        new("think", "think", "think it over, for pondering or remembering", "looks up and to the side, thinking", AngleY, Head),
+        new("eye_roll", "eye_roll", "roll your eyes, for playful exasperation", "rolls the eyes up and around",
+            ["ParamEyeBallX", "ParamEyeBallY"], Head),
+        new("drowsy", "drowsy", "be drowsy, for tiredness or late at night",
+            "half closes the eyes, the head slowly nodding off and catching itself", ["ParamEyeLOpen", "ParamEyeROpen"], HeadSpine,
+            Holdable: true)
     ];
 
     public static CharacterGesture? Gesture(string id) => AllGestures.FirstOrDefault(g => g.Id == id);
@@ -102,10 +125,17 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
     public static IReadOnlyList<CharacterGesture> GesturesFor(AvatarRenderer renderer, IReadOnlySet<string> rig) =>
         AllGestures.Where(g => (renderer == AvatarRenderer.Vrm ? g.VrmBones : g.Live2DParameters) is { } needs && needs.All(rig.Contains)).ToArray();
 
-    private static CharacterActionSource Source(CharacterGesture gesture, AvatarRenderer renderer) =>
-        new(gesture.Id, CharacterActionKind.Gesture, gesture.Name, $"Martlet's own gesture: {gesture.Does} (moves " +
-            (renderer == AvatarRenderer.Vrm ? "the " + string.Join(", ", gesture.VrmBones!) + (gesture.VrmBones!.Count == 1 ? " bone" : " bones")
-                : string.Join(", ", gesture.Live2DParameters!)) + ").");
+    private static CharacterActionSource Source(CharacterGesture gesture, AvatarRenderer renderer, IReadOnlySet<string> rig) =>
+        new(gesture.Id, CharacterActionKind.Gesture, gesture.Name, $"Martlet's own gesture: {gesture.Does} (" + (gesture.Name == "blush"
+            // Every model blushes: with its own ParamCheek (Live2D) or blush expression (VRM, offered as its own emote instead),
+            // otherwise Martlet draws a glow on the cheeks over the character.
+            ? renderer == AvatarRenderer.Live2D && rig.Contains(Live2DBlushParameter) ? "moves " + Live2DBlushParameter
+                : "Martlet draws a pink glow on the cheeks, following the " + (renderer == AvatarRenderer.Vrm ? "head bone" : "face")
+            : "moves " + (renderer == AvatarRenderer.Vrm ? "the " + string.Join(", ", gesture.VrmBones!) + (gesture.VrmBones!.Count == 1 ? " bone" : " bones")
+                : string.Join(", ", gesture.Live2DParameters!))) + ").");
+
+    /// <summary>The Live2D parameter a model's own blush moves; models without it get one Martlet draws.</summary>
+    private const string Live2DBlushParameter = "ParamCheek";
 
     public CharacterActionSource? Find(string id) => Sources.FirstOrDefault(s => s.Id == id);
 
@@ -126,7 +156,7 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
         // A gesture whose tag the model's own emote or motion already has is left to the model's.
         var own = sources.Select((s, i) => CharacterActions.EnglishTag(s, sources.Take(i).Count(o => o.Kind == s.Kind) + 1))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var gestures = GesturesFor(renderer, rig).Where(g => !own.Contains(g.Tag)).Select(g => Source(g, renderer)).ToArray();
+        var gestures = GesturesFor(renderer, rig).Where(g => !own.Contains(g.Tag)).Select(g => Source(g, renderer, rig)).ToArray();
         return new(id, renderer, [.. sources.Take(MaximumSources - gestures.Length), .. gestures]);
     }
 
@@ -149,7 +179,7 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
         var directory = Path.GetDirectoryName(entry.Replace('\\', '/'))?.Replace('\\', '/');
         var bytes = assets.FirstOrDefault(a => a.Name == mocName || a.Name == (string.IsNullOrEmpty(directory) ? mocName : directory + "/" + mocName))?.Bytes;
         if (bytes is null) return found;
-        foreach (var parameter in AllGestures.SelectMany(g => g.Live2DParameters ?? []).Distinct())
+        foreach (var parameter in AllGestures.SelectMany(g => g.Live2DParameters ?? []).Append(Live2DBlushParameter).Distinct())
         {
             var needle = Encoding.ASCII.GetBytes(parameter + "\0");
             var span = bytes.AsSpan();
@@ -190,10 +220,14 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
         var extras = LocalAvatarFiles.Extras(assets, entry);
         var names = DisplayNames(model.Bytes, byName);
         string Label(string id) => names.TryGetValue(id, out var display) && display != id ? $"{id} ({display})" : id;
+        var toggles = assets.Where(a => a.Name.EndsWith(".vtube.json", StringComparison.OrdinalIgnoreCase)).Select(a => VTubeStudio.Read(a.Bytes))
+            .FirstOrDefault(v => v is not null && v.Model == entry)?.Hotkeys.Where(h => h.Action == "ToggleExpression").Select(h => h.File)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase) ?? [];
         foreach (var (name, file) in declared.Expressions.Select(e => (e.Key, e.Value)).Concat(extras.Expressions.Select(e => (e.Name, e.File))))
         {
             if (!byName.TryGetValue(file, out var asset)) continue;
-            yield return new("expression:" + name, CharacterActionKind.Expression, name, Clip(ExpressionDetail(file, asset.Bytes, Label)));
+            yield return new("expression:" + name, CharacterActionKind.Expression, name, Clip(ExpressionDetail(file, asset.Bytes, Label)),
+                toggles.Contains(file));
         }
         var groups = declared.Motions.Select(g => (Group: g.Key, Files: g.Value))
             .Concat(extras.Motions.GroupBy(m => m.Group).Select(g => (Group: g.Key, Files: (IReadOnlyList<string>)g.Select(m => m.File).ToArray())));

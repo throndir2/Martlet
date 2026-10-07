@@ -1096,17 +1096,63 @@ It returns `renderer`, `key` (first 16 hex digits of the model's ID), `files`
 model3.json, with their model-relative file names, and the `Idle` group made
 from VTube Studio's idle animation), `saved`, `detectedBy` (`names` or
 `thinking`), `actions` (each one's `n` as in `CharacterActionName-<n>`, `id`,
-`kind`, `name`, `detail`, `tag`, `cue`, `use`, `enabled` and whether replies
+`kind`, `name`, `detail`, `tag`, `cue`, `use`, `enabled`, `mode` (`brief`, or
+`lingering`: stays on after `{tag}` until `{/tag}`), `modeSaved` (false while it
+is the default), `vtsToggle` (a VTube Studio ToggleExpression hotkey turns it
+on) and whether replies
 are `offered` it for `engine`, a voice engine key, `none` or absent for a voice
 without tags), `replyPrompt` and `replyTags` (what replies get while the
-character shows) and `namingPrompt` (`instructions` and the numbered `list` the
-Thinking model is sent). With `voiceTag`, a voice's tag such as `[laugh]` or
-`(sighs)` or a reply tag such as `{nod}`, `setsOff` lists what it sets off
-(`kind` and `name`, such as the `laugh` voice emote; one expression and one
-motion picked at random when several share a cue). With `answer`, a simulated Thinking reply such as
-`1: blush | - | when shy`, `parsed` shows what the production parser makes of
+character shows; lingering emotes add their `{/tag}` off tags) and `namingPrompt` (`instructions` and the numbered `list` the
+Thinking model is sent). With `showing`, the lingering emotes the character
+would show now (`["glasses", "blush:12"]`, minutes after the colon),
+`showingNote` is the line the newest message's notes get (*Your character is
+showing {blush} (12 min), ...*); it never goes in the instructions. With `voiceTag`, a voice's tag such as `[laugh]` or
+`(sighs)` or a reply tag such as `{nod}` or `{/blush}`, `setsOff` lists what it sets off
+(`kind`, `name` and `holds`, whether it lingers, such as the `laugh` voice emote; one expression and one
+motion picked at random when several share a cue) and `turnsOff` the lingering emote an off tag turns off. With `answer`, a simulated Thinking reply such as
+`1: blush | - | stays | when shy` (the mode may be left out), `parsed` shows what the production parser makes of
 it (`read`, `problem`, `actions`, `prompt`). Model-authored names only, never
 the model's path; it reads and contacts nothing else.
+
+`character_touch_zones` rehearses Companion › Character › [Touch zones](AVATARS.md#touch-zones)
+with no vision request: `zones` (how many Martlet knows and which are
+`intimate`, used only with *Include intimate zones*), `request` (the
+`instructions` and zone `list` sent with the character's snapshot), `parsed`
+(what the production parser makes of `answer`, a simulated vision reply: JSON
+boxes as fractions, pixels of a `width` × `height` picture, 400 × 800 by
+default, or Qwen-style 0..1000 `bbox_2d` grounding), `detected` (those zones
+bound to `probe`, a simulated renderer zones probe of Live2D `drawables` and
+VRM `bones` in page fractions, with `crop`, `"left,top,width,height"` where
+the snapshot sat on the page), `saved` (the model's zones in
+`character-touch-zones.json`: how many, how many are `active`, who found them,
+whether a snapshot is kept, and each zone's parts, `plays` and `tells`) and,
+with `touch` (a `CharacterTouch` object as JSON), `match`: the zone it lands
+in, `how` (`drawable`, `bone`, `hair`, `box` or `coarse`), its rough `coarse`
+zone, what it `plays`, what it `tells` the character and how long it `rests`.
+The model is `modelPath`, `modelId` or the one the `dataDirectory`'s
+`avatar.json` shows. `save` (an explicit, disposable `dataDirectory` only)
+writes the parsed zones as *Detect zones* would, with `snapshotPath` (a PNG)
+as their picture and `includeIntimate` setting the switch, so the section can
+be checked with `-Desktop`. Never the model's path; it contacts nothing.
+
+The section's status fields are `TouchZonesStatus` (how many zones, how many in
+use and who found them, or that none are found yet), `TouchZonesVision`
+(whether the Thinking model can see and where pictures go), `TouchZonesDetection`
+(how *Detect zones* went), `TouchZonesLast` (the zone the last click landed in,
+how it was found and what it played or that it was resting),
+`TouchZonesSaveState` and each zone's `TouchZoneState-<n>` (its ID, the parts
+it follows and its default reaction). `TouchZonesDetect` sends the character's
+picture to Thinking, `TouchZoneTry-<n>` plays on the character, and
+`TouchZonesIntimate`, `TouchZonesAdd`/`TouchZonesAddKind` and each zone's
+`TouchZoneOn-`, `TouchZoneName-`, `TouchZoneReaction-`, `TouchZoneReaction2-`,
+`TouchZoneTell-`, `TouchZoneNarration-`, `TouchZoneCooldown-`, `TouchZoneBox-`,
+`TouchZoneDelete-` and its box on the picture (`TouchZoneRect-<n>`, inside
+`TouchZonesPicture`) save, so they all need `--allow-ui-effects`. Setting
+`MARTLET_TOUCH_ZONES_FIXTURE` to a text file before launching the desktop makes
+*Detect zones* read that file as the Thinking model's answer (FIXTURE - NOT AI,
+shown in `TouchZonesDetection`) after taking the real snapshot and probing the
+showing model's drawables or bones, so the whole detection runs with no
+vision request.
 
 `character_gaze` shows [where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks)
 (Companion › Vision › Where the character looks): `saved` (`mouse`, the
@@ -1453,9 +1499,14 @@ of audible audio), `engine`, `route`, `voice`, `text`, `statusBefore` and
 `statusAfter` (the service's own `/status`: `answered`, `state`, `ready`,
 `error` and `runtime`, for Chatterbox its torch, torchaudio and CUDA versions
 and `idleCheck` (`checks`, `every_seconds`, `fastest_ms`, `last_ms` of its
-[idle check](CHATTERBOX_VOICE.md#how-it-runs)), or why it could not be read),
-`seconds` of 24 kHz audio, `firstAudioMs`,
-`elapsedMs`, `realTimeFactor`, `peakDbfs`, `rmsDbfs`, `audible`, and `failure`
+[idle check](CHATTERBOX_VOICE.md#how-it-runs)) and `whisper` (`level_db` and
+the `parts` it has [whispered](CHATTERBOX_VOICE.md#tags)), or why it could not
+be read), `seconds` of 24 kHz audio, `firstAudioMs`,
+`elapsedMs`, `realTimeFactor`, `peakDbfs`, `rmsDbfs`, `audible`,
+`voicedShare` (the share of the loud 40 ms frames that have a pitch between 70
+and 400 Hz, from `Martlet.Core.Audio.Voicing`; about 0.6-0.9 for ordinary
+speech and nearly 0 for a whisper, so a `text` that starts with `[whispering]`
+shows if Chatterbox whispers), and `failure`
 and `problem` (the client's error code and message, for example
 `worker.unavailable` when nothing answers or the model could not load). A
 loading model can take minutes, so the tool allows six; pass
@@ -2886,6 +2937,9 @@ interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
 automation IDs, enabled states, checkbox states, and selected read-only status
 fields (a text block's text, or a button's accessible name); it does not dump arbitrary editable fields or credentials.
+It returns the first 200 controls; `idPrefix` keeps only those whose automation ID
+starts with it (`TouchZone` for Companion › Character › Touch zones, below the
+long emotes list).
 A status text whose details sit in its tooltip (the talk window's `LiveVisionStatus`,
 `LivePcAudio`, `LiveChattiness` and `LiveContext`) also returns them as `help`
 (its accessible help text).
@@ -3554,6 +3608,31 @@ reads the saved level (1 without a file).
 `ui_move` moves the character by `dx`, `dy` screen pixels like a drag and
 returns its bounds before and after, and `ui_snapshot` reports `movable` for
 it. **Locking the character's position**: Home's `ToggleCharacterLock`
+
+**Tapping the character**: a left click on the character that doesn't drag
+it (it comes up within Windows' drag distance, within 0.7 seconds; also when
+its position is locked, while zoomed in with Ctrl and in the camera view) is a
+tap. The renderer page hit-tests the point: Live2D reports the model3.json
+HitAreas there and the visible drawables under it (topmost first, at most 8),
+VRM the humanoid bone of the mesh skinned most to the hit triangle (or its
+nearest humanoid ancestor), the actual node, whether that node is hair (a
+spring-bone or hair-named joint under the head), the mesh and the material.
+Martlet then reacts locally, without asking any model: the model's own tap
+motion when it has one (a group named like `TapHead`, `Tap@Head`, `TapBody`
+or `Tap`), else a head tilt (or nod) for the head, hair and face and a
+surprised look (or gasp or nod) elsewhere; Companion › Character › Touch zones (`character_touch_zones`) replaces that with the reaction of the zone the tap lands in (`TouchZonesLast`). The desktop log records *The
+character was tapped on the body (hit areas Body).* and *Character motion
+'TapBody' played for a tap on the body.* `character_touch` taps it through
+UI Automation (`MoveAvatar`'s value, `"x,y"`) at `x`, `y` (fractions 0 to 1
+of the overlay's drawing, +y down; unzoomed the head is near 0.5, 0.15),
+which needs `--allow-ui-effects`, waits for the hit test and returns it as
+`last`: `n` (the tap's number), `x`, `y`, `hit`, `zone` (`head`, `hair`,
+`face`, `body`, `arm`, `hand`, `leg` or `foot`; null on a miss), `hitAreas`,
+`drawables`, `bone`, `node`, `hair`, `mesh` and `material` (model-authored
+names only, never paths). Without `x` and `y` it only reads the last tap, as
+does `MoveAvatar`'s `value` in `ui_snapshot`.
+
+**Locking the character's position**: Home's `ToggleCharacterLock`
 (*Lock character position*, shown while the character shows or is locked),
 Companion › Character's `SetupCharacterLock` (*Lock position*) and the overlay
 menu's `CharacterLockPosition` (*Lock position*, carried out by Martlet: *The
@@ -3715,18 +3794,34 @@ couldn't, such as *Thinking isn't set up yet*); `CharacterActionsOffered` the
 tags replies get with the voice chosen now and which follow the voice's cues;
 `CharacterActionsLast` the last one played (*Played the expression "脸红" for
 {blush} at 3:14:05 PM.*, *... for a try ...*, or *The character couldn't play
-...*), also in `logs_tail` `desktop` as *Character expression '脸红' played for
-{blush}.*; and `CharacterActionsSaveState` *All changes saved.* or *Not saved:
+...*; for a gesture followed by what the renderer now plays and holds, *Gestures
+now: wink playing, shy held.*; an emote Martlet drew over the face itself, such
+as the blush glow on a model without a blush of its own, adds *drawn by Martlet
+over the face at 414, 88 (50 pixels wide)* with the face's middle and width in
+the overlay's page pixels, or *(not in view now)* when the face can't be found
+or faces away), also in `logs_tail` `desktop` as *Character expression '脸红'
+played for {blush}.* (*Character gesture 'blush' played for a try, drawn by
+Martlet over the face at ...*); and `CharacterActionsSaveState` *All changes saved.* or *Not saved:
 <why>*. Row `<n>` (as in `character_actions`) has `CharacterActionName-<n>`
 (its name and kind; a status field), `CharacterActionOn-<n>` (check box),
 `CharacterActionTag-<n>` (an English tag; a tag in another script reads *Not
 saved: ... use up to 24 English letters (a-z) ...*), `CharacterActionCue-<n>` (combo box: `(none)` or a
-cue such as `laugh`), `CharacterActionUse-<n>` and `CharacterActionTry-<n>`
-(plays it on the showing character; disabled while it is hidden). Editing a row
+cue such as `laugh`), `CharacterActionUse-<n>`, `CharacterActionMode-<n>` (the
+*Stays on* check box, its mode as `checkedState`: on for a lingering emote) and `CharacterActionTry-<n>`
+(plays it on the showing character, or turns a lingering one on; its label, a
+status field, reads *Turn off* while that lingering emote is on, and clicking it
+then turns it off; disabled while it is hidden). `CharacterActionsHeld` reads
+the lingering emotes on now (*On now: Glasses (12 min), Blushing (just now).
+Clear emotes on the character's menu turns them off.* or *No lingering emotes
+are on.*); `CharacterActionsLast` then reads *Turned on the expression ...* or
+*Turned off ...*, and `logs_tail` `desktop` *Character expression 'Glasses' held
+for a try.* `CharacterActionsClear` (*Clear emotes*) and the character overlay
+menu's `CharacterClearEmotes` turn every lingering emote off (*Cleared 2
+lingering emotes for Clear emotes ...*). Editing a row
 saves `character-actions.json`, `CharacterActionsDetect` (*Name them with
 Thinking*) sends the model's emote and motion names and details to the Thinking
-model, `CharacterActionsReset` goes back to the model's own names, and Try plays
-on the overlay, so all of them need `--allow-ui-effects`. The first time a model
+model, `CharacterActionsReset` goes back to the model's own names, and Try,
+Turn off and Clear emotes change the overlay, so all of them need `--allow-ui-effects`. The first time a model
 shows with a Thinking model set up, Martlet names its emotes once on its own.
 `character_actions` reads the same settings headlessly.
 
@@ -4578,7 +4673,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `straight_voice_check` and `discord_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

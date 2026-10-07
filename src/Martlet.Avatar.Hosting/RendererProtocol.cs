@@ -17,9 +17,11 @@ public sealed record RendererModelSummary(int Textures, int TextureDivisor, stri
     string[] MotionGroups, int Expressions, bool Physics, bool Animated);
 public sealed record RendererCapabilities(string ModelId, RendererParameter[] Parameters, RendererModelSummary? Model = null);
 /// <summary>Plays (<paramref name="On"/>) or ends one emote or motion on the showing character: an <c>expression</c> (held until
-/// ended or replaced), a <c>motion</c> group (played once) or a Martlet <c>gesture</c> (<see cref="CharacterGesture"/>). The reply says
-/// whether the model started it.</summary>
-public sealed record RendererAction(string Kind, string Name, bool On = true)
+/// ended or replaced), a <c>motion</c> group (played once) or a Martlet <c>gesture</c> (<see cref="CharacterGesture"/>). With
+/// <paramref name="Hold"/> it lingers: a held expression stays on, layered with other held ones, until it is ended
+/// (<c>On=false</c>), and a held gesture or overlay stays until ended too, instead of playing once; another emote doesn't replace
+/// it. The reply says whether the model started it.</summary>
+public sealed record RendererAction(string Kind, string Name, bool On = true, bool Hold = false)
 {
     public static IReadOnlyList<string> Kinds { get; } = ["expression", "motion", "gesture"];
 }
@@ -111,13 +113,14 @@ public sealed record RendererLook(string Target, double X, double Y);
 /// window), show the character's "settings", "lock" its place where it is or "unlock" it (Martlet saves it and sends
 /// <see cref="RendererLock"/>), or "mute" or "unmute" Martlet's voice (Martlet saves it and sends <see cref="RendererVoice"/>).
 /// "placed" says the character was moved or resized and has settled: Martlet then asks where it is ("where", replied to with
-/// <see cref="RendererPlacement"/>) and saves that on this PC. "framed" says the character was moved or zoomed within the camera
+/// <see cref="RendererPlacement"/>) and saves that on this PC. "clear" (Clear emotes) turns off every lingering emote the
+/// character shows. "framed" says the character was moved or zoomed within the camera
 /// view and has settled: Martlet then reads the view ("zoom" "status") and saves the framing. Zoom, position and keep-on-top
-/// stay inside the overlay.
+/// stay inside the overlay. Taps on the character travel on the same pipe as "touch" messages (<see cref="CharacterTouch"/>).
 /// </summary>
 public sealed record RendererRequest(string Action)
 {
-    public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings", "lock", "unlock", "mute", "unmute", "placed", "framed"];
+    public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings", "lock", "unlock", "mute", "unmute", "placed", "framed", "clear"];
 }
 /// <summary>
 /// The character frame's size in device-independent pixels, its top relative to the top of its screen's work area
@@ -137,8 +140,11 @@ public sealed record RendererSnapshot(bool Portrait, int Edge = 512)
 {
     public const int MinimumEdge = 64, MaximumEdge = 512;
 }
-/// <summary>A PNG of the character (base64, small enough for one renderer message) and its size in pixels.</summary>
-public sealed record RendererPicture(string Png, int Width, int Height);
+/// <summary>A PNG of the character (base64, small enough for one renderer message) and its size in pixels. <paramref name="CropLeft"/>,
+/// <paramref name="CropTop"/>, <paramref name="CropWidth"/> and <paramref name="CropHeight"/> say where the picture sat on the
+/// renderer page, as fractions of the page (touch zones compare it with touches).</summary>
+public sealed record RendererPicture(string Png, int Width, int Height, double CropLeft = 0, double CropTop = 0, double CropWidth = 1,
+    double CropHeight = 1);
 public sealed record RendererMapping(string Target, string Aspect);
 public sealed record RendererConfiguration(string SourceId, string ModelRevision, string MappingRevision, RendererMapping[] Targets);
 public sealed record RendererIdentity(Guid SessionId, Guid TurnId, Guid RequestId, string SourceId, long Epoch, int SampleRate);

@@ -21,6 +21,10 @@ export interface CubismModel {
   getDrawableVertices(index: number): Float32Array;
   getDrawableOpacity(index: number): number;
   getDrawableDynamicFlagIsVisible(index: number): boolean;
+  getDrawableId(index: number): { getString(): { s: string } };
+  getDrawableVertexIndices(index: number): Uint16Array;
+  getDrawableRenderOrders(): Int32Array;
+  getParameterValueByIndex?(index: number): number;
   update(): void;
 }
 
@@ -80,6 +84,8 @@ export interface Animator {
   update(deltaSeconds: number, input: AnimatorInput): void;
   playMotion(group: string): boolean;
   setExpression(name: string | null): boolean;
+  /** Turns a lingering expression on or off; held ones layer over each other and the one `setExpression` shows. */
+  holdExpression?(name: string, on: boolean): boolean;
   readonly motionGroups: readonly string[];
   readonly expressions: readonly string[];
   release(): void;

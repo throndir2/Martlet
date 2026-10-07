@@ -1,43 +1,103 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { VRM, VRMLoaderPlugin } from "@pixiv/three-vrm";
+import { VRM, VRMHumanBoneList, VRMLoaderPlugin } from "@pixiv/three-vrm";
 import { blinkPresets, finite, gazePresets, inspectVrm, integer, mouthPresets, object, requireValid, VrmError,
   type VrmCapabilities } from "./inspect.js";
+import { hitTestVrm, type VrmHit } from "./touch.js";
 
 type BoneName = Parameters<VRM["humanoid"]["getNormalizedBoneNode"]>[0];
 
 /** Martlet's own gestures, played on any VRM that has the humanoid bones they move. After the reply gestures come the voice
- *  emotes, played when the voice makes their sound or tone (laugh, sigh, gasp...). */
-export const VRM_GESTURES = Object.freeze(["nod", "shake", "tilt", "bow", "sway", "wave", "shrug", "bounce",
+ *  emotes, played when the voice makes their sound or tone (laugh, sigh, gasp...), then the touch and mood gestures (wink,
+ *  pout, shy...), which also use the model's preset expressions (blinkLeft, relaxed, happy...) when it has them. */
+export const VRM_GESTURES = Object.freeze(["nod", "shake", "tilt", "bow", "sway", "wave", "shrug", "bounce", "blush",
   "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat", "groan", "sniff", "shush", "inhale", "exhale", "mumble", "hum",
-  "sneeze", "whistle", "happy", "sarcastic", "angry", "fear", "crying", "whispering", "dramatic"] as const);
+  "sneeze", "whistle", "happy", "sarcastic", "angry", "fear", "crying", "whispering", "dramatic",
+  "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy"] as const);
 export type VrmGesture = typeof VRM_GESTURES[number];
+/** The gestures that can be held (an action with `hold: true`): eased into and kept, gently alive, until ended. */
+export const VRM_HOLDABLE_GESTURES = Object.freeze(["pout", "shy", "look_away", "drowsy"] as const);
+type HoldableGesture = typeof VRM_HOLDABLE_GESTURES[number];
+const holdable = (name: string): name is HoldableGesture => (VRM_HOLDABLE_GESTURES as readonly string[]).includes(name);
 const head: readonly BoneName[] = ["head"], headSpine: readonly BoneName[] = ["head", "spine"];
 const GESTURE_BONES: Readonly<Record<VrmGesture, readonly BoneName[]>> = Object.freeze({
   nod: head, shake: head, tilt: head, bow: ["spine"], sway: ["spine"],
   wave: ["rightUpperArm", "rightLowerArm"], shrug: ["leftUpperArm", "rightUpperArm", "leftLowerArm", "rightLowerArm"], bounce: ["hips"],
+  // An authored blush or cheek expression when the model has one; otherwise the page draws a glow on the cheeks, found
+  // from the head (see faceAnchor).
+  blush: head,
   laugh: headSpine, chuckle: head, sigh: headSpine, gasp: headSpine, cough: headSpine, clear_throat: head, groan: head, sniff: head,
   shush: headSpine, inhale: headSpine, exhale: headSpine, mumble: head, hum: head, sneeze: headSpine, whistle: head,
   happy: headSpine, sarcastic: head, angry: headSpine, fear: headSpine, crying: headSpine, whispering: headSpine,
   dramatic: ["head", "leftUpperArm", "rightUpperArm"],
+  wink: head, pout: head, shy: headSpine, giggle: headSpine, flinch: headSpine, lean_in: headSpine, look_away: head, think: head,
+  eye_roll: head, drowsy: headSpine,
 });
 const GESTURE_SECONDS: Readonly<Record<VrmGesture, number>> = Object.freeze({
-  nod: 1.1, shake: 1.2, tilt: 1.8, bow: 2, sway: 2.4, wave: 2.4, shrug: 1.8, bounce: 1.2,
+  nod: 1.1, shake: 1.2, tilt: 1.8, bow: 2, sway: 2.4, wave: 2.4, shrug: 1.8, bounce: 1.2, blush: 4,
   laugh: 2, chuckle: 1.4, sigh: 2.4, gasp: 1.6, cough: 1.5, clear_throat: 1.2, groan: 2.2, sniff: 1, shush: 2, inhale: 1.6,
   exhale: 1.8, mumble: 2, hum: 2.6, sneeze: 1.6, whistle: 2, happy: 2.4, sarcastic: 1.8, angry: 2.4, fear: 2, crying: 3,
   whispering: 2.2, dramatic: 2.4,
+  wink: 1.1, pout: 2.6, shy: 3.5, giggle: 1.6, flinch: 1.4, lean_in: 2.8, look_away: 2.4, think: 2.8, eye_roll: 1.8, drowsy: 4.5,
 });
-const GESTURE_FADE: Partial<Record<VrmGesture, number>> = { bounce: 0.15, gasp: 0.12, fear: 0.15, cough: 0.1, sniff: 0.1, sneeze: 0.1 };
+const GESTURE_FADE: Partial<Record<VrmGesture, number>> = { bounce: 0.15, gasp: 0.12, fear: 0.15, cough: 0.1, sniff: 0.1, sneeze: 0.1,
+  wink: 0.12, giggle: 0.15, flinch: 0.05, eye_roll: 0.2 };
+/** A custom expression that is the model's own blush. */
+const BLUSH_EXPRESSION = /blush|cheek|照れ|赤面|頬|脸红|臉紅|홍조/i;
 
 /** How a voice emote moves the body `t` seconds in at weight `w`: head yaw (gx, right) and pitch (gy, up) like the look,
- *  head roll (tilt), spine bend (forward) and lean (sideways), shoulders (up) and arms opened out to the sides (open). */
-export interface GesturePose { gx: number; gy: number; tilt: number; spineX: number; spineZ: number; shoulders: number; open: number }
+ *  head roll (tilt), spine bend (forward), lean (sideways) and turn (spineY, to the character's left), shoulders (up), arms
+ *  opened out to the sides (open), and preset expressions by name to weights (face; ones the model lacks are skipped). */
+export interface GesturePose {
+  gx: number; gy: number; tilt: number; spineX: number; spineZ: number; shoulders: number; open: number; spineY: number;
+  face: Record<string, number>;
+}
 
 const cycle = (t: number, period: number) => Math.sin(2 * Math.PI * t / period);
 const smoothstep = (x: number) => { const c = Math.max(0, Math.min(1, x)); return c * c * (3 - 2 * c); };
 
+/** How far a flinch has jerked back `t` seconds in: snapping back within 80ms, then settling. */
+export function flinchJolt(t: number): number { return t < 0.08 ? smoothstep(t / 0.08) : Math.exp(-(t - 0.08) * 2.8); }
+
+/** How far a drowsy head has nodded off `t` seconds in: sinking slowly over a 6-second cycle, then catching itself. */
+export function drowse(t: number): number {
+  const p = (t % 6) / 6;
+  return p < 0.8 ? smoothstep(p / 0.8) : 1 - smoothstep((p - 0.8) / 0.1);
+}
+
+/** A holdable gesture's pose at weight `w`, kept alive by `t` (pout huffs, shy peeks back, look_away glances back, drowsy
+ *  nods off and catches itself), so a held pose never looks frozen. */
+function moodPose(pose: GesturePose, name: HoldableGesture, t: number, w: number): void {
+  switch (name) {
+    case "pout": pose.gx = (-0.25 + 0.05 * cycle(t, 2.6)) * w; pose.gy = -0.1 * w; pose.tilt = -0.08 * w; pose.face = { angry: 0.3 * w }; break;
+    case "shy": {
+      const peek = Math.max(0, cycle(t, 5.5)) ** 4;
+      pose.gx = (-0.35 + 0.22 * peek) * w; pose.gy = (-0.45 + 0.2 * peek) * w; pose.tilt = 0.15 * w;
+      pose.spineY = 0.12 * w; pose.spineX = 0.05 * w; pose.shoulders = 0.4 * w; pose.face = { relaxed: 0.45 * w }; break;
+    }
+    case "look_away": {
+      const glance = Math.max(0, cycle(t - 2, 6)) ** 6;
+      pose.gx = (0.6 - 0.3 * glance) * w; pose.gy = 0.05 * w; pose.tilt = -0.05 * w; pose.spineY = -0.05 * w; break;
+    }
+    case "drowsy": {
+      const droop = drowse(t);
+      pose.gy = -(0.35 + 0.25 * droop) * w; pose.tilt = (0.06 + 0.1 * droop) * w; pose.spineX = 0.08 * w; pose.shoulders = -0.5 * w;
+      pose.face = { blink: (0.5 + 0.35 * droop) * w }; break;
+    }
+  }
+}
+
+const emptyPose = (): GesturePose => ({ gx: 0, gy: 0, tilt: 0, spineX: 0, spineZ: 0, shoulders: 0, open: 0, spineY: 0, face: {} });
+
+function addPose(into: GesturePose, pose: GesturePose): void {
+  for (const key of ["gx", "gy", "tilt", "spineX", "spineZ", "shoulders", "open", "spineY"] as const) into[key] += pose[key];
+  const face = { ...into.face };
+  for (const [name, weight] of Object.entries(pose.face)) face[name] = Math.max(face[name] ?? 0, weight);
+  into.face = face;
+}
+
 export function gesturePose(name: VrmGesture, t: number, w: number): GesturePose {
-  const pose: GesturePose = { gx: 0, gy: 0, tilt: 0, spineX: 0, spineZ: 0, shoulders: 0, open: 0 };
+  const pose = emptyPose();
   switch (name) {
     case "laugh": { const bob = Math.abs(cycle(t, 0.64)); pose.gy = (0.25 - 0.35 * bob) * w; pose.spineX = (0.06 * bob - 0.05) * w; break; }
     case "chuckle": pose.gy = -0.25 * Math.abs(cycle(t, 0.7)) * w; break;
@@ -67,6 +127,24 @@ export function gesturePose(name: VrmGesture, t: number, w: number): GesturePose
     }
     case "whispering": pose.gx = 0.3 * w; pose.tilt = 0.25 * w; pose.spineX = 0.12 * w; pose.spineZ = 0.06 * w; break;
     case "dramatic": pose.gx = 0.3 * Math.sin(Math.PI * t / GESTURE_SECONDS.dramatic) * w; pose.gy = 0.4 * w; pose.spineX = -0.1 * w; pose.open = w; break;
+    case "wink": pose.gx = 0.05 * w; pose.gy = 0.05 * w; pose.tilt = 0.1 * w; pose.face = { blinkLeft: w, happy: 0.2 * w }; break;
+    case "pout": case "shy": case "look_away": case "drowsy": moodPose(pose, name, t, w); break;
+    case "giggle": {
+      const bounce = Math.abs(cycle(t, 0.36));
+      pose.gy = (0.08 - 0.2 * bounce) * w; pose.spineX = 0.05 * bounce * w; pose.shoulders = 0.6 * bounce * w; pose.tilt = 0.1 * w;
+      pose.spineZ = 0.04 * cycle(t, 0.72) * w; pose.face = { happy: 0.8 * w }; break;
+    }
+    case "flinch": {
+      const jolt = flinchJolt(t) * smoothstep((GESTURE_SECONDS.flinch - t) / 0.4) * w;
+      pose.gx = (0.3 + 0.04 * cycle(t, 0.09)) * jolt; pose.gy = 0.35 * jolt; pose.spineX = -0.15 * jolt; pose.spineY = -0.1 * jolt;
+      pose.shoulders = 0.8 * jolt; pose.face = { surprised: 0.6 * jolt }; break;
+    }
+    case "lean_in": pose.spineX = 0.12 * w; pose.tilt = (0.22 + 0.05 * cycle(t, 1.4)) * w; pose.gy = -0.15 * w; pose.face = { relaxed: 0.6 * w }; break;
+    case "think": pose.gx = (-0.3 + 0.05 * cycle(t, 2.2)) * w; pose.gy = 0.45 * w; pose.tilt = 0.12 * w; break;
+    case "eye_roll": {
+      const angle = Math.PI * (0.9 - 0.8 * smoothstep((t - 0.2) / 1.1));
+      pose.gx = 0.3 * Math.cos(angle) * w; pose.gy = (0.1 + 0.3 * Math.sin(angle)) * w; pose.tilt = 0.08 * w; pose.face = { blink: 0.2 * w }; break;
+    }
     default: break;
   }
   return pose;
@@ -294,12 +372,30 @@ export class VrmRuntime {
   private look = { x: 0, y: 0 };
   private composedAge = Number.POSITIVE_INFINITY;
   private readonly actions = new Map<string, { target: number; value: number }>();
+  /** Expressions held on (lingering emotes) until turned off. */
+  private readonly heldExpressions = new Set<string>();
   private gesture: { name: VrmGesture; seconds: number } | undefined;
+  private blush: { name: string; seconds: number; hold: boolean } | undefined;
+  private held: { name: HoldableGesture; seconds: number; progress: number; on: boolean }[] = [];
+  private face: Readonly<Record<string, number>> = {};
+  // Expressions the gestures' face wrote last frame and their values before, put back before the next frame is composed.
+  private readonly faceRestore = new Map<string, number>();
   private hipsRest: number | undefined;
+  private faceWidth = 0.14;
 
   get capabilities(): VrmCapabilities | undefined { return this.inspected; }
   get scene(): THREE.Group | undefined { return this.model?.scene; }
   get isLoaded(): boolean { return this.model !== undefined; }
+
+  /** Each humanoid bone the model has with its node, for touch zones. */
+  get humanoidNodes(): readonly (readonly [string, THREE.Object3D])[] {
+    const model = this.model;
+    if (!model) return [];
+    return VRMHumanBoneList.flatMap(name => {
+      const node = model.humanoid.getRawBoneNode(name);
+      return node ? [[name, node] as const] : [];
+    });
+  }
 
   /** Relaxed arms, breathing, blinking, cursor-follow and loudness lip-sync while no mapped A2F turn is active. */
   startIdle(): void { this.loaded(); this.idle = true; }
@@ -318,14 +414,17 @@ export class VrmRuntime {
   }
 
   /**
-   * Fades an authored emotion or custom expression in (`on`) or out, as an emote. One shows at a time: a new one fades the
-   * others out. Mouth, blink and gaze presets belong to lip-sync, blinking and gaze, so they are refused.
+   * Fades an authored emotion or custom expression in (`on`) or out, as an emote. One passing emote shows at a time: a new one
+   * fades the others out, except held (lingering) ones (`hold`), which stay on together until each is turned off. Mouth, blink
+   * and gaze presets belong to lip-sync, blinking and gaze, so they are refused.
    */
-  setAction(name: string, on: boolean): boolean {
+  setAction(name: string, on: boolean, hold = false): boolean {
     const model = this.loaded();
     if (typeof name !== "string" || !model.expressionManager?.getExpression(name) ||
       [...mouthPresets, ...blinkPresets, ...gazePresets].includes(name as never)) return false;
-    if (on) for (const [other, state] of this.actions) if (other !== name) state.target = 0;
+    if (on && !hold) for (const [other, state] of this.actions) if (other !== name && !this.heldExpressions.has(other)) state.target = 0;
+    if (hold) { if (on) this.heldExpressions.add(name); else this.heldExpressions.delete(name); }
+    else if (this.heldExpressions.has(name)) return true;
     const state = this.actions.get(name) ?? { target: 0, value: 0 };
     state.target = on ? 1 : 0;
     this.actions.set(name, state);
@@ -339,13 +438,114 @@ export class VrmRuntime {
   }
 
   /** Starts one of Martlet's gestures (see `gestures`), replacing one already playing: head gestures, a bow, a sway, a wave,
-   *  a shrug, an excited bounce or a voice emote (a laugh, a sigh, a gasp...). */
-  playGesture(name: string): boolean {
+   *  a shrug, an excited bounce, a voice emote (a laugh, a sigh, a gasp...) or a touch or mood gesture (a wink, a flinch...).
+   *  With `hold`, a holdable one (VRM_HOLDABLE_GESTURES) eases in and stays until `endGesture`, crossfading from one held
+   *  before; a gesture played meanwhile plays on top of it, the held pose easing back partway and resuming after. A blush
+   *  shows the model's own blush or cheek expression (4 seconds, or held); false when it has none (the page draws one). */
+  playGesture(name: string, hold = false): boolean {
     const model = this.loaded();
     if (!(this.gestures as readonly string[]).includes(name)) return false;
+    if (name === "blush") {
+      const reserved: readonly string[] = [...mouthPresets, ...blinkPresets, ...gazePresets];
+      const own = model.expressionManager?.expressions.map(e => e.expressionName)
+        .find(n => !reserved.includes(n) && BLUSH_EXPRESSION.test(n));
+      if (!own || !this.setAction(own, true)) return false;
+      // Held, it is the one held gesture: the one held before lets go.
+      if (hold) for (const held of this.held) held.on = false;
+      this.blush = { name: own, seconds: 0, hold };
+      return true;
+    }
+    if (hold && holdable(name)) {
+      if (this.blush?.hold) this.endGesture("blush");
+      for (const held of this.held) held.on = held.name === name;
+      if (!this.held.some(held => held.name === name)) this.held.push({ name, seconds: 0, progress: 0, on: true });
+      return true;
+    }
     if (name === "bounce") this.hipsRest ??= model.humanoid.getNormalizedBoneNode("hips")?.position.y;
     this.gesture = { name: name as VrmGesture, seconds: 0 };
     return true;
+  }
+
+  /** Lets a held gesture go (eased out); one playing once just finishes. */
+  endGesture(name: string): void {
+    for (const held of this.held) if (held.name === name) held.on = false;
+    if (name === "blush" && this.blush) { this.setAction(this.blush.name, false); this.blush = undefined; }
+  }
+
+  /** The gesture playing once and the one held, if any. */
+  get gestureState(): { readonly playing?: VrmGesture; readonly held?: HoldableGesture | "blush" } {
+    const held = this.blush?.hold ? "blush" as const : this.held.find(h => h.on)?.name;
+    return Object.freeze({ ...(this.gesture ? { playing: this.gesture.name } : {}), ...(held ? { held } : {}) });
+  }
+
+  /** The held gestures' combined pose `deltaSeconds` later, eased back by `duck` (0..1) under a gesture playing once. */
+  private advanceHeld(deltaSeconds: number, duck: number): GesturePose {
+    const pose = emptyPose();
+    for (const held of this.held) {
+      held.seconds += deltaSeconds;
+      held.progress = Math.max(0, Math.min(1, held.progress + (held.on ? 1 : -1) * deltaSeconds / 0.8));
+      const layer = emptyPose();
+      moodPose(layer, held.name, held.seconds, smoothstep(held.progress) * (1 - duck));
+      addPose(pose, layer);
+    }
+    this.held = this.held.filter(held => held.on || held.progress > 0);
+    return pose;
+  }
+
+  /** Shows the gestures' face (preset expressions such as blinkLeft or relaxed) over what blinking and emotes set, never
+   *  over lip-sync, gaze or expressions a composed (Audio2Face) turn drives. */
+  private applyFace(model: VRM): void {
+    const expressions = model.expressionManager;
+    if (!expressions) return;
+    const composed = this.identity !== undefined ? new Set(this.selection?.mappings.map(m => m.expression)) : undefined;
+    for (const [name, weight] of Object.entries(this.face)) {
+      if (weight < 0.001 || !expressions.getExpression(name) || composed?.has(name) ||
+        [...mouthPresets, ...gazePresets].includes(name as never)) continue;
+      const before = expressions.getValue(name) ?? 0;
+      this.faceRestore.set(name, before);
+      expressions.setValue(name, Math.min(1, Math.max(before, weight)));
+    }
+  }
+
+  private restoreFace(model: VRM): void {
+    for (const [name, value] of this.faceRestore) model.expressionManager?.setValue(name, value);
+    this.faceRestore.clear();
+  }
+
+  /**
+   * The face in world space, for drawings over it: the middle of the eyes, the head's directions (`side` is the viewer's
+   * right when it faces the camera) and the face's width. From the eye bones when the model has them, otherwise estimated
+   * from the head bone and the model's height. Undefined without a head bone.
+   */
+  faceGeometry(): { center: THREE.Vector3; side: THREE.Vector3; up: THREE.Vector3; forward: THREE.Vector3; width: number;
+    eyeLeft: THREE.Vector3; eyeRight: THREE.Vector3; mouth: THREE.Vector3; top: THREE.Vector3;
+    cheekLeft: THREE.Vector3; cheekRight: THREE.Vector3 } | undefined {
+    const model = this.model;
+    const head = model?.humanoid.getNormalizedBoneNode("head");
+    if (!model || !head) return undefined;
+    head.updateWorldMatrix(true, false);
+    const rotation = head.getWorldQuaternion(new THREE.Quaternion());
+    // VRM 1.0 faces +Z with the character's left (the viewer's right) at +X.
+    const side = new THREE.Vector3(1, 0, 0).applyQuaternion(rotation), up = new THREE.Vector3(0, 1, 0).applyQuaternion(rotation);
+    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(rotation);
+    const at = (node: THREE.Object3D | null | undefined) => {
+      if (!node) return undefined;
+      node.updateWorldMatrix(true, false);
+      return node.getWorldPosition(new THREE.Vector3());
+    };
+    // The character's left eye is on the viewer's right.
+    const viewerRight = at(model.humanoid.getNormalizedBoneNode("leftEye")), viewerLeft = at(model.humanoid.getNormalizedBoneNode("rightEye"));
+    let width = this.faceWidth, center: THREE.Vector3;
+    if (viewerRight && viewerLeft && viewerRight.distanceTo(viewerLeft) > 1e-4) {
+      width = Math.max(viewerRight.distanceTo(viewerLeft) * 2.3, width * 0.4);
+      center = viewerRight.clone().add(viewerLeft).multiplyScalar(0.5);
+    } else center = at(head)!.addScaledVector(up, 0.45 * width).addScaledVector(forward, 0.45 * width);
+    const point = (x: number, y: number, z: number) => center.clone().addScaledVector(side, x * width)
+      .addScaledVector(up, y * width).addScaledVector(forward, z * width);
+    return { center, side, up, forward, width,
+      eyeLeft: viewerLeft ?? point(-0.2, 0, 0), eyeRight: viewerRight ?? point(0.2, 0, 0),
+      cheekLeft: point(-0.28, -0.22, 0.08), cheekRight: point(0.28, -0.22, 0.08),
+      mouth: point(0, -0.42, 0.1), top: point(0, 0.75, -0.1) };
   }
 
   /** The playing gesture and how far into it, advanced by `deltaSeconds`; undefined once it is over. */
@@ -359,6 +559,8 @@ export class VrmRuntime {
   }
 
   private updateActions(model: VRM, deltaSeconds: number): void {
+    const blush = this.blush;
+    if (blush && !blush.hold && (blush.seconds += deltaSeconds) >= GESTURE_SECONDS.blush - 0.6) this.endGesture("blush");
     const expressions = model.expressionManager;
     if (!expressions) return;
     for (const [name, state] of this.actions) {
@@ -380,8 +582,10 @@ export class VrmRuntime {
     const w = gesture?.weight ?? 0;
     const lerp = (from: number, to: number, amount: number) => from + (to - from) * amount;
     const wave = gesture?.name === "wave" ? w : 0, shrug = gesture?.name === "shrug" ? w : 0;
-    const pose = gesture ? gesturePose(gesture.name, gesture.t, w) : undefined;
-    const open = pose?.open ?? 0, shoulders = 0.2 * shrug + 0.12 * (pose?.shoulders ?? 0);
+    const pose = this.advanceHeld(deltaSeconds, 0.6 * w);
+    if (gesture) addPose(pose, gesturePose(gesture.name, gesture.t, w));
+    this.face = pose.face;
+    const open = pose.open, shoulders = 0.2 * shrug + 0.12 * pose.shoulders;
     const waving = wave > 0 ? 0.35 * Math.sin(2 * Math.PI * gesture!.t / 0.5) : 0;
     bone("leftUpperArm")?.rotation.set(0, 0, lerp(lerp(-1.2 + breath * 0.02, -0.95, shrug), -0.15, open));
     bone("rightUpperArm")?.rotation.set(0, 0, lerp(lerp(lerp(1.2 - breath * 0.02, 0.95, shrug), -0.25, wave), 0.15, open));
@@ -391,7 +595,7 @@ export class VrmRuntime {
     bone("rightShoulder")?.rotation.set(0, 0, -shoulders);
     bone("chest")?.rotation.set(breath * 0.015, 0, 0);
     const side = gesture?.name === "sway" ? w * Math.sin(2 * Math.PI * gesture.t / 1.2) : 0;
-    bone("spine")?.rotation.set((gesture?.name === "bow" ? 0.35 * w : 0) + (pose?.spineX ?? 0), 0, 0.08 * side + (pose?.spineZ ?? 0));
+    bone("spine")?.rotation.set((gesture?.name === "bow" ? 0.35 * w : 0) + pose.spineX, pose.spineY, 0.08 * side + pose.spineZ);
     const hips = bone("hips");
     if (hips && this.hipsRest !== undefined)
       hips.position.y = this.hipsRest + (gesture?.name === "bounce" ? 0.035 * w * Math.abs(Math.sin(2 * Math.PI * gesture.t / 0.6)) : 0);
@@ -400,8 +604,8 @@ export class VrmRuntime {
       if (gesture?.name === "nod") { const phase = Math.sin(Math.PI * gesture.t / 0.55); gy = -0.9 * phase * phase; }
       if (gesture?.name === "shake") gx = 0.8 * Math.sin(2 * Math.PI * gesture.t / 0.4) * Math.sin(Math.PI * gesture.t / 1.2);
       if (gesture?.name === "bow") gy = -0.5 * w;
-      gx += pose?.gx ?? 0; gy += pose?.gy ?? 0;
-      const tilt = (gesture?.name === "tilt" ? 0.3 * w : 0) + (gesture?.name === "shrug" ? 0.12 * w : 0) - 0.06 * side + (pose?.tilt ?? 0);
+      gx += pose.gx; gy += pose.gy;
+      const tilt = (gesture?.name === "tilt" ? 0.3 * w : 0) + (gesture?.name === "shrug" ? 0.12 * w : 0) - 0.06 * side + pose.tilt;
       const x = this.look.x + gx, y = this.look.y + gy;
       bone("neck")?.rotation.set(-y * 0.15, x * 0.2, Math.sin(this.idleTime * 0.7) * 0.02);
       bone("head")?.rotation.set(-y * 0.2, x * 0.3, tilt);
@@ -439,6 +643,9 @@ export class VrmRuntime {
       this.releaseModel();
       this.model = result.vrm;
       this.inspected = result.capabilities;
+      // A face is about a twelfth as wide as the figure is tall.
+      const box = new THREE.Box3().setFromObject(result.vrm.scene);
+      this.faceWidth = box.isEmpty() ? 0.14 : Math.max(0.01, 0.09 * (box.max.y - box.min.y));
       return result.capabilities;
     } finally { this.pending = false; }
   }
@@ -588,8 +795,10 @@ export class VrmRuntime {
     if (this.identity && this.selection?.head) {
       model.humanoid.getNormalizedBoneNode("head")!.quaternion.fromArray(this.pose.head ?? [0, 0, 0, 1]);
     }
-    if (this.idle) this.animateIdle(model, deltaSeconds);
+    this.restoreFace(model);
+    if (this.idle) this.animateIdle(model, deltaSeconds); else this.face = {};
     this.updateActions(model, deltaSeconds);
+    this.applyFace(model);
     model.humanoid.update();
     const neutralEyes: { node: THREE.Object3D; rotation: THREE.Quaternion }[] = [];
     if (model.lookAt && this.identity && this.selection?.gaze) {
@@ -626,6 +835,15 @@ export class VrmRuntime {
 
   stop(): void { this.loaded(); this.clearControls(); }
 
+  /** What of the posed model a ray hits first (see touch.ts), or undefined when it misses. */
+  hitTestRay(raycaster: THREE.Raycaster): VrmHit | undefined {
+    const model = this.loaded();
+    const humanoid = new Map<THREE.Object3D, string>();
+    for (const [name, bone] of Object.entries(model.humanoid.rawHumanBones)) if (bone?.node) humanoid.set(bone.node, name);
+    const springs = new Set<THREE.Object3D>([...model.springBoneManager?.joints ?? []].map(joint => joint.bone));
+    return hitTestVrm(model.scene, humanoid, raycaster, springs);
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -638,6 +856,7 @@ export class VrmRuntime {
   private clearControls(): void {
     this.identity = undefined; this.sequence = -1; this.sampleOffset = -1; this.playbackOffset = -1; this.pose = {};
     this.composedAge = Number.POSITIVE_INFINITY;
+    this.faceRestore.clear(); this.face = {};
     if (this.model) {
       this.model.humanoid.resetNormalizedPose();
       this.model.humanoid.update();
@@ -655,6 +874,6 @@ export class VrmRuntime {
       releaseResources(this.model.scene);
     }
     this.model = undefined; this.inspected = undefined; this.selection = undefined; this.revision = undefined; this.inputMode = undefined;
-    this.actions.clear(); this.gesture = undefined; this.hipsRest = undefined;
+    this.actions.clear(); this.heldExpressions.clear(); this.gesture = undefined; this.held = []; this.blush = undefined; this.hipsRest = undefined;
   }
 }

@@ -100,9 +100,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "(with a status line's tooltip details as help), " +
             "and whether each window can be resized, minimized and maximized. With layout, each control also returns its screen " +
             "bounds and, for text, where its first line of text sits (geometry only, never the text), and each window its bounds " +
-            "and its monitor's work area.", new
+            "and its monitor's work area. idPrefix keeps only controls whose automation ID starts with it (the first 200 controls are " +
+            "returned, so a long page's later sections need it).", new
         {
-            layout = new { type = "boolean" }
+            layout = new { type = "boolean" }, idPrefix = new { type = "string" }
         }),
         Tool("ui_click", "Invoke an automation-ID control. Only safe navigation controls work without --allow-ui-effects. With " +
             "several windows that have the control (side-by-side run windows each have HostRunCancel), window names the one to use: " +
@@ -136,6 +137,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dx = new { type = "integer", minimum = -DesktopAutomation.MaximumMove, maximum = DesktopAutomation.MaximumMove },
             dy = new { type = "integer", minimum = -DesktopAutomation.MaximumMove, maximum = DesktopAutomation.MaximumMove }
         }, ["id", "dx", "dy"]),
+        Tool("character_touch", "Tap the showing character like a left click that doesn't drag, at x, y (fractions 0 to 1 of the " +
+            "character overlay's drawing, +y down; unzoomed, its head is near 0.5, 0.15), and return the renderer's hit test as " +
+            "last: n, x, y, hit, zone (head, hair, face, body, arm, hand, leg or foot), hitAreas and drawables (Live2D), bone, node, " +
+            "hair, mesh and material (VRM). Martlet then plays its tap reaction (the desktop log records 'The character was " +
+            "tapped on the ...'). Tapping requires --allow-ui-effects; without x and y it only reads the last tap.", new
+        {
+            x = new { type = "number", minimum = 0, maximum = 1 },
+            y = new { type = "number", minimum = 0, maximum = 1 }
+        }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
             "[x, y, width, height] in physical screen pixels) and whether Martlet still runs. \"open\" and \"menu\" send the icon " +
@@ -427,18 +437,40 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "them (Martlet.Avatar.Hosting, docs/AVATARS.md \"Emotes and motions\"): modelPath (a .model3.json or .vrm on this PC) or the " +
             "model dataDirectory's avatar.json shows. Returns the renderer, the model's key, how many files the renderer reads (a VTube " +
             "Studio model's .vtube.json and loose .exp3/.motion3 files included) and what came from VTube Studio's settings, then each " +
-            "expression, motion group and Martlet gesture the model's rig supports (nod, shake, tilt, bow, sway; Live2D smile, blush, surprise; VRM wave, shrug, bounce; " +
+            "expression, motion group and Martlet gesture the model's rig supports (nod, shake, tilt, bow, sway; blush on every model, drawn by Martlet " +
+            "as a glow on the cheeks when the model has no ParamCheek or blush expression; Live2D smile, surprise; VRM wave, shrug, bounce; " +
             "and the voice emotes linked to every voice sound and tone: laugh, chuckle, sigh, gasp, cough, clear_throat, groan, sniff, shush, inhale, exhale, " +
             "mumble, hum, sneeze, whistle, happy, sarcastic, angry, fear, crying, whispering, dramatic) with what it changes, its tag, voice cue, when to use it, whether " +
-            "it is on and whether replies are offered it for engine (a voice engine key; \"none\" or absent: a voice without tags); the " +
-            "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; the reply prompt and tags; " +
+            "it is on, its mode (brief, or lingering: stays on after {tag} until {/tag}; modeSaved false when it is the default, " +
+            "vtsToggle when a VTube Studio ToggleExpression hotkey turns it on) and whether replies are offered it for engine (a voice engine key; \"none\" or absent: a voice without tags); the " +
+            "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; the reply prompt and tags " +
+            "(lingering emotes add their {/tag} off tags); with showing (tags the character would show now, as \"glasses\" or " +
+            "\"glasses:12\" for 12 minutes) also showingNote, the line the newest message's notes get; " +
             "and the Thinking naming prompt. With voiceTag (a voice's tag such as \"[laugh]\" or \"(sighs)\", or a reply tag such as " +
-            "\"{nod}\"), also what it sets off (setsOff: kind and name; with several expressions or motions on one cue, one picked at random). " +
+            "\"{nod}\" or \"{/glasses}\"), also what it sets off (setsOff: kind, name and whether it holds; with several expressions or motions " +
+            "on one cue, one picked at random) or turns off (turnsOff). " +
             "With answer (a simulated Thinking reply such as \"1: blush | - | when shy\"), also what the " +
             "production parser makes of it. Reads only; contacts nothing and never returns the model's path.", new
         {
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, engine = new { type = "string" },
-            answer = new { type = "string" }, voiceTag = new { type = "string" }
+            answer = new { type = "string" }, voiceTag = new { type = "string" }, showing = new { type = "array", items = new { type = "string" } }
+        }),
+        Tool("character_touch_zones", "Companion > Character > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones; docs/AVATARS.md " +
+            "\"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate), the vision request sent with the " +
+            "character's snapshot, what the production parser makes of answer (a simulated vision reply: JSON boxes as fractions, " +
+            "pixels of a width x height picture or Qwen-style 0..1000 bbox_2d grounding) bound to probe (a simulated renderer zones " +
+            "probe: {\"drawables\":[{\"id\",\"left\",\"top\",\"right\",\"bottom\"}],\"bones\":[{\"bone\",\"x\",\"y\"}]} in page " +
+            "fractions) with crop (\"left,top,width,height\": where the snapshot sat on the page), the zones saved for the model " +
+            "(modelPath, modelId or the model dataDirectory's avatar.json shows) in character-touch-zones.json, and with touch (a " +
+            "CharacterTouch: {\"x\",\"y\",\"hitAreas\",\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\"}) the zone it " +
+            "lands in, how it was found, what it plays and what it tells the character. save writes the parsed zones (and " +
+            "snapshotPath, a PNG, as their picture; includeIntimate sets Include intimate zones) into an explicit, disposable " +
+            "dataDirectory as Detect zones would. Contacts nothing; never returns the model's path.", new
+        {
+            dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, modelId = new { type = "string" },
+            answer = new { type = "string" }, width = new { type = "integer" }, height = new { type = "integer" },
+            crop = new { type = "string" }, probe = new { type = "string" }, touch = new { type = "string" },
+            save = new { type = "boolean" }, includeIntimate = new { type = "boolean" }, snapshotPath = new { type = "string" }
         }),
         Tool("character_gaze", "Where the character looks (Companion > Vision > Where the character looks; docs/SCREEN_COMMENTARY.md " +
             "\"Where the character looks\"): the saved choice in a data directory's talk-preferences.json (mouse unless Martlet " +
@@ -565,8 +597,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "default chatterbox on http://127.0.0.1:50083; f5 50080, xtts 50081, gpt-sovits 50082, dia 50084) through the production " +
             "path: the engine's own gateway relay inside a real gateway on 127.0.0.1 (pinned TLS, pairing) and the desktop's paired " +
             "client, with a starter voice as the reference (nothing played or recorded). Returns the service's /status before and " +
-            "after (state, error, runtime versions such as torch and CUDA), the audio length, time to first audio, total time, " +
-            "real-time factor, peak and RMS level, or the failure code and message. Loopback only; runs Martlet.NodeLinkCheck.", new
+            "after (state, error, runtime versions such as torch and CUDA, Chatterbox's whispered parts), the audio length, time to " +
+            "first audio, total time, real-time factor, peak and RMS level, how much of it is voiced (voicedShare: near 0 for a " +
+            "whisper, so text starting with [whispering] shows Chatterbox whispering), or the failure code and message. Loopback " +
+            "only; runs Martlet.NodeLinkCheck.", new
         {
             engine = new { type = "string", @enum = VoiceEnginePorts.Keys.ToArray() },
             endpoint = new { type = "string", maxLength = 64 },
@@ -1249,7 +1283,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "latency_report" => LatencyReport.Read(OptionalString(arguments, "dataDirectory"), OptionalInt(arguments, "replies")),
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
-                "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false),
+                "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false, OptionalString(arguments, "idPrefix")),
                 "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id"), OptionalString(arguments, "window")),
                 "ui_select" => desktop.Select(RequiredString(arguments, "id"), RequiredString(arguments, "item")),
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"),
@@ -1257,6 +1291,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
                 "ui_set_range" => desktop.SetRange(RequiredString(arguments, "id"), RequiredDouble(arguments, "value")),
                 "ui_move" => desktop.Move(RequiredString(arguments, "id"), RequiredInt(arguments, "dx"), RequiredInt(arguments, "dy")),
+            "character_touch" => await desktop.TouchCharacterAsync(OptionalDouble(arguments, "x"), OptionalDouble(arguments, "y")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "parakeet_check" => await ParakeetCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
@@ -1293,6 +1328,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_profiles" => CharacterProfiles(arguments),
                 "character_actions" => await CharacterActionsCheckAsync(arguments, cancellation),
                 "character_gaze" => GazeCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer")),
+                "character_touch_zones" => await TouchZonesCheck.RunAsync(DataDirectory(arguments),
+                    OptionalString(arguments, "dataDirectory") is not null, OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"),
+                    OptionalString(arguments, "answer"), OptionalInt(arguments, "width"), OptionalInt(arguments, "height"),
+                    OptionalString(arguments, "crop"), OptionalString(arguments, "probe"), OptionalString(arguments, "touch"),
+                    OptionalBool(arguments, "save") ?? false, OptionalBool(arguments, "includeIntimate"), OptionalString(arguments, "snapshotPath"),
+                    cancellation),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
@@ -2096,10 +2137,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
             return of.Entries.Select((e, n) => new
             {
                 n, id = e.Source.Id, kind = e.Source.Kind.ToString().ToLowerInvariant(), name = e.Source.Name, detail = e.Source.Detail,
-                tag = e.Action.Tag, cue = e.Action.Cue, use = e.Action.Use, enabled = e.Action.Enabled, offered = offered.Contains(e.Source.Id)
+                tag = e.Action.Tag, cue = e.Action.Cue, use = e.Action.Use, enabled = e.Action.Enabled, offered = offered.Contains(e.Source.Id),
+                mode = e.Action.Mode ?? Martlet.Avatar.Hosting.CharacterActions.DefaultMode(e.Source, e.Action.Tag),
+                modeSaved = e.Action.Mode is not null, vtsToggle = e.Source.Toggle
             }).ToArray();
         }
-        var reply = catalog.Prompt(engine, prompts);
+        // Lingering emotes the character would be showing ("glasses" or "glasses:12" for 12 minutes), for the note replies get.
+        var now = DateTimeOffset.Now;
+        var showing = (OptionalStrings(arguments, "showing") ?? []).Select(text =>
+        {
+            var parts = text.Split(':', 2);
+            var minutes = parts.Length > 1 && int.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var m) ? m : 0;
+            var source = catalog.Entries.FirstOrDefault(e => string.Equals(e.Action.Tag, parts[0].Trim('{', '}'), StringComparison.OrdinalIgnoreCase)).Source ??
+                throw new ArgumentException($"No emote has the tag '{parts[0]}'.");
+            return new Martlet.Avatar.Hosting.HeldEmote(source, path, now - TimeSpan.FromMinutes(minutes));
+        }).ToArray();
+        var reply = catalog.Prompt(engine, prompts, showing, now);
         var naming = Martlet.Avatar.Hosting.CharacterActions.NamingPrompt(inventory, prompts);
         object? parsed = null;
         if (OptionalString(arguments, "answer") is { } answer)
@@ -2125,10 +2178,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
             },
             saved = saved is not null, detectedBy = catalog.Settings.DetectedBy, detectedAt = catalog.Settings.DetectedAt,
             engine = engine?.Key, actions = Describe(catalog),
-            replyPrompt = reply?.Instructions, replyTags = reply?.Tags,
+            replyPrompt = reply?.Instructions, replyTags = reply?.Tags, showingNote = reply?.Showing,
             namingPrompt = naming is { } ask ? new { instructions = ask.Instructions, list = ask.List } : null,
             voiceTag, setsOff = voiceTag is null ? null
-                : catalog.For(voiceTag).Select(s => new { kind = s.Kind.ToString().ToLowerInvariant(), name = s.Name }).ToArray(),
+                : catalog.For(voiceTag).Select(s => new
+                {
+                    kind = s.Kind.ToString().ToLowerInvariant(), name = s.Name, holds = voiceTag.StartsWith('{') && catalog.Lingers(s)
+                }).ToArray(),
+            turnsOff = voiceTag is not null && catalog.Off(voiceTag) is { } off ? new { kind = off.Kind.ToString().ToLowerInvariant(), name = off.Name } : null,
             parsed
         };
     }
@@ -3150,6 +3207,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             return null;
         if (value.ValueKind != JsonValueKind.String) throw new ArgumentException($"'{property}' must be a string.");
         return value.GetString();
+    }
+
+    private static double? OptionalDouble(JsonElement element, string property)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value) ||
+            value.ValueKind == JsonValueKind.Null)
+            return null;
+        return value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number)
+            ? number : throw new ArgumentException($"'{property}' must be a number.");
     }
 
     private static int? OptionalInt(JsonElement element, string property)
