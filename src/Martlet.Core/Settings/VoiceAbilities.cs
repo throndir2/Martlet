@@ -10,8 +10,8 @@ public enum EmotionSupport
     /// ([happy], [angry]...) but measurably doesn't perform them; they only cue the character.</summary>
     WhisperOnly,
 
-    /// <summary>Calm or expressive for each sentence (one intensity setting, such as the original Chatterbox's exaggeration),
-    /// but no particular emotion.</summary>
+    /// <summary>Calm or expressive for each sentence (the original Chatterbox's exaggeration and CFG weight, chosen by the reply
+    /// with [expressive]), but no particular emotion.</summary>
     Intensity,
 
     /// <summary>Tags that pick the emotion.</summary>
@@ -69,12 +69,13 @@ public sealed record VoiceAbilities(bool Cloning, bool Sounds, EmotionSupport Em
     public string Describe() => string.Join(" ", Items.Select(item => item + "."));
 
     /// <summary>The tags of an engine's catalog that do what <paramref name="item"/> says: its sounds for laughs &amp; sighs,
-    /// and for emotions the tones that change the voice (all of them with <see cref="EmotionSupport.Tags"/>, otherwise only
-    /// [whispering], which the service makes). Tones a voice only reads (Chatterbox Turbo's [angry]...) are not listed.</summary>
+    /// and for emotions the tones that change the voice (all of them with <see cref="EmotionSupport.Tags"/> or
+    /// <see cref="EmotionSupport.Intensity"/>, otherwise only [whispering], which the service makes). Tones a voice only reads
+    /// (Chatterbox Turbo's [angry]...) are not listed.</summary>
     public IReadOnlyList<VoiceTag> TagsFor(VoiceAbility item, IReadOnlyList<VoiceTag> tags) => item.Level == AbilityLevel.No ? [] : item.Name switch
     {
         "Laughs & sighs" => [.. tags.Where(tag => tag.Kind == VoiceTagKind.Sound)],
-        "Emotions" when Emotions == EmotionSupport.Tags => [.. tags.Where(tag => tag.Kind == VoiceTagKind.Emotion)],
+        "Emotions" when Emotions is EmotionSupport.Tags or EmotionSupport.Intensity => [.. tags.Where(tag => tag.Kind == VoiceTagKind.Emotion)],
         "Emotions" => [.. tags.Where(tag => tag.Kind == VoiceTagKind.Emotion && tag.Cue == "whispering")],
         _ => []
     };

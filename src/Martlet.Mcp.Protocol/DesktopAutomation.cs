@@ -218,6 +218,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Voice › Voice volume: the slider's number (0 to 100) and its label ("80%"). ui_set_range on VoiceVolume
         // saves talk-preferences.json, so it needs --allow-ui-effects.
         "VoiceVolume", "VoiceVolumeLevel",
+        // Companion › Voice › Chatterbox Original style: its four sliders' numbers (exaggeration 0.25-2, CFG weight 0-1) and what
+        // is saved ("Saved on this PC. General: exaggeration 0.5, CFG weight 0.5. Expressive: ..."); each value's label is
+        // ChatterboxStyleValue-<name>. ui_set_range on a slider and ChatterboxStyleReset save chatterbox-style.json, so they
+        // need --allow-ui-effects.
+        "ChatterboxStyle-GeneralExaggeration", "ChatterboxStyle-GeneralCfgWeight", "ChatterboxStyle-ExpressiveExaggeration",
+        "ChatterboxStyle-ExpressiveCfgWeight", "ChatterboxStyleState",
         // What the showing character's model drives (controls, textures and any downscaling, blink and mouth parameters,
         // motions, physics; parameter IDs only, never paths), on Companion › Character and in the character window, which
         // also shows why a chosen model couldn't load; and the character window's status line.
@@ -630,7 +636,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// click; never the text it copies).</summary>
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
-    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchZoneNotices-", "VoiceEngine", "SpeakingHost-", "SingingHost-",
+    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default

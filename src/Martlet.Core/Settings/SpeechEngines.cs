@@ -40,13 +40,29 @@ public sealed record SpeechEngine(
     /// catalog has sound tags; its emotions are what was measured (<see cref="Emotions"/>), not what its catalog lists.</summary>
     public VoiceAbilities Abilities => new(true, Tags.Any(tag => tag.Kind == VoiceTagKind.Sound), Emotions);
 
+    /// <summary>Whether it needs an NVIDIA graphics card (<see cref="MinimumGpuMemoryGb"/> above 0). One that doesn't
+    /// (Chatterbox Nano) uses the card when its computer has one and the processor otherwise.</summary>
+    public bool NeedsGpu => MinimumGpuMemoryGb > 0;
+
     /// <summary>Its footprint (graphics card, memory, download) in Martlet's catalog (docs/RESOURCE_FOOTPRINTS.md), or null
-    /// for an engine registered without one.</summary>
+    /// for an engine registered without one: the one on a graphics card when it has both.</summary>
     public Planning.ComponentOption? Footprint => Planning.FootprintCatalog.Default.FindModel(Planning.PlanComponent.Voice, DefaultModel);
 
     /// <summary>Where it runs and how much graphics memory it takes: "Runs on an NVIDIA GPU: about 3.7 GB of graphics memory,
-    /// up to 4.2 GB (6 GB+ card)." (<see cref="Planning.ComponentOption.WhereItRuns"/>).</summary>
-    public string RunsOn => Footprint?.WhereItRuns ?? $"Runs on an NVIDIA GPU ({MinimumGpuMemoryGb} GB+ card).";
+    /// up to 4.2 GB (6 GB+ card)." (<see cref="Planning.ComponentOption.WhereItRuns"/>), with "; without one, on the CPU." for
+    /// an engine that has a processor footprint as well.</summary>
+    public string RunsOn
+    {
+        get
+        {
+            var options = Planning.FootprintCatalog.Default.For(Planning.PlanComponent.Voice)
+                .Where(option => option.IsLocal && option.ModelId == DefaultModel).ToArray();
+            var gpu = options.FirstOrDefault(option => option.UsesGpu);
+            var cpu = options.FirstOrDefault(option => !option.UsesGpu);
+            if (gpu is not null && cpu is not null) return gpu.WhereItRuns.TrimEnd('.') + "; without one, on the CPU.";
+            return (gpu ?? cpu)?.WhereItRuns ?? $"Runs on an NVIDIA GPU ({MinimumGpuMemoryGb} GB+ card).";
+        }
+    }
 
     /// <summary>Whether its model allows only non-commercial use (CC-BY-NC, Coqui Public Model License).</summary>
     public bool NonCommercial => WeightsLicense.Contains("NC", StringComparison.Ordinal) || WeightsLicense.StartsWith("CPML", StringComparison.Ordinal);
@@ -128,6 +144,30 @@ public static class SpeechEngines
         "martlet.gateway.chatterbox-synthesis.v1", "/martlet/v1/inference/chatterbox-synthesis", "chatterbox-turbo", "MIT",
         "Natural and quick.", 5_001, 30_000, 6, ChatterboxTurboTags, Emotions: EmotionSupport.WhisperOnly);
 
+    /// <summary>The original Chatterbox's tags. The model has no sound or tone tokens (a [laugh] would be read out), so replies
+    /// keep only these two, which its service turns into how a sentence is said: [expressive] speaks it with the Expressive
+    /// exaggeration and CFG weight instead of the General ones (<see cref="ChatterboxStyle"/>), and [whispering] whispers it.</summary>
+    public static readonly IReadOnlyList<VoiceTag> ChatterboxOriginalTags =
+    [
+        new("[expressive]", VoiceTagKind.Emotion,
+            "expressive and animated, for excitement, delight, drama or strong feeling; leave it out for calm, even speech"),
+        new("[whispering]", VoiceTagKind.Emotion, "whispered, for a secret or something hushed")
+    ];
+
+    /// <summary>The original 500M Chatterbox (huggingface.co/ResembleAI/chatterbox, English): no laughs or sighs, but each
+    /// sentence is calm (General) or, with [expressive], expressive, with the exaggeration and CFG weight chosen in Companion ›
+    /// Voice (<see cref="ChatterboxStyle"/>). It speaks each sentence whole.</summary>
+    public static readonly SpeechEngine ChatterboxOriginal = new("chatterbox-original", "Chatterbox Original", "chatterbox-original",
+        "martlet.gateway.chatterbox-original-synthesis.v1", "/martlet/v1/inference/chatterbox-original-synthesis", "chatterbox-original",
+        "MIT", "Calm or expressive, as each sentence needs.", 5_001, 30_000, 6, ChatterboxOriginalTags, Emotions: EmotionSupport.Intensity);
+
+    /// <summary>Chatterbox Nano (huggingface.co/ResembleAI/chatterbox-nano): Turbo's architecture with a 110M backbone and the
+    /// same tags. Its role runs on the NVIDIA GPU when the computer has one and on the processor otherwise
+    /// (<see cref="SpeechEngine.NeedsGpu"/> is false).</summary>
+    public static readonly SpeechEngine ChatterboxNano = new("chatterbox-nano", "Chatterbox Nano", "chatterbox-nano",
+        "martlet.gateway.chatterbox-nano-synthesis.v1", "/martlet/v1/inference/chatterbox-nano-synthesis", "chatterbox-nano", "MIT",
+        "Small; runs without a graphics card.", 5_001, 30_000, 0, ChatterboxTurboTags, Emotions: EmotionSupport.WhisperOnly);
+
     public static readonly SpeechEngine F5 = new("f5", "F5-TTS", "f5",
         "martlet.gateway.f5-synthesis.v1", "/martlet/v1/inference/f5-synthesis", "f5tts-v1-base", "CC-BY-NC-4.0",
         "Closest likeness to the recording.", 1_000, 30_000, 6, Languages: "English, Chinese");
@@ -175,10 +215,14 @@ public static class SpeechEngines
         "Lifelike, conversational delivery.", 1_000, 20_000, 8, DiaTags);
 
     private static readonly object Gate = new();
-    private static SpeechEngine[] all = [Chatterbox, F5, Xtts, GptSovits, Dia];
+    private static SpeechEngine[] all = [Chatterbox, ChatterboxOriginal, ChatterboxNano, F5, Xtts, GptSovits, Dia];
 
     /// <summary>Every engine; the first is the default cloning engine (Chatterbox Turbo).</summary>
     public static IReadOnlyList<SpeechEngine> All => Volatile.Read(ref all);
+
+    /// <summary>Whether <paramref name="engine"/> is one of Resemble AI's Chatterbox models, whose replies all carry the Perth
+    /// watermark.</summary>
+    public static bool IsChatterbox(SpeechEngine? engine) => engine is not null && engine.Key.StartsWith("chatterbox", StringComparison.Ordinal);
 
     /// <summary>The engine Martlet suggests and starts with when the owner has not chosen one.</summary>
     public static SpeechEngine Default => Chatterbox;

@@ -202,13 +202,14 @@ public sealed class HostRolesTests
     public void Nvidia_roles_are_x86_64_only_in_the_engine_and_the_catalog_and_stt_has_an_arm64_whisper_of_the_same_commit()
     {
         // The NVIDIA CUDA roles pin x86_64-only packages: martlet-host refuses them on ARM64 hosts (requires=x86_64), and so
-        // does the platform catalog before an install is offered.
+        // does the platform catalog before an install is offered. A role built on the same CUDA image can also run on the CPU
+        // (Chatterbox Nano): it is x86_64-only without needing the NVIDIA toolkit.
         foreach (var dir in Directory.GetDirectories(RolesDirectory()))
         {
             var kind = Path.GetFileName(dir);
             var requires = File.ReadAllLines(Path.Combine(dir, "role.conf"))
                 .Single(l => l.StartsWith("requires=", StringComparison.Ordinal))["requires=".Length..].Split(' ');
-            Assert.True(requires.Contains("nvidia-toolkit") == requires.Contains("x86_64"), $"{kind}: requires={string.Join(' ', requires)}");
+            Assert.True(!requires.Contains("nvidia-toolkit") || requires.Contains("x86_64"), $"{kind}: requires={string.Join(' ', requires)}");
             if (Martlet.Core.Platforms.PlatformCatalog.EngineForHostRole(kind) is { } engine)
             {
                 var arm = Martlet.Core.Platforms.PlatformCatalog.Check(engine, Martlet.Core.Platforms.PlatformSide.Host,

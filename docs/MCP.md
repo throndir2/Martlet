@@ -501,11 +501,12 @@ there and the applied voice (a starter key, `own`, `retired-sample` or null).
 the settings rule it broke or the error type as `problem`), the
 speaking route's type (for example `GatewayF5`, null without one) and the voice it
 records (a starter key, `own`, `retired-sample` or null), plus `engine` (the
-self-hosted voice engine whose route it records: `chatterbox`, `f5`, `xtts`, `gpt-sovits` or `dia`), `host` and
+self-hosted voice engine whose route it records: `chatterbox`, `chatterbox-original`, `chatterbox-nano`, `f5`, `xtts`, `gpt-sovits` or `dia`), `host` and
 `model` for a host route. `engines` lists the voice engines
-([Chatterbox Turbo](CHATTERBOX_VOICE.md), [F5-TTS](F5_VOICE.md),
+([Chatterbox Turbo, Chatterbox Original and Chatterbox Nano](CHATTERBOX_VOICE.md), [F5-TTS](F5_VOICE.md),
 [XTTS-v2](XTTS_VOICE.md), [GPT-SoVITS](GPT_SOVITS_VOICE.md), [Dia](DIA_VOICE.md); `key`, `name`,
-`hostRole`, `routeId`, `path`, `model`, `weightsLicence`, `minimumGpuMemoryGb`,
+`hostRole`, `routeId`, `path`, `model`, `weightsLicence`, `minimumGpuMemoryGb`
+(0 for Chatterbox Nano, which also runs on the CPU),
 `minimumReferenceMs`, `maximumReferenceMs`, `summary`, `default` (true for
 Chatterbox Turbo), `supportsTags` and `tags`, each tag's `text` in the engine's
 syntax, `kind` `Sound` or `Emotion` and `usage`, and `multipleReferences` (true
@@ -527,8 +528,11 @@ tones other than `[whispering]` don't change the voice). `otherVoices` gives the
 same `abilities` and `runsOn` for the `windows` (CPU) and `openai` (online)
 voices, neither of which clones, laughs or shows emotions. Each starter
 voice adds `engines` (the engines that can clone it) and `language` (`en` or
-`ja`, read from its transcript), and `chosenEngine` is the engine chosen on this
-desktop (`speaking-engine.txt`, default `chatterbox`). After the desktop
+`ja`, read from its transcript), `chosenEngine` is the engine chosen on this
+desktop (`speaking-engine.txt`, default `chatterbox`) and `chatterboxStyle` is
+Chatterbox Original's style saved there (`saved`, `generalExaggeration`,
+`generalCfgWeight`, `expressiveExaggeration`, `expressiveCfgWeight` and
+`summary`; Resemble's suggestions until Companion › Voice saves one). After the desktop
 loads settings, a route or applied voice that was `retired-sample` reads the
 chosen or first voice. It never returns own voices' names, transcripts or audio, plays
 nothing and contacts nothing.
@@ -1651,18 +1655,26 @@ loopback service through the production path: Martlet.NodeLinkCheck's
 with that engine's own relay (the one the Linux host creates for the role) and
 speaks through the desktop's paired client, with the first starter voice whose
 length the engine accepts as the reference. Nothing is played or recorded.
-Arguments: `engine` (`chatterbox` default, `f5`, `xtts`, `gpt-sovits` or
-`dia`), a numeric loopback `endpoint` (default the role's port: 50083, 50080,
-50081, 50082 or 50084) and optional `text` (at most 300 characters; default a
-sentence with the engine's first sound tag, such as `[laugh]`, when it has
-tags). It returns `{exitCode, report}` with `ok` (no failure, at least 0.5 s
-of audible audio), `engine`, `route`, `voice`, `text`, `statusBefore` and
+Arguments: `engine` (`chatterbox` default, `chatterbox-original`,
+`chatterbox-nano`, `f5`, `xtts`, `gpt-sovits` or `dia`), a numeric loopback
+`endpoint` (default the role's port: 50083, 50089, 50088, 50080, 50081, 50082
+or 50084), optional `text` (at most 300 characters; default a sentence with the
+engine's first sound tag, such as `[laugh]`, when it has tags, or with an
+`[expressive]` second sentence for Chatterbox Original) and optional
+`dataDirectory`: for `chatterbox-original` the check sends the style saved there
+(`chatterbox-style.json`, as Companion › Voice saves it), else Resemble's
+suggestions, exactly as the desktop does. It returns `{exitCode, report}` with `ok` (no failure, at least 0.5 s
+of audible audio), `engine`, `route`, `voice`, `text`, `style` (Chatterbox
+Original's sent style in words, else null), `statusBefore` and
 `statusAfter` (the service's own `/status`: `answered`, `state`, `ready`,
-`error` and `runtime`, for Chatterbox its torch, torchaudio and CUDA versions
+`error`, `model` and `device` (`cuda:0` or `cpu`) and `runtime`, for Chatterbox
+its torch, torchaudio and CUDA versions
 and `idleCheck` (`checks`, `every_seconds`, `fastest_ms`, `last_ms` of its
-[idle check](CHATTERBOX_VOICE.md#how-it-runs)) and `whisper` (`level_db` and
-the `parts` it has [whispered](CHATTERBOX_VOICE.md#tags)), or why it could not
-be read), `seconds` of 24 kHz audio, `firstAudioMs`,
+[idle check](CHATTERBOX_VOICE.md#how-it-runs)), `whisper` (`level_db` and
+the `parts` it has [whispered](CHATTERBOX_VOICE.md#tags)) and, for Chatterbox
+Original, `style` (`default`, `expressive_parts` and `last`, the style the last
+reply asked for, so the owner's values can be checked at the service), or why
+it could not be read), `seconds` of 24 kHz audio, `firstAudioMs`,
 `elapsedMs`, `realTimeFactor`, `peakDbfs`, `rmsDbfs`, `audible`,
 `voicedShare` (the share of the loud 40 ms frames that have a pitch between 70
 and 400 Hz, from `Martlet.Core.Audio.Voicing`; about 0.6-0.9 for ordinary
@@ -3952,6 +3964,20 @@ because it saves `talk-preferences.json` (`VoiceVolume`, 0 to 1, this PC only
 and not shared with paired computers); `character_status`'s `voice.volume`
 reads the saved level (1 without a file).
 
+**Chatterbox Original style**: while Speaking uses Chatterbox Original or it is
+the chosen engine (`speaking-engine.txt` is `chatterbox-original`), Companion ›
+Voice shows its card with four sliders,
+`ChatterboxStyle-GeneralExaggeration`, `ChatterboxStyle-GeneralCfgWeight`,
+`ChatterboxStyle-ExpressiveExaggeration` and `ChatterboxStyle-ExpressiveCfgWeight`
+(exaggeration 0.25-2 and CFG weight 0-1, in steps of 0.05), each value's label
+`ChatterboxStyleValue-<name>` ("0.7") and `ChatterboxStyleState` ("Resemble's
+suggestions. General: exaggeration 0.5, CFG weight 0.5. Expressive: exaggeration
+0.7, CFG weight 0.3." or "Saved on this PC. ..."), all in `SafeValues`.
+`ui_set_range` on a slider and clicking `ChatterboxStyleReset` (*Use Resemble's
+suggestions*) save `chatterbox-style.json`, so they need `--allow-ui-effects`;
+`f5_voices`' `chatterboxStyle` reads what is saved and `voice_engine_check` with
+the same `dataDirectory` sends it.
+
 `MoveAvatar` also supports UI Automation's move: with `--allow-ui-effects`,
 `ui_move` moves the character by `dx`, `dy` screen pixels like a drag and
 returns its bounds before and after, and `ui_snapshot` reports `movable` for
@@ -4336,7 +4362,8 @@ voice is first used, added or removed. `f5_voices` reads the same list headlessl
 and `voice_recording_check` runs the same conversion on a file.
 
 Above the voices, the Voice engine card lists every way Martlet can speak on the
-shown computer as one row each, keyed by engine (`chatterbox`, `f5`, `xtts`,
+shown computer as one row each, keyed by engine (`chatterbox`,
+`chatterbox-original`, `chatterbox-nano`, `f5`, `xtts`,
 `gpt-sovits`, `dia`, and `windows` for a Windows voice under This PC):
 `VoiceEngine-<key>` reads its name and badge ("Chatterbox Turbo · recommended",
 "Windows voice · in use"), `VoiceEngineAbilities-<key>` the rundown of what it
