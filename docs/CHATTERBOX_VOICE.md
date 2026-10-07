@@ -4,8 +4,9 @@ Martlet's **default** self-hosted voice engine, next to [F5-TTS](F5_VOICE.md) an
 [XTTS-v2](XTTS_VOICE.md) (both stay selectable in Companion > Voice > Voice
 engine). Chatterbox Turbo (Resemble AI) copies a voice from the same reference
 recordings (Companion > Voice > Voices) and, unlike the others, speaks
-**tags**: non-word sounds such as `[laugh]` and `[sigh]` and tones of voice such
-as `[whispering]`, written inline in the reply.
+**tags**: non-word sounds such as `[laugh]` and `[sigh]` written inline in the
+reply, and `[whispering]`, which Martlet turns into a real whisper (see
+[Tags](#tags)).
 
 ## Licences and consent
 
@@ -210,23 +211,50 @@ the `chatterbox-turbo-demo` Space) offer exactly the nine sounds as
 `EVENT_TAGS`. The tones are the tokenizer's other style tokens and are not
 documented. Community reports differ (resemble-ai/chatterbox#492: all 19 work in
 the ONNX export, with occasional artifacts; #557: the ten style tokens change
-nothing under `mlx-audio`), and a measurement here agrees with the latter: on
-the starter voice *Annie*, five takes each,
-`[whispering]` and `[angry]` changed neither the level (-27.1 dBFS against
--26.5 without a tag) nor how noise-like the voice is (spectral flatness 0.158
-and 0.175 against 0.170; a whisper would be far flatter), while `[laugh]` added
-0.56 s and a flatter, louder stretch. The tones stay in the catalog because
-characters' emotes and motions can follow them as cues. So when a reply asks
-Chatterbox to whisper, the tag reaches the model but the voice does not
-audibly whisper; that is the model, not Martlet. Replies that write another
-form of a tag (`[whisper]`, `*whispers*`, `{hushed}`) are mapped to the
-catalog's tag (`VoiceTags.Synonyms`) instead of silencing their sentence.
+nothing under `mlx-audio`), and measurements here agree with the latter. On the
+starter voice *Annie*, three takes of one sentence with each tag through the
+running service (2026-10-06): `[whispering]` left the voice as voiced as
+without a tag (72% of its speech had a pitch, against 68%; a whisper has none)
+and at the same level (-25.8 dBFS against -25.4), and `[angry]`, `[happy]`,
+`[crying]`, `[fear]`, `[surprised]`, `[sarcastic]` and `[dramatic]` moved
+level, pitch and pitch range no more than one take differs from the next,
+while `[laugh]` and `[sigh]` added 0.8 s and 0.3 s of their sound. On three
+more starter voices `[whispering]` left 55-75% voiced. Two ways of making the
+model itself whisper failed: its vocoder (HiFT) takes the pitch from the mel,
+so giving it a pitch of 0 changed not one sample, and conditioning it on a
+whispered copy of the reference recording still left 11-30% voiced on three of
+four voices. The other tones stay in the catalog because characters' emotes and
+motions follow them as cues; Chatterbox's voice does not perform them. Replies
+that write another form of a tag (`[whisper]`, `*whispers*`, `{hushed}`) are
+mapped to the catalog's tag (`VoiceTags.Synonyms`) instead of silencing their
+sentence.
+
+**Whispering.** So the service whispers itself (image `martlet-chatterbox:7`).
+A sentence that starts with `[whispering]`, from the tag to its `.`, `!` or `?`
+(or the piece's end), is made by Turbo as usual, tag included, and then turned
+into a whisper (`Whisperer`, linear prediction): each 25 ms frame's spectral
+envelope (order 26 at 24 kHz) shapes white noise instead of the voice's
+pulses, as breath does in a whispering mouth, high-passed at 300 Hz and set to
+the frame's own level 6 dB lower (`MARTLET_CHATTERBOX_WHISPER_DB`), the frames
+overlap-added under sine windows. It runs before the Perth watermark, so every
+whisper carries it, on streamed chunks as they come (holding back at most
+40 ms, so the first audio leaves no later) and on whole pieces alike, in about
+12 ms of CPU per second of speech. Other sentences in the same piece keep the
+voice. Measured through the service on four starter voices (*Annie*,
+*arctic-bdl*, *lj-speech*, *woollybee*), two sentences and two takes each:
+1-15% of a whispered sentence counts as voiced (the pitch tracker calls some
+breath voiced; the plain sentences 71-86%), it is 6.4-8.9 LUFS quieter, and the
+local Parakeet speech-to-text heard plain and whispered sentences alike (word
+error rate 0-1.6%). `/status` reports `whisper` (`level_db`, and `parts`
+whispered since the service started), and each reply's log line counts its
+whispered parts.
 
 The Thinking prompt (Companion › Prompts › *Voice sounds and tones*) lists both
 groups, each under a line saying where its tags go: a sound inline where it
 happens, a tone at the very start of the sentence it colors (each spoken piece
-is synthesized on its own, so a tone never reaches the next sentence). How tags
-reach the voice, and stay out of the chat, is in
+is synthesized on its own, so a tone never reaches the next sentence; a reply
+that should keep one, such as a whispered reply, starts every sentence with
+it). How tags reach the voice, and stay out of the chat, is in
 [Conversation](CONVERSATION.md#voice-tags).
 
 ## Verification
@@ -244,8 +272,10 @@ tagged reply through a real paired gateway. `provision --fixture` (with
 **FIXTURE - NOT AI** tone generator for that plumbing check.
 `voice_engine_check` (MCP) speaks a sentence with a running service through
 the production relay, a real loopback gateway and the desktop's client, and
-reports the service's state, error, torch/CUDA versions and idle check
-(`idleCheck`).
+reports the service's state, error, torch/CUDA versions, idle check
+(`idleCheck`) and whispering (`whisper`), and how much of what came back is
+voiced (`voicedShare`: about 0.6-0.9 for a plain sentence, near 0 for one that
+starts with `[whispering]`).
 
 Verified on a GeForce RTX 5080 (compute capability 12.0) under Docker Desktop:
 the image builds, `provision` verifies the pinned files, `warm` loads the
@@ -262,9 +292,17 @@ Docker Desktop (the `:5` image with the new service mounted): the measurements
 above, `voice_engine_check` (4.2 s of audible speech for a quoted sentence with
 `[laugh]`, first audio 886 ms with a new voice, 0.61x real time) and the
 worker's unit tests in the image (a broken context restarts the service, the
-idle check, the token budget, quotation marks).
+idle check, the token budget, quotation marks). Image `:7`'s whispering was
+checked on the RTX 5080 under Docker Desktop (the `:6` image with the new
+service mounted, beside the running `:6` service): the measurements above, the
+worker's unit tests in the image, and `voice_engine_check` through the
+production relay, where a plain sentence came back with `voicedShare` 0.63 at
+-25.3 dBFS and the same sentence starting with `[whispering]` with 0.02 at
+-33 dBFS (first audio 824 ms; the `:6` service gave 0.69 at -27.7 dBFS, no
+whisper).
 
-**NOT RUN:** voice likeness and how the tags sound (nobody listened; streamed
+**NOT RUN:** voice likeness and how the tags and the whisper sound (nobody
+listened; the whisper was measured and transcribed only, and streamed
 speech was compared with whole-piece decodes by measurement only), a real
 sticky CUDA error inside the running service (unit tests cover the restart
 path; on the RTX 4070 the probe reported a real device-side assert as broken
