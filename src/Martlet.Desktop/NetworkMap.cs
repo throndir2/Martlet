@@ -470,7 +470,7 @@ internal static class NetworkMap
                 else if (role.Kind == HostRoles.DeepThinking && model is not null)
                     target.Roles.Add(new(role.Chip, role.Name, companion && inputs.DeepThinkingHosts?.Contains(paired.HostId) == true
                         ? $"Thinks things over in the background for this PC ({model})."
-                        : $"Ready ({model}). Choose it in Companion > Deep thinking to use it.", DeviceComponent.Standby(role.Kind)));
+                        : $"Ready ({model}). Tick Join the Thinking pool in Companion > Thinking pool to use it.", DeviceComponent.Standby(role.Kind)));
                 // Thinking, listening and speaking are listed with their routes when this host does them.
                 else if (model is not null && !(role.Kind == HostRoles.Ollama && thinks) && !(role.Kind == HostRoles.Stt && listens) &&
                     !(role.Kind == speaking && speaks))
@@ -571,7 +571,7 @@ internal static class NetworkMap
                 target.Commands.Add(new(NodeAction.UseForSpeaking, local ? "Use this PC's host service for speaking" : "Use this computer for speaking",
                     check?.Offers?.ContainsKey(HostRoles.Speaking) == true, id, Ready(HostRoles.Speaking)));
             if (companion && inputs.DeepThinkingHosts?.Contains(id) != true && check?.Offers?.ContainsKey(HostRoles.DeepThinking) == true)
-                target.Commands.Add(new(NodeAction.Companion, "Choose it for Deep thinking", Argument: nameof(CompanionTab.DeepThinking),
+                target.Commands.Add(new(NodeAction.Companion, "Add it to the Thinking pool", Argument: nameof(CompanionTab.DeepThinking),
                     Component: Ready(HostRoles.DeepThinking)));
             foreach (var role in HostRoles.All)
             {

@@ -181,7 +181,7 @@ what it prints go to the Thinking model.
 
 ### Thinking longer
 
-**Companion > Deep thinking > Thinking longer** (on by default; *Where it thinks* ›
+**Companion > Thinking pool > Thinking longer** (on by default; *Where it thinks* ›
 *Off* turns it off) gives every reply on a route that does function calling
 Martlet's own `think_longer` (`task`, the complete instruction, and an optional
 `reason`) and `cancel_thinking` (optional `id`), while Deep thinking can run where
@@ -194,6 +194,31 @@ provider, chosen on each PC), and brought up when it's done
 The Tools page's *Recent tool use* lists each call (`Martlet > think_longer:
 started think-1`); the desktop log notes each start, fit check and end without the
 task or result (`{"name":"logs_tail","arguments":{"contains":"Background"}}`).
+
+### Thinking pool
+
+**Companion > Thinking pool** is one shared set of Thinking models for
+background work ([The Thinking pool](CONVERSATION.md#the-thinking-pool)).
+`thinking_pool_status` (`dataDirectory`) reads `thinking-pool.json` (or what
+Martlet would make from the older `deep-thinking.json`, without writing it):
+each member with its slots, whether it sees pictures or hears recordings and
+whether it can run; *Use the conversation model when the pool is empty*; the
+usable slots and whether one stays free for fast jobs; each job kind's
+priority, whether it is fast and whether a member can run it (`canRun`);
+guidance and likely-slowdown warnings; and the desktop's
+`thinking-pool-status.json` (running and waiting jobs by kind, never a job's
+text). `thinking_pool_check` rehearses the production job board with simulated
+members (NOT models): no member, capabilities, the fast slot, priorities, retry
+on another member, a stale job dropped and the migration. On the desktop the
+card reads through `ThinkingPoolSummary`, `ThinkingPoolGuidance`,
+`ThinkingPoolWarnings` and `ThinkingPoolMember-<n>`; the
+`ThinkingPoolUseConversationModel` box, `ThinkingPoolSlots-<n>`,
+`ThinkingPoolRemove-<n>` and `DeepThinkingPool-<host>` (*Join the Thinking
+pool*) save `thinking-pool.json`, so they need `--allow-ui-effects`.
+
+```powershell
+.\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"thinking_pool_check"},{"name":"thinking_pool_status"}]'
+```
 
 ### Searching past conversations
 
@@ -4874,7 +4899,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

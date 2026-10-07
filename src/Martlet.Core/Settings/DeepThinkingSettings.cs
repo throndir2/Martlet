@@ -123,7 +123,7 @@ public sealed record DeepThinkingSettings
     /// "diva's Deep thinking (qwen3-8b)", "openrouter.ai (x-ai/grok-4.3)".</summary>
     public string Describe() => Place switch
     {
-        DeepThinkingPlace.Host when OnHostRole => $"{HostId}'s Deep thinking ({ModelId})",
+        DeepThinkingPlace.Host when OnHostRole => $"{HostId}'s Thinking pool ({ModelId})",
         DeepThinkingPlace.Host => $"{HostId} ({ModelId})",
         DeepThinkingPlace.Endpoint when string.Equals(Origin, GenerationSupport.LocalOllamaChatBaseUrl, StringComparison.Ordinal) =>
             $"Ollama on this PC ({ModelId})",
@@ -149,7 +149,7 @@ public sealed record DeepThinkingSettings
                     HostSpkiFingerprint is { Length: > 0 and <= 200 } && HostDeviceId is { Length: > 0 and <= 128 } &&
                     HostCredentialId is { } pairing && pairing != Guid.Empty && CredentialId is null && Origin is null &&
                     HostRouteId is null or SelfHostSetup.OllamaRouteId or SelfHostSetup.DeepThinkingRouteId,
-                    "The paired computer for Deep thinking is incomplete. Choose it again.");
+                    "The paired computer in the Thinking pool is incomplete. Add it again.");
                 ChatCompletionsSetup.ModelId(ModelId ?? "");
                 break;
             default:
@@ -160,7 +160,7 @@ public sealed record DeepThinkingSettings
         if (Pool is null) return;
         ContractRules.Require(Pool.Count < MaxPlaces && Pool.All(p => p is { Pool: null, Place: DeepThinkingPlace.Host or DeepThinkingPlace.Endpoint }) &&
             Pool.Select(p => p.Key).Append(Key).Distinct(StringComparer.Ordinal).Count() == Pool.Count + 1,
-            $"Deep thinking thinks on at most {MaxPlaces} different places, each a paired computer or an endpoint.");
+            $"The Thinking pool has at most {MaxPlaces} different members, each a paired computer or an endpoint.");
         foreach (var place in Pool) place.Validate();
     }
 
@@ -246,10 +246,10 @@ public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit
             return thinking is null ? new(false, "Set up Thinking first.")
                 : IsThisPc(thinking)
                 ? new(false, $"Thinking's model ({thinking.ModelId}) runs on this PC and can't think something over while it answers you. " +
-                    "Choose another model in Ollama on this PC, another of your computers or a cloud provider.")
+                    "Add a member to the Thinking pool: another model in Ollama on this PC, another of your computers or a cloud provider.")
                 : thinking.RouteType == SetupRouteType.GatewayOllama
                     ? new(false, $"Thinking's model runs on {thinking.Gateway?.HostId ?? "a paired computer"} and can't think something over " +
-                        "while it answers you. Add the Deep thinking role there, or choose another place for Deep thinking.")
+                        "while it answers you. Add the Thinking pool role there, or add another member to the Thinking pool.")
                     : new(true, "Thinking's provider answers several requests at once, so a think runs alongside the conversation.", Rank: 2);
         if (deep.OnThisPc)
         {
@@ -270,12 +270,12 @@ public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit
             // Its Deep thinking role is an Ollama server of its own, so it thinks beside the computer's Thinking model.
             if (deep.OnHostRole)
                 return shared.Length > 0
-                    ? new(true, $"{deep.HostId}'s Deep thinking role runs a model of its own beside {Jobs(shared)} there, so a think runs " +
+                    ? new(true, $"{deep.HostId}'s Thinking pool role runs a model of its own beside {Jobs(shared)} there, so a think runs " +
                         "alongside the conversation and shares its graphics card.", Rank: shared.Any(r => r.Role == SetupRole.Llm) ? 2 : 1)
-                    : new(true, $"{deep.HostId}'s Deep thinking role does none of the conversation's jobs, so a think runs there alongside the conversation.");
+                    : new(true, $"{deep.HostId}'s Thinking pool role does none of the conversation's jobs, so a think runs there alongside the conversation.");
             if (shared.Any(r => r.Role == SetupRole.Llm))
                 return new(false, $"{deep.HostId} also does Thinking for the conversation, and its model can't think something over while " +
-                    "it answers you. Add the Deep thinking role there, or choose another place for Deep thinking.");
+                    "it answers you. Add the Thinking pool role there, or add another member to the Thinking pool.");
             return shared.Length > 0
                 ? new(true, $"{deep.HostId} also does {Jobs(shared)} for the conversation; a think runs there alongside it and shares its graphics card.", Rank: 1)
                 : new(true, $"{deep.HostId} does none of the conversation's jobs, so a think runs there alongside the conversation.");
@@ -329,7 +329,7 @@ public sealed record DeepThinkingPool(IReadOnlyList<DeepThinkingSpot> Spots)
     {
         if (sharing is null || place.Place != DeepThinkingPlace.Host || place.HostId is not { } host) return null;
         if (sharing.Job(Martlet.Core.Cluster.WorkSharingJobs.DeepThinking).Never.Contains(host, StringComparer.Ordinal))
-            return new(false, $"Devices › Sharing work says Deep thinking never uses {host}.");
+            return new(false, $"Devices › Sharing work says the Thinking pool never uses {host}.");
         return device is null || sharing.Allows(host, device) ? null
             : new(false, $"{host} is kept for {string.Join(" and ", sharing.OnlyFor(host))} (Devices › Sharing work).");
     }

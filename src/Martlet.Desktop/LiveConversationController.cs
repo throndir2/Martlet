@@ -471,7 +471,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         internal ConversationCredentialSource? Credentials;
         internal ConversationRuntime? Runtime;
     }
-    private DeepThinkingSettings deepThinking = new();
     // The thinks running now, by job ID: where each works and whether it can run there (for background-jobs.json).
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, RunningThink> thinking = new(StringComparer.Ordinal);
     private sealed record RunningThink(BackgroundThink Think, string Where, string Computer, DeepThinkingPlan Plan);
@@ -712,6 +711,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (dataDirectory is not null)
             pictureHandler = CreationRegistry.Shared.Handle(PictureCreations.KindName, new CreationHandler(ShowPictureCreationAsync));
         jobs.Changed += WriteJobsStatus;
+        jobs.Changed += WritePoolStatus;
         WriteJobsStatus();
     }
 
@@ -735,23 +735,19 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (dataDirectory is not null) Configuration?.UseAbilities(ModelAbilities.Load(dataDirectory));
     }
 
-    /// <summary>Reads where Deep thinking thinks on this PC (deep-thinking.json) again, after Companion › Deep thinking saved it:
-    /// the next reply offers think_longer only where Deep thinking can run, and the next think goes there.</summary>
-    internal void ReloadDeepThinking() => Volatile.Write(ref deepThinking, DeepThinkingSettings.Load(dataDirectory));
-
-    /// <summary>Whether Deep thinking can run on any place it is set to think on, for <paramref name="configured"/>'s routes.</summary>
+    /// <summary>Whether the Thinking pool (or the conversation model while it is empty) can run a think, for <paramref name="configured"/>'s routes.</summary>
     private DeepThinkingPlan DeepPlan(LiveConversationConfiguration configured) => DeepPool(configured).Plan;
 
-    /// <summary>Every place Deep thinking is set to think on, each with whether a think can run there.</summary>
-    private DeepThinkingPool DeepPool(LiveConversationConfiguration configured) =>
-        DeepThinkingPool.For(Volatile.Read(ref deepThinking), configured.Routes, WorkSharingRoster.Settings(dataDirectory), WorkSharingRoster.Device);
+    /// <summary>Every Thinking pool member (or the conversation model while the pool is empty and that is allowed), each with
+    /// whether a think can run there.</summary>
+    private DeepThinkingPool DeepPool(LiveConversationConfiguration configured) => PoolPlan(configured.Routes);
 
     internal void Configure(SettingsLoadResult loaded)
     {
         // The context windows found on this PC (Companion › Replies › Check) keep the context size within the model's own, and
         // what Thinking models were found to hear and see decides whether a recording or picture goes with a message.
         var next = LiveConversationConfiguration.From(loaded, ModelLimits.Load(dataDirectory), ModelAbilities.Load(dataDirectory));
-        ReloadDeepThinking();
+        ReloadThinkingPool();
         LiveConversationOperation? stop;
         LiveListener[] stopListening;
         bool changed;
@@ -2458,7 +2454,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (!settings.On) return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.TurnedOff, true));
         // Where it thinks (Companion › Deep thinking, this PC's choice): every place it is set to think on that can run a think
         // (a model of its own; a second model in Ollama on this PC only while both fit on the graphics card), one think each.
-        var deep = Volatile.Read(ref deepThinking);
         var pool = DeepPool(configured);
         var plan = pool.Plan;
         if (!plan.Available)
@@ -2470,7 +2465,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var toldUser = !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
         var sent = operation.Sent;
         var thinkingModel = configured.Route(SetupRole.Llm).ModelId;
-        var places = ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory));
+        var places = ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan);
         var start = jobs.Start(ThinkLonger.Kind(settings, ThinkLonger.Slots(places)), ThinkLonger.Label(task!), async (job, token) =>
         {
             // The place the broker picked for it: a free slot on the place sharing least with the conversation and kept free
@@ -2617,8 +2612,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // The lyrics are written where Deep thinking thinks, alongside the conversation (never on Thinking's own model, so
             // replies never wait): on the free place that shares least with the conversation, else the least busy one, held while
             // it writes. Without a Deep thinking place, the reply writes them itself.
-            var deep = Volatile.Read(ref deepThinking);
-            var pool = DeepPool(configured);
+                var pool = DeepPool(configured);
             var plan = pool.Plan;
             if (!plan.Available)
             {
@@ -2626,16 +2620,16 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 return new(SongTools.WriteLyricsYourself(plan.Why), true);
             }
             var thinkingModel = configured.Route(SetupRole.Llm).ModelId;
-            var places = ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory));
+            var places = ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan);
             where = places.Count == 1
                 ? pool.Usable[0].Settings is { Separate: true } only ? only.Describe() : thinkingModel
-                : $"whichever of {places.Count} Deep thinking places is free";
+                : $"whichever of {places.Count} Thinking pool members is free";
             var task = SongTools.WritingTask(configured.Prompts, arguments);
             writer = async (holder, wait) =>
             {
                 var runtime = SongRuntime();
                 // The broker's choice, as for a think: waits in line while every place is busy.
-                var lease = await jobs.Places.AcquireAsync(places, holder, wait).ConfigureAwait(false);
+                var lease = await jobs.Places.AcquireAsync(places, holder, wait, ThinkingDemand.For(ThinkingJobKind.ThinkLonger, places)).ConfigureAwait(false);
                 var spot = pool.Find(lease.Place.Id)!;
                 var place = spot.Settings;
                 var at = place.Separate ? place.Describe() : thinkingModel;

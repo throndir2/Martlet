@@ -90,6 +90,22 @@ internal sealed class DeepThinkTarget
     }
 
     public override string ToString() => nameof(DeepThinkTarget);
+
+    /// <summary>A Thinking pool job's request (<see cref="ThinkingPool"/>): its own output budget and the time it may take,
+    /// Thinking steps as the job asks (null: the model's own default), no tools.</summary>
+    internal ConversationRequest OneShot(BoundedTextInput input, int maxOutputTokens, bool? reasoning, TimeSpan time)
+    {
+        if (Host is not null && time > HostRequestTime) time = HostRequestTime;
+        var generation = Host is not null
+            ? new GenerationSettings { Reasoning = reasoning, ContextTokens = HostContextTokens }
+            : new GenerationSettings { Reasoning = reasoning, ReasoningEffort = reasoning == true ? GenerationSupport.ReasoningEffortOn : null };
+        var output = Math.Min(maxOutputTokens, ThinkLonger.MediumOutputTokens);
+        var limits = ThinkLonger.Limits(Input, ThinkEffort.Medium, time) with
+        {
+            MaxOutputTokens = output, MaxContextTokens = Input.MaxInputTokens + output
+        };
+        return new(input, Model, limits, ThinkLonger.TurnLimits(time), chat: Chat, host: Host, generation: generation);
+    }
 }
 
 /// <summary>The one-use permission for a background think's requests to its own destination (Companion › Deep thinking): exactly
@@ -97,7 +113,7 @@ internal sealed class DeepThinkTarget
 /// or paired computer, until the think's time is up. An endpoint's key is its own (Windows Credential Manager), Thinking's for
 /// the same base URL, or none; a paired computer is reached with this PC's pairing, which the host client reads itself.</summary>
 internal sealed class DeepThinkAuthorization(DeepThinkTarget target, ConversationRequest request, Guid profileId, SetupRoute? thinking,
-    ICredentialStore vault, TimeProvider clock, DateTimeOffset expires) : IConversationAuthorizationSource, ICredentialAuthority
+    ICredentialStore vault, TimeProvider clock, DateTimeOffset expires, bool media = false) : IConversationAuthorizationSource, ICredentialAuthority
 {
     private const int MaximumRequests = 3;
     private readonly object gate = new();
@@ -124,7 +140,8 @@ internal sealed class DeepThinkAuthorization(DeepThinkTarget target, Conversatio
             tickets++;
         }
         return ValueTask.FromResult<AuthorizedTextOperation?>(new(new TextDisclosureAuthorization(Binding, action.Model,
-            action.Context.Ids, action.Context.Epoch, action.Limits, expiry, true, true), new(action.Budget, expiry)));
+            action.Context.Ids, action.Context.Epoch, action.Limits, expiry, true, true,
+            media && request.Input.Image is not null, media && request.Input.Audio is not null), new(action.Budget, expiry)));
     }
 
     public ValueTask<AuthorizedSpeechOperation?> AuthorizeSpeechAsync(SpeechAuthorizationAction action, CancellationToken cancellationToken) =>
