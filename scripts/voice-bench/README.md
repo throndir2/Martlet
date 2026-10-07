@@ -98,7 +98,10 @@ vb tts --voice librivox-annie     # or a WAV path over 5 s
 `vb relay start` exposes the Chatterbox/F5/Dia and whisper.cpp roles already
 running on this PC (they listen only on the host's internal loopback) on
 `127.0.0.1`, so the bench measures the installed services without loading a
-second copy of a model. `vb relay stop` removes it. `vb chatterbox start` runs
+second copy of a model. It prints each role's address: Chatterbox Turbo is on
+port 50093 (the default `--tts-url`), Chatterbox Nano on 50098 and Chatterbox
+Original on 50099 (for example `vb tts --tts-url http://127.0.0.1:50098`).
+`vb relay stop` removes it. `vb chatterbox start` runs
 this checkout's Chatterbox service instead (only when no Chatterbox role is
 running: two copies don't fit beside each other on most cards).
 `--tts-engine openai-speech --tts-url URL` drives any `/v1/audio/speech`

@@ -45,6 +45,16 @@ MODEL = os.environ.get("CHATTERBOX_MODEL", "chatterbox-turbo")
 # "auto" (the chatterbox-nano role): the NVIDIA GPU when the container has one, otherwise the CPU.
 DEVICE = os.environ.get("MARTLET_CHATTERBOX_DEVICE", "cuda:0")
 PORT = int(os.environ.get("MARTLET_CHATTERBOX_PORT", "50083"))
+# On the CPU, PyTorch uses at most DEFAULT_CPU_THREADS threads, never more than the performance cores, and on Linux a hybrid
+# Intel CPU's performance cores get one thread each (_cpu_plan). Chatterbox Nano on an i7-13700K (8 performance and 8
+# efficiency cores), median real-time factor: 0.52 pinned to 8 performance cores, 0.64 with 8 threads on any core, 0.75 with
+# PyTorch's own 16 threads (6 of 16 sentences slower than real time). MARTLET_CHATTERBOX_CPU_THREADS sets another count.
+CPU_THREADS = os.environ.get("MARTLET_CHATTERBOX_CPU_THREADS", "")
+DEFAULT_CPU_THREADS = 8
+# The meanflow decoder's steps on the CPU (the library always asks for 2; the GPU keeps 2). With 1, Nano's mel took 0.23-0.32 s
+# a piece instead of 0.40-0.60 s, with the same UTMOS, speaker similarity and word error rate on 20 paired takes.
+CPU_DECODER_STEPS = max(1, int(os.environ.get("MARTLET_CHATTERBOX_CPU_DECODER_STEPS", "1")))
+SYSFS_DEVICES = Path("/sys/devices")
 
 CONTRACT_ID = "martlet.f5.worker"
 PROTOCOL_VERSION = {"major": 1, "minor": 0}
@@ -758,11 +768,16 @@ class EngineHost:
         self.original: OriginalVoice | None = None
         self.expressive_parts = 0
         self.last_style: VoiceStyle | None = None
+        # On the CPU: PyTorch's threads and the CPUs the service is pinned to (_use_cpu); None on a GPU.
+        self.cpu: dict[str, Any] | None = None
 
     def status(self) -> dict[str, Any]:
         with self.lock:
             model = getattr(self.model, "device", None)
             status = {
+                "cpu": self.cpu,
+                # The meanflow decoder's steps a whole piece takes (Turbo and Nano; CPU_DECODER_STEPS on the CPU).
+                "decoder_steps": None if self.fast is None else self.fast.decoder_steps,
                 "device": None if self.model is None else str(model or DEVICE),
                 "error": self.error,
                 "idle_check": {"checks": self.idle_checks, "every_seconds": IDLE_CHECK_SECONDS, "fastest_ms": self.idle_fastest_ms,
@@ -798,6 +813,7 @@ class EngineHost:
         engine: str | None = None
         pinned: PinnedModel | None = None
         device = DEVICE
+        cpu: dict[str, Any] | None = None
         try:
             config = json.loads(CONFIG.read_text(encoding="utf-8"))
             engine = config.get("engine")
@@ -819,6 +835,8 @@ class EngineHost:
                 device = _device(str(config.get("device") or DEVICE))
                 if problem := _gpu_problem(device):
                     raise RuntimeError(problem)
+                if device.split(":")[0] == "cpu":
+                    cpu = _use_cpu()
                 model = _load_model(pinned, MODELS / pinned.key, device)
             else:
                 raise RuntimeError("Unknown Chatterbox engine configuration.")
@@ -836,6 +854,7 @@ class EngineHost:
                 self.model = None
                 self.fast = None
                 self.original = None
+                self.cpu = None
                 self.engine_kind = None
                 self.identity = None
                 self.state = "failed"
@@ -853,6 +872,7 @@ class EngineHost:
             self.model = model
             self.fast = fast
             self.original = original
+            self.cpu = cpu
             self.engine_kind = engine
             self.identity = identity
             self.state, self.error = "ready", None
@@ -1432,6 +1452,74 @@ def _device(device: str) -> str:
     return "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
+def _cpu_list(text: str) -> list[int]:
+    """Linux's CPU list format ("0-7,16,18-19") as numbers."""
+    cpus: list[int] = []
+    for part in text.strip().split(","):
+        if part.strip():
+            first, _, last = part.strip().partition("-")
+            cpus.extend(range(int(first), int(last or first) + 1))
+    return cpus
+
+
+def _performance_cores(sysfs: Path = SYSFS_DEVICES) -> list[int]:
+    """The first logical CPU of each performance core of a hybrid Intel CPU, from the CPUs Linux lists in
+    /sys/devices/cpu_core/cpus. Empty for any other CPU, or where Linux doesn't say (Windows, most virtual machines)."""
+    try:
+        listed = _cpu_list((sysfs / "cpu_core" / "cpus").read_text(encoding="ascii"))
+    except (OSError, ValueError):
+        return []
+    cores: dict[str, int] = {}
+    for cpu in listed:
+        try:
+            siblings = (sysfs / "system" / "cpu" / f"cpu{cpu}" / "topology" / "thread_siblings_list").read_text(encoding="ascii")
+        except OSError:
+            siblings = str(cpu)
+        cores.setdefault(siblings.strip(), cpu)
+    return sorted(cores.values())
+
+
+def _cpu_plan(setting: str, physical_cores: int, performance: list[int], allowed: set[int] | None) -> tuple[int, list[int]]:
+    """How many threads PyTorch uses on the CPU, and the logical CPUs the service is pinned to (empty: not pinned).
+    setting is MARTLET_CHATTERBOX_CPU_THREADS (empty: DEFAULT_CPU_THREADS, never more than the performance cores, or the
+    physical cores PyTorch counts when Linux doesn't name performance cores); allowed is the CPUs this process may use."""
+    usable = [cpu for cpu in performance if allowed is None or cpu in allowed]
+    if setting.strip():
+        threads = int(setting)
+        if threads < 1:
+            raise ValueError(f"MARTLET_CHATTERBOX_CPU_THREADS must be 1 or more, not {setting!r}.")
+    else:
+        threads = max(1, min(DEFAULT_CPU_THREADS, len(usable) or physical_cores))
+    return threads, usable[:threads] if threads <= len(usable) else []
+
+
+def _use_cpu() -> dict[str, Any]:
+    """Sets PyTorch's threads for the CPU and, on a hybrid Intel CPU under Linux, pins every thread of the service to the
+    performance cores (_cpu_plan); threads started later (the replies', PyTorch's own) inherit it. Returns what /status
+    reports as cpu."""
+    import torch  # type: ignore
+
+    allowed = set(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None
+    threads, cores = _cpu_plan(CPU_THREADS, torch.get_num_threads(), _performance_cores(), allowed)
+    torch.set_num_threads(threads)
+    if cores:
+        try:
+            for task in os.listdir("/proc/self/task"):
+                try:
+                    os.sched_setaffinity(int(task), cores)
+                except ProcessLookupError:
+                    pass
+        except OSError as exc:
+            _log(f"Pinning to the performance cores failed ({exc}); the threads run on any core.")
+            cores = []
+    _log(f"On the CPU: {threads} threads" + (f", pinned to the performance cores (CPUs {_cpu_text(cores)})." if cores else "."))
+    return {"pinned_cpus": cores, "threads": threads}
+
+
+def _cpu_text(cpus: list[int]) -> str:
+    return ",".join(str(cpu) for cpu in cpus)
+
+
 def _load_model(pinned: PinnedModel, model_dir: Path, device: str) -> Any:
     """Loads the pinned model's verified files from model_dir, only from disk (never from_pretrained)."""
     if pinned.key == "chatterbox-turbo":
@@ -1564,16 +1652,29 @@ class FastTurbo:
         # Decoding goes through _inference_turbo with or without the graph, so a piece that never stops ends at its budget on
         # the CPU too.
         model.t3.inference_turbo = self._inference_turbo
+        # The library's generate() always asks the meanflow decoder for 2 steps; on the CPU a whole piece takes
+        # CPU_DECODER_STEPS. The streamed path (GPU only) passes its own.
+        self.decoder_steps = 2
+        if str(model.device).split(":")[0] == "cpu" and CPU_DECODER_STEPS != 2:
+            self.decoder_steps = CPU_DECODER_STEPS
+            inference = model.s3gen.inference
+
+            def decode(*args: Any, **kwargs: Any) -> Any:
+                kwargs["n_cfm_timesteps"] = self.decoder_steps
+                return inference(*args, **kwargs)
+
+            model.s3gen.inference = decode
 
     @property
     def graph_ready(self) -> bool:
         return self.graph is not None and self.graph.captured
 
     def close(self) -> None:
-        """Lets go of the model: puts T3's own decoding back (the patched method held this object, and through it the model,
-        in a reference cycle that kept it in graphics memory until a full garbage collection) and drops the CUDA graph and
-        the kept conditionals."""
+        """Lets go of the model: puts T3's own decoding and S3Gen's own inference back (the patched methods held this object,
+        and through it the model, in a reference cycle that kept it in graphics memory until a full garbage collection) and
+        drops the CUDA graph and the kept conditionals."""
         self.model.t3.__dict__.pop("inference_turbo", None)
+        self.model.s3gen.__dict__.pop("inference", None)
         self.graph = None
         self.conditionals.clear()
         self.warm_conds = None

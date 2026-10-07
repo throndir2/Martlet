@@ -10,7 +10,7 @@ services:
     build:
       context: ${MARTLET_SOURCE:?set by martlet-host}/workers/chatterbox
       dockerfile: host/Dockerfile
-    image: martlet-chatterbox:8
+    image: martlet-chatterbox:9
     pull_policy: build
     restart: unless-stopped
     environment:
