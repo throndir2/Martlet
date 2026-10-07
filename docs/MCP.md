@@ -4291,9 +4291,14 @@ each paired computer's
 `DeepThinkingHost-<host ID>` (*diva: Its Deep thinking role runs qwen3-8b.*,
 *diva: Ollama runs gemma4:27b. Add the Deep thinking role ...*, *Thinks here
 (...)*, *Its Ollama (...) does Thinking for the conversation. Add the Deep
-thinking role there ...*) and, for a reachable computer without the role, its
+thinking role there ...*) and, when Deep thinking there would share one
+graphics card with the computer's Thinking model,
+`DeepThinkingShare-<host ID>` (*diva: diva already runs a Thinking model
+(gemma4:e4b) on its only graphics card. ... We recommend one graphics card for
+each Thinking model ...*), and, for a reachable computer without the role, its
 `DeepThinkingAddRole-<host ID>` button (returned: *Add Deep thinking on diva*;
-clicking it installs the role in a run window and then thinks there, so it
+clicking it first asks `DeepThinkingShareQuestion` when the card is shared, then
+installs the role in a run window and then thinks there, so it
 needs `--allow-ui-effects`) or, for one with the role, its
 `DeepThinkingChangeModel-<host ID>` button (returned: *Change the Deep thinking
 model on diva (now gemma4:e4b)*; clicking it opens the role's settings there
@@ -4304,12 +4309,16 @@ beside Thinking's on the graphics card, read from Ollama's `/api/ps` and
 `/api/tags` and the NVIDIA driver without loading anything: *Fits: gemma4:e2b
 (about 5.3 GB) fits beside ...*, *Doesn't fit: ... Choose a smaller model.*,
 *... is Thinking's own model ...*, or *Thinking runs elsewhere, so ... has
-Ollama on this PC to itself ...*) and `DeepThinkingKeyStatus` (what the key
+Ollama on this PC to itself ...*), `DeepThinkingLocalShare` (shown when Thinking
+uses Ollama on this PC and this PC has fewer than two graphics cards: *This PC
+already runs a Thinking model (...) on its only graphics card. ... We recommend
+one graphics card for each Thinking model ...*) and `DeepThinkingKeyStatus` (what the key
 field will do; never a key or typed base URL). `DeepThinkingTurnOff` (Off;
 saves the reply settings), `DeepThinkingUseSame`, `DeepThinkingUseHost-<host
 ID>` (checks that computer and saves its Deep thinking role's route, else its
 Ollama route), `DeepThinkingUseLocal`
-(refuses Thinking's own model) and `DeepThinkingSaveCloud` (with
+(refuses Thinking's own model, and asks `DeepThinkingShareQuestion` first when
+`DeepThinkingLocalShare` shows) and `DeepThinkingSaveCloud` (with
 `DeepThinkingProvider`, `DeepThinkingBaseUrl`, `DeepThinkingModel`,
 `DeepThinkingKey` and `DeepThinkingConsent`) save `deep-thinking.json` (and turn
 Deep thinking back on when it was off) and need `--allow-ui-effects`; an open

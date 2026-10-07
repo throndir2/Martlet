@@ -9,7 +9,14 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
-- The personality now decides how the character reacts when you touch it: which emotes, gestures and face symbols play for each part of its body, from hating it to craving it, and what happens when you keep touching. Your Thinking model decides it in the background when you save a personality, and you can change it yourself in Companion › Character › Touch temperament. ([#519](https://github.com/throndir2/Martlet/pull/519))
+- The personality now decides how the character reacts when you touch it: which emotes, gestures and face symbols play for each part of its body, from hating it to craving it, and what happens when you keep touching. Your Thinking model decides it in the background when you save a personality, and you can change it yourself in Companion › Character › Touch temperament. ([#523](https://github.com/throndir2/Martlet/pull/523))
+- Adding Deep thinking to a computer whose only graphics card already runs a Thinking model now warns you first: both models share the card and each runs at about half speed. Martlet recommends one graphics card for each Thinking model. ([#521](https://github.com/throndir2/Martlet/pull/521))
+
+### Changed
+- Intimate touch zones now react by default. Turn off **Include intimate zones** in Companion › Character › Touch zones to leave them out. ([#522](https://github.com/throndir2/Martlet/pull/522))
+
+### Fixed
+- Touch zone detection finds the groin zone when the vision model calls it the crotch, pelvis or between the legs. ([#519](https://github.com/throndir2/Martlet/pull/519))
 
 ## [0.52.0] - 2026-10-06
 

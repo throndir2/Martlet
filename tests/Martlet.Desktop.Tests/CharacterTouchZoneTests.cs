@@ -38,6 +38,18 @@ public sealed class CharacterTouchZoneTests
         Assert.Null(CharacterTouchZones.Parse("{\"zones\":[]}", 400, 800));
     }
 
+    [Theory]
+    [InlineData("groin")]
+    [InlineData("Crotch")]
+    [InlineData("pelvis")]
+    [InlineData("between legs")]
+    [InlineData("genital area")]
+    public void FindsTheGroinZoneByItsCommonNames(string name)
+    {
+        Assert.Equal("groin", CharacterTouchZones.Normalize(name));
+        Assert.True(CharacterTouchZones.Kind("groin")!.Intimate);
+    }
+
     [Fact]
     public void BindsDrawablesMostlyInsideAndBonesInsideEachBox()
     {
@@ -65,7 +77,7 @@ public sealed class CharacterTouchZoneTests
     {
         var settings = new CharacterTouchZoneSettings
         {
-            ModelId = "model-1", Crop = new(0, 0, 1, 1),
+            ModelId = "model-1", Crop = new(0, 0, 1, 1), IncludeIntimate = false,
             Zones =
             [
                 new() { Id = "face", Box = new(0.3, 0.1, 0.4, 0.3), Drawables = ["Face", "Body"] },
@@ -117,6 +129,11 @@ public sealed class CharacterTouchZoneTests
         {
             var first = CharacterTouchZones.Detected(null, "model-1", [new() { Id = "top_of_head", Box = new(0.4, 0, 0.2, 0.1) }], null, null,
                 DateTimeOffset.Now);
+            // Intimate zones are included unless the owner turns them off, and off stays off once saved.
+            Assert.True(first.IncludeIntimate);
+            Assert.True(new CharacterTouchZoneSettings { ModelId = "model-3" }.IncludeIntimate);
+            await CharacterTouchZones.SaveAsync(directory, new() { ModelId = "model-3", IncludeIntimate = false }, DateTimeOffset.Now);
+            Assert.False(CharacterTouchZones.Load(directory, "model-3")!.IncludeIntimate);
             var edited = first with
             {
                 IncludeIntimate = true,
@@ -128,7 +145,7 @@ public sealed class CharacterTouchZoneTests
             var loaded = CharacterTouchZones.Load(directory, "model-1")!;
             Assert.True(loaded.IncludeIntimate);
             Assert.Equal("Crown", loaded.Zones[0].Name);
-            Assert.Equal(2, CharacterTouchZones.LoadAll(directory).Count);
+            Assert.Equal(3, CharacterTouchZones.LoadAll(directory).Count);
 
             var again = CharacterTouchZones.Detected(loaded, "model-1",
                 [new() { Id = "top_of_head", Box = new(0.3, 0, 0.3, 0.1) }, new() { Id = "hand_left", Box = new(0.8, 0.5, 0.1, 0.1) }],

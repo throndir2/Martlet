@@ -17,7 +17,7 @@ namespace Martlet.Desktop;
 /// and what the character does then. The Thinking model finds the zones once per model in a snapshot of the character (when it
 /// can see; Detect zones asks again), Martlet binds each to the model's drawables or bones so it follows the model as it moves,
 /// and each zone plays its emotes and gestures, may tell the character (a reply turn) and rests a few seconds. Intimate zones
-/// work only with Include intimate zones on (off by default). Edits save as you make them, per model, on this PC.</summary>
+/// work only with Include intimate zones on (on by default). Edits save as you make them, per model, on this PC.</summary>
 public partial class MainWindow
 {
     private readonly CharacterTouchZoneService characterTouchZones;
@@ -170,7 +170,7 @@ public partial class MainWindow
         var modelId = catalog.Inventory.ModelId;
         var intimate = new CheckBox
         {
-            Content = "Include intimate zones (lips, neck, ears, chest, waist, hips and below)", IsChecked = settings?.IncludeIntimate == true,
+            Content = "Include intimate zones (lips, neck, ears, chest, waist, hips and below)", IsChecked = settings?.IncludeIntimate != false,
             Margin = new Thickness(0, 4, 0, 4)
         };
         AutomationProperties.SetAutomationId(intimate, "TouchZonesIntimate");

@@ -78,7 +78,7 @@ public sealed record CharacterTouchZoneSettings
     public string? DetectedBy { get; init; }
     public DateTimeOffset? DetectedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
-    public bool IncludeIntimate { get; init; }
+    public bool IncludeIntimate { get; init; } = true;
     public TouchZoneBox? Crop { get; init; }
     public IReadOnlyList<CharacterTouchZone> Zones { get; init; } = [];
 
@@ -179,7 +179,8 @@ public static class CharacterTouchZones
     {
         ["head"] = "top_of_head", ["top_head"] = "top_of_head", ["crown"] = "top_of_head", ["eyes"] = "face", ["face_eyes"] = "face",
         ["mouth"] = "lips", ["lip"] = "lips", ["sides"] = "waist", ["waist_sides"] = "waist", ["belly"] = "stomach",
-        ["butt"] = "buttocks", ["glasses"] = "glasses_or_hat", ["hat"] = "glasses_or_hat", ["skirt"] = "skirt_hem",
+        ["butt"] = "buttocks", ["crotch"] = "groin", ["pelvis"] = "groin", ["between_legs"] = "groin", ["genitals"] = "groin",
+        ["genital_area"] = "groin", ["pubic_area"] = "groin", ["glasses"] = "glasses_or_hat", ["hat"] = "glasses_or_hat", ["skirt"] = "skirt_hem",
         ["left_cheek"] = "cheek_left", ["right_cheek"] = "cheek_right", ["left_ear"] = "ear_left", ["right_ear"] = "ear_right",
         ["left_shoulder"] = "shoulder_left", ["right_shoulder"] = "shoulder_right", ["left_hand"] = "hand_left",
         ["right_hand"] = "hand_right", ["left_foot"] = "foot_left", ["right_foot"] = "foot_right", ["left_knee"] = "knee_left",
@@ -350,7 +351,7 @@ public static class CharacterTouchZones
         return new()
         {
             ModelId = modelId, DetectedBy = CharacterTouchZoneSettings.ByVision, DetectedAt = now.ToUniversalTime(), UpdatedAt = now.ToUniversalTime(),
-            IncludeIntimate = saved?.IncludeIntimate ?? false, Crop = crop, Zones = merged
+            IncludeIntimate = saved?.IncludeIntimate ?? true, Crop = crop, Zones = merged
         };
     }
 

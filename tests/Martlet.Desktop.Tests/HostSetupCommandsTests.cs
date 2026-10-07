@@ -609,6 +609,30 @@ public sealed class HostSetupCommandsTests
     }
 
     [Fact]
+    public void Adding_deep_thinking_beside_a_thinking_model_on_one_graphics_card_warns_and_recommends_one_card_for_each()
+    {
+        var hardware = new Martlet.Core.Installation.HostHardware("gpu-a", "https://192.168.1.30:9443", DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch, "docker", "Ubuntu 24.04", null, "Ryzen 9", 32, 64, "docker", "yes",
+            [new Martlet.Core.Installation.HostGpu("NVIDIA GeForce RTX 4090", "nvidia", 24_564, "590.1")]);
+        var thinking = new Dictionary<string, string> { [HostRoles.Ollama] = "gemma4-e4b" };
+        _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
+        var warning = DeepThinkingFit.SharedCard("gpu-a", hardware, thinking);
+        Assert.NotNull(warning);
+        Assert.Contains("gpu-a already runs a Thinking model (gemma4:e4b) on its only graphics card", warning);
+        Assert.Contains("about half speed", warning);
+        Assert.Contains("one graphics card for each Thinking model", warning);
+        // No Thinking model there, or a second graphics card for it: no warning.
+        Assert.Null(DeepThinkingFit.SharedCard("gpu-a", hardware, new Dictionary<string, string>()));
+        Assert.Null(DeepThinkingFit.SharedCard("gpu-a", hardware with { Gpus = [.. hardware.Gpus, hardware.Gpus[0]] }, thinking));
+        // An integrated graphics chip doesn't count as a second card; no card at all shares the processor.
+        Assert.NotNull(DeepThinkingFit.SharedCard("gpu-a", hardware with
+            { Gpus = [.. hardware.Gpus, new Martlet.Core.Installation.HostGpu("Intel UHD 770", "intel", 512, null)] }, thinking));
+        Assert.Contains("its processor", DeepThinkingFit.SharedCard("gpu-a", hardware with { Gpus = [] }, thinking));
+        // A host that hasn't reported its hardware counts as one card.
+        Assert.NotNull(DeepThinkingFit.SharedCard("gpu-a", null, thinking));
+    }
+
+    [Fact]
     public void A_host_check_reports_how_many_thinks_its_deep_thinking_role_runs_at_once()
     {
         static Martlet.Avatar.Audio2Face.Remote.HostRoute Route(string id, int slots) => new(id, "/p", "c", "1.0", "d", "w", "1.0", "m",
