@@ -257,6 +257,10 @@ internal static class ScreenDigestPrompt
             : prompt + "\n\nText read on these screenshots (OCR; it can have small mistakes, and the picture is right when they differ):" + read;
     }
 
+    /// <summary>The context board's note: one sentence to the model with how far back the summary looks.</summary>
+    internal static string Note(string summary, TimeSpan span) =>
+        $"Screen over the last {Math.Max(1, (int)Math.Round(span.TotalSeconds))} s: {summary}";
+
     private static int IndexOf(IReadOnlyList<ScreenDigestFrame> frames, ScreenDigestFrame frame)
     {
         for (var i = 0; i < frames.Count; i++) if (ReferenceEquals(frames[i], frame)) return i;
@@ -306,6 +310,8 @@ internal interface IScreenDigestThinker
 internal interface IScreenDigestBoard
 {
     void Post(string text, DateTimeOffset at, TimeSpan maximumAge);
+    /// <summary>Takes the screen note off the board (the summary turned off or watching stopped).</summary>
+    void Clear();
 }
 
 /// <summary>No Thinking model that sees in the pool: summaries stay off.</summary>
@@ -322,6 +328,7 @@ internal sealed class NoScreenDigestBoard : IScreenDigestBoard
 {
     internal static readonly NoScreenDigestBoard Instance = new();
     public void Post(string text, DateTimeOffset at, TimeSpan maximumAge) { }
+    public void Clear() { }
 }
 
 /// <summary>What the screen summary over time is doing, for the talk window and Martlet MCP. Never a window title.</summary>
@@ -376,13 +383,16 @@ internal sealed class ScreenDigester
         }
     }
 
-    /// <summary>Turns the summary on or off; off lets every picture go and stops a job in progress.</summary>
+    /// <summary>Turns the summary on or off; off lets every picture go, stops a job in progress and takes the screen note off
+    /// the board.</summary>
     internal void Turn(bool value)
     {
         lock (gate)
         {
+            var was = on;
             on = value;
             if (!value) ClearLocked();
+            if (was && !value) board.Clear();
         }
     }
 
@@ -500,7 +510,7 @@ internal sealed class ScreenDigester
                 lastText = text;
                 posted = now;
                 postedCount++;
-                to.Post(text, now, timing.MaximumAge);
+                to.Post(ScreenDigestPrompt.Note(text, job.To - job.From), now, timing.MaximumAge);
             }
         }
         catch (OperationCanceledException)

@@ -8,6 +8,9 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+- Martlet knows what changed on your screen over the last moments: a new Screen summary over time setting (on by default) asks a Thinking model that sees, in the background, to sum it up for your next message, without making replies slower. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+
 ### Fixed
 - Touch zone detection finds the groin zone when the vision model calls it the crotch, pelvis or between the legs. ([#519](https://github.com/throndir2/Martlet/pull/519))
 

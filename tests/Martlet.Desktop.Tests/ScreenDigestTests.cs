@@ -34,7 +34,9 @@ public sealed class ScreenDigestTests
     private sealed class FakeBoard : IScreenDigestBoard
     {
         public List<(string Text, DateTimeOffset At, TimeSpan MaximumAge)> Posts { get; } = [];
+        public int Cleared { get; private set; }
         public void Post(string text, DateTimeOffset at, TimeSpan maximumAge) => Posts.Add((text, at, maximumAge));
+        public void Clear() => Cleared++;
     }
 
     private static void See(ScreenDigester digester, string title, double change, byte red, string? text = null) =>
@@ -149,7 +151,7 @@ public sealed class ScreenDigestTests
         Assert.Equal("changes", job.Reason);
         Assert.Equal(ImageMediaType.Jpeg, job.Picture.MediaType);
         var post = Assert.Single(board.Posts);
-        Assert.Equal(thinker.Reply, post.Text);
+        Assert.Equal("Screen over the last 3 s: " + thinker.Reply, post.Text);
         Assert.Equal(TimeSpan.FromSeconds(45), post.MaximumAge);
         var status = digester.Status;
         Assert.Equal((1, 1, thinker.Reply), (status.Jobs, status.Posted, status.LastText));
@@ -227,7 +229,8 @@ public sealed class ScreenDigestTests
     {
         var clock = new ManualClock();
         var thinker = new FakeThinker { CanSee = false };
-        var digester = new ScreenDigester(thinker, new FakeBoard(), clock);
+        var board = new FakeBoard();
+        var digester = new ScreenDigester(thinker, board, clock);
         digester.Turn(true);
         See(digester, "Code", 1, 10);
         See(digester, "Game", 1, 200);
@@ -251,9 +254,10 @@ public sealed class ScreenDigestTests
         await digester.Tick()!;
         Assert.Equal(1, digester.Status.Posted);
 
-        // Turning it off lets every picture go.
+        // Turning it off lets every picture go and takes the note off the board.
         digester.Turn(false);
         Assert.Equal(0, digester.Status.Frames);
+        Assert.Equal(1, board.Cleared);
         See(digester, "Code", 1, 10);
         Assert.Equal(0, digester.Status.Frames);
     }

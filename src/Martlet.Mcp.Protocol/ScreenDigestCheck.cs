@@ -38,6 +38,7 @@ internal static class ScreenDigestCheck
         public List<object> Posts { get; } = [];
         public void Post(string text, DateTimeOffset at, TimeSpan maximumAge) =>
             Posts.Add(new { source = "screen", text, maximumAgeSeconds = maximumAge.TotalSeconds });
+        public void Clear() => Posts.Add(new { source = "screen", cleared = true });
     }
 
     private static byte[] Picture(int width, int height, bool game)
