@@ -782,14 +782,20 @@ First audio after the turn ended:
 
 | Scenario | Without | Started early | Sooner by |
 | --- | --- | --- | --- |
-| *Incomplete*, then silence until the 1.6 s pause | 692 ms | 15 ms | 677 ms |
-| No judge, the plain 800 ms pause | 578 ms | 172 ms | 406 ms |
-| *Complete* at about 300 ms | 625 ms | 619 ms (nothing started early) | none |
-| You go on talking at 700 ms, then *Incomplete* again | 579 ms | 15 ms (2 starts, 1 let go, its request aborted) | 564 ms |
-| The final words differ from the quick transcript | 582 ms | 593 ms (let go, started again) | none |
+| *Incomplete*, then silence until the 1.6 s pause | 662 ms | 15 ms | 647 ms |
+| No judge, the plain 800 ms pause | 577 ms | 139 ms | 438 ms |
+| *Complete* at about 300 ms | 621 ms | 638 ms (nothing started early) | none |
+| You go on talking at 700 ms, then *Incomplete* again | 574 ms | 15 ms (2 starts, 1 let go, its request aborted) | 559 ms |
+| The final words differ from the quick transcript | 575 ms | 576 ms (let go, started again) | none |
 
 Nothing played or showed before the turn ended in any scenario, and every
-reply let go ended *Canceled* with nothing played.
+reply let go ended *Canceled* with nothing played. When the turn ended, the
+live floor was *Live* and held by the one reply started early; no reply held
+it once the reply was done. Where nothing changes (*Complete*, *changed*),
+runs differ by about 20 ms either way from timer noise. One run of *changed*
+had the first audio 84 ms later with early replies, when the fixture's own
+frame loop ran 190 ms late; three more runs had it 1 ms later, 19 ms sooner
+and 138 ms sooner.
 
 **NOT RUN:** *Reply latency* and *Thinking input* lines before and after with a
 real conversation: this PC has no microphone, no Thinking model or voice it can
