@@ -7,7 +7,10 @@ namespace Martlet.Core.Settings;
 /// <c>martlet.f5.worker</c> 1.0 events, which F5 defined first). Saved TTS gateway routes
 /// (<see cref="SetupRouteType.GatewayF5"/>) may name any engine's route. <see cref="Tags"/> is the engine's own tag
 /// catalog in its native syntax (empty when it reads words only): see <see cref="VoiceTags"/>. <see cref="Summary"/> is its
-/// strength in a few words; <see cref="Features"/> lists what it needs and can do, as Companion › Voice shows them.
+/// strength in a few words; <see cref="Abilities"/> is the rundown of what it can do (voice cloning, laughs &amp; sighs,
+/// emotions, the last as far as <see cref="Emotions"/> says: a tone in the catalog is not proof the voice performs it),
+/// <see cref="RunsOn"/> where it runs and how much graphics memory it takes, and <see cref="Features"/> its other needs, as
+/// Companion › Voice shows them.
 /// <see cref="MultipleReferences"/> engines learn a voice from each of several recordings (zero-shot on all of them); the
 /// others hear a voice made from several recordings as one, the recordings joined with a short pause.</summary>
 public sealed record SpeechEngine(
@@ -25,12 +28,25 @@ public sealed record SpeechEngine(
     IReadOnlyList<VoiceTag>? TagCatalog = null,
     string Languages = "English",
     bool StreamsWhileGenerating = false,
-    bool MultipleReferences = false)
+    bool MultipleReferences = false,
+    EmotionSupport Emotions = EmotionSupport.None)
 {
     /// <summary>The tags the engine speaks as sounds or tones; replies keep exactly these for it and lose every other tag.</summary>
     public IReadOnlyList<VoiceTag> Tags => TagCatalog ?? [];
 
     public bool SupportsTags => Tags.Count > 0;
+
+    /// <summary>The quick rundown: every engine here copies a voice from your recordings; it makes laughs and sighs when its
+    /// catalog has sound tags; its emotions are what was measured (<see cref="Emotions"/>), not what its catalog lists.</summary>
+    public VoiceAbilities Abilities => new(true, Tags.Any(tag => tag.Kind == VoiceTagKind.Sound), Emotions);
+
+    /// <summary>Its footprint (graphics card, memory, download) in Martlet's catalog (docs/RESOURCE_FOOTPRINTS.md), or null
+    /// for an engine registered without one.</summary>
+    public Planning.ComponentOption? Footprint => Planning.FootprintCatalog.Default.FindModel(Planning.PlanComponent.Voice, DefaultModel);
+
+    /// <summary>Where it runs and how much graphics memory it takes: "Runs on an NVIDIA GPU: about 3.7 GB of graphics memory,
+    /// up to 4.2 GB (6 GB+ card)." (<see cref="Planning.ComponentOption.WhereItRuns"/>).</summary>
+    public string RunsOn => Footprint?.WhereItRuns ?? $"Runs on an NVIDIA GPU ({MinimumGpuMemoryGb} GB+ card).";
 
     /// <summary>Whether its model allows only non-commercial use (CC-BY-NC, Coqui Public Model License).</summary>
     public bool NonCommercial => WeightsLicense.Contains("NC", StringComparison.Ordinal) || WeightsLicense.StartsWith("CPML", StringComparison.Ordinal);
@@ -43,16 +59,12 @@ public sealed record SpeechEngine(
         : MaximumReferenceMilliseconds < 30_000 ? $"Samples up to {MaximumReferenceMilliseconds / 1000} s"
         : null;
 
-    /// <summary>What it needs and can do, a few words each: the graphics card and Docker it runs on, voice cloning (and
-    /// its recording lengths), sounds and tones, streaming and its languages.</summary>
+    /// <summary>Its other needs and how it runs, a few words each: Docker, the recording lengths it clones, streaming and its
+    /// languages. What it can do is <see cref="Abilities"/>; its graphics card and memory are <see cref="RunsOn"/>.</summary>
     public IReadOnlyList<string> Features =>
     [
-        $"NVIDIA GPU, {MinimumGpuMemoryGb} GB+",
         "Docker",
-        "Voice cloning",
         .. SampleLimits is { } limits ? [limits] : Array.Empty<string>(),
-        .. Tags.Any(tag => tag.Kind == VoiceTagKind.Sound) ? ["Laughs & sighs"] : Array.Empty<string>(),
-        .. Tags.Any(tag => tag.Kind == VoiceTagKind.Emotion) ? ["Emotions"] : Array.Empty<string>(),
         .. StreamsWhileGenerating ? ["Streams"] : Array.Empty<string>(),
         .. MultipleReferences ? ["Learns from several samples"] : Array.Empty<string>(),
         Languages
@@ -87,9 +99,10 @@ public static class SpeechEngines
     /// <summary>Chatterbox Turbo's tags, verified against the pinned tokenizer's added_tokens.json
     /// (huggingface.co/ResembleAI/chatterbox-turbo at 749d1c1a46eb10492095d68fbcf55691ccf137cd), which defines 19. Resemble's
     /// documentation (the model card, the README and the official Turbo apps' EVENT_TAGS) names the nine non-word sounds; the
-    /// other ten are the tokenizer's style tokens, the tones of voice. Turbo's generate() ignores the older exaggeration slider,
-    /// so these tones are its only emotion control. [advertisement] and [narration] (reading genres, not conversation) are left
-    /// out.</summary>
+    /// other ten are the tokenizer's style tokens, the tones of voice. Turbo has no exaggeration or CFG setting (its loader
+    /// turns emotion_adv off and generate() ignores both), and measured, its tones don't change the voice: only [whispering]
+    /// does, because Martlet's service whispers those sentences itself (docs/CHATTERBOX_VOICE.md). The tones stay as cues for
+    /// the character. [advertisement] and [narration] (reading genres, not conversation) are left out.</summary>
     public static readonly IReadOnlyList<VoiceTag> ChatterboxTurboTags =
     [
         new("[laugh]", VoiceTagKind.Sound, "a laugh, after something genuinely funny"),
@@ -113,7 +126,7 @@ public static class SpeechEngines
 
     public static readonly SpeechEngine Chatterbox = new("chatterbox", "Chatterbox Turbo", "chatterbox",
         "martlet.gateway.chatterbox-synthesis.v1", "/martlet/v1/inference/chatterbox-synthesis", "chatterbox-turbo", "MIT",
-        "Expressive and quick.", 5_001, 30_000, 6, ChatterboxTurboTags);
+        "Natural and quick.", 5_001, 30_000, 6, ChatterboxTurboTags, Emotions: EmotionSupport.WhisperOnly);
 
     public static readonly SpeechEngine F5 = new("f5", "F5-TTS", "f5",
         "martlet.gateway.f5-synthesis.v1", "/martlet/v1/inference/f5-synthesis", "f5tts-v1-base", "CC-BY-NC-4.0",

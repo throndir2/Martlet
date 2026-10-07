@@ -39,6 +39,8 @@ internal sealed class FixturePlatform : IHostPlatform, IDisposable
     internal FixtureTerminal Terminal = new();
     internal int Opens;
     internal DurableGatewayHost? Owner;
+    /// <summary>The configuration the last OpenHost got (each role placed from gpus.json).</summary>
+    internal HostConfiguration? LastConfig;
     internal StepClock Clock = new();
     internal Action<StoreStep>? Fault { get; set; }
     internal GatewayOrigin Origin = FreeOrigin();
@@ -50,6 +52,7 @@ internal sealed class FixturePlatform : IHostPlatform, IDisposable
         CancellationToken cancellation)
     {
         Opens++;
+        LastConfig = config;
         return Owner = DurableGatewayHost.Open(config.StateDirectory, config.HostId, config.Binding.Origin,
             [], new QuietAudit(), LocalGatewayDecision.Enable,
             command switch { "init" => HostOpenMode.Create, "rebind" => HostOpenMode.Rebind, _ => HostOpenMode.Open },

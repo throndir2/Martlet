@@ -55,6 +55,13 @@ if (args is ["deep-thinking"])
     Console.WriteLine(JsonSerializer.Serialize(deepReport));
     return deepOk ? 0 : 1;
 }
+// With "gpu-priority" it rehearses live turn first on one graphics card (GpuPriorityRehearsal) and prints its report.
+if (args is ["gpu-priority"])
+{
+    var (gpuOk, gpuReport) = await Martlet.NodeLinkCheck.GpuPriorityRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(gpuReport));
+    return gpuOk ? 0 : 1;
+}
 // With "voices" it rehearses the shared speaking voices and their recordings (VoiceRehearsal) and prints its report.
 if (args is ["voices"])
 {
@@ -138,6 +145,14 @@ if (args is ["singing-status", var singingData])
 {
     var singingStatus = await Martlet.NodeLinkCheck.SingingStatus.RunAsync(singingData, CancellationToken.None);
     Console.WriteLine(JsonSerializer.Serialize(singingStatus));
+    return 0;
+}
+// With "gpu-priority-status <data directory>" it reads GPU priority (live turn first) on every host paired in that desktop data
+// directory through each host's own gateway (GpuPriorityStatus) and prints it.
+if (args is ["gpu-priority-status", var priorityData])
+{
+    var priorityStatus = await Martlet.NodeLinkCheck.GpuPriorityStatus.RunAsync(priorityData, CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(priorityStatus));
     return 0;
 }
 var steps = new List<object>();

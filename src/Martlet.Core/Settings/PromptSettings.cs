@@ -240,11 +240,11 @@ public static class PromptCatalog
     private const string CannotAct = "You cannot operate the user's devices yourself; only Home Assistant can, and only as reported here.";
 
     public const string DefaultCharacterActionInstructions =
-        "You also appear on the user's screen as an animated character, and you can make it act. Write one of these tags inline " +
+        "You also appear on the user's screen as an animated character, and you can make it act. Write these tags inline " +
         "in your reply, right where the moment belongs:\n{tags}\n" +
-        "Write a tag exactly as shown, for example \"Oh, stop it {example} you're too kind.\" Use one when it fits how you feel or " +
-        "what you do: at most two in a reply, and many replies need none. The character acts the tags out; they are never shown " +
-        "or spoken. Never write tags that aren't listed.";
+        "Write a tag exactly as shown, for example \"Oh, stop it {example} you're too kind.\" Use them freely to show what you " +
+        "feel and do, usually one or two in a reply. Vary them: each is worth showing. The character acts them out; they are " +
+        "never shown or spoken. Never write tags that aren't listed.";
 
     public const string DefaultGlanceLookInstructions =
         "You also appear on the user's screen as an animated character whose eyes follow their mouse. When something specific " +
@@ -411,7 +411,7 @@ public static class PromptCatalog
             ["engine", "tags", "example"]),
         new(CharacterActions, ConversationGroup, "Character emotes and motions",
             "Added to replies while the desktop character shows and has emotes or motions turned on (Companion › Character › Emotes " +
-            "and motions). {tags} lists the ones not already set off by a voice tag, one per line with when to use it; {example} " +
+            "and motions). {tags} lists the ones not already set off by a voice tag, one per line with its When to use hint; {example} " +
             "is the first.",
             DefaultCharacterActionInstructions, ["tags", "example"]),
         new(CharacterShowing, ConversationGroup, "Character emotes showing now",

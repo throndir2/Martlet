@@ -198,10 +198,10 @@ internal static class DeviceCapacityInputs
         var spec = machines.FirstOrDefault(m => m.Id == id);
         var usage = plan.Usage(id);
         var components = usage is not null
-            ? usage.Items.Select(i => (Option: catalog.Find(i.OptionId), i.Use)).Where(x => x.Option is not null)
-                .Select(x => new CapacityComponent(x.Option!.Id, Named(x.Option), Need(x.Use))).ToList()
+            ? usage.Items.Select(i => (Option: catalog.Find(i.OptionId), i.Use, i.Usual)).Where(x => x.Option is not null)
+                .Select(x => new CapacityComponent(x.Option!.Id, Named(x.Option), Need(x.Use), Need(x.Usual))).ToList()
             : current.Where(c => c.MachineId == id).Select(c => catalog.Find(c.OptionId)).OfType<ComponentOption>()
-                .Select(o => new CapacityComponent(o.Id, Named(o), Need(o.Reserve))).ToList();
+                .Select(o => new CapacityComponent(o.Id, Named(o), Need(o.Reserve), Need(o.Usual))).ToList();
         if (spec is null && components.Count == 0) return null;
         var specs = spec is null ? new CapacitySpecs(null, null, null, null)
             : new CapacitySpecs(spec.Gpus.Count == 0 ? null : spec.Gpus.Sum(g => g.VramGb), spec.RamGb > 0 ? spec.RamGb : null,

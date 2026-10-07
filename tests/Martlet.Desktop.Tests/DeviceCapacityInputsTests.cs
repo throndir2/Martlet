@@ -94,6 +94,23 @@ public sealed class DeviceCapacityInputsTests
     }
 
     [Fact]
+    public void A_host_shows_what_its_jobs_usually_hold_and_the_most_they_take()
+    {
+        var (inputs, nodes) = Network();
+        // The deep thinking model usually holds 5 GB and grows to 8 GB while it thinks.
+        var catalog = new FootprintCatalog(Catalog.Options.Select(o => o.Id == "deep:12b" ? o with { Steady = new(5, 2, 2, 8) } : o));
+        var machines = DeviceCapacityInputs.Machines(inputs, nodes, 500);
+        var current = DeviceCapacityInputs.Current(inputs, nodes, catalog);
+        var plan = PlacementEngine.Measure(new PlanRequest(machines) { Current = current }, catalog);
+
+        var view = DeviceCapacityInputs.Device(nodes[1], machines, plan, current, catalog, null)!;
+        Assert.Equal("Graphics memory: 11-14 of 32 GB planned (34-44%), 15 GB free for Martlet.",
+            view.Bars.Single(b => b.Resource == CapacityResource.GraphicsMemory).Text);
+        Assert.Equal("Gemma 4 12B (deep thinking): 16-25% graphics memory, 3% memory, 6% processor.",
+            DeviceCapacity.ShareText(view.Components[1], view.Bars));
+    }
+
+    [Fact]
     public void Joining_hands_the_engine_the_other_computers_and_what_they_run_today()
     {
         var (inputs, nodes) = Network();

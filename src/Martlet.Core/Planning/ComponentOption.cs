@@ -79,6 +79,39 @@ public sealed record ComponentOption
     /// <summary>What it reserves on the machine it is placed on.</summary>
     public ResourceUse Reserve => IsLocal ? new(GpuGb, Peak.RamGb, Steady.CpuThreads, Peak.DiskGb) : ResourceUse.Zero;
 
+    /// <summary>What it usually holds where it is placed: <see cref="Steady"/> graphics memory plus one context and steady
+    /// memory, never more than <see cref="Reserve"/>. The gap to <see cref="Reserve"/> is what it grows by while it works
+    /// hardest. An option without steady numbers usually holds its peak.</summary>
+    public ResourceUse Usual
+    {
+        get
+        {
+            if (!IsLocal) return ResourceUse.Zero;
+            var steady = Steady == ResourceUse.Zero ? Peak : Steady;
+            return new(Math.Min(steady.VramGb, Peak.VramGb) + ContextGb, Math.Min(steady.RamGb, Peak.RamGb), Steady.CpuThreads, Peak.DiskGb);
+        }
+    }
+
     public bool RunsOn(string? platform) =>
         Platforms is null || platform is null || Platforms.Contains(platform, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Where it runs and how much graphics memory it takes, as one sentence for an option's rundown: "Runs on an NVIDIA
+    /// GPU: about 3.7 GB of graphics memory, up to 4.2 GB (6 GB+ card).", "Runs on the CPU: no graphics card needed." or
+    /// "Runs online: nothing runs on your computers." The numbers are what it usually holds (<see cref="Usual"/>) and the most
+    /// it takes (<see cref="GpuGb"/>), the same as the Devices page shows; <see cref="Evidence"/> says whether they were
+    /// measured.</summary>
+    public string WhereItRuns
+    {
+        get
+        {
+            if (!IsLocal) return "Runs online: nothing runs on your computers.";
+            if (Gpu == GpuRequirement.None) return "Runs on the CPU: no graphics card needed.";
+            var usual = Usual.VramGb;
+            var memory = $"about {Gb(usual)} GB of graphics memory" + (GpuGb >= usual + 0.1 ? $", up to {Gb(GpuGb)} GB" : "");
+            return $"Runs on {(Gpu == GpuRequirement.Nvidia ? "an NVIDIA GPU" : "a GPU")}: {memory}" +
+                (MinGpuGb > 0 ? $" ({Gb(MinGpuGb)} GB+ card)." : ".");
+        }
+    }
+
+    private static string Gb(double gb) => gb.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
 }

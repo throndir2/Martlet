@@ -187,8 +187,9 @@ internal static class DeepThinkingRehearsal
             seconds = Math.Round((DateTimeOffset.UtcNow - started).TotalSeconds, 1),
             scope = "One real gateway on 127.0.0.1 (Kestrel, pinned TLS) with the real Ollama relay on Thinking's route and the Deep " +
                 $"thinking role's relay on its own route with {Slots} thinks at once (its OLLAMA_NUM_PARALLEL slots), each over its own " +
-                "fixture Ollama (canned text, NOT AI), and a simulated desktop using the desktop's paired client. Not covered: " +
-                "martlet-host installing the role, a real Ollama or model (its slots' graphics memory), a GPU and a real LAN.",
+                "fixture Ollama (canned text, NOT AI) and placed on its own graphics card, and a simulated desktop using the desktop's " +
+                "paired client. Not covered: martlet-host installing the role, a real Ollama or model (its slots' graphics memory), " +
+                "a GPU and a real LAN.",
             steps = steps.Select(s => new { step = s.Name, ok = s.Ok, detail = s.Detail })
         });
     }
@@ -214,8 +215,14 @@ internal static class DeepThinkingRehearsal
                 host.identity = GatewayHostIdentity.FromCertificate(hostId, host.certificate);
                 host.origin = $"https://127.0.0.1:{FreePort()}";
                 var gatewayOrigin = new GatewayOrigin(host.origin);
-                host.workers.Add(new OllamaRelayWorker(new Uri("http://127.0.0.1:11434/"), ThinkingModel, handler: conversation));
-                host.workers.Add(OllamaRelayWorker.DeepThinking(new Uri("http://127.0.0.1:11435/"), DeepModel, handler: deep, slots: Slots));
+                // Each Ollama server on its own graphics card (martlet-host pins them with CUDA_VISIBLE_DEVICES), so thinks run
+                // beside replies; on one shared card a reply stops the thinks there (live turn first, gpu_priority_selftest).
+                var thinking = new OllamaRelayWorker(new Uri("http://127.0.0.1:11434/"), ThinkingModel, handler: conversation);
+                thinking.Route.PlaceOn(["GPU-1ab0-lab-thinking"]);
+                var deepThinking = OllamaRelayWorker.DeepThinking(new Uri("http://127.0.0.1:11435/"), DeepModel, handler: deep, slots: Slots);
+                deepThinking.Route.PlaceOn(["GPU-2ab0-lab-deep-thinking"]);
+                host.workers.Add(thinking);
+                host.workers.Add(deepThinking);
                 host.server = new GatewayServer(host.identity, gatewayOrigin, [], host, inferenceWorkers: host.workers);
                 host.listener = await host.server.StartAsync(new GatewayTlsBinding(gatewayOrigin, host.identity, host.certificate),
                     new KestrelGatewayListenerFactory());
