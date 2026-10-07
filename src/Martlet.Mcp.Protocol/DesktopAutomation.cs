@@ -341,7 +341,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Character › Emotes and motions: how many the shown model has and who named them, the Thinking model's
         // naming progress, the tags offered to replies and what follows the voice's cues, the last one played (model-authored
         // names only) and whether edits saved. Each row's name and kind (CharacterActionName-<n>, a model-authored name), and
-        // its Try button's label (CharacterActionTry-<n>: "Try", or "Turn off" while that lingering emote is on). The lingering
+        // its Try button's label (CharacterActionTry-<n>: "Try", or "Turn off" while that lingering emote is on). The grey hint in
+        // an empty When to use box (CharacterActionHint-<n>: Martlet's own hint that replies get, such as "nod, for yes or
+        // agreement"; hidden once the owner writes one). The lingering
         // emotes on now and for how long (CharacterActionsHeld: "On now: Glasses (12 min)." or "No lingering emotes are on.").
         // Each row's "Stays on" check box (CharacterActionMode-<n>) reports its mode as checkedState; changing it saves, and Try,
         // Turn off, Clear emotes (CharacterActionsClear) and the overlay menu's Clear emotes (CharacterClearEmotes) change what
@@ -633,7 +635,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// click; never the text it copies).</summary>
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
-    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
+    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default
@@ -1053,6 +1055,80 @@ internal sealed class DesktopAutomation(bool allowEffects)
         return Stroke(after) == before
             ? new { stroked = false, last = Read(after), note = "The overlay didn't finish the stroke in time." }
             : new { stroked = true, last = Read(after) };
+    }
+
+    internal const int MaximumFaceSamples = 60;
+
+    /// <summary>Reads where Martlet draws over the showing character's face (the blush glow and overlay emotes)
+    /// <paramref name="samples"/> times, <paramref name="gapMs"/> apart, through MoveAvatar's UI Automation value ("face"). It
+    /// changes nothing, so it needs no --allow-ui-effects. Returns each reading (fractions of the overlay's drawing, +y down)
+    /// and a summary: how the face is followed, how far it moved, turned and tilted, and what of the character is under each
+    /// cheek.</summary>
+    internal async Task<object> FaceCharacterAsync(int? samples, int? gapMs)
+    {
+        var count = samples ?? 1;
+        if (count is < 1 or > MaximumFaceSamples) throw new ArgumentException($"samples is 1 to {MaximumFaceSamples}.");
+        if (gapMs is < 0 or > 5000) throw new ArgumentException("gapMs is 0 to 5000.");
+        var element = Find("MoveAvatar");
+        if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            throw new InvalidOperationException("The character overlay can't be read through UI Automation.");
+        var value = (ValuePattern)pattern;
+        if (value.Current.IsReadOnly) throw new InvalidOperationException("The character's face can't be read until it has loaded.");
+        static System.Text.Json.JsonElement? Face(string text) => string.IsNullOrEmpty(text) ? null :
+            System.Text.Json.JsonDocument.Parse(text).RootElement is { ValueKind: System.Text.Json.JsonValueKind.Object } root &&
+            root.TryGetProperty("face", out var face) ? face.Clone() : null;
+        var faces = new List<System.Text.Json.JsonElement>();
+        for (var i = 0; i < count; i++)
+        {
+            if (i > 0) await Task.Delay(gapMs ?? 250);
+            var before = Face(value.Current.Value)?.GetRawText();
+            value.SetValue("face");
+            var waited = Stopwatch.StartNew();
+            System.Text.Json.JsonElement? after;
+            while ((after = Face(value.Current.Value))?.GetRawText() == before && waited.Elapsed < TimeSpan.FromSeconds(3)) await Task.Delay(20);
+            if (after is { } read && read.GetRawText() != before) faces.Add(read);
+        }
+        return new { samples = count, read = faces.Count, faces, summary = FaceSummary(faces),
+            note = faces.Count == 0 ? "The renderer didn't answer within 3 seconds." : null };
+    }
+
+    // How the readings went together: the tracking used, how far the face moved, scaled and tilted (fractions of the drawing,
+    // degrees), and per cheek the share of readings it was over the character, what it was mostly over (the topmost drawable,
+    // mesh or bone) and for what share, how much of it showed at least and how wide it was against the face.
+    internal static object FaceSummary(IReadOnlyList<System.Text.Json.JsonElement> faces)
+    {
+        static bool Is(System.Text.Json.JsonElement owner, string key, System.Text.Json.JsonValueKind kind) =>
+            owner.ValueKind == System.Text.Json.JsonValueKind.Object && owner.TryGetProperty(key, out var value) && value.ValueKind == kind;
+        static double[] Numbers(IEnumerable<System.Text.Json.JsonElement> items, string key) =>
+            [.. items.Where(item => Is(item, key, System.Text.Json.JsonValueKind.Number)).Select(item => item.GetProperty(key).GetDouble())];
+        static double Spread(double[] values) => values.Length == 0 ? 0 : Math.Round(values.Max() - values.Min(), 4);
+        var found = faces.Where(face => Is(face, "found", System.Text.Json.JsonValueKind.True)).ToArray();
+        object Cheek(string key)
+        {
+            var cheeks = found.Where(face => Is(face, key, System.Text.Json.JsonValueKind.Object)).Select(face => face.GetProperty(key)).ToArray();
+            static string? Under(System.Text.Json.JsonElement cheek) => !Is(cheek, "hit", System.Text.Json.JsonValueKind.True) ? null
+                : Is(cheek, "drawables", System.Text.Json.JsonValueKind.Array) && cheek.GetProperty("drawables").GetArrayLength() > 0
+                    ? cheek.GetProperty("drawables")[0].GetString()
+                : Is(cheek, "mesh", System.Text.Json.JsonValueKind.String) ? cheek.GetProperty("mesh").GetString()
+                : Is(cheek, "bone", System.Text.Json.JsonValueKind.String) ? cheek.GetProperty("bone").GetString() : "character";
+            var under = cheeks.Select(Under).ToArray();
+            var most = under.OfType<string>().GroupBy(name => name).OrderByDescending(group => group.Count()).FirstOrDefault();
+            double Share(int part) => cheeks.Length == 0 ? 0 : Math.Round((double)part / cheeks.Length, 2);
+            var visible = Numbers(cheeks, "visible");
+            var across = Numbers(cheeks, "across");
+            return new { onCharacter = Share(under.Count(name => name is not null)), mostlyOver = most?.Key, mostlyOverShare = Share(most?.Count() ?? 0),
+                visibleLeast = visible.Length == 0 ? (double?)null : visible.Min(),
+                across = across.Length == 0 ? null : new { least = across.Min(), most = across.Max() } };
+        }
+        return new
+        {
+            found = found.Length,
+            tracking = found.Where(face => Is(face, "tracking", System.Text.Json.JsonValueKind.String))
+                .Select(face => face.GetProperty("tracking").GetString()).Distinct().ToArray(),
+            moved = new { x = Spread(Numbers(found, "x")), y = Spread(Numbers(found, "y")), width = Spread(Numbers(found, "width")),
+                tilt = Spread(Numbers(found, "tilt")) },
+            cheekLeft = Cheek("cheekLeft"), cheekRight = Cheek("cheekRight")
+        };
     }
 
     /// <summary>Moves a movable control (the character overlay's MoveAvatar, like dragging the character) by dx, dy screen

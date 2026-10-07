@@ -183,6 +183,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
             points = new { type = "array", items = new { type = "array", items = new { type = "number", minimum = 0, maximum = 1 }, minItems = 2, maxItems = 2 } },
             stepMs = new { type = "integer", minimum = 10, maximum = 2000 }
         }),
+        Tool("character_face", "Read where Martlet draws over the showing character's face (its own blush glow and overlay emotes " +
+            "such as hearts or a sweat drop), samples times (1 to 60, default 1) gapMs apart (0 to 5000, default 250), as each frame " +
+            "is drawn. Each reading (faces) has n, found, tracking (mesh: pinned to the Live2D model's own face meshes; bones: a " +
+            "VRM's head bone; estimate: a Live2D model's head angles, when no face meshes were found), x, y and width (fractions of " +
+            "the character overlay's drawing, +y down), tilt (degrees, clockwise), cheekLeft and cheekRight (x, y; visible, 0 to " +
+            "1 as the cheek turns away; across, the cheek's width against the face's, below 1 on a turned head's far cheek; and " +
+            "the renderer's hit test there: hit, drawables, bone, mesh), the overlays showing and pinned (Live2D: carriers, the " +
+            "mesh vertices the face rides on, and milliseconds, how long finding them took at load). summary says which tracking " +
+            "was used, how far the face moved (x, y, width, tilt) and, per cheek, the share of readings over the character, " +
+            "what it was mostly over and for what share, the least it showed and its across range. Reading changes nothing, so " +
+            "it needs no --allow-ui-effects.", new
+        {
+            samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumFaceSamples },
+            gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
+        }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
             "[x, y, width, height] in physical screen pixels) and whether Martlet still runs. \"open\" and \"menu\" send the icon " +
@@ -452,13 +467,32 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "writes nothing to disk.", new { }),
         Tool("deep_thinking_role_selftest", "Rehearse the Deep thinking host role end to end with the production code: one real " +
             "gateway on 127.0.0.1 (pinned TLS) serving a host's Thinking route (the ollama role) and the deep-thinking role's own route " +
-            "(martlet.gateway.deep-thinking-chat.v1), each relay over its own fixture Ollama (NOT AI), and a simulated desktop using " +
-            "the desktop's paired client. Checks both routes and their models are advertised, Thinking's advertised route saves as the " +
+            "(martlet.gateway.deep-thinking-chat.v1), each relay over its own fixture Ollama (NOT AI) on its own graphics card, and a " +
+            "simulated desktop using the desktop's paired client. Checks both routes and their models are advertised, Thinking's advertised route saves as the " +
             "desktop's job route (handing Thinking to the host), a think on the Deep thinking route runs " +
             "while a reply streams on Thinking's route (the reply finishes first), each request reaches its own Ollama (the think " +
             "with Thinking steps on), two thinks run at once on the role's two slots (advertised as the route's maximum_concurrency) " +
             "while a reply streams and a third gets job.busy, and that the chat client refuses a mismatched route. Loopback only; writes nothing to disk or " +
             "the credential vault.", new { }),
+        Tool("gpu_priority_status", "Read GPU priority (live turn first) on every Martlet host paired in a desktop data directory " +
+            "(hosts.json), through each host's own gateway (pinned TLS; the pairing secret from Windows Credential Manager only signs " +
+            "the request, never returned): GET /martlet/v1/priority with each route's lane (live or pool) and graphics cards, each " +
+            "card's hold state (held, live and pool requests running, holds), whether the whole host is held, the holds, the preempted " +
+            "and refused counts, the last preemptions and refusals (what held the card) and placement warnings. A host older than " +
+            "GPU priority is reported as such. Read-only: takes no hold and starts no work; contacts only paired hosts.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("gpu_priority_selftest", "Rehearse GPU priority (live turn first) end to end with the production code: real gateways on " +
+            "127.0.0.1 (pinned TLS) with Thinking's Ollama relay (lane live) and the Deep thinking role's (lane pool) placed on graphics " +
+            "cards as martlet-host places them, each over its own fixture Ollama server on loopback (NOT AI, no GPU used), a simulated " +
+            "desktop with the desktop's paired client and its hold client (HostLiveGpuHold). Checks the host's GPU map and its warning " +
+            "to pin each Ollama server to its own GPU, that a live reply stops a running think on the same card at once (job.preempted, " +
+            "the Ollama request aborted), that a think is turned away while a live reply or a hold keeps the card (job.busy), holds " +
+            "(renew, release, a 1 s hold that ends on its own, a hold that stops running work), that live replies never wait, that a " +
+            "think on its own card runs on, and that an older host without holds leaves the live turn alone. Returns each step and the " +
+            "host's GET /martlet/v1/priority report (per-card hold state, holds, last preemptions and refusals, warnings). Loopback " +
+            "only; writes nothing to disk or the credential vault.", new { }),
         Tool("speaking_voices_selftest", "Rehearse the shared speaking voices end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, the real reference-voice relay route over a fixture voice service, NOT AI, with in-memory " +
             "speaking-voices.json and recordings) and two simulated desktops with real F5 voice stores in a temporary folder, using the " +
@@ -492,7 +526,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "as a glow on the cheeks when the model has no ParamCheek or blush expression; Live2D smile, surprise; VRM wave, shrug, bounce; " +
             "and the voice emotes linked to every voice sound and tone: laugh, chuckle, sigh, gasp, cough, clear_throat, groan, sniff, shush, inhale, exhale, " +
             "mumble, hum, sneeze, whistle, happy, sarcastic, angry, fear, crying, whispering, dramatic; and the overlay emotes drawn over the face of any " +
-            "Live2D model or VRM with a head: sweat, anger, hearts, sparkles, tears, gloom, question, exclaim, sleepy, music) with what it changes, its tag, voice cue, when to use it, whether " +
+            "Live2D model or VRM with a head: sweat, anger, hearts, sparkles, tears, gloom, question, exclaim, sleepy, music) with what it changes, its tag, voice cue, when to use it (use: the owner's or the Thinking model's text, null when empty; hint: what the reply prompt says, which is Martlet's own hint while use is null), whether " +
             "it is on, its mode (brief, or lingering: stays on after {tag} until {/tag}; modeSaved false when it is the default, " +
             "vtsToggle when a VTube Studio ToggleExpression hotkey turns it on) and whether replies are offered it for engine (a voice engine key; \"none\" or absent: a voice without tags); the " +
             "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; the reply prompt and tags " +
@@ -889,7 +923,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "only what is said aloud and is not a failure (voice.muted); paused pauses the reply once its first audio played, as " +
             "Pause and decide does when you talk over it, holds it 1 s and plays it on: ok also needs no samples played while paused, " +
             "the next piece still made meanwhile (voice.hold), every piece said once (nothing made again) and the " +
-            "latency line saying it paused and resumed; text-only sends the reply with no voice at all (Speak " +
+            "latency line saying it paused and resumed (with characterTags, also no cue acted while paused: a cue that falls in " +
+            "the pause waits for it); stopped has the user stop the reply (Stop, or talking over it) as the failAt-th piece starts " +
+            "playing, and ok then needs the reply canceled and no cue acted after the stop (character.stoppedAtMs; the cues still " +
+            "waiting are dropped); text-only sends the reply with no voice at all (Speak " +
             "Martlet's replies aloud off), so every sentence goes to the captions; a fixture speaker opens no " +
             "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
             "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
@@ -909,7 +946,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "[\"{nod}\", \"{blush}\"]) the reply is offered the desktop character's tags as while the character shows: character " +
             "returns what the reply's tags did (acted: each tag, its kind, name and the other spelling the reply used, such as " +
             "[nod] or *nods* for {nod}), the note the talk window shows under the reply (\"Tone: happy. Emotes: nod.\") and each cue " +
-            "the character got (tag, atMs when its sentence started playing, delayMs into that sentence), and ok also needs every " +
+            "the character got (tag, atMs when its sentence started playing, delayMs into that sentence, and actedMs when the " +
+            "character acted it, waiting for it as the desktop's character does, or dropped when the reply stopped first), and ok " +
+            "also needs every " +
             "spelling of the tags out of reply.text and voice.pieces and, with voiceFailure none, slow or text-only, a cue for " +
             "every tag acted. Loopback only; reads no credentials.", new
         {
@@ -1485,6 +1524,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 OptionalInt(arguments, "holdMs"), OptionalInt(arguments, "repeat"), OptionalInt(arguments, "gapMs"), Taps(arguments),
                 OptionalInt(arguments, "settleMs")),
                 "character_stroke" => await desktop.StrokeCharacterAsync(StrokePoints(arguments), OptionalInt(arguments, "stepMs") ?? 40),
+                "character_face" => await desktop.FaceCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "turn_judge_check" => await TurnJudgeCheck.RunAsync(arguments, MartletDirectory(arguments), cancellation),
@@ -1517,6 +1557,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "outside_path_check" => await OutsidePathCheck.RunAsync(cancellation),
             "mac_host_check" => await MacHostCheck.RunAsync(cancellation),
                 "deep_thinking_role_selftest" => await NodeLinkCheckAsync(cancellation, "deep-thinking"),
+                "gpu_priority_selftest" => await NodeLinkCheckAsync(cancellation, "gpu-priority"),
+                "gpu_priority_status" => await GpuPriorityStatusAsync(arguments, cancellation),
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
                 "character_profiles" => CharacterProfiles(arguments),
@@ -2285,6 +2327,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
         };
     }
 
+    /// <summary>gpu_priority_status: GPU priority (live turn first) on every host paired in the data directory, through
+    /// Martlet.NodeLinkCheck gpu-priority-status, which signs with the pairing secret from Windows Credential Manager and returns
+    /// no secret. Nothing is contacted when the data directory pairs no host.</summary>
+    private static async Task<object> GpuPriorityStatusAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var directory = DataDirectory(arguments);
+        if (!File.Exists(Path.Combine(directory, "hosts.json")))
+            return new { dataDirectory = directory, hosts = Array.Empty<object>(), note = "No host is paired in this data directory (no hosts.json)." };
+        return await NodeLinkCheckAsync(TimeSpan.FromMinutes(2), cancellation, ["gpu-priority-status", directory]);
+    }
+
     /// <summary>This PC's own host service as the desktop's host dashboard reads it (<see cref="LocalHostService"/>). The
     /// published address itself is not returned, only whether it is still this PC's and answers.</summary>
     private static async Task<object> HostServiceStatusAsync(CancellationToken cancellation)
@@ -2348,7 +2401,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             return of.Entries.Select((e, n) => new
             {
                 n, id = e.Source.Id, kind = e.Source.Kind.ToString().ToLowerInvariant(), name = e.Source.Name, detail = e.Source.Detail,
-                tag = e.Action.Tag, cue = e.Action.Cue, use = e.Action.Use, enabled = e.Action.Enabled, offered = offered.Contains(e.Source.Id),
+                tag = e.Action.Tag, cue = e.Action.Cue, use = e.Action.Use,
+                hint = Martlet.Avatar.Hosting.CharacterActions.Hint(e.Source, e.Action), enabled = e.Action.Enabled,
+                offered = offered.Contains(e.Source.Id),
                 mode = e.Action.Mode ?? Martlet.Avatar.Hosting.CharacterActions.DefaultMode(e.Source, e.Action.Tag),
                 modeSaved = e.Action.Mode is not null, vtsToggle = e.Source.Toggle
             }).ToArray();

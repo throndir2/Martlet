@@ -1,6 +1,8 @@
 /** Where a Live2D model's face is, for Martlet's own drawings over it (a blush glow, manga symbols). Live2D models carry no
- *  face landmarks, so it is estimated: from an authored head/face hit area's mesh, from meshes whose IDs name the face or
- *  cheeks, or from the shape of the top of the model; a hint (from vision) overrides the estimate. */
+ *  face landmarks, so it is estimated at rest: from an authored head/face hit area's mesh, from meshes whose IDs name the
+ *  face or cheeks, or from the shape of the top of the model; a hint (from vision) overrides the estimate. The estimate is
+ *  then pinned to the model's own meshes (see `pinFace`), so it follows everything that moves the head as Live2D draws it:
+ *  idle motions, body sway, breathing, the cursor look, gestures. */
 
 export interface Point { readonly x: number; readonly y: number }
 
@@ -121,4 +123,137 @@ export function faceFeatures(face: Face): FaceFeatures {
   const at = (dx: number, dy: number): Point => ({ x: face.x + (dx * c - dy * s) * w, y: face.y + (dx * s + dy * c) * w });
   return { ...face, eyeLeft: at(-0.2, 0), eyeRight: at(0.2, 0), cheekLeft: at(-0.27, -0.2), cheekRight: at(0.27, -0.2),
     mouth: at(0, -0.36), top: at(0, 0.62) };
+}
+
+// ---------- following the face on the model's own meshes ----------
+
+/** The head and body angles: what turns, tilts and sways the whole face. Every other parameter only changes its shape. */
+export const HEAD_ANGLES: readonly string[] = ["ParamAngleX", "ParamAngleY", "ParamAngleZ"];
+export const POSE_PARAMETERS: ReadonlySet<string> = new Set([...HEAD_ANGLES, "ParamBodyAngleX", "ParamBodyAngleY",
+  "ParamBodyAngleZ", "ParamBreath"]);
+
+/** A mesh vertex that rides the head rigidly (the face's skin, outline, ears; not hair physics, eyelids, irises or the
+ *  mouth), with where it was at rest in model units (y up). */
+export interface Carrier { readonly drawable: number; readonly vertex: number; readonly x: number; readonly y: number }
+
+/** A point pinned to the carriers around it, by moving least squares: each carrier's weight and rest offset from their
+ *  weighted middle, and the inverse of their weighted spread (row-major), absent when they lie along a line. */
+export interface Pin {
+  readonly x: number; readonly y: number;
+  readonly carriers: readonly Carrier[];
+  readonly weights: readonly number[];
+  readonly middle: Point;
+  readonly offsets: readonly Point[];
+  readonly spread: number;
+  readonly inverse?: readonly [number, number, number, number];
+}
+
+/** A pinned point now, with the linear map (row-major) that takes a small step from it at rest to the same step now: how the
+ *  face there is turned, tilted, scaled and squashed. */
+export interface Tracked { readonly x: number; readonly y: number; readonly map: readonly [number, number, number, number] }
+
+const PIN_CARRIERS = 24;
+
+/** Pins (`x`, `y`) to its nearest carriers; undefined with fewer than three. `softness` (model units) keeps a carrier right
+ *  on the point from taking all the weight. */
+export function pinPoint(x: number, y: number, carriers: readonly Carrier[], softness: number): Pin | undefined {
+  if (carriers.length < 3 || ![x, y, softness].every(Number.isFinite)) return undefined;
+  const nearest = carriers.map(carrier => ({ carrier, distance: (carrier.x - x) ** 2 + (carrier.y - y) ** 2 }))
+    .sort((a, b) => a.distance - b.distance).slice(0, PIN_CARRIERS);
+  const weights = nearest.map(n => 1 / (n.distance + softness * softness + 1e-12));
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  const middle = { x: nearest.reduce((sum, n, i) => sum + weights[i]! * n.carrier.x, 0) / total,
+    y: nearest.reduce((sum, n, i) => sum + weights[i]! * n.carrier.y, 0) / total };
+  const offsets = nearest.map(n => ({ x: n.carrier.x - middle.x, y: n.carrier.y - middle.y }));
+  let xx = 0, xy = 0, yy = 0;
+  offsets.forEach((p, i) => { xx += weights[i]! * p.x * p.x; xy += weights[i]! * p.x * p.y; yy += weights[i]! * p.y * p.y; });
+  const determinant = xx * yy - xy * xy;
+  // Carriers along one line can't say how the face squashes across it; they still turn and scale it (see trackPin).
+  const inverse = determinant > 0.005 * (xx + yy) ** 2
+    ? [yy / determinant, -xy / determinant, -xy / determinant, xx / determinant] as const : undefined;
+  return { x, y, carriers: nearest.map(n => n.carrier), weights, middle, offsets, spread: xx + yy, ...(inverse ? { inverse } : {}) };
+}
+
+/** Where a pinned point is now, from its carriers as the model last posed them (`at(drawable)` gives a drawable's
+ *  interleaved vertex positions); undefined when one is missing. */
+export function trackPin(pin: Pin, at: (drawable: number) => ArrayLike<number>): Tracked | undefined {
+  const now = new Float64Array(2 * pin.carriers.length);
+  let total = 0, mx = 0, my = 0, last = -1, vertices: ArrayLike<number> | undefined;
+  for (let i = 0; i < pin.carriers.length; i++) {
+    const carrier = pin.carriers[i]!;
+    if (carrier.drawable !== last) { vertices = at(carrier.drawable); last = carrier.drawable; }
+    const x = vertices?.[2 * carrier.vertex], y = vertices?.[2 * carrier.vertex + 1];
+    if (typeof x !== "number" || typeof y !== "number" || !Number.isFinite(x) || !Number.isFinite(y)) return undefined;
+    const w = pin.weights[i]!;
+    now[2 * i] = x; now[2 * i + 1] = y;
+    total += w; mx += w * x; my += w * y;
+  }
+  mx /= total; my /= total;
+  let b11 = 0, b12 = 0, b21 = 0, b22 = 0, dot = 0, cross = 0;
+  for (let i = 0; i < pin.carriers.length; i++) {
+    const w = pin.weights[i]!, p = pin.offsets[i]!, qx = now[2 * i]! - mx, qy = now[2 * i + 1]! - my;
+    b11 += w * qx * p.x; b12 += w * qx * p.y; b21 += w * qy * p.x; b22 += w * qy * p.y;
+    dot += w * (p.x * qx + p.y * qy); cross += w * (p.x * qy - p.y * qx);
+  }
+  let map: [number, number, number, number];
+  if (pin.inverse) {
+    const [i11, i12, i21, i22] = pin.inverse;
+    map = [b11 * i11 + b12 * i21, b11 * i12 + b12 * i22, b21 * i11 + b22 * i21, b21 * i12 + b22 * i22];
+  } else if (pin.spread > 0) {
+    const a = dot / pin.spread, b = cross / pin.spread;
+    map = [a, -b, b, a];
+  } else map = [1, 0, 0, 1];
+  const dx = pin.x - pin.middle.x, dy = pin.y - pin.middle.y;
+  const x = mx + map[0] * dx + map[1] * dy, y = my + map[2] * dx + map[3] * dy;
+  return [x, y, ...map].every(Number.isFinite) ? { x, y, map } : undefined;
+}
+
+const FACE_POINTS = ["middle", "eyeLeft", "eyeRight", "cheekLeft", "cheekRight", "mouth", "top"] as const;
+type FacePoint = typeof FACE_POINTS[number];
+
+/** A face at rest pinned to the model's meshes (see `pinFace`). */
+export interface PinnedFace { readonly face: Face; readonly pins: Readonly<Record<FacePoint, Pin>> }
+
+/** How a cheek's surface shows now: the steps, in model units, for one face width across it (toward the viewer's right) and
+ *  down it (toward the chin). A turned head squashes the far cheek; a tilted one turns both. */
+export interface CheekFrame { readonly right: Point; readonly down: Point }
+
+export interface TrackedFace extends FaceFeatures { readonly cheekLeftFrame: CheekFrame; readonly cheekRightFrame: CheekFrame }
+
+/** Pins `face` (at rest) to the carriers within reach of it; undefined when too few are near. */
+export function pinFace(face: Face, carriers: readonly Carrier[]): PinnedFace | undefined {
+  if (![face.x, face.y, face.width, face.roll].every(Number.isFinite) || !(face.width > 0)) return undefined;
+  const reach = (1.5 * face.width) ** 2;
+  const near = carriers.filter(c => (c.x - face.x) ** 2 + (c.y - face.y) ** 2 <= reach);
+  const features = faceFeatures(face);
+  const points: Record<FacePoint, Point> = { middle: features, eyeLeft: features.eyeLeft, eyeRight: features.eyeRight,
+    cheekLeft: features.cheekLeft, cheekRight: features.cheekRight, mouth: features.mouth, top: features.top };
+  const pins = {} as Record<FacePoint, Pin>;
+  for (const name of FACE_POINTS) {
+    const pin = pinPoint(points[name].x, points[name].y, near, 0.05 * face.width);
+    if (!pin) return undefined;
+    pins[name] = pin;
+  }
+  return { face, pins };
+}
+
+/** The pinned face as the model posed it last (`at` as for `trackPin`): its middle, width and roll from the meshes around
+ *  the eyes, the features where their carriers took them, and each cheek's surface. Undefined when a carrier is missing. */
+export function trackFace(pinned: PinnedFace, at: (drawable: number) => ArrayLike<number>): TrackedFace | undefined {
+  const tracked = {} as Record<FacePoint, Tracked>;
+  for (const name of FACE_POINTS) {
+    const point = trackPin(pinned.pins[name], at);
+    if (!point) return undefined;
+    tracked[name] = point;
+  }
+  const { width, roll } = pinned.face, c = Math.cos(roll), s = Math.sin(roll);
+  const right = { x: width * c, y: width * s }, down = { x: width * s, y: -width * c };
+  const apply = (map: Tracked["map"], v: Point): Point => ({ x: map[0] * v.x + map[1] * v.y, y: map[2] * v.x + map[3] * v.y });
+  const across = apply(tracked.middle.map, right);
+  const point = (t: Tracked): Point => ({ x: t.x, y: t.y });
+  const frame = (t: Tracked): CheekFrame => ({ right: apply(t.map, right), down: apply(t.map, down) });
+  return { x: tracked.middle.x, y: tracked.middle.y, width: Math.hypot(across.x, across.y), roll: Math.atan2(across.y, across.x),
+    eyeLeft: point(tracked.eyeLeft), eyeRight: point(tracked.eyeRight), cheekLeft: point(tracked.cheekLeft),
+    cheekRight: point(tracked.cheekRight), mouth: point(tracked.mouth), top: point(tracked.top),
+    cheekLeftFrame: frame(tracked.cheekLeft), cheekRightFrame: frame(tracked.cheekRight) };
 }

@@ -101,7 +101,7 @@ public sealed record CharacterActionCatalog(CharacterActionInventory Inventory, 
         if (offered.Count == 0) return null;
         var tags = offered.Select(e => "{" + e.Action.Tag + "}").ToList();
         var example = tags[0];
-        var lines = offered.Select(e => $"{{{e.Action.Tag}}} - {e.Action.Use ?? CharacterActions.Describe(e.Source)}" +
+        var lines = offered.Select(e => $"{{{e.Action.Tag}}} - {CharacterActions.Hint(e.Source, e.Action)}" +
             (CharacterActions.Lingers(e.Source, e.Action) ? $" (stays on until you write {{/{e.Action.Tag}}})" : ""));
         var text = PromptSettings.Fill(prompts, PromptCatalog.CharacterActions, ("tags", string.Join("\n", lines)), ("example", example));
         if (text is null) return null;
@@ -256,6 +256,10 @@ public static partial class CharacterActions
         CharacterActionKind.Motion => $"the character's motion named \"{source.Name}\"",
         _ => CharacterActionInventory.Gesture(source.Id)?.Use ?? $"the gesture named \"{source.Name}\""
     };
+
+    /// <summary>The hint the reply prompt gives next to a tag: its When to use text, or <see cref="Describe"/> while that is
+    /// empty (the grey text in an empty When to use box).</summary>
+    public static string Hint(CharacterActionSource source, CharacterAction action) => action.Use ?? Describe(source);
 
     /// <summary>Martlet's guess from the model's own name: an English tag and a cue when the name says a feeling.
     /// <paramref name="number"/> is its position among its kind (1 for the first emote), for a name with no English in it.</summary>
