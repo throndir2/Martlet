@@ -368,7 +368,7 @@ export class VrmRuntime {
   private composedAge = Number.POSITIVE_INFINITY;
   private readonly actions = new Map<string, { target: number; value: number }>();
   /** Expressions held on (lingering emotes) until turned off. */
-  private readonly held = new Set<string>();
+  private readonly heldExpressions = new Set<string>();
   private gesture: { name: VrmGesture; seconds: number } | undefined;
   private held: { name: HoldableGesture; seconds: number; progress: number; on: boolean }[] = [];
   private face: Readonly<Record<string, number>> = {};
@@ -405,9 +405,9 @@ export class VrmRuntime {
     const model = this.loaded();
     if (typeof name !== "string" || !model.expressionManager?.getExpression(name) ||
       [...mouthPresets, ...blinkPresets, ...gazePresets].includes(name as never)) return false;
-    if (on && !hold) for (const [other, state] of this.actions) if (other !== name && !this.held.has(other)) state.target = 0;
-    if (hold) { if (on) this.held.add(name); else this.held.delete(name); }
-    else if (this.held.has(name)) return true;
+    if (on && !hold) for (const [other, state] of this.actions) if (other !== name && !this.heldExpressions.has(other)) state.target = 0;
+    if (hold) { if (on) this.heldExpressions.add(name); else this.heldExpressions.delete(name); }
+    else if (this.heldExpressions.has(name)) return true;
     const state = this.actions.get(name) ?? { target: 0, value: 0 };
     state.target = on ? 1 : 0;
     this.actions.set(name, state);
@@ -801,10 +801,6 @@ export class VrmRuntime {
       releaseResources(this.model.scene);
     }
     this.model = undefined; this.inspected = undefined; this.selection = undefined; this.revision = undefined; this.inputMode = undefined;
-<<<<<<< HEAD
-    this.actions.clear(); this.held.clear(); this.gesture = undefined; this.hipsRest = undefined;
-=======
-    this.actions.clear(); this.gesture = undefined; this.held = []; this.hipsRest = undefined;
->>>>>>> origin/main
+    this.actions.clear(); this.heldExpressions.clear(); this.gesture = undefined; this.held = []; this.hipsRest = undefined;
   }
 }

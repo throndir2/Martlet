@@ -119,7 +119,10 @@ what each one is.
   - an expression whose name or tag names a look that stays (glasses, a hat, a
     blush, an angry or sad face, tears, a dark face, an outfit or accessory).
 
-  Motions and Martlet's gestures are brief by default. The Thinking model's
+  Martlet's holdable gestures (pout, shy, look_away and drowsy) also stay on by
+  default. The renderer holds one gesture at a time, so a new held gesture
+  replaces the one before. A gesture that the renderer cannot hold plays once.
+  Motions and the other gestures are brief by default. The Thinking model's
   naming also gives `stays` or `brief` for each item.
 - **Tags for lingering emotes**: a reply writes `{glasses}` to turn the emote
   on. When it is already on, nothing changes. The reply writes `{/glasses}` to

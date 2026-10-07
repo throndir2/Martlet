@@ -109,17 +109,10 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
     } else if (message.kind === "motion") {
       post({ started: renderer === "Live2D" ? adapter.playMotion(String(data.group)) : false });
     } else if (message.kind === "action") {
-<<<<<<< HEAD
-      // An emote (expression, held until ended or replaced), a motion (played once) or a head gesture. Ending an
-      // expression that isn't the one showing changes nothing. A held (lingering) expression stays on, layered with the
-      // other held ones and the passing emote, until it is ended with hold set too.
-      const kind = String(data.kind), name = String(data.name), on = data.on !== false, hold = data.hold === true;
-      let started = false;
-      if (kind === "gesture") started = on ? (renderer === "Live2D" ? adapter.gesture(name) : adapter.playGesture(name)) : true;
-=======
       // An emote (expression, held until ended or replaced), a motion (played once) or a gesture (played once, or with
       // `hold` a holdable one kept until ended). Ending an expression that isn't the one showing changes nothing. A gesture's
-      // reply also says which gesture now plays once and which is held.
+      // reply also says which gesture now plays once and which is held. A held (lingering) expression stays on, layered with
+      // the other held ones and the passing emote, until it is ended with hold set too.
       const kind = String(data.kind), name = String(data.name), on = data.on !== false, hold = data.hold === true;
       let started = false, gesture;
       if (kind === "gesture") {
@@ -127,7 +120,6 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
         else { adapter.endGesture(name); started = true; }
         gesture = adapter.gestureState;
       }
->>>>>>> origin/main
       else if (kind === "motion") started = on && renderer === "Live2D" ? adapter.playMotion(name) : false;
       else if (kind === "expression") {
         if (renderer === "Live2D") {

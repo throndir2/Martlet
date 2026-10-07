@@ -212,9 +212,16 @@ public sealed class LingeringEmoteTests
         }
         public Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token, TimeSpan? timeout = null)
         {
-            if (data is RendererAction action) Actions.Enqueue(action);
-            return Task.FromResult(RendererProtocol.Message("ok", activation, new { started = true }));
+            if (data is not RendererAction action) return Task.FromResult(RendererProtocol.Message("ok", activation, new { started = true }));
+            Actions.Enqueue(action);
+            if (action.Kind != "gesture") return Task.FromResult(RendererProtocol.Message("ok", activation, new { started = true }));
+            // As the renderer does: one holdable gesture held at a time; any other gesture plays once.
+            if (!action.On && heldGesture == action.Name) heldGesture = null;
+            else if (action.On && action.Hold && CharacterActionInventory.Gesture("gesture:" + action.Name) is { Holdable: true }) heldGesture = action.Name;
+            object state = heldGesture is null ? new { } : new { held = heldGesture };
+            return Task.FromResult(RendererProtocol.Message("ok", activation, new { started = true, gesture = state }));
         }
+        private string? heldGesture;
         public ValueTask DisposeAsync() { HasExited = true; return ValueTask.CompletedTask; }
     }
 
@@ -267,6 +274,41 @@ public sealed class LingeringEmoteTests
         await avatar.StopAsync();
         catalog = null;
         await avatar.ShowAsync(profile, default);
+        Assert.Empty(avatar.Held.Current);
+    }
+
+    private static CharacterActionSource Gesture(string name) =>
+        new("gesture:" + name, CharacterActionKind.Gesture, name, "");
+
+    [Fact]
+    public void Holdable_gestures_linger_by_default_and_others_stay_brief()
+    {
+        foreach (var name in new[] { "pout", "shy", "look_away", "drowsy" })
+            Assert.Equal(CharacterActions.Lingering, CharacterActions.DefaultMode(Gesture(name), name));
+        foreach (var name in new[] { "wink", "nod", "giggle", "blush" })
+            Assert.Equal(CharacterActions.Brief, CharacterActions.DefaultMode(Gesture(name), name));
+    }
+
+    [Fact]
+    public async Task A_held_gesture_is_tracked_only_while_the_renderer_holds_it()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer();
+        await using var avatar = new AvatarController(createRenderer: () => renderer, allowControlledClock: true);
+        await avatar.ShowAsync(scope.Profile() with { LipSync = AvatarLipSync.Loudness }, default);
+
+        Assert.True(await avatar.PlayActionAsync(Gesture("pout"), "a try", null, default, hold: true));
+        Assert.True(avatar.Held.Holds("gesture:pout"));
+        Assert.Contains("pout held", avatar.LastAction);
+        // A gesture the renderer can't hold plays once and isn't tracked.
+        Assert.True(await avatar.PlayActionAsync(Gesture("wink"), "a try", null, default, hold: true));
+        Assert.False(avatar.Held.Holds("gesture:wink"));
+        Assert.True(avatar.Held.Holds("gesture:pout"));
+        // The renderer holds one gesture at a time: shy replaces pout.
+        Assert.True(await avatar.PlayActionAsync(Gesture("shy"), "a try", null, default, hold: true));
+        Assert.Equal("gesture:shy", Assert.Single(avatar.Held.Current).Source.Id);
+        Assert.True(await avatar.StopActionAsync(Gesture("shy"), "{/shy}", default));
+        Assert.Equal(new RendererAction("gesture", "shy", false, true), renderer.Actions.Last());
         Assert.Empty(avatar.Held.Current);
     }
 }

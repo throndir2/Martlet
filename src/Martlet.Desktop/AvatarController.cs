@@ -193,28 +193,28 @@ internal sealed partial class AvatarController : IAsyncDisposable
         var started = reply.Data.ValueKind == System.Text.Json.JsonValueKind.Object && reply.Data.TryGetProperty("started", out var value) &&
             value.ValueKind == System.Text.Json.JsonValueKind.True;
         var when = DateTime.Now.ToString("T", System.Globalization.CultureInfo.CurrentCulture);
-<<<<<<< HEAD
-        Volatile.Write(ref lastAction, started
-            ? $"{(hold ? "Turned on" : "Played")} the {kind} \"{source.Name}\" for {reason} at {when}."
-            : $"The character couldn't play the {kind} \"{source.Name}\" ({reason}, {when}).");
-        ErrorLog.Info(started ? $"Character {kind} '{source.Name}' {(hold ? "held" : "played")} for {reason}." : $"Character {kind} '{source.Name}' didn't play ({reason}).");
-        if (started && hold)
+        // A held gesture is one the renderer keeps (one at a time); a gesture it can't hold plays once.
+        var heldGesture = HeldGestureOf(reply.Data);
+        var holds = hold && started && (source.Kind != CharacterActionKind.Gesture || heldGesture == source.Name);
+        Volatile.Write(ref lastAction, (started
+            ? $"{(holds ? "Turned on" : "Played")} the {kind} \"{source.Name}\" for {reason} at {when}."
+            : $"The character couldn't play the {kind} \"{source.Name}\" ({reason}, {when}).") + GestureState(reply.Data));
+        ErrorLog.Info(started ? $"Character {kind} '{source.Name}' {(holds ? "held" : "played")} for {reason}." : $"Character {kind} '{source.Name}' didn't play ({reason}).");
+        if (source.Kind == CharacterActionKind.Gesture && reply.Data.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            reply.Data.TryGetProperty("gesture", out _))
+            // Another held gesture the renderer let go of is no longer on.
+            foreach (var other in Held.Current.Where(h => h.Source.Kind == CharacterActionKind.Gesture && h.Source.Name != heldGesture))
+                Held.Remove(other.Source.Id);
+        if (holds)
         {
             if (Held.Add(source, profile?.ModelPath, DateTimeOffset.Now) is { } dropped)
                 await SendOffAsync(current, dropped.Source, token).ConfigureAwait(false);
         }
         else if (started && source.Kind == CharacterActionKind.Expression) HoldExpression(current, source.Name, finished);
-=======
-        Volatile.Write(ref lastAction, (started
-            ? $"Played the {kind} \"{source.Name}\" for {reason} at {when}."
-            : $"The character couldn't play the {kind} \"{source.Name}\" ({reason}, {when}).") + GestureState(reply.Data));
-        ErrorLog.Info(started ? $"Character {kind} '{source.Name}' played for {reason}." : $"Character {kind} '{source.Name}' didn't play ({reason}).");
->>>>>>> origin/main
         ActionPlayed?.Invoke();
         return started;
     }
 
-<<<<<<< HEAD
     /// <summary>Turns off a lingering emote the character shows because of <paramref name="reason"/> (a reply's <c>{/tag}</c>,
     /// "a try" or a settings change). Returns whether it showed.</summary>
     internal async Task<bool> StopActionAsync(CharacterActionSource source, string reason, CancellationToken token)
@@ -282,7 +282,14 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 }
             if (!keep) Held.Remove(held.Source.Id);
         }
-=======
+    }
+
+    // The gesture the renderer's reply says it holds now, or null.
+    private static string? HeldGestureOf(System.Text.Json.JsonElement reply) =>
+        reply.ValueKind == System.Text.Json.JsonValueKind.Object && reply.TryGetProperty("gesture", out var state) &&
+        state.ValueKind == System.Text.Json.JsonValueKind.Object && state.TryGetProperty("held", out var held) &&
+        held.ValueKind == System.Text.Json.JsonValueKind.String ? held.GetString() : null;
+
     /// <summary>The renderer's reply to a gesture: which gesture now plays once and which is held (" Gestures now: wink
     /// playing, shy held."); empty for other replies.</summary>
     internal static string GestureState(System.Text.Json.JsonElement reply)
@@ -292,7 +299,6 @@ internal sealed partial class AvatarController : IAsyncDisposable
         string Name(string key) => state.TryGetProperty(key, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String &&
             CharacterActions.IsTag(value.GetString()) ? value.GetString()! : "none";
         return $" Gestures now: {Name("playing")} playing, {Name("held")} held.";
->>>>>>> origin/main
     }
 
     private void HoldExpression(IAvatarRenderer target, string name, Task? finished)
