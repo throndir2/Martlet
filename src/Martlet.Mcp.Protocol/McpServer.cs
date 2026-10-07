@@ -840,7 +840,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "to the Thinking model (id, group, title, placeholders) and whether it uses the built-in text, is edited or is emptied " +
             "(sent as nothing), with its character count and estimated tokens (Martlet's own request-size estimate, about a token " +
             "per three UTF-8 bytes), plus the tokens of all prompts together. With id, also returns that one prompt's effective text " +
-            "(the saved edit or the built-in text) exactly as Martlet uses it. Read-only.", new
+            "(the saved edit or the built-in text) exactly as Martlet uses it. shortFirstSentence: Companion > Replies > Short " +
+            "first sentence (on by default) and what closes a spoken and an unspoken reply's instructions with it, exactly as the " +
+            "desktop sends them. Read-only.", new
         {
             dataDirectory = new { type = "string" },
             id = new { type = "string", maxLength = 64 }
@@ -3291,6 +3293,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         if (id is not null && Martlet.Core.Settings.PromptCatalog.Find(id) is null) throw new ArgumentException($"Unknown prompt '{id}'.");
         var loaded = await new Martlet.Core.Settings.SettingsStore(DataDirectory(arguments)).LoadAsync(cancellation);
         var prompts = loaded.Settings?.Prompts;
+        var generation = loaded.Settings?.Generation;
         var state = loaded.State switch
         {
             Martlet.Core.Settings.SettingsLoadState.Loaded => "loaded",
@@ -3314,7 +3317,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             state, problem = loaded.Error?.Summary, total = list.Length,
             edited = list.Count(p => p.state == "edited"), emptied = list.Count(p => p.state == "empty"),
             tokens = list.Sum(p => p.tokens), prompts = list,
-            prompt = id is null ? null : new { id, state = Of(id), text = Martlet.Core.Settings.PromptSettings.Text(prompts, id) }
+            prompt = id is null ? null : new { id, state = Of(id), text = Martlet.Core.Settings.PromptSettings.Text(prompts, id) },
+            // Companion › Replies › Short first sentence (on by default) and what closes a reply's instructions with it, exactly
+            // as the desktop sends it (the production PromptSettings.ReplyClosing): for a spoken reply the short first sentence
+            // prompt, then reply length; for a reply that isn't spoken, reply length alone. The same every time, so caches keep it.
+            shortFirstSentence = new
+            {
+                on = Martlet.Core.Settings.GenerationSettings.StartsShort(generation),
+                chosen = generation?.ShortFirstSentence is not null,
+                prompt = Of(Martlet.Core.Settings.PromptCatalog.ShortFirstSentence),
+                spokenClosing = Martlet.Core.Settings.PromptSettings.ReplyClosing(prompts, generation, true, Martlet.Conversation.StayQuiet.Marker),
+                unspokenClosing = Martlet.Core.Settings.PromptSettings.ReplyClosing(prompts, generation, false, Martlet.Conversation.StayQuiet.Marker)
+            }
         };
     }
 

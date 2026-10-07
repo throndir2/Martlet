@@ -20,6 +20,7 @@ public static class PromptCatalog
     public const string StyleDistracted = "style_distracted";
     public const string StylePlayfulTeasing = "style_playful_teasing";
     public const string ReplyLength = "reply_length";
+    public const string ShortFirstSentence = "short_first_sentence";
     public const string Listening = "listening";
     public const string PcAudio = "pc_audio";
     public const string DiscordCall = "discord_call";
@@ -210,6 +211,11 @@ public static class PromptCatalog
         "second paragraph, and no closing offers such as \"let me know if you need anything\". Go longer only when the user " +
         "explicitly asks for detail, steps or a list, and even then keep it as short as you can. Always finish your last sentence.";
 
+    public const string DefaultShortFirstSentenceInstructions =
+        "When you answer aloud, begin with a short first sentence of two to five words that fits what you'll say, such as " +
+        "\"Oh, nice one!\" or \"Hmm, good question.\", then go on in the next sentence. Vary how you begin. When you stay quiet, " +
+        "write only [{silent}].";
+
     public const string DefaultMemoryCaptureInstructions =
         "You keep Martlet's long-term memory of the user, saved on the user's own PC. Read the latest exchange (earlier lines are " +
         "context only) and decide whether it tells you something worth remembering for future conversations: lasting facts the user " +
@@ -303,6 +309,12 @@ public static class PromptCatalog
         new(ReplyLength, ConversationGroup, "Reply length",
             "Closes the instructions of every reply to what you typed or said, after persona and the other instructions.",
             DefaultReplyLengthInstructions, []),
+        new(ShortFirstSentence, ConversationGroup, "Short first sentence",
+            "Added to every spoken reply just before Reply length while Companion › Replies › Short first sentence is on (the " +
+            "default). Martlet's voice says the first sentence as soon as it is written, so a short one lets it start talking " +
+            "sooner. It is the same from reply to reply, so the model's prompt cache keeps it. {silent} is the word the model " +
+            "answers to stay quiet.",
+            DefaultShortFirstSentenceInstructions, ["silent"]),
         new(Listening, ConversationGroup, "Always listening",
             "Added to replies to something the microphone heard. {silent} is the word the model answers to stay quiet.",
             "You hear the user through an always-on microphone: whatever is said near it is transcribed and sent to you, without " +
@@ -758,6 +770,19 @@ public sealed partial record PromptSettings : IContract
         if (values.Length == 0) return text;
         return Placeholder().Replace(text, match =>
             values.FirstOrDefault(v => v.Name == match.Groups[1].Value) is { Name: not null } found ? found.Value : match.Value);
+    }
+
+    /// <summary>What closes the instructions of a reply to what the user typed or said, the same text every time, so the start
+    /// of every request stays the same and prompt caches keep it: the Short first sentence prompt when the reply is
+    /// <paramref name="spoken"/> and Companion › Replies › Short first sentence is on (<see cref="GenerationSettings.StartsShort"/>),
+    /// then the Reply length prompt last, where models weigh it most. Null when neither is sent. <paramref name="silent"/> is the
+    /// word the model answers to stay quiet.</summary>
+    public static string? ReplyClosing(PromptSettings? settings, GenerationSettings? generation, bool spoken, string silent)
+    {
+        var first = spoken && GenerationSettings.StartsShort(generation)
+            ? Fill(settings, PromptCatalog.ShortFirstSentence, ("silent", silent)) : null;
+        var length = Fill(settings, PromptCatalog.ReplyLength);
+        return first is null ? length : length is null ? first : first + "\n\n" + length;
     }
 
     [System.Text.RegularExpressions.GeneratedRegex(@"\{([a-z_]+)\}", System.Text.RegularExpressions.RegexOptions.CultureInvariant)]

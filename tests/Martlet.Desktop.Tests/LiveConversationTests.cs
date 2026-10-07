@@ -1145,6 +1145,43 @@ public sealed class LiveConversationTests
     }
 
     [Fact]
+    public async Task SpokenRepliesCloseTheirInstructionsWithAShortFirstSentenceTheSameWayEveryTurn()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var shortFirst = PromptSettings.Fill(null, PromptCatalog.ShortFirstSentence, ("silent", LiveConversationConfiguration.SilentReply))!;
+        string Instructions()
+        {
+            using var body = JsonDocument.Parse(fixture.Llm.Body);
+            return body.RootElement.GetProperty("instructions").GetString()!;
+        }
+
+        // Two spoken replies in a row: the short first sentence prompt sits just before reply length, which still closes the
+        // instructions, and the instructions are the same both times, so the model's prompt cache keeps them.
+        await fixture.Finish(fixture.Start("Hi there.", voice: true));
+        var first = Instructions();
+        Assert.EndsWith(shortFirst + "\n\n" + LiveConversationConfiguration.ReplyLengthInstructions, first);
+        Assert.Equal(1, first.Split(shortFirst).Length - 1);
+        await fixture.Finish(fixture.Start("And how are you?", voice: true));
+        Assert.Equal(first, Instructions());
+        using (var second = JsonDocument.Parse(fixture.Llm.Body))
+            Assert.Contains("Hi there.", second.RootElement.GetProperty("input").GetRawText());
+
+        // A reply that isn't spoken never gets it.
+        await fixture.Finish(fixture.Start("Typed only."));
+        Assert.DoesNotContain(shortFirst, Instructions());
+        Assert.EndsWith(LiveConversationConfiguration.ReplyLengthInstructions, Instructions());
+
+        // Companion › Replies › Short first sentence Off: spoken replies close with reply length alone.
+        var loaded = await fixture.Store.LoadAsync();
+        await fixture.Save(loaded.Settings! with { Generation = new() { ShortFirstSentence = false } });
+        await fixture.Finish(fixture.Start("Hi again.", voice: true));
+        Assert.DoesNotContain(shortFirst, Instructions());
+        Assert.EndsWith(LiveConversationConfiguration.ReplyLengthInstructions, Instructions());
+        Assert.Contains("Spoken replies don't start with a short first sentence.", MainWindow.DescribeGeneration(new() { ShortFirstSentence = false }));
+        Assert.Contains("Spoken replies start with a short first sentence.", MainWindow.DescribeGeneration(null));
+    }
+
+    [Fact]
     public async Task PersonaChangeDuringAuthorizationRevokesBeforeProviderDisclosure()
     {
         await using var fixture = await LiveFixture.Create();

@@ -121,6 +121,11 @@ internal sealed class LiveConversationConfiguration
     /// <summary>The saved reply length prompt, or null when the user emptied it.</summary>
     internal string? ReplyLength => PromptSettings.Fill(Prompts, PromptCatalog.ReplyLength);
 
+    /// <summary>What closes a reply's instructions: the short first sentence prompt for a <paramref name="spoken"/> reply while
+    /// Companion › Replies › Short first sentence is on, then the reply length prompt. The same text every time, so prompt
+    /// caches keep it (<see cref="PromptSettings.ReplyClosing"/>).</summary>
+    internal string? ReplyClosing(bool spoken) => PromptSettings.ReplyClosing(Prompts, Generation, spoken, SilentReply);
+
     private LiveConversationConfiguration(AppSettings settings, string revision, ModelLimits? limits, ModelAbilities? abilities)
     {
         Profile = settings.Profile.Id;
