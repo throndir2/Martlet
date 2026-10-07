@@ -23,7 +23,7 @@ public static class WorkSharingJobs
         Speaking => "Speaking",
         Thinking => "Thinking",
         Listening => "Listening",
-        DeepThinking => "Deep thinking",
+        DeepThinking => "Thinking pool",
         _ => job
     };
 }

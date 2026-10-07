@@ -181,7 +181,7 @@ what it prints go to the Thinking model.
 
 ### Thinking longer
 
-**Companion > Deep thinking > Thinking longer** (on by default; *Where it thinks* ›
+**Companion > Thinking pool > Thinking longer** (on by default; *Where it thinks* ›
 *Off* turns it off) gives every reply on a route that does function calling
 Martlet's own `think_longer` (`task`, the complete instruction, and an optional
 `reason`) and `cancel_thinking` (optional `id`), while Deep thinking can run where
@@ -194,6 +194,31 @@ provider, chosen on each PC), and brought up when it's done
 The Tools page's *Recent tool use* lists each call (`Martlet > think_longer:
 started think-1`); the desktop log notes each start, fit check and end without the
 task or result (`{"name":"logs_tail","arguments":{"contains":"Background"}}`).
+
+### Thinking pool
+
+**Companion > Thinking pool** is one shared set of Thinking models for
+background work ([The Thinking pool](CONVERSATION.md#the-thinking-pool)).
+`thinking_pool_status` (`dataDirectory`) reads `thinking-pool.json` (or what
+Martlet would make from the older `deep-thinking.json`, without writing it):
+each member with its slots, whether it sees pictures or hears recordings and
+whether it can run; *Use the conversation model when the pool is empty*; the
+usable slots and whether one stays free for fast jobs; each job kind's
+priority, whether it is fast and whether a member can run it (`canRun`);
+guidance and likely-slowdown warnings; and the desktop's
+`thinking-pool-status.json` (running and waiting jobs by kind, never a job's
+text). `thinking_pool_check` rehearses the production job board with simulated
+members (NOT models): no member, capabilities, the fast slot, priorities, retry
+on another member, a stale job dropped and the migration. On the desktop the
+card reads through `ThinkingPoolSummary`, `ThinkingPoolGuidance`,
+`ThinkingPoolWarnings` and `ThinkingPoolMember-<n>`; the
+`ThinkingPoolUseConversationModel` box, `ThinkingPoolSlots-<n>`,
+`ThinkingPoolRemove-<n>` and `DeepThinkingPool-<host>` (*Join the Thinking
+pool*) save `thinking-pool.json`, so they need `--allow-ui-effects`.
+
+```powershell
+.\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"thinking_pool_check"},{"name":"thinking_pool_status"}]'
+```
 
 ### Searching past conversations
 
@@ -1125,27 +1150,46 @@ bound to `probe`, a simulated renderer zones probe of Live2D `drawables` and
 VRM `bones` in page fractions, with `crop`, `"left,top,width,height"` where
 the snapshot sat on the page), `saved` (the model's zones in
 `character-touch-zones.json`: how many, how many are `active`, who found them,
-whether a snapshot is kept, and each zone's parts, `plays` and `tells`) and,
+whether a snapshot is kept, and each zone's parts, `plays`, whether Martlet `notices` it and the owner's `hint`) and,
 with `touch` (a `CharacterTouch` object as JSON), `match`: the zone it lands
 in, `how` (`drawable`, `bone`, `hair`, `box` or `coarse`), its rough `coarse`
-zone, what it `plays`, what it `tells` the character and how long it `rests`.
+zone, what it `plays`, whether Martlet `notices` it, the line the Thinking model would get for that one touch (`noticed`, such as *They patted the top of your head once.*; a press of 600 ms or more in `heldMilliseconds` is a hold) and how long it `rests`.
 The model is `modelPath`, `modelId` or the one the `dataDirectory`'s
 `avatar.json` shows. `save` (an explicit, disposable `dataDirectory` only)
 writes the parsed zones as *Detect zones* would, with `snapshotPath` (a PNG)
 as their picture and `includeIntimate` setting the switch, so the section can
-be checked with `-Desktop`. Never the model's path; it contacts nothing.
+be checked with `-Desktop`. With `temperament` (a simulated Thinking answer
+for [Touch temperament](AVATARS.md#touch-temperament), such as
+`{"groups":{"head":{"attitude":2,"reactions":["hearts","blush"]}}}`) or
+`personaId` (the temperament saved for that persona in the `dataDirectory`'s
+`character-temperaments.json`), `match` plays what the temperament decides
+when the zone has no pick of its own, and its `reaction` tells `from`
+(`owner`, `temperament` or `default`), the `attitude` word, whether it
+`escalated` (with `repeats`, the touches in a row) and how long it `linger`s.
+`temperament` in the result shows the request Thinking gets (with
+`personality`, its text), the `vocabulary` and `attitudes` allowed, whether the
+answer was `read`, and what is `used` (who decided it, a `summary`, each group
+and zone and the escalation). Never the model's path; it contacts nothing.
 
 The section's status fields are `TouchZonesStatus` (how many zones, how many in
 use and who found them, or that none are found yet), `TouchZonesVision`
 (whether the Thinking model can see and where pictures go), `TouchZonesDetection`
 (how *Detect zones* went), `TouchZonesLast` (the zone the last click landed in,
-how it was found and what it played or that it was resting),
+how it was found and what it played or that it was resting, and whether Martlet
+noticed it), `TouchZonesNoticed` (what Martlet noticed that waits for a reply,
+the plain touch line, and when a touch-only reply starts, or that it waits for
+your next message because you started talking or typing or Martlet can't reply
+now), `TouchZonesNoticedLast` (which reply took the last touches, the short
+history line and exactly what the Thinking model was told),
+`CharacterPhysicalLast` (the last stroke across the locked character: zones
+crossed, pace, passes, seconds and samples on the character; or the last move,
+zoom, pan, lock, hide or show as Martlet's touch ledger heard it),
 `TouchZonesSaveState` and each zone's `TouchZoneState-<n>` (its ID, the parts
 it follows and its default reaction). `TouchZonesDetect` sends the character's
 picture to Thinking, `TouchZoneTry-<n>` plays on the character, and
 `TouchZonesIntimate`, `TouchZonesAdd`/`TouchZonesAddKind` and each zone's
 `TouchZoneOn-`, `TouchZoneName-`, `TouchZoneReaction-`, `TouchZoneReaction2-`,
-`TouchZoneTell-`, `TouchZoneNarration-`, `TouchZoneCooldown-`, `TouchZoneBox-`,
+`TouchZoneNotices-` (*Martlet notices*; its checked state reads in `ui_snapshot`), `TouchZoneNarration-` (the owner's optional hint), `TouchZoneCooldown-`, `TouchZoneBox-`,
 `TouchZoneDelete-` and its box on the picture (`TouchZoneRect-<n>`, inside
 `TouchZonesPicture`) save, so they all need `--allow-ui-effects`. Setting
 `MARTLET_TOUCH_ZONES_FIXTURE` to a text file before launching the desktop makes
@@ -1153,6 +1197,28 @@ picture to Thinking, `TouchZoneTry-<n>` plays on the character, and
 shown in `TouchZonesDetection`) after taking the real snapshot and probing the
 showing model's drawables or bones, so the whole detection runs with no
 vision request.
+
+Touch temperament (below Touch zones) reads through `TouchTemperamentStatus`
+(for which persona and who decided it: built-in reactions, the Thinking model,
+`FIXTURE - NOT AI` or your own choices), `TouchTemperamentSummary` (the
+attitude per group and zone, such as *head loves, torso dislikes, ...*, and
+after how many touches it escalates), `TouchTemperamentDecision` (how deciding
+went, or that a personality change left your own choices in place),
+`TouchTemperamentSaveState` and each line's `TouchTemperamentAttitude-<group
+or zone ID>` (an attitude word or *(built-in reaction)*). `TouchZonesLast` and
+`TouchZoneState-<n>` also name the attitude and whether the reaction came from
+the temperament. `TouchTemperamentDecide` sends the personality to Thinking,
+and `TouchTemperamentReset`, `TouchTemperamentAttitude-`,
+`TouchTemperamentReaction-`, `TouchTemperamentReaction2-`,
+`TouchTemperamentLinger-`, `TouchTemperamentAfter`, `TouchTemperamentAddKind`,
+`TouchTemperamentAdd` and `TouchTemperamentRemove-` save, so they all need
+`--allow-ui-effects`. Setting `MARTLET_TOUCH_TEMPERAMENT_FIXTURE` to a text
+file before launching the desktop makes deciding read that file (read again
+each time) as the Thinking model's answer (FIXTURE - NOT AI, shown in
+`TouchTemperamentStatus` and `TouchTemperamentDecision`, and saved with the
+source `fixture`). Saving a changed personality (`OpenCompanion`,
+`CompanionText`, `CompanionClose`) then runs the real decide, store and route
+path with no model.
 
 `character_gaze` shows [where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks)
 (Companion › Vision › Where the character looks): `saved` (`mouse`, the
@@ -2109,7 +2175,15 @@ line saying *The voice paused N times for X ms in all, waiting for its next
 audio.* with at least one pause per piece of about the gap each. Before the
 playback fix, a pause that long ended the voice after 1 s
 (`PlaybackFailed`, `StreamTruncated`): a paired host making speech slower than
-real time cut each reply short. It reads no
+real time cut each reply short. With `paused`, the reply pauses once its first
+audio has played (`ConversationTurn.Pause`, as *Pause and decide* does when you
+talk over it), stays paused for 1 s and plays on (`Resume`): `ok` also needs
+`voice.hold` to show no samples played while paused (`SamplesBefore` equals
+`SamplesAfter`), the next piece made by the end of the pause (`MadeAfter` at
+least 2: synthesis runs one piece ahead of playback and goes on while paused),
+every piece said once (nothing made again), `timings` with one
+pause and one resume, and the latency line ending *, paused N ms when you
+talked over it, then resumed*. It reads no
 credentials and nothing leaves loopback. A real
 paired host's voice failing is NOT reproduced; the talk window then notes
 *The voice failed, so this wasn't spoken.* or *The voice stopped partway, so
@@ -2334,11 +2408,15 @@ audio from the reply's start), `firstAudio` (from the moment that counts for
 you), `firstWordsFromReplyStart` and `firstAudioFromReplyStart` (each `{Count,
 Median, P90, Min, Max}` in ms), `steps` (the same for every step),
 `slowestSteps` (the five with the largest median), `voicePauses` (`replies`
-whose voice paused, `pauses` in all and `pausedMs` statistics) and `newest` (each reply's
+whose voice paused, `pauses` in all and `pausedMs` statistics), `pausedForYou`
+(replies paused because you talked over them with *When you talk over Martlet*
+on *Pause and decide*: `replies`, how many `resumed` and `stopped`, and
+`pausedMs` statistics, read from *, paused N ms when you talked over it, then
+resumed* or *, paused N ms, then stopped when you talked over it*) and `newest` (each reply's
 `at`, `measured`, `totalMs`, `from`, `steps`, `firstWordsMs`, `firstAudioMs`,
 `spokenPieces`, `firstPieceSpeechSeconds`, `firstPieceMadeMs`, `voicePauses`,
 `voicePausedMs`, `models`,
-`interrupted`, `legacy`). It only reads the log: no audio, network or provider
+`interrupted`, `restarted`, `pausedForYouMs`, `resumed`, `legacy`). It only reads the log: no audio, network or provider
 request.
 
 `context_check` shows the Thinking model's [context](CONVERSATION.md) as
@@ -2819,6 +2897,34 @@ needs every expectation met: words kept, non-words and noise dropped, stop
 words and the question stopping Martlet, backchannels and non-words never.
 Nothing is recorded or played and nothing leaves this PC; without Parakeet,
 `audio.ran` is false with the reason.
+
+`barge_in_check` checks [pause and decide](CONVERSATION.md#voice-latency-streaming-overlap-and-barge-in)
+(Companion › Listening › **When you talk over Martlet**; optional absolute
+`dataDirectory`, default the current user's). It simulates words said over a
+reply and returns the production verdict (`BargeInJudging.RuleAsync` with
+`RulesBargeInJudge`) for `samples` (up to 64 of `heard`, with optional
+`sentence` (what Martlet is saying), `recentReply`, `voicedMs` (default 900)
+and `expectVerdict` `interrupt` or `notForMe`), by default a fixed set: a stop
+word and Martlet's name (a clear cue, never judged), "Yeah.", agreeing,
+laughing along and Martlet's own sentence heard back (not for Martlet), and a
+question and a new request (for Martlet). Each sample returns `verdict`,
+`reason`, `source` (`Cue` or `Judge`), `judge`, `judgeMs`,
+`quickCheckInterrupts`, `cue` and `action` with the saved choice (*keeps
+playing*, *stops at once*, *pauses, then stops* or *pauses, then plays on*).
+`deadlines` runs a fixture model judge (NOT AI) slower than the deadline
+(`judgeDelayMs`, default 1000; `deadlineMs`, default 400): the local rules
+must decide (`source` `Timeout`) within about the deadline; a judge in time
+must be used (`source` `Judge`). `holds` runs `BargeInHold` frame by frame on
+a simulated clock: quiet after a not-for-Martlet verdict plays on, talking on
+past 1.5 s stops, an interrupt verdict stops, and no verdict plays on at the
+pause's 4 s limit; each with `outcome`, `why`, `source`, `pausedMs` and
+`voiceMs`. It returns `behavior` (`PauseAndDecide` or `StopAtOnce`) with
+`behaviorSource`, `bargeIn`, `wordCheck`, `timings` (`deadlineMs`,
+`keepTalkingLimitMs`, `quietToResumeMs`, `maximumPauseMs`,
+`voiceBeforeCheckMs`, `resumeFadeMs`) and `ok` when every expectation held.
+Nothing is recorded or played and nothing leaves this PC. `spoken_reply_check`
+`paused` rehearses the pause and resume through the production runtime; the
+talk window's `LiveBargeIn` shows the last real decision.
 
 `discord_call_check` checks [Martlet in your own Discord calls](DISCORD.md#martlet-in-your-own-calls)
 (Companion › Discord › **Martlet in your Discord calls**; optional absolute
@@ -3649,8 +3755,71 @@ which needs `--allow-ui-effects`, waits for the hit test and returns it as
 `last`: `n` (the tap's number), `x`, `y`, `hit`, `zone` (`head`, `hair`,
 `face`, `body`, `arm`, `hand`, `leg` or `foot`; null on a miss), `hitAreas`,
 `drawables`, `bone`, `node`, `hair`, `mesh` and `material` (model-authored
-names only, never paths). Without `x` and `y` it only reads the last tap, as
+names only, never paths) and `held` (how long the press lasted, in ms). `holdMs` presses
+that long (`"x,y,ms"` as `MoveAvatar`'s value; 600 or more is a hold), `repeat`
+taps the same point up to 20 times `gapMs` apart, and `taps`
+(`[{x, y, holdMs}]`, up to 20) taps a sequence of points, each after the hit
+test of the one before. With Companion › Character › Touch zones showing,
+`noticed` reads what Martlet noticed after `settleMs`: `waiting`
+(`TouchZonesNoticed`), `last` (`TouchZonesNoticedLast`) and `zone`
+(`TouchZonesLast`). Without `x`, `y` or `taps` it only reads the last tap, as
 does `MoveAvatar`'s `value` in `ui_snapshot`.
+
+**Touches reach the Thinking model** for zones with *Martlet notices* on: a
+reply to what you say or type carries the touch line in its notes (the desktop
+log's *Touches: 3 went to Thinking in the notes of your message.*), and touches
+on their own start a short reply of their own (*... as a short reply of their
+own.*; the talk window's `LiveTurnInputs` reads *Last reply took 2 touches.*).
+Without a Thinking setup `TouchZonesNoticed` says the touches wait for your next
+message.
+
+**Stroking the character**: while the character's position is locked, a left
+press that drags beyond Windows' drag distance can't move it, so it strokes
+the character. The overlay samples the path every 40 ms (at most 400
+samples), hit-tests the samples in batches with one `touches` message to the
+renderer page, and sends them to Martlet as `stroke` messages on the request
+pipe (`move` batches while the stroke goes on, then `end`). Martlet matches
+each sample to a touch zone: each zone the stroke enters plays its reaction
+(unless it is resting), and the first zone's first emote or gesture is held
+until the stroke ends. At the end Martlet summarizes the stroke (zones crossed
+in order, pace `slow`, `steady` or `quick`, passes back and forth, seconds)
+and, for the crossed zones with *Martlet notices* on (like a tap there),
+records it in the touch ledger once for each pass (at most 8), so the next
+reply hears *They slowly stroked your hair 4 times*; a stroke, like a tap, can
+start a touch-only reply. Ctrl+drag or middle-drag still pans a zoomed view,
+and an unlocked drag still moves the character. `character_stroke` strokes it
+through UI Automation (`MoveAvatar`'s value, `"stroke:ms;x,y;x,y;..."`) along
+`points` (`[[x, y], ...]`, 2 to 200, fractions of the overlay's drawing), one
+every `stepMs` (default 40), which needs `--allow-ui-effects` and a locked
+position, waits for the stroke to end and returns the overlay's reading as
+`last`: the last tap's fields plus `stroke` (`n`, `samples`, `hits`, `ms` and
+the coarse `zones` crossed) and `physical`. Without `points` it only reads.
+Companion › Character › Touch zones' `CharacterPhysicalLast` shows Martlet's
+summary.
+
+**Moves, zooms and other changes Martlet hears about**: the overlay notes each
+drag, arrow-key nudge, `ui_move`, zoom (wheel, menu, keys or Martlet's zoom
+buttons), reset zoom, pan of a zoomed view and Reset position, and once it has
+settled for 0.8 seconds sends one `physical` message (`moved`, `home`,
+`zoomed`, `zoom_reset` or `panned`, with how far and which way it moved, the
+monitors before and after, the character's size before and after, and the
+renderer page's hit test of what a zoom closed in on or a pan centers on).
+Martlet records it in the touch ledger with Locked, Unlocked, Hidden and Shown
+(from its own buttons and the overlay menu): *They moved you to their other
+monitor*, *They zoomed in on your face*. These never start a reply on their
+own; they go with the next one. `MoveAvatar`'s value carries the last one as
+`physical` (`kind`, `dx`, `dy`, `from`, `to`, `zoomFrom`, `zoomTo`, `focus`),
+and `CharacterPhysicalLast` shows the ledger's words. The camera view's own
+framing is not reported.
+
+`character_physical_check` runs the same summary and wording headless, with no
+desktop and no model request: `stroke` (a JSON `CharacterStroke` with its
+hit-tested samples) is summarized against the touch zones saved for `modelId`
+(or the rough zones before any were found), `changes` (a JSON array of
+`RendererPhysical`) are worded, and both go into a touch ledger. It returns the
+stroke's zones, pace and passes, each change's ledger kind and words, the plain
+`line` the next reply would carry, the `history` line and `startsTurn`.
+`noticeAll` (default true) treats every zone as having *Martlet notices* on.
 
 **Locking the character's position**: Home's `ToggleCharacterLock`
 (*Lock character position*, shown while the character shows or is locked),
@@ -4366,12 +4535,29 @@ and off by default, that Martlet keeps listening while it speaks either way
 Martlet takes: real words, a word like "stop" or "wait" right away, never a hum,
 a cough, laughter, a quick "yeah" or what this PC plays, checked while you talk
 with Parakeet on this PC and otherwise once you pause; `utterance_filter_check`
-rehearses it with Parakeet and `echo_check`'s `talkOver` the voice gate). In the
+rehearses it with Parakeet and `echo_check`'s `talkOver` the voice gate), then
+`TalkBargeInBehavior` (*When you talk over Martlet*: *Pause and decide
+(recommended)*, the default, or *Stop at once*; choosing one with `ui_select`
+saves `talk-preferences.json`, so it needs `--allow-ui-effects`) and
+`TalkBargeInBehaviorAbout` (returned: that a clear word or Martlet's name still
+stops at once, other words pause Martlet at once and it decides, words for it
+stop the reply, a backchannel, agreeing, laughing, side talk or a TV leave it
+playing on from where it paused, and talking on stops it; `barge_in_check`
+returns the verdicts). In the
+talk window, `LiveBargeIn` (shown once you talked over Martlet with barge-in on)
+says what happened the last time, never the words: *Talked over at 14:02:11:
+paused 430 ms, then resumed (not for Martlet: agreeing or laughing along; rules
+judge, 1 ms).* or *... stopped at once (for Martlet: a stop word; a clear
+cue).* In the
 talk window, what always listening ignored shows in `LiveHistory` as a faded
 note (*Ignored "Mmm" (not words).*), and the desktop log (`logs_tail`) has
 *Always listening ignored what it heard: ...*, *Always listening heard you
-while Martlet spoke; ...* (said while a reply played, without barge-in) and *Barge-in: Martlet stopped its
-reply N ms after you started talking over it (...)*, never the words. Each
+while Martlet spoke; ...* (said while a reply played, without barge-in), *Barge-in: Martlet paused its
+reply N ms after you started talking over it (...); the rules judge decides
+...*, *Barge-in: Martlet resumed its reply after a N ms pause: what you said
+wasn't for it (...)* and *Barge-in: Martlet stopped its
+reply N ms after you started talking over it (...; paused N ms first, then the
+rules judge (N ms) said it was for Martlet; ...)*, never the words. Each
 message in `LiveHistory` has an automation ID for whose it is, never its words:
 `LiveMessage-You`, `LiveMessage-Martlet`, `LiveMessage-Note` or
 `LiveMessage-PcAudio`; so `ui_snapshot` shows, for example, that something
@@ -4711,7 +4897,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check` and `discord_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_theme`, `singing_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

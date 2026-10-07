@@ -25,7 +25,7 @@ namespace Martlet.Desktop;
 public partial class MainWindow
 {
     private const string CharacterKey = "character", TalkKey = "talk", SpeechDisplayKey = "speech-display", AppearanceKey = "appearance",
-        CharacterActionsKey = "character-actions", VoiceRecognitionKey = "voice-recognition", VoiceIdKey = "voice-id",
+        CharacterActionsKey = "character-actions", TouchTemperamentKey = "touch-temperament", VoiceRecognitionKey = "voice-recognition", VoiceIdKey = "voice-id",
         SmartHomeKey = "smart-home", UpdatesKey = "updates", ModelAbilitiesKey = "model-abilities";
     private static readonly JsonSerializerOptions SharedJson = new()
     {
@@ -139,6 +139,7 @@ public partial class MainWindow
         SpeechDisplayKey => "speech bubbles and subtitles",
         AppearanceKey => "the theme",
         CharacterActionsKey => "emotes and motions",
+        TouchTemperamentKey => "touch temperaments",
         VoiceRecognitionKey => "recognizing voices",
         VoiceIdKey => "Voice ID",
         SmartHomeKey => "what Martlet may do with Home Assistant",
@@ -296,7 +297,7 @@ public partial class MainWindow
         {
             var prefs = Talk;
             var value = new SharedTalk(prefs.HandsFree, prefs.PauseIndex, prefs.SpeakReplies, prefs.HearVoice == true, prefs.BargeIn, prefs.ScreenChattiness,
-                prefs.WordCheck, prefs.TranscribeFirst, prefs.HearVoice, SharedTalk.ThreeWayHearing);
+                prefs.WordCheck, prefs.TranscribeFirst, prefs.HearVoice, SharedTalk.ThreeWayHearing, prefs.BargeInStyle);
             var path = Path.Combine(directory, "talk-preferences.json");
             return Task.FromResult<SharedLocal?>(new(JsonSerializer.Serialize(value, SharedJson), null, !File.Exists(path), FileTime(path)));
         }, (setting, _) =>
@@ -308,7 +309,8 @@ public partial class MainWindow
                 SpeakReplies = value.SpeakReplies, HearVoice = value.Hearing, BargeIn = value.BargeIn,
                 ScreenChattiness = (int)ChattinessTags.Choice(value.ScreenChattiness),
                 WordCheck = Enum.IsDefined(value.WordCheck) ? value.WordCheck : ListeningSensitivity.Normal,
-                TranscribeFirst = value.TranscribeFirst
+                TranscribeFirst = value.TranscribeFirst,
+                BargeInStyle = Enum.IsDefined(value.BargeInStyle) ? value.BargeInStyle : Martlet.Conversation.BargeInBehavior.PauseAndDecide
             });
             return Task.FromResult(SharedApply.Done);
         });
@@ -351,6 +353,18 @@ public partial class MainWindow
             await CharacterActions.ReplaceAllAsync(directory, setting.Value, token);
             if (characterActions.Current is not null)
                 await characterActions.LoadAsync(avatar.IsShowing ? avatar.InspectedProfile : homeAvatar, force: true, token);
+            return SharedApply.Done;
+        });
+        // Each persona's touch temperament travels with the personas, so every computer's character reacts to touch the same way.
+        yield return new DelegateSection(TouchTemperamentKey, "Touch temperament", _ =>
+        {
+            var path = CharacterTouchTemperaments.Path(directory);
+            return Task.FromResult<SharedLocal?>(new(CharacterTouchTemperaments.Share(directory), null, !CharacterTouchTemperaments.HasAny(directory), FileTime(path)));
+        }, async (setting, token) =>
+        {
+            if (characterTemperaments.Busy) return SharedApply.Waiting("The Thinking model is deciding a touch temperament on this PC.");
+            await CharacterTouchTemperaments.ReplaceAllAsync(directory, setting.Value, token);
+            characterTemperaments.Reload();
             return SharedApply.Done;
         });
         yield return new DelegateSection(VoiceRecognitionKey, "Recognizing voices", _ =>
@@ -466,11 +480,13 @@ public partial class MainWindow
     private sealed record SharedUpdates(bool Checks, int IntervalMinutes, bool AutoInstall, bool AutoUpdateHosts);
 
     // TranscribeFirst: Companion › Listening › When Thinking can hear you (an older computer leaves it out: straight, the default).
+    // BargeInStyle: Companion › Listening › When you talk over Martlet (an older computer leaves it out: pause and decide).
     // HearVoice is what an older computer reads (on only when chosen); HearChoice is Let Thinking hear my voice as chosen (null:
     // never chosen, on only while the recording stays on that computer), sent with HearVersion so a copy from an older computer,
     // whose off was only its default, leaves it unchosen.
     private sealed record SharedTalk(bool HandsFree, int PauseIndex, bool SpeakReplies, bool HearVoice, bool BargeIn, int ScreenChattiness,
-        ListeningSensitivity WordCheck = ListeningSensitivity.Normal, bool TranscribeFirst = false, bool? HearChoice = null, int HearVersion = 0)
+        ListeningSensitivity WordCheck = ListeningSensitivity.Normal, bool TranscribeFirst = false, bool? HearChoice = null, int HearVersion = 0,
+        Martlet.Conversation.BargeInBehavior BargeInStyle = Martlet.Conversation.BargeInBehavior.PauseAndDecide)
     {
         internal const int ThreeWayHearing = 1;
         internal bool? Hearing => HearVersion >= ThreeWayHearing ? HearChoice : HearVoice ? true : null;

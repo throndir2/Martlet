@@ -21,6 +21,11 @@ internal interface IAvatarRenderer : IAsyncDisposable
     /// <summary>The character was tapped and the renderer found it there (<see cref="CharacterTouch"/>), raised off the UI
     /// thread.</summary>
     event Action<CharacterTouch>? Touched { add { } remove { } }
+    /// <summary>A batch of a stroke across the locked character (<see cref="CharacterStroke"/>), raised off the UI thread.</summary>
+    event Action<CharacterStroke>? Stroked { add { } remove { } }
+    /// <summary>The user moved, zoomed or panned the character and it settled (<see cref="RendererPhysical"/>), raised off the
+    /// UI thread.</summary>
+    event Action<RendererPhysical>? Physical { add { } remove { } }
     /// <summary>Starts the overlay where a saved <paramref name="placement"/> says (locked again if it was), with its menu
     /// offering to mute or unmute Martlet's voice as <paramref name="voiceMuted"/> says.</summary>
     Task StartAsync(AvatarProfile profile, string revision, RendererPlacement? placement, bool voiceMuted, CancellationToken token);
@@ -56,6 +61,8 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
     public Task Exited { get; private set; } = Task.CompletedTask;
     public event Action<string>? Requested;
     public event Action<CharacterTouch>? Touched;
+    public event Action<CharacterStroke>? Stroked;
+    public event Action<RendererPhysical>? Physical;
 
     public int? ProcessId
     {
@@ -165,6 +172,24 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
                     catch (Exception error) when (error is JsonException or InvalidDataException) { }
                     if (touch is { IsValid: true }) { if (!disposed) Touched?.Invoke(touch); }
                     else ErrorLog.Warn("The character renderer sent an unreadable tap; it was ignored.");
+                    continue;
+                }
+                if (message.Activation == Activation && message.Kind == "stroke")
+                {
+                    CharacterStroke? stroke = null;
+                    try { stroke = RendererProtocol.Data<CharacterStroke>(message); }
+                    catch (Exception error) when (error is JsonException or InvalidDataException) { }
+                    if (stroke is { IsValid: true }) { if (!disposed) Stroked?.Invoke(stroke); }
+                    else ErrorLog.Warn("The character renderer sent an unreadable stroke; it was ignored.");
+                    continue;
+                }
+                if (message.Activation == Activation && message.Kind == "physical")
+                {
+                    RendererPhysical? change = null;
+                    try { change = RendererProtocol.Data<RendererPhysical>(message); }
+                    catch (Exception error) when (error is JsonException or InvalidDataException) { }
+                    if (change is { IsValid: true }) { if (!disposed) Physical?.Invoke(change); }
+                    else ErrorLog.Warn("The character renderer sent an unreadable move or zoom; it was ignored.");
                     continue;
                 }
                 var action = message.Activation == Activation && message.Kind == "request"

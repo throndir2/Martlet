@@ -60,6 +60,41 @@ public sealed class PcSoundDigestTests
     }
 
     [Fact]
+    public async Task A_pool_member_that_hears_gets_a_digest_job_with_the_clip_and_the_prompt()
+    {
+        var text = new Martlet.Conversation.BackgroundPlace("host:text", "text-box") { Model = "qwen3" };
+        var ears = new Martlet.Conversation.BackgroundPlace("this-pc", "this PC")
+        {
+            Model = "gemma4:e4b",
+            Can = Martlet.Conversation.ThinkingCapability.Text | Martlet.Conversation.ThinkingCapability.Audio
+        };
+        Martlet.Conversation.ThinkingJob? seen = null;
+        IReadOnlyList<Martlet.Conversation.BackgroundPlace> members = [text];
+        var pool = new ThinkingPool(new Martlet.Conversation.ThinkingJobBoard(new Martlet.Conversation.BackgroundPlaces(), () => members,
+            (member, job, _) =>
+            {
+                seen = job;
+                return Task.FromResult(Martlet.Conversation.ThinkingAnswer.Done("Upbeat J-pop with singing; crowd laughing"));
+            }));
+        Assert.Null(PoolSoundJudge.For(pool));
+        Assert.Null(PoolSoundJudge.For(null));
+        members = [text, ears];
+        var judge = PoolSoundJudge.For(pool)!;
+        Assert.Equal("gemma4:e4b on this PC", judge.Name);
+        Assert.Equal(SoundJudgeKind.Pool, judge.Kind);
+        var clip = new float[3 * PcSoundBuffer.SampleRate];
+        for (var i = 0; i < clip.Length; i++) clip[i] = (float)(0.2 * Math.Sin(i * 0.1));
+        Assert.Equal("Upbeat J-pop with singing; crowd laughing", await judge.DescribeAsync(clip, CancellationToken.None));
+        Assert.NotNull(seen);
+        Assert.Equal(Martlet.Conversation.ThinkingJobKind.Digest, seen!.Kind);
+        Assert.Equal(SoundDigest.Prompt, seen.Text);
+        Assert.True(seen.DropWhenStale);
+        Assert.False(seen.Reasoning);
+        Assert.Equal(PcSoundBuffer.SampleRate, seen.Audio!.Format.SampleRate);
+        Assert.Equal(TimeSpan.FromSeconds(3), seen.Audio.Duration);
+    }
+
+    [Fact]
     public async Task The_digest_posts_its_line_to_the_board_and_keeps_no_line_or_sound_on_disk()
     {
         var directory = Directory.CreateTempSubdirectory("martlet-sound-digest-").FullName;

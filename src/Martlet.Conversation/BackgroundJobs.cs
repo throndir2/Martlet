@@ -30,6 +30,12 @@ public sealed record BackgroundJobKind(string Name, int MaxActive, int? MaxPerHo
             "A background job kind allows 1-8 at once, 1-60 an hour (or no hourly limit) and at most 30 minutes each (or no time limit).");
         ContractRules.Require(Doing is { Length: > 0 and <= 40 }, "What a running job is called must be 1-40 characters.");
     }
+
+    /// <summary>The Thinking pool job kind of work started on a pool of places: its priority in line and whether it leaves the
+    /// pool's last free slot for fast jobs (<see cref="ThinkingDemand"/>). Null: no Thinking pool rules.</summary>
+    public ThinkingJobKind? PoolKind { get; init; }
+
+    internal ThinkingDemand? Demand(IReadOnlyList<BackgroundPlace> pool) => PoolKind is { } kind ? ThinkingDemand.For(kind, pool) : null;
 }
 
 /// <summary>What a job produced: its <paramref name="Result"/> for the conversation (the text the model gets back), or the
@@ -329,8 +335,9 @@ public sealed class BackgroundJobs : IDisposable
             var number = numbers.GetValueOrDefault(kind.Name) + 1;
             var id = $"{kind.Name}-{number}";
             BackgroundPlaceLease? lease = null;
-            if (pool is not null && (lease = Places.Acquire(pool, id, share: false)) is null && !wait)
-                return new(null, "busy", $"Every place it can run on is busy: {Places.Busy(pool)}.",
+            if (pool is not null && (lease = Places.Acquire(pool, id, share: false, kind.Demand(pool))) is null && !wait)
+                return new(null, "busy", $"Every place it can run on is busy: {Places.Busy(pool)}." +
+                    (kind.Demand(pool) is { KeepLastFree: true } && pool.Sum(p => p.Slots) >= 2 ? " The last free slot stays free for quick jobs." : ""),
                     running.FirstOrDefault() ?? jobs.FirstOrDefault(job => !job.Finished));
             numbers[kind.Name] = number;
             job = new(kind, id, label.Trim(), clock, lease) { Changed = Notify, Queued = pool is not null && lease is null ? pool : null };
@@ -360,7 +367,7 @@ public sealed class BackgroundJobs : IDisposable
         Places.Changed += Line;
         try
         {
-            var seated = Places.AcquireAsync(pool, job.Id, waiting.Token);
+            var seated = Places.AcquireAsync(pool, job.Id, waiting.Token, job.Kind.Demand(pool));
             Line();
             return job.Seat(await seated.ConfigureAwait(false));
         }

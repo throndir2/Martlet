@@ -44,9 +44,10 @@ internal static class ThinkLongerCheck
             route.RouteType == SetupRouteType.ChatCompletions && Uri.TryCreate(route.Origin, UriKind.Absolute, out var origin) && origin.IsLoopback);
         var rejected = route is not null && ToolsRejected(dataDirectory, $"{route.RouteType}|{route.Origin}|{route.ModelId}");
         var effort = settings.HowHard == ThinkEffort.High ? GenerationSupport.ReasoningEffortHigh : GenerationSupport.ReasoningEffortOn;
-        var (deep, deepState) = DeepThinkingSettings.Read(dataDirectory);
-        var plan = DeepThinkingPlan.For(deep, loaded.Settings?.Setup?.Routes ?? []);
-        var pool = DeepThinkingPool.For(deep, loaded.Settings?.Setup?.Routes ?? []);
+        var (poolSettings, deepState) = ThinkingPoolSettings.Read(dataDirectory, save: false);
+        var deep = poolSettings.Places;
+        var pool = poolSettings.Plan(loaded.Settings?.Setup?.Routes ?? []);
+        var plan = pool.Spots.Count == 1 ? pool.Spots[0].Plan : DeepThinkingPlan.For(deep, loaded.Settings?.Setup?.Routes ?? []);
         var places = ThinkLonger.Places(pool);
         (SetupRouteType? Type, string? Origin) deepRoute = deep.Place switch
         {

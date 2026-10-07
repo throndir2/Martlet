@@ -101,10 +101,10 @@ internal static class HostRoles
         new(Ollama, "Thinks", "Thinking", "Docker; an NVIDIA GPU is recommended",
             HostRoute.OllamaChatRouteId, "thinking",
             "Runs the conversation model on that host. Your messages and recent conversation go there."),
-        new(DeepThinking, "Deep thinking", "Deep thinking", "Docker; an NVIDIA GPU is recommended",
+        new(DeepThinking, "Thinking pool", "Thinking pool", "Docker; an NVIDIA GPU is recommended",
             HostRoute.DeepThinkingRouteId, "deep thinking",
-            "Thinks things over in the background on that host with a model of its own, beside Thinking's, while the " +
-            "conversation carries on. A task Martlet hands it and the conversation so far go there."),
+            "Joins the Thinking pool: background jobs (thinking longer, research, summaries) run on that host with a model of its own, beside Thinking's, while the " +
+            "conversation carries on. A job's text (for a think, the task and the conversation so far) goes there."),
         new(Stt, "Listens", "Listening", "Docker; an NVIDIA GPU is recommended",
             Audio2FaceHostConnection.TranscriptionRouteId, "listening",
             "Turns speech into text on that host. Your recorded speech goes there and is not stored."),

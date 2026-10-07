@@ -71,9 +71,9 @@ internal static class DeepThinkingFit
     {
         if (thinking is null || cards >= 2) return null;
         var on = cards == 0 ? "its processor (no graphics card)" : "its only graphics card";
-        return $"{where} already runs a Thinking model ({thinking}) on {on}. A Deep thinking model there shares it: while both run, " +
+        return $"{where} already runs a Thinking model ({thinking}) on {on}. A Thinking pool model there shares it: while both run, " +
                "each runs at about half speed, so replies can start later. We recommend one graphics card for each Thinking model: " +
-               "put Deep thinking on another computer with its own graphics card, or on a cloud provider.";
+               "add another computer with its own graphics card, or a cloud provider, to the Thinking pool instead.";
     }
 
     /// <summary><see cref="SharedCard(string, string?, int)"/> for a paired host: its Thinking model from its Ollama role in
