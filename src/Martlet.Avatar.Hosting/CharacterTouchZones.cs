@@ -43,13 +43,22 @@ public sealed record TouchZoneBox(double X, double Y, double Width, double Heigh
 }
 
 /// <summary>What touching a zone does: the gestures, emotes and motions it plays (their <see cref="CharacterActionSource.Id"/>s;
-/// null plays the zone's default, an empty list nothing), whether it also tells the character (a new reply turn with
-/// <see cref="Narration"/>, or the zone's own line when null) and how long the zone then rests.</summary>
+/// null plays the zone's default, an empty list nothing), whether Martlet notices it (<see cref="Notices"/>: the touch goes to
+/// the Thinking model, with what the user says or as a short reply of its own, <see cref="Narration"/> an optional hint in the
+/// owner's words) and how long the zone then rests.</summary>
 public sealed record CharacterTouchReaction
 {
     public const double DefaultCooldown = 4, MaximumCooldown = 600;
     public IReadOnlyList<string>? Actions { get; init; }
-    public bool Tell { get; init; }
+    /// <summary>Martlet notices touches on this zone (was "Tell the character", saved as <c>tell</c> before).</summary>
+    public bool Notices { get; init; }
+    // Settings saved before Martlet notices replaced Tell the character keep working.
+    [JsonInclude, JsonPropertyName("tell")]
+    private bool? Tell
+    {
+        get => null;
+        init { if (value == true) Notices = true; }
+    }
     public string? Narration { get; init; }
     public double CooldownSeconds { get; init; } = DefaultCooldown;
 }
@@ -397,12 +406,32 @@ public static class CharacterTouchZones
 
     /// <summary>What touching <paramref name="zone"/> plays on the model: the owner's choice, or for each default slot the first of
     /// its names the model has (its own expressions and motions before Martlet's gestures). Only emotes and motions in use.</summary>
-    public static IReadOnlyList<CharacterActionSource> Plan(CharacterTouchZone zone, CharacterActionCatalog? catalog)
+    public static IReadOnlyList<CharacterActionSource> Plan(CharacterTouchZone zone, CharacterActionCatalog? catalog) => React(zone, catalog, null, 0).Actions;
+
+    /// <summary>What a touch on <paramref name="zone"/> plays, in this order of precedence: the owner's own pick for the zone, the
+    /// persona's <paramref name="temperament"/> for the zone kind or its group (escalated after <paramref name="repeats"/> touches
+    /// in a row), else the zone's built-in default reaction.</summary>
+    public static TouchReactionPlan React(CharacterTouchZone zone, CharacterActionCatalog? catalog, CharacterTouchTemperament? temperament, int repeats)
+    {
+        var attitude = CharacterTouchTemperaments.Attitude(temperament, zone.Id);
+        if (zone.Reaction.Actions is { } chosen)
+        {
+            var entries = catalog?.Entries.Where(e => e.Action.Enabled).ToArray() ?? [];
+            return new(chosen.Select(id => entries.FirstOrDefault(e => e.Source.Id == id).Source).OfType<CharacterActionSource>().Take(MaximumActions).ToArray(),
+                0, attitude, TouchReactionPlan.FromOwner);
+        }
+        if (temperament is not null && CharacterTouchTemperaments.Entry(temperament, zone.Id) is { } entry)
+        {
+            var (words, escalated) = CharacterTouchTemperaments.Words(temperament, entry, repeats);
+            return new(CharacterTouchTemperaments.Resolve(words, catalog), entry.LingerSeconds, attitude, TouchReactionPlan.FromTemperament, escalated);
+        }
+        return new(DefaultPlan(zone, catalog));
+    }
+
+    private static IReadOnlyList<CharacterActionSource> DefaultPlan(CharacterTouchZone zone, CharacterActionCatalog? catalog)
     {
         if (catalog is null) return [];
         var entries = catalog.Entries.Where(e => e.Action.Enabled).ToArray();
-        if (zone.Reaction.Actions is { } chosen)
-            return chosen.Select(id => entries.FirstOrDefault(e => e.Source.Id == id).Source).OfType<CharacterActionSource>().Take(MaximumActions).ToArray();
         var plan = new List<CharacterActionSource>();
         foreach (var slot in Kind(zone.Id)?.Defaults ?? [])
             foreach (var word in slot)
@@ -421,9 +450,24 @@ public static class CharacterTouchZones
         (entry.Source.Kind == CharacterActionKind.Gesture && string.Equals(entry.Source.Name, word, StringComparison.OrdinalIgnoreCase)) ||
         CharacterActions.Slug(entry.Source.Name) == word;
 
-    /// <summary>The line a touch tells the character (a new reply turn), or null when the zone doesn't tell it.</summary>
-    public static string? Narration(CharacterTouchZone zone) => !zone.Reaction.Tell ? null
-        : zone.Reaction.Narration is { Length: > 0 } own ? own : Kind(zone.Id)?.Narration ?? $"*touches your {zone.Name.ToLowerInvariant()}*";
+    /// <summary>The owner's own words for a touch on a zone Martlet notices (a hint that goes with it), or null: none, the zone's
+    /// built-in line, or Martlet doesn't notice the zone.</summary>
+    public static string? Narration(CharacterTouchZone zone) => zone.Reaction.Notices && zone.Reaction.Narration is { Length: > 0 } own &&
+        own != Kind(zone.Id)?.Narration ? own : null;
+
+    /// <summary>Whether a quick tap on <paramref name="zone"/> is a pat (the top of the head, the hair, animal ears) rather than a poke.</summary>
+    public static bool Pats(CharacterTouchZone zone) => zone.Id is "top_of_head" or "hair" or "animal_ears";
+
+    /// <summary>Where <paramref name="zone"/> is, as the character hears it ("the top of your head", "your left cheek").</summary>
+    public static string Part(CharacterTouchZone zone) => zone.Label is null ? zone.Id switch
+    {
+        "top_of_head" => "the top of your head",
+        "face" => "your face",
+        "waist" => "your sides",
+        "held_item" => "what you're holding",
+        "skirt_hem" => "the hem of your skirt",
+        _ => "your " + zone.Name.ToLowerInvariant()
+    } : "your " + zone.Name.ToLowerInvariant();
 
     // ---------- storage ----------
 
