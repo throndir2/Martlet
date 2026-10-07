@@ -386,6 +386,45 @@ internal static partial class HostLocal
         }, status, output, token);
     }
 
+    /// <summary>The engine a change to this PC's host service (adding or removing a role, status, pairing, warming, outside
+    /// access; never setup or update) runs with: this version's when its image is prepared already. While it isn't (right
+    /// after Martlet updated itself, "Keep this PC's host service current" builds it), the change doesn't wait for that
+    /// build: it runs with the engine of the version the host service runs now, whose image is on this PC, as long as that
+    /// engine knows <paramref name="role"/>. The host service's own update to this version follows (it takes its turn in the
+    /// engine lock). Otherwise this prepares (or waits for) this version's image like <see cref="EnsureImageAsync(HostSetupTarget, Action{string}, IProgress{string}, CancellationToken, string)"/>.</summary>
+    internal static async Task<HostSetupTarget> EngineForChangeAsync(HostSetupTarget target, string? role, Action<string> status,
+        IProgress<string> output, CancellationToken token, string by)
+    {
+        if (await RunAsync(["image", "inspect", HostSetupCommands.Image(target)], null, token) != 0 &&
+            await HostSetupCommands.ThisPcGatewayVersionAsync(token) is { } running && running != target.Version)
+        {
+            var current = target with { Version = running };
+            var image = HostSetupCommands.Image(current);
+            if (await RunAsync(["image", "inspect", image], null, token) == 0 && (role is null || await KnowsRoleAsync(image, role, token)))
+            {
+                output.Report($"Martlet {target.Version}'s host engine isn't prepared on this PC yet, so this runs with the Martlet " +
+                    $"{running} engine this PC's host service runs now instead of waiting for it. The host service is brought to " +
+                    $"{target.Version} afterwards.");
+                return current;
+            }
+        }
+        await EnsureImageAsync(target, status, output, token, by);
+        return target;
+    }
+
+    /// <inheritdoc cref="EngineForChangeAsync(HostSetupTarget, string?, Action{string}, IProgress{string}, CancellationToken, string)"/>
+    internal static Task<HostSetupTarget> EngineForChangeAsync(HostSetupTarget target, string? role, HostRunWindow run) =>
+        EngineForChangeAsync(target, role, run.Status, run.Output, run.Token, run.Heading);
+
+    /// <summary>Whether the engine in <paramref name="image"/> has <paramref name="role"/> (a role new in this version doesn't
+    /// exist in an older engine).</summary>
+    private static async Task<bool> KnowsRoleAsync(string image, string role, CancellationToken token)
+    {
+        if (role.Length is 0 or > 32 || role.Any(c => c is not (>= 'a' and <= 'z' or >= '0' and <= '9' or '-'))) return false;
+        return await RunAsync(["run", "--rm", "--log-driver", "none", "--entrypoint", "test", image, "-f",
+            $"/opt/martlet/host/roles/{role}/role.conf"], null, token) == 0;
+    }
+
     private static async Task BuildImageAsync(HostSetupTarget target, string image, Action<string> status, IProgress<string> output,
         CancellationToken token)
     {

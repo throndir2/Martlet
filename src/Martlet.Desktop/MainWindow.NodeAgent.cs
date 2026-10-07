@@ -300,8 +300,7 @@ public partial class MainWindow
             is { } cannot)
             return new(false, $"{role} can't be installed on {here}: {cannot}");
         await EnsureLocalEngineAsync(output, token);
-        var target = ThisPcTarget();
-        await HostLocal.EnsureImageAsync(target, output.Report, output, token, NodeCommandRunTitle);
+        var target = await HostLocal.EngineForChangeAsync(ThisPcTarget(), role, output.Report, output, token, NodeCommandRunTitle);
         Dictionary<string, string>? answers = null;
         if (command.Kind == NodeCommandKinds.AddRole)
         {

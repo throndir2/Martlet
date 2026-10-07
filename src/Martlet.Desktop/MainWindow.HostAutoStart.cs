@@ -51,9 +51,9 @@ public partial class MainWindow
             }
             run.Status("Waiting for the host service to restart its roles...");
             await HostLocal.WaitForHolderAsync(run.Output, run.Token);
-            await HostLocal.EnsureImageAsync(target, run);
+            var engine = await HostLocal.EngineForChangeAsync(target, null, run);
             run.Status("Starting this host's roles and loading their models...");
-            var exit = await HostLocal.EngineAsync(target, ["warm"], run.Output, run.Token);
+            var exit = await HostLocal.EngineAsync(engine, ["warm"], run.Output, run.Token);
             if (exit != 0)
                 throw new InvalidOperationException($"Some of this host's roles didn't start or warm up (exit {exit}). The output says which; " +
                     "adding a role again repairs it.");
