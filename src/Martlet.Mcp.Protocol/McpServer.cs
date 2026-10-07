@@ -264,8 +264,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "recordings (the F5 voice store: which starter voices, how many own and which is applied); which voice the speaking route " +
             "uses and on which self-hosted engine, host and model; and the voice engines (Chatterbox " +
             "Turbo, the default; F5-TTS; XTTS-v2; GPT-SoVITS; Dia: host role, gateway route, model, weights licence, GPU memory, reference " +
-            "length bounds, tag catalog, summary, languages, whether it learns from several recordings and the feature chips Companion > " +
-            "Voice > Voice engine shows; each starter voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
+            "length bounds, tag catalog, summary, languages, whether it learns from several recordings, the feature chips Companion > " +
+            "Voice > Voice engine shows, its rundown (voice cloning, laughs & sighs, emotions: yes, partly or no) and where it runs " +
+            "(GPU with its typical and peak graphics memory, CPU or online); the same rundown for the Windows and OpenAI voices; each " +
+            "starter voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
             "(never own voices' names, transcripts or audio). Plays nothing and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
@@ -2761,15 +2763,49 @@ internal sealed class McpServer(DesktopAutomation desktop)
             minimumGpuMemoryGb = engine.MinimumGpuMemoryGb,
             minimumReferenceMs = engine.MinimumReferenceMilliseconds, maximumReferenceMs = engine.MaximumReferenceMilliseconds,
             summary = engine.Summary, languages = engine.Languages, streams = engine.StreamsWhileGenerating, features = engine.Features,
+            abilities = Abilities(engine.Abilities, engine.Tags), runsOn = RunsOn(engine.Footprint, engine.RunsOn),
             @default = engine == Martlet.Core.Settings.SpeechEngines.Default,
             supportsTags = engine.SupportsTags, multipleReferences = engine.MultipleReferences,
             tags = engine.Tags.Select(tag => new { text = tag.Text, kind = tag.Kind.ToString(), usage = tag.Usage }).ToArray()
         }).ToArray();
+        // The other ways Martlet speaks, with the same rundown Companion › Voice shows (VoiceEngineAbilities-<key>,
+        // VoiceEngineRunsOn-<key>).
+        var catalog = Martlet.Core.Planning.FootprintCatalog.Default;
+        var windowsVoice = catalog.Find(Martlet.Core.Planning.FootprintCatalog.WindowsVoiceId);
+        var openAiVoice = catalog.Find(Martlet.Core.Planning.FootprintCatalog.OpenAiVoiceId);
+        var otherVoices = new[]
+        {
+            new { key = "windows", name = "Windows voice", abilities = Abilities(Martlet.Core.Settings.VoiceAbilities.WindowsVoice, []),
+                runsOn = RunsOn(windowsVoice, windowsVoice?.WhereItRuns ?? "") },
+            new { key = "openai", name = "OpenAI voice", abilities = Abilities(Martlet.Core.Settings.VoiceAbilities.OpenAiVoice, []),
+                runsOn = RunsOn(openAiVoice, openAiVoice?.WhereItRuns ?? "") }
+        };
         return new
         {
             @default = fallback.Key, defaultName = fallback.Name, defaultFemale = fallback.Female, defaultCute = fallback.Cute,
             cute = Martlet.F5.F5BundledVoices.All.Where(voice => voice.Cute).Select(voice => voice.Key).ToArray(), starters, library, list, speaking,
-            engines, chosenEngine = Martlet.Core.Settings.SpeechEngines.ForKey(chosen)?.Key ?? Martlet.Core.Settings.SpeechEngines.Default.Key
+            engines, otherVoices, chosenEngine = Martlet.Core.Settings.SpeechEngines.ForKey(chosen)?.Key ?? Martlet.Core.Settings.SpeechEngines.Default.Key
+        };
+
+        // What a voice can do: cloning, sounds and emotions (yes, partly or no), the tags that do it and the rundown's words.
+        static object Abilities(Martlet.Core.Settings.VoiceAbilities abilities, IReadOnlyList<Martlet.Core.Settings.VoiceTag> tags) => new
+        {
+            cloning = abilities.Cloning, sounds = abilities.Sounds, emotions = abilities.Emotions.ToString(),
+            items = abilities.Items.Select(item => new
+            {
+                name = item.Name, level = item.Level.ToString(), note = item.Note, help = item.Help,
+                tags = abilities.TagsFor(item, tags).Select(tag => tag.Text).ToArray()
+            }).ToArray(),
+            summary = abilities.Describe()
+        };
+
+        // Where a voice runs: on a GPU (with its graphics memory in GB: typical, most and the smallest card), the CPU or
+        // online, as the footprint catalog says, and the line Companion › Voice shows.
+        static object RunsOn(Martlet.Core.Planning.ComponentOption? option, string text) => new
+        {
+            on = option is null ? "gpu" : !option.IsLocal ? "online" : option.UsesGpu ? "gpu" : "cpu",
+            vramGb = option?.UsesGpu == true ? option.Usual.VramGb : 0, peakVramGb = option?.UsesGpu == true ? option.GpuGb : 0,
+            minimumGpuGb = option?.MinGpuGb ?? 0, evidence = option?.Evidence.ToString(), text
         };
     }
 
