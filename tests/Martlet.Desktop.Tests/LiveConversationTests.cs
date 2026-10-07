@@ -298,6 +298,68 @@ public sealed class LiveConversationTests
     });
 
     [Fact]
+    public Task AlwaysListeningStartsTheReplyEarlyAndShowsItOnlyOnceYourTurnEnds() => DispatcherTest(async () =>
+    {
+        // Parakeet on this PC (FIXTURE) and a judge that finds the pause unfinished: the reply starts at the quick transcript,
+        // 260 ms into the pause, and the talk window takes it as the reply when the longer pause ends the turn.
+        var quick = 0;
+        var words = new FixtureWords(() => Interlocked.Increment(ref quick), "Shall we watch a film tonight");
+        await using var fixture = await LiveFixture.Create(localListener: words, turnJudge: new FixtureJudge(TurnVerdict.Incomplete));
+        var settings = (await fixture.Store.LoadAsync()).Settings!;
+        var oldStt = settings.Setup!.Routes.Single(route => route.Role == SetupRole.Stt);
+        settings = SetupSettings.QueueReplacedCredential(LocalSpeechSetup.SelectParakeet(settings, LocalSpeechSetup.Parakeet110mEnglishModelId), oldStt);
+        var stt = settings.Setup!.Routes.Single(route => route.Role == SetupRole.Stt);
+        settings = SetupSettings.ReplaceRoute(settings, stt with { Consent = stt.Selection() });
+        var oldLlm = settings.Setup!.Routes.Single(route => route.Role == SetupRole.Llm);
+        settings = SetupSettings.QueueReplacedCredential(ChatCompletionsSetup.SelectRoute(settings, "http://127.0.0.1:1234/v1", "llama3.2:3b"), oldLlm);
+        var llm = settings.Setup!.Routes.Single(route => route.Role == SetupRole.Llm);
+        await fixture.Save(SetupSettings.ReplaceRoute(settings, llm with { Consent = llm.Selection() }));
+        fixture.Chat.Respond = (_, _) => Task.FromResult(TextRecordingHandler.Sse(
+            "data: {\"id\":\"chat-fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"server-model\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Yes, let's.\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"));
+        EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 3);
+        var window = fixture.Open(new TalkPreferences(SpeakReplies: false));
+        try
+        {
+            await Loaded(window);
+            Click(window, "MicChip");
+            await fixture.Advance(() => fixture.Chat.Calls == 1 && fixture.Controller.EarlyReply is { Turn.Snapshot.TextComplete: true });
+            await Heartbeat();
+            // Started, written, and still nothing in the talk window: your turn hasn't ended.
+            Assert.DoesNotContain(window.Messages, m => m.Role == ChatRole.Martlet);
+            Assert.DoesNotContain(window.Messages, m => m.IsUser);
+            Assert.Equal(0, fixture.Controller.ContextTurns);
+            EnqueueUtterance(fixture.Capture, quietBefore: 14, speech: 0, quietAfter: 0);
+            await fixture.Advance(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text == "Yes, let's.") &&
+                window.Current is { OwnershipReleased: true });
+            Assert.Equal("Shall we watch a film tonight", Assert.Single(window.Messages, m => m.IsUser).Text);
+            // One request: the one started early became the reply.
+            Assert.Equal(1, fixture.Chat.Calls);
+            Assert.Equal(1, quick);
+            Assert.Equal(EarlyReplyRecord.Promoted, Assert.Single(fixture.Controller.EarlyReplies).Outcome);
+            Assert.Equal(1, fixture.Controller.ContextTurns);
+            Assert.True(window.Listener is { Running: true });
+        }
+        finally { window.Close(); }
+    });
+
+    private sealed class FixtureWords(Func<int> counted, string text) : ILocalTranscriber
+    {
+        public Task<LocalTranscript> TranscribeAsync(string modelId, ReadOnlyMemory<byte> pcm16kMono, CancellationToken cancellationToken)
+        {
+            counted();
+            return Task.FromResult(new LocalTranscript(text));
+        }
+    }
+
+    private sealed class FixtureJudge(TurnVerdict verdict) : IEndOfTurnJudge
+    {
+        public string Name => "fixture judge";
+        public bool Available => true;
+        public Task<EndOfTurnJudgement> JudgeAsync(EndOfTurnRequest request, CancellationToken cancellationToken) =>
+            Task.FromResult(new EndOfTurnJudgement(verdict));
+    }
+
+    [Fact]
     public Task TalkingOnBeforeMartletAnswersRestartsTheReplyWithEverythingSaid() => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();
@@ -1142,6 +1204,43 @@ public sealed class LiveConversationTests
         Assert.DoesNotContain("Companion name:", instructions);
         Assert.EndsWith(LiveConversationConfiguration.ReplyLengthInstructions, instructions);
         Assert.Contains("No companion persona is included", fixture.Controller.Configuration!.Disclosure(false));
+    }
+
+    [Fact]
+    public async Task SpokenRepliesCloseTheirInstructionsWithAShortFirstSentenceTheSameWayEveryTurn()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var shortFirst = PromptSettings.Fill(null, PromptCatalog.ShortFirstSentence, ("silent", LiveConversationConfiguration.SilentReply))!;
+        string Instructions()
+        {
+            using var body = JsonDocument.Parse(fixture.Llm.Body);
+            return body.RootElement.GetProperty("instructions").GetString()!;
+        }
+
+        // Two spoken replies in a row: the short first sentence prompt sits just before reply length, which still closes the
+        // instructions, and the instructions are the same both times, so the model's prompt cache keeps them.
+        await fixture.Finish(fixture.Start("Hi there.", voice: true));
+        var first = Instructions();
+        Assert.EndsWith(shortFirst + "\n\n" + LiveConversationConfiguration.ReplyLengthInstructions, first);
+        Assert.Equal(1, first.Split(shortFirst).Length - 1);
+        await fixture.Finish(fixture.Start("And how are you?", voice: true));
+        Assert.Equal(first, Instructions());
+        using (var second = JsonDocument.Parse(fixture.Llm.Body))
+            Assert.Contains("Hi there.", second.RootElement.GetProperty("input").GetRawText());
+
+        // A reply that isn't spoken never gets it.
+        await fixture.Finish(fixture.Start("Typed only."));
+        Assert.DoesNotContain(shortFirst, Instructions());
+        Assert.EndsWith(LiveConversationConfiguration.ReplyLengthInstructions, Instructions());
+
+        // Companion › Replies › Short first sentence Off: spoken replies close with reply length alone.
+        var loaded = await fixture.Store.LoadAsync();
+        await fixture.Save(loaded.Settings! with { Generation = new() { ShortFirstSentence = false } });
+        await fixture.Finish(fixture.Start("Hi again.", voice: true));
+        Assert.DoesNotContain(shortFirst, Instructions());
+        Assert.EndsWith(LiveConversationConfiguration.ReplyLengthInstructions, Instructions());
+        Assert.Contains("Spoken replies don't start with a short first sentence.", MainWindow.DescribeGeneration(new() { ShortFirstSentence = false }));
+        Assert.Contains("Spoken replies start with a short first sentence.", MainWindow.DescribeGeneration(null));
     }
 
     [Fact]
@@ -2710,7 +2809,8 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal LocalVoices? Voices { get; }
     internal LiveConversationController Controller { get; }
     internal LiveFixture(ControlledDevice? output = null, Func<int, int>? nextStyle = null, VoiceIdentity? voiceIdentity = null,
-        IPcAudioSourceFactory? pcAudio = null, bool voices = false, bool history = false, bool tools = false, bool echo = false)
+        IPcAudioSourceFactory? pcAudio = null, bool voices = false, bool history = false, bool tools = false, bool echo = false,
+        ILocalTranscriber? localListener = null, IEndOfTurnJudge? turnJudge = null)
     {
         Store = new(DirectoryPath);
         Memory = new(Store, Clock);
@@ -2732,7 +2832,8 @@ internal sealed class LiveFixture : IAsyncDisposable
             pcAudio: pcAudio is null ? null : new PcAudioCaptureFactory(pcAudio, Clock), tools: ToolService, history: History,
             // Echo reduction over the fixture microphone, with speakers whose loopback stays quiet and a canceller that keeps
             // the microphone as it is.
-            echoReducer: echo ? new EchoReducer(Capture, new QuietSpeakers(), () => new KeptMicrophone(), Clock) : null);
+            echoReducer: echo ? new EchoReducer(Capture, new QuietSpeakers(), () => new KeptMicrophone(), Clock) : null,
+            localListener: localListener, turnJudge: turnJudge);
         Events.LockedChanged += Controller.SetSessionLocked;
         Llm.Inspect = Tts.Inspect = request =>
         {
@@ -2742,9 +2843,10 @@ internal sealed class LiveFixture : IAsyncDisposable
     }
     internal static async Task<LiveFixture> Create(ControlledDevice? output = null, Func<int, int>? nextStyle = null,
         bool legacy = false, VoiceIdentity? voiceIdentity = null, IPcAudioSourceFactory? pcAudio = null, bool voices = false,
-        bool history = false, bool tools = false, bool echo = false)
+        bool history = false, bool tools = false, bool echo = false, ILocalTranscriber? localListener = null,
+        IEndOfTurnJudge? turnJudge = null)
     {
-        var fixture = new LiveFixture(output, nextStyle, voiceIdentity, pcAudio, voices, history, tools, echo);
+        var fixture = new LiveFixture(output, nextStyle, voiceIdentity, pcAudio, voices, history, tools, echo, localListener, turnJudge);
         var settings = SetupSettings.Begin(null);
         settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api },
             Audio = AudioSettings.Create() };

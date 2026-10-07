@@ -52,6 +52,43 @@ public partial class MainWindow
         if (turnJudgeStatus is { } line && conversation is not null) line.Text = TurnJudgeText(Talk.JudgeTurns, conversation.TurnJudgeStatus);
     }
 
+    // Companion › Listening's Start replies early status line while the page shows it (it follows each reply started early).
+    private TextBlock? earlyRepliesStatus;
+
+    internal const string EarlyRepliesAbout = "Martlet starts working on its reply in the short pause after you speak, before it's " +
+        "sure you finished, and keeps it to itself until you have. When you stop, the reply is already on its way, so Martlet " +
+        "answers sooner; when you keep talking, it drops that start and tries again at your next pause. Nothing is shown, said " +
+        "or done before your turn ends. It needs Parakeet on this PC as Listening. With a cloud Thinking model, a dropped start " +
+        "can still cost a little, so cloud models need the second box. Prepare the voice early too makes the first spoken words " +
+        "ready before you finish as well (a paid cloud voice only with the second box).";
+
+    /// <summary>Companion › Listening's Start replies early status (TalkEarlyRepliesStatus): whether it is on, whether replies
+    /// can start early with this setup (or why not) and what became of the newest ones (never words or audio).</summary>
+    internal static string EarlyRepliesText(TalkPreferences prefs, LiveConversationConfiguration? configured,
+        IReadOnlyList<Martlet.Conversation.EarlyReplyRecord> records)
+    {
+        if (!prefs.EarlyReplies) return "Off. Martlet starts each reply once you finished talking.";
+        if (configured is not null && (!configured.LocalStt() || configured.SttHostTarget() is not null))
+            return "On, but replies start early only with Parakeet on this PC as Listening.";
+        var (thinking, _, why) = LiveConversationController.EarlyAllowed(prefs.EarlyReplyOptions, configured);
+        if (configured is not null && !thinking) return $"On, but not with this setup: {why}.";
+        var text = configured is null ? "On." : $"On. {char.ToUpperInvariant(why[0])}{why[1..]}.";
+        if (records.Count == 0) return text + " No replies started early yet.";
+        var taken = records.Count(r => r.Outcome == Martlet.Conversation.EarlyReplyRecord.Promoted);
+        var talkedOn = records.Count(r => r.Outcome == Martlet.Conversation.EarlyReplyRecord.Cancelled);
+        var other = records.Count - taken - talkedOn;
+        text += $" Last {records.Count}: {taken} taken as the reply, {talkedOn} let go because you went on talking" +
+            (other > 0 ? $", {other} let go for another reason" : "") + ".";
+        var last = records[^1];
+        return text + $" Last: {last.Outcome} after {last.Waited.TotalMilliseconds:0} ms.";
+    }
+
+    private void ShowEarlyReplies()
+    {
+        if (earlyRepliesStatus is { } line && conversation is not null)
+            line.Text = EarlyRepliesText(Talk, conversation.Configuration, conversation.EarlyReplies);
+    }
+
     private static readonly string[] PauseChoices = ["Short (0.5 s)", "Normal (0.8 s)", "Long (1.2 s)"];
     private static readonly string[] ChattinessChoices = ["Quiet", "Normal", "Chatty", "Martlet decides"];
     // Companion › Listening › Word check, in the order shown.
@@ -82,6 +119,7 @@ public partial class MainWindow
         if (!next.Save(store?.DataDirectory))
             ActionText.Text = "Couldn't save your talk choices. They apply until Martlet closes.";
         avatar.Gaze.Decides = next.DecideGaze;
+        avatar.Gaze.Configure(next.GazeUsual, next.GazeFree);
         if (conversation is not null) conversation.VoiceVolume = next.VoiceVolume;
         // An open talk window follows the change right away.
         openConversation?.UsePreferences(next, visionAddress);
@@ -142,6 +180,33 @@ public partial class MainWindow
                 "When you clearly finished, Martlet answers sooner than the pause above; when you trail off mid-thought, it waits " +
                 "longer (up to twice that pause) so it cuts you off less. If it ever answers too soon, just keep talking. Off, the " +
                 "pause above alone decides. Your voice never leaves this PC for this.", new Thickness(0, 0, 0, 0)));
+
+            var earlyReplies = new CheckBox { Content = "Start replies early (recommended)", IsChecked = prefs.EarlyReplies, Margin = new Thickness(0, 16, 0, 4) };
+            AutomationProperties.SetAutomationId(earlyReplies, "TalkEarlyReplies");
+            earlyReplies.Checked += (_, _) => { if (!Talk.EarlyReplies) SaveTalk(Talk with { EarlyReplies = true }, render: true); };
+            earlyReplies.Unchecked += (_, _) => { if (Talk.EarlyReplies) SaveTalk(Talk with { EarlyReplies = false }, render: true); };
+            children.Add(earlyReplies);
+            if (prefs.EarlyReplies)
+            {
+                var earlyCloud = new CheckBox { Content = "Also for cloud models (may add a small cost)", IsChecked = prefs.EarlyRepliesCloud,
+                    Margin = new Thickness(24, 2, 0, 2) };
+                AutomationProperties.SetAutomationId(earlyCloud, "TalkEarlyRepliesCloud");
+                earlyCloud.Checked += (_, _) => { if (!Talk.EarlyRepliesCloud) SaveTalk(Talk with { EarlyRepliesCloud = true }, render: true); };
+                earlyCloud.Unchecked += (_, _) => { if (Talk.EarlyRepliesCloud) SaveTalk(Talk with { EarlyRepliesCloud = false }, render: true); };
+                children.Add(earlyCloud);
+                var earlyVoice = new CheckBox { Content = "Prepare the voice early too", IsChecked = prefs.EarlyVoice, Margin = new Thickness(24, 2, 0, 4) };
+                AutomationProperties.SetAutomationId(earlyVoice, "TalkEarlyVoice");
+                earlyVoice.Checked += (_, _) => { if (!Talk.EarlyVoice) SaveTalk(Talk with { EarlyVoice = true }, render: true); };
+                earlyVoice.Unchecked += (_, _) => { if (Talk.EarlyVoice) SaveTalk(Talk with { EarlyVoice = false }, render: true); };
+                children.Add(earlyVoice);
+            }
+            var earlyStatus = Note(EarlyRepliesText(prefs, conversation?.Configuration, conversation?.EarlyReplies ?? []), new Thickness(0, 0, 0, 4));
+            AutomationProperties.SetAutomationId(earlyStatus, "TalkEarlyRepliesStatus");
+            earlyRepliesStatus = earlyStatus;
+            children.Add(earlyStatus);
+            var earlyAbout = Note(EarlyRepliesAbout, new Thickness(0, 0, 0, 0));
+            AutomationProperties.SetAutomationId(earlyAbout, "TalkEarlyRepliesAbout");
+            children.Add(earlyAbout);
 
             var wordCheck = new ComboBox { Width = 240, ItemsSource = WordCheckChoices, SelectedIndex = Array.IndexOf(WordCheckOrder, prefs.WordCheck) };
             AutomationProperties.SetName(wordCheck, "Word check: how readily Martlet takes what it hears as words");
@@ -635,21 +700,23 @@ public partial class MainWindow
         _ => "Normal: Martlet says something when it's worth saying."
     };
 
-    /// <summary>Companion › Vision › Where the character looks: at your mouse (the default), or Martlet decides with each new
-    /// screenshot of your screen whether to look at your mouse or at something on the screen.</summary>
+    /// <summary>Companion › Vision › Glances at your screen: the character keeps its usual gaze (the default; Companion ›
+    /// Character › Where the character looks), or Martlet decides with each new screenshot of your screen whether to glance at
+    /// something on it.</summary>
     private Border GazeCard(TalkPreferences prefs)
     {
-        var mouse = Choice("VisionGaze", "At your mouse", "The character's head and eyes follow your mouse pointer.",
+        var mouse = Choice("VisionGaze", "Keep its usual gaze",
+            "The character's eyes do what Companion › Character › Where the character looks says: by default, they follow your mouse.",
             !prefs.DecideGaze, "VisionGaze-Mouse");
         var decide = Choice("VisionGaze", "Martlet decides",
-            "With each new screenshot of your screen, Martlet looks at your mouse or at something interesting on the screen: " +
-            "something that just popped up or moved, or what it is about to remark on.",
+            "With each new screenshot of your screen, the character keeps its usual gaze or glances at something interesting on " +
+            "the screen: something that just popped up or moved, or what it is about to remark on.",
             prefs.DecideGaze, "VisionGaze-Martlet");
         mouse.Checked += (_, _) => { if (Talk.DecideGaze) SaveTalk(Talk with { DecideGaze = false }, render: true); };
         decide.Checked += (_, _) => { if (!Talk.DecideGaze) SaveTalk(Talk with { DecideGaze = true }, render: true); };
         var status = Note(GazeStatus(prefs), new Thickness(0, 2, 0, 0));
         AutomationProperties.SetAutomationId(status, "VisionGazeStatus");
-        return Card(Heading("Where the character looks"), mouse, decide, status,
+        return Card(Heading("Glances at your screen"), mouse, decide, status,
             Note("It decides while vision watches your active window or whole screen and the character shows. Screenshots are " +
                 "compared on this PC; the Thinking model only chooses during the looks Martlet already takes, so nothing extra " +
                 "is sent.", new Thickness(0, 6, 0, 0)));
@@ -684,9 +751,10 @@ public partial class MainWindow
 
     private string GazeStatus(TalkPreferences prefs)
     {
-        if (!prefs.DecideGaze) return "The character follows your mouse.";
-        if (!prefs.Watch) return "Vision is off, so the character follows your mouse. Turn vision on below.";
-        if (VisionSource(prefs) is { IsScreen: false }) return "Martlet decides only while it watches your screen; with a camera the character follows your mouse.";
+        var usual = $"The character {CharacterGazeService.Describe(avatar.Gaze.Settings.Mode)}.";
+        if (!prefs.DecideGaze) return usual;
+        if (!prefs.Watch) return "Vision is off, so the character keeps its usual gaze. Turn vision on below. " + usual;
+        if (VisionSource(prefs) is { IsScreen: false }) return "Martlet decides only while it watches your screen; with a camera the character keeps its usual gaze. " + usual;
         return avatar.Gaze.Status;
     }
 

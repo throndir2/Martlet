@@ -59,7 +59,14 @@ internal sealed class LiveListener(ListeningOptions options, Voiceprint? voicepr
     internal string? Ended { get => Volatile.Read(ref ended); set => Volatile.Write(ref ended, value); }
     internal string Status => Held ? "listen.held" : Utterance?.Status.Code ?? "listen.starting";
 
-    internal void Post(HeardSpeech speech) => results.Enqueue(speech);
+    internal void Post(HeardSpeech speech)
+    {
+        results.Enqueue(speech);
+        Posted?.Invoke();
+    }
+    /// <summary>Raised (off the UI thread) after something heard was posted: the talk window takes a reply started early for it
+    /// at once instead of at its next tick.</summary>
+    internal event Action? Posted;
     internal bool TryTake([NotNullWhen(true)] out HeardSpeech? speech) => results.TryDequeue(out speech);
     /// <summary>Something heard waits to be taken (it is posted before <see cref="Transcribing"/> drops).</summary>
     internal bool HasResults => !results.IsEmpty;

@@ -278,11 +278,15 @@ what each one is.
   held plays on top, the held pose easing back partway and resuming after; a
   new held gesture crossfades from the last. The renderer's reply to a gesture
   says which plays once and which is held (`gesture: {playing, held}`).
-- **Where it looks**: the head and eyes follow the mouse, or with Companion ›
-  Vision › **Where the character looks** set to *Martlet decides*, glance at
-  something that just changed on the watched screen or at the part of it a
-  screen glance's Thinking model names with a look tag (`{look top right}`).
-  Look tags are never emotes; see
+- **Where it looks**: the head and eyes follow the character's usual gaze (your
+  mouse, your mouse only when it's near, straight ahead, or the window you're
+  using), chosen on Companion › Character › **Where the character looks** or
+  the character's right-click **Eyes** menu, or by its personality. Replies may
+  change it with gaze tags (`{look ahead}`), a touch can turn the eyes to your
+  mouse for a moment, and with Companion › Vision › **Glances at your screen**
+  set to *Martlet decides* it glances at something that just changed on the
+  watched screen or at the part of it a screen glance's Thinking model names
+  with a look tag (`{look top right}`). Look tags are never emotes; see
   [Where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks).
 
 ## Touch zones
@@ -295,22 +299,57 @@ animal ears, a tail or wings. Intimate zones (lips, ears, neck, chest,
 waist, hips, groin, buttocks and inner thighs) react too while
 **Include intimate zones** is on, which it is by default; turn it off to leave them out.
 
-- **Detect zones** takes one picture of the character as it stands and sends it
-  (never the model's files) to the Thinking model, which must be able to see
-  (Companion › Vision says whether it can and where pictures go). It answers
-  with a box per zone; left and right are the character's own. Local vision
-  models such as Qwen2.5-VL on Ollama work, as do cloud ones. Nothing is sent
-  until you press it, and it is never on the conversation's path. It is a
-  [helper job](MEMORY.md#helper-jobs-on-the-thinking-pool) that needs vision: a
-  free Thinking pool member that can see takes it first (and **Detect zones**
-  works with such a member even when the Thinking model can't see). Without one,
-  the conversation's Thinking model gets it after any reply finishes speaking.
+- **Detect zones** shows the Thinking model pictures of the character (never the
+  model's files); the model must be able to see (Companion › Vision says whether
+  it can and where pictures go). Nothing is sent until you press it, and it is
+  never on the conversation's path. It goes step by step:
+  1. Martlet frames the character whole for a moment (no zoom, no pan), takes
+     its picture at the size it shows (up to 2048 pixels) and puts the view back.
+     So the picture always holds the whole character, even when you zoomed in.
+  2. The CPU puts the character on a plain backdrop that contrasts with it (light
+     for a dark character, dark for a light one), because servers paint a
+     transparent background as they like. It draws a grid of tenths, numbered
+     0.1 to 0.9 along the top and left edges, so the model can read positions.
+  3. The model sees the whole character (1024 pixels on its longer side) and
+     marks its head, upper body and lower body, and a tail, wings or a held
+     item. When it can't, the character's outline (or a VRM's skeleton) gives
+     those parts.
+  4. The model sees a close-up of each part, up to four times larger, and marks
+     its zones there. Left and right are the character's own.
+  5. The model checks its own boxes: they are drawn on the close-up in colors
+     and numbered, and it says which are right, corrects the others, removes
+     zones that aren't there and adds ones it missed. This repeats for up to two
+     rounds per part, or until it changes nothing.
+
+  Between steps the CPU does what it can tell for certain: it fits each box to
+  the character's pixels, swaps left and right back when a pair is the wrong way
+  round (facing you, the character's left is on the picture's right), and tells
+  the next check what looks wrong (a box over the background, a chin above a
+  nose, a box that misses where a VRM's own skeleton puts the part). A VRM's
+  bone positions and a Live2D model's part names (such as `HairFront`) go to
+  the model as hints. A box that still misses its VRM bone moves onto it.
+  Detection makes about 7 to 12 requests; **Stop** stops it and keeps the zones
+  found until then, and the picture shows the zones as they are found. Each
+  request is a [helper job](MEMORY.md#helper-jobs-on-the-thinking-pool) that
+  needs vision: a free Thinking pool member that can see takes it first (and
+  **Detect zones** works with such a member even when the Thinking model can't
+  see). Without one, the conversation's Thinking model gets it after any reply
+  finishes speaking. Local vision models such as Qwen2.5-VL on Ollama work, as
+  do cloud ones.
+- To see what Thinking saw, turn on **Show the picture Thinking saw**: the
+  picture of the zones then shows the whole character on its backdrop with the
+  grid. **Open the pictures** opens the folder with every picture the last
+  detection sent (`character-touch-zones\<model>-sent`, with `sent.json`). The
+  line above says how many pictures it sent, how large and what they showed,
+  and the desktop log records each one (its step, size and type).
 - Martlet ties each zone to the model's own parts so it follows the character as
   it moves: the Live2D drawables mostly inside its box, or the VRM humanoid
   bones inside it (hair follows the head's hair). A click is matched to the
-  topmost part it hit, then the bone, then the smallest box around the point,
-  then the rough part of the body (head, face, body, arm, hand, leg, foot);
-  before any zones are found, clicks use that rough part.
+  topmost part it hit, then the bone, then the smallest box around the point
+  (where the point sits with the character framed whole, so zooming in or
+  panning doesn't move the boxes), then the rough part of the body (head, face,
+  body, arm, hand, leg, foot); before any zones are found, clicks use that rough
+  part.
 - Each zone plays its emotes and gestures (by default the model's own where it
   has them: a head pat leans in or tilts and smiles, a cheek blushes, an
   intimate zone blushes and flinches) and rests a few seconds before reacting
@@ -346,24 +385,37 @@ waist, hips, groin, buttocks and inner thighs) react too while
 
 ### Touch temperament
 
-The personality decides how the character acts when it is touched. Companion ›
-Character › **Touch temperament** shows, for the persona in use, how it feels
-about each part of its body: hates, dislikes, neutral, likes, loves or craves.
-It also shows what each part plays: up to three of Martlet's reactions, such
-as a smile, a blush, hearts, leaning in, a pout, a sweat drop, an anger vein,
-a flinch or looking away. It decides actions only, never words.
+The personality decides how the character acts when it is touched, and where
+its eyes usually go. Companion › Character › **Touch temperament** shows, for
+the persona in use, how it feels about each part of its body: hates, dislikes,
+neutral, likes, loves or craves. It also shows what each part plays: up to
+three of Martlet's reactions, such as a smile, a blush, hearts, leaning in, a
+pout, a sweat drop, an anger vein, a flinch or looking away, or *(no reaction)*
+for a part the character ignores. *looks at your mouse (s)* turns its eyes to
+your mouse pointer for that many seconds after a touch there (up to 15), as if
+to see who did it. **Eyes usually** is the persona's usual gaze, which
+[Where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks)
+uses while it is set to *As the personality decides*. It decides actions only,
+never words.
+
+For example, a passive character can look straight ahead, ignore the mouse and
+not react to a head pat, but blush and look at your mouse when you touch it
+somewhere it cares about.
 
 - When you save a personality with a meaningful change (not only spacing,
   case or punctuation), Martlet asks the Thinking model in the background. It
   waits a few seconds and never asks while Martlet replies. The answer is
-  compact JSON: an attitude and reactions per zone group (head, torso, arms,
-  lower body, extras), per zone kind where one differs, how long the first
-  reaction lingers, and an escalation. Unknown actions are dropped and values
-  are clamped. When asking fails, the previous temperament stays.
-- **Re-decide from personality** asks again. Change an attitude, a reaction,
-  the linger time or the escalation, or give one part its own line, and your
-  choices win: a later personality change does not replace them until you
-  re-decide. **Use built-in reactions** goes back to the zones' defaults.
+  compact JSON: the usual `gaze` (`mouse`, `near`, `ahead` or `window`), an
+  attitude and reactions per zone group (head, torso, arms, lower body,
+  extras; `["none"]` for no reaction), per zone kind where one differs, how
+  long the first reaction lingers, how long the eyes `look` at the mouse after
+  a touch, and an escalation. Unknown actions are dropped and values are
+  clamped. When asking fails, the previous temperament stays.
+- **Re-decide from personality** asks again. Change the eyes, an attitude, a
+  reaction, the linger or look time or the escalation, or give one part its
+  own line, and your choices win: a later personality change does not replace
+  them until you re-decide. **Use built-in reactions** goes back to the zones'
+  defaults.
 - Repeated touches escalate: from the third touch in a row of a disliked part
   (each within 30 seconds), it plays the escalation first, such as an anger
   vein; a loved part plays hearts.
@@ -372,7 +424,8 @@ a flinch or looking away. It decides actions only, never words.
   gesture or overlay.
 - What a touch plays: a zone's own pick under Touch zones, then the
   temperament for that zone kind or its group, then the zone's built-in
-  reaction. Intimate parts are covered like the others and react only with
+  reaction. How long the eyes then look at your mouse always comes from the
+  temperament. Intimate parts are covered like the others and react only with
   **Include intimate zones** on.
 - Temperaments are saved per persona in `character-temperaments.json` and
   travel with the shared settings, like the personas.

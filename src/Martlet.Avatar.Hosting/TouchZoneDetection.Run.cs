@@ -1,0 +1,207 @@
+namespace Martlet.Avatar.Hosting;
+
+/// <summary>What a check answered: the boxes it called right, the corrected ones (fractions of the picture checked), the zones
+/// it said aren't there, the zones it added, and whether it said every box is right.</summary>
+public sealed record ZoneVerdict(IReadOnlySet<int> Right, IReadOnlyDictionary<int, TouchZoneBox> Corrected, IReadOnlySet<int> Gone,
+    IReadOnlyDictionary<string, TouchZoneBox> Added, bool Done);
+
+public static partial class TouchZoneDetection
+{
+    /// <summary>Finds the zones of the character in <paramref name="snapshot"/> (the renderer's picture, transparent around the
+    /// character) with <paramref name="ask"/>, the vision model. Every request's picture is composed here; <paramref name="progress"/>
+    /// hears each step. Stops at once when the first request can't be made (no vision model, say).</summary>
+    public static async Task<ZoneDetectionResult> RunAsync(ZonePixels snapshot, ZoneHints? hints,
+        Func<ZoneAsk, CancellationToken, Task<(string? Answer, string? Failure)>> ask, Action<ZoneDetectionProgress>? progress,
+        CancellationToken token, ZoneDetectionOptions? options = null)
+    {
+        options ??= new();
+        var whole = new TouchZoneBox(0, 0, 1, 1);
+        var figure = TouchZonePictures.OpaqueBounds(snapshot, new(0, 0, snapshot.Width, snapshot.Height))?.Fraction(snapshot.Width, snapshot.Height) ?? whole;
+        var backdrop = TouchZonePictures.Backdrop(snapshot);
+        // Live2D characters face the viewer; a VRM's own shoulders tell (null for a side view).
+        var faces = hints is { Bones.Count: > 0 } ? hints.FacesViewer : true;
+        var zones = new Dictionary<string, TouchZoneBox>(StringComparer.Ordinal);
+        var steps = new List<string>();
+        int requests = 0, answered = 0;
+        string? failure = null;
+
+        async Task<string?> Ask(ZoneAsk zoneAsk)
+        {
+            token.ThrowIfCancellationRequested();
+            requests++;
+            var (answer, why) = await ask(zoneAsk, token).ConfigureAwait(false);
+            if (answer is not null) answered++;
+            else failure ??= why;
+            return answer;
+        }
+        void Report(string text) => progress?.Invoke(new(text, Zones(zones), requests));
+        ZonePixels Compose(TouchZoneBox region, IReadOnlyList<MarkedBox>? marks = null) =>
+            TouchZonePictures.Compose(snapshot, region, options.Edge, options.MaximumZoom, backdrop, grid: true, marks);
+
+        // 1. The whole character: where its parts are.
+        Report("Step 1: asking the Thinking model where the head, body and legs are, on the whole character with a grid...");
+        var picture = Compose(whole);
+        var answer = await Ask(new(ZoneAskKind.Parts, "parts", PartsInstructions, PartsText(hints), picture, whole, PartIds, [])).ConfigureAwait(false);
+        if (answer is null && failure is not null) return new(null, failure, requests, [$"parts: {failure}"]);
+        var parts = ReadBoxes(answer, picture.Width, picture.Height, PartId);
+        foreach (var extra in Extras)
+            if (parts.TryGetValue(extra, out var box)) zones[extra] = box;
+        var regions = Regions.Select(r => (Region: r, Found: parts.TryGetValue(r.Id, out var b) && Sensible(b, figure),
+            Box: parts.TryGetValue(r.Id, out var c) && Sensible(c, figure) ? c : Fallback(r.Id, figure, hints))).ToArray();
+        var tidy = Tidy(zones, snapshot, faces);
+        steps.Add($"parts: found {string.Join(", ", parts.Keys)}" + (parts.Count == 0 ? "nothing" : "") +
+            (regions.Any(r => !r.Found) ? $"; guessed {string.Join(", ", regions.Where(r => !r.Found).Select(r => r.Region.Id))} from the character's outline" : "") + Notes(tidy));
+
+        // 2. Each part close up: its zones, then the model checks them.
+        var number = 1;
+        foreach (var (region, _, box) in regions)
+        {
+            number++;
+            var crop = Crop(box, snapshot);
+            Report($"Step {number}: finding the zones of {region.What} in a close-up...");
+            picture = Compose(crop);
+            answer = await Ask(new(ZoneAskKind.Zones, region.Id, ZonesInstructions, ZonesText(region, hints, crop), picture, crop, region.Zones, []))
+                .ConfigureAwait(false);
+            var found = ReadBoxes(answer, picture.Width, picture.Height, CharacterTouchZones.Normalize).Where(z => region.Zones.Contains(z.Key)).ToArray();
+            foreach (var (id, zone) in found) zones[id] = zone.Within(crop);
+            tidy = Tidy(zones, snapshot, faces);
+            steps.Add($"{region.Id}: " + (answer is null ? "no answer" : $"{found.Length} zones") + Notes(tidy));
+            await CheckAsync(region.Id, region.What, region.Zones, crop).ConfigureAwait(false);
+        }
+        // 3. A tail, wings or a held item, on the whole character.
+        if (Extras.Any(zones.ContainsKey)) await CheckAsync("extras", "the whole character", Extras, whole).ConfigureAwait(false);
+
+        var finished = Finish(zones, snapshot, hints);
+        if (finished.Length > 0) steps.Add("finally: " + string.Join("; ", finished));
+        var result = Zones(zones);
+        Report($"Done: {result.Count} zones after {requests} requests.");
+        return new(result.Count == 0 ? null : result, answered == 0 ? failure : null, requests, steps);
+
+        async Task CheckAsync(string step, string what, IReadOnlyList<string> ids, TouchZoneBox crop)
+        {
+            for (var round = 1; round <= options.Checks; round++)
+            {
+                var present = ids.Where(zones.ContainsKey).ToArray();
+                if (present.Length == 0) return;
+                var marks = present.Select((id, i) => new ZoneMark(i + 1, id, Clip(zones[id].Relative(crop)) ?? new(0, 0, 0.01, 0.01))).ToArray();
+                var problems = Problems(marks, zones, snapshot, faces, hints, crop);
+                Report($"Checking the zones of {what}, round {round} of {options.Checks}" +
+                    (problems.Count > 0 ? $" ({problems.Count} problem{(problems.Count == 1 ? "" : "s")} measured)" : "") + "...");
+                var drawn = marks.Select(m => new MarkedBox(m.Number, m.Box, TouchZonePictures.MarkColors[(m.Number - 1) % TouchZonePictures.MarkColors.Count])).ToArray();
+                var checking = Compose(crop, drawn);
+                var reply = await Ask(new(ZoneAskKind.Check, $"{step} check {round}", CheckInstructions,
+                    CheckText(what, marks, ids.Where(id => !zones.ContainsKey(id)), problems, hints, crop), checking, crop, ids, marks)).ConfigureAwait(false);
+                var verdict = ReadCheck(reply, marks, ids, checking.Width, checking.Height);
+                if (verdict is null)
+                {
+                    steps.Add($"{step} check {round}: no answer Martlet could read");
+                    return;
+                }
+                var changed = new List<string>();
+                foreach (var (n, corrected) in verdict.Corrected)
+                {
+                    var mark = marks.First(m => m.Number == n);
+                    // A correction that fits back onto the same pixels changes nothing.
+                    var fitted = Fit(mark.Id, corrected.Within(crop), snapshot);
+                    if (Moved(mark.Box, corrected) <= Noise || Moved(zones[mark.Id].Relative(crop), fitted.Relative(crop)) <= Noise) continue;
+                    zones[mark.Id] = fitted;
+                    changed.Add("moved " + mark.Id);
+                }
+                foreach (var n in verdict.Gone)
+                {
+                    var mark = marks.First(m => m.Number == n);
+                    zones.Remove(mark.Id);
+                    changed.Add("removed " + mark.Id);
+                }
+                foreach (var (id, added) in verdict.Added)
+                    if (zones.TryAdd(id, added.Within(crop))) changed.Add("added " + id);
+                tidy = Tidy(zones, snapshot, faces);
+                steps.Add($"{step} check {round}: {verdict.Right.Count} of {marks.Length} right" +
+                    (changed.Count > 0 ? "; " + string.Join(", ", changed) : "; nothing to change") + Notes(tidy));
+                if (changed.Count == 0) return;
+            }
+        }
+    }
+
+    private static string Notes(IReadOnlyList<string> notes) => notes.Count == 0 ? "" : "; " + string.Join(", ", notes);
+
+    private static List<CharacterTouchZone> Zones(Dictionary<string, TouchZoneBox> zones) =>
+        [.. zones.OrderBy(z => Order(z.Key)).Select(z => new CharacterTouchZone { Id = z.Key, Box = z.Value.Clamped(), Enabled = true })];
+
+    private static int Order(string id)
+    {
+        for (var i = 0; i < CharacterTouchZones.Kinds.Count; i++)
+            if (CharacterTouchZones.Kinds[i].Id == id) return i;
+        return int.MaxValue;
+    }
+
+    /// <summary>The largest distance any edge moved from <paramref name="from"/> to <paramref name="to"/>.</summary>
+    public static double Moved(TouchZoneBox from, TouchZoneBox to) => new[]
+    {
+        Math.Abs(from.X - to.X), Math.Abs(from.Y - to.Y), Math.Abs(from.X + from.Width - to.X - to.Width), Math.Abs(from.Y + from.Height - to.Y - to.Height)
+    }.Max();
+
+    // ---------- reading answers ----------
+
+    /// <summary>The boxes of a parts or zones answer by ID (as <paramref name="normalize"/> names them), as fractions of the
+    /// <paramref name="width"/> by <paramref name="height"/> picture it was about.</summary>
+    public static Dictionary<string, TouchZoneBox> ReadBoxes(string? answer, int width, int height, Func<string?, string?> normalize)
+    {
+        var raw = new List<(string, double[])>();
+        foreach (var entry in ZoneAnswers.Entries(answer))
+            if (normalize(ZoneAnswers.Name(entry)) is { } id && ZoneAnswers.RawBox(entry) is { } box) raw.Add((id, box));
+        return ZoneAnswers.Scale(raw, width, height).ToDictionary(z => z.Key, z => z.Box, StringComparer.Ordinal);
+    }
+
+    /// <summary>A part's ID as the parts step names them, or null.</summary>
+    public static string? PartId(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var slug = string.Join("_", name.Trim().ToLowerInvariant().Split([' ', '-', '/', '.', ',', '&'], StringSplitOptions.RemoveEmptyEntries));
+        return slug switch
+        {
+            "head" or "head_and_hair" or "head_hair" => "head",
+            "upper_body" or "upperbody" or "upper" or "torso" or "body" or "upper_body_and_arms" => "upper_body",
+            "lower_body" or "lowerbody" or "lower" or "legs" or "lower_body_and_legs" => "lower_body",
+            "tail" or "tails" => "tail",
+            "wings" or "wing" => "wings",
+            "held_item" or "held_object" or "item" or "weapon" or "prop" => "held_item",
+            _ => null
+        };
+    }
+
+    /// <summary>A check's answer about <paramref name="marks"/> (the boxes drawn) on a <paramref name="width"/> by
+    /// <paramref name="height"/> picture; zones added must be among <paramref name="ids"/>. Null when nothing could be read.</summary>
+    public static ZoneVerdict? ReadCheck(string? answer, IReadOnlyList<ZoneMark> marks, IReadOnlyCollection<string> ids, int width, int height)
+    {
+        var entries = ZoneAnswers.Entries(answer);
+        if (entries.Count == 0) return null;
+        var right = new HashSet<int>();
+        var gone = new HashSet<int>();
+        var raw = new List<(string, double[])>();
+        foreach (var entry in entries)
+        {
+            var id = CharacterTouchZones.Normalize(ZoneAnswers.Name(entry));
+            var mark = ZoneAnswers.Int(entry, "n", "number", "#") is { } n ? marks.FirstOrDefault(m => m.Number == n) : null;
+            mark ??= id is null ? null : marks.FirstOrDefault(m => m.Id == id);
+            var ok = ZoneAnswers.Bool(entry, "ok", "correct", "right", "accurate");
+            var visible = ZoneAnswers.Bool(entry, "visible", "present", "exists");
+            var remove = ZoneAnswers.Bool(entry, "remove", "delete");
+            var box = ZoneAnswers.RawBox(entry);
+            if (mark is not null)
+            {
+                if (visible == false || remove == true) gone.Add(mark.Number);
+                else if (ok == true) right.Add(mark.Number);
+                else if (box is not null) raw.Add(("#" + mark.Number.ToString(System.Globalization.CultureInfo.InvariantCulture), box));
+            }
+            else if (id is not null && ids.Contains(id) && box is not null && visible != false && remove != true) raw.Add((id, box));
+        }
+        var corrected = new Dictionary<int, TouchZoneBox>();
+        var added = new Dictionary<string, TouchZoneBox>(StringComparer.Ordinal);
+        foreach (var (key, box) in ZoneAnswers.Scale(raw, width, height))
+            if (key.StartsWith('#')) corrected[int.Parse(key[1..], System.Globalization.CultureInfo.InvariantCulture)] = box;
+            else added[key] = box;
+        var done = ZoneAnswers.RootBool(answer, "done", "all_ok", "finished") ?? (corrected.Count == 0 && gone.Count == 0 && added.Count == 0);
+        return new(right, corrected, gone, added, done);
+    }
+}

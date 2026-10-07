@@ -6,13 +6,16 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Mcp;
 
-/// <summary>character_gaze: Companion › Vision › Where the character looks as saved in a data directory (talk-preferences.json
-/// DecideGaze: the mouse unless Martlet decides), then a rehearsal of the production decision (Martlet.Avatar.Hosting's
-/// CharacterGaze and GazeDirector) on generated pictures (NOT screenshots; nothing is captured or shown): each scenario is a
-/// screenshot before and after on a 1920×1080 screen, compared as the desktop compares them, with the mouse and the
-/// character's overlay where it says. Also where each look tag points, what a screen glance is told about them (the data
-/// directory's edited prompts included), and what the production segmenter makes of glance answers that start with a look
-/// tag (what is spoken and shown, whether it stays quiet, and the cue the character acts on). Reads only; contacts nothing.</summary>
+/// <summary>character_gaze: where the character looks as saved in a data directory. Its usual gaze (talk-preferences.json
+/// GazeUsual and GazeFree: Companion › Character › Where the character looks and the overlay's Eyes menu; the persona's gaze in
+/// character-temperaments.json; else the mouse), what replies are told about it and an aim rehearsal of each gaze (the
+/// production CharacterGaze.Aim the overlay uses, with a mouse near and far from the character and a window). Then Companion ›
+/// Vision › Glances at your screen (DecideGaze: the usual gaze unless Martlet decides) and a rehearsal of the production decision
+/// (Martlet.Avatar.Hosting's CharacterGaze and GazeDirector) on generated pictures (NOT screenshots; nothing is captured or
+/// shown): each scenario is a screenshot before and after on a 1920×1080 screen, compared as the desktop compares them, with
+/// the mouse and the character's overlay where it says. Also where each look tag points, what a screen glance is told about
+/// them (the data directory's edited prompts included), and what the production segmenter makes of answers with look tags
+/// (what is spoken and shown, whether it stays quiet, and the cues the character acts on). Reads only; contacts nothing.</summary>
 internal static class GazeCheck
 {
     private const int Width = 1024, Height = 576;
@@ -21,19 +24,40 @@ internal static class GazeCheck
     // Out of the way at the top-left, and where the character stands by default (near the lower-right corner, where
     // notifications pop up).
     private static readonly ScreenRect Aside = new(0, 0, 300, 380), Corner = new(1266, 476, 840, 580);
+    // The character's frame inside that overlay (the overlay is the frame plus room on each side).
+    private static readonly ScreenRect Frame = new(1476, 476, 420, 580);
 
-    internal static object Run(string dataDirectory, string? answer)
+    internal static object Run(string dataDirectory, string? answer, string? personaId = null)
     {
         var settings = File.Exists(Path.Combine(dataDirectory, "settings.json"))
             ? SettingsJson.Read(File.ReadAllBytes(Path.Combine(dataDirectory, "settings.json"))) : null;
         var prompt = CharacterGaze.Prompt(settings?.Prompts, StayQuiet.Marker);
+        string[] lookTags = [.. CharacterGaze.Tags, .. CharacterGaze.ModeTags];
         var answers = answer is not null ? new[] { answer }
-            : new[] { "{look bottom right} [pass]", "{look top right} Ooh, Sam just messaged you.", "Nice dodge!" };
+            : new[] { "{look bottom right} [pass]", "{look top right} Ooh, Sam just messaged you.", "Nice dodge!",
+                "{look ahead} Hmph. Whatever.", "Fine, fine. {look usual} I'm listening." };
         var (scenarios, ok) = Scenarios();
+        var (aim, aimOk) = Aims();
+        var (owner, free) = Usual(dataDirectory);
+        var persona = Guid.TryParse(personaId, out var id) ? id : settings?.Companion?.ActivePersonaId;
+        var temperament = persona is { } chosenPersona ? CharacterTouchTemperaments.Load(dataDirectory, chosenPersona) : null;
+        var gaze = new GazeSettings(owner, temperament?.Gaze, free);
+        var reply = free ? CharacterGaze.ReplyPrompt(settings?.Prompts, gaze.Usual) : null;
+        var other = CharacterGaze.Modes.First(m => m.Mode != gaze.Usual).Mode;
         return new
         {
             saved = Saved(dataDirectory),
-            ok,
+            usual = new
+            {
+                choice = RendererGaze.ChoiceOf(owner), free, personality = temperament?.Gaze is { } decided ? CharacterGaze.Word(decided) : null,
+                personaId = persona, gaze = CharacterGaze.Word(gaze.Usual), from = gaze.UsualFrom,
+                // What every reply is told while the character may change where it looks (null when it may not, or the prompt is emptied).
+                prompt = reply is null ? null : new { instructions = reply.Instructions, tags = reply.Tags },
+                // The note a reply gets while its own choice holds the eyes, for example one minute after it chose another gaze.
+                noteWhenChanged = CharacterGaze.Note(settings?.Prompts, gaze with { Chosen = other }, TimeSpan.FromMinutes(1))
+            },
+            ok = ok && aimOk,
+            aim,
             grid = new { columns = CharacterGaze.Columns, rows = CharacterGaze.Rows, CharacterGaze.ChangeThreshold, CharacterGaze.CharacterChangeThreshold },
             holdSeconds = new { glance = CharacterGaze.GlanceHold.TotalSeconds, chosen = CharacterGaze.ChosenHold.TotalSeconds,
                 gap = CharacterGaze.GlanceGap.TotalSeconds },
@@ -44,31 +68,82 @@ internal static class GazeCheck
                 oneScreen = Point(CharacterGaze.Chosen(tag, Screen)),
                 twoScreens = Point(CharacterGaze.Chosen(tag, new ScreenRect(-1920, 0, 3840, 1080)))
             }).ToArray(),
-            notTags = new[] { "{look}", "{look up}", "{blush}" }.Where(tag => !CharacterGaze.IsTag(tag)).ToArray(),
+            modeTags = CharacterGaze.ModeTags.Select(tag => new
+            {
+                tag, gaze = CharacterGaze.TryMode(tag, out var mode) && mode is { } known ? CharacterGaze.Word(known) : "usual"
+            }).ToArray(),
+            notTags = new[] { "{look}", "{look up}", "{blush}" }.Where(tag => !CharacterGaze.IsLookTag(tag)).ToArray(),
             prompt = prompt is null ? null : new { instructions = prompt.Instructions, tags = prompt.Tags },
             replies = answers.Select(text =>
             {
-                var preview = SpeechTextPreview.For(text, null, CharacterGaze.Tags, SpeechBreaks.Default, StayQuiet.Marker);
+                var preview = SpeechTextPreview.For(text, null, lookTags, SpeechBreaks.Default, StayQuiet.Marker);
                 return new
                 {
                     answer = text, spoken = preview.Spoken, shown = preview.Shown.Trim(), quiet = StayQuiet.IsQuiet(preview.Shown),
                     looks = preview.Cues.Where(c => CharacterGaze.IsTag(c.Tag))
-                        .Select(c => new { c.Tag, place = CharacterGaze.Chosen(c.Tag, Screen)?.Place, afterPiece = c.Piece }).ToArray()
+                        .Select(c => new { c.Tag, place = CharacterGaze.Chosen(c.Tag, Screen)?.Place, afterPiece = c.Piece }).ToArray(),
+                    gazes = preview.Cues.Where(c => CharacterGaze.IsModeTag(c.Tag))
+                        .Select(c => new
+                        {
+                            c.Tag, gaze = CharacterGaze.TryMode(c.Tag, out var mode) && mode is { } known ? CharacterGaze.Word(known) : "usual",
+                            afterPiece = c.Piece
+                        }).ToArray()
                 };
             }).ToArray()
         };
     }
 
-    // talk-preferences.json (Martlet.Desktop's TalkPreferences): the character follows the mouse unless DecideGaze is saved on.
-    private static string Saved(string directory)
+    // talk-preferences.json (Martlet.Desktop's TalkPreferences): the character keeps its usual gaze unless DecideGaze is saved on.
+    private static string Saved(string directory) =>
+        Preferences(directory) is { } root && root.TryGetProperty("DecideGaze", out var value) && value.ValueKind == JsonValueKind.True
+            ? "martlet decides" : "usual gaze";
+
+    // talk-preferences.json's GazeUsual (null: as the personality decides) and GazeFree (on unless saved off).
+    private static (GazeMode? Owner, bool Free) Usual(string directory)
+    {
+        if (Preferences(directory) is not { } root) return (null, true);
+        var owner = root.TryGetProperty("GazeUsual", out var usual) && usual.ValueKind == JsonValueKind.String ? CharacterGaze.ModeOf(usual.GetString()) : null;
+        return (owner, !(root.TryGetProperty("GazeFree", out var free) && free.ValueKind == JsonValueKind.False));
+    }
+
+    private static JsonElement? Preferences(string directory)
     {
         try
         {
             using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "talk-preferences.json")));
-            return document.RootElement.TryGetProperty("DecideGaze", out var value) && value.ValueKind == JsonValueKind.True
-                ? "martlet decides" : "mouse";
+            return document.RootElement.ValueKind == JsonValueKind.Object ? document.RootElement.Clone() : null;
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return "mouse"; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return null; }
+    }
+
+    // Where the overlay turns the eyes for each gaze (CharacterGaze.Aim, the code the overlay runs every 50 ms): the character's
+    // frame near the lower-right corner, the mouse far from it or right beside it, and a window being used.
+    private static (object[] Results, bool Ok) Aims()
+    {
+        ScreenPoint far = new(300, 300), near = new(1400, 700);
+        ScreenRect window = new(100, 100, 1200, 800);
+        var results = new List<object>();
+        var ok = true;
+        void Aim(string name, string expected, GazeMode mode, ScreenPoint? mouse, ScreenRect? used = null, bool attending = false,
+            ScreenPoint? point = null)
+        {
+            var (target, at) = CharacterGaze.Aim(mode, point, attending, mouse, Frame, used);
+            ok &= target == expected;
+            results.Add(new
+            {
+                name, gaze = CharacterGaze.Word(mode), expected, target, ok = target == expected,
+                at = at is { } spot ? new { x = Math.Round(spot.X), y = Math.Round(spot.Y) } : null
+            });
+        }
+        Aim("mouseFar", "mouse", GazeMode.Mouse, far);
+        Aim("nearModeMouseFar", "ahead", GazeMode.Near, far);
+        Aim("nearModeMouseNear", "mouse", GazeMode.Near, near);
+        Aim("aheadModeMouseNear", "ahead", GazeMode.Ahead, near);
+        Aim("windowMode", "window", GazeMode.Window, far, window);
+        Aim("windowModeNoWindow", "ahead", GazeMode.Window, far);
+        Aim("touchWhileAhead", "mouse", GazeMode.Ahead, far, attending: true);
+        Aim("glanceWhileFollowing", "point", GazeMode.Mouse, far, point: new ScreenPoint(1700, 1000));
+        return ([.. results], ok);
     }
 
     private static object? Point(GazeSpot? spot) => spot is null ? null : new { x = Math.Round(spot.X), y = Math.Round(spot.Y), spot.Place };

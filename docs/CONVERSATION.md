@@ -219,8 +219,9 @@ reads the entire conversation again before every reply (on a 12B model, about
   doesn't change from message to message: the persona (with its style when it
   has one), tools, voice tags, the smart home tools prompt, who-is-talking,
   always-listening, what-this-PC-plays, recording and picture prompts as each
-  message needs them, and the reply length last. A screen glance has its
-  glance instructions there instead.
+  message needs them, then, for a spoken reply, the *Short first sentence*
+  prompt, and the reply length last. A screen glance has its glance
+  instructions there instead.
 - **The conversation so far** follows, each earlier message exactly as it was
   sent, with its notes (a paired host gets the plain messages and the notes
   with its instructions, as before). What Martlet saw is part of it: every
@@ -273,8 +274,9 @@ Ollama on this PC for them), and the talk window's context line ends with
 ## Context board
 
 The context board is where background sources keep their newest short note
-for the live conversation: what the character shows now, a digest of the last
-seconds of the screen, a line about the sounds this PC plays, touches on the
+for the live conversation: what the character shows now, where its eyes are
+while a reply's own choice holds them, a digest of the last seconds of the
+screen, a line about the sounds this PC plays, touches on the
 character. A reply or a look never waits for a source. As it builds its
 request, it takes a snapshot of the board, and the fresh notes go last in the
 message (see [the request layout](#prompt-caching-and-the-request-layout)).
@@ -526,6 +528,18 @@ floor Live early only when they name Martlet; otherwise the reply makes it
 Live when it starts. When the participation policy turns down what you said,
 your words no longer hold the floor (`LiveFloor.Dismiss`).
 
+**Replies started early.** A reply that starts early (Companion › Listening ›
+*Start replies early*, see [Hands-free voice activity](#hands-free-voice-activity-and-voice-id)) holds the
+floor from its start, before your turn ends
+(`BeginReply("a reply started early")`). The quick transcript it starts on
+made the floor Live a moment before, so it never calls `Words` again. Its
+request goes to a paired host as live work (`WorkPriority.Live`), as any
+reply's does. Taken as the reply, it keeps the same hold, which ends once its
+voice is made (`ConversationTurn.Synthesized`), so it is never counted twice.
+Let go, it ends its hold at once (*the reply started early was let go*); the
+2-second grace, then your voice, hold the floor while you go on talking. The
+reply latency line says *Started early ...* just before its *Live floor* part.
+
 **What the conversation runs on.** `LiveResources` lists the live Thinking,
 voice and listening routes, each on a computer (`this-pc`, a home computer
 such as `lan:192.168.1.20`, or a cloud provider, which shares nothing with your
@@ -717,21 +731,28 @@ run at once, one on each place (`DeepThinkingPool`, up to 8 places; saved as
 lacks, so the old choice reads unchanged). *Use it*, *Same as Thinking*, *Ollama
 on this PC* and a cloud provider change the first place and keep the ticked
 computers; unticking the first place's computer makes the next one first.
-`think_longer` may then run as many thinks at once as there are usable places
-(its description says *Up to N at once*, from the settings only, so the request
-start stays the same), and each new think goes to a free place: the one that
+`think_longer` may then run several thinks at once: one fewer than the usable
+places' slots in all. A long job never takes the pool's last free slot while
+the pool has two or more slots, because that slot stays free for quick jobs
+(judges and summaries); with one slot in all, one think runs at a time. The
+tool's description says how many (*Up to 2 at once; more wait in line* for
+three slots, *One at a time; more wait in line* for one or two). It comes from
+the settings only, so the request start changes only when the slots change.
+Each new think goes to a free place: the one that
 shares least with the conversation first (its plan's `Rank`: 0 does none of the
 conversation's jobs, 1 shares a computer with the voice or listening, or is a
 cloud provider or this PC, 2 shares Thinking's computer or provider, 3 is a
 second model beside Thinking's on this PC's graphics card), then the order they
 were chosen. One place that can't think (a computer that does Thinking without
 its Thinking pool role) doesn't stop the others. A song's lyrics are written on
-the same places: a free one, else the least busy. When every place is busy a
-new think is refused and the model is told what holds each place (*think-1 on
-diva and think-2 on ripley are still running...*). Each think has its own
+the same places: a free one, else the least busy. When every place is busy (or
+only the last free slot is left), a new think waits in line (*waiting for a
+free computer*) and starts on the first place that frees up. The model is told
+what holds each place (*Every computer that thinks is busy (think-1 on diva and
+think-2 on ripley)...*). Each think has its own
 runtime and authorization on its place, and its result reaches the speaking
-computer exactly as one think's does (see Delivery). The page's
-`DeepThinkingPoolStatus` says how many places think at once.
+computer exactly as one think's does (see Delivery). With several places, the
+page's `DeepThinkingParallel` line says how many thinks run at once.
 
 **Always in parallel** (`DeepThinkingPlan`, shown on the page as
 `DeepThinkingParallel`). A think always runs alongside the conversation and is
@@ -786,12 +807,15 @@ was placed (*placed on diva, 1 of 2 places busy*), fit check and end
 (`Background thinking:`) and a *Thinking input (Background thinking)* line.
 Stop (Esc) ends a reply, never a think; the task's Cancel, `cancel_thinking`,
 closing the conversation or quitting Martlet do (there is no time limit). Each
-place runs as many thinks at once as it has slots (one on a computer of yours
-unless its Thinking pool role says it runs more, four on a cloud provider);
-when every place is busy a new think waits in line (*waiting for a free
+place has slots for thinks (one on a computer of yours unless its Thinking pool
+role says it runs more, four on a cloud provider and on the conversation model
+while the pool is empty). While the places have two or more slots in all, the
+last free slot stays free for quick jobs, so one think fewer than the slots
+runs at once (three on the conversation model's four). When no slot is free
+for it, a new think waits in line (*waiting for a free
 computer*) and runs on the first place that frees up, first come, first served.
-As many thinks may wait as can run; there is no limit on how many start in an
-hour.
+Up to twice the slots (at most 8) may run or wait at once; there is no limit
+on how many start in an hour.
 
 **Which computer thinks** is decided by a deterministic broker
 (`BackgroundPlaces`), never by a model, so placing a think takes microseconds.
@@ -834,7 +858,9 @@ Martlet canceled isn't mentioned; closing the conversation drops the rest.
 think_longer is the first kind and a song is next. A kind is a
 `BackgroundJobKind(Name, MaxActive, MaxPerHour, TimeLimit, Offer, Doing)`:
 `Name` is lowercase letters and the job IDs' prefix (`think-1`, `song-1`),
-`MaxActive` how many of that kind may run at once (other kinds run alongside),
+`MaxActive` how many of that kind may run or wait in line at once (other kinds
+run alongside; when that many are running or waiting, a new one is refused,
+and on a pool the model is told how many run or wait and how many run at once),
 `MaxPerHour` how many may start in any hour (null: no hourly limit), `TimeLimit`
 how long one may take (up to 30 minutes; null: no time limit, as for a think),
 `Offer` marks a result to offer before using it (a song:
@@ -1294,6 +1320,18 @@ voice pipeline never waits for a whole reply:
   (`.`, `?`, `!` followed by a space), a new line and the end of the reply
   break a reply into pieces; commas, semicolons and dashes never do, so each
   piece is one or more whole sentences, which sounds more natural.
+- **Short first sentence.** Companion › Replies › *Short first sentence* (on
+  by default) asks every spoken reply to begin with a few words (*"Oh, nice
+  one!"*, *"Hmm, good question."*) and then go on. The voice gets a piece as
+  soon as its sentence is written, so a short first sentence reaches the voice
+  after a few words instead of a whole long sentence. The prompt (Companion ›
+  Prompts › *Short first sentence*) goes just before *Reply length* in the
+  instructions and is the same text every time, so prompt caches keep it;
+  turning it off or on changes the start of the requests once. A reply that
+  isn't spoken never gets it. The rules for pieces don't change: a short first
+  sentence still waits for the next few words, in case they are a short ending
+  to say with it (*Where the voice pauses*, below). MCP's `prompts_status`
+  shows the setting and what closes a spoken reply's instructions.
 - **Where each persona's voice pauses.** Each piece is said on its own, so a
   break in the wrong place sounds awkward ("That was a wonderful idea. |
   Cutie!"). Personality › **Where the voice pauses** sets, per persona, which
@@ -1951,6 +1989,33 @@ the data folder.
   without a quick transcript or an answer in time, your pause decides). Other
   judges plug in the same way through `IEndOfTurnJudge` and
   `EndOfTurnJudges.WithFallback`.
+- **Start replies early** (on by default, Companion › Listening › How you
+  talk) starts the reply at that same short pause, as soon as the quick
+  transcript (Parakeet on this PC) has real words, without waiting for the
+  verdict (`EarlyReplyGate`, `ConversationRuntime.StartEarly`). It is built
+  exactly as the talk window will ask for it (`EarlyReplyPlan`: only while
+  nothing else waits for a reply) and *held*: Thinking streams and, with
+  **Prepare the voice early too** (on), the first spoken piece is made, but
+  nothing shows, plays, acts or calls a tool. When the turn ends in that pause
+  and the talk window asks for the same request (`EarlyAsk`), it is promoted
+  (`ConversationTurn.Release`): no second request, its words show and its
+  first piece plays at once. Your own voice coming back, the turn ending in a
+  later pause, other words or something else going with them (a picture, what
+  this PC played, typed text) let it go: its request and voice work stop, and
+  the next pause starts another (at most three a turn). Only a reply that is
+  taken commits to answering, lets go of old history, consumes the context
+  board's consume-on-read notes or reaches the history, memory, the talk
+  window and the reply latency line. **Also for cloud models (may add a small
+  cost)** (off by default) allows it with a cloud Thinking model, which charges
+  for a request let go; a paid cloud voice is prepared early only with it, and
+  a held reply asks the Thinking fallback (*If Thinking fails*) only once it is
+  taken.
+  Barge-in never sees a held reply as Martlet speaking, and it holds the
+  [live floor](#the-live-floor-the-live-turn-comes-first) from its start (let
+  go, it ends that hold at once). The desktop log has
+  *Early reply: ...* lines, the reply latency line *Started early at 262 ms,
+  promoted.*, and Companion › Listening's status counts the newest outcomes
+  ([Voice latency](VOICE_LATENCY.md#starting-replies-early)).
 - Listening never stops by itself. It runs on its own slot beside replies
   (`LiveListener`): it records one utterance at a time and transcribes each, in
   order, while it already listens for the next, so nothing said while Martlet

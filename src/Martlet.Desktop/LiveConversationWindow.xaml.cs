@@ -365,7 +365,8 @@ public partial class LiveConversationWindow : ThemedWindow
         if (before.HandsFree != next.HandsFree || before.Sensitivity != next.Sensitivity || before.PauseIndex != next.PauseIndex ||
             before.VoiceId != next.VoiceId || before.HearVoice != next.HearVoice || before.BargeIn != next.BargeIn ||
             before.ReduceEcho != next.ReduceEcho || before.WordCheck != next.WordCheck || before.TranscribeFirst != next.TranscribeFirst ||
-            before.BargeInStyle != next.BargeInStyle || before.JudgeTurns != next.JudgeTurns)
+            before.BargeInStyle != next.BargeInStyle || before.JudgeTurns != next.JudgeTurns ||
+            before.EarlyReplyOptions != next.EarlyReplyOptions)
         {
             StopListening(keepHeard: true);
             listening = Available && next.HandsFree && !listenPaused && MicrophoneUsable;
@@ -476,8 +477,20 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         KeepListening();
         Interrupt();
+        // What a reply started early is built with (Companion › Listening › Start replies early): what TryAnswer sends with the
+        // next thing you say while nothing else waits.
+        controller.EarlyPlan = EarlyPlanNow();
         if (operations.IsRunning)
         {
+            // A reply started early holds the app slot, unseen and unheard, until your turn ends: only your words take it.
+            // Typed text, a reload or a message from a chat lets it go first.
+            if (controller.EarlyReply is not null)
+            {
+                if (pendingText is not null || reloadReason is not null || loadPending || remoteQueue.Count > 0)
+                    controller.LetGoEarly("something else came first");
+                else TryAnswer();
+                return;
+            }
             if (pendingText is not null || reloadReason is not null || remoteQueue.Count > 0) YieldSlot();
             return;
         }
@@ -909,7 +922,21 @@ public partial class LiveConversationWindow : ThemedWindow
         },
         preferences.VoiceId, HearsVoice.On, preferences.BargeIn, preferences.ReduceEcho, WordCheck: preferences.WordCheck,
         Straight: handsFree && HearsVoice.On && !preferences.TranscribeFirst, HearLocalOnly: HearsVoice.LocalOnly,
-        BargeInStyle: preferences.BargeInStyle, JudgeTurns: preferences.JudgeTurns);
+        BargeInStyle: preferences.BargeInStyle, JudgeTurns: preferences.JudgeTurns, Early: preferences.EarlyReplyOptions);
+
+    /// <summary>What a reply started early goes with (Companion › Listening › Start replies early): what TryAnswer sends with
+    /// the next thing you say while nothing else waits for a reply; null while anything else would go with it (words heard
+    /// before, what this PC played, a picture of what vision watches, typed text, a message from a chat) or a reply runs, so
+    /// no reply starts early then.</summary>
+    private EarlyReplyPlan? EarlyPlanNow() =>
+        preferences.EarlyReplies && listening && Available && heardQueue.Count == 0 && playingQueue.Count == 0 && pcHeld.Count == 0 &&
+        pendingText is null && remoteQueue.Count == 0 && !LookDue && !PictureGoes &&
+        owned is not { OwnershipReleased: false } && commentary is not { OwnershipReleased: false }
+            ? new(Voice, BackgroundChattiness, CallOn) : null;
+
+    // The newest picture of what vision watches would go with what you say now (SeenNow).
+    private bool PictureGoes => watching && latestFrame is not null && clock.GetElapsedTime(latestAt) <= SeenFreshness &&
+        controller.Configuration?.Vision() is not (null or VisionSupport.Unsupported);
 
     // Whether Thinking hears your recording (Companion › Listening): your own choice, or never chosen, only while the recording
     // stays on this PC (LocalOnly: the conversation checks that again before it sends one).
@@ -934,6 +961,8 @@ public partial class LiveConversationWindow : ThemedWindow
         try
         {
             listener = controller.Listen(Listening(true));
+            // A reply started early waits for what is heard: take it as soon as it is posted, not at the next tick.
+            listener.Posted += () => { if (controller.EarlyReply is not null) Dispatcher.InvokeAsync(Pump); };
             listenProblem = null;
         }
         catch (LiveActionException error) when (error.Code is "conversation.ownership_busy" or "conversation.controls_blocked")
@@ -1445,6 +1474,9 @@ public partial class LiveConversationWindow : ThemedWindow
         catch (LiveActionException error) when (error.Code == "conversation.ownership_busy")
         {
             Requeue(everything);
+            // A reply started early for other words is leaving the app slot: answer as soon as it has, not at the next tick.
+            if (controller.SlotFreed is { IsCompleted: false } freed)
+                freed.ContinueWith(_ => Dispatcher.InvokeAsync(Pump), TaskScheduler.Default);
             return false;
         }
         catch (LiveActionException error) { notice = Remedy(error.Code); }
@@ -2004,6 +2036,8 @@ public partial class LiveConversationWindow : ThemedWindow
         playingQueue.Clear();
         answering = null;
         restarts = 0;
+        // A reply started early for what you are saying goes too (nothing of it was shown or said).
+        controller.LetGoEarly("you pressed " + button);
         if (watching)
         {
             watchPaused = true;

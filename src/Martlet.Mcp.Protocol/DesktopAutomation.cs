@@ -34,6 +34,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // nothing. Stop singing only ends the song playing (musically). Nothing in the talk window plays a song. Its background
         // tasks chip (LiveTasks) and the task list's close button (LiveTasksClose) only open and close the list.
         "LiveStop", "LiveRefreshContext", "LiveSongStop", "LiveTasks", "LiveTasksClose",
+        // Companion › Character › Touch zones' Stop only stops finding zones; it sends nothing (the zones found until then were
+        // already saved).
+        "TouchZonesStop",
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
         // Companion › Pictures' Check only asks the saved place whether it can draw now (a cloud provider: only whether a key is
@@ -59,8 +62,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "TrayOpen", "TrayTalk", "TrayPause", "TrayStopListening", "TrayStopWatching", "TrayEndTalk",
         // The character overlay (drawn by Martlet's own renderer process, whose windows ui_snapshot includes): MoveAvatar only opens
         // or closes the character's right-click menu; its Talk to Martlet, Open Martlet and Character settings only show a window
-        // or page, like TrayTalk and TrayOpen. Its zoom, position, Keep on top and Hide character items need --allow-ui-effects.
-        "MoveAvatar", "CharacterTalk", "CharacterOpenMartlet", "CharacterSettings",
+        // or page, like TrayTalk and TrayOpen, and Eyes (CharacterEyes) only opens its submenu. Eyes' choices (CharacterEyes-<choice>,
+        // their checkedState says which applies) save talk-preferences.json, and the zoom, position, Keep on top and Hide character
+        // items need --allow-ui-effects.
+        "MoveAvatar", "CharacterTalk", "CharacterOpenMartlet", "CharacterSettings", "CharacterEyes",
         // Martlet on your network: Find again only sends Martlet's own discovery query (port 9444) on the local network and
         // lists who answers; Stop asking only withdraws this PC's own request. Connect, Allow and Deny do the work.
         "NearbyFind", "NearbyCancel",
@@ -281,7 +286,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // recording stays on this PC, off until you tick it when it would leave). Fixed wording; no model names beyond the
         // Thinking destination the page already shows.
         "TalkHearVoiceChoice",
-        // Companion › Vision › Where the character looks (its VisionGaze-Mouse and VisionGaze-Martlet choices save
+        // Companion › Vision › Glances at your screen (its VisionGaze-Mouse, Keep its usual gaze, and VisionGaze-Martlet choices save
         // talk-preferences.json, so they need --allow-ui-effects): what the character's eyes follow and why; and the talk window's
         // line on it while Martlet decides (what it looks at now and the last time it looked away; never what is on screen).
         "VisionGazeStatus", "LiveGaze",
@@ -351,16 +356,24 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "CharacterActionsStatus", "CharacterActionsNaming", "CharacterActionsOffered", "CharacterActionsLast", "CharacterActionsSaveState",
         "CharacterActionsHeld",
         // Companion › Character › Touch zones: how many zones the shown model has, how many are in use and who found them, whether
-        // the Thinking model can see (and where pictures go), how Detect zones went, which zone the last touch landed in and what
-        // it played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows and default reaction).
-        // Detect zones sends the character's picture to Thinking, Try plays on the character and the rest save, so those need
-        // --allow-ui-effects.
-        "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState",
+        // the Thinking model can see (and where pictures go), how Detect zones went (each step while it runs), what the last
+        // detection sent (how many pictures, how large, what they showed), which zone the last touch landed in and what it
+        // played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows and default reaction).
+        // Detect zones sends the character's pictures to Thinking, Try plays on the character, Open the pictures opens Explorer,
+        // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
+        "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
         // Companion › Character › Touch temperament: who decided the active persona's temperament (built-in, the Thinking model,
-        // FIXTURE - NOT AI or the owner), its attitude per group and part ("head loves, torso hates, ..."), how deciding went and
-        // whether edits saved. Each line's attitude (TouchTemperamentAttitude-<group or zone ID>, below) is an attitude word.
+        // FIXTURE - NOT AI or the owner), its attitude per group and part ("head loves, torso hates, ...", its eyes and the parts
+        // whose touch turns them to your mouse), how deciding went and whether edits saved. Each line's attitude
+        // (TouchTemperamentAttitude-<group or zone ID>, below) is an attitude word, its TouchTemperamentLook-<group or zone ID>
+        // the seconds the eyes then look at your mouse, and TouchTemperamentGaze where the eyes usually go.
         // Re-decide from personality sends the personality to Thinking, and the rest save, so they need --allow-ui-effects.
-        "TouchTemperamentStatus", "TouchTemperamentSummary", "TouchTemperamentDecision", "TouchTemperamentSaveState",
+        "TouchTemperamentStatus", "TouchTemperamentSummary", "TouchTemperamentDecision", "TouchTemperamentSaveState", "TouchTemperamentGaze",
+        // Companion › Character › Where the character looks: what the eyes do now and why (your choice, the personality's or
+        // the character's own in a reply; a touch's look at your mouse; whether it may change where it looks). Its
+        // CharacterGaze-<choice> radio buttons (selected) and CharacterGazeFree check box (checkedState) save
+        // talk-preferences.json, so they need --allow-ui-effects.
+        "CharacterGazeNow",
         // What Martlet noticed (zones with Martlet notices on) that waits for a reply and when a touch reply would start, and
         // which reply took the last touches and what the Thinking model was told (zone names and the touch line, no words).
         "TouchZonesNoticed", "TouchZonesNoticedLast",
@@ -380,6 +393,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // last one's outcome and silence (never words or audio). The TalkJudgeTurns check box saves the choice, so it needs
         // --allow-ui-effects.
         "TalkJudgeTurnsStatus",
+        // Companion › Listening › How you talk › Start replies early: on or off, whether replies can start early with this setup
+        // (Parakeet on this PC, a Thinking model on the user's own computers or Also for cloud models, whether the voice is
+        // prepared too) and what became of the newest ones (taken as the reply, let go because you went on talking, let go for
+        // another reason; the last one's outcome and wait), never words or audio; and its fixed explanation. The TalkEarlyReplies,
+        // TalkEarlyRepliesCloud and TalkEarlyVoice check boxes save the choice, so they need --allow-ui-effects.
+        "TalkEarlyRepliesStatus", "TalkEarlyRepliesAbout",
         // Companion › Listening › When you talk over Martlet: the chosen option (Pause and decide or Stop at once; choosing one
         // with ui_select saves talk-preferences.json, so it needs --allow-ui-effects) and its fixed explanation. In the talk
         // window, LiveBargeIn: the last time you talked over Martlet, whether it paused, stopped or played on, the verdict, what
@@ -429,6 +448,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Replies › Thinking steps: the chosen option (Default, Off or On; choosing one with ui_select saves it, so
         // it needs --allow-ui-effects) and how the Thinking route takes it.
         "RepliesThinking", "RepliesThinkingStatus",
+        // Companion › Replies › Short first sentence: the chosen option (On, the default, or Off; choosing one with ui_select
+        // saves it, so it needs --allow-ui-effects).
+        "RepliesShortFirstSentence",
         // Companion › Deep thinking: where a think goes and whether it can run there alongside the conversation (and why); Thinking
         // longer's state (on by default; Where it thinks › Off turns it off) or what keeps it from working, and the chosen
         // effort, time limit, hourly limit and when it shares results (choosing one with ui_select saves them, so they need
@@ -636,7 +658,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// click; never the text it copies).</summary>
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
-    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
+    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchTemperamentLook-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default

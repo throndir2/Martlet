@@ -96,22 +96,38 @@ public sealed record RendererBubbleColors(string Fill, string Outline, string Te
 /// "status" (no change).</summary>
 public sealed record RendererZoom(string Action);
 /// <summary>
-/// Turns the character's head and eyes toward a point on the desktop (<paramref name="X"/>, <paramref name="Y"/> in physical
-/// screen pixels, as Martlet's screenshots measure it) for <paramref name="Seconds"/> (0.5 to 30), after which they follow the
-/// mouse again; without a point they follow the mouse at once. Replied to with <see cref="RendererLook"/>.
+/// Turns the character's head and eyes. With a point (<paramref name="X"/>, <paramref name="Y"/> in physical screen pixels, as
+/// Martlet's screenshots measure it): toward it for <paramref name="Seconds"/> (0.5 to 30). With <paramref name="Mouse"/>:
+/// toward the mouse pointer for <paramref name="Seconds"/>, whatever the usual gaze (a touch). With neither: back to the usual
+/// gaze at once. <paramref name="Mode"/>, when given, first sets that usual gaze: what the eyes do when nothing holds them.
+/// <paramref name="Choice"/> and <paramref name="Free"/>, when given, are what the overlay's Eyes menu shows checked: the owner's
+/// choice (<see cref="Choices"/>: <c>personality</c> or a gaze's word) and whether the character may change where it looks.
+/// Replied to with <see cref="RendererLook"/>.
 /// </summary>
-public sealed record RendererGaze(double? X = null, double? Y = null, double Seconds = 0)
+public sealed record RendererGaze(double? X = null, double? Y = null, double Seconds = 0, GazeMode? Mode = null, bool Mouse = false,
+    string? Choice = null, bool? Free = null)
 {
     public const double MinimumSeconds = 0.5, MaximumSeconds = 30;
+    public const string Personality = "personality";
+
+    /// <summary>The owner's choices the Eyes menu shows: <c>personality</c> (as the personality decides), then each gaze's word.</summary>
+    public static IReadOnlyList<string> Choices { get; } = [Personality, .. CharacterGaze.Modes.Select(m => m.Word)];
+
+    /// <summary>The owner's choice as the Eyes menu names it: <c>personality</c> for none, else the gaze's word.</summary>
+    public static string ChoiceOf(GazeMode? owner) => owner is { } mode ? CharacterGaze.Word(mode) : Personality;
 }
-/// <summary>What the character looks at: "mouse" or "point" (where Martlet asked), and the head and eye direction the
-/// character was last given, from -1 to 1 (+x right, +y up).</summary>
-public sealed record RendererLook(string Target, double X, double Y);
+/// <summary>What the character looks at: "mouse", "point" (where Martlet asked), "window" (the window the user is using) or
+/// "ahead" (straight ahead), the head and eye direction the character was last given, from -1 to 1 (+x right, +y up), and its
+/// usual gaze.</summary>
+public sealed record RendererLook(string Target, double X, double Y, GazeMode Mode = GazeMode.Mouse);
 /// <summary>
 /// Something chosen on the character overlay's menu that Martlet itself carries out, sent unprompted on the renderer's
 /// separate request pipe (never as a command reply): "hide" the character, "open" Martlet's window, "talk" (open the talk
 /// window), show the character's "settings", "lock" its place where it is or "unlock" it (Martlet saves it and sends
 /// <see cref="RendererLock"/>), or "mute" or "unmute" Martlet's voice (Martlet saves it and sends <see cref="RendererVoice"/>).
+/// The Eyes menu's "look-personality", "look-mouse", "look-near", "look-ahead" and "look-window" choose the usual gaze, and
+/// "look-free-on" and "look-free-off" whether the character may change where it looks (Martlet saves them and sends
+/// <see cref="RendererGaze"/>).
 /// "placed" says the character was moved or resized and has settled: Martlet then asks where it is ("where", replied to with
 /// <see cref="RendererPlacement"/>) and saves that on this PC. "clear" (Clear emotes) turns off every lingering emote the
 /// character shows. "framed" says the character was moved or zoomed within the camera
@@ -120,7 +136,10 @@ public sealed record RendererLook(string Target, double X, double Y);
 /// </summary>
 public sealed record RendererRequest(string Action)
 {
-    public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings", "lock", "unlock", "mute", "unmute", "placed", "framed", "clear"];
+    public const string LookPrefix = "look-", FreeOn = "look-free-on", FreeOff = "look-free-off";
+
+    public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings", "lock", "unlock", "mute", "unmute", "placed", "framed", "clear",
+        .. RendererGaze.Choices.Select(choice => LookPrefix + choice), FreeOn, FreeOff];
 }
 /// <summary>
 /// The character frame's size in device-independent pixels, its top relative to the top of its screen's work area
@@ -134,17 +153,21 @@ public sealed record RendererRequest(string Action)
 public sealed record RendererView(double Width, double Height, double? ScreenTop, double Zoom, double? HeadTop, double? DrawWidth = null,
     bool? Locked = null, double? X = null, double? Y = null, bool? Camera = null);
 /// <summary>Over the character's renderer pipe: a picture of the character as it shows now (Discord's bot picture and
-/// <c>/selfie</c>). <paramref name="Portrait"/> crops a square around the head and shoulders, else the whole character; the
-/// longer side is at most <paramref name="Edge"/> pixels (64 to 512). Replied to with <see cref="RendererPicture"/>.</summary>
-public sealed record RendererSnapshot(bool Portrait, int Edge = 512)
+/// <c>/selfie</c>, and touch zones). <paramref name="Portrait"/> crops a square around the head and shoulders, else the whole
+/// character; the longer side is at most <paramref name="Edge"/> pixels (64 to 2048; never larger than the capture, and smaller
+/// when the PNG would not fit one renderer message). With <paramref name="Whole"/> (touch zones) the character is framed whole
+/// for the picture (no zoom, no pan; it shows so for a moment) and the reply also carries the zones probe taken in that
+/// framing. Replied to with <see cref="RendererPicture"/>.</summary>
+public sealed record RendererSnapshot(bool Portrait, int Edge = 512, bool Whole = false)
 {
-    public const int MinimumEdge = 64, MaximumEdge = 512;
+    public const int MinimumEdge = 64, MaximumEdge = 2048;
 }
 /// <summary>A PNG of the character (base64, small enough for one renderer message) and its size in pixels. <paramref name="CropLeft"/>,
 /// <paramref name="CropTop"/>, <paramref name="CropWidth"/> and <paramref name="CropHeight"/> say where the picture sat on the
-/// renderer page, as fractions of the page (touch zones compare it with touches).</summary>
+/// renderer page, as fractions of the page (touch zones compare it with touches). <paramref name="Probe"/>: for a
+/// <see cref="RendererSnapshot.Whole"/> picture, where the model's drawables or bones were in the same framing.</summary>
 public sealed record RendererPicture(string Png, int Width, int Height, double CropLeft = 0, double CropTop = 0, double CropWidth = 1,
-    double CropHeight = 1);
+    double CropHeight = 1, RendererZoneProbe? Probe = null);
 public sealed record RendererMapping(string Target, string Aspect);
 public sealed record RendererConfiguration(string SourceId, string ModelRevision, string MappingRevision, RendererMapping[] Targets);
 public sealed record RendererIdentity(Guid SessionId, Guid TurnId, Guid RequestId, string SourceId, long Epoch, int SampleRate);
@@ -153,7 +176,8 @@ public sealed record RendererParameters(RendererIdentity Identity, long Sequence
 
 public static class RendererProtocol
 {
-    public const int MaximumMessageBytes = 262_144;
+    // A touch zones snapshot (a PNG of the character at its full size, base64) is the largest message.
+    public const int MaximumMessageBytes = 8 * 1024 * 1024;
     public static JsonSerializerOptions Json { get; } = new(JsonSerializerDefaults.Web)
     {
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,

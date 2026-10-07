@@ -38,9 +38,10 @@ public static class ThinkLonger
     public const string CancelParametersJson =
         """{"type":"object","properties":{"id":{"type":"string","description":"Such as think-1; leave out for the running one."}},"additionalProperties":false}""";
 
-    /// <summary>The think job kind: as many at once as the places Deep thinking can use have slots (<paramref name="slots"/>),
-    /// and as many again waiting in line for the next free one (at most <see cref="MaxPlaces"/> in all), with no hourly limit
-    /// and no time limit (it runs until it is done or canceled). It yields to the live conversation (<see cref="RunYieldingAsync"/>).</summary>
+    /// <summary>The think job kind: up to twice the slots of the places Deep thinking can use (<paramref name="slots"/>) running
+    /// or waiting in line for the next free one (at most <see cref="MaxPlaces"/> in all; how many of them run at once is
+    /// <see cref="AtOnce"/>), with no hourly limit and no time limit (it runs until it is done or canceled). It yields to the live
+    /// conversation (<see cref="RunYieldingAsync"/>).</summary>
     public static BackgroundJobKind Kind(ThinkLongerSettings settings, int slots = 1) =>
         new(KindName, Math.Clamp(Math.Max(1, slots) * 2, 2, MaxPlaces), null, null, Doing: "Thinking about")
         {
@@ -91,20 +92,31 @@ public static class ThinkLonger
         return Uri.TryCreate(origin, UriKind.Absolute, out var uri) && uri.Port == GenerationSupport.OllamaPort;
     }
 
-    /// <summary>How many thinks <paramref name="places"/> run at once in all.</summary>
+    /// <summary>How many thinks <paramref name="places"/> have slots for in all.</summary>
     public static int Slots(IReadOnlyList<BackgroundPlace> places) => places.Sum(place => place.Slots);
 
-    public static string Description(ThinkLongerSettings settings, int slots = 1) =>
-        "Think a task through in the background, step by step, while you keep talking. Use rarely: only for real multi-step " +
-        "reasoning or long creative work (song lyrics, a story, a plan, tricky math or code), never for chat or quick answers. " +
-        "Tell the user first that you'll think it over. Returns at once; " +
-        $"the result comes back later in a note. {(slots > 1 ? $"Up to {Math.Min(slots, MaxPlaces)} at once" : "One at a time")}, more wait their turn.";
+    /// <summary>How many thinks run at once on <paramref name="places"/> (<see cref="DeepThinkingPool.AtOnce"/>): one fewer than
+    /// their slots when there are two or more, because a long job never takes the Thinking pool's last free slot, which stays
+    /// free for quick jobs; the others wait in line.</summary>
+    public static int AtOnce(IReadOnlyList<BackgroundPlace> places) => DeepThinkingPool.AtOnce(Slots(places));
+
+    /// <summary>The think_longer tool's description. <paramref name="slots"/> is the slots of Deep thinking's places in all; it
+    /// says how many thinks really run at once (<see cref="DeepThinkingPool.AtOnce"/>), so the text changes only when the slots
+    /// do.</summary>
+    public static string Description(ThinkLongerSettings settings, int slots = 1)
+    {
+        var atOnce = DeepThinkingPool.AtOnce(slots);
+        return "Think a task through in the background, step by step, while you keep talking. Use rarely: only for real multi-step " +
+            "reasoning or long creative work (song lyrics, a story, a plan, tricky math or code), never for chat or quick answers. " +
+            "Tell the user first that you'll think it over. Returns at once; " +
+            $"the result comes back later in a note. {(atOnce > 1 ? $"Up to {atOnce} at once" : "One at a time")}; more wait in line.";
+    }
 
     public const string CancelDescription = "Stop the background think (think_longer) that is running.";
 
     /// <summary>The tools a reply gets while Thinking longer is on, always the same two in the same order, so the start of every
-    /// request stays the same for prompt caches (<paramref name="slots"/> is how many thinks Deep thinking's places run at once,
-    /// from the settings only, never from what is busy).</summary>
+    /// request stays the same for prompt caches (<paramref name="slots"/> is the slots of Deep thinking's places in all, from the
+    /// settings only, never from what is busy).</summary>
     public static IReadOnlyList<TextToolDefinition> Definitions(ThinkLongerSettings settings, int slots = 1) =>
         [new(Name, Description(settings, slots), ParametersJson), new(CancelName, CancelDescription, CancelParametersJson)];
 

@@ -181,7 +181,7 @@ public sealed class CharacterGazeTests
         try
         {
             var result = System.Text.Json.JsonSerializer.SerializeToElement(Martlet.Mcp.GazeCheck.Run(directory, null));
-            Assert.Equal("mouse", result.GetProperty("saved").GetString());
+            Assert.Equal("usual gaze", result.GetProperty("saved").GetString());
             Assert.True(result.GetProperty("ok").GetBoolean(), result.GetProperty("scenarios").ToString());
             Assert.Equal(9, result.GetProperty("tags").GetArrayLength());
             File.WriteAllText(Path.Combine(directory, "talk-preferences.json"), "{\"DecideGaze\":true}");
