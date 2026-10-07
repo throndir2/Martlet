@@ -36,3 +36,11 @@ internal sealed class PoolScreenDigestThinker(Func<ThinkingPool> pool) : IScreen
         };
     }
 }
+
+/// <summary>Screen summaries on the context board as source <see cref="ContextBoard.Screen"/>: each one replaces the one
+/// before, and the board drops it once it is older than its maximum age.</summary>
+internal sealed class BoardScreenDigest(ContextBoard board) : IScreenDigestBoard
+{
+    public void Post(string text, DateTimeOffset at, TimeSpan maximumAge) => board.Post(ContextBoard.Screen, text, at, maximumAge);
+    public void Clear() => board.Clear(ContextBoard.Screen);
+}

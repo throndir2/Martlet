@@ -292,6 +292,22 @@ public sealed class ScreenDigestTests
     }
 
     [Fact]
+    public void SummariesGoToTheContextBoardAsTheScreenNote()
+    {
+        var board = new ContextBoard();
+        var screen = new BoardScreenDigest(board);
+        var at = new DateTimeOffset(2026, 10, 7, 9, 0, 0, TimeSpan.Zero);
+        screen.Post("Screen over the last 9 s: They opened a game.", at, TimeSpan.FromSeconds(45));
+        screen.Post("Screen over the last 12 s: Health dropped to 20%.", at.AddSeconds(15), TimeSpan.FromSeconds(45));
+        var note = Assert.Single(board.Snapshot(at.AddSeconds(20)).Notes);
+        Assert.Equal((ContextBoard.Screen, "Screen over the last 12 s: Health dropped to 20%."), (note.Source, note.Text));
+        Assert.Empty(board.Snapshot(at.AddSeconds(61)).Notes);
+        screen.Post("Screen over the last 3 s: A menu opened.", at.AddSeconds(70), TimeSpan.FromSeconds(45));
+        screen.Clear();
+        Assert.Empty(board.Snapshot(at.AddSeconds(71)).Notes);
+    }
+
+    [Fact]
     public void ScreenSummaryIsOnByDefaultAndSaved()
     {
         Assert.True(new TalkPreferences().ScreenSummary);

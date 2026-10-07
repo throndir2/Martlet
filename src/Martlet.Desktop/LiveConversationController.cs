@@ -549,7 +549,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     internal IScreenDigestThinker ScreenDigestThinker => screenDigestThinker ??= new PoolScreenDigestThinker(() => ThinkingPool);
     private IScreenDigestThinker? screenDigestThinker;
     /// <summary>Where screen summaries go: the context board, for the next reply's notes.</summary>
-    internal IScreenDigestBoard ScreenDigestBoard { get; set; } = NoScreenDigestBoard.Instance;
+    internal IScreenDigestBoard ScreenDigestBoard => screenDigestBoard ??= new BoardScreenDigest(Board);
+    private IScreenDigestBoard? screenDigestBoard;
     /// <summary>The input tokens the last reply or glance read and how many came from the model's prompt cache; null until a
     /// provider reported both.</summary>
     internal (long Input, long Cached)? LastCache { get { lock (gate) return lastCache; } }

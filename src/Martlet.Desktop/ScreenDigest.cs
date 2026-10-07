@@ -314,23 +314,6 @@ internal interface IScreenDigestBoard
     void Clear();
 }
 
-/// <summary>No Thinking model that sees in the pool: summaries stay off.</summary>
-internal sealed class NoScreenDigestThinker : IScreenDigestThinker
-{
-    internal static readonly NoScreenDigestThinker Instance = new();
-    public bool CanSee => false;
-    public Task<string?> DigestAsync(ScreenDigestJob job, CancellationToken cancellation) =>
-        Task.FromException<string?>(new InvalidOperationException("No Thinking model that sees can make screen summaries."));
-}
-
-/// <summary>No context board: summaries are not passed on.</summary>
-internal sealed class NoScreenDigestBoard : IScreenDigestBoard
-{
-    internal static readonly NoScreenDigestBoard Instance = new();
-    public void Post(string text, DateTimeOffset at, TimeSpan maximumAge) { }
-    public void Clear() { }
-}
-
 /// <summary>What the screen summary over time is doing, for the talk window and Martlet MCP. Never a window title.</summary>
 internal sealed record ScreenDigestStatus(bool On, bool CanSee, int Frames, string? LastText, TimeSpan? LastAge, TimeSpan? LastTook,
     int Jobs, int Posted, int Quiet, int Dropped, int Failed, bool Running, string? Problem);

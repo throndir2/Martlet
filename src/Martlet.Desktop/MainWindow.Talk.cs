@@ -588,7 +588,7 @@ public partial class MainWindow
     /// in the Thinking pool sums up in the background what changed on the screen, and the next reply gets it as a note.</summary>
     private Border ScreenSummaryCard(TalkPreferences prefs)
     {
-        var canSee = (conversation?.ScreenDigestThinker ?? NoScreenDigestThinker.Instance).CanSee;
+        var canSee = conversation?.ScreenDigestThinker.CanSee == true;
         var box = new CheckBox { Content = "Screen summary over time", IsChecked = prefs.ScreenSummary, Margin = new Thickness(0, 0, 0, 6) };
         AutomationProperties.SetAutomationId(box, "VisionScreenSummary");
         box.Checked += (_, _) => { if (!Talk.ScreenSummary) SaveTalk(Talk with { ScreenSummary = true }, render: true); };
@@ -608,7 +608,7 @@ public partial class MainWindow
     internal static string ScreenSummaryStatus(bool on, bool vision, bool canSee) =>
         !on ? "Off. Replies know only the newest picture."
         : !vision ? "On, but vision is off. Turn vision on below."
-        : !canSee ? "Off for now: the Thinking pool has no other model that sees. Add one that sees in Companion › Thinking."
+        : !canSee ? "Off for now: the Thinking pool has no other model that sees. Add one that sees in Companion › Thinking pool."
         : "On. While Martlet watches, a Thinking model that sees sums up what changed for your next message.";
 
     private string GazeStatus(TalkPreferences prefs)

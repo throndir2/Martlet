@@ -4387,7 +4387,8 @@ chose to look.*, and when they last looked away; never what is on screen),
 summary over time* runs: *Screen summary: 4 pictures kept; last summary 12 s
 ago (took 2.1 s).*, *…; summarizing…* or why the last one failed; its `help`
 is the last summary, one or two lines on what changed on the screen),
-`VisionScreenSummary` (the check box) and `VisionScreenSummaryStatus` (*On.*,
+`VisionScreenSummary` (the check box; `ui_toggle` with `--allow-ui-effects`
+saves talk-preferences.json) and `VisionScreenSummaryStatus` (*On.*,
 *Off.*, or *Off for now: the Thinking pool has no other model that sees.* with
 what to do),
 `LiveContext` (*Keeps the last N exchanges in mind.*, or *Keeps the last N
