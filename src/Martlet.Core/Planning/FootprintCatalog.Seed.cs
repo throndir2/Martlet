@@ -132,9 +132,10 @@ public sealed partial class FootprintCatalog
         {
             Id = "chatterbox-nano-cpu", Component = PlanComponent.Voice, DisplayName = "Chatterbox Nano on the processor",
             ModelId = "chatterbox-nano", HostRoleKind = "chatterbox-nano", Platforms = DockerNvidia,
-            Steady = new(0, 3.3, 8, 9.9), Peak = new(0, 4.1, 8, 9.9), QualityTier = 1, FirstWordMs = 1400, Evidence = FootprintEvidence.Measured,
-            Source = $"Measured on an i7-13700K, PyTorch on the CPU: whole pieces at 0.51x real time with 8 threads on the performance cores, " +
-                $"1.05x with 15 cores busy elsewhere; 3.3 GB, 4.1 GB while loading (docs/CHATTERBOX_VOICE.md, {Doc})"
+            Steady = new(0, 2.5, 8, 9.9), Peak = new(0, 4.5, 8, 9.9), QualityTier = 1, FirstWordMs = 1400, Evidence = FootprintEvidence.Measured,
+            Source = $"Measured on an i7-13700K, PyTorch on the CPU, whole pieces: 0.52x real time (median) with 8 threads, one on each " +
+                $"performance core, 0.64x on any core, 1.05x with 15 cores busy elsewhere; first audio 0.75 s for 1.2 s of speech and " +
+                $"2.14 s for a 4 s sentence with 1 decoder step; 2.4-2.6 GB, 4.5 GB at most (docs/CHATTERBOX_VOICE.md, {Doc})"
         },
         new()
         {

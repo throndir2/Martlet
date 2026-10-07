@@ -162,6 +162,10 @@ internal static class VoiceEngineCheck
                 ? whispered.Clone() : null;
             // Chatterbox Original's default style and how many sentences it has said expressively.
             object? style = root.TryGetProperty("style", out var styled) && styled.ValueKind == JsonValueKind.Object ? styled.Clone() : null;
+            // Chatterbox on the CPU (threads, pinned_cpus): PyTorch's threads and the performance cores' CPUs it is pinned to.
+            object? cpu = root.TryGetProperty("cpu", out var cpus) && cpus.ValueKind == JsonValueKind.Object ? cpus.Clone() : null;
+            int? decoderSteps = root.TryGetProperty("decoder_steps", out var steps) && steps.ValueKind == JsonValueKind.Number
+                ? steps.GetInt32() : null;
             return new
             {
                 answered = true,
@@ -172,6 +176,9 @@ internal static class VoiceEngineCheck
                 // The service's model and the device it runs on (cuda:0 or cpu).
                 model = Text("model"),
                 device = Text("device"),
+                // Turbo's and Nano's decoder steps a whole piece takes (1 on the CPU, 2 on a GPU).
+                decoderSteps,
+                cpu,
                 runtime,
                 idleCheck,
                 whisper,

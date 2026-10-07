@@ -453,6 +453,8 @@ class IdleCheckTests(unittest.TestCase):
 
     def engine(self, idle_pass):
         class Fast:
+            decoder_steps = 2
+
             def idle_pass(self, cancelled):
                 idle_pass(cancelled)
 
@@ -584,15 +586,22 @@ class FastTurboTests(unittest.TestCase):
             def inference_turbo(self):
                 return "library"
 
+        class S3Gen:
+            def inference(self):
+                return "library"
+
         class Model:
-            t3 = T3()
+            t3, s3gen = T3(), S3Gen()
 
         fast = object.__new__(self.host.FastTurbo)
         fast.model, fast.conditionals, fast.graph, fast.warm_conds = Model(), {"voice": object()}, object(), object()
         fast.model.t3.inference_turbo = fast._inference_turbo  # what __init__ installs: t3 -> fast -> model -> t3
+        fast.model.s3gen.inference = lambda: fast  # and on the CPU: s3gen -> fast -> model -> s3gen
         fast.close()
         self.assertNotIn("inference_turbo", vars(fast.model.t3))
         self.assertEqual(fast.model.t3.inference_turbo(), "library")
+        self.assertNotIn("inference", vars(fast.model.s3gen))
+        self.assertEqual(fast.model.s3gen.inference(), "library")
         self.assertIsNone(fast.graph)
         self.assertEqual(fast.conditionals, {})
 
@@ -690,8 +699,12 @@ class FastTurboTests(unittest.TestCase):
                 calls.append(kwargs["max_gen_len"])
                 return "tokens"
 
+        class S3Gen:
+            def inference(self, **kwargs):
+                return kwargs["n_cfm_timesteps"]
+
         class Model:
-            t3, device = T3(), "cpu"
+            t3, s3gen, device = T3(), S3Gen(), "cpu"
 
         fast = self.host.FastTurbo(Model(), graph=True, name="Chatterbox Nano")
         # On the CPU there is no CUDA graph, but decoding still goes through the service, so a piece that never stops ends.
@@ -700,6 +713,95 @@ class FastTurboTests(unittest.TestCase):
         self.assertEqual(calls, [self.host.SPEECH_TOKENS_BASE + 4 * self.host.SPEECH_TOKENS_PER_TEXT_TOKEN])
         fast.close()
         self.assertNotIn("inference_turbo", vars(fast.model.t3))
+
+    def test_on_the_cpu_a_whole_piece_takes_one_decoder_step(self):
+        class T3:
+            def inference_turbo(self, *args, **kwargs):
+                return "tokens"
+
+        class S3Gen:
+            def inference(self, speech_tokens=None, ref_dict=None, n_cfm_timesteps=None):
+                return n_cfm_timesteps
+
+        def fast_on(device):
+            class Model:
+                t3, s3gen = T3(), S3Gen()
+
+            model = Model()
+            model.device = device
+            return self.host.FastTurbo(model, graph=False, name="Chatterbox Nano")
+
+        cpu = fast_on("cpu")
+        self.assertEqual(self.host.CPU_DECODER_STEPS, 1)
+        self.assertEqual(cpu.decoder_steps, 1)
+        # The library's generate() asks for 2; the CPU decodes with 1.
+        self.assertEqual(cpu.model.s3gen.inference(speech_tokens="speech", ref_dict={}, n_cfm_timesteps=2), 1)
+        cpu.close()
+        self.assertEqual(cpu.model.s3gen.inference(n_cfm_timesteps=2), 2)
+        gpu = fast_on("cuda:0")
+        self.assertEqual(gpu.decoder_steps, 2)
+        self.assertNotIn("inference", vars(gpu.model.s3gen))
+        self.assertEqual(gpu.model.s3gen.inference(n_cfm_timesteps=2), 2)
+
+
+class CpuTests(unittest.TestCase):
+    """How many threads Chatterbox uses on the CPU and the performance cores it is pinned to, from a stand-in for Linux's
+    /sys/devices (FIXTURE - NOT a real CPU)."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(ROOT))
+        import martlet_chatterbox_host as host
+        cls.host = host
+
+    def sysfs(self, root, performance, siblings):
+        """performance: what /sys/devices/cpu_core/cpus says (None: not a hybrid CPU); siblings: each CPU's
+        thread_siblings_list."""
+        devices = Path(root)
+        if performance is not None:
+            (devices / "cpu_core").mkdir(parents=True)
+            (devices / "cpu_core" / "cpus").write_text(performance + "\n", encoding="ascii")
+        for cpu, listed in siblings.items():
+            topology = devices / "system" / "cpu" / f"cpu{cpu}" / "topology"
+            topology.mkdir(parents=True)
+            (topology / "thread_siblings_list").write_text(listed + "\n", encoding="ascii")
+        return devices
+
+    def test_cpu_lists_read_like_linux_writes_them(self):
+        self.assertEqual(self.host._cpu_list("0-3,8,10-11\n"), [0, 1, 2, 3, 8, 10, 11])
+        self.assertEqual(self.host._cpu_list(""), [])
+
+    def test_a_hybrid_cpu_names_one_cpu_on_each_performance_core(self):
+        # An i7-13700K: 8 performance cores with two CPUs each (0-15, siblings 0-1, 2-3...) and 8 efficiency cores (16-23).
+        siblings = {cpu: f"{cpu - cpu % 2}-{cpu - cpu % 2 + 1}" for cpu in range(16)} | {cpu: str(cpu) for cpu in range(16, 24)}
+        with tempfile.TemporaryDirectory(prefix="chatterbox-sysfs-", dir=os.getcwd()) as root:
+            self.assertEqual(self.host._performance_cores(self.sysfs(root, "0-15", siblings)), [0, 2, 4, 6, 8, 10, 12, 14])
+        # Linux numbers some CPUs' second threads after all the first ones (siblings 0,8).
+        with tempfile.TemporaryDirectory(prefix="chatterbox-sysfs-", dir=os.getcwd()) as root:
+            spread = {cpu: f"{cpu % 4},{cpu % 4 + 4}" for cpu in range(8)}
+            self.assertEqual(self.host._performance_cores(self.sysfs(root, "0-7", spread)), [0, 1, 2, 3])
+        with tempfile.TemporaryDirectory(prefix="chatterbox-sysfs-", dir=os.getcwd()) as root:
+            self.assertEqual(self.host._performance_cores(self.sysfs(root, None, {0: "0-1", 1: "0-1"})), [])
+
+    def test_the_plan_uses_eight_threads_at_most_and_only_performance_cores(self):
+        plan = self.host._cpu_plan
+        performance = [0, 2, 4, 6, 8, 10, 12, 14]
+        # The i7-13700K: PyTorch would use its 16 physical cores; Chatterbox uses 8, one on each performance core.
+        self.assertEqual(plan("", 16, performance, None), (8, performance))
+        # Fewer performance cores than 8 (an i5-12600K's 6): one thread on each.
+        self.assertEqual(plan("", 10, [0, 2, 4, 6, 8, 10], None), (6, [0, 2, 4, 6, 8, 10]))
+        # Not a hybrid CPU (or Linux doesn't say): 8 threads or the physical cores, whichever is fewer, not pinned.
+        self.assertEqual(plan("", 16, [], None), (8, []))
+        self.assertEqual(plan("", 4, [], None), (4, []))
+        # Only the CPUs this container may use.
+        self.assertEqual(plan("", 16, performance, {0, 2, 4, 6, 16, 17}), (4, [0, 2, 4, 6]))
+        # MARTLET_CHATTERBOX_CPU_THREADS: pinned while it fits on the performance cores, otherwise on any core.
+        self.assertEqual(plan("4", 16, performance, None), (4, [0, 2, 4, 6]))
+        self.assertEqual(plan("12", 16, performance, None), (12, []))
+        self.assertEqual(plan("12", 16, [], None), (12, []))
+        for bad in ("0", "-2", "many"):
+            with self.assertRaises(ValueError):
+                plan(bad, 16, performance, None)
 
 
 class ModelTests(unittest.TestCase):
