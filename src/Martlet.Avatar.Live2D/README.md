@@ -196,8 +196,11 @@ before physics/pose each frame, and loudness lip-sync is suppressed while a
 composed frame is fresh. Without `createAnimator` (for example test ports), no
 motion, physics or pose runs and all parameters are written each frame.
 Motion `Sound` files are validated but never played; Martlet's voice drives the mouth.
-Authored Layout/HitAreas are reported inactive; framing fits the model's canvas
-without stretching.
+Authored Layout is reported inactive; framing fits the model's canvas
+without stretching. Authored HitAreas are kept for tapping: `hitTest(x, y)`
+(canvas fractions, +y down) returns the HitAreas (by name) and the visible
+drawables (topmost first, at most 8) whose triangles contain the point, as posed
+in the last frame (`lib/touch.ts`); no authored hit-test script ever runs.
 
 ## Asset and lifecycle boundaries
 

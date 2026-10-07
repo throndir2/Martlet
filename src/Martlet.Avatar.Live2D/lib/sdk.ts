@@ -21,6 +21,9 @@ export interface CubismModel {
   getDrawableVertices(index: number): Float32Array;
   getDrawableOpacity(index: number): number;
   getDrawableDynamicFlagIsVisible(index: number): boolean;
+  getDrawableId(index: number): { getString(): { s: string } };
+  getDrawableVertexIndices(index: number): Uint16Array;
+  getDrawableRenderOrders(): Int32Array;
   update(): void;
 }
 
