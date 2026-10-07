@@ -124,10 +124,6 @@ public sealed class PcSoundDigestTests
             Assert.Equal(Martlet.Conversation.ContextBoard.Sound, note.Source);
             Assert.Equal("Sound playing on this PC besides speech: Music: J-pop with singing; laughter.", note.Text);
             Assert.Equal(TimeSpan.FromSeconds(45), note.MaxAge);
-            var note = Assert.Single(board.Snapshot(DateTimeOffset.UtcNow).Notes);
-            Assert.Equal(Martlet.Conversation.ContextBoard.Sound, note.Source);
-            Assert.Equal("Sound playing on this PC besides speech: Music: J-pop with singing; laughter.", note.Text);
-            Assert.Equal(TimeSpan.FromSeconds(45), note.MaxAge);
             var json = File.ReadAllText(Path.Combine(directory, PcSoundDigest.StatusFile));
             Assert.DoesNotContain("J-pop", json, StringComparison.Ordinal);
             using (var document = JsonDocument.Parse(json))
