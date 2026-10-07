@@ -119,7 +119,8 @@ what each one is.
   - an expression whose name or tag names a look that stays (glasses, a hat, a
     blush, an angry or sad face, tears, a dark face, an outfit or accessory).
 
-  Martlet's holdable gestures (pout, shy, look_away and drowsy) also stay on by
+  Martlet's holdable gestures (pout, shy, look_away and drowsy, and the overlay
+  emotes sweat, hearts, gloom and sleepy) also stay on by
   default. The renderer holds one gesture at a time, so a new held gesture
   replaces the one before. A gesture that the renderer cannot hold plays once.
   Motions and the other gestures are brief by default. The Thinking model's
@@ -202,7 +203,8 @@ what each one is.
   the overlay layer (`web/effects/manpu.mjs` in `Martlet.Avatar.RendererHost`),
   so every Live2D model gets them and every VRM with a `head` bone. They follow
   the face (its position, size, zoom and head tilt), pop in with a little bounce
-  and fade out after 2 to 4 seconds, or stay while a lingering emote holds them.
+  and fade out after 2 to 4 seconds; sweat, hearts, gloom and sleepy linger
+  (keep going until `{/tag}`) by default.
   Their colours are fixed and outlined, so they read on any desktop. The tag is
   the name; a model's own emote with the same tag replaces it:
 
