@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 - Companion › Character › Touch zones: your Thinking model (when it can see) marks where the character's head, cheeks, hands and other parts are in one picture, and each zone reacts its own way when you click it: a head pat, a blush, a flinch, optionally telling the character. Rename, move, resize or turn zones off; intimate zones stay off unless you turn them on. ([#514](https://github.com/throndir2/Martlet/pull/514))
+- The character has new gestures for touches and moods: it can wink, pout, act shy, giggle, flinch, lean in for a head pat, look away, think, roll its eyes and get drowsy, on any Live2D or VRM model that supports them; pouting, shyness, looking away and drowsiness can also stay on until they're turned off. ([#512](https://github.com/throndir2/Martlet/pull/512))
 - Click (without dragging) on your desktop character and it reacts: it plays the model's own tap motion for that part when it has one, or tilts its head, nods or looks surprised. ([#510](https://github.com/throndir2/Martlet/pull/510))
 - The character now reacts to every sound and tone the voice makes: it laughs, sighs, gasps, coughs, hums, cries, glowers and more along with the voice, on any Live2D or VRM model, without lengthening replies. ([#507](https://github.com/throndir2/Martlet/pull/507))
 

@@ -30,7 +30,11 @@ gestures the model has the humanoid bones for (`gestures`: `nod`, `shake`,
 `tilt`, `bow`, `sway`, `wave`, `shrug`, `bounce`, and the voice emotes `laugh`,
 `chuckle`, `sigh`, `gasp`, `cough`, `clear_throat`, `groan`, `sniff`, `shush`,
 `inhale`, `exhale`, `mumble`, `hum`, `sneeze`, `whistle`, `happy`, `sarcastic`,
-`angry`, `fear`, `crying`, `whispering`, `dramatic`) on the idle pose. VRM files
+`angry`, `fear`, `crying`, `whispering`, `dramatic`, then `wink`, `pout`, `shy`,
+`giggle`, `flinch`, `lean_in`, `look_away`, `think`, `eye_roll`, `drowsy`, which
+also use the model's preset expressions when it has them) on the idle pose.
+`playGesture(name, true)` holds `pout`, `shy`, `look_away` or `drowsy` until
+`endGesture(name)`; `gestureState` says which plays once and which is held. VRM files
 carry no motions.
 
 `dev` bundles all JavaScript locally to ignored `public/app.js`, then serves only
