@@ -1431,6 +1431,45 @@ left out without recording anything, says which outputs are in use and what
 Martlet would hear, rehearses the production path with a fixture loopback and
 runs the own-voice comparison on fixed samples.
 
+### Describing PC sounds
+
+Transcripts keep only words. Music, its mood, game and video sounds,
+laughter, applause and alarms are lost. *Describe PC sounds* (Companion ›
+Listening › Watch along, on by default, works only while *Hear what this PC
+plays* is on) adds one short line about that sound for the next reply. It
+never adds raw audio to the live request: audio costs many tokens, slows the
+first word and paired hosts reject it.
+
+- **What is kept.** While the PC listener runs, `PcAudioDevice` also
+  normalizes each packet to 16 kHz mono into `PcSoundBuffer`: the last 15
+  seconds, in memory only, never saved or logged. It fills only while the
+  digest is on; turning it off clears it.
+- **When it runs.** `SoundDigestScheduler` ticks each second. About every 10
+  seconds it takes the newest 10-second clip and gives it to the judge, but
+  only when something plays (at least 30% of 100 ms windows louder than about
+  -45 dBFS; silence is skipped), only when no judge is still busy, and never
+  with Martlet's own voice: where Windows can't leave Martlet out, the clip
+  starts 1 second after Martlet last spoke or sang. A judge that takes longer
+  than 15 seconds is canceled and its clip dropped. Each clip is cleared once
+  judged.
+- **Who judges.** An audio-capable model in the Thinking pool gets the clip as
+  a WAV with `SoundDigest.Prompt` (one line of at most 20 words about the
+  non-speech sound; *none* for speech or silence). Without one, the small CPU
+  sound tagger bundled with Martlet (`SoundTagger`: the sherpa-onnx Zipformer
+  small AudioSet tagger, Apache-2.0, on one thread below normal priority,
+  about 150 ms for 10 seconds) names what it hears, and `SoundDigest.Line`
+  turns the labels into a line such as *Music: pop with singing, happy;
+  laughter*. Speech, room tone and noise labels are left out.
+- **Where the line goes.** To the context board as source `sound`, with a
+  maximum age of 45 seconds. A reply never waits for it, and it never goes
+  into the history or memory. Companion's `TalkDescribePcSoundsStatus` says
+  which judge is used and shows the last line with its age (in memory only);
+  `sound-digest.json` in the data folder keeps the state, the judge, counts
+  and times for MCP, never a line or a sound.
+
+`sound_digest_check` in [Martlet MCP](MCP.md) reads the choices and that
+status, and rehearses the path with a FIXTURE clip through the bundled tagger.
+
 ## Voice tags
 
 Some voice engines turn tags written in the reply into sounds and tones of

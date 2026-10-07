@@ -458,6 +458,7 @@ public partial class LiveConversationWindow : ThemedWindow
         Settle();
         Collect();
         FollowCall();
+        FollowSoundDigest();
         if (loading is not null) return;
         // While Windows is locked only messages from paired chats are answered (text only, never aloud).
         if (locked)
@@ -935,6 +936,15 @@ public partial class LiveConversationWindow : ThemedWindow
 
     private bool HearingPc => listening && (preferences.HearPc || CallOn) && controller.CanHearPc;
 
+    // Companion › Listening › Describe PC sounds: the sound digest runs only while this window hears what the PC plays because
+    // Hear what this PC plays is on (not for a Discord call alone) and Windows isn't locked.
+    private void FollowSoundDigest()
+    {
+        if (controller.SoundDigest is not { } digest) return;
+        var on = !locked && preferences.HearPc && preferences.DescribePcSounds && pcListener is { Running: true };
+        if (digest.On != on) digest.On = on;
+    }
+
     private void KeepHearingPc()
     {
         if (!HearingPc || !Available || pcListener is not null || clock.GetTimestamp() < pcRetryAt) return;
@@ -978,6 +988,7 @@ public partial class LiveConversationWindow : ThemedWindow
         pcListener = null;
         pcProblem = null;
         pcRetryAt = 0;
+        FollowSoundDigest();
         if (keepHeard) return;
         playingQueue.Clear();
         pcHeld.Clear();
@@ -2839,6 +2850,7 @@ public partial class LiveConversationWindow : ThemedWindow
         controller.PictureShown -= PictureShown;
         controller.VoicesNamed -= VoicesNamed;
         controller.ChattinessDecided -= ChattinessDecided;
+        if (controller.SoundDigest is { } digest) digest.On = false;
         homeQuestion?.TrySetResult(false);
         if (controller.Home is { } smartHome && smartHome.Confirm == ConfirmHomeAsync) smartHome.Confirm = null;
     }

@@ -199,6 +199,17 @@ public partial class MainWindow
             conversation?.PcOutput ?? outputs?.Output, outputs?.Elsewhere);
         var status = problem ? Warning(text) : Note(text, new Thickness(0, 0, 0, 6));
         AutomationProperties.SetAutomationId(status, "TalkHearPcStatus");
+        var describe = new CheckBox { Content = "Describe PC sounds", IsChecked = Talk.DescribePcSounds, Margin = new Thickness(0, 0, 0, 6),
+            IsEnabled = Talk.HearPc };
+        AutomationProperties.SetAutomationId(describe, "TalkDescribePcSounds");
+        describe.Checked += (_, _) => { if (!Talk.DescribePcSounds) SaveTalk(Talk with { DescribePcSounds = true }, render: true); };
+        describe.Unchecked += (_, _) => { if (Talk.DescribePcSounds) SaveTalk(Talk with { DescribePcSounds = false }, render: true); };
+        var digest = conversation?.SoundDigest?.Status;
+        var tagger = Martlet.Sherpa.SoundTagger.Included();
+        var describeStatus = Note(SoundDigestStatus(Talk, conversation?.CanHearPc != false, digest,
+            digest is null ? (tagger ? CpuSoundJudge.Label : null, tagger ? Martlet.Audio.SoundJudgeKind.Cpu : null) : (digest.Judge, digest.JudgeKind),
+            conversation?.Clock ?? TimeProvider.System), new Thickness(0, 0, 0, 6));
+        AutomationProperties.SetAutomationId(describeStatus, "TalkDescribePcSoundsStatus");
         return Card([Heading("Watch along"), hear, status,
             Note("While always listening runs, Martlet also hears the sound your PC plays (videos, streams, calls, games), as if it " +
                 "were watching with you. Your Listening choice transcribes it like your microphone (a cloud provider gets that sound " +
@@ -209,9 +220,26 @@ public partial class MainWindow
                 "and pauses while it speaks. On its own, what plays goes to Thinking " +
                 "about every 20 seconds (45 when Martlet is quiet, 12 when it is chatty), and Thinking mostly stays quiet.",
                 new Thickness(0, 0, 0, 8)),
+            describe, describeStatus,
+            Note("Words aren't everything: about every 10 seconds while something plays, Martlet describes the rest of the sound " +
+                "(music and its mood, game or video sounds, laughter, applause, alarms) in one short line for its next reply. A " +
+                "Thinking pool model that can hear gets a short clip; without one, a small sound tagger on this PC's processor names " +
+                "what it hears. The last few seconds of sound stay in memory only; the line is never saved or remembered, and a " +
+                "reply never waits for it.", new Thickness(0, 0, 0, 8)),
             Note("How chatty Martlet is about it (the same choice as Vision's How often it comments):", new Thickness(0, 0, 0, 4)),
             .. ChattinessPicker("TalkPcChattiness")]);
     }
+
+    /// <summary>Companion › Listening › Describe PC sounds' status: off or why it can't run, else which judge describes the
+    /// sound and the last line with its age (in memory only, never saved).</summary>
+    internal static string SoundDigestStatus(TalkPreferences prefs, bool available, Martlet.Audio.SoundDigestStatus? status,
+        (string? Name, Martlet.Audio.SoundJudgeKind? Kind) judge, TimeProvider clock) =>
+        !prefs.HearPc ? "Works while Hear what this PC plays is on."
+        : !prefs.DescribePcSounds ? "Off. Only the words this PC plays reach Thinking."
+        : !available ? "Martlet can't hear what this PC plays here."
+        : $"On. {PcSoundDigest.JudgeText(judge.Name, judge.Kind)} " +
+            (status?.On == true ? "Describing what plays now. " : "Runs while Martlet hears this PC. ") +
+            PcSoundDigest.LastText(status?.Last, clock);
 
     internal static (string Text, bool Problem) PcAudioStatus(TalkPreferences prefs, bool available, bool? withoutMartlet,
         string? output = null, string? elsewhere = null) =>

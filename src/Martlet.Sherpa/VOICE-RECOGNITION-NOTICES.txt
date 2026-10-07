@@ -36,5 +36,24 @@ its own P/Invoke code (Martlet.Sherpa); no managed sherpa-onnx package is used.
    (Copyright (c) 2022 CNRS) ships beside it as
    voice-recognition\pyannote-segmentation-3-0\LICENSE. No changes were made.
 
+5. Zipformer small audio tagging model, trained on AudioSet
+   (sound-tagging\model.int8.onnx,
+   SHA-256 69304b8a1b96bbe6b7d16c24079f0732c65faf3568a14cb82a8238c709afe76c)
+   By the k2-fsa / Next-gen Kaldi team (icefall, https://github.com/k2-fsa/icefall/pull/1421).
+   License: Apache License 2.0; full text in notices\sherpa-onnx-LICENSE.txt.
+   From https://huggingface.co/k2-fsa/sherpa-onnx-zipformer-small-audio-tagging-2024-04-15
+   (revision c24f9d0fdf7d0b8c0c4f9733aa0cac51fda10c95). No changes were made.
+   Martlet uses it for Companion > Listening > Describe PC sounds when no
+   Thinking pool model can hear.
+
+6. AudioSet class labels
+   (sound-tagging\class_labels_indices.csv,
+   SHA-256 cdd1049833c4b86127c2773ac0d14a2754b6a6d0d1798002ed5c66e699708429)
+   The AudioSet ontology's display names, by Google LLC,
+   https://research.google.com/audioset/
+   License: Creative Commons Attribution-ShareAlike 4.0 International
+   (CC BY-SA 4.0), https://creativecommons.org/licenses/by-sa/4.0/
+   From the same Hugging Face revision. No changes were made.
+
 Voiceprints are computed on this PC. No recording, training audio or personal
 voice data is included.

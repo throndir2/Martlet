@@ -21,11 +21,13 @@ namespace Martlet.Desktop;
 // Companion › Listening › When Thinking can hear you: with HearVoice on and a Thinking model that hears, what you said goes
 // straight to Thinking as the recording alone while speech-to-text runs beside the reply (the default), or TranscribeFirst
 // waits for the transcript and sends both.
+// Companion › Listening › Describe PC sounds (DescribePcSounds, on by default): while Martlet hears what this PC plays, the sound
+// digest describes its non-speech sound in one line for the next reply (PcSoundDigest); it never runs without HearPc.
 internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity = 0.5, int PauseIndex = 1, bool VoiceId = false,
     int ScreenChattiness = 1, int ScreenScope = (int)WatchKind.ActiveScreen, string CameraId = "", string CameraName = "",
     string VideoAddress = "", bool SpeakReplies = true, bool Watch = true, int Version = 0, bool? HearVoice = null,
     bool BargeIn = false, bool ReduceEcho = true, bool HearPc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal,
-    bool DecideGaze = false, bool TranscribeFirst = false, double VoiceVolume = 1.0)
+    bool DecideGaze = false, bool TranscribeFirst = false, double VoiceVolume = 1.0, bool DescribePcSounds = true)
 {
     private const string FileName = "talk-preferences.json";
 

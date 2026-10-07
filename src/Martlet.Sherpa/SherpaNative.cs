@@ -126,6 +126,23 @@ internal static class SherpaNative
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
     internal static extern void SherpaOnnxDestroyOfflineStreamResultJson(IntPtr json);
+
+    // ---------- audio tagging ----------
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr SherpaOnnxCreateAudioTagging(IntPtr config);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void SherpaOnnxDestroyAudioTagging(IntPtr tagger);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr SherpaOnnxAudioTaggingCreateOfflineStream(IntPtr tagger);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern IntPtr SherpaOnnxAudioTaggingCompute(IntPtr tagger, IntPtr stream, int topK);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void SherpaOnnxAudioTaggingFreeResults(IntPtr results);
 }
 
 /// <summary>A zeroed native configuration struct whose fields are written at fixed offsets; strings are copied to native

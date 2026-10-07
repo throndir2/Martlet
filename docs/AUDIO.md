@@ -248,3 +248,22 @@ Sources: [NAudio 3.1.0 release](https://github.com/naudio/NAudio/releases/tag/v3
 [package metadata](https://api.nuget.org/v3-flatcontainer/naudio.wasapi/3.1.0/naudio.wasapi.nuspec),
 [AudioClient API at pinned tag](https://github.com/naudio/NAudio/blob/v3.1.0/src/NAudio.Wasapi/CoreAudioApi/AudioClient.cs),
 [Microsoft shared-mode conversion flags](https://learn.microsoft.com/en-us/windows/win32/coreaudio/audclnt-streamflags-xxx-constants).
+
+## PC sound buffer and sound digest
+
+`Martlet.Audio` also keeps the last seconds of what this PC plays for the
+sound digest ([Describing PC sounds](CONVERSATION.md#describing-pc-sounds)).
+`PcAudioCaptureFactory` takes an optional `PcSoundBuffer`. While the buffer
+records, `PcAudioDevice` sends each packet (real sound and the silence that
+fills a loopback's gaps) through its own `CaptureNormalizer` to 16 kHz mono
+and appends it. The buffer is a 15-second ring in memory. Turning it off
+clears it. A normalizer problem stops only the buffer, never listening.
+
+`SoundDigest` holds the pool model's prompt, the cleanup of its answer, the
+tagger-label line, `ActiveShare` (the share of 100 ms windows louder than
+about -45 dBFS) and a 16-bit WAV writer. `SoundDigestScheduler` runs the
+cadence on the buffer's clock: one clip at a time, silence and Martlet's own
+voice skipped, a 15-second deadline after which a late line is dropped.
+`ISoundJudge` is the seam for the judges (a Thinking pool model, or the
+sherpa-onnx `SoundTagger` on the processor). Tests: `SoundDigestTests` in
+`Martlet.Audio.Tests`.

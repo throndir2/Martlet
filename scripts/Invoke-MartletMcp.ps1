@@ -7,8 +7,8 @@ Starts src\Martlet.Mcp from this checkout, sends initialize and each call in
 order, and prints one JSON array of results. Doctor, voices_status, voices_naming_check, f5_voices, cluster_status, network_status, nearby_status, logs_tail,
 logs_timeline, logs_export, virtualization_status, mcp_servers_status, api_keys_status, smart_home_status, messaging_status, discord_status, discord_check, terminal_status, terminal_check, prompts_status, settings_sync_status, memory_sync_status, memory_status, character_status, hearing_check, model_ability_check,
 echo_check, pc_audio_check, discord_call_check, context_check, thinking_steps_check, think_longer_status, reminders_status, discord_reply_status, discord_reply_check, conversation_history_status, creations_status, chattiness_status, discord_text_check, discord_companion_check, vision_history_check, songs_status, pictures_status, latency_report, character_models, character_profiles,
-character_actions, character_gaze, character_touch_zones, character_theme, singing_status, utterance_filter_check and parakeet_check calls without an explicit dataDirectory get a disposable one;
-voices_status, voices_engine_check, utterance_filter_check, parakeet_check, straight_voice_check and discord_voice_check also use this checkout's Desktop
+character_actions, character_gaze, character_touch_zones, character_theme, singing_status, sound_digest_check, utterance_filter_check and parakeet_check calls without an explicit dataDirectory get a disposable one;
+voices_status, voices_engine_check, utterance_filter_check, parakeet_check, sound_digest_check, straight_voice_check and discord_voice_check also use this checkout's Desktop
 build (martletDirectory) when it is built. -Desktop launches Martlet.Desktop with the
 same disposable data directory (plus any -DesktopArguments, such as --tray) and connects ui_* tools to it first.
 
@@ -162,7 +162,7 @@ try {
             $call.name -eq 'character_actions' -or $call.name -eq 'character_gaze' -or $call.name -eq 'character_touch_zones' -or $call.name -eq 'character_theme' -or $call.name -eq 'context_check' -or $call.name -eq 'thinking_steps_check' -or
             $call.name -eq 'latency_report' -or $call.name -like 'terminal_*' -or $call.name -eq 'utterance_filter_check' -or $call.name -eq 'parakeet_check' -or
             $call.name -eq 'think_longer_status' -or $call.name -eq 'work_sharing_status' -or $call.name -eq 'reminders_status' -or $call.name -eq 'discord_reply_status' -or $call.name -eq 'discord_reply_check' -or $call.name -eq 'conversation_history_status' -or $call.name -eq 'creations_status' -or $call.name -eq 'chattiness_status' -or $call.name -eq 'discord_text_check' -or $call.name -eq 'discord_companion_check' -or $call.name -eq 'vision_history_check' -or $call.name -eq 'songs_status' -or $call.name -eq 'pictures_status' -or
-            $call.name -eq 'singing_status') {
+            $call.name -eq 'singing_status' -or $call.name -eq 'sound_digest_check') {
             if ($null -eq $arguments) { $arguments = [pscustomobject]@{} }
             if ($null -eq $arguments.PSObject.Properties['dataDirectory']) {
                 $arguments | Add-Member -NotePropertyName dataDirectory -NotePropertyValue $data
@@ -170,7 +170,7 @@ try {
             # voices_status, voices_engine_check, utterance_filter_check and parakeet_check use this checkout's Desktop build (its bundled
             # sherpa-onnx runtime), when built.
             $desktopBuild = Join-Path $root "src\Martlet.Desktop\$bin"
-            if (($call.name -like 'voices_*' -or $call.name -eq 'utterance_filter_check' -or $call.name -eq 'parakeet_check') -and $null -eq $arguments.PSObject.Properties['martletDirectory'] -and
+            if (($call.name -like 'voices_*' -or $call.name -eq 'utterance_filter_check' -or $call.name -eq 'parakeet_check' -or $call.name -eq 'sound_digest_check') -and $null -eq $arguments.PSObject.Properties['martletDirectory'] -and
                 (Test-Path -LiteralPath (Join-Path $desktopBuild 'Martlet.Desktop.exe') -PathType Leaf)) {
                 $arguments | Add-Member -NotePropertyName martletDirectory -NotePropertyValue $desktopBuild
             }

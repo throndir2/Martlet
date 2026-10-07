@@ -75,6 +75,22 @@
     <None Include="$(VoiceModelCache)pyannote-segmentation-3-0\LICENSE" Link="voice-recognition\pyannote-segmentation-3-0\LICENSE"
           CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
+  <!-- The sound digest's CPU sound tagger ships in sound-tagging\ beside Martlet.Desktop.exe: the k2-fsa Zipformer small AudioSet
+       tagging model (Apache-2.0) and its AudioSet labels (CC BY-SA 4.0); see ..\Martlet.Sherpa\VOICE-RECOGNITION-NOTICES.txt.
+       Downloaded and checked like the voice models (toolchain.json voiceModels pins the same). -->
+  <PropertyGroup>
+    <SoundModelCache>$(BaseIntermediateOutputPath)sound-tagging\</SoundModelCache>
+  </PropertyGroup>
+  <ItemGroup>
+    <SoundModel Include="model.int8.onnx" Sha256="69304b8a1b96bbe6b7d16c24079f0732c65faf3568a14cb82a8238c709afe76c"
+                Url="https://huggingface.co/k2-fsa/sherpa-onnx-zipformer-small-audio-tagging-2024-04-15/resolve/c24f9d0fdf7d0b8c0c4f9733aa0cac51fda10c95/model.int8.onnx" />
+    <SoundModel Include="class_labels_indices.csv" Sha256="cdd1049833c4b86127c2773ac0d14a2754b6a6d0d1798002ed5c66e699708429"
+                Url="https://huggingface.co/k2-fsa/sherpa-onnx-zipformer-small-audio-tagging-2024-04-15/resolve/c24f9d0fdf7d0b8c0c4f9733aa0cac51fda10c95/class_labels_indices.csv" />
+    <None Include="$(SoundModelCache)model.int8.onnx" Link="sound-tagging\model.int8.onnx"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(SoundModelCache)class_labels_indices.csv" Link="sound-tagging\class_labels_indices.csv"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
   <Target Name="DownloadVoiceModels" BeforeTargets="PrepareForBuild;GetCopyToOutputDirectoryItems"
           Condition="!$(MSBuildProjectName.EndsWith('_wpftmp'))">
     <DownloadFile Condition="!Exists('$(VoiceModelCache)%(VoiceModel.Identity)')" SourceUrl="%(VoiceModel.Url)"
@@ -85,6 +101,14 @@
     <Copy Condition="!Exists('$(VoiceModelCache)%(VoiceModel.Identity)')" SourceFiles="$(VoiceModelCache)%(VoiceModel.Identity).partial"
           DestinationFiles="$(VoiceModelCache)%(VoiceModel.Identity)" />
     <Delete Files="@(VoiceModel->'$(VoiceModelCache)%(Identity).partial')" />
+    <DownloadFile Condition="!Exists('$(SoundModelCache)%(SoundModel.Identity)')" SourceUrl="%(SoundModel.Url)"
+                  DestinationFolder="$(SoundModelCache)" DestinationFileName="%(SoundModel.Filename)%(SoundModel.Extension).partial"
+                  SkipUnchangedFiles="false" Retries="3" />
+    <VerifyFileHash Condition="!Exists('$(SoundModelCache)%(SoundModel.Identity)')" File="$(SoundModelCache)%(SoundModel.Identity).partial"
+                    Algorithm="SHA256" Hash="%(SoundModel.Sha256)" />
+    <Copy Condition="!Exists('$(SoundModelCache)%(SoundModel.Identity)')" SourceFiles="$(SoundModelCache)%(SoundModel.Identity).partial"
+          DestinationFiles="$(SoundModelCache)%(SoundModel.Identity)" />
+    <Delete Files="@(SoundModel->'$(SoundModelCache)%(Identity).partial')" />
   </Target>
   <Target Name="PublishAvatarRenderer" AfterTargets="Publish">
     <MSBuild Projects="..\Martlet.Avatar.RendererHost\Martlet.Avatar.RendererHost.csproj"

@@ -46,6 +46,8 @@
     <Compile Include="..\Martlet.Desktop\SpokenWords.cs" Link="Shared\SpokenWords.cs" />
     <Compile Include="..\Martlet.Desktop\ConversationContextBuffer.cs" Link="Shared\ConversationContextBuffer.cs" />
     <Compile Include="..\Martlet.Desktop\VisionHistory.cs" Link="Shared\VisionHistory.cs" />
+    <!-- sound_digest_check: the desktop's own CPU sound judge (the bundled sound tagger and SoundDigest.Line). -->
+    <Compile Include="..\Martlet.Desktop\CpuSoundJudge.cs" Link="Shared\CpuSoundJudge.cs" />
     <Page Include="..\Martlet.Desktop\Themes\Controls.xaml" Link="Themes\Controls.xaml" />
     <Page Include="..\Martlet.Desktop\Themes\Motion.xaml" Link="Themes\Motion.xaml" />
   </ItemGroup>
