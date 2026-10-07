@@ -554,6 +554,7 @@ public partial class MainWindow : ThemedWindow
                 break;
             case "mute": SetVoiceMuted(true); break;
             case "unmute": SetVoiceMuted(false); break;
+            case "clear": ClearCharacterEmotesAsync().Forget(); break;
         }
     }
     private async void ResetCharacter_Click(object sender, RoutedEventArgs e) => await ResetCharacterPositionAsync();

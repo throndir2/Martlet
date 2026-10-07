@@ -294,6 +294,8 @@ export class VrmRuntime {
   private look = { x: 0, y: 0 };
   private composedAge = Number.POSITIVE_INFINITY;
   private readonly actions = new Map<string, { target: number; value: number }>();
+  /** Expressions held on (lingering emotes) until turned off. */
+  private readonly held = new Set<string>();
   private gesture: { name: VrmGesture; seconds: number } | undefined;
   private hipsRest: number | undefined;
 
@@ -318,14 +320,17 @@ export class VrmRuntime {
   }
 
   /**
-   * Fades an authored emotion or custom expression in (`on`) or out, as an emote. One shows at a time: a new one fades the
-   * others out. Mouth, blink and gaze presets belong to lip-sync, blinking and gaze, so they are refused.
+   * Fades an authored emotion or custom expression in (`on`) or out, as an emote. One passing emote shows at a time: a new one
+   * fades the others out, except held (lingering) ones (`hold`), which stay on together until each is turned off. Mouth, blink
+   * and gaze presets belong to lip-sync, blinking and gaze, so they are refused.
    */
-  setAction(name: string, on: boolean): boolean {
+  setAction(name: string, on: boolean, hold = false): boolean {
     const model = this.loaded();
     if (typeof name !== "string" || !model.expressionManager?.getExpression(name) ||
       [...mouthPresets, ...blinkPresets, ...gazePresets].includes(name as never)) return false;
-    if (on) for (const [other, state] of this.actions) if (other !== name) state.target = 0;
+    if (on && !hold) for (const [other, state] of this.actions) if (other !== name && !this.held.has(other)) state.target = 0;
+    if (hold) { if (on) this.held.add(name); else this.held.delete(name); }
+    else if (this.held.has(name)) return true;
     const state = this.actions.get(name) ?? { target: 0, value: 0 };
     state.target = on ? 1 : 0;
     this.actions.set(name, state);
@@ -655,6 +660,6 @@ export class VrmRuntime {
       releaseResources(this.model.scene);
     }
     this.model = undefined; this.inspected = undefined; this.selection = undefined; this.revision = undefined; this.inputMode = undefined;
-    this.actions.clear(); this.gesture = undefined; this.hipsRest = undefined;
+    this.actions.clear(); this.held.clear(); this.gesture = undefined; this.hipsRest = undefined;
   }
 }

@@ -99,16 +99,18 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
       post({ started: renderer === "Live2D" ? adapter.playMotion(String(data.group)) : false });
     } else if (message.kind === "action") {
       // An emote (expression, held until ended or replaced), a motion (played once) or a head gesture. Ending an
-      // expression that isn't the one showing changes nothing.
-      const kind = String(data.kind), name = String(data.name), on = data.on !== false;
+      // expression that isn't the one showing changes nothing. A held (lingering) expression stays on, layered with the
+      // other held ones and the passing emote, until it is ended with hold set too.
+      const kind = String(data.kind), name = String(data.name), on = data.on !== false, hold = data.hold === true;
       let started = false;
       if (kind === "gesture") started = on ? (renderer === "Live2D" ? adapter.gesture(name) : adapter.playGesture(name)) : true;
       else if (kind === "motion") started = on && renderer === "Live2D" ? adapter.playMotion(name) : false;
       else if (kind === "expression") {
         if (renderer === "Live2D") {
-          if (on) { started = adapter.setExpression(name); if (started) expression = name; }
+          if (hold) started = adapter.holdExpression(name, on);
+          else if (on) { started = adapter.setExpression(name); if (started) expression = name; }
           else if (expression === name) { started = adapter.setExpression(null); expression = undefined; }
-        } else started = adapter.setAction(name, on);
+        } else started = adapter.setAction(name, on, hold);
       }
       post({ started });
     }

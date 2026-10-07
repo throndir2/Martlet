@@ -72,8 +72,9 @@ what each one is.
 - **Naming** (Companion › Prompts › *Naming character emotes*): the first time a
   model shows, and on **Name them with Thinking**, the Thinking model gets that
   list (names and what they change, never files) and answers one line per item:
-  an English tag (`blush`), a voice cue or none, and when to use it. It can turn
-  off items that aren't feelings or gestures (hand poses, props, gore). Until
+  an English tag (`blush`), a voice cue or none, whether it stays on or is
+  brief, and when to use it. It can turn
+  off items that aren't feelings, gestures or looks (debug or effect switches, gore). Until
   then, tags come from the model's own names.
 - **English tags, any-language names**: tags are always lower-case English
   (`a-z`, digits, `_`, `-`), so every Thinking model can write them, while each
@@ -110,6 +111,30 @@ what each one is.
   sentence ends (at most 12 seconds) unless another replaces it; motions and
   gestures play once. VRM has no motions of its own (VRMA isn't supported), so
   it uses its expressions and the gestures.
+- **Lingering emotes**: like a VTuber's toggle hotkey, an emote can stay on
+  instead of showing a moment: its **Stays on** box in Emotes and motions (the
+  mode `lingering` in `character-actions.json`; unticked is `brief`). By
+  default an expression a VTube Studio *ToggleExpression* hotkey turns on, or
+  whose name or tag names a look that stays (glasses, a hat, a blush, an angry
+  or sad face, tears, a dark face, an outfit or accessory), stays on; motions
+  and Martlet's gestures are brief. The Thinking model's naming also says
+  `stays` or `brief` for each. A reply's `{glasses}` turns it on (nothing
+  changes when it is already on) and `{/glasses}` turns it off; each lingering
+  emote's line in the reply prompt says so, and its off tag is stripped like any
+  other tag. Several stay on together: Live2D layers each held expression over
+  the others (each in its own Cubism expression manager, as VTube Studio does)
+  and over the passing emote; VRM keeps held expressions while passing ones fade
+  in and out. While some are on, the newest message's notes say so (Companion ›
+  Prompts › *Character emotes showing now*: *Your character is showing
+  {glasses} (12 min), {blush} (just now). Each stays on until you write its off
+  tag ...*), never the instructions, so prompt caches keep working; with none on,
+  nothing is added. They stay across replies, come back when the same model
+  shows again, are forgotten when another model shows, and stop when turned off
+  or made brief in the settings. **Clear emotes** on the character's right-click
+  menu (or in Emotes and motions) turns them all off; a lingering row's **Try**
+  turns it on and then reads **Turn off**. Renderer protocol:
+  `RendererAction(Kind, Name, On, Hold)`; `Hold` keeps an expression, gesture
+  or overlay on until the same action comes with `On` false.
 - **Global gestures**: Martlet's own gestures (`CharacterActionInventory.AllGestures`)
   play on any model whose rig has what they move, so replies are offered only
   the ones the shown model can do:

@@ -11,7 +11,9 @@ namespace Martlet.Avatar.Hosting;
 
 /// <summary>How Martlet uses one emote or motion: the tag replies write for it (<c>blush</c> is written <c>{blush}</c>), when
 /// to use it (for the Thinking model), the voice cue that also sets it off (<see cref="VoiceTag.Cue"/>, such as
-/// <c>laugh</c>) and whether it is used at all.</summary>
+/// <c>laugh</c>), whether it is used at all and its <see cref="Mode"/>: <see cref="CharacterActions.Brief"/> (shows a moment)
+/// or <see cref="CharacterActions.Lingering"/> (stays on until a reply writes <c>{/blush}</c>); null for the default
+/// (<see cref="CharacterActions.DefaultMode"/>), as in files saved before modes existed.</summary>
 public sealed record CharacterAction
 {
     public required string Id { get; init; }
@@ -19,6 +21,7 @@ public sealed record CharacterAction
     public string? Use { get; init; }
     public string? Cue { get; init; }
     public bool Enabled { get; init; } = true;
+    public string? Mode { get; init; }
 }
 
 /// <summary>One model's emote and motion settings (Companion › Character › Emotes and motions). <see cref="DetectedBy"/> is
@@ -71,20 +74,53 @@ public sealed record CharacterActionCatalog(CharacterActionInventory Inventory, 
                 : kind.Skip(Random.Shared.Next(kind.Count())).Take(1)).ToArray();
     }
 
+    /// <summary>Whether the emote or motion <paramref name="source"/> of this model is turned on and lingers (stays on until
+    /// turned off).</summary>
+    public bool Lingers(CharacterActionSource source) =>
+        Entries.FirstOrDefault(e => e.Source.Id == source.Id) is { Action: { Enabled: true } } entry && CharacterActions.Lingers(entry.Source, entry.Action);
+
+    /// <summary>The lingering emote a reply's off tag (<c>{/blush}</c>) turns off, or null.</summary>
+    public CharacterActionSource? Off(string tag) =>
+        CharacterActions.OffTagName(tag) is { } name
+            ? Entries.Where(e => e.Action is { Enabled: true } && string.Equals(e.Action.Tag, name, StringComparison.OrdinalIgnoreCase) &&
+                CharacterActions.Lingers(e.Source, e.Action)).Select(e => e.Source).FirstOrDefault()
+            : null;
+
+    /// <summary>The most character tags one reply may be given (the conversation's limit).</summary>
+    public const int MaximumTags = 128;
+
     /// <summary>The reply instructions (Companion › Prompts › Character emotes and motions) and the tags they offer, or null
-    /// when none are offered or the owner emptied the prompt.</summary>
-    public CharacterActionPrompt? Prompt(SpeechEngine? engine, PromptSettings? prompts)
+    /// when none are offered or the owner emptied the prompt. A lingering emote's line says it stays on until its off tag
+    /// (<c>{/blush}</c>), which is offered too. <paramref name="showing"/> are the lingering emotes the character shows now: they
+    /// become <see cref="CharacterActionPrompt.Showing"/>, a short note for the newest message (never the instructions, so the
+    /// request's start stays the same and prompt caches keep working).</summary>
+    public CharacterActionPrompt? Prompt(SpeechEngine? engine, PromptSettings? prompts, IReadOnlyList<HeldEmote>? showing = null,
+        DateTimeOffset now = default)
     {
         var offered = Offered(engine);
         if (offered.Count == 0) return null;
-        var tags = offered.Select(e => "{" + e.Action.Tag + "}").ToArray();
-        var lines = offered.Select(e => $"{{{e.Action.Tag}}} - {e.Action.Use ?? CharacterActions.Describe(e.Source)}");
-        var text = PromptSettings.Fill(prompts, PromptCatalog.CharacterActions, ("tags", string.Join("\n", lines)), ("example", tags[0]));
-        return text is null ? null : new(text, tags);
+        var tags = offered.Select(e => "{" + e.Action.Tag + "}").ToList();
+        var example = tags[0];
+        var lines = offered.Select(e => $"{{{e.Action.Tag}}} - {e.Action.Use ?? CharacterActions.Describe(e.Source)}" +
+            (CharacterActions.Lingers(e.Source, e.Action) ? $" (stays on until you write {{/{e.Action.Tag}}})" : ""));
+        var text = PromptSettings.Fill(prompts, PromptCatalog.CharacterActions, ("tags", string.Join("\n", lines)), ("example", example));
+        if (text is null) return null;
+        var lingering = offered.Where(e => CharacterActions.Lingers(e.Source, e.Action)).ToArray();
+        var held = (showing ?? []).Select(h => (Held: h, Tag: lingering.FirstOrDefault(e => e.Source.Id == h.Source.Id).Action?.Tag))
+            .Where(h => h.Tag is not null).ToArray();
+        // The off tags of what shows now come first, so they always fit.
+        foreach (var tag in held.Select(h => h.Tag!).Concat(lingering.Select(e => e.Action.Tag!)).Distinct(StringComparer.OrdinalIgnoreCase))
+            if (tags.Count < MaximumTags) tags.Add("{/" + tag + "}");
+        var note = held.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.CharacterShowing,
+            ("showing", string.Join(", ", held.Select(h => $"{{{h.Tag}}} ({CharacterActions.Age(now - h.Held.Since)})"))),
+            ("example", "{/" + held[0].Tag + "}"));
+        return new(text, tags, note);
     }
 }
 
-public sealed record CharacterActionPrompt(string Instructions, IReadOnlyList<string> Tags);
+/// <summary>The reply instructions for the character's emotes and motions, the tags a reply may write (on and off tags), and
+/// <see cref="Showing"/>: what lingering emotes show now, for the newest message's notes (null when none show).</summary>
+public sealed record CharacterActionPrompt(string Instructions, IReadOnlyList<string> Tags, string? Showing = null);
 
 /// <summary>Default settings, the owner's edits and the Thinking model's naming of a model's emotes and motions, kept per
 /// model in character-actions.json on this PC.</summary>
@@ -169,6 +205,47 @@ public static partial class CharacterActions
     public static bool IsTag(string? tag) => tag is { Length: > 0 and <= CharacterActionCatalog.MaximumTagLength } &&
         tag.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '_' or '-') && tag.Any(char.IsAsciiLetter);
 
+    /// <summary>A <see cref="CharacterAction.Mode"/>: shows a moment (an expression a few seconds, a motion or gesture once).</summary>
+    public const string Brief = "brief";
+    /// <summary>A <see cref="CharacterAction.Mode"/>: stays on after <c>{tag}</c> until a reply writes <c>{/tag}</c> (or the owner
+    /// clears it), like a VTuber's toggle hotkey.</summary>
+    public const string Lingering = "lingering";
+
+    // Words in an expression's name or tag that mean a look that stays (a prop, an outfit, a state of the face).
+    private static readonly HashSet<string> StateWords = new(StringComparer.Ordinal)
+    {
+        "glasses", "sunglasses", "goggles", "hat", "cap", "helmet", "crown", "hood", "hoodie", "mask", "eyepatch", "blush", "blushing",
+        "angry", "anger", "mad", "sad", "gloomy", "tears", "tear", "crying", "dark", "shadow", "shade", "outfit", "clothes", "costume",
+        "uniform", "jacket", "coat", "scarf", "apron", "ribbon", "accessory", "headphones", "headset", "earrings", "necklace", "ears",
+        "tail", "wings", "horns", "halo", "hair", "ponytail", "twintails", "hairpin", "microphone", "mic", "item", "prop", "toggle",
+        "bandage", "pale"
+    };
+
+    /// <summary>The mode an emote or motion gets until someone chooses: an expression a VTube Studio toggle hotkey turns on and
+    /// off, or whose name or tag names a look that stays (glasses, a hat, a blush, an angry or sad face, tears, a dark face, an
+    /// outfit or accessory), lingers; everything else (motions, Martlet's gestures) is brief.</summary>
+    public static string DefaultMode(CharacterActionSource source, string? tag)
+    {
+        if (source.Kind != CharacterActionKind.Expression) return Brief;
+        if (source.Toggle) return Lingering;
+        var words = Slug(source.Name).Split('_').Concat((tag ?? "").Split('_', '-'));
+        return words.Any(StateWords.Contains) ? Lingering : Brief;
+    }
+
+    /// <summary>Whether <paramref name="action"/> lingers: its mode, or the default for <paramref name="source"/>.</summary>
+    public static bool Lingers(CharacterActionSource source, CharacterAction action) =>
+        (action.Mode ?? DefaultMode(source, action.Tag)) == Lingering;
+
+    /// <summary>The tag an off tag (<c>{/blush}</c>) names (<c>blush</c>), or null for any other text.</summary>
+    public static string? OffTagName(string text) =>
+        text.Length > 3 && text[0] == '{' && text[1] == '/' && text[^1] == '}' && text[2..^1].Trim() is var name && IsTag(name.ToLowerInvariant())
+            ? name : null;
+
+    /// <summary>How long something has shown, in a few words for a prompt: "just now", "12 min", "2 h 5 min".</summary>
+    public static string Age(TimeSpan age) => age.TotalMinutes < 1 ? "just now"
+        : age.TotalHours < 1 ? $"{(int)age.TotalMinutes} min"
+        : $"{(int)age.TotalHours} h" + (age.Minutes > 0 ? $" {age.Minutes} min" : "");
+
     /// <summary>A plain description of an emote or motion for a prompt when nobody said when to use it.</summary>
     public static string Describe(CharacterActionSource source) => source.Kind switch
     {
@@ -231,6 +308,7 @@ public static partial class CharacterActions
             if (action.Use is { } use && (use.Length > CharacterActionCatalog.MaximumUseLength || use.Any(char.IsControl)))
                 return $"\"When to use\" must be one line of at most {CharacterActionCatalog.MaximumUseLength} characters.";
             if (action.Cue is { } cue && !VoiceTags.Cues.Contains(cue)) return $"\"{cue}\" isn't a voice sound or tone.";
+            if (action.Mode is not (null or Brief or Lingering)) return $"\"{action.Mode}\" isn't a mode: use {Brief} or {Lingering}.";
         }
         return null;
     }
@@ -349,9 +427,17 @@ public static partial class CharacterActions
     [GeneratedRegex(@"^\s*(?:item\s*)?(?<n>\d{1,3})\s*[:.)\-]\s*(?<rest>.+?)\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex Line();
 
-    /// <summary>Settings from the Thinking model's answer: each "number: tag | cue | when" line names that item, SKIP turns it
-    /// off; items it didn't answer keep <paramref name="current"/>. Tags are made valid and unique; unknown cues are dropped.
-    /// Returns null when no line could be read.</summary>
+    // The mode a naming answer gives ("stays", "brief"...), or null when the part is something else (when to use it).
+    private static string? ModeWord(string part) => part.Trim().ToLowerInvariant() switch
+    {
+        "stays" or "stay" or "stays on" or "lingering" or "linger" or "lingers" or "toggle" or "held" or "hold" => Lingering,
+        "brief" or "once" or "moment" or "momentary" => Brief,
+        _ => null
+    };
+
+    /// <summary>Settings from the Thinking model's answer: each "number: tag | cue | mode | when" line names that item (the mode,
+    /// <c>stays</c> or <c>brief</c>, may be left out), SKIP turns it off; items it didn't answer keep <paramref name="current"/>.
+    /// Tags are made valid and unique; unknown cues are dropped. Returns null when no line could be read.</summary>
     public static CharacterActionSettings? Parse(string? answer, CharacterActionInventory inventory, CharacterActionSettings current,
         DateTimeOffset now)
     {
@@ -379,13 +465,19 @@ public static partial class CharacterActions
             var cue = VoiceTags.Cues.FirstOrDefault(c => c == cueText) ??
                 VoiceTags.Known.FirstOrDefault(t => string.Equals(t.Text.Trim('[', ']', '(', ')'), cueText, StringComparison.OrdinalIgnoreCase))?.Cue;
             var use = parts.Length > 2 ? string.Join(" ", parts[2..]).Trim().TrimEnd('.') : null;
+            var mode = existing.Mode;
+            if (parts.Length > 2 && ModeWord(parts[2]) is { } said)
+            {
+                mode = said;
+                use = parts.Length > 3 ? string.Join(" ", parts[3..]).Trim().TrimEnd('.') : null;
+            }
             if (use is not null)
             {
                 use = new string(use.Where(c => !char.IsControl(c)).ToArray());
                 if (use.Length > CharacterActionCatalog.MaximumUseLength) use = use[..CharacterActionCatalog.MaximumUseLength].TrimEnd();
                 if (use.Length == 0) use = null;
             }
-            named[source.Id] = existing with { Tag = tag, Cue = cue, Use = use, Enabled = true };
+            named[source.Id] = existing with { Tag = tag, Cue = cue, Use = use, Enabled = true, Mode = mode };
         }
         if (named.Count == 0) return null;
         var merged = current with
