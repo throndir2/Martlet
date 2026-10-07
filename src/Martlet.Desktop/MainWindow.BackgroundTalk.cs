@@ -25,6 +25,7 @@ public partial class MainWindow
             preferences: Talk, videoAddress: visionAddress)
             { Owner = this, Support = support, Gaze = avatar.Gaze, Calls = discordCalls };
         if (!IsVisible) window.UseOwnTaskbarButton();
+        window.TouchStatusChanged += characterTouchZones.SetNoticed;
         window.Closed += async (_, _) =>
         {
             if (!ReferenceEquals(openConversation, window)) return;

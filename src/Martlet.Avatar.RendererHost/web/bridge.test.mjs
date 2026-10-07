@@ -188,5 +188,10 @@ test("a tap is hit-tested and answered unprompted; a failing hit test is a miss,
   throwing = true;
   await onMessage({ data: { kind: "touch", data: { id: 3, x: 0.25, y: 0.1 } } });
   assert.equal(posts.at(-1).touch.hit, false);
+  throwing = false;
+  await onMessage({ data: { kind: "touches", data: { id: 4, points: [{ x: 0.25, y: 0.1 }, { x: 0.75, y: 0.1 }, { x: 0.3, y: 0.2 }] } } });
+  assert.equal(posts.at(-1).touches.id, 4);
+  assert.deepEqual(posts.at(-1).touches.hits.map(hit => hit.hit), [true, false, true]);
+  assert.equal(posts.at(-1).touches.hits[0].bone, "head");
   assert.ok(!posts.some(post => post.error));
 });

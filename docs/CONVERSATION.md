@@ -318,10 +318,130 @@ the desktop log has a *Turn took: ...* line per reply and look, and
 `think_longer_check`'s `moment` part in [Martlet MCP](MCP.md) rehearses the
 plan and a combined request.
 
+## The Thinking pool
+
+The **Thinking pool** (Companion › Thinking pool; this PC's own choice,
+`thinking-pool.json` in the data folder, never shared) is one shared set of
+Thinking models for background work. It replaces the older *Deep thinking*
+places. The live conversation keeps its own Thinking route and prompt cache;
+pool jobs never use that route, except the empty-pool fallback below.
+
+**Members.** A member is one place with a slot count (how many jobs it runs at
+once, 1 to 8):
+
+- A paired Martlet host joins only when this PC's owner ticks *Join the
+  Thinking pool* for it (`DeepThinkingPool-<host>`). It works on the host's
+  Thinking pool role (a second Ollama server of its own, route
+  `martlet.gateway.deep-thinking-chat.v1`; its slots are the role's
+  `OLLAMA_NUM_PARALLEL`, advertised as `maximum_concurrency`). The host that
+  runs the conversation may join too.
+- A model in Ollama on this PC, beside Thinking's (checked to fit on the
+  graphics card before each job).
+- An OpenAI-compatible endpoint (a cloud provider or another server).
+
+The *Pool members* card lists each member (`ThinkingPoolMember-<n>`), with its
+slots (`ThinkingPoolSlots-<n>`), what it can do (text; pictures when its model
+sees; recordings only on an endpoint whose model hears, never a paired host,
+whose gateway takes no audio) and *Remove* (`ThinkingPoolRemove-<n>`).
+
+**Migration.** The first time Martlet reads the pool and `thinking-pool.json`
+is missing, it reads `deep-thinking.json` once and writes every separate place
+as a member (slots and keys kept). *Same as Thinking* is not a member: it
+becomes the empty-pool fallback.
+
+**Empty pool.** *Use the conversation model when the pool is empty*
+(`ThinkingPoolUseConversationModel`, on by default): with no member,
+`think_longer` and research run on the conversation's own Thinking route, as
+*Same as Thinking* did (only where its provider answers several requests at
+once). Other job kinds get `NoMember` at once, so their callers use their own
+fallback (simple rules, a CPU path, or nothing).
+
+**Warnings, never blocks.** Pool jobs may run on every graphics card. The card
+shows guidance (`ThinkingPoolGuidance`, such as "1 slot: long thinking can delay
+screen and sound summaries; add a second slot for the full experience.") and
+warnings (`ThinkingPoolWarnings`) for a member on the same computer, graphics
+card or Ollama server as the conversation's Thinking model, or on the same
+computer as the voice.
+
+### Job board
+
+One in-process board (`ThinkingJobBoard`, Martlet.Conversation) over the same
+`BackgroundPlaces` broker as the conversation's background jobs, so pool jobs,
+thinks and research count against the same slots:
+
+1. A job goes to a free slot on a member whose capabilities include the job's
+   needs (text, vision, audio), the member that shares least with the
+   conversation first.
+2. A member that fails, is busy (`job.busy`) or is unavailable is passed over
+   for the next capable member. Each member is tried once.
+3. When every capable slot is busy, the job waits in line. A freed slot goes
+   to the highest priority first, then the oldest.
+4. Long kinds never take the pool's last free slot while the pool has two or
+   more slots: that slot stays for fast kinds (`BargeInJudge`,
+   `EndOfTurnJudge`, `Digest`). With exactly one slot, long kinds may take it,
+   and fast jobs wait until their deadline. There is no preemption.
+
+| Kind (`ThinkingJobKind`) | Priority (`ThinkingPriority`) | Fast |
+| --- | --- | --- |
+| `BargeInJudge` | 70 | yes |
+| `EndOfTurnJudge` | 60 | yes |
+| `Digest` (screen or sound) | 50 | yes |
+| `ThinkLonger` | 40 | no |
+| `TouchZones` | 35 | no |
+| `Memory`, `Naming` | 20 (`Helper`) | no |
+| `Research` | 10 | no |
+
+Helper jobs use these kinds through `HelperJobs` and `ThinkingPoolHelpers`.
+Remembering after a reply is a `Memory` job. Emote naming and touch temperament
+are `Naming` jobs, and touch-zone detection is a `TouchZones` job that needs
+vision. When the pool can't do one, the conversation's Thinking model does it
+after the reply finishes speaking
+([helper jobs](MEMORY.md#helper-jobs-on-the-thinking-pool)).
+
+### Pool API (desktop)
+
+```csharp
+// Martlet.Desktop: the controller owns the pool.
+ThinkingPool pool = conversation.ThinkingPool;   // LiveConversationController.ThinkingPool
+
+// Cheap, synchronous, takes no slot: choose a fallback without posting.
+if (!pool.CanRun(ThinkingJobKind.Digest, ThinkingCapability.Text | ThinkingCapability.Vision)) { /* local rules */ }
+
+ThinkingJobResult result = await pool.RunAsync(new ThinkingJob
+{
+    Kind = ThinkingJobKind.Digest,            // sets the priority and the fast-slot rule
+    Instructions = "Summarize the screen in one sentence.",
+    Text = "What is on the screen?",
+    Image = boundedImage,                     // optional BoundedImage: needs Vision
+    Audio = boundedWaveAudio,                 // optional BoundedWaveAudio: needs Audio
+    Timeout = TimeSpan.FromSeconds(8),        // the run; with DropWhenStale also the wait
+    DropWhenStale = true,                     // drop (Stale) when no member frees up in time
+    MaxOutputTokens = 256,
+    Reasoning = false                         // null: the model's default
+}, token);
+
+// result.Outcome: Succeeded, NoMember, Stale, Failed or TimedOut.
+// result.Text, result.Member (computer name), result.MemberId, result.Model, result.Problem, result.Attempts.
+BackgroundPlace? first = pool.Find(ThinkingJobKind.Digest, ThinkingCapability.Text | ThinkingCapability.Audio); // Name, Model; null: no member
+ThinkingPoolStatus status = pool.Status();     // members, slots, free, KeepsFastSlot, Running/Waiting by kind, Guidance
+```
+
+`Priority` and `Needs` override the kind's priority and the needs taken from
+the image and audio. Canceling the token throws `OperationCanceledException`.
+The job's text is private: it never goes to logs or status files. Background
+jobs on the job list use the same rules through `BackgroundJobKind.PoolKind`
+(`think_longer` is `ThinkLonger`, research is `Research`, a song's lyrics take
+a place as `ThinkLonger`).
+
+**Status.** The desktop writes `thinking-pool-status.json` (members, slots,
+running and waiting jobs by kind, guidance and warnings; never a job's text).
+MCP's `thinking_pool_status` reads it with the settings and plan, and
+`thinking_pool_check` rehearses the board ([MCP](MCP.md)).
+
 ## Thinking longer and background work
 
 Replies answer right away (Thinking steps are Off by default). **Thinking
-longer** (Companion › Deep thinking; on by default, and *Where it thinks* ›
+longer** (Companion › Thinking pool; on by default, and *Where it thinks* ›
 *Off* turns it off on all your computers) lets Martlet decide, sparingly, that a
 task needs real thought and hand it to **Deep thinking**, which works it out in
 the background while Thinking keeps talking with you: parallel thinking, so it
@@ -355,7 +475,7 @@ spoken. Its message continues a reply's request (Companion › Prompts ›
 *Thinking longer: the task*); the picture or recording the message went with
 isn't sent again.
 
-**Where it thinks** (Companion › Deep thinking › *Where it thinks*; this PC's
+**Where it thinks** (Companion › Thinking pool › *Where it thinks*; this PC's
 own choice, `deep-thinking.json` in the data folder, never shared, because
 which machine is free to think depends on the computer you talk to):
 
@@ -368,10 +488,10 @@ which machine is free to think depends on the computer you talk to):
   once (a cloud provider), never Thinking's model on this PC or a paired
   computer.
 - *Another of your computers*: a paired computer's own Deep thinking model (its
-  Deep thinking role: a second Ollama server of its own, route
+  Thinking pool role: a second Ollama server of its own, route
   `martlet.gateway.deep-thinking-chat.v1`) through its pinned gateway with this
   PC's pairing, or, on a computer without that role, its Ollama (its Thinking
-  role). The page offers *Add Deep thinking* for a computer that lacks the role
+  role). The page offers *Add the Thinking pool role* for a computer that lacks the role
   (`DeepThinkingAddRole-<host>`; its dialog asks which model it runs) and
   switches Deep thinking to it once it runs, and *Change model*
   (`DeepThinkingChangeModel-<host>`) for one that has it: the role's settings
@@ -413,7 +533,7 @@ which machine is free to think depends on the computer you talk to):
   conversation that fits the model's context and the task go there, no tools.
 
 **Several computers at once.** Each paired computer on *Another of your
-computers* has *Think here too* (`DeepThinkingPool-<host>`): ticked, Deep
+computers* has *Join the Thinking pool* (`DeepThinkingPool-<host>`): ticked, Deep
 thinking thinks there as well as where it is set to think, so several thinks
 run at once, one on each place (`DeepThinkingPool`, up to 8 places; saved as
 `Pool` in `deep-thinking.json`, which a file saved before it existed simply
@@ -428,7 +548,7 @@ conversation's jobs, 1 shares a computer with the voice or listening, or is a
 cloud provider or this PC, 2 shares Thinking's computer or provider, 3 is a
 second model beside Thinking's on this PC's graphics card), then the order they
 were chosen. One place that can't think (a computer that does Thinking without
-its Deep thinking role) doesn't stop the others. A song's lyrics are written on
+its Thinking pool role) doesn't stop the others. A song's lyrics are written on
 the same places: a free one, else the least busy. When every place is busy a
 new think is refused and the model is told what holds each place (*think-1 on
 diva and think-2 on ripley are still running...*). Each think has its own
@@ -445,7 +565,7 @@ answer one request at a time per model (Ollama on this PC runs with
 cache, and a paired computer's gateway serves one request per job. There, Deep
 thinking isn't available: `think_longer` isn't offered, the page says why, and a
 single PC whose Thinking model is local simply doesn't think in the background
-until another place is chosen. A paired computer's Deep thinking role is a
+until another place is chosen. A paired computer's Thinking pool role is a
 separate Ollama server with its own route, so it thinks in parallel even on the
 computer that does Thinking (they share its graphics card).
 
@@ -483,7 +603,7 @@ was placed (*placed on diva, 1 of 2 places busy*), fit check and end
 Stop (Esc) ends a reply, never a think; the task's Cancel, `cancel_thinking`,
 closing the conversation or quitting Martlet do (there is no time limit). Each
 place runs as many thinks at once as it has slots (one on a computer of yours
-unless its Deep thinking role says it runs more, four on a cloud provider);
+unless its Thinking pool role says it runs more, four on a cloud provider);
 when every place is busy a new think waits in line (*waiting for a free
 computer*) and runs on the first place that frees up, first come, first served.
 As many thinks may wait as can run; there is no limit on how many start in an
@@ -601,7 +721,7 @@ talking; a few minutes later it brings up what it found (*"...oh, and I found ou
 about those cat toys. Wanna see the report?"*) and shows the report on a yes.
 
 **Consent, off by default.** Searching sends the search words to a third party,
-so it is a switch of its own on Companion › Deep thinking › *Web research*
+so it is a switch of its own on Companion › Thinking pool › *Web research*
 (`WebResearchOn`, saved with the reply settings as `ThinkLonger.WebResearch`,
 so all your computers share it, like Deep thinking's Off). Its disclosure
 (`WebResearchDisclosure`) says what leaves the PC: the search words go to
@@ -1058,6 +1178,50 @@ voice pipeline never waits for a whole reply:
   never stops it; Stop, Esc or the talk button interrupt. Preferences
   saved before barge-in became opt-in had it on only because it was the old
   default, so it starts off once after updating; tick it again to use it.
+- **Pause and decide.** *When you talk over Martlet* in Companion › Listening
+  (`BargeInBehavior`, saved in `talk-preferences.json` and shared with your
+  other PCs) chooses what real words over a reply do. *Pause and decide* (the
+  default): a clear cue (a stop word or Martlet's name, `BargeInDecision.Cue`)
+  still stops it at once and is never judged. Other words that `BargeInPolicy`
+  would stop on pause the reply at once instead (`ConversationTurn.Pause`): the
+  sentence playing stops reading audio (`PlaybackRun.Pause`; what the device
+  already took, at most 100 ms, plays out), and a sentence that starts meanwhile
+  starts paused. The Thinking text and the voice's synthesis go on and buffer,
+  so playing on (`Resume`) starts at once from the exact sample where it
+  paused, with a 10 ms fade-in and nothing made again. A judge then decides
+  (`IBargeInJudge`, through `BargeInJudging.RuleAsync`): *interrupt* stops the
+  reply as before and what you said is answered next; *not for Martlet* plays
+  it on. The judge reads Martlet's current sentence (`ConversationTurn.Sentence`),
+  the reply's last 400 characters, your words so far and speech-to-text's
+  confidence. Today it is the local rules judge (`RulesBargeInJudge`): the
+  policy first (a backchannel, too few words or non-words are not for Martlet),
+  then Martlet's own sentence heard back (three words in a row from it, or
+  three different words all in it: a TV, a call or a missed echo) and words
+  that only agree or laugh along ("yeah that's so true", "haha no way") are not
+  for Martlet; everything else is. A model judge from the Thinking pool can
+  take its place; one that doesn't answer within 400 ms
+  (`BargeInJudging.Deadline`), or fails, gives way to the rules. While paused,
+  `BargeInHold` watches your voice frame by frame: an interrupt verdict stops
+  the reply, talking on for 1.5 s in all (`KeepTalkingLimit`) stops it
+  whatever the verdict, and with a not-for-Martlet verdict 240 ms of quiet
+  (`QuietToResume`) or the end of your utterance plays it on. Later quick
+  checks of the same words judge again, and a stop word stops it. A pause never
+  lasts more than 4 s (`MaximumPause`; with no verdict it plays on). Without a
+  quick check (speech-to-text on a host or the cloud) the utterance's own
+  transcript is judged once you pause, so the reply pauses only for the
+  judge. Words that were not for Martlet are still answered after the reply,
+  as before. A song is never paused (its own rule applies). The desktop log
+  says *Barge-in: Martlet paused its reply N ms after you started talking over
+  it (...)*, then *Barge-in: Martlet resumed its reply after a N ms pause: what
+  you said wasn't for it (why; the rules judge in N ms; N ms of your voice
+  during the pause)* or the stop line with *paused N ms first, then the rules
+  judge (N ms) said it was for Martlet*; the reply latency line ends *, paused
+  N ms when you talked over it, then resumed* or *, paused N ms, then stopped
+  when you talked over it*. The talk window's `LiveBargeIn` line shows the last
+  decision (never the words). *Stop at once* keeps the older behavior: real
+  words stop the reply at once. MCP `barge_in_check` returns the verdicts, the
+  deadline fallback and what a pause does; `spoken_reply_check` `paused`
+  rehearses a pause and resume through the production runtime.
 - **What is said aloud decides what stops it.** Each reply carries a playback
   mode (`PlaybackMode`: `Reply`, or `Song` for singing). A song keeps going
   while you talk and stops only when asked to: a stop word with Martlet's name

@@ -16,7 +16,7 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
     private CharacterTouchZoneSettings? current;
     private string? modelId;
     private string? detection;
-    private string? lastMatch;
+    private string? lastMatch, noticed, noticedLast;
     private bool busy;
 
     /// <summary>Raised (on any thread) when the zones, the detection status or the last touch change.</summary>
@@ -30,6 +30,10 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
     internal string? Detection => Volatile.Read(ref detection);
     /// <summary>Which zone the last touch landed in and what it did.</summary>
     internal string? LastMatch => Volatile.Read(ref lastMatch);
+    /// <summary>What Martlet noticed that waits for a reply, and when a touch reply would start (null before anything).</summary>
+    internal string? Noticed => Volatile.Read(ref noticed);
+    /// <summary>Which reply took the last touches Martlet noticed and what it was told.</summary>
+    internal string? NoticedLast => Volatile.Read(ref noticedLast);
     internal bool Busy => Volatile.Read(ref busy);
 
     /// <summary>The snapshot the loaded model's zones were found in (a PNG), or null.</summary>
@@ -109,26 +113,31 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
             $"Found {found.Count} zone{(found.Count == 1 ? "" : "s")} at {DateTime.Now:t}; {bound} follow the model's parts as it moves.");
     }
 
-    /// <summary>A touch on the showing character: the zone it landed in plays its reaction (unless the zone is resting) and may
-    /// tell the character. Returns the match, or null.</summary>
+    /// <summary>A touch on the showing character: the zone it landed in plays its reaction (unless the zone is resting), and
+    /// when Martlet notices that zone, <paramref name="notice"/> gets it (resting or not: every touch adds up). Returns the
+    /// match, or null.</summary>
     internal TouchZoneMatch? React(CharacterTouch touch, Func<CharacterTouchZone, int, TouchReactionPlan> planFor,
-        Func<CharacterActionSource, string, double, Task> play, Action<string> tell)
+        Func<CharacterActionSource, string, double, Task> play, Action<CharacterTouchZone> notice, string kind = "touch")
     {
         var match = CharacterTouchZones.Match(Current, touch);
         var when = DateTime.Now.ToString("T", System.Globalization.CultureInfo.CurrentCulture);
+        var what = kind == "stroke" ? "A stroke" : "A touch";
         if (match is null)
         {
-            Volatile.Write(ref lastMatch, $"A touch at {when} landed on no zone in use.");
+            Volatile.Write(ref lastMatch, $"{what} at {when} landed on no zone in use.");
             Changed?.Invoke();
             return null;
         }
         var zone = match.Zone;
+        var noticed = zone.Reaction.Notices;
+        if (noticed) notice(zone);
         var now = Environment.TickCount64;
         lock (rested)
         {
             if (rested.TryGetValue(zone.Id, out var until) && now < until)
             {
-                Volatile.Write(ref lastMatch, $"{zone.Name} ({match.How}) at {when}: resting, so nothing played.");
+                Volatile.Write(ref lastMatch, $"{zone.Name} ({match.How}) at {when}: resting, so nothing played" +
+                    (noticed ? ", but Martlet noticed it." : "."));
                 Changed?.Invoke();
                 return match;
             }
@@ -137,14 +146,12 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         var repeats = Repeat(zone.Id, now);
         var reaction = planFor(zone, repeats);
         var plan = reaction.Actions;
-        for (var i = 0; i < plan.Count; i++) play(plan[i], $"a touch on {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
-        var narration = CharacterTouchZones.Narration(zone);
-        if (narration is not null) tell(narration);
-        Volatile.Write(ref lastMatch, $"{zone.Name} ({match.How}) at {when}: " +
+        for (var i = 0; i < plan.Count; i++) play(plan[i], $"a {kind} on {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
+        Volatile.Write(ref lastMatch, (kind == "stroke" ? "Stroke: " : "") + $"{zone.Name} ({match.How}) at {when}: " +
             (plan.Count == 0 ? "nothing to play" : "played " + string.Join(", ", plan.Select(s => s.Name))) + Describe(reaction, repeats) +
-            (narration is null ? "." : ", and told the character."));
-        ErrorLog.Info($"Touch on {zone.Id} ({match.How}): {plan.Count} played from {reaction.From}{(reaction.Escalated ? " (escalated)" : "")}" +
-            $"{(narration is null ? "" : ", told the character")}.");
+            (noticed ? ", and Martlet noticed it." : "."));
+        ErrorLog.Info($"{(kind == "stroke" ? "Stroke" : "Touch")} on {zone.Id} ({match.How}{(touch.Held ? ", held" : "")}): {plan.Count} played from {reaction.From}{(reaction.Escalated ? " (escalated)" : "")}" +
+            $"{(noticed ? ", Martlet noticed it" : "")}.");
         Changed?.Invoke();
         return match;
     }
@@ -177,6 +184,14 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         Volatile.Write(ref detection, text);
         Changed?.Invoke();
         return text;
+    }
+
+    /// <summary>The conversation's touch status changed: what waits and what the last touches did.</summary>
+    internal void SetNoticed(string waiting, string? last)
+    {
+        Volatile.Write(ref noticed, waiting);
+        Volatile.Write(ref noticedLast, last);
+        Changed?.Invoke();
     }
 
     /// <summary>Sets the last-touch line (a Try).</summary>

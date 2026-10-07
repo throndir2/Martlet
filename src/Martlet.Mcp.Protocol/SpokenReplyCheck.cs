@@ -23,10 +23,15 @@ namespace Martlet.Mcp;
 /// reply's whole text must still arrive and the turn complete; only the voice stops (with slow, nothing stops: every piece is
 /// spoken whole, and the reply latency line says how often and how long the voice paused).
 /// muted: the user mutes Martlet's voice (ConversationTurn.MuteVoice, as the character's Mute voice does) as the failAt-th piece
-/// is asked; text-only: the reply has no voice (Speak Martlet's replies aloud off). Either way the captions show the rest.</summary>
+/// is asked; text-only: the reply has no voice (Speak Martlet's replies aloud off). Either way the captions show the rest.
+/// paused: the reply pauses once its first audio played (ConversationTurn.Pause, as Pause and decide does when the user talks
+/// over it) and plays on after <see cref="HoldFor"/>: nothing plays meanwhile, the voice keeps making the next pieces, and every
+/// piece is said once.</summary>
 internal static class SpokenReplyCheck
 {
-    internal static readonly string[] Failures = ["server", "unavailable", "stall", "slow", "none", "muted", "text-only"];
+    internal static readonly string[] Failures = ["server", "unavailable", "stall", "slow", "none", "muted", "text-only", "paused"];
+    // How long "paused" holds the reply, as if the user talked over it and the judge said it was not for Martlet.
+    internal static readonly TimeSpan HoldFor = TimeSpan.FromSeconds(1);
     // How long a slow voice keeps the speakers waiting in the middle of each piece.
     internal static readonly TimeSpan SlowGap = TimeSpan.FromMilliseconds(1_500);
     private const string Model = "fixture-model";
@@ -119,12 +124,14 @@ internal static class SpokenReplyCheck
             timeline.Mark("building the request", startedAt);
             var turn = runtime.Start(request, new Permissions(ChatCompletionsSetup.BaseUri(baseUrl), target), cancellation);
             voice.Turn.TrySetResult(turn);
+            var holding = failure == "paused" ? HoldAsync(turn, voice, speakers, cancellation) : null;
             var terminal = await turn.Completion.WaitAsync(TimeSpan.FromSeconds(60), cancellation);
             await turn.OwnershipRelease.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
             var latencyLine = ReplyLatency.Describe(timeline, startedAt, TimeProvider.System, terminal,
                 $"Thinking {Model}, voice {VoiceModel}");
             var latency = latencyLine is null ? null : LatencyReport.Parse(DateTimeOffset.Now, latencyLine);
-            var everyPiece = failure is "none" or "slow";
+            var everyPiece = failure is "none" or "slow" or "paused";
+            var hold = holding is null ? null : await holding;
             string[] expectedSteps = everyPiece
                 ? [ReplyLatency.ThinkingAuthorization, ReplyLatency.ThinkingConnection,
                     reasoning > TimeSpan.Zero ? ReplyLatency.HiddenReasoning : ReplyLatency.ThinkingFirstWords, ReplyLatency.FirstSentence,
@@ -145,7 +152,9 @@ internal static class SpokenReplyCheck
                 latency.Steps.GetValueOrDefault(ReplyLatency.VoiceSynthesis) >= voiceDelay.TotalMilliseconds * 0.8 &&
                 // A slow voice's pauses are said in the line: at least one per piece, each about as long as its gap.
                 (failure != "slow" || latency.VoicePauses >= voice.Calls &&
-                    latency.VoicePausedMs >= voice.Calls * SlowGap.TotalMilliseconds * 0.8);
+                    latency.VoicePausedMs >= voice.Calls * SlowGap.TotalMilliseconds * 0.8) &&
+                // A reply paused for the user says so in the line, and that it played on.
+                (failure != "paused" || latency.Resumed && latency.PausedForYouMs >= HoldFor.TotalMilliseconds * 0.9);
             var text = turn.Content.Text;
             var served = string.Concat(chunks);
             // The chat and captions never show a tag: the engines' own, any the reply was offered, or another spelling of one.
@@ -185,6 +194,11 @@ internal static class SpokenReplyCheck
             };
             var voiceOk = failure switch
             {
+                // Paused: the speakers go quiet while the voice keeps making the next pieces, and on resume every piece is said
+                // once (nothing is made again).
+                "paused" => !terminal.SpeechFailed && voice.Spoken == voice.Calls && voice.Calls == chunks.Length && hold is
+                    { Paused: true, Resumed: true } && hold.SamplesAfter == hold.SamplesBefore && hold.MadeAfter >= 2 &&
+                    terminal.Timings is { PausesForYou: 1, Resumes: 1 },
                 _ when everyPiece => !terminal.SpeechFailed && voice.Spoken == voice.Calls && voice.Calls > 0,
                 // Muting ends what is said aloud at that piece: nothing more is asked of the voice, and it isn't a failure.
                 "muted" => terminal.VoiceMuted && !terminal.SpeechFailed && voice.Spoken == at - 1 && voice.Calls == at,
@@ -270,7 +284,10 @@ internal static class SpokenReplyCheck
                     mayHavePlayed = terminal.MayHavePlayed,
                     // How often and how long the speakers ran dry mid-piece waiting for the voice's next audio.
                     pauses = terminal.Timings?.VoiceWaits ?? 0,
-                    pausedMs = Math.Round((terminal.Timings?.VoiceWaited ?? TimeSpan.Zero).TotalMilliseconds)
+                    pausedMs = Math.Round((terminal.Timings?.VoiceWaited ?? TimeSpan.Zero).TotalMilliseconds),
+                    // "paused": the reply paused as if talked over (ConversationTurn.Pause) and played on (Resume): the samples
+                    // played and the pieces asked of the voice just after the pause and at its end.
+                    hold
                 },
                 captions = new
                 {
@@ -288,6 +305,28 @@ internal static class SpokenReplyCheck
             listener.Stop();
             try { await serving; } catch (Exception error) when (error is OperationCanceledException or SocketException or ObjectDisposedException or IOException) { }
         }
+    }
+
+    // MadeBefore/MadeAfter: pieces the voice had finished making. Synthesis runs one piece ahead of playback, so by the end of the
+    // pause the piece after the paused one is made and plays at once on resume.
+    internal sealed record Hold(bool Paused, bool Resumed, long SamplesBefore, long SamplesAfter, int CallsBefore, int CallsAfter,
+        int MadeBefore, int MadeAfter, double HeldMs);
+
+    // Pauses the reply once its first audio has played, as Pause and decide does when the user talks over it, holds it for
+    // HoldFor while the text and the voice go on, then plays it on.
+    private static async Task<Hold> HoldAsync(ConversationTurn turn, Voice voice, Speakers speakers, CancellationToken cancellation)
+    {
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (speakers.Samples == 0 && waited.Elapsed < TimeSpan.FromSeconds(20)) await Task.Delay(5, cancellation);
+        var held = System.Diagnostics.Stopwatch.StartNew();
+        var paused = turn.Pause();
+        // What the device had already taken still plays out; nothing more after this.
+        await Task.Delay(100, cancellation);
+        var (samples, calls, made) = (speakers.Samples, voice.Calls, voice.Spoken);
+        await Task.Delay(HoldFor - TimeSpan.FromMilliseconds(100), cancellation);
+        var (samplesAfter, callsAfter, madeAfter) = (speakers.Samples, voice.Calls, voice.Spoken);
+        var resumed = turn.Resume();
+        return new(paused, resumed, samples, samplesAfter, calls, callsAfter, made, madeAfter, Math.Round(held.Elapsed.TotalMilliseconds));
     }
 
     private static string Words(string text) =>

@@ -1012,7 +1012,7 @@ public partial class MainWindow
     /// <summary>The paired computers whose Deep thinking role this PC thinks with, while Deep thinking is on.</summary>
     private IReadOnlyCollection<string>? DeepThinkingHosts() =>
         store is not null && ThinkLongerSettings.Of(homeSettings?.Generation).On &&
-        DeepThinkingSettings.Load(store.DataDirectory).Places.Where(p => p.OnHostRole).Select(p => p.HostId!).ToArray() is { Length: > 0 } hosts ? hosts : null;
+        ThinkingPoolSettings.Load(store.DataDirectory).Places.Places.Where(p => p.OnHostRole).Select(p => p.HostId!).ToArray() is { Length: > 0 } hosts ? hosts : null;
 
     private void RefreshDevices_Click(object sender, RoutedEventArgs e)
     {
@@ -1442,10 +1442,10 @@ public partial class MainWindow
             if (answers is null && action.Verb == HostVerb.Add && action.Role == HostRoles.DeepThinking &&
                 DeepThinkingFit.SharedCard(host.HostId, HardwareStore?.Find(host.HostId), hostChecks.GetValueOrDefault(host.HostId)?.Offers)
                     is { } shared &&
-                !ConfirmationDialog.Confirm(this, shared + " Add Deep thinking there anyway?", "Deep thinking shares a graphics card",
+                !ConfirmationDialog.Confirm(this, shared + " Add the Thinking pool role there anyway?", "The Thinking pool shares a graphics card",
                     yes: "_Add anyway", no: "_Cancel", questionId: "DeepThinkingShareQuestion"))
             {
-                ActionText.Text = $"Deep thinking wasn't added on {host.HostId}.";
+                ActionText.Text = $"The Thinking pool role wasn't added on {host.HostId}.";
                 return null;
             }
             // Martlet's automatic host update leaves this host to this run rather than colliding with it (and reporting it busy).

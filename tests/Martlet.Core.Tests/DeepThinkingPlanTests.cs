@@ -102,7 +102,7 @@ public sealed class DeepThinkingPlanTests
         role.Validate();
         Assert.True(role.OnHostRole);
         Assert.Equal(SelfHostSetup.DeepThinkingRouteId, role.HostRoute);
-        Assert.Equal("diva's Deep thinking (qwen3-8b)", role.Describe());
+        Assert.Equal("diva's Thinking pool (qwen3-8b)", role.Describe());
         var beside = DeepThinkingPlan.For(role, [diva]);
         Assert.True(beside.Available);
         Assert.False(beside.ChecksFit);
@@ -111,7 +111,7 @@ public sealed class DeepThinkingPlanTests
         // Without the role, the computer's Ollama is Thinking's own model: the plan says to add the role.
         var ollama = DeepThinkingPlan.For(Host("diva"), [diva]);
         Assert.False(ollama.Available);
-        Assert.Contains("Add the Deep thinking role there", ollama.Why, StringComparison.Ordinal);
+        Assert.Contains("Add the Thinking pool role there", ollama.Why, StringComparison.Ordinal);
         Assert.Equal(SelfHostSetup.OllamaRouteId, Host("diva").HostRoute);
         Assert.False(Host("diva").OnHostRole);
 
@@ -152,7 +152,7 @@ public sealed class DeepThinkingPlanTests
             var (read, readState) = DeepThinkingSettings.Read(folder);
             Assert.Equal("loaded", readState);
             Assert.Equal(pooled.Places.Select(p => p.Key), read.Places.Select(p => p.Key));
-            Assert.Equal("openrouter.ai (x-ai/grok-4.3), diva's Deep thinking (gemma4:27b) and ripley's Deep thinking (gemma4:27b)", read.DescribeAll());
+            Assert.Equal("openrouter.ai (x-ai/grok-4.3), diva's Thinking pool (gemma4:27b) and ripley's Thinking pool (gemma4:27b)", read.DescribeAll());
         }
         finally { Directory.Delete(folder, recursive: true); }
         // The same computer twice, a nested pool or Same as Thinking among the others is refused.

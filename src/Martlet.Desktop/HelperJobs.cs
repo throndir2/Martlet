@@ -22,7 +22,9 @@ internal enum HelperJobKind
     /// <summary>Naming a character's emotes and motions.</summary>
     ActionNaming,
     /// <summary>Finding a character's touch zones in one picture of it.</summary>
-    TouchZones
+    TouchZones,
+    /// <summary>Deciding a character's touch temperament from its personality.</summary>
+    Temperament
 }
 
 /// <summary>What a pool member must do to take a helper job: read text, or also see one picture.</summary>
@@ -84,6 +86,7 @@ internal sealed class HelperJobs(Func<IHelperJobPool?> pool, Func<bool> replyBus
     {
         HelperJobKind.Memory => "memory",
         HelperJobKind.ActionNaming => "action_naming",
+        HelperJobKind.Temperament => "temperament",
         _ => "touch_zones"
     };
 

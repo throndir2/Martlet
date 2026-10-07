@@ -108,6 +108,43 @@ public sealed class HelperJobsTests
     }
 
     [Fact]
+    public async Task The_pool_adapter_posts_each_helper_kind_as_its_pool_kind_and_falls_back_when_the_pool_cannot_finish()
+    {
+        var text = new Martlet.Conversation.BackgroundPlace("text", "Text PC") { Model = "qwen3:8b" };
+        var eyes = new Martlet.Conversation.BackgroundPlace("eyes", "Vision PC", 1) { Can = Martlet.Conversation.ThinkingCapability.Text | Martlet.Conversation.ThinkingCapability.Vision };
+        var members = new List<Martlet.Conversation.BackgroundPlace> { text };
+        var posted = new ConcurrentQueue<Martlet.Conversation.ThinkingJob>();
+        var fail = false;
+        var board = new Martlet.Conversation.ThinkingJobBoard(new Martlet.Conversation.BackgroundPlaces(), () => [.. members], (member, job, _) =>
+        {
+            posted.Enqueue(job);
+            return Task.FromResult(fail ? Martlet.Conversation.ThinkingAnswer.Failed("broken") : Martlet.Conversation.ThinkingAnswer.Done("answer from " + member.Name));
+        });
+        var adapter = new ThinkingPoolHelpers(() => new ThinkingPool(board));
+
+        Assert.True(adapter.Has(HelperCapability.Text));
+        Assert.False(adapter.Has(HelperCapability.Vision));
+        var named = await adapter.TryRunAsync(new(HelperJobKind.Temperament, "Temperament", new BoundedTextInput("persona", "decide")), CancellationToken.None);
+        Assert.Equal("answer from Text PC", named!.Answer);
+        Assert.Equal("Text PC (qwen3:8b)", named.Member);
+        var job = Assert.Single(posted);
+        Assert.Equal(Martlet.Conversation.ThinkingJobKind.Naming, job.Kind);
+        Assert.Equal("decide", job.Instructions);
+        Assert.Equal("persona", job.Text);
+
+        members.Add(eyes);
+        Assert.True(adapter.Has(HelperCapability.Vision));
+        Assert.Equal(Martlet.Conversation.ThinkingJobKind.Memory, ThinkingPoolHelpers.Kind(HelperJobKind.Memory));
+        Assert.Equal(Martlet.Conversation.ThinkingJobKind.Naming, ThinkingPoolHelpers.Kind(HelperJobKind.ActionNaming));
+        Assert.Equal(Martlet.Conversation.ThinkingJobKind.TouchZones, ThinkingPoolHelpers.Kind(HelperJobKind.TouchZones));
+
+        fail = true;
+        Assert.Null(await adapter.TryRunAsync(new(HelperJobKind.Memory, "Remembering", new BoundedTextInput("a", "b")), CancellationToken.None));
+        members.Clear();
+        Assert.Null(await adapter.TryRunAsync(new(HelperJobKind.Memory, "Remembering", new BoundedTextInput("a", "b")), CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Remembering_without_a_pool_uses_the_conversation_model_as_before()
     {
         await using var fixture = await LiveFixture.Create();

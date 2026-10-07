@@ -26,7 +26,7 @@ public partial class MainWindow
     });
 
     private Task<(string? Answer, string? Failure)> AskThinkingForTemperamentAsync(string purpose, string instructions, string text, CancellationToken token) =>
-        conversation is { } live ? live.AskThinkingAsync(purpose, instructions, text, token)
+        conversation is { } live ? live.AskHelperAsync(HelperJobKind.Temperament, purpose, instructions, text, null, token)
             : Task.FromResult<(string?, string?)>((null, "Thinking isn't set up yet"));
 
     /// <summary>After Personality closes: each persona whose personality changed meaningfully (or is new) has its touch

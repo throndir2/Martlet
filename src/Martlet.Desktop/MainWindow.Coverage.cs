@@ -318,11 +318,11 @@ public partial class MainWindow
     {
         if (JobForRole(role.Kind) is not { } job)
         {
-            var deep = store is null ? null : DeepThinkingSettings.Load(store.DataDirectory);
+            var deep = store is null ? null : ThinkingPoolSettings.Load(store.DataDirectory).Places;
             if (role.Kind == HostRoles.DeepThinking && deep is { OnHostRole: true } && deep.HostId == host.HostId)
             {
-                if (!ConfirmationDialog.Confirm(this, $"Remove {role.Name} from {host.HostId}? Deep thinking on this PC thinks there, so " +
-                        "Martlet won't think things over in the background until you choose another place in Companion > Deep thinking.",
+                if (!ConfirmationDialog.Confirm(this, $"Remove {role.Name} from {host.HostId}? It is in this PC's Thinking pool, so " +
+                        "pool jobs stop running there. Add another member in Companion > Thinking pool if the pool becomes empty.",
                         "Remove role"))
                     return;
                 RunHostActionAsync(host, role.Remove, confirmed: true).Forget();

@@ -291,12 +291,36 @@ waist, hips, groin, buttocks and inner thighs) react too while
   before any zones are found, clicks use that rough part.
 - Each zone plays its emotes and gestures (by default the model's own where it
   has them: a head pat leans in or tilts and smiles, a cheek blushes, an
-  intimate zone blushes and flinches), can **Tell the character** (a reply,
-  like a message you typed, such as *\*gently pats your head\**) and rests a few
-  seconds before reacting again. Rename, turn off, move or resize (drag the box
-  or its corner on the picture, or type it), delete or add zones; **Try** plays
-  one. Zones are saved per model in `character-touch-zones.json`, with the
-  picture in `character-touch-zones\`.
+  intimate zone blushes and flinches) and rests a few seconds before reacting
+  again. With **Martlet notices** on, Martlet also adds up your touches on that
+  zone (a quick tap on the top of the head or the hair is a pat, elsewhere a
+  poke, and a press of about 0.6 seconds or more a hold) into one plain line,
+  such as *They patted the top of your head 3 times over 2 seconds, then poked
+  your left cheek once.* The local reaction still plays at once. When you talk
+  or type, the line goes with your message (after your words). When you say
+  nothing, Martlet starts a short reply of its own about 1.2 seconds after your
+  last touch (at most 3 seconds after the first, at most once every 4 seconds);
+  starting to talk or type first cancels it, and while Martlet is replying the
+  touches wait for the next turn. The conversation keeps a short line such as
+  *(touch: top of head pat x3)*, the talk window shows a touch-only reply as a
+  note, and the two prompts are on Companion › Prompts (*Touched* and
+  *Touched, with your message*). The optional text beside the switch is your
+  own words for the touch, sent as a hint. Rename, turn off, move or resize
+  (drag the box or its corner on the picture, or type it), delete or add zones;
+  **Try** plays one. Zones are saved per model in `character-touch-zones.json`,
+  with the picture in `character-touch-zones\`.
+- **Strokes**: with the character's position locked, a press and drag across
+  it can't move it, so it strokes the character. Each zone the stroke crosses
+  plays its reaction at once (unless it is resting), and the first zone's emote
+  stays on until you let go. On zones with **Martlet notices** on, Martlet
+  hears how it went: *They slowly stroked
+  your hair 4 times*. Unlocked, a drag still moves the character, and Ctrl+drag
+  still pans a zoomed view.
+- **Moves and zooms**: Martlet also hears when you move the character (and how
+  far, or to another monitor), send it home, zoom in or out (and on what part),
+  pan, reset the zoom, lock or unlock it, or hide or show it: *They zoomed in on
+  your face*. These go with your next message; only touches and strokes can
+  start a reply of their own.
 
 ### Touch temperament
 
