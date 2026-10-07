@@ -302,6 +302,18 @@ waist, hips, groin, buttocks and inner thighs) react too while
   (drag the box or its corner on the picture, or type it), delete or add zones;
   **Try** plays one. Zones are saved per model in `character-touch-zones.json`,
   with the picture in `character-touch-zones\`.
+- **Strokes**: with the character's position locked, a press and drag across
+  it can't move it, so it strokes the character. Each zone the stroke crosses
+  plays its reaction at once (unless it is resting), and the first zone's emote
+  stays on until you let go. On zones with **Martlet notices** on, Martlet
+  hears how it went: *They slowly stroked
+  your hair 4 times*. Unlocked, a drag still moves the character, and Ctrl+drag
+  still pans a zoomed view.
+- **Moves and zooms**: Martlet also hears when you move the character (and how
+  far, or to another monitor), send it home, zoom in or out (and on what part),
+  pan, reset the zoom, lock or unlock it, or hide or show it: *They zoomed in on
+  your face*. These go with your next message; only touches and strokes can
+  start a reply of their own.
 
 ### Touch temperament
 
