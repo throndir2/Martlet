@@ -21,6 +21,9 @@ internal static class WorkSharingRoster
 
     static WorkSharingRoster()
     {
+        // A live request stopped this PC's own background request on a computer (the live turn comes first).
+        WorkQueue.Shared.Preempted += (lane, host) =>
+            ErrorLog.Info($"Live floor: a live {WorkSharingJobs.Title(lane)} request stopped this PC's own background request on {host}; it runs again later.");
         WorkQueue.Shared.Rerouted += (lane, route) =>
         {
             lock (Gate)
@@ -112,9 +115,11 @@ internal static class WorkSharingRoster
         return fresh;
     }
 
-    /// <summary>What a refusal before a request's first answer means: busy (try the next, then wait), unavailable (try the next).</summary>
+    /// <summary>What a refusal before a request's first answer means: busy (try the next, then wait), unavailable (try the next),
+    /// or preempted (the host keeps its graphics card for a live turn: pool work waits or goes elsewhere, never a failure).</summary>
     internal static WorkRefusal Classify(Exception error) => error switch
     {
+        Audio2FaceHostException { HeldForLive: true } => WorkRefusal.Preempted,
         Audio2FaceHostException { Code: "job.busy" or "worker.busy" } => WorkRefusal.Busy,
         Audio2FaceHostException { Code: "host.unreachable" or "host.redirect" or "worker.unavailable" or "worker.quarantined" } =>
             WorkRefusal.Unavailable,

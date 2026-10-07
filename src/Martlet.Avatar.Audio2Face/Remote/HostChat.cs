@@ -11,7 +11,8 @@ namespace Martlet.Avatar.Audio2Face.Remote;
 
 /// <summary>One route a paired host offers (one per installed role), as advertised by its signed capabilities.
 /// <paramref name="MaximumConcurrency"/> is how many requests it runs at once: the Deep thinking role's thinks at once (its
-/// slots), one for every other route and for hosts that don't say.</summary>
+/// slots), one for every other route and for hosts that don't say. <see cref="Gpus"/> names the graphics cards that serve it
+/// and <see cref="Lane"/> whether it is a live route or a pool route, when the host says (older hosts don't).</summary>
 public sealed record HostRoute(
     string RouteId, string Path, string ContractId, string ContractVersion, string DestinationId, string WorkerId,
     string AdapterVersion, string ModelId, string ModelRevision, string ModelSha256, string ArtifactIdentitySha256,
@@ -28,6 +29,15 @@ public sealed record HostRoute(
     public const string XttsRouteId = "martlet.gateway.xtts-synthesis.v1";
     public const string GptSovitsRouteId = "martlet.gateway.gpt-sovits-synthesis.v1";
     public const string DiaRouteId = "martlet.gateway.dia-synthesis.v1";
+    /// <summary>The lanes a host gives its routes: live (the conversation's jobs) and pool (Thinking pool work).</summary>
+    public const string LiveLane = "live", PoolLane = "pool";
+
+    /// <summary>The graphics cards that serve the route, as the host names them; empty when it doesn't say (then the whole
+    /// computer counts).</summary>
+    public IReadOnlyList<string> Gpus { get; init; } = [];
+
+    /// <summary>The route's lane: <see cref="LiveLane"/>, <see cref="PoolLane"/>, or empty when the host doesn't say.</summary>
+    public string Lane { get; init; } = "";
 
     /// <summary>The route as this PC saves it when a job moves to the host: its advertised identity and limits, observed now.</summary>
     public GatewayRouteSnapshot Snapshot(SetupRouteType routeType) => new()

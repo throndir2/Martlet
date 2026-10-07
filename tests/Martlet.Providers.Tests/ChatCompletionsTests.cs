@@ -27,6 +27,28 @@ public sealed class ChatCompletionsTests
         Chunk("Hello ") + Chunk("world.", "stop") + "data: [DONE]\n\n";
 
     [Fact]
+    public async Task A_continuation_closes_the_request_as_the_assistants_own_unfinished_message()
+    {
+        var context = ProviderFixtures.Context();
+        var limits = new TextGenerationLimits();
+        var handler = new TextRecordingHandler { Respond = (_, _) => Task.FromResult(TextRecordingHandler.Sse(Trace)) };
+        using var adapter = ChatCompletionsTextGenerationAdapter.CreateForFixture(BaseUrl, handler, new FixtureCredentials(), new FixtureClock());
+        var input = new BoundedTextInput("Write a poem about rain.", "Persona", [new(TextHistoryRole.User, "Hi"), new(TextHistoryRole.Assistant, "Hello")],
+            continuation: "The rain falls");
+        var result = await TextFixtures.Collect(adapter.Stream(context, Model, input, limits, Authorize(context, limits)));
+        Assert.Equal(TextGenerationOutcome.Completed, result.Result.Outcome);
+        using var json = JsonDocument.Parse(handler.Body);
+        var messages = json.RootElement.GetProperty("messages").EnumerateArray()
+            .Select(m => (m.GetProperty("role").GetString(), m.GetProperty("content").GetString())).ToArray();
+        Assert.Equal([("system", "Persona"), ("user", "Hi"), ("assistant", "Hello"), ("user", "Write a poem about rain."),
+            ("assistant", "The rain falls")], messages);
+        // It counts toward the input's size, and a request without one ends with the user's message as before.
+        Assert.True(input.Utf8Bytes > new BoundedTextInput("Write a poem about rain.", "Persona", [new(TextHistoryRole.User, "Hi"),
+            new(TextHistoryRole.Assistant, "Hello")]).Utf8Bytes);
+        Assert.Throws<ContractException>(() => new BoundedTextInput("x", continuation: "  "));
+    }
+
+    [Fact]
     public void Context_notes_are_sent_last_but_never_kept()
     {
         var input = new BoundedTextInput("Words", "Persona", notes: "Notes", context: "Board");
