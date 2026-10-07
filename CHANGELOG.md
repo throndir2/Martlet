@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Deep thinking is now the **Thinking pool**: one shared set of Thinking models for background work. Each of your computers joins only when you tick *Join the Thinking pool*, and each member has its own slot count. One slot always stays free for quick jobs. If the pool is empty, thinking longer and research use the conversation model. Your Deep thinking choices move over automatically. ([#529](https://github.com/throndir2/Martlet/pull/529))
 - Adding Deep thinking to a computer whose only graphics card already runs a Thinking model now warns you first: both models share the card and each runs at about half speed. Martlet recommends one graphics card for each Thinking model. ([#521](https://github.com/throndir2/Martlet/pull/521))
 
 ### Changed
