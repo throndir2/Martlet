@@ -472,7 +472,21 @@ Chatterbox Turbo), `supportsTags` and `tags`, each tag's `text` in the engine's
 syntax, `kind` `Sound` or `Emotion` and `usage`, and `multipleReferences` (true
 for XTTS-v2 and GPT-SoVITS, which learn from each of a voice's several
 recordings); Chatterbox clones only
-recordings longer than 5 s, GPT-SoVITS only 3,000-10,000 ms), each starter
+recordings longer than 5 s, GPT-SoVITS only 3,000-10,000 ms), `features` (its
+other needs: Docker, recording lengths, streaming, languages), `runsOn` (where
+it runs: `on` `gpu`, `cpu` or `online`, `vramGb` its typical and `peakVramGb`
+its most graphics memory, `minimumGpuGb` the smallest card, `evidence`
+`Measured`, `Sourced` or `Estimate`, all from the footprint catalog
+([resource footprints](RESOURCE_FOOTPRINTS.md)), and `text`, the line
+Companion › Voice shows) and `abilities`, the rundown Companion › Voice shows for it:
+`cloning` and `sounds` (true or false), `emotions` (`None`, `WhisperOnly`,
+`Intensity` or `Tags`), `items` (`Voice cloning`, `Laughs & sighs` and
+`Emotions`, each with `level` `Yes`, `Partly` or `No`, a `note` when partly, its
+`help` sentence and the `tags` that do it) and `summary` ("Voice cloning: yes.
+Laughs & sighs: yes. Emotions: whispering only." for Chatterbox Turbo, whose
+tones other than `[whispering]` don't change the voice). `otherVoices` gives the
+same `abilities` and `runsOn` for the `windows` (CPU) and `openai` (online)
+voices, neither of which clones, laughs or shows emotions. Each starter
 voice adds `engines` (the engines that can clone it) and `language` (`en` or
 `ja`, read from its transcript), and `chosenEngine` is the engine chosen on this
 desktop (`speaking-engine.txt`, default `chatterbox`). After the desktop
@@ -1161,7 +1175,9 @@ It returns `renderer`, `key` (first 16 hex digits of the model's ID), `files`
 model3.json, with their model-relative file names, and the `Idle` group made
 from VTube Studio's idle animation), `saved`, `detectedBy` (`names` or
 `thinking`), `actions` (each one's `n` as in `CharacterActionName-<n>`, `id`,
-`kind`, `name`, `detail`, `tag`, `cue`, `use`, `enabled`, `mode` (`brief`, or
+`kind`, `name`, `detail`, `tag`, `cue`, `use` (the When to use text, null while
+the box is empty), `hint` (what the reply prompt says next to the tag: `use`, or
+Martlet's own hint while `use` is null), `enabled`, `mode` (`brief`, or
 `lingering`: stays on after `{tag}` until `{/tag}`), `modeSaved` (false while it
 is the default), `vtsToggle` (a VTube Studio ToggleExpression hotkey turns it
 on) and whether replies
@@ -4136,7 +4152,11 @@ Martlet over the face at ...*); and `CharacterActionsSaveState` *All changes sav
 (its name and kind; a status field), `CharacterActionOn-<n>` (check box),
 `CharacterActionTag-<n>` (an English tag; a tag in another script reads *Not
 saved: ... use up to 24 English letters (a-z) ...*), `CharacterActionCue-<n>` (combo box: `(none)` or a
-cue such as `laugh`), `CharacterActionUse-<n>`, `CharacterActionMode-<n>` (the
+cue such as `laugh`), `CharacterActionUse-<n>` (the When to use box),
+`CharacterActionHint-<n>` (the grey
+hint in that box while it is empty, the text replies get then, such as *nod, for
+yes or agreement* or *the character's emote named "Glasses"*; hidden once the
+box has text), `CharacterActionMode-<n>` (the
 *Stays on* check box, its mode as `checkedState`: on for a lingering emote) and `CharacterActionTry-<n>`
 (plays it on the showing character, or turns a lingering one on; its label, a
 status field, reads *Turn off* while that lingering emote is on, and clicking it
@@ -4220,8 +4240,18 @@ Above the voices, the Voice engine card lists every way Martlet can speak on the
 shown computer as one row each, keyed by engine (`chatterbox`, `f5`, `xtts`,
 `gpt-sovits`, `dia`, and `windows` for a Windows voice under This PC):
 `VoiceEngine-<key>` reads its name and badge ("Chatterbox Turbo · recommended",
-"Windows voice · in use"), `VoiceEngineFeatures-<key>` its chips ("NVIDIA GPU,
-6 GB+, Docker, Voice cloning, 5 s+ samples, Laughs & sighs, Emotions, English";
+"Windows voice · in use"), `VoiceEngineAbilities-<key>` the rundown of what it
+can do ("Voice cloning: yes. Laughs & sighs: yes. Emotions: whispering only.";
+shown as ✓ yes, ◐ partly and ✕ no, the same as `abilities.summary` in
+`f5_voices`), `VoiceEngineRunsOn-<key>` where it runs and how much graphics
+memory it takes ("Runs on an NVIDIA GPU: about 3.7 GB of graphics memory, up to
+4.2 GB (6 GB+ card).", "Runs on the CPU: no graphics card needed." for a Windows
+voice; `runsOn.text` in `f5_voices`; the cloud provider card shows
+`VoiceEngineAbilities-openai` and `VoiceEngineRunsOn-openai`, "Runs online:
+nothing runs on your computers.", when Speaking uses OpenAI),
+`VoiceEngineFeatures-<key>` its other needs as chips ("Docker, 5 s+ samples,
+English" for Chatterbox Turbo, "No Docker or download, Built-in Windows voices"
+for a Windows voice;
 the same list as `features` in `f5_voices`), `VoiceEngineState-<key>` (shown only
 when the button doesn't already say it) where it stands ("Speaking on this PC.",
 "Ready on gpu-pc.", "Setting up on gpu-pc...", or why it can't run there), and
