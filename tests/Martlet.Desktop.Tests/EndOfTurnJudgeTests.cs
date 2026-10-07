@@ -110,6 +110,31 @@ public sealed class EndOfTurnJudgeTests
     }
 
     [Fact]
+    public void A_pool_member_answer_reads_as_a_verdict()
+    {
+        Assert.Equal(TurnVerdict.Complete, PoolTurnJudge.Parse("COMPLETE")!.Verdict);
+        Assert.Equal(TurnVerdict.Complete, PoolTurnJudge.Parse(" complete.")!.Verdict);
+        Assert.Equal(TurnVerdict.Incomplete, PoolTurnJudge.Parse("INCOMPLETE")!.Verdict);
+        Assert.Equal(TurnVerdict.Incomplete, PoolTurnJudge.Parse("**Incomplete**")!.Verdict);
+        Assert.Null(PoolTurnJudge.Parse("maybe"));
+        Assert.Null(PoolTurnJudge.Parse(null));
+    }
+
+    [Fact]
+    public async Task Without_a_pool_the_fallback_judge_is_unavailable_and_without_words_it_fails()
+    {
+        var judge = new PoolTurnJudge(() => null);
+        Assert.False(judge.Available);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            judge.JudgeAsync(new(new byte[640], TimeSpan.FromMilliseconds(260)), CancellationToken.None));
+        // Smart Turn missing and no pool member: the chain can't answer, so the plain pause decides.
+        var chain = EndOfTurnJudges.WithFallback(new SmartTurnJudge(null), judge);
+        Assert.False(chain.Available);
+        Assert.Contains("so a Thinking-pool model judges instead",
+            MainWindow.TurnJudgeText(true, ("a Thinking-pool model", true, "it couldn't load", null, [])));
+    }
+
+    [Fact]
     public void Judging_turns_is_on_by_default_and_stays_off_once_turned_off()
     {
         Assert.True(new TalkPreferences().JudgeTurns);

@@ -33,7 +33,9 @@ public partial class MainWindow
         if (!on) return "Off. The pause above alone decides when you finished talking.";
         if (status is not { } s || !s.Available)
             return $"On, but the judge can't run here ({status?.Problem ?? "no judge"}). The pause above decides until it can.";
-        var text = $"On. {s.Judge} on this PC" + (s.LoadTime is { } load ? $" (loaded in {load.TotalMilliseconds:0} ms)." : ".");
+        var text = s.Problem is not null
+            ? $"On. Smart Turn can't run here ({s.Problem}), so {s.Judge} judges instead."
+            : $"On. {s.Judge} on this PC" + (s.LoadTime is { } load ? $" (loaded in {load.TotalMilliseconds:0} ms)." : ".");
         if (s.Decisions.Length == 0) return text + " No turns judged yet.";
         var complete = s.Decisions.Count(d => d.Outcome == Martlet.Conversation.EndOfTurnDecision.Complete);
         var unfinished = s.Decisions.Count(d => d.Outcome is Martlet.Conversation.EndOfTurnDecision.Incomplete or Martlet.Conversation.EndOfTurnDecision.WentOn);

@@ -45,7 +45,15 @@ public sealed class SmartTurnEngine : IDisposable
             if (session is not null) return TimeSpan.Zero;
             var watch = Stopwatch.StartNew();
             OrtNative.Load(runtimeDirectory);
-            session = new OrtNative.Session(File.ReadAllBytes(modelPath), threads, "input_features", "logits");
+            var created = new OrtNative.Session(File.ReadAllBytes(modelPath), threads, "input_features", "logits");
+            // The first run sets the model up (seconds on a cold start); do it now, not on the first pause.
+            try { created.RunFirst(WhisperFeatures.Compute(new float[SampleRate / 2]), [1, WhisperFeatures.Bands, WhisperFeatures.Frames]); }
+            catch
+            {
+                created.Dispose();
+                throw;
+            }
+            session = created;
             return watch.Elapsed;
         }
     }

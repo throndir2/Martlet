@@ -4531,7 +4531,8 @@ default; its `checkedState` is the saved choice, and `ui_toggle` on it needs
 `--allow-ui-effects` because it saves `talk-preferences.json`; an open talk
 window restarts listening with it) and `TalkJudgeTurnsStatus` (returned, never
 words or audio: *Off. The pause above alone decides when you finished
-talking.*, *On, but the judge can't run here (...)*, or *On. Smart Turn v3.2 on
+talking.*, *On, but the judge can't run here (...)*, *On. Smart Turn can't run here (...), so a
+Thinking-pool model judges instead. ...*, or *On. Smart Turn v3.2 on
 this PC (loaded in 1519 ms). Last 4 pauses: 2 finished, 1 unfinished, 1 left
 to the pause; judge median 30 ms. Last: complete after 280 ms of silence.*,
 updated after each decision; the desktop log has one *End of turn: ...* line

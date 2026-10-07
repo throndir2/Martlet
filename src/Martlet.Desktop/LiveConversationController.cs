@@ -387,6 +387,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     // Parakeet on this PC, also used for the quick check of what is said over Martlet (BargeInGate): free and private.
     private readonly ILocalTranscriber? localWords;
     private readonly IEndOfTurnJudge? turnJudge;
+    private readonly SmartTurnJudge? smartTurn;
     private readonly object turnGate = new();
     private readonly Queue<EndOfTurnDecision> turnDecisions = new();
     private int turnJudgeMissingLogged;
@@ -663,7 +664,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     {
         this.operations = operations;
-        this.turnJudge = turnJudge;
+        // Smart Turn on this PC first; a Thinking-pool member only when it is missing or fails.
+        smartTurn = turnJudge as SmartTurnJudge;
+        this.turnJudge = smartTurn is not null ? EndOfTurnJudges.WithFallback(smartTurn, new PoolTurnJudge(() => ThinkingPool)) : turnJudge;
         this.settings = settings;
         this.vault = vault;
         this.captureDevices = captureDevices;
@@ -968,7 +971,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
         started.SetResult();
         // The end-of-turn judge loads in the background so the first pause is judged too.
-        if (!options.Pc && options.JudgeTurns && turnJudge is SmartTurnJudge smart) smart.WarmAsync().Forget();
+        if (!options.Pc && options.JudgeTurns && smartTurn is { } smart) smart.WarmAsync().Forget();
         return listening;
     }
 
@@ -979,8 +982,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         get
         {
             lock (turnGate)
-                return (turnJudge?.Name, turnJudge?.Available == true, turnJudge is null ? "no judge" : (turnJudge as SmartTurnJudge)?.Problem,
-                    (turnJudge as SmartTurnJudge)?.LoadTime, turnDecisions.ToArray());
+                return (turnJudge?.Name, turnJudge?.Available == true, turnJudge is null ? "no judge" : smartTurn?.Problem,
+                    smartTurn?.LoadTime, turnDecisions.ToArray());
         }
     }
 
@@ -1008,7 +1011,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (operation.Listening is not { JudgeTurns: true, Pc: false } || turnJudge is null) return null;
         if (turnJudge.Available) return turnJudge;
         if (Interlocked.Exchange(ref turnJudgeMissingLogged, 1) == 0)
-            ErrorLog.Warn($"End-of-turn judge: {turnJudge.Name} can't answer ({(turnJudge as SmartTurnJudge)?.Problem ?? "unavailable"}); " +
+            ErrorLog.Warn($"End-of-turn judge: {turnJudge.Name} can't answer ({smartTurn?.Problem ?? "unavailable"}, and no Thinking-pool member can judge); " +
                 "the plain pause decides when you finished talking.");
         return null;
     }

@@ -1699,8 +1699,12 @@ the data folder.
   ms of silence; judge 31 ms.*), and the reply latency line shows *end-of-turn
   wait* and *end-of-turn judge* in place of *end of speech*. A wrong *complete*
   is recovered the usual way: keep talking (barge-in or the restart below).
-  Other judges plug in behind it through `IEndOfTurnJudge`
-  (`EndOfTurnJudges.WithFallback`).
+  When Smart Turn is missing or fails, a [Thinking pool](#pool-api-desktop)
+  member judges the quick transcript instead (`PoolTurnJudge`: an
+  `EndOfTurnJudge` job that must answer COMPLETE or INCOMPLETE within 500 ms;
+  without a quick transcript or an answer in time, your pause decides). Other
+  judges plug in the same way through `IEndOfTurnJudge` and
+  `EndOfTurnJudges.WithFallback`.
 - Listening never stops by itself. It runs on its own slot beside replies
   (`LiveListener`): it records one utterance at a time and transcribes each, in
   order, while it already listens for the next, so nothing said while Martlet

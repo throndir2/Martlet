@@ -625,9 +625,11 @@ silence (`EndOfTurnGate` in Martlet.Conversation):
 4. **Incomplete**: listening goes on for up to twice the plain pause (at least
    1.6 s, at most 5 s), so trailing off mid-thought is cut off less. Talking
    again asks again at the next pause.
-5. No judge (missing model, failed load), an error, or no answer before the
-   plain pause ends: the plain pause decides, exactly as with the judge off.
-   The log says why.
+5. Smart Turn missing or failed: a Thinking-pool member reads the quick
+   transcript instead (`PoolTurnJudge`, an `EndOfTurnJudge` job with a 500 ms
+   budget). No judge at all, an error, or no answer before the plain pause
+   ends: the plain pause decides, exactly as with the judge off. The log says
+   why.
 
 Each decision writes *End of turn: complete (Smart Turn v3.2, 0.93) after 280
 ms of silence; judge 31 ms.* (or *incomplete*, *you went on talking*, *slow*,
@@ -635,8 +637,9 @@ ms of silence; judge 31 ms.* (or *incomplete*, *you went on talking*, *slow*,
 wait 260, end-of-turn judge 40* instead of *end of speech 800*. Companion ›
 Listening shows the newest decisions (`TalkJudgeTurnsStatus`), and MCP's
 `turn_judge_check` runs the bundled model and the gate headless
-([MCP](MCP.md#latency)). Other judges (a Thinking-pool model, later) plug in
-behind Smart Turn through `IEndOfTurnJudge` and `EndOfTurnJudges.WithFallback`.
+([MCP](MCP.md#latency)). Other judges plug in behind Smart Turn through
+`IEndOfTurnJudge` and `EndOfTurnJudges.WithFallback`, as the Thinking-pool one
+does. Smart Turn runs once while it loads, so the first pause isn't slower.
 
 **Measured on this PC** (Intel i7-13700K, no NVIDIA card; MCP
 `turn_judge_check` on the Release build): the model loads in about 1.5 s in
