@@ -40,7 +40,12 @@ public sealed record ResourceGauge(double Capacity, double Used)
     public double Percent => Capacity <= 0 ? 0 : Math.Round(Used / Capacity * 100, 1);
 }
 
-public sealed record UsageItem(PlanComponent Component, string OptionId, int? GpuIndex, ResourceUse Use);
+/// <summary>One component on a machine: <see cref="Use"/> is what the engine reserves (the most it takes at once),
+/// <see cref="Usual"/> what it usually holds (<see cref="ComponentOption.Usual"/>; the same as <see cref="Use"/> unless set).</summary>
+public sealed record UsageItem(PlanComponent Component, string OptionId, int? GpuIndex, ResourceUse Use)
+{
+    public ResourceUse Usual { get; init; } = Use;
+}
 
 /// <summary>One card: <see cref="Vram"/> capacity is what the planner may use (after headroom for the driver, desktop and
 /// <see cref="MachineGpu.UsedGb"/>), <see cref="TotalGb"/> the card's size.</summary>
