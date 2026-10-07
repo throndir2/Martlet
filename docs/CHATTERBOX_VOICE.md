@@ -48,7 +48,7 @@ of a computer without an NVIDIA GPU. Its role (`deploy/host/roles/chatterbox-nan
 is `gpu=optional`: `martlet-host` adds the GPU overlay when the host can run GPU
 containers and asks GPU or CPU, and the service (`MARTLET_CHATTERBOX_DEVICE=auto`)
 uses the card it was given, or the CPU. It uses the same image as Turbo
-(`martlet-chatterbox:8`, whose CUDA PyTorch also runs on the CPU) and its own
+(`martlet-chatterbox:9`, whose CUDA PyTorch also runs on the CPU) and its own
 volume, `martlet-chatterbox-nano-models`.
 
 - On a GPU it decodes like Turbo (the CUDA graph and streaming below).
@@ -56,23 +56,67 @@ volume, `martlet-chatterbox-nano-models`.
   library's own decoding, within the same speech-token budget as Turbo's, so its
   first audio comes when the whole piece is made. The idle check doesn't run on
   the CPU (it is for graphics memory).
-- Resemble says Nano runs "3x faster than realtime on 8 CPU cores". A separate
-  benchmark on this repository's development PC (an i7-13700K, PyTorch 2.8.0 on
-  the CPU, 8 threads pinned to the performance cores, other programs using fewer
-  than 3 cores) measured whole pieces: 1.0 s of speech in 0.82 s and 4.3 s in
-  2.2 s (0.51x real time). A T3 speech token took about 12 ms, and the decoder
-  about 90 ms per second of speech plus a fixed 0.38-0.55 s for each call (it
-  reads the voice's reference again each time). That fixed cost is why the CPU
-  speaks whole pieces: streamed in chunks as on a GPU, the first audio came
-  after 0.67-0.87 s, but at 1.2-1.4x real time with a 0.3-0.4 s pause after the
-  first chunk.
-- **The CPU must be free.** With other programs keeping about 15 cores busy, the
-  same 4.3 s piece took 4.5 s (1.05x real time), so the voice pauses between
-  pieces. Don't give Nano the CPU that also runs Thinking or other heavy work.
-- Memory: the model adds about 1.35 GB; the service held 3.3 GB after replies
-  (4.1 GB while it loaded). Loading takes 5-8 s, and warming up (the first
-  conditionals, about 3-18 s for librosa's first run, and the first piece) is
-  done before the role reports ready; after that a new voice takes about 0.37 s.
+- **Threads on the CPU** (image `martlet-chatterbox:9`). The service uses at
+  most 8 threads, and never more than the CPU's performance cores
+  (`MARTLET_CHATTERBOX_CPU_THREADS` sets another count). On Linux, a hybrid
+  Intel CPU (one with performance and efficiency cores) lists its performance
+  cores in `/sys/devices/cpu_core/cpus`; the service then pins itself to one
+  logical CPU on each of them. Elsewhere it doesn't pin. PyTorch's own choice
+  is every physical core, efficiency cores too, and that was clearly slower.
+- **Decoder steps on the CPU** (image `martlet-chatterbox:9`). A whole piece
+  takes 1 step of the meanflow decoder instead of the library's 2
+  (`MARTLET_CHATTERBOX_CPU_DECODER_STEPS`); a GPU keeps 2. `/status` reports
+  `cpu` (`threads`, `pinned_cpus`) and `decoder_steps`, and so does
+  `voice_engine_check` ([MCP](MCP.md)).
+- **Measured** by a separate benchmark on this repository's development PC: an
+  i7-13700K (8 performance and 8 efficiency cores), DDR5-6000, PyTorch 2.8.0 on
+  the CPU, two voices, whole pieces of 3.3-4.3 s of speech, each take repeated
+  when other programs kept more than 6 cores busy. Medians, with the slowest
+  take in brackets. Resemble says Nano runs "3x faster than realtime on 8 CPU
+  cores".
+
+  | Threads | First audio | Real-time factor | A speech token |
+  | --- | --- | --- | --- |
+  | 8, one on each performance core (the service on Linux) | 2.39 s | 0.52 (0.62) | 12.2 ms |
+  | 4, one on each of 4 performance cores | 2.54 s | 0.61 (0.70) | 12.5 ms |
+  | 8 on any core (the service where performance cores aren't known) | 2.86 s | 0.64 (0.88) | 14 ms |
+  | 4 on any core | 3.39 s | 0.73 (1.03) | |
+  | 16 on any core (PyTorch's own choice) | 4.10 s | 0.75 (1.23), 6 of 16 slower than real time | 18-21 ms |
+  | 8 on the efficiency cores (like an older CPU) | 4.49 s | 1.05, 12 of 16 slower than real time | |
+
+  One decoder step instead of 2 made the decoder take 0.23-0.32 s a piece
+  instead of 0.40-0.60 s: first audio for 1.2 s of speech after 0.75 s instead
+  of 0.96 s, and for these sentences after 2.14 s instead of 2.39 s. On 20
+  paired takes (the same seeds), UTMOS changed by +0.005, speaker similarity by
+  +0.0001 and the word error rate not at all. Nobody has compared them by ear
+  yet.
+- **Why whole pieces on the CPU.** Each decoder call costs a fixed 0.35-0.40 s
+  (it reads the voice's reference again) plus about 70 ms per second of speech,
+  and the vocoder about 75-90 ms per second. The GPU's streaming schedule
+  decodes every token again at each chunk, so on the CPU its first audio came
+  after 0.66-0.93 s, but at 0.79-1.1x real time with pauses in every piece
+  (1.2-1.3 s in all for a 4 s sentence, 1.8 s for a 13 s one; only a 1 s piece
+  paused as little as 0.3-0.4 s). One early chunk at 55 speech tokens and then
+  the rest gave first audio after 1.57 s without pauses for these sentences,
+  but a 13 s piece still paused 3.4-4.5 s, so the service doesn't stream on the
+  CPU yet.
+- **Nano against Turbo** (20 paired takes, scored with faster-whisper
+  large-v3-turbo, WavLM-base-plus-sv and UTMOS22): UTMOS 3.74 against 3.83,
+  speaker similarity 0.941 against 0.936, word error rate 0.003 against 0.001.
+  Short replies ("Yes." to "Oh no!") were word-perfect 31 of 32 times against
+  29 of 32, and none ran away. All nine sound tags added sound (Nano 0.42-1.16 s
+  a tag, median; Turbo 0.28-0.76 s).
+- **Turbo on the CPU is too slow.** On the same 8 performance cores, Turbo took
+  4.48 s for these sentences (1.18x real time, 35 ms a speech token), and every
+  sentence was slower than real time. That is why the CPU engine is Nano.
+- **The CPU must be free.** With other programs keeping about 15 cores busy, a
+  4.3 s piece took 4.5 s (1.05x real time), so the voice pauses between pieces.
+  Don't give Nano the CPU that also runs Thinking or other heavy work.
+- Memory: after loading, the service holds 2.4-2.6 GB, and at most 4.5 GB while
+  it speaks (Turbo on the CPU: 3.4 and 6.6 GB). Loading takes 5-8 s, and
+  warming up (the first conditionals, about 3-18 s for librosa's first run, and
+  the first piece) is done before the role reports ready; after that a new
+  voice takes about 0.37 s.
 - The welcome wizard never suggests Nano, and on a computer without an NVIDIA
   GPU Companion > Voice keeps recommending a Windows voice; Nano is there for
   the owner to choose.

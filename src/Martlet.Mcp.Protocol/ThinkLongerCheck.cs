@@ -95,7 +95,7 @@ internal static class ThinkLongerCheck
                         place = spot.Settings.Place.ToString(), hostRole = spot.Settings.OnHostRole, available = spot.Plan.Available,
                         rank = spot.Plan.Rank, slots = spot.Settings.ThinksAtOnce, checksFit = spot.Plan.ChecksFit, why = spot.Plan.Why
                     }),
-                    usable = places.Count, maxThinks = ThinkLonger.Slots(places),
+                    usable = places.Count, maxThinks = ThinkLonger.Slots(places), atOnce = ThinkLonger.AtOnce(places),
                     available = pool.Plan.Available, why = pool.Plan.Why
                 }
             },
@@ -565,7 +565,10 @@ internal static class ThinkLongerCheck
             var againPlace = again.Job?.Place?.Name;
             if (again.Job is { } fourth) jobs.Cancel(fourth.Id, BackgroundJob.CanceledByMartlet);
             var thirdOn = third.Job?.Place?.Name;
+            var tool = ThinkLonger.Description(settings, ThinkLonger.Slots(places));
             var ok = pool.Usable.Count == 3 && places.Count == 3 && ThinkLonger.Slots(places) == 3 && kind.MaxActive == 6 &&
+                ThinkLonger.AtOnce(places) == 2 && tool.EndsWith("Up to 2 at once; more wait in line.", StringComparison.Ordinal) &&
+                pool.Plan.Why.StartsWith("Up to 2 thinks run at once", StringComparison.Ordinal) &&
                 started.Length == 3 && started[0].Place?.Name == "diva" && started[1].Place?.Name == "ripley" &&
                 together && overlapped && started.All(job => job.State == BackgroundJobState.Succeeded && job.Result == Lyrics) &&
                 heldWhileBusy.Length == 2 && thirdWaiting && third.Queued == "think-1 on diva and think-2 on ripley" &&
@@ -578,8 +581,7 @@ internal static class ThinkLongerCheck
                 {
                     computer = spot.Computer, where = spot.Settings.Describe(), available = spot.Plan.Available, rank = spot.Plan.Rank, why = spot.Plan.Why
                 }),
-                maxThinks = ThinkLonger.Slots(places), plan = pool.Plan.Why,
-                tool = ThinkLonger.Description(settings, ThinkLonger.Slots(places)),
+                maxThinks = ThinkLonger.Slots(places), atOnce = ThinkLonger.AtOnce(places), plan = pool.Plan.Why, tool,
                 placed = started.Select(job => new
                 {
                     id = job.Id, place = job.Place?.Name, state = job.State.ToString(), finishedAfterMs = (long)job.Elapsed.TotalMilliseconds
@@ -810,6 +812,17 @@ internal static class ThinkLongerCheck
         var stillRunning = longRun.Job is { Finished: false };
         unlimitedJobs.CancelAll();
         var unlimited = production.TimeLimit is null && production.MaxPerHour is null && unlimitedStarted == 20 && stillRunning;
+        // A full line on Deep thinking's places: three one-slot places run two thinks at once (the last free slot stays free for
+        // quick jobs) and four wait in line; a seventh is refused with those real numbers.
+        using var lineJobs = new BackgroundJobs();
+        IReadOnlyList<BackgroundPlace> three = [new("host:diva", "diva"), new("host:imouto", "imouto", 1), new("host:ripley", "ripley")];
+        var lineKind = ThinkLonger.Kind(new ThinkLongerSettings(), ThinkLonger.Slots(three));
+        var inLine = Enumerable.Range(0, lineKind.MaxActive).Select(i => lineJobs.Start(lineKind, $"think {i}", Forever, three, wait: true)).ToArray();
+        var fullLine = lineJobs.Start(lineKind, "one more", Forever, three, wait: true);
+        lineJobs.CancelAll();
+        var lineFull = inLine.All(start => start.Started) && fullLine.Refusal == "busy" && fullLine.Message ==
+            "Martlet already has 6 thinks running or waiting, and it runs up to 2 at once. Running now: think-1 on diva and think-2 on ripley. " +
+            "Wait for one to finish.";
         var timedOut = timed.Job;
         var songRun = songJob.Job!;
         var lateRun = lateSong.Job!;
@@ -819,7 +832,7 @@ internal static class ThinkLongerCheck
             first.Job.Delivery == BackgroundDeliveryState.Delivered &&
             timedOut is { State: BackgroundJobState.TimedOut } && hourly.Refusal == "hourly_limit" &&
             songRun.State == BackgroundJobState.Canceled && songRun.Delivery == BackgroundDeliveryState.Delivered &&
-            lateRun.State == BackgroundJobState.Canceled && lateRun.Delivery == BackgroundDeliveryState.Dropped && !jobs.HasNews && unlimited;
+            lateRun.State == BackgroundJobState.Canceled && lateRun.Delivery == BackgroundDeliveryState.Dropped && !jobs.HasNews && unlimited && lineFull;
         return (ok, new
         {
             ok,
@@ -827,6 +840,11 @@ internal static class ThinkLongerCheck
             {
                 ok = unlimited, timeLimit = production.TimeLimit?.ToString() ?? "none", hourlyLimit = production.MaxPerHour?.ToString() ?? "none",
                 startedInARow = unlimitedStarted, runningAfterFixtureLimit = stillRunning, requestTimeHours = ThinkLonger.RequestTime.TotalHours
+            },
+            fullLine = new
+            {
+                ok = lineFull, runningOrWaiting = inLine.Count(start => start.Started), maxActive = lineKind.MaxActive, atOnce = ThinkLonger.AtOnce(three),
+                refusal = fullLine.Refusal, message = fullLine.Message, toldModel = ThinkLonger.Refused(fullLine)
             },
             oneAtATime = new { first = first.Job.Id, second = second.Refusal, told = ThinkLonger.Refused(second) },
             besideASong = new { song = songRun.Id, activeTogether = together, offer = song.Offer },

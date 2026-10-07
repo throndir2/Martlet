@@ -229,8 +229,10 @@ def chatterbox_stop() -> None:
 # ---------------------------------------------------------------- the host roles already running on this PC
 
 RELAY_CONTAINER = "martlet-bench-relay"
-# Role services on the host's shared loopback, and the Windows loopback port the relay gives each.
-ROLE_PORTS = {"chatterbox": (50083, CHATTERBOX_PORT), "stt": (8178, 8188), "f5": (50081, 50091), "dia": (50085, 50095)}
+# Role services on the host's shared loopback, and the Windows loopback port the relay gives each. Each role's container is
+# martlet-<role>-<role>-1 (martlet-host runs a role as compose project martlet-<role>, service <role>).
+ROLE_PORTS = {"chatterbox": (50083, CHATTERBOX_PORT), "chatterbox-nano": (50088, 50098), "chatterbox-original": (50089, 50099),
+              "stt": (8178, 8188), "f5": (50081, 50091), "dia": (50085, 50095)}
 
 
 def _docker(*args: str, check: bool = True) -> str:

@@ -339,6 +339,12 @@ public sealed record DeepThinkingPool(IReadOnlyList<DeepThinkingSpot> Spots)
 
     public DeepThinkingSpot? Find(string key) => Spots.FirstOrDefault(spot => spot.Key == key);
 
+    /// <summary>How many thinks run at once on places with <paramref name="slots"/> slots in all: one fewer than the slots when
+    /// there are two or more, because the Thinking pool keeps its last free slot for quick jobs (judges and summaries; the rule
+    /// is BackgroundPlaces' in Martlet.Conversation), else the one slot; at most <see cref="DeepThinkingSettings.MaxPlaces"/>,
+    /// the most thinks that run or wait at once.</summary>
+    public static int AtOnce(int slots) => Math.Min(slots >= 2 ? slots - 1 : Math.Max(slots, 0), DeepThinkingSettings.MaxPlaces);
+
     /// <summary>Whether Deep thinking can run anywhere and why: the first place's plan with one place, else how many think at once.</summary>
     public DeepThinkingPlan Plan
     {
@@ -348,11 +354,12 @@ public sealed record DeepThinkingPool(IReadOnlyList<DeepThinkingSpot> Spots)
             if (Spots.Count == 1 || usable.Count == 0) return Spots[0].Plan;
             if (usable.Count == 1) return usable[0].Plan;
             var names = usable.Select(spot => spot.Computer).Distinct(StringComparer.Ordinal).ToArray();
-            var slots = usable.Sum(spot => spot.Settings.ThinksAtOnce);
-            return new(true, $"Up to {slots} thinks run at once alongside the conversation on its places (" +
+            var atOnce = AtOnce(usable.Sum(spot => spot.Settings.ThinksAtOnce));
+            return new(true, (atOnce == 1 ? "One think runs at a time" : $"Up to {atOnce} thinks run at once") +
+                " alongside the conversation on its places (" +
                 (names.Length == 1 ? names[0] : $"{string.Join(", ", names[..^1])} and {names[^1]}") +
                 "); each new one goes to a free place that shares least with the conversation and isn't kept for other work, " +
-                "and waits its turn when all are busy.",
+                "and waits in line when every place is busy. The last free slot stays free for quick jobs (judges and summaries).",
                 Rank: usable.Min(spot => spot.Plan.Rank));
         }
     }

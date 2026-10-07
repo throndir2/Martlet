@@ -1739,7 +1739,11 @@ of audible audio), `engine`, `route`, `voice`, `text`, `style` (Chatterbox
 Original's sent style in words, else null), `statusBefore` and
 `statusAfter` (the service's own `/status`: `answered`, `state`, `ready`,
 `error`, `model` and `device` (`cuda:0` or `cpu`) and `runtime`, for Chatterbox
-its torch, torchaudio and CUDA versions
+its torch, torchaudio and CUDA versions, `decoderSteps` (the decoder steps a
+whole piece takes on Chatterbox Turbo or Nano: 1 on the CPU, 2 on a GPU), `cpu`
+on the CPU (`threads`, PyTorch's threads, at most 8 and never more than the
+performance cores, and `pinned_cpus`, the CPUs of the performance cores it is
+pinned to on Linux, empty when not pinned; null on a GPU)
 and `idleCheck` (`checks`, `every_seconds`, `fastest_ms`, `last_ms` of its
 [idle check](CHATTERBOX_VOICE.md#how-it-runs)), `whisper` (`level_db` and
 the `parts` it has [whispered](CHATTERBOX_VOICE.md#tags)) and, for Chatterbox
@@ -2929,7 +2933,9 @@ that effort, such as `{"reasoning_effort":"medium"}` or `{"think":true}`,
 `pool`: every place it thinks on, the first place then each computer ticked
 *Think here too*, each with `computer` (its name), `where`, `place`,
 `hostRole`, `available`, `rank` (lower goes first), `checksFit` and `why`, then
-`usable`, `maxThinks` (how many run at once) and the pool's `available` and
+`usable`, `maxThinks` (slots in all), `atOnce` (how many thinks run at once:
+one fewer than the slots when there are two or more, because the last free
+slot stays free for quick jobs) and the pool's `available` and
 `why`), `tools`
 (`think_longer` and `cancel_thinking`, and `research` while web research is on,
 exactly as the model gets them), the filled `prompt` and `researchPrompt`, and
@@ -3023,10 +3029,14 @@ next message carry it too. `limits`: one think at a time (the second is refused
 with what the model is told) beside a song job, the user's Cancel (mentioned
 only with the next message, kept when that reply didn't happen), the time limit
 (`TimedOut`), the hourly limit, Martlet's own cancel (nothing to bring up) and
-the conversation ending (dropped), all on a fixture kind with limits; and
+the conversation ending (dropped), all on a fixture kind with limits;
 `deepThinkingUnlimited`: Deep thinking's own kind has no time or hourly limit
 (`timeLimit`/`hourlyLimit` *none*, 20 thinks `startedInARow`, one still running
-past the fixture's time limit, `requestTimeHours` 24). `plans`: the production `DeepThinkingPlan`
+past the fixture's time limit, `requestTimeHours` 24); and `fullLine`: on three
+one-slot places, Deep thinking's own kind lets six thinks run or wait
+(`runningOrWaiting`, `maxActive`) and runs two at once (`atOnce`), and a seventh
+is refused as `busy` with those real numbers (`message`: *Martlet already has 6
+thinks running or waiting, and it runs up to 2 at once...*, and `toldModel`). `plans`: the production `DeepThinkingPlan`
 for thirteen setups (Same as Thinking with Thinking on this PC, on OpenRouter or
 on a paired computer; OpenRouter with Thinking local; Ollama on this PC with
 another model or Thinking's own beside Thinking local, or with the voice on
@@ -3052,7 +3062,9 @@ fitted to a paired computer's gateway (16 KiB, 16 messages, no tools, the newest
 kept, `inputTokens` 24,576 beside 8,192 for output). `pool`: the production
 `DeepThinkingPool` of three paired computers' Deep thinking roles (diva and
 ripley do none of the conversation's jobs, imouto also speaks: `configured`
-with each `rank`), `maxThinks` 3 and the tool's *Up to 3 at once*; the
+with each `rank`), `maxThinks` 3 (slots), `atOnce` 2, the tool's *Up to 2 at
+once; more wait in line* (`tool`) and the pool's *Up to 2 thinks run at once...*
+(`plan`); the
 production job list starts thinks as the desktop does (waiting in line when no
 place may take them), places think-1 on diva and think-2 on ripley, both
 working at once on their own fixture endpoints (standing in for the two
