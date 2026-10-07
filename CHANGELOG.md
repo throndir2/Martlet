@@ -27,6 +27,8 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 - In Prepare this computer, the GPU power sliders fit the window again and show their handle, with each GPU's current, default and allowed limits on a line below. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+- Adding a Linux computer as a host works again when its Docker has no buildx plugin, instead of stopping with "failed to parse platform". ([#534](https://github.com/throndir2/Martlet/pull/534))
+- When adding a Linux computer stops, the message now says why, not only "check the output". ([#535](https://github.com/throndir2/Martlet/pull/535))
 - Touch zone detection finds the groin zone when the vision model calls it the crotch, pelvis or between the legs. ([#519](https://github.com/throndir2/Martlet/pull/519))
 
 ## [0.52.0] - 2026-10-06

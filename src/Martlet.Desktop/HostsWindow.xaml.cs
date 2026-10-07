@@ -411,9 +411,18 @@ public partial class HostsWindow : ThemedWindow
         run.Status($"Checking whether {ssh} reaches the internet...");
         var supplied = await remote.SupplyIfOfflineAsync(target, HostVerb.Setup, pairings.DataDirectory, hostKey, run.Output, run.Token);
         run.Status($"Setting up the host on {ssh}. This can take a few minutes...");
-        var result = await remote.RunAsync(target, "setup", true, sudo, null, hostKey, run.Output, run.Token, supplied: supplied);
+        string? reason = null;
+        var output = new LineSink(line =>
+        {
+            var text = line.Trim();
+            if (text.Length > 0 && (reason is null || !reason.StartsWith("Stopped:", StringComparison.Ordinal) || text.StartsWith("Stopped:", StringComparison.Ordinal)))
+                reason = text;
+            run.Output.Report(line);
+        });
+        var result = await remote.RunAsync(target, "setup", true, sudo, null, hostKey, output, run.Token, supplied: supplied);
         if (result.ExitCode != 0)
-            throw new InvalidOperationException($"Setup stopped on {ssh} (exit {result.ExitCode}). Check the output for details.");
+            throw new InvalidOperationException($"Setup stopped on {ssh} (exit {result.ExitCode})" +
+                (reason is null ? ". Check the output for details." : $": {reason}"));
         run.Status($"Pairing this PC with {ssh}...");
         var device = DeviceIdText.Text.Trim();
         var (pairing, secret, key) = await remote.PairAsync(target, device, Environment.MachineName, sudo, hostKey, run.Output, run.Token);
