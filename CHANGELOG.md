@@ -16,6 +16,7 @@ Each release's section here is also its notes on GitHub.
 - More setup work runs at the same time: adding a role such as Ollama to this PC no longer waits while Martlet prepares its host service's update, Windows Firewall opens while Docker Desktop starts during host setup, and Update hosts updates all your hosts at once instead of one by one. ([#503](https://github.com/throndir2/Martlet/pull/503))
 
 ### Fixed
+- Devices shows the graphics card, memory and processor of a host running in Docker Desktop again, after the host is updated. Since 0.18.0 such hosts reported no hardware. ([#505](https://github.com/throndir2/Martlet/pull/505))
 - When a job runs on this PC's own host service, Home and Devices now call it "This PC's host service" instead of its host name as if it were another computer, and no longer offer to take lip-sync "back to this PC" when it's already there. ([#504](https://github.com/throndir2/Martlet/pull/504))
 
 ## [0.50.1] - 2026-10-06
