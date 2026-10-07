@@ -229,6 +229,20 @@ words, and up to 16 s when the first reply after a start pays the warm-up.
    recognizer). Chatterbox Turbo, streaming, stays the default voice; the
    800 ms end-of-speech pause, Thinking steps Off and Thinking longer On are
    unchanged.
+7. **Short first sentence** (Companion › Replies, on by default): every spoken
+   reply is asked to begin with a few words and then go on
+   ([how it works](CONVERSATION.md#voice-latency-streaming-overlap-and-barge-in)).
+   The voice gets nothing until the first sentence ends, so a reply that opens
+   with a 15-word sentence makes the voice wait for 15 words; *"Hmm, good
+   question."* makes it wait for three, plus the few words the short-ending
+   rule waits for. OpenAI's
+   [realtime prompting guide](https://developers.openai.com/cookbook/examples/realtime_prompting_guide)
+   gives voice agents the same kind of advice: short, speakable sample phrases
+   and a variety rule so the openings don't sound the same. The prompt is about
+   80 tokens, the same text in every spoken reply just before *Reply length*,
+   so it comes from the prompt cache after the first reply. Its effect on the
+   *first sentence* step depends on the model and wasn't measured here (no
+   Thinking model on the test PC; see the change's pull request).
 
 Thinking longer, measured through a disposable desktop with Thinking on a
 single-slot loopback fixture (one request at a time with a one-slot prompt

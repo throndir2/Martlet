@@ -1241,21 +1241,42 @@ the model's path; it reads and contacts nothing else.
 `character_touch_zones` rehearses Companion › Character › [Touch zones](AVATARS.md#touch-zones)
 with no vision request: `zones` (how many Martlet knows and which are
 `intimate`, used only with *Include intimate zones*), `request` (the
-`instructions` and zone `list` sent with the character's snapshot), `parsed`
-(what the production parser makes of `answer`, a simulated vision reply: JSON
-boxes as fractions, pixels of a `width` × `height` picture, 400 × 800 by
-default, or Qwen-style 0..1000 `bbox_2d` grounding), `detected` (those zones
+step-by-step requests: `parts` with the whole character, `zones` with each
+close-up (its `regions` and the zones each asks for) and `check` with the
+numbered boxes, each with its `instructions` and an example `text`), `parsed`
+(what the production parser makes of `answer`, a simulated vision reply about
+the whole picture: JSON boxes as fractions or named edges (`left`, `top`,
+`right`, `bottom`), pixels of a `width` × `height` picture, 400 × 800 by
+default, or Qwen-style 0..1000 `bbox_2d` grounding; an answer cut off part way
+keeps the zones it finished), `detected` (those zones
 bound to `probe`, a simulated renderer zones probe of Live2D `drawables` and
 VRM `bones` in page fractions, with `crop`, `"left,top,width,height"` where
 the snapshot sat on the page), `saved` (the model's zones in
 `character-touch-zones.json`: how many, how many are `active`, who found them,
-whether a snapshot is kept, and each zone's parts, `plays`, whether Martlet `notices` it and the owner's `hint`) and,
-with `touch` (a `CharacterTouch` object as JSON), `match`: the zone it lands
+whether they were found with the character framed `whole`, whether a snapshot
+is kept, what the last detection `sent` (its plain `line`, `requests`,
+`pictures` and `steps`), and each zone's parts, `plays`, whether Martlet `notices` it and the owner's `hint`) and,
+with `touch` (a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
+it lands with the character framed whole), `match`: the zone it lands
 in, `how` (`drawable`, `bone`, `hair`, `box` or `coarse`), its rough `coarse`
 zone, what it `plays`, whether Martlet `notices` it, the line the Thinking model would get for that one touch (`noticed`, such as *They patted the top of your head once.*; a press of 600 ms or more in `heldMilliseconds` is a hold) and how long it `rests`.
+With `detect`, the production detection (`TouchZoneDetection`) runs on
+`snapshotPath` (a PNG of the character, transparent around it, as the renderer
+takes it): it composes and encodes every picture it would send (the whole
+character on its backdrop with the grid, each close-up, each check with the
+numbered boxes; `previewDirectory` keeps them as files to look at) while a
+FIXTURE - NOT AI stand-in answers each request from `answer`'s zones (fractions
+of the snapshot). `guess`, a wrong first answer in the same form, answers the
+close-ups instead, so the checks have something to correct; `checks` sets the
+rounds per part (0 to 5, 2 by default). `detection` then reports each request
+(`asked`: its `step`, `kind`, picture size and type, `marks`, the message and
+the stand-in's answer), the `steps` (what each found, swapped, moved, removed
+or added), `requestCount`, what it `missed` and how far the found boxes are
+from `answer`'s (`worstEdge`, `meanEdge`).
 The model is `modelPath`, `modelId` or the one the `dataDirectory`'s
 `avatar.json` shows. `save` (an explicit, disposable `dataDirectory` only)
-writes the parsed zones as *Detect zones* would, with `snapshotPath` (a PNG)
+writes the parsed zones (with `detect`, the detected ones and every picture the
+detection sent, as *Detect zones* would) with `snapshotPath` (a PNG)
 as their picture and `includeIntimate` setting the switch, so the section can
 be checked with `-Desktop`. With `temperament` (a simulated Thinking answer
 for [Touch temperament](AVATARS.md#touch-temperament), such as
@@ -1273,7 +1294,11 @@ and zone and the escalation). Never the model's path; it contacts nothing.
 The section's status fields are `TouchZonesStatus` (how many zones, how many in
 use and who found them, or that none are found yet), `TouchZonesVision`
 (whether the Thinking model can see and where pictures go), `TouchZonesDetection`
-(how *Detect zones* went), `TouchZonesLast` (the zone the last click landed in,
+(how *Detect zones* went, and each step while it runs: *Step 2: finding the
+zones of the character's head in a close-up...*, *Checking the zones of ...,
+round 1 of 2...*), `TouchZonesSent` (what the last detection sent: how many
+pictures, how large and what they showed, or *FIXTURE - NOT AI answered
+these.*), `TouchZonesLast` (the zone the last click landed in,
 how it was found and what it played or that it was resting, and whether Martlet
 noticed it), `TouchZonesNoticed` (what Martlet noticed that waits for a reply,
 the plain touch line, and when a touch-only reply starts, or that it waits for
@@ -1285,17 +1310,24 @@ crossed, pace, passes, seconds and samples on the character; or the last move,
 zoom, pan, lock, hide or show as Martlet's touch ledger heard it),
 `TouchZonesSaveState` and each zone's `TouchZoneState-<n>` (its ID, the parts
 it follows and its default reaction). `TouchZonesDetect` sends the character's
-picture to Thinking, `TouchZoneTry-<n>` plays on the character, and
+pictures to Thinking, `TouchZonesStop` (shown while it runs; a passive click)
+stops it and keeps the zones found until then, `TouchZonesSentView` (*Show the
+picture Thinking saw*, a check box) shows the whole character as Thinking saw
+it under the boxes, `TouchZonesSentOpen` opens the folder of pictures in
+Explorer, `TouchZoneTry-<n>` plays on the character, and
 `TouchZonesIntimate`, `TouchZonesAdd`/`TouchZonesAddKind` and each zone's
 `TouchZoneOn-`, `TouchZoneName-`, `TouchZoneReaction-`, `TouchZoneReaction2-`,
 `TouchZoneNotices-` (*Martlet notices*; its checked state reads in `ui_snapshot`), `TouchZoneNarration-` (the owner's optional hint), `TouchZoneCooldown-`, `TouchZoneBox-`,
 `TouchZoneDelete-` and its box on the picture (`TouchZoneRect-<n>`, inside
-`TouchZonesPicture`) save, so they all need `--allow-ui-effects`. Setting
+`TouchZonesPicture`) save, so they all (except Stop) need `--allow-ui-effects`.
+The Character page lists more than `ui_snapshot`'s 200 controls; read the
+section with `{"idPrefix":"TouchZone"}`. Setting
 `MARTLET_TOUCH_ZONES_FIXTURE` to a text file before launching the desktop makes
-*Detect zones* read that file as the Thinking model's answer (FIXTURE - NOT AI,
-shown in `TouchZonesDetection`) after taking the real snapshot and probing the
-showing model's drawables or bones, so the whole detection runs with no
-vision request.
+a FIXTURE - NOT AI stand-in answer every request of *Detect zones* from that
+file's zones (JSON about the whole snapshot, as `answer` above; shown in
+`TouchZonesDetection` and `TouchZonesSent`) after taking the real snapshot,
+composing and keeping every picture and probing the showing model's drawables
+or bones, so the whole detection runs with no vision request.
 
 Touch temperament (below Touch zones) reads through `TouchTemperamentStatus`
 (for which persona and who decided it: built-in reactions, the Thinking model,
@@ -2047,6 +2079,16 @@ provider's count, and cover each prompt as written, before placeholders are
 filled in. With an
 `id` it also returns `prompt` with that prompt's effective `text` (the
 saved edit or the built-in text), exactly what Martlet fills in and sends.
+`shortFirstSentence` is Companion › Replies › *Short first sentence*: `on`
+(on by default), `chosen` (whether a choice is saved), the prompt's `state`,
+and `spokenClosing` and `unspokenClosing`, what closes a spoken and an
+unspoken reply's instructions, built by the desktop's own
+`PromptSettings.ReplyClosing` (the short first sentence prompt, then *Reply
+length*; *Reply length* alone when it is off, emptied or the reply isn't
+spoken). On Companion › Replies, `RepliesShortFirstSentence` reads the chosen
+option (*On* or *Off*; choosing one with `ui_select` saves it, so it needs
+`--allow-ui-effects`) and `RepliesNow` says whether spoken replies start with a
+short first sentence.
 On the page, `PromptsNow` reads how many prompts are edited or emptied,
 `PromptsTokens` the estimated tokens of all prompts together as typed
 (*All prompts together: about 3,456 tokens. ...*) and
@@ -2973,12 +3015,19 @@ kept, `inputTokens` 24,576 beside 8,192 for output). `pool`: the production
 `DeepThinkingPool` of three paired computers' Deep thinking roles (diva and
 ripley do none of the conversation's jobs, imouto also speaks: `configured`
 with each `rank`), `maxThinks` 3 and the tool's *Up to 3 at once*; the
-production job list places think-1 on diva and think-2 on ripley, both working
-at once on their own fixture endpoints (standing in for the two computers,
-each through a runtime of its own: `thinkingAtOnce`, `overlapped`), think-3 on
-imouto (`placed`), refuses a fourth as `busy` naming each place (`refused`,
-with what the model is told), frees every place once they finish (`freedAfter`)
-and places the next on diva again (`nextPlacedOn`). `moment`: the production
+production job list starts thinks as the desktop does (waiting in line when no
+place may take them), places think-1 on diva and think-2 on ripley, both
+working at once on their own fixture endpoints (standing in for the two
+computers, each through a runtime of its own: `thinkingAtOnce`, `overlapped`).
+A long job never takes the pool's last free slot while the pool has two or more
+slots, so think-3 waits in line behind them (`waitedInLine`, with its
+`progress`) and imouto's slot stays free (`heldWhileBusy`); a quick job (a
+screen summary through the production `ThinkingJobBoard` on the same broker, a
+simulated member, NOT a model) takes that slot at once while think-3 still
+waits (`quickJob`: `on` imouto, `tookMs`, `held`). Think-3 then runs on the
+first of diva and ripley to free up, never on imouto (`placed`,
+`waitedInLine.startedOn`); every place is free once they finish (`freedAfter`)
+and the next think goes to diva again (`nextPlacedOn`). `moment`: the production
 `MomentTurn` plan for eight situations (`plans.cases`: a look that comes due
 while the PC played and work finished, while only work finished, or alone;
 finished work that comes up while the PC played or a look is due; the PC's pace
@@ -2995,10 +3044,15 @@ text). `broker`: the production
 background broker (`BackgroundPlaces`) and scheduler place four thinks on a
 companion PC's three hosts, one general, one kept for image generation and one
 that sings (`places` with `Rank`, `Slots`, `Duties` and `Standing`): the
-general one first, then the others, and the fourth waits in line (`placed`,
-`queuedBehind`); a song holding the singing computer keeps the one in line
-waiting when that computer's think ends (`waitedWhileTheSongHeldTheSinger`),
-and it runs on the general one once that frees up (`nextInLineRanOn`);
+general one first, then the singing one; the images one is the pool's last free
+slot, which a long job never takes while the pool has two or more slots, so the
+third and fourth wait in line (`placed`, `queuedBehind`, `inLine`) and a quick
+job (an end-of-turn judge) takes that slot at once (`quickJob`). A song holding
+the singing computer keeps both waiting when that computer's think ends
+(`waitedWhileTheSongHeldTheSinger`); the third runs on the general one once
+that frees up (`nextInLineRanOn`), the fourth waits until two slots are free
+again (`lastInLineWaitedForTwoFreeSlots`) and runs on the singing one when the
+song ends (`lastInLineRanOn`);
 `decidedMs` is how long the four placements took (no model is asked). Each part has an `ok`; on
 this PC the tool returned in 33 ms and replies beside a parallel think answered
 in 2-7 ms. Loopback only; reads no credentials.
@@ -3029,7 +3083,13 @@ writes a page with its source links (`page.links`) and no scripts (`shown`).
 `tool` and `prompt` are exactly what replies get. `limits`: a second research is
 refused as `busy` (and what the model is told) while a think runs beside it,
 Cancel ends it as `Canceled`, the fifth in an hour is refused (`hourly_limit`),
-and a failed first search fails the job (`failedSearch`). Each part has an `ok`.
+and a failed first search fails the job (`failedSearch`). `limits.placement`:
+on Deep thinking's places, a think holding the only place keeps research from
+starting (the message names it); research is a long job, so with one other
+place free it is refused too, because the pool's last free slot stays free for
+quick jobs (`lastFreeSlot`, where a screen summary takes it at once), and with
+two other places free it runs on the one sharing least with the conversation
+(`researchOn`). Each part has an `ok`.
 No real web search or model is used; reads no credentials; the temporary folder
 is deleted.
 

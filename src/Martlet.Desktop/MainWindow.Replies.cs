@@ -68,6 +68,16 @@ public partial class MainWindow
 
     private static int ThinkingIndex(bool? reasoning) => GenerationSettings.ThinkingSteps(new() { Reasoning = reasoning }) ? 1 : 0;
 
+    /// <summary>Companion › Replies › Short first sentence: each choice and what it saves as
+    /// <see cref="GenerationSettings.ShortFirstSentence"/>. On is the default: it saves nothing (null).</summary>
+    private static readonly IReadOnlyList<(string Name, bool? Value)> ShortFirstChoices = [("On", null), ("Off", false)];
+    private const string ShortFirstRange = "On (default) or Off";
+    private const string ShortFirstHelp = "Martlet begins each spoken reply with a few words, such as \"Oh, nice one!\", and then " +
+        "goes on. Its voice says the first sentence as soon as it is written, so a short one lets it start talking sooner. The " +
+        "words it is asked for are the Short first sentence prompt on Prompts.";
+
+    private static int ShortFirstIndex(bool? shortFirst) => GenerationSettings.StartsShort(new() { ShortFirstSentence = shortFirst }) ? 0 : 1;
+
     private void RenderRepliesTab(Panel page)
     {
         var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
@@ -102,8 +112,16 @@ public partial class MainWindow
         };
         AutomationProperties.SetAutomationId(thinking, "RepliesThinking");
         AutomationProperties.SetHelpText(thinking, ThinkingRange + ". " + ThinkingHelp);
+        var shortFirst = new ComboBox
+        {
+            Width = 96, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 6, 0, 0), ItemsSource = ShortFirstChoices.Select(c => c.Name).ToArray(),
+            SelectedIndex = ShortFirstIndex(saved?.ShortFirstSentence)
+        };
+        AutomationProperties.SetAutomationId(shortFirst, "RepliesShortFirstSentence");
+        AutomationProperties.SetHelpText(shortFirst, ShortFirstRange + ". " + ShortFirstHelp);
         // There is no Save button: a valid change saves a moment after typing stops, into the newest saved settings.
-        var autoSave = new AutoSave(() => SaveRepliesFromAsync(boxes, thinking, generation =>
+        var autoSave = new AutoSave(() => SaveRepliesFromAsync(boxes, thinking, shortFirst, generation =>
         {
             described.Text = DescribeGeneration(generation, route);
             showContextStatus?.Invoke();
@@ -117,6 +135,9 @@ public partial class MainWindow
         AddRepliesRow(grid, new Label { Content = "T_hinking steps", Target = thinking, Padding = new Thickness(0, 8, 8, 0), VerticalAlignment = VerticalAlignment.Top },
             thinking, ThinkingRange, ThinkingHelp, route is null ? null : (ThinkingUseText(route, place!), "RepliesThinkingStatus",
                 GenerationSupport.Use(route.RouteType, route.Origin, GenerationSetting.Reasoning)));
+        shortFirst.SelectionChanged += (_, _) => { tabEdited = true; autoSave.Changed(); };
+        AddRepliesRow(grid, new Label { Content = "_Short first sentence", Target = shortFirst, Padding = new Thickness(0, 8, 8, 0), VerticalAlignment = VerticalAlignment.Top },
+            shortFirst, ShortFirstRange, ShortFirstHelp, null);
         foreach (var setting in ReplySettings)
         {
             var use = route is null ? GenerationSettingUse.Used : GenerationSupport.Use(route.RouteType, route.Origin, setting.Setting);
@@ -178,6 +199,7 @@ public partial class MainWindow
         {
             foreach (var box in boxes.Values) box.Text = "";
             thinking.SelectedIndex = 0;
+            shortFirst.SelectedIndex = 0;
             tabEdited = true;
             autoSave.SaveNowAsync().Forget();
         }, id: "RepliesDefaults");
@@ -270,6 +292,8 @@ public partial class MainWindow
         // Thinking steps is Off unless On is chosen; routes whose models don't reason don't mention it.
         var thinking = route is not null && GenerationSupport.Use(route.RouteType, route.Origin, GenerationSetting.Reasoning) ==
             GenerationSettingUse.Unused ? "" : GenerationSettings.ThinkingSteps(settings) ? "Thinking steps are on. " : "Thinking steps are off. ";
+        thinking += GenerationSettings.StartsShort(settings) ? "Spoken replies start with a short first sentence. "
+            : "Spoken replies don't start with a short first sentence. ";
         if (settings is null)
             return $"{brief}. {stop}. {thinking}Other settings use the model default.";
         var parts = new List<string>();
@@ -284,7 +308,7 @@ public partial class MainWindow
     /// newest saved settings. A field that isn't a number in range says so (on the status line) and nothing is saved until it is
     /// fixed. Returns false to be tried again shortly while another change holds the settings.</summary>
     private async Task<bool> SaveRepliesFromAsync(IReadOnlyDictionary<GenerationSetting, TextBox> boxes, ComboBox thinking,
-        Action<GenerationSettings?> saved)
+        ComboBox shortFirst, Action<GenerationSettings?> saved)
     {
         var values = new Dictionary<GenerationSetting, double?>();
         foreach (var setting in ReplySettings)
@@ -314,7 +338,8 @@ public partial class MainWindow
             FrequencyPenalty = values[GenerationSetting.FrequencyPenalty],
             PresencePenalty = values[GenerationSetting.PresencePenalty],
             ContextTokens = Whole(GenerationSetting.ContextTokens),
-            Reasoning = ThinkingChoices[Math.Max(0, thinking.SelectedIndex)].Value
+            Reasoning = ThinkingChoices[Math.Max(0, thinking.SelectedIndex)].Value,
+            ShortFirstSentence = ShortFirstChoices[Math.Max(0, shortFirst.SelectedIndex)].Value
         };
         try { generation.Validate(); }
         catch (ContractException error)

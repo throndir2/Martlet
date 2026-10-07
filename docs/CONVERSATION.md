@@ -219,8 +219,9 @@ reads the entire conversation again before every reply (on a 12B model, about
   doesn't change from message to message: the persona (with its style when it
   has one), tools, voice tags, the smart home tools prompt, who-is-talking,
   always-listening, what-this-PC-plays, recording and picture prompts as each
-  message needs them, and the reply length last. A screen glance has its
-  glance instructions there instead.
+  message needs them, then, for a spoken reply, the *Short first sentence*
+  prompt, and the reply length last. A screen glance has its glance
+  instructions there instead.
 - **The conversation so far** follows, each earlier message exactly as it was
   sent, with its notes (a paired host gets the plain messages and the notes
   with its instructions, as before). What Martlet saw is part of it: every
@@ -1307,6 +1308,18 @@ voice pipeline never waits for a whole reply:
   (`.`, `?`, `!` followed by a space), a new line and the end of the reply
   break a reply into pieces; commas, semicolons and dashes never do, so each
   piece is one or more whole sentences, which sounds more natural.
+- **Short first sentence.** Companion › Replies › *Short first sentence* (on
+  by default) asks every spoken reply to begin with a few words (*"Oh, nice
+  one!"*, *"Hmm, good question."*) and then go on. The voice gets a piece as
+  soon as its sentence is written, so a short first sentence reaches the voice
+  after a few words instead of a whole long sentence. The prompt (Companion ›
+  Prompts › *Short first sentence*) goes just before *Reply length* in the
+  instructions and is the same text every time, so prompt caches keep it;
+  turning it off or on changes the start of the requests once. A reply that
+  isn't spoken never gets it. The rules for pieces don't change: a short first
+  sentence still waits for the next few words, in case they are a short ending
+  to say with it (*Where the voice pauses*, below). MCP's `prompts_status`
+  shows the setting and what closes a spoken reply's instructions.
 - **Where each persona's voice pauses.** Each piece is said on its own, so a
   break in the wrong place sounds awkward ("That was a wonderful idea. |
   Cutie!"). Personality › **Where the voice pauses** sets, per persona, which
