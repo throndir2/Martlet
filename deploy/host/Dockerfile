@@ -6,8 +6,9 @@
 # Build from a checkout:   docker build -t martlet-host -f deploy/host/Dockerfile .
 # Build from GitHub:       docker build -t martlet-host -f deploy/host/Dockerfile https://github.com/throndir2/Martlet.git#<ref>
 
-# The gateway is framework-dependent (no apphost), so one build serves every target architecture.
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.401 AS build
+# The gateway is framework-dependent (no apphost), so one build serves every target architecture. No
+# --platform=$BUILDPLATFORM: the legacy builder (hosts without buildx) leaves it empty and fails to parse the platform.
+FROM mcr.microsoft.com/dotnet/sdk:10.0.401 AS build
 WORKDIR /src
 COPY . .
 ENV CI=true DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 DOTNET_GENERATE_ASPNET_CERTIFICATE=false
