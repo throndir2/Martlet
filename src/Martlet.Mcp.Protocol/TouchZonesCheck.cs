@@ -78,13 +78,13 @@ internal static class TouchZonesCheck
         {
             var given = JsonSerializer.Deserialize<CharacterTouch>(touch, Web) ?? throw new ArgumentException("touch must be a CharacterTouch object.");
             var found = CharacterTouchZones.Match(settings, given);
-            match = found is null ? new { zone = (string?)null, how = (string?)null, coarse = given.CoarseZone, plays = Array.Empty<string>(), tells = (string?)null }
+            match = found is null ? new { zone = (string?)null, how = (string?)null, coarse = given.CoarseZone, plays = Array.Empty<string>(), notices = false, noticed = (string?)null }
                 : new
                 {
                     zone = found.Zone.Id, name = found.Zone.Name, how = found.How, coarse = given.CoarseZone,
                     plays = CharacterTouchZones.React(found.Zone, catalog, temperament, touches).Actions.Select(s => $"{s.Kind}: {s.Name}").ToArray(),
                     reaction = Reaction(CharacterTouchZones.React(found.Zone, catalog, temperament, touches)), repeats = touches,
-                    tells = CharacterTouchZones.Narration(found.Zone), rests = found.Zone.Reaction.CooldownSeconds
+                    notices = found.Zone.Reaction.Notices, noticed = Noticed(found.Zone, given), rests = found.Zone.Reaction.CooldownSeconds
                 };
         }
         return new
@@ -108,7 +108,7 @@ internal static class TouchZonesCheck
                     z.Id, z.Name, z.Enabled, active = settings.Active(z), drawables = z.Drawables.Count, z.Bones,
                     plays = CharacterTouchZones.React(z, catalog, temperament, 1) is var r && r.From == TouchReactionPlan.FromOwner
                         ? string.Join(" + ", r.Actions.Select(s => s.Name)) : r.From + ": " + string.Join(" + ", r.Actions.Select(s => s.Name)),
-                    tells = CharacterTouchZones.Narration(z)
+                    notices = z.Reaction.Notices, hint = CharacterTouchZones.Narration(z)
                 }).ToArray()
             },
             temperament = new
@@ -136,6 +136,17 @@ internal static class TouchZonesCheck
         new { attitude = CharacterTouchTemperaments.AttitudeWord(entry.Attitude), reactions = entry.Reactions, linger = entry.LingerSeconds };
 
     private static object Reaction(TouchReactionPlan plan) => new { from = plan.From, attitude = plan.Attitude, escalated = plan.Escalated, linger = plan.LingerSeconds };
+
+    // What the Thinking model hears about this one touch when Martlet notices the zone (the ledger's line), or null.
+    private static string? Noticed(CharacterTouchZone zone, CharacterTouch touch)
+    {
+        if (!zone.Reaction.Notices) return null;
+        var ledger = new Martlet.Conversation.TouchLedger();
+        ledger.Record(new(touch.Held ? Martlet.Conversation.PhysicalKind.Hold : CharacterTouchZones.Pats(zone) ? Martlet.Conversation.PhysicalKind.Pat
+            : Martlet.Conversation.PhysicalKind.Tap, TimeSpan.Zero, CharacterTouchZones.Part(zone), zone.Name.ToLowerInvariant(),
+            Hint: CharacterTouchZones.Narration(zone)));
+        return ledger.Drain(TimeSpan.Zero)?.Line;
+    }
 
     private static object Describe(CharacterTouchZone zone) => new
     {

@@ -168,6 +168,18 @@ internal sealed class LiveConversationOperation
     internal DesktopToolset? Toolset { get; set; }
     /// <summary>A reply Martlet starts on its own to bring up finished background work (think_longer), not an answer to the user.</summary>
     internal bool Report { get; init; }
+    /// <summary>A short reply Martlet starts on its own because the user touched the desktop character and said nothing; its
+    /// message is the touches (Companion › Prompts › Touched).</summary>
+    internal bool Touch { get; init; }
+    /// <summary>Martlet started this reply on its own (a report or a reaction to being touched), not an answer to the user.</summary>
+    internal bool OnItsOwn => Report || Touch;
+    /// <summary>A message from a paired messaging chat (or another remote ask): text in, text out.</summary>
+    internal bool Remote { get; init; }
+    /// <summary>What the user did to the desktop character that this reply carries (its message for a touch-only reply, its
+    /// notes otherwise), put back when the reply never completes.</summary>
+    [JsonIgnore] internal Martlet.Conversation.TouchBurst? Touches { get; set; }
+    /// <summary>What Thinking was told about <see cref="Touches"/>: the touch reply's message or the note on the user's.</summary>
+    [JsonIgnore] internal string? TouchText { get; set; }
     /// <summary>The finished background jobs this reply brings into the conversation (its own message for a report, or the notes
     /// of the user's message); completed once the exchange is kept, otherwise returned for the next reply.</summary>
     [JsonIgnore] internal BackgroundDelivery? Delivery { get; set; }
@@ -431,6 +443,19 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     // A song's lyrics writer on the Deep thinking place it holds while it writes.
     private sealed record LyricsWriter(BackgroundThink Writer, (string Thinking, string Deep)? Beside, BackgroundPlaceLease Place);
     private (bool Spoken, HeardVoices? Heard, ChattinessChoice? Chattiness) lastAsked;
+    // What the user did to the desktop character that no reply took yet (touches on zones Martlet notices, and what the strokes
+    // and window log add).
+    private readonly Martlet.Conversation.TouchLedger touches = new();
+
+    /// <summary>What the user did to the desktop character that waits for the next reply.</summary>
+    internal Martlet.Conversation.TouchLedger Touches => touches;
+
+    /// <summary>Now, on the clock the touch ledger's times use.</summary>
+    internal TimeSpan TouchNow => clock.GetElapsedTime(0);
+
+    /// <summary>A reply's request carried touches (true: a touch-only reply; false: in the notes of the user's message). Raised
+    /// off the UI thread, after the request started.</summary>
+    internal event Action<bool, Martlet.Conversation.TouchBurst, string?>? TouchesSent;
     // The chattiness level Martlet picked while it decides how chatty it is: Normal until a reply or glance switches it, then
     // kept until Martlet closes.
     private Chattiness decided = Chattiness.Normal;
@@ -847,7 +872,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 SpokenConfidence = spoken ? confidence : null, Recording = recording, Seen = seen, StraightWords = words,
                 PcAudio = pcAudio, DiscordCall = discordCall && spoken, UserWords = string.IsNullOrWhiteSpace(userWords) ? null : userWords.Trim(), Playback = playback,
                 BringUp = bringUp, Attention = seen is null ? null : attention, Look = look,
-                Origin = remote ? origin : null, OriginSpeaker = remote ? originSpeaker : null,
+                Origin = remote ? origin : null, OriginSpeaker = remote ? originSpeaker : null, Remote = remote,
                 WhileSinging = spoken ? singing?.Now() : null,
                 BackgroundChattiness = chattiness,
                 LatencyTimeline = timeline ?? new ReplyTimeline(clock, microphone ? ReplyTimeline.YouPressed
@@ -1583,9 +1608,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             lock (gate)
             {
                 operation.Authorization.Check(worker);
-                // A report of finished background work is Martlet's own, like a screen glance: the participation policy decides
-                // whether to answer the user, so it doesn't apply.
-                if (!operation.Report)
+                // A report of finished background work (or a reaction to being touched) is Martlet's own, like a screen glance:
+                // the participation policy decides whether to answer the user, so it doesn't apply.
+                if (!operation.OnItsOwn)
                 {
                     // Receipt is NOW for a newly received transcript. Never renew a queued/busy/expired intent.
                     var source = operation.Spoken ? InputSource.HandsFreeListening
@@ -1620,7 +1645,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // A message that went straight to Thinking has no words yet: memory recalls by the conversation so far (and the
             // speaker), tools and finished background work go with it, and what needs its words (Assist, earlier conversations,
             // lorebook keywords in it) waits for the next message.
-            var own = operation.Report || straight ? null : operation.PcAudio ? operation.UserWords : input!.UserText;
+            var own = operation.OnItsOwn || straight ? null : operation.PcAudio ? operation.UserWords : input!.UserText;
             DesktopMemoryRecall? memoryResult = null;
             if (operation.MemoryRequested && (own ?? (straight ? StraightRecallQuery(history) : null)) is { } query)
             {
@@ -1653,7 +1678,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             }
             var builtIns = BuiltIns(operation, configured, conversation);
             // A message carrying finished work gets the tools a report gets, so a later tool can act on the user's yes.
-            if ((own is not null || straight || operation.Report || operation.Delivery is not null) && tools is not null &&
+            if ((own is not null || straight || operation.OnItsOwn || operation.Delivery is not null) && tools is not null &&
                 (tools.HasTools || builtIns is not null) && configured.SupportsTools && !tools.IsUnsupported(configured.ToolModelKey()))
             {
                 operation.Publish(new("tools.preparing"));
@@ -1712,7 +1737,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // A message too long to fit beside the picture goes without it.
                 var seen = operation.Authorization.Screen ? operation.Seen : null;
                 // A report keeps the instructions of the reply before it (who was heard, always listening), so it starts the same.
-                var heardBy = operation.Report ? lastAsked.Heard : operation.Heard;
+                var heardBy = operation.OnItsOwn ? lastAsked.Heard : operation.Heard;
                 var background = !operation.Report && operation.Delivery is { } carried
                     ? BackgroundJobs.ReportNotes(prompts, carried.Jobs) : null;
                 // The look this reply took was at something that wants the user's attention (a notification, a flashing taskbar
@@ -1724,6 +1749,14 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // While Martlet decides how chatty it is (and vision is on or it hears this PC), every reply is told how to switch
                 // the level, the same way every time; the level goes in the notes when the conversation's notes don't say it yet.
                 var decides = operation.BackgroundChattiness == ChattinessChoice.MartletDecides;
+                // What the user did to the desktop character since the last reply goes in the notes of their own message (after
+                // their words, never the instructions, so the request starts the same); nothing is there when they did nothing.
+                // A touch-only reply already carries it as its message.
+                if (!operation.OnItsOwn && !operation.Remote && (own is not null || straight) && operation.Touches is null)
+                    operation.Touches = touches.Drain(TouchNow);
+                var touchNote = !operation.Touch && operation.Touches is { } touched
+                    ? PromptSettings.Fill(prompts, PromptCatalog.TouchedNotes, ("touches", touched.Line)) : null;
+                operation.TouchText = operation.Touch ? input!.UserText : touchNote;
                 ConversationRequest Ask(SeenScreen? picture, string? recalled, out int keptHistory, out int keptFacts, out int keptEntries) =>
                     operation.Authorization.Configuration.Request(
                         input!, operation.Authorization.Voice, style, sentHistory, memoryResult, lore,
@@ -1740,7 +1773,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             picture is null ? null : SeenTags.Instructions(prompts, LiveConversationConfiguration.SilentReply)),
                         voices: VoicePromptContext.Block(operation.Heard),
                         messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background,
-                            picture is null ? null : noticed, recalled, songNote, whileSinging),
+                            picture is null ? null : noticed, recalled, songNote, whileSinging, touchNote),
                         silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording, imageOptional: true,
                         characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()),
@@ -1790,8 +1823,15 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // started so the first words never wait for it.
             operation.Inputs = MomentTurn.Describe(own is not null || straight,
                 operation.PcAudio ? input!.UserText.Split('\n').Count(line => line.StartsWith(LiveConversationConfiguration.PcAudioMarker, StringComparison.Ordinal)) : 0,
-                operation.ScreenSent, operation.ScreenSent ? operation.Attention?.Plain : null, operation.Delivery?.Jobs.Count ?? 0, operation.Report);
-            ErrorLog.Info($"Turn took: {operation.Inputs} ({(operation.Report ? "Martlet's report" : own is not null || straight ? "a reply to you" : "a reply to what this PC played")}" +
+                operation.ScreenSent, operation.ScreenSent ? operation.Attention?.Plain : null, operation.Delivery?.Jobs.Count ?? 0, operation.Report,
+                operation.Touches?.Touches ?? 0);
+            if (operation.Touches is { } carriedTouches)
+            {
+                ErrorLog.Info($"Touches: {carriedTouches.Count} went to Thinking " +
+                    (operation.Touch ? "as a short reply of their own." : "in the notes of your message."));
+                TouchesSent?.Invoke(operation.Touch, carriedTouches, operation.TouchText);
+            }
+            ErrorLog.Info($"Turn took: {operation.Inputs} ({(operation.Report ? "Martlet's report" : operation.Touch ? "a reaction to being touched" : own is not null || straight ? "a reply to you" : "a reply to what this PC played")}" +
                 $"{(operation.Look ? ", counted as a look" : "")}).");
             // Which way what was said went to Thinking (MCP's hearing_check reads the newest line), and once speech-to-text beside
             // the reply has the words, how long after the reply started they came.
@@ -1805,6 +1845,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             }
             else if (operation.VoiceSent) ErrorLog.Info("Voice path: transcribe first (your recording with the transcript).");
             var terminal = await turn.Completion.ConfigureAwait(false);
+            // Touches a reply took but never answered (it was stopped or failed) wait for the next reply.
+            if (terminal.State != ConversationState.Completed && operation.Touches is { } unanswered) touches.Restore(unanswered);
             NoteFallback(operation.Report ? "Background report" : "Reply", configured, terminal);
             NoteInput(operation.Report ? "Background report" : "Reply", terminal);
             if (operation.BackgroundChattiness == ChattinessChoice.MartletDecides)
@@ -1860,6 +1902,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         // words), on a line after the message; the picture itself is never kept.
                         var sawLine = operation.ScreenSent && !terminal.ImageRejected && operation.Seen is { } pictured
                             ? pictured.HistoryLine(SeenTags.Description(turn.Controls), message: true) : null;
+                        // The touches that came with a message stay noted after it too ("(touch: top of head pat x3)"), so later
+                        // replies know; a touch-only reply's message is that line itself.
+                        if (!operation.Touch && operation.Touches?.HistoryLine is { Length: > 0 } touchLine)
+                            sawLine = sawLine is null ? touchLine : sawLine + "\n" + touchLine;
                         string? Saw(string? text) => text is null || sawLine is null ? text : VisionHistory.After(text, sawLine);
                         string? said = null;
                         if (straight)
@@ -1875,14 +1921,15 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         {
                             // Who said it travels with the words, so later replies (and memory) know who said what. A message with
                             // what the PC played keeps its marked lines as they are.
-                            said = operation.PcAudio ? input!.UserText : VoicePromptContext.Prefix(operation.Heard) + input!.UserText;
+                            said = operation.Touch && operation.Touches is { } reacted ? reacted.HistoryLine
+                                : operation.PcAudio ? input!.UserText : VoicePromptContext.Prefix(operation.Heard) + input!.UserText;
                             // A pass stays in the conversation too, so later replies know what was said around Martlet.
                             context.Add(Saw(said)!, kept, configured.HostTarget() is null ? Saw(operation.Sent?.SentUserText) : null);
                             // The record of conversations keeps the user's own words (never what the PC played) and the reply,
                             // written in the background after the reply. A pass wasn't said to Martlet, and glances never get here.
                             if (!passed && this.history is { } historyRecord && historyRecord.Active(configured.Memory) &&
-                                (operation.Report ? "" : operation.PcAudio ? operation.UserWords : input.UserText) is { } recordedWords)
-                                historyRecord.Record(conversation, operation.Report ? HistoryInputKind.Report
+                                (operation.Report ? "" : operation.Touch ? said : operation.PcAudio ? operation.UserWords : input!.UserText) is { } recordedWords)
+                                historyRecord.Record(conversation, operation.Report ? HistoryInputKind.Report : operation.Touch ? HistoryInputKind.Touch
                                         : operation.Spoken || operation.Authorization.Microphone ? HistoryInputKind.Spoken : HistoryInputKind.Typed,
                                     recordedWords, turn.Content.Text,
                                     operation.OriginSpeaker ?? (operation.Heard?.Speaker?.Voice is { Named: true } namedVoice ? namedVoice.DisplayName : null),
@@ -1897,11 +1944,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                                     : own is null && !straight ? "brought up with what this PC played" : "brought up with your message") +
                                 (passed ? " (it stayed quiet about it)." : "."));
                         }
-                        if (!operation.Report) lastAsked = (operation.Spoken, operation.Heard, operation.BackgroundChattiness);
+                        if (!operation.OnItsOwn) lastAsked = (operation.Spoken, operation.Heard, operation.BackgroundChattiness);
                         // The note about the last song is in the conversation now.
                         if (songNote is not null) singing?.NoteDelivered(songNote);
                         // Memory and learning names only ever read what the user said themselves, never what the PC played.
-                        var spokenOwn = operation.Report || straight ? null : operation.PcAudio ? operation.UserWords : input!.UserText;
+                        var spokenOwn = operation.OnItsOwn || straight ? null : operation.PcAudio ? operation.UserWords : input!.UserText;
                         var remembered = spokenOwn is null ? null
                             : operation.PcAudio ? VoicePromptContext.Prefix(operation.Heard) + spokenOwn : said;
                         var remember = operation.MemoryRequested && !passed && remembered is not null;
@@ -2973,6 +3020,59 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         catch
         {
             delivery.Return();
+            throw;
+        }
+        published.SetResult();
+        SuperviseAsync(operation).Forget();
+        return operation;
+    }
+
+    /// <summary>Starts a short reply Martlet gives on its own because the user touched the desktop character and said nothing
+    /// (the talk window decides when: <see cref="Martlet.Conversation.TouchDebounce"/>). Its message is Martlet's note with the
+    /// touches (Companion › Prompts › Touched); it starts like the reply before it (same instructions and tools), takes nothing
+    /// else, and the conversation keeps only the short touch line. Null when nothing that starts a reply waits.</summary>
+    internal LiveConversationOperation? StartTouch(bool voice)
+    {
+        var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        LiveConversationOperation operation;
+        Martlet.Conversation.TouchBurst? burst = null;
+        try
+        {
+            lock (gate)
+            {
+                if (disposed || paused || muted || locked) throw new LiveActionException("conversation.controls_blocked");
+                if (operations.IsRunning) throw new LiveActionException("conversation.ownership_busy");
+                var selected = configuration ?? throw new LiveActionException("conversation.setup_required");
+                if (selected.Unavailable(voice, false) is not null) throw new LiveActionException("conversation.configuration_unsupported");
+                if (touches.Peek(TouchNow) is not { StartsTurn: true }) return null;
+                burst = touches.Drain(TouchNow)!;
+                var input = new BoundedTextInput(PromptSettings.Fill(selected.Prompts, PromptCatalog.Touched, ("touches", burst.Line)) ?? burst.Line);
+                long acceptedRevision = revision = checked(revision + 1);
+                var authorization = new ConversationAuthorization(selected, voice, false, clock,
+                    () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, CancellationToken.None);
+                operation = new(authorization, CancellationToken.None)
+                {
+                    Touch = true, Touches = burst, Spoken = lastAsked.Spoken, BackgroundChattiness = lastAsked.Chattiness,
+                    LatencyTimeline = new ReplyTimeline(clock, ReplyTimeline.YouSent)
+                };
+                active = operation;
+                var worker = operations.TryStart(async token =>
+                {
+                    await published.Task.ConfigureAwait(false);
+                    authorization.BindWorker(token);
+                    return await RunAsync(operation, input, token).ConfigureAwait(false);
+                });
+                if (worker is null)
+                {
+                    authorization.Revoke();
+                    throw new LiveActionException("conversation.ownership_busy");
+                }
+                operation.Worker = worker;
+            }
+        }
+        catch
+        {
+            if (burst is not null) touches.Restore(burst);
             throw;
         }
         published.SetResult();

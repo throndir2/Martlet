@@ -1125,10 +1125,10 @@ bound to `probe`, a simulated renderer zones probe of Live2D `drawables` and
 VRM `bones` in page fractions, with `crop`, `"left,top,width,height"` where
 the snapshot sat on the page), `saved` (the model's zones in
 `character-touch-zones.json`: how many, how many are `active`, who found them,
-whether a snapshot is kept, and each zone's parts, `plays` and `tells`) and,
+whether a snapshot is kept, and each zone's parts, `plays`, whether Martlet `notices` it and the owner's `hint`) and,
 with `touch` (a `CharacterTouch` object as JSON), `match`: the zone it lands
 in, `how` (`drawable`, `bone`, `hair`, `box` or `coarse`), its rough `coarse`
-zone, what it `plays`, what it `tells` the character and how long it `rests`.
+zone, what it `plays`, whether Martlet `notices` it, the line the Thinking model would get for that one touch (`noticed`, such as *They patted the top of your head once.*; a press of 600 ms or more in `heldMilliseconds` is a hold) and how long it `rests`.
 The model is `modelPath`, `modelId` or the one the `dataDirectory`'s
 `avatar.json` shows. `save` (an explicit, disposable `dataDirectory` only)
 writes the parsed zones as *Detect zones* would, with `snapshotPath` (a PNG)
@@ -1150,13 +1150,18 @@ The section's status fields are `TouchZonesStatus` (how many zones, how many in
 use and who found them, or that none are found yet), `TouchZonesVision`
 (whether the Thinking model can see and where pictures go), `TouchZonesDetection`
 (how *Detect zones* went), `TouchZonesLast` (the zone the last click landed in,
-how it was found and what it played or that it was resting),
+how it was found and what it played or that it was resting, and whether Martlet
+noticed it), `TouchZonesNoticed` (what Martlet noticed that waits for a reply,
+the plain touch line, and when a touch-only reply starts, or that it waits for
+your next message because you started talking or typing or Martlet can't reply
+now), `TouchZonesNoticedLast` (which reply took the last touches, the short
+history line and exactly what the Thinking model was told),
 `TouchZonesSaveState` and each zone's `TouchZoneState-<n>` (its ID, the parts
 it follows and its default reaction). `TouchZonesDetect` sends the character's
 picture to Thinking, `TouchZoneTry-<n>` plays on the character, and
 `TouchZonesIntimate`, `TouchZonesAdd`/`TouchZonesAddKind` and each zone's
 `TouchZoneOn-`, `TouchZoneName-`, `TouchZoneReaction-`, `TouchZoneReaction2-`,
-`TouchZoneTell-`, `TouchZoneNarration-`, `TouchZoneCooldown-`, `TouchZoneBox-`,
+`TouchZoneNotices-` (*Martlet notices*; its checked state reads in `ui_snapshot`), `TouchZoneNarration-` (the owner's optional hint), `TouchZoneCooldown-`, `TouchZoneBox-`,
 `TouchZoneDelete-` and its box on the picture (`TouchZoneRect-<n>`, inside
 `TouchZonesPicture`) save, so they all need `--allow-ui-effects`. Setting
 `MARTLET_TOUCH_ZONES_FIXTURE` to a text file before launching the desktop makes
@@ -3662,8 +3667,23 @@ which needs `--allow-ui-effects`, waits for the hit test and returns it as
 `last`: `n` (the tap's number), `x`, `y`, `hit`, `zone` (`head`, `hair`,
 `face`, `body`, `arm`, `hand`, `leg` or `foot`; null on a miss), `hitAreas`,
 `drawables`, `bone`, `node`, `hair`, `mesh` and `material` (model-authored
-names only, never paths). Without `x` and `y` it only reads the last tap, as
+names only, never paths) and `held` (how long the press lasted, in ms). `holdMs` presses
+that long (`"x,y,ms"` as `MoveAvatar`'s value; 600 or more is a hold), `repeat`
+taps the same point up to 20 times `gapMs` apart, and `taps`
+(`[{x, y, holdMs}]`, up to 20) taps a sequence of points, each after the hit
+test of the one before. With Companion › Character › Touch zones showing,
+`noticed` reads what Martlet noticed after `settleMs`: `waiting`
+(`TouchZonesNoticed`), `last` (`TouchZonesNoticedLast`) and `zone`
+(`TouchZonesLast`). Without `x`, `y` or `taps` it only reads the last tap, as
 does `MoveAvatar`'s `value` in `ui_snapshot`.
+
+**Touches reach the Thinking model** for zones with *Martlet notices* on: a
+reply to what you say or type carries the touch line in its notes (the desktop
+log's *Touches: 3 went to Thinking in the notes of your message.*), and touches
+on their own start a short reply of their own (*... as a short reply of their
+own.*; the talk window's `LiveTurnInputs` reads *Last reply took 2 touches.*).
+Without a Thinking setup `TouchZonesNoticed` says the touches wait for your next
+message.
 
 **Locking the character's position**: Home's `ToggleCharacterLock`
 (*Lock character position*, shown while the character shows or is locked),

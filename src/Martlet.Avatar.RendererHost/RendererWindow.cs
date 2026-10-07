@@ -787,9 +787,9 @@ internal sealed class RendererWindow : Window
 
     // Where (in the viewport) and when the left button went down on the character; cleared once it moves too far to be a tap.
     private (Point At, long Since)? press;
-    private const long TapMilliseconds = 700;
+
     private int touchId;
-    private (int Id, double X, double Y)? touchPending;
+    private (int Id, double X, double Y, int Held)? touchPending;
 
     private static bool Moved(Point from, Point to) =>
         Math.Abs(to.X - from.X) >= SystemParameters.MinimumHorizontalDragDistance ||
@@ -808,7 +808,7 @@ internal sealed class RendererWindow : Window
             if (Left != left || Top != top) (Left, Top) = (left, top);
             // Windows' move loop can end before the button comes up; then the release (or a move) decides.
             if (PrimaryButtonDown()) press = h;
-            else if (Environment.TickCount64 - h.Since <= TapMilliseconds) Tap(h.At);
+            else Tap(h.At, Environment.TickCount64 - h.Since);
             return;
         }
         PlacementChanged();
@@ -830,25 +830,28 @@ internal sealed class RendererWindow : Window
     {
         if (press is not { } held) return;
         press = null;
-        if (Environment.TickCount64 - held.Since <= TapMilliseconds && !Moved(held.At, at)) Tap(held.At);
+        if (!Moved(held.At, at)) Tap(held.At, Environment.TickCount64 - held.Since);
     }
 
-    private void Tap(Point at)
+    // A press that came up where it went down: a tap, or a hold when it lasted CharacterTouch.HoldMilliseconds or more. A press
+    // longer than CharacterTouch.MaximumHeldMilliseconds is let go.
+    private void Tap(Point at, long heldMilliseconds)
     {
         if (viewport.ActualWidth <= 0 || viewport.ActualHeight <= 0) return;
-        TouchAt(at.X / viewport.ActualWidth, at.Y / viewport.ActualHeight);
+        if (heldMilliseconds is < 0 or > CharacterTouch.MaximumHeldMilliseconds) return;
+        TouchAt(at.X / viewport.ActualWidth, at.Y / viewport.ActualHeight, (int)heldMilliseconds);
     }
 
     /// <summary>Asks the page what of the character is at <paramref name="x"/>, <paramref name="y"/> (fractions of the page, +y
     /// down); its answer arrives unprompted (see <see cref="Touched"/>). A tap through UI Automation (Martlet's MCP
     /// character_touch) comes here too.</summary>
-    private void TouchAt(double x, double y)
+    private void TouchAt(double x, double y, int held)
     {
         if (browser.CoreWebView2 is null || failure.Failed || closed) return;
         x = Math.Round(Math.Clamp(x, 0, 1), 4);
         y = Math.Round(Math.Clamp(y, 0, 1), 4);
         var id = ++touchId;
-        touchPending = (id, x, y);
+        touchPending = (id, x, y, Math.Clamp(held, 0, CharacterTouch.MaximumHeldMilliseconds));
         try
         {
             browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "touch", data = new { id, x, y } },
@@ -878,11 +881,12 @@ internal sealed class RendererWindow : Window
         var hit = answer.TryGetProperty("hit", out var found) && found.ValueKind == JsonValueKind.True;
         var touch = new CharacterTouch(pending.X, pending.Y, Names(answer, "hitAreas", CharacterTouch.MaximumHitAreas),
             Names(answer, "drawables", CharacterTouch.MaximumDrawables), Name(answer, "bone"), Name(answer, "node"),
-            answer.TryGetProperty("hair", out var hair) && hair.ValueKind == JsonValueKind.True, Name(answer, "mesh"), Name(answer, "material"));
+            answer.TryGetProperty("hair", out var hair) && hair.ValueKind == JsonValueKind.True, Name(answer, "mesh"), Name(answer, "material"),
+            pending.Held);
         viewport.LastTouch = JsonSerializer.Serialize(new
         {
             n = pending.Id, x = touch.X, y = touch.Y, hit, zone = hit ? touch.CoarseZone : null, touch.HitAreas, touch.Drawables,
-            touch.Bone, touch.Node, touch.Hair, touch.Mesh, touch.Material
+            touch.Bone, touch.Node, touch.Hair, touch.Mesh, touch.Material, held = touch.HeldMilliseconds
         }, RendererProtocol.Json);
         if (hit) SendTouch(touch);
     }
