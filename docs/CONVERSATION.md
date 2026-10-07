@@ -458,6 +458,13 @@ thinks and research count against the same slots:
 | `Memory`, `Naming` | 20 (`Helper`) | no |
 | `Research` | 10 | no |
 
+Helper jobs use these kinds through `HelperJobs` and `ThinkingPoolHelpers`.
+Remembering after a reply is a `Memory` job. Emote naming and touch temperament
+are `Naming` jobs, and touch-zone detection is a `TouchZones` job that needs
+vision. When the pool can't do one, the conversation's Thinking model does it
+after the reply finishes speaking
+([helper jobs](MEMORY.md#helper-jobs-on-the-thinking-pool)).
+
 ### Pool API (desktop)
 
 ```csharp

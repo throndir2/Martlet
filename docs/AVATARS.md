@@ -75,7 +75,10 @@ what each one is.
   an English tag (`blush`), a voice cue or none, whether it stays on or is
   brief, and when to use it. It can turn
   off items that aren't feelings, gestures or looks (debug or effect switches, gore). Until
-  then, tags come from the model's own names.
+  then, tags come from the model's own names. Naming is a low-priority
+  [helper job](MEMORY.md#helper-jobs-on-the-thinking-pool): a free Thinking pool
+  member that reads text names them; without one, the conversation's Thinking
+  model does, after any reply finishes speaking.
 - **English tags, any-language names**: tags are always lower-case English
   (`a-z`, digits, `_`, `-`), so every Thinking model can write them, while each
   emote keeps the name its creator gave it (Chinese, Japanese, Korean or any
@@ -275,7 +278,11 @@ waist, hips, groin, buttocks and inner thighs) react too while
   (Companion › Vision says whether it can and where pictures go). It answers
   with a box per zone; left and right are the character's own. Local vision
   models such as Qwen2.5-VL on Ollama work, as do cloud ones. Nothing is sent
-  until you press it, and it is never on the conversation's path.
+  until you press it, and it is never on the conversation's path. It is a
+  [helper job](MEMORY.md#helper-jobs-on-the-thinking-pool) that needs vision: a
+  free Thinking pool member that can see takes it first (and **Detect zones**
+  works with such a member even when the Thinking model can't see). Without one,
+  the conversation's Thinking model gets it after any reply finishes speaking.
 - Martlet ties each zone to the model's own parts so it follows the character as
   it moves: the Live2D drawables mostly inside its box, or the VRM humanoid
   bones inside it (hair follows the head's hair). A click is matched to the
