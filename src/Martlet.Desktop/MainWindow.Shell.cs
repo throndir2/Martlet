@@ -223,6 +223,8 @@ public partial class MainWindow
         // Your other computers' Devices maps learn what this PC is now with the next settings sync.
         if (previous != role) QueueSettingsSync();
         if (role == DeviceRole.Host) CheckThisPcHostAsync().Forget();
+        // A companion PC that becomes a host PC starts Docker Desktop and its host roles by itself, warm for the first request.
+        if (role == DeviceRole.Host && previous != role) StartHostRolesByItself();
     }
 
     private void ApplyRole()
@@ -769,6 +771,7 @@ public partial class MainWindow
     {
         hostState = state;
         hostProbedAt = DateTime.UtcNow;
+        RememberThisPcHostRoles(state);
         var before = thisPcHostVersion;
         if (state.Stage is LocalHostServiceStage.Stopped or LocalHostServiceStage.Running) thisPcHostVersion = state.Version;
         else if (state.Stage == LocalHostServiceStage.NotSetUp) thisPcHostVersion = null;

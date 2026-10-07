@@ -23,6 +23,8 @@
 #   martlet-host status         show the gateway and every installed role
 #   martlet-host machine        report this machine's hardware (GPUs, CPU, memory) to paired desktops
 #   martlet-host update         update the gateway to this engine's Martlet version (keeps identity, pairings and roles)
+#   martlet-host warm           start the gateway and every installed role that isn't running and load their models
+#                               (role.conf warm=...), so the first request after Docker or the computer started is fast
 #   martlet-host config         print the gateway configuration
 #
 # --yes (or MARTLET_ASSUME_YES=1) before the command runs it without questions: the owner already confirmed it
@@ -47,7 +49,8 @@
 # the other choices -> terms -> secrets -> registry login -> pinned assets -> prepare steps (prepare=<service>, while the
 # running service keeps serving) -> stop the previous variant or the roles it replaces (exclusive=<group>) -> compose
 # service (loopback behind the gateway, or network=host for route-less LAN features) -> readiness -> post-start steps ->
-# gateway route or machine feature -> retire the replaced model (retire=<service>|<command>). role.conf entries between
+# warm steps (warm=<service>|<command>, run again by "warm") -> gateway route or machine feature -> retire the replaced
+# model (retire=<service>|<command>). role.conf entries between
 # "[VAR=value]" and "[end]" apply only when that choice is made (a role's variants, such as the stt or Audio2Face engine,
 # with their own GPU option, choices, terms, secrets, assets and prepare steps).
 # Adding a role that is already installed reuses what is there: images, downloads and data volumes are kept, unchanged
@@ -173,6 +176,7 @@ change_words() {
     network-reset) printf 'leaving the Martlet network' ;;
     exposure) printf 'changing how this host is reached from outside home' ;;
     machine) printf 'collecting the hardware report' ;;
+    warm) printf 'starting and warming up the roles' ;;
     *) printf 'another martlet-host change' ;;
   esac
 }
@@ -357,6 +361,8 @@ hold_engine_locks() {
     setup|update) CHANGE_SCOPE=host ;;
     add) if prepares_host "${2:-}"; then CHANGE_SCOPE=host; else CHANGE_SCOPE="role:$(role_slot "${2:-}")"; fi ;;
     remove) CHANGE_SCOPE="role:$(role_slot "${2:-}")" ;;
+    # Waits for a setup or update; each role's own lock is taken (or the role skipped) as warm reaches it.
+    warm) CHANGE_SCOPE=warm ;;
     *) CHANGE_SCOPE=gateway ;;
   esac
   ( umask 077; mkdir -p "${CONF}" "${LOCKS}" && : >> "${ENGINE_LOCK}" && : >> "${ENGINE_GATE}" ) 2>/dev/null || true
@@ -2354,7 +2360,8 @@ cmd_add() {
   done
   [[ ${ready} == 1 ]] || fail "${role} did not start. Inspect: martlet-host status (or docker compose -p martlet-${role} logs)"
 
-  # Post-start steps: post_start=<service>|<command> runs inside that service once it listens ({VAR} uses a choice).
+  # Post-start steps: post_start=<service>|<command> runs inside that service once it listens ({VAR} uses a choice), then the
+  # warm steps (warm=<service>|<command>, loading the model), which "martlet-host warm" runs again after a restart.
   local service step words safe='^[A-Za-z0-9 ._:/=-]+$'
   while IFS= read -r line <&3; do
     [[ -n "${line}" ]] || continue
@@ -2368,7 +2375,7 @@ cmd_add() {
       (( ++tries < 3 )) && recover_role_dns "${role}" "${role_network}" ||
         fail "'${step}' failed in ${role}. Check the host's disk space and network, then run 'martlet-host add ${role}' again."
     done
-  done 3< <(conf_values "${conf}" post_start)
+  done 3< <(conf_values "${conf}" post_start; conf_values "${conf}" warm)
 
   local model_from model="${role}" previous="" slots_from slots=1
   model_from="$(conf_value "${conf}" model_from)"
@@ -2456,6 +2463,99 @@ cmd_update() {
   say "Host updated. Paired desktops see its new version on Check connection."
 }
 
+# Brings this host's installed roles up and warm (Martlet runs it when this PC becomes a host PC or starts as one, after it
+# starts Docker Desktop): starts the gateway and every installed role, waits until each listens, then runs its warm steps
+# (role.conf warm=<service>|<command>), which load its model so the first request after a restart doesn't wait for it.
+# It installs, downloads and reconfigures nothing. A role another change is working on now is left to that change; one
+# that doesn't come up or warm up is reported while the others carry on, and the run then exits 1.
+cmd_warm() {
+  require_setup
+  require_docker
+  if [[ "${MODE}" == docker ]]; then
+    if [[ "$(docker container inspect -f '{{.State.Running}}' "${SERVICE}" 2>/dev/null || true)" != true ]]; then
+      note "Starting the gateway..."
+      docker start "${SERVICE}" >/dev/null 2>&1 || note "The gateway didn't start. Check: docker logs ${SERVICE}"
+    fi
+  elif ! systemctl --user is-active --quiet "${SERVICE}.service" 2>/dev/null; then
+    note "Starting the gateway..."
+    systemctl --user start "${SERVICE}.service" 2>/dev/null || note "The gateway didn't start. Check: journalctl --user -u ${SERVICE}"
+  fi
+  local role slot count=0 warmed=() failed=()
+  while IFS= read -r role <&3; do
+    [[ -n "${role}" ]] || continue
+    count=$(( count + 1 ))
+    say "Role ${role}"
+    if [[ ! -f "${ROLES_DIR}/${role}/role.conf" || ! -f "${PROJECTS}/${role}/compose.yaml" ]]; then
+      note "This Martlet version has no files for ${role}; leaving it as it is."
+      continue
+    fi
+    if [[ ${LOCKING} == 1 ]]; then
+      slot="$(role_slot "${role}")"
+      ( umask 077; : >> "${LOCKS}/${slot}.lock" ) 2>/dev/null || true
+      if ! exec 6>>"${LOCKS}/${slot}.lock" || ! flock -n 6; then
+        exec 6>&- 2>/dev/null || true
+        note "Another change is working on ${role} now ($(holder_text "role:${slot}")); that change starts it."
+        continue
+      fi
+    fi
+    if warm_role "${role}"; then warmed+=("${role}"); else failed+=("${role}"); fi
+    if [[ ${LOCKING} == 1 ]]; then exec 6>&-; fi
+  done 3< <(installed_roles)
+  if [[ ${count} == 0 ]]; then say "No roles are installed on this host; nothing to warm up."; return 0; fi
+  if [[ ${#warmed[@]} -gt 0 ]]; then say "Running and warmed up: ${warmed[*]}."; fi
+  if [[ ${#failed[@]} -gt 0 ]]; then fail "Not ready: ${failed[*]} (the output above shows why)."; fi
+}
+
+# Starts installed role $1 (its containers as it was added), waits until it listens and runs its warm steps. Returns 1 when
+# it didn't come up or warm up.
+warm_role() {
+  local role="$1" conf record kind var value port network address minutes attempt ready=0 line service step key words
+  local safe='^[A-Za-z0-9 ._:/=-]+$'
+  conf="${ROLES_DIR}/${role}/role.conf"; record="$(installed_file "${role}")"
+  # The choices it was added with pick its role.conf sections and fill {VAR} in its warm steps.
+  ROLE_CHOSEN=()
+  while IFS='|' read -r kind var value; do
+    if [[ "${kind}" == choice ]]; then ROLE_CHOSEN["${var}"]="${value}"; fi
+  done < <(role_current "${role}")
+  note "Starting ${role} (containers already running are left as they are)..."
+  if ! role_compose "${role}" up -d --no-build < /dev/null; then
+    note "${role} didn't start (the output above shows why). Add it again in Martlet to repair it."
+    return 1
+  fi
+  port="$(conf_value "${record}" port)"
+  [[ -n "${port}" ]] || port="$(conf_value "${record}" endpoint | sed -E 's#.*:([0-9]+)/$#\1#')"
+  network="$(conf_value "${record}" network)"; address="$(role_ready_address "${network}")"
+  minutes="$(conf_value "${conf}" ready_timeout_minutes)"; [[ "${minutes}" =~ ^[0-9]{1,3}$ ]] || minutes=10
+  if [[ "${port}" =~ ^[0-9]{1,5}$ ]]; then
+    for attempt in $(seq 1 $(( minutes * 6 ))); do
+      if (exec 3<>"/dev/tcp/${address}/${port}") 2>/dev/null; then ready=1; break; fi
+      if (( attempt % 6 == 0 )); then note "Still waiting for ${role} on ${address}:${port} ($(( attempt / 6 )) min)..."; fi
+      sleep 10
+    done
+    if [[ ${ready} != 1 ]]; then
+      note "${role} didn't answer on ${address}:${port} within ${minutes} minutes. Inspect: martlet-host status"
+      return 1
+    fi
+    note "${role} listens on ${address}:${port}."
+  fi
+  while IFS= read -r line <&3; do
+    [[ -n "${line}" ]] || continue
+    service="${line%%|*}"; step="${line#*|}"
+    for key in "${!ROLE_CHOSEN[@]}"; do step="${step//\{${key}\}/${ROLE_CHOSEN[${key}]}}"; done
+    if [[ ! "${service}" =~ ^[a-z0-9][a-z0-9_-]*$ || ! "${step}" =~ ${safe} ]]; then
+      note "Skipping an unsafe warm entry in ${role}'s role.conf."
+      continue
+    fi
+    read -r -a words <<< "${step}"
+    note "Running in ${service}: ${step}"
+    if ! role_compose "${role}" exec -T "${service}" "${words[@]}" < /dev/null; then
+      note "'${step}' didn't finish in ${role}; its first request loads the model instead."
+      return 1
+    fi
+  done 3< <(conf_values "${conf}" warm)
+  return 0
+}
+
 cmd_status() {
   require_setup
   say "Gateway ($(settings_value host_id) at https://$(settings_value lan_ip):$(settings_value port), ${MODE} method)"
@@ -2503,12 +2603,12 @@ cmd_status() {
 
 if [[ "${MODE}" == docker && "${MARTLET_ENGINE:-launcher}" != inner ]]; then
   case "${1:-help}" in
-    setup|roles|describe|add|remove|pair|console|network-reset|exposure|status|config|machine|update) docker_launch "$@" ;;
+    setup|roles|describe|add|remove|pair|console|network-reset|exposure|status|config|machine|update|warm) docker_launch "$@" ;;
   esac
 fi
 
 case "${1:-help}" in
-  setup|add|remove|pair|console|network-reset|exposure|machine|update)
+  setup|add|remove|pair|console|network-reset|exposure|machine|update|warm)
     JOURNAL_ON=1
     if [[ "${MODE}" == docker ]]; then JOURNAL_SESSION="${MARTLET_ENGINE_NAME:-engine} ${IMAGE}"
     else JOURNAL_SESSION="native/$$ $(git -C "${REPO}" describe --tags --always 2>/dev/null || printf 'source')"; fi
@@ -2531,6 +2631,7 @@ case "${1:-help}" in
   status) cmd_status ;;
   machine) cmd_machine ;;
   update) cmd_update ;;
+  warm) cmd_warm ;;
   config) require_setup; render_config ;;
   hold) cmd_hold ;;
   serve) cmd_serve ;;

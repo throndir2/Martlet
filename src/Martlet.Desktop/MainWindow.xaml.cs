@@ -209,6 +209,8 @@ public partial class MainWindow : ThemedWindow
         ReadMachineAsync().Forget();
         await RefreshAsync();
         if (!closing) ContinueSetupAsync().Forget();
+        // A host PC starts Docker Desktop and its host roles by itself, warm for the first request.
+        if (!closing && Role == DeviceRole.Host && deviceRole is not null) StartHostRolesByItself();
         // A host lends its power to your companion PC: the character, listening and Parakeet stay off here, while their
         // saved choices are kept for when this PC is your companion PC again.
         if (Role == DeviceRole.Companion)

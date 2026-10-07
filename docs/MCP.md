@@ -1239,7 +1239,14 @@ NVIDIA CUDA roles) with *built only for 64-bit Intel or AMD (x86_64)* and
 with an ARM64 build (`arm64=<overlay>`, like the `stt` role's whisper.cpp arm64
 image) gets that overlay as `compose.arch.yaml`, runs on the CPU even when the
 GPU is asked for, and `describe` offers no GPU option
-(`arm64-overlay-runs-on-cpu`). Without Docker or the
+(`arm64-overlay-runs-on-cpu`). Last, `warm` on its own fixture host (fake
+`docker` and `systemctl`) starts the stopped gateway (`systemctl --user start`),
+runs `compose up -d --no-build` for every installed role, then the warm step of
+`fixture-warm` with its saved choice filled in (`warm-it m2`; its `post_start`
+step is not run again), reports `fixture-cold`, whose port never answers, as
+*Not ready* and exits 1 (`warm-starts-and-warms-roles`); with `fixture-warm`'s
+role lock held by another change it leaves that role alone (*Another change is
+working on fixture-warm now*; `warm-leaves-held-role`). Without Docker or the
 image it returns `exitCode` 2 and `notRun` (it never pulls). It does not cover
 a real Docker daemon or a real host.
 
@@ -3199,6 +3206,22 @@ role and a *Remove* button for each installed one. `StepDetail-update` reads
 virtualization, Martlet opens a run window by itself (`HostRunWindow`) that
 continues the setup; `continueSetup` in `virtualization_status` shows what is
 pending.
+When this PC becomes a host PC (Settings' *Use this PC as a host*, the welcome
+wizard, or a request from another computer) or Martlet starts on one, it brings
+the host roles up by itself: when the host service on this PC runs roles (read
+now, or remembered in `this-pc-host-roles.txt` from the last read, or, before
+any read, because this PC is paired with its own host service), Docker Desktop
+is installed and Windows is ready for it, a hidden run *Start this host's roles*
+(in Background tasks and `HostRunsNow`) starts Docker Desktop when needed, waits
+for the network holder to restart the gateway and roles, and runs
+`martlet-host warm`, which loads each role's model (`warm=` in its
+`role.conf`). `HostAutoStart` (returned) says what it decided or did (*Starting
+Docker Desktop, then this host's roles (ollama, stt), and loading their
+models.*, *This host's roles are running and their models are loaded. Martlet
+started them by itself at 7:02 PM.*) or why it didn't (*Docker Desktop isn't
+installed, so nothing started by itself...*, *Windows isn't ready for Docker
+Desktop...*, *This PC's host service runs no roles yet...*); it never installs
+anything.
 Setup runs go **side by side**; nothing refuses a step because another one is
 working. What two runs share is done once: installing Docker Desktop, getting
 Windows ready for it, starting it, building the host image, checking Windows

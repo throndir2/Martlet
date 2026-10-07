@@ -223,6 +223,27 @@ internal static partial class HostLocal
     [GeneratedRegex(@"\A\d+(\.\d+)+")]
     private static partial Regex VersionPattern();
 
+    /// <summary>Right after Docker Desktop starts, the host service's network holder restarts the gateway and every role in
+    /// its network, engine sessions included, so a martlet-host run waits until the holder says it is done (at most two
+    /// minutes). Returns at once when the holder isn't running or finished long ago.</summary>
+    internal static async Task WaitForHolderAsync(IProgress<string> output, CancellationToken token)
+    {
+        var (exit, lines) = await CaptureAsync(["container", "inspect", "-f", "{{.State.Running}} {{.State.StartedAt}}", LocalHostService.Holder], token);
+        var words = exit == 0 ? lines.FirstOrDefault()?.Split(' ', 2) : null;
+        if (words is not ["true", var started]) return;
+        var deadline = DateTime.UtcNow + TimeSpan.FromMinutes(2);
+        var said = false;
+        while (DateTime.UtcNow < deadline)
+        {
+            (exit, lines) = await CaptureAsync(["logs", "--since", started.Trim(), LocalHostService.Holder], token);
+            if (exit == 0 && lines.Any(line => line.Contains("Network holder ready.", StringComparison.Ordinal))) return;
+            if (!said) output.Report("Waiting for the host service's network holder to restart the gateway and roles...");
+            said = true;
+            await Task.Delay(TimeSpan.FromSeconds(3), token);
+        }
+        output.Report("The network holder didn't say it was ready within two minutes; carrying on.");
+    }
+
     /// <summary>Asks Docker Desktop's engine for its version once, for at most 15 seconds.</summary>
     internal static async Task<EngineProbe> ProbeEngineAsync(CancellationToken token)
     {
