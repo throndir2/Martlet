@@ -63,6 +63,10 @@
                     <!-- While Martlet decides where the character looks (Companion › Vision): what its eyes are on now. -->
                     <TextBlock x:Name="GazeStatusText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                                Visibility="Collapsed" AutomationProperties.AutomationId="LiveGaze"/>
+                    <!-- While the screen summary over time runs (Companion › Vision): pictures kept and the last summary's age and
+                         time taken; its tooltip (help in MCP) is the last summary. -->
+                    <TextBlock x:Name="ScreenSummaryText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
+                               Visibility="Collapsed" AutomationProperties.AutomationId="LiveScreenSummary"/>
                     <!-- While Hear what this PC plays is on: whether Martlet hears the PC now, or why it can't; its tooltip says how. -->
                     <TextBlock x:Name="PcAudioText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                                Visibility="Collapsed" AutomationProperties.AutomationId="LivePcAudio"/>

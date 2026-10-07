@@ -47,6 +47,7 @@ public static class PromptCatalog
     public const string SeenWithMessage = "seen_with_message";
     public const string SeenTag = "seen_tag";
     public const string ReadOnScreen = "read_on_screen";
+    public const string ScreenDigest = "screen_digest";
     public const string ChattinessQuiet = "chattiness_quiet";
     public const string ChattinessNormal = "chattiness_normal";
     public const string ChattinessChatty = "chattiness_chatty";
@@ -545,6 +546,17 @@ public static class PromptCatalog
             "Text read from this picture (OCR, top to bottom; it can have small mistakes, and the picture is right when they " +
             "differ):\n{text}",
             ["text"]),
+        new(ScreenDigest, VisionGroup, "Screen summary over time",
+            "Sent in the background, never on the live conversation's route, while Screen summary over time is on: one picture " +
+            "made of {count} small screenshots from the last {seconds} seconds ({panels} says where each is and when it was " +
+            "taken), then the text read on them. The one or two lines it answers go with your next message as a note; " +
+            "[{silent}] means nothing changed. A reply never waits for it.",
+            "This picture holds {count} small screenshots of the user's screen from the last {seconds} seconds, oldest first: " +
+            "{panels}. In one or two short lines, say what changed over that time, like a note to yourself: \"They switched " +
+            "from VS Code to a boss fight; health dropped to 20%.\" Name apps, games, places and numbers you can see. Never " +
+            "copy private details (messages, emails, names in them, account numbers). If nothing worth noting changed, answer " +
+            "exactly [{silent}]. Answer with the note only.",
+            ["count", "seconds", "panels", "silent"]),
 
         new(MemoryCapture, BackgroundGroup, "Remembering",
             "Asks the Thinking model what to remember after each reply. Martlet reads the REMEMBER, UPDATE and FORGET lines it answers; " +
