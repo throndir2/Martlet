@@ -622,11 +622,13 @@ same RTX 4070 ([sharing the graphics card](../../docs/CHATTERBOX_VOICE.md#sharin
 - **Placement.** Each route says where its worker runs (`GatewayInferenceRoute.Gpus`,
   set once with `PlaceOn` before registration and advertised as `gpus`): NVIDIA
   GPU UUIDs (`GPU-...`, `MIG-...`) where known, else CUDA indexes (`0` to `63`),
-  or `cpu` alone; at most eight. The Linux host takes it from each role's
-  `gpus` in `host.json`, which `martlet-host` writes from the card a role was
-  pinned to (`CUDA_VISIBLE_DEVICES`) or `cpu` for a role added to run on the
-  processor; the `ocr` role (Reading) always runs on the processor. Empty means
-  unknown and counts as the whole host.
+  or `cpu` alone; at most eight. The Linux host takes it from `gpus.json` beside
+  `host.json`, which `martlet-host` writes from the card each role was pinned to
+  (`CUDA_VISIBLE_DEVICES`) or `cpu` for a role added to run on the processor.
+  `gpus.json` is not part of the approved configuration: moving a role to another
+  card restarts the gateway without a new approval, and an invalid file is
+  ignored with a `gpus.invalid` note. The `ocr` role (Reading) always runs on the
+  processor. Empty means unknown and counts as the whole host.
 - **Lanes.** `lane` is `pool` for Deep thinking's route (the Thinking pool's
   background work) and `live` for every other route: replies, voices,
   listening, lip-sync, singing, pictures and reading.

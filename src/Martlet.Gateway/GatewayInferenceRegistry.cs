@@ -114,8 +114,8 @@ public sealed partial class GatewayInferenceRouteRegistry
 
         GatewayInferenceJob? job = null;
         string? refused;
+        string? by = null;
         List<GatewayInferenceJob> preempted = [];
-        var by = $"a {GatewayGpus.RouteName(registration.Route)} request from {principal.Caller}";
         lock (gate)
         {
             GatewayRules.Require(!closed, "worker.unavailable");
@@ -148,9 +148,13 @@ public sealed partial class GatewayInferenceRouteRegistry
                     request,
                     clock);
                 activeJobs.Add(request.RequestId, job);
-                // A live request holds its graphics cards: pool work running on them stops at once.
-                if (registration.Route.Lane == GatewayLane.Live)
+                // A live request holds its graphics cards: pool work running on them stops at once. Nothing else running,
+                // nothing to stop (the common case costs nothing).
+                if (registration.Route.Lane == GatewayLane.Live && activeJobs.Count > 1)
+                {
+                    by = $"a {GatewayGpus.RouteName(registration.Route)} request from {principal.Caller}";
                     preempted = PreemptLocked(registration.Route.Gpus, by, now);
+                }
             }
         }
         if (refused is not null)
@@ -158,7 +162,7 @@ public sealed partial class GatewayInferenceRouteRegistry
             Report(refused, "priority.refused");
             throw new GatewayProtocolException("job.busy", PriorityDetail);
         }
-        Stop(preempted, by);
+        if (by is not null) Stop(preempted, by);
         return job!;
     }
 

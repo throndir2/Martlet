@@ -147,6 +147,14 @@ if (args is ["singing-status", var singingData])
     Console.WriteLine(JsonSerializer.Serialize(singingStatus));
     return 0;
 }
+// With "gpu-priority-status <data directory>" it reads GPU priority (live turn first) on every host paired in that desktop data
+// directory through each host's own gateway (GpuPriorityStatus) and prints it.
+if (args is ["gpu-priority-status", var priorityData])
+{
+    var priorityStatus = await Martlet.NodeLinkCheck.GpuPriorityStatus.RunAsync(priorityData, CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(priorityStatus));
+    return 0;
+}
 var steps = new List<object>();
 var passed = true;
 void Step(string name, bool ok, string detail)

@@ -456,6 +456,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "with Thinking steps on), two thinks run at once on the role's two slots (advertised as the route's maximum_concurrency) " +
             "while a reply streams and a third gets job.busy, and that the chat client refuses a mismatched route. Loopback only; writes nothing to disk or " +
             "the credential vault.", new { }),
+        Tool("gpu_priority_status", "Read GPU priority (live turn first) on every Martlet host paired in a desktop data directory " +
+            "(hosts.json), through each host's own gateway (pinned TLS; the pairing secret from Windows Credential Manager only signs " +
+            "the request, never returned): GET /martlet/v1/priority with each route's lane (live or pool) and graphics cards, each " +
+            "card's hold state (held, live and pool requests running, holds), whether the whole host is held, the holds, the preempted " +
+            "and refused counts, the last preemptions and refusals (what held the card) and placement warnings. A host older than " +
+            "GPU priority is reported as such. Read-only: takes no hold and starts no work; contacts only paired hosts.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("gpu_priority_selftest", "Rehearse GPU priority (live turn first) end to end with the production code: real gateways on " +
             "127.0.0.1 (pinned TLS) with Thinking's Ollama relay (lane live) and the Deep thinking role's (lane pool) placed on graphics " +
             "cards as martlet-host places them, each over its own fixture Ollama server on loopback (NOT AI, no GPU used), a simulated " +
@@ -1520,6 +1529,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "mac_host_check" => await MacHostCheck.RunAsync(cancellation),
                 "deep_thinking_role_selftest" => await NodeLinkCheckAsync(cancellation, "deep-thinking"),
                 "gpu_priority_selftest" => await NodeLinkCheckAsync(cancellation, "gpu-priority"),
+                "gpu_priority_status" => await GpuPriorityStatusAsync(arguments, cancellation),
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
                 "character_profiles" => CharacterProfiles(arguments),
@@ -2282,6 +2292,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 startsAtSignIn
             }
         };
+    }
+
+    /// <summary>gpu_priority_status: GPU priority (live turn first) on every host paired in the data directory, through
+    /// Martlet.NodeLinkCheck gpu-priority-status, which signs with the pairing secret from Windows Credential Manager and returns
+    /// no secret. Nothing is contacted when the data directory pairs no host.</summary>
+    private static async Task<object> GpuPriorityStatusAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var directory = DataDirectory(arguments);
+        if (!File.Exists(Path.Combine(directory, "hosts.json")))
+            return new { dataDirectory = directory, hosts = Array.Empty<object>(), note = "No host is paired in this data directory (no hosts.json)." };
+        return await NodeLinkCheckAsync(TimeSpan.FromMinutes(2), cancellation, ["gpu-priority-status", directory]);
     }
 
     /// <summary>This PC's own host service as the desktop's host dashboard reads it (<see cref="LocalHostService"/>). The

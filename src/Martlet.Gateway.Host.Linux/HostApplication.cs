@@ -446,7 +446,7 @@ internal static class HostApplication
                     output.WriteLine(ready ? "ready: listener and auth admission; model readiness not probed." : "health.unavailable");
                     return ready ? 0 : 6;
                 }
-                owner = platform.OpenHost("serve", config, approval, cancellation);
+                owner = platform.OpenHost("serve", Placed(config, directory, output), approval, cancellation);
                 CheckApproval(directory, config, approval);
                 if (owner.Enabled) owner.AttachLogs(new ControlLogStorage(directory));
                 PublishMachine(owner, directory, output);
@@ -503,7 +503,7 @@ internal static class HostApplication
                 config.Recheck(directory);
                 if (approval is not null)
                     CheckApproval(directory, config, approval, requireDigest: init);
-                owner = platform.OpenHost(init ? "init" : "admin", config, approval, cancellation);
+                owner = platform.OpenHost(init ? "init" : "admin", Placed(config, directory, output), approval, cancellation);
                 config.Recheck(directory);
                 PublishMachine(owner, directory, output);
                 output.WriteLine($"Opened host: {owner.Identity!.HostId}\nSPKI pin: {owner.Identity.SpkiFingerprint}");
@@ -547,7 +547,7 @@ internal static class HostApplication
                 config.Recheck(directory);
                 if (approval is not null)
                     CheckApproval(directory, config, approval, requireDigest: exactConfig);
-                owner = platform.OpenHost(options.Command, config, approval, cancellation);
+                owner = platform.OpenHost(options.Command, Placed(config, directory, output), approval, cancellation);
                 config.Recheck(directory);
                 PublishMachine(owner, directory, output);
                 output.WriteLine($"Opened host: {owner.Identity!.HostId}\nSPKI pin: {owner.Identity.SpkiFingerprint}\nListener stopped. No engines/models/inference available.");
@@ -636,6 +636,22 @@ internal static class HostApplication
     private static ServiceApproval? ReadApproval(LinuxControlDirectory directory) =>
         directory.Read(LinuxControlDirectory.Approval, HostConfiguration.MaximumBytes) is { } bytes
             ? ServiceApproval.Parse(bytes) : null;
+
+    // gpus.json beside host.json (martlet-host writes it): which graphics card each role runs on, for GPU priority. Missing,
+    // unreadable or invalid, every role counts as the whole host: the file only decides which work waits, never what runs.
+    private static HostConfiguration Placed(HostConfiguration config, LinuxControlDirectory directory, TextWriter output)
+    {
+        try
+        {
+            return directory.Read(LinuxControlDirectory.Gpus, HostGpus.MaximumBytes) is { } bytes ? config.WithGpus(HostGpus.Parse(bytes)) : config;
+        }
+        catch (Exception error) when (error is HostInputException or GatewayPersistenceException)
+        {
+            Report(output, "gpus.invalid: gpus.json ignored, so every role counts as using the whole host for GPU priority; run " +
+                "martlet-host update to write it again.");
+            return config;
+        }
+    }
 
     /// <summary>network.json in words for status: none, or the network ID with its member counts (no keys or addresses).</summary>
     private static object DescribeNetwork(LinuxControlDirectory directory, string hostId)
