@@ -111,30 +111,39 @@ what each one is.
   sentence ends (at most 12 seconds) unless another replaces it; motions and
   gestures play once. VRM has no motions of its own (VRMA isn't supported), so
   it uses its expressions and the gestures.
-- **Lingering emotes**: like a VTuber's toggle hotkey, an emote can stay on
-  instead of showing a moment: its **Stays on** box in Emotes and motions (the
-  mode `lingering` in `character-actions.json`; unticked is `brief`). By
-  default an expression a VTube Studio *ToggleExpression* hotkey turns on, or
-  whose name or tag names a look that stays (glasses, a hat, a blush, an angry
-  or sad face, tears, a dark face, an outfit or accessory), stays on; motions
-  and Martlet's gestures are brief. The Thinking model's naming also says
-  `stays` or `brief` for each. A reply's `{glasses}` turns it on (nothing
-  changes when it is already on) and `{/glasses}` turns it off; each lingering
-  emote's line in the reply prompt says so, and its off tag is stripped like any
-  other tag. Several stay on together: Live2D layers each held expression over
-  the others (each in its own Cubism expression manager, as VTube Studio does)
-  and over the passing emote; VRM keeps held expressions while passing ones fade
-  in and out. While some are on, the newest message's notes say so (Companion ›
-  Prompts › *Character emotes showing now*: *Your character is showing
-  {glasses} (12 min), {blush} (just now). Each stays on until you write its off
-  tag ...*), never the instructions, so prompt caches keep working; with none on,
-  nothing is added. They stay across replies, come back when the same model
-  shows again, are forgotten when another model shows, and stop when turned off
-  or made brief in the settings. **Clear emotes** on the character's right-click
-  menu (or in Emotes and motions) turns them all off; a lingering row's **Try**
-  turns it on and then reads **Turn off**. Renderer protocol:
-  `RendererAction(Kind, Name, On, Hold)`; `Hold` keeps an expression, gesture
-  or overlay on until the same action comes with `On` false.
+- **Lingering emotes**: an emote can stay on, like a VTuber's toggle hotkey.
+  Its **Stays on** box in Emotes and motions sets this. In
+  `character-actions.json` the mode is `lingering`; an unticked box is `brief`.
+  These expressions stay on by default:
+  - an expression that a VTube Studio *ToggleExpression* hotkey turns on;
+  - an expression whose name or tag names a look that stays (glasses, a hat, a
+    blush, an angry or sad face, tears, a dark face, an outfit or accessory).
+
+  Motions and Martlet's gestures are brief by default. The Thinking model's
+  naming also gives `stays` or `brief` for each item.
+- **Tags for lingering emotes**: a reply writes `{glasses}` to turn the emote
+  on. When it is already on, nothing changes. The reply writes `{/glasses}` to
+  turn it off. The reply prompt tells this on the line of each lingering emote.
+  Martlet removes off tags from the text like all other tags.
+- **Layers**: several lingering emotes can show at the same time. Live2D gives
+  each held expression its own Cubism expression manager, as VTube Studio does.
+  Thus the held expressions add to each other and to the passing emote. VRM
+  keeps held expressions on while passing ones fade in and out.
+- **What the reply model knows**: while lingering emotes show, the notes of the
+  newest message tell the reply model (Companion › Prompts › *Character emotes
+  showing now*). An example: *Your character is showing {glasses} (12 min),
+  {blush} (just now). Each stays on until you write its off tag ...*. This line
+  never goes into the instructions, so prompt caches stay valid. When no
+  lingering emote shows, Martlet adds nothing.
+- **How long they stay**: lingering emotes stay across replies. They come back
+  when the same model shows again. Martlet forgets them when another model
+  shows. An emote stops when the owner turns it off or makes it brief in the
+  settings. **Clear emotes** on the character's right-click menu (or in Emotes
+  and motions) turns all of them off. For a lingering row, **Try** turns the
+  emote on, and the button then shows **Turn off**.
+- **Renderer protocol**: `RendererAction(Kind, Name, On, Hold)`. With `Hold`,
+  an expression, gesture or overlay stays on until the same action comes with
+  `On` set to false.
 - **Global gestures**: Martlet's own gestures (`CharacterActionInventory.AllGestures`)
   play on any model whose rig has what they move, so replies are offered only
   the ones the shown model can do:
