@@ -18,10 +18,11 @@ public enum CharacterActionKind { Expression, Motion, Gesture }
 /// <see cref="Cue"/> is the voice cue (<see cref="Martlet.Core.Settings.VoiceTag.Cue"/>) it is linked to by default. A
 /// <see cref="VoiceOnly"/> gesture (a voice emote, such as a laugh or a cough) plays when the voice makes its sound or tone and
 /// isn't offered to replies as a tag while it keeps a cue, so replies' instructions don't grow. A <see cref="Holdable"/> gesture
-/// can also be held (a renderer action with <c>hold</c>): eased into and kept, gently alive, until it is ended.</summary>
+/// can also be held (a renderer action with <c>hold</c>): eased into and kept, gently alive, until it is ended. An <see cref="Overlay"/>
+/// gesture is a symbol drawn over the face (a sweat drop, hearts) rather than a movement.</summary>
 public sealed record CharacterGesture(string Name, string Tag, string Use, string Does,
     IReadOnlyList<string>? Live2DParameters, IReadOnlyList<string>? VrmBones, string? Cue = null, bool VoiceOnly = false,
-    bool Holdable = false)
+    bool Holdable = false, bool Overlay = false)
 {
     public string Id => "gesture:" + Name;
 }
@@ -47,9 +48,15 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
     private static CharacterGesture Voice(string cue, string use, string does, string[] live2D, string[] vrm) =>
         new(cue.Replace(' ', '_'), cue.Replace(' ', '_'), use, does, live2D, vrm, cue, true);
 
+    // An overlay emote: a symbol drawn over the face (Martlet.Avatar.RendererHost's web/effects/manpu.mjs), so any Live2D model
+    // gets it and a VRM needs only the head bone the face is found from. A holdable one stays drawn while it is held.
+    private static CharacterGesture Overlay(string name, string use, string does, bool holdable = false) =>
+        new(name, name, use, does, [], Head, Holdable: holdable, Overlay: true);
+
     /// <summary>Every gesture Martlet has; each model gets those its renderer and rig support (<see cref="GesturesFor"/>).
     /// After the reply gestures come the voice emotes, one for each sound and tone a voice engine makes (except
-    /// <c>surprised</c>, which the surprise gesture follows).</summary>
+    /// <c>surprised</c>, which the surprise gesture follows), then the touch and mood gestures and last the overlay emotes,
+    /// anime symbols drawn over the face (a sweat drop, an anger vein, hearts...).</summary>
     public static readonly IReadOnlyList<CharacterGesture> AllGestures =
     [
         new("nod", "nod", "nod, for yes or agreement", "nods the head twice", ["ParamAngleY"], Head),
@@ -115,7 +122,18 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
             ["ParamEyeBallX", "ParamEyeBallY"], Head),
         new("drowsy", "drowsy", "be drowsy, for tiredness or late at night",
             "half closes the eyes, the head slowly nodding off and catching itself", ["ParamEyeLOpen", "ParamEyeROpen"], HeadSpine,
-            Holdable: true)
+            Holdable: true),
+        Overlay("sweat", "a sweat drop, for nervousness or an awkward moment", "a sweat drop slides down beside the head", holdable: true),
+        Overlay("anger", "an anger vein, for annoyance or irritation", "an anger vein throbs on the forehead"),
+        Overlay("hearts", "floating hearts, for love, adoration or a crush", "small hearts float up around the head", holdable: true),
+        Overlay("sparkles", "sparkles, for delight, excitement or pride", "sparkles twinkle around the face"),
+        Overlay("tears", "tears, for sadness or being deeply moved", "tears stream from the eyes"),
+        Overlay("gloom", "gloom lines, for feeling depressed or mortified", "dark gloom lines fall over the upper face", holdable: true),
+        Overlay("question", "a question mark, for confusion", "a question mark pops up beside the head"),
+        Overlay("exclaim", "an exclamation mark, for being startled or suddenly realizing something",
+            "an exclamation mark pops up beside the head"),
+        Overlay("sleepy", "a floating Zzz, for sleepiness or boredom", "Zzz floats up from the head", holdable: true),
+        Overlay("music", "music notes, for humming or a happy, carefree mood", "music notes float up around the head")
     ];
 
     public static CharacterGesture? Gesture(string id) => AllGestures.FirstOrDefault(g => g.Id == id);
@@ -126,7 +144,8 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
         AllGestures.Where(g => (renderer == AvatarRenderer.Vrm ? g.VrmBones : g.Live2DParameters) is { } needs && needs.All(rig.Contains)).ToArray();
 
     private static CharacterActionSource Source(CharacterGesture gesture, AvatarRenderer renderer, IReadOnlySet<string> rig) =>
-        new(gesture.Id, CharacterActionKind.Gesture, gesture.Name, $"Martlet's own gesture: {gesture.Does} (" + (gesture.Name == "blush"
+        new(gesture.Id, CharacterActionKind.Gesture, gesture.Name, gesture.Overlay ? $"Martlet's own gesture: {gesture.Does} (drawn over the character)."
+            : $"Martlet's own gesture: {gesture.Does} (" + (gesture.Name == "blush"
             // Every model blushes: with its own ParamCheek (Live2D) or blush expression (VRM, offered as its own emote instead),
             // otherwise Martlet draws a glow on the cheeks over the character.
             ? renderer == AvatarRenderer.Live2D && rig.Contains(Live2DBlushParameter) ? "moves " + Live2DBlushParameter

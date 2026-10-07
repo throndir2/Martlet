@@ -119,7 +119,8 @@ what each one is.
   - an expression whose name or tag names a look that stays (glasses, a hat, a
     blush, an angry or sad face, tears, a dark face, an outfit or accessory).
 
-  Martlet's holdable gestures (pout, shy, look_away and drowsy) also stay on by
+  Martlet's holdable gestures (pout, shy, look_away and drowsy, and the overlay
+  emotes sweat, hearts, gloom and sleepy) also stay on by
   default. The renderer holds one gesture at a time, so a new held gesture
   replaces the one before. A gesture that the renderer cannot hold plays once.
   Motions and the other gestures are brief by default. The Thinking model's
@@ -198,6 +199,27 @@ what each one is.
   | `angry` | lowered brows and head | `ParamBrowLY`, `ParamBrowRY` | `head`, `spine` |
   | `crying`, `whispering` | bowed head with sobbing shoulders, leaning in | `ParamAngleY` / `ParamAngleZ` | `head`, `spine` |
   | `dramatic` | the head thrown back with a flourish (VRM: arms open) | `ParamAngleZ` | `head`, both upper arms |
+- **Overlay emotes**: anime symbols Martlet draws over the character's face on
+  the overlay layer (`web/effects/manpu.mjs` in `Martlet.Avatar.RendererHost`),
+  so every Live2D model gets them and every VRM with a `head` bone. They follow
+  the face (its position, size, zoom and head tilt), pop in with a little bounce
+  and fade out after 2 to 4 seconds; sweat, hearts, gloom and sleepy linger
+  (keep going until `{/tag}`) by default.
+  Their colours are fixed and outlined, so they read on any desktop. The tag is
+  the name; a model's own emote with the same tag replaces it:
+
+  | Overlay emote (tag) | What it draws | When to use |
+  | --- | --- | --- |
+  | `sweat` | a sweat drop sliding down beside the head | nervous, awkward |
+  | `anger` | a throbbing anger vein on the forehead | annoyed, irritated |
+  | `hearts` | small hearts floating up around the head | love, adoration |
+  | `sparkles` | sparkles twinkling around the face | delighted, excited, proud |
+  | `tears` | tears streaming from the eyes | sad, deeply moved |
+  | `gloom` | dark gloom lines over the upper face | depressed, mortified |
+  | `question` | a question mark popping up | confused |
+  | `exclaim` | an exclamation mark popping up | startled, realizing |
+  | `sleepy` | a floating Zzz | sleepy, bored |
+  | `music` | music notes floating up | humming, happy |
 
   A voice emote plays when the voice speaks its tag (Chatterbox Turbo's
   `[laugh]`, Dia's `(laughs)`), alongside any of the model's own emotes on the

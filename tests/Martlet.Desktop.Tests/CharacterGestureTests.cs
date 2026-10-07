@@ -30,6 +30,10 @@ public sealed class CharacterGestureTests
         return glb;
     }
 
+    private static readonly string[] HeldOverlays = ["{/sweat}", "{/hearts}", "{/gloom}", "{/sleepy}"];
+
+    private static readonly string[] Overlays = ["sweat", "anger", "hearts", "sparkles", "tears", "gloom", "question", "exclaim", "sleepy", "music"];
+
     private static string[] Gestures(CharacterActionInventory inventory) =>
         inventory.Sources.Where(s => s.Kind == CharacterActionKind.Gesture).Select(s => s.Name).ToArray();
 
@@ -48,11 +52,11 @@ public sealed class CharacterGestureTests
 
         Assert.Equal(["nod", "shake", "tilt", "bow", "blush", "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat", "groan", "sniff",
             "shush", "inhale", "exhale", "mumble", "hum", "sneeze", "whistle", "happy", "sarcastic", "fear", "crying", "whispering", "dramatic",
-            "shy", "giggle", "flinch", "lean_in", "look_away", "think"], Gestures(inventory));
+            "shy", "giggle", "flinch", "lean_in", "look_away", "think", .. Overlays], Gestures(inventory));
         var prompt = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null)).Prompt(null, null);
         Assert.NotNull(prompt);
         Assert.Equal(["{smile}", "{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{blush}", "{shy}", "{giggle}", "{flinch}", "{lean_in}",
-            "{look_away}", "{think}", "{/shy}", "{/look_away}"], prompt.Tags);
+            "{look_away}", "{think}", .. Overlays.Select(o => "{" + o + "}"), "{/shy}", "{/look_away}", .. HeldOverlays], prompt.Tags);
         Assert.Contains("{tilt_head} - tilt your head, for curiosity or confusion", prompt.Instructions);
         Assert.Contains("ParamAngleZ", inventory.Find("gesture:tilt")!.Detail);
         Assert.Contains("(moves ParamCheek)", inventory.Find("gesture:blush")!.Detail);
@@ -68,7 +72,7 @@ public sealed class CharacterGestureTests
 
         Assert.Equal(["nod", "shake", "tilt", "bow", "sway", "blush", "wave", "bounce", "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat",
             "groan", "sniff", "shush", "inhale", "exhale", "mumble", "hum", "sneeze", "whistle", "sarcastic", "angry", "fear", "crying",
-            "whispering", "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy"], Gestures(inventory));
+            "whispering", "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy", .. Overlays], Gestures(inventory));
         var prompt = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null)).Prompt(null, null);
         Assert.NotNull(prompt);
         Assert.Contains("{wave}", prompt.Tags);
@@ -113,7 +117,7 @@ public sealed class CharacterGestureTests
         // Voice emotes follow the voice and never lengthen the reply instructions; the reply gestures stay offered, the holdable ones with off tags.
         var silent = catalog.Prompt(null, null)!.Tags;
         Assert.Equal(["{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{smile}", "{blush}", "{surprised}", "{shy}", "{giggle}", "{flinch}",
-            "{lean_in}", "{look_away}", "{think}", "{/shy}", "{/look_away}"], silent);
+            "{lean_in}", "{look_away}", "{think}", .. Overlays.Select(o => "{" + o + "}"), "{/shy}", "{/look_away}", .. HeldOverlays], silent);
         Assert.Contains("draws a pink glow on the cheeks", inventory.Find("gesture:blush")!.Detail);
         var chatterbox = catalog.Prompt(Martlet.Core.Settings.SpeechEngines.Chatterbox, null)!.Tags;
         Assert.DoesNotContain("{surprised}", chatterbox);
@@ -131,8 +135,8 @@ public sealed class CharacterGestureTests
     {
         var names = CharacterActionInventory.AllGestures.Select(g => g.Name).ToArray();
         string[] added = ["wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy"];
-        Assert.Equal(added, names[^added.Length..]);
-        Assert.Equal(["pout", "shy", "look_away", "drowsy"], CharacterActionInventory.AllGestures.Where(g => g.Holdable).Select(g => g.Name));
+        Assert.Equal(added, names.Where(n => !Overlays.Contains(n)).ToArray()[^added.Length..]);
+        Assert.Equal(["pout", "shy", "look_away", "drowsy", "sweat", "hearts", "gloom", "sleepy"], CharacterActionInventory.AllGestures.Where(g => g.Holdable).Select(g => g.Name));
         Assert.All(CharacterActionInventory.AllGestures, g => Assert.True(CharacterActions.IsTag(g.Tag) &&
             g.Use.Length <= CharacterActionCatalog.MaximumUseLength, g.Name));
         Assert.Equal(names.Length, names.Distinct().Count());
@@ -141,7 +145,7 @@ public sealed class CharacterGestureTests
         var model = Encoding.UTF8.GetBytes("{\"Version\":3,\"FileReferences\":{\"Moc\":\"m.moc3\",\"Textures\":[]}}");
         var inventory = CharacterActionInventory.From(AvatarRenderer.Live2D, "m.model3.json",
             [new("m.model3.json", model, "application/json"), new("m.moc3", moc, "application/octet-stream")]);
-        Assert.Equal(["blush", "wink", "pout", "eye_roll", "drowsy"], Gestures(inventory));
+        Assert.Equal(["blush", "wink", "pout", "eye_roll", "drowsy", .. Overlays], Gestures(inventory));
     }
 
     [Fact]
@@ -152,5 +156,45 @@ public sealed class CharacterGestureTests
             AvatarController.GestureState(Reply("{\"started\":true,\"gesture\":{\"playing\":\"wink\",\"held\":\"shy\"}}")));
         Assert.Equal(" Gestures now: none playing, none held.", AvatarController.GestureState(Reply("{\"started\":true,\"gesture\":{}}")));
         Assert.Equal("", AvatarController.GestureState(Reply("{\"started\":true}")));
+    }
+
+    [Fact]
+    public void OverlayEmotesGoToEveryLive2DModelAndEveryVrmWithAHeadUnlessTheModelHasItsOwn()
+    {
+        Assert.Equal(Overlays, CharacterActionInventory.AllGestures.Where(g => g.Overlay).Select(g => g.Name));
+        Assert.All(CharacterActionInventory.AllGestures.Where(g => g.Overlay), g =>
+        {
+            Assert.Equal(g.Name, g.Tag);
+            Assert.True(CharacterActions.IsTag(g.Tag), g.Tag);
+            Assert.InRange(g.Use.Length, 1, CharacterActionCatalog.MaximumUseLength);
+            Assert.Null(g.Cue);
+            Assert.False(g.VoiceOnly);
+        });
+
+        // A Live2D model with none of the standard parameters and its own "sweat" expression: every overlay but sweat (and the blush
+        // every model gets).
+        var model = Encoding.UTF8.GetBytes("{\"Version\":3,\"FileReferences\":{\"Moc\":\"m.moc3\",\"Textures\":[]," +
+            "\"Expressions\":[{\"Name\":\"Sweat\",\"File\":\"sweat.exp3.json\"}]}}");
+        var expression = Encoding.UTF8.GetBytes("{\"Type\":\"Live2D Expression\",\"Parameters\":[{\"Id\":\"ParamSweat\",\"Value\":1}]}");
+        var live2D = CharacterActionInventory.From(AvatarRenderer.Live2D, "m.model3.json",
+        [
+            new("m.model3.json", model, "application/json"), new("m.moc3", Moc("ParamSweat"), "application/octet-stream"),
+            new("sweat.exp3.json", expression, "application/json")
+        ]);
+        Assert.Equal(["blush", .. Overlays.Skip(1)], Gestures(live2D));
+        Assert.Equal("Martlet's own gesture: small hearts float up around the head (drawn over the character).",
+            live2D.Find("gesture:hearts")!.Detail);
+        var prompt = new CharacterActionCatalog(live2D, CharacterActions.Merge(live2D, null)).Prompt(null, null)!;
+        Assert.Equal(["{sweat}", "{blush}", .. Overlays.Skip(1).Select(o => "{" + o + "}"), .. HeldOverlays.Skip(1)], prompt.Tags);
+        Assert.Contains("{gloom} - gloom lines, for feeling depressed or mortified", prompt.Instructions);
+
+        // A VRM needs the head bone its face is found from.
+        string Vrm(params string[] names) => "{\"asset\":{\"version\":\"2.0\"},\"extensions\":{\"VRMC_vrm\":{\"specVersion\":\"1.0\",\"humanoid\":" +
+            "{\"humanBones\":{" + string.Join(",", names.Select((b, i) => $"\"{b}\":{{\"node\":{i}}}")) + "}}}}}";
+        Assert.Empty(Gestures(CharacterActionInventory.From(AvatarRenderer.Vrm, "m.vrm", [new("m.vrm", Glb(Vrm("hips")), "model/gltf-binary")]))
+            .Intersect(Overlays));
+        var vrm = CharacterActionInventory.From(AvatarRenderer.Vrm, "m.vrm", [new("m.vrm", Glb(Vrm("head")), "model/gltf-binary")]);
+        Assert.Equal(Overlays, Gestures(vrm).Intersect(Overlays));
+        Assert.EndsWith("(drawn over the character).", vrm.Find("gesture:tears")!.Detail);
     }
 }

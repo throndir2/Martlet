@@ -1,11 +1,13 @@
 import { Live2DAdapter, LocalModelBundle } from "../../Martlet.Avatar.Live2D/lib/index.ts";
 import { VrmAvatarAdapter } from "../../Martlet.Avatar.Vrm/src/index.ts";
-import { activeOverlays, attachOverlay, clearOverlays, hasOverlay, heldOverlays, registerBlush, renderOverlay, startOverlay,
-  stopOverlay, toCssAnchor } from "./overlay.js";
+import { activeOverlays, attachOverlay, clearOverlays, hasOverlay, heldOverlays, registerBlush, registerOverlay, renderOverlay,
+  startOverlay, stopOverlay, toCssAnchor } from "./overlay.js";
+import { registerManpu } from "./effects/manpu.mjs";
 
 const canvas = document.getElementById("avatar");
 attachOverlay(document.getElementById("overlay"));
 registerBlush();
+registerManpu(registerOverlay);
 let adapter, renderer, revision, configurationId, active = false, last = 0, failed = false, reportedTop, expression;
 let view = { zoom: 1, x: 0, y: 0 };
 const post = value => window.chrome.webview.postMessage(value);
