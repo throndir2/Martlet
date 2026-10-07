@@ -333,6 +333,16 @@ public partial class MainWindow
             AutomationProperties.SetName(line, $"{host.HostId}: {detail}");
             AutomationProperties.SetAutomationId(line, "DeepThinkingHost-" + host.HostId);
             text.Children.Add(line);
+            // One graphics card for each Thinking model: Deep thinking beside this computer's Thinking shares its card.
+            if (check?.Reachable == true &&
+                DeepThinkingFit.SharedCard(host.HostId, HardwareStore?.Find(host.HostId), check.Offers) is { } shared)
+            {
+                var warning = Note(shared, new Thickness(0, 2, 0, 0));
+                warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+                AutomationProperties.SetName(warning, $"{host.HostId}: {shared}");
+                AutomationProperties.SetAutomationId(warning, "DeepThinkingShare-" + host.HostId);
+                text.Children.Add(warning);
+            }
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
             if (own is null && check?.Reachable == true && host.CanLaunch && CannotHand(host.HostId, HostRoles.DeepThinking, "deep thinking") is null)
             {
@@ -537,12 +547,18 @@ public partial class MainWindow
         Check(model.Text.Trim());
         model.SelectionChanged += (_, _) => { if (model.SelectedItem is string chosen) Check(chosen); };
         model.LostKeyboardFocus += (_, _) => Check(model.Text.Trim());
+        var shared = Note(DeepThinkingFit.SharedCard("This PC", beside,
+            ReferenceEquals(machine, MachineInfo.Unknown) ? 1 : DeepThinkingFit.DedicatedCards(machine.Gpus.Select(g => (g.Name, g.MemoryGb)))) ?? "",
+            new Thickness(0, 4, 0, 0));
+        shared.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+        shared.Visibility = shared.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        AutomationProperties.SetAutomationId(shared, "DeepThinkingLocalShare");
         return Card(Heading("Ollama on this PC"),
             Note("A second model can think here while Thinking's answers you, such as a larger one beside a small, fast one. Ollama runs " +
                 "each model in its own process, so they answer at the same time, but only while both fit on the graphics card: Martlet " +
                 "checks before each think and doesn't think it over when they don't. They share the graphics card, so replies may start " +
                 "a little later while it thinks.", new Thickness(0, 0, 0, 8)),
-            new Label { Content = "_Model", Target = model, Padding = new Thickness(0, 0, 0, 4) }, model, state, fit,
+            new Label { Content = "_Model", Target = model, Padding = new Thickness(0, 0, 0, 4) }, model, state, fit, shared,
             Row(PageButton("Use Ollama on this PC", () =>
                 {
                     var id = model.Text.Trim();
@@ -553,6 +569,9 @@ public partial class MainWindow
                         ActionText.Text = $"{id} is Thinking's own model, which can't think something over while it answers you. Choose another model.";
                         return;
                     }
+                    if (shared.Text.Length > 0 && !ConfirmationDialog.Confirm(this, shared.Text + " Use it anyway?",
+                            "Deep thinking shares a graphics card", yes: "_Use anyway", no: "_Cancel", questionId: "DeepThinkingShareQuestion"))
+                        return;
                     SaveDeepThinkingAsync(new() { Place = DeepThinkingPlace.Endpoint, Origin = LocalOllamaBaseUrl, ModelId = id, ChosenAt = DateTimeOffset.Now },
                         null, $"Deep thinking now uses {id} in Ollama on this PC." +
                         (ollamaModels is { } known && !LocalOllama.Serves(known, id) ? $" Download {id} on Thinking to use it." : "")).Forget();
