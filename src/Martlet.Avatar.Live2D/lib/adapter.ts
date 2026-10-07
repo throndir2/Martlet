@@ -2,7 +2,7 @@ import { LIMITS, LocalModelBundle, pngDimensions, scaledSize } from "./assets.js
 import { boundedInteger, Diagnostic, finite, Live2DError, requireCondition } from "./diagnostics.js";
 import { type Face, faceFeatures, faceFromBox, faceFromHint, faceFromLayout, type FaceHint, faceSource, type FaceSource,
   bounds, type Point, turnFace } from "./face.js";
-import { BLUSH_PARAMETERS, type Gesture, GESTURE_HOLD, gestureFrame, gestureSeconds, isGesture, supportedGestures } from "./gestures.js";
+import { BLUSH_PARAMETERS, type Gesture, GesturePlayer, type GestureState, isGesture, supportedGestures } from "./gestures.js";
 import { Capabilities, ChannelMapping, inspectParameters, MappingPlan, Parameter } from "./mapping.js";
 import { checkRuntime, type Animator, type AnimatorAssets, CubismMoc, CubismModel, CubismRenderer, SdkModules } from "./sdk.js";
 import { hitTestModel, type Live2DHit } from "./touch.js";
@@ -158,7 +158,7 @@ export class Live2DAdapter {
   #lipSyncAge = Number.POSITIVE_INFINITY;
   #lookTarget = { x: 0, y: 0 };
   #look = { x: 0, y: 0 };
-  #gesture: { name: Gesture; seconds: number; hold: boolean } | undefined;
+  #gestures = new GesturePlayer();
   #view = { zoom: 1, x: 0, y: 0, frame: 1 };
   #modelTop: number | undefined;
   #faceSource: FaceSource | undefined;
@@ -262,29 +262,22 @@ export class Live2DAdapter {
     return hitTestModel(model, this.#bundle?.description.hitAreas ?? [], modelX, modelY);
   }
 
-  /**
-   * Starts one of Martlet's gestures (see `gestures`), replacing one already playing. A `hold`able one (the blush) stays
-   * until `releaseGesture`. False for a blush when the model has no ParamCheek: the page draws one over the face instead.
-   */
+  /** Starts one of Martlet's gestures (see `gestures`), replacing one already playing, or with `hold` keeps a holdable one
+   *  (shy, drowsy, pout, look_away, blush) until `endGesture`; a gesture played meanwhile plays on top of it. */
   gesture(name: string, hold = false): boolean {
     this.#ready();
     if (!isGesture(name) || !this.gestures.includes(name)) return false;
+    // Without ParamCheek the page draws the blush over the face instead.
     if (name === "blush" && !BLUSH_PARAMETERS.every(id => this.#parameters.some(p => p.id === id))) return false;
-    this.#gesture = { name, seconds: 0, hold: hold && GESTURE_HOLD[name] !== undefined };
+    this.#gestures.play(name, hold);
     return true;
   }
 
-  /** Lets a held gesture fade out; true when `name` is the gesture playing. */
-  releaseGesture(name: string): boolean {
-    const gesture = this.#gesture;
-    if (!gesture || gesture.name !== name) return false;
-    if (gesture.hold) {
-      gesture.hold = false;
-      const fade = GESTURE_HOLD[gesture.name] ?? 0;
-      gesture.seconds = Math.max(gesture.seconds, gestureSeconds(gesture.name) - fade);
-    }
-    return true;
-  }
+  /** Lets a held gesture go (eased out); one playing once just finishes. */
+  endGesture(name: string): void { this.#gestures.end(name); }
+
+  /** The gesture playing once and the one held, if any. */
+  get gestureState(): GestureState { return this.#gestures.state; }
 
   /**
    * Refines where the face is with what vision found (fractions of the model's canvas, 0,0 at its top left, y down; the
@@ -542,13 +535,7 @@ export class Live2DAdapter {
       const follow = Math.min(1, deltaSeconds * 5);
       this.#look = { x: this.#look.x + (this.#lookTarget.x - this.#look.x) * follow,
         y: this.#look.y + (this.#lookTarget.y - this.#look.y) * follow };
-      let gesture: ReturnType<typeof gestureFrame>;
-      if (this.#gesture) {
-        this.#gesture.seconds += deltaSeconds;
-        if (this.#gesture.hold) this.#gesture.seconds = Math.min(this.#gesture.seconds, GESTURE_HOLD[this.#gesture.name] ?? 0);
-        gesture = gestureFrame(this.#gesture.name, this.#gesture.seconds);
-        if (!gesture) this.#gesture = undefined;
-      }
+      const gesture = this.#gestures.advance(deltaSeconds);
       animator.update(deltaSeconds, { lookX: this.#look.x + (gesture?.look.x ?? 0), lookY: this.#look.y + (gesture?.look.y ?? 0),
         lipSync: this.#hasFrame ? 0 : this.#lipSync, overrides: apply, ...(gesture ? { gesture: gesture.parameters } : {}) });
     } else {
@@ -769,7 +756,7 @@ export class Live2DAdapter {
     this.#lipSyncAge = Number.POSITIVE_INFINITY;
     this.#lookTarget = { x: 0, y: 0 };
     this.#look = { x: 0, y: 0 };
-    this.#gesture = undefined;
+    this.#gestures.clear();
     this.#modelTop = undefined;
     this.#faceSource = undefined;
     this.#faceHint = undefined;

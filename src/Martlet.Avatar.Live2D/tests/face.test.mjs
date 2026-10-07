@@ -84,9 +84,10 @@ test("blush uses ParamCheek when the model has it and can be held until released
   assert.equal(held.adapter.gesture("blush", true), true);
   for (let i = 0; i < 60; i++) held.adapter.update(0.1);
   assert.equal(held.gestures.at(-1).ParamCheek, 1, "held, the blush stays");
-  assert.equal(held.adapter.releaseGesture("blush"), true);
+  held.adapter.endGesture("blush");
   held.adapter.update(0.3);
   assert.ok(held.gestures.at(-1).ParamCheek < 1 && held.gestures.at(-1).ParamCheek > 0);
-  held.adapter.update(0.4);
+  held.adapter.update(0.6);
+  held.adapter.update(0.1);
   assert.equal(held.gestures.at(-1), undefined, "released, it fades out and ends");
 });

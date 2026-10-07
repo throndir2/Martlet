@@ -169,9 +169,9 @@ internal sealed partial class AvatarController : IAsyncDisposable
             value.ValueKind == System.Text.Json.JsonValueKind.True;
         var drawn = started ? Drawn(reply.Data) : null;
         var when = DateTime.Now.ToString("T", System.Globalization.CultureInfo.CurrentCulture);
-        Volatile.Write(ref lastAction, started
+        Volatile.Write(ref lastAction, (started
             ? $"Played the {kind} \"{source.Name}\" for {reason} at {when}{drawn}."
-            : $"The character couldn't play the {kind} \"{source.Name}\" ({reason}, {when}).");
+            : $"The character couldn't play the {kind} \"{source.Name}\" ({reason}, {when}).") + GestureState(reply.Data));
         ErrorLog.Info(started ? $"Character {kind} '{source.Name}' played for {reason}{drawn}." : $"Character {kind} '{source.Name}' didn't play ({reason}).");
         ActionPlayed?.Invoke();
         if (started && source.Kind == CharacterActionKind.Expression) HoldExpression(current, source.Name, finished);
@@ -189,6 +189,17 @@ internal sealed partial class AvatarController : IAsyncDisposable
             y.TryGetDouble(out var top) && face.TryGetProperty("width", out var width) && width.TryGetDouble(out var size))
             return System.FormattableString.Invariant($", drawn by Martlet over the face at {left:0}, {top:0} ({size:0} pixels wide)");
         return ", drawn by Martlet over the face (not in view now)";
+    }
+
+    /// <summary>The renderer's reply to a gesture: which gesture now plays once and which is held (" Gestures now: wink
+    /// playing, shy held."); empty for other replies.</summary>
+    internal static string GestureState(System.Text.Json.JsonElement reply)
+    {
+        if (reply.ValueKind != System.Text.Json.JsonValueKind.Object || !reply.TryGetProperty("gesture", out var state) ||
+            state.ValueKind != System.Text.Json.JsonValueKind.Object) return "";
+        string Name(string key) => state.TryGetProperty(key, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String &&
+            CharacterActions.IsTag(value.GetString()) ? value.GetString()! : "none";
+        return $" Gestures now: {Name("playing")} playing, {Name("held")} held.";
     }
 
     private void HoldExpression(IAvatarRenderer target, string name, Task? finished)

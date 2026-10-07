@@ -83,7 +83,7 @@ export class VrmAvatarAdapter extends VrmRuntime {
   faceAnchor(): { x: number; y: number; width: number; angle: number; cheekLeft: Point; cheekRight: Point; eyeLeft: Point;
     eyeRight: Point; mouth: Point; top: Point } | undefined {
     if (this.closed) return undefined;
-    const face = this.face();
+    const face = this.faceGeometry();
     if (!face) return undefined;
     const toCamera = this.camera.getWorldPosition(new THREE.Vector3()).sub(face.center).normalize();
     if (face.forward.dot(toCamera) < 0.15) return undefined;

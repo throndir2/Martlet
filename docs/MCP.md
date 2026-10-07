@@ -3723,13 +3723,14 @@ couldn't, such as *Thinking isn't set up yet*); `CharacterActionsOffered` the
 tags replies get with the voice chosen now and which follow the voice's cues;
 `CharacterActionsLast` the last one played (*Played the expression "脸红" for
 {blush} at 3:14:05 PM.*, *... for a try ...*, or *The character couldn't play
-...*; an emote Martlet drew over the face itself, such as the blush glow on a
-model without a blush of its own, ends *..., drawn by Martlet over the face at
-414, 88 (50 pixels wide).* with the face's middle and width in the overlay's
-page pixels, or *(not in view now)* when the face can't be found or faces
-away), also in `logs_tail` `desktop` as *Character expression '脸红' played for
-{blush}.* (*Character gesture 'blush' played for a try, drawn by Martlet over
-the face at ...*); and `CharacterActionsSaveState` *All changes saved.* or *Not saved:
+...*; for a gesture followed by what the renderer now plays and holds, *Gestures
+now: wink playing, shy held.*; an emote Martlet drew over the face itself, such
+as the blush glow on a model without a blush of its own, adds *drawn by Martlet
+over the face at 414, 88 (50 pixels wide)* with the face's middle and width in
+the overlay's page pixels, or *(not in view now)* when the face can't be found
+or faces away), also in `logs_tail` `desktop` as *Character expression '脸红'
+played for {blush}.* (*Character gesture 'blush' played for a try, drawn by
+Martlet over the face at ...*); and `CharacterActionsSaveState` *All changes saved.* or *Not saved:
 <why>*. Row `<n>` (as in `character_actions`) has `CharacterActionName-<n>`
 (its name and kind; a status field), `CharacterActionOn-<n>` (check box),
 `CharacterActionTag-<n>` (an English tag; a tag in another script reads *Not

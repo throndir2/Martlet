@@ -56,16 +56,17 @@ test("a blush the model can't show is drawn over the face, held until turned off
     setView() {}
     dispose() {}
     playGesture(name, hold) { played.push([name, hold]); return name === "nod"; }
-    releaseGesture(name) { played.push(["release", name]); return false; }
+    endGesture(name) { played.push(["release", name]); }
+    get gestureState() { return { playing: "nod" }; }
     faceAnchor() { return { x: 250, y: 100, width: 80, angle: 0, cheekLeft: { x: 230, y: 115 }, cheekRight: { x: 270, y: 115 },
       eyeLeft: { x: 234, y: 100 }, eyeRight: { x: 266, y: 100 }, mouth: { x: 250, y: 130 }, top: { x: 250, y: 50 } }; }
   }
   const { send } = await page(Renderer, posts);
   await send({ kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm" } });
   await send({ kind: "action", data: { kind: "gesture", name: "nod" } });
-  assert.deepEqual({ ...posts.at(-1) }, { started: true });
+  assert.equal(posts.at(-1).started, true);
   await send({ kind: "action", data: { kind: "gesture", name: "blush", hold: true } });
-  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { started: true, overlay: true, face: { x: 250, y: 100, width: 80 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { started: true, overlay: true, face: { x: 250, y: 100, width: 80 }, gesture: { playing: "nod" } });
   assert.deepEqual(played.at(-1), ["blush", true], "the model's own blush is tried first");
   await send({ kind: "action", data: { kind: "gesture", name: "blush", on: false } });
   assert.equal(posts.at(-1).started, true);
