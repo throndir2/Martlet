@@ -163,8 +163,9 @@ holds its own copy.
 - **Shown to the owner:** Companion › Voice reads each voice's line from this
   table (`ComponentOption.WhereItRuns`, `VoiceEngineRunsOn-<key>`): "Runs on an
   NVIDIA GPU: about *steady* GB of graphics memory, up to *peak* GB (*min* GB+
-  card).", "Runs on the CPU: no graphics card needed." or "Runs online: nothing
-  runs on your computers." Change a number here and the line follows.
+  card).", with the same steady (`Usual`) and peak numbers as the Devices page,
+  "Runs on the CPU: no graphics card needed." or "Runs online: nothing runs on
+  your computers." Change a number here and the line follows.
 
 ### Listening
 

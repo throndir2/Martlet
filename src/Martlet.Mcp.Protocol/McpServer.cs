@@ -2802,7 +2802,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         static object RunsOn(Martlet.Core.Planning.ComponentOption? option, string text) => new
         {
             on = option is null ? "gpu" : !option.IsLocal ? "online" : option.UsesGpu ? "gpu" : "cpu",
-            vramGb = option?.UsesGpu == true ? option.Steady.VramGb : 0, peakVramGb = option?.UsesGpu == true ? option.GpuGb : 0,
+            vramGb = option?.UsesGpu == true ? option.Usual.VramGb : 0, peakVramGb = option?.UsesGpu == true ? option.GpuGb : 0,
             minimumGpuGb = option?.MinGpuGb ?? 0, evidence = option?.Evidence.ToString(), text
         };
     }

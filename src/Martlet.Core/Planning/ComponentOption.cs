@@ -97,16 +97,17 @@ public sealed record ComponentOption
 
     /// <summary>Where it runs and how much graphics memory it takes, as one sentence for an option's rundown: "Runs on an NVIDIA
     /// GPU: about 3.7 GB of graphics memory, up to 4.2 GB (6 GB+ card).", "Runs on the CPU: no graphics card needed." or
-    /// "Runs online: nothing runs on your computers." The numbers are <see cref="Steady"/> and <see cref="GpuGb"/>
-    /// (<see cref="Evidence"/> says whether they were measured).</summary>
+    /// "Runs online: nothing runs on your computers." The numbers are what it usually holds (<see cref="Usual"/>) and the most
+    /// it takes (<see cref="GpuGb"/>), the same as the Devices page shows; <see cref="Evidence"/> says whether they were
+    /// measured.</summary>
     public string WhereItRuns
     {
         get
         {
             if (!IsLocal) return "Runs online: nothing runs on your computers.";
             if (Gpu == GpuRequirement.None) return "Runs on the CPU: no graphics card needed.";
-            var steady = Steady.VramGb > 0 ? Steady.VramGb : GpuGb;
-            var memory = $"about {Gb(steady)} GB of graphics memory" + (GpuGb >= steady + 0.1 ? $", up to {Gb(GpuGb)} GB" : "");
+            var usual = Usual.VramGb;
+            var memory = $"about {Gb(usual)} GB of graphics memory" + (GpuGb >= usual + 0.1 ? $", up to {Gb(GpuGb)} GB" : "");
             return $"Runs on {(Gpu == GpuRequirement.Nvidia ? "an NVIDIA GPU" : "a GPU")}: {memory}" +
                 (MinGpuGb > 0 ? $" ({Gb(MinGpuGb)} GB+ card)." : ".");
         }
