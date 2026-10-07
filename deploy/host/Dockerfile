@@ -6,8 +6,8 @@
 # Build from a checkout:   docker build -t martlet-host -f deploy/host/Dockerfile .
 # Build from GitHub:       docker build -t martlet-host -f deploy/host/Dockerfile https://github.com/throndir2/Martlet.git#<ref>
 
-# Each host builds this image for itself. No --platform=$BUILDPLATFORM here: the legacy builder (Docker without buildx,
-# for example Ubuntu's docker.io) leaves it empty and stops with "failed to parse platform".
+# The gateway is framework-dependent (no apphost), so one build serves every target architecture. No
+# --platform=$BUILDPLATFORM: the legacy builder (hosts without buildx) leaves it empty and fails to parse the platform.
 FROM mcr.microsoft.com/dotnet/sdk:10.0.401 AS build
 WORKDIR /src
 COPY . .

@@ -239,6 +239,18 @@ public sealed class HostRolesTests
     }
 
     [Fact]
+    public void Host_image_builds_with_the_legacy_builder()
+    {
+        // Hosts without buildx use the legacy builder, which leaves BuildKit's automatic platform arguments empty:
+        // "FROM --platform=$BUILDPLATFORM" then fails with "failed to parse platform".
+        var repository = Directory.GetParent(RolesDirectory())!.Parent!.Parent!.FullName;
+        var from = File.ReadAllLines(Path.Combine(repository, "deploy", "host", "Dockerfile"))
+            .Where(line => line.StartsWith("FROM ", StringComparison.Ordinal)).ToArray();
+        Assert.NotEmpty(from);
+        Assert.All(from, line => Assert.DoesNotContain("--platform", line));
+    }
+
+    [Fact]
     public void Deep_thinking_role_suggests_the_same_models_as_the_Thinking_role()
     {
         // Thinking (ollama) and Deep thinking mirror each other: same models, default and suggestions by GPU memory.
