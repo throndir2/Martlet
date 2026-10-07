@@ -2294,6 +2294,24 @@ conversation's looks show in `logs_tail` `contains` `Vision:` as *Vision: the
 conversation keeps a screen glance (passed, described, in place of the passed
 look before it).* It reads no credentials and contacts nothing.
 
+`screen_digest_check` runs the [screen summary over
+time](SCREEN_COMMENTARY.md#martlet-knows-what-changed-over-time) once with the
+desktop's production `ScreenDigester` on **FIXTURE** frames (made-up pictures of
+a code editor, then a game with low health; no screen capture) and a FIXTURE
+thinker and context board (no model; nothing is sent). `setting` is Companion ›
+Vision › *Screen summary over time* from the data directory's
+talk-preferences.json (on by default; optional absolute `dataDirectory`, a
+disposable one through `scripts\Invoke-MartletMcp.ps1`), `timing` the window,
+spacing, fresh, stale and board ages, `observed` which frames the ring kept or
+skipped, `job` the reason, frames, contact sheet size and bytes and the message
+as Companion › Prompts › *Screen summary over time* makes it, `answer` the
+FIXTURE reply (or `reply`, up to 1,024 characters) and `parsed` what Martlet
+keeps of it, `board` the note posted as source `screen` with its maximum age,
+`status` the frames, last summary, its age, time taken and job counts, `line`
+the talk window's `LiveScreenSummary` line, and `staleAnswer` that an answer
+that comes after the stale limit is dropped. It reads no credentials and
+contacts nothing.
+
 `discord_text_check` feeds simulated Discord messages through the production
 [Discord](DISCORD.md) text pipeline (`DiscordTextChat` in `src\Martlet.Discord`,
 the one the desktop's bot uses) with a fake transport and a fixture reply engine
@@ -4431,6 +4449,14 @@ looks and watches your screen: what its eyes are on now, *Looking at your
 mouse: nothing new on screen.*, *Glancing at something new at the bottom right
 of your screen.* or *Looking at the top right of your screen, where Martlet
 chose to look.*, and when they last looked away; never what is on screen),
+`LiveScreenSummary` (while Martlet watches and Companion › Vision › *Screen
+summary over time* runs: *Screen summary: 4 pictures kept; last summary 12 s
+ago (took 2.1 s).*, *…; summarizing…* or why the last one failed; its `help`
+is the last summary, one or two lines on what changed on the screen),
+`VisionScreenSummary` (the check box; `ui_toggle` with `--allow-ui-effects`
+saves talk-preferences.json) and `VisionScreenSummaryStatus` (*On.*,
+*Off.*, or *Off for now: the Thinking pool has no other model that sees.* with
+what to do),
 `LiveContext` (*Keeps the last N exchanges in mind.*, or *Keeps the last N
 exchanges in mind; replies send the newest that fit.* once they outgrow the
 context; its `help` (the tooltip) says *About T tokens of its C-token context.*

@@ -171,6 +171,9 @@ public partial class LiveConversationWindow : ThemedWindow
     private ScreenReader? reader;
     private DateTime readingFile;
     private string? readNote;
+    // Companion › Vision › Screen summary over time: the recent pictures that changed and the background summaries of them.
+    private readonly ScreenDigester digest;
+    private bool wasHearing;
     private bool seeing, twinkling, lookFailed;
     // How many monitors the whole screen spans at the latest check, for the vision line's tooltip.
     private int monitors;
@@ -201,6 +204,8 @@ public partial class LiveConversationWindow : ThemedWindow
         this.video = video ?? new VideoInput(controller.Home is { } home ? home.CameraAuthorization : null);
         this.preferences = preferences ?? TalkPreferences.Load(voiceIdentity?.DataDirectory);
         this.videoAddress = videoAddress;
+        digest = new(controller.ScreenDigestThinker, controller.ScreenDigestBoard, this.clock,
+            prompts: () => controller.Configuration?.Prompts);
         InitializeComponent();
         History.ItemsSource = Messages;
         Messages.CollectionChanged += (_, _) => EmptyHint.Visibility = Messages.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -2144,6 +2149,12 @@ public partial class LiveConversationWindow : ThemedWindow
         var gazeShown = watching && watchSource.IsScreen && Gaze is { Decides: true };
         GazeStatusText.Text = gazeShown ? Gaze!.Status : "";
         GazeStatusText.Visibility = gazeShown && VisionStatusText.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
+        // Screen summary over time: pictures kept, the last summary's age and how long it took; the summary is the tooltip.
+        var digestStatus = digest.Status;
+        var digestLine = watching ? ScreenDigester.Line(digestStatus) : "";
+        ScreenSummaryText.Text = digestLine;
+        SetDetail(ScreenSummaryText, digestLine.Length > 0 && digestStatus.LastText is { } summary ? summary : "");
+        ScreenSummaryText.Visibility = digestLine.Length > 0 && VisionStatusText.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
         var (pcLine, pcDetail) = PcAudio();
         PcAudioText.Text = pcLine;
         SetDetail(PcAudioText, pcDetail);
@@ -2341,6 +2352,9 @@ public partial class LiveConversationWindow : ThemedWindow
         monitors = 0;
         lastCheck = null;
         StartReading();
+        digest.Use(controller.ScreenDigestThinker, controller.ScreenDigestBoard);
+        digest.Turn(preferences.ScreenSummary);
+        wasHearing = false;
         // Watching the whole screen also notices what wants your attention: a notification, a flashing taskbar button.
         if (source.Kind == WatchKind.ActiveScreen)
         {
@@ -2458,6 +2472,12 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         // A reply in progress, someone talking or something heard that waits for a reply means you and Martlet are talking.
         if (Conversing) pacer.NoteConversation();
+        // Screen summary over time: a summary when the pictures changed, and one right after you start to speak when no
+        // fresh one is there. Background only; nothing waits for it.
+        var hearing = listener is { Hearing: true };
+        if (hearing && !wasHearing) digest.UserSpeaking();
+        wasHearing = hearing;
+        digest.Tick();
         // Something wants your attention: capture now, while the notification is still up.
         if (noticing && attentionWatcher.Check() is { } signal)
         {
@@ -2528,6 +2548,7 @@ public partial class LiveConversationWindow : ThemedWindow
             DropLatest();
             latestFrame = frame;
             latestAt = clock.GetTimestamp();
+            digest.Observe(frame.Width, frame.Height, frame.Title, frame.Change, ReadText(), frame.CopyPixels);
             if (source.IsScreen) ReadScreen(frame);
             // With each new screenshot of your screen Martlet may decide to look at something on it instead of your mouse.
             if (source.IsScreen) Gaze?.Observe(frame);
@@ -2713,6 +2734,7 @@ public partial class LiveConversationWindow : ThemedWindow
         reader?.Dispose();
         reader = null;
         readNote = null;
+        digest.Turn(false);
         Gaze?.Stop();
         DropAttentionFrame();
         DropLatest();

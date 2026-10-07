@@ -279,6 +279,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // talk-preferences.json, so they need --allow-ui-effects): what the character's eyes follow and why; and the talk window's
         // line on it while Martlet decides (what it looks at now and the last time it looked away; never what is on screen).
         "VisionGazeStatus", "LiveGaze",
+        // Companion › Vision › Screen summary over time (VisionScreenSummary is a check box; changing it saves
+        // talk-preferences.json, so it needs --allow-ui-effects) and whether it runs or why not; the talk window's line on it
+        // while Martlet watches: pictures kept, the last summary's age and time taken. Its help text is the last summary
+        // (one or two lines on what changed on the screen, never a window title on its own).
+        "VisionScreenSummary", "VisionScreenSummaryStatus", "LiveScreenSummary",
         // Companion › Listening › Hear how you say it: what Test hearing does (and whether it stays on this PC) or what the last test
         // found (the model's one-word answer, never anything said). Clicking TalkHearVoiceTest sends the Thinking model a test
         // recording (a provider request), so it needs --allow-ui-effects and a model on this PC.

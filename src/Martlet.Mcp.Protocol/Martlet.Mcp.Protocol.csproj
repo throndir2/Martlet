@@ -46,6 +46,8 @@
     <Compile Include="..\Martlet.Desktop\SpokenWords.cs" Link="Shared\SpokenWords.cs" />
     <Compile Include="..\Martlet.Desktop\ConversationContextBuffer.cs" Link="Shared\ConversationContextBuffer.cs" />
     <Compile Include="..\Martlet.Desktop\VisionHistory.cs" Link="Shared\VisionHistory.cs" />
+    <!-- screen_digest_check: the desktop's own screen summary over time on fixture frames. -->
+    <Compile Include="..\Martlet.Desktop\ScreenDigest.cs" Link="Shared\ScreenDigest.cs" />
     <!-- sound_digest_check: the desktop's own CPU sound judge (the bundled sound tagger and SoundDigest.Line). -->
     <Compile Include="..\Martlet.Desktop\CpuSoundJudge.cs" Link="Shared\CpuSoundJudge.cs" />
     <!-- helper_jobs_check: the desktop's own router for memory, emote naming and touch zones (Thinking pool or fallback). -->

@@ -1156,6 +1156,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             reply = new { type = "string", maxLength = 1024 }
         }),
+        Tool("screen_digest_check", "The screen summary over time (docs/SCREEN_COMMENTARY.md), run once with the desktop's " +
+            "production ScreenDigester on FIXTURE frames (made-up pictures of a code editor, then a game with low health; no " +
+            "screen capture) and a FIXTURE thinker and context board (no model, nothing sent). Returns the setting (Companion > " +
+            "Vision > Screen summary over time, from talk-preferences.json, on by default), which frames the ring kept or skipped, " +
+            "the job (reason, frames, contact sheet size and bytes, the message as Companion > Prompts > Screen summary over time " +
+            "in settings.json makes it), the answer (reply, or a FIXTURE sentence) as parsed, what went to the board (text, " +
+            "max age), the status (frames, last text, age, time taken, jobs, posted, dropped) and the talk window's line, then " +
+            "that a stale answer is dropped. Reads no credentials and contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" },
+            reply = new { type = "string", maxLength = 1024 }
+        }),
         Tool("context_board", "The context board (where background sources such as a screen digest, the sounds this PC plays, " +
             "touches on the character and the character's lingering emotes keep their newest short note for the live " +
             "conversation), rehearsed with the production board, request layout and Chat Completions adapter against a fixture " +
@@ -1574,6 +1586,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "discord_text_check" => await DiscordTextCheck.RunAsync(DataDirectory(arguments), arguments, cancellation),
                 "chattiness_status" => await ChattinessCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "vision_history_check" => await VisionHistoryCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
+                "screen_digest_check" => await ScreenDigestCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "context_board" => await ContextBoardCheck.RunAsync(OptionalString(arguments, "source"), OptionalString(arguments, "text"),
                     OptionalInt(arguments, "maxAgeSeconds"), OptionalBool(arguments, "consume"), OptionalInt(arguments, "ageSeconds"), cancellation),

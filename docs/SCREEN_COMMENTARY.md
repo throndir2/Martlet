@@ -130,6 +130,52 @@ your words only and says so on your message; a model Martlet doesn't know can
 see also stops vision with the fix, like a rejected look. Memory never gets the
 picture.
 
+## Martlet knows what changed over time
+
+Each reply gets only the **newest** picture, so it starts to speak as fast as
+before: a second picture would make the model read more before its first word.
+To know what happened over the last moments (*"did you see that?"*), Martlet
+also keeps a short **screen summary over time**:
+
+1. While Martlet watches (screen or camera), it keeps the last pictures that
+   changed **in memory only**: never saved, never logged, zeroed when let go.
+   A picture that hardly changed, with the same window, is skipped, so the
+   newest kept one is still what is on screen. It keeps up to 8 pictures,
+   each at most 512 px. A picture goes once the picture after it is more than
+   24 seconds old. Martlet's own windows, password managers and private
+   windows are left out as for every look.
+2. Every 15 seconds while the pictures change, and right after you start to
+   speak when the last summary is older than 12 seconds, Martlet sends a
+   **background job** to a Thinking model that sees in the Thinking pool (a
+   `digest` job: it comes after the barge-in and end-of-turn judges and may take
+   the pool's last free slot). It is
+   never the model your conversation uses. The job is one small picture (a
+   contact sheet: 2 to 4 of the kept pictures, oldest first, about 1024 x 580
+   px and about 30 KB), the windows' titles, the text Companion › Reading read
+   on them, and Companion › Prompts › *Screen summary over time*. One job runs at
+   a time. The pool drops a job that no member takes, or that does not finish,
+   within 15 seconds. A job that takes longer than 20 seconds after its newest
+   picture is stopped and its answer dropped.
+3. The one or two lines it answers (*"They switched from VS Code to a boss
+   fight; health dropped to 20%."*) go to the context board as source `screen`
+   (*Screen over the last 9 s: …*) for 45 seconds. The next reply or look takes
+   them as a note after your words. A reply **never waits** for a summary, and
+   the note is never kept in the history, so the prompt cache stays the same.
+   `[pass]` means nothing changed and posts nothing.
+4. **Companion › Vision › Screen summary over time** is on by default. It runs
+   only while vision is on, Martlet watches, and the Thinking pool has a
+   member that sees other than the conversation's own model (Companion ›
+   Thinking pool); otherwise the
+   card says why and what to do. Each summary is one more request with a
+   picture, which may cost more. Stopping watching, pausing, locking Windows
+   or turning it off lets every kept picture go and takes the note off the
+   board.
+
+The talk window's `LiveScreenSummary` line says how many pictures are kept,
+when the last summary came and how long it took; its tooltip is the summary.
+Martlet MCP's `screen_digest_check` runs one summary on FIXTURE frames
+([MCP](MCP.md)).
+
 ## Martlet reads the text on your screen
 
 While Martlet watches your screen, it also reads the text on each changed

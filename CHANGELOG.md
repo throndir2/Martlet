@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Martlet knows what changed on your screen over the last moments: a new Screen summary over time setting (on by default) asks a Thinking model that sees, in the background, to sum it up for your next message, without making replies slower. ([#533](https://github.com/throndir2/Martlet/pull/533))
 - With **Hear what this PC plays** on, Martlet now also notices the sound that isn't words: music and its mood, game and video sounds, laughter, applause and alarms. About every 10 seconds it describes what plays in one short line for its next reply. A Thinking pool model that can hear does it, or else a small sound tagger on your PC's processor. Turn it off with **Describe PC sounds** in Companion › Listening. The sound stays in memory only and is never saved. ([#532](https://github.com/throndir2/Martlet/pull/532))
 - Martlet now hears when you've finished talking. A small model on your PC listens to how you end each sentence, so Martlet answers about half a second sooner when you're clearly done, and waits longer when you trail off mid-thought instead of cutting you off. It's on by default; turn off **Judge when I finish talking** in Companion › Listening to go back to the plain pause. ([#531](https://github.com/throndir2/Martlet/pull/531))
 - Replies can now take in short notes from things happening around you, such as what your character shows, without ever waiting for them. ([#528](https://github.com/throndir2/Martlet/pull/528))

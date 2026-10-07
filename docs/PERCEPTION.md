@@ -3,7 +3,11 @@
 > **Screen commentary is now app-wired separately.** The Desktop feature
 > [Watch my screen](SCREEN_COMMENTARY.md) captures the active window with GDI and
 > sends an occasional screenshot to the vision-capable Thinking model. It does
-> not use the isolated foundations below, which remain unwired.
+> not use the isolated foundations below, which remain unwired. Its
+> [screen summary over time](SCREEN_COMMENTARY.md#martlet-knows-what-changed-over-time)
+> keeps a short in-memory ring of the screenshots that changed and sends a
+> small contact sheet of them to a Thinking model that sees in the background;
+> it also lives in the Desktop (`ScreenDigest.cs`), not here.
 
 **Experimental isolated software foundation; production Windows capture is
 unavailable.** `Martlet.Perception` defines selected-window discovery, capture,
