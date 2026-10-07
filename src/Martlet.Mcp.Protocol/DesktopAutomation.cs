@@ -59,8 +59,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "TrayOpen", "TrayTalk", "TrayPause", "TrayStopListening", "TrayStopWatching", "TrayEndTalk",
         // The character overlay (drawn by Martlet's own renderer process, whose windows ui_snapshot includes): MoveAvatar only opens
         // or closes the character's right-click menu; its Talk to Martlet, Open Martlet and Character settings only show a window
-        // or page, like TrayTalk and TrayOpen. Its zoom, position, Keep on top and Hide character items need --allow-ui-effects.
-        "MoveAvatar", "CharacterTalk", "CharacterOpenMartlet", "CharacterSettings",
+        // or page, like TrayTalk and TrayOpen, and Eyes (CharacterEyes) only opens its submenu. Eyes' choices (CharacterEyes-<choice>,
+        // their checkedState says which applies) save talk-preferences.json, and the zoom, position, Keep on top and Hide character
+        // items need --allow-ui-effects.
+        "MoveAvatar", "CharacterTalk", "CharacterOpenMartlet", "CharacterSettings", "CharacterEyes",
         // Martlet on your network: Find again only sends Martlet's own discovery query (port 9444) on the local network and
         // lists who answers; Stop asking only withdraws this PC's own request. Connect, Allow and Deny do the work.
         "NearbyFind", "NearbyCancel",
@@ -281,7 +283,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // recording stays on this PC, off until you tick it when it would leave). Fixed wording; no model names beyond the
         // Thinking destination the page already shows.
         "TalkHearVoiceChoice",
-        // Companion › Vision › Where the character looks (its VisionGaze-Mouse and VisionGaze-Martlet choices save
+        // Companion › Vision › Glances at your screen (its VisionGaze-Mouse, Keep its usual gaze, and VisionGaze-Martlet choices save
         // talk-preferences.json, so they need --allow-ui-effects): what the character's eyes follow and why; and the talk window's
         // line on it while Martlet decides (what it looks at now and the last time it looked away; never what is on screen).
         "VisionGazeStatus", "LiveGaze",
@@ -357,10 +359,17 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState",
         // Companion › Character › Touch temperament: who decided the active persona's temperament (built-in, the Thinking model,
-        // FIXTURE - NOT AI or the owner), its attitude per group and part ("head loves, torso hates, ..."), how deciding went and
-        // whether edits saved. Each line's attitude (TouchTemperamentAttitude-<group or zone ID>, below) is an attitude word.
+        // FIXTURE - NOT AI or the owner), its attitude per group and part ("head loves, torso hates, ...", its eyes and the parts
+        // whose touch turns them to your mouse), how deciding went and whether edits saved. Each line's attitude
+        // (TouchTemperamentAttitude-<group or zone ID>, below) is an attitude word, its TouchTemperamentLook-<group or zone ID>
+        // the seconds the eyes then look at your mouse, and TouchTemperamentGaze where the eyes usually go.
         // Re-decide from personality sends the personality to Thinking, and the rest save, so they need --allow-ui-effects.
-        "TouchTemperamentStatus", "TouchTemperamentSummary", "TouchTemperamentDecision", "TouchTemperamentSaveState",
+        "TouchTemperamentStatus", "TouchTemperamentSummary", "TouchTemperamentDecision", "TouchTemperamentSaveState", "TouchTemperamentGaze",
+        // Companion › Character › Where the character looks: what the eyes do now and why (your choice, the personality's or
+        // the character's own in a reply; a touch's look at your mouse; whether it may change where it looks). Its
+        // CharacterGaze-<choice> radio buttons (selected) and CharacterGazeFree check box (checkedState) save
+        // talk-preferences.json, so they need --allow-ui-effects.
+        "CharacterGazeNow",
         // What Martlet noticed (zones with Martlet notices on) that waits for a reply and when a touch reply would start, and
         // which reply took the last touches and what the Thinking model was told (zone names and the touch line, no words).
         "TouchZonesNoticed", "TouchZonesNoticedLast",
@@ -636,7 +645,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// click; never the text it copies).</summary>
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
-    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
+    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchTemperamentLook-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default

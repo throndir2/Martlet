@@ -19,9 +19,15 @@ public partial class MainWindow
 
     /// <summary>The reply instructions and tags for the showing character's emotes and motions (null while it is hidden), with
     /// the lingering emotes it shows now for the newest message's notes.</summary>
-    private CharacterActionPrompt? CharacterActionPromptFor(SpeechEngine? engine, PromptSettings? prompts) =>
-        avatar.IsShowing && characterActions.For(avatar.InspectedProfile?.ModelPath) is { } catalog
+    private CharacterActionPrompt? CharacterActionPromptFor(SpeechEngine? engine, PromptSettings? prompts)
+    {
+        if (!avatar.IsShowing) return null;
+        var actions = characterActions.For(avatar.InspectedProfile?.ModelPath) is { } catalog
             ? catalog.Prompt(engine, prompts, avatar.Held.Current, DateTimeOffset.Now) : null;
+        // Where the character looks, while it may change that: the look tags, and a note while its own choice holds the eyes.
+        var gaze = avatar.Gaze.Prompt(prompts);
+        return CharacterGaze.Join(actions, gaze, gaze?.Looking);
+    }
 
     /// <summary>The context board of the live conversation: background producers (a screen digest, the sounds this PC plays,
     /// touches on the character) post their newest short note here with <see cref="Martlet.Conversation.ContextBoard.Post"/>, and every reply and

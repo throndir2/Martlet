@@ -578,18 +578,24 @@ internal sealed class McpServer(DesktopAutomation desktop)
             temperament = new { type = "string" }, personaId = new { type = "string" }, personality = new { type = "string" },
             repeats = new { type = "integer", minimum = 1 }
         }),
-        Tool("character_gaze", "Where the character looks (Companion > Vision > Where the character looks; docs/SCREEN_COMMENTARY.md " +
-            "\"Where the character looks\"): the saved choice in a data directory's talk-preferences.json (mouse unless Martlet " +
-            "decides), then a rehearsal of the production decision (Martlet.Avatar.Hosting CharacterGaze and GazeDirector) on " +
+        Tool("character_gaze", "Where the character looks (Companion > Character > Where the character looks, the overlay's Eyes " +
+            "menu and Companion > Vision > Glances at your screen; docs/SCREEN_COMMENTARY.md \"Where the character looks\"): usual " +
+            "is the usual gaze saved in a data directory's talk-preferences.json (GazeUsual: personality, mouse, near, ahead or " +
+            "window; GazeFree: whether the character may change it in replies), the persona's gaze from character-temperaments.json " +
+            "(the active persona, or personaId), the gaze that applies and who set it, what every reply is told about it and the " +
+            "note while its own choice holds the eyes. aim rehearses the production CharacterGaze.Aim the overlay runs for each " +
+            "gaze (a mouse far from and near the character, a window, a touch's look at the mouse, a glance). saved is the glances " +
+            "choice (DecideGaze: usual gaze unless Martlet decides), then a rehearsal of the production decision " +
+            "(Martlet.Avatar.Hosting CharacterGaze and GazeDirector) on " +
             "generated 1920x1080 pictures (NOT screenshots; nothing is captured): a notification popping up, the same spot again soon " +
             "and later, another change right after a glance, a notification behind the character, the character's own motion, its " +
             "speech bubble, a new scene, a change by the mouse and changes all over, each with the expected and actual verdict and " +
-            "the spot looked at (ok: all as expected). Also where each look tag points on one and two screens, the screen glance's " +
-            "look instructions (the data directory's edited prompts included) and what the production segmenter makes of glance " +
-            "answers that start with a look tag (spoken, shown, quiet, the look cue); answer replaces the sample answers. Reads " +
-            "only; contacts nothing.", new
+            "the spot looked at (ok: all scenarios and aims as expected). Also where each look tag points on one and two screens, " +
+            "the gaze tags, the screen glance's look instructions (the data directory's edited prompts included) and what the " +
+            "production segmenter makes of answers with look tags (spoken, shown, quiet, the look and gaze cues); answer replaces " +
+            "the sample answers. Reads only; contacts nothing.", new
         {
-            dataDirectory = new { type = "string" }, answer = new { type = "string", maxLength = 2000 }
+            dataDirectory = new { type = "string" }, answer = new { type = "string", maxLength = 2000 }, personaId = new { type = "string" }
         }),
         Tool("character_theme", "A character model's colors and palettes as Settings > Appearance makes them (docs/UI_DESIGN.md " +
             "\"Character palettes\"): modelPath (a .model3.json or .vrm on this PC), else the model dataDirectory's avatar.json shows, " +
@@ -1584,7 +1590,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_models" => CharacterModels(arguments),
                 "character_profiles" => CharacterProfiles(arguments),
                 "character_actions" => await CharacterActionsCheckAsync(arguments, cancellation),
-                "character_gaze" => GazeCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer")),
+                "character_gaze" => GazeCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer"), OptionalString(arguments, "personaId")),
                 "character_physical_check" => PhysicalCheck.Run(DataDirectory(arguments), OptionalString(arguments, "modelId"),
                     OptionalString(arguments, "stroke"), OptionalString(arguments, "changes"), OptionalBool(arguments, "noticeAll") ?? true),
                 "character_touch_zones" => await TouchZonesCheck.RunAsync(DataDirectory(arguments),

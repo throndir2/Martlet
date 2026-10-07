@@ -61,7 +61,8 @@ public partial class MainWindow
         characterTouchZones.React(touch, (zone, repeats) => TouchPlan(zone, catalog, temperament, repeats), PlayTouchAsync,
             zone => Dispatcher.InvokeAsync(() =>
                 NoticePhysical(touch.Held ? PhysicalKind.Hold : CharacterTouchZones.Pats(zone) ? PhysicalKind.Pat : PhysicalKind.Tap,
-                    CharacterTouchZones.Part(zone), zone.Name.ToLowerInvariant(), hint: CharacterTouchZones.Narration(zone))));
+                    CharacterTouchZones.Part(zone), zone.Name.ToLowerInvariant(), hint: CharacterTouchZones.Narration(zone))),
+            look: avatar.Gaze.Attend);
         return true;
     }
 
@@ -316,6 +317,7 @@ public partial class MainWindow
         var reaction = TouchPlan(zone, catalog, characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId), 1);
         var plan = reaction.Actions;
         for (var i = 0; i < plan.Count; i++) PlayTouchAsync(plan[i], $"a try of {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
+        if (reaction.LookSeconds > 0) avatar.Gaze.Attend(reaction.LookSeconds, $"a try of {zone.Name.ToLowerInvariant()}");
         characterTouchZones.Note($"Tried {zone.Name}: " + (plan.Count == 0 ? "nothing to play on this model" : "played " + string.Join(", ", plan.Select(s => s.Name))) +
                 CharacterTouchZoneService.Describe(reaction, 1) + "." +
                 (zone.Reaction.Notices ? " Martlet notices touches here" + (CharacterTouchZones.Narration(zone) is { } line ? $" (your words: \"{line}\")." : ".") : ""));
