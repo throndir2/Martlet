@@ -1077,6 +1077,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("sound_digest_check", "Companion > Listening > Describe PC sounds (on by default while Hear what this PC plays is on): the " +
+            "saved choices, the desktop's sound-digest.json (on, the active judge: a Thinking pool model that hears or the CPU sound " +
+            "tagger; runs, lines, drops and skips; the last line's age and how long judging took; never the line), then a FIXTURE " +
+            "rehearsal of the production path: synthesized music with hand claps from a fixture loopback on a simulated clock through " +
+            "PcAudioCaptureFactory and the capture normalizer into the in-memory PcSoundBuffer, then one SoundDigestScheduler tick " +
+            "with the CPU sound tagger bundled in martletDirectory (sherpa-onnx Zipformer AudioSet tagger). Returns its labels, the " +
+            "line and timings. wavFile (an absolute 16 kHz mono 16-bit WAV) is tagged too. Records, plays, sends and saves nothing.", new
+        {
+            dataDirectory = new { type = "string" },
+            martletDirectory = new { type = "string" },
+            wavFile = new { type = "string" }
+        }),
         Tool("discord_call_check", "Martlet in your own Discord calls (Companion > Discord, companion mode on the owner's own " +
             "account; Martlet never automates Discord): the saved mode (discord-calls.json), a doctor check of this PC without recording " +
             "or playing (a process loopback of one app set up and closed unstarted, Discord's process and window, Windows' OCR language, " +
@@ -1568,6 +1580,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     SpeechDirectory(arguments), cancellation),
                 "barge_in_check" => await BargeInCheck.RunAsync(arguments, DataDirectory(arguments), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
+                "sound_digest_check" => await SoundDigestCheck.RunAsync(DataDirectory(arguments), MartletDirectory(arguments),
+                    OptionalString(arguments, "wavFile"), cancellation),
                 "discord_call_check" => await DiscordCallCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "discord_text_check" => await DiscordTextCheck.RunAsync(DataDirectory(arguments), arguments, cancellation),
                 "chattiness_status" => await ChattinessCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),

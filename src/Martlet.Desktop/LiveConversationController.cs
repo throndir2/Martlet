@@ -491,6 +491,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private readonly OpenAiTranscriptionAdapter pcTranscription;
     private LiveListener? pcListener;
     private LiveConversationOperation? pcTranscribing;
+    // Companion › Listening › Describe PC sounds: the sound digest of what this PC plays (null when Martlet can't hear the PC).
+    private readonly PcSoundDigest? soundDigest;
     private long listenEpoch, spokeUntil;
     // Thinking models that rejected a recording this app session; they get the transcript only until Martlet restarts.
     private readonly HashSet<string> deafModels = new(StringComparer.Ordinal);
@@ -592,6 +594,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     internal EchoReductionReport? EchoReport => echoReducer?.Report;
     /// <summary>Martlet can hear what this PC plays (Companion › Listening › Hear what this PC plays).</summary>
     internal bool CanHearPc => pcAudio is not null;
+    /// <summary>The sound digest of what this PC plays (Companion › Listening › Describe PC sounds), or null when Martlet can't
+    /// hear the PC here.</summary>
+    internal PcSoundDigest? SoundDigest => soundDigest;
     /// <summary>Martlet's background work in this conversation (think_longer): what runs, what finished and what waits to be
     /// brought up.</summary>
     internal BackgroundJobs Jobs => jobs;
@@ -737,6 +742,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         this.tools = tools;
         this.runtimeFactory = runtimeFactory;
         this.dataDirectory = dataDirectory;
+        if (pcAudio?.Sound is { } sound)
+            soundDigest = new PcSoundDigest(sound, () => pcAudio.WithoutMartlet != true && Speaking is not null,
+                () => PoolSoundJudge.For(ThinkingPool), Board, dataDirectory);
         localTranscription = localListener is null ? null : new(localListener, this.clock);
         localWords = localListener;
         context = new();
@@ -4495,6 +4503,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         owned?.Cancel("conversation.closed");
         Cancel(stopListening);
         echoReducer?.Forget();
+        soundDigest?.Dispose();
         // Background work ends with Martlet.
         jobs.Dispose();
         DisposeThinkRuntimeAsync().Forget();
