@@ -858,7 +858,9 @@ Martlet canceled isn't mentioned; closing the conversation drops the rest.
 think_longer is the first kind and a song is next. A kind is a
 `BackgroundJobKind(Name, MaxActive, MaxPerHour, TimeLimit, Offer, Doing)`:
 `Name` is lowercase letters and the job IDs' prefix (`think-1`, `song-1`),
-`MaxActive` how many of that kind may run at once (other kinds run alongside),
+`MaxActive` how many of that kind may run or wait in line at once (other kinds
+run alongside; when that many are running or waiting, a new one is refused,
+and on a pool the model is told how many run or wait and how many run at once),
 `MaxPerHour` how many may start in any hour (null: no hourly limit), `TimeLimit`
 how long one may take (up to 30 minutes; null: no time limit, as for a think),
 `Offer` marks a result to offer before using it (a song:

@@ -812,6 +812,17 @@ internal static class ThinkLongerCheck
         var stillRunning = longRun.Job is { Finished: false };
         unlimitedJobs.CancelAll();
         var unlimited = production.TimeLimit is null && production.MaxPerHour is null && unlimitedStarted == 20 && stillRunning;
+        // A full line on Deep thinking's places: three one-slot places run two thinks at once (the last free slot stays free for
+        // quick jobs) and four wait in line; a seventh is refused with those real numbers.
+        using var lineJobs = new BackgroundJobs();
+        IReadOnlyList<BackgroundPlace> three = [new("host:diva", "diva"), new("host:imouto", "imouto", 1), new("host:ripley", "ripley")];
+        var lineKind = ThinkLonger.Kind(new ThinkLongerSettings(), ThinkLonger.Slots(three));
+        var inLine = Enumerable.Range(0, lineKind.MaxActive).Select(i => lineJobs.Start(lineKind, $"think {i}", Forever, three, wait: true)).ToArray();
+        var fullLine = lineJobs.Start(lineKind, "one more", Forever, three, wait: true);
+        lineJobs.CancelAll();
+        var lineFull = inLine.All(start => start.Started) && fullLine.Refusal == "busy" && fullLine.Message ==
+            "Martlet already has 6 thinks running or waiting, and it runs up to 2 at once. Running now: think-1 on diva and think-2 on ripley. " +
+            "Wait for one to finish.";
         var timedOut = timed.Job;
         var songRun = songJob.Job!;
         var lateRun = lateSong.Job!;
@@ -821,7 +832,7 @@ internal static class ThinkLongerCheck
             first.Job.Delivery == BackgroundDeliveryState.Delivered &&
             timedOut is { State: BackgroundJobState.TimedOut } && hourly.Refusal == "hourly_limit" &&
             songRun.State == BackgroundJobState.Canceled && songRun.Delivery == BackgroundDeliveryState.Delivered &&
-            lateRun.State == BackgroundJobState.Canceled && lateRun.Delivery == BackgroundDeliveryState.Dropped && !jobs.HasNews && unlimited;
+            lateRun.State == BackgroundJobState.Canceled && lateRun.Delivery == BackgroundDeliveryState.Dropped && !jobs.HasNews && unlimited && lineFull;
         return (ok, new
         {
             ok,
@@ -829,6 +840,11 @@ internal static class ThinkLongerCheck
             {
                 ok = unlimited, timeLimit = production.TimeLimit?.ToString() ?? "none", hourlyLimit = production.MaxPerHour?.ToString() ?? "none",
                 startedInARow = unlimitedStarted, runningAfterFixtureLimit = stillRunning, requestTimeHours = ThinkLonger.RequestTime.TotalHours
+            },
+            fullLine = new
+            {
+                ok = lineFull, runningOrWaiting = inLine.Count(start => start.Started), maxActive = lineKind.MaxActive, atOnce = ThinkLonger.AtOnce(three),
+                refusal = fullLine.Refusal, message = fullLine.Message, toldModel = ThinkLonger.Refused(fullLine)
             },
             oneAtATime = new { first = first.Job.Id, second = second.Refusal, told = ThinkLonger.Refused(second) },
             besideASong = new { song = songRun.Id, activeTogether = together, offer = song.Offer },

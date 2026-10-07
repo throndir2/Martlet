@@ -98,6 +98,28 @@ public sealed class BackgroundPlacesTests
         Assert.Equal(2, ThinkLonger.Kind(settings, 0).MaxActive);
     }
 
+    [Fact]
+    public async Task A_full_line_is_refused_with_how_many_run_or_wait_and_how_many_run_at_once()
+    {
+        using var jobs = new BackgroundJobs();
+        var release = new TaskCompletionSource();
+        // Three one-slot places: two thinks run at once (the last free slot stays free for quick jobs) and four wait in line.
+        var line = Enumerable.Range(0, Think.MaxActive).Select(_ => jobs.Start(Think, "a task", Until(release.Task), Pool, wait: true)).ToArray();
+        Assert.All(line, start => Assert.True(start.Started));
+        var full = jobs.Start(Think, "one more", Until(release.Task), Pool, wait: true);
+        Assert.Equal("busy", full.Refusal);
+        Assert.Equal("Martlet already has 6 thinks running or waiting, and it runs up to 2 at once. Running now: think-1 on diva and " +
+            "think-2 on ripley. Wait for one to finish.", full.Message);
+        // One research at a time: the second is refused with the same numbers.
+        using var research = new BackgroundJobs();
+        Assert.True(research.Start(WebResearch.Kind, "a topic", Until(release.Task), Pool).Started);
+        var second = research.Start(WebResearch.Kind, "another topic", Until(release.Task), Pool);
+        Assert.Equal("Martlet already has 1 research running or waiting, and it runs one at a time. Running now: research-1 on diva. " +
+            "Wait for it to finish.", second.Message);
+        release.SetResult();
+        await WaitAsync(() => jobs.Active.Count == 0 && research.Active.Count == 0);
+    }
+
     [Theory]
     [InlineData(1, 1)]
     [InlineData(2, 1)]

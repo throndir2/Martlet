@@ -2987,10 +2987,14 @@ next message carry it too. `limits`: one think at a time (the second is refused
 with what the model is told) beside a song job, the user's Cancel (mentioned
 only with the next message, kept when that reply didn't happen), the time limit
 (`TimedOut`), the hourly limit, Martlet's own cancel (nothing to bring up) and
-the conversation ending (dropped), all on a fixture kind with limits; and
+the conversation ending (dropped), all on a fixture kind with limits;
 `deepThinkingUnlimited`: Deep thinking's own kind has no time or hourly limit
 (`timeLimit`/`hourlyLimit` *none*, 20 thinks `startedInARow`, one still running
-past the fixture's time limit, `requestTimeHours` 24). `plans`: the production `DeepThinkingPlan`
+past the fixture's time limit, `requestTimeHours` 24); and `fullLine`: on three
+one-slot places, Deep thinking's own kind lets six thinks run or wait
+(`runningOrWaiting`, `maxActive`) and runs two at once (`atOnce`), and a seventh
+is refused as `busy` with those real numbers (`message`: *Martlet already has 6
+thinks running or waiting, and it runs up to 2 at once...*, and `toldModel`). `plans`: the production `DeepThinkingPlan`
 for thirteen setups (Same as Thinking with Thinking on this PC, on OpenRouter or
 on a paired computer; OpenRouter with Thinking local; Ollama on this PC with
 another model or Thinking's own beside Thinking local, or with the voice on
