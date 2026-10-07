@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using Martlet.Audio;
@@ -45,11 +46,13 @@ public sealed class EarlyReplyDesktopTests
         "data: {\"id\":\"chat-fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"server-model\",\"choices\":[{\"index\":0," +
         "\"delta\":{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(text) + "},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
 
-    // A fixture conversation: Listening on Parakeet here and, unless cloud, Thinking at a server on this PC.
-    private static async Task<(LiveFixture Fixture, Words Words)> Create(TurnVerdict verdict = TurnVerdict.Incomplete, bool cloud = false)
+    // A fixture conversation: Listening on Parakeet here and, unless cloud, Thinking at a server on this PC; without judge, the
+    // plain pause rule ends each turn.
+    private static async Task<(LiveFixture Fixture, Words Words)> Create(TurnVerdict verdict = TurnVerdict.Incomplete, bool cloud = false,
+        bool judge = true)
     {
         var words = new Words();
-        var fixture = await LiveFixture.Create(localListener: words, turnJudge: new Judge(verdict));
+        var fixture = await LiveFixture.Create(localListener: words, turnJudge: judge ? new Judge(verdict) : null);
         var settings = (await fixture.Store.LoadAsync()).Settings!;
         var oldStt = settings.Setup!.Routes.Single(route => route.Role == SetupRole.Stt);
         settings = SetupSettings.QueueReplacedCredential(LocalSpeechSetup.SelectParakeet(settings, LocalSpeechSetup.Parakeet110mEnglishModelId), oldStt);
@@ -323,6 +326,81 @@ public sealed class EarlyReplyDesktopTests
         await fixture.Advance(() => fixture.Controller.EarlyReplies.Count == 1);
         Assert.Equal(EarlyReplyRecord.Cancelled, fixture.Controller.EarlyReplies[0].Outcome);
         Assert.Equal("listening stopped", fixture.Controller.EarlyReplies[0].Reason);
+    }
+
+    [Fact]
+    public async Task Without_a_judge_a_cloud_Thinking_model_gets_no_quick_transcripts_unless_its_replies_may_start_early()
+    {
+        var (fixture, words) = await Create(cloud: true, judge: false);
+        await using var _ = fixture;
+        fixture.Answer("Cloud reply.");
+        // You say something with a short pause in it (400 ms, which the plain 800 ms rule doesn't end the turn at), then stop.
+        async Task<int> Transcripts(EarlyReplyOptions options)
+        {
+            var before = Volatile.Read(ref words.Calls);
+            var listener = Listen(fixture, options);
+            try
+            {
+                Say(fixture, 5, voice: false);
+                Say(fixture, 20, voice: true);
+                Say(fixture, 4, voice: false);
+                Say(fixture, 10, voice: true);
+                Say(fixture, 10, voice: false);
+                await Heard(fixture, listener);
+            }
+            finally { fixture.Controller.StopListening(listener); }
+            await fixture.Advance(() => !listener.Running && !fixture.Runner.IsRunning);
+            return Volatile.Read(ref words.Calls) - before;
+        }
+        // Its replies can't start early (Also for cloud models is off): only the turn's own transcript is made.
+        Assert.Equal(1, await Transcripts(new EarlyReplyOptions()));
+        Assert.Empty(fixture.Controller.EarlyReplies);
+        // With it on, each pause gets a quick transcript for a reply to start on (the last is the turn's own).
+        Assert.Equal(2, await Transcripts(new EarlyReplyOptions { Cloud = true }));
+        Assert.NotEmpty(fixture.Controller.EarlyReplies);
+    }
+
+    [Fact]
+    public async Task A_reply_started_early_asks_the_Thinking_fallback_only_once_it_is_taken()
+    {
+        var (fixture, _) = await Create();
+        await using var _ = fixture;
+        // If Thinking fails: a cloud endpoint (FIXTURE), which charges for every request it gets.
+        var settings = (await fixture.Store.LoadAsync()).Settings!;
+        await fixture.Save(settings with
+        {
+            ThinkingFallback = new() { Origin = "https://openrouter.ai/api/v1", ModelId = "fixture/cloud-model", ConfigurationRevision = Guid.NewGuid() }
+        });
+        Assert.NotNull(fixture.Controller.Configuration!.TextFallback());
+        var hosts = new ConcurrentQueue<string>();
+        fixture.Chat.Respond = (request, _) =>
+        {
+            hosts.Enqueue(request.RequestUri!.Host);
+            // Thinking on this PC fails before it answers; the fallback answers.
+            return Task.FromResult(request.RequestUri.Host == "127.0.0.1" ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                : Reply("From the fallback."));
+        };
+        var listener = Listen(fixture);
+        try
+        {
+            Say(fixture, 5, voice: false);
+            Say(fixture, 25, voice: true);
+            Say(fixture, 3, voice: false);
+            // The reply starts early and Thinking on this PC fails: while it is held, the fallback isn't asked.
+            await fixture.Advance(() => fixture.Controller.EarlyReply is { Turn.Snapshot.FellBack: true });
+            var early = fixture.Controller.EarlyReply!;
+            await fixture.Pass(TimeSpan.FromMilliseconds(300));
+            Assert.Equal(["127.0.0.1"], hosts);
+            // The turn ends with the same words: taken as the reply, it asks the fallback now.
+            Say(fixture, 14, voice: false);
+            var heard = await Heard(fixture, listener);
+            var reply = Answer(fixture, heard);
+            Assert.Same(early, reply);
+            await fixture.Finish(reply);
+            Assert.Equal("From the fallback.", reply.Turn!.Content.Text);
+            Assert.Equal(["127.0.0.1", "openrouter.ai"], hosts);
+        }
+        finally { fixture.Controller.StopListening(listener); }
     }
 
     [Fact]

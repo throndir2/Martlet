@@ -473,6 +473,8 @@ public sealed class ConversationTurn
                 }
                 try
                 {
+                    // A reply started early asks the Thinking fallback (it may be a paid cloud model) only once it is taken.
+                    if (fallback) await WhileHeldAsync().ConfigureAwait(false);
                     result = await RequestAsync(imageDropped ? sent.WithoutImage() : sent,
                         attempt == 0 ? TextIds : NewIds(), segmenter, fallback, reasoningDropped).ConfigureAwait(false);
                 }

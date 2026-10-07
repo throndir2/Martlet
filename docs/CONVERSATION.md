@@ -1982,7 +1982,9 @@ the data folder.
   board's consume-on-read notes or reaches the history, memory, the talk
   window and the reply latency line. **Also for cloud models (may add a small
   cost)** (off by default) allows it with a cloud Thinking model, which charges
-  for a request let go; a paid cloud voice is prepared early only with it.
+  for a request let go; a paid cloud voice is prepared early only with it, and
+  a held reply asks the Thinking fallback (*If Thinking fails*) only once it is
+  taken.
   Barge-in never sees a held reply as Martlet speaking, and it holds the
   [live floor](#the-live-floor-the-live-turn-comes-first) from its start (let
   go, it ends that hold at once). The desktop log has

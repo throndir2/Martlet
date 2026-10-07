@@ -212,7 +212,8 @@ At the same 260 ms check point, Companion › Listening › *Start replies early
 (on by default, with Parakeet on this PC) starts the reply on the quick
 transcript, held, and keeps it only when the detector ends the turn in that
 same pause; the first frame of the user's own voice in the pause (never what
-the speakers play, `EchoTimeline.Speakers`) lets it go. Without a judge, the
-quick transcript still starts at 260 ms for it, and speech-to-text reuses it
-when the plain pause ends the turn there. See
+the speakers play, `EchoTimeline.Speakers`, and never what *Hear what this PC
+plays* hears) lets it go. Without a judge, the quick transcript still starts
+at 260 ms for it (only when a reply may start early with the Thinking model in
+use), and speech-to-text reuses it when the plain pause ends the turn there. See
 [Voice latency](VOICE_LATENCY.md#starting-replies-early).

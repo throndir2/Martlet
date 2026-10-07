@@ -704,8 +704,9 @@ check point instead, like LiveKit's *preemptive generation*, Deepgram's
 *speculative replies* and Pipecat's speculation gate:
 
 1. At the short pause (260 ms, `EndOfTurnOptions.JudgeAfter`), the quick
-   transcript of the speech so far starts (Parakeet on this PC; it starts even
-   without a judge now). When it comes back with real words
+   transcript of the speech so far starts (Parakeet on this PC; without a
+   judge it starts now too, but only when a reply may start early: a cloud
+   Thinking model without *Also for cloud models* gets none). When it comes back with real words
    (`EarlyReplyGate.Worth`: the word check keeps it, and it isn't only a quick
    backchannel such as *yeah*), the reply starts at once, built exactly as the
    talk window will ask for it (`EarlyReplyPlan`), without waiting for the
@@ -719,7 +720,8 @@ check point instead, like LiveKit's *preemptive generation*, Deepgram's
    (`ConversationTurn.Release`). What it wrote shows at once and its first
    piece plays at once. There is no second request.
 3. Your own voice comes back during the pause (never what the speakers play,
-   with echo reduction), the turn ends in a later pause, the words differ,
+   with echo reduction, and never what *Hear what this PC plays* hears), the
+   turn ends in a later pause, the words differ,
    or something else goes with them (a picture, what this PC played, typed
    text): the reply is **let go**. Its Thinking stream and voice work stop,
    nothing of it was shown or said, and the next pause starts another with the
@@ -738,7 +740,10 @@ check point instead, like LiveKit's *preemptive generation*, Deepgram's
    by default: without it, replies start early only with a Thinking model on
    your own computers (this PC, a paired Martlet host, or a server on your
    home network). A paid cloud voice (OpenAI speech) is prepared early only
-   with that choice too; a voice on this PC or a paired host is free.
+   with that choice too; a voice on this PC or a paired host is free. When
+   Thinking fails, a held reply asks the Thinking fallback (Companion ›
+   Thinking › *If Thinking fails*, often a cloud model) only once it is taken,
+   as a reply that started after your turn would.
 6. Barge-in never sees a held reply as Martlet speaking (`Speaking`,
    `Held`), and listening goes on as usual. Home Assistant's Assist acts as it
    answers, so a reply that would ask it never starts early.

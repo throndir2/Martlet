@@ -4330,7 +4330,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         {
             accepted = Onset();
             operation.SpeechStartedAt = clock.GetTimestamp() - (long)((index - accepted) * 0.02 * clock.TimestampFrequency);
-            if (EarlyReply is { Early: { } other } waiting && !ReferenceEquals(other.Utterance, operation))
+            // Your voice starting a new utterance lets go of a reply started early for the one before; what this PC plays never
+            // does (lines of it that go with your words are caught when the reply is taken).
+            if (operation.Listening is { Pc: false } && EarlyReply is { Early: { } other } waiting && !ReferenceEquals(other.Utterance, operation))
                 LetGoEarly(waiting, EarlyReplyRecord.Cancelled, "you went on talking");
         }
 

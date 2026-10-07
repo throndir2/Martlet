@@ -347,14 +347,16 @@ internal sealed partial class LiveConversationController
         if (EarlyReply is { } waiting) LetGoEarly(waiting, EarlyReplyRecord.Cancelled, reason);
     }
 
-    // A turn's early replies: always listening on the microphone with Start replies early on, and Parakeet on this PC as
-    // Listening (the quick transcript a reply starts early on); null otherwise.
+    // A turn's early replies: always listening on the microphone with Start replies early on for this Thinking model (a cloud
+    // one only with Also for cloud models), and Parakeet on this PC as Listening (the quick transcript a reply starts early
+    // on); null otherwise, so nothing is transcribed early for a reply that can't start.
     private EarlyReplyGate? EarlyGateFor(LiveConversationOperation operation)
     {
         if (operation is not { Listen: true, Listening: { HandsFree: true, Pc: false } listening } || !listening.EarlyReplies.Enabled)
             return null;
         var configured = operation.Authorization.Configuration;
-        return localWords is null || !configured.LocalStt() || configured.SttHostTarget() is not null
+        return localWords is null || !configured.LocalStt() || configured.SttHostTarget() is not null ||
+            !listening.EarlyReplies.ForThinking(configured.NetworkThinking)
             ? null : new EarlyReplyGate(listening.EarlyReplies);
     }
 
