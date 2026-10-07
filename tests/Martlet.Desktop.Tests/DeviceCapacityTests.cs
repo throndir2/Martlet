@@ -40,6 +40,37 @@ public sealed class DeviceCapacityTests
     }
 
     [Fact]
+    public void A_job_that_grows_while_it_works_shows_a_range_and_a_tight_card()
+    {
+        // Thinking holds 8 GB throughout; the voice usually holds 4 GB and grows to 6 GB while it speaks.
+        var voice = new CapacityComponent("voice", "Voice (Dia)", new(6, 4, 1, 15), new(4, 3, 1, 15));
+        var bars = DeviceCapacity.Bars(Gpu24, [Thinking, voice]);
+        var vram = bars.Single(b => b.Resource == CapacityResource.GraphicsMemory);
+        Assert.Equal(12, vram.Usual);
+        Assert.Equal(14, vram.Planned);
+        Assert.False(vram.Tight);
+        Assert.Equal("Graphics memory: 12-14 of 24 GB planned (50-58%), 10 GB free.", vram.Text);
+        Assert.Equal([(33d, 33d), (25d, 17d)], vram.Shares.Select(s => (s.Percent, s.UsualPercent)));
+        Assert.Equal("Voice (Dia): 17-25% graphics memory, 5-6% memory, 6% processor, 3% disk.", DeviceCapacity.ShareText(voice, bars));
+
+        // 12 GB for Martlet: what they usually hold fits, but not what they take at their busiest.
+        var tight = DeviceCapacity.Bars(new CapacitySpecs(13, 64, 16, 500), [Thinking, voice], usable: new CapacitySpecs(12, 60, 14, 490));
+        var card = tight.Single(b => b.Resource == CapacityResource.GraphicsMemory);
+        Assert.True(card.Tight);
+        Assert.False(card.Over);
+        Assert.Equal("Graphics memory: 12-14 of 13 GB planned (92-108%), tight: at their busiest the jobs can need 2 GB more than it can give, " +
+            "and slow down or fail.", card.Text);
+        Assert.Equal("Left free: 52 GB memory, 9 processor threads, 465 GB disk space. " +
+            "Tight on graphics memory: at their busiest the jobs can need more than it has.", DeviceCapacity.HeadroomText(tight));
+
+        // On an 11 GB card even what they usually hold is too much.
+        var over = DeviceCapacity.Bars(new CapacitySpecs(11, 64, 16, 500), [Thinking, voice]).Single(b => b.Resource == CapacityResource.GraphicsMemory);
+        Assert.True(over.Over);
+        Assert.False(over.Tight);
+        Assert.Equal("Graphics memory: 12-14 of 11 GB planned (109-127%), 1-3 GB more than it can give.", over.Text);
+    }
+
+    [Fact]
     public void Also_fits_and_network_lines_read_plainly()
     {
         // Most important part first; a part one copy of is enough names what would run.

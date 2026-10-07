@@ -15,7 +15,8 @@ public partial class MainWindow
     private void AddResourcesSection(NetworkNode node)
     {
         if (node.Kind is not (NodeKind.ThisPc or NodeKind.Host) || CapacityFor(node) is not { } view) return;
-        DetailContent.Children.Add(DetailSection("Resources", "Planned from Martlet's estimates; \"in use now\" is what the device reports."));
+        DetailContent.Children.Add(DetailSection("Resources", "Planned from Martlet's estimates. A range is what the jobs usually hold, " +
+            "then the most they take while they work hardest. \"In use now\" is what the device reports."));
         var panel = new StackPanel();
         AutomationProperties.SetName(panel, "Resources");
         var specs = new TextBlock { Text = view.Specs, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 10) };
@@ -60,8 +61,9 @@ public partial class MainWindow
         DetailContent.Children.Add(card);
     }
 
-    /// <summary>A bar split into one segment per job (its share of the total), the rest free, and a thin mark at what the
-    /// device reports in use now. Over-planned bars turn the warning color.</summary>
+    /// <summary>A bar split into one segment per job (its share of the total): solid for what the job usually holds, lighter
+    /// for what it grows by while it works hardest. The rest is free, and a thin mark shows what the device reports in use now.
+    /// A bar the jobs overfill turns the warning color; on a tight bar only the growth does.</summary>
     private static FrameworkElement BarVisual(CapacityBar bar)
     {
         var track = new Grid { Height = 10, Margin = new Thickness(0, 4, 0, 10), ToolTip = bar.Text };
@@ -78,12 +80,25 @@ public partial class MainWindow
         for (var i = 0; i < shares.Count; i++)
         {
             segments.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(shares[i] * scale, 0.5), GridUnitType.Star) });
-            var segment = new Border
+            var usual = Math.Clamp(bar.Shares[i].UsualPercent, 0, shares[i]);
+            var grows = shares[i] > usual;
+            var segment = new Grid
             {
-                CornerRadius = new CornerRadius(i == 0 ? 5 : 0, 0, 0, i == 0 ? 5 : 0), Opacity = opacities[i % opacities.Length],
-                Margin = new Thickness(0, 0, 1, 0), ToolTip = $"{bar.Shares[i].Component.Name}: {bar.Shares[i].Percent:0}%"
+                Opacity = opacities[i % opacities.Length], Margin = new Thickness(0, 0, 1, 0),
+                ToolTip = $"{bar.Shares[i].Component.Name}: {(grows ? $"{usual:0}-" : "")}{shares[i]:0}%"
             };
-            segment.SetResourceReference(Border.BackgroundProperty, bar.Over ? "WarningBrush" : "AccentBrush");
+            segment.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(grows ? usual : 1, GridUnitType.Star) });
+            var held = new Border { CornerRadius = new CornerRadius(i == 0 ? 5 : 0, 0, 0, i == 0 ? 5 : 0) };
+            held.SetResourceReference(Border.BackgroundProperty, bar.Over ? "WarningBrush" : "AccentBrush");
+            segment.Children.Add(held);
+            if (grows)
+            {
+                segment.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(shares[i] - usual, GridUnitType.Star) });
+                var busy = new Border { Opacity = 0.45 };
+                busy.SetResourceReference(Border.BackgroundProperty, bar.Over || bar.Tight ? "WarningBrush" : "AccentBrush");
+                Grid.SetColumn(busy, 1);
+                segment.Children.Add(busy);
+            }
             Grid.SetColumn(segment, i);
             segments.Children.Add(segment);
         }

@@ -220,10 +220,17 @@ to bottom: the **map**, the **selected device** with what it does, and
     bar each for graphics memory, memory, processor and disk split into one
     segment per job (its share of the device, planned from Martlet's
     footprint estimates through the placement engine), with a thin mark for
-    what the device reports in use now (this PC's memory, read live). Under
+    what the device reports in use now (this PC's memory, read live). A job
+    that grows while it works has a solid part for what it usually holds and
+    a lighter part for the most it takes, and its text reads as a range
+    (*12-14 of 24 GB*). When the usual amounts fit but the most does not, the
+    bar is *tight*: its lighter parts take the warning color and the text says
+    the jobs can slow down or fail at their busiest. When even the usual
+    amounts do not fit, the whole bar takes the warning color. Under
     the bars: each job's share in words, what is left free for Martlet and
     *Room for ...* lines from the engine (*Room for another Deep thinking
-    model (Gemma 4 12B) here.*). A host that hasn't reported its hardware
+    model (Gemma 4 12B) here.*), which count only room for the most a job
+    takes. A host that hasn't reported its hardware
     lists its jobs and says so.
   - **Give it more to do**: hand the device a job it doesn't do yet (*Hand
     thinking to this computer*...), *Run host services on this PC* or *Take

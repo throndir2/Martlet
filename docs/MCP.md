@@ -3221,7 +3221,9 @@ memory · 24 processor threads*); `WizardSpecsNext` is passive. Step 3's
 and show the placement engine's suggestion: `WizardPlanSummary` (the preference
 and whether Thinking goes online), `WizardPlanItem-Thinking`, `-Voice`,
 `-Listening` and `-LipSync` (what, where, *Uses 64% graphics memory, 5% memory,
-6% processor* and why, or why it's left out), `WizardJoinSuggestion-<n>` after
+6% processor* and why, or why it's left out; a part that grows while it works
+reads *Uses 31-35% graphics memory*: what it usually holds, then the most),
+`WizardJoinSuggestion-<n>` after
 joining a network, and `WizardPlanTotals`. `WizardAccept` (*Use these
 suggestions*) needs `--allow-ui-effects`: when Thinking goes to NVIDIA Build and
 none is set up it shows the key step (`WizardKeyIntro`, `WizardKeySteps`,
@@ -3292,9 +3294,17 @@ footprint catalog). `DeviceSpecs` returns its hardware (*NVIDIA GeForce RTX
 5090 (32 GB) · 64 GB memory · 32 processor threads*), one
 `DeviceResource-<vram|ram|cpu|disk>` per resource it reported (*Graphics
 memory: 14 of 32 GB planned (44%), 15 GB free for Martlet.*; This PC's memory
-adds *In use now: 9.5 GB (59%).*, read live; hosts report no live use yet), one
-`DeviceShare-<option>` per job (*Deep thinking (Gemma 4 12B): 25% graphics
-memory, 3% memory, 6% processor.*), `DeviceHeadroom` (*Left free: ...*) and
+adds *In use now: 9.5 GB (59%).*, read live; hosts report no live use yet). A
+resource whose jobs grow while they work shows a range: what they usually hold,
+then the most they take (*Graphics memory: 11-14 of 32 GB planned (34-44%), ...*).
+When the usual amount fits but the most does not, the bar is tight (*..., tight:
+at their busiest the jobs can need 2 GB more than it can give, and slow down or
+fail.*); when even the usual amount does not fit, it is over (*..., 1-3 GB more
+than it can give.*). One
+`DeviceShare-<option>` per job (*Deep thinking (Gemma 4 12B): 16-25% graphics
+memory, 3% memory, 6% processor.*; one number when the job does not grow),
+`DeviceHeadroom` (*Left free: ...*, then *Tight on graphics memory: ...* or
+*Planned to use more ... than it has.*) and
 `DeviceAlsoFits-<n>` from `PlacementEngine.Afford` (*Room for another Deep
 thinking model (Gemma 4 12B) here.*). The **What your computers can run** card
 (`CapacityCard`) returns `CapacityCoverage` (*On your computers: Thinking

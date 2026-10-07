@@ -177,6 +177,19 @@ internal sealed record WelcomePlan(MachineSpecs Specs, HostingPreference Prefere
         return (vram, Percent(items.Sum(i => i.Use.RamGb), Specs.RamGb), Percent(items.Sum(i => i.Use.CpuThreads), Specs.CpuThreads));
     }
 
+    /// <summary>The graphics memory a component usually holds, in percent of its card; <see cref="Share"/> is the most it takes
+    /// while it works hardest.</summary>
+    internal int UsualVram(PlanComponent component)
+    {
+        if (Here is not { } here) return 0;
+        int Percent(double used, double capacity) => capacity <= 0 ? 0 : (int)Math.Round(used / capacity * 100);
+        return Primary(here).Where(i => i.Component == component && i.GpuIndex is not null)
+            .Sum(i => Percent(Math.Min(i.Usual.VramGb, i.Use.VramGb), here.Gpus[i.GpuIndex!.Value].TotalGb));
+    }
+
+    /// <summary>"31-35%" when a component grows while it works, else "35%".</summary>
+    internal static string Percents(int usual, int most) => usual < most ? $"{usual}-{most}%" : $"{most}%";
+
     /// <summary>Everything the plan puts on this PC, as shares of the whole card, memory and processor.</summary>
     internal (int Vram, int Ram, int Cpu) Total()
     {
@@ -202,7 +215,8 @@ internal sealed record WelcomePlan(MachineSpecs Specs, HostingPreference Prefere
         if (Placement.Primary(component) is not { } assignment)
             return $"{name}: not set up. " + (Placement.Dropped.FirstOrDefault(d => d.Component == component)?.Why ?? "");
         var (vram, ram, cpu) = Share(component);
-        var line = $"{name}: {assignment.Option.DisplayName}, {Where(assignment)}. Uses {vram}% graphics memory, {ram}% memory, {cpu}% processor. {assignment.Why}";
+        var line = $"{name}: {assignment.Option.DisplayName}, {Where(assignment)}. Uses {Percents(UsualVram(component), vram)} graphics memory, " +
+                   $"{ram}% memory, {cpu}% processor. {assignment.Why}";
         if (Placement.Fallback(component) is { } fallback) line += $" If it's down: {fallback.Option.DisplayName} ({Where(fallback)}).";
         return line;
     }

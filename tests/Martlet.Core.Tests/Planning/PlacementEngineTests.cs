@@ -102,6 +102,47 @@ public sealed class PlacementEngineTests
     }
 
     [Fact]
+    public void MeasureKeepsWhatEachPartUsuallyHoldsBesideTheMostItTakes()
+    {
+        var request = new PlanRequest([Pc(32, 16, Nvidia(8)), Host("cpu-box", 32, 16)])
+        {
+            Current = [new(PlanComponent.Thinking, "gemma4:e2b", "this-pc"), new(PlanComponent.Voice, "chatterbox-turbo", "this-pc"),
+                new(PlanComponent.Voice, "dia", "cpu-box")]
+        };
+        var plan = PlacementEngine.Measure(request);
+        var items = plan.Usage("this-pc")!.Items;
+
+        // Chatterbox usually holds 3.7 GB of the card and grows to 4.2 GB while it speaks; Gemma 4 E2B holds 3.3 GB throughout.
+        // Together they usually fit the 7.2 GB the engine may use, but not at their busiest.
+        var voice = items.Single(i => i.OptionId == "chatterbox-turbo");
+        Assert.Equal(3.7, voice.Usual.VramGb, 3);
+        Assert.Equal(4.2, voice.Use.VramGb, 3);
+        var thinking = items.Single(i => i.OptionId == "gemma4:e2b");
+        Assert.Equal(thinking.Use.VramGb, thinking.Usual.VramGb, 3);
+        Assert.True(items.Sum(i => i.Usual.VramGb) <= plan.Usage("this-pc")!.Gpus[0].Vram.Capacity);
+
+        // A graphics card part on a computer without one counts in its memory, both what it usually holds and the most.
+        var dia = plan.Usage("cpu-box")!.Items.Single();
+        Assert.Equal(0, dia.Usual.VramGb);
+        Assert.Equal(4.4 + 3, dia.Usual.RamGb, 3);
+        Assert.Equal(9.8 + 4, dia.Use.RamGb, 3);
+    }
+
+    [Fact]
+    public void UsualIsSteadyMemoryPlusContextAndNeverMoreThanTheReserve()
+    {
+        var deep = FootprintCatalog.Default.Find("deep-thinking:gemma4:e4b")!;
+        Assert.Equal(deep.Steady.VramGb + deep.ContextGb, deep.Usual.VramGb, 3);
+        Assert.True(deep.Usual.RamGb < deep.Reserve.RamGb);
+        var peakOnly = new ComponentOption
+        {
+            Id = "peak-only", Component = PlanComponent.Voice, DisplayName = "Peak only", Gpu = GpuRequirement.Nvidia, Peak = new(5, 2, 1, 3)
+        };
+        Assert.Equal(peakOnly.Reserve, peakOnly.Usual);
+        Assert.Equal(ResourceUse.Zero, FootprintCatalog.Default.Find("hosted:openai")!.Usual);
+    }
+
+    [Fact]
     public void MachineSpecsFromHostHardwareKeepsDedicatedCards()
     {
         var report = new HostHardware("h1", "lan", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "test", "Ubuntu", null, "cpu", 12, 32,
