@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- With **Hear what this PC plays** on, Martlet now also notices the sound that isn't words: music and its mood, game and video sounds, laughter, applause and alarms. About every 10 seconds it describes what plays in one short line for its next reply. A Thinking pool model that can hear does it, or else a small sound tagger on your PC's processor. Turn it off with **Describe PC sounds** in Companion › Listening. The sound stays in memory only and is never saved.
 - Adding Deep thinking to a computer whose only graphics card already runs a Thinking model now warns you first: both models share the card and each runs at about half speed. Martlet recommends one graphics card for each Thinking model. ([#521](https://github.com/throndir2/Martlet/pull/521))
 
 ### Changed
