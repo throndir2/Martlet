@@ -39,12 +39,13 @@ internal sealed class NativeHostPlatform : IHostPlatform
         return host;
     }
 
-    // One relay worker per installed host role; each kind maps to exactly one gateway route.
+    // One relay worker per installed host role; each kind maps to exactly one gateway route, placed on the role's graphics
+    // cards (host.json "gpus"; Reading always runs on the processor; unknown counts as the whole host).
     internal static IGatewayInferenceWorker RoleWorker(HostRole role)
     {
         try
         {
-            return role.Kind switch
+            IGatewayInferenceWorker worker = role.Kind switch
             {
                 "audio2face" => new Martlet.Gateway.Audio2Face.Audio2FaceRelayWorker(role.Endpoint, role.Model, "nim"),
                 "ollama" => new Martlet.Gateway.Ollama.OllamaRelayWorker(role.Endpoint, role.Model),
@@ -60,6 +61,10 @@ internal sealed class NativeHostPlatform : IHostPlatform
                 "ocr" => new Martlet.Gateway.Ocr.OcrRelayWorker(role.Endpoint, role.Model),
                 _ => throw new HostInputException()
             };
+            IReadOnlyList<string> gpus = role.Gpus ??
+                (Martlet.Core.Installation.SharedGpu.ProcessorOnlyRoles.Contains(role.Kind) ? [GatewayGpus.Cpu] : []);
+            if (gpus.Count > 0) worker.Route.PlaceOn(gpus);
+            return worker;
         }
         catch (Exception error) when (error is Martlet.Core.Contracts.ContractException or ArgumentException or GatewayProtocolException)
         {

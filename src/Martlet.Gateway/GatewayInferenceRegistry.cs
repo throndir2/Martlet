@@ -1,6 +1,6 @@
 namespace Martlet.Gateway;
 
-public sealed class GatewayInferenceRouteRegistry
+public sealed partial class GatewayInferenceRouteRegistry
 {
     private readonly object gate = new();
     private readonly Dictionary<string, RouteRegistration> byPath =
@@ -63,6 +63,7 @@ public sealed class GatewayInferenceRouteRegistry
                     new(worker, route, Admission(route))) &&
                 byId.TryAdd(route.RouteId, byPath[route.Path]),
                 "worker.invalid");
+            route.Freeze();
         }
     }
 
@@ -111,6 +112,10 @@ public sealed class GatewayInferenceRouteRegistry
         GatewayRules.Require(principal.Role == request.Route.RequiredRole,
             "auth.role");
 
+        GatewayInferenceJob? job = null;
+        string? refused;
+        List<GatewayInferenceJob> preempted = [];
+        var by = $"a {GatewayGpus.RouteName(registration.Route)} request from {principal.Caller}";
         lock (gate)
         {
             GatewayRules.Require(!closed, "worker.unavailable");
@@ -120,26 +125,41 @@ public sealed class GatewayInferenceRouteRegistry
                 admittedRequests.Remove(expired);
             if (registration.Admission.Quarantined)
                 throw new GatewayProtocolException("worker.quarantined");
-            if (registration.Admission.Active >= registration.Route.MaximumConcurrency ||
-                activeJobs.ContainsKey(request.RequestId))
-                throw new GatewayProtocolException("job.busy");
-            GatewayRules.Require(!admittedRequests.ContainsKey(request.RequestId), "job.replay");
-            GatewayRules.Require(admittedRequests.Count < 1024, "job.busy");
-            GatewayRules.Require(ReferenceEquals(registration.Worker.Route, registration.Route),
-                "worker.identity");
-            admittedRequests.Add(request.RequestId, request.DeadlineUtc);
-            registration.Admission.Active++;
-            if (activeJobs.Count == 0)
-                idle = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            var job = new GatewayInferenceJob(
-                this,
-                registration,
-                principal,
-                request,
-                clock);
-            activeJobs.Add(request.RequestId, job);
-            return job;
+            // Live turn first: a pool request is turned away while a live request or a hold keeps one of its graphics cards.
+            refused = registration.Route.Lane == GatewayLane.Pool
+                ? RefuseLocked(registration.Route, principal, now) : null;
+            if (refused is null)
+            {
+                if (registration.Admission.Active >= registration.Route.MaximumConcurrency ||
+                    activeJobs.ContainsKey(request.RequestId))
+                    throw new GatewayProtocolException("job.busy");
+                GatewayRules.Require(!admittedRequests.ContainsKey(request.RequestId), "job.replay");
+                GatewayRules.Require(admittedRequests.Count < 1024, "job.busy");
+                GatewayRules.Require(ReferenceEquals(registration.Worker.Route, registration.Route),
+                    "worker.identity");
+                admittedRequests.Add(request.RequestId, request.DeadlineUtc);
+                registration.Admission.Active++;
+                if (activeJobs.Count == 0)
+                    idle = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                job = new GatewayInferenceJob(
+                    this,
+                    registration,
+                    principal,
+                    request,
+                    clock);
+                activeJobs.Add(request.RequestId, job);
+                // A live request holds its graphics cards: pool work running on them stops at once.
+                if (registration.Route.Lane == GatewayLane.Live)
+                    preempted = PreemptLocked(registration.Route.Gpus, by, now);
+            }
         }
+        if (refused is not null)
+        {
+            Report(refused, "priority.refused");
+            throw new GatewayProtocolException("job.busy", PriorityDetail);
+        }
+        Stop(preempted, by);
+        return job!;
     }
 
     internal async ValueTask<GatewayInferenceCancellationReceipt> CancelAsync(
@@ -252,6 +272,7 @@ public sealed class GatewayInferenceRouteRegistry
         private Task? cancellationCallbacks;
         private Task<bool>? cleanup;
         private int released;
+        private volatile bool preempted;
         private readonly CancellationTokenSource monitorStop = new();
         private readonly Task authorityMonitor;
         internal Task? PendingOperation { get; set; }
@@ -277,6 +298,12 @@ public sealed class GatewayInferenceRouteRegistry
         internal CancellationToken CancellationToken => cancellation.Token;
         internal bool IsCancellationRequested => cancellation.IsCancellationRequested;
         internal CancellationToken PermissionRevoked => permission?.Revoked ?? CancellationToken.None;
+        /// <summary>Set before a live turn cancels this pool job for its graphics card: the job then ends with job.preempted,
+        /// not job.canceled.</summary>
+        internal bool Preempted => preempted;
+        internal void MarkPreempted() => preempted = true;
+        /// <summary>How the job ends when it was canceled: job.preempted for a pool job a live turn stopped, else job.canceled.</summary>
+        internal string CanceledCode => preempted ? "job.preempted" : "job.canceled";
 
         private async Task MonitorAuthorityAsync()
         {

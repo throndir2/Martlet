@@ -55,6 +55,13 @@ if (args is ["deep-thinking"])
     Console.WriteLine(JsonSerializer.Serialize(deepReport));
     return deepOk ? 0 : 1;
 }
+// With "gpu-priority" it rehearses live turn first on one graphics card (GpuPriorityRehearsal) and prints its report.
+if (args is ["gpu-priority"])
+{
+    var (gpuOk, gpuReport) = await Martlet.NodeLinkCheck.GpuPriorityRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(gpuReport));
+    return gpuOk ? 0 : 1;
+}
 // With "voices" it rehearses the shared speaking voices and their recordings (VoiceRehearsal) and prints its report.
 if (args is ["voices"])
 {

@@ -1002,6 +1002,8 @@ internal static class GatewayClientJson
         public required string Code { get; init; }
         public required string Summary { get; init; }
         public required string Remedy { get; init; }
+        /// <summary>Optional, from hosts with GPU priority ("live" on a pool-lane job.busy).</summary>
+        public string? Detail { get; init; }
         public required Guid TraceId { get; init; }
     }
 }

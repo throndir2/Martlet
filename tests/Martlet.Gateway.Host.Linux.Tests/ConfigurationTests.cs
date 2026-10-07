@@ -116,6 +116,16 @@ public sealed class ConfigurationTests
         Assert.Equal("mark", Assert.Single(config.Roles).Model);
         Assert.Empty(HostConfiguration.Parse(Encoding.UTF8.GetBytes(rendered.Replace(
             "{\"kind\":\"audio2face\",\"endpoint\":\"http://127.0.0.1:52000/\",\"model\":\"mark\"}", "", StringComparison.Ordinal))).Roles);
+        // Roles pinned to a card or added to run on the processor name where they run (render_config, checked in a local harness).
+        var placed = HostConfiguration.Parse(Encoding.UTF8.GetBytes(rendered.Replace(
+            "{\"kind\":\"audio2face\",\"endpoint\":\"http://127.0.0.1:52000/\",\"model\":\"mark\"}",
+            "{\"kind\":\"deep-thinking\",\"endpoint\":\"http://127.0.0.1:11435/\",\"model\":\"qwen3:8b\",\"slots\":2,\"gpus\":[\"GPU-aaaa-1111\"]}," +
+            "{\"kind\":\"f5\",\"endpoint\":\"http://127.0.0.1:50051/\",\"model\":\"f5-tts-v1\"}," +
+            "{\"kind\":\"ollama\",\"endpoint\":\"http://127.0.0.1:11434/\",\"model\":\"gemma4:e4b\",\"gpus\":[\"GPU-aaaa-1111\"]}," +
+            "{\"kind\":\"stt\",\"endpoint\":\"http://127.0.0.1:8178/\",\"model\":\"large-v3-turbo\",\"gpus\":[\"cpu\"]}",
+            StringComparison.Ordinal))).Roles;
+        Assert.Equal(new string[]?[] { ["GPU-aaaa-1111"], null, ["GPU-aaaa-1111"], ["cpu"] }, placed.Select(r => r.Gpus?.ToArray()));
+        Assert.Equal(2, placed[0].Slots);
     }
 
     [Fact]
@@ -164,6 +174,34 @@ public sealed class ConfigurationTests
             "{\"kind\":\"audio2face\",\"endpoint\":\"http://127.0.0.1:52001/\",\"model\":\"b\"}]")));
         Assert.Throws<HostInputException>(() => HostConfiguration.Parse(
             RoleConfig("[{\"kind\":\"audio2face\",\"endpoint\":\"http://127.0.0.1:52000/\",\"model\":\"a\",\"extra\":1}]")));
+    }
+
+    [Fact]
+    public void A_role_may_say_which_graphics_cards_it_runs_on_and_its_route_advertises_them()
+    {
+        const string card = "GPU-1a2b3c4d-0000-1111-2222-333344445555";
+        static IReadOnlyList<HostRole> Roles(string roles) => HostConfiguration.Parse(RoleConfig(roles)).Roles;
+        // The shape martlet-host renders: a pinned card's UUID, or "cpu" for a role added to run on the processor.
+        var roles = Roles(
+            "[{\"kind\":\"ollama\",\"endpoint\":\"http://127.0.0.1:11434/\",\"model\":\"gemma4:e4b\",\"gpus\":[\"" + card + "\"]}," +
+            "{\"kind\":\"deep-thinking\",\"endpoint\":\"http://127.0.0.1:11435/\",\"model\":\"qwen3:8b\",\"slots\":2,\"gpus\":[\"1\"]}," +
+            "{\"kind\":\"stt\",\"endpoint\":\"http://127.0.0.1:8178/\",\"model\":\"large-v3-turbo\",\"gpus\":[\"cpu\"]}," +
+            "{\"kind\":\"ocr\",\"endpoint\":\"http://127.0.0.1:50087/\",\"model\":\"rapidocr-ppocrv4\"}," +
+            "{\"kind\":\"pictures\",\"endpoint\":\"http://127.0.0.1:50086/\",\"model\":\"z-image-turbo\"}]");
+        Assert.Equal([card], roles[0].Gpus);
+        Assert.Null(roles[3].Gpus);
+        var routes = roles.Select(r => NativeHostPlatform.RoleWorker(r).Route).ToArray();
+        Assert.Equal([card], routes[0].Gpus);
+        Assert.Equal(Martlet.Gateway.GatewayLane.Live, routes[0].Lane);
+        Assert.Equal(["1"], routes[1].Gpus);
+        Assert.Equal((Martlet.Gateway.GatewayLane.Pool, 2), (routes[1].Lane, routes[1].MaximumConcurrency));
+        Assert.Equal(["cpu"], routes[2].Gpus);
+        // Reading never uses the graphics card; a role that doesn't say where it runs counts as the whole host.
+        Assert.Equal(["cpu"], routes[3].Gpus);
+        Assert.Empty(routes[4].Gpus);
+        foreach (var bad in new[] { "[]", "\"" + card + "\"", "[\"cpu\",\"0\"]", "[\"gpu0\"]", "[1]", "[\"0\",\"0\"]", "null" })
+            Assert.Throws<HostInputException>(() => Roles(
+                "[{\"kind\":\"ollama\",\"endpoint\":\"http://127.0.0.1:11434/\",\"model\":\"gemma4:e4b\",\"gpus\":" + bad + "}]"));
     }
 
     [Fact]

@@ -10,8 +10,10 @@ internal sealed class HostTerminalException : Exception;
 internal sealed class HostEofException : Exception;
 
 /// <summary>A host role service the gateway relays to: a loopback service on this machine, installed by martlet-host.
-/// <paramref name="Slots"/> is how many requests it runs at once (only a deep-thinking role runs more than one).</summary>
-internal sealed record HostRole(string Kind, Uri Endpoint, string Model, int Slots = 1);
+/// <paramref name="Slots"/> is how many requests it runs at once (only a deep-thinking role runs more than one).
+/// <paramref name="Gpus"/> is where it runs, from the role's card (CUDA_VISIBLE_DEVICES) or "cpu"; null when host.json doesn't
+/// say, which counts as the whole host.</summary>
+internal sealed record HostRole(string Kind, Uri Endpoint, string Model, int Slots = 1, IReadOnlyList<string>? Gpus = null);
 
 internal sealed record HostConfiguration(string HostId, string StateDirectory,
     GatewayHostBinding Binding, uint ServiceUid, uint ServiceGid, string Digest,
@@ -64,21 +66,34 @@ internal sealed record HostConfiguration(string HostId, string StateDirectory,
             foreach (var item in list.EnumerateArray())
             {
                 // A deep-thinking role may say how many thinks its Ollama runs at once (OLLAMA_NUM_PARALLEL); one otherwise.
+                // Any role may say which graphics cards it runs on ("gpus": a card's UUID, or ["cpu"]); unknown otherwise.
                 var hasSlots = item.ValueKind == JsonValueKind.Object && item.TryGetProperty("slots", out _);
-                if (hasSlots) StrictJson.Properties(item, "kind", "endpoint", "model", "slots");
-                else StrictJson.Properties(item, "kind", "endpoint", "model");
+                var hasGpus = item.ValueKind == JsonValueKind.Object && item.TryGetProperty("gpus", out _);
+                StrictJson.Properties(item, ["kind", "endpoint", "model", .. hasSlots ? new[] { "slots" } : [],
+                    .. hasGpus ? new[] { "gpus" } : []]);
                 var kind = StrictJson.Text(item, "kind");
                 var model = StrictJson.Text(item, "model");
                 var slots = hasSlots ? StrictJson.Number(item, "slots") : 1;
+                var gpus = hasGpus ? Devices(item.GetProperty("gpus")) : null;
                 if (!RoleKinds.Contains(kind) || roles.Any(role => role.Kind == kind) || !ModelToken(model) ||
                     !Uri.TryCreate(StrictJson.Text(item, "endpoint"), UriKind.Absolute, out var endpoint) ||
                     !LoopbackRoot(endpoint) || slots < 1 || slots > Martlet.Core.Settings.SelfHostSetup.DeepThinkingMaximumSlots ||
                     hasSlots && kind != "deep-thinking")
                     throw new HostInputException();
-                roles.Add(new(kind, endpoint, model, (int)slots));
+                roles.Add(new(kind, endpoint, model, (int)slots, gpus));
             }
         }
         return new(id, state, selected, uid, gid, Convert.ToHexStringLower(SHA256.HashData(bytes)), roles);
+    }
+
+    // A role's "gpus": one to eight distinct device IDs (a GPU or MIG UUID, a CUDA index, or "cpu" alone).
+    private static string[] Devices(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Array || value.GetArrayLength() is < 1 or > 8) throw new HostInputException();
+        var devices = value.EnumerateArray()
+            .Select(device => device.ValueKind == JsonValueKind.String ? device.GetString()! : throw new HostInputException()).ToArray();
+        try { return GatewayGpus.Validate(devices); }
+        catch (GatewayProtocolException) { throw new HostInputException(); }
     }
 
     // Role services listen only on this host's numeric loopback; the gateway is the single LAN entry point.
