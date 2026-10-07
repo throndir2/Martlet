@@ -58,28 +58,36 @@ volume, `martlet-chatterbox-nano-models`.
   the CPU (it is for graphics memory).
 - **Threads on the CPU** (image `martlet-chatterbox:9`). The service uses at
   most 8 threads, and never more than the CPU's performance cores
-  (`MARTLET_CHATTERBOX_CPU_THREADS` sets another count). On Linux, a hybrid
-  Intel CPU (one with performance and efficiency cores) lists its performance
-  cores in `/sys/devices/cpu_core/cpus`; the service then pins itself to one
-  logical CPU on each of them. Elsewhere it doesn't pin. PyTorch's own choice
-  is every physical core, efficiency cores too, and that was clearly slower.
+  (`MARTLET_CHATTERBOX_CPU_THREADS` sets another count). On native Linux, a
+  hybrid Intel CPU (one with performance and efficiency cores) lists its
+  performance cores in `/sys/devices/cpu_core/cpus`; the service then pins
+  itself to one logical CPU on each of them. Everywhere else it doesn't pin.
+  Docker Desktop on Windows never pins: its WSL 2 kernel has no
+  `/sys/devices/cpu_core` (checked: 6.18.40.1-microsoft-standard-WSL2 on an
+  i7-13700K, whose virtual machine sees 24 CPUs). So a Windows PC that runs the
+  role gets the "8 on any core" row below, not the pinned row. PyTorch's own
+  choice is every physical core, efficiency cores too, and that was clearly
+  slower.
 - **Decoder steps on the CPU** (image `martlet-chatterbox:9`). A whole piece
   takes 1 step of the meanflow decoder instead of the library's 2
   (`MARTLET_CHATTERBOX_CPU_DECODER_STEPS`); a GPU keeps 2. `/status` reports
   `cpu` (`threads`, `pinned_cpus`) and `decoder_steps`, and so does
   `voice_engine_check` ([MCP](MCP.md)).
-- **Measured** by a separate benchmark on this repository's development PC: an
-  i7-13700K (8 performance and 8 efficiency cores), DDR5-6000, PyTorch 2.8.0 on
-  the CPU, two voices, whole pieces of 3.3-4.3 s of speech, each take repeated
-  when other programs kept more than 6 cores busy. Medians, with the slowest
-  take in brackets. Resemble says Nano runs "3x faster than realtime on 8 CPU
-  cores".
+- **Measured** by a separate benchmark on this repository's development PC, in
+  native Windows Python (PyTorch 2.8.0's CPU wheel; the pinned rows used
+  Windows thread affinity), not in the `martlet-chatterbox:9` container: an
+  i7-13700K (8 performance and 8 efficiency cores), DDR5-6000, two voices,
+  whole pieces of 3.3-4.3 s of speech, each take repeated when other programs
+  kept more than 6 cores busy. Medians, with the slowest take in brackets.
+  Resemble says Nano runs "3x faster than realtime on 8 CPU cores". The
+  service's own CPU numbers, in its container on Docker Desktop or on Linux,
+  are **NOT RUN**.
 
   | Threads | First audio | Real-time factor | A speech token |
   | --- | --- | --- | --- |
-  | 8, one on each performance core (the service on Linux) | 2.39 s | 0.52 (0.62) | 12.2 ms |
+  | 8, one on each performance core (the service on native Linux) | 2.39 s | 0.52 (0.62) | 12.2 ms |
   | 4, one on each of 4 performance cores | 2.54 s | 0.61 (0.70) | 12.5 ms |
-  | 8 on any core (the service where performance cores aren't known) | 2.86 s | 0.64 (0.88) | 14 ms |
+  | 8 on any core (the service on Docker Desktop, and wherever performance cores aren't known) | 2.86 s | 0.64 (0.88) | 14 ms |
   | 4 on any core | 3.39 s | 0.73 (1.03) | |
   | 16 on any core (PyTorch's own choice) | 4.10 s | 0.75 (1.23), 6 of 16 slower than real time | 18-21 ms |
   | 8 on the efficiency cores (like an older CPU) | 4.49 s | 1.05, 12 of 16 slower than real time | |

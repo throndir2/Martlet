@@ -143,10 +143,13 @@ holds its own copy.
 - **Chatterbox Original and Nano:** their graphics-card numbers are estimates
   from their pinned weights (3.2 GB and 1.9 GB) plus Turbo's measured overhead;
   no NVIDIA GPU was available to measure them. Nano on the processor was
-  measured on an i7-13700K: whole pieces at 0.52x real time (median) with 8
-  threads, one on each performance core, 0.64x with 8 threads on any core,
-  0.75x with PyTorch's own 16 threads, and 1.05x when other programs kept about
-  15 cores busy; the service holds 2.4-2.6 GB and at most 4.5 GB
+  measured on an i7-13700K in native Windows Python, not in the role's
+  container (the service's own CPU numbers there are not measured yet): whole
+  pieces at 0.52x real time (median) with 8 threads, one on each performance
+  core (what the service does on native Linux), 0.64x with 8 threads on any
+  core (what it does on Docker Desktop, which can't pin), 0.75x with PyTorch's
+  own 16 threads, and 1.05x when other programs kept about 15 cores busy; it
+  held 2.4-2.6 GB and at most 4.5 GB
   ([Chatterbox Nano](CHATTERBOX_VOICE.md#chatterbox-nano)). The planner never
   picks it over the Windows voices (same quality tier, listed after them).
 - **Chatterbox Turbo, Dia, F5:** voicebench on DIVA's RTX 4070, each alone on

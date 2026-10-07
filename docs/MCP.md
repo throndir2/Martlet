@@ -1743,7 +1743,7 @@ its torch, torchaudio and CUDA versions, `decoderSteps` (the decoder steps a
 whole piece takes on Chatterbox Turbo or Nano: 1 on the CPU, 2 on a GPU), `cpu`
 on the CPU (`threads`, PyTorch's threads, at most 8 and never more than the
 performance cores, and `pinned_cpus`, the CPUs of the performance cores it is
-pinned to on Linux, empty when not pinned; null on a GPU)
+pinned to on native Linux, empty when not pinned, as always on Docker Desktop; null on a GPU)
 and `idleCheck` (`checks`, `every_seconds`, `fastest_ms`, `last_ms` of its
 [idle check](CHATTERBOX_VOICE.md#how-it-runs)), `whisper` (`level_db` and
 the `parts` it has [whispered](CHATTERBOX_VOICE.md#tags)) and, for Chatterbox
