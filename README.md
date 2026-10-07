@@ -50,13 +50,12 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.50.1
+## 🆕 What's new in 0.51.0
 
-- 🐧 **Martlet on Linux and Mac**: a new desktop companion with the character on screen, push-to-talk and spoken replies. Linux and macOS downloads are now in the release.
-- 💻 **More computers can help**: Windows on Arm PCs run Martlet, and Macs, Raspberry Pis and other ARM64 machines can host thinking and listening.
-- 🧭 **A new welcome wizard**: start or join your Martlet network and get a setup suggestion that shows what each part uses.
-- 📊 **See what fits**: Devices shows each computer's graphics memory, memory, processor and disk use, and what else would fit.
-- ✨ **Google Gemini for Thinking**: a free Gemini model that can hear you, and a good backup for NVIDIA Build.
+- 🐳 **Hosts start by themselves**: when Martlet starts on a host PC, it starts Docker Desktop if needed and loads every role's model, so your other computers aren't left waiting.
+- 🏠 **Companion PC + host**: a companion PC that also runs a host service checks it on Home and, when it stops working, says which jobs stop and offers the fix.
+- ⚡ **Faster setup**: adding a role, opening Windows Firewall and updating your hosts now happen side by side.
+- 📊 **Host hardware is back**: Devices shows the graphics card, memory and processor of hosts running in Docker Desktop again.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
