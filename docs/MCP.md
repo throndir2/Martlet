@@ -3729,7 +3729,8 @@ couldn't, such as *Thinking isn't set up yet*); `CharacterActionsOffered` the
 tags replies get with the voice chosen now and which follow the voice's cues;
 `CharacterActionsLast` the last one played (*Played the expression "脸红" for
 {blush} at 3:14:05 PM.*, *... for a try ...*, or *The character couldn't play
-...*), also in `logs_tail` `desktop` as *Character expression '脸红' played for
+...*; for a gesture followed by what the renderer now plays and holds, *Gestures
+now: wink playing, shy held.*), also in `logs_tail` `desktop` as *Character expression '脸红' played for
 {blush}.*; and `CharacterActionsSaveState` *All changes saved.* or *Not saved:
 <why>*. Row `<n>` (as in `character_actions`) has `CharacterActionName-<n>`
 (its name and kind; a status field), `CharacterActionOn-<n>` (check box),

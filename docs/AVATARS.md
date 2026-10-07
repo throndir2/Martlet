@@ -184,6 +184,32 @@ what each one is.
   instructions stay as short as before; clear one's cue to offer it as a tag
   instead. The model's own emote with the same tag (a VRM's `happy` or `angry`
   preset) replaces it.
+- **Touch and mood gestures**: after the others come gestures for reacting to
+  a touch or showing a mood, offered to replies as tags like the global
+  gestures. They layer on idle, blinking, lip-sync and the look, and use the
+  VRM's preset expressions (`blinkLeft`, `relaxed`, `happy`, `surprised`,
+  `angry`, `blink`) when it has them:
+
+  | Gesture (tag) | What it does | Live2D needs | VRM needs |
+  | --- | --- | --- | --- |
+  | `wink` | one eye closes with a little smile and head tilt | `ParamEyeLOpen` | `head` (`blinkLeft`) |
+  | `pout` | the mouth turns down, the cheeks puff (`ParamCheekPuff`), the head turns aside | `ParamMouthForm` | `head` (`angry`, lightly) |
+  | `shy` | looks down and away with a half smile, peeking back | `ParamAngleX`, `ParamAngleY` | `head`, `spine` (`relaxed`) |
+  | `giggle` | quick little bounces with smiling eyes | `ParamAngleY` | `head`, `spine` (`happy`) |
+  | `flinch` | jerks back startled within 80 ms, then settles | `ParamAngleY` | `head`, `spine` (`surprised`) |
+  | `lean_in` | leans in with the head tilted and the eyes softly closing (a head pat) | `ParamAngleZ` | `head`, `spine` (`relaxed`) |
+  | `look_away` | turns the head and eyes aside, glancing back | `ParamAngleX` | `head` |
+  | `think` | looks up and to the side | `ParamAngleY` | `head` |
+  | `eye_roll` | the eyes roll up and over | `ParamEyeBallX`, `ParamEyeBallY` | `head` |
+  | `drowsy` | half-closed eyes, the head slowly nodding off and catching itself | `ParamEyeLOpen`, `ParamEyeROpen` | `head`, `spine` (`blink`) |
+
+  `pout`, `shy`, `look_away` and `drowsy` can be **held**: a renderer `action`
+  with `hold: true` eases into the pose and keeps it, gently alive, until an
+  `on: false` action for the same gesture eases it out (`Holdable` in
+  `AllGestures`). Without `hold` they play once. A gesture played while one is
+  held plays on top, the held pose easing back partway and resuming after; a
+  new held gesture crossfades from the last. The renderer's reply to a gesture
+  says which plays once and which is held (`gesture: {playing, held}`).
 - **Where it looks**: the head and eyes follow the mouse, or with Companion ›
   Vision › **Where the character looks** set to *Martlet decides*, glance at
   something that just changed on the watched screen or at the part of it a
