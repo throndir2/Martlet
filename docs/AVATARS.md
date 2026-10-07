@@ -89,7 +89,12 @@ what each one is.
   else is numbered (`emote_3`, `motion_2`).
 - **Settings**: Companion › Character › **Emotes and motions** lists each one
   with a check box, its tag, its voice cue and when to use it, a **Try** button
-  (while the character shows) and what it changes. Edits save as you type, per
+  (while the character shows) and what it changes. *When to use* is the hint the
+  reply prompt puts next to the tag (`{sweat} - a sweat drop, for nervousness or
+  an awkward moment`), so the Thinking model knows what each tag shows and when
+  it fits. The naming fills it in for the model's own emotes. While it is
+  empty, replies get Martlet's own hint (a gesture's built-in hint, or *the
+  character's emote named "..."*), which the box shows in grey. Edits save as you type, per
   model (by its ID, the same ID as the shared character list), in
   `character-actions.json`, which is the same on all your computers (the
   `character-actions` [shared setting](CLUSTER.md#one-martlet-on-every-computer)):
@@ -103,10 +108,16 @@ what each one is.
 - **Replies**: while the character shows, replies are offered every emote and
   motion that is on and that the speaking voice doesn't already set off through
   a cue (Companion › Prompts › *Character emotes and motions*), written as
-  `{tag}`. The tags are removed from the chat, captions and the voice, and the
+  `{tag}`. The prompt asks the reply model to use them freely (usually one or
+  two in a reply) and to vary them, because each one is worth showing. This
+  part of the prompt is not longer than before.
+  The tags are removed from the chat, captions and the voice, and the
   character acts each one where it was written: timed within its sentence as
   it plays, after the last sentence for a tag at the end, or at once for a reply
-  that isn't spoken. A tag written another way counts too (`[nod]`, `(nod)`,
+  that isn't spoken. When the reply pauses because you talk over it, the tags
+  still to come wait, so each keeps its place in the speech. When the reply is
+  stopped, the character doesn't act the tags it hasn't reached. A tag written
+  another way counts too (`[nod]`, `(nod)`,
   `*nods*` or `[shakes head]`; see
   [other spellings](CONVERSATION.md#voice-tags)), and the talk window notes
   under the reply what it set off (*Emotes: nod, blush.*, with any tone or
@@ -178,12 +189,23 @@ what each one is.
 - **Drawings over the character**: the renderer page draws Martlet's own
   effects (the blush glow, and others built on it) on a second canvas laid
   exactly over the model, following zoom, pan and the display's scale, so they
-  also show in pictures of the character. They are placed around where the face
-  is: a VRM's head and eye bones (nothing is drawn while it faces away); for
-  Live2D, which has no face landmarks, an authored head or face hit area, meshes
-  whose IDs name the face or cheeks, or else an estimate from the shape of the
-  top of the model, moved with `ParamAngleX`/`Y`/`Z`. The Live2D adapter's
-  `setFaceHint` lets a face found by vision refine the estimate.
+  also show in pictures of the character. They are placed around the face as
+  the model draws it in each frame, so they follow everything that moves the
+  head: idle motions, body sway, breathing, the mouse, a look at a point and
+  gestures. A VRM's face follows its posed head and eye bones (nothing is drawn
+  while it faces away). Live2D models have no face landmarks, so the face is
+  first found at rest (an authored head or face hit area, meshes whose IDs name
+  the face or cheeks, or else an estimate from the shape of the top of the
+  model). Then it is pinned to the face's own mesh vertices: when the model
+  loads, Martlet moves the head angles (`ParamAngleX`/`Y`/`Z`) to find the
+  vertices that turn with the head, and moves the other parameters to drop the
+  ones that change shape on their own (hair physics, eyelids, eyes, mouth,
+  brows). A model without those angles, or without enough such vertices, uses
+  the earlier estimate moved with `ParamAngleX`/`Y`/`Z`. Each blush lies on its
+  cheek's surface, so a turned head shows the near cheek's blush wider and the
+  far one narrower, fading out as that cheek turns away. The Live2D adapter's
+  `setFaceHint` lets a face found by vision refine the estimate, pinned the
+  same way. Martlet's MCP `character_face` reads where they are drawn.
 - **Voice emotes**: every sound and tone a voice engine makes has a global emote
   of its own, linked to that voice cue from the start, so any character reacts
   when the voice laughs, sighs or turns angry, even before it is named. The

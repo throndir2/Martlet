@@ -679,6 +679,141 @@ class FastTurboTests(unittest.TestCase):
         self.assertEqual(tokens.shape[1], 8)
         self.assertFalse(graph.capped)
 
+    @unittest.skipUnless(_have("torch"), "needs PyTorch")
+    def test_without_a_graph_the_library_decodes_within_the_budget(self):
+        import torch
+
+        calls = []
+
+        class T3:
+            def inference_turbo(self, t3_cond, text_tokens, **kwargs):
+                calls.append(kwargs["max_gen_len"])
+                return "tokens"
+
+        class Model:
+            t3, device = T3(), "cpu"
+
+        fast = self.host.FastTurbo(Model(), graph=True, name="Chatterbox Nano")
+        # On the CPU there is no CUDA graph, but decoding still goes through the service, so a piece that never stops ends.
+        self.assertIsNone(fast.graph)
+        self.assertEqual(fast.model.t3.inference_turbo(None, torch.zeros(1, 4, dtype=torch.long)), "tokens")
+        self.assertEqual(calls, [self.host.SPEECH_TOKENS_BASE + 4 * self.host.SPEECH_TOKENS_PER_TEXT_TOKEN])
+        fast.close()
+        self.assertNotIn("inference_turbo", vars(fast.model.t3))
+
+
+class ModelTests(unittest.TestCase):
+    """Turbo, Nano and the original model: what each role provisions and reports, and the original model's style
+    (FIXTURE - NOT AI: no model is loaded)."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(ROOT))
+        import martlet_chatterbox_host as host
+        cls.host = host
+
+    def provision(self, model):
+        with tempfile.TemporaryDirectory(prefix="chatterbox-model-", dir=os.getcwd()) as root:
+            env = os.environ.copy()
+            env.update(MARTLET_CHATTERBOX_ROOT=root, CHATTERBOX_MODEL=model, MARTLET_CHATTERBOX_FIXTURE_REAL_IDENTITY="1")
+            done = subprocess.run([sys.executable, str(HOST), "provision", "--fixture"], env=env, cwd=ROOT.parents[1],
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            config = json.loads((Path(root) / "models" / "worker-config.json").read_text(encoding="utf-8")) if done.returncode == 0 else None
+            return done, config
+
+    def test_each_model_reports_its_own_pinned_weights(self):
+        pinned = self.host.PINNED_MODELS
+        self.assertEqual(sorted(pinned), ["chatterbox-nano", "chatterbox-original", "chatterbox-turbo"])
+        for key, model in pinned.items():
+            weights = next(a for a in self.host._identity("chatterbox", pinned=model)["artifacts"] if a["role"] == "model_weights")
+            # The relay accepts a worker only when this names the route's model, revision and SHA-256.
+            self.assertEqual(weights["artifact_id"], key)
+            self.assertEqual(weights["revision"], model.revision)
+            self.assertEqual(len(weights["sha256"]), 64)
+        nano, turbo = pinned["chatterbox-nano"].files, pinned["chatterbox-turbo"].files
+        # Nano's decoder, voice encoder and tokenizer are Turbo's files; only T3 differs.
+        self.assertEqual({r: f[:3] for r, f in nano.items() if r != "model_weights"}, {r: f[:3] for r, f in turbo.items() if r != "model_weights"})
+        self.assertEqual(nano["model_weights"][0], "t3_nano_v1.safetensors")
+        self.assertEqual(pinned["chatterbox-original"].files["model_weights"][0], "t3_cfg.safetensors")
+        self.assertEqual(pinned["chatterbox-original"].family, "original")
+        self.assertEqual(pinned["chatterbox-original"].base_url,
+                         "https://huggingface.co/ResembleAI/chatterbox/resolve/5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18/")
+
+    def test_provisioning_writes_the_chosen_model_and_refuses_others(self):
+        for key in ("chatterbox-nano", "chatterbox-original"):
+            done, config = self.provision(key)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertEqual(config["model"], key)
+            self.assertEqual(set(config["files"]), set(self.host.PINNED_MODELS[key].files))
+        done, _ = self.provision("chatterbox-multilingual")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("not a model this service installs", done.stderr)
+
+    @unittest.skipUnless(_have("torch"), "needs PyTorch")
+    def test_auto_uses_the_gpu_only_when_there_is_one(self):
+        import torch
+
+        self.assertEqual(self.host._device("auto"), "cuda:0" if torch.cuda.is_available() else "cpu")
+        self.assertEqual(self.host._device("cuda:1"), "cuda:1")
+
+    def test_each_sentence_gets_its_style_and_the_original_model_never_reads_the_tags(self):
+        parts = self.host._original_parts
+        self.assertEqual(parts("Okay. [expressive] That's amazing! Calm again."),
+                         [("Okay.", False, False), ("That's amazing!", True, False), ("Calm again.", False, False)])
+        self.assertEqual(parts("[Whispering] It's a secret. [expressive] [whispering] Wow, really?"),
+                         [("It's a secret.", False, True), ("Wow, really?", True, True)])
+        # Neighbouring sentences in one style stay one part; a tag with nothing after it styles nothing.
+        self.assertEqual(parts("[expressive] Yes! [expressive] Yes! [expressive]"), [("Yes! Yes!", True, False)])
+        self.assertEqual(parts("Well, [expressive] look at that. Hm."), [("Well,", False, False), ("look at that.", True, False),
+                                                                           ("Hm.", False, False)])
+
+    def test_style_defaults_to_resembles_tips_and_must_stay_in_range(self):
+        host = self.host
+        self.assertEqual(host._parse_request(request_body()).style, host.VoiceStyle((0.5, 0.5), (0.7, 0.3)))
+        body = request_body()
+        body["style"] = {"general": {"exaggeration": 0.4, "cfg_weight": 0.6}, "expressive": {"exaggeration": 1, "cfg_weight": 0}}
+        self.assertEqual(host._parse_request(body).style, host.VoiceStyle((0.4, 0.6), (1.0, 0.0)))
+        for bad in ({"general": {"exaggeration": 0.1, "cfg_weight": 0.5}, "expressive": {"exaggeration": 0.7, "cfg_weight": 0.3}},
+                    {"general": {"exaggeration": 0.5, "cfg_weight": 1.5}, "expressive": {"exaggeration": 0.7, "cfg_weight": 0.3}},
+                    {"general": {"exaggeration": 0.5, "cfg_weight": 0.5}},
+                    {"general": {"exaggeration": "0.5", "cfg_weight": 0.5}, "expressive": {"exaggeration": 0.7, "cfg_weight": 0.3}}):
+            body["style"] = bad
+            with self.assertRaises(host.ContractError):
+                host._parse_request(body)
+
+    def test_the_original_model_speaks_each_part_in_its_style(self):
+        host = self.host
+        spoken = []
+
+        class Original:
+            device, capped = "cpu", False
+
+            def use_reference(self, audio):
+                return False
+
+            def speak(self, text, exaggeration, cfg_weight, whisper=False):
+                spoken.append((text, exaggeration, cfg_weight, whisper))
+                return b"\x01\x00" * 480
+
+        engine = host.EngineHost()
+        engine.model, engine.original, engine.engine_kind, engine.state = object(), Original(), "chatterbox", "busy"
+        engine.identity = host._identity("chatterbox", pinned=host.PINNED_MODELS["chatterbox-original"])
+        body = request_body(chunks=[{"index": 0, "chunk_id": "a", "text": "Hi. [expressive] We won!"},
+                                    {"index": 1, "chunk_id": "b", "text": "[whispering] \"Don't tell.\""}])
+        body["style"] = {"general": {"exaggeration": 0.45, "cfg_weight": 0.5}, "expressive": {"exaggeration": 0.9, "cfg_weight": 0.25}}
+        job = host.Job(host._parse_request(body), engine.identity)
+        engine.active = job
+        engine.run(job)
+        events = []
+        while (event := job.queue.get(timeout=1)) is not None:
+            events.append(event)
+        self.assertEqual(spoken, [("Hi.", 0.45, 0.5, False), ("We won!", 0.9, 0.25, False), ("Don't tell.", 0.45, 0.5, True)])
+        self.assertEqual([f["frame"]["chunk_index"] for f in events if f["kind"] == "audio_frame"], [0, 0, 1])
+        self.assertEqual(events[-1]["kind"], "completed")
+        self.assertEqual(engine.state, "ready")
+        self.assertEqual((engine.expressive_parts, engine.whispered_parts), (1, 1))
+        self.assertEqual(engine.last_style, host.VoiceStyle((0.45, 0.5), (0.9, 0.25)))
+
 
 if __name__ == "__main__":
     unittest.main()

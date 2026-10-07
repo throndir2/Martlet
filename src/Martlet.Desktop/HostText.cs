@@ -51,13 +51,26 @@ internal sealed class HostTextClient : IHostTextClient
         }
         IReadOnlyList<HostTextTarget> targets = [.. WorkSharingRoster.Order(WorkSharingRoster.DataDirectory, WorkSharingJobs.Thinking,
                 HostRoles.Ollama, model.UpstreamModelId, target.HostId)
-            .Select(place => place.Host is not { } host || host.HostId == target.HostId ? target : WorkSharingRoster.TextTarget(host, target.RouteId))];
+            .Select(place => place.Host is not { } host || host.HostId == target.HostId ? target
+                : WorkSharingRoster.TextTarget(host, target.RouteId) with { Background = target.Background })];
+        // Background work on the conversation's route (remembering after a reply) gives way to the live turn.
         await using var deltas = WorkQueue.Shared.StreamAsync(WorkSharingJobs.Thinking, targets, t => t.HostId,
                 (t, token) => ReplyAsync(t, model, input, limits, ids, epoch, deadline, generation, token, false), WorkSharingRoster.Classify,
-                deadline, null, cancellationToken)
+                deadline, null, cancellationToken, target.Background ? WorkPriority.Background : WorkPriority.Live)
             .GetAsyncEnumerator(cancellationToken);
-        while (await Guard(() => deltas.MoveNextAsync().AsTask(), cancellationToken).ConfigureAwait(false))
+        while (true)
+        {
+            bool moved;
+            // Background work a live turn stopped (this PC's own, or a host's hold) goes on later (HostLiveHolds).
+            try { moved = await Guard(() => deltas.MoveNextAsync().AsTask(), cancellationToken).ConfigureAwait(false); }
+            catch (WorkPreemptedException)
+            {
+                HostLiveHolds.Note(target.HostId);
+                throw;
+            }
+            if (!moved) break;
             yield return deltas.Current;
+        }
     }
 
     private async IAsyncEnumerable<string> ReplyAsync(HostTextTarget target, TextModelSelection model, BoundedTextInput input,
@@ -65,8 +78,10 @@ internal sealed class HostTextClient : IHostTextClient
         [EnumeratorCancellation] CancellationToken cancellationToken, bool guarded)
     {
         using var connection = Connect(target);
-        var routes = guarded ? await Guard(() => connection.ReadRoutesAsync(cancellationToken), cancellationToken).ConfigureAwait(false)
+        var routes = guarded ? await Guard(() => connection.ReadRoutesAsync(cancellationToken), cancellationToken, target.HostId).ConfigureAwait(false)
             : await connection.ReadRoutesAsync(cancellationToken).ConfigureAwait(false);
+        // Which graphics cards serve each route, for the live floor (when the host says).
+        HostRouteGpus.Note(target.HostId, routes);
         var route = routes.FirstOrDefault(r => r.RouteId == target.RouteId && r.ModelId == model.UpstreamModelId) ??
             throw Failed("reply", ProviderFailureCode.ModelNotFound, target.RouteId == HostRoute.DeepThinkingRouteId
                 ? $"the host's Deep thinking role doesn't run model {model.UpstreamModelId}"
@@ -88,7 +103,7 @@ internal sealed class HostTextClient : IHostTextClient
             generation?.Temperature ?? HostTextGenerationStream.Temperature, outputTokens, limits.MaxContextTokens,
             input.Image is { } image ? [image.ToBase64()] : null, generation, cancellationToken)
             .GetAsyncEnumerator(cancellationToken);
-        while (await (guarded ? Guard(() => deltas.MoveNextAsync().AsTask(), cancellationToken) : deltas.MoveNextAsync().AsTask())
+        while (await (guarded ? Guard(() => deltas.MoveNextAsync().AsTask(), cancellationToken, target.HostId) : deltas.MoveNextAsync().AsTask())
             .ConfigureAwait(false))
             yield return deltas.Current;
     }
@@ -116,11 +131,16 @@ internal sealed class HostTextClient : IHostTextClient
         return connection!;
     }
 
-    private static async Task<T> Guard<T>(Func<Task<T>> call, CancellationToken token)
+    private static async Task<T> Guard<T>(Func<Task<T>> call, CancellationToken token, string? hostId = null)
     {
         try { return await call().ConfigureAwait(false); }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-        catch (Exception error) when (Failure("reply", error) is { } failure) { throw failure; }
+        catch (Exception error) when (Failure("reply", error) is { } failure)
+        {
+            // The host keeps its graphics card for a live turn: pool work there waits and goes on later (HostLiveHolds).
+            if (hostId is not null && error is Audio2FaceHostException { HeldForLive: true }) HostLiveHolds.Note(hostId);
+            throw failure;
+        }
     }
 
     /// <summary>Maps a host gateway, transport or schema error to a provider failure, recording what the host said locally.</summary>
@@ -153,4 +173,18 @@ internal sealed class HostTextClient : IHostTextClient
         "stream.invalid" or "response.invalid" => ProviderFailureCode.ResponseSchema,
         _ => ProviderFailureCode.Server
     };
+}
+
+/// <summary>When each paired host last kept its graphics card for a live conversation turn (its own companion PC's or another's)
+/// and refused or stopped this PC's pool work there (job.busy with detail live, job.preempted): that work waits and goes on
+/// later instead of failing.</summary>
+internal static class HostLiveHolds
+{
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> Last = new(StringComparer.Ordinal);
+
+    internal static void Note(string hostId) => Last[hostId] = System.Diagnostics.Stopwatch.GetTimestamp();
+
+    /// <summary>Whether <paramref name="hostId"/> held its graphics card for a live turn since <paramref name="timestamp"/>
+    /// (<see cref="System.Diagnostics.Stopwatch.GetTimestamp"/>).</summary>
+    internal static bool Since(string hostId, long timestamp) => Last.TryGetValue(hostId, out var at) && at >= timestamp;
 }

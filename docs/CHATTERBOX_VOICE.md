@@ -1,12 +1,139 @@
-# Chatterbox Turbo voice engine
+# Chatterbox voice engines
 
-Martlet's **default** self-hosted voice engine, next to [F5-TTS](F5_VOICE.md) and
-[XTTS-v2](XTTS_VOICE.md) (both stay selectable in Companion > Voice > Voice
-engine). Chatterbox Turbo (Resemble AI) copies a voice from the same reference
-recordings (Companion > Voice > Voices) and, unlike the others, speaks
-**tags**: non-word sounds such as `[laugh]` and `[sigh]` written inline in the
-reply, and `[whispering]`, which Martlet turns into a real whisper (see
-[Tags](#tags)).
+Martlet's **default** self-hosted voice engine is Chatterbox Turbo, next to
+[F5-TTS](F5_VOICE.md) and [XTTS-v2](XTTS_VOICE.md) (both stay selectable in
+Companion > Voice > Voice engine). Chatterbox Turbo (Resemble AI) copies a voice
+from the same reference recordings (Companion > Voice > Voices) and, unlike the
+others, speaks **tags**: non-word sounds such as `[laugh]` and `[sigh]` written
+inline in the reply, and `[whispering]`, which Martlet turns into a real whisper
+(see [Tags](#tags)). Two other Chatterbox models are separate engines with their
+own host roles: [Chatterbox Nano](#chatterbox-nano) and
+[Chatterbox Original](#chatterbox-original-general-and-expressive). Most of this
+page is about Turbo; the same service runs all three.
+
+## The Chatterbox models
+
+Resemble AI publishes five Chatterbox models. Martlet installs three of them.
+Each one is its own engine in Companion > Voice > Voice engine, with its own
+host role, port, route and pinned files, and one role runs on a host at a time
+(`exclusive=voice`). The rundown is what Companion > Voice shows
+(`VoiceEngineAbilities-<key>` and `VoiceEngineRunsOn-<key>`).
+
+| Model | Engine and role | Size | Voice cloning | Laughs & sighs | Emotions | Runs on |
+| --- | --- | --- | --- | --- | --- | --- |
+| Chatterbox Turbo | `chatterbox`, port 50083 (default) | 350M, GPT-2 medium | yes | yes | whispering only | NVIDIA GPU, about 3.7 GB, up to 4.2 GB (6 GB+ card) |
+| Chatterbox Original | `chatterbox-original`, port 50089 | 500M, Llama | yes | no | calm or expressive | NVIDIA GPU, about 3.9 GB, up to 4.8 GB (6 GB+ card; estimate) |
+| Chatterbox Nano | `chatterbox-nano`, port 50088 | 110M, GPT-2 small | yes | yes | whispering only | NVIDIA GPU, about 2.6 GB, up to 3.1 GB (4 GB+ card; estimate), or without one the CPU |
+| Chatterbox Multilingual V3 | not installed | 500M | | | | |
+| Single Language Pack | not installed | 500M each | | | | |
+
+- **Turbo and Nano** share an architecture, a tokenizer and their tags. Nano's
+  decoder (`s3gen_meanflow`), voice encoder and tokenizer files are byte for
+  byte Turbo's; only its T3 (`t3_nano_v1.safetensors`) differs. Turbo and Nano
+  have no `exaggeration` or `cfg_weight` setting: Resemble's library ignores
+  both for them.
+- **The original Chatterbox** is the model Resemble's "Original Chatterbox
+  Tips" are about: it has the `exaggeration` and `cfg_weight` settings, but no
+  tag tokens, so it can't laugh or sigh.
+- **Multilingual V3 and the Single Language Pack** are not installed. Their
+  weights (`t3_mtl23ls_v3`, `s3gen_v3`) need Chatterbox code that is on GitHub
+  but in no `chatterbox-tts` release yet (0.1.7 is still the latest), and they
+  speak 23 languages where Martlet's conversations and prompts are English. They
+  can be added the same way once Resemble releases that code.
+
+## Chatterbox Nano
+
+Nano runs where Turbo can't: on a smaller graphics card (4 GB+), or on the CPU
+of a computer without an NVIDIA GPU. Its role (`deploy/host/roles/chatterbox-nano`)
+is `gpu=optional`: `martlet-host` adds the GPU overlay when the host can run GPU
+containers and asks GPU or CPU, and the service (`MARTLET_CHATTERBOX_DEVICE=auto`)
+uses the card it was given, or the CPU. It uses the same image as Turbo
+(`martlet-chatterbox:8`, whose CUDA PyTorch also runs on the CPU) and its own
+volume, `martlet-chatterbox-nano-models`.
+
+- On a GPU it decodes like Turbo (the CUDA graph and streaming below).
+- On the CPU there is no CUDA graph: each piece is spoken whole with the
+  library's own decoding, within the same speech-token budget as Turbo's, so its
+  first audio comes when the whole piece is made. The idle check doesn't run on
+  the CPU (it is for graphics memory).
+- Resemble says Nano runs "3x faster than realtime on 8 CPU cores". A separate
+  benchmark on this repository's development PC (an i7-13700K, PyTorch 2.8.0 on
+  the CPU, 8 threads pinned to the performance cores, other programs using fewer
+  than 3 cores) measured whole pieces: 1.0 s of speech in 0.82 s and 4.3 s in
+  2.2 s (0.51x real time). A T3 speech token took about 12 ms, and the decoder
+  about 90 ms per second of speech plus a fixed 0.38-0.55 s for each call (it
+  reads the voice's reference again each time). That fixed cost is why the CPU
+  speaks whole pieces: streamed in chunks as on a GPU, the first audio came
+  after 0.67-0.87 s, but at 1.2-1.4x real time with a 0.3-0.4 s pause after the
+  first chunk.
+- **The CPU must be free.** With other programs keeping about 15 cores busy, the
+  same 4.3 s piece took 4.5 s (1.05x real time), so the voice pauses between
+  pieces. Don't give Nano the CPU that also runs Thinking or other heavy work.
+- Memory: the model adds about 1.35 GB; the service held 3.3 GB after replies
+  (4.1 GB while it loaded). Loading takes 5-8 s, and warming up (the first
+  conditionals, about 3-18 s for librosa's first run, and the first piece) is
+  done before the role reports ready; after that a new voice takes about 0.37 s.
+- The welcome wizard never suggests Nano, and on a computer without an NVIDIA
+  GPU Companion > Voice keeps recommending a Windows voice; Nano is there for
+  the owner to choose.
+
+## Chatterbox Original: General and Expressive
+
+The original 500M Chatterbox (`ResembleAI/chatterbox` at revision
+`5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18`: `t3_cfg`, `s3gen`, `ve` and
+`tokenizer.json`, 3.2 GB; not its built-in voice or its multilingual weights)
+has two settings for each sentence:
+
+- **Exaggeration** (0.25-2, 0.5 neutral): how much emotion. Resemble warns that
+  extreme values can be unstable.
+- **CFG weight** (0-1): how closely it follows the voice and the words. Lower is
+  slower and more deliberate. Resemble suggests about 0.3 for a reference
+  speaker who talks fast.
+
+Martlet gives it two ways of speaking, with Resemble's suggestions as defaults:
+**General** (exaggeration 0.5, CFG weight 0.5) for every sentence, and
+**Expressive** (0.7 and 0.3, Resemble's tip for expressive or dramatic speech)
+for a sentence the reply starts with `[expressive]`. The Thinking prompt
+(Companion › Prompts › *Voice sounds and tones*) offers `[expressive]` and
+`[whispering]` as its tones, so the model decides sentence by sentence when to
+sound animated; the service whispers `[whispering]` sentences as it does for
+Turbo. A reply that writes `[excited]`, `(excitedly)` or `[animated]` gets
+`[expressive]` (`VoiceTags.Synonyms`). Other engines never read the tag.
+
+The owner sets all four values in **Companion › Voice › Chatterbox Original
+style** (shown while that engine speaks or is chosen; *Use Resemble's
+suggestions* goes back to the defaults). They are kept on that PC in
+`chatterbox-style.json` (`ChatterboxStyle` in Martlet.Core) and sent with every
+reply to that engine as `voice_style` (the gateway refuses it on any other route
+and checks the ranges), and the service reads them as the request's `style`.
+`/status` reports `style` (`default`, `expressive_parts` and `last`, the style
+the last reply asked for).
+
+The service speaks each part of a piece whole with its own values: the
+reference's voice conditionals are kept per recording, as for Turbo, and only
+the exaggeration in them changes from part to part. chatterbox-tts 0.1.7's
+decoder always runs two rows (with and without the text, for CFG), so the text
+always goes in twice; at CFG weight 0 the second row changes nothing. Each part
+may take at most 100 speech tokens plus 10 per text token
+(`MARTLET_CHATTERBOX_ORIGINAL_TOKENS_*`, at most 1,000); the measured parts used
+at most 2.5 speech tokens per text token, 19% of their budget. A stopped reply
+stops after the part it is in.
+
+What the styles change, measured on the CPU (two starter voices, *Annie* and
+*arctic-bdl*, two sentences, two takes each, so 8 takes per style; pitch with
+librosa's pYIN):
+
+| Style | Length | Pitch spread (SD) | Pitch range (5-95%) | Level |
+| --- | --- | --- | --- | --- |
+| General (0.5, 0.5) | 3.01 s | 3.20 semitones | 11.7 semitones | -20.0 dBFS |
+| Expressive (0.7, 0.3) | 3.00 s | 3.29 semitones | 11.1 semitones | -18.6 dBFS |
+
+With Resemble's suggested values, Expressive was 1.4 dB louder (1.9 dB for the
+male voice); pitch and pace changed no more than two takes of the same style
+differ. A first look at exaggeration 1.0 (6 takes, cut short) found the male
+voice about 5 dB louder than General, with pitch again no different than takes
+differ. Nobody listened, so whether it sounds more expressive is NOT RUN; the
+owner can raise the Expressive exaggeration in Companion › Voice.
 
 ## Licences and consent
 
@@ -14,8 +141,10 @@ reply, and `[whispering]`, which Martlet turns into a real whisper (see
 | --- | --- | --- |
 | Runtime | [`chatterbox-tts` 0.1.7](https://pypi.org/project/chatterbox-tts/0.1.7/) with `transformers` 5.2.0, `resemble-perth` 1.0.1 | MIT (code) |
 | Model | [`ResembleAI/chatterbox-turbo`](https://huggingface.co/ResembleAI/chatterbox-turbo) at revision `749d1c1a46eb10492095d68fbcf55691ccf137cd` | MIT (model card, checked 2026-10-02) |
+| Model | [`ResembleAI/chatterbox-nano`](https://huggingface.co/ResembleAI/chatterbox-nano) at revision `71ccd1d0081b430592cea481f4307e764e07bc64` | MIT (checked 2026-10-07) |
+| Model | [`ResembleAI/chatterbox`](https://huggingface.co/ResembleAI/chatterbox) at revision `5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18` | MIT (checked 2026-10-07) |
 
-Nothing is downloaded until the owner installs the `chatterbox` host role. The
+Nothing is downloaded until the owner installs a Chatterbox host role. The
 role's terms (shown by Martlet before **Install**, whose click confirms them,
 and by `martlet-host add chatterbox`) name the runtime, the download, the MIT
 licence and the watermark; handing Speaking to Chatterbox repeats the licence in
@@ -199,9 +328,15 @@ for Chatterbox (`SpeechEngines.ChatterboxTurboTags` in Martlet.Core) passes 17:
 - **Tones of voice:** `[happy]` `[sarcastic]` `[surprised]` `[angry]` `[fear]`
   `[crying]` `[whispering]` `[dramatic]`
 
-`[advertisement]` and `[narration]` (reading genres) are left out. Turbo's
-`generate` ignores the older `exaggeration`/`cfg_weight` sliders, so these style
-tokens are its only emotion control.
+`[advertisement]` and `[narration]` (reading genres) are left out. Turbo has no
+`exaggeration` or `cfg_weight` setting: those belong to the original 500M
+Chatterbox. Turbo's loader turns the exaggeration input (`emotion_adv`) off, its
+decoding has no CFG step, and `generate` logs that it ignores both. So these
+style tokens are its only emotion control, and the measurements below show that
+only `[whispering]` changes the voice (because Martlet makes the whisper).
+Companion › Voice says so in Chatterbox Turbo's rundown
+(`VoiceEngineAbilities-chatterbox`: voice cloning yes, laughs & sighs yes,
+emotions whispering only).
 
 What Resemble documents (checked again 2026-10-07): the
 [model card](https://huggingface.co/ResembleAI/chatterbox-turbo), the
@@ -305,9 +440,11 @@ out of the chat, is in [Conversation](CONVERSATION.md#voice-tags).
 
 `scripts\Invoke-MartletMcp.ps1` with `voice_tags` (engine `chatterbox`)
 shows the catalog, the Thinking prompt and what the segmenter sends; `f5_voices`
-lists the engine as the default with its `features`; `-Desktop` reads
-`VoiceEngine-chatterbox`, `VoiceEngineFeatures-chatterbox` (its chips, including
-*Laughs & sighs* and *Emotions*) and `VoiceEngineUse-chatterbox` on Companion > Voice.
+lists the engine as the default with its `features` and `abilities`; `-Desktop` reads
+`VoiceEngine-chatterbox`, `VoiceEngineAbilities-chatterbox` (its rundown: voice
+cloning yes, laughs & sighs yes, emotions whispering only), `VoiceEngineRunsOn-chatterbox`
+(an NVIDIA GPU, about 3.7 GB of graphics memory, up to 4.2 GB, 6 GB+ card),
+`VoiceEngineFeatures-chatterbox` (its chips) and `VoiceEngineUse-chatterbox` on Companion > Voice.
 `workers/chatterbox/tests` (stdlib unittest, fixture engine) and
 `ChatterboxRelayTests` cover the service and the relay; with
 `MARTLET_CHATTERBOX_LIVE_ENDPOINT` set to a running service the latter speaks a

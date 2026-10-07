@@ -16,6 +16,9 @@ public sealed partial class FootprintCatalog
 
     public static FootprintCatalog Default { get; } = new(SeedOptions());
 
+    /// <summary>The options for the two ways to speak that aren't voice engines: a Windows voice and OpenAI's voice.</summary>
+    public const string WindowsVoiceId = "windows-speech", OpenAiVoiceId = "hosted:openai-tts";
+
     public IReadOnlyList<ComponentOption> Options => options;
 
     public IReadOnlyList<ComponentOption> For(PlanComponent component) => options.Where(o => o.Component == component).ToArray();

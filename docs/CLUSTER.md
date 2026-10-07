@@ -185,6 +185,15 @@ Each request goes through Martlet's queue (`WorkQueue`, `Martlet.Core.Cluster`):
    whichever computer frees first takes it (up to the request's deadline).
 4. A computer this PC already has a request running on goes last for its next
    one, saving a round trip it would only refuse.
+5. The live turn goes first (`WorkPriority`). A background request (remembering
+   or naming on the conversation's own model, a Thinking pool job on a host's
+   Ollama role) waits while a live request of its job waits, and a live request
+   that finds a computer busy with this PC's own background request stops that
+   request (`WorkPreemptedException`, which its caller treats as "go on later")
+   and takes the computer as soon as it is free. A host that keeps its graphics
+   card for a live turn refuses background work with `job.busy` and detail
+   `live`, or stops it with `job.preempted`: that is `WorkRefusal.Preempted`,
+   never a failure ([live floor](CONVERSATION.md#the-live-floor-the-live-turn-comes-first)).
 
 The order (`WorkSharing.Order`) is deterministic and costs nothing: the paired
 computers the shared plan says run the job's engine (the same voice engine
@@ -222,6 +231,34 @@ Devices card are checked locally (`WorkSharingTests`,
 `WorkSharingRosterTests`, MCP `work_sharing_status`, `work_sharing_check` and
 the Devices card through `-Desktop`); requests between real hosts are **NOT
 RUN**.
+
+### Live turn first on a shared graphics card
+
+A host's live work (replies, voices, listening, lip-sync, reading) and its
+Thinking pool work (the Deep thinking role's own Ollama) can share one graphics
+card, and then each runs slower: a Chatterbox token takes about 11 ms alone and
+about 30 ms beside another program on an RTX 4070. Windows has no priority
+between programs on one card, so the host's gateway keeps it
+([GPU priority](../src/Martlet.Gateway/README.md#gpu-priority-live-turn-first)):
+
+- Each route advertises the cards it runs on (`gpus`; empty means unknown, the
+  whole host) and its lane (`pool` for Deep thinking, `live` for the rest).
+- While a live request runs on a card, or a companion PC holds it for a live
+  turn (`ILiveGpuHold`, `HostLiveGpuHold`: hold for 10 s, renew every 5 s,
+  release at the end), a new think there is turned away (`job.busy`, detail
+  `live`) and a running one stops at once (`job.preempted`). The Thinking pool
+  then runs it on another computer or later. Live requests never wait for pool
+  work or holds.
+- Pool work on a card of its own keeps running. On a host with two or more
+  NVIDIA cards, pin each Ollama server to its own GPU (CUDA_VISIBLE_DEVICES):
+  add the Deep thinking role again and choose a card that no live role uses.
+  `martlet-host status`, the host log and `GET /martlet/v1/priority` say when
+  Deep thinking shares a card with live roles.
+
+**Qualification:** the gateway's arbitration, holds and wire format are checked
+locally (`GpuPriorityTests`, MCP `gpu_priority_selftest` with fixture Ollama
+servers on loopback); a real GPU, a real Ollama stopping mid-token and a host
+with two or more cards are **NOT RUN**.
 
 ## Failover
 

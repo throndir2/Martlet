@@ -14,6 +14,11 @@ internal sealed class PoolScreenDigestThinker(Func<ThinkingPool> pool) : IScreen
 
     public bool CanSee => pool().CanRun(ThinkingJobKind.Digest, Needs);
 
+    // While you talk with Martlet, only a member that shares no hardware with the conversation may take a summary (live floor).
+    public bool MayStartNow => pool().Board.MayStartNow(ThinkingJobKind.Digest, Needs);
+
+    public bool SeesBesideConversation => pool().Board.CanRunBeside(ThinkingJobKind.Digest, Needs);
+
     public async Task<string?> DigestAsync(ScreenDigestJob job, CancellationToken cancellation)
     {
         var result = await pool().RunAsync(new ThinkingJob
@@ -31,7 +36,8 @@ internal sealed class PoolScreenDigestThinker(Func<ThinkingPool> pool) : IScreen
         return result.Outcome switch
         {
             ThinkingJobOutcome.Succeeded => result.Text,
-            ThinkingJobOutcome.Stale or ThinkingJobOutcome.TimedOut => throw new OperationCanceledException(result.Problem),
+            // A summary the live conversation stopped is only dropped, like one that got stale.
+            ThinkingJobOutcome.Stale or ThinkingJobOutcome.TimedOut or ThinkingJobOutcome.Preempted => throw new OperationCanceledException(result.Problem),
             _ => throw new InvalidOperationException(result.Problem ?? "The Thinking pool could not make a screen summary.")
         };
     }

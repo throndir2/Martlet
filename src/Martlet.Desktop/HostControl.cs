@@ -68,6 +68,8 @@ internal static class HostRoles
     internal const string F5 = "f5";
     internal const string Xtts = "xtts";
     internal const string Chatterbox = "chatterbox";
+    internal const string ChatterboxOriginal = "chatterbox-original";
+    internal const string ChatterboxNano = "chatterbox-nano";
     internal const string GptSovits = "gpt-sovits";
     internal const string Dia = "dia";
     internal const string Singing = "singing";
@@ -110,8 +112,18 @@ internal static class HostRoles
             "Turns speech into text on that host. Your recorded speech goes there and is not stored."),
         new(Chatterbox, "Speaks", "Speaking (Chatterbox Turbo)", "an NVIDIA GPU with at least 6 GB",
             SpeechEngines.Chatterbox.RouteId, "speaking",
-            "Speaks replies on that host with Chatterbox Turbo, which can laugh, sigh and change tone. Reply text and the " +
+            "Speaks replies on that host with Chatterbox Turbo, which can laugh, sigh and whisper. Reply text and the " +
             "selected voice sample (longer than 5 seconds) go there. MIT-licensed model; replies carry an inaudible watermark."),
+        new(ChatterboxOriginal, "Speaks", "Speaking (Chatterbox Original)", "an NVIDIA GPU with at least 6 GB",
+            SpeechEngines.ChatterboxOriginal.RouteId, "speaking",
+            "Speaks replies on that host with the original Chatterbox, which says each sentence calmly or expressively as the reply " +
+            "asks. Reply text and the selected voice sample (longer than 5 seconds) go there. MIT-licensed model; replies carry an " +
+            "inaudible watermark."),
+        new(ChatterboxNano, "Speaks", "Speaking (Chatterbox Nano)", "Docker; it uses an NVIDIA GPU when there is one, otherwise the processor",
+            SpeechEngines.ChatterboxNano.RouteId, "speaking",
+            "Speaks replies on that host with Chatterbox Nano, a small Chatterbox that can laugh, sigh and whisper and runs on the " +
+            "processor when there is no graphics card. Reply text and the selected voice sample (longer than 5 seconds) go there. " +
+            "MIT-licensed model; replies carry an inaudible watermark."),
         new(F5, "Speaks", "Speaking (F5-TTS)", "an NVIDIA GPU with at least 6 GB",
             HostRoute.F5RouteId, "speaking",
             "Speaks replies on that host with F5-TTS. Reply text and the selected voice sample go there."),

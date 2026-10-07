@@ -210,6 +210,23 @@ public sealed class F5RelayWorker : IF5GatewayInferenceWorker, IAsyncDisposable
                 writer.WriteEndObject();
             }
             writer.WriteEndArray();
+            // Chatterbox Original: how a General and an [expressive] sentence are said (exaggeration and CFG weight).
+            if (payload.VoiceStyle is { } style)
+            {
+                writer.WriteStartObject("style");
+                foreach (var (name, exaggeration, cfgWeight) in new[]
+                {
+                    ("general", style.GeneralExaggeration, style.GeneralCfgWeight),
+                    ("expressive", style.ExpressiveExaggeration, style.ExpressiveCfgWeight)
+                })
+                {
+                    writer.WriteStartObject(name);
+                    writer.WriteNumber("exaggeration", exaggeration);
+                    writer.WriteNumber("cfg_weight", cfgWeight);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndObject();
+            }
             writer.WriteEndObject();
         }
         using var message = new HttpRequestMessage(HttpMethod.Post, synthesize) { Content = new ByteArrayContent(body.ToArray()) };

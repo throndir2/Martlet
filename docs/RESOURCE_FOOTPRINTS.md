@@ -135,8 +135,18 @@ holds its own copy.
 | `xtts-v2` | N (4 GB) | 2.2 S / 3 E | 2.5-3 E | 1-1.5 E | 10 E | not measured (streams) | S |
 | `gpt-sovits` | N (4 GB) | 3 / 4 E | 2.5-3 E | 1-2 E | 8.1 (6.7 M image + 1.4 E) | ~1.3 s M (CPU container) | E |
 | `dia` | N (8 GB) | 4.4 S / **9.8** M | 3-4 E | 1 E (CPU-bound) | 15 E | 17-60 s M | M (peak) |
+| `chatterbox-original` | N (6 GB) | 3.9 / 4.8 E | 3-3.5 E | 1-1.5 E | 11.2 (3.2 S weights + ~8 E image) | ~2 s E (whole pieces) | E |
+| `chatterbox-nano` | N (4 GB) | 2.6 / 3.1 E | 2.5-3 E | 1-1.5 E | 9.9 (1.9 S weights + ~8 E image) | ~0.45 s E (streams as Turbo) | E |
+| `chatterbox-nano-cpu` | CPU | 0 | 3.3 / 4.1 M | 8 M | 9.9 | ~1.4 s M (whole pieces) | M |
 | `windows-speech` | CPU | 0 | 0.1-0.2 M | 0.9-1 M | 0 (built in) | ~50 ms E | M |
 
+- **Chatterbox Original and Nano:** their graphics-card numbers are estimates
+  from their pinned weights (3.2 GB and 1.9 GB) plus Turbo's measured overhead;
+  no NVIDIA GPU was available to measure them. Nano on the processor was
+  measured on an i7-13700K: whole pieces at 0.51x real time with 8 threads on
+  the performance cores, 1.05x when other programs kept about 15 cores busy
+  ([Chatterbox Nano](CHATTERBOX_VOICE.md#chatterbox-nano)). The planner never
+  picks it over the Windows voices (same quality tier, listed after them).
 - **Chatterbox Turbo, Dia, F5:** voicebench on DIVA's RTX 4070, each alone on
   the card, 2026-10-04 ([Voice latency](VOICE_LATENCY.md#local-options-measured-voicebench),
   [Dia](DIA_VOICE.md)). F5's 0.9 GB was read beside the resident roles; its
@@ -160,6 +170,12 @@ holds its own copy.
   host), 0.87-0.92 threads busy while speaking, 0 idle.
 - **Docker images (E):** a PyTorch CUDA image is about 6-15 GB (GPT-SoVITS
   6.7 GB and Singing 14.7 GB measured); about 8 GB is assumed for the others.
+- **Shown to the owner:** Companion › Voice reads each voice's line from this
+  table (`ComponentOption.WhereItRuns`, `VoiceEngineRunsOn-<key>`): "Runs on an
+  NVIDIA GPU: about *steady* GB of graphics memory, up to *peak* GB (*min* GB+
+  card).", with the same steady (`Usual`) and peak numbers as the Devices page,
+  "Runs on the CPU: no graphics card needed." or "Runs online: nothing runs on
+  your computers." Change a number here and the line follows.
 
 ### Listening
 

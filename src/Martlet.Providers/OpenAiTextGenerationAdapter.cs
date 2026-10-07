@@ -566,6 +566,9 @@ internal sealed class TextGenerationOperation(
                 writer.WriteEndObject();
             }
             else WriteMessage(writer, "user", userText);
+            // An answer the live conversation stopped goes on where it stopped: its unfinished text closes the request as the
+            // assistant's own message, which Ollama continues in place.
+            if (input.Continuation is { } started && input.ToolRounds.Count == 0) WriteMessage(writer, "assistant", started);
             foreach (var round in input.ToolRounds)
             {
                 writer.WriteStartObject();

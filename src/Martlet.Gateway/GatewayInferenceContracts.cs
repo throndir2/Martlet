@@ -707,6 +707,12 @@ public sealed record GatewayInferenceRouteCapability
     public required int MaximumConcurrency { get; init; }
     public required bool Streaming { get; init; }
     public required GatewayCancellationCapability Cancellation { get; init; }
+    /// <summary>The graphics cards the route's worker runs on (GPU UUIDs, CUDA indexes or "cpu"); empty: unknown, which counts
+    /// as the whole host. Hosts older than GPU priority don't send it.</summary>
+    public IReadOnlyList<string> Gpus { get; init; } = [];
+    /// <summary>Live or pool (Deep thinking's chat route, whose work a live turn stops on a shared graphics card); null from
+    /// hosts older than GPU priority.</summary>
+    public GatewayLane? Lane { get; init; }
 
     internal static GatewayInferenceRouteCapability From(
         GatewayInferenceRoute route) => new()
@@ -735,7 +741,9 @@ public sealed record GatewayInferenceRouteCapability
                 System.Globalization.CultureInfo.InvariantCulture),
             MaximumConcurrency = route.MaximumConcurrency,
             Streaming = route.Streaming,
-            Cancellation = route.Cancellation
+            Cancellation = route.Cancellation,
+            Gpus = route.Gpus.ToArray(),
+            Lane = route.Lane
         };
 }
 
@@ -821,7 +829,8 @@ public sealed class GatewayF5SynthesisPayload : GatewayInferencePayload
         byte[] referenceAudio,
         GatewayF5TextChunk[] chunks,
         string? referenceLanguage = null,
-        IReadOnlyList<Martlet.Core.Voices.SpeakingVoiceClip>? referenceClips = null)
+        IReadOnlyList<Martlet.Core.Voices.SpeakingVoiceClip>? referenceClips = null,
+        Martlet.Core.Settings.ChatterboxStyle? voiceStyle = null)
     {
         PresetId = presetId;
         ReferenceRevision = referenceRevision;
@@ -830,6 +839,7 @@ public sealed class GatewayF5SynthesisPayload : GatewayInferencePayload
         TranscriptRevision = transcriptRevision;
         ReferenceLanguage = referenceLanguage;
         ReferenceClips = referenceClips;
+        VoiceStyle = voiceStyle;
         this.referenceAudio = referenceAudio;
         this.chunks = chunks;
         Chunks = Array.AsReadOnly(this.chunks);
@@ -845,6 +855,9 @@ public sealed class GatewayF5SynthesisPayload : GatewayInferencePayload
     /// <summary>For a voice made from several recordings and an engine that learns from each (XTTS-v2, GPT-SoVITS), where
     /// each lies in <see cref="ReferenceAudio"/> and its words; null when the engine gets the recording as one.</summary>
     public IReadOnlyList<Martlet.Core.Voices.SpeakingVoiceClip>? ReferenceClips { get; }
+    /// <summary>Chatterbox Original's General and Expressive exaggeration and CFG weight, when the client sent them (only that
+    /// engine's route accepts them); null keeps Resemble's defaults.</summary>
+    public Martlet.Core.Settings.ChatterboxStyle? VoiceStyle { get; }
     public ReadOnlyMemory<byte> ReferenceAudio => referenceAudio;
     public IReadOnlyList<GatewayF5TextChunk> Chunks { get; }
 

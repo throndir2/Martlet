@@ -55,6 +55,13 @@ if (args is ["deep-thinking"])
     Console.WriteLine(JsonSerializer.Serialize(deepReport));
     return deepOk ? 0 : 1;
 }
+// With "gpu-priority" it rehearses live turn first on one graphics card (GpuPriorityRehearsal) and prints its report.
+if (args is ["gpu-priority"])
+{
+    var (gpuOk, gpuReport) = await Martlet.NodeLinkCheck.GpuPriorityRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(gpuReport));
+    return gpuOk ? 0 : 1;
+}
 // With "voices" it rehearses the shared speaking voices and their recordings (VoiceRehearsal) and prints its report.
 if (args is ["voices"])
 {
@@ -97,12 +104,13 @@ if (args is ["logs"])
     Console.WriteLine(JsonSerializer.Serialize(logsReport));
     return logsOk ? 0 : 1;
 }
-// With "voice-engine <engine> <endpoint> [text]" it speaks one sentence with a live voice engine's loopback service through
-// the engine's real relay and gateway (VoiceEngineCheck) and prints its report.
-if (args is ["voice-engine", var voiceEngine, var voiceEndpoint, .. var voiceText] && voiceText.Length <= 1)
+// With "voice-engine <engine> <endpoint> [text|-] [data directory]" it speaks one sentence with a live voice engine's loopback
+// service through the engine's real relay and gateway (VoiceEngineCheck) and prints its report; Chatterbox Original uses the
+// style saved in the data directory (chatterbox-style.json), else Resemble's suggestions.
+if (args is ["voice-engine", var voiceEngine, var voiceEndpoint, .. var voiceRest] && voiceRest.Length <= 2)
 {
     var (voiceOk, voiceReport) = await Martlet.NodeLinkCheck.VoiceEngineCheck.RunAsync(voiceEngine, voiceEndpoint,
-        voiceText.FirstOrDefault(), CancellationToken.None);
+        voiceRest.Length > 0 && voiceRest[0] != "-" ? voiceRest[0] : null, voiceRest.Length > 1 ? voiceRest[1] : null, CancellationToken.None);
     Console.WriteLine(JsonSerializer.Serialize(voiceReport));
     return voiceOk ? 0 : 1;
 }
@@ -138,6 +146,14 @@ if (args is ["singing-status", var singingData])
 {
     var singingStatus = await Martlet.NodeLinkCheck.SingingStatus.RunAsync(singingData, CancellationToken.None);
     Console.WriteLine(JsonSerializer.Serialize(singingStatus));
+    return 0;
+}
+// With "gpu-priority-status <data directory>" it reads GPU priority (live turn first) on every host paired in that desktop data
+// directory through each host's own gateway (GpuPriorityStatus) and prints it.
+if (args is ["gpu-priority-status", var priorityData])
+{
+    var priorityStatus = await Martlet.NodeLinkCheck.GpuPriorityStatus.RunAsync(priorityData, CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(priorityStatus));
     return 0;
 }
 var steps = new List<object>();

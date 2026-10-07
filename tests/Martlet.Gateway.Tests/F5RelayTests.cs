@@ -63,7 +63,7 @@ public sealed class F5RelayTests
 
     // The worker event shape martlet_f5_worker emits (contract.make_event), as the host service forwards it.
     private static string WorkerEvent(JsonElement request, string kind, long sequence, object? frame = null, int? chunk = null,
-        long? final = null, object? error = null) => JsonSerializer.Serialize(new Dictionary<string, object?>
+        long? final = null, object? error = null, (string Id, string Revision, string Sha256)? model = null) => JsonSerializer.Serialize(new Dictionary<string, object?>
     {
         ["cancellation"] = null, ["chunk_index"] = chunk, ["contract_id"] = "martlet.f5.worker", ["error"] = error,
         ["final_sample_count"] = final, ["frame"] = frame,
@@ -73,7 +73,14 @@ public sealed class F5RelayTests
         ["sequence"] = sequence, ["type"] = "event",
         ["worker"] = new
         {
-            artifacts = new[] { new { artifact_id = FixtureModel, revision = FixtureRevision, role = "model_weights", sha256 = FixtureSha256 } }
+            artifacts = new[]
+            {
+                new
+                {
+                    artifact_id = model?.Id ?? FixtureModel, revision = model?.Revision ?? FixtureRevision, role = "model_weights",
+                    sha256 = model?.Sha256 ?? FixtureSha256
+                }
+            }
         }
     });
 
@@ -84,11 +91,11 @@ public sealed class F5RelayTests
 
     private static byte[] Pcm(int samples, int seed) => Enumerable.Range(0, samples * 2).Select(i => (byte)(i * 7 + seed)).ToArray();
 
-    // One second of a quiet 24 kHz mono PCM16 tone: a reference recording the gateway and worker accept.
-    private static HostSpeechReference Reference()
+    // A quiet 24 kHz mono PCM16 tone (one second by default): a reference recording the gateway and worker accept.
+    private static HostSpeechReference Reference(int seconds = 1)
     {
         const int rate = 24_000;
-        var wav = new byte[44 + rate * 2];
+        var wav = new byte[44 + rate * 2 * seconds];
         Encoding.ASCII.GetBytes("RIFF").CopyTo(wav, 0);
         BinaryPrimitives.WriteUInt32LittleEndian(wav.AsSpan(4), (uint)(wav.Length - 8));
         Encoding.ASCII.GetBytes("WAVEfmt ").CopyTo(wav, 8);
@@ -100,8 +107,8 @@ public sealed class F5RelayTests
         BinaryPrimitives.WriteUInt16LittleEndian(wav.AsSpan(32), 2);
         BinaryPrimitives.WriteUInt16LittleEndian(wav.AsSpan(34), 16);
         Encoding.ASCII.GetBytes("data").CopyTo(wav, 36);
-        BinaryPrimitives.WriteUInt32LittleEndian(wav.AsSpan(40), rate * 2);
-        for (var i = 0; i < rate; i++)
+        BinaryPrimitives.WriteUInt32LittleEndian(wav.AsSpan(40), (uint)(rate * 2 * seconds));
+        for (var i = 0; i < rate * seconds; i++)
             BinaryPrimitives.WriteInt16LittleEndian(wav.AsSpan(44 + i * 2), (short)(Math.Sin(i * 0.05) * 3000));
         const string transcript = "A rights-cleared fixture reference.";
         var audioSha = SHA256.HashData(wav);
@@ -228,6 +235,63 @@ public sealed class F5RelayTests
         Assert.Throws<ArgumentException>(() => new F5RelayWorker(new Uri("http://127.0.0.1:50080/"), "unknown-model"));
         var worker = new F5RelayWorker(new Uri("http://127.0.0.1:50080/"), F5RelayWorker.DefaultModel);
         Assert.Equal("670900fd14e6c458b95da6e9ed317cdb20dbaf7a1c02ac06a05475a9d32b6a38", worker.Route.ModelSha256);
+    }
+
+    [Fact]
+    public async Task Chatterbox_original_gets_the_owners_style_and_no_other_route_does()
+    {
+        var pcm = Pcm(2_400, 3);
+        (string, string, string) Pinned(string model) =>
+            (model, ChatterboxRelay.PinnedModels[model].Revision, ChatterboxRelay.PinnedModels[model].Sha256);
+        IEnumerable<string> Speak(JsonElement request, (string, string, string) model) =>
+        [
+            WorkerEvent(request, "started", 0, model: model),
+            WorkerEvent(request, "audio_frame", 1, Frame(0, 0, pcm), model: model),
+            WorkerEvent(request, "chunk_completed", 2, chunk: 0, final: 2_400, model: model),
+            WorkerEvent(request, "completed", 3, final: 2_400, model: model)
+        ];
+        var original = Martlet.Core.Settings.SpeechEngines.ChatterboxOriginal;
+        await using var service = await FakeF5.StartAsync(request => Speak(request, Pinned(original.DefaultModel)));
+        await using var turboService = await FakeF5.StartAsync(request => Speak(request, Pinned(ChatterboxRelay.DefaultModel)));
+        await using var relay = ChatterboxRelay.Create(service.Endpoint, original.DefaultModel);
+        await using var turbo = ChatterboxRelay.Create(turboService.Endpoint, ChatterboxRelay.DefaultModel);
+        await using var nano = ChatterboxRelay.Create(new Uri("http://127.0.0.1:50088/"), "chatterbox-nano");
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [relay, turbo, nano]);
+        var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
+        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+            card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
+        using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        var routes = await connection.ReadRoutesAsync();
+        // Each Chatterbox model has its own route, model and pinned weights.
+        Assert.Equal(["chatterbox-nano", "chatterbox-original", "chatterbox-turbo"],
+            routes.Where(r => Martlet.Core.Settings.SpeechEngines.IsChatterbox(Martlet.Core.Settings.SpeechEngines.ForRoute(r.RouteId)))
+                .Select(r => r.ModelId).Order());
+        var route = Assert.Single(routes, r => r.RouteId == original.RouteId);
+        Assert.Equal("914cb1696f47527fe8852ca8f1fe1fa63cb34f76f9c715e84e067b744dd0da81", route.ModelSha256);
+
+        var style = new Martlet.Core.Settings.ChatterboxStyle(0.4, 0.6, 0.9, 0.25);
+        await foreach (var _ in connection.StreamSpeechAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30), Reference(6),
+            "Hi. [expressive] We won!", default, style)) { }
+        var sent = Assert.Single(service.Requests).RootElement.GetProperty("style");
+        Assert.Equal(0.4, sent.GetProperty("general").GetProperty("exaggeration").GetDouble());
+        Assert.Equal(0.6, sent.GetProperty("general").GetProperty("cfg_weight").GetDouble());
+        Assert.Equal(0.9, sent.GetProperty("expressive").GetProperty("exaggeration").GetDouble());
+        Assert.Equal(0.25, sent.GetProperty("expressive").GetProperty("cfg_weight").GetDouble());
+
+        // Turbo has no such setting: the desktop's client leaves the style out for every other route.
+        var turboRoute = Assert.Single(routes, r => r.RouteId == Martlet.Core.Settings.SpeechEngines.Chatterbox.RouteId);
+        await foreach (var _ in connection.StreamSpeechAsync(turboRoute, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30), Reference(6),
+            "Hi [laugh].", default, style)) { }
+        Assert.False(Assert.Single(turboService.Requests).RootElement.TryGetProperty("style", out _));
+
+        // A value outside Resemble's ranges never reaches the service.
+        var refused = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        {
+            await foreach (var _ in connection.StreamSpeechAsync(route, NewIds(), 3, host.Clock.GetUtcNow().AddSeconds(30), Reference(6),
+                "Too much.", default, style with { ExpressiveExaggeration = 3 })) { }
+        });
+        Assert.Equal("request.invalid", refused.Code);
+        Assert.Single(service.Requests);
     }
 
     [Fact]

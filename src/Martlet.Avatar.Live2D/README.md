@@ -49,6 +49,18 @@ the standard parameters for (`gestures`: `nod`, `shake`, `tilt`, `bow`, `sway`,
 `drowsy` until `endGesture(name)`; a gesture played meanwhile plays on top, and
 `gestureState` says which plays once and which is held.
 
+`faceAnchor()` says where the face is now, for Martlet's drawings over it
+(`lib/face.ts`). At load the adapter finds the face at rest, then pins its
+eyes, cheeks, mouth and top to nearby mesh vertices that ride the head
+rigidly: it moves each of `ParamAngleX`/`Y`/`Z` to find the vertices that turn
+with the head, then every other parameter to its maximum and minimum to drop
+those that deform on their own, and puts every parameter back
+(`faceTracking` reports how many vertices and how long it took). Each frame
+the pinned points follow those vertices as Core deformed them (moving least
+squares), with each cheek's surface (`cheekLeftFrame`, `cheekRightFrame`), and
+`tracking` is `"mesh"`. Without enough such vertices, `tracking` is
+`"estimate"`: the face moved with the head angles, as before.
+
 Licenses: Core is under the Live2D Proprietary Software License (redistributable
 file only, inside Martlet), the Framework under the Live2D Open Software License,
 Hiyori under the Free Material License / Sample Data Terms (design unmodified,

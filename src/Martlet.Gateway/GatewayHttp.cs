@@ -53,6 +53,8 @@ internal sealed partial class GatewayHttpApplication
         Network.Changed = roster => Guard.Listed = roster?.Host(identity.HostId) is { Removed: false, Addresses.Count: > 0 };
         InitializeSignIn(credentials);
         Guard.SignInBlocked = () => GatewayOutsideAccess.SignInBlockedReason(SignIn);
+        // Preemptions and refusals of pool work go into this host's own log, which paired desktops show.
+        inference.Activity = (message, repeatKey) => Logs.Own(LogLevels.Info, message, repeatKey);
     }
 
     /// <summary>Rate limits, lockouts and the audit log every request passes (see <see cref="GatewayRequestGuard"/>).</summary>
@@ -195,6 +197,11 @@ internal sealed partial class GatewayHttpApplication
                 await InvokeInferenceCancellationAsync(context, traceId).ConfigureAwait(false);
                 return;
             }
+            if (IsPriorityTarget(rawTarget!))
+            {
+                await InvokePriorityAsync(context, rawTarget!).ConfigureAwait(false);
+                return;
+            }
             if (context.Request.Method == HttpMethods.Post &&
                 inference.TryGetByPath(rawTarget!, out var route))
             {
@@ -281,7 +288,7 @@ internal sealed partial class GatewayHttpApplication
         catch (GatewayProtocolException error)
         {
             Guard.Failed(context, routeClass, error.Failure.Code);
-            await WriteFailureAsync(context, traceId, error.Failure).ConfigureAwait(false);
+            await WriteFailureAsync(context, traceId, error.Failure, error.Detail).ConfigureAwait(false);
         }
         catch (BadHttpRequestException error)
         {
@@ -397,7 +404,8 @@ internal sealed partial class GatewayHttpApplication
     private async ValueTask WriteFailureAsync(
         HttpContext context,
         Guid traceId,
-        GatewayFailure failure)
+        GatewayFailure failure,
+        string? detail = null)
     {
         audit.Record(new()
         {
@@ -422,6 +430,7 @@ internal sealed partial class GatewayHttpApplication
             Code = failure.Code,
             Summary = failure.Summary,
             Remedy = failure.Remedy,
+            Detail = detail,
             TraceId = traceId
         }).ConfigureAwait(false);
     }
@@ -534,6 +543,8 @@ internal sealed partial class GatewayHttpApplication
         public required string Code { get; init; }
         public required string Summary { get; init; }
         public required string Remedy { get; init; }
+        /// <summary>One word beyond the code (see <see cref="GatewayProtocolException.Detail"/>); omitted when null.</summary>
+        public string? Detail { get; init; }
         public required Guid TraceId { get; init; }
     }
 }

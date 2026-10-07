@@ -3,6 +3,7 @@ using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Conversation;
 using Martlet.Core.Settings;
+using Martlet.Core.Tests;
 using Martlet.Providers;
 
 namespace Martlet.Desktop.Tests;
@@ -92,6 +93,30 @@ public sealed class LingeringEmoteTests
             held, now)!.Showing);
         Assert.Equal("2 h 5 min", CharacterActions.Age(TimeSpan.FromMinutes(125)));
         Assert.Equal("1 h", CharacterActions.Age(TimeSpan.FromMinutes(60)));
+    }
+
+    [Fact]
+    public void The_reply_prompt_asks_for_varied_tags_and_gives_each_its_when_to_use_hint()
+    {
+        var catalog = Catalog();
+        var prompt = catalog.Prompt(null, null)!.Instructions;
+        Assert.Contains("Use them freely to show what you feel and do, usually one or two in a reply. Vary them: each is worth showing.", prompt);
+        Assert.DoesNotContain("need none", prompt);
+        // The instructions don't grow: the old text was 459 bytes before {tags} and {example} were filled in.
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(PromptCatalog.Default(PromptCatalog.CharacterActions)) <= 459);
+
+        // An empty When to use gives Martlet's own hint (the grey text in the box): a gesture's built-in one, or the emote's name.
+        var sweat = Source("gesture:sweat");
+        var smile = Source("expression:Smile");
+        Assert.Equal("a sweat drop, for nervousness or an awkward moment", CharacterActions.Hint(sweat, catalog.Settings.Find(sweat.Id)!));
+        Assert.Equal("the character's emote named \"Smile\"", CharacterActions.Hint(smile, catalog.Settings.Find(smile.Id)!));
+        Assert.Contains("{sweat} - a sweat drop, for nervousness or an awkward moment", prompt);
+        var written = catalog.Settings with
+        {
+            Actions = catalog.Settings.Actions.Select(a => a.Id == smile.Id ? a with { Use = "when happy or amused" } : a).ToArray()
+        };
+        Assert.Equal("when happy or amused", CharacterActions.Hint(smile, written.Find(smile.Id)!));
+        Assert.Contains("{smile} - when happy or amused", (catalog with { Settings = written }).Prompt(null, null)!.Instructions);
     }
 
     [Fact]
@@ -284,6 +309,48 @@ public sealed class LingeringEmoteTests
 
     private static CharacterActionSource Gesture(string name) =>
         new("gesture:" + name, CharacterActionKind.Gesture, name, "");
+
+    [Fact]
+    public async Task The_character_waits_out_a_pause_and_never_acts_a_cue_its_reply_stopped_before()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer();
+        await using var avatar = new AvatarController(createRenderer: () => renderer, allowControlledClock: true);
+        CharacterActionCatalog? catalog = Catalog();
+        avatar.UseActions(_ => catalog);
+        await avatar.ShowAsync(scope.Profile() with { LipSync = AvatarLipSync.Loudness }, default);
+        var time = new ManualClock();
+
+        // A wave written a second into a sentence; the reply pauses 0.4 s in, long past the wave's moment.
+        var paused = new CharacterCueClock(time);
+        avatar.Cues.Post([new CharacterCue("{wave}", TimeSpan.FromSeconds(1))], Task.CompletedTask, paused);
+        time.Advance(TimeSpan.FromMilliseconds(400));
+        paused.Pause();
+        time.Advance(TimeSpan.FromSeconds(5));
+        await Task.Delay(100);
+        Assert.Empty(renderer.Actions);
+        // Played on, the wave comes the rest of its second later, where it was written.
+        paused.Resume();
+        var after = TimeSpan.Zero;
+        while (renderer.Actions.IsEmpty && after < TimeSpan.FromSeconds(3))
+        {
+            time.Advance(TimeSpan.FromMilliseconds(50));
+            after += TimeSpan.FromMilliseconds(50);
+            await Task.Delay(5);
+        }
+        Assert.Equal(new RendererAction("motion", "Wave"), Assert.Single(renderer.Actions));
+        Assert.True(after >= TimeSpan.FromMilliseconds(600), $"The wave came {after} after the reply played on.");
+
+        // Glasses due half a second in, but the reply is stopped first: they never go on.
+        var stopped = new CharacterCueClock(time);
+        avatar.Cues.Post([new CharacterCue("{glasses}", TimeSpan.FromMilliseconds(500))], Task.CompletedTask, stopped);
+        time.Advance(TimeSpan.FromMilliseconds(200));
+        stopped.Stop();
+        time.Advance(TimeSpan.FromSeconds(2));
+        await Task.Delay(100);
+        Assert.Single(renderer.Actions);
+        Assert.Empty(avatar.Held.Current);
+    }
 
     [Fact]
     public void Holdable_gestures_linger_by_default_and_others_stay_brief()

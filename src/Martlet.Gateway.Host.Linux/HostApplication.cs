@@ -39,19 +39,20 @@ internal sealed class NativeHostPlatform : IHostPlatform
         return host;
     }
 
-    // One relay worker per installed host role; each kind maps to exactly one gateway route.
+    // One relay worker per installed host role; each kind maps to exactly one gateway route, placed on the role's graphics
+    // cards (host.json "gpus"; Reading always runs on the processor; unknown counts as the whole host).
     internal static IGatewayInferenceWorker RoleWorker(HostRole role)
     {
         try
         {
-            return role.Kind switch
+            IGatewayInferenceWorker worker = role.Kind switch
             {
                 "audio2face" => new Martlet.Gateway.Audio2Face.Audio2FaceRelayWorker(role.Endpoint, role.Model, "nim"),
                 "ollama" => new Martlet.Gateway.Ollama.OllamaRelayWorker(role.Endpoint, role.Model),
                 "deep-thinking" => Martlet.Gateway.Ollama.OllamaRelayWorker.DeepThinking(role.Endpoint, role.Model, slots: role.Slots),
                 "f5" => new Martlet.Gateway.F5.F5RelayWorker(role.Endpoint, role.Model),
                 "xtts" => Martlet.Gateway.Xtts.XttsRelay.Create(role.Endpoint, role.Model),
-                "chatterbox" => Martlet.Gateway.F5.ChatterboxRelay.Create(role.Endpoint, role.Model),
+                "chatterbox" or "chatterbox-original" or "chatterbox-nano" => Martlet.Gateway.F5.ChatterboxRelay.Create(role.Endpoint, role.Model),
                 "gpt-sovits" => Martlet.Gateway.GptSovits.GptSovitsRelay.Create(role.Endpoint, role.Model),
                 "dia" => Martlet.Gateway.Dia.DiaRelay.Create(role.Endpoint, role.Model),
                 "stt" => new Martlet.Gateway.Stt.SttRelayWorker(role.Endpoint, role.Model),
@@ -60,6 +61,10 @@ internal sealed class NativeHostPlatform : IHostPlatform
                 "ocr" => new Martlet.Gateway.Ocr.OcrRelayWorker(role.Endpoint, role.Model),
                 _ => throw new HostInputException()
             };
+            IReadOnlyList<string> gpus = role.Gpus ??
+                (Martlet.Core.Installation.SharedGpu.ProcessorOnlyRoles.Contains(role.Kind) ? [GatewayGpus.Cpu] : []);
+            if (gpus.Count > 0) worker.Route.PlaceOn(gpus);
+            return worker;
         }
         catch (Exception error) when (error is Martlet.Core.Contracts.ContractException or ArgumentException or GatewayProtocolException)
         {
@@ -441,7 +446,7 @@ internal static class HostApplication
                     output.WriteLine(ready ? "ready: listener and auth admission; model readiness not probed." : "health.unavailable");
                     return ready ? 0 : 6;
                 }
-                owner = platform.OpenHost("serve", config, approval, cancellation);
+                owner = platform.OpenHost("serve", Placed(config, directory, output), approval, cancellation);
                 CheckApproval(directory, config, approval);
                 if (owner.Enabled) owner.AttachLogs(new ControlLogStorage(directory));
                 PublishMachine(owner, directory, output);
@@ -498,7 +503,7 @@ internal static class HostApplication
                 config.Recheck(directory);
                 if (approval is not null)
                     CheckApproval(directory, config, approval, requireDigest: init);
-                owner = platform.OpenHost(init ? "init" : "admin", config, approval, cancellation);
+                owner = platform.OpenHost(init ? "init" : "admin", Placed(config, directory, output), approval, cancellation);
                 config.Recheck(directory);
                 PublishMachine(owner, directory, output);
                 output.WriteLine($"Opened host: {owner.Identity!.HostId}\nSPKI pin: {owner.Identity.SpkiFingerprint}");
@@ -542,7 +547,7 @@ internal static class HostApplication
                 config.Recheck(directory);
                 if (approval is not null)
                     CheckApproval(directory, config, approval, requireDigest: exactConfig);
-                owner = platform.OpenHost(options.Command, config, approval, cancellation);
+                owner = platform.OpenHost(options.Command, Placed(config, directory, output), approval, cancellation);
                 config.Recheck(directory);
                 PublishMachine(owner, directory, output);
                 output.WriteLine($"Opened host: {owner.Identity!.HostId}\nSPKI pin: {owner.Identity.SpkiFingerprint}\nListener stopped. No engines/models/inference available.");
@@ -631,6 +636,22 @@ internal static class HostApplication
     private static ServiceApproval? ReadApproval(LinuxControlDirectory directory) =>
         directory.Read(LinuxControlDirectory.Approval, HostConfiguration.MaximumBytes) is { } bytes
             ? ServiceApproval.Parse(bytes) : null;
+
+    // gpus.json beside host.json (martlet-host writes it): which graphics card each role runs on, for GPU priority. Missing,
+    // unreadable or invalid, every role counts as the whole host: the file only decides which work waits, never what runs.
+    private static HostConfiguration Placed(HostConfiguration config, LinuxControlDirectory directory, TextWriter output)
+    {
+        try
+        {
+            return directory.Read(LinuxControlDirectory.Gpus, HostGpus.MaximumBytes) is { } bytes ? config.WithGpus(HostGpus.Parse(bytes)) : config;
+        }
+        catch (Exception error) when (error is HostInputException or GatewayPersistenceException)
+        {
+            Report(output, "gpus.invalid: gpus.json ignored, so every role counts as using the whole host for GPU priority; run " +
+                "martlet-host update to write it again.");
+            return config;
+        }
+    }
 
     /// <summary>network.json in words for status: none, or the network ID with its member counts (no keys or addresses).</summary>
     private static object DescribeNetwork(LinuxControlDirectory directory, string hostId)

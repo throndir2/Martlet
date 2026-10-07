@@ -428,6 +428,12 @@ public partial class MainWindow
         // Singing uses the voices of the voice library on a computer with the singing role, wherever Speaking runs.
         if (section == CompanionTab.Voice) page.Children.Add(SingingCard());
 
+        // Chatterbox Original's General and Expressive style, while it speaks or is the chosen engine.
+        if (section == CompanionTab.Voice && place != JobPlace.Cloud &&
+            (SpeechEngines.ForRoute(route?.GatewaySnapshot?.RouteId) == SpeechEngines.ChatterboxOriginal ||
+             SpeakingEngineChoice.Current == SpeechEngines.ChatterboxOriginal))
+            page.Children.Add(ChatterboxStyleCard());
+
         if (role == SetupRole.Llm) page.Children.Add(FallbackCard());
 
         // The voices the self-hosted engines copy from your recordings, wherever one can speak: this PC or another of your
@@ -1186,6 +1192,12 @@ public partial class MainWindow
             stack.Add(provider);
         }
         else stack.Add(new TextBlock { Text = providers[0].Name, FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        // Speaking: the same rundown as the voice engines (VoiceEngineAbilities-openai, VoiceEngineRunsOn-openai).
+        if (role == SetupRole.Tts)
+        {
+            stack.Add(AbilitiesLine("openai", VoiceAbilities.OpenAiVoice, []));
+            stack.Add(RunsOnLine("openai", RunsOnText(Martlet.Core.Planning.FootprintCatalog.OpenAiVoiceId)));
+        }
         stack.AddRange(
         [
             baseUrlPanel,

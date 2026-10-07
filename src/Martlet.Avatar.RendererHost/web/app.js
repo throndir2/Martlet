@@ -50,7 +50,28 @@ function actGesture(name, on, hold) {
   const anchor = face();
   return { started: startOverlay(name, { hold }), overlay: true,
     face: anchor ? { x: Math.round(anchor.x), y: Math.round(anchor.y), width: Math.round(anchor.width),
-      tilt: Math.round(anchor.angle * 180 / Math.PI) } : null };
+      tilt: Math.round(anchor.angle * 180 / Math.PI), ...(anchor.tracking ? { tracking: anchor.tracking } : {}) } : null };
+}
+// Where Martlet draws over the face now, as fractions of the canvas (+y down, like a tap) for Martlet's MCP: how the face is
+// followed, its middle, width and tilt, and at each cheek how much of it shows, how wide it is for its face width and what of
+// the character is there (the page's own hit test), with the overlays showing.
+function faceReading(id) {
+  const anchor = face(), overlays = activeOverlays();
+  const width = Math.max(1, canvas.clientWidth), height = Math.max(1, canvas.clientHeight);
+  const round = value => Math.round(value * 10000) / 10000;
+  const pinned = adapter?.faceTracking ? { carriers: adapter.faceTracking.carriers, milliseconds: adapter.faceTracking.milliseconds } : null;
+  if (!anchor) return { id, found: false, overlays, pinned };
+  const cheek = (point, frame) => {
+    let hit;
+    try { hit = adapter?.hitTest?.(point.x / width, point.y / height); } catch { hit = undefined; }
+    return { x: round(point.x / width), y: round(point.y / height), visible: frame ? round(frame.visible) : null,
+      across: frame ? round(Math.hypot(frame.right.x, frame.right.y) / anchor.width) : null, hit: !!hit,
+      drawables: hit?.drawables?.slice(0, 3) ?? [], bone: hit?.bone ?? null, mesh: hit?.mesh ?? null };
+  };
+  return { id, found: true, tracking: anchor.tracking ?? "estimate", x: round(anchor.x / width), y: round(anchor.y / height),
+    width: round(anchor.width / width), tilt: Math.round(anchor.angle * 1800 / Math.PI) / 10,
+    cheekLeft: cheek(anchor.cheekLeft, anchor.cheekLeftFrame), cheekRight: cheek(anchor.cheekRight, anchor.cheekRightFrame),
+    overlays, pinned };
 }
 // Which gesture plays once and which is held, a held overlay included.
 function gestureState() {
@@ -91,6 +112,15 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
         node: hit?.node ?? null, hair: hit?.hair === true, mesh: hit?.mesh ?? null, material: hit?.material ?? null };
     });
     post({ touches: { id, hits } });
+    return;
+  }
+  if (message.kind === "face") {
+    // Where Martlet draws over the face (see faceReading), answered unprompted with {faceReading}, never as a command reply
+    // (an action's reply has its own "face"); a reading that fails is only "not found" and never fails the renderer.
+    const { id } = message.data;
+    let reading = { id, found: false };
+    try { if (active && !failed) reading = faceReading(id); } catch { }
+    post({ faceReading: reading });
     return;
   }
   try {
