@@ -293,6 +293,24 @@ like it, so a request with another start would make the next reply read the whol
 conversation again. It quotes the persona-free excerpt instead elsewhere, when
 what this PC played is in the conversation (remembering never reads that) or when
 it wouldn't fit the context.
+When the [Thinking pool](#helper-jobs-on-the-thinking-pool) has a free member that
+reads text, the pool takes this request instead (a low-priority Memory job). The
+member gets the short excerpt, because it has no copy of this conversation in
+its cache, and the conversation's own model gets no request. Without such a
+member, the request goes to the conversation's Thinking model as described
+above, but only after the reply finishes speaking and while no other reply runs.
+
+<a id="helper-jobs-on-the-thinking-pool"></a>
+**Helper jobs on the Thinking pool.** Remembering, naming a character's emotes,
+deciding its touch temperament and finding its touch zones are helper jobs. Each
+one goes first to a free [Thinking pool](CONVERSATION.md#the-thinking-pool)
+member that can take it (text, or vision for touch zones), so it does not
+compete with the reply or its prompt cache. Memory, naming and temperament are
+low priority; touch zones are higher, because you wait for them. When no member
+can take a job, or the pool can't finish it, Martlet uses the conversation's
+Thinking model, after the reply finishes speaking. The desktop log names the
+route of each job, and MCP's `helper_jobs_status` shows the last route of each
+kind (`helper-jobs.json`).
 The model answers in a strict line format: `REMEMBER: <fact>`,
 `REMEMBER V<n>: <fact>` (a fact about another voice heard), `UPDATE <n>: <fact>`,
 `FORGET <n>` or `NOTHING`, at most three lines. Desktop
