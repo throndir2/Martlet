@@ -423,6 +423,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Replies › Thinking steps: the chosen option (Default, Off or On; choosing one with ui_select saves it, so
         // it needs --allow-ui-effects) and how the Thinking route takes it.
         "RepliesThinking", "RepliesThinkingStatus",
+        // Companion › Replies › Short first sentence: the chosen option (On, the default, or Off; choosing one with ui_select
+        // saves it, so it needs --allow-ui-effects).
+        "RepliesShortFirstSentence",
         // Companion › Deep thinking: where a think goes and whether it can run there alongside the conversation (and why); Thinking
         // longer's state (on by default; Where it thinks › Off turns it off) or what keeps it from working, and the chosen
         // effort, time limit, hourly limit and when it shares results (choosing one with ui_select saves them, so they need

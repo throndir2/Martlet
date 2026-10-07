@@ -1943,7 +1943,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background,
                             picture is null ? null : noticed, recalled, songNote, whileSinging, touchNote),
                         silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
-                        closingInstructions: operation.Authorization.Configuration.ReplyLength, audio: recording, imageOptional: true,
+                        closingInstructions: operation.Authorization.Configuration.ReplyClosing(operation.Authorization.Voice), audio: recording, imageOptional: true,
                         characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()),
                         chattiness: decides ? operation.Authorization.Configuration.ChattinessNote(decided) : null,
                         controlTags: LiveConversationConfiguration.ControlTags(decides, picture is not null, prompts),

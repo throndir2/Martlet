@@ -15,4 +15,49 @@ public sealed class PromptSettingsTests
         Assert.Equal([PromptCatalog.Persona], settings.Overrides.Keys);
         Assert.Null(PromptCatalog.Find("character_theme"));
     }
+
+    [Fact]
+    public void ShortFirstSentenceClosesSpokenRepliesJustBeforeReplyLength()
+    {
+        var length = PromptSettings.Fill(null, PromptCatalog.ReplyLength)!;
+        var first = PromptSettings.Fill(null, PromptCatalog.ShortFirstSentence, ("silent", "pass"))!;
+        Assert.Contains("short first sentence", first);
+        Assert.EndsWith("write only [pass].", first);
+        // On by default: a spoken reply's instructions close with it, then reply length last.
+        var spoken = PromptSettings.ReplyClosing(null, null, spoken: true, "pass");
+        Assert.Equal(first + "\n\n" + length, spoken);
+        Assert.True(GenerationSettings.StartsShort(null));
+        // The same text whatever else the reply settings say, so the start of every request stays the same.
+        Assert.Equal(spoken, PromptSettings.ReplyClosing(null, new() { Temperature = 0.4, Reasoning = true }, true, "pass"));
+        // A reply that isn't spoken, the setting turned off, or the prompt emptied: reply length alone, as before.
+        Assert.Equal(length, PromptSettings.ReplyClosing(null, null, spoken: false, "pass"));
+        Assert.Equal(length, PromptSettings.ReplyClosing(null, new() { ShortFirstSentence = false }, true, "pass"));
+        var emptied = PromptSettings.Normalize(new Dictionary<string, string> { [PromptCatalog.ShortFirstSentence] = "" });
+        emptied!.Validate();
+        Assert.Equal(length, PromptSettings.ReplyClosing(emptied, null, true, "pass"));
+        // An edit is sent as written, and reply length emptied leaves it closing alone.
+        var edited = PromptSettings.Normalize(new Dictionary<string, string>
+        {
+            [PromptCatalog.ShortFirstSentence] = "Start short. Quiet is [{silent}].", [PromptCatalog.ReplyLength] = ""
+        });
+        Assert.Equal("Start short. Quiet is [pass].", PromptSettings.ReplyClosing(edited, null, true, "pass"));
+        Assert.Null(PromptSettings.ReplyClosing(edited, new() { ShortFirstSentence = false }, true, "pass"));
+    }
+
+    [Fact]
+    public void ShortFirstSentenceIsOnUnlessTurnedOffAndOnlyOffIsSaved()
+    {
+        Assert.True(new GenerationSettings().IsDefault);
+        var off = new GenerationSettings { ShortFirstSentence = false };
+        Assert.False(off.IsDefault);
+        Assert.False(GenerationSettings.StartsShort(off));
+        Assert.Same(off, GenerationSettings.Normalize(off));
+        var settings = CompanionSettings.Begin(null) with { Generation = off };
+        settings.Validate();
+        var json = System.Text.Encoding.UTF8.GetString(Martlet.Core.Contracts.ContractJson.Write(settings));
+        Assert.Contains("\"short_first_sentence\": false", json);
+        Assert.Equal(off, SettingsJson.Read(System.Text.Encoding.UTF8.GetBytes(json)).Generation);
+        Assert.DoesNotContain("short_first_sentence",
+            System.Text.Encoding.UTF8.GetString(Martlet.Core.Contracts.ContractJson.Write(CompanionSettings.Begin(null))));
+    }
 }

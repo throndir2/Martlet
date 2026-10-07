@@ -1996,6 +1996,16 @@ provider's count, and cover each prompt as written, before placeholders are
 filled in. With an
 `id` it also returns `prompt` with that prompt's effective `text` (the
 saved edit or the built-in text), exactly what Martlet fills in and sends.
+`shortFirstSentence` is Companion › Replies › *Short first sentence*: `on`
+(on by default), `chosen` (whether a choice is saved), the prompt's `state`,
+and `spokenClosing` and `unspokenClosing`, what closes a spoken and an
+unspoken reply's instructions, built by the desktop's own
+`PromptSettings.ReplyClosing` (the short first sentence prompt, then *Reply
+length*; *Reply length* alone when it is off, emptied or the reply isn't
+spoken). On Companion › Replies, `RepliesShortFirstSentence` reads the chosen
+option (*On* or *Off*; choosing one with `ui_select` saves it, so it needs
+`--allow-ui-effects`) and `RepliesNow` says whether spoken replies start with a
+short first sentence.
 On the page, `PromptsNow` reads how many prompts are edited or emptied,
 `PromptsTokens` the estimated tokens of all prompts together as typed
 (*All prompts together: about 3,456 tokens. ...*) and
