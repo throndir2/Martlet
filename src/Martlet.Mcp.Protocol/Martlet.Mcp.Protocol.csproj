@@ -46,13 +46,10 @@
     <Compile Include="..\Martlet.Desktop\SpokenWords.cs" Link="Shared\SpokenWords.cs" />
     <Compile Include="..\Martlet.Desktop\ConversationContextBuffer.cs" Link="Shared\ConversationContextBuffer.cs" />
     <Compile Include="..\Martlet.Desktop\VisionHistory.cs" Link="Shared\VisionHistory.cs" />
-<<<<<<< HEAD
     <!-- screen_digest_check: the desktop's own screen summary over time on fixture frames. -->
     <Compile Include="..\Martlet.Desktop\ScreenDigest.cs" Link="Shared\ScreenDigest.cs" />
-=======
     <!-- helper_jobs_check: the desktop's own router for memory, emote naming and touch zones (Thinking pool or fallback). -->
     <Compile Include="..\Martlet.Desktop\HelperJobs.cs" Link="Shared\HelperJobs.cs" />
->>>>>>> origin/main
     <Page Include="..\Martlet.Desktop\Themes\Controls.xaml" Link="Themes\Controls.xaml" />
     <Page Include="..\Martlet.Desktop\Themes\Motion.xaml" Link="Themes\Motion.xaml" />
   </ItemGroup>
