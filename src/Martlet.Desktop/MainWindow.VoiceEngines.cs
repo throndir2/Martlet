@@ -23,7 +23,7 @@ public partial class MainWindow
     internal const string WindowsVoiceKey = "windows";
 
     internal static readonly IReadOnlyList<string> WindowsVoiceFeatures =
-        ["Runs on CPU", "No Docker or download", "Built-in Windows voices", "No voice cloning"];
+        ["No Docker or download", "Built-in Windows voices"];
 
     /// <summary>The computer Another of your computers' engine list sets up (null: the one that speaks, else the first).</summary>
     private string? voiceEngineHost;
@@ -195,12 +195,10 @@ public partial class MainWindow
         }
         string? Tip(string feature) => feature switch
         {
-            "Laughs & sighs" => string.Join(" ", engine.Tags.Where(t => t.Kind == VoiceTagKind.Sound).Select(t => t.Text)),
-            "Emotions" => string.Join(" ", engine.Tags.Where(t => t.Kind == VoiceTagKind.Emotion).Select(t => t.Text)),
             "Streams" => "Starts speaking before a sentence is finished.",
             _ => null
         };
-        return EngineRow(engine.Key, engine.Name, engine.Summary, engine.Features, Tip,
+        return EngineRow(engine.Key, engine.Name, engine.Summary, engine.Abilities, engine.Tags, engine.RunsOn, engine.Features, Tip,
             spot.InUse ? "in use" : recommend ? "recommended" : null, spot.State, warn: spot.Cannot is not null, spot.InUse, button);
     }
 
@@ -235,14 +233,21 @@ public partial class MainWindow
             extra.Add(Row(PageButton("Hear it", () => PreviewWindowsVoiceAsync((choice.SelectedItem as WindowsVoice)?.Id ?? voiceId).Forget(),
                 id: "SetupHearWindowsVoice")));
         }
-        return EngineRow(WindowsVoiceKey, "Windows voice", "Simple and light; nothing to set up.", WindowsVoiceFeatures, null,
-            inUse ? "in use" : recommend ? "recommended" : null, state, warn: none, inUse, button, extra);
+        return EngineRow(WindowsVoiceKey, "Windows voice", "Simple and light; nothing to set up.", VoiceAbilities.WindowsVoice, [],
+            RunsOnText(Martlet.Core.Planning.FootprintCatalog.WindowsVoiceId), WindowsVoiceFeatures, null, inUse ? "in use" : recommend ? "recommended" : null,
+            state, warn: none, inUse, button, extra);
     }
 
-    /// <summary>One engine: its name with a badge, its strength in a few words, its needs and abilities as chips, where it
-    /// stands on the shown computer (when the button doesn't already say it), and its button on the right.</summary>
-    private Border EngineRow(string key, string name, string summary, IReadOnlyList<string> features, Func<string, string?>? tip,
-        string? badge, string? state, bool warn, bool inUse, Button button, IEnumerable<UIElement>? extra = null)
+    /// <summary>Where a voice that isn't an engine runs, from its footprint (<see cref="Martlet.Core.Planning.FootprintCatalog.WindowsVoiceId"/>,
+    /// <see cref="Martlet.Core.Planning.FootprintCatalog.OpenAiVoiceId"/>).</summary>
+    internal static string RunsOnText(string footprintId) => Martlet.Core.Planning.FootprintCatalog.Default.Find(footprintId)?.WhereItRuns ?? "";
+
+    /// <summary>One engine: its name with a badge, its strength in a few words, the rundown of what it can do
+    /// (<see cref="AbilitiesLine"/>) and where it runs (<see cref="RunsOnLine"/>), its other needs as chips, where it stands
+    /// on the shown computer (when the button doesn't already say it), and its button on the right.</summary>
+    private Border EngineRow(string key, string name, string summary, VoiceAbilities abilities, IReadOnlyList<VoiceTag> tags,
+        string runsOn, IReadOnlyList<string> features, Func<string, string?>? tip, string? badge, string? state, bool warn, bool inUse,
+        Button button, IEnumerable<UIElement>? extra = null)
     {
         var title = OptionTitle(name, badge, 15);
         AutomationProperties.SetName(title, name + (badge is null ? "" : " · " + badge));
@@ -250,6 +255,8 @@ public partial class MainWindow
         var text = new StackPanel();
         text.Children.Add(title);
         text.Children.Add(Note(summary, new Thickness(0, 2, 0, 0)));
+        text.Children.Add(AbilitiesLine(key, abilities, tags));
+        text.Children.Add(RunsOnLine(key, runsOn));
         text.Children.Add(Chips(key, features, tip));
         if (state is not null)
         {
@@ -269,6 +276,50 @@ public partial class MainWindow
             Padding = new Thickness(14, 12, 14, 12), Margin = new Thickness(0, 8, 0, 0) };
         option.SetResourceReference(Border.BorderBrushProperty, inUse ? "AccentBrush" : "BorderBrush");
         return option;
+    }
+
+    /// <summary>The quick rundown of what a voice can do, in one wrapping line: "✓ Voice cloning   ✓ Laughs &amp; sighs
+    /// ◐ Emotions: whispering only" (✓ yes, ◐ partly, ✕ no). It reads as <see cref="VoiceAbilities.Describe"/>
+    /// (<c>VoiceEngineAbilities-&lt;key&gt;</c>: "Voice cloning: yes. Laughs &amp; sighs: yes. Emotions: whispering only.").
+    /// Each item's tooltip says what it means and, when the voice has it, which of its <paramref name="tags"/> the reply
+    /// writes for it.</summary>
+    internal static TextBlock AbilitiesLine(string key, VoiceAbilities abilities, IReadOnlyList<VoiceTag> tags)
+    {
+        var line = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
+        foreach (var item in abilities.Items)
+        {
+            var (mark, brush) = item.Level switch
+            {
+                AbilityLevel.Yes => ("\u2713", "SuccessBrush"),
+                AbilityLevel.Partly => ("\u25D0", "AccentBrush"),
+                _ => ("\u2715", "MutedBrush")
+            };
+            var glyph = new Run(mark + "\u00A0");
+            glyph.SetResourceReference(TextElement.ForegroundProperty, brush);
+            var words = new Run(item.Note is null ? item.Name : $"{item.Name}: {item.Note}");
+            if (item.Level == AbilityLevel.No) words.SetResourceReference(TextElement.ForegroundProperty, "MutedBrush");
+            var spelled = string.Join(" ", abilities.TagsFor(item, tags).Select(t => t.Text));
+            var span = new Span(glyph) { ToolTip = item.Help + (spelled.Length > 0 ? " " + spelled : "") };
+            span.Inlines.Add(words);
+            if (line.Inlines.Count > 0) line.Inlines.Add(new Run("     "));
+            line.Inlines.Add(span);
+        }
+        AutomationProperties.SetName(line, abilities.Describe());
+        AutomationProperties.SetAutomationId(line, "VoiceEngineAbilities-" + key);
+        return line;
+    }
+
+    /// <summary>Where a voice runs and how much graphics memory it takes, one muted line (<c>VoiceEngineRunsOn-&lt;key&gt;</c>):
+    /// "Runs on an NVIDIA GPU: about 3.7 GB of graphics memory, up to 4.2 GB (6 GB+ card).", "Runs on the CPU: no graphics
+    /// card needed." or "Runs online: nothing runs on your computers."</summary>
+    internal static TextBlock RunsOnLine(string key, string runsOn)
+    {
+        // A number stays with its unit ("4.2 GB", "6 GB+ card") when the line wraps; screen readers and MCP get plain spaces.
+        var shown = runsOn.Replace(" GB", "\u00A0GB", StringComparison.Ordinal).Replace("+ card", "+\u00A0card", StringComparison.Ordinal);
+        var line = Note(shown, new Thickness(0, 4, 0, 0));
+        AutomationProperties.SetName(line, runsOn);
+        AutomationProperties.SetAutomationId(line, "VoiceEngineRunsOn-" + key);
+        return line;
     }
 
     /// <summary>Short chips in one wrapping line, read as one comma-separated list (<c>VoiceEngineFeatures-&lt;key&gt;</c>).</summary>
