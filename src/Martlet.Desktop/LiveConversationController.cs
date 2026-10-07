@@ -513,7 +513,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     }
     internal LiveConversationConfiguration? Configuration { get { lock (gate) return configuration; } }
     /// <summary>Who makes the screen summaries over time: the Thinking pool's digest jobs on a member that sees.</summary>
-    internal IScreenDigestThinker ScreenDigestThinker { get; set; } = NoScreenDigestThinker.Instance;
+    internal IScreenDigestThinker ScreenDigestThinker => screenDigestThinker ??= new PoolScreenDigestThinker(() => ThinkingPool);
+    private IScreenDigestThinker? screenDigestThinker;
     /// <summary>Where screen summaries go: the context board, for the next reply's notes.</summary>
     internal IScreenDigestBoard ScreenDigestBoard { get; set; } = NoScreenDigestBoard.Instance;
     /// <summary>The input tokens the last reply or glance read and how many came from the model's prompt cache; null until a

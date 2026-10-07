@@ -1,3 +1,4 @@
+using Martlet.Conversation;
 using Martlet.Core.Settings;
 using Martlet.Core.Tests;
 using Martlet.Desktop;
@@ -260,6 +261,34 @@ public sealed class ScreenDigestTests
         Assert.Equal(1, board.Cleared);
         See(digester, "Code", 1, 10);
         Assert.Equal(0, digester.Status.Frames);
+    }
+
+    [Fact]
+    public async Task ThePoolRunsSummariesOnlyOnAMemberThatSees()
+    {
+        BackgroundPlace text = new("host:a", "a"), eyes = new("host:b", "b") { Can = ThinkingCapability.Text | ThinkingCapability.Vision };
+        var members = new List<BackgroundPlace> { text };
+        ThinkingJob? ran = null;
+        string? where = null;
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => members, (m, job, _) =>
+        {
+            (ran, where) = (job, m.Id);
+            return Task.FromResult(ThinkingAnswer.Done("They opened a game."));
+        });
+        var thinker = new PoolScreenDigestThinker(() => new ThinkingPool(board));
+        var sheet = ScreenDigestSheet.Encode(Solid(16, 8, 1, 2, 3), 16, 8);
+        var job = new ScreenDigestJob("What changed?", sheet, 2, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch, "changes");
+
+        Assert.False(thinker.CanSee);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => thinker.DigestAsync(job, CancellationToken.None));
+        members.Add(eyes);
+        Assert.True(thinker.CanSee);
+        Assert.Equal("They opened a game.", await thinker.DigestAsync(job, CancellationToken.None));
+        Assert.Equal("host:b", where);
+        Assert.Equal(ThinkingJobKind.Digest, ran!.Kind);
+        Assert.Same(sheet, ran.Image);
+        Assert.True(ran.DropWhenStale);
+        Assert.True(ran.Timeout < new ScreenDigestTiming().Stale);
     }
 
     [Fact]
