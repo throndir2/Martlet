@@ -458,7 +458,7 @@ internal sealed class LiveConversationConfiguration
         string? voices = null, string? messageNotes = null,
         Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null, bool withoutReasoning = false,
         CharacterActionPrompt? gaze = null, string? chattiness = null, IReadOnlyList<string>? controlTags = null,
-        Func<CancellationToken, Task<string?>>? spokenWords = null, string? board = null)
+        Func<CancellationToken, Task<string?>>? spokenWords = null, string? board = null, IThinkingBackup? backup = null)
     {
         ArgumentNullException.ThrowIfNull(history);
         string? persona = null, styleNote = null;
@@ -515,7 +515,8 @@ internal sealed class LiveConversationConfiguration
                         // A model that refused the Thinking steps choice this session gets its own default.
                         withoutReasoning ? GenerationSettings.WithoutReasoning(ReplyGeneration) : ReplyGeneration, tools, TextFallback(),
                         imageOptional && image is not null,
-                        characterTags, Persona?.SpokenBreaks ?? SpeechBreaks.Default, controlTags, audio is null ? null : spokenWords);
+                        characterTags, Persona?.SpokenBreaks ?? SpeechBreaks.Default, controlTags, audio is null ? null : spokenWords)
+                        { Backup = backup };
                 }
             }
         }

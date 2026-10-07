@@ -64,9 +64,13 @@ internal sealed partial class LiveConversationController
         });
     }
 
-    // What the conversation runs on now (its Thinking, voice and listening routes), for the floor's rules.
-    private void UseLiveResources(LiveConversationConfiguration? configured) =>
-        floorRules.Resources = configured is null ? LiveResources.None : LiveResources.For(configured.Routes, HostRouteGpus.For);
+    // What the conversation runs on now (its Thinking, voice and listening routes, and a Backup Thinking member while its stream
+    // is read), for the floor's rules.
+    private void UseLiveResources(LiveConversationConfiguration? configured)
+    {
+        var resources = configured is null ? LiveResources.None : LiveResources.For(configured.Routes, HostRouteGpus.For);
+        floorRules.Resources = backupResources.IsEmpty ? resources : new([.. resources.Items, .. backupResources.Values]);
+    }
 
     private void FloorChanged(LiveFloorChange change)
     {
