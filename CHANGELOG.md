@@ -14,6 +14,9 @@ Each release's section here is also its notes on GitHub.
 ### Changed
 - More setup work runs at the same time: adding a role such as Ollama to this PC no longer waits while Martlet prepares its host service's update, Windows Firewall opens while Docker Desktop starts during host setup, and Update hosts updates all your hosts at once instead of one by one. ([#503](https://github.com/throndir2/Martlet/pull/503))
 
+### Fixed
+- Devices shows the graphics card, memory and processor of a host running in Docker Desktop again, after the host is updated. Since 0.18.0 such hosts reported no hardware. ([#504](https://github.com/throndir2/Martlet/pull/504))
+
 ## [0.50.1] - 2026-10-06
 
 ### Fixed

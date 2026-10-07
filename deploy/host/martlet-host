@@ -1225,7 +1225,7 @@ MACHINE_FILE="${GW_CONF_DIR}/machine.json"
 json_text() { printf '"%s"' "$(printf '%s' "$1" | tr -c 'A-Za-z0-9 ._()+/@:,#-' ' ' | tr -s ' ' | sed 's/^ //; s/ $//' | cut -c1-120)"; }
 json_opt() { if [[ -n "$1" ]]; then json_text "$1"; else printf 'null'; fi; }
 json_num() { if [[ "$1" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then printf '%s' "$1"; else printf 'null'; fi; }
-json_string_array() { local value first=1; for value in "$@"; do [[ ${first} == 1 ]] || printf ','; json_text "${value}"; first=0; done; }
+json_string_array() { local value first=1; for value in "$@"; do [[ -n "${value}" ]] || continue; [[ ${first} == 1 ]] || printf ','; json_text "${value}"; first=0; done; }
 
 host_timezone() {
   local tz=""
@@ -1415,7 +1415,8 @@ machine_features() {
   (( zwave_radio == 1 )) && feature_add features zwave-radio
   (( serial_radio == 1 )) && feature_add features serial-radio
   (( bluetooth == 1 )) && feature_add features bluetooth
-  printf '%s\n' "${features[@]}"
+  # printf with no values still prints one empty line, which became "features":[""] and made the gateway ignore the report.
+  if (( ${#features[@]} > 0 )); then printf '%s\n' "${features[@]}"; fi
 }
 
 feature_words() {

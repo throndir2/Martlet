@@ -94,6 +94,27 @@ public sealed class CapabilityStatusTests
     }
 
     [Fact]
+    public void Docker_desktop_report_without_features_parses_and_a_blank_feature_is_refused()
+    {
+        // A Docker Desktop host with an NVIDIA GPU and no extra features, as martlet-host collect_machine writes it.
+        const string written =
+            "{\"collected_at\":\"2026-10-07T03:20:00Z\",\"method\":\"docker\",\"platform\":\"linux\",\"architecture\":\"x64\"," +
+            "\"operating_system\":\"Docker Desktop\",\"kernel\":\"5.15.167.4-microsoft-standard-WSL2\"," +
+            "\"processor\":\"Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz\",\"processor_threads\":16,\"memory_gb\":15.6," +
+            "\"container_runtime\":\"Docker 29.8.1\",\"nvidia_containers\":\"yes\",\"cuda\":null,\"gpus\":[{\"name\":\"NVIDIA GeForce RTX 4070\"," +
+            "\"vendor\":\"nvidia\",\"memory_mb\":12282,\"driver\":\"610.88\",\"persistence\":true,\"power_limit_w\":200.00," +
+            "\"power_default_w\":200.00}],\"features\":[]}\n";
+        var report = GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(written));
+        Assert.NotNull(report);
+        Assert.Empty(report!.Features!);
+        Assert.Equal(12282, Assert.Single(report.Gpus).MemoryMb);
+
+        // What martlet-host wrote before it stopped turning no features into one blank one: the report was ignored.
+        Assert.Null(GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(written.Replace("\"features\":[]", "\"features\":[\"\"]",
+            StringComparison.Ordinal))));
+    }
+
+    [Fact]
     public async Task Private_worker_failure_is_redacted_with_an_exact_remedy()
     {
         var worker = new UnavailableWorker(GatewayTestHost.Capabilities(
