@@ -29,8 +29,9 @@ public sealed record CharacterGesture(string Name, string Tag, string Use, strin
 /// <summary>One emote or motion a character model has. <see cref="Id"/> is stable for the model (<c>expression:F01</c>,
 /// <c>motion:TapBody</c>, <c>gesture:nod</c>); <see cref="Name"/> is what the renderer plays (the expression's name or
 /// motion group); <see cref="Detail"/> says what it changes, for the Thinking model and the owner (parameter IDs, their
-/// display names and values, shape names, the motion's length), never a path.</summary>
-public sealed record CharacterActionSource(string Id, CharacterActionKind Kind, string Name, string Detail);
+/// display names and values, shape names, the motion's length), never a path. <see cref="Toggle"/>: a VTube Studio
+/// ToggleExpression hotkey turns it on and off (a look meant to stay on).</summary>
+public sealed record CharacterActionSource(string Id, CharacterActionKind Kind, string Name, string Detail, bool Toggle = false);
 
 /// <summary>Every emote and motion of one character model, read from its files without showing it. <see cref="ModelId"/>
 /// is the model's ID as the shared character list computes it (<see cref="CharacterModelLibrary.ModelId"/>), so a model has
@@ -59,7 +60,7 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
             ["ParamBodyAngleZ"], Spine),
         new("smile", "smile", "smile with your eyes, for warmth or happiness", "smiles with the eyes and mouth for a few seconds",
             ["ParamEyeLSmile", "ParamEyeRSmile"], null),
-        new("blush", "blush", "blush, for embarrassment or being flattered", "blushes for a few seconds", [], Head, Holdable: true),
+        new("blush", "blush", "blush, for embarrassment or being flattered", "blushes for a few seconds", [], Head),
         new("surprise", "surprised", "raise your brows wide-eyed, for surprise", "raises the brows and widens the eyes",
             ["ParamBrowLY", "ParamBrowRY"], null, "surprised"),
         new("wave", "wave", "wave your hand, for hello or goodbye", "raises the right hand and waves", null, ["rightUpperArm", "rightLowerArm"]),
@@ -219,10 +220,14 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
         var extras = LocalAvatarFiles.Extras(assets, entry);
         var names = DisplayNames(model.Bytes, byName);
         string Label(string id) => names.TryGetValue(id, out var display) && display != id ? $"{id} ({display})" : id;
+        var toggles = assets.Where(a => a.Name.EndsWith(".vtube.json", StringComparison.OrdinalIgnoreCase)).Select(a => VTubeStudio.Read(a.Bytes))
+            .FirstOrDefault(v => v is not null && v.Model == entry)?.Hotkeys.Where(h => h.Action == "ToggleExpression").Select(h => h.File)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase) ?? [];
         foreach (var (name, file) in declared.Expressions.Select(e => (e.Key, e.Value)).Concat(extras.Expressions.Select(e => (e.Name, e.File))))
         {
             if (!byName.TryGetValue(file, out var asset)) continue;
-            yield return new("expression:" + name, CharacterActionKind.Expression, name, Clip(ExpressionDetail(file, asset.Bytes, Label)));
+            yield return new("expression:" + name, CharacterActionKind.Expression, name, Clip(ExpressionDetail(file, asset.Bytes, Label)),
+                toggles.Contains(file));
         }
         var groups = declared.Motions.Select(g => (Group: g.Key, Files: g.Value))
             .Concat(extras.Motions.GroupBy(m => m.Group).Select(g => (Group: g.Key, Files: (IReadOnlyList<string>)g.Select(m => m.File).ToArray())));

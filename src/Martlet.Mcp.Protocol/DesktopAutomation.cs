@@ -320,8 +320,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "CharacterModelsStatus", "CharacterModelsShared", "CharacterModelAddProblem",
         // Companion › Character › Emotes and motions: how many the shown model has and who named them, the Thinking model's
         // naming progress, the tags offered to replies and what follows the voice's cues, the last one played (model-authored
-        // names only) and whether edits saved. Each row's name and kind (CharacterActionName-<n>, a model-authored name).
+        // names only) and whether edits saved. Each row's name and kind (CharacterActionName-<n>, a model-authored name), and
+        // its Try button's label (CharacterActionTry-<n>: "Try", or "Turn off" while that lingering emote is on). The lingering
+        // emotes on now and for how long (CharacterActionsHeld: "On now: Glasses (12 min)." or "No lingering emotes are on.").
+        // Each row's "Stays on" check box (CharacterActionMode-<n>) reports its mode as checkedState; changing it saves, and Try,
+        // Turn off, Clear emotes (CharacterActionsClear) and the overlay menu's Clear emotes (CharacterClearEmotes) change what
+        // the character shows, so they need --allow-ui-effects.
         "CharacterActionsStatus", "CharacterActionsNaming", "CharacterActionsOffered", "CharacterActionsLast", "CharacterActionsSaveState",
+        "CharacterActionsHeld",
         // Companion › Listening › Speakers and echo: whether echo reduction is on and how the last listen went (or why it couldn't
         // run). The TalkReduceEcho check box saves the choice, so it needs --allow-ui-effects.
         "TalkReduceEchoStatus",
@@ -565,7 +571,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// click; never the text it copies).</summary>
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
-    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "VoiceEngine", "SpeakingHost-", "SingingHost-",
+    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "VoiceEngine", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // The welcome wizard: each Martlet found ("WizardFound-0": name, address, version and hosts), each hardware line
         // ("WizardSpecRow-Vram") and each suggested part ("WizardPlanItem-Thinking": what, where, its % of graphics memory,

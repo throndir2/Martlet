@@ -52,7 +52,7 @@ public sealed class CharacterGestureTests
         var prompt = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null)).Prompt(null, null);
         Assert.NotNull(prompt);
         Assert.Equal(["{smile}", "{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{blush}", "{shy}", "{giggle}", "{flinch}", "{lean_in}",
-            "{look_away}", "{think}"], prompt.Tags);
+            "{look_away}", "{think}", "{/shy}", "{/look_away}"], prompt.Tags);
         Assert.Contains("{tilt_head} - tilt your head, for curiosity or confusion", prompt.Instructions);
         Assert.Contains("ParamAngleZ", inventory.Find("gesture:tilt")!.Detail);
         Assert.Contains("(moves ParamCheek)", inventory.Find("gesture:blush")!.Detail);
@@ -110,10 +110,10 @@ public sealed class CharacterGestureTests
         Assert.Equal(["sigh"], catalog.For("(sighs)").Select(s => s.Name));
         Assert.Equal("laugh", catalog.Settings.Find("gesture:laugh")!.Cue);
 
-        // Voice emotes follow the voice and never lengthen the reply instructions; the reply gestures stay offered.
+        // Voice emotes follow the voice and never lengthen the reply instructions; the reply gestures stay offered, the holdable ones with off tags.
         var silent = catalog.Prompt(null, null)!.Tags;
         Assert.Equal(["{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{smile}", "{blush}", "{surprised}", "{shy}", "{giggle}", "{flinch}",
-            "{lean_in}", "{look_away}", "{think}"], silent);
+            "{lean_in}", "{look_away}", "{think}", "{/shy}", "{/look_away}"], silent);
         Assert.Contains("draws a pink glow on the cheeks", inventory.Find("gesture:blush")!.Detail);
         var chatterbox = catalog.Prompt(Martlet.Core.Settings.SpeechEngines.Chatterbox, null)!.Tags;
         Assert.DoesNotContain("{surprised}", chatterbox);
@@ -132,7 +132,7 @@ public sealed class CharacterGestureTests
         var names = CharacterActionInventory.AllGestures.Select(g => g.Name).ToArray();
         string[] added = ["wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy"];
         Assert.Equal(added, names[^added.Length..]);
-        Assert.Equal(["blush", "pout", "shy", "look_away", "drowsy"], CharacterActionInventory.AllGestures.Where(g => g.Holdable).Select(g => g.Name));
+        Assert.Equal(["pout", "shy", "look_away", "drowsy"], CharacterActionInventory.AllGestures.Where(g => g.Holdable).Select(g => g.Name));
         Assert.All(CharacterActionInventory.AllGestures, g => Assert.True(CharacterActions.IsTag(g.Tag) &&
             g.Use.Length <= CharacterActionCatalog.MaximumUseLength, g.Name));
         Assert.Equal(names.Length, names.Distinct().Count());

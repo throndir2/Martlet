@@ -66,10 +66,11 @@ test("a blush the model can't show is drawn over the face, held until turned off
   await send({ kind: "action", data: { kind: "gesture", name: "nod" } });
   assert.equal(posts.at(-1).started, true);
   await send({ kind: "action", data: { kind: "gesture", name: "blush", hold: true } });
-  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { started: true, overlay: true, face: { x: 250, y: 100, width: 80 }, gesture: { playing: "nod" } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { started: true, overlay: true, face: { x: 250, y: 100, width: 80 }, gesture: { playing: "nod", held: "blush" } });
   assert.deepEqual(played.at(-1), ["blush", true], "the model's own blush is tried first");
-  await send({ kind: "action", data: { kind: "gesture", name: "blush", on: false } });
+  await send({ kind: "action", data: { kind: "gesture", name: "blush", on: false, hold: true } });
   assert.equal(posts.at(-1).started, true);
+  assert.equal(posts.at(-1).gesture.held, undefined, "turned off, the drawn blush is no longer held");
   assert.deepEqual(played.at(-1), ["release", "blush"]);
   await send({ kind: "action", data: { kind: "gesture", name: "sparkle_nonexistent" } });
   assert.equal(posts.at(-1).started, false);

@@ -1,7 +1,7 @@
 import { Live2DAdapter, LocalModelBundle } from "../../Martlet.Avatar.Live2D/lib/index.ts";
 import { VrmAvatarAdapter } from "../../Martlet.Avatar.Vrm/src/index.ts";
-import { activeOverlays, attachOverlay, clearOverlays, hasOverlay, registerBlush, renderOverlay, startOverlay, stopOverlay,
-  toCssAnchor } from "./overlay.js";
+import { activeOverlays, attachOverlay, clearOverlays, hasOverlay, heldOverlays, registerBlush, renderOverlay, startOverlay,
+  stopOverlay, toCssAnchor } from "./overlay.js";
 
 const canvas = document.getElementById("avatar");
 attachOverlay(document.getElementById("overlay"));
@@ -27,18 +27,33 @@ const face = () => {
   return anchor && toCssAnchor(anchor, canvas.clientWidth / Math.max(1, canvas.width), canvas.clientHeight / Math.max(1, canvas.height));
 };
 // One of Martlet's gestures: the model's own when it has it (Live2D's ParamCheek blush, a VRM's blush expression), otherwise
-// one Martlet draws over the face (overlay.js). A held one stays until it is turned off.
+// one Martlet draws over the face (overlay.js). A held one stays until it is turned off; like the adapters' held gestures,
+// one is held at a time, so holding one lets the one held before go.
 function actGesture(name, on, hold) {
   if (!on) {
     adapter.endGesture(name);
     stopOverlay(name);
     return { started: true };
   }
-  if (renderer === "Live2D" ? adapter.gesture(name, hold) : adapter.playGesture(name, hold)) return { started: true };
+  if (renderer === "Live2D" ? adapter.gesture(name, hold) : adapter.playGesture(name, hold)) {
+    if (hold && adapter.gestureState?.held === name) for (const other of heldOverlays()) stopOverlay(other);
+    return { started: true };
+  }
   if (!hasOverlay(name)) return { started: false };
+  if (hold) {
+    const held = adapter.gestureState?.held;
+    if (held) adapter.endGesture(held);
+    for (const other of heldOverlays()) if (other !== name) stopOverlay(other);
+  }
   const anchor = face();
   return { started: startOverlay(name, { hold }), overlay: true,
     face: anchor ? { x: Math.round(anchor.x), y: Math.round(anchor.y), width: Math.round(anchor.width) } : null };
+}
+// Which gesture plays once and which is held, a held overlay included.
+function gestureState() {
+  const state = { ...(adapter.gestureState ?? {}) }, overlay = heldOverlays()[0];
+  if (overlay) state.held = overlay;
+  return state;
 }
 window.chrome.webview.addEventListener("message", async ({ data: message }) => {
   if (message.kind === "look") {
@@ -135,16 +150,18 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
       // An emote (expression, held until ended or replaced), a motion (played once) or a gesture (played once, or with
       // `hold` a holdable one kept until ended; drawn over the face when the model can't show it, see actGesture). Ending
       // an expression that isn't the one showing changes nothing. A gesture's reply also says which gesture now plays once
-      // and which is held.
+      // and which is held. A held (lingering) expression stays on, layered with the other held ones and the passing emote,
+      // until it is ended with hold set too.
       const kind = String(data.kind), name = String(data.name), on = data.on !== false, hold = data.hold === true;
       let started = false;
-      if (kind === "gesture") { post({ ...actGesture(name, on, hold), gesture: adapter.gestureState }); return; }
+      if (kind === "gesture") { post({ ...actGesture(name, on, hold), gesture: gestureState() }); return; }
       else if (kind === "motion") started = on && renderer === "Live2D" ? adapter.playMotion(name) : false;
       else if (kind === "expression") {
         if (renderer === "Live2D") {
-          if (on) { started = adapter.setExpression(name); if (started) expression = name; }
+          if (hold) started = adapter.holdExpression(name, on);
+          else if (on) { started = adapter.setExpression(name); if (started) expression = name; }
           else if (expression === name) { started = adapter.setExpression(null); expression = undefined; }
-        } else started = adapter.setAction(name, on);
+        } else started = adapter.setAction(name, on, hold);
       }
       post({ started });
     }

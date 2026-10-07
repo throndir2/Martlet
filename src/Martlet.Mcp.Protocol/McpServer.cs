@@ -440,15 +440,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "as a glow on the cheeks when the model has no ParamCheek or blush expression; Live2D smile, surprise; VRM wave, shrug, bounce; " +
             "and the voice emotes linked to every voice sound and tone: laugh, chuckle, sigh, gasp, cough, clear_throat, groan, sniff, shush, inhale, exhale, " +
             "mumble, hum, sneeze, whistle, happy, sarcastic, angry, fear, crying, whispering, dramatic) with what it changes, its tag, voice cue, when to use it, whether " +
-            "it is on and whether replies are offered it for engine (a voice engine key; \"none\" or absent: a voice without tags); the " +
-            "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; the reply prompt and tags; " +
+            "it is on, its mode (brief, or lingering: stays on after {tag} until {/tag}; modeSaved false when it is the default, " +
+            "vtsToggle when a VTube Studio ToggleExpression hotkey turns it on) and whether replies are offered it for engine (a voice engine key; \"none\" or absent: a voice without tags); the " +
+            "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; the reply prompt and tags " +
+            "(lingering emotes add their {/tag} off tags); with showing (tags the character would show now, as \"glasses\" or " +
+            "\"glasses:12\" for 12 minutes) also showingNote, the line the newest message's notes get; " +
             "and the Thinking naming prompt. With voiceTag (a voice's tag such as \"[laugh]\" or \"(sighs)\", or a reply tag such as " +
-            "\"{nod}\"), also what it sets off (setsOff: kind and name; with several expressions or motions on one cue, one picked at random). " +
+            "\"{nod}\" or \"{/glasses}\"), also what it sets off (setsOff: kind, name and whether it holds; with several expressions or motions " +
+            "on one cue, one picked at random) or turns off (turnsOff). " +
             "With answer (a simulated Thinking reply such as \"1: blush | - | when shy\"), also what the " +
             "production parser makes of it. Reads only; contacts nothing and never returns the model's path.", new
         {
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, engine = new { type = "string" },
-            answer = new { type = "string" }, voiceTag = new { type = "string" }
+            answer = new { type = "string" }, voiceTag = new { type = "string" }, showing = new { type = "array", items = new { type = "string" } }
         }),
         Tool("character_gaze", "Where the character looks (Companion > Vision > Where the character looks; docs/SCREEN_COMMENTARY.md " +
             "\"Where the character looks\"): the saved choice in a data directory's talk-preferences.json (mouse unless Martlet " +
@@ -2096,10 +2100,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
             return of.Entries.Select((e, n) => new
             {
                 n, id = e.Source.Id, kind = e.Source.Kind.ToString().ToLowerInvariant(), name = e.Source.Name, detail = e.Source.Detail,
-                tag = e.Action.Tag, cue = e.Action.Cue, use = e.Action.Use, enabled = e.Action.Enabled, offered = offered.Contains(e.Source.Id)
+                tag = e.Action.Tag, cue = e.Action.Cue, use = e.Action.Use, enabled = e.Action.Enabled, offered = offered.Contains(e.Source.Id),
+                mode = e.Action.Mode ?? Martlet.Avatar.Hosting.CharacterActions.DefaultMode(e.Source, e.Action.Tag),
+                modeSaved = e.Action.Mode is not null, vtsToggle = e.Source.Toggle
             }).ToArray();
         }
-        var reply = catalog.Prompt(engine, prompts);
+        // Lingering emotes the character would be showing ("glasses" or "glasses:12" for 12 minutes), for the note replies get.
+        var now = DateTimeOffset.Now;
+        var showing = (OptionalStrings(arguments, "showing") ?? []).Select(text =>
+        {
+            var parts = text.Split(':', 2);
+            var minutes = parts.Length > 1 && int.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var m) ? m : 0;
+            var source = catalog.Entries.FirstOrDefault(e => string.Equals(e.Action.Tag, parts[0].Trim('{', '}'), StringComparison.OrdinalIgnoreCase)).Source ??
+                throw new ArgumentException($"No emote has the tag '{parts[0]}'.");
+            return new Martlet.Avatar.Hosting.HeldEmote(source, path, now - TimeSpan.FromMinutes(minutes));
+        }).ToArray();
+        var reply = catalog.Prompt(engine, prompts, showing, now);
         var naming = Martlet.Avatar.Hosting.CharacterActions.NamingPrompt(inventory, prompts);
         object? parsed = null;
         if (OptionalString(arguments, "answer") is { } answer)
@@ -2125,10 +2141,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
             },
             saved = saved is not null, detectedBy = catalog.Settings.DetectedBy, detectedAt = catalog.Settings.DetectedAt,
             engine = engine?.Key, actions = Describe(catalog),
-            replyPrompt = reply?.Instructions, replyTags = reply?.Tags,
+            replyPrompt = reply?.Instructions, replyTags = reply?.Tags, showingNote = reply?.Showing,
             namingPrompt = naming is { } ask ? new { instructions = ask.Instructions, list = ask.List } : null,
             voiceTag, setsOff = voiceTag is null ? null
-                : catalog.For(voiceTag).Select(s => new { kind = s.Kind.ToString().ToLowerInvariant(), name = s.Name }).ToArray(),
+                : catalog.For(voiceTag).Select(s => new
+                {
+                    kind = s.Kind.ToString().ToLowerInvariant(), name = s.Name, holds = voiceTag.StartsWith('{') && catalog.Lingers(s)
+                }).ToArray(),
+            turnsOff = voiceTag is not null && catalog.Off(voiceTag) is { } off ? new { kind = off.Kind.ToString().ToLowerInvariant(), name = off.Name } : null,
             parsed
         };
     }

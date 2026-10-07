@@ -24,6 +24,8 @@ export const hasOverlay = name => registry.has(String(name));
 export const overlayNames = () => [...registry.keys()];
 /** The overlays showing now, including those fading out. */
 export const activeOverlays = () => [...active.keys()];
+/** The overlays held on (started with `hold` and not stopped). */
+export const heldOverlays = () => [...active].filter(([, state]) => state.hold && !state.stop).map(([name]) => name);
 
 /** Starts an overlay from the beginning; held, it stays until `stopOverlay`. False when no overlay has that name. */
 export function startOverlay(name, { hold = false } = {}) {

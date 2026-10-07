@@ -372,6 +372,8 @@ export class VrmRuntime {
   private look = { x: 0, y: 0 };
   private composedAge = Number.POSITIVE_INFINITY;
   private readonly actions = new Map<string, { target: number; value: number }>();
+  /** Expressions held on (lingering emotes) until turned off. */
+  private readonly heldExpressions = new Set<string>();
   private gesture: { name: VrmGesture; seconds: number } | undefined;
   private blush: { name: string; seconds: number; hold: boolean } | undefined;
   private held: { name: HoldableGesture; seconds: number; progress: number; on: boolean }[] = [];
@@ -402,14 +404,17 @@ export class VrmRuntime {
   }
 
   /**
-   * Fades an authored emotion or custom expression in (`on`) or out, as an emote. One shows at a time: a new one fades the
-   * others out. Mouth, blink and gaze presets belong to lip-sync, blinking and gaze, so they are refused.
+   * Fades an authored emotion or custom expression in (`on`) or out, as an emote. One passing emote shows at a time: a new one
+   * fades the others out, except held (lingering) ones (`hold`), which stay on together until each is turned off. Mouth, blink
+   * and gaze presets belong to lip-sync, blinking and gaze, so they are refused.
    */
-  setAction(name: string, on: boolean): boolean {
+  setAction(name: string, on: boolean, hold = false): boolean {
     const model = this.loaded();
     if (typeof name !== "string" || !model.expressionManager?.getExpression(name) ||
       [...mouthPresets, ...blinkPresets, ...gazePresets].includes(name as never)) return false;
-    if (on) for (const [other, state] of this.actions) if (other !== name) state.target = 0;
+    if (on && !hold) for (const [other, state] of this.actions) if (other !== name && !this.heldExpressions.has(other)) state.target = 0;
+    if (hold) { if (on) this.heldExpressions.add(name); else this.heldExpressions.delete(name); }
+    else if (this.heldExpressions.has(name)) return true;
     const state = this.actions.get(name) ?? { target: 0, value: 0 };
     state.target = on ? 1 : 0;
     this.actions.set(name, state);
@@ -435,10 +440,13 @@ export class VrmRuntime {
       const own = model.expressionManager?.expressions.map(e => e.expressionName)
         .find(n => !reserved.includes(n) && BLUSH_EXPRESSION.test(n));
       if (!own || !this.setAction(own, true)) return false;
+      // Held, it is the one held gesture: the one held before lets go.
+      if (hold) for (const held of this.held) held.on = false;
       this.blush = { name: own, seconds: 0, hold };
       return true;
     }
     if (hold && holdable(name)) {
+      if (this.blush?.hold) this.endGesture("blush");
       for (const held of this.held) held.on = held.name === name;
       if (!this.held.some(held => held.name === name)) this.held.push({ name, seconds: 0, progress: 0, on: true });
       return true;
@@ -455,8 +463,8 @@ export class VrmRuntime {
   }
 
   /** The gesture playing once and the one held, if any. */
-  get gestureState(): { readonly playing?: VrmGesture; readonly held?: HoldableGesture } {
-    const held = this.held.find(h => h.on)?.name;
+  get gestureState(): { readonly playing?: VrmGesture; readonly held?: HoldableGesture | "blush" } {
+    const held = this.blush?.hold ? "blush" as const : this.held.find(h => h.on)?.name;
     return Object.freeze({ ...(this.gesture ? { playing: this.gesture.name } : {}), ...(held ? { held } : {}) });
   }
 
@@ -856,6 +864,6 @@ export class VrmRuntime {
       releaseResources(this.model.scene);
     }
     this.model = undefined; this.inspected = undefined; this.selection = undefined; this.revision = undefined; this.inputMode = undefined;
-    this.actions.clear(); this.gesture = undefined; this.held = []; this.blush = undefined; this.hipsRest = undefined;
+    this.actions.clear(); this.heldExpressions.clear(); this.gesture = undefined; this.held = []; this.blush = undefined; this.hipsRest = undefined;
   }
 }
