@@ -178,4 +178,68 @@ public sealed class HelperJobsTests
             return Task.FromResult<HelperPoolAnswer?>(new(job.Capability == HelperCapability.Vision ? "vision-member" : "text-member", Answer, null));
         }
     }
+
+    [Fact]
+    public async Task The_fallback_on_the_conversation_model_waits_for_the_live_floor_and_runs_again_when_it_goes_live()
+    {
+        using var floor = new Martlet.Conversation.LiveFloor();
+        IHelperJobPool? pool = null;
+        var helpers = new HelperJobs(() => pool, () => false, null) { Floor = floor };
+        var calls = 0;
+        var first = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // You are talking with Martlet: the conversation model is busy with you, so the fallback doesn't start.
+        var reply = floor.BeginReply();
+        var running = helpers.RunAsync(HelperJobKind.Memory, "Remembering", HelperCapability.Text,
+            () => throw new InvalidOperationException("no pool"), async token =>
+            {
+                if (Interlocked.Increment(ref calls) == 1)
+                {
+                    first.TrySetResult();
+                    await Task.Delay(Timeout.Infinite, token);
+                }
+                return ("facts", (string?)null);
+            }, CancellationToken.None);
+        await Task.Delay(HelperJobs.IdleCheck * 3);
+        Assert.Equal(0, Volatile.Read(ref calls));
+        floor.Clear();
+        await first.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        // The floor goes Live while it runs: it stops, waits for the conversation to be quiet, then runs again.
+        floor.Words();
+        await Task.Delay(HelperJobs.IdleCheck * 3);
+        Assert.False(running.IsCompleted);
+        Assert.Equal(1, Volatile.Read(ref calls));
+        floor.Clear();
+        var result = await running.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("facts", result.Answer);
+        Assert.False(result.Pooled);
+        Assert.Equal(2, Volatile.Read(ref calls));
+        reply.End();
+    }
+
+    [Fact]
+    public void The_thinking_pool_page_says_which_members_wait_while_you_talk()
+    {
+        var pool = new Martlet.Core.Settings.ThinkingPoolSettings();
+        Assert.Equal("", MainWindow.LiveFloorLine(pool with { UseConversationModelWhenEmpty = false }, 0, []));
+        Assert.StartsWith("While you talk with Martlet, thinking longer and research on the conversation model wait",
+            MainWindow.LiveFloorLine(pool, 0, []));
+        Assert.Equal("No member shares the conversation's computer, so pool work never waits while you talk with Martlet.",
+            MainWindow.LiveFloorLine(pool, 2, []));
+        Assert.StartsWith("While you talk with Martlet, this PC starts no new pool work, because it shares the conversation's computer.",
+            MainWindow.LiveFloorLine(pool, 2, ["this PC"]));
+        Assert.StartsWith("While you talk with Martlet, this PC and diva start no new pool work, because they share",
+            MainWindow.LiveFloorLine(pool, 3, ["this PC", "diva"]));
+    }
+
+    [Fact]
+    public void A_hosts_refusal_for_a_live_turn_is_preempted_not_busy_or_a_failure()
+    {
+        var held = new Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException("job.busy", "busy") { Detail = "live" };
+        Assert.True(held.HeldForLive);
+        Assert.Equal(Martlet.Core.Cluster.WorkRefusal.Preempted, WorkSharingRoster.Classify(held));
+        Assert.Equal(Martlet.Core.Cluster.WorkRefusal.Preempted,
+            WorkSharingRoster.Classify(new Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException("job.preempted", "stopped")));
+        Assert.Equal(Martlet.Core.Cluster.WorkRefusal.Busy,
+            WorkSharingRoster.Classify(new Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostException("job.busy", "busy")));
+    }
 }

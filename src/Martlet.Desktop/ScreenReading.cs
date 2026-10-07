@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
+using Martlet.Core.Platforms;
 using Martlet.Core.Reading;
 using Martlet.Discord.Calls;
 
@@ -71,7 +72,8 @@ internal sealed class HostScreenTextReader(string dataDirectory, string? hostId)
 
     public async Task<IReadOnlyList<ReadLine>> ReadAsync(byte[] bgra, int width, int height, CancellationToken token)
     {
-        var jpeg = await Task.Run(() => Jpeg(bgra, width, height), token).ConfigureAwait(false);
+        // Encoded below normal priority: the conversation's own work on this PC comes first.
+        var jpeg = await LowPriority.RunAsync(() => Jpeg(bgra, width, height), token, "Martlet screen reading").ConfigureAwait(false);
         var (host, route, connection) = await OpenAsync(token).ConfigureAwait(false);
         try
         {

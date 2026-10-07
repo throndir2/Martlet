@@ -173,6 +173,13 @@ public partial class MainWindow
         warning.Visibility = warnings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         AutomationProperties.SetAutomationId(warning, "ThinkingPoolWarnings");
         stack.Add(warning);
+        // The live floor: which members wait while you talk with Martlet (they share the conversation's computer).
+        var resources = LiveResources.For(routes, HostRouteGpus.For);
+        var floorLine = Note(LiveFloorLine(pool, places.Length, [.. places.Where(resources.Shares).Select(p => p.Name).Distinct(StringComparer.Ordinal)]),
+            new Thickness(0, 4, 0, 4));
+        floorLine.Visibility = floorLine.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        AutomationProperties.SetAutomationId(floorLine, "ThinkingPoolLiveFloor");
+        stack.Add(floorLine);
         var fallback = new CheckBox
         {
             IsChecked = pool.UseConversationModelWhenEmpty, Margin = new Thickness(0, 8, 0, 0),
@@ -191,6 +198,22 @@ public partial class MainWindow
         stack.Add(fallback);
         if (!on) stack.Add(Note("Thinking longer is off, so the pool isn't used for thinking longer or research.", new Thickness(0, 4, 0, 0)));
         return Card([.. stack]);
+    }
+
+    /// <summary>Companion › Thinking pool's live floor line (MCP reads it as ThinkingPoolLiveFloor): which members wait while you
+    /// talk with Martlet because they share the conversation's computer or graphics card (<paramref name="sharing"/>, by name),
+    /// or that none does. Empty with no member and no conversation model in its place.</summary>
+    internal static string LiveFloorLine(ThinkingPoolSettings pool, int members, IReadOnlyList<string> sharing)
+    {
+        if (members == 0)
+            return pool.UseConversationModelWhenEmpty
+                ? "While you talk with Martlet, thinking longer and research on the conversation model wait; they stop and go on later when you start."
+                : "";
+        if (sharing.Count == 0) return "No member shares the conversation's computer, so pool work never waits while you talk with Martlet.";
+        var names = sharing.Count == 1 ? sharing[0] : string.Join(", ", sharing.Take(sharing.Count - 1)) + " and " + sharing[^1];
+        return $"While you talk with Martlet, {names} start{(sharing.Count == 1 ? "s" : "")} no new pool work, because " +
+            $"{(sharing.Count == 1 ? "it shares" : "they share")} the conversation's computer. Summaries, remembering and thinking longer " +
+            "there stop and go on later; the judges still run there. Other members never wait.";
     }
 
     /// <summary>Saves thinking-pool.json changed by <paramref name="change"/> and reloads the conversation's pool.</summary>

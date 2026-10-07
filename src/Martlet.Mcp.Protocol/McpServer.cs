@@ -1355,6 +1355,27 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "slot, one slot where waiting jobs run highest priority first (barge-in judge, digest, research), a busy member passed " +
             "over for the next, a stale judge dropped, and deep-thinking.json read once into thinking-pool.json. In-process; " +
             "reads nothing.", new { }),
+        Tool("live_floor_status", "The live floor (the live conversation turn comes before all background work) from a data directory: " +
+            "what the conversation runs on (its Thinking, voice and listening routes, each on this PC, a computer on the home network " +
+            "or a cloud provider, with the paired hosts and routes the floor holds while you talk), which Thinking pool members share " +
+            "that hardware, what the floor does to each job kind on such a member at Listening and at Live, and the desktop's " +
+            "live-floor.json: its level (Idle, Listening, Live), the jobs it held and stopped by kind this turn and in all, the hold " +
+            "client and hosts held, the work queue's stopped background requests and its last changes (never what was said). Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("live_floor_check", "Rehearse the live floor with the production LiveFloor, LiveFloorRules, ThinkingJobBoard, BackgroundJobs " +
+            "and WorkQueue on fixture inputs and simulated members, NOT models: which things said are real words (said: your own " +
+            "lines, else fixtures such as \"Mmm.\", \"Yeah, right.\" and \"What time is it in Tokyo?\"), the levels on a clock of their " +
+            "own (voice, quiet, a sound, words, a reply and its grace), the board at Listening (new work waits, running work and " +
+            "judges go on) and at Live (a summary dropped, remembering and naming stopped and queued again, touch zones going on, " +
+            "judges running), a member on another computer never held, a think stopped and going on from what it wrote (in place, " +
+            "or again with it as context), research waiting for the conversation instead of being refused, the conversation " +
+            "model's own place held above Idle, and the work queue stopping this PC's background request for a live reply. " +
+            "In-process; reads nothing.", new
+        {
+            said = new { type = "array", items = new { type = "string" }, maxItems = 32 }
+        }),
         Tool("work_sharing_status", "Devices > Sharing work from a data directory: the choices (work-sharing.json, the work-sharing " +
             "shared setting: for Speaking, Thinking, Listening and Deep thinking whether it is shared when its computer is busy, " +
             "the order chosen (this-pc being each companion PC's own host service) and the computers never used; which computers " +
@@ -1657,6 +1678,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "helper_jobs_check" => await HelperJobsCheck.RunAsync(cancellation),
                 "thinking_pool_status" => await ThinkingPoolCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "thinking_pool_check" => await ThinkingPoolCheck.RunAsync(cancellation),
+                "live_floor_status" => await LiveFloorCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),
                 "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),
                 "work_sharing_check" => await WorkSharingCheck.RunAsync(cancellation),
                 "discord_reply_status" => DiscordReplyCheck.Status(DataDirectory(arguments)),

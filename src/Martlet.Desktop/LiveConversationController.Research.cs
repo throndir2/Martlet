@@ -43,8 +43,8 @@ internal sealed partial class LiveConversationController
         var sent = operation.Sent;
         var thinkingModel = configured.Route(SetupRole.Llm).ModelId;
         var start = jobs.Start(WebResearch.Kind, label, (job, token) =>
-            ResearchAsync(job, arguments, configured, pool.Find(job.Place!.Id)!, sent, () => operation.Turn?.Content.Text, thinkingModel, token),
-            ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan));
+            ResearchAsync(job, arguments, configured, pool, sent, () => operation.Turn?.Content.Text, thinkingModel, token),
+            ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan, HostRouteGpus.For));
         if (start.Job is not { } started)
         {
             tools?.Record(server, WebResearch.Name, "not started: " + start.Refusal, label, false);
@@ -52,7 +52,15 @@ internal sealed partial class LiveConversationController
             return new(WebResearch.Refused(start), true);
         }
         tools?.Record(server, WebResearch.Name, "started " + started.Id, label, false);
-        var chosen = pool.Find(started.Place!.Id)!;
+        if (started.Place is not { } seat)
+        {
+            // Every place it can run on is kept free for the conversation: it starts once the conversation pauses.
+            ErrorLog.Info($"Web research: {started.Id} waits for the conversation (the live floor keeps its places free while you " +
+                $"talk; {BackgroundJobs.Duration(WebResearch.TimeLimit)} limit once it starts)" +
+                (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
+            return new(WebResearch.Started(started, toldUser));
+        }
+        var chosen = pool.Find(seat.Id)!;
         ErrorLog.Info($"Web research: started {started.Id}, thinking on {(chosen.Settings.Separate ? chosen.Settings.Describe() : thinkingModel)} " +
             $"(placed on {chosen.Computer}; {BackgroundJobs.Duration(WebResearch.TimeLimit)} limit, " +
             $"{jobs.StartedWithinHour(WebResearch.KindName)} of {WebResearch.Kind.MaxPerHour} this hour)" +
@@ -61,21 +69,26 @@ internal sealed partial class LiveConversationController
     }
 
     // The research job: checks a second model in Ollama on this PC fits beside Thinking's (as a think does), runs the loop with
-    // each step a background think continuing the reply's request on the job's place, then keeps the report as a creation.
+    // each step a background think continuing the reply's request on the job's place (a step the live floor stops goes on
+    // later on the place the job gets next), then keeps the report as a creation.
     private async Task<BackgroundJobOutcome> ResearchAsync(BackgroundJob job, ResearchArguments arguments, LiveConversationConfiguration configured,
-        DeepThinkingSpot spot, BoundedTextInput? sent, Func<string?> reply, string thinkingModel, CancellationToken token)
+        DeepThinkingPool pool, BoundedTextInput? sent, Func<string?> reply, string thinkingModel, CancellationToken token)
     {
+        var spot = pool.Find(job.Place!.Id)!;
         var place = spot.Settings;
         var where = place.Separate ? place.Describe() : thinkingModel;
-        var slot = ThinkSlotFor(spot.Key);
+        var thinkingRoute = configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
         using var guard = CancellationTokenSource.CreateLinkedTokenSource(token);
         var watch = Task.CompletedTask;
         string? pushed = null;
         using var web = ResearchWeb();
-        var run = new WebResearchRun(web, web, (task, stepToken) =>
+        var run = new WebResearchRun(web, web, (task, stepToken) => YieldingThink.RunAsync(jobs, job, (at, resume) =>
         {
-            var think = new BackgroundThink(ThinkRuntime(slot),
-                left => PrepareThink(configured, place, sent, reply, task, null, left, own => Volatile.Write(ref slot.Authorization, own)), clock)
+            var here = pool.Find(at.Id) ?? spot;
+            var there = here.Settings.Separate ? here.Settings.Describe() : thinkingModel;
+            var slot = ThinkSlotFor(here.Key);
+            return new BackgroundThink(ThinkRuntime(slot),
+                left => PrepareThink(configured, here.Settings, sent, reply, task, null, left, own => Volatile.Write(ref slot.Authorization, own), resume), clock)
             {
                 Doing = job.Progress,
                 AttemptFinished = terminal =>
@@ -83,11 +96,13 @@ internal sealed partial class LiveConversationController
                     NoteFallback("Web research", configured, terminal);
                     NoteInput("Web research", terminal, reply: false);
                     if (IsFailure(terminal) && terminal.State != ConversationState.Canceled)
-                        ErrorLog.Warn($"Web research: a step on {where} failed ({Describe(terminal)}).");
+                        ErrorLog.Warn($"Web research: a step on {there} failed ({Describe(terminal)}).");
                 }
             };
-            return think.RunAsync(job, stepToken);
-        }, configured.Prompts);
+        }, at => pool.Find(at.Id) is { } next && ThinkLonger.ContinuesInPlace(next.Settings, thinkingRoute), stepToken,
+            (at, _) => ErrorLog.Info($"Web research: {job.Id} stopped a step on {at.Name} for the conversation; it goes on later."),
+            (at, began) => HeldOnHost(pool, at, began)),
+            configured.Prompts);
         try
         {
             if (spot.Plan.ChecksFit)

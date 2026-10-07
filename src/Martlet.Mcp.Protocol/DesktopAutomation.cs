@@ -445,10 +445,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "DeepThinkingKeyStatus", "DeepThinkingPoolStatus", "LiveTasks", "LiveJobs", "LiveSong",
         // Companion › Thinking pool › Pool members: the member count and usable slots, the guidance ("1 slot: long thinking can
         // delay screen and sound summaries; add a second slot for the full experience."), the likely-slowdown warnings (a member
-        // beside the conversation's Thinking model or the voice), and the Use the conversation model when the pool is empty box
-        // (ticking it saves thinking-pool.json, so it needs --allow-ui-effects). Each member's line reads through
-        // ThinkingPoolMember- below.
-        "ThinkingPoolSummary", "ThinkingPoolGuidance", "ThinkingPoolWarnings", "ThinkingPoolUseConversationModel",
+        // beside the conversation's Thinking model or the voice), the live floor's line (which members start no new pool work
+        // while you talk with Martlet because they share the conversation's computer; computer names only) and the Use the
+        // conversation model when the pool is empty box (ticking it saves thinking-pool.json, so it needs --allow-ui-effects).
+        // Each member's line reads through ThinkingPoolMember- below.
+        "ThinkingPoolSummary", "ThinkingPoolGuidance", "ThinkingPoolWarnings", "ThinkingPoolLiveFloor", "ThinkingPoolUseConversationModel",
         // Companion › Deep thinking › Web research (off by default): whether Martlet may search the web when asked and why it
         // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
         // needs --allow-ui-effects.

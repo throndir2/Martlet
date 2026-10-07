@@ -41,7 +41,10 @@ public static class WebResearch
     /// <summary>One at a time, 4 an hour, 12 minutes each; offered when done (the report is shown on a yes).</summary>
     public static TimeSpan TimeLimit { get; } = TimeSpan.FromMinutes(12);
 
-    public static BackgroundJobKind Kind { get; } = new(KindName, 1, 4, TimeLimit, Offer: true, Doing: "Researching") { PoolKind = ThinkingJobKind.Research };
+    public static BackgroundJobKind Kind { get; } = new(KindName, 1, 4, TimeLimit, Offer: true, Doing: "Researching")
+    {
+        PoolKind = ThinkingJobKind.Research, Yields = true
+    };
 
     public const string ParametersJson =
         """{"type":"object","properties":{"topic":{"type":"string","description":"What to look up, as you'd type it into a web search."},"what_to_find":{"type":"string","description":"Exactly what the user wants to find out."}},"required":["topic","what_to_find"],"additionalProperties":false}""";

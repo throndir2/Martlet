@@ -633,20 +633,22 @@ internal sealed class LiveConversationConfiguration
 
     /// <summary>A background think's request (think_longer): <paramref name="input"/> continues a reply's request, with
     /// Thinking steps On at the chosen effort and its own bounds for the <paramref name="time"/> left (see
-    /// <see cref="Martlet.Conversation.ThinkLonger"/>). Its tools are described but never run.</summary>
-    internal ConversationRequest ThinkRequest(BoundedTextInput input, TimeSpan time, bool withoutReasoning) =>
+    /// <see cref="Martlet.Conversation.ThinkLonger"/>). Its tools are described but never run. <paramref name="continuing"/>: it
+    /// writes on from an answer the live floor stopped, without thinking first.</summary>
+    internal ConversationRequest ThinkRequest(BoundedTextInput input, TimeSpan time, bool withoutReasoning, bool continuing = false) =>
         new(input, TextSelection(), Martlet.Conversation.ThinkLonger.Limits(TextLimits, ThinkLonger.HowHard, time),
             Martlet.Conversation.ThinkLonger.TurnLimits(time), chat: ChatTarget(),
-            generation: Martlet.Conversation.ThinkLonger.Generation(ReplyGeneration, ThinkLonger.HowHard, withoutReasoning),
+            generation: Martlet.Conversation.ThinkLonger.Generation(ReplyGeneration, ThinkLonger.HowHard, withoutReasoning, continuing),
             tools: input.Tools.Count > 0 ? Martlet.Conversation.ThinkLonger.NoTools : null, fallback: TextFallback());
 
     /// <summary>The text-only request that asks the Thinking model what to remember and which names voices go by after a
     /// finished exchange. It keeps the model's default sampling (a picking-out task, not a reply) but the same context size, so
     /// a host's Ollama does not reload the model between the reply and this request, and the same Thinking steps choice. When it
-    /// continues a reply that offered tools, they are described again (so the request starts the same) but never run.</summary>
+    /// continues a reply that offered tools, they are described again (so the request starts the same) but never run. On a
+    /// paired host it is background work, which a live reply stops (<see cref="Martlet.Core.Cluster.WorkPriority"/>).</summary>
     internal ConversationRequest MemoryCaptureRequest(BoundedTextInput input) =>
         new(input, TextSelection(), TextLimits, input.Tools.Count > 0 ? Turn(false) with { MaxToolRounds = 1 } : Turn(false), null,
-            ChatTarget(), HostTarget(),
+            ChatTarget(), HostTarget() is { } host ? host with { Background = true } : null,
             generation: GenerationSettings.Normalize(new() { ContextTokens = ReplyGeneration.ContextTokens, Reasoning = ReplyGeneration.Reasoning }),
             tools: input.Tools.Count > 0 ? Martlet.Conversation.ThinkLonger.NoTools : null, fallback: TextFallback());
 

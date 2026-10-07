@@ -98,8 +98,10 @@ public static class ReplyLatency
     /// <summary>The line for a finished reply, or null when nothing of it arrived (no words, no audio).</summary>
     /// <param name="timeline">What happened before the reply started; its last step is the reply's start
     /// (<paramref name="replyStartedAt"/>).</param>
+    /// <param name="floor">What the live floor did to background work for this turn ("held 2 pool jobs, stopped 1 (think
+    /// longer)", <see cref="LiveFloorCounts.Describe"/>), or null when it did nothing.</param>
     public static string? Describe(ReplyTimeline? timeline, long replyStartedAt, TimeProvider clock, ConversationSnapshot reply,
-        string? models, bool interrupted = false, bool passed = false, bool restarted = false)
+        string? models, bool interrupted = false, bool passed = false, bool restarted = false, string? floor = null)
     {
         if (reply.FirstTextAfter is null && reply.FirstAudioAfter is null) return null;
         var steps = new List<(string Step, long At)>();
@@ -165,6 +167,8 @@ public static class ReplyLatency
                 $" The voice paused {timings.VoiceWaits} time{(timings.VoiceWaits == 1 ? "" : "s")} for " +
                 $"{timings.VoiceWaited.TotalMilliseconds:0} ms in all, waiting for its next audio.");
         if (reply.FellBack) text.Append(" Answered by the Thinking fallback.");
+        // Background work the live turn came before (docs/CONVERSATION.md, Live floor).
+        if (!string.IsNullOrWhiteSpace(floor)) text.Append(" Live floor: ").Append(floor.Trim()).Append('.');
         if (!string.IsNullOrWhiteSpace(models)) text.Append(" Models: ").Append(models.Trim()).Append('.');
         return text.ToString();
     }
