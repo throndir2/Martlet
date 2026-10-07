@@ -216,6 +216,8 @@ public sealed class GatewayInferenceRouteRegistry
                 worker is ISongGatewayInferenceWorker,
             GatewayInferenceKind.Picture =>
                 worker is IPictureGatewayInferenceWorker,
+            GatewayInferenceKind.Ocr =>
+                worker is IOcrGatewayInferenceWorker,
             _ => false
         }, "worker.invalid");
 

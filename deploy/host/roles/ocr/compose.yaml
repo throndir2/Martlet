@@ -1,0 +1,15 @@
+# Martlet OCR host service (Reading), loopback-only behind the Martlet gateway. The image is built on this host from
+# workers/ocr (RapidOCR 1.4.4 and hash-pinned packages). It listens only on 127.0.0.1:50087 in the gateway's network
+# namespace; the Martlet gateway is the single LAN entry point. Screenshots are read in memory and are not stored.
+
+services:
+  ocr:
+    build:
+      context: ${MARTLET_SOURCE:?set by martlet-host}/workers/ocr
+      dockerfile: host/Dockerfile
+    image: martlet-ocr:1
+    pull_policy: build
+    restart: unless-stopped
+    environment:
+      MARTLET_OCR_PORT: "50087"
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}

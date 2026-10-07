@@ -1256,7 +1256,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// that turns the character's eyes to part of the picture.</summary>
     internal LiveConversationOperation StartCommentary(BoundedImage image, string windowTitle, ChattinessChoice chattiness, bool voice,
         bool screenApproved, WatchSource? source = null, CancellationToken caller = default, AttentionSignal? attention = null,
-        bool look = false)
+        bool look = false, string? screenText = null)
     {
         ArgumentNullException.ThrowIfNull(image);
         if (!screenApproved) throw new LiveActionException("conversation.permission_required");
@@ -1277,12 +1277,13 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             active = operation;
             var camera = source is { IsScreen: false };
             var prompt = CommentaryPromptLocked(windowTitle, camera, selected.Prompts, attention);
+            var read = camera ? null : ReadOnScreen(selected.Prompts, screenText);
             var looked = new SeenScreen(image, windowTitle, source ?? new(WatchKind.ActiveWindow));
             var worker = operations.TryStart(async token =>
             {
                 await published.Task.ConfigureAwait(false);
                 authorization.BindWorker(token);
-                return await RunCommentaryAsync(operation, prompt, image, chattiness, camera, look && !camera, token, looked).ConfigureAwait(false);
+                return await RunCommentaryAsync(operation, prompt, image, chattiness, camera, look && !camera, token, looked, read).ConfigureAwait(false);
             });
             if (worker is null)
             {
@@ -1309,13 +1310,23 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             ("what", attention?.Describe() ?? ""), ("silent", LiveConversationConfiguration.SilentReply))!;
     }
 
+    /// <summary>A screen glance's message: the glance prompt, then the Text on screen prompt with what Companion › Reading read
+    /// on that screenshot. The read text goes last, so the request still starts like the one before, and the conversation keeps
+    /// only the look's [Screen] line, never this text.</summary>
+    internal static string GlanceMessage(string prompt, string? read) => read is null ? prompt : prompt + "\n\n" + read;
+
+    /// <summary>The Text on screen prompt for a look's read text; null when there is none or the prompt is emptied.</summary>
+    internal static string? ReadOnScreen(PromptSettings? prompts, string? screenText) =>
+        string.IsNullOrWhiteSpace(screenText) ? null
+            : PromptSettings.Fill(prompts, PromptCatalog.ReadOnScreen, ("text", screenText)) is { Length: > 0 } read ? read : null;
+
     internal static bool IsSilentReply(string text) => StayQuiet.IsQuiet(text);
 
     /// <summary>A reply still streaming that may turn out to be [pass]; it isn't shown until it clearly isn't.</summary>
     internal static bool MaybeSilent(string text) => StayQuiet.MaybeQuiet(text);
 
     private async Task<SetupWorkResult> RunCommentaryAsync(LiveConversationOperation operation, string prompt, BoundedImage image,
-        ChattinessChoice chattiness, bool camera, bool look, CancellationToken worker, SeenScreen looked)
+        ChattinessChoice chattiness, bool camera, bool look, CancellationToken worker, SeenScreen looked, string? read = null)
     {
         // While Martlet decides how chatty it is, the look is told how to switch the level (the same at every level) and the
         // level it is at goes in the notes.
@@ -1337,7 +1348,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // Earlier messages go exactly as they were sent (with their notes), so the request starts like the one before.
                 var history = context.Snapshot(sent: true);
                 var level = ChattinessTags.Level(chattiness, decided);
-                var request = configured.Request(new(prompt), operation.Authorization.Voice, style, history, null, lore,
+                var request = configured.Request(new(GlanceMessage(prompt, read)), operation.Authorization.Voice, style, history, null, lore,
                     out var usedHistory, out _, out var usedLore, image,
                     Join(LiveConversationConfiguration.Moment(configured.Prompts),
                         LiveConversationConfiguration.CommentaryInstructions(level, camera, configured.Prompts, decides)),

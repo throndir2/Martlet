@@ -97,6 +97,8 @@ internal static class GatewayInferenceJson
                     ParseSong(fields["payload"], route, referenceAudio, referenceVoice),
                 GatewayInferenceKind.Picture =>
                     ParsePicture(fields["payload"], route),
+                GatewayInferenceKind.Ocr =>
+                    ParseOcr(fields["payload"], route),
                 _ => throw new GatewayProtocolException("request.invalid")
             };
             return new(
@@ -757,6 +759,43 @@ internal static class GatewayInferenceJson
                 !value.Any(c => c is '/' or '\\' or ':'), "request.invalid");
             return value;
         }
+    }
+
+    private static GatewayOcrPayload ParseOcr(JsonElement element, GatewayInferenceRoute route)
+    {
+        GatewayRules.Require(element.ValueKind == JsonValueKind.Object, "request.invalid");
+        var operation = element.TryGetProperty("operation", out var operationElement) &&
+            operationElement.ValueKind == JsonValueKind.String ? operationElement.GetString() : null;
+        switch (operation)
+        {
+            case "status":
+                _ = Object(element, ["operation"], []);
+                return new(GatewayOcrOperation.Status);
+            case "read":
+            {
+                var fields = Object(element, ["operation", "media_type", "image_base64"], []);
+                var mediaType = Text(fields, "media_type", 32);
+                GatewayRules.Require(mediaType is "image/jpeg" or "image/png", "request.invalid");
+                byte[] image;
+                try { image = Convert.FromBase64String(Text(fields, "image_base64", route.MaximumRequestBytes)); }
+                catch (FormatException) { throw new GatewayProtocolException("request.invalid"); }
+                GatewayRules.Require(image.Length is > 0 && image.Length <= GatewayInferenceRoute.OcrMaximumImageBytes,
+                    "request.too_large");
+                GatewayRules.Require(SignatureMatches(mediaType, image), "request.invalid");
+                return new(GatewayOcrOperation.Read, image, mediaType);
+            }
+            default:
+                throw new GatewayProtocolException("request.invalid");
+        }
+
+        static bool SignatureMatches(string mediaType, byte[] image) =>
+            mediaType switch
+            {
+                "image/jpeg" => image.Length >= 3 && image[0] == 0xFF && image[1] == 0xD8 && image[2] == 0xFF,
+                "image/png" => image.Length >= 8 && image[0] == 0x89 && image[1] == 0x50 && image[2] == 0x4E &&
+                    image[3] == 0x47 && image[4] == 0x0D && image[5] == 0x0A && image[6] == 0x1A && image[7] == 0x0A,
+                _ => false
+            };
     }
 
     // A mono PCM16 WAV within the reference store's bounds (1-30 s, 4 MB); whether the engine can clone it is checked apart.

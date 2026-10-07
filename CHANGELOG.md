@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Martlet reads the text on your screen while it watches: new text such as a score, "Victory" or a new message makes it more likely to look, and each look gets the words it read. Choose where it reads in the new Companion › Reading page: Windows' own text recognition on this PC (the default; fast and private), or Martlet's new Reading role (RapidOCR, often better with game fonts) on this PC or another of your computers, without a graphics card. Your own messages never wait for it. ([#509](https://github.com/throndir2/Martlet/pull/509))
 - The character now reacts to every sound and tone the voice makes: it laughs, sighs, gasps, coughs, hums, cries, glowers and more along with the voice, on any Live2D or VRM model, without lengthening replies. ([#507](https://github.com/throndir2/Martlet/pull/507))
 
 ## [0.51.0] - 2026-10-06

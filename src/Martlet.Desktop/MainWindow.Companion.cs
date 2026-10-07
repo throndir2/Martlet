@@ -21,7 +21,7 @@ namespace Martlet.Desktop;
 /// <summary>The Companion page's pages: the one place each choice that shapes Martlet is made, listed by group in a side list.
 /// Home and Devices link here. A new page adds its value here (in list order) and one arm each in GroupOf, TabTitle, TabGlyph,
 /// TabIntro and RenderTab.</summary>
-internal enum CompanionTab { Thinking, DeepThinking, Voice, Listening, Vision, LipSync, Profiles, Character, Personality, Prompts, Lorebook, Memory, People, Replies, Tools, Pictures, SmartHome, Discord, Messaging }
+internal enum CompanionTab { Thinking, DeepThinking, Voice, Listening, Vision, Reading, LipSync, Profiles, Character, Personality, Prompts, Lorebook, Memory, People, Replies, Tools, Pictures, SmartHome, Discord, Messaging }
 
 /// <summary>The side list's groups, in order: how it works (where each job runs), who it is (look, personality, what it knows)
 /// and what it does (how it answers and acts). A group with no pages yet is not shown.</summary>
@@ -111,7 +111,7 @@ public partial class MainWindow
 
     private static CompanionGroup GroupOf(CompanionTab section) => section switch
     {
-        CompanionTab.Thinking or CompanionTab.DeepThinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.Vision or CompanionTab.LipSync => CompanionGroup.HowItWorks,
+        CompanionTab.Thinking or CompanionTab.DeepThinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.Vision or CompanionTab.Reading or CompanionTab.LipSync => CompanionGroup.HowItWorks,
         CompanionTab.Profiles or CompanionTab.Character or CompanionTab.Personality or CompanionTab.Prompts or CompanionTab.Lorebook or CompanionTab.Memory or CompanionTab.People => CompanionGroup.WhoItIs,
         CompanionTab.Replies => CompanionGroup.WhatItDoes,
         CompanionTab.Tools => CompanionGroup.WhatItDoes,
@@ -136,6 +136,7 @@ public partial class MainWindow
         CompanionTab.Voice => "Voice",
         CompanionTab.Listening => "Listening",
         CompanionTab.Vision => "Vision",
+        CompanionTab.Reading => "Reading",
         CompanionTab.LipSync => "Lip-sync",
         CompanionTab.Profiles => "Profiles",
         CompanionTab.Character => "Character",
@@ -161,6 +162,7 @@ public partial class MainWindow
         CompanionTab.Voice => "\uE767",
         CompanionTab.Listening => "\uE720",
         CompanionTab.Vision => "\uE890",
+        CompanionTab.Reading => "\uE7BC",
         CompanionTab.LipSync => "\uE8BD",
         CompanionTab.Profiles => "\uE748",
         CompanionTab.Character => "\uE77B",
@@ -186,6 +188,7 @@ public partial class MainWindow
         CompanionTab.Voice => "Choose how Martlet speaks and where speech is generated.",
         CompanionTab.Listening => "Choose the microphone, push-to-talk mode and speech recognition.",
         CompanionTab.Vision => "Choose whether Martlet can see your screen or camera once you press Start watching.",
+        CompanionTab.Reading => "Choose where Martlet reads the text on your screen while it watches: Windows OCR on this PC, or Martlet's Reading role on one of your computers.",
         CompanionTab.LipSync => "Choose what moves the character's mouth.",
         CompanionTab.Profiles => "Switch who Martlet is in one step: each profile sets the character's look, voice and personality together.",
         CompanionTab.Character => "Choose Martlet's character, size, position and motion.",
@@ -354,6 +357,7 @@ public partial class MainWindow
         {
             case CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening: RenderJobTab(body, section); break;
             case CompanionTab.Vision: RenderVisionPage(body); break;
+            case CompanionTab.Reading: RenderReadingTab(body); break;
             case CompanionTab.LipSync: RenderLipSyncTab(body); break;
             case CompanionTab.Profiles: RenderProfilesTab(body); break;
             case CompanionTab.Character: RenderCharacterTab(body); break;

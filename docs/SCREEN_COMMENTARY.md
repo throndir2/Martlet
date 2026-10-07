@@ -130,6 +130,15 @@ your words only and says so on your message; a model Martlet doesn't know can
 see also stops vision with the fix, like a rejected look. Memory never gets the
 picture.
 
+## Martlet reads the text on your screen
+
+While Martlet watches your screen, it also reads the text on each changed
+screenshot (OCR): with Windows OCR on this PC by default, or with Martlet's
+Reading role on one of your computers. New text makes a look more likely, and
+each look Martlet takes on its own gets the text it read, at the end of its
+message. What you type or say never carries it. Choose where it reads in
+Companion › Reading. See [Reading the text on your screen](READING.md).
+
 ## What Martlet saw stays in the conversation
 
 Pictures are never kept, but what Martlet saw in them is, so later replies know

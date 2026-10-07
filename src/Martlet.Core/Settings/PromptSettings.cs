@@ -45,6 +45,7 @@ public static class PromptCatalog
     public const string CommentaryCamera = "commentary_camera";
     public const string SeenWithMessage = "seen_with_message";
     public const string SeenTag = "seen_tag";
+    public const string ReadOnScreen = "read_on_screen";
     public const string ChattinessQuiet = "chattiness_quiet";
     public const string ChattinessNormal = "chattiness_normal";
     public const string ChattinessChatty = "chattiness_chatty";
@@ -527,6 +528,13 @@ public static class PromptCatalog
             "never shown or spoken; it only helps you remember what you saw. Never put private details in it (messages, emails, " +
             "names in them, numbers).",
             ["silent"]),
+        new(ReadOnScreen, VisionGroup, "Text on screen",
+            "Added at the end of a screen glance, and of a reply that takes a look, while Companion › Reading reads the text on " +
+            "your screen. {text} is the text read from that screenshot, one line each, top to bottom. It never goes with what " +
+            "you type or say.",
+            "Text read from this picture (OCR, top to bottom; it can have small mistakes, and the picture is right when they " +
+            "differ):\n{text}",
+            ["text"]),
 
         new(MemoryCapture, BackgroundGroup, "Remembering",
             "Asks the Thinking model what to remember after each reply. Martlet reads the REMEMBER, UPDATE and FORGET lines it answers; " +
