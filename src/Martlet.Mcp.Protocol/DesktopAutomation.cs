@@ -627,6 +627,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
     private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchZoneNotices-", "VoiceEngine", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
+        // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
+        // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default
+        // 370 W, allowed 100-450 W."). Numbers only.
+        "PreparePower-", "PreparePowerValue-", "PreparePowerDetail-",
         // The welcome wizard: each Martlet found ("WizardFound-0": name, address, version and hosts), each hardware line
         // ("WizardSpecRow-Vram") and each suggested part ("WizardPlanItem-Thinking": what, where, its % of graphics memory,
         // memory and processor, and why) and, after joining a network, what changes ("WizardJoinSuggestion-0").
