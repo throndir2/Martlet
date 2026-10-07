@@ -73,6 +73,10 @@
                          never what was said, seen or found. -->
                     <TextBlock x:Name="TurnInputsText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
                                Visibility="Collapsed" AutomationProperties.AutomationId="LiveTurnInputs"/>
+                    <!-- The last time you talked over Martlet: whether it paused, stopped or played on, and what decided
+                         (never what you said). -->
+                    <TextBlock x:Name="BargeInText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
+                               Visibility="Collapsed" AutomationProperties.AutomationId="LiveBargeIn"/>
                     <!-- How many recent exchanges the next reply sees as context (kept across settings changes); its tooltip has
                          the tokens. Refresh context forgets those exchanges so the next reply starts fresh; the messages stay on screen. -->
                     <WrapPanel x:Name="ContextRow" Margin="0,2,0,0" Visibility="Collapsed">

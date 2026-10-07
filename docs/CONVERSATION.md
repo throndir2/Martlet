@@ -1058,6 +1058,50 @@ voice pipeline never waits for a whole reply:
   never stops it; Stop, Esc or the talk button interrupt. Preferences
   saved before barge-in became opt-in had it on only because it was the old
   default, so it starts off once after updating; tick it again to use it.
+- **Pause and decide.** *When you talk over Martlet* in Companion › Listening
+  (`BargeInBehavior`, saved in `talk-preferences.json` and shared with your
+  other PCs) chooses what real words over a reply do. *Pause and decide* (the
+  default): a clear cue (a stop word or Martlet's name, `BargeInDecision.Cue`)
+  still stops it at once and is never judged. Other words that `BargeInPolicy`
+  would stop on pause the reply at once instead (`ConversationTurn.Pause`): the
+  sentence playing stops reading audio (`PlaybackRun.Pause`; what the device
+  already took, at most 100 ms, plays out), and a sentence that starts meanwhile
+  starts paused. The Thinking text and the voice's synthesis go on and buffer,
+  so playing on (`Resume`) starts at once from the exact sample where it
+  paused, with a 10 ms fade-in and nothing made again. A judge then decides
+  (`IBargeInJudge`, through `BargeInJudging.RuleAsync`): *interrupt* stops the
+  reply as before and what you said is answered next; *not for Martlet* plays
+  it on. The judge reads Martlet's current sentence (`ConversationTurn.Sentence`),
+  the reply's last 400 characters, your words so far and speech-to-text's
+  confidence. Today it is the local rules judge (`RulesBargeInJudge`): the
+  policy first (a backchannel, too few words or non-words are not for Martlet),
+  then Martlet's own sentence heard back (three words in a row from it, or
+  three different words all in it: a TV, a call or a missed echo) and words
+  that only agree or laugh along ("yeah that's so true", "haha no way") are not
+  for Martlet; everything else is. A model judge from the Thinking pool can
+  take its place; one that doesn't answer within 400 ms
+  (`BargeInJudging.Deadline`), or fails, gives way to the rules. While paused,
+  `BargeInHold` watches your voice frame by frame: an interrupt verdict stops
+  the reply, talking on for 1.5 s in all (`KeepTalkingLimit`) stops it
+  whatever the verdict, and with a not-for-Martlet verdict 240 ms of quiet
+  (`QuietToResume`) or the end of your utterance plays it on. Later quick
+  checks of the same words judge again, and a stop word stops it. A pause never
+  lasts more than 4 s (`MaximumPause`; with no verdict it plays on). Without a
+  quick check (speech-to-text on a host or the cloud) the utterance's own
+  transcript is judged once you pause, so the reply pauses only for the
+  judge. Words that were not for Martlet are still answered after the reply,
+  as before. A song is never paused (its own rule applies). The desktop log
+  says *Barge-in: Martlet paused its reply N ms after you started talking over
+  it (...)*, then *Barge-in: Martlet resumed its reply after a N ms pause: what
+  you said wasn't for it (why; the rules judge in N ms; N ms of your voice
+  during the pause)* or the stop line with *paused N ms first, then the rules
+  judge (N ms) said it was for Martlet*; the reply latency line ends *, paused
+  N ms when you talked over it, then resumed* or *, paused N ms, then stopped
+  when you talked over it*. The talk window's `LiveBargeIn` line shows the last
+  decision (never the words). *Stop at once* keeps the older behavior: real
+  words stop the reply at once. MCP `barge_in_check` returns the verdicts, the
+  deadline fallback and what a pause does; `spoken_reply_check` `paused`
+  rehearses a pause and resume through the production runtime.
 - **What is said aloud decides what stops it.** Each reply carries a playback
   mode (`PlaybackMode`: `Reply`, or `Song` for singing). A song keeps going
   while you talk and stops only when asked to: a stop word with Martlet's name

@@ -6,8 +6,9 @@ namespace Martlet.Conversation;
 /// song keeps going unless it is asked to stop ("okay okay Martlet, stop singing").</summary>
 public enum PlaybackMode { Reply, Song }
 
-/// <summary>Whether what the user said over Martlet stops it, and why, in a few words for the log (never what was said).</summary>
-public sealed record BargeInDecision(bool Interrupt, string Reason, UtteranceDecision Words);
+/// <summary>Whether what the user said over Martlet stops it, and why, in a few words for the log (never what was said). Cue: a
+/// clear request to stop (a stop word, Martlet's name or asking it to stop singing), which stops it at once and is never judged.</summary>
+public sealed record BargeInDecision(bool Interrupt, string Reason, UtteranceDecision Words, bool Cue = false);
 
 /// <summary>The one place that decides whether talking over Martlet stops it. Only real words do (<see cref="UtteranceFilter"/>):
 /// a hum, a long "mmmm", laughter or a cough never does, however long it lasts. A stop word ("stop", "wait", "hold on", "shh")
@@ -48,6 +49,9 @@ public static class BargeInPolicy
         "thanks", "you"
     };
 
+    /// <summary>A quick backchannel word ("yeah", "right", "mm-hmm") that never stops a reply on its own.</summary>
+    internal static bool IsBackchannel(string word) => Backchannels.Contains(word);
+
     private static readonly string[] SongWords = ["sing", "singing", "song", "music"];
 
     /// <summary>Decide on what was said over Martlet: <paramref name="text"/> is a transcript of it (so far), and
@@ -63,10 +67,10 @@ public static class BargeInPolicy
         var addressed = UtteranceFilter.Addressed(said, context.Names);
         if (mode == PlaybackMode.Song)
             return cue is not null && (addressed || SongWords.Any(w => joined.Contains(" " + w + " ", StringComparison.Ordinal)))
-                ? new(true, "asked to stop singing", words)
+                ? new(true, "asked to stop singing", words, Cue: true)
                 : new(false, "Martlet keeps singing unless asked to stop", words);
-        if (cue is not null) return new(true, "a stop word", words);
-        if (addressed) return new(true, "Martlet's name", words);
+        if (cue is not null) return new(true, "a stop word", words, Cue: true);
+        if (addressed) return new(true, "Martlet's name", words, Cue: true);
         if (said.All(Backchannels.Contains)) return new(false, "a quick backchannel", words);
         // One word said over and over counts once: a laugh's "ha ha ha" often comes out as a word repeated ("One, one, one.").
         var count = Math.Min(words.Words, said.Distinct(StringComparer.Ordinal).Count());

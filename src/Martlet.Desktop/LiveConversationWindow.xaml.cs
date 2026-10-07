@@ -359,7 +359,8 @@ public partial class LiveConversationWindow : ThemedWindow
         videoAddress = address;
         if (before.HandsFree != next.HandsFree || before.Sensitivity != next.Sensitivity || before.PauseIndex != next.PauseIndex ||
             before.VoiceId != next.VoiceId || before.HearVoice != next.HearVoice || before.BargeIn != next.BargeIn ||
-            before.ReduceEcho != next.ReduceEcho || before.WordCheck != next.WordCheck || before.TranscribeFirst != next.TranscribeFirst)
+            before.ReduceEcho != next.ReduceEcho || before.WordCheck != next.WordCheck || before.TranscribeFirst != next.TranscribeFirst ||
+            before.BargeInStyle != next.BargeInStyle)
         {
             StopListening(keepHeard: true);
             listening = Available && next.HandsFree && !listenPaused && MicrophoneUsable;
@@ -901,7 +902,8 @@ public partial class LiveConversationWindow : ThemedWindow
             EndSilence = TalkPreferences.Pauses[Math.Clamp(preferences.PauseIndex, 0, TalkPreferences.Pauses.Length - 1)]
         },
         preferences.VoiceId, HearsVoice.On, preferences.BargeIn, preferences.ReduceEcho, WordCheck: preferences.WordCheck,
-        Straight: handsFree && HearsVoice.On && !preferences.TranscribeFirst, HearLocalOnly: HearsVoice.LocalOnly);
+        Straight: handsFree && HearsVoice.On && !preferences.TranscribeFirst, HearLocalOnly: HearsVoice.LocalOnly,
+        BargeInStyle: preferences.BargeInStyle);
 
     // Whether Thinking hears your recording (Companion › Listening): your own choice, or never chosen, only while the recording
     // stays on this PC (LocalOnly: the conversation checks that again before it sends one).
@@ -1234,7 +1236,9 @@ public partial class LiveConversationWindow : ThemedWindow
     private void Interrupt()
     {
         CallBargeIn();
-        var quick = listener is { TalkingOver: true } live ? live.TalkOver : null;
+        // A reply paused for what you said (Pause and decide) that the judge, or your talking on, decided to stop.
+        var heldStop = controller.TakeHeldStop();
+        var quick = (listener is { TalkingOver: true } live ? live.TalkOver : null) ?? heldStop;
         var said = heardInterrupt;
         heardInterrupt = null;
         var over = quick is not null || said is not null;
@@ -1297,12 +1301,33 @@ public partial class LiveConversationWindow : ThemedWindow
         var startedAt = quick?.StartedAt ?? said?.StartedAt ?? 0;
         if (startedAt == 0) return;
         var stopped = controller.Clock.GetElapsedTime(startedAt);
+        var judged = quick?.Ruling is { } ruling
+            ? $"; paused {quick.Paused?.TotalMilliseconds ?? 0:0} ms first, then {(ruling.Source == BargeInSource.Cue ? "a clear cue" : $"the {ruling.Judge} judge ({ruling.JudgeTime.TotalMilliseconds:0} ms)")} said it was for Martlet"
+            : quick?.Paused is { } paused ? $"; paused {paused.TotalMilliseconds:0} ms first" : "";
         ErrorLog.Info(quick is not null
             ? $"Barge-in: Martlet stopped its reply {stopped.TotalMilliseconds:0} ms after you started talking over it " +
               $"({quick.Decision.Reason}; decided {quick.After.TotalMilliseconds:0} ms in, after {quick.Checks} quick " +
-              $"check{(quick.Checks == 1 ? "" : "s")} of your words; word check {preferences.WordCheck})."
+              $"check{(quick.Checks == 1 ? "" : "s")} of your words{judged}; word check {preferences.WordCheck}; {preferences.BargeInStyle})."
             : $"Barge-in: Martlet stopped its reply {stopped.TotalMilliseconds:0} ms after you started talking over it " +
               $"({said!.Value.Decision.Reason}; from what you said once you paused; word check {preferences.WordCheck}).");
+    }
+
+    /// <summary>The talk window's barge-in line (LiveBargeIn) for the last time the user talked over Martlet, never what was
+    /// said: "Talked over at 14:02:11: paused 420 ms, then resumed (not for Martlet: a quick backchannel; rules judge, 0 ms)."</summary>
+    internal static string BargeInLine(BargeInRecord record)
+    {
+        var at = record.At.ToLocalTime().ToString("T", System.Globalization.CultureInfo.CurrentCulture);
+        var what = record.Paused is { } paused ? $"paused {paused.TotalMilliseconds:0} ms, then {record.Outcome}" : $"{record.Outcome} at once";
+        var verdict = record.Verdict == BargeInVerdict.Interrupt ? "for Martlet" : "not for Martlet";
+        var by = record.Source switch
+        {
+            BargeInSource.Cue => "a clear cue",
+            BargeInSource.KeptTalking => "you kept talking",
+            BargeInSource.Limit => "the pause reached its limit",
+            BargeInSource.Timeout => $"model judge too slow, rules decided in {record.JudgeTime.TotalMilliseconds:0} ms",
+            _ => record.Judge == "stop at once" ? "Stop at once" : $"{record.Judge} judge, {record.JudgeTime.TotalMilliseconds:0} ms"
+        };
+        return $"Talked over at {at}: {what} ({verdict}: {record.Reason}; {by}).";
     }
 
     // A sound always listening ignored shows as a muted note; ignored sounds in a row share one.
@@ -2125,6 +2150,10 @@ public partial class LiveConversationWindow : ThemedWindow
             }
         TurnInputsText.Text = turnInputs ?? "";
         TurnInputsText.Visibility = available && turnInputs is not null ? Visibility.Visible : Visibility.Collapsed;
+        // The last time you talked over Martlet: what decided, the verdict and how long it paused (never what you said).
+        var bargeInLine = controller.BargeIns is [.., var lastBargeIn] ? BargeInLine(lastBargeIn) : "";
+        BargeInText.Text = bargeInLine;
+        BargeInText.Visibility = available && preferences.BargeIn && bargeInLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         var (turns, contextTokens) = controller.ContextUse;
         var contextBudget = controller.Configuration?.Context;
         ContextText.Text = ContextLine(turns, contextTokens, contextBudget);
