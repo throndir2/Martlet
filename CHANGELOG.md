@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Two more Chatterbox voices in Companion › Voice: **Chatterbox Original**, which says each sentence calmly or expressively as the conversation decides (set how calm and how expressive in Companion › Voice), and **Chatterbox Nano**, a small Chatterbox that laughs and sighs and runs even without a graphics card. ([#540](https://github.com/throndir2/Martlet/pull/540))
 - Companion › Voice now shows a quick rundown for every voice: whether it copies your voice, laughs and sighs, and speaks with emotions, and whether it runs on your graphics card (with about how much of its memory it uses), on your processor or online. ([#539](https://github.com/throndir2/Martlet/pull/539))
 
 ### Changed
