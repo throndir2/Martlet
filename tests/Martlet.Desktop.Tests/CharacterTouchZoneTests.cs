@@ -77,7 +77,7 @@ public sealed class CharacterTouchZoneTests
     {
         var settings = new CharacterTouchZoneSettings
         {
-            ModelId = "model-1", Crop = new(0, 0, 1, 1),
+            ModelId = "model-1", Crop = new(0, 0, 1, 1), IncludeIntimate = false,
             Zones =
             [
                 new() { Id = "face", Box = new(0.3, 0.1, 0.4, 0.3), Drawables = ["Face", "Body"] },
@@ -102,6 +102,38 @@ public sealed class CharacterTouchZoneTests
         Assert.Equal(("top_of_head", "coarse"), Of(CharacterTouchZones.Match(null, Touch(0.5, 0.05, hitAreas: ["Head"]))));
     }
 
+    [Fact]
+    public void ZonesSavedWithTellTheCharacterLoadWithMartletNotices()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-touch-").FullName;
+        try
+        {
+            File.WriteAllText(CharacterTouchZones.Path(directory), """
+                { "version": 1, "models": [ { "model_id": "m", "updated_at": "2026-01-01T00:00:00+00:00", "zones": [
+                  { "id": "top_of_head", "box": { "x": 0.4, "y": 0, "width": 0.2, "height": 0.1 },
+                    "reaction": { "tell": true, "narration": "*ruffles your hair*", "cooldown_seconds": 4 } },
+                  { "id": "nose", "box": { "x": 0.4, "y": 0.2, "width": 0.1, "height": 0.1 }, "reaction": { "tell": false } } ] } ] }
+                """);
+            var zones = CharacterTouchZones.Load(directory, "m")!.Zones;
+            Assert.True(zones[0].Reaction.Notices);
+            Assert.Equal("*ruffles your hair*", CharacterTouchZones.Narration(zones[0]));
+            Assert.False(zones[1].Reaction.Notices);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public void ZonesSayWhereTheyAreAndWhichTapsArePats()
+    {
+        CharacterTouchZone Zone(string id, string? label = null) => new() { Id = id, Label = label, Box = new(0, 0, 1, 1) };
+        Assert.Equal("the top of your head", CharacterTouchZones.Part(Zone("top_of_head")));
+        Assert.Equal("your left cheek", CharacterTouchZones.Part(Zone("cheek_left")));
+        Assert.Equal("your crown", CharacterTouchZones.Part(Zone("top_of_head", "Crown")));
+        Assert.True(CharacterTouchZones.Pats(Zone("hair")));
+        Assert.True(CharacterTouchZones.Pats(Zone("top_of_head")));
+        Assert.False(CharacterTouchZones.Pats(Zone("cheek_left")));
+    }
+
     private static (string, string)? Of(TouchZoneMatch? match) => match is null ? null : (match.Zone.Id, match.How);
 
     [Fact]
@@ -114,9 +146,12 @@ public sealed class CharacterTouchZoneTests
         Assert.Equal(["Blush", "surprise"], CharacterTouchZones.Plan(new() { Id = "lips", Box = new(0, 0, 1, 1) }, catalog).Select(s => s.Name));
         // No lean_in here yet: the head pat tilts, then smiles.
         Assert.Equal(["tilt", "smile"], CharacterTouchZones.Plan(new() { Id = "top_of_head", Box = new(0, 0, 1, 1) }, catalog).Select(s => s.Name));
-        var chosen = new CharacterTouchZone { Id = "nose", Box = new(0, 0, 1, 1), Reaction = new() { Actions = ["gesture:nod"], Tell = true } };
+        var chosen = new CharacterTouchZone { Id = "nose", Box = new(0, 0, 1, 1), Reaction = new() { Actions = ["gesture:nod"], Notices = true } };
         Assert.Equal(["nod"], CharacterTouchZones.Plan(chosen, catalog).Select(s => s.Name));
-        Assert.Equal("*boops your nose*", CharacterTouchZones.Narration(chosen));
+        // The zone's built-in line is no hint; only the owner's own words go with a noticed touch.
+        Assert.Null(CharacterTouchZones.Narration(chosen));
+        Assert.Equal("*boops you*", CharacterTouchZones.Narration(chosen with { Reaction = chosen.Reaction with { Narration = "*boops you*" } }));
+        Assert.Null(CharacterTouchZones.Narration(chosen with { Reaction = new() { Narration = "*boops you*" } }));
         Assert.Empty(CharacterTouchZones.Plan(chosen with { Reaction = new() { Actions = [] } }, catalog));
         Assert.Null(CharacterTouchZones.Narration(chosen with { Reaction = new() }));
     }
@@ -129,10 +164,15 @@ public sealed class CharacterTouchZoneTests
         {
             var first = CharacterTouchZones.Detected(null, "model-1", [new() { Id = "top_of_head", Box = new(0.4, 0, 0.2, 0.1) }], null, null,
                 DateTimeOffset.Now);
+            // Intimate zones are included unless the owner turns them off, and off stays off once saved.
+            Assert.True(first.IncludeIntimate);
+            Assert.True(new CharacterTouchZoneSettings { ModelId = "model-3" }.IncludeIntimate);
+            await CharacterTouchZones.SaveAsync(directory, new() { ModelId = "model-3", IncludeIntimate = false }, DateTimeOffset.Now);
+            Assert.False(CharacterTouchZones.Load(directory, "model-3")!.IncludeIntimate);
             var edited = first with
             {
                 IncludeIntimate = true,
-                Zones = [first.Zones[0] with { Label = "Crown", Enabled = false, Reaction = new() { Tell = true, CooldownSeconds = 9 } }]
+                Zones = [first.Zones[0] with { Label = "Crown", Enabled = false, Reaction = new() { Notices = true, CooldownSeconds = 9 } }]
             };
             await CharacterTouchZones.SaveAsync(directory, edited, DateTimeOffset.Now);
             await CharacterTouchZones.SaveAsync(directory, new() { ModelId = "model-2" }, DateTimeOffset.Now);
@@ -140,7 +180,7 @@ public sealed class CharacterTouchZoneTests
             var loaded = CharacterTouchZones.Load(directory, "model-1")!;
             Assert.True(loaded.IncludeIntimate);
             Assert.Equal("Crown", loaded.Zones[0].Name);
-            Assert.Equal(2, CharacterTouchZones.LoadAll(directory).Count);
+            Assert.Equal(3, CharacterTouchZones.LoadAll(directory).Count);
 
             var again = CharacterTouchZones.Detected(loaded, "model-1",
                 [new() { Id = "top_of_head", Box = new(0.3, 0, 0.3, 0.1) }, new() { Id = "hand_left", Box = new(0.8, 0.5, 0.1, 0.1) }],
@@ -148,6 +188,8 @@ public sealed class CharacterTouchZoneTests
             Assert.Equal(0.3, again.Zones[0].Box.X);
             Assert.False(again.Zones[0].Enabled);
             Assert.Equal(9, again.Zones[0].Reaction.CooldownSeconds);
+            Assert.True(again.Zones[0].Reaction.Notices);
+            Assert.DoesNotContain("\"tell\"", File.ReadAllText(CharacterTouchZones.Path(directory)), StringComparison.Ordinal);
             Assert.Equal(["leftHand"], again.Zones[1].Bones);
             Assert.True(again.IncludeIntimate);
 

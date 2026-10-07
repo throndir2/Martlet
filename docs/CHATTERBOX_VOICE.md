@@ -203,27 +203,50 @@ for Chatterbox (`SpeechEngines.ChatterboxTurboTags` in Martlet.Core) passes 17:
 `generate` ignores the older `exaggeration`/`cfg_weight` sliders, so these style
 tokens are its only emotion control.
 
-What Resemble documents (checked 2026-10-04): the
-[model card](https://huggingface.co/ResembleAI/chatterbox-turbo) and the
-[README](https://github.com/resemble-ai/chatterbox) name `[cough]`, `[laugh]`,
-`[chuckle]` "and more"; the official Turbo apps (`gradio_tts_turbo_app.py` and
-the `chatterbox-turbo-demo` Space) offer exactly the nine sounds as
-`EVENT_TAGS`. The tones are the tokenizer's other style tokens and are not
-documented. Community reports differ. In resemble-ai/chatterbox#492, all 19
-tags work in the ONNX export, with occasional artifacts. In #557, the ten style
-tokens change nothing under `mlx-audio`.
+What Resemble documents (checked again 2026-10-07): the
+[model card](https://huggingface.co/ResembleAI/chatterbox-turbo), the
+[README](https://github.com/resemble-ai/chatterbox), the
+[ONNX](https://huggingface.co/ResembleAI/chatterbox-turbo-ONNX) and
+[Nano](https://huggingface.co/ResembleAI/chatterbox-nano) model cards and the
+[demo page](https://resemble-ai.github.io/chatterbox_turbo_demopage/) name
+`[cough]`, `[laugh]`, `[chuckle]` "and more". The official Turbo app
+(`gradio_tts_turbo_app.py`) offers exactly the nine sounds as `EVENT_TAGS`.
+Resemble does not document the tones anywhere; they are the tokenizer's other
+style tokens. `chatterbox-tts` 0.1.7 is still the latest release, and the Turbo
+code changed after it only to add Nano. Community reports differ. In
+resemble-ai/chatterbox#492, one user says all 19 tags work in the ONNX export,
+"sometimes" with artifacts, without audio or measurements. In #557, the ten
+style tokens change nothing under `mlx-audio`.
 
-Our measurements agree with #557 (2026-10-06, through the running service):
+The ONNX export is the same model (the same weights and tokenizer) for another
+runtime. Its example decodes greedily: it always takes the most likely speech
+token, where Martlet samples (temperature 0.8, top-p 0.95). Greedy decoding
+does not work with Turbo: 20 of 35 greedy pieces (*Annie*, every tag) never
+drew the stop token and ran to the 1,000-token limit, about 33 s for a 4 s
+sentence.
 
-- On the starter voice *Annie* (three takes of one sentence for each tag),
-  `[whispering]` did not whisper. 72% of the speech had a pitch, against 68%
-  without a tag. A whisper has no pitch. The level stayed the same (-25.8 dBFS
-  against -25.4).
-- `[angry]`, `[happy]`, `[crying]`, `[fear]`, `[surprised]`, `[sarcastic]` and
-  `[dramatic]` changed level, pitch and pitch range by no more than one take
-  differs from the next.
-- `[laugh]` and `[sigh]` worked: they added 0.8 s and 0.3 s of their sound.
-- On three more starter voices, `[whispering]` speech was 55-75% voiced.
+Our measurements (2026-10-07, the library's own sampled decoding, as Martlet
+decodes) agree with #557. Every tag was tested on two starter voices (*Annie*
+and *arctic-bdl*), two sentences and two seeds: 8 takes for each tag. Each take
+was compared with the same voice, sentence and seed without a tag. Two plain
+takes of the same sentence differ by 0.23 s, 0.6 LUFS and 1 semitone of pitch
+on average.
+
+- **All nine sounds work.** Each added 0.6-0.9 s (sd 0.2-0.5 s) in every take.
+  Parakeet speech-to-text still heard every word, and wrote some sounds out
+  ("Hm" for `[clear throat]`, "Uh" for `[groan]`, "sh" for `[shush]`). A speech
+  emotion classifier (`superb/wav2vec2-base-superb-er`) rated `[laugh]` and
+  `[chuckle]` takes "happy" at 0.17-0.18 against 0.03 without a tag.
+- **`[whispering]` rarely works.** One take of eight whispered (17% voiced
+  against 75%, 8.8 LUFS quieter) and one more half-whispered. The others were
+  as voiced as plain speech (55-78%). An earlier check with three takes on
+  *Annie* and with three more voices found the same.
+- **The other tones do nothing measurable.** `[angry]`, `[happy]`, `[crying]`,
+  `[fear]`, `[surprised]`, `[sarcastic]`, `[dramatic]`, `[narration]` and
+  `[advertisement]` changed length, level, pitch and pitch range by no more
+  than two plain takes differ. The emotion classifier's scores did not move
+  (for example "angry" 0.37 with `[angry]`, 0.43 without; "sad" 0.00 with
+  `[crying]`).
 
 Two ways to make the model itself whisper did not work. The vocoder (HiFT, the
 part that makes the waveform) takes the pitch from the mel spectrogram. When we
