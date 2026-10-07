@@ -1,7 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- sherpa-onnx speaker recognition and Parakeet speech-to-text on this PC. Martlet.Desktop ships the native sherpa-onnx/ONNX
        Runtime libraries (NuGet org.k2fsa.sherpa.onnx.runtime.win-x64) and the voice models (downloaded by its build at pinned
-       SHA-256); Parakeet is downloaded on the owner's request (pinned sizes and SHA-256), never fetched by itself. -->
+       SHA-256); Parakeet is downloaded on the owner's request (pinned sizes and SHA-256), never fetched by itself. The end-of-turn
+       judge (SmartTurnEngine) runs Smart Turn v3.2 through the same ONNX Runtime with authored C API function-pointer calls. -->
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Martlet.Desktop" />
     <InternalsVisibleTo Include="Martlet.Desktop.Tests" />

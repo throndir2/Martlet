@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Martlet now hears when you've finished talking. A small model on your PC listens to how you end each sentence, so Martlet answers about half a second sooner when you're clearly done, and waits longer when you trail off mid-thought instead of cutting you off. It's on by default; turn off **Judge when I finish talking** in Companion › Listening to go back to the plain pause. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
 - The personality now decides how the character reacts when you touch it: which emotes, gestures and face symbols play for each part of its body, from hating it to craving it, and what happens when you keep touching. Your Thinking model decides it in the background when you save a personality, and you can change it yourself in Companion › Character › Touch temperament. ([#523](https://github.com/throndir2/Martlet/pull/523))
 - Adding Deep thinking to a computer whose only graphics card already runs a Thinking model now warns you first: both models share the card and each runs at about half speed. Martlet recommends one graphics card for each Thinking model. ([#521](https://github.com/throndir2/Martlet/pull/521))
 

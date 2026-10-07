@@ -8,7 +8,7 @@ order, and prints one JSON array of results. Doctor, voices_status, voices_namin
 logs_timeline, logs_export, virtualization_status, mcp_servers_status, api_keys_status, smart_home_status, messaging_status, discord_status, discord_check, terminal_status, terminal_check, prompts_status, settings_sync_status, memory_sync_status, memory_status, character_status, hearing_check, model_ability_check,
 echo_check, pc_audio_check, discord_call_check, context_check, thinking_steps_check, think_longer_status, reminders_status, discord_reply_status, discord_reply_check, conversation_history_status, creations_status, chattiness_status, discord_text_check, discord_companion_check, vision_history_check, songs_status, pictures_status, latency_report, character_models, character_profiles,
 character_actions, character_gaze, character_touch_zones, character_theme, singing_status, utterance_filter_check and parakeet_check calls without an explicit dataDirectory get a disposable one;
-voices_status, voices_engine_check, utterance_filter_check, parakeet_check, straight_voice_check and discord_voice_check also use this checkout's Desktop
+voices_status, voices_engine_check, utterance_filter_check, parakeet_check, straight_voice_check, discord_voice_check and turn_judge_check also use this checkout's Desktop
 build (martletDirectory) when it is built. -Desktop launches Martlet.Desktop with the
 same disposable data directory (plus any -DesktopArguments, such as --tray) and connects ui_* tools to it first.
 
@@ -175,9 +175,9 @@ try {
                 $arguments | Add-Member -NotePropertyName martletDirectory -NotePropertyValue $desktopBuild
             }
         }
-        # straight_voice_check and discord_voice_check take no data directory; they use this checkout's Desktop build (its
-        # sherpa-onnx runtime, its libdave.dll) too.
-        if ($call.name -eq 'straight_voice_check' -or $call.name -eq 'discord_voice_check') {
+        # straight_voice_check, discord_voice_check and turn_judge_check take no data directory; they use this checkout's Desktop
+        # build (its sherpa-onnx runtime, its libdave.dll, its Smart Turn model) too.
+        if ($call.name -eq 'straight_voice_check' -or $call.name -eq 'discord_voice_check' -or $call.name -eq 'turn_judge_check') {
             if ($null -eq $arguments) { $arguments = [pscustomobject]@{} }
             $desktopBuild = Join-Path $root "src\Martlet.Desktop\$bin"
             if ($null -eq $arguments.PSObject.Properties['martletDirectory'] -and

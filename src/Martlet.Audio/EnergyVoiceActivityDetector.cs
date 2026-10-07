@@ -64,6 +64,19 @@ public sealed class EnergyVoiceActivityDetector
     /// <summary>The last frame was as loud as a voice must be to start speech (the onset threshold), whether or not speech
     /// is under way: what talking over Martlet counts.</summary>
     public bool LastFrameLoud { get; private set; }
+    /// <summary>How many quiet frames in a row end the speech under way so far (0 while the voice goes on or nobody speaks).</summary>
+    public int SilenceFrames => Speaking ? silenceFrames : 0;
+
+    /// <summary>Ends the speech under way now, where its silence began, as if the end-of-speech pause had passed (the end-of-turn
+    /// judge decided, or the plain pause rule while the detector waits for a longer one). Returns false when nobody speaks.</summary>
+    public bool EndSpeech()
+    {
+        if (!Speaking) return false;
+        Speaking = false;
+        SpeechEndFrame = FrameIndex - silenceFrames;
+        silenceFrames = 0;
+        return true;
+    }
 
     public VoiceActivityTransition Process(ReadOnlySpan<byte> frame)
     {

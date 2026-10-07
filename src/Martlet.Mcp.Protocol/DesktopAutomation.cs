@@ -355,6 +355,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // quick "yeah" or what this PC plays). Fixed text. Word check: the chosen option (Relaxed, Normal or Sensitive; choosing
         // one with ui_select saves talk-preferences.json, so it needs --allow-ui-effects) and its fixed explanation.
         "TalkBargeInAbout", "TalkWordCheck", "TalkWordCheckAbout",
+        // Companion › Listening › How you talk › Judge when I finish talking: on or off, which end-of-turn judge runs and whether
+        // it can (or why not), how long it took to load, and counts of the newest decisions with the judge's median time and the
+        // last one's outcome and silence (never words or audio). The TalkJudgeTurns check box saves the choice, so it needs
+        // --allow-ui-effects.
+        "TalkJudgeTurnsStatus",
         // Companion › Listening › Watch along: whether Martlet also hears what this PC plays and whether its own voice is left
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
         // now, or why it can't). Never what was heard.

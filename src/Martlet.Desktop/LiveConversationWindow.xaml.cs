@@ -358,7 +358,8 @@ public partial class LiveConversationWindow : ThemedWindow
         videoAddress = address;
         if (before.HandsFree != next.HandsFree || before.Sensitivity != next.Sensitivity || before.PauseIndex != next.PauseIndex ||
             before.VoiceId != next.VoiceId || before.HearVoice != next.HearVoice || before.BargeIn != next.BargeIn ||
-            before.ReduceEcho != next.ReduceEcho || before.WordCheck != next.WordCheck || before.TranscribeFirst != next.TranscribeFirst)
+            before.ReduceEcho != next.ReduceEcho || before.WordCheck != next.WordCheck || before.TranscribeFirst != next.TranscribeFirst ||
+            before.JudgeTurns != next.JudgeTurns)
         {
             StopListening(keepHeard: true);
             listening = Available && next.HandsFree && !listenPaused && MicrophoneUsable;
@@ -898,7 +899,8 @@ public partial class LiveConversationWindow : ThemedWindow
             EndSilence = TalkPreferences.Pauses[Math.Clamp(preferences.PauseIndex, 0, TalkPreferences.Pauses.Length - 1)]
         },
         preferences.VoiceId, HearsVoice.On, preferences.BargeIn, preferences.ReduceEcho, WordCheck: preferences.WordCheck,
-        Straight: handsFree && HearsVoice.On && !preferences.TranscribeFirst, HearLocalOnly: HearsVoice.LocalOnly);
+        Straight: handsFree && HearsVoice.On && !preferences.TranscribeFirst, HearLocalOnly: HearsVoice.LocalOnly,
+        JudgeTurns: preferences.JudgeTurns);
 
     // Whether Thinking hears your recording (Companion › Listening): your own choice, or never chosen, only while the recording
     // stays on this PC (LocalOnly: the conversation checks that again before it sends one).
