@@ -40,6 +40,7 @@ public partial class MainWindow
             if (detectingTouchZones || characterTouchZones.Busy || renderedZonesModel != characterTouchZones.ModelId) RenderTab();
         });
         avatar.TouchRouter = OnCharacterTouched;
+        WireCharacterTemperament();
     }
 
     private string? renderedZonesModel;
@@ -53,25 +54,36 @@ public partial class MainWindow
         if (closing || !avatar.IsShowing) return false;
         var catalog = characterActions.For(avatar.InspectedProfile?.ModelPath);
         characterTouchZones.Follow(catalog?.Inventory.ModelId ?? characterTouchZones.ModelId);
-        characterTouchZones.React(touch, zone => TouchPlan(zone, catalog), PlayTouchAsync, text => Dispatcher.InvokeAsync(() => TellCharacter(text)));
+        var temperament = characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId);
+        characterTouchZones.React(touch, (zone, repeats) => TouchPlan(zone, catalog, temperament, repeats), PlayTouchAsync,
+            text => Dispatcher.InvokeAsync(() => TellCharacter(text)));
         return true;
     }
 
-    /// <summary>What touching <paramref name="zone"/> plays: the owner's choice, or by default the model's own tap motion for
-    /// that part (TapHead, TapBody...) when it has one, then the zone's default emotes and gestures.</summary>
-    private IReadOnlyList<CharacterActionSource> TouchPlan(CharacterTouchZone zone, CharacterActionCatalog? catalog)
+    /// <summary>What touching <paramref name="zone"/> plays: the owner's choice for the zone, else the active persona's touch
+    /// temperament, else by default the model's own tap motion for that part (TapHead, TapBody...) when it has one, then the
+    /// zone's default emotes and gestures.</summary>
+    private TouchReactionPlan TouchPlan(CharacterTouchZone zone, CharacterActionCatalog? catalog, CharacterTouchTemperament? temperament, int repeats)
     {
-        var plan = CharacterTouchZones.Plan(zone, catalog);
-        if (zone.Reaction.Actions is not null || catalog is null) return plan;
+        var plan = CharacterTouchZones.React(zone, catalog, temperament, repeats);
+        if (plan.From != TouchReactionPlan.FromDefault || catalog is null) return plan;
         var part = CharacterTouchZones.Kind(zone.Id)?.Group == TouchZoneGroup.Head ? zone.Id.StartsWith("hair", StringComparison.Ordinal) ? "hair" : "head" : "body";
         var motions = catalog.Entries.Where(e => e.Action.Enabled && e.Source.Kind == CharacterActionKind.Motion).Select(e => e.Source).ToArray();
         return AvatarController.TouchMotion([.. motions.Select(m => m.Name)], part) is { } group && motions.FirstOrDefault(m => m.Name == group) is { } motion
-            ? [motion, .. plan.Where(s => s != motion)] : plan;
+            ? plan with { Actions = [motion, .. plan.Actions.Where(s => s != motion)] } : plan;
     }
 
-    private async Task PlayTouchAsync(CharacterActionSource source, string reason)
+    /// <summary>Plays one reaction; with <paramref name="lingerSeconds"/> it stays on that long (unless it already showed).</summary>
+    private async Task PlayTouchAsync(CharacterActionSource source, string reason, double lingerSeconds)
     {
-        try { await avatar.PlayActionAsync(source, reason, null, lifetime.Token); }
+        try
+        {
+            var linger = lingerSeconds > 0 && !avatar.Held.Holds(source.Id);
+            var started = await avatar.PlayActionAsync(source, reason, null, lifetime.Token, hold: linger);
+            if (!linger || !started || !avatar.Held.Holds(source.Id)) return;
+            await Task.Delay(TimeSpan.FromSeconds(lingerSeconds), lifetime.Token);
+            await avatar.StopActionAsync(source, reason + " (lingered)", lifetime.Token);
+        }
         catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
             InvalidDataException or TimeoutException or ObjectDisposedException) { }
     }
@@ -113,6 +125,7 @@ public partial class MainWindow
         characterTouchZones.Follow(catalog?.Inventory.ModelId);
         renderedZonesModel = characterTouchZones.ModelId;
         var settings = characterTouchZones.Current;
+        var temperament = characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId);
         var stack = new List<UIElement>
         {
             Heading("Touch zones"),
@@ -222,7 +235,7 @@ public partial class MainWindow
         var index = 0;
         foreach (var zone in (settings?.Zones ?? []).Take(CharacterTouchZones.MaximumZones))
         {
-            var row = new ZoneRow(this, zone, index++, catalog, reactionItems, settings!, showing, Edited);
+            var row = new ZoneRow(this, zone, index++, catalog, reactionItems, settings!, showing, Edited, temperament);
             rows.Add(row);
             stack.Add(row.View);
             if (width > 0) row.Draw(canvas, width, height, ZoneColors[(row.Number) % ZoneColors.Length]);
@@ -274,9 +287,11 @@ public partial class MainWindow
 
     private void TryTouchZone(CharacterTouchZone zone, CharacterActionCatalog catalog)
     {
-        var plan = TouchPlan(zone, catalog);
-        foreach (var source in plan) PlayTouchAsync(source, $"a try of {zone.Name.ToLowerInvariant()}").Forget();
-        characterTouchZones.Note($"Tried {zone.Name}: " + (plan.Count == 0 ? "nothing to play on this model." : "played " + string.Join(", ", plan.Select(s => s.Name)) + ".") +
+        var reaction = TouchPlan(zone, catalog, characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId), 1);
+        var plan = reaction.Actions;
+        for (var i = 0; i < plan.Count; i++) PlayTouchAsync(plan[i], $"a try of {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
+        characterTouchZones.Note($"Tried {zone.Name}: " + (plan.Count == 0 ? "nothing to play on this model" : "played " + string.Join(", ", plan.Select(s => s.Name))) +
+                CharacterTouchZoneService.Describe(reaction, 1) + "." +
                 (CharacterTouchZones.Narration(zone) is { } line ? $" A touch also tells the character \"{line}\"." : ""));
     }
 
@@ -295,7 +310,8 @@ public partial class MainWindow
         internal StackPanel View { get; } = new() { Margin = new Thickness(0, 10, 0, 0) };
 
         internal ZoneRow(MainWindow window, CharacterTouchZone zone, int number, CharacterActionCatalog catalog,
-            IReadOnlyList<(string Id, string Label)> items, CharacterTouchZoneSettings settings, bool showing, Action edited)
+            IReadOnlyList<(string Id, string Label)> items, CharacterTouchZoneSettings settings, bool showing, Action edited,
+            CharacterTouchTemperament? temperament)
         {
             this.zone = zone;
             this.items = items;
@@ -310,7 +326,7 @@ public partial class MainWindow
             AutomationProperties.SetAutomationId(name, $"TouchZoneName-{number}");
             var state = new TextBlock
             {
-                Text = Describe(zone, settings, CharacterTouchZones.Plan(zone with { Reaction = zone.Reaction with { Actions = null } }, catalog)),
+                Text = Describe(zone, settings, CharacterTouchZones.React(zone with { Reaction = zone.Reaction with { Actions = null } }, catalog, temperament, 1)),
                 VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), TextWrapping = TextWrapping.Wrap
             };
             state.SetResourceReference(StyleProperty, "Muted");
@@ -398,13 +414,14 @@ public partial class MainWindow
             return -1;
         }
 
-        private static string Describe(CharacterTouchZone zone, CharacterTouchZoneSettings settings, IReadOnlyList<CharacterActionSource> defaults)
+        private static string Describe(CharacterTouchZone zone, CharacterTouchZoneSettings settings, TouchReactionPlan defaults)
         {
             var kind = CharacterTouchZones.Kind(zone.Id);
             var parts = zone.Drawables.Count > 0 ? $"{zone.Drawables.Count} part{(zone.Drawables.Count == 1 ? "" : "s")}"
                 : zone.Bones.Count > 0 ? string.Join(", ", zone.Bones.Take(3)) : "box only";
             return $"{zone.Id}  \u00b7  {parts}" + (kind?.Intimate == true && !settings.IncludeIntimate ? "  \u00b7  intimate, off" : "") +
-                $"  \u00b7  default: {(defaults.Count == 0 ? "nothing" : string.Join(" + ", defaults.Select(s => s.Name)))}";
+                (defaults.From == TouchReactionPlan.FromTemperament ? $"  \u00b7  temperament ({defaults.Attitude}): " : "  \u00b7  default: ") +
+                (defaults.Actions.Count == 0 ? "nothing" : string.Join(" + ", defaults.Actions.Select(s => s.Name)));
         }
 
         private static string BoxText(TouchZoneBox b) => string.Join(", ", new[] { b.X, b.Y, b.Width, b.Height }

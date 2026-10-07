@@ -8,6 +8,9 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+- The personality now decides how the character reacts when you touch it: which emotes, gestures and face symbols play for each part of its body, from hating it to craving it, and what happens when you keep touching. Your Thinking model decides it in the background when you save a personality, and you can change it yourself in Companion › Character › Touch temperament. ([#519](https://github.com/throndir2/Martlet/pull/519))
+
 ## [0.52.0] - 2026-10-06
 
 ### Added
