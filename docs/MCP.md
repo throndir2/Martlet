@@ -1133,7 +1133,18 @@ The model is `modelPath`, `modelId` or the one the `dataDirectory`'s
 `avatar.json` shows. `save` (an explicit, disposable `dataDirectory` only)
 writes the parsed zones as *Detect zones* would, with `snapshotPath` (a PNG)
 as their picture and `includeIntimate` setting the switch, so the section can
-be checked with `-Desktop`. Never the model's path; it contacts nothing.
+be checked with `-Desktop`. With `temperament` (a simulated Thinking answer
+for [Touch temperament](AVATARS.md#touch-temperament), such as
+`{"groups":{"head":{"attitude":2,"reactions":["hearts","blush"]}}}`) or
+`personaId` (the temperament saved for that persona in the `dataDirectory`'s
+`character-temperaments.json`), `match` plays what the temperament decides
+when the zone has no pick of its own, and its `reaction` tells `from`
+(`owner`, `temperament` or `default`), the `attitude` word, whether it
+`escalated` (with `repeats`, the touches in a row) and how long it `linger`s.
+`temperament` in the result shows the request Thinking gets (with
+`personality`, its text), the `vocabulary` and `attitudes` allowed, whether the
+answer was `read`, and what is `used` (who decided it, a `summary`, each group
+and zone and the escalation). Never the model's path; it contacts nothing.
 
 The section's status fields are `TouchZonesStatus` (how many zones, how many in
 use and who found them, or that none are found yet), `TouchZonesVision`
@@ -1153,6 +1164,28 @@ picture to Thinking, `TouchZoneTry-<n>` plays on the character, and
 shown in `TouchZonesDetection`) after taking the real snapshot and probing the
 showing model's drawables or bones, so the whole detection runs with no
 vision request.
+
+Touch temperament (below Touch zones) reads through `TouchTemperamentStatus`
+(for which persona and who decided it: built-in reactions, the Thinking model,
+`FIXTURE - NOT AI` or your own choices), `TouchTemperamentSummary` (the
+attitude per group and zone, such as *head loves, torso dislikes, ...*, and
+after how many touches it escalates), `TouchTemperamentDecision` (how deciding
+went, or that a personality change left your own choices in place),
+`TouchTemperamentSaveState` and each line's `TouchTemperamentAttitude-<group
+or zone ID>` (an attitude word or *(built-in reaction)*). `TouchZonesLast` and
+`TouchZoneState-<n>` also name the attitude and whether the reaction came from
+the temperament. `TouchTemperamentDecide` sends the personality to Thinking,
+and `TouchTemperamentReset`, `TouchTemperamentAttitude-`,
+`TouchTemperamentReaction-`, `TouchTemperamentReaction2-`,
+`TouchTemperamentLinger-`, `TouchTemperamentAfter`, `TouchTemperamentAddKind`,
+`TouchTemperamentAdd` and `TouchTemperamentRemove-` save, so they all need
+`--allow-ui-effects`. Setting `MARTLET_TOUCH_TEMPERAMENT_FIXTURE` to a text
+file before launching the desktop makes deciding read that file (read again
+each time) as the Thinking model's answer (FIXTURE - NOT AI, shown in
+`TouchTemperamentStatus` and `TouchTemperamentDecision`, and saved with the
+source `fixture`). Saving a changed personality (`OpenCompanion`,
+`CompanionText`, `CompanionClose`) then runs the real decide, store and route
+path with no model.
 
 `character_gaze` shows [where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks)
 (Companion › Vision › Where the character looks): `saved` (`mouse`, the

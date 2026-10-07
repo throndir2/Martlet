@@ -107,6 +107,7 @@ public partial class MainWindow : ThemedWindow
         avatar.Gaze.Decides = Talk.DecideGaze;
         characterActions = new(store?.DataDirectory);
         characterTouchZones = new(store?.DataDirectory);
+        characterTemperaments = new(store?.DataDirectory);
         characterThemes = new(store?.DataDirectory);
         if (setupService is not null)
         {
@@ -350,9 +351,13 @@ public partial class MainWindow : ThemedWindow
     private async Task OpenCompanionWindowAsync(bool importCard)
     {
         if (companionService is null || closing || saving || model?.IsRunning == true) return;
+        var personalities = homeSettings?.Companion?.Personas.ToDictionary(p => p.Id, p => p.Text);
         new CompanionWindow(companionService, setupOperations, importCardOnOpen: importCard, lorebooks: lorebooks) { Owner = this }.ShowDialog();
         homeLore = null;
+        // The window's last save can still be finishing; the refresh would be skipped and miss a changed personality.
+        for (var i = 0; i < 50 && setupOperations.IsRunning && !closing; i++) await Task.Delay(100);
         await RefreshAsync();
+        PersonalitiesSaved(personalities);
     }
 
     private async Task OpenLorebooksAsync(bool import = false)

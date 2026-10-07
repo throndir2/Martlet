@@ -466,12 +466,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "CharacterTouch: {\"x\",\"y\",\"hitAreas\",\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\"}) the zone it " +
             "lands in, how it was found, what it plays and what it tells the character. save writes the parsed zones (and " +
             "snapshotPath, a PNG, as their picture; includeIntimate sets Include intimate zones) into an explicit, disposable " +
-            "dataDirectory as Detect zones would. Contacts nothing; never returns the model's path.", new
+            "dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
+            "{\"attitude\":2,\"reactions\":[\"hearts\",\"blush\"],\"linger\":3}},\"zones\":{...},\"escalation\":{\"after\":3,...}}) or " +
+            "personaId (the temperament saved in the dataDirectory's character-temperaments.json) decides what the touch plays when the " +
+            "zone has no pick of its own, with repeats (touches in a row, for escalation); personality shows the request Thinking gets. " +
+            "Contacts nothing; never returns the model's path.", new
         {
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, modelId = new { type = "string" },
             answer = new { type = "string" }, width = new { type = "integer" }, height = new { type = "integer" },
             crop = new { type = "string" }, probe = new { type = "string" }, touch = new { type = "string" },
-            save = new { type = "boolean" }, includeIntimate = new { type = "boolean" }, snapshotPath = new { type = "string" }
+            save = new { type = "boolean" }, includeIntimate = new { type = "boolean" }, snapshotPath = new { type = "string" },
+            temperament = new { type = "string" }, personaId = new { type = "string" }, personality = new { type = "string" },
+            repeats = new { type = "integer", minimum = 1 }
         }),
         Tool("character_gaze", "Where the character looks (Companion > Vision > Where the character looks; docs/SCREEN_COMMENTARY.md " +
             "\"Where the character looks\"): the saved choice in a data directory's talk-preferences.json (mouse unless Martlet " +
@@ -1334,7 +1340,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "answer"), OptionalInt(arguments, "width"), OptionalInt(arguments, "height"),
                     OptionalString(arguments, "crop"), OptionalString(arguments, "probe"), OptionalString(arguments, "touch"),
                     OptionalBool(arguments, "save") ?? false, OptionalBool(arguments, "includeIntimate"), OptionalString(arguments, "snapshotPath"),
-                    cancellation),
+                    cancellation, OptionalString(arguments, "temperament"), OptionalString(arguments, "personaId"), OptionalString(arguments, "personality"),
+                    OptionalInt(arguments, "repeats")),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
