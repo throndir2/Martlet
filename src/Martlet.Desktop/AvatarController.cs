@@ -759,6 +759,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
             CheckAttempt(attempt, version);
             var next = createRenderer();
             next.Requested += action => { if (ReferenceEquals(Volatile.Read(ref renderer), next)) Requested?.Invoke(action); };
+            next.Touched += touch => { if (ReferenceEquals(Volatile.Read(ref renderer), next)) OnTouched(touch); };
             renderer = next;
             await next.StartAsync(selected, snapshot.Revision, Placement, VoiceMuted, attempt.Token);
             // A camera view that was open stays open when the character shows again.

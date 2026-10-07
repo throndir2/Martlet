@@ -21,8 +21,9 @@ export interface CubismModel {
   getDrawableVertices(index: number): Float32Array;
   getDrawableOpacity(index: number): number;
   getDrawableDynamicFlagIsVisible(index: number): boolean;
-  /** The ArtMesh's ID (used to find the face). */
-  getDrawableId?(index: number): { getString(): { s: string } };
+  getDrawableId(index: number): { getString(): { s: string } };
+  getDrawableVertexIndices(index: number): Uint16Array;
+  getDrawableRenderOrders(): Int32Array;
   getParameterValueByIndex?(index: number): number;
   update(): void;
 }

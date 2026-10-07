@@ -5,6 +5,7 @@ import { type Face, faceFeatures, faceFromBox, faceFromHint, faceFromLayout, typ
 import { BLUSH_PARAMETERS, type Gesture, GESTURE_HOLD, gestureFrame, gestureSeconds, isGesture, supportedGestures } from "./gestures.js";
 import { Capabilities, ChannelMapping, inspectParameters, MappingPlan, Parameter } from "./mapping.js";
 import { checkRuntime, type Animator, type AnimatorAssets, CubismMoc, CubismModel, CubismRenderer, SdkModules } from "./sdk.js";
+import { hitTestModel, type Live2DHit } from "./touch.js";
 
 export interface RenderIdentity {
   readonly sessionId: string;
@@ -242,6 +243,24 @@ export class Live2DAdapter {
 
   /** Martlet's gestures this model has the standard parameters for. */
   get gestures(): readonly Gesture[] { return this.animated ? supportedGestures(this.#parameters.map(p => p.id)) : []; }
+
+  /**
+  /**
+   * What of the character is at a point of the canvas (`x`, `y` fractions 0..1, origin top-left, +y down) as last drawn:
+   * the authored hit areas there and the visible drawables, topmost first. Undefined when the point misses the model.
+   */
+  hitTest(x: number, y: number): Live2DHit | undefined {
+    this.#ready();
+    finite(x, "touch x");
+    finite(y, "touch y");
+    const model = this.#resources!.model!;
+    const view = this.#view;
+    const scale = this.#fitScale(model) * view.zoom;
+    const aspect = this.#canvas.width / this.#canvas.height;
+    const modelX = (2 * x - 1 - view.x * view.frame) * aspect / scale;
+    const modelY = (1 - 2 * y - view.y) / scale;
+    return hitTestModel(model, this.#bundle?.description.hitAreas ?? [], modelX, modelY);
+  }
 
   /**
    * Starts one of Martlet's gestures (see `gestures`), replacing one already playing. A `hold`able one (the blush) stays

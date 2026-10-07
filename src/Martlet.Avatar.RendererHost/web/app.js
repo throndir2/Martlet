@@ -51,6 +51,17 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
     try { view = message.data; if (active && !failed) adapter?.setView?.(view.zoom, view.x, view.y, view.frame ?? 1); } catch { }
     return;
   }
+  if (message.kind === "touch") {
+    // A tap on the character at x, y (fractions 0..1 of the canvas, +y down). Answered unprompted with {touch}, never as a
+    // command reply, and a failed hit test is only a miss: Live2D reports hitAreas and drawables, VRM bone, node, hair,
+    // mesh and material.
+    const { id, x, y } = message.data;
+    let hit;
+    try { if (active && !failed) hit = adapter?.hitTest?.(Number(x), Number(y)); } catch { hit = undefined; }
+    post({ touch: { id, hit: !!hit, hitAreas: hit?.hitAreas ?? [], drawables: hit?.drawables ?? [], bone: hit?.bone ?? null,
+      node: hit?.node ?? null, hair: hit?.hair === true, mesh: hit?.mesh ?? null, material: hit?.material ?? null } });
+    return;
+  }
   try {
     if (failed) throw new Error("Renderer is terminally failed; inspect again.");
     const data = message.data;

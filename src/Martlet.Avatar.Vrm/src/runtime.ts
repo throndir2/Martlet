@@ -3,6 +3,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { VRM, VRMLoaderPlugin } from "@pixiv/three-vrm";
 import { blinkPresets, finite, gazePresets, inspectVrm, integer, mouthPresets, object, requireValid, VrmError,
   type VrmCapabilities } from "./inspect.js";
+import { hitTestVrm, type VrmHit } from "./touch.js";
 
 type BoneName = Parameters<VRM["humanoid"]["getNormalizedBoneNode"]>[0];
 
@@ -690,6 +691,15 @@ export class VrmRuntime {
   }
 
   stop(): void { this.loaded(); this.clearControls(); }
+
+  /** What of the posed model a ray hits first (see touch.ts), or undefined when it misses. */
+  hitTestRay(raycaster: THREE.Raycaster): VrmHit | undefined {
+    const model = this.loaded();
+    const humanoid = new Map<THREE.Object3D, string>();
+    for (const [name, bone] of Object.entries(model.humanoid.rawHumanBones)) if (bone?.node) humanoid.set(bone.node, name);
+    const springs = new Set<THREE.Object3D>([...model.springBoneManager?.joints ?? []].map(joint => joint.bone));
+    return hitTestVrm(model.scene, humanoid, raycaster, springs);
+  }
 
   dispose(): void {
     if (this.disposed) return;

@@ -34,10 +34,10 @@ export interface ModelDescription {
   readonly groups: Readonly<{ lipSync: readonly string[]; eyeBlink: readonly string[] }>;
   readonly motions: Readonly<Record<string, readonly MotionReference[]>>;
   readonly expressions: readonly { readonly name: string; readonly file: string }[];
+  /** The model3.json HitAreas: the drawable each is authored on and its name. */
+  readonly hitAreas: readonly { readonly id: string; readonly name: string }[];
   readonly physics?: string;
   readonly pose?: string;
-  /** Authored hit areas (an ArtMesh ID and a name); Martlet runs no hit-test actions, but a head area locates the face. */
-  readonly hitAreas: readonly { readonly id: string; readonly name: string }[];
   readonly diagnostics: readonly Diagnostic[];
 }
 
@@ -257,6 +257,8 @@ export class LocalModelBundle {
         "INVALID_MODEL_JSON", "Layout values must be finite.");
       diagnostics.push({ code: "INACTIVE_LAYOUT", message: "Uses canvas-fit framing; authored Layout is not applied." });
     }
+    // Tapping the character reports which of these it touched (see touch.ts), and a head area locates the face (face.ts);
+    // no authored script runs.
     const hitAreas: { id: string; name: string }[] = [];
     if (root.HitAreas !== undefined) {
       for (const value of array(root.HitAreas, 128, "HitAreas")) {
@@ -264,16 +266,15 @@ export class LocalModelBundle {
         keys(hit, ["Id", "Name"], "hit area");
         hitAreas.push(Object.freeze({ id: identifier(hit.Id), name: identifier(hit.Name) }));
       }
-      diagnostics.push({ code: "INACTIVE_HIT_AREAS", message: "No hit-test actions or scripts are executed." });
     }
     this.description = Object.freeze({
       modelFile, moc, textures: Object.freeze(textures), textureDivisor,
       groups: Object.freeze({ lipSync: Object.freeze(groups.lipSync), eyeBlink: Object.freeze(groups.eyeBlink) }),
       motions: Object.freeze(motionGroups),
       expressions: Object.freeze(expressions.map(e => Object.freeze(e))),
+      hitAreas: Object.freeze(hitAreas),
       ...(optional.Physics ? { physics: optional.Physics } : {}),
       ...(optional.Pose ? { pose: optional.Pose } : {}),
-      hitAreas: Object.freeze(hitAreas),
       diagnostics: Object.freeze(diagnostics.map(d => Object.freeze(d))),
     });
   }

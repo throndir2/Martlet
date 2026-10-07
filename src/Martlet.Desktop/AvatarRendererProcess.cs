@@ -18,6 +18,9 @@ internal interface IAvatarRenderer : IAsyncDisposable
     /// <summary>A choice from the overlay's menu for Martlet to carry out (one of <see cref="RendererRequest.Actions"/>),
     /// raised off the UI thread.</summary>
     event Action<string>? Requested;
+    /// <summary>The character was tapped and the renderer found it there (<see cref="CharacterTouch"/>), raised off the UI
+    /// thread.</summary>
+    event Action<CharacterTouch>? Touched { add { } remove { } }
     /// <summary>Starts the overlay where a saved <paramref name="placement"/> says (locked again if it was), with its menu
     /// offering to mute or unmute Martlet's voice as <paramref name="voiceMuted"/> says.</summary>
     Task StartAsync(AvatarProfile profile, string revision, RendererPlacement? placement, bool voiceMuted, CancellationToken token);
@@ -52,6 +55,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
     }
     public Task Exited { get; private set; } = Task.CompletedTask;
     public event Action<string>? Requested;
+    public event Action<CharacterTouch>? Touched;
 
     public int? ProcessId
     {
@@ -144,8 +148,9 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         return string.Join("; ", parts) + ".";
     }
 
-    /// <summary>Raises <see cref="Requested"/> for each menu choice the overlay sends until it closes. Anything but a known
-    /// choice for this activation ends the relay: the overlay keeps drawing, its menu just no longer reaches Martlet.</summary>
+    /// <summary>Raises <see cref="Requested"/> for each menu choice and <see cref="Touched"/> for each tap the overlay sends until
+    /// it closes. A malformed tap is skipped; anything else unknown ends the relay: the overlay keeps drawing, its menu just no
+    /// longer reaches Martlet.</summary>
     private async Task RelayRequestsAsync()
     {
         try
@@ -153,6 +158,15 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
             while (!disposed)
             {
                 var message = await RendererProtocol.ReadAsync(requests, CancellationToken.None);
+                if (message.Activation == Activation && message.Kind == "touch")
+                {
+                    CharacterTouch? touch = null;
+                    try { touch = RendererProtocol.Data<CharacterTouch>(message); }
+                    catch (Exception error) when (error is JsonException or InvalidDataException) { }
+                    if (touch is { IsValid: true }) { if (!disposed) Touched?.Invoke(touch); }
+                    else ErrorLog.Warn("The character renderer sent an unreadable tap; it was ignored.");
+                    continue;
+                }
                 var action = message.Activation == Activation && message.Kind == "request"
                     ? RendererProtocol.Data<RendererRequest>(message).Action : null;
                 if (action is null || !RendererRequest.Actions.Contains(action))

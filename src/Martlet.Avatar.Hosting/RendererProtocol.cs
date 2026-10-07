@@ -113,7 +113,7 @@ public sealed record RendererLook(string Target, double X, double Y);
 /// "placed" says the character was moved or resized and has settled: Martlet then asks where it is ("where", replied to with
 /// <see cref="RendererPlacement"/>) and saves that on this PC. "framed" says the character was moved or zoomed within the camera
 /// view and has settled: Martlet then reads the view ("zoom" "status") and saves the framing. Zoom, position and keep-on-top
-/// stay inside the overlay.
+/// stay inside the overlay. Taps on the character travel on the same pipe as "touch" messages (<see cref="CharacterTouch"/>).
 /// </summary>
 public sealed record RendererRequest(string Action)
 {
