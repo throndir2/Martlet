@@ -117,13 +117,14 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
     /// when Martlet notices that zone, <paramref name="notice"/> gets it (resting or not: every touch adds up). Returns the
     /// match, or null.</summary>
     internal TouchZoneMatch? React(CharacterTouch touch, Func<CharacterTouchZone, int, TouchReactionPlan> planFor,
-        Func<CharacterActionSource, string, double, Task> play, Action<CharacterTouchZone> notice)
+        Func<CharacterActionSource, string, double, Task> play, Action<CharacterTouchZone> notice, string kind = "touch")
     {
         var match = CharacterTouchZones.Match(Current, touch);
         var when = DateTime.Now.ToString("T", System.Globalization.CultureInfo.CurrentCulture);
+        var what = kind == "stroke" ? "A stroke" : "A touch";
         if (match is null)
         {
-            Volatile.Write(ref lastMatch, $"A touch at {when} landed on no zone in use.");
+            Volatile.Write(ref lastMatch, $"{what} at {when} landed on no zone in use.");
             Changed?.Invoke();
             return null;
         }
@@ -145,11 +146,11 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         var repeats = Repeat(zone.Id, now);
         var reaction = planFor(zone, repeats);
         var plan = reaction.Actions;
-        for (var i = 0; i < plan.Count; i++) play(plan[i], $"a touch on {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
-        Volatile.Write(ref lastMatch, $"{zone.Name} ({match.How}) at {when}: " +
+        for (var i = 0; i < plan.Count; i++) play(plan[i], $"a {kind} on {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
+        Volatile.Write(ref lastMatch, (kind == "stroke" ? "Stroke: " : "") + $"{zone.Name} ({match.How}) at {when}: " +
             (plan.Count == 0 ? "nothing to play" : "played " + string.Join(", ", plan.Select(s => s.Name))) + Describe(reaction, repeats) +
             (noticed ? ", and Martlet noticed it." : "."));
-        ErrorLog.Info($"Touch on {zone.Id} ({match.How}{(touch.Held ? ", held" : "")}): {plan.Count} played from {reaction.From}{(reaction.Escalated ? " (escalated)" : "")}" +
+        ErrorLog.Info($"{(kind == "stroke" ? "Stroke" : "Touch")} on {zone.Id} ({match.How}{(touch.Held ? ", held" : "")}): {plan.Count} played from {reaction.From}{(reaction.Escalated ? " (escalated)" : "")}" +
             $"{(noticed ? ", Martlet noticed it" : "")}.");
         Changed?.Invoke();
         return match;

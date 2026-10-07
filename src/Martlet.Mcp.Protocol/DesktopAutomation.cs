@@ -351,6 +351,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // What Martlet noticed (zones with Martlet notices on) that waits for a reply and when a touch reply would start, and
         // which reply took the last touches and what the Thinking model was told (zone names and the touch line, no words).
         "TouchZonesNoticed", "TouchZonesNoticedLast",
+        // Touch zones' line on the last stroke across the locked character (zones crossed, pace, passes, seconds, samples on the
+        // character) or the last move, zoom, pan, lock, hide or show, as Martlet's touch ledger heard it. Fixed wording and zone
+        // names only.
+        "CharacterPhysicalLast",
         // Companion › Listening › Speakers and echo: whether echo reduction is on and how the last listen went (or why it couldn't
         // run). The TalkReduceEcho check box saves the choice, so it needs --allow-ui-effects.
         "TalkReduceEchoStatus",
@@ -983,6 +987,37 @@ internal sealed class DesktopAutomation(bool allowEffects)
         }
         var waiting = Text("TouchZonesNoticed");
         return waiting is null ? null : new { waiting, last = Text("TouchZonesNoticedLast"), zone = Text("TouchZonesLast") };
+    }
+
+    /// <summary>Strokes the showing, locked character along <paramref name="points"/> (fractions 0..1 of the overlay's drawing; needs
+    /// --allow-ui-effects) through MoveAvatar's UI Automation value ("stroke:ms;x,y;..."), then waits for the overlay's stroke
+    /// record; without points it only reads the last one. Returns the overlay's reading (last tap, last stroke, last change).</summary>
+    internal async Task<object> StrokeCharacterAsync((double X, double Y)[]? points, int stepMs)
+    {
+        var element = Find("MoveAvatar");
+        if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            throw new InvalidOperationException("The character overlay can't be stroked through UI Automation.");
+        var value = (ValuePattern)pattern;
+        static object? Read(string text) => string.IsNullOrEmpty(text) ? null : System.Text.Json.JsonDocument.Parse(text).RootElement.Clone();
+        static string? Stroke(string text) => string.IsNullOrEmpty(text) ? null :
+            System.Text.Json.JsonDocument.Parse(text).RootElement is { ValueKind: System.Text.Json.JsonValueKind.Object } root &&
+            root.TryGetProperty("stroke", out var stroke) ? stroke.GetRawText() : null;
+        if (points is null) return new { stroked = false, last = Read(value.Current.Value) };
+        if (!allowEffects) throw new InvalidOperationException("Stroking the character requires --allow-ui-effects.");
+        if (points.Length is < 2 or > 200) throw new ArgumentException("Give 2 to 200 points.");
+        if (points.Any(p => p.X is not (>= 0 and <= 1) || p.Y is not (>= 0 and <= 1))) throw new ArgumentException("x and y are fractions from 0 to 1.");
+        if (stepMs is < 10 or > 2000) throw new ArgumentException("stepMs is 10 to 2000.");
+        if (value.Current.IsReadOnly) throw new InvalidOperationException("The character can't be stroked until it has loaded.");
+        var before = Stroke(value.Current.Value);
+        value.SetValue("stroke:" + string.Join(";", new[] { stepMs.ToString(System.Globalization.CultureInfo.InvariantCulture) }
+            .Concat(points.Select(p => FormattableString.Invariant($"{p.X},{p.Y}")))));
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        var limit = TimeSpan.FromMilliseconds(points.Length * stepMs + 3000);
+        string after;
+        while (Stroke(after = value.Current.Value) == before && waited.Elapsed < limit) await Task.Delay(50);
+        return Stroke(after) == before
+            ? new { stroked = false, last = Read(after), note = "The overlay didn't finish the stroke in time." }
+            : new { stroked = true, last = Read(after) };
     }
 
     /// <summary>Moves a movable control (the character overlay's MoveAvatar, like dragging the character) by dx, dy screen
