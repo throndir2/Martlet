@@ -8,6 +8,9 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+- New in Companion › Thinking pool: **Backup Thinking**. When your Thinking model is slow to start a reply, Martlet can send the same message to a Thinking pool member you picked, and whichever starts answering first gives the reply, so a busy or loading model doesn't keep you waiting. Tick **May answer for the conversation** on the members it may use (ideally running the same model). It's off by default, and a paid cloud member is only asked when you tick it. ([#PRNUMBER](https://github.com/throndir2/Martlet/pull/PRNUMBER))
+
 ## [0.54.0] - 2026-10-07
 
 ### Added

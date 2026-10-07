@@ -1983,6 +1983,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 var touchNote = !operation.Touch && operation.Touches is { } touched
                     ? PromptSettings.Fill(prompts, PromptCatalog.TouchedNotes, ("touches", touched.Line)) : null;
                 operation.TouchText = operation.Touch ? input!.UserText : touchNote;
+                // Backup Thinking: once this reply's Thinking request is slow to start, a pool member may answer it instead.
+                var backup = BackupFor(operation);
                 ConversationRequest Ask(SeenScreen? picture, string? recalled, out int keptHistory, out int keptFacts, out int keptEntries) =>
                     operation.Authorization.Configuration.Request(
                         input!, operation.Authorization.Voice, style, sentHistory, memoryResult, lore,
@@ -2006,7 +2008,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         chattiness: decides ? operation.Authorization.Configuration.ChattinessNote(decided) : null,
                         controlTags: LiveConversationConfiguration.ControlTags(decides, picture is not null, prompts),
                         spokenWords: straight ? token => SpokenWords.TranscriptAsync(operation.StraightWords!, token) : null,
-                        board: board.Text);
+                        board: board.Text, backup: backup);
                 ConversationRequest request;
                 int usedHistory, usedMemory, usedLore;
                 var picture = seen;
@@ -2098,6 +2100,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (terminal.State != ConversationState.Completed && operation.Touches is { } unanswered) touches.Restore(unanswered);
             NoteFallback(operation.Report ? "Background report" : "Reply", configured, terminal);
             NoteInput(operation.Report ? "Background report" : "Reply", terminal);
+            NoteFirstWords(configured, terminal);
             if (operation.BackgroundChattiness == ChattinessChoice.MartletDecides)
                 Decide(turn, terminal, operation.Report ? "bringing up background work"
                     : operation.PcAudio && operation.UserWords is null ? "what this PC played" : "your message");

@@ -115,6 +115,10 @@ public sealed class ConversationRequest(
     [JsonIgnore] public IReadOnlyList<string> ControlTags { get; } = controlTags ?? [];
     [JsonIgnore] public Func<CancellationToken, Task<string?>>? SpokenWords { get; } = spokenWords;
 
+    /// <summary>Backup Thinking for this reply (<see cref="IThinkingBackup"/>), or null: once its first Thinking request is slow
+    /// to start, the same request also goes to a Thinking pool member, and whichever has words first gives the reply.</summary>
+    [JsonIgnore] public IThinkingBackup? Backup { get; init; }
+
     /// <summary>The most character tags one request may carry.</summary>
     public const int MaximumCharacterTags = 128;
 
@@ -247,7 +251,8 @@ public interface IConversationAuthorizationSource
 }
 
 // VoiceMuted: the user muted the voice while this reply spoke (ConversationTurn.MuteVoice). Like a voice failure it ended only
-// what was said aloud and the rest showed in the captions, but it is not a failure (SpeechFailure stays None).
+// what was said aloud and the rest showed in the captions, but it is not a failure (SpeechFailure stays None). Backup: what
+// Backup Thinking did for the reply's first request (ConversationRequest.Backup), once it was decided; null without one.
 public sealed record ConversationSnapshot(
     Guid SessionId, Guid TurnId, Guid TextRequestId, long TurnEpoch, long CurrentEpoch, ConversationState State,
     ConversationFailure Failure, ProviderFailureCode? ProviderFailure, SequenceIssueInfo? SequenceFailure,
@@ -260,7 +265,7 @@ public sealed record ConversationSnapshot(
     bool SpeechLimitReached = false, ProviderRole? FailedProvider = null, string? FellBackAfter = null, bool AudioRejected = false,
     TimeSpan? FirstTextAfter = null, TimeSpan? FirstAudioAfter = null, bool ImageRejected = false,
     ConversationFailure SpeechFailure = ConversationFailure.None, ConversationTimings? Timings = null, long? InputTokens = null,
-    long? CachedInputTokens = null, bool ReasoningRejected = false, bool VoiceMuted = false)
+    long? CachedInputTokens = null, bool ReasoningRejected = false, bool VoiceMuted = false, ThinkingBackupResult? Backup = null)
 {
     public decimal? EstimatedCost => null;
     public long? AudibleSamples => null;

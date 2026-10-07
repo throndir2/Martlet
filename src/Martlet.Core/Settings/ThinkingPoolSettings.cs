@@ -26,6 +26,33 @@ public sealed record ThinkingPoolSettings
     /// <summary>When the file was made from deep-thinking.json, else null.</summary>
     public DateTimeOffset? MigratedAt { get; init; }
 
+    /// <summary>Backup Thinking (Companion › Thinking pool): when the conversation's Thinking model has no first words after
+    /// <see cref="BackupDelayMs"/>, the same request also goes to a member that may answer for the conversation
+    /// (<see cref="AnswersForConversation"/>), and whichever answers first gives the reply. Off by default.</summary>
+    public bool BackupThinking { get; init; }
+
+    /// <summary>How long Backup Thinking waits for the first words, in milliseconds (one of <see cref="BackupDelayChoices"/>);
+    /// null: automatic, from how fast recent replies began (at least 900 ms).</summary>
+    public int? BackupDelayMs { get; init; }
+
+    /// <summary>The members (by <see cref="DeepThinkingSettings.Key"/>) the owner allowed to answer for the conversation (May answer
+    /// for the conversation, off for each member by default). Backup Thinking asks only these; a paid cloud provider is never
+    /// asked unless it is ticked here.</summary>
+    public IReadOnlyList<string> AnswersForConversation { get => answering; init => answering = value ?? []; }
+    private readonly IReadOnlyList<string> answering = [];
+
+    /// <summary>The fixed delays Backup Thinking offers, in milliseconds.</summary>
+    public static IReadOnlyList<int> BackupDelayChoices { get; } = [500, 700, 900, 1200, 1500, 2000, 3000];
+
+    /// <summary>Whether the member with <paramref name="key"/> may answer for the conversation.</summary>
+    public bool Answers(string key) => AnswersForConversation.Contains(key, StringComparer.Ordinal);
+
+    /// <summary>The pool with the member with <paramref name="key"/> allowed (or no longer allowed) to answer for the conversation.</summary>
+    public ThinkingPoolSettings WithAnswers(string key, bool answers) => this with
+    {
+        AnswersForConversation = [.. AnswersForConversation.Where(k => k != key), .. answers ? new[] { key } : []]
+    };
+
     /// <summary>The members as one place with its pool (the first member and the others), as Martlet's planner reads them. An
     /// empty pool reads as the conversation model (Same as Thinking).</summary>
     [JsonIgnore]
@@ -48,7 +75,10 @@ public sealed record ThinkingPoolSettings
     }
 
     /// <summary>The pool without the member whose key is <paramref name="key"/>.</summary>
-    public ThinkingPoolSettings Remove(string key) => this with { Members = [.. Members.Where(m => m.Key != key)] };
+    public ThinkingPoolSettings Remove(string key) => this with
+    {
+        Members = [.. Members.Where(m => m.Key != key)], AnswersForConversation = [.. AnswersForConversation.Where(k => k != key)]
+    };
 
     /// <summary>Every place the planner considers: the members, or the conversation model while the pool is empty and that is
     /// allowed. An empty pool without it plans nothing that can run.</summary>
@@ -66,6 +96,11 @@ public sealed record ThinkingPoolSettings
         ContractRules.Require(Members is { Count: <= DeepThinkingSettings.MaxPlaces } && Members.All(m => m is { Pool: null } && m.Separate) &&
             Members.Select(m => m.Key).Distinct(StringComparer.Ordinal).Count() == Members.Count,
             $"The Thinking pool has at most {DeepThinkingSettings.MaxPlaces} different members, each a paired computer or an endpoint.");
+        ContractRules.Require(BackupDelayMs is null || BackupDelayChoices.Contains(BackupDelayMs.Value),
+            $"Backup Thinking waits one of {string.Join(", ", BackupDelayChoices)} ms, or automatic.");
+        ContractRules.Require(AnswersForConversation.Count <= 2 * DeepThinkingSettings.MaxPlaces &&
+            AnswersForConversation.All(k => k is { Length: > 0 and <= 4096 } && !k.Any(char.IsControl)),
+            "The members that may answer for the conversation are a short list of member keys.");
         foreach (var member in Members) member.Validate();
     }
 

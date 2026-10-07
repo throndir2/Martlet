@@ -508,6 +508,73 @@ running and waiting jobs by kind, guidance and warnings; never a job's text).
 MCP's `thinking_pool_status` reads it with the settings and plan, and
 `thinking_pool_check` rehearses the board ([MCP](MCP.md)).
 
+### Backup Thinking: a hedged request
+
+**Backup Thinking** (Companion › Thinking pool › *Backup Thinking*,
+`ThinkingPoolBackup`, off by default) helps when the conversation's Thinking
+model is slow to start a reply because it is busy, loading or far away. It is
+a *hedged request* (Dean and Barroso, "The Tail at Scale", Communications of
+the ACM 56(2), 2013). When the reply's Thinking request has no first words
+after a wait, the same request also goes to a pool member, and the stream with
+words first gives the reply. The other stream stops at once.
+
+- **Who may answer.** Each member has *May answer for the conversation*
+  (`ThinkingPoolAnswers-<n>`, off by default; `AnswersForConversation` in
+  `thinking-pool.json`). Choose members with the same model as the
+  conversation, or a similar one. A paid cloud member is asked only when it is
+  ticked, and never for a reply started early that isn't taken yet.
+- **The wait** (`ThinkingPoolBackupDelay`, `BackupDelayMs`): automatic by
+  default, the 95th percentile of the first words of the last 20 replies
+  (counted from each Thinking request's start), never under 900 ms, and 1.5 s
+  until 3 replies are known (`FirstWordTimes`); or a fixed 0.5 s to 3 s. The
+  automatic wait starts again when the Thinking model changes.
+- **Which member** (`ThinkingBackupMembers.Choose`, when the wait ends): the
+  first ticked member, the one sharing least with the conversation first, that
+  can run now, shares no hardware with the live conversation
+  (`LiveResources.Shares`) and can take the request as it is. Tools go only to
+  an endpoint (a paired computer's gateway takes none), a picture only to a
+  member that sees, a recording only to one that hears, and the request must
+  fit the member's limits.
+- **Only the reply's first request.** Never the Thinking fallback, a tool
+  round or a retry. When the member fails too, the reply goes on as without
+  it, so a failure leads to the usual retries and the fallback. When the
+  conversation's model fails after the member was asked, the member can still
+  answer.
+- **Live work.** The member's request is live work. A paired computer gets it
+  as `WorkPriority.Live` and keeps its graphics card for it (`ILiveGpuHold`).
+  While its stream is read, its computer is one of the live floor's resources
+  (job `backup thinking`), so pool work there stops and waits. A reply started
+  early that is let go stops its member's stream too.
+- **Prompt caches.** The conversation's own request doesn't change, so its
+  prompt cache is kept. The member's first request may read nothing from its
+  own cache.
+
+**Observability.** The reply latency line says `Backup Thinking won at 1104 ms
+(diva (qwen3-8b), asked at 912 ms).`, `Backup Thinking asked at 912 ms (diva
+(qwen3-8b)); the conversation's model won.`, `... it gave no answer.` or
+`Backup Thinking: no member could take it.`; a fast reply says nothing. The
+desktop log has one line each time a member was asked, and
+`thinking-pool-status.json` has a `backup` part: the wait used, the automatic
+wait and its replies, and the last results and counts (never what was said).
+MCP's `thinking_pool_status` shows the choices and the member it would ask now,
+`backup_thinking_check` rehearses the race with two fixture endpoints, and
+`latency_report` counts the results ([MCP](MCP.md)).
+
+```csharp
+// Martlet.Conversation: Backup Thinking for one reply (the desktop's LiveConversationController.Backup.cs implements it).
+public interface IThinkingBackup
+{
+    TimeSpan Delay { get; }                        // counted from the reply's Thinking request's start
+    Task<ThinkingBackupStream?> OpenAsync(ConversationRequest reply, BoundedTextInput input, CorrelationIds ids, long epoch,
+        bool held, CancellationToken token);       // null: no member now; held: started early and not taken yet
+    void Ended(ThinkingBackupResult result);       // once: NotNeeded, NoMember, Won, Lost or Failed
+}
+var request = new ConversationRequest(input, model, textLimits, limits /* ... */) { Backup = backup };
+// The member's own runtime opens the same request under the member's one-use authorization; nothing is sent until it is read.
+ITextGenerationStream stream = await memberRuntime.OpenTextAsync(memberRequest, memberAuthorization, ids, epoch, token);
+ThinkingBackupResult? what = turn.Snapshot.Backup;   // Outcome, Delay, Member, AskedAfter, FirstWordsAfter, Why
+```
+
 ### The live floor: the live turn comes first
 
 When you say real words to Martlet, or address it by name, the reply's time
@@ -547,7 +614,9 @@ computers) and its graphics cards when the host says (route metadata `gpus`).
 A pool member **shares** the conversation's hardware when it is on the same
 computer and the graphics cards match; when either side doesn't know its
 cards, the same computer is enough. The conversation model's own place (the
-empty-pool fallback) always shares.
+empty-pool fallback) always shares. While a
+[Backup Thinking](#backup-thinking-a-hedged-request) member's stream is read,
+its computer is one of the resources too (job `backup thinking`).
 
 **What the floor does** (`LiveFloorRules`, the broker's `BackgroundPlaces.Rules`),
 on members that share the conversation's hardware only; other members never
@@ -1344,6 +1413,12 @@ voice pipeline never waits for a whole reply:
   own voice and kept in `quick-sounds\`; a paid cloud voice makes them only on
   the owner's click. Details and measurements:
   [Voice latency](VOICE_LATENCY.md#quick-sounds-while-martlet-thinks).
+- **Backup Thinking.** Off by default (Companion › Thinking pool). When the
+  reply's Thinking request has no first words after a wait (automatic: the
+  95th percentile of recent replies, at least 900 ms), the same request also
+  goes to a pool member the owner allowed to answer for the conversation, and
+  the stream with words first gives the reply; the other stops at once. See
+  [Backup Thinking](#backup-thinking-a-hedged-request).
 - **Where each persona's voice pauses.** Each piece is said on its own, so a
   break in the wrong place sounds awkward ("That was a wonderful idea. |
   Cutie!"). Personality › **Where the voice pauses** sets, per persona, which
