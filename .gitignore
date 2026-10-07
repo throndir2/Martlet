@@ -5,6 +5,8 @@ TestResults/
 *.user
 *.suo
 artifacts/
+# Temporary projects the WPF markup compiler writes during a build
+*_wpftmp.csproj
 
 # Python bytecode caches (workers/f5, workers/chatterbox)
 __pycache__/
