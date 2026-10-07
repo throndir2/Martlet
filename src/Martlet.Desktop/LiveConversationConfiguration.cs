@@ -460,6 +460,9 @@ internal sealed class LiveConversationConfiguration
             selected.Styles.Distracted, selected.Styles.PlayfulTeasing }.Count(weight => weight > 0) == 1;
         // The desktop character's emotes and motions: those the speaking voice's own tags don't already set off.
         var character = characterActions?.Invoke(voice ? SpeakingEngine() : null, Prompts);
+        // The lingering emotes the character shows now go with the newest message, never the instructions, so the request
+        // starts the same and prompt caches keep working.
+        messageNotes = Join(messageNotes, character?.Showing);
         // A screen glance's look tags (where the character looks), when they fit beside the emote tags a request may carry.
         if (gaze is not null && (character?.Tags.Count ?? 0) + gaze.Tags.Count > ConversationRequest.MaximumCharacterTags) gaze = null;
         IReadOnlyList<string>? characterTags = gaze is null ? character?.Tags : [.. character?.Tags ?? [], .. gaze.Tags];

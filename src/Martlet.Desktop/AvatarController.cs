@@ -126,7 +126,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 {
                     // A screen glance's look tag turns the eyes; it is never an emote.
                     if (CharacterGaze.IsTag(cue.Tag)) _ = LookLaterAsync(cue);
-                    else if (catalog?.For(cue.Tag) is { Count: > 0 } sources) _ = ActLaterAsync(sources, cue, line.Finished);
+                    else if (catalog?.Off(cue.Tag) is { } off) _ = StopLaterAsync(off, cue);
+                    else if (catalog?.For(cue.Tag) is { Count: > 0 } sources) _ = ActLaterAsync(sources, cue, line.Finished, catalog);
                 }
             }
         }
@@ -143,39 +144,151 @@ internal sealed partial class AvatarController : IAsyncDisposable
         catch (OperationCanceledException) { }
     }
 
-    private async Task ActLaterAsync(IReadOnlyList<CharacterActionSource> sources, CharacterCue cue, Task finished)
+    private async Task ActLaterAsync(IReadOnlyList<CharacterActionSource> sources, CharacterCue cue, Task finished, CharacterActionCatalog catalog)
     {
         try
         {
             if (cue.Delay > TimeSpan.Zero) await Task.Delay(cue.Delay, cueLifetime.Token).ConfigureAwait(false);
-            foreach (var source in sources) await PlayActionAsync(source, cue.Tag, finished, cueLifetime.Token).ConfigureAwait(false);
+            // A reply's {tag} turns a lingering emote on until {/tag}; a voice's sound or tone only ever plays it a moment.
+            foreach (var source in sources)
+                await PlayActionAsync(source, cue.Tag, finished, cueLifetime.Token, hold: cue.Tag.StartsWith('{') && catalog.Lingers(source))
+                    .ConfigureAwait(false);
         }
         catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
             InvalidDataException or TimeoutException or ObjectDisposedException) { }
     }
 
+    private async Task StopLaterAsync(CharacterActionSource source, CharacterCue cue)
+    {
+        try
+        {
+            if (cue.Delay > TimeSpan.Zero) await Task.Delay(cue.Delay, cueLifetime.Token).ConfigureAwait(false);
+            await StopActionAsync(source, cue.Tag, cueLifetime.Token).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
+            InvalidDataException or TimeoutException or ObjectDisposedException) { }
+    }
+
+    /// <summary>The lingering emotes the character shows now (until <c>{/tag}</c>, Clear emotes or another model). They stay
+    /// across replies and come back when the same model shows again.</summary>
+    internal HeldEmotes Held { get; } = new();
+
+    private static string KindOf(CharacterActionSource source) => source.Kind switch
+    {
+        CharacterActionKind.Expression => "expression", CharacterActionKind.Motion => "motion", _ => "gesture"
+    };
+
     /// <summary>Plays one emote or motion on the showing character because of <paramref name="reason"/> (a reply's tag or
     /// "a try"). An expression shows for at least 4 seconds, until its sentence finishes (plus a second), at most 12 seconds,
-    /// unless another one replaces it. Returns whether the model started it; false while the character is hidden.</summary>
-    internal async Task<bool> PlayActionAsync(CharacterActionSource source, string reason, Task? finished, CancellationToken token)
+    /// unless another one replaces it. With <paramref name="hold"/> it lingers instead (<see cref="Held"/>) until
+    /// <see cref="StopActionAsync"/>; one already showing stays as it is. Returns whether the model started it (or it already
+    /// showed); false while the character is hidden.</summary>
+    internal async Task<bool> PlayActionAsync(CharacterActionSource source, string reason, Task? finished, CancellationToken token,
+        bool hold = false)
     {
         if (renderer is not { HasExited: false } current || profile is null) return false;
-        var kind = source.Kind switch
-        {
-            CharacterActionKind.Expression => "expression", CharacterActionKind.Motion => "motion", _ => "gesture"
-        };
-        var reply = await current.SendAsync("action", new RendererAction(kind, source.Name), token).ConfigureAwait(false);
+        var kind = KindOf(source);
+        if (hold && Held.Holds(source.Id)) return true;
+        var reply = await current.SendAsync("action", new RendererAction(kind, source.Name, true, hold), token).ConfigureAwait(false);
         var started = reply.Data.ValueKind == System.Text.Json.JsonValueKind.Object && reply.Data.TryGetProperty("started", out var value) &&
             value.ValueKind == System.Text.Json.JsonValueKind.True;
         var when = DateTime.Now.ToString("T", System.Globalization.CultureInfo.CurrentCulture);
+        // A held gesture is one the renderer keeps (one at a time); a gesture it can't hold plays once.
+        var heldGesture = HeldGestureOf(reply.Data);
+        var holds = hold && started && (source.Kind != CharacterActionKind.Gesture || heldGesture == source.Name);
         Volatile.Write(ref lastAction, (started
-            ? $"Played the {kind} \"{source.Name}\" for {reason} at {when}."
+            ? $"{(holds ? "Turned on" : "Played")} the {kind} \"{source.Name}\" for {reason} at {when}."
             : $"The character couldn't play the {kind} \"{source.Name}\" ({reason}, {when}).") + GestureState(reply.Data));
-        ErrorLog.Info(started ? $"Character {kind} '{source.Name}' played for {reason}." : $"Character {kind} '{source.Name}' didn't play ({reason}).");
+        ErrorLog.Info(started ? $"Character {kind} '{source.Name}' {(holds ? "held" : "played")} for {reason}." : $"Character {kind} '{source.Name}' didn't play ({reason}).");
+        if (source.Kind == CharacterActionKind.Gesture && reply.Data.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            reply.Data.TryGetProperty("gesture", out _))
+            // Another held gesture the renderer let go of is no longer on.
+            foreach (var other in Held.Current.Where(h => h.Source.Kind == CharacterActionKind.Gesture && h.Source.Name != heldGesture))
+                Held.Remove(other.Source.Id);
+        if (holds)
+        {
+            if (Held.Add(source, profile?.ModelPath, DateTimeOffset.Now) is { } dropped)
+                await SendOffAsync(current, dropped.Source, token).ConfigureAwait(false);
+        }
+        else if (started && source.Kind == CharacterActionKind.Expression) HoldExpression(current, source.Name, finished);
         ActionPlayed?.Invoke();
-        if (started && source.Kind == CharacterActionKind.Expression) HoldExpression(current, source.Name, finished);
         return started;
     }
+
+    /// <summary>Turns off a lingering emote the character shows because of <paramref name="reason"/> (a reply's <c>{/tag}</c>,
+    /// "a try" or a settings change). Returns whether it showed.</summary>
+    internal async Task<bool> StopActionAsync(CharacterActionSource source, string reason, CancellationToken token)
+    {
+        if (!Held.Remove(source.Id)) return false;
+        if (renderer is { HasExited: false } current && profile is not null) await SendOffAsync(current, source, token).ConfigureAwait(false);
+        var when = DateTime.Now.ToString("T", System.Globalization.CultureInfo.CurrentCulture);
+        Volatile.Write(ref lastAction, $"Turned off the {KindOf(source)} \"{source.Name}\" for {reason} at {when}.");
+        ErrorLog.Info($"Character {KindOf(source)} '{source.Name}' turned off for {reason}.");
+        ActionPlayed?.Invoke();
+        return true;
+    }
+
+    /// <summary>Clear emotes: turns off every lingering emote. Returns how many showed.</summary>
+    internal async Task<int> ClearHeldAsync(string reason, CancellationToken token)
+    {
+        var was = Held.Clear();
+        if (was.Count == 0) return 0;
+        if (renderer is { HasExited: false } current && profile is not null)
+            foreach (var held in was) await SendOffAsync(current, held.Source, token).ConfigureAwait(false);
+        var when = DateTime.Now.ToString("T", System.Globalization.CultureInfo.CurrentCulture);
+        Volatile.Write(ref lastAction, $"Cleared {was.Count} lingering emote{(was.Count == 1 ? "" : "s")} for {reason} at {when}.");
+        ErrorLog.Info($"Cleared {was.Count} lingering character emotes for {reason}.");
+        ActionPlayed?.Invoke();
+        return was.Count;
+    }
+
+    /// <summary>Turns off lingering emotes the owner turned off or made brief since they went on.</summary>
+    internal async Task ReconcileHeldAsync(CancellationToken token)
+    {
+        if (Volatile.Read(ref actions)?.Invoke(profile?.ModelPath) is not { } catalog) return;
+        foreach (var held in Held.Current)
+            if (!catalog.Lingers(held.Source)) await StopActionAsync(held.Source, "a settings change", token).ConfigureAwait(false);
+    }
+
+    private static async Task SendOffAsync(IAvatarRenderer target, CharacterActionSource source, CancellationToken token)
+    {
+        try
+        {
+            if (!target.HasExited) await target.SendAsync("action", new RendererAction(KindOf(source), source.Name, false, true), token).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is IOException or InvalidOperationException or InvalidDataException or TimeoutException or
+            ObjectDisposedException) { }
+    }
+
+    /// <summary>Shows the lingering emotes again on a newly shown character of the same model; another model forgets them.</summary>
+    private async Task RestoreHeldAsync(IAvatarRenderer target, string? modelPath, CancellationToken token)
+    {
+        var catalog = Volatile.Read(ref actions)?.Invoke(modelPath);
+        foreach (var held in Held.Current)
+        {
+            var keep = catalog is not null && string.Equals(held.ModelPath, modelPath, StringComparison.OrdinalIgnoreCase) &&
+                catalog.Lingers(held.Source);
+            if (keep)
+                try
+                {
+                    var reply = await target.SendAsync("action", new RendererAction(KindOf(held.Source), held.Source.Name, true, true), token)
+                        .ConfigureAwait(false);
+                    keep = reply.Data.ValueKind == System.Text.Json.JsonValueKind.Object && reply.Data.TryGetProperty("started", out var value) &&
+                        value.ValueKind == System.Text.Json.JsonValueKind.True;
+                }
+                catch (Exception error) when (error is IOException or InvalidOperationException or InvalidDataException or TimeoutException)
+                {
+                    keep = false;
+                }
+            if (!keep) Held.Remove(held.Source.Id);
+        }
+    }
+
+    // The gesture the renderer's reply says it holds now, or null.
+    private static string? HeldGestureOf(System.Text.Json.JsonElement reply) =>
+        reply.ValueKind == System.Text.Json.JsonValueKind.Object && reply.TryGetProperty("gesture", out var state) &&
+        state.ValueKind == System.Text.Json.JsonValueKind.Object && state.TryGetProperty("held", out var held) &&
+        held.ValueKind == System.Text.Json.JsonValueKind.String ? held.GetString() : null;
 
     /// <summary>The renderer's reply to a gesture: which gesture now plays once and which is held (" Gestures now: wink
     /// playing, shy held."); empty for other replies.</summary>
@@ -761,6 +874,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
             await next.StartAsync(selected, snapshot.Revision, Placement, VoiceMuted, attempt.Token);
             // A camera view that was open stays open when the character shows again.
             if (Camera is { } view) await next.SendAsync("camera", view, attempt.Token);
+            // Lingering emotes come back on the same model; another model forgets them.
+            await RestoreHeldAsync(next, selected.ModelPath, attempt.Token);
             lock (stateGate)
             {
                 CheckAttempt(attempt, version);

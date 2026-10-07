@@ -52,7 +52,7 @@ public sealed class CharacterGestureTests
         var prompt = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null)).Prompt(null, null);
         Assert.NotNull(prompt);
         Assert.Equal(["{smile}", "{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{blush}", "{shy}", "{giggle}", "{flinch}", "{lean_in}",
-            "{look_away}", "{think}"], prompt.Tags);
+            "{look_away}", "{think}", "{/shy}", "{/look_away}"], prompt.Tags);
         Assert.Contains("{tilt_head} - tilt your head, for curiosity or confusion", prompt.Instructions);
         Assert.Contains("ParamAngleZ", inventory.Find("gesture:tilt")!.Detail);
     }
@@ -97,10 +97,10 @@ public sealed class CharacterGestureTests
         Assert.Equal(["sigh"], catalog.For("(sighs)").Select(s => s.Name));
         Assert.Equal("laugh", catalog.Settings.Find("gesture:laugh")!.Cue);
 
-        // Voice emotes follow the voice and never lengthen the reply instructions; the reply gestures stay offered.
+        // Voice emotes follow the voice and never lengthen the reply instructions; the reply gestures stay offered, the holdable ones with off tags.
         var silent = catalog.Prompt(null, null)!.Tags;
         Assert.Equal(["{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{smile}", "{surprised}", "{shy}", "{giggle}", "{flinch}", "{lean_in}",
-            "{look_away}", "{think}"], silent);
+            "{look_away}", "{think}", "{/shy}", "{/look_away}"], silent);
         var chatterbox = catalog.Prompt(Martlet.Core.Settings.SpeechEngines.Chatterbox, null)!.Tags;
         Assert.DoesNotContain("{surprised}", chatterbox);
         Assert.DoesNotContain("{laugh}", chatterbox);

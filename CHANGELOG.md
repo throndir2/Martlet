@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Emotes can now stay on, like a VTuber's toggle: glasses, a blush, an angry face, a pout or any look set to "Stays on" stays until Martlet writes {/tag} to turn it off, several at once, and Martlet knows what is showing so it can decide. Choose per emote in Companion › Character › Emotes and motions; Clear emotes on the character's right-click menu turns them all off. ([#513](https://github.com/throndir2/Martlet/pull/513))
 - The character has new gestures for touches and moods: it can wink, pout, act shy, giggle, flinch, lean in for a head pat, look away, think, roll its eyes and get drowsy, on any Live2D or VRM model that supports them; pouting, shyness, looking away and drowsiness can also stay on until they're turned off. ([#512](https://github.com/throndir2/Martlet/pull/512))
 - Click (without dragging) on your desktop character and it reacts: it plays the model's own tap motion for that part when it has one, or tilts its head, nods or looks surprised. ([#510](https://github.com/throndir2/Martlet/pull/510))
 - The character now reacts to every sound and tone the voice makes: it laughs, sighs, gasps, coughs, hums, cries, glowers and more along with the voice, on any Live2D or VRM model, without lengthening replies. ([#507](https://github.com/throndir2/Martlet/pull/507))

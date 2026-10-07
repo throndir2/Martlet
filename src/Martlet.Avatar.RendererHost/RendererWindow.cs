@@ -692,6 +692,8 @@ internal sealed class RendererWindow : Window
         var mute = muteItem = Item("Mute _voice", "CharacterMuteVoice", null, () => Request(voiceMuted ? "unmute" : "mute"));
         var open = Item("Open _Martlet", "CharacterOpenMartlet", null, () => Request("open"));
         var settings = Item("Character _settings", "CharacterSettings", null, () => Request("settings"));
+        // Lingering emotes (glasses, a blush...) stay until a reply turns them off; this turns them all off at once.
+        var clearEmotes = Item("_Clear emotes", "CharacterClearEmotes", null, () => Request("clear"));
         var zoomIn = Item("Zoom _in", "CharacterZoomIn", "+", () => Zoom(ZoomStep * ZoomStep, null));
         var zoomOut = Item("Zoom _out", "CharacterZoomOut", "-", () => Zoom(1 / (ZoomStep * ZoomStep), null));
         var reset = Item("_Reset zoom", "CharacterResetZoom", "0", ResetZoom);
@@ -706,7 +708,7 @@ internal sealed class RendererWindow : Window
         var hide = Item("_Hide character", "CharacterHide", "Esc", () => Request("hide"));
         var menu = new ContextMenu
         {
-            Items = { talk, mute, open, settings, new Separator(), zoomIn, zoomOut, reset, home, placeLock, onTop, new Separator(), hide }
+            Items = { talk, mute, open, settings, clearEmotes, new Separator(), zoomIn, zoomOut, reset, home, placeLock, onTop, new Separator(), hide }
         };
         AutomationProperties.SetAutomationId(menu, "CharacterMenu");
         AutomationProperties.SetName(menu, "Character");
@@ -714,7 +716,7 @@ internal sealed class RendererWindow : Window
         menu.Opened += (_, _) =>
         {
             // Until Martlet has loaded the character there is no one to ask; Hide still closes the overlay then.
-            talk.IsEnabled = mute.IsEnabled = open.IsEnabled = settings.IsEnabled = placeLock.IsEnabled = CanRequest;
+            talk.IsEnabled = mute.IsEnabled = open.IsEnabled = settings.IsEnabled = clearEmotes.IsEnabled = placeLock.IsEnabled = CanRequest;
             ShowVoice();
             zoomIn.IsEnabled = CanZoomIn;
             zoomOut.IsEnabled = CanZoomOut;
