@@ -267,8 +267,10 @@ internal static class ThinkLongerCheck
     // ---------- the background broker: which computer a think goes to, and the line ----------
 
     // The owner's example with the production broker and scheduler (fixture runners, no network): a companion PC and three hosts,
-    // one general, one kept for image generation and one that sings. Thinks go to the general computer first, then the others;
-    // a fourth waits in line; a song holds the singing computer; the first computer to free up takes the next in line.
+    // one general, one kept for image generation and one that sings. Thinks go to the general computer first, then the others,
+    // but a long job never takes the pool's last free slot while the pool has two or more slots: two run, the third and fourth
+    // wait in line, and a quick job (an end-of-turn judge) takes the free slot at once. A song holds the singing computer; the
+    // first computer to free up takes the next in line, and the last in line runs once two slots are free again.
     private static async Task<(bool Ok, object Report)> BrokerAsync(CancellationToken cancellation)
     {
         using var jobs = new BackgroundJobs();
@@ -296,23 +298,37 @@ internal static class ThinkLongerCheck
         var starts = new[] { "a", "b", "c", "d" }.Select(name => jobs.Start(kind, name, Run(name), pool, wait: true)).ToArray();
         var decidedMs = timer.Elapsed.TotalMilliseconds;
         var placed = starts.Select(s => s.Job?.Place?.Name).ToArray();
-        var queued = starts[3].Queued;
+        var queued = starts[2].Queued;
+        await Until(() => jobs.Places.Line.Count == 2);
+        var line = jobs.Places.Line;
+        // A quick job takes the slot the thinks leave free, at once, while two thinks wait.
+        var judge = jobs.Places.TryAcquire(pool, "end-of-turn-judge-1", demand: ThinkingDemand.For(ThinkingJobKind.EndOfTurnJudge, pool));
+        var judgeOn = judge?.Place.Name;
+        var waitedForJudge = starts[2].Job!.Place is null && starts[3].Job!.Place is null;
+        judge?.Dispose();
         // A song starts on the singing computer (its think carries on), then that think finishes: the song still holds the
-        // singing computer, so the one in line keeps waiting.
+        // singing computer, so the ones in line keep waiting.
         var song = jobs.Places.Hold(singer, "song-1");
         gates["b"].SetResult();
         await Until(() => starts[1].Job!.Finished);
         await Task.Delay(100, cancellation);
-        var waitingDuringSong = starts[3].Job!.Place is null;
-        // The general computer frees up: the one in line goes there.
+        var waitingDuringSong = starts[2].Job!.Place is null && starts[3].Job!.Place is null;
+        // The general computer frees up: the first in line goes there. Only one slot is free then, so the last in line waits.
         gates["a"].SetResult();
-        await Until(() => starts[3].Job!.Place is not null);
-        var nextOn = starts[3].Job!.Place?.Name;
+        await Until(() => starts[2].Job!.Place is not null);
+        var nextOn = starts[2].Job!.Place?.Name;
+        await Task.Delay(100, cancellation);
+        var lastWaited = starts[3].Job!.Place is null;
+        // The song ends: two slots are free, so the last in line runs on the singing computer.
         song.Dispose();
+        await Until(() => starts[3].Job!.Place is not null);
+        var lastOn = starts[3].Job!.Place?.Name;
         foreach (var gate in gates.Values) gate.TrySetResult();
         await Until(() => starts.All(s => s.Job!.Finished));
-        var ok = placed is ["general", "singer", "images", null] && queued == "think-1 on general, think-2 on singer and think-3 on images" &&
-            waitingDuringSong && nextOn == "general" && starts.All(s => s.Job!.State == BackgroundJobState.Succeeded) &&
+        var ok = placed is ["general", "singer", null, null] && queued == "think-1 on general and think-2 on singer" &&
+            starts[3].Queued == queued && line is ["think-3", "think-4"] && judgeOn == "images" && waitedForJudge &&
+            waitingDuringSong && nextOn == "general" && lastWaited && lastOn == "singer" &&
+            starts.All(s => s.Job!.State == BackgroundJobState.Succeeded) &&
             jobs.Places.Leases.Count == 0 && jobs.Places.Line.Count == 0 && decidedMs < 50;
         return (ok, new
         {
@@ -321,10 +337,15 @@ internal static class ThinkLongerCheck
             maxActive = kind.MaxActive,
             placed,
             queuedBehind = queued,
+            inLine = line,
+            quickJob = new { holder = "end-of-turn-judge-1", on = judgeOn, thinksStillWaiting = waitedForJudge },
             waitedWhileTheSongHeldTheSinger = waitingDuringSong,
             nextInLineRanOn = nextOn,
+            lastInLineWaitedForTwoFreeSlots = lastWaited,
+            lastInLineRanOn = lastOn,
             decidedMs = Math.Round(decidedMs, 2),
-            note = "Deterministic: no model is asked; every choice is the production BackgroundPlaces order."
+            note = "Deterministic: no model is asked; every choice is the production BackgroundPlaces order and its rule that a " +
+                "long job leaves the pool's last free slot for quick jobs."
         });
     }
 
@@ -458,10 +479,13 @@ internal static class ThinkLongerCheck
     // ---------- Deep thinking on several computers at once ----------
 
     // The production pool (DeepThinkingPool, ThinkLonger.Places) of three paired computers' Deep thinking roles: diva and
-    // ripley do none of the conversation's jobs, imouto also speaks. The production job list places each think on a free
-    // place (BackgroundJobs.Start with the pool): think-1 on diva, think-2 on ripley (both working at once, each on its own
-    // fixture endpoint standing in for that computer, through a runtime of its own as the desktop's slots do), think-3 on
-    // imouto, and a fourth is refused as busy naming each place; once they finish every place is free and the next goes to diva.
+    // ripley do none of the conversation's jobs, imouto also speaks. The production job list places each think as the desktop
+    // starts it (BackgroundJobs.Start with the pool, waiting in line when no place may take it): think-1 on diva, think-2 on
+    // ripley (both working at once, each on its own fixture endpoint standing in for that computer, through a runtime of its
+    // own as the desktop's slots do). A long job never takes the pool's last free slot while the pool has two or more slots,
+    // so think-3 waits in line and imouto's slot stays free: a quick job (a screen summary through the production
+    // ThinkingJobBoard on the same broker, a simulated member, NOT a model) takes it at once. Think-3 then starts on the first
+    // of diva and ripley to free up, never on imouto; once they finish every place is free and the next goes to diva.
     private static async Task<(bool Ok, object Report)> PoolAsync(TimeSpan reasoning, CancellationToken cancellation)
     {
         var settings = new ThinkLongerSettings();
@@ -495,7 +519,7 @@ internal static class ThinkLongerCheck
                         generation: new GenerationSettings { Reasoning = true, ReasoningEffort = GenerationSupport.ReasoningEffortOn }),
                         new Permissions(ChatCompletionsSetup.BaseUri(fixture.BaseUrl)));
                 }).RunAsync(job, token);
-            }, places);
+            }, places, wait: true);
             var first = Start();
             var second = Start();
             var waited = Stopwatch.StartNew();
@@ -503,25 +527,50 @@ internal static class ThinkLongerCheck
                 fixtures[a.Id].Count("think", inFlight: true) == 1 && fixtures[b.Id].Count("think", inFlight: true) == 1;
             while (!BothThinking() && waited.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(10, cancellation);
             var together = BothThinking();
+            // The only free slot (imouto's) is the pool's last one, so the third think waits in line for a free computer.
             var third = Start();
-            var fourth = Start();
+            waited.Restart();
+            while (third.Job is { } inLine && !(jobs.Places.Line.Contains(inLine.Id) && inLine.Progress is not null) &&
+                waited.Elapsed < TimeSpan.FromSeconds(10))
+                await Task.Delay(10, cancellation);
             var heldWhileBusy = jobs.Places.Leases.Select(lease => new { place = lease.Place.Name, by = lease.Holder }).ToArray();
+            var thirdWaiting = third.Job is { Place: null, State: BackgroundJobState.Waiting } && jobs.Places.Line.Count == 1;
+            var thirdProgress = third.Job?.Progress;
+            // A quick job on the same broker takes the slot the thinks leave free, at once, while the third think still waits.
+            object[] heldDuringQuick = [];
+            var board = new ThinkingJobBoard(jobs.Places, () => places, (member, _, _) =>
+            {
+                heldDuringQuick = [.. jobs.Places.Leases.Select(lease => new { place = lease.Place.Name, by = lease.Holder })];
+                return Task.FromResult(ThinkingAnswer.Done(member.Name));
+            });
+            var quickTimer = Stopwatch.StartNew();
+            var quick = await board.RunAsync(new ThinkingJob
+            {
+                Kind = ThinkingJobKind.Digest, Instructions = "Say what is on the screen in one line.", Text = "fixture",
+                Timeout = TimeSpan.FromSeconds(5), DropWhenStale = true
+            }, cancellation);
+            var quickMs = quickTimer.Elapsed.TotalMilliseconds;
+            var thirdWaitedForQuick = third.Job is { Place: null };
             BackgroundJob[] started = [.. new[] { first, second, third }.Where(s => s.Started).Select(s => s.Job!)];
             waited.Restart();
             while (started.Any(job => !job.Finished) && waited.Elapsed < TimeSpan.FromSeconds(30)) await Task.Delay(20, cancellation);
-            var freed = jobs.Places.Leases.Count == 0;
+            var freed = jobs.Places.Leases.Count == 0 && jobs.Places.Line.Count == 0;
+            // Each think's request on its own computer's fixture (none hung up on); the first two overlapping in time.
+            waited.Restart();
+            while (fixtures.Values.Any(fixture => fixture.Count("think", inFlight: true) > 0) && waited.Elapsed < TimeSpan.FromSeconds(5))
+                await Task.Delay(10, cancellation);
+            var spans = fixtures.Values.SelectMany(fixture => fixture.Served("think")).ToArray();
+            var overlapped = started.Length >= 2 && started[1].StartedUtc < started[0].FinishedUtc && started[0].StartedUtc < started[1].FinishedUtc;
             var again = Start();
             var againPlace = again.Job?.Place?.Name;
-            if (again.Job is { } fifth) jobs.Cancel(fifth.Id, BackgroundJob.CanceledByMartlet);
-            // Each started think's request on its own computer's fixture; the first two overlapping in time.
-            var spans = started.Select(job => fixtures[job.Place!.Id].Served("think").FirstOrDefault()).ToArray();
-            var overlapped = started.Length >= 2 && started[1].StartedUtc < started[0].FinishedUtc && started[0].StartedUtc < started[1].FinishedUtc;
-            var expected = new[] { "diva", "ripley", "imouto" };
+            if (again.Job is { } fourth) jobs.Cancel(fourth.Id, BackgroundJob.CanceledByMartlet);
+            var thirdOn = third.Job?.Place?.Name;
             var ok = pool.Usable.Count == 3 && places.Count == 3 && ThinkLonger.Slots(places) == 3 && kind.MaxActive == 6 &&
-                started.Length == 3 && started.Select(job => job.Place!.Name).SequenceEqual(expected) &&
+                started.Length == 3 && started[0].Place?.Name == "diva" && started[1].Place?.Name == "ripley" &&
                 together && overlapped && started.All(job => job.State == BackgroundJobState.Succeeded && job.Result == Lyrics) &&
-                fourth.Refusal == "busy" && expected.All(name => fourth.Message?.Contains("on " + name, StringComparison.Ordinal) == true) &&
-                heldWhileBusy.Length == 3 && freed && againPlace == "diva" && spans.All(s => s is { Aborted: false });
+                heldWhileBusy.Length == 2 && thirdWaiting && third.Queued == "think-1 on diva and think-2 on ripley" &&
+                quick is { Succeeded: true, Member: "imouto" } && quickMs < 1000 && heldDuringQuick.Length == 3 && thirdWaitedForQuick &&
+                thirdOn is "diva" or "ripley" && freed && againPlace == "diva" && spans.Length == 3 && spans.All(s => s is { Aborted: false });
             return (ok, new
             {
                 ok,
@@ -533,10 +582,19 @@ internal static class ThinkLongerCheck
                 tool = ThinkLonger.Description(settings, ThinkLonger.Slots(places)),
                 placed = started.Select(job => new
                 {
-                    id = job.Id, place = job.Place!.Name, state = job.State.ToString(), finishedAfterMs = (long)job.Elapsed.TotalMilliseconds
+                    id = job.Id, place = job.Place?.Name, state = job.State.ToString(), finishedAfterMs = (long)job.Elapsed.TotalMilliseconds
                 }),
-                thinkingAtOnce = together, overlapped,
-                heldWhileBusy, refused = new { refusal = fourth.Refusal, message = fourth.Message, toldModel = ThinkLonger.Refused(fourth) },
+                thinkingAtOnce = together, overlapped, heldWhileBusy,
+                waitedInLine = new
+                {
+                    id = third.Job?.Id, waiting = thirdWaiting, progress = thirdProgress, behind = third.Queued, startedOn = thirdOn,
+                    why = "A long job never takes the pool's last free slot while the pool has two or more slots."
+                },
+                quickJob = new
+                {
+                    kind = ThinkingJobKinds.Name(ThinkingJobKind.Digest), outcome = quick.Outcome.ToString(), on = quick.Member,
+                    tookMs = Math.Round(quickMs, 2), held = heldDuringQuick, thinkStillWaiting = thirdWaitedForQuick
+                },
                 freedAfter = freed, nextPlacedOn = againPlace
             });
         }

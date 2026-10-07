@@ -1415,7 +1415,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "canned answers, NOT AI): a reply says it'll look into it and calls research (returns at once, the reply completes while " +
             "the job runs), the steps' requests, the note the conversation gets (offer first, perform_creation with the report's " +
             "id), the report kept in a temporary Creations library and shown as a page; plus the settings (off by default, off with " +
-            "Thinking longer off), the address guard and the limits (busy beside a think, Cancel, the hourly limit, a failed search). " +
+            "Thinking longer off), the address guard and the limits (busy beside a think, Cancel, the hourly limit, a failed search, " +
+            "and placement on Deep thinking's places, where research never takes the pool's last free slot, kept for quick jobs). " +
             "Loopback only; no real search or model; reads no credentials.", new { }),
         Tool("songs_status", "Martlet singing in conversation (sing_song, play_song, stop_singing), from a data directory: whether " +
             "background work (Thinking longer, which the song tools come with) is on; the song creations (each song's key, " +
