@@ -247,10 +247,15 @@ public sealed class GatewayFailure
 public sealed class GatewayProtocolException : Exception
 {
     public GatewayFailure Failure { get; }
+    /// <summary>One word that says more than the code, sent as the failure's "detail": "live" when a Thinking pool request is
+    /// turned away (job.busy) because a live turn holds its graphics card. Null for most failures.</summary>
+    public string? Detail { get; }
 
-    internal GatewayProtocolException(string code) : base(GatewayFailures.Get(code).Summary)
+    internal GatewayProtocolException(string code, string? detail = null) : base(GatewayFailures.Get(code).Summary)
     {
         Failure = GatewayFailures.Get(code);
+        if (detail is not null) GatewayRules.Identifier(detail, 32);
+        Detail = detail;
     }
 }
 
@@ -453,6 +458,10 @@ internal static class GatewayFailures
         "job.canceled" => new(code,
             "The bounded inference job was canceled and local output was discarded.",
             "Start a new explicitly authorized request if work is still intended; cancellation does not claim that private compute stopped.",
+            409),
+        "job.preempted" => new(code,
+            "A live turn needed this graphics card, so the host stopped this Thinking pool request and discarded its output.",
+            "Run the job again on another computer, or here once the live turn ends; live replies always go first on a shared graphics card.",
             409),
         "stream.invalid" => new(code,
             "The private worker stream violated the exact event contract.",

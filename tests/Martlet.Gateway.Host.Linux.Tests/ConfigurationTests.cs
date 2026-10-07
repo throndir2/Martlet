@@ -16,17 +16,20 @@ public sealed class ConfigurationTests
             serviceUid = 1000, serviceGid = 1000
         });
 
-    internal static void WriteConfig(FakeLinuxFileSystem fs, byte[] bytes)
+    internal static void WriteConfig(FakeLinuxFileSystem fs, byte[] bytes) => WriteControl(fs, "host.json", bytes);
+
+    /// <summary>Writes a 0600 file of the service owner beside host.json, as martlet-host does.</summary>
+    internal static void WriteControl(FakeLinuxFileSystem fs, string name, byte[] bytes)
     {
         var parent = fs.OpenRoot();
         var srv = fs.OpenAt(parent, "srv", 0x10000 | 0x20000 | 0x80000, 0, 0xe);
         var dir = fs.OpenAt(srv, "martlet", 0x10000 | 0x20000 | 0x80000, 0, 0xe);
-        if (!fs.Parent.Children.ContainsKey("host.json"))
+        if (!fs.Parent.Children.ContainsKey(name))
         {
-            var fd = fs.OpenAt(dir, "host.json", 2 | 0x40 | 0x80 | 0x20000 | 0x80000, 0x180, 0xf);
+            var fd = fs.OpenAt(dir, name, 2 | 0x40 | 0x80 | 0x20000 | 0x80000, 0x180, 0xf);
             fs.Close(fd);
         }
-        fs.Parent.Children["host.json"].Bytes = bytes.ToArray();
+        fs.Parent.Children[name].Bytes = bytes.ToArray();
         fs.Close(dir);
         fs.Close(srv);
         fs.Close(parent);
@@ -116,6 +119,13 @@ public sealed class ConfigurationTests
         Assert.Equal("mark", Assert.Single(config.Roles).Model);
         Assert.Empty(HostConfiguration.Parse(Encoding.UTF8.GetBytes(rendered.Replace(
             "{\"kind\":\"audio2face\",\"endpoint\":\"http://127.0.0.1:52000/\",\"model\":\"mark\"}", "", StringComparison.Ordinal))).Roles);
+        // gpus.json as render_gpus writes it beside host.json (checked in a local harness): roles pinned to a card and roles on
+        // the processor; a role on every card is left out.
+        var gpus = HostGpus.Parse(Encoding.UTF8.GetBytes(
+            "{\"schemaVersion\":1,\"roles\":{\"deep-thinking\":[\"GPU-aaaa-1111\"],\"ollama\":[\"GPU-aaaa-1111\"],\"stt\":[\"cpu\"]}}\n"));
+        Assert.Equal(["deep-thinking", "ollama", "stt"], gpus.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(["cpu"], gpus["stt"]);
+        Assert.Empty(HostGpus.Parse(Encoding.UTF8.GetBytes("{\"schemaVersion\":1,\"roles\":{}}\n")));
     }
 
     [Fact]
@@ -164,6 +174,72 @@ public sealed class ConfigurationTests
             "{\"kind\":\"audio2face\",\"endpoint\":\"http://127.0.0.1:52001/\",\"model\":\"b\"}]")));
         Assert.Throws<HostInputException>(() => HostConfiguration.Parse(
             RoleConfig("[{\"kind\":\"audio2face\",\"endpoint\":\"http://127.0.0.1:52000/\",\"model\":\"a\",\"extra\":1}]")));
+    }
+
+    [Fact]
+    public void Gpus_json_places_each_role_on_its_graphics_cards_outside_the_approved_host_json()
+    {
+        const string card = "GPU-1a2b3c4d-0000-1111-2222-333344445555";
+        var config = HostConfiguration.Parse(RoleConfig(
+            "[{\"kind\":\"ollama\",\"endpoint\":\"http://127.0.0.1:11434/\",\"model\":\"gemma4:e4b\"}," +
+            "{\"kind\":\"deep-thinking\",\"endpoint\":\"http://127.0.0.1:11435/\",\"model\":\"qwen3:8b\",\"slots\":2}," +
+            "{\"kind\":\"stt\",\"endpoint\":\"http://127.0.0.1:8178/\",\"model\":\"large-v3-turbo\"}," +
+            "{\"kind\":\"ocr\",\"endpoint\":\"http://127.0.0.1:50087/\",\"model\":\"rapidocr-ppocrv4\"}," +
+            "{\"kind\":\"pictures\",\"endpoint\":\"http://127.0.0.1:50086/\",\"model\":\"z-image-turbo\"}]"));
+        var placed = config.WithGpus(HostGpus.Parse(Encoding.UTF8.GetBytes(
+            "{\"schemaVersion\":1,\"roles\":{\"ollama\":[\"" + card + "\"],\"deep-thinking\":[\"1\"],\"stt\":[\"cpu\"]}}")));
+        // Placement never changes the approved configuration's digest.
+        Assert.Equal(config.Digest, placed.Digest);
+        Assert.All(config.Roles, role => Assert.Null(role.Gpus));
+        var routes = placed.Roles.Select(r => NativeHostPlatform.RoleWorker(r).Route).ToArray();
+        Assert.Equal([card], routes[0].Gpus);
+        Assert.Equal(Martlet.Gateway.GatewayLane.Live, routes[0].Lane);
+        Assert.Equal(["1"], routes[1].Gpus);
+        Assert.Equal((Martlet.Gateway.GatewayLane.Pool, 2), (routes[1].Lane, routes[1].MaximumConcurrency));
+        Assert.Equal(["cpu"], routes[2].Gpus);
+        // Reading never uses the graphics card; a role gpus.json doesn't name counts as the whole host.
+        Assert.Equal(["cpu"], routes[3].Gpus);
+        Assert.Empty(routes[4].Gpus);
+        // host.json never carries placement: a "gpus" field there is refused like any unknown one.
+        Assert.Throws<HostInputException>(() => HostConfiguration.Parse(RoleConfig(
+            "[{\"kind\":\"ollama\",\"endpoint\":\"http://127.0.0.1:11434/\",\"model\":\"gemma4:e4b\",\"gpus\":[\"cpu\"]}]")));
+        foreach (var bad in new[]
+        {
+            "{\"schemaVersion\":2,\"roles\":{}}", "{\"roles\":{}}", "{\"schemaVersion\":1,\"roles\":{},\"extra\":1}",
+            "{\"schemaVersion\":1,\"roles\":[]}", "{\"schemaVersion\":1,\"roles\":{\"unknown\":[\"cpu\"]}}",
+            "{\"schemaVersion\":1,\"roles\":{\"ollama\":[\"0\"],\"ollama\":[\"1\"]}}"
+        }.Concat(new[] { "[]", "\"" + card + "\"", "[\"cpu\",\"0\"]", "[\"gpu0\"]", "[1]", "[\"0\",\"0\"]", "null" }
+            .Select(devices => "{\"schemaVersion\":1,\"roles\":{\"ollama\":" + devices + "}}")))
+            Assert.Throws<HostInputException>(() => HostGpus.Parse(Encoding.UTF8.GetBytes(bad)));
+    }
+
+    [Fact]
+    public async Task The_gateway_reads_gpus_json_beside_host_json_and_ignores_an_invalid_one()
+    {
+        using var platform = new FixturePlatform();
+        platform.Terminal = new() { Interactive = false };
+        WriteConfig(platform.Fs, Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(Config(platform.Origin.CanonicalOrigin)).Replace(
+            "\"serviceGid\":1000", "\"serviceGid\":1000,\"roles\":[" +
+            "{\"kind\":\"ollama\",\"endpoint\":\"http://127.0.0.1:11434/\",\"model\":\"gemma4:e4b\"}," +
+            "{\"kind\":\"deep-thinking\",\"endpoint\":\"http://127.0.0.1:11435/\",\"model\":\"qwen3:8b\"}]", StringComparison.Ordinal)));
+        WriteControl(platform.Fs, LinuxControlDirectory.Gpus,
+            Encoding.UTF8.GetBytes("{\"schemaVersion\":1,\"roles\":{\"deep-thinking\":[\"GPU-bbbb-2222\"]}}\n"));
+        using (var output = new StringWriter())
+        {
+            Assert.Equal(0, await platform.Run("owner-init", output));
+            Assert.DoesNotContain("gpus.invalid", output.ToString(), StringComparison.Ordinal);
+        }
+        Assert.Null(platform.LastConfig!.Roles[0].Gpus);
+        Assert.Equal(["GPU-bbbb-2222"], platform.LastConfig.Roles[1].Gpus);
+
+        // An invalid gpus.json is ignored with a note: every role counts as the whole host, and the gateway still opens.
+        WriteControl(platform.Fs, LinuxControlDirectory.Gpus, Encoding.UTF8.GetBytes("{\"schemaVersion\":1,\"roles\":{\"ollama\":[\"gpu0\"]}}"));
+        using (var output = new StringWriter())
+        {
+            Assert.Equal(0, await platform.Run("owner-approve", output));
+            Assert.Contains("gpus.invalid", output.ToString(), StringComparison.Ordinal);
+        }
+        Assert.All(platform.LastConfig.Roles, role => Assert.Null(role.Gpus));
     }
 
     [Fact]

@@ -337,7 +337,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Character › Emotes and motions: how many the shown model has and who named them, the Thinking model's
         // naming progress, the tags offered to replies and what follows the voice's cues, the last one played (model-authored
         // names only) and whether edits saved. Each row's name and kind (CharacterActionName-<n>, a model-authored name), and
-        // its Try button's label (CharacterActionTry-<n>: "Try", or "Turn off" while that lingering emote is on). The lingering
+        // its Try button's label (CharacterActionTry-<n>: "Try", or "Turn off" while that lingering emote is on). The grey hint in
+        // an empty When to use box (CharacterActionHint-<n>: Martlet's own hint that replies get, such as "nod, for yes or
+        // agreement"; hidden once the owner writes one). The lingering
         // emotes on now and for how long (CharacterActionsHeld: "On now: Glasses (12 min)." or "No lingering emotes are on.").
         // Each row's "Stays on" check box (CharacterActionMode-<n>) reports its mode as checkedState; changing it saves, and Try,
         // Turn off, Clear emotes (CharacterActionsClear) and the overlay menu's Clear emotes (CharacterClearEmotes) change what
@@ -599,7 +601,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// Add a voice's line on filling in each recording's words ("F5AddVoiceHeard" and "F5AddVoiceHeard-2" read "Filled in by
     /// Parakeet on this PC: 12 words. Check them and fix anything it misheard."; never the words);
     /// Companion › Voice › Voice engine's rows, one per engine ("VoiceEngine-chatterbox" reads "Chatterbox Turbo · recommended",
-    /// "VoiceEngineFeatures-chatterbox" "NVIDIA GPU, 6 GB+, Docker, Voice cloning, ...", "VoiceEngineState-chatterbox"
+    /// "VoiceEngineAbilities-chatterbox" "Voice cloning: yes. Laughs &amp; sighs: yes. Emotions: whispering only.",
+    /// "VoiceEngineRunsOn-chatterbox" "Runs on an NVIDIA GPU: about 3.7 GB of graphics memory, up to 4.2 GB (6 GB+ card).",
+    /// "VoiceEngineFeatures-chatterbox" "Docker, 5 s+ samples, English", "VoiceEngineState-chatterbox"
     /// "Ready on this PC." or why it can't run there, and its button "VoiceEngineUse-chatterbox" "Set up and use Chatterbox
     /// Turbo"; key "windows" for a Windows voice; clicking a button needs --allow-ui-effects) and its computer pills
     /// ("SpeakingHost-gpu-pc" reads "gpu-pc · speaking");
@@ -634,7 +638,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// click; never the text it copies).</summary>
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
-    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchTemperamentLook-", "TouchZoneNotices-", "VoiceEngine", "SpeakingHost-", "SingingHost-",
+    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchTemperamentLook-", "TouchZoneNotices-", "VoiceEngine", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default

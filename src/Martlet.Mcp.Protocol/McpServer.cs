@@ -264,8 +264,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "recordings (the F5 voice store: which starter voices, how many own and which is applied); which voice the speaking route " +
             "uses and on which self-hosted engine, host and model; and the voice engines (Chatterbox " +
             "Turbo, the default; F5-TTS; XTTS-v2; GPT-SoVITS; Dia: host role, gateway route, model, weights licence, GPU memory, reference " +
-            "length bounds, tag catalog, summary, languages, whether it learns from several recordings and the feature chips Companion > " +
-            "Voice > Voice engine shows; each starter voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
+            "length bounds, tag catalog, summary, languages, whether it learns from several recordings, the feature chips Companion > " +
+            "Voice > Voice engine shows, its rundown (voice cloning, laughs & sighs, emotions: yes, partly or no) and where it runs " +
+            "(GPU with its typical and peak graphics memory, CPU or online); the same rundown for the Windows and OpenAI voices; each " +
+            "starter voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
             "(never own voices' names, transcripts or audio). Plays nothing and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
@@ -449,13 +451,32 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "writes nothing to disk.", new { }),
         Tool("deep_thinking_role_selftest", "Rehearse the Deep thinking host role end to end with the production code: one real " +
             "gateway on 127.0.0.1 (pinned TLS) serving a host's Thinking route (the ollama role) and the deep-thinking role's own route " +
-            "(martlet.gateway.deep-thinking-chat.v1), each relay over its own fixture Ollama (NOT AI), and a simulated desktop using " +
-            "the desktop's paired client. Checks both routes and their models are advertised, Thinking's advertised route saves as the " +
+            "(martlet.gateway.deep-thinking-chat.v1), each relay over its own fixture Ollama (NOT AI) on its own graphics card, and a " +
+            "simulated desktop using the desktop's paired client. Checks both routes and their models are advertised, Thinking's advertised route saves as the " +
             "desktop's job route (handing Thinking to the host), a think on the Deep thinking route runs " +
             "while a reply streams on Thinking's route (the reply finishes first), each request reaches its own Ollama (the think " +
             "with Thinking steps on), two thinks run at once on the role's two slots (advertised as the route's maximum_concurrency) " +
             "while a reply streams and a third gets job.busy, and that the chat client refuses a mismatched route. Loopback only; writes nothing to disk or " +
             "the credential vault.", new { }),
+        Tool("gpu_priority_status", "Read GPU priority (live turn first) on every Martlet host paired in a desktop data directory " +
+            "(hosts.json), through each host's own gateway (pinned TLS; the pairing secret from Windows Credential Manager only signs " +
+            "the request, never returned): GET /martlet/v1/priority with each route's lane (live or pool) and graphics cards, each " +
+            "card's hold state (held, live and pool requests running, holds), whether the whole host is held, the holds, the preempted " +
+            "and refused counts, the last preemptions and refusals (what held the card) and placement warnings. A host older than " +
+            "GPU priority is reported as such. Read-only: takes no hold and starts no work; contacts only paired hosts.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("gpu_priority_selftest", "Rehearse GPU priority (live turn first) end to end with the production code: real gateways on " +
+            "127.0.0.1 (pinned TLS) with Thinking's Ollama relay (lane live) and the Deep thinking role's (lane pool) placed on graphics " +
+            "cards as martlet-host places them, each over its own fixture Ollama server on loopback (NOT AI, no GPU used), a simulated " +
+            "desktop with the desktop's paired client and its hold client (HostLiveGpuHold). Checks the host's GPU map and its warning " +
+            "to pin each Ollama server to its own GPU, that a live reply stops a running think on the same card at once (job.preempted, " +
+            "the Ollama request aborted), that a think is turned away while a live reply or a hold keeps the card (job.busy), holds " +
+            "(renew, release, a 1 s hold that ends on its own, a hold that stops running work), that live replies never wait, that a " +
+            "think on its own card runs on, and that an older host without holds leaves the live turn alone. Returns each step and the " +
+            "host's GET /martlet/v1/priority report (per-card hold state, holds, last preemptions and refusals, warnings). Loopback " +
+            "only; writes nothing to disk or the credential vault.", new { }),
         Tool("speaking_voices_selftest", "Rehearse the shared speaking voices end to end with the production code: two real gateways on " +
             "127.0.0.1 (pinned TLS, the real reference-voice relay route over a fixture voice service, NOT AI, with in-memory " +
             "speaking-voices.json and recordings) and two simulated desktops with real F5 voice stores in a temporary folder, using the " +
@@ -489,7 +510,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "as a glow on the cheeks when the model has no ParamCheek or blush expression; Live2D smile, surprise; VRM wave, shrug, bounce; " +
             "and the voice emotes linked to every voice sound and tone: laugh, chuckle, sigh, gasp, cough, clear_throat, groan, sniff, shush, inhale, exhale, " +
             "mumble, hum, sneeze, whistle, happy, sarcastic, angry, fear, crying, whispering, dramatic; and the overlay emotes drawn over the face of any " +
-            "Live2D model or VRM with a head: sweat, anger, hearts, sparkles, tears, gloom, question, exclaim, sleepy, music) with what it changes, its tag, voice cue, when to use it, whether " +
+            "Live2D model or VRM with a head: sweat, anger, hearts, sparkles, tears, gloom, question, exclaim, sleepy, music) with what it changes, its tag, voice cue, when to use it (use: the owner's or the Thinking model's text, null when empty; hint: what the reply prompt says, which is Martlet's own hint while use is null), whether " +
             "it is on, its mode (brief, or lingering: stays on after {tag} until {/tag}; modeSaved false when it is the default, " +
             "vtsToggle when a VTube Studio ToggleExpression hotkey turns it on) and whether replies are offered it for engine (a voice engine key; \"none\" or absent: a voice without tags); the " +
             "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; the reply prompt and tags " +
@@ -1515,6 +1536,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "outside_path_check" => await OutsidePathCheck.RunAsync(cancellation),
             "mac_host_check" => await MacHostCheck.RunAsync(cancellation),
                 "deep_thinking_role_selftest" => await NodeLinkCheckAsync(cancellation, "deep-thinking"),
+                "gpu_priority_selftest" => await NodeLinkCheckAsync(cancellation, "gpu-priority"),
+                "gpu_priority_status" => await GpuPriorityStatusAsync(arguments, cancellation),
                 "speaking_voices_selftest" => await NodeLinkCheckAsync(cancellation, "voices"),
                 "character_models" => CharacterModels(arguments),
                 "character_profiles" => CharacterProfiles(arguments),
@@ -2279,6 +2302,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
         };
     }
 
+    /// <summary>gpu_priority_status: GPU priority (live turn first) on every host paired in the data directory, through
+    /// Martlet.NodeLinkCheck gpu-priority-status, which signs with the pairing secret from Windows Credential Manager and returns
+    /// no secret. Nothing is contacted when the data directory pairs no host.</summary>
+    private static async Task<object> GpuPriorityStatusAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var directory = DataDirectory(arguments);
+        if (!File.Exists(Path.Combine(directory, "hosts.json")))
+            return new { dataDirectory = directory, hosts = Array.Empty<object>(), note = "No host is paired in this data directory (no hosts.json)." };
+        return await NodeLinkCheckAsync(TimeSpan.FromMinutes(2), cancellation, ["gpu-priority-status", directory]);
+    }
+
     /// <summary>This PC's own host service as the desktop's host dashboard reads it (<see cref="LocalHostService"/>). The
     /// published address itself is not returned, only whether it is still this PC's and answers.</summary>
     private static async Task<object> HostServiceStatusAsync(CancellationToken cancellation)
@@ -2342,7 +2376,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             return of.Entries.Select((e, n) => new
             {
                 n, id = e.Source.Id, kind = e.Source.Kind.ToString().ToLowerInvariant(), name = e.Source.Name, detail = e.Source.Detail,
-                tag = e.Action.Tag, cue = e.Action.Cue, use = e.Action.Use, enabled = e.Action.Enabled, offered = offered.Contains(e.Source.Id),
+                tag = e.Action.Tag, cue = e.Action.Cue, use = e.Action.Use,
+                hint = Martlet.Avatar.Hosting.CharacterActions.Hint(e.Source, e.Action), enabled = e.Action.Enabled,
+                offered = offered.Contains(e.Source.Id),
                 mode = e.Action.Mode ?? Martlet.Avatar.Hosting.CharacterActions.DefaultMode(e.Source, e.Action.Tag),
                 modeSaved = e.Action.Mode is not null, vtsToggle = e.Source.Toggle
             }).ToArray();
@@ -2765,15 +2801,49 @@ internal sealed class McpServer(DesktopAutomation desktop)
             minimumGpuMemoryGb = engine.MinimumGpuMemoryGb,
             minimumReferenceMs = engine.MinimumReferenceMilliseconds, maximumReferenceMs = engine.MaximumReferenceMilliseconds,
             summary = engine.Summary, languages = engine.Languages, streams = engine.StreamsWhileGenerating, features = engine.Features,
+            abilities = Abilities(engine.Abilities, engine.Tags), runsOn = RunsOn(engine.Footprint, engine.RunsOn),
             @default = engine == Martlet.Core.Settings.SpeechEngines.Default,
             supportsTags = engine.SupportsTags, multipleReferences = engine.MultipleReferences,
             tags = engine.Tags.Select(tag => new { text = tag.Text, kind = tag.Kind.ToString(), usage = tag.Usage }).ToArray()
         }).ToArray();
+        // The other ways Martlet speaks, with the same rundown Companion › Voice shows (VoiceEngineAbilities-<key>,
+        // VoiceEngineRunsOn-<key>).
+        var catalog = Martlet.Core.Planning.FootprintCatalog.Default;
+        var windowsVoice = catalog.Find(Martlet.Core.Planning.FootprintCatalog.WindowsVoiceId);
+        var openAiVoice = catalog.Find(Martlet.Core.Planning.FootprintCatalog.OpenAiVoiceId);
+        var otherVoices = new[]
+        {
+            new { key = "windows", name = "Windows voice", abilities = Abilities(Martlet.Core.Settings.VoiceAbilities.WindowsVoice, []),
+                runsOn = RunsOn(windowsVoice, windowsVoice?.WhereItRuns ?? "") },
+            new { key = "openai", name = "OpenAI voice", abilities = Abilities(Martlet.Core.Settings.VoiceAbilities.OpenAiVoice, []),
+                runsOn = RunsOn(openAiVoice, openAiVoice?.WhereItRuns ?? "") }
+        };
         return new
         {
             @default = fallback.Key, defaultName = fallback.Name, defaultFemale = fallback.Female, defaultCute = fallback.Cute,
             cute = Martlet.F5.F5BundledVoices.All.Where(voice => voice.Cute).Select(voice => voice.Key).ToArray(), starters, library, list, speaking,
-            engines, chosenEngine = Martlet.Core.Settings.SpeechEngines.ForKey(chosen)?.Key ?? Martlet.Core.Settings.SpeechEngines.Default.Key
+            engines, otherVoices, chosenEngine = Martlet.Core.Settings.SpeechEngines.ForKey(chosen)?.Key ?? Martlet.Core.Settings.SpeechEngines.Default.Key
+        };
+
+        // What a voice can do: cloning, sounds and emotions (yes, partly or no), the tags that do it and the rundown's words.
+        static object Abilities(Martlet.Core.Settings.VoiceAbilities abilities, IReadOnlyList<Martlet.Core.Settings.VoiceTag> tags) => new
+        {
+            cloning = abilities.Cloning, sounds = abilities.Sounds, emotions = abilities.Emotions.ToString(),
+            items = abilities.Items.Select(item => new
+            {
+                name = item.Name, level = item.Level.ToString(), note = item.Note, help = item.Help,
+                tags = abilities.TagsFor(item, tags).Select(tag => tag.Text).ToArray()
+            }).ToArray(),
+            summary = abilities.Describe()
+        };
+
+        // Where a voice runs: on a GPU (with its graphics memory in GB: typical, most and the smallest card), the CPU or
+        // online, as the footprint catalog says, and the line Companion › Voice shows.
+        static object RunsOn(Martlet.Core.Planning.ComponentOption? option, string text) => new
+        {
+            on = option is null ? "gpu" : !option.IsLocal ? "online" : option.UsesGpu ? "gpu" : "cpu",
+            vramGb = option?.UsesGpu == true ? option.Usual.VramGb : 0, peakVramGb = option?.UsesGpu == true ? option.GpuGb : 0,
+            minimumGpuGb = option?.MinGpuGb ?? 0, evidence = option?.Evidence.ToString(), text
         };
     }
 
