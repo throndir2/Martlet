@@ -482,6 +482,7 @@ public partial class MainWindow
                 "to what this PC plays (Listening › Watch along).", new Thickness(0, 0, 0, 8)),
             .. ChattinessPicker("VisionChattiness")]));
         page.Children.Add(GazeCard(prefs));
+        page.Children.Add(ScreenSummaryCard(prefs));
 
         toggle = PageButton(prefs.Watch ? "Turn vision off" : "Turn vision on", () =>
         {
@@ -558,6 +559,33 @@ public partial class MainWindow
                 "compared on this PC; the Thinking model only chooses during the looks Martlet already takes, so nothing extra " +
                 "is sent.", new Thickness(0, 6, 0, 0)));
     }
+
+    /// <summary>Companion › Vision › Screen summary over time (on by default): while Martlet watches, a Thinking model that sees
+    /// in the Thinking pool sums up in the background what changed on the screen, and the next reply gets it as a note.</summary>
+    private Border ScreenSummaryCard(TalkPreferences prefs)
+    {
+        var canSee = (conversation?.ScreenDigestThinker ?? NoScreenDigestThinker.Instance).CanSee;
+        var box = new CheckBox { Content = "Screen summary over time", IsChecked = prefs.ScreenSummary, Margin = new Thickness(0, 0, 0, 6) };
+        AutomationProperties.SetAutomationId(box, "VisionScreenSummary");
+        box.Checked += (_, _) => { if (!Talk.ScreenSummary) SaveTalk(Talk with { ScreenSummary = true }, render: true); };
+        box.Unchecked += (_, _) => { if (Talk.ScreenSummary) SaveTalk(Talk with { ScreenSummary = false }, render: true); };
+        var text = ScreenSummaryStatus(prefs.ScreenSummary, prefs.Watch, canSee);
+        var status = prefs.ScreenSummary && prefs.Watch && !canSee ? Warning(text) : Note(text, new Thickness(0, 0, 0, 6));
+        AutomationProperties.SetAutomationId(status, "VisionScreenSummaryStatus");
+        return Card(Heading("Screen summary over time"), box, status,
+            Note("Each reply gets only the newest picture, so it starts to speak as fast as before. With this on, Martlet also " +
+                "keeps the last few pictures that changed (about 25 seconds, in memory only, never saved) and, every 15 seconds " +
+                "while they change or when you start to talk, sends a small sheet of them with the text read on them to a Thinking " +
+                "model that sees in the background. It is never the model your conversation uses. The one or two lines it " +
+                "answers (\"They switched from VS Code to a boss fight\") go with your next message as a note. A reply never " +
+                "waits for it. Each summary is one more request with a picture, which may cost more.", new Thickness(0, 6, 0, 0)));
+    }
+
+    internal static string ScreenSummaryStatus(bool on, bool vision, bool canSee) =>
+        !on ? "Off. Replies know only the newest picture."
+        : !vision ? "On, but vision is off. Turn vision on below."
+        : !canSee ? "Off for now: the Thinking pool has no other model that sees. Add one that sees in Companion › Thinking."
+        : "On. While Martlet watches, a Thinking model that sees sums up what changed for your next message.";
 
     private string GazeStatus(TalkPreferences prefs)
     {

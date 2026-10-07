@@ -1035,6 +1035,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             reply = new { type = "string", maxLength = 1024 }
         }),
+        Tool("screen_digest_check", "The screen summary over time (docs/SCREEN_COMMENTARY.md), run once with the desktop's " +
+            "production ScreenDigester on FIXTURE frames (made-up pictures of a code editor, then a game with low health; no " +
+            "screen capture) and a FIXTURE thinker and context board (no model, nothing sent). Returns the setting (Companion > " +
+            "Vision > Screen summary over time, from talk-preferences.json, on by default), which frames the ring kept or skipped, " +
+            "the job (reason, frames, contact sheet size and bytes, the message as Companion > Prompts > Screen summary over time " +
+            "in settings.json makes it), the answer (reply, or a FIXTURE sentence) as parsed, what went to the board (text, " +
+            "max age), the status (frames, last text, age, time taken, jobs, posted, dropped) and the talk window's line, then " +
+            "that a stale answer is dropped. Reads no credentials and contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" },
+            reply = new { type = "string", maxLength = 1024 }
+        }),
         Tool("context_check", "The Thinking model's context as Martlet uses it, from a data directory: the saved route, Companion > " +
             "Replies > Context size, what model-limits.json says about the model (from Check model limit, choosing or testing a " +
             "model, or Ollama loading it) and the context size, reply room and text room replies get (the production ContextBudget). " +
@@ -1395,6 +1407,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "discord_text_check" => await DiscordTextCheck.RunAsync(DataDirectory(arguments), arguments, cancellation),
                 "chattiness_status" => await ChattinessCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "vision_history_check" => await VisionHistoryCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
+                "screen_digest_check" => await ScreenDigestCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "discord_companion_check" => await DiscordCompanionCheck.RunAsync(DataDirectory(arguments),
                     arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("dataDirectory", out _),
