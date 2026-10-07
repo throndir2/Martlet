@@ -2804,7 +2804,9 @@ that effort, such as `{"reasoning_effort":"medium"}` or `{"think":true}`,
 `pool`: every place it thinks on, the first place then each computer ticked
 *Think here too*, each with `computer` (its name), `where`, `place`,
 `hostRole`, `available`, `rank` (lower goes first), `checksFit` and `why`, then
-`usable`, `maxThinks` (how many run at once) and the pool's `available` and
+`usable`, `maxThinks` (slots in all), `atOnce` (how many thinks run at once:
+one fewer than the slots when there are two or more, because the last free
+slot stays free for quick jobs) and the pool's `available` and
 `why`), `tools`
 (`think_longer` and `cancel_thinking`, and `research` while web research is on,
 exactly as the model gets them), the filled `prompt` and `researchPrompt`, and
@@ -2927,7 +2929,9 @@ fitted to a paired computer's gateway (16 KiB, 16 messages, no tools, the newest
 kept, `inputTokens` 24,576 beside 8,192 for output). `pool`: the production
 `DeepThinkingPool` of three paired computers' Deep thinking roles (diva and
 ripley do none of the conversation's jobs, imouto also speaks: `configured`
-with each `rank`), `maxThinks` 3 and the tool's *Up to 3 at once*; the
+with each `rank`), `maxThinks` 3 (slots), `atOnce` 2, the tool's *Up to 2 at
+once; more wait in line* (`tool`) and the pool's *Up to 2 thinks run at once...*
+(`plan`); the
 production job list starts thinks as the desktop does (waiting in line when no
 place may take them), places think-1 on diva and think-2 on ripley, both
 working at once on their own fixture endpoints (standing in for the two

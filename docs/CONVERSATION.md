@@ -718,21 +718,28 @@ run at once, one on each place (`DeepThinkingPool`, up to 8 places; saved as
 lacks, so the old choice reads unchanged). *Use it*, *Same as Thinking*, *Ollama
 on this PC* and a cloud provider change the first place and keep the ticked
 computers; unticking the first place's computer makes the next one first.
-`think_longer` may then run as many thinks at once as there are usable places
-(its description says *Up to N at once*, from the settings only, so the request
-start stays the same), and each new think goes to a free place: the one that
+`think_longer` may then run several thinks at once: one fewer than the usable
+places' slots in all. A long job never takes the pool's last free slot while
+the pool has two or more slots, because that slot stays free for quick jobs
+(judges and summaries); with one slot in all, one think runs at a time. The
+tool's description says how many (*Up to 2 at once; more wait in line* for
+three slots, *One at a time; more wait in line* for one or two). It comes from
+the settings only, so the request start changes only when the slots change.
+Each new think goes to a free place: the one that
 shares least with the conversation first (its plan's `Rank`: 0 does none of the
 conversation's jobs, 1 shares a computer with the voice or listening, or is a
 cloud provider or this PC, 2 shares Thinking's computer or provider, 3 is a
 second model beside Thinking's on this PC's graphics card), then the order they
 were chosen. One place that can't think (a computer that does Thinking without
 its Thinking pool role) doesn't stop the others. A song's lyrics are written on
-the same places: a free one, else the least busy. When every place is busy a
-new think is refused and the model is told what holds each place (*think-1 on
-diva and think-2 on ripley are still running...*). Each think has its own
+the same places: a free one, else the least busy. When every place is busy (or
+only the last free slot is left), a new think waits in line (*waiting for a
+free computer*) and starts on the first place that frees up. The model is told
+what holds each place (*Every computer that thinks is busy (think-1 on diva and
+think-2 on ripley)...*). Each think has its own
 runtime and authorization on its place, and its result reaches the speaking
-computer exactly as one think's does (see Delivery). The page's
-`DeepThinkingPoolStatus` says how many places think at once.
+computer exactly as one think's does (see Delivery). With several places, the
+page's `DeepThinkingParallel` line says how many thinks run at once.
 
 **Always in parallel** (`DeepThinkingPlan`, shown on the page as
 `DeepThinkingParallel`). A think always runs alongside the conversation and is
@@ -787,12 +794,15 @@ was placed (*placed on diva, 1 of 2 places busy*), fit check and end
 (`Background thinking:`) and a *Thinking input (Background thinking)* line.
 Stop (Esc) ends a reply, never a think; the task's Cancel, `cancel_thinking`,
 closing the conversation or quitting Martlet do (there is no time limit). Each
-place runs as many thinks at once as it has slots (one on a computer of yours
-unless its Thinking pool role says it runs more, four on a cloud provider);
-when every place is busy a new think waits in line (*waiting for a free
+place has slots for thinks (one on a computer of yours unless its Thinking pool
+role says it runs more, four on a cloud provider and on the conversation model
+while the pool is empty). While the places have two or more slots in all, the
+last free slot stays free for quick jobs, so one think fewer than the slots
+runs at once (three on the conversation model's four). When no slot is free
+for it, a new think waits in line (*waiting for a free
 computer*) and runs on the first place that frees up, first come, first served.
-As many thinks may wait as can run; there is no limit on how many start in an
-hour.
+Up to twice the slots (at most 8) may run or wait at once; there is no limit
+on how many start in an hour.
 
 **Which computer thinks** is decided by a deterministic broker
 (`BackgroundPlaces`), never by a model, so placing a think takes microseconds.
