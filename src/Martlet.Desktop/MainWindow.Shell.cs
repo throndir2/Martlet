@@ -1438,6 +1438,16 @@ public partial class MainWindow
                 return null;
             }
             var local = host.Method == HostSetupMethod.ThisPcDocker;
+            // One graphics card for each Thinking model: adding Deep thinking beside the host's Thinking asks first.
+            if (answers is null && action.Verb == HostVerb.Add && action.Role == HostRoles.DeepThinking &&
+                DeepThinkingFit.SharedCard(host.HostId, HardwareStore?.Find(host.HostId), hostChecks.GetValueOrDefault(host.HostId)?.Offers)
+                    is { } shared &&
+                !ConfirmationDialog.Confirm(this, shared + " Add Deep thinking there anyway?", "Deep thinking shares a graphics card",
+                    yes: "_Add anyway", no: "_Cancel", questionId: "DeepThinkingShareQuestion"))
+            {
+                ActionText.Text = $"Deep thinking wasn't added on {host.HostId}.";
+                return null;
+            }
             // Martlet's automatic host update leaves this host to this run rather than colliding with it (and reporting it busy).
             using var updating = action.Verb == HostVerb.Update ? hostUpdates.Begin(UpdateKey(host)) : null;
             ActionText.Text = $"Running {HostSetupCommands.Engine(action)} on {(local ? "this PC" : host.HostId)}" +

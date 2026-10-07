@@ -404,7 +404,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // position, line number and section, lead-in, vamps, ducking, or
         // where and why it stopped; never its title or words: LiveSongLine holds those).
         "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort",
-        "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingSameStatus",
+        "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingLocalShare", "DeepThinkingSameStatus",
         "DeepThinkingKeyStatus", "DeepThinkingPoolStatus", "LiveTasks", "LiveJobs", "LiveSong",
         // Companion › Deep thinking › Web research (off by default): whether Martlet may search the web when asked and why it
         // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
@@ -519,6 +519,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // (model tag, its size when Martlet knows it and what Thinking keeps using until it's ready). ConfirmationYes downloads
         // it, so it needs --allow-ui-effects.
         "LocalModelDownloadQuestion",
+        // Companion › Deep thinking: the question before a Deep thinking model joins a Thinking model on the same graphics card
+        // (on a paired computer's Add Deep thinking or This PC's Use Ollama on this PC): the computer, Thinking's model tag and
+        // the one-graphics-card-for-each-Thinking-model advice. ConfirmationYes adds or uses it, so it needs --allow-ui-effects.
+        "DeepThinkingShareQuestion",
         // Set it all up for me: its one confirmation (the plan, the downloads, lip-sync from the welcome wizard and the voice
         // engine's terms). The welcome wizard's Use these suggestions, the Home fixes and ConfirmationYes install and download, so
         // they need --allow-ui-effects.
@@ -618,7 +622,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // conversation model on diva (now gemma4-e4b)").
         // Each paired computer's Think here too box ("DeepThinkingPool-diva" reads "Think on diva too" and whether it is ticked;
         // ticking it saves deep-thinking.json, so it needs --allow-ui-effects).
-        "DeepThinkingHost-", "DeepThinkingAddRole-", "DeepThinkingChangeModel-", "DeepThinkingPool-", "SetupChangeHost-",
+        // Each paired computer's shared-card warning, when Deep thinking there shares one graphics card with its Thinking model
+        // ("DeepThinkingShare-diva" reads "diva: diva already runs a Thinking model (gemma4:e4b) on its only graphics card. ...").
+        "DeepThinkingHost-", "DeepThinkingShare-", "DeepThinkingAddRole-", "DeepThinkingChangeModel-", "DeepThinkingPool-", "SetupChangeHost-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...").
         "AppearanceColor-", "AppearancePreview-",
