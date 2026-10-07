@@ -38,6 +38,18 @@ public sealed class CharacterTouchZoneTests
         Assert.Null(CharacterTouchZones.Parse("{\"zones\":[]}", 400, 800));
     }
 
+    [Theory]
+    [InlineData("groin")]
+    [InlineData("Crotch")]
+    [InlineData("pelvis")]
+    [InlineData("between legs")]
+    [InlineData("genital area")]
+    public void FindsTheGroinZoneByItsCommonNames(string name)
+    {
+        Assert.Equal("groin", CharacterTouchZones.Normalize(name));
+        Assert.True(CharacterTouchZones.Kind("groin")!.Intimate);
+    }
+
     [Fact]
     public void BindsDrawablesMostlyInsideAndBonesInsideEachBox()
     {
