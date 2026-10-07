@@ -29,12 +29,15 @@ internal static partial class LatencyReport
     private static partial Regex FirstPiece();
     [GeneratedRegex(@"The voice paused (?<pauses>\d+) times? for (?<ms>\d+) ms in all")]
     private static partial Regex VoicePauses();
+    [GeneratedRegex(@", paused (?<ms>\d+) ms(?:, then stopped| when you talked over it, then resumed)")]
+    private static partial Regex PausedForYou();
     [GeneratedRegex(@"Models: (?<models>.*)\.$")]
     private static partial Regex Models();
 
     internal sealed record Reply(DateTimeOffset At, string Measured, double? TotalMs, string? From, IReadOnlyDictionary<string, double> Steps,
         double? FirstWordsMs, double? FirstAudioMs, int? SpokenPieces, double? FirstPieceSpeechSeconds, double? FirstPieceMadeMs,
-        string? Models, bool Interrupted, bool Legacy, bool Restarted = false, int VoicePauses = 0, double VoicePausedMs = 0);
+        string? Models, bool Interrupted, bool Legacy, bool Restarted = false, int VoicePauses = 0, double VoicePausedMs = 0,
+        double? PausedForYouMs = null, bool Resumed = false);
 
     internal static object Read(string? dataDirectory, int? replies)
     {
@@ -78,12 +81,21 @@ internal static partial class LatencyReport
                 pauses = parsed.Sum(r => r.VoicePauses),
                 pausedMs = Stats(parsed.Where(r => r.VoicePauses > 0).Select(r => r.VoicePausedMs))
             },
+            // Replies paused because you talked over them (Pause and decide), how many played on, and how long they paused.
+            pausedForYou = new
+            {
+                replies = parsed.Count(r => r.PausedForYouMs is not null),
+                resumed = parsed.Count(r => r.Resumed),
+                stopped = parsed.Count(r => r.PausedForYouMs is not null && r.Interrupted),
+                pausedMs = Stats(parsed.Where(r => r.PausedForYouMs is not null).Select(r => r.PausedForYouMs!.Value))
+            },
             newest = parsed.Reverse().Select(r => new
             {
                 at = r.At, measured = r.Measured, totalMs = r.TotalMs, from = r.From, steps = r.Steps, firstWordsMs = r.FirstWordsMs,
                 firstAudioMs = r.FirstAudioMs, spokenPieces = r.SpokenPieces, firstPieceSpeechSeconds = r.FirstPieceSpeechSeconds,
                 firstPieceMadeMs = r.FirstPieceMadeMs, voicePauses = r.VoicePauses, voicePausedMs = r.VoicePausedMs, models = r.Models,
-                interrupted = r.Interrupted, restarted = r.Restarted, legacy = r.Legacy
+                interrupted = r.Interrupted, restarted = r.Restarted, pausedForYouMs = r.PausedForYouMs, resumed = r.Resumed,
+                legacy = r.Legacy
             }).ToArray()
         };
     }
@@ -121,6 +133,7 @@ internal static partial class LatencyReport
         var piece = FirstPiece().Match(rest);
         var pauses = VoicePauses().Match(rest);
         var models = Models().Match(rest);
+        var held = PausedForYou().Match(rest);
         return new(at, line.Groups["what"].Value, Number(line.Groups["total"].Value), line.Groups["from"].Value.Trim(), steps,
             start.Success ? Number(start.Groups["words"].Value) : null,
             start.Success && start.Groups["audio"].Success ? Number(start.Groups["audio"].Value) : null,
@@ -129,7 +142,8 @@ internal static partial class LatencyReport
             models.Success ? models.Groups["models"].Value : null, interrupted, false,
             rest.Contains("replaced because you kept talking", StringComparison.Ordinal),
             pauses.Success ? (int)Number(pauses.Groups["pauses"].Value)!.Value : 0,
-            pauses.Success ? Number(pauses.Groups["ms"].Value)!.Value : 0);
+            pauses.Success ? Number(pauses.Groups["ms"].Value)!.Value : 0,
+            held.Success ? Number(held.Groups["ms"].Value) : null, held.Success && held.Value.EndsWith("resumed", StringComparison.Ordinal));
     }
 
     private static double? Number(string text) =>
