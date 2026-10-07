@@ -3379,6 +3379,12 @@ host service, so it needs `--allow-ui-effects`). The + beside the title,
 `SelectedDeviceAdd`, opens the same *Add a computer* wizard as
 `NodeAction-AddComputer` and the page's `AddComputer`, so all three are
 passive clicks.
+In *Prepare this computer* (`PrepareHostWindow`), each GPU whose power limit
+can change has a `PreparePower-<index>` slider (watts), its chosen limit
+`PreparePowerValue-<index>` (*300 W*) and its limits
+`PreparePowerDetail-<index>` (*Now 370 W, default 370 W, allowed 100-450 W.*);
+all three are in `SafeValues`. The slider stretches to the checklist's width,
+so its handle stays in view at any window width.
 The **Your Martlet network** card ([NETWORK](NETWORK.md)) holds `NetworkStatus`
 (status text: member with how many computers and hosts and how many are reached
 from outside home right now, waiting to join with

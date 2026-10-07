@@ -580,6 +580,15 @@ public partial class PrepareHostWindow : ThemedWindow
 
     private StackPanel PowerRow(PrepareGpu gpu)
     {
+        var (row, slider) = BuildPowerRow(gpu);
+        if (slider is not null) powerChoices[gpu.Uuid] = slider;
+        return row;
+    }
+
+    /// <summary>One GPU's power line: its name, then a slider that stretches to the column with a short "300 W" beside it,
+    /// then the current, default and allowed limits. Nothing has a fixed width, so the slider and its handle fit any width.</summary>
+    internal static (StackPanel Row, Slider? Slider) BuildPowerRow(PrepareGpu gpu)
+    {
         var row = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
         var power = gpu.Power;
         var name = $"GPU {gpu.Index}: {gpu.Name}" + (gpu.MemoryMb is { } mb ? $" ({mb / 1024.0:0.#} GB)" : "") +
@@ -588,29 +597,34 @@ public partial class PrepareHostWindow : ThemedWindow
         if (!power.Adjustable)
         {
             row.Children.Add(Text("This GPU's power limit can't be changed.", muted: true));
-            return row;
+            return (row, null);
         }
-        var value = new TextBlock { Width = 380, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
+        var value = new TextBlock { MinWidth = 64, VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Right };
+        AutomationProperties.SetAutomationId(value, $"PreparePowerValue-{gpu.Index}");
         var slider = new Slider
         {
             Minimum = Math.Ceiling(power.Min!.Value), Maximum = Math.Floor(power.Max!.Value), SmallChange = 1, LargeChange = 10,
-            TickFrequency = 5, IsSnapToTickEnabled = false, MinWidth = 220, Margin = new Thickness(0, 0, 12, 0),
+            TickFrequency = 5, IsSnapToTickEnabled = false, Margin = new Thickness(0, 0, 12, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
         slider.Value = Math.Round(power.Saved ?? power.Current ?? power.Default ?? slider.Maximum);
         AutomationProperties.SetName(slider, $"Power limit for GPU {gpu.Index} in watts");
         AutomationProperties.SetAutomationId(slider, $"PreparePower-{gpu.Index}");
-        void Show() => value.Text = $"{Math.Round(slider.Value):0} W (current {power.Current:0} W, default {power.Default:0} W" +
-            $"{(power.Saved is { } saved ? $", saved {saved:0} W" : "")})";
+        void Show() => value.Text = $"{Math.Round(slider.Value):0} W";
         slider.ValueChanged += (_, _) => Show();
         Show();
-        powerChoices[gpu.Uuid] = slider;
-        var line = new DockPanel();
-        DockPanel.SetDock(value, Dock.Right);
-        line.Children.Add(value);
+        var line = new Grid();
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(value, 1);
         line.Children.Add(slider);
+        line.Children.Add(value);
         row.Children.Add(line);
-        return row;
+        var detail = Text($"Now {power.Current:0} W, default {power.Default:0} W, allowed {slider.Minimum:0}-{slider.Maximum:0} W" +
+            $"{(power.Saved is { } saved ? $", saved {saved:0} W" : "")}.", muted: true);
+        AutomationProperties.SetAutomationId(detail, $"PreparePowerDetail-{gpu.Index}");
+        row.Children.Add(detail);
+        return (row, slider);
     }
 
     // ---------- buttons ----------
