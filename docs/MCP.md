@@ -1431,9 +1431,14 @@ of audible audio), `engine`, `route`, `voice`, `text`, `statusBefore` and
 `statusAfter` (the service's own `/status`: `answered`, `state`, `ready`,
 `error` and `runtime`, for Chatterbox its torch, torchaudio and CUDA versions
 and `idleCheck` (`checks`, `every_seconds`, `fastest_ms`, `last_ms` of its
-[idle check](CHATTERBOX_VOICE.md#how-it-runs)), or why it could not be read),
-`seconds` of 24 kHz audio, `firstAudioMs`,
-`elapsedMs`, `realTimeFactor`, `peakDbfs`, `rmsDbfs`, `audible`, and `failure`
+[idle check](CHATTERBOX_VOICE.md#how-it-runs)) and `whisper` (`level_db` and
+the `parts` it has [whispered](CHATTERBOX_VOICE.md#tags)), or why it could not
+be read), `seconds` of 24 kHz audio, `firstAudioMs`,
+`elapsedMs`, `realTimeFactor`, `peakDbfs`, `rmsDbfs`, `audible`,
+`voicedShare` (the share of the loud 40 ms frames that have a pitch between 70
+and 400 Hz, from `Martlet.Core.Audio.Voicing`; about 0.6-0.9 for ordinary
+speech and nearly 0 for a whisper, so a `text` that starts with `[whispering]`
+shows if Chatterbox whispers), and `failure`
 and `problem` (the client's error code and message, for example
 `worker.unavailable` when nothing answers or the model could not load). A
 loading model can take minutes, so the tool allows six; pass
