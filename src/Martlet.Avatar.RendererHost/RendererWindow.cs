@@ -115,6 +115,7 @@ internal sealed partial class RendererWindow : Window
         viewport.MouseMove += (_, e) => TrackStroke(e.GetPosition(viewport), Environment.TickCount64);
         viewport.MouseLeftButtonUp += (_, e) => EndStroke(e.GetPosition(viewport), Environment.TickCount64);
         viewport.StrokeAlong = StrokeAlong;
+        viewport.ReadFace = ReadFace;
         viewport.LostMouseCapture += (_, _) =>
         {
             if (stroke is { } lost && !strokeReleasing) EndStroke(lost.Last, Environment.TickCount64);
@@ -905,6 +906,33 @@ internal sealed partial class RendererWindow : Window
         catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
     }
 
+    private int faceId;
+    private int? facePending;
+
+    /// <summary>Asks the page where Martlet draws over the face now (Martlet's MCP character_face, through UI Automation); its
+    /// answer arrives unprompted (see <see cref="FaceAnswered"/>). Reading it changes nothing on the character.</summary>
+    private void ReadFace()
+    {
+        if (browser.CoreWebView2 is null || failure.Failed || closed) return;
+        var id = ++faceId;
+        facePending = id;
+        try
+        {
+            browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "face", data = new { id } }, RendererProtocol.Json));
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
+    }
+
+    /// <summary>The page's reading of the face, remembered for UI Automation; a stale or malformed one is ignored and never
+    /// fails the renderer.</summary>
+    private void FaceAnswered(JsonElement answer)
+    {
+        if (facePending is not { } pending || answer.ValueKind != JsonValueKind.Object || !answer.TryGetProperty("id", out var id) ||
+            id.ValueKind != JsonValueKind.Number || !id.TryGetInt32(out var number) || number != pending) return;
+        facePending = null;
+        viewport.LastFace = CharacterFaceReading.From(answer, number);
+    }
+
     /// <summary>The page's hit test for the last tap: remembered for UI Automation and, when it found the character, sent to
     /// Martlet on the request pipe. A malformed or stale answer is ignored; it never fails the renderer.</summary>
     private void Touched(JsonElement answer)
@@ -1259,6 +1287,12 @@ internal sealed partial class RendererWindow : Window
                     {
                         // Unsolicited answer to a batch of hit tests (a stroke's path, a zoom's focus); never a command reply.
                         TouchesAnswered(touches);
+                        return;
+                    }
+                    if (document.RootElement.TryGetProperty("faceReading", out var faceReading))
+                    {
+                        // Unsolicited answer to a reading of the face (MCP's character_face); never a command reply.
+                        FaceAnswered(faceReading);
                         return;
                     }
                     failure.ThrowIfFailed();

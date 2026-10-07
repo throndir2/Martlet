@@ -128,6 +128,11 @@ public sealed class BoundedTextInput
     /// <summary>The first input of this reply when this one continues it (after tool calls or without tools).</summary>
     [JsonIgnore]
     public BoundedTextInput? Origin { get; }
+    /// <summary>The start of the answer that an earlier request wrote before it was stopped (a background think the live
+    /// conversation stopped): sent after the current message as the assistant's own unfinished message, so a server that
+    /// continues one (Ollama) writes on from where it stopped. Only Chat Completions requests send it.</summary>
+    [JsonIgnore]
+    public string? Continuation { get; }
     public int Utf8Bytes { get; }
     public int ToolUtf8Bytes { get; }
     // Local admission budget, NOT measured token usage or a price estimate.
@@ -136,13 +141,16 @@ public sealed class BoundedTextInput
 
     public BoundedTextInput(string userText, string? personality = null, IEnumerable<TextHistoryMessage>? history = null,
         BoundedImage? image = null, IEnumerable<TextToolDefinition>? tools = null, BoundedWaveAudio? audio = null,
-        string? notes = null, string? context = null)
+        string? notes = null, string? context = null, string? continuation = null)
     {
         ContractRules.Require(audio is null || audio.Duration.TotalSeconds <= HardMaxAudioSeconds,
             "The recording exceeds its duration bound.");
         var messages = new List<TextHistoryMessage>();
         int bytes = Count(userText);
         ContractRules.Require(!string.IsNullOrWhiteSpace(userText), "A nonempty user message is required.");
+        ContractRules.Require(continuation is null || !string.IsNullOrWhiteSpace(continuation), "A continuation needs text.");
+        if (continuation is not null)
+            bytes = checked(bytes + Count(continuation));
         if (personality is not null)
             bytes = checked(bytes + Count(personality, HardMaxInputUtf8Bytes));
         if (notes is not null)
@@ -170,6 +178,7 @@ public sealed class BoundedTextInput
         Personality = personality;
         Notes = notes;
         Context = context;
+        Continuation = continuation;
         History = messages.AsReadOnly();
         Image = image;
         Audio = audio;
@@ -179,7 +188,7 @@ public sealed class BoundedTextInput
         Utf8Bytes = bytes;
         ToolUtf8Bytes = toolBytes;
         ToolTokenReservation = ToolReservation(toolBytes, definitions.Length, 0);
-        InputTokenReservation = TextReservation(bytes, messages.Count + PromptMessages(personality, notes ?? context)) +
+        InputTokenReservation = TextReservation(bytes, messages.Count + PromptMessages(personality, notes ?? context) + (continuation is null ? 0 : 1)) +
             (image is null ? 0 : BoundedImage.TokenReservation) + AudioReservation(audio) + ToolTokenReservation;
     }
 
@@ -265,6 +274,7 @@ public sealed class BoundedTextInput
         Personality = origin.Personality;
         Notes = origin.Notes;
         Context = origin.Context;
+        Continuation = origin.Continuation;
         History = origin.History;
         Image = keepImage ? origin.Image : null;
         Audio = keepAudio ? origin.Audio : null;

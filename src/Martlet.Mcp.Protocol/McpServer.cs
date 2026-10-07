@@ -182,6 +182,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
             points = new { type = "array", items = new { type = "array", items = new { type = "number", minimum = 0, maximum = 1 }, minItems = 2, maxItems = 2 } },
             stepMs = new { type = "integer", minimum = 10, maximum = 2000 }
         }),
+        Tool("character_face", "Read where Martlet draws over the showing character's face (its own blush glow and overlay emotes " +
+            "such as hearts or a sweat drop), samples times (1 to 60, default 1) gapMs apart (0 to 5000, default 250), as each frame " +
+            "is drawn. Each reading (faces) has n, found, tracking (mesh: pinned to the Live2D model's own face meshes; bones: a " +
+            "VRM's head bone; estimate: a Live2D model's head angles, when no face meshes were found), x, y and width (fractions of " +
+            "the character overlay's drawing, +y down), tilt (degrees, clockwise), cheekLeft and cheekRight (x, y; visible, 0 to " +
+            "1 as the cheek turns away; across, the cheek's width against the face's, below 1 on a turned head's far cheek; and " +
+            "the renderer's hit test there: hit, drawables, bone, mesh), the overlays showing and pinned (Live2D: carriers, the " +
+            "mesh vertices the face rides on, and milliseconds, how long finding them took at load). summary says which tracking " +
+            "was used, how far the face moved (x, y, width, tilt) and, per cheek, the share of readings over the character, " +
+            "what it was mostly over and for what share, the least it showed and its across range. Reading changes nothing, so " +
+            "it needs no --allow-ui-effects.", new
+        {
+            samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumFaceSamples },
+            gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
+        }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
             "[x, y, width, height] in physical screen pixels) and whether Martlet still runs. \"open\" and \"menu\" send the icon " +
@@ -229,9 +244,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "on talking 700 ms into the pause, then pause again) or changed (the final transcript differs from the quick one). " +
             "Each runs with replies started early and without: per run the decisions with their times, when the turn ended, the " +
             "first audio after the turn ended, starts, cancelled, the outcome (promoted or changed), Thinking requests and aborted " +
-            "ones, voice pieces, samples played and captions shown before the turn ended (both 0) and the reply latency line; " +
+            "ones, voice pieces, samples played and captions shown before the turn ended (both 0), the live floor (production " +
+            "LiveFloor fed as the desktop feeds it: its level and reply holds when the turn ended and once the reply was done, its " +
+            "changes among the decisions) and the reply latency line; " +
             "savedMs per scenario. ok when each scenario does what it should (promoted, let go or restarted as described, nothing " +
-            "heard before the turn ended, and for incomplete, plain and resumed the first audio at least 60% of thinkingMs + " +
+            "heard before the turn ended, the floor Live and held by the one reply started early when the turn ended and by none " +
+            "once the reply was done, and for incomplete, plain and resumed the first audio at least 60% of thinkingMs + " +
             "voiceMs sooner). Nothing is recorded, played or sent off this PC.", new
         {
             scenario = new { type = "string", @enum = new[] { "all", "incomplete", "plain", "complete", "resumed", "changed" } },
@@ -1355,6 +1373,27 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "slot, one slot where waiting jobs run highest priority first (barge-in judge, digest, research), a busy member passed " +
             "over for the next, a stale judge dropped, and deep-thinking.json read once into thinking-pool.json. In-process; " +
             "reads nothing.", new { }),
+        Tool("live_floor_status", "The live floor (the live conversation turn comes before all background work) from a data directory: " +
+            "what the conversation runs on (its Thinking, voice and listening routes, each on this PC, a computer on the home network " +
+            "or a cloud provider, with the paired hosts and routes the floor holds while you talk), which Thinking pool members share " +
+            "that hardware, what the floor does to each job kind on such a member at Listening and at Live, and the desktop's " +
+            "live-floor.json: its level (Idle, Listening, Live), the jobs it held and stopped by kind this turn and in all, the hold " +
+            "client and hosts held, the work queue's stopped background requests and its last changes (never what was said). Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("live_floor_check", "Rehearse the live floor with the production LiveFloor, LiveFloorRules, ThinkingJobBoard, BackgroundJobs " +
+            "and WorkQueue on fixture inputs and simulated members, NOT models: which things said are real words (said: your own " +
+            "lines, else fixtures such as \"Mmm.\", \"Yeah, right.\" and \"What time is it in Tokyo?\"), the levels on a clock of their " +
+            "own (voice, quiet, a sound, words, a reply and its grace), the board at Listening (new work waits, running work and " +
+            "judges go on) and at Live (a summary dropped, remembering and naming stopped and queued again, touch zones going on, " +
+            "judges running), a member on another computer never held, a think stopped and going on from what it wrote (in place, " +
+            "or again with it as context), research waiting for the conversation instead of being refused, the conversation " +
+            "model's own place held above Idle, and the work queue stopping this PC's background request for a live reply. " +
+            "In-process; reads nothing.", new
+        {
+            said = new { type = "array", items = new { type = "string" }, maxItems = 32 }
+        }),
         Tool("work_sharing_status", "Devices > Sharing work from a data directory: the choices (work-sharing.json, the work-sharing " +
             "shared setting: for Speaking, Thinking, Listening and Deep thinking whether it is shared when its computer is busy, " +
             "the order chosen (this-pc being each companion PC's own host service) and the computers never used; which computers " +
@@ -1524,6 +1563,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 OptionalInt(arguments, "holdMs"), OptionalInt(arguments, "repeat"), OptionalInt(arguments, "gapMs"), Taps(arguments),
                 OptionalInt(arguments, "settleMs")),
                 "character_stroke" => await desktop.StrokeCharacterAsync(StrokePoints(arguments), OptionalInt(arguments, "stepMs") ?? 40),
+                "character_face" => await desktop.FaceCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "turn_judge_check" => await TurnJudgeCheck.RunAsync(arguments, MartletDirectory(arguments), cancellation),
@@ -1658,6 +1698,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "helper_jobs_check" => await HelperJobsCheck.RunAsync(cancellation),
                 "thinking_pool_status" => await ThinkingPoolCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "thinking_pool_check" => await ThinkingPoolCheck.RunAsync(cancellation),
+                "live_floor_status" => await LiveFloorCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),
                 "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),
                 "work_sharing_check" => await WorkSharingCheck.RunAsync(cancellation),
                 "discord_reply_status" => DiscordReplyCheck.Status(DataDirectory(arguments)),

@@ -208,8 +208,21 @@ public static class WorkSharing
 
 /// <summary>What a computer's refusal means for a request that hasn't started: <see cref="Busy"/> (it does one job at a time
 /// and is doing another: try the next, then wait for whichever frees first), <see cref="Unavailable"/> (unreachable, or it
-/// doesn't run the engine now: try the next), or <see cref="None"/> (a real failure: give up).</summary>
-public enum WorkRefusal { None, Busy, Unavailable }
+/// doesn't run the engine now: try the next), <see cref="Preempted"/> (it keeps the graphics card free for a live conversation
+/// turn, its own or another companion PC's: pool work goes elsewhere or waits and continues later; never a failure), or
+/// <see cref="None"/> (a real failure: give up).</summary>
+public enum WorkRefusal { None, Busy, Unavailable, Preempted }
+
+/// <summary>Who a shared request is for: the live conversation turn (a reply, its voice, its transcript) or this PC's own
+/// background work on a live route (remembering after a reply, a think on the conversation model). Live requests go first: a
+/// background request never starts while a live request of the same lane waits, and a live request that finds a computer busy
+/// with this PC's own background request stops that request (<see cref="WorkPreemptedException"/>) instead of waiting behind
+/// it.</summary>
+public enum WorkPriority { Live, Background }
+
+/// <summary>A live request of this PC needed the computer this background request ran on (<see cref="WorkQueue"/>), so it
+/// stopped. Its caller does the work again later; it is not a failure of the computer.</summary>
+public sealed class WorkPreemptedException() : OperationCanceledException("A live conversation request needed the computer, so this background request stopped.");
 
 /// <summary>One request's way through its computers: which one took it and how many were busy or unavailable first.</summary>
 public sealed record WorkRoute(string HostId, int Position, int Busy, int Unavailable, TimeSpan Waited);
@@ -219,13 +232,22 @@ public sealed record WorkRoute(string HostId, int Position, int Busy, int Unavai
 /// at once) or unavailable is passed over for the next. When every one is busy the request waits in line and tries them
 /// again, in order, every <see cref="Retry"/> and whenever one of this PC's own requests finishes, so whichever computer
 /// frees first takes it. Requests this PC already has running on a computer put that computer last for the next one,
-/// saving a round trip it would only turn away. Thread-safe; one per process (<see cref="Shared"/>).</summary>
+/// saving a round trip it would only turn away. Live requests go first (<see cref="WorkPriority"/>): a background request
+/// waits while a live request of its lane waits, and a live request that finds a computer busy with this PC's own background
+/// request stops that request (it gets <see cref="WorkPreemptedException"/>) and takes the computer as soon as it is free,
+/// instead of waiting behind it or moving on to a computer without the conversation's prompt cache. Thread-safe; one per
+/// process (<see cref="Shared"/>).</summary>
 public sealed class WorkQueue
 {
     private readonly object gate = new();
     private readonly Dictionary<string, int> running = new(StringComparer.Ordinal);
+    // This PC's background requests running now, by lane and computer, each with its own stop.
+    private readonly Dictionary<string, List<CancellationTokenSource>> background = new(StringComparer.Ordinal);
+    // How many live requests of each lane wait for a free computer now; background requests of that lane wait behind them.
+    private readonly Dictionary<string, int> liveWaiting = new(StringComparer.Ordinal);
     private TaskCompletionSource freed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int waiting;
+    private long stopped;
 
     public static WorkQueue Shared { get; } = new();
 
@@ -234,27 +256,44 @@ public sealed class WorkQueue
     /// <summary>Raised when a request was taken by a computer other than its first, or waited for one.</summary>
     public event Action<string, WorkRoute>? Rerouted;
 
+    /// <summary>Raised (lane, computer) when a live request stopped this PC's own background request on a computer.</summary>
+    public event Action<string, string>? Preempted;
+
     /// <summary>How many requests this PC runs on <paramref name="hostId"/> for <paramref name="lane"/> now.</summary>
     public int Running(string lane, string hostId)
     {
-        lock (gate) return running.GetValueOrDefault(lane + "|" + hostId);
+        lock (gate) return running.GetValueOrDefault(Key(lane, hostId));
+    }
+
+    /// <summary>How many of this PC's background requests run on <paramref name="hostId"/> for <paramref name="lane"/> now.</summary>
+    public int Background(string lane, string hostId)
+    {
+        lock (gate) return background.TryGetValue(Key(lane, hostId), out var list) ? list.Count : 0;
     }
 
     /// <summary>How many requests wait for a free computer now.</summary>
     public int Waiting => Volatile.Read(ref waiting);
 
+    /// <summary>How many background requests live requests stopped since this queue was made.</summary>
+    public long Stopped => Interlocked.Read(ref stopped);
+
     /// <summary>Streams <paramref name="lane"/>'s request from the first of <paramref name="targets"/> that takes it (see the
     /// class summary). <paramref name="start"/> starts it on one; <paramref name="classify"/> says what a failure before its
     /// first item means. Waits for a busy computer until <paramref name="until"/> at most. The last refusal is thrown when
-    /// none took it.</summary>
+    /// none took it. A <see cref="WorkPriority.Background"/> request that a live request stopped throws
+    /// <see cref="WorkPreemptedException"/>.</summary>
     public async IAsyncEnumerable<T> StreamAsync<TTarget, T>(string lane, IReadOnlyList<TTarget> targets, Func<TTarget, string> hostOf,
         Func<TTarget, CancellationToken, IAsyncEnumerable<T>> start, Func<Exception, WorkRefusal> classify, DateTimeOffset until,
-        TimeProvider? clock, [EnumeratorCancellation] CancellationToken token)
+        TimeProvider? clock, [EnumeratorCancellation] CancellationToken token, WorkPriority priority = WorkPriority.Live)
     {
         ArgumentNullException.ThrowIfNull(targets);
         if (targets.Count == 0) throw new ArgumentException("A shared request needs at least one computer.", nameof(targets));
         var time = clock ?? TimeProvider.System;
         var began = time.GetTimestamp();
+        var live = priority == WorkPriority.Live;
+        // A background request's own stop, which a live request that needs its computer cancels.
+        using var stop = live ? null : CancellationTokenSource.CreateLinkedTokenSource(token);
+        var attempt = stop?.Token ?? token;
         HashSet<string> gone = new(StringComparer.Ordinal);
         int busy = 0, unavailable = 0;
         Exception? last = null;
@@ -262,51 +301,89 @@ public sealed class WorkQueue
         string? host = null;
         var position = 0;
         var queued = false;
+        var counted = false;
+        var held = false;
         try
         {
             while (taken is null)
             {
                 Task wake;
-                lock (gate) wake = freed.Task;
-                var order = targets.Select((target, index) => (target, index, host: hostOf(target)))
-                    .Where(t => !gone.Contains(t.host))
-                    .OrderBy(t => targets.Count > 1 && Running(lane, t.host) > 0 ? 1 : 0).ThenBy(t => t.index).ToArray();
+                bool behind;
+                (TTarget target, int index, string host)[] order;
+                lock (gate)
+                {
+                    wake = freed.Task;
+                    behind = !live && liveWaiting.GetValueOrDefault(lane) > 0;
+                    // A live request counts only this PC's live requests on a computer: its background ones give way.
+                    order = [.. targets.Select((target, index) => (target, index, host: hostOf(target)))
+                        .Where(t => !gone.Contains(t.host))
+                        .OrderBy(t => targets.Count > 1 && Others(lane, t.host, live) > 0 ? 1 : 0).ThenBy(t => t.index)];
+                }
                 if (order.Length == 0) break;
                 var anyBusy = false;
-                foreach (var (target, index, id) in order)
-                {
-                    token.ThrowIfCancellationRequested();
-                    Enter(lane, id);
-                    var enumerator = start(target, token).GetAsyncEnumerator(token);
-                    (bool Has, Exception? Error) first;
-                    try { first = (await enumerator.MoveNextAsync().ConfigureAwait(false), null); }
-                    catch (Exception error) when (!token.IsCancellationRequested) { first = (false, error); }
-                    catch
+                if (!behind)
+                    foreach (var (target, index, id) in order)
                     {
-                        await Close(enumerator, lane, id).ConfigureAwait(false);
-                        throw;
-                    }
-                    if (first.Error is null)
-                    {
-                        if (!first.Has)
+                        token.ThrowIfCancellationRequested();
+                        Enter(lane, id, stop);
+                        var enumerator = start(target, attempt).GetAsyncEnumerator(attempt);
+                        (bool Has, Exception? Error) first;
+                        try { first = (await enumerator.MoveNextAsync().ConfigureAwait(false), null); }
+                        catch (Exception error) when (!token.IsCancellationRequested) { first = (false, error); }
+                        catch
                         {
-                            await Close(enumerator, lane, id, served: true).ConfigureAwait(false);
-                            Report(lane, id, index, busy, unavailable, time.GetElapsedTime(began));
-                            yield break;
+                            await Close(enumerator, lane, id, stop).ConfigureAwait(false);
+                            throw;
                         }
-                        (taken, host, position) = (enumerator, id, index);
-                        break;
+                        if (first.Error is null)
+                        {
+                            if (!first.Has)
+                            {
+                                await Close(enumerator, lane, id, stop, served: true).ConfigureAwait(false);
+                                Report(lane, id, index, busy, unavailable, time.GetElapsedTime(began));
+                                yield break;
+                            }
+                            (taken, host, position) = (enumerator, id, index);
+                            break;
+                        }
+                        // Stopped by a live request before its first item: the computer frees for that request now.
+                        var preempted = stop?.IsCancellationRequested == true;
+                        await Close(enumerator, lane, id, stop, served: preempted).ConfigureAwait(false);
+                        if (preempted) throw new WorkPreemptedException();
+                        var refusal = classify(first.Error);
+                        if (refusal == WorkRefusal.None) throw first.Error;
+                        last = first.Error;
+                        if (refusal == WorkRefusal.Preempted && !live)
+                        {
+                            // Background work goes elsewhere or later while a live turn holds this computer's graphics card.
+                            held = true;
+                            gone.Add(id);
+                        }
+                        else if (refusal is WorkRefusal.Busy or WorkRefusal.Preempted)
+                        {
+                            busy++;
+                            anyBusy = true;
+                            // This PC's own background work holds the computer: stop it and wait for this computer.
+                            if (live && StopBackground(lane, id)) break;
+                        }
+                        else
+                        {
+                            unavailable++;
+                            gone.Add(id);
+                        }
                     }
-                    await Close(enumerator, lane, id).ConfigureAwait(false);
-                    var refusal = classify(first.Error);
-                    if (refusal == WorkRefusal.None) throw first.Error;
-                    last = first.Error;
-                    if (refusal == WorkRefusal.Busy) { busy++; anyBusy = true; }
-                    else { unavailable++; gone.Add(id); }
-                }
                 if (taken is not null) break;
-                if (!anyBusy || time.GetUtcNow() >= until) break;
-                if (!queued) { Interlocked.Increment(ref waiting); queued = true; }
+                if (!anyBusy && !behind || time.GetUtcNow() >= until) break;
+                if (!queued)
+                {
+                    Interlocked.Increment(ref waiting);
+                    queued = true;
+                }
+                if (live && !counted)
+                {
+                    lock (gate) liveWaiting[lane] = liveWaiting.GetValueOrDefault(lane) + 1;
+                    counted = true;
+                }
                 var left = until - time.GetUtcNow();
                 var pause = left < Retry ? left : Retry;
                 if (pause > TimeSpan.Zero)
@@ -317,27 +394,43 @@ public sealed class WorkQueue
         finally
         {
             if (queued) Interlocked.Decrement(ref waiting);
+            if (counted) LeaveLine(lane);
         }
-        if (taken is null) throw last ?? new InvalidOperationException("No computer took the request.");
+        if (taken is null)
+        {
+            // A background request a live turn's hold kept from its computer goes on later.
+            if (held) throw new WorkPreemptedException();
+            throw last ?? new InvalidOperationException("No computer took the request.");
+        }
         Report(lane, host!, position, busy, unavailable, time.GetElapsedTime(began));
         try
         {
             yield return taken.Current;
-            while (await taken.MoveNextAsync().ConfigureAwait(false)) yield return taken.Current;
+            while (true)
+            {
+                bool moved;
+                try { moved = await taken.MoveNextAsync().ConfigureAwait(false); }
+                catch (OperationCanceledException) when (stop?.IsCancellationRequested == true && !token.IsCancellationRequested)
+                {
+                    throw new WorkPreemptedException();
+                }
+                if (!moved) break;
+                yield return taken.Current;
+            }
         }
         finally
         {
-            await Close(taken, lane, host!, served: true).ConfigureAwait(false);
+            await Close(taken, lane, host!, stop, served: true).ConfigureAwait(false);
         }
     }
 
     /// <summary>Runs <paramref name="lane"/>'s one-answer request (a transcription) the same way as <see cref="StreamAsync"/>.</summary>
     public async Task<T> RunAsync<TTarget, T>(string lane, IReadOnlyList<TTarget> targets, Func<TTarget, string> hostOf,
         Func<TTarget, CancellationToken, Task<T>> start, Func<Exception, WorkRefusal> classify, DateTimeOffset until,
-        TimeProvider? clock, CancellationToken token)
+        TimeProvider? clock, CancellationToken token, WorkPriority priority = WorkPriority.Live)
     {
-        await foreach (var answer in StreamAsync(lane, targets, hostOf, (target, t) => One(start(target, t)), classify, until, clock, token)
-            .ConfigureAwait(false))
+        await foreach (var answer in StreamAsync(lane, targets, hostOf, (target, t) => One(start(target, t)), classify, until, clock, token,
+            priority).ConfigureAwait(false))
             return answer;
         throw new InvalidOperationException("The request returned nothing.");
     }
@@ -347,17 +440,61 @@ public sealed class WorkQueue
         yield return await answer.ConfigureAwait(false);
     }
 
+    private static string Key(string lane, string host) => lane + "|" + host;
+
+    // This PC's requests on a computer that a new request would only wait behind. Called under the gate.
+    private int Others(string lane, string host, bool live)
+    {
+        var all = running.GetValueOrDefault(Key(lane, host));
+        return live && background.TryGetValue(Key(lane, host), out var mine) ? all - mine.Count : all;
+    }
+
+    // Stops this PC's background requests of lane on host; false when there are none.
+    private bool StopBackground(string lane, string host)
+    {
+        CancellationTokenSource[] stopping;
+        lock (gate) stopping = background.TryGetValue(Key(lane, host), out var list) ? [.. list] : [];
+        foreach (var source in stopping)
+        {
+            // The callbacks (closing the request) run off this thread, so the live request goes on at once.
+            try { _ = source.CancelAsync(); }
+            catch (ObjectDisposedException) { }
+        }
+        if (stopping.Length == 0) return false;
+        Interlocked.Add(ref stopped, stopping.Length);
+        Preempted?.Invoke(lane, host);
+        return true;
+    }
+
+    private void LeaveLine(string lane)
+    {
+        lock (gate)
+        {
+            var left = liveWaiting.GetValueOrDefault(lane) - 1;
+            if (left <= 0) liveWaiting.Remove(lane);
+            else liveWaiting[lane] = left;
+        }
+    }
+
     private void Report(string lane, string host, int position, int busy, int unavailable, TimeSpan waited)
     {
         if (position > 0 || busy > 0 || unavailable > 0) Rerouted?.Invoke(lane, new(host, position, busy, unavailable, waited));
     }
 
-    private void Enter(string lane, string host)
+    private void Enter(string lane, string host, CancellationTokenSource? stop)
     {
-        lock (gate) running[lane + "|" + host] = running.GetValueOrDefault(lane + "|" + host) + 1;
+        lock (gate)
+        {
+            var key = Key(lane, host);
+            running[key] = running.GetValueOrDefault(key) + 1;
+            if (stop is null) return;
+            if (!background.TryGetValue(key, out var list)) background[key] = list = [];
+            list.Add(stop);
+        }
     }
 
-    private async ValueTask Close<T>(IAsyncEnumerator<T> enumerator, string lane, string host, bool served = false)
+    private async ValueTask Close<T>(IAsyncEnumerator<T> enumerator, string lane, string host, CancellationTokenSource? stop,
+        bool served = false)
     {
         try { await enumerator.DisposeAsync().ConfigureAwait(false); }
         finally
@@ -365,9 +502,14 @@ public sealed class WorkQueue
             TaskCompletionSource wake;
             lock (gate)
             {
-                var key = lane + "|" + host;
+                var key = Key(lane, host);
                 if (running.GetValueOrDefault(key) <= 1) running.Remove(key);
                 else running[key]--;
+                if (stop is not null && background.TryGetValue(key, out var list))
+                {
+                    list.Remove(stop);
+                    if (list.Count == 0) background.Remove(key);
+                }
                 wake = freed;
                 // Only a request that ran frees its computer for a waiting one; a refusal changes nothing.
                 if (served) freed = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -375,6 +517,5 @@ public sealed class WorkQueue
             if (served) wake.TrySetResult();
         }
     }
-
     public override string ToString() => nameof(WorkQueue);
 }

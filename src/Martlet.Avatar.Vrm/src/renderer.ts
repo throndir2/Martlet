@@ -1,9 +1,10 @@
 import * as THREE from "three";
 import { finite, integer, requireValid, type VrmCapabilities } from "./inspect.js";
-import { VrmRuntime } from "./runtime.js";
+import { cheekFrame, VrmRuntime } from "./runtime.js";
 import type { VrmHit } from "./touch.js";
 
 interface Point { x: number; y: number }
+interface CheekSurface { right: Point; down: Point; visible: number }
 
 /** Host-driven WebGL renderer. Construct one per canvas; no hidden RAF or audio activation. */
 export class VrmAvatarAdapter extends VrmRuntime {
@@ -77,15 +78,19 @@ export class VrmAvatarAdapter extends VrmRuntime {
 
   /**
    * Where the face is now, in the canvas's drawing-buffer pixels (y down), for drawings over it: its middle, width, roll
-   * (radians, clockwise), the cheeks, eyes and mouth (left and right as the viewer sees them) and the top of the head.
-   * Undefined without a head bone or while the face points away from the camera.
+   * (radians, clockwise), the cheeks, eyes and mouth (left and right as the viewer sees them) and the top of the head, from
+   * the posed head bone (`tracking` "bones"), so it follows every turn of the head. Each cheek's surface comes with it: one
+   * face width across and down it on the canvas, and how much it shows as the head turns. Undefined without a head bone or
+   * while the face points away from the camera.
    */
   faceAnchor(): { x: number; y: number; width: number; angle: number; cheekLeft: Point; cheekRight: Point; eyeLeft: Point;
-    eyeRight: Point; mouth: Point; top: Point } | undefined {
+    eyeRight: Point; mouth: Point; top: Point; tracking: "bones"; cheekLeftFrame: CheekSurface; cheekRightFrame: CheekSurface }
+    | undefined {
     if (this.closed) return undefined;
     const face = this.faceGeometry();
     if (!face) return undefined;
-    const toCamera = this.camera.getWorldPosition(new THREE.Vector3()).sub(face.center).normalize();
+    const camera = this.camera.getWorldPosition(new THREE.Vector3());
+    const toCamera = camera.clone().sub(face.center).normalize();
     if (face.forward.dot(toCamera) < 0.15) return undefined;
     const { width, height } = this.renderer.domElement;
     const point = (v: THREE.Vector3): Point => {
@@ -97,9 +102,12 @@ export class VrmAvatarAdapter extends VrmRuntime {
     const right = point(face.center.clone().addScaledVector(face.side, face.width / 2));
     const size = Math.hypot(right.x - left.x, right.y - left.y);
     if (![middle.x, middle.y, size].every(Number.isFinite) || size <= 0) return undefined;
+    const down = face.up.clone().negate();
     return { x: middle.x, y: middle.y, width: size, angle: Math.atan2(right.y - left.y, right.x - left.x),
       cheekLeft: point(face.cheekLeft), cheekRight: point(face.cheekRight), eyeLeft: point(face.eyeLeft),
-      eyeRight: point(face.eyeRight), mouth: point(face.mouth), top: point(face.top) };
+      eyeRight: point(face.eyeRight), mouth: point(face.mouth), top: point(face.top), tracking: "bones",
+      cheekLeftFrame: cheekFrame(face.cheekLeft, face.cheekLeftAcross, down, face.cheekLeftNormal, face.width, camera, point),
+      cheekRightFrame: cheekFrame(face.cheekRight, face.cheekRightAcross, down, face.cheekRightNormal, face.width, camera, point) };
   }
 
   /** What of the posed character is at a point of the canvas (`x`, `y` fractions 0..1, origin top-left, +y down), through

@@ -99,12 +99,15 @@ internal static class EarlyReplyCheck
 
     // What each scenario must show: promoted where expected, nothing heard or shown before the turn ended, every start that was
     // let go stopped (still streaming, so its request aborted) with nothing of it played, and (where the reply started early in
-    // the pause that ended the turn) the first audio much sooner.
+    // the pause that ended the turn) the first audio much sooner. The live floor: Live when the turn ended and held by the one
+    // reply started early that waits (never two), and held by no reply once the reply is done.
     private static bool Passed(Script script, Run soon, Run late, double? saved, int pipeline)
     {
         var common = soon.PlayedBeforeTurnEnded == 0 && soon.ShownBeforeTurnEnded == 0 && late.Starts == 0 &&
             soon.FirstAudioAfterTurnEndMs is not null && late.FirstAudioAfterTurnEndMs is not null &&
-            soon.LetGo.All(turn => turn is { State: nameof(ConversationState.Canceled), MayHavePlayed: false });
+            soon.LetGo.All(turn => turn is { State: nameof(ConversationState.Canceled), MayHavePlayed: false }) &&
+            soon.FloorHoldsWhenDone == 0 && late.FloorHoldsWhenDone == 0 &&
+            (soon.Starts == 0 || soon.FloorAtTurnEnd == nameof(LiveFloorLevel.Live) && soon.FloorHoldsAtTurnEnd == 1);
         return script.Name switch
         {
             "incomplete" or "plain" => common && soon.Outcome == EarlyReplyRecord.Promoted && soon.Starts == 1 && soon.Requests == 1 &&
@@ -130,6 +133,9 @@ internal static class EarlyReplyCheck
         // Each reply started early that was let go, as it ended: its state, whether any of it may have played, and how much
         // text it had (never shown).
         internal readonly List<(string State, bool MayHavePlayed, int Characters)> LetGo = [];
+        // The live floor when the turn ended (its level and how many replies held it) and once the reply was done.
+        internal string? FloorAtTurnEnd;
+        internal int FloorHoldsAtTurnEnd, FloorHoldsWhenDone = -1;
         internal double? FirstAudioAfterTurnEndMs => FirstAudioMs is { } audio && TurnEndedMs is { } ended ? Math.Round(audio - ended) : null;
 
         internal object Report() => new
@@ -140,6 +146,7 @@ internal static class EarlyReplyCheck
             letGo = LetGo.Select(turn => new { state = turn.State, mayHavePlayed = turn.MayHavePlayed, textCharacters = turn.Characters }),
             voicePieces = VoicePieces, firstVoiceAskedMs = FirstVoiceAskedMs,
             playedBeforeTurnEnded = PlayedBeforeTurnEnded, shownBeforeTurnEnded = ShownBeforeTurnEnded,
+            liveFloor = new { atTurnEnd = FloorAtTurnEnd, repliesAtTurnEnd = FloorHoldsAtTurnEnd, repliesWhenDone = FloorHoldsWhenDone },
             decisions = Decisions.Select(d => new { atMs = Math.Round(d.AtMs), what = d.What }),
             latencyLine = LatencyLine
         };
@@ -191,6 +198,17 @@ internal static class EarlyReplyCheck
             var gate = script.Verdict is null ? null : new EndOfTurnGate(Plain);
             var cap = gate?.DetectorEndSilence ?? Plain;
             var starts = new EarlyReplyGate(early ? new EarlyReplyOptions() : EarlyReplyOptions.Off);
+            // The live floor as the desktop feeds it (docs/CONVERSATION.md, Live floor): your voice, then real words in the quick
+            // transcript make it Live, and each reply holds it until its voice is made; a reply started early holds it from its
+            // start and ends its hold at once when it is let go.
+            using var floor = new LiveFloor();
+            floor.Changed += change => Note($"the live floor went {change.To.ToString().ToLowerInvariant()} ({change.Why})");
+            floor.Heard();
+            LiveFloorReply? heldFloor = null;
+            var floorDone = new List<Task>();
+            void HoldUntilMade(ConversationTurn turn, LiveFloorReply hold) =>
+                floorDone.Add(turn.Synthesized.ContinueWith(_ => hold.End("the reply's voice was made"), CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
             ConversationTurn? held = null;
             EarlyAsk? heldAsk = null;
             long heldAt = 0;
@@ -216,6 +234,7 @@ internal static class EarlyReplyCheck
                 var voiceBack = script.ResumeAtMs > 0 && pauses == 1 && at > script.ResumeAtMs && at <= script.ResumeAtMs + script.ResumeForMs;
                 if (voiceBack)
                 {
+                    floor.Heard();
                     if (silenceFrames > 0)
                     {
                         Note("your voice came back");
@@ -223,6 +242,8 @@ internal static class EarlyReplyCheck
                         if (starts.VoiceResumed() && held is not null)
                         {
                             Note("the reply started early was let go");
+                            heldFloor?.End("the reply started early was let go");
+                            heldFloor = null;
                             await LetGoAsync(held, run);
                             held = null;
                         }
@@ -256,6 +277,9 @@ internal static class EarlyReplyCheck
                 {
                     Note(gate is null ? "the quick transcript started (no judge)" : "the judge was asked and the quick transcript started");
                     quick = After(sttMs, quickWords, cancellation);
+                    // Its real words make the live floor Live as soon as it comes, whatever the turn does.
+                    _ = quick.ContinueWith(done => { if (done.IsCompletedSuccessfully) floor.Words("a quick transcript had real words"); },
+                        CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
                     quickPause = pauseIndex;
                     quickTried = false;
                     if (gate is not null)
@@ -273,7 +297,9 @@ internal static class EarlyReplyCheck
                     {
                         heldAsk = new(done.Result, true, false, null, null, false, null);
                         heldAt = TimeProvider.System.GetTimestamp();
+                        heldFloor = floor.BeginReply("a reply started early");
                         held = runtime.StartEarly(Request(done.Result), permissions, prepareVoice: true, cancellation);
+                        HoldUntilMade(held, heldFloor);
                         lock (run.Asked) run.Asked.Add(done.Result);
                         Note($"a reply started early (start {starts.Starts})");
                     }
@@ -294,6 +320,8 @@ internal static class EarlyReplyCheck
                     : "the turn ended: the longer pause for unfinished speech");
                 run.PlayedBeforeTurnEnded = (int)speakers.Samples;
                 run.ShownBeforeTurnEnded = Volatile.Read(ref run.CaptionCount);
+                run.FloorAtTurnEnd = floor.Level.ToString();
+                run.FloorHoldsAtTurnEnd = floor.Replies;
                 // Speech-to-text reuses the quick transcript of this pause (or transcribes the kept speech again).
                 var final = script.Final;
                 if (quick is not null && quickPause == pauseIndex) await quick;
@@ -321,17 +349,23 @@ internal static class EarlyReplyCheck
                         run.Outcome = EarlyReplyRecord.Changed;
                         run.Reason = kept ? heldAsk!.Differs(asked) : "your turn didn't end in that pause";
                         Note($"the reply started early was let go ({run.Reason})");
+                        heldFloor?.End("the reply started early was let go");
+                        heldFloor = null;
                         await LetGoAsync(held, run);
                     }
                     timeline.Early = starts.Starts > 0 ? new(false, starts.Starts, starts.Cancelled) : null;
                     replyStartedAt = TimeProvider.System.GetTimestamp();
                     timeline.Mark("building the request", replyStartedAt);
+                    var hold = floor.BeginReply("a reply to what you said started");
                     reply = runtime.Start(Request(final), permissions, cancellation);
+                    HoldUntilMade(reply, hold);
                     lock (run.Asked) run.Asked.Add(final);
                     Note("the reply started");
                 }
                 var terminal = await reply.Completion.WaitAsync(TimeSpan.FromSeconds(30), cancellation);
                 await reply.OwnershipRelease.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
+                await Task.WhenAll(floorDone).WaitAsync(TimeSpan.FromSeconds(10), cancellation);
+                run.FloorHoldsWhenDone = floor.Replies;
                 run.LatencyLine = ReplyLatency.Describe(timeline, replyStartedAt, TimeProvider.System, terminal, $"Thinking {Model}, voice {VoiceModel}");
             }
             run.Starts = starts.Starts;

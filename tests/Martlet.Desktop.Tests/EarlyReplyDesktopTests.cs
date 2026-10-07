@@ -195,6 +195,11 @@ public sealed class EarlyReplyDesktopTests
             Say(fixture, 25, voice: true);
             Say(fixture, 3, voice: false);
             await fixture.Advance(() => fixture.Chat.Calls == 1 && fixture.Controller.EarlyReply is not null);
+            // It holds the live floor from its start, like any reply (the quick transcript's real words made it Live already).
+            var held = fixture.Controller.EarlyReply!;
+            Assert.Equal(LiveFloorLevel.Live, fixture.Controller.LiveFloor.Level);
+            Assert.Equal(1, fixture.Controller.LiveFloor.Replies);
+            Assert.Equal("a reply started early", held.FloorReply?.Why);
             // You go on talking: the reply started early goes at once, and its request is aborted.
             words.LongerThan = 110_000;
             Say(fixture, 10, voice: true);
@@ -203,6 +208,9 @@ public sealed class EarlyReplyDesktopTests
             Assert.Equal(EarlyReplyRecord.Cancelled, cancelled.Outcome);
             Assert.Equal("you went on talking", cancelled.Reason);
             Assert.Equal(0, fixture.Controller.ContextTurns);
+            // Let go, it no longer holds the live floor (the floor's grace and your voice still do).
+            Assert.True(held.FloorReply!.Ended);
+            Assert.Equal(0, fixture.Controller.LiveFloor.Replies);
             // The note it carried was never consumed: it goes with the next request too.
             Assert.Contains(board.Snapshot(fixture.Clock.GetLocalNow()).Notes, note => note.Source == ContextBoard.Touch);
 

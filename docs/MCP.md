@@ -206,18 +206,57 @@ whether it can run; *Use the conversation model when the pool is empty*; the
 usable slots and whether one stays free for fast jobs; each job kind's
 priority, whether it is fast and whether a member can run it (`canRun`);
 guidance and likely-slowdown warnings; and the desktop's
-`thinking-pool-status.json` (running and waiting jobs by kind, never a job's
-text). `thinking_pool_check` rehearses the production job board with simulated
+`thinking-pool-status.json` (running and waiting jobs by kind, the live floor's
+level, the jobs waiting for the conversation and the ones it stopped this turn
+and in all, never a job's text). `thinking_pool_check` rehearses the production job board with simulated
 members (NOT models): no member, capabilities, the fast slot, priorities, retry
 on another member, a stale job dropped and the migration. On the desktop the
 card reads through `ThinkingPoolSummary`, `ThinkingPoolGuidance`,
-`ThinkingPoolWarnings` and `ThinkingPoolMember-<n>`; the
+`ThinkingPoolWarnings`, `ThinkingPoolLiveFloor` (which members start no new
+pool work while you talk with Martlet because they share the conversation's
+computer) and `ThinkingPoolMember-<n>`; the
 `ThinkingPoolUseConversationModel` box, `ThinkingPoolSlots-<n>`,
 `ThinkingPoolRemove-<n>` and `DeepThinkingPool-<host>` (*Join the Thinking
 pool*) save `thinking-pool.json`, so they need `--allow-ui-effects`.
 
 ```powershell
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"thinking_pool_check"},{"name":"thinking_pool_status"}]'
+```
+
+### Live floor (the live turn first)
+
+The live floor puts the live conversation turn before all background work
+([The live floor](CONVERSATION.md#the-live-floor-the-live-turn-comes-first)).
+`live_floor_status` (`dataDirectory`) reads the data directory's routes and
+Thinking pool: what the conversation runs on (`resources`: Thinking, voice and
+listening, each on `this-pc`, a home computer or a cloud provider, with the
+paired hosts and routes the floor holds while you talk), which pool members
+share it (`members[].shares`), what the floor does to each job kind on such a
+member at Listening and at Live (`rules`), and the desktop's `live-floor.json`
+(`desktop.file`: its level, replies holding it, Live periods, live resources,
+members, what it held and stopped by kind this turn and in all with the reply
+latency part, the hold client, the hosts asked and the holds they granted, the
+work queue's stopped background requests and the last changes with why; never
+what was said). `Invoke-MartletMcp.ps1` gives it the disposable data directory
+unless one is named. `live_floor_check` (optional `said`: up to 32 lines of
+your own to classify) rehearses the production `LiveFloor`, `LiveFloorRules`,
+`ThinkingJobBoard`, `BackgroundJobs` and `WorkQueue` with fixture inputs and
+simulated members (NOT models), and returns `passed`, each line's `realWords`
+and each step: which words go Live, the levels on a clock of their own (voice,
+quiet, a sound, words, a reply and its grace), the board at Listening (new work
+waits for the conversation, running work and judges go on) and at Live (a
+summary dropped as `Preempted`, remembering and naming stopped and queued again,
+touch zones going on, judges running), a member on another computer never held,
+a think stopped and going on from what it wrote (in place as the unfinished
+assistant message, or again with it as context), research waiting for the
+conversation instead of being refused, the conversation model's own place held
+above Idle, and the work queue stopping this PC's background request for a live
+reply. The desktop log's `Live floor:` lines say each change, and the reply
+latency line ends with what the floor held and stopped
+(`latency_report` returns it as `liveFloor`).
+
+```powershell
+.\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"live_floor_check","arguments":{"said":["Mm-hmm.","Can you check the weather?"]}},{"name":"live_floor_status"}]'
 ```
 
 ### Searching past conversations
@@ -2526,7 +2565,8 @@ times, M cancelled*) and `newest` (each reply's
 `spokenPieces`, `firstPieceSpeechSeconds`, `firstPieceMadeMs`, `voicePauses`,
 `voicePausedMs`, `models`,
 `interrupted`, `restarted`, `pausedForYouMs`, `resumed`, `startedEarlyMs`,
-`earlyStarts`, `earlyCancelled`, `legacy`). It only reads the log: no audio, network or provider
+`earlyStarts`, `earlyCancelled`, `liveFloor` (what the live floor held and stopped for
+that turn, from *Live floor: held 2 pool jobs, stopped 1 (think longer).*, else null), `legacy`). It only reads the log: no audio, network or provider
 request.
 
 `turn_judge_check` checks always listening's end-of-turn judge (Companion ›
@@ -2569,12 +2609,18 @@ stopped talking), `turnEndedMs`, `firstAudioAfterTurnEndMs`, `startedEarly`,
 `thinkingRequests`, `abortedRequests`, `askedWith`, `letGo` (each reply let
 go: its `state`, `mayHavePlayed` and `textCharacters`), `voicePieces`,
 `firstVoiceAskedMs`, `playedBeforeTurnEnded` and `shownBeforeTurnEnded` (both
-0) and the reply `latencyLine`, plus `savedMs` per scenario. `ok` when each
+0), `liveFloor` (the production `LiveFloor`, fed as the desktop feeds it:
+`atTurnEnd`, its level when the turn ended, `repliesAtTurnEnd` and
+`repliesWhenDone`, how many replies held it then and once the reply was done;
+its changes are among the `decisions`) and the reply `latencyLine`, plus
+`savedMs` per scenario. `ok` when each
 scenario does what it should: promoted with one request (`incomplete`,
 `plain`), let go once with its request aborted and the second start promoted
 (`resumed`), let go and started again with the final words (`changed`),
 nothing started or promoted for `complete`; nothing heard or shown before
-the turn ended, every reply let go `Canceled` with nothing played, and for
+the turn ended, every reply let go `Canceled` with nothing played, the live
+floor `Live` and held by the one reply started early when the turn ended and
+by no reply once the reply was done, and for
 `incomplete`, `plain` and `resumed` the first audio sooner by at least 60% of
 `thinkingMs` + `voiceMs`. Nothing is recorded, played or sent off this PC.
 
@@ -4018,6 +4064,37 @@ the coarse `zones` crossed) and `physical`. Without `points` it only reads.
 Companion › Character › Touch zones' `CharacterPhysicalLast` shows Martlet's
 summary.
 
+**Where Martlet draws over the face**: the blush glow (on a model without a
+blush of its own) and the overlay emotes are drawn around the face each time
+the renderer page draws a frame. A Live2D model's face is pinned to its own
+face meshes. When the model loads, the page moves each head angle
+(`ParamAngleX`, `ParamAngleY`, `ParamAngleZ`) to find the mesh vertices that
+turn with the head. Then it moves every other parameter to its limits, to drop
+the vertices that change shape on their own (hair physics, eyelids, eyes,
+mouth, brows), and puts every parameter back. In each frame the eyes, cheeks,
+mouth and top of the head move with those vertices, so they follow idle
+motions, body sway, breathing, the mouse, a look at a point and gestures as
+the model draws them. A model without the standard angle parameters uses the
+earlier estimate from its head angles. A VRM's face follows its posed head
+bone. Each blush lies on its cheek's surface: a turned head shows the near
+cheek wider and the far cheek narrower, and the far cheek fades out as it
+turns away. `character_face` reads this through UI Automation (`MoveAvatar`'s
+value `"face"`), `samples` times (1 to 60) `gapMs` apart (default 250). It
+changes nothing, so it needs no `--allow-ui-effects`. Each reading in `faces`
+has `n`, `found`, `tracking` (`mesh`, `bones` or `estimate`), `x`, `y` and
+`width` (fractions of the overlay's drawing, +y down), `tilt` (degrees,
+clockwise), `cheekLeft` and `cheekRight` (`x`, `y`, `visible` from 0 to 1,
+`across`, the cheek's width against the face's width, and the hit test there:
+`hit`, `drawables`, `bone`, `mesh`), `overlays` (the overlays showing) and
+`pinned` (Live2D: `carriers`, how many mesh vertices the face rides on, and
+`milliseconds`, how long finding them took at load). `summary` gives the
+`tracking` used, how far the face `moved` (`x`, `y`, `width`, `tilt`) and, for
+each cheek, `onCharacter` (the share of readings over the character),
+`mostlyOver` and `mostlyOverShare` (the topmost drawable, mesh or bone there
+most often, and for what share of readings), `visibleLeast` and `across`
+(`least`, `most`). `MoveAvatar`'s value in `ui_snapshot` shows the last
+reading as `face`.
+
 **Moves, zooms and other changes Martlet hears about**: the overlay notes each
 drag, arrow-key nudge, `ui_move`, zoom (wheel, menu, keys or Martlet's zoom
 buttons), reset zoom, pan of a zoomed view and Reset position, and once it has
@@ -4207,9 +4284,11 @@ tags replies get with the voice chosen now and which follow the voice's cues;
 ...*; for a gesture followed by what the renderer now plays and holds, *Gestures
 now: wink playing, shy held.*; an emote Martlet drew over the face itself, such
 as the blush glow on a model without a blush of its own, adds *drawn by Martlet
-over the face at 414, 88 (50 pixels wide, tilted 3°)* with the face's middle and
-width in the overlay's page pixels and the head's roll (clockwise; a Live2D head's
-roll is a damped share of `ParamAngleZ`, at most 12°), or *(not in view now)* when the face can't be found
+over the face at 414, 88 (50 pixels wide, tilted 3°, pinned to the face's meshes)* with the face's middle and
+width in the overlay's page pixels, the head's roll (clockwise) and how the face is followed (*pinned to the
+face's meshes* for Live2D, *following the head bone* for VRM, or *estimated from the head's angles* for a
+Live2D model without face meshes to pin to; a Live2D estimate's roll is a damped share of `ParamAngleZ`, at
+most 12°; see *Where Martlet draws over the face* and `character_face`), or *(not in view now)* when the face can't be found
 or faces away), also in `logs_tail` `desktop` as *Character expression '脸红'
 played for {blush}.* (*Character gesture 'blush' played for a try, drawn by
 Martlet over the face at ...*); and `CharacterActionsSaveState` *All changes saved.* or *Not saved:
@@ -5168,7 +5247,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

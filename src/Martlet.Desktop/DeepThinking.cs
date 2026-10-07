@@ -51,7 +51,7 @@ internal sealed class DeepThinkTarget
         if (settings.Place == DeepThinkingPlace.Host)
         {
             var host = new HostTextTarget(settings.HostOrigin!, settings.HostId!, settings.HostSpkiFingerprint!, settings.HostDeviceId!,
-                settings.HostCredentialId!.Value, settings.HostRoute);
+                settings.HostCredentialId!.Value, settings.HostRoute) { Background = true };
             var bounds = ThinkLonger.HostBounds(effort);
             var hostLimits = LiveConversationConfiguration.ChatTextLimits with
             {
@@ -74,16 +74,19 @@ internal sealed class DeepThinkTarget
 
     /// <summary>The think's request: Thinking steps On at <paramref name="effort"/> (a paired computer's Ollama gets its own
     /// <c>think</c> and its largest context), its own output budget and the <paramref name="time"/> left (a paired computer's
-    /// gateway takes one request for at most its route's longest job, so a think there gets at most that).</summary>
-    internal ConversationRequest Request(BoundedTextInput input, ThinkEffort effort, TimeSpan time)
+    /// gateway takes one request for at most its route's longest job, so a think there gets at most that). A request that
+    /// <paramref name="continuing"/> an answer the live floor stopped writes on without thinking first: the thinking was done
+    /// before the answer began.</summary>
+    internal ConversationRequest Request(BoundedTextInput input, ThinkEffort effort, TimeSpan time, bool continuing = false)
     {
         if (Host is not null && time > HostRequestTime) time = HostRequestTime;
         var generation = Host is not null
-            ? new GenerationSettings { Reasoning = true, ContextTokens = HostContextTokens }
+            ? new GenerationSettings { Reasoning = !continuing, ContextTokens = HostContextTokens }
             : new GenerationSettings
             {
-                Reasoning = true,
-                ReasoningEffort = effort == ThinkEffort.High ? GenerationSupport.ReasoningEffortHigh : GenerationSupport.ReasoningEffortOn
+                Reasoning = !continuing,
+                ReasoningEffort = continuing ? null
+                    : effort == ThinkEffort.High ? GenerationSupport.ReasoningEffortHigh : GenerationSupport.ReasoningEffortOn
             };
         return new(input, Model, ThinkLonger.Limits(Input, effort, time), ThinkLonger.TurnLimits(time), chat: Chat, host: Host,
             generation: generation);

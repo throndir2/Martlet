@@ -81,7 +81,7 @@ public sealed class ReplyTimeline
 /// in 1069 ms. The voice paused 2 times for 3120 ms in all, waiting for its next audio. Models: Thinking x-ai/grok-4.3, voice
 /// chatterbox-turbo, speech-to-text parakeet-tdt-0.6b-v3-int8.</c>
 /// The pauses are said only when the speakers ran dry mid-reply because the voice was made slower than real time. A reply
-/// started early (<see cref="EarlyStarts"/>) adds <c>Started early at 262 ms, promoted.</c> (or how many starts the turn let
+/// started early (<see cref="EarlyStarts"/>) adds, just before the live floor's part, <c>Started early at 262 ms, promoted.</c> (or how many starts the turn let
 /// go: <c>Started early 2 times, 2 cancelled.</c>), and its own steps show among the end of the turn's, in the order they
 /// happened.
 /// MCP's latency_report reads these lines; the models are the desktop's list of model IDs.</summary>
@@ -117,8 +117,10 @@ public static class ReplyLatency
     /// (<paramref name="replyStartedAt"/>). A reply started early and promoted (<see cref="ReplyTimeline.Early"/>) started
     /// before the user's turn ended: then every step up to the first audio counts, in the order it happened, so the end of the
     /// turn shows among the reply's own steps.</param>
+    /// <param name="floor">What the live floor did to background work for this turn ("held 2 pool jobs, stopped 1 (think
+    /// longer)", <see cref="LiveFloorCounts.Describe"/>), or null when it did nothing.</param>
     public static string? Describe(ReplyTimeline? timeline, long replyStartedAt, TimeProvider clock, ConversationSnapshot reply,
-        string? models, bool interrupted = false, bool passed = false, bool restarted = false)
+        string? models, bool interrupted = false, bool passed = false, bool restarted = false, string? floor = null)
     {
         if (reply.FirstTextAfter is null && reply.FirstAudioAfter is null) return null;
         var steps = new List<(string Step, long At)>();
@@ -181,7 +183,16 @@ public static class ReplyLatency
             if (timings.PausesForYou > 1) text.Append(CultureInfo.InvariantCulture, $" ({timings.PausesForYou} times)");
         }
         text.Append('.');
-        // Replies started early in this turn: the one this reply is (how far into the wait it started), and those let go.
+        if (timings.FirstPieceSpeech is { } speech && timings.FirstPieceSynthesizedAfter is { } made && timings.SpeechRequestAfter is { } asked)
+            text.Append(CultureInfo.InvariantCulture,
+                $" First piece: {speech.TotalSeconds:0.00} s of speech made in {Math.Max(0, (made - asked).TotalMilliseconds):0} ms.");
+        if (timings.VoiceWaits > 0 && timings.VoiceWaited >= NoticeablePause)
+            text.Append(CultureInfo.InvariantCulture,
+                $" The voice paused {timings.VoiceWaits} time{(timings.VoiceWaits == 1 ? "" : "s")} for " +
+                $"{timings.VoiceWaited.TotalMilliseconds:0} ms in all, waiting for its next audio.");
+        if (reply.FellBack) text.Append(" Answered by the Thinking fallback.");
+        // Replies started early in this turn: the one this reply is (how far into the wait it started), and those let go. Next to
+        // what the live floor did, which a reply started early holds from its start.
         if (early is { Starts: > 0 } started)
         {
             var times = started.Starts == 1 ? "time" : "times";
@@ -194,14 +205,8 @@ public static class ReplyLatency
             }
             else text.Append(CultureInfo.InvariantCulture, $" Started early {started.Starts} {times}, {started.Cancelled} cancelled.");
         }
-        if (timings.FirstPieceSpeech is { } speech && timings.FirstPieceSynthesizedAfter is { } made && timings.SpeechRequestAfter is { } asked)
-            text.Append(CultureInfo.InvariantCulture,
-                $" First piece: {speech.TotalSeconds:0.00} s of speech made in {Math.Max(0, (made - asked).TotalMilliseconds):0} ms.");
-        if (timings.VoiceWaits > 0 && timings.VoiceWaited >= NoticeablePause)
-            text.Append(CultureInfo.InvariantCulture,
-                $" The voice paused {timings.VoiceWaits} time{(timings.VoiceWaits == 1 ? "" : "s")} for " +
-                $"{timings.VoiceWaited.TotalMilliseconds:0} ms in all, waiting for its next audio.");
-        if (reply.FellBack) text.Append(" Answered by the Thinking fallback.");
+        // Background work the live turn came before (docs/CONVERSATION.md, Live floor).
+        if (!string.IsNullOrWhiteSpace(floor)) text.Append(" Live floor: ").Append(floor.Trim()).Append('.');
         if (!string.IsNullOrWhiteSpace(models)) text.Append(" Models: ").Append(models.Trim()).Append('.');
         return text.ToString();
     }

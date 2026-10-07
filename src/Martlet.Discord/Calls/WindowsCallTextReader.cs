@@ -27,8 +27,9 @@ public sealed class WindowsCallTextReader : ICallTextReader
 [SupportedOSPlatform("windows10.0.10240")]
 internal static unsafe class WinRtOcr
 {
+    // Below normal priority: reading the screen never slows the conversation's own work on this PC.
     internal static Task<IReadOnlyList<TextLine>> ReadAsync(byte[] bgra, int width, int height, TimeSpan limit, CancellationToken token) =>
-        Task.Run(() => Read(bgra, width, height, limit, token), token);
+        Martlet.Core.Platforms.LowPriority.RunAsync(() => Read(bgra, width, height, limit, token), token, "Martlet text reading");
 
     private static readonly Guid OcrEngineStatics = new("5BFFA85A-3384-3540-9940-699120D428A8");
     private static readonly Guid SoftwareBitmapFactory = new("C99FEB69-2D62-4D47-A6B3-4FDB6A07FDF8");

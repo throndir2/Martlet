@@ -40,9 +40,12 @@ public static class ThinkLonger
 
     /// <summary>The think job kind: as many at once as the places Deep thinking can use have slots (<paramref name="slots"/>),
     /// and as many again waiting in line for the next free one (at most <see cref="MaxPlaces"/> in all), with no hourly limit
-    /// and no time limit (it runs until it is done or canceled).</summary>
+    /// and no time limit (it runs until it is done or canceled). It yields to the live conversation (<see cref="RunYieldingAsync"/>).</summary>
     public static BackgroundJobKind Kind(ThinkLongerSettings settings, int slots = 1) =>
-        new(KindName, Math.Clamp(Math.Max(1, slots) * 2, 2, MaxPlaces), null, null, Doing: "Thinking about") { PoolKind = ThinkingJobKind.ThinkLonger };
+        new(KindName, Math.Clamp(Math.Max(1, slots) * 2, 2, MaxPlaces), null, null, Doing: "Thinking about")
+        {
+            PoolKind = ThinkingJobKind.ThinkLonger, Yields = true
+        };
 
     /// <summary>How long a think's request may take: the provider contracts' ceiling, so in practice it runs until it is done
     /// or canceled.</summary>
@@ -55,9 +58,10 @@ public static class ThinkLonger
     /// of <paramref name="pool"/>, with its computer's name, how much it shares with the conversation, how many thinks it runs
     /// at once and the other work its computer is kept free for (<paramref name="duties"/>, by computer name: singing, image
     /// generation), so the broker places a think on a general computer first. <paramref name="can"/> says what each member can
-    /// do (text only when null).</summary>
+    /// do (text only when null); each place also says which computer it runs on (<see cref="LiveResources.MachineOf(DeepThinkingSettings)"/>)
+    /// and, when <paramref name="gpus"/> knows, which graphics cards, for the live floor.</summary>
     public static IReadOnlyList<BackgroundPlace> Places(DeepThinkingPool pool, IReadOnlyDictionary<string, IReadOnlyList<string>>? duties = null,
-        Func<DeepThinkingSettings, ThinkingCapability>? can = null)
+        Func<DeepThinkingSettings, ThinkingCapability>? can = null, Func<DeepThinkingSettings, IReadOnlyList<string>>? gpus = null)
     {
         ArgumentNullException.ThrowIfNull(pool);
         return [.. pool.Usable.Take(MaxPlaces).Select(spot => new BackgroundPlace(spot.Key,
@@ -66,8 +70,25 @@ public static class ThinkLonger
             Slots = Math.Clamp(spot.Settings.ThinksAtOnce, 1, BackgroundPlace.MaxSlots),
             Duties = duties?.GetValueOrDefault(spot.Computer) is { Count: > 0 } kept ? [.. kept.Take(8)] : [],
             Can = can?.Invoke(spot.Settings) ?? ThinkingCapability.Text,
-            Model = spot.Settings.Separate ? spot.Settings.ModelId : null
+            Model = spot.Settings.Separate ? spot.Settings.ModelId : null,
+            Machine = LiveResources.MachineOf(spot.Settings),
+            Gpus = gpus?.Invoke(spot.Settings) is { Count: > 0 } cards ? [.. cards.Take(16)] : []
         })];
+    }
+
+    /// <summary>Whether a think on <paramref name="place"/> can go on in place after the live floor stopped it: its server
+    /// continues the assistant's unfinished message (Ollama, on its own port; for the conversation model, where Thinking's
+    /// route runs). Elsewhere a stopped think starts again with what it wrote as context.</summary>
+    public static bool ContinuesInPlace(DeepThinkingSettings place, SetupRoute? thinking)
+    {
+        ArgumentNullException.ThrowIfNull(place);
+        var origin = place.Place switch
+        {
+            DeepThinkingPlace.Endpoint => place.Origin,
+            DeepThinkingPlace.SameAsThinking when thinking?.RouteType == SetupRouteType.ChatCompletions => thinking.Origin,
+            _ => null
+        };
+        return Uri.TryCreate(origin, UriKind.Absolute, out var uri) && uri.Port == GenerationSupport.OllamaPort;
     }
 
     /// <summary>How many thinks <paramref name="places"/> run at once in all.</summary>
@@ -130,10 +151,13 @@ public static class ThinkLonger
     }
 
     /// <summary>What the model is told when the think started (or, with <paramref name="queued"/>, waits in line behind that
-    /// work for the next free computer): its id, and to tell the user now unless it already did.</summary>
-    public static string Started(BackgroundJob job, bool toldUser, string? queued = null) =>
+    /// work for the next free computer, or with <paramref name="forConversation"/> until the conversation pauses): its id, and to
+    /// tell the user now unless it already did.</summary>
+    public static string Started(BackgroundJob job, bool toldUser, string? queued = null, bool forConversation = false) =>
         JsonSerializer.Serialize(new { status = queued is null ? "started" : "queued", id = job.Id, time_limit = job.Kind.TimeLimit is { } limit ? BackgroundJobs.Duration(limit) : "none" }) + "\n" +
-        (queued is null ? "" : $"Every computer that thinks is busy ({queued}), so it starts as soon as one is free. ") +
+        (queued is null ? "" : forConversation
+            ? "It starts as soon as the conversation pauses: the computers that think are kept free for it while the user talks with you. "
+            : $"Every computer that thinks is busy ({queued}), so it starts as soon as one is free. ") +
         (toldUser
             ? "You're thinking about it in the background now. You already told the user, so add nothing more, or at most a few words."
             : "You're thinking about it in the background now. Tell the user now, in one short sentence in character, that you'll " +
@@ -164,10 +188,13 @@ public static class ThinkLonger
     /// messages, the message with its notes) and what that reply said (the reply that called think_longer), then the task, so
     /// the model's prompt cache reuses the conversation instead of reading it again. Without a request (or when it can't be
     /// continued) the task goes alone with <paramref name="personality"/>. The picture or recording the message went with
-    /// isn't sent again.</summary>
+    /// isn't sent again. <paramref name="resume"/>: what the think wrote before the live floor stopped it, sent as the assistant's
+    /// unfinished message to continue in place, or with the task as context to start again.</summary>
     public static BoundedTextInput Input(BoundedTextInput? conversation, string? reply, string task, string? reason, PromptSettings? prompts,
-        string? personality = null)
+        string? personality = null, ThinkResume? resume = null)
     {
+        if (resume is { InPlace: false, Partial: { } before }) task = task + "\n\n" + ResumeNote(before);
+        var continuation = resume is { InPlace: true } ? resume.Partial : null;
         var message = PromptSettings.Fill(prompts, PromptCatalog.BackgroundThink, ("task", task),
             ("reason", reason is null ? "" : "\nWhy it needs thinking: " + reason))!;
         if (conversation is not null)
@@ -178,11 +205,31 @@ public static class ThinkLonger
                 List<TextHistoryMessage> history = [.. origin.History, new(TextHistoryRole.User, origin.SentUserText)];
                 // Exactly as the conversation keeps it (the next reply's history), so their starts stay the same.
                 if (!string.IsNullOrWhiteSpace(reply)) history.Add(new(TextHistoryRole.Assistant, reply));
-                return new BoundedTextInput(message, origin.Personality, history, tools: origin.Tools);
+                return new BoundedTextInput(message, origin.Personality, history, tools: origin.Tools, continuation: continuation);
             }
             catch (ContractException) { }
         }
-        return new BoundedTextInput(message, personality);
+        return new BoundedTextInput(message, personality, continuation: continuation);
+    }
+
+    /// <summary>The most of a stopped think's text that starts it again as context (UTF-8 bytes): the rest of a message's bound
+    /// stays for the task.</summary>
+    public const int MaxResumeBytes = 8_192;
+
+    /// <summary>What a think that starts again is told about the text it wrote before the live conversation stopped it (at most
+    /// <see cref="MaxResumeBytes"/> of it, from its start).</summary>
+    public static string ResumeNote(string partial)
+    {
+        ArgumentNullException.ThrowIfNull(partial);
+        var text = partial.Trim();
+        var clipped = false;
+        while (System.Text.Encoding.UTF8.GetByteCount(text) > MaxResumeBytes)
+        {
+            text = text[..(text.Length * 3 / 4)];
+            clipped = true;
+        }
+        return "You started on this before and were stopped partway. What you had written so far" +
+            (clipped ? " (its start)" : "") + ":\n\n" + text + "\n\nUse it, and write the complete result now, from the beginning.";
     }
 
     /// <summary>The think's message within a destination's <paramref name="bounds"/>: the tools are dropped when it doesn't take
@@ -201,7 +248,7 @@ public static class ThinkLonger
         {
             try
             {
-                var candidate = new BoundedTextInput(full.UserText, personality, history, tools: tools);
+                var candidate = new BoundedTextInput(full.UserText, personality, history, tools: tools, continuation: full.Continuation);
                 if (candidate.Utf8Bytes <= bounds.MaxInputBytes && candidate.History.Count <= bounds.MaxHistoryMessages &&
                     candidate.InputTokenReservation <= bounds.MaxInputTokens)
                     return candidate;
@@ -210,7 +257,7 @@ public static class ThinkLonger
             if (history.Count > 0) history.RemoveRange(0, Math.Min(2, history.Count));
             else if (personality is not null) personality = null;
             else if (tools.Count > 0) tools = [];
-            else return new BoundedTextInput(full.UserText);
+            else return new BoundedTextInput(full.UserText, continuation: full.Continuation);
         }
     }
 
@@ -235,9 +282,11 @@ public static class ThinkLonger
         new() { TurnTimeout = time > TextGenerationLimits.HardMaxRequestTime ? TextGenerationLimits.HardMaxRequestTime : time, MaxToolRounds = 1 };
 
     /// <summary>The reply's generation settings with Thinking steps On at <paramref name="effort"/>, whatever the replies use;
-    /// <paramref name="withoutReasoning"/> (the model refused the choice before) leaves the model's own default.</summary>
-    public static GenerationSettings? Generation(GenerationSettings? reply, ThinkEffort effort, bool withoutReasoning)
+    /// <paramref name="withoutReasoning"/> (the model refused the choice before) leaves the model's own default. A request
+    /// <paramref name="continuing"/> an answer the live floor stopped has Thinking steps Off: the thinking came before the answer.</summary>
+    public static GenerationSettings? Generation(GenerationSettings? reply, ThinkEffort effort, bool withoutReasoning, bool continuing = false)
     {
+        if (continuing) return (reply ?? new()) with { Reasoning = false, ReasoningEffort = null };
         var on = (reply ?? new()) with
         {
             Reasoning = true,
@@ -307,6 +356,8 @@ public sealed class BackgroundThink
     public string? Doing { get; init; }
     /// <summary>How many requests it sent (one, once it started).</summary>
     public int Attempts { get; private set; }
+    /// <summary>The visible text the last request wrote, also when it was stopped (what a think the live floor stopped keeps).</summary>
+    public string Partial { get; private set; } = "";
 
     /// <summary>Works <paramref name="job"/> out until <paramref name="token"/> is canceled (the job list's cancel, or the time
     /// limit of a kind that has one), with the time the job has left (anything done before it, such as checking a model fits,
@@ -324,8 +375,106 @@ public sealed class BackgroundThink
         Attempts++;
         var terminal = await started.Completion.ConfigureAwait(false);
         await started.OwnershipRelease.ConfigureAwait(false);
+        Partial = started.Content.Text;
         AttemptFinished?.Invoke(terminal);
         token.ThrowIfCancellationRequested();
         return ThinkLonger.Outcome(terminal, started.Content.Text);
     }
+}
+
+/// <summary>What a background think wrote before the live floor stopped it (<see cref="Partial"/>), and how it goes on:
+/// <see cref="InPlace"/>, its next request sends the text as the assistant's unfinished message and the server writes on from
+/// there (<see cref="ThinkLonger.ContinuesInPlace"/>); otherwise it starts again with the text as context
+/// (<see cref="ThinkLonger.ResumeNote"/>) and writes the whole result.</summary>
+public sealed record ThinkResume(string Partial, bool InPlace)
+{
+    /// <summary>The most a continuation in place may carry (UTF-8 bytes): one message's bound, less room to spare.</summary>
+    public const int MaxInPlaceBytes = BoundedTextInput.HardMaxUtf8Bytes - 1_024;
+
+    /// <summary>The result once the next request is done: what was written before, then what it added (<paramref name="written"/>,
+    /// its text as it came, when known), when it went on in place; otherwise what it wrote.</summary>
+    public BackgroundJobOutcome Combine(BackgroundJobOutcome next, string? written = null)
+    {
+        ArgumentNullException.ThrowIfNull(next);
+        return InPlace && next.Result is { } added ? next with { Result = Join(Partial, written is { Length: > 0 } ? written : added).Trim() } : next;
+    }
+
+    /// <summary>The text written before the stop, then the text written after it in place. The spacing at the stop may be lost
+    /// on either side, so a space goes back between a sentence's end and the next word; anything else joins as it came (a
+    /// word may have been cut in two).</summary>
+    public static string Join(string before, string after)
+    {
+        ArgumentNullException.ThrowIfNull(before);
+        ArgumentNullException.ThrowIfNull(after);
+        if (before.Length == 0 || after.Length == 0 || char.IsWhiteSpace(before[^1]) || char.IsWhiteSpace(after[0])) return before + after;
+        return before[^1] is '.' or '!' or '?' or ',' or ';' or ':' && char.IsLetter(after[0]) ? before + " " + after : before + after;
+    }
+
+    public override string ToString() => $"{nameof(ThinkResume)} ({Partial.Length} characters, {(InPlace ? "in place" : "again")})";
+}
+
+/// <summary>Runs background thinks that yield to the live conversation (docs/CONVERSATION.md, Live floor).</summary>
+public static class YieldingThink
+{
+    /// <summary>How long a think waits before it asks again on a computer that kept its graphics card for a live turn.</summary>
+    public static TimeSpan HeldRetry { get; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>Runs <paramref name="job"/> (a kind that <see cref="BackgroundJobKind.Yields"/>) on the place it holds: the think
+    /// <paramref name="think"/> makes for that place and what it goes on from (null the first time). When the live floor needs the
+    /// place (<see cref="BackgroundJob.Stopping"/>), the request stops, the job keeps what it wrote, waits for a place the floor
+    /// allows (<see cref="BackgroundJobs.ReseatAsync"/>: Paused, waiting for the conversation) and goes on there: in place where
+    /// <paramref name="inPlace"/> says the place's server continues an unfinished message, else again from the start with the
+    /// text as context. When the place's computer refused or stopped it because another live turn holds its graphics card
+    /// (<paramref name="held"/>, asked with the <see cref="System.Diagnostics.Stopwatch"/> time the request began), it waits
+    /// <see cref="HeldRetry"/> and goes on the same way. <paramref name="stopped"/> hears about each stop (for the desktop log).</summary>
+    public static async Task<BackgroundJobOutcome> RunAsync(BackgroundJobs jobs, BackgroundJob job,
+        Func<BackgroundPlace, ThinkResume?, BackgroundThink> think, Func<BackgroundPlace, bool> inPlace, CancellationToken token,
+        Action<BackgroundPlace, ThinkResume?>? stopped = null, Func<BackgroundPlace, long, bool>? held = null)
+    {
+        ArgumentNullException.ThrowIfNull(jobs);
+        ArgumentNullException.ThrowIfNull(job);
+        ArgumentNullException.ThrowIfNull(think);
+        ArgumentNullException.ThrowIfNull(inPlace);
+        ThinkResume? resume = null;
+        while (true)
+        {
+            var place = job.Place ?? throw new InvalidOperationException("The job holds no place.");
+            var current = think(place, resume);
+            using var attempt = CancellationTokenSource.CreateLinkedTokenSource(token, job.Stopping);
+            var began = System.Diagnostics.Stopwatch.GetTimestamp();
+            BackgroundJobOutcome outcome;
+            try { outcome = await current.RunAsync(job, attempt.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested && job.Stopping.IsCancellationRequested)
+            {
+                var kept = Kept(resume, current);
+                stopped?.Invoke(place, kept);
+                await jobs.ReseatAsync(job, token).ConfigureAwait(false);
+                resume = Next(kept, inPlace(job.Place!));
+                continue;
+            }
+            if (outcome.Result is null && held?.Invoke(place, began) == true)
+            {
+                // Another companion PC's live turn holds that computer's graphics card: wait, then go on there.
+                var kept = Kept(resume, current);
+                stopped?.Invoke(place, kept);
+                job.Report(BackgroundJobState.Paused, BackgroundJob.WaitingForConversation);
+                await Task.Delay(HeldRetry, current.Clock, token).ConfigureAwait(false);
+                job.Report(BackgroundJobState.Running);
+                resume = Next(kept, inPlace(place));
+                continue;
+            }
+            return resume?.Combine(outcome, current.Partial) ?? outcome;
+        }
+    }
+
+    // What it wrote so far: the text it went on from and what it added, or what it wrote again (when that is anything).
+    private static ThinkResume? Kept(ThinkResume? resume, BackgroundThink current)
+    {
+        var written = resume is { InPlace: true } ? ThinkResume.Join(resume.Partial, current.Partial)
+            : current.Partial.Trim().Length > 0 ? current.Partial : resume?.Partial ?? "";
+        return written.Trim().Length == 0 ? null : new(written, false);
+    }
+
+    private static ThinkResume? Next(ThinkResume? kept, bool inPlace) => kept is null ? null
+        : kept with { InPlace = inPlace && System.Text.Encoding.UTF8.GetByteCount(kept.Partial) <= ThinkResume.MaxInPlaceBytes };
 }

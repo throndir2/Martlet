@@ -87,6 +87,33 @@ model judge (a Thinking pool member) has at most 400 ms before the rules decide.
 The pool judge never uses the conversation's own Thinking route, so it never
 evicts the conversation from a local model's prompt cache.
 
+### The live turn comes first (live floor)
+
+Background work used to compete with the reply for the same graphics card: a
+screen summary started the moment you began to speak, a think or a Thinking
+pool job kept running on the card the reply needed, and remembering after a
+reply on a paired host's own model made the next reply wait in line
+(`job.busy`). Windows has no graphics card priority between processes, so
+Martlet now schedules it itself with the
+[live floor](CONVERSATION.md#the-live-floor-the-live-turn-comes-first): your
+voice holds new pool work on members that share the conversation's computer
+(Listening), and real words or a reply stop running summaries, remembering and
+thinks there (Live) until the reply's voice is made; Ollama stops a stopped
+stream within one token, and a think goes on later from what it wrote. A live
+request never waits behind this PC's own background request on a paired host:
+it stops it. Paired hosts that serve a live route keep those graphics cards
+free of pool work for the whole turn (a hold renewed every 5 seconds). When the
+floor held or stopped anything during a turn, the line says so:
+
+```text
+... 2 spoken pieces. Live floor: held 2 pool jobs, stopped 1 (think longer). Models: Thinking qwen3:8b, voice chatterbox-turbo.
+```
+
+The floor's own work is bookkeeping: a level change takes a lock and a list
+walk on the caller's thread, and its log line, status file and host holds run
+on other threads, so it adds nothing to the time to the first audio. MCP's
+`live_floor_status` and `live_floor_check` show it ([MCP](MCP.md#live-floor-the-live-turn-first)).
+
 ## Where the time goes today
 
 From the desktop log before this change (it measured from the reply's start
@@ -715,6 +742,11 @@ check point instead, like LiveKit's *preemptive generation*, Deepgram's
 6. Barge-in never sees a held reply as Martlet speaking (`Speaking`,
    `Held`), and listening goes on as usual. Home Assistant's Assist acts as it
    answers, so a reply that would ask it never starts early.
+7. A held reply holds the [live floor](CONVERSATION.md#the-live-floor-the-live-turn-comes-first)
+   from its start, so background work on the conversation's hardware stops
+   for it as for any reply, and its request goes to a paired host as live
+   work. A reply let go ends its hold at once; one that is taken keeps it until
+   its voice is made.
 
 **What to expect.** On an *Incomplete* turn that you meant to end, the reply is
 ready when the longer pause ends the turn: the time to the first audio after
@@ -731,7 +763,7 @@ it ends, *Early reply: promoted after 1340 ms; it started 262 ms into your pause
 (you went on talking); ...*. The reply latency line adds *Started early at 262
 ms, promoted.* (or *(started early 2 times, 1 cancelled)*, or for a reply that
 started normally after its turn let go of every start, *Started early 1 time, 1
-cancelled.*); the reply's own steps before the turn ended show among the end of
+cancelled.*), just before its *Live floor* part; the reply's own steps before the turn ended show among the end of
 the turn's, in the order they happened, then *promoted* when it was taken.
 Companion › Listening's `TalkEarlyRepliesStatus` counts the newest outcomes,
 and MCP's `latency_report` sums them (`early`). MCP's `early_reply_check`

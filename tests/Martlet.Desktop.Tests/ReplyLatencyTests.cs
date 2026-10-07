@@ -50,9 +50,12 @@ public sealed class ReplyLatencyTests
         var started = stopped + (long)(0.262 * clock.TimestampFrequency);
         var timeline = new ReplyTimeline(clock, ReplyTimeline.YouStopped, stopped) { Early = new(true, 2, 1) };
         timeline.Mark(ReplyLatency.EndOfSpeech, stopped + (long)(1.6 * clock.TimestampFrequency));
-        var promoted = ReplyLatency.Describe(timeline, started, clock, Reply(new ConversationTimings(StartedEarly: true)), null)!;
-        Assert.Contains("Started early at 262 ms, promoted (started early 2 times, 1 cancelled).", promoted);
+        var promoted = ReplyLatency.Describe(timeline, started, clock, Reply(new ConversationTimings(StartedEarly: true)), null,
+            floor: "held 1 pool job")!;
+        // Next to what the live floor did, which the reply held from its start.
+        Assert.Contains("Started early at 262 ms, promoted (started early 2 times, 1 cancelled). Live floor: held 1 pool job.", promoted);
         var parsed = LatencyReport.Parse(DateTimeOffset.Now, promoted)!;
+        Assert.Equal("held 1 pool job", parsed.Floor);
         Assert.Equal(262, parsed.StartedEarlyMs);
         Assert.Equal(2, parsed.EarlyStarts);
         Assert.Equal(1, parsed.EarlyCancelled);
@@ -87,6 +90,29 @@ public sealed class ReplyLatencyTests
         Assert.Equal(0, early.GetProperty("playedBeforeTurnEnded").GetInt32());
         Assert.Equal(1, early.GetProperty("thinkingRequests").GetInt32());
         Assert.Contains("ms, promoted.", early.GetProperty("latencyLine").GetString());
+        // The reply started early held the live floor when the turn ended, and no reply held it once the reply was done.
+        var floor = early.GetProperty("liveFloor");
+        Assert.Equal("Live", floor.GetProperty("atTurnEnd").GetString());
+        Assert.Equal(1, floor.GetProperty("repliesAtTurnEnd").GetInt32());
+        Assert.Equal(0, floor.GetProperty("repliesWhenDone").GetInt32());
+    }
+
+    [Fact]
+    public void What_the_live_floor_held_and_stopped_is_said_in_the_line_and_read_back_by_latency_report()
+    {
+        var clock = TimeProvider.System;
+        var line = ReplyLatency.Describe(null, clock.GetTimestamp(), clock, Reply(new ConversationTimings()), "Thinking qwen3:8b",
+            floor: "held 2 pool jobs, stopped 1 (think longer)")!;
+        Assert.Contains(" Live floor: held 2 pool jobs, stopped 1 (think longer). Models: Thinking qwen3:8b.", line);
+        var parsed = LatencyReport.Parse(DateTimeOffset.Now, line)!;
+        Assert.Equal("held 2 pool jobs, stopped 1 (think longer)", parsed.Floor);
+        Assert.Equal("Thinking qwen3:8b", parsed.Models);
+        // Without models, and without a live floor part.
+        Assert.Equal("stopped 1 (digest)", LatencyReport.Parse(DateTimeOffset.Now, ReplyLatency.Describe(null, clock.GetTimestamp(), clock,
+            Reply(new ConversationTimings()), null, floor: "stopped 1 (digest)")!)!.Floor);
+        var plain = ReplyLatency.Describe(null, clock.GetTimestamp(), clock, Reply(new ConversationTimings()), "Thinking qwen3:8b")!;
+        Assert.DoesNotContain("Live floor", plain);
+        Assert.Null(LatencyReport.Parse(DateTimeOffset.Now, plain)!.Floor);
     }
 
     [Fact]

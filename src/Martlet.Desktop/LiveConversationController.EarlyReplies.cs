@@ -329,11 +329,17 @@ internal sealed partial class LiveConversationController
     internal bool LetGoEarly(LiveConversationOperation operation, string outcome, string reason)
     {
         if (operation.Early is not { } early || !early.TryLetGo(outcome, reason)) return false;
+        // It no longer holds the live floor (docs/CONVERSATION.md, Live floor): the floor's grace, then your voice, hold it while
+        // you go on talking.
+        operation.FloorReply?.End(EarlyLetGoFloor);
         RecordEarly(new(clock.GetUtcNow(), outcome, Since(early.PauseStartedAt, early.StartedAt), clock.GetElapsedTime(early.StartedAt),
             early.Start, reason));
         operation.Cancel("conversation.early_let_go");
         return true;
     }
+
+    /// <summary>Why a reply started early stops holding the live floor when it is let go.</summary>
+    internal const string EarlyLetGoFloor = "the reply started early was let go";
 
     /// <summary>Lets go of the reply started early that waits now, if any (something else needs the conversation first).</summary>
     internal void LetGoEarly(string reason)
@@ -356,8 +362,9 @@ internal sealed partial class LiveConversationController
     // talking, the words changed, nothing took it in time). Taken: what the window had once the turn ended goes on the reply
     // (who spoke, the words of what went straight to Thinking, its timeline), Martlet commits to answering, the history the
     // request left out is let go of, and the held turn goes on: what it wrote shows and its first piece plays at once. Returns
-    // the outcome to end with when it isn't taken (or Martlet doesn't answer it), and the reply's dispatch lease.
-    private async Task<(SetupWorkOutcome? End, DispatchLease? Lease)> TakenAsync(LiveConversationOperation operation,
+    // the outcome to end with when it isn't taken (or Martlet doesn't answer it), the reply's dispatch lease, and whether
+    // Martlet turned it down for good (the live floor no longer holds for what was heard).
+    private async Task<(SetupWorkOutcome? End, DispatchLease? Lease, bool Dismissed)> TakenAsync(LiveConversationOperation operation,
         EarlyReplyState early, ConversationTurn turn, BoundedTextInput input, CancellationToken worker)
     {
         EarlyPromotion? promotion;
@@ -367,7 +374,7 @@ internal sealed partial class LiveConversationController
             // Taken at the last moment, it goes on; otherwise nothing took it in time.
             promotion = !LetGoEarly(operation, EarlyReplyRecord.Expired, "nothing took it") && early.Promoted ? early.Decided.Result : null;
         }
-        if (promotion is null) return (SetupWorkOutcome.Canceled, null);
+        if (promotion is null) return (SetupWorkOutcome.Canceled, null, false);
         DispatchLease? lease = null;
         bool? ready;
         lock (gate)
@@ -384,12 +391,12 @@ internal sealed partial class LiveConversationController
             }
             if (!operation.OnItsOwn)
             {
-                var (accepted, committed) = Participate(operation, input, commit: true);
+                var (accepted, committed, reason) = Participate(operation, input, commit: true);
                 if (!accepted)
                 {
                     RecordEarly(new(clock.GetUtcNow(), EarlyReplyRecord.Refused, Since(early.PauseStartedAt, early.StartedAt),
                         clock.GetElapsedTime(early.StartedAt), early.Start, "Martlet doesn't answer it now"));
-                    return (SetupWorkOutcome.Completed, null);
+                    return (SetupWorkOutcome.Completed, null, Dismisses(reason));
                 }
                 lease = committed;
             }
@@ -399,7 +406,7 @@ internal sealed partial class LiveConversationController
         }
         RecordEarly(new(clock.GetUtcNow(), EarlyReplyRecord.Promoted, Since(early.PauseStartedAt, early.StartedAt),
             clock.GetElapsedTime(early.StartedAt), early.Start, FirstPieceReady: ready));
-        return (null, lease);
+        return (null, lease, false);
     }
 
     private TimeSpan Since(long from, long to) => TimeSpan.FromSeconds((to - from) / (double)clock.TimestampFrequency);

@@ -1596,7 +1596,7 @@ public partial class LiveConversationWindow : ThemedWindow
             ReplyLatency.Describe(done.LatencyTimeline, done.ReplyStartedAt, done.LatencyTimeline?.Clock ?? clock, finishedReply,
                 done.Authorization.Configuration.LatencyModels(done.Spoken || done.Authorization.Microphone),
                 interrupted: ReferenceEquals(yielded, done) && code == "conversation.interrupted",
-                passed: done.Passed, restarted: continued) is { } latency)
+                passed: done.Passed, restarted: continued, floor: controller.LiveFloorNote) is { } latency)
             ErrorLog.Info(latency);
         // What the reply's tags did (character emotes and the voice's sounds and tones), with any other spelling Martlet took for
         // a tag ([nod] for {nod}); tag names only, never the words.

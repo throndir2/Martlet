@@ -228,8 +228,10 @@ internal sealed partial class AvatarController : IAsyncDisposable
         return started;
     }
 
-    /// <summary>", drawn by Martlet over the face at x, y (n pixels wide, tilted d°)" when the renderer drew the action itself (an
-    /// overlay such as the blush glow, for a model without its own), or null. The tilt is the head's roll, clockwise.</summary>
+    /// <summary>", drawn by Martlet over the face at x, y (n pixels wide, tilted d°, how it follows the face)" when the renderer
+    /// drew the action itself (an overlay such as the blush glow, for a model without its own), or null. The tilt is the head's
+    /// roll, clockwise; the face is pinned to a Live2D model's own face meshes, follows a VRM's head bone, or is estimated
+    /// from a Live2D model's head angles when it has no face meshes to pin to.</summary>
     internal static string? Drawn(System.Text.Json.JsonElement data)
     {
         if (data.ValueKind != System.Text.Json.JsonValueKind.Object || !data.TryGetProperty("overlay", out var overlay) ||
@@ -240,7 +242,15 @@ internal sealed partial class AvatarController : IAsyncDisposable
         {
             var tilt = face.TryGetProperty("tilt", out var roll) && roll.TryGetDouble(out var degrees)
                 ? System.FormattableString.Invariant($", tilted {degrees:0}°") : "";
-            return System.FormattableString.Invariant($", drawn by Martlet over the face at {left:0}, {top:0} ({size:0} pixels wide{tilt})");
+            var follows = face.TryGetProperty("tracking", out var tracking) && tracking.ValueKind == System.Text.Json.JsonValueKind.String
+                ? tracking.GetString() switch
+                {
+                    "mesh" => ", pinned to the face's meshes",
+                    "bones" => ", following the head bone",
+                    "estimate" => ", estimated from the head's angles",
+                    _ => ""
+                } : "";
+            return System.FormattableString.Invariant($", drawn by Martlet over the face at {left:0}, {top:0} ({size:0} pixels wide{tilt}{follows})");
         }
         return ", drawn by Martlet over the face (not in view now)";
     }
