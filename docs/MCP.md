@@ -3225,7 +3225,15 @@ anything.
 Setup runs go **side by side**; nothing refuses a step because another one is
 working. What two runs share is done once: installing Docker Desktop, getting
 Windows ready for it, starting it, building the host image, checking Windows
-Firewall and setting up and pairing this PC's own host service. The second run's
+Firewall and setting up and pairing this PC's own host service. Changes that
+aren't a setup or update (adding or removing a role, status, pairing, warming)
+don't wait for this version's host image: while it isn't built yet (for
+example while *Keep this PC's host service current* builds it right after
+Martlet updated itself), they run with the engine of the version the host
+service runs now, when its image is on this PC and knows the role, and their
+output says so. Opening Windows Firewall during *Set up this PC as a host* runs
+while Docker Desktop starts and the image builds, and *Update hosts now* checks
+and updates every paired host side by side. The second run's
 `HostRunStatus` reads *Waiting: "<other run>" is starting Docker Desktop. This
 continues once that's done...* and carries on afterwards; when the run doing it
 fails, the waiting one stops with the same reason, and when it is canceled, the

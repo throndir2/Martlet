@@ -350,7 +350,7 @@ public partial class MainWindow
             {
                 var target = host.Target(Version);
                 await HostLocal.EnsureDockerAsync(run, Martlet.Core.Installation.ContinueSetupKind.Docker);
-                await HostLocal.EnsureImageAsync(target, run);
+                target = await HostLocal.EngineForChangeAsync(target, job.HostRoleKind, run);
                 // Several graphics cards: the owner picks the one this engine runs on.
                 run.Status($"Checking this PC's graphics cards for {job.Engine}...");
                 var inputs = await HostLocal.DescribeAsync(target, job.HostRoleKind, run.Output, run.Token);

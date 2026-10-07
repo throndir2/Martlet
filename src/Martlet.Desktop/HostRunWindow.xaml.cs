@@ -435,7 +435,9 @@ internal static class HostActions
                     "Remove role"))
                 throw new OperationCanceledException();
             await HostLocal.EnsureDockerAsync(run, action.Verb == HostVerb.Setup ? ContinueSetupKind.HostService : ContinueSetupKind.Docker);
-            await HostLocal.EnsureImageAsync(target, run);
+            // Setup and update install this version's engine; other changes don't wait for it to be prepared.
+            if (action.Verb is HostVerb.Setup or HostVerb.Update) await HostLocal.EnsureImageAsync(target, run);
+            else target = await HostLocal.EngineForChangeAsync(target, role, run);
             if (role is not null && add && input is null)
             {
                 run.Status($"Checking what {role} needs...");
@@ -482,7 +484,7 @@ internal static class HostActions
         HostRunWindow.RunAsync(owner, "Pair your main PC", async run =>
         {
             await HostLocal.EnsureDockerAsync(run, ContinueSetupKind.Docker);
-            await HostLocal.EnsureImageAsync(target, run);
+            target = await HostLocal.EngineForChangeAsync(target, null, run);
             run.Status("Getting a pairing code...");
             var shown = false;
             int exit;

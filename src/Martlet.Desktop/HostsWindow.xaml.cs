@@ -686,10 +686,14 @@ public partial class HostsWindow : ThemedWindow
         if (!HostSetupCommands.IsPrivate(address))
             return (null, "This PC is not on a private network. Connect it to your home network first.");
         var heading = title ?? HostActions.ThisPcSetupTitle;
-        string? firewall;
-        try { firewall = await OpenFirewallAsync(owner, address!, progress, token, heading); }
-        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
-        { firewall = $"Couldn't update Windows Firewall: {error.Message}. Other PCs may not reach this host."; }
+        // Windows Firewall doesn't depend on Docker Desktop or the host image: it opens while those get ready.
+        var opening = OpenFirewallQuietlyAsync();
+        async Task<string?> OpenFirewallQuietlyAsync()
+        {
+            try { return await OpenFirewallAsync(owner, address!, progress, token, heading); }
+            catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+            { return $"Couldn't update Windows Firewall: {error.Message}. Other PCs may not reach this host."; }
+        }
         var version = typeof(App).Assembly.GetName().Version is { } v ? v.ToString(3) : "0.0.0";
         var target = new HostSetupTarget(HostSetupMethod.ThisPcDocker, "", address!,
             HostSetupCommands.SuggestedHostId(Environment.MachineName), version);
@@ -721,6 +725,7 @@ public partial class HostsWindow : ThemedWindow
             run.Output.Report(ready);
             return await then(run, host);
         });
+        var firewall = await opening;
         var status = summary ?? (host is null ? "This PC was not set up as a host. Check the run window for details."
             : "This PC is set up as a host, but the next step stopped. Check the run window for details.");
         return (host, firewall is null ? status : firewall + " " + status);

@@ -583,7 +583,7 @@ public partial class MainWindow
     private void UpdateHosts_Click(object sender, RoutedEventArgs e) => UpdateHostsAsync(automatic: false).Forget();
 
     /// <summary>Brings every paired host that runs an older Martlet (or does not report its version) to this PC's version,
-    /// one at a time and without a console window. A host that would need a password, sudo or an approval there keeps an
+    /// side by side (each host is its own computer) and without a console window. A host that would need a password, sudo or an approval there keeps an
     /// Update host command on its Devices card, which runs the same update in a run window. A host this Martlet is already
     /// updating by another route (an Update host run window, a command from another computer) is left to that run. A host
     /// busy with another change (an install, another computer's update, its console) is not interrupted: nothing changes
@@ -626,37 +626,38 @@ public partial class MainWindow
         {
             if (!automatic) UpdateStatusText.Text = hosts.Count == 0 && Role != DeviceRole.Host
                 ? "No host is paired yet." : "Checking host versions...";
-            foreach (var host in hosts)
+            // Hosts are separate computers: each is checked and updated side by side, so a slow one never holds up the rest.
+            async Task UpdateOneAsync(PairedHost host)
             {
                 if (closing) return;
                 var key = UpdateKey(host);
                 var check = await HostControl.CheckAsync(host.Pairing, HardwareStore, lifetime.Token);
                 hostChecks[host.HostId] = check;
-                if (check.Reachable != true) { unreachable++; continue; }
+                if (check.Reachable != true) { unreachable++; return; }
                 if (!AppVersions.IsOlder(check.MartletVersion, Version))
                 {
                     current++;
                     if (!hostUpdates.IsUpdating(key)) hostUpdates.Current(key, check.MartletVersion ?? Version, DateTime.Now, seen: true, thisPcIds);
                     if (key == ThisPcHostId) OwnHostFoundCurrent(check.MartletVersion ?? Version);
-                    continue;
+                    return;
                 }
                 // Another route of this Martlet updates it right now; a second run would only find the host locked by it.
-                if (hostUpdates.IsUpdating(key)) { already++; continue; }
+                if (hostUpdates.IsUpdating(key)) { already++; return; }
                 var attempt = host.HostId + "@" + Version;
-                if (automatic && !hostUpdateAttempts.Add(attempt)) continue;
+                if (automatic && !hostUpdateAttempts.Add(attempt)) return;
                 if (host.Method == HostSetupMethod.Agent)
                 {
                     HostUpdateResult result;
                     using (hostUpdates.Begin(key)) result = await AskHostToUpdateAsync(host);
                     if (result == HostUpdateResult.Updated) asked++;
                     else Record(host.HostId, attempt, result);
-                    continue;
+                    return;
                 }
                 if (!host.CanLaunch)
                 {
                     hostUpdates.Note(host.HostId, "This host needs an update. Set how Martlet signs in over SSH, or choose Through Martlet on that computer.");
                     failed++;
-                    continue;
+                    return;
                 }
                 HostUpdateResult outcome;
                 using (hostUpdates.Begin(key)) outcome = await UpdateHostQuietlyAsync(host.HostId, host.Target(Version), host.SshHostKey, asked: !automatic);
@@ -664,9 +665,11 @@ public partial class MainWindow
                 if (outcome == HostUpdateResult.Updated && key == ThisPcHostId) OwnHostFoundCurrent(Version);
                 if (outcome == HostUpdateResult.Updated) hostChecks[host.HostId] = await HostControl.CheckAsync(host.Pairing, HardwareStore, lifetime.Token);
             }
-            // This PC's own host service when this PC isn't paired with it (otherwise the loop above already covered it).
-            if (Role == DeviceRole.Host && !closing && thisPcIds.Count == 0 && (only is null || only.Contains(ThisPcHostId)))
+
+            // This PC's own host service when this PC isn't paired with it (otherwise the hosts above already cover it).
+            async Task UpdateThisPcAsync()
             {
+                if (Role != DeviceRole.Host || closing || thisPcIds.Count > 0 || only is not null && !only.Contains(ThisPcHostId)) return;
                 thisPcHostVersion = await HostSetupCommands.ThisPcGatewayVersionAsync(lifetime.Token);
                 var attempt = ThisPcHostId + "@" + Version;
                 var service = thisPcHostVersion;
@@ -689,6 +692,9 @@ public partial class MainWindow
                     }
                 }
             }
+
+            await Task.WhenAll(hosts.Select(UpdateOneAsync).Append(UpdateThisPcAsync()));
+            if (closing) return;
         }
         catch (OperationCanceledException) { return; }
         finally

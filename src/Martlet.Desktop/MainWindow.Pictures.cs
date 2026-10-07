@@ -270,7 +270,7 @@ public partial class MainWindow
             {
                 var target = pc.Target(Version);
                 await HostLocal.EnsureDockerAsync(run, Martlet.Core.Installation.ContinueSetupKind.Docker);
-                await HostLocal.EnsureImageAsync(target, run);
+                target = await HostLocal.EngineForChangeAsync(target, HostRoles.Pictures, run);
                 var inputs = await HostLocal.DescribeAsync(target, HostRoles.Pictures, run.Output, run.Token);
                 var chosen = HostInputDialog.WithGpu(run, "this PC", "Pictures", inputs, answers) ?? throw new OperationCanceledException();
                 run.Status("Installing Pictures on this PC (a large download)...");
