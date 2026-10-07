@@ -13,6 +13,8 @@ public enum SoundDigestStep
     NoSound,
     /// <summary>Martlet itself may be in what the PC plays (it speaks or sings and Windows can't leave it out).</summary>
     MartletSpeaking,
+    /// <summary>The live conversation needs the judge's hardware now (the live floor): nothing is prepared or judged.</summary>
+    Held,
     /// <summary>A judge is still working on the last clip.</summary>
     Busy,
     /// <summary>A judge took too long; its clip was dropped.</summary>
@@ -60,15 +62,16 @@ public sealed record SoundDigestStatus(bool On, string? Judge, SoundJudgeKind? J
 
 /// <summary>Runs the sound digest on a cadence while it is <see cref="On"/>: about every <see cref="SoundDigestOptions.Every"/>
 /// it takes the newest clip from the buffer and gives it to the judge, but only when something plays (silence is skipped), when
-/// none of the clip may hold Martlet's own voice, and when no judge is still busy (one clip at a time; a judge past the
-/// deadline is canceled and its clip dropped). Each line goes to <paramref name="post"/>; nothing ever waits for it. Each clip
-/// is cleared once judged.</summary>
+/// none of the clip may hold Martlet's own voice, when no judge is still busy (one clip at a time; a judge past the deadline is
+/// canceled and its clip dropped) and when the live conversation doesn't need the judge's hardware (held: nothing is prepared).
+/// Each line goes to <paramref name="post"/>; nothing ever waits for it. Each clip is cleared once judged.</summary>
 public sealed class SoundDigestScheduler : IDisposable
 {
     private readonly object gate = new();
     private readonly PcSoundBuffer buffer;
     private readonly Func<ISoundJudge?> judge;
     private readonly Func<bool> martletAudible;
+    private readonly Func<bool> held;
     private readonly Action<SoundDigestLine> post;
     private readonly TimeProvider clock;
     private readonly SoundDigestOptions options;
@@ -82,12 +85,15 @@ public sealed class SoundDigestScheduler : IDisposable
     private SoundDigestStep lastStep;
     private TimeSpan? lastTook;
 
+    /// <param name="held">Whether the live conversation needs the judge's hardware now (the live floor): the digest skips its
+    /// turn without preparing anything. Null: never.</param>
     public SoundDigestScheduler(PcSoundBuffer buffer, Func<ISoundJudge?> judge, Func<bool> martletAudible,
-        Action<SoundDigestLine> post, SoundDigestOptions? options = null)
+        Action<SoundDigestLine> post, SoundDigestOptions? options = null, Func<bool>? held = null)
     {
         this.buffer = buffer;
         this.judge = judge;
         this.martletAudible = martletAudible;
+        this.held = held ?? (() => false);
         this.post = post;
         clock = buffer.Clock;
         this.options = options ?? new();
@@ -198,6 +204,8 @@ public sealed class SoundDigestScheduler : IDisposable
                     return SoundDigestStep.Dropped;
                 }
                 if (now < nextDue) return SoundDigestStep.Idle;
+                // The judge's hardware serves the live conversation now: skip this turn before any clip is taken.
+                if (held()) return SoundDigestStep.Held;
                 var appended = buffer.LastAppendedAt;
                 if (appended == 0 || clock.GetElapsedTime(appended, now) > options.Fresh) return SoundDigestStep.NoSound;
                 var notBefore = lastAudible == 0 ? 0 : lastAudible + (long)(options.Tail.TotalSeconds * clock.TimestampFrequency);

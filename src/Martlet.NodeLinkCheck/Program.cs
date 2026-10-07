@@ -104,12 +104,13 @@ if (args is ["logs"])
     Console.WriteLine(JsonSerializer.Serialize(logsReport));
     return logsOk ? 0 : 1;
 }
-// With "voice-engine <engine> <endpoint> [text]" it speaks one sentence with a live voice engine's loopback service through
-// the engine's real relay and gateway (VoiceEngineCheck) and prints its report.
-if (args is ["voice-engine", var voiceEngine, var voiceEndpoint, .. var voiceText] && voiceText.Length <= 1)
+// With "voice-engine <engine> <endpoint> [text|-] [data directory]" it speaks one sentence with a live voice engine's loopback
+// service through the engine's real relay and gateway (VoiceEngineCheck) and prints its report; Chatterbox Original uses the
+// style saved in the data directory (chatterbox-style.json), else Resemble's suggestions.
+if (args is ["voice-engine", var voiceEngine, var voiceEndpoint, .. var voiceRest] && voiceRest.Length <= 2)
 {
     var (voiceOk, voiceReport) = await Martlet.NodeLinkCheck.VoiceEngineCheck.RunAsync(voiceEngine, voiceEndpoint,
-        voiceText.FirstOrDefault(), CancellationToken.None);
+        voiceRest.Length > 0 && voiceRest[0] != "-" ? voiceRest[0] : null, voiceRest.Length > 1 ? voiceRest[1] : null, CancellationToken.None);
     Console.WriteLine(JsonSerializer.Serialize(voiceReport));
     return voiceOk ? 0 : 1;
 }

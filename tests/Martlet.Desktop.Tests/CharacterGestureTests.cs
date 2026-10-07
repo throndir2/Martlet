@@ -92,6 +92,10 @@ public sealed class CharacterGestureTests
             AvatarController.Drawn(Reply("{\"started\":true,\"overlay\":true,\"face\":{\"x\":250,\"y\":100,\"width\":80}}")));
         Assert.Equal(", drawn by Martlet over the face at 250, 100 (80 pixels wide, tilted -4°)",
             AvatarController.Drawn(Reply("{\"started\":true,\"overlay\":true,\"face\":{\"x\":250,\"y\":100,\"width\":80,\"tilt\":-4}}")));
+        Assert.Equal(", drawn by Martlet over the face at 250, 100 (80 pixels wide, tilted 3°, pinned to the face's meshes)",
+            AvatarController.Drawn(Reply("{\"started\":true,\"overlay\":true,\"face\":{\"x\":250,\"y\":100,\"width\":80,\"tilt\":3,\"tracking\":\"mesh\"}}")));
+        Assert.Equal(", drawn by Martlet over the face at 250, 100 (80 pixels wide, tilted 0°, following the head bone)",
+            AvatarController.Drawn(Reply("{\"started\":true,\"overlay\":true,\"face\":{\"x\":250,\"y\":100,\"width\":80,\"tilt\":0,\"tracking\":\"bones\"}}")));
         Assert.Equal(", drawn by Martlet over the face (not in view now)",
             AvatarController.Drawn(Reply("{\"started\":true,\"overlay\":true,\"face\":null}")));
     }

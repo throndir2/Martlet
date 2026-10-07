@@ -1,7 +1,8 @@
-"""Martlet Chatterbox Turbo host service.
+"""Martlet Chatterbox host service: Chatterbox Turbo, Chatterbox Nano or the original Chatterbox.
 
-Loopback HTTP front for Resemble AI Chatterbox Turbo. It mirrors the F5 host's
-HTTP shape and NDJSON worker-event protocol so Martlet's relay can consume it.
+Loopback HTTP front for Resemble AI's Chatterbox models (CHATTERBOX_MODEL: chatterbox-turbo, chatterbox-nano or
+chatterbox-original; each host role runs one). It mirrors the F5 host's HTTP shape and NDJSON worker-event protocol so
+Martlet's relay can consume it.
 
 Commands:
   serve                 listen on 127.0.0.1:$MARTLET_CHATTERBOX_PORT (default 50083)
@@ -41,6 +42,7 @@ ROOT = Path(os.environ.get("MARTLET_CHATTERBOX_ROOT", "/opt/martlet-chatterbox")
 MODELS = ROOT / "models"
 CONFIG = MODELS / "worker-config.json"
 MODEL = os.environ.get("CHATTERBOX_MODEL", "chatterbox-turbo")
+# "auto" (the chatterbox-nano role): the NVIDIA GPU when the container has one, otherwise the CPU.
 DEVICE = os.environ.get("MARTLET_CHATTERBOX_DEVICE", "cuda:0")
 PORT = int(os.environ.get("MARTLET_CHATTERBOX_PORT", "50083"))
 
@@ -79,8 +81,8 @@ WHISPER_DB = float(os.environ.get("MARTLET_CHATTERBOX_WHISPER_DB", "-6"))
 # How many speech tokens are drawn between asking the GPU whether the stop token came (the tokens are the same as asking
 # after every one; measured on an RTX 4070, 11.3 -> 11.1 ms a token, the same 30 ms with another program using the card).
 CHECK_EVERY = 4
+# Chatterbox Turbo (huggingface.co/ResembleAI/chatterbox-turbo, MIT) at this revision.
 REVISION = "749d1c1a46eb10492095d68fbcf55691ccf137cd"
-BASE_URL = f"https://huggingface.co/ResembleAI/chatterbox-turbo/resolve/{REVISION}/"
 
 # Sizes and SHA-256 for tokenizer files were computed from the pinned HF revision.
 PINNED_FILES: dict[str, tuple[str, int, str, str, str]] = {
@@ -141,6 +143,86 @@ PINNED_FILES: dict[str, tuple[str, int, str, str, str]] = {
         "MIT",
     ),
 }
+
+
+@dataclass(frozen=True)
+class PinnedModel:
+    """One Chatterbox model a host role installs: its Hugging Face repository at one revision, and the files the service
+    downloads, verifies and loads (role -> file name, bytes, SHA-256, artifact ID, licence). family "turbo" speaks with
+    Turbo's GPT-2 decoder and reads the tags; "original" is the 500M Llama model with exaggeration and CFG weight."""
+
+    key: str
+    name: str
+    repository: str
+    revision: str
+    family: str
+    files: dict[str, tuple[str, int, str, str, str]]
+
+    @property
+    def base_url(self) -> str:
+        return f"https://huggingface.co/{self.repository}/resolve/{self.revision}/"
+
+
+def _renamed(files: dict[str, tuple[str, int, str, str, str]], key: str) -> dict[str, tuple[str, int, str, str, str]]:
+    return {role: (name, size, sha256, artifact.replace("chatterbox-turbo", key), licence)
+            for role, (name, size, sha256, artifact, licence) in files.items()}
+
+
+# Chatterbox Nano (huggingface.co/ResembleAI/chatterbox-nano, MIT): Turbo's architecture with a GPT-2 small backbone. Its
+# decoder, voice encoder and tokenizer files are byte for byte Turbo's; only T3 differs.
+NANO_REVISION = "71ccd1d0081b430592cea481f4307e764e07bc64"
+# The original 500M English Chatterbox (huggingface.co/ResembleAI/chatterbox, MIT): its own T3, decoder and tokenizer, and the
+# same voice encoder. The repository's built-in voice (conds.pt) and multilingual weights are not downloaded.
+ORIGINAL_REVISION = "5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18"
+PINNED_MODELS: dict[str, PinnedModel] = {
+    "chatterbox-turbo": PinnedModel("chatterbox-turbo", "Chatterbox Turbo", "ResembleAI/chatterbox-turbo", REVISION, "turbo",
+                                    PINNED_FILES),
+    "chatterbox-nano": PinnedModel("chatterbox-nano", "Chatterbox Nano", "ResembleAI/chatterbox-nano", NANO_REVISION, "turbo", {
+        **_renamed(PINNED_FILES, "chatterbox-nano"),
+        "model_weights": ("t3_nano_v1.safetensors", 869_899_204,
+                          "72b110185087d945dbdf54dee4e333848e1811bdd5fd6cb16ceb8da50006f0c9", "chatterbox-nano", "MIT"),
+    }),
+    "chatterbox-original": PinnedModel("chatterbox-original", "Chatterbox Original", "ResembleAI/chatterbox", ORIGINAL_REVISION,
+                                       "original", {
+        "model_weights": ("t3_cfg.safetensors", 2_129_653_744,
+                          "914cb1696f47527fe8852ca8f1fe1fa63cb34f76f9c715e84e067b744dd0da81", "chatterbox-original", "MIT"),
+        "s3gen_weights": ("s3gen.safetensors", 1_056_484_620,
+                          "2b78103c654207393955e4900aac14a12de8ef25f4b09424f1ef91941f161d4e", "chatterbox-original-s3gen", "MIT"),
+        "voice_encoder_weights": ("ve.safetensors", 5_695_784,
+                                  "f0921cab452fa278bc25cd23ffd59d36f816d7dc5181dd1bef9751a7fb61f63c",
+                                  "chatterbox-original-voice-encoder", "MIT"),
+        "tokenizer": ("tokenizer.json", 25_470, "d71e3a44eabb1784df9a68e9f95b251ecbf1a7af6a9f50835856b2ca9d8c14a5",
+                      "chatterbox-original-tokenizer", "MIT"),
+    }),
+}
+
+
+def _pinned(model: str | None = None) -> PinnedModel:
+    """The pinned model CHATTERBOX_MODEL (or model) names; Turbo for a name this service doesn't install."""
+    return PINNED_MODELS.get(model or MODEL, PINNED_MODELS["chatterbox-turbo"])
+
+
+# Resemble's GPT-2 small configuration for Nano (chatterbox master, models/t3/llama_configs.py), which chatterbox-tts 0.1.7
+# predates: loading Nano adds it to the library's table.
+GPT2_SMALL_CONFIG: dict[str, Any] = {
+    "activation_function": "gelu_new", "architectures": ["GPT2LMHeadModel"], "attn_pdrop": 0.1, "bos_token_id": 50256,
+    "embd_pdrop": 0.1, "eos_token_id": 50256, "initializer_range": 0.02, "layer_norm_epsilon": 1e-05, "model_type": "gpt2",
+    "n_ctx": 8196, "n_embd": 768, "hidden_size": 768, "n_head": 12, "n_layer": 12, "n_positions": 8196, "n_special": 0,
+    "predict_special_tokens": True, "resid_pdrop": 0.1, "summary_activation": None, "summary_first_dropout": 0.1,
+    "summary_proj_to_labels": True, "summary_type": "cls_index", "summary_use_proj": True,
+    "task_specific_params": {"text-generation": {"do_sample": True, "max_length": 50}}, "vocab_size": 50276,
+}
+
+# The original model's two ways of speaking (Resemble's tips): general (exaggeration 0.5, CFG weight 0.5) for sentences without
+# a tag, expressive (0.7, 0.3: more emotion, and a lower CFG weight for slower, more deliberate pacing) for a sentence that
+# starts with [expressive]. The desktop may send other values (Companion › Voice); these are the ranges Resemble's app offers.
+EXPRESSIVE_TAG = "[expressive]"
+EXAGGERATION_RANGE = (0.25, 2.0)
+CFG_WEIGHT_RANGE = (0.0, 1.0)
+# The most speech tokens (25 a second) a piece of the original model may take: so many plus so many per text token (its
+# tokenizer splits text into characters and short pieces), never more than its 1,000. Measured on CPU (docs/CHATTERBOX_VOICE.md).
+ORIGINAL_TOKENS_BASE = int(os.environ.get("MARTLET_CHATTERBOX_ORIGINAL_TOKENS_BASE", "100"))
+ORIGINAL_TOKENS_PER_TEXT_TOKEN = int(os.environ.get("MARTLET_CHATTERBOX_ORIGINAL_TOKENS_PER_TEXT_TOKEN", "10"))
 
 
 class ContractError(Exception):
@@ -249,20 +331,23 @@ def _download(url: str, target: Path, size: int, sha256: str) -> None:
     _log(f"{target.name}: verified (SHA-256 {sha256[:12]}...).")
 
 
-def _artifact(role: str, size: int, sha256: str, artifact_id: str, license_id: str) -> dict[str, Any]:
-    return {"artifact_id": artifact_id, "bytes": size, "license_id": license_id, "revision": REVISION, "role": role, "sha256": sha256}
+def _artifact(role: str, size: int, sha256: str, artifact_id: str, license_id: str, revision: str = REVISION) -> dict[str, Any]:
+    return {"artifact_id": artifact_id, "bytes": size, "license_id": license_id, "revision": revision, "role": role, "sha256": sha256}
 
 
-def _real_artifacts() -> list[dict[str, Any]]:
-    return [_artifact(role, size, sha256, artifact_id, license_id) for role, (_name, size, sha256, artifact_id, license_id) in PINNED_FILES.items()]
+def _real_artifacts(pinned: PinnedModel | None = None) -> list[dict[str, Any]]:
+    pinned = pinned or _pinned()
+    return [_artifact(role, size, sha256, artifact_id, license_id, pinned.revision)
+            for role, (_name, size, sha256, artifact_id, license_id) in pinned.files.items()]
 
 
-def _fixture_artifacts(real_model_identity: bool = False) -> list[dict[str, Any]]:
+def _fixture_artifacts(real_model_identity: bool = False, pinned: PinnedModel | None = None) -> list[dict[str, Any]]:
+    pinned = pinned or _pinned()
     artifacts: list[dict[str, Any]] = []
-    for index, role in enumerate(PINNED_FILES, 1):
+    for index, role in enumerate(pinned.files, 1):
         if real_model_identity and role == "model_weights":
-            _name, size, sha256, artifact_id, license_id = PINNED_FILES[role]
-            artifacts.append(_artifact(role, size, sha256, artifact_id, license_id))
+            _name, size, sha256, artifact_id, license_id = pinned.files[role]
+            artifacts.append(_artifact(role, size, sha256, artifact_id, license_id, pinned.revision))
             continue
         content = f"FIXTURE - NOT AI: {role}:{index}\n".encode("utf-8")
         artifacts.append(
@@ -278,11 +363,11 @@ def _fixture_artifacts(real_model_identity: bool = False) -> list[dict[str, Any]
     return artifacts
 
 
-def _identity(engine: str, *, real_model_identity: bool = False) -> dict[str, Any]:
+def _identity(engine: str, *, real_model_identity: bool = False, pinned: PinnedModel | None = None) -> dict[str, Any]:
     fixture = engine == "fake"
     source = Path(__file__)
     return {
-        "artifacts": _fixture_artifacts(real_model_identity) if fixture else _real_artifacts(),
+        "artifacts": _fixture_artifacts(real_model_identity, pinned) if fixture else _real_artifacts(pinned),
         "cancellation": "discard_only",
         "contract_id": CONTRACT_ID,
         "evidence": "synthetic_fixture" if fixture else "live_worker",
@@ -310,29 +395,31 @@ def _write_config(config: dict[str, Any]) -> None:
 
 
 def provision(fixture: bool) -> None:
-    if MODEL != "chatterbox-turbo":
-        raise SystemExit("Only CHATTERBOX_MODEL=chatterbox-turbo is supported by this prototype host.")
+    pinned = PINNED_MODELS.get(MODEL)
+    if pinned is None:
+        raise SystemExit(f"CHATTERBOX_MODEL={MODEL} is not a model this service installs ({', '.join(PINNED_MODELS)}).")
     if fixture:
         _log("FIXTURE - NOT AI: provisioning deterministic synthetic tone engine (no torch, no GPU, no model).")
         files: dict[str, str] = {}
-        for role in PINNED_FILES:
+        for role in pinned.files:
             relative = f"models/fixture/{role}.fixture"
             path = ROOT / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f"FIXTURE - NOT AI: {role}\n", encoding="utf-8")
             files[role] = relative
-        _write_config({"device": None, "engine": "fake", "files": files, "identity": _identity("fake"), "model": MODEL})
+        _write_config({"device": None, "engine": "fake", "files": files, "identity": _identity("fake", pinned=pinned), "model": MODEL})
         _log("Worker configuration written (fixture).")
         return
 
-    _log("Chatterbox-Turbo model license: MIT, https://huggingface.co/ResembleAI/chatterbox-turbo")
+    _log(f"{pinned.name} model license: MIT, https://huggingface.co/{pinned.repository}")
     model_dir = MODELS / MODEL
     files = {}
-    for role, (filename, size, sha256, _artifact_id, _license_id) in PINNED_FILES.items():
-        _download(BASE_URL + filename, model_dir / filename, size, sha256)
+    for role, (filename, size, sha256, _artifact_id, _license_id) in pinned.files.items():
+        _download(pinned.base_url + filename, model_dir / filename, size, sha256)
         files[role] = f"models/{MODEL}/{filename}"
-    _write_config({"device": DEVICE, "engine": "chatterbox", "files": files, "identity": _identity("chatterbox"), "model": MODEL})
-    _log(f"Worker configuration written ({MODEL}, live Chatterbox Turbo engine).")
+    _write_config({"device": DEVICE, "engine": "chatterbox", "files": files, "identity": _identity("chatterbox", pinned=pinned),
+                   "model": MODEL})
+    _log(f"Worker configuration written ({MODEL}, live {pinned.name} engine).")
 
 
 @dataclass(frozen=True)
@@ -375,11 +462,28 @@ class Reference:
 
 
 @dataclass(frozen=True)
+class VoiceStyle:
+    """How the original model speaks, as (exaggeration, CFG weight): general for a sentence without a tag, expressive for one
+    that starts with [expressive]. Turbo and Nano have neither setting."""
+
+    general: tuple[float, float] = (0.5, 0.5)
+    expressive: tuple[float, float] = (0.7, 0.3)
+
+    def wire(self) -> dict[str, Any]:
+        return {name: {"cfg_weight": cfg, "exaggeration": exaggeration}
+                for name, (exaggeration, cfg) in (("expressive", self.expressive), ("general", self.general))}
+
+
+DEFAULT_STYLE = VoiceStyle()
+
+
+@dataclass(frozen=True)
 class SynthesisRequest:
     ids: RequestIds
     deadline_utc: datetime
     reference: Reference
     chunks: tuple[Chunk, ...]
+    style: VoiceStyle = DEFAULT_STYLE
 
 
 def _parse_wave(audio: bytes) -> tuple[int, int, int, float]:
@@ -416,6 +520,25 @@ def _parse_wave(audio: bytes) -> tuple[int, int, int, float]:
     return sample_rate, channels, samples_per_channel, samples_per_channel / sample_rate
 
 
+def _parse_style(source: Any) -> VoiceStyle:
+    """The request's style (optional: the desktop sends it only to the original model), each value within Resemble's ranges."""
+    if source is None:
+        return DEFAULT_STYLE
+    style = require_object(source, "style")
+    require(set(style) == {"general", "expressive"}, "invalid_request", "style must have general and expressive.")
+
+    def pair(name: str) -> tuple[float, float]:
+        value = require_object(style.get(name), f"style.{name}")
+        require(set(value) == {"exaggeration", "cfg_weight"}, "invalid_request", f"style.{name} must have exaggeration and cfg_weight.")
+        exaggeration, cfg = value.get("exaggeration"), value.get("cfg_weight")
+        require(type(exaggeration) in (int, float) and type(cfg) in (int, float), "invalid_request", f"style.{name} values must be numbers.")
+        require(EXAGGERATION_RANGE[0] <= exaggeration <= EXAGGERATION_RANGE[1] and CFG_WEIGHT_RANGE[0] <= cfg <= CFG_WEIGHT_RANGE[1],
+                "invalid_request", f"style.{name} is out of range (exaggeration 0.25-2, CFG weight 0-1).")
+        return float(exaggeration), float(cfg)
+
+    return VoiceStyle(pair("general"), pair("expressive"))
+
+
 def _parse_request(body: dict[str, Any]) -> SynthesisRequest:
     ids = RequestIds.parse(body.get("ids"))
     deadline = min(parse_utc(body.get("deadline_utc"), "deadline_utc"), datetime.now(timezone.utc) + timedelta(seconds=REQUEST_SECONDS - 1))
@@ -450,6 +573,7 @@ def _parse_request(body: dict[str, Any]) -> SynthesisRequest:
             duration_seconds=duration,
         ),
         chunks=tuple(sorted(chunks, key=lambda chunk: chunk.index)),
+        style=_parse_style(body.get("style")),
     )
 
 
@@ -629,18 +753,30 @@ class EngineHost:
         self.idle_fastest_ms: int | None = None
         # Sentences whispered since the service started (Whisperer): what /status reports as whisper.parts.
         self.whispered_parts = 0
+        # The original model (OriginalVoice), its sentences said expressively since the service started, and the style the last
+        # reply asked for (what /status reports as style).
+        self.original: OriginalVoice | None = None
+        self.expressive_parts = 0
+        self.last_style: VoiceStyle | None = None
 
     def status(self) -> dict[str, Any]:
         with self.lock:
-            return {
+            model = getattr(self.model, "device", None)
+            status = {
+                "device": None if self.model is None else str(model or DEVICE),
                 "error": self.error,
                 "idle_check": {"checks": self.idle_checks, "every_seconds": IDLE_CHECK_SECONDS, "fastest_ms": self.idle_fastest_ms,
                                "last_ms": self.idle_last_ms},
+                "model": MODEL,
                 "ready": self.state == "ready",
                 "state": self.state,
                 "whisper": {"level_db": WHISPER_DB, "parts": self.whispered_parts},
                 "worker": self.identity,
             }
+            if _pinned().family == "original":
+                status["style"] = {"default": DEFAULT_STYLE.wire(), "expressive_parts": self.expressive_parts,
+                                   "last": None if self.last_style is None else self.last_style.wire()}
+            return status
 
     def start_loading(self) -> None:
         with self.lock:
@@ -660,6 +796,7 @@ class EngineHost:
         # room for both.
         _free_gpu_memory()
         engine: str | None = None
+        pinned: PinnedModel | None = None
         device = DEVICE
         try:
             config = json.loads(CONFIG.read_text(encoding="utf-8"))
@@ -674,24 +811,31 @@ class EngineHost:
                 os.environ.setdefault("HF_HUB_OFFLINE", "1")
                 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
                 os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
-                from chatterbox.tts_turbo import ChatterboxTurboTTS  # type: ignore
-
-                device = str(config.get("device") or DEVICE)
+                # The original model's decoding loop draws a progress bar for every speech token; the log needs none.
+                os.environ.setdefault("TQDM_DISABLE", "1")
+                pinned = PINNED_MODELS.get(str(config.get("model") or MODEL))
+                if pinned is None:
+                    raise RuntimeError(f"The configured model {config.get('model')!r} is not one this service installs.")
+                device = _device(str(config.get("device") or DEVICE))
                 if problem := _gpu_problem(device):
                     raise RuntimeError(problem)
-                model_dir = MODELS / str(config.get("model") or MODEL)
-                model = ChatterboxTurboTTS.from_local(model_dir, device)
+                model = _load_model(pinned, MODELS / pinned.key, device)
             else:
                 raise RuntimeError("Unknown Chatterbox engine configuration.")
             # Faster speech for the same words and sound: kept voice conditionals and CUDA-graph decoding, warmed up now so
-            # the first reply doesn't pay for it.
-            fast = FastTurbo(model, graph=os.environ.get("MARTLET_CHATTERBOX_FAST", "1") != "0") if engine == "chatterbox" else None
+            # the first reply doesn't pay for it. The original model keeps its conditionals the same way (OriginalVoice).
+            fast = (FastTurbo(model, graph=os.environ.get("MARTLET_CHATTERBOX_FAST", "1") != "0", name=pinned.name)
+                    if pinned is not None and pinned.family == "turbo" else None)
+            original = OriginalVoice(model) if pinned is not None and pinned.family == "original" else None
             if fast is not None:
                 fast.warm()
+            if original is not None:
+                original.warm()
         except Exception as exc:
             with self.lock:
                 self.model = None
                 self.fast = None
+                self.original = None
                 self.engine_kind = None
                 self.identity = None
                 self.state = "failed"
@@ -708,6 +852,7 @@ class EngineHost:
         with self.lock:
             self.model = model
             self.fast = fast
+            self.original = original
             self.engine_kind = engine
             self.identity = identity
             self.state, self.error = "ready", None
@@ -767,11 +912,16 @@ class EngineHost:
                 return
             reference_path: Path | None = None
             try:
+                with self.lock:
+                    original = self.original
                 if kind == "fake":
                     for chunk in job.request.chunks:
                         pcm = engine.generate(chunk.text, job)
                         if not job.emit_pcm(chunk.index, pcm) or not job.chunk_completed(chunk.index):
                             return
+                elif original is not None:
+                    if not self._speak_original(job, original):
+                        return
                 else:
                     with self.lock:
                         fast = self.fast
@@ -857,15 +1007,16 @@ class EngineHost:
                 job.failed(ContractError("internal_failure", f"The Chatterbox engine failed while synthesizing this reply ({detail})"
                     + ("; the voice service is restarting." if broken else "."), stage="synthesis", action_id="chatterbox.restart-worker"))
         finally:
-            dropped: FastTurbo | None = None
+            dropped: FastTurbo | OriginalVoice | None = None
             with self.lock:
                 if self.active is job:
                     self.active = None
                 self.last_activity = time.monotonic()
                 if failed_engine is not None:
-                    dropped = self.fast
+                    dropped = self.fast or self.original
                     self.model = None
                     self.fast = None
+                    self.original = None
                     self.state = "failed"
                     self.error = f"The Chatterbox engine failed ({failed_engine}); the next reply will reload it."
                 elif self.state == "busy":
@@ -877,6 +1028,44 @@ class EngineHost:
             if broken is not None:
                 self._restart(broken)
 
+    def _speak_original(self, job: Job, original: "OriginalVoice") -> bool:
+        """The original model: each part of each piece spoken whole, as the reply's style says (VoiceStyle: general, or
+        expressive for a sentence that starts with [expressive]; [whispering] whispers it). False when the reply stopped."""
+        started = time.monotonic()
+        cached = original.use_reference(job.request.reference.audio)
+        samples = 0
+        first_audio: float | None = None
+        whispered_parts = expressive_parts = capped = 0
+        for chunk in job.request.chunks:
+            if job.cancel_requested:
+                return False
+            text = _speakable(chunk.text)
+            for part, expressive, whisper in _original_parts(text) if text else []:
+                if job.cancel_requested:
+                    return False
+                whispered_parts += whisper
+                expressive_parts += expressive
+                exaggeration, cfg_weight = job.request.style.expressive if expressive else job.request.style.general
+                pcm = original.speak(part, exaggeration, cfg_weight, whisper)
+                capped += original.capped
+                first_audio = first_audio if first_audio is not None else time.monotonic() - started
+                samples += len(pcm) // 2
+                if not job.emit_pcm(chunk.index, pcm):
+                    return False
+            if not job.chunk_completed(chunk.index):
+                return False
+        with self.lock:
+            self.whispered_parts += whispered_parts
+            self.expressive_parts += expressive_parts
+            self.last_style = job.request.style
+        # Timing only, never the text.
+        _log(f"Made {samples / 24_000:.2f} s of speech in {(time.monotonic() - started) * 1000:.0f} ms, first audio after "
+             f"{(first_audio or 0) * 1000:.0f} ms ({'kept' if cached else 'new'} voice conditionals, original model on "
+             f"{original.device}{f', {expressive_parts} part(s) expressive' if expressive_parts else ''}"
+             f"{f', {whispered_parts} part(s) whispered' if whispered_parts else ''}"
+             f"{f', {capped} piece(s) stopped at their speech-token limit' if capped else ''}).")
+        return True
+
     def idle_check(self) -> bool:
         """Runs the model briefly when nobody has spoken for IDLE_CHECK_SECONDS: speech tokens, the decoder, the vocoder and the
         watermark, on the warm-up's synthetic voice (FIXTURE - NOT a voice), output thrown away. That brings a model Windows
@@ -885,11 +1074,13 @@ class EngineHost:
         True when it ran."""
         with self.lock:
             fast = self.fast
+            device = str(getattr(self.model, "device", None) or DEVICE)
+            # Only a graphics card's memory needs it (Windows moves an idle model out of it); on the CPU it would only cost time.
             if (fast is None or self.state != "ready" or self.active is not None or self.idle is not None or self.restarting
-                    or self.engine_kind != "chatterbox" or time.monotonic() - self.last_activity < IDLE_CHECK_SECONDS):
+                    or self.engine_kind != "chatterbox" or not device.startswith("cuda")
+                    or time.monotonic() - self.last_activity < IDLE_CHECK_SECONDS):
                 return False
             idle = self.idle = IdleCheck()
-            device = str(getattr(self.model, "device", None) or DEVICE)
         started = time.monotonic()
         failure: Exception | None = None
         try:
@@ -1007,6 +1198,39 @@ def _whisper_parts(text: str) -> list[tuple[str, bool]]:
         add(text[tag.start():stop], True)
         position = stop
     add(text[position:], False)
+    return parts
+
+
+_STYLE_TAGS = re.compile(r"\[(expressive|whispering)\]", re.IGNORECASE)
+
+
+def _original_parts(text: str) -> list[tuple[str, bool, bool]]:
+    """A piece for the original model as (text, expressive, whispered) parts in order: from each [expressive] or [whispering]
+    to the end of its sentence (. ! or ?, or the piece's end) in that style, both when both start it, as the Thinking prompt
+    promises a tone; the rest in the general voice. The original model has no tag tokens, so the tags are left out of what it
+    reads. Neighbouring parts in the same style stay one part; a tag with no words after it in its sentence styles nothing."""
+    parts: list[tuple[str, bool, bool]] = []
+
+    def add(part: str, expressive: bool, whisper: bool) -> None:
+        part = " ".join(_STYLE_TAGS.sub(" ", part).split())
+        if not part:
+            return
+        if not _WORD.search(part):
+            expressive = whisper = False
+        if parts and parts[-1][1:] == (expressive, whisper):
+            parts[-1] = (f"{parts[-1][0]} {part}", expressive, whisper)
+        else:
+            parts.append((part, expressive, whisper))
+
+    position = 0
+    while tag := _STYLE_TAGS.search(text, position):
+        add(text[position:tag.start()], False, False)
+        end = _SENTENCE_END.search(text, tag.end())
+        stop = end.end() if end else len(text)
+        styles = {found.group(1).lower() for found in _STYLE_TAGS.finditer(text, tag.start(), stop)}
+        add(text[tag.start():stop], "expressive" in styles, "whispering" in styles)
+        position = stop
+    add(text[position:], False, False)
     return parts
 
 
@@ -1194,9 +1418,73 @@ def _gpu_problem(device: str) -> str | None:
         return None
     return (
         f"This graphics card ({torch.cuda.get_device_name(index)}, compute capability {major}.{minor}) is not supported by "
-        f"PyTorch {torch.__version__} in this image, which has kernels for {', '.join(archs)}. Chatterbox Turbo needs an "
-        "NVIDIA GPU with compute capability 7.0 or newer (GeForce GTX 16 / RTX 20 series or newer)."
+        f"PyTorch {torch.__version__} in this image, which has kernels for {', '.join(archs)}. Chatterbox needs an NVIDIA GPU "
+        "with compute capability 7.0 or newer (GeForce GTX 16 / RTX 20 series or newer)."
     )
+
+
+def _device(device: str) -> str:
+    """The device to load on: "auto" is the NVIDIA GPU when this container has one (and PyTorch can use it), else the CPU."""
+    if device != "auto":
+        return device
+    import torch  # type: ignore
+
+    return "cuda:0" if torch.cuda.is_available() else "cpu"
+
+
+def _load_model(pinned: PinnedModel, model_dir: Path, device: str) -> Any:
+    """Loads the pinned model's verified files from model_dir, only from disk (never from_pretrained)."""
+    if pinned.key == "chatterbox-turbo":
+        from chatterbox.tts_turbo import ChatterboxTurboTTS  # type: ignore
+
+        return ChatterboxTurboTTS.from_local(model_dir, device)
+    if pinned.key == "chatterbox-nano":
+        return _load_nano(model_dir, device)
+    if pinned.key == "chatterbox-original":
+        from chatterbox.tts import ChatterboxTTS  # type: ignore
+
+        return ChatterboxTTS.from_local(model_dir, device)
+    raise RuntimeError(f"No loader for {pinned.key}.")
+
+
+def _load_nano(model_dir: Path, device: str) -> Any:
+    """Chatterbox Nano as Resemble's own loader builds it (chatterbox master, ChatterboxTurboTTS.from_local(nano=True)): Turbo
+    with the GPT-2 small backbone and t3_nano_v1.safetensors. chatterbox-tts 0.1.7 predates it, so the backbone's configuration
+    is added to the library's table first."""
+    from chatterbox.models.s3gen import S3Gen  # type: ignore
+    from chatterbox.models.t3 import T3  # type: ignore
+    from chatterbox.models.t3.llama_configs import LLAMA_CONFIGS  # type: ignore
+    from chatterbox.models.t3.modules.t3_config import T3Config  # type: ignore
+    from chatterbox.models.voice_encoder import VoiceEncoder  # type: ignore
+    from chatterbox.tts_turbo import ChatterboxTurboTTS  # type: ignore
+    from safetensors.torch import load_file  # type: ignore
+    from transformers import AutoTokenizer  # type: ignore
+
+    LLAMA_CONFIGS.setdefault("GPT2_small", GPT2_SMALL_CONFIG)
+    ve = VoiceEncoder()
+    ve.load_state_dict(load_file(model_dir / "ve.safetensors"))
+    ve.to(device).eval()
+    hp = T3Config(text_tokens_dict_size=50276)
+    hp.llama_config_name = "GPT2_small"
+    hp.speech_tokens_dict_size = 6563
+    hp.input_pos_emb = None
+    hp.speech_cond_prompt_len = 375
+    hp.use_perceiver_resampler = False
+    hp.emotion_adv = False
+    t3 = T3(hp)
+    state = load_file(model_dir / "t3_nano_v1.safetensors")
+    if "model" in state.keys():
+        state = state["model"][0]
+    t3.load_state_dict(state)
+    del t3.tfmr.wte
+    t3.to(device).eval()
+    s3gen = S3Gen(meanflow=True)
+    s3gen.load_state_dict(load_file(model_dir / "s3gen_meanflow.safetensors"), strict=True)
+    s3gen.to(device).eval()
+    tokenizer = AutoTokenizer.from_pretrained(model_dir)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    return ChatterboxTurboTTS(t3, s3gen, ve, tokenizer, device)
 
 
 def _write_private_reference(audio: bytes) -> Path:
@@ -1217,7 +1505,11 @@ def _write_private_reference(audio: bytes) -> Path:
 def _real_generate_pcm(model: Any, text: str, reference_path: Path | None) -> bytes:
     # Without a path the model speaks with the voice conditionals FastTurbo kept for this reply's reference.
     wav = model.generate(text, audio_prompt_path=str(reference_path)) if reference_path is not None else model.generate(text)
-    sr = int(getattr(model, "sr", 24_000) or 24_000)
+    return _pcm16(wav, int(getattr(model, "sr", 24_000) or 24_000))
+
+
+def _pcm16(wav: Any, sr: int) -> bytes:
+    """Float speech (a tensor or an array, any shape) as 24 kHz mono PCM16, resampled when the model made another rate."""
     try:
         import torch  # type: ignore
         import torchaudio.functional as AF  # type: ignore
@@ -1252,9 +1544,12 @@ class FastTurbo:
     """
 
     CACHED_REFERENCES = 2
+    # The model's name for the log (Chatterbox Turbo or Chatterbox Nano, which shares Turbo's decoding).
+    name = "Chatterbox Turbo"
 
-    def __init__(self, model: Any, *, graph: bool = True) -> None:
+    def __init__(self, model: Any, *, graph: bool = True, name: str = "Chatterbox Turbo") -> None:
         self.model = model
+        self.name = name
         self.conditionals: OrderedDict[str, Any] = OrderedDict()
         self.graph: _T3Graph | None = None
         self.graph_error: str | None = None
@@ -1266,8 +1561,9 @@ class FastTurbo:
                 self.graph = _T3Graph(model.t3, model.device)
             except Exception as exc:  # noqa: BLE001 - any failure only means the library's own decoding
                 self.graph_error = _failure_detail(exc)
-            if self.graph is not None:
-                model.t3.inference_turbo = self._inference_turbo
+        # Decoding goes through _inference_turbo with or without the graph, so a piece that never stops ends at its budget on
+        # the CPU too.
+        model.t3.inference_turbo = self._inference_turbo
 
     @property
     def graph_ready(self) -> bool:
@@ -1388,10 +1684,9 @@ class FastTurbo:
                     raise
                 self.graph = None
                 self.graph_error = _failure_detail(exc)
-                self.model.t3.__dict__.pop("inference_turbo", None)
                 _log(f"CUDA-graph decoding stopped ({self.graph_error}); using the library's own decoding.")
         return self._original(t3_cond, text_tokens, temperature=temperature, top_k=top_k, top_p=top_p,
-                              repetition_penalty=repetition_penalty, max_gen_len=max_gen_len)
+                              repetition_penalty=repetition_penalty, max_gen_len=min(max_gen_len, _speech_budget(text_tokens)))
 
     def warm(self) -> None:
         """Pays the first reply's one-time costs now: the conditionals' librosa/numba warm-up, the CUDA graph capture, the
@@ -1418,9 +1713,9 @@ class FastTurbo:
             self.warm_conds = self.conditionals.pop(key, None)
             self.model.conds = None
             decoding = "CUDA graph" if self.graph_ready else f"eager ({self.graph_error or 'graph off'})"
-            _log(f"Chatterbox Turbo warmed up in {(time.monotonic() - started) * 1000:.0f} ms; decoding: {decoding}.")
+            _log(f"{self.name} warmed up in {(time.monotonic() - started) * 1000:.0f} ms on {self.model.device}; decoding: {decoding}.")
         except Exception as exc:  # noqa: BLE001 - warming up is best effort
-            _log(f"Warming Chatterbox Turbo up failed ({_failure_detail(exc)}); the first reply may be slower.")
+            _log(f"Warming {self.name} up failed ({_failure_detail(exc)}); the first reply may be slower.")
 
     def idle_pass(self, cancelled: Any) -> None:
         """One short piece on the warm-up's synthetic voice (FIXTURE - NOT a voice), thrown away: every part of the model a
@@ -1445,19 +1740,141 @@ class FastTurbo:
         self.model.watermarker.apply_watermark(tone, sample_rate=rate)
 
     def _warm_reference(self) -> str:
-        # FIXTURE - NOT a voice: six seconds of a gliding harmonic tone, only to run the conditioning code once.
-        rate, seconds = 24_000, 6.0
-        frames = bytearray()
-        for i in range(int(rate * seconds)):
-            t = i / rate
-            pitch = 140 + 40 * math.sin(2 * math.pi * 0.5 * t)
-            envelope = 0.5 + 0.5 * math.sin(2 * math.pi * 3 * t)
-            value = sum(math.sin(2 * math.pi * pitch * k * t) / k for k in (1, 2, 3)) * 0.2 * envelope
-            frames += struct.pack("<h", int(max(-1.0, min(1.0, value)) * 32767))
-        header = b"RIFF" + struct.pack("<I", 36 + len(frames)) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
-        audio = header + b"data" + struct.pack("<I", len(frames)) + bytes(frames)
+        audio = _synthetic_reference()
         self.use_reference(audio)
         return hashlib.sha256(audio).hexdigest()
+
+
+def _synthetic_reference() -> bytes:
+    """FIXTURE - NOT a voice: six seconds of a gliding harmonic tone as a 24 kHz WAV, only to run the conditioning code once."""
+    rate, seconds = 24_000, 6.0
+    frames = bytearray()
+    for i in range(int(rate * seconds)):
+        t = i / rate
+        pitch = 140 + 40 * math.sin(2 * math.pi * 0.5 * t)
+        envelope = 0.5 + 0.5 * math.sin(2 * math.pi * 3 * t)
+        value = sum(math.sin(2 * math.pi * pitch * k * t) / k for k in (1, 2, 3)) * 0.2 * envelope
+        frames += struct.pack("<h", int(max(-1.0, min(1.0, value)) * 32767))
+    header = b"RIFF" + struct.pack("<I", 36 + len(frames)) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
+    return header + b"data" + struct.pack("<I", len(frames)) + bytes(frames)
+
+
+def _speech_budget(text_tokens: Any) -> int:
+    """The most speech tokens (25 a second) a Turbo or Nano piece of these text tokens may take: well beyond what its words
+    need (MARTLET_CHATTERBOX_TOKENS_*), so a piece the model doesn't stop (it has no stop detector of its own and would
+    otherwise babble or hiss up to 1,000 tokens, 40 s) ends instead, and never more than 1,000."""
+    tags = int(((text_tokens >= TAG_TOKEN_FIRST) & (text_tokens <= TAG_TOKEN_LAST)).sum())
+    words = int(text_tokens.shape[1]) - tags
+    return min(1000, SPEECH_TOKENS_BASE + SPEECH_TOKENS_PER_TEXT_TOKEN * words + SPEECH_TOKENS_PER_TAG * tags)
+
+
+def _original_budget(text_tokens: int) -> int:
+    """The most speech tokens a piece of the original model with this many text tokens may take (ORIGINAL_TOKENS_*), at most
+    the 1,000 its own generate() allows."""
+    return min(1000, ORIGINAL_TOKENS_BASE + ORIGINAL_TOKENS_PER_TEXT_TOKEN * text_tokens)
+
+
+def _original_generate(model: Any, text: str, exaggeration: float, cfg_weight: float) -> tuple[Any, bool]:
+    """What ChatterboxTTS.generate does with the kept voice conditionals, with this exaggeration and CFG weight and at most
+    _original_budget speech tokens. chatterbox-tts 0.1.7's T3 always decodes two rows (with and without the text, for CFG),
+    so the text goes in twice whatever the weight; at weight 0 the second row changes nothing. Returns the watermarked float
+    speech and whether it stopped at the budget instead of its stop token."""
+    import torch  # type: ignore
+    import torch.nn.functional as F  # type: ignore
+    from chatterbox.models.s3tokenizer import drop_invalid_tokens  # type: ignore
+    from chatterbox.models.t3.modules.cond_enc import T3Cond  # type: ignore
+    from chatterbox.tts import punc_norm  # type: ignore
+
+    conds = model.conds
+    if float(conds.t3.emotion_adv[0, 0, 0]) != exaggeration:
+        kept = conds.t3
+        conds.t3 = T3Cond(speaker_emb=kept.speaker_emb, cond_prompt_speech_tokens=kept.cond_prompt_speech_tokens,
+                          emotion_adv=exaggeration * torch.ones(1, 1, 1)).to(device=model.device)
+    tokens = model.tokenizer.text_to_tokens(punc_norm(text)).to(model.device)
+    budget = _original_budget(int(tokens.shape[-1]))
+    tokens = torch.cat([tokens, tokens], dim=0)
+    tokens = F.pad(tokens, (1, 0), value=model.t3.hp.start_text_token)
+    tokens = F.pad(tokens, (0, 1), value=model.t3.hp.stop_text_token)
+    with torch.inference_mode():
+        speech = model.t3.inference(t3_cond=conds.t3, text_tokens=tokens, max_new_tokens=budget, temperature=0.8,
+                                    cfg_weight=cfg_weight, repetition_penalty=1.2, min_p=0.05, top_p=1.0)[0]
+        capped = speech.numel() >= budget and int(speech[-1]) != model.t3.hp.stop_speech_token
+        speech = drop_invalid_tokens(speech)
+        speech = speech[speech < 6561].to(model.device)
+        wav, _ = model.s3gen.inference(speech_tokens=speech, ref_dict=conds.gen)
+        wav = wav.squeeze(0).detach().cpu().numpy()
+        return model.watermarker.apply_watermark(wav, sample_rate=model.sr), capped
+
+
+class OriginalVoice:
+    """The original 500M Chatterbox (ChatterboxTTS): each part spoken whole, with its style's exaggeration and CFG weight
+    (_original_generate). The reference's voice conditionals are computed once per recording and kept, as FastTurbo keeps
+    Turbo's; only the exaggeration in them changes from part to part. Every part carries the Perth watermark. A stopped
+    reply stops after the part it is in (its decoding loop has no way in)."""
+
+    CACHED_REFERENCES = 2
+    # Whether the last part stopped at its speech-token budget rather than at the stop token.
+    capped = False
+
+    def __init__(self, model: Any) -> None:
+        self.model = model
+        self.conditionals: OrderedDict[str, Any] = OrderedDict()
+
+    @property
+    def device(self) -> str:
+        return str(getattr(self.model, "device", None) or DEVICE)
+
+    def close(self) -> None:
+        self.conditionals.clear()
+
+    def use_reference(self, audio: bytes) -> bool:
+        """Sets the model's voice conditionals for this reference; True when they were already kept."""
+        key = hashlib.sha256(audio).hexdigest()
+        kept = self.conditionals.get(key)
+        if kept is not None:
+            self.conditionals.move_to_end(key)
+            self.model.conds = kept
+            return True
+        path = _write_private_reference(audio)
+        try:
+            self.model.prepare_conditionals(str(path), exaggeration=DEFAULT_STYLE.general[0])
+        finally:
+            path.unlink(missing_ok=True)
+        self.conditionals[key] = self.model.conds
+        while len(self.conditionals) > self.CACHED_REFERENCES:
+            self.conditionals.popitem(last=False)
+        return False
+
+    def speak(self, text: str, exaggeration: float, cfg_weight: float, whisper: bool = False) -> bytes:
+        """One part as 24 kHz mono PCM16 (whispered before the watermark when whisper is set); when the graphics card runs out
+        of memory, the cache is freed once and the part tried again."""
+        with _whispering(self.model) if whisper else nullcontext():
+            try:
+                return self._speak(text, exaggeration, cfg_weight)
+            except Exception as exc:
+                if not _out_of_memory(exc):
+                    raise
+                _log(f"Out of graphics memory ({_failure_detail(exc)}); freeing cached memory and trying once more.")
+                _free_gpu_memory()
+                return self._speak(text, exaggeration, cfg_weight)
+
+    def _speak(self, text: str, exaggeration: float, cfg_weight: float) -> bytes:
+        wav, self.capped = _original_generate(self.model, text, exaggeration, cfg_weight)
+        return _pcm16(wav, int(getattr(self.model, "sr", 24_000) or 24_000))
+
+    def warm(self) -> None:
+        """Pays the first reply's one-time costs now (the conditioning code's librosa/numba warm-up, the first decode and the
+        watermarker's first call) on a synthetic signal (FIXTURE - NOT a voice), whose conditionals are not kept. Never raises."""
+        started = time.monotonic()
+        try:
+            audio = _synthetic_reference()
+            self.use_reference(audio)
+            self.speak("Warm up.", *DEFAULT_STYLE.general)
+            self.conditionals.pop(hashlib.sha256(audio).hexdigest(), None)
+            self.model.conds = None
+            _log(f"Chatterbox Original warmed up in {(time.monotonic() - started) * 1000:.0f} ms on {self.device}.")
+        except Exception as exc:  # noqa: BLE001 - warming up is best effort
+            _log(f"Warming Chatterbox Original up failed ({_failure_detail(exc)}); the first reply may be slower.")
 
 
 class _T3Graph:
@@ -1561,12 +1978,8 @@ class _T3Graph:
             yield from self._decode(embeds, start, processors, min(room, self.budget(text_tokens)), cancelled, (first + 3, largest))
 
     def budget(self, text_tokens: Any) -> int:
-        """The most speech tokens (25 a second) a piece of these text tokens may take: well beyond what its words need
-        (MARTLET_CHATTERBOX_TOKENS_* below), so a piece Turbo doesn't stop (it has no stop detector of its own and would
-        otherwise babble or hiss up to 1,000 tokens, 40 s) ends instead, and never more than 1,000."""
-        tags = int(((text_tokens >= TAG_TOKEN_FIRST) & (text_tokens <= TAG_TOKEN_LAST)).sum())
-        words = int(text_tokens.shape[1]) - tags
-        return min(1000, SPEECH_TOKENS_BASE + SPEECH_TOKENS_PER_TEXT_TOKEN * words + SPEECH_TOKENS_PER_TAG * tags)
+        """The most speech tokens this piece may take (_speech_budget)."""
+        return _speech_budget(text_tokens)
 
     def _decode(self, embeds: Any, start: Any, processors: Any, budget: int, cancelled: Any, schedule: tuple[int, int] | None) -> Any:
         """Samples up to budget speech tokens after the prompt embeds, as T3.inference_turbo does (the same processors, the
@@ -1768,7 +2181,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 def warm() -> None:
-    _log("Loading the Chatterbox Turbo model (verifies pinned files first; can take a few minutes)...")
+    name = _pinned().name
+    _log(f"Loading the {name} model (verifies pinned files first; can take a few minutes)...")
     conn = http.client.HTTPConnection("127.0.0.1", PORT, timeout=WARMUP_SECONDS + 30)
     try:
         conn.request("POST", "/warmup", body=b"{}", headers={"Content-Type": "application/json"})
@@ -1778,7 +2192,7 @@ def warm() -> None:
         conn.close()
     if not status.get("ready"):
         raise SystemExit(f"The Chatterbox worker is not ready ({status.get('state')}): {status.get('error') or 'no detail'}")
-    _log("The Chatterbox Turbo voice model is loaded and ready.")
+    _log(f"The {name} voice model is loaded and ready on {status.get('device') or 'its device'}.")
 
 
 def serve() -> None:

@@ -18,7 +18,8 @@ voices that are removed like any other. The list, the chosen voice and every
 recording are shared with the owner's paired Martlet computers, so a reply names
 its recording instead of carrying it ([shared speaking voices](CLUSTER.md#the-shared-speaking-voices)). Other engines
 add to that one list when they run: [Chatterbox Turbo](CHATTERBOX_VOICE.md) (the
-default engine, with sound and tone tags), [XTTS-v2](XTTS_VOICE.md),
+default engine, with sound tags and whispering), [Chatterbox Original](CHATTERBOX_VOICE.md#chatterbox-original-general-and-expressive)
+(calm or expressive sentences), [Chatterbox Nano](CHATTERBOX_VOICE.md#chatterbox-nano) (also on the CPU), [XTTS-v2](XTTS_VOICE.md),
 [GPT-SoVITS](GPT_SOVITS_VOICE.md) and [Dia](DIA_VOICE.md) now do, chosen on
 Companion > Voice > Voice engine (`Martlet.Core.Settings.SpeechEngines`). The existing OpenAI conversation and F5
 route retain their current boundaries. [Singing](SINGING.md) sings songs in the same voices (ACE-Step 1.5 with
@@ -71,8 +72,7 @@ Repository license/activity was read from GitHub on 2026-10-02:
 | Dia (Nari Labs) | Apache-2.0 / Apache-2.0 | Last code change 2025-06 (Dia2 is a separate repo) | **Added** as the `dia` host role ([Dia](DIA_VOICE.md)): clones from the reference and its transcript and performs nonverbal cues such as `(laughs)`, `(sighs)`, `(coughs)` and `(gasps)`. English only; not streaming. |
 | Seed-VC | GPL-3.0 | **Archived** (2025-04) | Voice conversion, not TTS: needs another TTS first and adds latency. Not added. |
 
-"ElevenLabs-Clone" is a third-party demo app, not a model. Chatterbox Turbo (MIT) is now **added** as the `chatterbox` host role and Martlet's default cloning engine ([Chatterbox Turbo](CHATTERBOX_VOICE.md)): it clones from a >5 s reference and speaks inline tags such as `[laugh]` and `[sigh]`. Chatterbox (MIT)
-and Qwen3-TTS (Apache-2.0) remain the permissive cloning targets above.
+"ElevenLabs-Clone" is a third-party demo app, not a model. Chatterbox Turbo (MIT) is now **added** as the `chatterbox` host role and Martlet's default cloning engine ([Chatterbox Turbo](CHATTERBOX_VOICE.md)): it clones from a >5 s reference and speaks inline tags such as `[laugh]` and `[sigh]`. The original Chatterbox (MIT) and Chatterbox Nano are **added** too, as the `chatterbox-original` and `chatterbox-nano` roles on the same service ([the Chatterbox models](CHATTERBOX_VOICE.md#the-chatterbox-models)); Qwen3-TTS (Apache-2.0) remains a permissive cloning target above.
 Every candidate needs the same GPU host and VRAM as F5, so switching engines
 alone would not fix host/Docker/network failures; intermittent F5 silence after
 an interrupted reply was a host admission bug, fixed in the `f5` role service.

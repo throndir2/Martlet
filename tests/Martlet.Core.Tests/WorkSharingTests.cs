@@ -112,11 +112,14 @@ public sealed class WorkSharingTests
 
     private sealed class Busy : Exception;
     private sealed class Gone : Exception;
+    // The computer keeps its graphics card for a live turn (a host's job.busy with detail live, or job.preempted).
+    private sealed class Held : Exception;
 
     private static WorkRefusal Classify(Exception error) => error switch
     {
         Busy => WorkRefusal.Busy,
         Gone => WorkRefusal.Unavailable,
+        Held => WorkRefusal.Preempted,
         _ => WorkRefusal.None
     };
 
@@ -250,5 +253,105 @@ public sealed class WorkSharingTests
         Assert.Equal(1, one.Served);
         Assert.Equal("g by m1-host", await first);
         Assert.Equal(0, queue.Running("speaking", "m1-host"));
+    }
+
+    // ---------- the live turn first ----------
+
+    /// <summary>A computer's Ollama: one request at a time, another turned away at once; a background request works until it is
+    /// stopped, a live one answers quickly. <see cref="HoldForLive"/>: it refuses background work for a live turn;
+    /// <see cref="RefuseLive"/>: it refuses this PC's live requests too (another companion PC's live turn holds its card).</summary>
+    private sealed class Ollama(string id)
+    {
+        private int running;
+        public string Id { get; } = id;
+        public bool HoldForLive { get; set; }
+        public bool RefuseLive { get; set; }
+        public List<string> Started { get; } = [];
+
+        public async IAsyncEnumerable<string> Run(string request, bool background, [EnumeratorCancellation] CancellationToken token)
+        {
+            if (background && HoldForLive || !background && RefuseLive) throw new Held();
+            if (Interlocked.CompareExchange(ref running, 1, 0) != 0) throw new Busy();
+            try
+            {
+                lock (Started) Started.Add(request);
+                yield return $"{request} started";
+                await Task.Delay(background ? Timeout.InfiniteTimeSpan : TimeSpan.FromMilliseconds(20), token);
+                yield return $"{request} by {Id}";
+            }
+            finally { Volatile.Write(ref running, 0); }
+        }
+
+        public void Occupy() => Interlocked.Exchange(ref running, 1);
+        public void Free() => Volatile.Write(ref running, 0);
+    }
+
+    private static async Task<string> Stream(WorkQueue queue, string request, WorkPriority priority, params Ollama[] order)
+    {
+        var last = "";
+        await foreach (var answer in queue.StreamAsync("thinking", order, c => c.Id,
+            (c, t) => c.Run(request, priority == WorkPriority.Background, t), Classify, DateTimeOffset.UtcNow.AddSeconds(10), null,
+            CancellationToken.None, priority))
+            last = answer;
+        return last;
+    }
+
+    [Fact]
+    public async Task A_live_request_stops_this_pcs_own_background_request_instead_of_waiting_behind_it()
+    {
+        var queue = new WorkQueue { Retry = TimeSpan.FromMilliseconds(10) };
+        (string Lane, string Host)? stopped = null;
+        queue.Preempted += (lane, host) => stopped = (lane, host);
+        var host = new Ollama("diva");
+        var background = Stream(queue, "remembering", WorkPriority.Background, host);
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (queue.Background("thinking", "diva") == 0 && waited.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(5);
+        Assert.Equal(1, queue.Background("thinking", "diva"));
+        Assert.Equal("reply by diva", await Stream(queue, "reply", WorkPriority.Live, host));
+        await Assert.ThrowsAsync<WorkPreemptedException>(() => background);
+        Assert.Equal(("thinking", "diva"), stopped);
+        Assert.Equal(1, queue.Stopped);
+        Assert.Equal(["remembering", "reply"], host.Started);
+        Assert.Equal(0, queue.Background("thinking", "diva"));
+        Assert.Equal(0, queue.Running("thinking", "diva"));
+    }
+
+    [Fact]
+    public async Task A_background_request_waits_while_a_live_request_of_its_lane_waits()
+    {
+        var queue = new WorkQueue { Retry = TimeSpan.FromMilliseconds(10) };
+        var host = new Ollama("diva");
+        // Another companion PC's reply holds the computer: this PC's live request waits for it.
+        host.Occupy();
+        var live = Stream(queue, "reply", WorkPriority.Live, host);
+        await Task.Delay(60);
+        var background = Stream(queue, "naming", WorkPriority.Background, host);
+        await Task.Delay(60);
+        Assert.Equal(2, queue.Waiting);
+        Assert.Empty(host.Started);
+        host.Free();
+        Assert.Equal("reply by diva", await live);
+        // The background request only starts once no live request waits, and then runs until it is stopped.
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (host.Started.Count < 2 && waited.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(5);
+        Assert.Equal(["reply", "naming"], host.Started);
+        Assert.Equal("reply2 by diva", await Stream(queue, "reply2", WorkPriority.Live, host));
+        await Assert.ThrowsAsync<WorkPreemptedException>(() => background);
+    }
+
+    [Fact]
+    public async Task Background_work_a_computer_holds_off_for_a_live_turn_goes_on_later_and_a_live_request_waits_for_it()
+    {
+        var queue = new WorkQueue { Retry = TimeSpan.FromMilliseconds(10) };
+        var host = new Ollama("diva") { HoldForLive = true };
+        await Assert.ThrowsAsync<WorkPreemptedException>(() => Stream(queue, "remembering", WorkPriority.Background, host));
+        Assert.Empty(host.Started);
+        // To a live request the same refusal (another companion PC's live turn holds the card) means busy: it waits.
+        host.RefuseLive = true;
+        var live = Stream(queue, "reply", WorkPriority.Live, host);
+        await Task.Delay(50);
+        Assert.False(live.IsCompleted);
+        host.RefuseLive = false;
+        Assert.Equal("reply by diva", await live);
     }
 }

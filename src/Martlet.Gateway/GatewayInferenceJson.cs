@@ -291,7 +291,7 @@ internal static class GatewayInferenceJson
                 "transcript_revision",
                 "chunks"
             ],
-            ["reference_language", "reference_audio_base64"]);
+            ["reference_language", "reference_audio_base64", "voice_style"]);
         var presetId = Guid(fields, "preset_id");
         GatewayRules.Require(presetId != System.Guid.Empty, "request.invalid");
         var referenceRevision = Text(fields, "reference_revision", 64);
@@ -359,6 +359,22 @@ internal static class GatewayInferenceJson
                 GatewayRules.Require(Martlet.Core.Settings.SpeechEngines.ReferenceLanguages.Contains(referenceLanguage),
                     "request.invalid");
             }
+            // Chatterbox Original's General and Expressive exaggeration and CFG weight, within Resemble's ranges; only its route
+            // takes them.
+            Martlet.Core.Settings.ChatterboxStyle? voiceStyle = null;
+            if (fields.TryGetValue("voice_style", out var styleElement))
+            {
+                GatewayRules.Require(engine == Martlet.Core.Settings.SpeechEngines.ChatterboxOriginal, "request.invalid");
+                var style = Object(styleElement, ["general", "expressive"], []);
+                (double Exaggeration, double CfgWeight) Pair(string name)
+                {
+                    var pair = Object(style[name], ["exaggeration", "cfg_weight"], []);
+                    return (Number(pair, "exaggeration"), Number(pair, "cfg_weight"));
+                }
+                var (general, expressive) = (Pair("general"), Pair("expressive"));
+                voiceStyle = new(general.Exaggeration, general.CfgWeight, expressive.Exaggeration, expressive.CfgWeight);
+                GatewayRules.Require(voiceStyle.IsValid, "request.invalid");
+            }
             var chunksElement = fields["chunks"];
             GatewayRules.Require(chunksElement.ValueKind == JsonValueKind.Array,
                 "request.invalid");
@@ -401,7 +417,8 @@ internal static class GatewayInferenceJson
                 audio,
                 chunks.ToArray(),
                 referenceLanguage,
-                clips);
+                clips,
+                voiceStyle);
         }
         catch
         {

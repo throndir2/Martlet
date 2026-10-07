@@ -313,6 +313,32 @@ public sealed class VoiceTagTests
             Assert.Equal(expected, Segment(input, SpeechEngines.F5.Tags, split));
     }
 
+    [Theory]
+    [InlineData("Hi. [expressive] We won [laugh] today!", "Hi.|[expressive] We won today!")]
+    [InlineData("[excited] Yay! [whisper] Quiet now.", "[expressive] Yay!|[whispering] Quiet now.")]
+    [InlineData("(excitedly) Look at that!", "[expressive] Look at that!")]
+    public void Chatterbox_original_keeps_only_its_style_tags(string input, string expected)
+    {
+        for (int split = 0; split <= input.Length; split++)
+            Assert.Equal(expected, Segment(input, SpeechEngines.ChatterboxOriginal.Tags, split));
+        // Turbo has no [expressive]: the sentence stays and the tag goes.
+        Assert.Equal("Hi.|We won [laugh] today!", Segment("Hi. [expressive] We won [laugh] today!", Chatterbox, 0));
+        Assert.Equal("Hi. We won today!", VoiceTags.Strip("Hi. [expressive] We won [laugh] today!"));
+    }
+
+    [Fact]
+    public void Thinking_prompt_for_chatterbox_original_offers_expressive_and_whispering_as_tones_only()
+    {
+        var prompt = VoiceTags.Instructions(SpeechEngines.ChatterboxOriginal, null)!;
+        Assert.StartsWith("Your replies are spoken aloud by Chatterbox Original", prompt);
+        Assert.DoesNotContain(VoiceTags.SoundsHeading, prompt);
+        Assert.Contains(VoiceTags.TonesHeading + "\n[expressive] - expressive and animated", prompt);
+        Assert.Contains("\n[whispering] - ", prompt);
+        Assert.DoesNotContain("[laugh]", prompt);
+        Assert.Same(SpeechEngines.ChatterboxOriginalTags, SpeechEngines.TagsForModel("chatterbox-original"));
+        Assert.Same(SpeechEngines.ChatterboxTurboTags, SpeechEngines.TagsForModel("chatterbox-nano"));
+    }
+
     [Fact]
     public void A_spelling_the_voice_and_the_character_share_is_the_voices_tone_and_otherwise_the_emote()
     {

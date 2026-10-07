@@ -11,6 +11,10 @@ namespace Martlet.Providers;
 public sealed record HostTextTarget(string Origin, string HostId, string SpkiFingerprint, string DeviceId, Guid CredentialId,
     string RouteId = SelfHostSetup.OllamaRouteId)
 {
+    /// <summary>The request is background work on this route (remembering after a reply, a Thinking pool job), not the live
+    /// turn: a live request of this PC that needs the computer stops it (<see cref="Martlet.Core.Cluster.WorkPriority"/>).</summary>
+    public bool Background { get; init; }
+
     public override string ToString() => nameof(HostTextTarget);
 }
 

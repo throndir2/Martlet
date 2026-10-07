@@ -31,10 +31,11 @@ public sealed partial class Audio2FaceHostConnection
     /// <see cref="SpeechEngines"/>) through the gateway relay and yields its contiguous 24 kHz mono PCM16 frames in order
     /// as they arrive (XTTS sends them while it is still generating). The request names the recording by its SHA-256, which
     /// the host keeps from the shared speaking-voice list; only a host that lacks it (<c>reference.missing</c>) or predates
-    /// the list gets the recording itself. Failures throw <see cref="Audio2FaceHostException"/>.</summary>
+    /// the list gets the recording itself. <paramref name="style"/> (Chatterbox Original's General and Expressive exaggeration
+    /// and CFG weight) is sent only to that engine. Failures throw <see cref="Audio2FaceHostException"/>.</summary>
     public async IAsyncEnumerable<byte[]> StreamSpeechAsync(HostRoute route, CorrelationIds ids, long epoch,
         DateTimeOffset deadline, HostSpeechReference reference, string text,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        [EnumeratorCancellation] CancellationToken cancellationToken = default, ChatterboxStyle? style = null)
     {
         ArgumentNullException.ThrowIfNull(route);
         ArgumentNullException.ThrowIfNull(ids);
@@ -54,15 +55,17 @@ public sealed partial class Audio2FaceHostConnection
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(deadline - clock.GetUtcNow() + TimeSpan.FromSeconds(1));
         var sendRecording = RecordingHosts.ContainsKey(pairing.HostId);
+        // Only Chatterbox Original takes a style; every other route refuses the field.
+        var sentStyle = engine == SpeechEngines.ChatterboxOriginal ? style : null;
         HttpResponseMessage response;
         try
         {
-            response = await SendSpeechAsync(route, engine, ids, epoch, deadline, reference, text, sendRecording, timeout.Token).ConfigureAwait(false);
+            response = await SendSpeechAsync(route, engine, ids, epoch, deadline, reference, text, sendRecording, sentStyle, timeout.Token).ConfigureAwait(false);
         }
         catch (Audio2FaceHostException error) when (!sendRecording && error.Code is "reference.missing" or "request.invalid")
         {
             sendRecording = true;
-            response = await SendSpeechAsync(route, engine, ids, epoch, deadline, reference, text, true, timeout.Token).ConfigureAwait(false);
+            response = await SendSpeechAsync(route, engine, ids, epoch, deadline, reference, text, true, sentStyle, timeout.Token).ConfigureAwait(false);
             if (error.Code == "request.invalid") RecordingHosts[pairing.HostId] = true;
         }
         LastSpeechSentRecording = sendRecording;
@@ -93,7 +96,8 @@ public sealed partial class Audio2FaceHostConnection
     // Sends the speaking request (with the recording only when sendRecording) and returns the open event stream; a refusal
     // throws the host's failure code.
     private async Task<HttpResponseMessage> SendSpeechAsync(HostRoute route, SpeechEngine engine, CorrelationIds ids, long epoch,
-        DateTimeOffset deadline, HostSpeechReference reference, string text, bool sendRecording, CancellationToken token)
+        DateTimeOffset deadline, HostSpeechReference reference, string text, bool sendRecording, ChatterboxStyle? style,
+        CancellationToken token)
     {
         var payload = new Dictionary<string, object>
         {
@@ -110,6 +114,7 @@ public sealed partial class Audio2FaceHostConnection
         if (sendRecording) payload["reference_audio_base64"] = Convert.ToBase64String(reference.Audio.Span);
         // GPT-SoVITS reads the recording's transcript in the recording's language.
         if (engine == SpeechEngines.GptSovits) payload["reference_language"] = SpeechEngines.ReferenceLanguage(reference.Transcript);
+        if (style is not null) payload["voice_style"] = style.Wire();
         var body = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>
         {
             ["protocol_version"] = new Dictionary<string, int> { ["major"] = 2, ["minor"] = 0 },

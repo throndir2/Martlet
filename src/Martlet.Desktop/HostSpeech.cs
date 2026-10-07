@@ -242,9 +242,11 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
         long epoch, DateTimeOffset deadline, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var reference = await ReadReferenceAsync(target, cancellationToken).ConfigureAwait(false);
+        // Chatterbox Original says each sentence as the owner's style says (Companion › Voice); no other engine reads it.
+        var style = SpeechEngines.ForRoute(target.RouteId) == SpeechEngines.ChatterboxOriginal ? ChatterboxStyle.Load(dataDirectory) : null;
         var targets = Targets(target);
         await using var frames = WorkQueue.Shared.StreamAsync(WorkSharingJobs.Speaking, targets, t => t.HostId,
-                (t, token) => SpeakAsync(t, reference, input, ids, epoch, deadline, token), WorkSharingRoster.Classify, deadline, null,
+                (t, token) => SpeakAsync(t, reference, input, ids, epoch, deadline, style, token), WorkSharingRoster.Classify, deadline, null,
                 cancellationToken)
             .GetAsyncEnumerator(cancellationToken);
         while (await Guard(() => frames.MoveNextAsync().AsTask(), cancellationToken).ConfigureAwait(false))
@@ -266,14 +268,15 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
     }
 
     private static async IAsyncEnumerable<byte[]> SpeakAsync(HostSpeechTarget target, HostSpeechReference reference,
-        BoundedSpeechInput input, CorrelationIds ids, long epoch, DateTimeOffset deadline,
+        BoundedSpeechInput input, CorrelationIds ids, long epoch, DateTimeOffset deadline, ChatterboxStyle? style,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         using var connection = Connect(target);
         var routes = await connection.ReadRoutesAsync(cancellationToken).ConfigureAwait(false);
+        HostRouteGpus.Note(target.HostId, routes);
         var route = routes.FirstOrDefault(r => r.RouteId == target.RouteId && r.ModelId == target.ModelId) ??
             throw HostTextClient.Failed("voice", ProviderFailureCode.ModelNotFound, $"{target.HostId} isn't ready for speaking");
-        await foreach (var frame in connection.StreamSpeechAsync(route, ids, epoch, deadline, reference, input.Text, cancellationToken)
+        await foreach (var frame in connection.StreamSpeechAsync(route, ids, epoch, deadline, reference, input.Text, cancellationToken, style)
             .ConfigureAwait(false))
             yield return frame;
     }

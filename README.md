@@ -112,9 +112,9 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 <td valign="top">
 
 ### 🗣️ Any voice you want
-- Expressive voices that **laugh, sigh and change tone**.
+- Expressive voices that **laugh, sigh and whisper**, and one that turns on the drama when the moment calls for it.
 - **Clone a voice** from a few seconds of audio. No training required.
-- Five voice engines to choose from (Chatterbox, F5, XTTS, GPT-SoVITS, Dia), plus Windows and OpenAI voices.
+- Seven voice engines to choose from (Chatterbox Turbo, Original and Nano, F5, XTTS, GPT-SoVITS, Dia), plus Windows and OpenAI voices. Chatterbox Nano even runs without a graphics card.
 - Switch voices with one click.
 
 </td>

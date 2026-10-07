@@ -185,6 +185,15 @@ Each request goes through Martlet's queue (`WorkQueue`, `Martlet.Core.Cluster`):
    whichever computer frees first takes it (up to the request's deadline).
 4. A computer this PC already has a request running on goes last for its next
    one, saving a round trip it would only refuse.
+5. The live turn goes first (`WorkPriority`). A background request (remembering
+   or naming on the conversation's own model, a Thinking pool job on a host's
+   Ollama role) waits while a live request of its job waits, and a live request
+   that finds a computer busy with this PC's own background request stops that
+   request (`WorkPreemptedException`, which its caller treats as "go on later")
+   and takes the computer as soon as it is free. A host that keeps its graphics
+   card for a live turn refuses background work with `job.busy` and detail
+   `live`, or stops it with `job.preempted`: that is `WorkRefusal.Preempted`,
+   never a failure ([live floor](CONVERSATION.md#the-live-floor-the-live-turn-comes-first)).
 
 The order (`WorkSharing.Order`) is deterministic and costs nothing: the paired
 computers the shared plan says run the job's engine (the same voice engine

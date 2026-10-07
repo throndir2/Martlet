@@ -213,6 +213,8 @@ public static class PlatformCatalog
     private static readonly PlatformRequirement Nvidia4 = new() { NvidiaGb = 4, X64 = true };
     private static readonly PlatformRequirement Nvidia6 = new() { NvidiaGb = 6, X64 = true };
     private static readonly PlatformRequirement Nvidia8 = new() { NvidiaGb = 8, X64 = true };
+    // A role whose image pins x86_64 CUDA wheels but also runs on the CPU (Chatterbox Nano).
+    private static readonly PlatformRequirement X64Only = new() { X64 = true };
     private static readonly PlatformRequirement AppleSilicon = new() { AppleSilicon = true };
     private static readonly PlatformRequirement Os26 = new() { MinimumOs = new(26, 0) };
     private static readonly PlatformRequirement IosIntelligence = new() { MinimumOs = new(26, 0), Feature = PlatformFeatures.AppleIntelligence };
@@ -342,12 +344,27 @@ public static class PlatformCatalog
 
         // ---- speaking ----
         new("openai-tts", ClusterJobs.Speaking, "OpenAI voices", Cloud()),
-        new("chatterbox", ClusterJobs.Speaking, "Chatterbox Turbo voice cloning (laughs, sighs, tones)",
+        new("chatterbox", ClusterJobs.Speaking, "Chatterbox Turbo voice cloning (laughs, sighs, whispers)",
         [
             Works(Linux, Host, "", Nvidia6), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia6),
             Impossible(Mac, Host, "the Chatterbox container is built for NVIDIA CUDA"),
             Impossible(Ios, Host, "Chatterbox needs an NVIDIA GPU; iPhones and iPads have none"),
             Impossible(Android, Host, "Chatterbox needs an NVIDIA GPU; phones and tablets have none")
+        ]),
+        new("chatterbox-original", ClusterJobs.Speaking, "Chatterbox Original voice cloning (calm or expressive sentences)",
+        [
+            Works(Linux, Host, "", Nvidia6), Works(Win, Host, "through Docker Desktop (This PC's host service)", Nvidia6),
+            Impossible(Mac, Host, "the Chatterbox container is built for NVIDIA CUDA"),
+            Impossible(Ios, Host, "Chatterbox Original needs an NVIDIA GPU; iPhones and iPads have none"),
+            Impossible(Android, Host, "Chatterbox Original needs an NVIDIA GPU; phones and tablets have none")
+        ]),
+        new("chatterbox-nano", ClusterJobs.Speaking, "Chatterbox Nano voice cloning (laughs and sighs; runs on the CPU too)",
+        [
+            Works(Linux, Host, "on an NVIDIA GPU when the host has one, otherwise on the CPU", X64Only),
+            Works(Win, Host, "through Docker Desktop (This PC's host service), on an NVIDIA GPU or the CPU", X64Only),
+            Impossible(Mac, Host, "the Chatterbox container is built for 64-bit Intel or AMD (x86_64) Linux"),
+            Impossible(Ios, Host, "Chatterbox runs in a Docker container; iPhones and iPads can't run one"),
+            Impossible(Android, Host, "Chatterbox runs in a Docker container; phones and tablets can't run one")
         ]),
         new("f5", ClusterJobs.Speaking, "F5 voice cloning",
         [
@@ -527,6 +544,8 @@ public static class PlatformCatalog
         "f5" => "f5",
         "xtts" => "xtts",
         "chatterbox" => "chatterbox",
+        "chatterbox-original" => "chatterbox-original",
+        "chatterbox-nano" => "chatterbox-nano",
         "gpt-sovits" => "gpt-sovits",
         "dia" => "dia",
         "singing" => "singing",

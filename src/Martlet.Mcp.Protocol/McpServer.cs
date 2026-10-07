@@ -15,7 +15,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
     /// which lists its keys.</summary>
     private static readonly IReadOnlyDictionary<string, int> VoiceEnginePorts = new Dictionary<string, int>(StringComparer.Ordinal)
     {
-        ["chatterbox"] = 50083, ["f5"] = 50080, ["xtts"] = 50081, ["gpt-sovits"] = 50082, ["dia"] = 50084
+        ["chatterbox"] = 50083, ["chatterbox-original"] = 50089, ["chatterbox-nano"] = 50088, ["f5"] = 50080, ["xtts"] = 50081,
+        ["gpt-sovits"] = 50082, ["dia"] = 50084
     };
 
     private static readonly object[] Tools =
@@ -181,6 +182,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             points = new { type = "array", items = new { type = "array", items = new { type = "number", minimum = 0, maximum = 1 }, minItems = 2, maxItems = 2 } },
             stepMs = new { type = "integer", minimum = 10, maximum = 2000 }
+        }),
+        Tool("character_face", "Read where Martlet draws over the showing character's face (its own blush glow and overlay emotes " +
+            "such as hearts or a sweat drop), samples times (1 to 60, default 1) gapMs apart (0 to 5000, default 250), as each frame " +
+            "is drawn. Each reading (faces) has n, found, tracking (mesh: pinned to the Live2D model's own face meshes; bones: a " +
+            "VRM's head bone; estimate: a Live2D model's head angles, when no face meshes were found), x, y and width (fractions of " +
+            "the character overlay's drawing, +y down), tilt (degrees, clockwise), cheekLeft and cheekRight (x, y; visible, 0 to " +
+            "1 as the cheek turns away; across, the cheek's width against the face's, below 1 on a turned head's far cheek; and " +
+            "the renderer's hit test there: hit, drawables, bone, mesh), the overlays showing and pinned (Live2D: carriers, the " +
+            "mesh vertices the face rides on, and milliseconds, how long finding them took at load). summary says which tracking " +
+            "was used, how far the face moved (x, y, width, tilt) and, per cheek, the share of readings over the character, " +
+            "what it was mostly over and for what share, the least it showed and its across range. Reading changes nothing, so " +
+            "it needs no --allow-ui-effects.", new
+        {
+            samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumFaceSamples },
+            gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
         }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
@@ -690,17 +706,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
             phrases = new { type = "array", maxItems = 8, items = new { type = "string", maxLength = 200 } }
         }),
         Tool("voice_engine_check", "Speak one sentence with a self-hosted voice engine's loopback service (a host role's service, " +
-            "default chatterbox on http://127.0.0.1:50083; f5 50080, xtts 50081, gpt-sovits 50082, dia 50084) through the production " +
+            "default chatterbox on http://127.0.0.1:50083; chatterbox-original 50089, chatterbox-nano 50088, f5 50080, xtts 50081, " +
+            "gpt-sovits 50082, dia 50084) through the production " +
             "path: the engine's own gateway relay inside a real gateway on 127.0.0.1 (pinned TLS, pairing) and the desktop's paired " +
             "client, with a starter voice as the reference (nothing played or recorded). Returns the service's /status before and " +
-            "after (state, error, runtime versions such as torch and CUDA, Chatterbox's whispered parts), the audio length, time to " +
+            "after (state, error, model, device, runtime versions such as torch and CUDA, Chatterbox's whispered parts, Chatterbox " +
+            "Original's style), the audio length, time to " +
             "first audio, total time, real-time factor, peak and RMS level, how much of it is voiced (voicedShare: near 0 for a " +
-            "whisper, so text starting with [whispering] shows Chatterbox whispering), or the failure code and message. Loopback " +
-            "only; runs Martlet.NodeLinkCheck.", new
+            "whisper, so text starting with [whispering] shows Chatterbox whispering), or the failure code and message. For " +
+            "chatterbox-original it sends the General and Expressive style saved in dataDirectory (chatterbox-style.json, as " +
+            "Companion › Voice saves it), else Resemble's suggestions, and returns it as style. Loopback only; runs " +
+            "Martlet.NodeLinkCheck.", new
         {
             engine = new { type = "string", @enum = VoiceEnginePorts.Keys.ToArray() },
             endpoint = new { type = "string", maxLength = 64 },
-            text = new { type = "string", maxLength = 300 }
+            text = new { type = "string", maxLength = 300 },
+            dataDirectory = new { type = "string" }
         }),
         Tool("reading_check", "Companion › Reading (docs/READING.md): read reading.json for a data directory (where Martlet reads " +
             "the text on the screen: Windows OCR on this PC, a host's Reading role or off) and read a drawn test picture with known " +
@@ -908,7 +929,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "only what is said aloud and is not a failure (voice.muted); paused pauses the reply once its first audio played, as " +
             "Pause and decide does when you talk over it, holds it 1 s and plays it on: ok also needs no samples played while paused, " +
             "the next piece still made meanwhile (voice.hold), every piece said once (nothing made again) and the " +
-            "latency line saying it paused and resumed; text-only sends the reply with no voice at all (Speak " +
+            "latency line saying it paused and resumed (with characterTags, also no cue acted while paused: a cue that falls in " +
+            "the pause waits for it); stopped has the user stop the reply (Stop, or talking over it) as the failAt-th piece starts " +
+            "playing, and ok then needs the reply canceled and no cue acted after the stop (character.stoppedAtMs; the cues still " +
+            "waiting are dropped); text-only sends the reply with no voice at all (Speak " +
             "Martlet's replies aloud off), so every sentence goes to the captions; a fixture speaker opens no " +
             "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
             "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
@@ -928,7 +952,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "[\"{nod}\", \"{blush}\"]) the reply is offered the desktop character's tags as while the character shows: character " +
             "returns what the reply's tags did (acted: each tag, its kind, name and the other spelling the reply used, such as " +
             "[nod] or *nods* for {nod}), the note the talk window shows under the reply (\"Tone: happy. Emotes: nod.\") and each cue " +
-            "the character got (tag, atMs when its sentence started playing, delayMs into that sentence), and ok also needs every " +
+            "the character got (tag, atMs when its sentence started playing, delayMs into that sentence, and actedMs when the " +
+            "character acted it, waiting for it as the desktop's character does, or dropped when the reply stopped first), and ok " +
+            "also needs every " +
             "spelling of the tags out of reply.text and voice.pieces and, with voiceFailure none, slow or text-only, a cue for " +
             "every tag acted. Loopback only; reads no credentials.", new
         {
@@ -1335,6 +1361,27 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "slot, one slot where waiting jobs run highest priority first (barge-in judge, digest, research), a busy member passed " +
             "over for the next, a stale judge dropped, and deep-thinking.json read once into thinking-pool.json. In-process; " +
             "reads nothing.", new { }),
+        Tool("live_floor_status", "The live floor (the live conversation turn comes before all background work) from a data directory: " +
+            "what the conversation runs on (its Thinking, voice and listening routes, each on this PC, a computer on the home network " +
+            "or a cloud provider, with the paired hosts and routes the floor holds while you talk), which Thinking pool members share " +
+            "that hardware, what the floor does to each job kind on such a member at Listening and at Live, and the desktop's " +
+            "live-floor.json: its level (Idle, Listening, Live), the jobs it held and stopped by kind this turn and in all, the hold " +
+            "client and hosts held, the work queue's stopped background requests and its last changes (never what was said). Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("live_floor_check", "Rehearse the live floor with the production LiveFloor, LiveFloorRules, ThinkingJobBoard, BackgroundJobs " +
+            "and WorkQueue on fixture inputs and simulated members, NOT models: which things said are real words (said: your own " +
+            "lines, else fixtures such as \"Mmm.\", \"Yeah, right.\" and \"What time is it in Tokyo?\"), the levels on a clock of their " +
+            "own (voice, quiet, a sound, words, a reply and its grace), the board at Listening (new work waits, running work and " +
+            "judges go on) and at Live (a summary dropped, remembering and naming stopped and queued again, touch zones going on, " +
+            "judges running), a member on another computer never held, a think stopped and going on from what it wrote (in place, " +
+            "or again with it as context), research waiting for the conversation instead of being refused, the conversation " +
+            "model's own place held above Idle, and the work queue stopping this PC's background request for a live reply. " +
+            "In-process; reads nothing.", new
+        {
+            said = new { type = "array", items = new { type = "string" }, maxItems = 32 }
+        }),
         Tool("work_sharing_status", "Devices > Sharing work from a data directory: the choices (work-sharing.json, the work-sharing " +
             "shared setting: for Speaking, Thinking, Listening and Deep thinking whether it is shared when its computer is busy, " +
             "the order chosen (this-pc being each companion PC's own host service) and the computers never used; which computers " +
@@ -1504,6 +1551,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 OptionalInt(arguments, "holdMs"), OptionalInt(arguments, "repeat"), OptionalInt(arguments, "gapMs"), Taps(arguments),
                 OptionalInt(arguments, "settleMs")),
                 "character_stroke" => await desktop.StrokeCharacterAsync(StrokePoints(arguments), OptionalInt(arguments, "stepMs") ?? 40),
+                "character_face" => await desktop.FaceCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "turn_judge_check" => await TurnJudgeCheck.RunAsync(arguments, MartletDirectory(arguments), cancellation),
@@ -1636,6 +1684,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "helper_jobs_check" => await HelperJobsCheck.RunAsync(cancellation),
                 "thinking_pool_status" => await ThinkingPoolCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "thinking_pool_check" => await ThinkingPoolCheck.RunAsync(cancellation),
+                "live_floor_status" => await LiveFloorCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),
                 "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),
                 "work_sharing_check" => await WorkSharingCheck.RunAsync(cancellation),
                 "discord_reply_status" => DiscordReplyCheck.Status(DataDirectory(arguments)),
@@ -1852,9 +1902,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
         if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttp ||
             !System.Net.IPAddress.TryParse(uri.Host, out var address) || !System.Net.IPAddress.IsLoopback(address))
             throw new ArgumentException("endpoint must be a numeric loopback address such as http://127.0.0.1:50083/.");
-        string[] command = OptionalString(arguments, "text") is { Length: > 0 } text
+        var text = OptionalString(arguments, "text") is { Length: > 0 } said ? said : "-";
+        var styleDirectory = OptionalString(arguments, "dataDirectory") is { Length: > 0 } data ? data : null;
+        if (styleDirectory is not null && !Path.IsPathFullyQualified(styleDirectory))
+            throw new ArgumentException("dataDirectory must be an absolute path.");
+        string[] command = styleDirectory is null
             ? ["voice-engine", engine, uri.GetLeftPart(UriPartial.Authority) + "/", text]
-            : ["voice-engine", engine, uri.GetLeftPart(UriPartial.Authority) + "/"];
+            : ["voice-engine", engine, uri.GetLeftPart(UriPartial.Authority) + "/", text, styleDirectory];
         return await NodeLinkCheckAsync(TimeSpan.FromMinutes(6), cancellation, command);
     }
 
@@ -2822,8 +2876,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             @default = fallback.Key, defaultName = fallback.Name, defaultFemale = fallback.Female, defaultCute = fallback.Cute,
             cute = Martlet.F5.F5BundledVoices.All.Where(voice => voice.Cute).Select(voice => voice.Key).ToArray(), starters, library, list, speaking,
-            engines, otherVoices, chosenEngine = Martlet.Core.Settings.SpeechEngines.ForKey(chosen)?.Key ?? Martlet.Core.Settings.SpeechEngines.Default.Key
+            engines, otherVoices, chosenEngine = Martlet.Core.Settings.SpeechEngines.ForKey(chosen)?.Key ?? Martlet.Core.Settings.SpeechEngines.Default.Key,
+            // Chatterbox Original's General and Expressive style as Companion › Voice saved it (Resemble's suggestions until then).
+            chatterboxStyle = ChatterboxStyleReport(directory)
         };
+
+        static object ChatterboxStyleReport(string directory)
+        {
+            var style = Martlet.Core.Settings.ChatterboxStyle.Load(directory);
+            return new
+            {
+                saved = File.Exists(Path.Combine(directory, Martlet.Core.Settings.ChatterboxStyle.FileName)),
+                generalExaggeration = style.GeneralExaggeration, generalCfgWeight = style.GeneralCfgWeight,
+                expressiveExaggeration = style.ExpressiveExaggeration, expressiveCfgWeight = style.ExpressiveCfgWeight,
+                summary = style.Describe()
+            };
+        }
 
         // What a voice can do: cloning, sounds and emotions (yes, partly or no), the tags that do it and the rundown's words.
         static object Abilities(Martlet.Core.Settings.VoiceAbilities abilities, IReadOnlyList<Martlet.Core.Settings.VoiceTag> tags) => new

@@ -84,8 +84,9 @@ internal static class DefaultSetup
         var oldDriver = card?.DriverMajor is < ListeningAdvisor.MinimumDriver;
         var defaultVoice = FootprintCatalog.Default.For(PlanComponent.Voice)
             .FirstOrDefault(o => o.HostRoleKind == SpeechEngines.Default.HostRoleKind)?.Id;
+        // Of the voice engines only the default is set up here, on the card or (Chatterbox Nano) on the processor alike.
         return new(FootprintCatalog.Default.Options.Where(o =>
-            !(o.IsLocal && o.Component == PlanComponent.Voice && o.UsesGpu && o.Id != defaultVoice) &&
+            !(o.IsLocal && o.Component == PlanComponent.Voice && o.HostRoleKind is not null && o.Id != defaultVoice) &&
             !(o.IsLocal && o.Component == PlanComponent.Listening && o.HostRoleKind is not null && !o.UsesGpu) &&
             !(gpus is not null && o.IsLocal && o.Gpu == GpuRequirement.Nvidia && (card is null || oldDriver && o.Component == PlanComponent.Listening))));
     }
