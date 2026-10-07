@@ -1392,6 +1392,28 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "slot, one slot where waiting jobs run highest priority first (barge-in judge, digest, research), a busy member passed " +
             "over for the next, a stale judge dropped, and deep-thinking.json read once into thinking-pool.json. In-process; " +
             "reads nothing.", new { }),
+        Tool("quick_sounds_status", "Companion > Voice > Quick sounds while Martlet thinks, from a data directory: the choice (on or " +
+            "off, off by default, and the delay, from talk-preferences.json), the voice replies speak with (in words, whether it is " +
+            "a paid cloud voice, and its key per voice and character), whether its quick sounds are made (each clip's words and " +
+            "length) or need the owner's click (a paid voice), every set kept in quick-sounds\\ and the newest desktop log lines " +
+            "about quick sounds. Read-only; never plays anything.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("quick_sounds_check", "Rehearse quick sounds with the production rules (QuickSoundGate, QuickSoundWatcher, " +
+            "ConversationTurn.PlayQuickSound) on fixture turns through the production conversation runtime, Chat Completions " +
+            "adapter, host voice stream and playback sink: a fixture endpoint on 127.0.0.1 answers after a set wait (canned " +
+            "words, NOT AI), a fixture voice makes a quiet tone (NOT AI) and a fixture speaker plays nothing. Scenarios: slow (the " +
+            "quick sound plays once the reply has had no audio for the delay, the whole clip before the reply, which follows it on " +
+            "its own run uncut, and the reply latency line says when), fast (none), cooldown (a second slow reply within 20 s gets " +
+            "none), early (a reply started early and held for a second: counted from when it is taken, never while held), let-go " +
+            "(held, then let go: none), reasoning (hidden reasoning before the words: after 300 ms) and paused (paused because you " +
+            "talked over it: none). scenario runs one; delayMs is one of 500, 700, 1000, 1500 (700 by default). Loopback only; " +
+            "plays nothing.", new
+        {
+            scenario = new { type = "string", @enum = QuickSoundCheck.Scenarios },
+            delayMs = new { type = "integer", @enum = new[] { 500, 700, 1000, 1500 } }
+        }),
         Tool("live_floor_status", "The live floor (the live conversation turn comes before all background work) from a data directory: " +
             "what the conversation runs on (its Thinking, voice and listening routes, each on this PC, a computer on the home network " +
             "or a cloud provider, with the paired hosts and routes the floor holds while you talk), which Thinking pool members share " +
@@ -1718,6 +1740,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "helper_jobs_status" => HelperJobsCheck.Status(DataDirectory(arguments)),
                 "helper_jobs_check" => await HelperJobsCheck.RunAsync(cancellation),
                 "thinking_pool_status" => await ThinkingPoolCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "quick_sounds_status" => QuickSoundCheck.Status(DataDirectory(arguments)),
+                "quick_sounds_check" => await QuickSoundCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),
                 "thinking_pool_check" => await ThinkingPoolCheck.RunAsync(cancellation),
                 "live_floor_status" => await LiveFloorCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),

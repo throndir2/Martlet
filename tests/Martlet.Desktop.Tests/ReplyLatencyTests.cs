@@ -98,6 +98,38 @@ public sealed class ReplyLatencyTests
     }
 
     [Fact]
+    public void A_quick_sound_is_said_in_the_line_and_read_back_by_latency_report()
+    {
+        var clock = TimeProvider.System;
+        var stopped = clock.GetTimestamp() - 2 * clock.TimestampFrequency;
+        var started = stopped + (long)(0.3 * clock.TimestampFrequency);
+        var timeline = new ReplyTimeline(clock, ReplyTimeline.YouStopped, stopped);
+        // Counted from the same moment as the line's total: 300 ms to the reply's start, then 712 ms.
+        var line = ReplyLatency.Describe(timeline, started, clock,
+            Reply(new ConversationTimings(QuickSoundAfter: TimeSpan.FromMilliseconds(712))), "Thinking qwen3:8b")!;
+        Assert.Contains(" Quick sound at 1012 ms. Models: Thinking qwen3:8b.", line);
+        var parsed = LatencyReport.Parse(DateTimeOffset.Now, line)!;
+        Assert.Equal(1012, parsed.QuickSoundMs);
+        var plain = LatencyReport.Parse(DateTimeOffset.Now, ReplyLatency.Describe(null, clock.GetTimestamp(), clock, Reply(new()), null)!)!;
+        Assert.Null(plain.QuickSoundMs);
+        var summary = System.Text.Json.JsonSerializer.SerializeToElement(LatencyReport.Summarize([parsed, plain])).GetProperty("quickSounds");
+        Assert.Equal(1, summary.GetProperty("replies").GetInt32());
+        Assert.Equal(1012, summary.GetProperty("atMs").GetProperty("Median").GetDouble());
+    }
+
+    [Fact]
+    public async Task The_quick_sound_check_plays_one_in_front_of_a_slow_reply_through_the_production_runtime()
+    {
+        // Production rules, conversation runtime, Chat Completions adapter, host voice stream and playback sink with fixtures (NOT AI).
+        var result = System.Text.Json.JsonSerializer.SerializeToElement(await QuickSoundCheck.RunAsync("slow", 700, CancellationToken.None));
+        Assert.True(result.GetProperty("ok").GetBoolean(), result.ToString());
+        var turn = result.GetProperty("scenarios")[0].GetProperty("turns")[0];
+        Assert.True(turn.GetProperty("played").GetBoolean());
+        Assert.True(turn.GetProperty("replyFollowedUncut").GetBoolean());
+        Assert.Contains("Quick sound at", turn.GetProperty("latencyLine").GetString());
+    }
+
+    [Fact]
     public void What_the_live_floor_held_and_stopped_is_said_in_the_line_and_read_back_by_latency_report()
     {
         var clock = TimeProvider.System;

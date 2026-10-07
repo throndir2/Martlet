@@ -1332,6 +1332,18 @@ voice pipeline never waits for a whole reply:
   sentence still waits for the next few words, in case they are a short ending
   to say with it (*Where the voice pauses*, below). MCP's `prompts_status`
   shows the setting and what closes a spoken reply's instructions.
+- **Quick sounds while Martlet thinks.** Off by default (Companion › Voice).
+  When a confirmed spoken reply has no audio of its own 700 ms after it was
+  confirmed (or 300 ms when the Thinking model thinks first), Martlet plays one
+  short clip in its own voice (*"Mm,"*, *"Hmm..."*) and the reply follows it on
+  its own playback run, uncut (`ConversationTurn.PlayQuickSound`,
+  `QuickSoundWatcher`). Never on a fast reply, never twice in one reply, at
+  most once every 20 seconds, never while a reply started early is held or
+  while a reply is paused for you, never for a song, never in the text or
+  history. The clips are made once per voice and character with the reply's
+  own voice and kept in `quick-sounds\`; a paid cloud voice makes them only on
+  the owner's click. Details and measurements:
+  [Voice latency](VOICE_LATENCY.md#quick-sounds-while-martlet-thinks).
 - **Where each persona's voice pauses.** Each piece is said on its own, so a
   break in the wrong place sounds awkward ("That was a wonderful idea. |
   Cutie!"). Personality › **Where the voice pauses** sets, per persona, which

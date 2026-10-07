@@ -849,6 +849,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (next is { SupportsTools: true } && tools is { HasEnabledServers: true }) tools.EnsureStarted(retry: true);
         // The record of conversations is read in the background now, so a message that mentions an earlier one finds it.
         if (history?.Active(next?.Memory) == true) history.Warm();
+        // Quick sounds follow the voice: kept ones are read, missing ones made when the voice is free to use.
+        FollowQuickSounds();
     }
 
     internal void SetControls(bool pause, bool mute, bool sessionLocked)
@@ -2046,6 +2048,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     : runtime.StartEarly(request, operation.Authorization, early.PrepareVoice, operation.OriginalCaller);
                 operation.Attach(turn);
                 EndFloorReplyWhenMade(operation, turn);
+                QuickSoundWhenSlow(operation, turn);
                 if (straight && early is null)
                     foreach (var words in operation.StraightWords!) words.ReplyStarted(operation.ReplyStartedAt);
             }
@@ -4762,6 +4765,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         floor.Dispose();
         DisposeThinkRuntimeAsync().Forget();
         DisposeCaptureRuntimeAsync().Forget();
+        DisposeQuickSoundsAsync().Forget();
         singing?.DisposeAsync().AsTask().Forget();
         songHandler?.Dispose();
         pictureHandler?.Dispose();
