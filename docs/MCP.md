@@ -1121,7 +1121,9 @@ It returns `renderer`, `key` (first 16 hex digits of the model's ID), `files`
 model3.json, with their model-relative file names, and the `Idle` group made
 from VTube Studio's idle animation), `saved`, `detectedBy` (`names` or
 `thinking`), `actions` (each one's `n` as in `CharacterActionName-<n>`, `id`,
-`kind`, `name`, `detail`, `tag`, `cue`, `use`, `enabled`, `mode` (`brief`, or
+`kind`, `name`, `detail`, `tag`, `cue`, `use` (the When to use text, null while
+the box is empty), `hint` (what the reply prompt says next to the tag: `use`, or
+Martlet's own hint while `use` is null), `enabled`, `mode` (`brief`, or
 `lingering`: stays on after `{tag}` until `{/tag}`), `modeSaved` (false while it
 is the default), `vtsToggle` (a VTube Studio ToggleExpression hotkey turns it
 on) and whether replies
@@ -4096,7 +4098,11 @@ Martlet over the face at ...*); and `CharacterActionsSaveState` *All changes sav
 (its name and kind; a status field), `CharacterActionOn-<n>` (check box),
 `CharacterActionTag-<n>` (an English tag; a tag in another script reads *Not
 saved: ... use up to 24 English letters (a-z) ...*), `CharacterActionCue-<n>` (combo box: `(none)` or a
-cue such as `laugh`), `CharacterActionUse-<n>`, `CharacterActionMode-<n>` (the
+cue such as `laugh`), `CharacterActionUse-<n>` (the When to use box),
+`CharacterActionHint-<n>` (the grey
+hint in that box while it is empty, the text replies get then, such as *nod, for
+yes or agreement* or *the character's emote named "Glasses"*; hidden once the
+box has text), `CharacterActionMode-<n>` (the
 *Stays on* check box, its mode as `checkedState`: on for a lingering emote) and `CharacterActionTry-<n>`
 (plays it on the showing character, or turns a lingering one on; its label, a
 status field, reads *Turn off* while that lingering emote is on, and clicking it
