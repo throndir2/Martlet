@@ -590,7 +590,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// Add a voice's line on filling in each recording's words ("F5AddVoiceHeard" and "F5AddVoiceHeard-2" read "Filled in by
     /// Parakeet on this PC: 12 words. Check them and fix anything it misheard."; never the words);
     /// Companion › Voice › Voice engine's rows, one per engine ("VoiceEngine-chatterbox" reads "Chatterbox Turbo · recommended",
-    /// "VoiceEngineFeatures-chatterbox" "NVIDIA GPU, 6 GB+, Docker, Voice cloning, ...", "VoiceEngineState-chatterbox"
+    /// "VoiceEngineAbilities-chatterbox" "Voice cloning: yes. Laughs &amp; sighs: yes. Emotions: whispering only.",
+    /// "VoiceEngineRunsOn-chatterbox" "Runs on an NVIDIA GPU: about 3.7 GB of graphics memory, up to 4.2 GB (6 GB+ card).",
+    /// "VoiceEngineFeatures-chatterbox" "Docker, 5 s+ samples, English", "VoiceEngineState-chatterbox"
     /// "Ready on this PC." or why it can't run there, and its button "VoiceEngineUse-chatterbox" "Set up and use Chatterbox
     /// Turbo"; key "windows" for a Windows voice; clicking a button needs --allow-ui-effects) and its computer pills
     /// ("SpeakingHost-gpu-pc" reads "gpu-pc · speaking");

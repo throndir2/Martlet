@@ -108,13 +108,13 @@ public sealed partial class FootprintCatalog
         },
         new()
         {
-            Id = "windows-speech", Component = PlanComponent.Voice, DisplayName = "Windows voices", RunsInApp = true, Platforms = WindowsOnly,
+            Id = WindowsVoiceId, Component = PlanComponent.Voice, DisplayName = "Windows voices", RunsInApp = true, Platforms = WindowsOnly,
             Steady = new(0, 0.1, 0.9, 0), Peak = new(0, 0.2, 1, 0), QualityTier = 1, FirstWordMs = 50, Evidence = FootprintEvidence.Measured,
             Source = $"Measured: System.Speech on an i7-13700K, 0.17 GB with its PowerShell host, 0.9 threads while speaking ({Doc})"
         },
         new()
         {
-            Id = "hosted:openai-tts", Component = PlanComponent.Voice, DisplayName = "OpenAI voice", Hosting = OptionHosting.External,
+            Id = OpenAiVoiceId, Component = PlanComponent.Voice, DisplayName = "OpenAI voice", Hosting = OptionHosting.External,
             ProviderId = "openai", QualityTier = 4, FirstWordMs = 600, NeedsSignup = true, Source = "Hosted: uses no local resources"
         },
 

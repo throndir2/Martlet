@@ -8,6 +8,12 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+- Companion › Voice now shows a quick rundown for every voice: whether it copies your voice, laughs and sighs, and speaks with emotions, and whether it runs on your graphics card (with about how much of its memory it uses), on your processor or online. ([#538](https://github.com/throndir2/Martlet/pull/538))
+
+### Fixed
+- Chatterbox Turbo is no longer listed with emotions it can't perform: of its tones, only whispering changes the voice. ([#538](https://github.com/throndir2/Martlet/pull/538))
+
 ## [0.53.0] - 2026-10-07
 
 ### Added

@@ -88,8 +88,10 @@ shows the tags, what the voice and the chat receive and the prompt.
 ## Desktop
 
 **Companion > Voice > Voice engine** lists Dia as a row (`VoiceEngine-dia`) with
-its chips (`VoiceEngineFeatures-dia`: NVIDIA GPU 8 GB+, Docker, voice cloning,
-samples up to 20 s, laughs & sighs, English) and one button
+its rundown (`VoiceEngineAbilities-dia`: voice cloning yes, laughs & sighs yes,
+emotions no), where it runs (`VoiceEngineRunsOn-dia`: an NVIDIA GPU, about
+4.4 GB of graphics memory, up to 9.8 GB, 8 GB+ card), its chips
+(`VoiceEngineFeatures-dia`: Docker, samples up to 20 s, English) and one button
 (`VoiceEngineUse-dia`) that sets Dia up on the shown computer (this PC, or the
 one picked under Another of your computers) after a confirmation naming its
 licence and Nari Labs' terms, and switches Speaking to it; the engine it

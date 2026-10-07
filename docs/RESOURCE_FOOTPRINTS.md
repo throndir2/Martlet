@@ -148,6 +148,11 @@ holds its own copy.
   host), 0.87-0.92 threads busy while speaking, 0 idle.
 - **Docker images (E):** a PyTorch CUDA image is about 6-15 GB (GPT-SoVITS
   6.7 GB and Singing 14.7 GB measured); about 8 GB is assumed for the others.
+- **Shown to the owner:** Companion › Voice reads each voice's line from this
+  table (`ComponentOption.WhereItRuns`, `VoiceEngineRunsOn-<key>`): "Runs on an
+  NVIDIA GPU: about *steady* GB of graphics memory, up to *peak* GB (*min* GB+
+  card).", "Runs on the CPU: no graphics card needed." or "Runs online: nothing
+  runs on your computers." Change a number here and the line follows.
 
 ### Listening
 

@@ -68,9 +68,11 @@ is the owner's assertion, not legal clearance.
 
 ## Desktop
 
-**Companion > Voice > Voice engine** lists every engine as one row with chips
-(XTTS-v2: `VoiceEngineFeatures-xtts` reads NVIDIA GPU 4 GB+, Docker, voice
-cloning, *Streams*, 17 languages) and one button, `VoiceEngineUse-xtts`, that
+**Companion > Voice > Voice engine** lists every engine as one row with a
+rundown (XTTS-v2: `VoiceEngineAbilities-xtts` reads voice cloning yes, laughs &
+sighs no, emotions no; `VoiceEngineRunsOn-xtts` an NVIDIA GPU, about 2.2 GB of
+graphics memory, up to 3 GB, 4 GB+ card) and chips (`VoiceEngineFeatures-xtts`
+reads Docker, *Streams*, 17 languages) and one button, `VoiceEngineUse-xtts`, that
 sets XTTS-v2 up on the shown computer (this PC, or the one picked under Another
 of your computers) after a confirmation naming its non-commercial licence, then
 switches Speaking to it; the engine it replaces stops. The choice is kept in
