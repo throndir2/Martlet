@@ -8,9 +8,11 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.51.0] - 2026-10-06
+
 ### Added
-- When a PC becomes a Martlet host (or Martlet starts on one), Martlet starts Docker Desktop by itself if this PC's host roles need it, starts every role and loads its model, so the first request from your other computers doesn't wait. It never installs anything by itself, and the host dashboard says what it did or why it couldn't. ([#502](https://github.com/throndir2/Martlet/pull/502))
 - A companion PC that also runs a host service now shows as "Companion PC + host" and checks that host service on Home the way a host PC does: a Host service tile, and when it isn't working (Docker Desktop stopped, not set up, stopped) one item that says which jobs stop and offers the step that fixes it. ([#504](https://github.com/throndir2/Martlet/pull/504))
+- When a PC becomes a Martlet host (or Martlet starts on one), Martlet starts Docker Desktop by itself if this PC's host roles need it, starts every role and loads its model, so the first request from your other computers doesn't wait. It never installs anything by itself, and the host dashboard says what it did or why it couldn't. ([#502](https://github.com/throndir2/Martlet/pull/502))
 
 ### Changed
 - More setup work runs at the same time: adding a role such as Ollama to this PC no longer waits while Martlet prepares its host service's update, Windows Firewall opens while Docker Desktop starts during host setup, and Update hosts updates all your hosts at once instead of one by one. ([#503](https://github.com/throndir2/Martlet/pull/503))
