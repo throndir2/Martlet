@@ -9,7 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
-- Martlet knows what changed on your screen over the last moments: a new Screen summary over time setting (on by default) asks a Thinking model that sees, in the background, to sum it up for your next message, without making replies slower. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+- Martlet knows what changed on your screen over the last moments: a new Screen summary over time setting (on by default) asks a Thinking model that sees, in the background, to sum it up for your next message, without making replies slower. ([#533](https://github.com/throndir2/Martlet/pull/533))
 - Replies can now take in short notes from things happening around you, such as what your character shows, without ever waiting for them. ([#528](https://github.com/throndir2/Martlet/pull/528))
 - Deep thinking is now the **Thinking pool**: one shared set of Thinking models for background work. Each of your computers joins only when you tick *Join the Thinking pool*, and each member has its own slot count. One slot always stays free for quick jobs. If the pool is empty, thinking longer and research use the conversation model. Your Deep thinking choices move over automatically. ([#529](https://github.com/throndir2/Martlet/pull/529))
 - When you talk over Martlet, it now pauses at once and decides: words meant for it stop the reply and get an answer, while a quick "yeah", agreeing, laughing along, side talk or a TV lets the reply play on from exactly where it paused, with nothing lost. "Stop", "wait" or Martlet's name still stop it right away. Choose Pause and decide or Stop at once in Companion › Listening. ([#526](https://github.com/throndir2/Martlet/pull/526))
