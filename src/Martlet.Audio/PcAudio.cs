@@ -24,12 +24,17 @@ public interface IPcAudioSourceFactory
 /// device for always listening, beside the microphone. A loopback delivers nothing while nothing plays, so the gaps are filled
 /// with silence on the clock: the stream stays continuous and voice activity hears a video pause or go quiet as a pause, which
 /// ends the utterance. The audio only goes where the microphone's would (speech-to-text), never to Voice ID, voice recognition
-/// or memory, and is never kept.</summary>
-public sealed class PcAudioCaptureFactory(IPcAudioSourceFactory sources, TimeProvider? clock = null) : ICaptureDeviceFactory
+/// or memory, and is never kept. With <paramref name="sound"/>, the last seconds of it also stay in memory for the sound digest
+/// while that buffer is <see cref="PcSoundBuffer.Recording"/>.</summary>
+public sealed class PcAudioCaptureFactory(IPcAudioSourceFactory sources, TimeProvider? clock = null, PcSoundBuffer? sound = null)
+    : ICaptureDeviceFactory
 {
     private readonly TimeProvider time = clock ?? TimeProvider.System;
     private int withoutMartlet = -1;
     private string? output;
+
+    /// <summary>The last seconds of what the PC played, for the sound digest; null without one.</summary>
+    public PcSoundBuffer? Sound => sound;
 
     /// <summary>Whether the last opened source left Martlet's own sound out; null until one opened.</summary>
     public bool? WithoutMartlet => Volatile.Read(ref withoutMartlet) switch { 0 => false, 1 => true, _ => null };
@@ -45,7 +50,7 @@ public sealed class PcAudioCaptureFactory(IPcAudioSourceFactory sources, TimePro
         var source = sources.Open(cancellationToken);
         Volatile.Write(ref output, source.Output);
         Volatile.Write(ref withoutMartlet, source.WithoutMartlet ? 1 : 0);
-        return new PcAudioDevice(source, time);
+        return new PcAudioDevice(source, time, sound);
     }
 }
 
@@ -121,12 +126,15 @@ public static class PcEcho
 }
 
 /// <summary>One continuous stream of what the PC plays: real packets as they come, and silence for any stretch the loopback
-/// left empty once it is <see cref="Slack"/> overdue (a real packet never waits that long while something plays).</summary>
-internal sealed class PcAudioDevice(IPcAudioSource source, TimeProvider clock) : ICaptureDevice
+/// left empty once it is <see cref="Slack"/> overdue (a real packet never waits that long while something plays). With a sound
+/// buffer that records, each packet is also normalized to 16 kHz mono and kept there (a problem there never stops listening).</summary>
+internal sealed class PcAudioDevice(IPcAudioSource source, TimeProvider clock, PcSoundBuffer? sound = null) : ICaptureDevice
 {
     internal static TimeSpan Slack => TimeSpan.FromMilliseconds(120);
     private long started, frames;
     private bool running;
+    private CaptureNormalizer? normalizer;
+    private byte[]? normalized;
 
     public CaptureSourceFormat Format => source.Format;
 
@@ -150,6 +158,7 @@ internal sealed class PcAudioDevice(IPcAudioSource source, TimeProvider clock) :
         if (packet.ByteCount > 0)
         {
             frames += packet.ByteCount / format.BlockAlignment;
+            Keep(destination[..packet.ByteCount], format);
             return new(packet.ByteCount);
         }
         var elapsed = clock.GetElapsedTime(started) - Slack;
@@ -161,14 +170,53 @@ internal sealed class PcAudioDevice(IPcAudioSource source, TimeProvider clock) :
         var bytes = count * format.BlockAlignment;
         destination[..bytes].Clear();
         frames += count;
+        Keep(destination[..bytes], format);
         return new(bytes);
+    }
+
+    // Keeps a copy for the sound digest while its buffer records; the normalizer goes when it stops, so a new one starts clean.
+    private void Keep(ReadOnlySpan<byte> packet, CaptureSourceFormat format)
+    {
+        if (sound is null) return;
+        if (!sound.Recording)
+        {
+            Forget();
+            return;
+        }
+        try
+        {
+            normalizer ??= new CaptureNormalizer(format);
+            var step = format.MaximumPacketBytes / format.BlockAlignment * format.BlockAlignment;
+            while (!packet.IsEmpty)
+            {
+                var chunk = packet[..Math.Min(step, packet.Length)];
+                var size = normalizer.MaximumOutputBytes(chunk.Length);
+                if (normalized is null || normalized.Length < size) normalized = new byte[size];
+                var written = normalizer.Convert(chunk, normalized);
+                sound.Append(normalized.AsSpan(0, written));
+                packet = packet[chunk.Length..];
+            }
+        }
+        catch (Exception error) when (error is CaptureDeviceException or ArgumentException) { Forget(); }
+    }
+
+    private void Forget()
+    {
+        normalizer?.Dispose();
+        normalizer = null;
+        if (normalized is not null) Array.Clear(normalized);
     }
 
     public void Stop()
     {
         running = false;
         source.Stop();
+        Forget();
     }
 
-    public void Dispose() => source.Dispose();
+    public void Dispose()
+    {
+        Forget();
+        source.Dispose();
+    }
 }

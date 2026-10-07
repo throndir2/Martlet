@@ -374,8 +374,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "TalkBargeInBehavior", "TalkBargeInBehaviorAbout", "LiveBargeIn",
         // Companion › Listening › Watch along: whether Martlet also hears what this PC plays and whether its own voice is left
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
-        // now, or why it can't). Never what was heard.
-        "TalkHearPcStatus", "LivePcAudio",
+        // now, or why it can't). Never what was heard. Describe PC sounds (TalkDescribePcSounds saves the choice, so it needs
+        // --allow-ui-effects) and its status: on or off, the active judge (a Thinking pool model or the CPU sound tagger), and the
+        // last line with its age, judge and milliseconds (a short description of the PC's non-speech sound, never a transcript).
+        "TalkHearPcStatus", "LivePcAudio", "TalkDescribePcSoundsStatus",
         // Companion › Discord › Martlet in your Discord calls: the mode's line (on or off, whether Martlet hears the Discord
         // app alone or everything but itself, who-is-talking source and the output its voice goes to), the who-is-talking line
         // (its source and how many people were named, never who), the output line (the device's name), the camera view's line

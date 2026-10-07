@@ -3025,6 +3025,26 @@ instructions). `ok` needs two utterances, every scene named as expected
 contacts nothing; real Discord calls, a virtual cable and OBS are not
 exercised.
 
+`sound_digest_check` checks [describing PC sounds](CONVERSATION.md#describing-pc-sounds)
+(Companion › Listening › Watch along › **Describe PC sounds**; optional absolute
+`dataDirectory`, `martletDirectory` and `wavFile`). `saved` has `HearPc` (off
+by default), `DescribePcSounds` (on by default) and `Source` (`saved` or
+`default`). `status` is the desktop's `sound-digest.json` or null: `on`, the
+active `judge` and `judgeKind` (`pool` or `cpu`), `runs`, `lines`, `dropped`,
+`skipped`, `lastStep`, `lastJudge`, `lastAgeSeconds`, `lastMs`,
+`maximumAgeSeconds`, `everySeconds` and `clipSeconds`; it never holds a line
+or a sound. `tagger` says whether `martletDirectory` (by default the installed
+release; `Invoke-MartletMcp.ps1` passes this checkout's Desktop build) has the
+bundled sound tagger and how long it took to load. `rehearsal` plays a
+**FIXTURE** clip (synthesized music with hand claps for 10 s, then silence)
+through a fixture loopback on a simulated clock, `PcAudioCaptureFactory`,
+`MicrophoneCapture` and the capture normalizer into `PcSoundBuffer`, then runs
+one `SoundDigestScheduler` tick with `CpuSoundJudge`: `bufferedSeconds`,
+`activeShare`, the tagger's top `tags` with scores, `tagMs`, `step`, the
+`line` and `bufferClearedWhenOff`. `file` tags `wavFile` (16 kHz mono 16-bit)
+the same way. `ok` needs the tick to start a judge, a line and the buffer
+cleared when the digest goes off. It records, plays, sends and saves nothing.
+
 `pc_audio_check` checks [hearing what this PC plays](CONVERSATION.md#hearing-what-this-pc-plays)
 (Companion › Listening › Watch along › **Hear what this PC plays**; optional
 absolute `dataDirectory`, default the current user's): `hearPc` (the saved
@@ -4636,6 +4656,14 @@ your own voice), so Martlet hears only what plays on <your output> and stops
 hearing it while it speaks.*, or why it doesn't apply: push-to-talk, echo
 reduction off, or Martlet's voice can't be left out; the card reads which
 outputs are in use, never their sound); `pc_audio_check` reads the same choice.
+Under it, `TalkDescribePcSounds` (*Describe PC sounds*, on by default, enabled
+only while *Hear what this PC plays* is on; `ui_toggle` needs
+`--allow-ui-effects` because it saves `talk-preferences.json`) and
+`TalkDescribePcSoundsStatus` (returned: *Works while Hear what this PC plays is
+on.*, *Off. Only the words this PC plays reach Thinking.*, or *On.* with the
+active judge, a Thinking pool model that hears or the CPU sound tagger, whether
+it describes now, and *Last: "<line>" (<age> ago, <judge>, <ms> ms).* or *No
+line yet.*); `sound_digest_check` reads the same choice.
 The card also has `TalkPcChattiness`, the same choice as Vision's
 `VisionChattiness` (*Quiet*, *Normal*, *Chatty* or *Martlet decides*; returned,
 and `ui_select` saves `talk-preferences.json`, so it needs
@@ -4944,9 +4972,9 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
+- `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
