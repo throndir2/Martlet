@@ -902,7 +902,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "only what is said aloud and is not a failure (voice.muted); paused pauses the reply once its first audio played, as " +
             "Pause and decide does when you talk over it, holds it 1 s and plays it on: ok also needs no samples played while paused, " +
             "the next piece still made meanwhile (voice.hold), every piece said once (nothing made again) and the " +
-            "latency line saying it paused and resumed; text-only sends the reply with no voice at all (Speak " +
+            "latency line saying it paused and resumed (with characterTags, also no cue acted while paused: a cue that falls in " +
+            "the pause waits for it); stopped has the user stop the reply (Stop, or talking over it) as the failAt-th piece starts " +
+            "playing, and ok then needs the reply canceled and no cue acted after the stop (character.stoppedAtMs; the cues still " +
+            "waiting are dropped); text-only sends the reply with no voice at all (Speak " +
             "Martlet's replies aloud off), so every sentence goes to the captions; a fixture speaker opens no " +
             "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
             "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
@@ -922,7 +925,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "[\"{nod}\", \"{blush}\"]) the reply is offered the desktop character's tags as while the character shows: character " +
             "returns what the reply's tags did (acted: each tag, its kind, name and the other spelling the reply used, such as " +
             "[nod] or *nods* for {nod}), the note the talk window shows under the reply (\"Tone: happy. Emotes: nod.\") and each cue " +
-            "the character got (tag, atMs when its sentence started playing, delayMs into that sentence), and ok also needs every " +
+            "the character got (tag, atMs when its sentence started playing, delayMs into that sentence, and actedMs when the " +
+            "character acted it, waiting for it as the desktop's character does, or dropped when the reply stopped first), and ok " +
+            "also needs every " +
             "spelling of the tags out of reply.text and voice.pieces and, with voiceFailure none, slow or text-only, a cue for " +
             "every tag acted. Loopback only; reads no credentials.", new
         {

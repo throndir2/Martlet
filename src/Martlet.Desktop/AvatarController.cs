@@ -125,49 +125,61 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 foreach (var cue in line.Cues)
                 {
                     // A screen glance's look tag turns the eyes; it is never an emote.
-                    if (CharacterGaze.IsTag(cue.Tag)) _ = LookLaterAsync(cue);
-                    else if (catalog?.Off(cue.Tag) is { } off) _ = StopLaterAsync(off, cue);
-                    else if (catalog?.For(cue.Tag) is { Count: > 0 } sources) _ = ActLaterAsync(sources, cue, line.Finished, catalog);
+                    if (CharacterGaze.IsTag(cue.Tag)) _ = LookLaterAsync(line, cue);
+                    else if (catalog?.Off(cue.Tag) is { } off) _ = StopLaterAsync(off, line, cue);
+                    else if (catalog?.For(cue.Tag) is { Count: > 0 } sources) _ = ActLaterAsync(sources, line, cue, catalog);
                 }
             }
         }
         catch (OperationCanceledException) { }
     }
 
-    private async Task LookLaterAsync(CharacterCue cue)
+    // Each cue waits for its moment in the reply (a pause holds it) and is dropped when the reply is stopped or replaced first.
+    private async Task LookLaterAsync(CharacterCueLine line, CharacterCue cue)
     {
         try
         {
-            if (cue.Delay > TimeSpan.Zero) await Task.Delay(cue.Delay, cueLifetime.Token).ConfigureAwait(false);
-            Gaze.Chosen(cue.Tag);
+            if (await line.ReachedAsync(cue, cueLifetime.Token).ConfigureAwait(false)) Gaze.Chosen(cue.Tag);
         }
         catch (OperationCanceledException) { }
     }
 
-    private async Task ActLaterAsync(IReadOnlyList<CharacterActionSource> sources, CharacterCue cue, Task finished, CharacterActionCatalog catalog)
+    private async Task ActLaterAsync(IReadOnlyList<CharacterActionSource> sources, CharacterCueLine line, CharacterCue cue,
+        CharacterActionCatalog catalog)
     {
         try
         {
-            if (cue.Delay > TimeSpan.Zero) await Task.Delay(cue.Delay, cueLifetime.Token).ConfigureAwait(false);
+            if (!await line.ReachedAsync(cue, cueLifetime.Token).ConfigureAwait(false))
+            {
+                Dropped(cue);
+                return;
+            }
             // A reply's {tag} turns a lingering emote on until {/tag}; a voice's sound or tone only ever plays it a moment.
             foreach (var source in sources)
-                await PlayActionAsync(source, cue.Tag, finished, cueLifetime.Token, hold: cue.Tag.StartsWith('{') && catalog.Lingers(source))
+                await PlayActionAsync(source, cue.Tag, line.Finished, cueLifetime.Token, hold: cue.Tag.StartsWith('{') && catalog.Lingers(source))
                     .ConfigureAwait(false);
         }
         catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
             InvalidDataException or TimeoutException or ObjectDisposedException) { }
     }
 
-    private async Task StopLaterAsync(CharacterActionSource source, CharacterCue cue)
+    private async Task StopLaterAsync(CharacterActionSource source, CharacterCueLine line, CharacterCue cue)
     {
         try
         {
-            if (cue.Delay > TimeSpan.Zero) await Task.Delay(cue.Delay, cueLifetime.Token).ConfigureAwait(false);
+            if (!await line.ReachedAsync(cue, cueLifetime.Token).ConfigureAwait(false))
+            {
+                Dropped(cue);
+                return;
+            }
             await StopActionAsync(source, cue.Tag, cueLifetime.Token).ConfigureAwait(false);
         }
         catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
             InvalidDataException or TimeoutException or ObjectDisposedException) { }
     }
+
+    private static void Dropped(CharacterCue cue) =>
+        ErrorLog.Info($"Character cue {cue.Tag} wasn't acted: the reply stopped before it got there.");
 
     /// <summary>The lingering emotes the character shows now (until <c>{/tag}</c>, Clear emotes or another model). They stay
     /// across replies and come back when the same model shows again.</summary>

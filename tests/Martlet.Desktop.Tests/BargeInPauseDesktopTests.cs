@@ -96,4 +96,28 @@ public sealed class BargeInPauseDesktopTests
         Assert.Equal(hold.GetProperty("SamplesBefore").GetInt64(), hold.GetProperty("SamplesAfter").GetInt64());
         Assert.Contains("then resumed", result.GetProperty("latency").GetProperty("line").GetString());
     }
+
+    [Theory]
+    // Early in its sentence, the wink falls inside the pause whether it is timed by the audio or by a reading pace.
+    [InlineData("paused", "Hey cutie (winks), I like you. Tell me all about your day.")]
+    // At the end of its sentence, the wink is due well after the stop.
+    [InlineData("stopped", "Hey cutie, I like how you are (winks). Tell me all about your day.")]
+    public async Task A_wink_in_a_sentence_waits_out_a_pause_and_is_dropped_by_a_stop(string voiceFailure, string reply)
+    {
+        // Production conversation runtime with fixture text and voice (NOT AI); each cue waits as the desktop's character waits.
+        var result = JsonSerializer.SerializeToElement(await SpokenReplyCheck.RunAsync(voiceFailure, null, CancellationToken.None,
+            reply: reply, characterTags: ["{wink}"]));
+        Assert.True(result.GetProperty("ok").GetBoolean(), result.ToString());
+        var wink = Assert.Single(result.GetProperty("character").GetProperty("cues").EnumerateArray());
+        Assert.Equal("{wink}", wink.GetProperty("tag").GetString());
+        if (voiceFailure == "stopped")
+        {
+            Assert.Equal("Canceled", result.GetProperty("reply").GetProperty("state").GetString());
+            Assert.True(wink.GetProperty("dropped").GetBoolean(), result.ToString());
+        }
+        else
+            // The pause began just after the sentence started, before the wink's moment: the wink came after the reply played on.
+            Assert.True(wink.GetProperty("actedMs").GetInt64() >=
+                result.GetProperty("voice").GetProperty("hold").GetProperty("ResumedAtMs").GetInt64(), result.ToString());
+    }
 }
