@@ -38,6 +38,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, NoReturn
 
+# Resemble's library draws progress bars (the original model one for every speech token); the log needs none. tqdm reads this
+# only when it is first imported, and importing torch imports it, so it is set before anything imports torch.
+os.environ.setdefault("TQDM_DISABLE", "1")
+
 ROOT = Path(os.environ.get("MARTLET_CHATTERBOX_ROOT", "/opt/martlet-chatterbox"))
 MODELS = ROOT / "models"
 CONFIG = MODELS / "worker-config.json"
@@ -827,8 +831,6 @@ class EngineHost:
                 os.environ.setdefault("HF_HUB_OFFLINE", "1")
                 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
                 os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
-                # The original model's decoding loop draws a progress bar for every speech token; the log needs none.
-                os.environ.setdefault("TQDM_DISABLE", "1")
                 pinned = PINNED_MODELS.get(str(config.get("model") or MODEL))
                 if pinned is None:
                     raise RuntimeError(f"The configured model {config.get('model')!r} is not one this service installs.")
