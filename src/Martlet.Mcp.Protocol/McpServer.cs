@@ -136,6 +136,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dx = new { type = "integer", minimum = -DesktopAutomation.MaximumMove, maximum = DesktopAutomation.MaximumMove },
             dy = new { type = "integer", minimum = -DesktopAutomation.MaximumMove, maximum = DesktopAutomation.MaximumMove }
         }, ["id", "dx", "dy"]),
+        Tool("character_touch", "Tap the showing character like a left click that doesn't drag, at x, y (fractions 0 to 1 of the " +
+            "character overlay's drawing, +y down; unzoomed, its head is near 0.5, 0.15), and return the renderer's hit test as " +
+            "last: n, x, y, hit, zone (head, hair, face, body, arm, hand, leg or foot), hitAreas and drawables (Live2D), bone, node, " +
+            "hair, mesh and material (VRM). Martlet then plays its tap reaction (the desktop log records 'The character was " +
+            "tapped on the ...'). Tapping requires --allow-ui-effects; without x and y it only reads the last tap.", new
+        {
+            x = new { type = "number", minimum = 0, maximum = 1 },
+            y = new { type = "number", minimum = 0, maximum = 1 }
+        }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
             "[x, y, width, height] in physical screen pixels) and whether Martlet still runs. \"open\" and \"menu\" send the icon " +
@@ -1247,6 +1256,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
                 "ui_set_range" => desktop.SetRange(RequiredString(arguments, "id"), RequiredDouble(arguments, "value")),
                 "ui_move" => desktop.Move(RequiredString(arguments, "id"), RequiredInt(arguments, "dx"), RequiredInt(arguments, "dy")),
+            "character_touch" => await desktop.TouchCharacterAsync(OptionalDouble(arguments, "x"), OptionalDouble(arguments, "y")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "parakeet_check" => await ParakeetCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
@@ -3137,6 +3147,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             return null;
         if (value.ValueKind != JsonValueKind.String) throw new ArgumentException($"'{property}' must be a string.");
         return value.GetString();
+    }
+
+    private static double? OptionalDouble(JsonElement element, string property)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value) ||
+            value.ValueKind == JsonValueKind.Null)
+            return null;
+        return value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number)
+            ? number : throw new ArgumentException($"'{property}' must be a number.");
     }
 
     private static int? OptionalInt(JsonElement element, string property)

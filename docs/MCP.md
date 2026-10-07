@@ -3532,6 +3532,31 @@ reads the saved level (1 without a file).
 `ui_move` moves the character by `dx`, `dy` screen pixels like a drag and
 returns its bounds before and after, and `ui_snapshot` reports `movable` for
 it. **Locking the character's position**: Home's `ToggleCharacterLock`
+
+**Tapping the character**: a left click on the character that doesn't drag
+it (it comes up within Windows' drag distance, within 0.7 seconds; also when
+its position is locked, while zoomed in with Ctrl and in the camera view) is a
+tap. The renderer page hit-tests the point: Live2D reports the model3.json
+HitAreas there and the visible drawables under it (topmost first, at most 8),
+VRM the humanoid bone of the mesh skinned most to the hit triangle (or its
+nearest humanoid ancestor), the actual node, whether that node is hair (a
+spring-bone or hair-named joint under the head), the mesh and the material.
+Martlet then reacts locally, without asking any model: the model's own tap
+motion when it has one (a group named like `TapHead`, `Tap@Head`, `TapBody`
+or `Tap`), else a head tilt (or nod) for the head, hair and face and a
+surprised look (or gasp or nod) elsewhere. The desktop log records *The
+character was tapped on the body (hit areas Body).* and *Character motion
+'TapBody' played for a tap on the body.* `character_touch` taps it through
+UI Automation (`MoveAvatar`'s value, `"x,y"`) at `x`, `y` (fractions 0 to 1
+of the overlay's drawing, +y down; unzoomed the head is near 0.5, 0.15),
+which needs `--allow-ui-effects`, waits for the hit test and returns it as
+`last`: `n` (the tap's number), `x`, `y`, `hit`, `zone` (`head`, `hair`,
+`face`, `body`, `arm`, `hand`, `leg` or `foot`; null on a miss), `hitAreas`,
+`drawables`, `bone`, `node`, `hair`, `mesh` and `material` (model-authored
+names only, never paths). Without `x` and `y` it only reads the last tap, as
+does `MoveAvatar`'s `value` in `ui_snapshot`.
+
+**Locking the character's position**: Home's `ToggleCharacterLock`
 (*Lock character position*, shown while the character shows or is locked),
 Companion › Character's `SetupCharacterLock` (*Lock position*) and the overlay
 menu's `CharacterLockPosition` (*Lock position*, carried out by Martlet: *The

@@ -219,6 +219,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // motions, physics; parameter IDs only, never paths), on Companion › Character and in the character window, which
         // also shows why a chosen model couldn't load; and the character window's status line.
         "SetupCharacterModel", "AvatarModelInfo",
+        // The character overlay's drag surface reads as its last tap's hit test (zone, hit areas, drawables, bone; model-authored
+        // names only, never paths); character_touch taps it.
+        "MoveAvatar",
         "LipSyncNow", "LipSyncNowProblem", "LipSyncOwnTitle", "LipSyncOwnState", "LipSyncDockerTitle", "LipSyncDockerAbout", "LipSyncLoudnessTitle",
         // The selected device, its status and, when that status is a button ("Update available"), what clicking it does
         // ("Update available: Update to Martlet 0.40.0"). Clicking SelectedDeviceHealthAction updates the host, so it needs
@@ -880,6 +883,31 @@ internal sealed class DesktopAutomation(bool allowEffects)
     }
 
     internal const int MaximumMove = 10_000;
+
+    /// <summary>Taps the showing character at <paramref name="x"/>, <paramref name="y"/> (fractions 0..1 of the overlay's
+    /// drawing, +y down; needs --allow-ui-effects) through MoveAvatar's UI Automation value, like a click there, and waits for
+    /// the renderer's hit test; without a point it only reads the last tap. Returns the last tap as the overlay reports it.</summary>
+    internal async Task<object> TouchCharacterAsync(double? x, double? y)
+    {
+        if ((x is null) != (y is null)) throw new ArgumentException("Give both x and y, or neither to read the last tap.");
+        var element = Find("MoveAvatar");
+        if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            throw new InvalidOperationException("The character overlay can't be tapped through UI Automation.");
+        var value = (ValuePattern)pattern;
+        static object? Read(string text) => string.IsNullOrEmpty(text) ? null : System.Text.Json.JsonDocument.Parse(text).RootElement.Clone();
+        if (x is null) return new { touched = false, last = Read(value.Current.Value) };
+        if (!allowEffects) throw new InvalidOperationException("Tapping the character requires --allow-ui-effects.");
+        if (x is not (>= 0 and <= 1) || y is not (>= 0 and <= 1)) throw new ArgumentException("x and y are fractions from 0 to 1.");
+        if (value.Current.IsReadOnly) throw new InvalidOperationException("The character can't be tapped until it has loaded.");
+        var before = value.Current.Value;
+        value.SetValue(FormattableString.Invariant($"{x},{y}"));
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        string after;
+        while ((after = value.Current.Value) == before && waited.Elapsed < TimeSpan.FromSeconds(3)) await Task.Delay(50);
+        return after == before
+            ? new { touched = false, last = Read(after), note = "The renderer didn't answer the tap within 3 seconds." }
+            : new { touched = true, last = Read(after) };
+    }
 
     /// <summary>Moves a movable control (the character overlay's MoveAvatar, like dragging the character) by dx, dy screen
     /// pixels through UI Automation's Transform pattern, then reports where it was and is. Refused while it can't move, as
