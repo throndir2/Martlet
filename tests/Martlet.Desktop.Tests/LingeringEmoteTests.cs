@@ -180,18 +180,23 @@ public sealed class LingeringEmoteTests
     }
 
     [Fact]
-    public async Task What_shows_goes_with_the_newest_message_and_the_instructions_stay_the_same()
+    public async Task What_shows_goes_on_the_context_board_after_the_newest_message_and_the_instructions_stay_the_same()
     {
         await using var fixture = await LiveFixture.Create();
         var configuration = LiveConversationConfiguration.From(await fixture.Store.LoadAsync())!;
         ConversationRequest Ask(string? showing) => configuration.Request(new("Hi."), false, ResponseStyle.Helpful, [], null, null,
-            out _, out _, out _, characterActions: (_, _) => new CharacterActionPrompt("Emote tags.", ["{glasses}", "{/glasses}"], showing));
+            out _, out _, out _, characterActions: (_, _) => new CharacterActionPrompt("Emote tags.", ["{glasses}", "{/glasses}"], showing),
+            board: showing);
         var without = Ask(null);
         var with = Ask("Your character is showing {glasses} (12 min).");
         Assert.Equal(without.Input.Personality, with.Input.Personality);
         Assert.DoesNotContain("showing {glasses}", with.Input.Personality);
-        Assert.Contains("Your character is showing {glasses} (12 min).", with.Input.Notes);
-        Assert.DoesNotContain("showing {glasses}", without.Input.Notes ?? "");
+        // The board's notes close the message and are never kept in the conversation.
+        Assert.Contains("Your character is showing {glasses} (12 min).", with.Input.Context);
+        Assert.EndsWith(with.Input.Context!, with.Input.SentUserText);
+        Assert.DoesNotContain("showing {glasses}", with.Input.KeptUserText);
+        Assert.DoesNotContain("showing {glasses}", with.Input.Notes ?? "");
+        Assert.Null(without.Input.Context);
         Assert.Equal(["{glasses}", "{/glasses}"], with.CharacterTags);
         fixture.NoEffects();
     }
