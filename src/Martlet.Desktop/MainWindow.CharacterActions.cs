@@ -23,6 +23,12 @@ public partial class MainWindow
         avatar.IsShowing && characterActions.For(avatar.InspectedProfile?.ModelPath) is { } catalog
             ? catalog.Prompt(engine, prompts, avatar.Held.Current, DateTimeOffset.Now) : null;
 
+    /// <summary>The context board of the live conversation: background producers (a screen digest, the sounds this PC plays,
+    /// touches on the character) post their newest short note here with <see cref="Martlet.Conversation.ContextBoard.Post"/>, and every reply and
+    /// look takes the fresh ones without waiting. The character's lingering emotes are its <see cref="Martlet.Conversation.ContextBoard.Character"/>
+    /// note, which the conversation posts as it builds each request.</summary>
+    internal readonly Martlet.Conversation.ContextBoard contextBoard = new();
+
     private void WireCharacterActions()
     {
         avatar.UseActions(characterActions.For);

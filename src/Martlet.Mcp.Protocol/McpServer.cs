@@ -1130,6 +1130,24 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             reply = new { type = "string", maxLength = 1024 }
         }),
+        Tool("context_board", "The context board (where background sources such as a screen digest, the sounds this PC plays, " +
+            "touches on the character and the character's lingering emotes keep their newest short note for the live " +
+            "conversation), rehearsed with the production board, request layout and Chat Completions adapter against a fixture " +
+            "endpoint on 127.0.0.1 (canned reply, NOT AI). Posts FIXTURE notes from four sources (one stale, one consumed on read) " +
+            "and optionally your own test note (source: 1-32 lower-case letters, digits or '-'; text; maxAgeSeconds 1-3600, default " +
+            "60; ageSeconds 0-7200: how long ago it was posted; consume: goes with one request only), sends two requests in a row " +
+            "and returns the notes each one carried, whether the stale note was skipped and the consumed one went once, where the " +
+            "notes sat in the message, and whether the conversation kept the message without them (so the next request starts " +
+            "the same). Live replies log \"Context board: the request took N notes (sources; bytes)\" in the desktop log and the " +
+            "talk window's LiveTurnInputs counts them. Loopback only; reads no credentials.", new
+        {
+            dataDirectory = new { type = "string" },
+            source = new { type = "string", maxLength = Martlet.Conversation.ContextBoard.MaximumSourceLength },
+            text = new { type = "string", maxLength = 2048 },
+            maxAgeSeconds = new { type = "integer", minimum = 1, maximum = 3600 },
+            ageSeconds = new { type = "integer", minimum = 0, maximum = 7200 },
+            consume = new { type = "boolean" }
+        }),
         Tool("context_check", "The Thinking model's context as Martlet uses it, from a data directory: the saved route, Companion > " +
             "Replies > Context size, what model-limits.json says about the model (from Check model limit, choosing or testing a " +
             "model, or Ollama loading it) and the context size, reply room and text room replies get (the production ContextBudget). " +
@@ -1528,6 +1546,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "chattiness_status" => await ChattinessCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "vision_history_check" => await VisionHistoryCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
+                "context_board" => await ContextBoardCheck.RunAsync(OptionalString(arguments, "source"), OptionalString(arguments, "text"),
+                    OptionalInt(arguments, "maxAgeSeconds"), OptionalBool(arguments, "consume"), OptionalInt(arguments, "ageSeconds"), cancellation),
                 "discord_companion_check" => await DiscordCompanionCheck.RunAsync(DataDirectory(arguments),
                     arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty("dataDirectory", out _),
                     OptionalString(arguments, "person"), OptionalString(arguments, "character"),
