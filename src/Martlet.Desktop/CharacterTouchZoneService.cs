@@ -194,10 +194,12 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
     }
 
     /// <summary>A touch on the showing character: the zone it landed in plays its reaction (unless the zone is resting), and
-    /// when Martlet notices that zone, <paramref name="notice"/> gets it (resting or not: every touch adds up). Returns the
-    /// match, or null.</summary>
+    /// when Martlet notices that zone, <paramref name="notice"/> gets it (resting or not: every touch adds up). When the
+    /// reaction says so, <paramref name="look"/> turns the eyes to the mouse pointer for that many seconds. Returns the match,
+    /// or null.</summary>
     internal TouchZoneMatch? React(CharacterTouch touch, Func<CharacterTouchZone, int, TouchReactionPlan> planFor,
-        Func<CharacterActionSource, string, double, Task> play, Action<CharacterTouchZone> notice, string kind = "touch")
+        Func<CharacterActionSource, string, double, Task> play, Action<CharacterTouchZone> notice, string kind = "touch",
+        Action<double, string>? look = null)
     {
         var match = CharacterTouchZones.Match(Current, touch);
         var when = DateTime.Now.ToString("T", System.Globalization.CultureInfo.CurrentCulture);
@@ -227,6 +229,7 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         var reaction = planFor(zone, repeats);
         var plan = reaction.Actions;
         for (var i = 0; i < plan.Count; i++) play(plan[i], $"a {kind} on {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
+        if (reaction.LookSeconds > 0) look?.Invoke(reaction.LookSeconds, $"a {kind} on {zone.Name.ToLowerInvariant()}");
         Volatile.Write(ref lastMatch, (kind == "stroke" ? "Stroke: " : "") + $"{zone.Name} ({match.How}) at {when}: " +
             (plan.Count == 0 ? "nothing to play" : "played " + string.Join(", ", plan.Select(s => s.Name))) + Describe(reaction, repeats) +
             (noticed ? ", and Martlet noticed it." : "."));
@@ -250,14 +253,16 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         }
     }
 
-    /// <summary>" (loves it, from the persona's temperament, touch 3 in a row: escalated)" for the last-touch line.</summary>
+    /// <summary>" (loves it, from the persona's temperament, looks at your mouse for 3 s, touch 3 in a row: escalated)" for the
+    /// last-touch line.</summary>
     internal static string Describe(TouchReactionPlan reaction, int repeats) =>
         " (" + (reaction.Attitude is { } attitude ? attitude + " it, " : "") + reaction.From switch
         {
             TouchReactionPlan.FromOwner => "your pick for the zone",
             TouchReactionPlan.FromTemperament => "from the persona's temperament",
             _ => "built-in reaction"
-        } + (repeats > 1 ? $", touch {repeats} in a row" : "") + (reaction.Escalated ? ": escalated" : "") + ")";
+        } + (reaction.LookSeconds > 0 ? System.FormattableString.Invariant($", looks at your mouse for {reaction.LookSeconds:0.#} s") : "") +
+        (repeats > 1 ? $", touch {repeats} in a row" : "") + (reaction.Escalated ? ": escalated" : "") + ")";
 
     private string Report(string text)
     {

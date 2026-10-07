@@ -328,20 +328,23 @@ public static class CharacterTouchZones
 
     /// <summary>What a touch on <paramref name="zone"/> plays, in this order of precedence: the owner's own pick for the zone, the
     /// persona's <paramref name="temperament"/> for the zone kind or its group (escalated after <paramref name="repeats"/> touches
-    /// in a row), else the zone's built-in default reaction.</summary>
+    /// in a row), else the zone's built-in default reaction. How long the eyes then turn to the mouse pointer always comes from
+    /// the temperament.</summary>
     public static TouchReactionPlan React(CharacterTouchZone zone, CharacterActionCatalog? catalog, CharacterTouchTemperament? temperament, int repeats)
     {
         var attitude = CharacterTouchTemperaments.Attitude(temperament, zone.Id);
+        var entry = CharacterTouchTemperaments.Entry(temperament, zone.Id);
+        var look = entry?.LookSeconds ?? 0;
         if (zone.Reaction.Actions is { } chosen)
         {
             var entries = catalog?.Entries.Where(e => e.Action.Enabled).ToArray() ?? [];
             return new(chosen.Select(id => entries.FirstOrDefault(e => e.Source.Id == id).Source).OfType<CharacterActionSource>().Take(MaximumActions).ToArray(),
-                0, attitude, TouchReactionPlan.FromOwner);
+                0, attitude, TouchReactionPlan.FromOwner, LookSeconds: look);
         }
-        if (temperament is not null && CharacterTouchTemperaments.Entry(temperament, zone.Id) is { } entry)
+        if (temperament is not null && entry is not null)
         {
             var (words, escalated) = CharacterTouchTemperaments.Words(temperament, entry, repeats);
-            return new(CharacterTouchTemperaments.Resolve(words, catalog), entry.LingerSeconds, attitude, TouchReactionPlan.FromTemperament, escalated);
+            return new(CharacterTouchTemperaments.Resolve(words, catalog), entry.LingerSeconds, attitude, TouchReactionPlan.FromTemperament, escalated, look);
         }
         return new(DefaultPlan(zone, catalog));
     }

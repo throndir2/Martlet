@@ -278,11 +278,15 @@ what each one is.
   held plays on top, the held pose easing back partway and resuming after; a
   new held gesture crossfades from the last. The renderer's reply to a gesture
   says which plays once and which is held (`gesture: {playing, held}`).
-- **Where it looks**: the head and eyes follow the mouse, or with Companion ›
-  Vision › **Where the character looks** set to *Martlet decides*, glance at
-  something that just changed on the watched screen or at the part of it a
-  screen glance's Thinking model names with a look tag (`{look top right}`).
-  Look tags are never emotes; see
+- **Where it looks**: the head and eyes follow the character's usual gaze (your
+  mouse, your mouse only when it's near, straight ahead, or the window you're
+  using), chosen on Companion › Character › **Where the character looks** or
+  the character's right-click **Eyes** menu, or by its personality. Replies may
+  change it with gaze tags (`{look ahead}`), a touch can turn the eyes to your
+  mouse for a moment, and with Companion › Vision › **Glances at your screen**
+  set to *Martlet decides* it glances at something that just changed on the
+  watched screen or at the part of it a screen glance's Thinking model names
+  with a look tag (`{look top right}`). Look tags are never emotes; see
   [Where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks).
 
 ## Touch zones
@@ -381,24 +385,37 @@ waist, hips, groin, buttocks and inner thighs) react too while
 
 ### Touch temperament
 
-The personality decides how the character acts when it is touched. Companion ›
-Character › **Touch temperament** shows, for the persona in use, how it feels
-about each part of its body: hates, dislikes, neutral, likes, loves or craves.
-It also shows what each part plays: up to three of Martlet's reactions, such
-as a smile, a blush, hearts, leaning in, a pout, a sweat drop, an anger vein,
-a flinch or looking away. It decides actions only, never words.
+The personality decides how the character acts when it is touched, and where
+its eyes usually go. Companion › Character › **Touch temperament** shows, for
+the persona in use, how it feels about each part of its body: hates, dislikes,
+neutral, likes, loves or craves. It also shows what each part plays: up to
+three of Martlet's reactions, such as a smile, a blush, hearts, leaning in, a
+pout, a sweat drop, an anger vein, a flinch or looking away, or *(no reaction)*
+for a part the character ignores. *looks at your mouse (s)* turns its eyes to
+your mouse pointer for that many seconds after a touch there (up to 15), as if
+to see who did it. **Eyes usually** is the persona's usual gaze, which
+[Where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks)
+uses while it is set to *As the personality decides*. It decides actions only,
+never words.
+
+For example, a passive character can look straight ahead, ignore the mouse and
+not react to a head pat, but blush and look at your mouse when you touch it
+somewhere it cares about.
 
 - When you save a personality with a meaningful change (not only spacing,
   case or punctuation), Martlet asks the Thinking model in the background. It
   waits a few seconds and never asks while Martlet replies. The answer is
-  compact JSON: an attitude and reactions per zone group (head, torso, arms,
-  lower body, extras), per zone kind where one differs, how long the first
-  reaction lingers, and an escalation. Unknown actions are dropped and values
-  are clamped. When asking fails, the previous temperament stays.
-- **Re-decide from personality** asks again. Change an attitude, a reaction,
-  the linger time or the escalation, or give one part its own line, and your
-  choices win: a later personality change does not replace them until you
-  re-decide. **Use built-in reactions** goes back to the zones' defaults.
+  compact JSON: the usual `gaze` (`mouse`, `near`, `ahead` or `window`), an
+  attitude and reactions per zone group (head, torso, arms, lower body,
+  extras; `["none"]` for no reaction), per zone kind where one differs, how
+  long the first reaction lingers, how long the eyes `look` at the mouse after
+  a touch, and an escalation. Unknown actions are dropped and values are
+  clamped. When asking fails, the previous temperament stays.
+- **Re-decide from personality** asks again. Change the eyes, an attitude, a
+  reaction, the linger or look time or the escalation, or give one part its
+  own line, and your choices win: a later personality change does not replace
+  them until you re-decide. **Use built-in reactions** goes back to the zones'
+  defaults.
 - Repeated touches escalate: from the third touch in a row of a disliked part
   (each within 30 seconds), it plays the escalation first, such as an anger
   vein; a loved part plays hearts.
@@ -407,7 +424,8 @@ a flinch or looking away. It decides actions only, never words.
   gesture or overlay.
 - What a touch plays: a zone's own pick under Touch zones, then the
   temperament for that zone kind or its group, then the zone's built-in
-  reaction. Intimate parts are covered like the others and react only with
+  reaction. How long the eyes then look at your mouse always comes from the
+  temperament. Intimate parts are covered like the others and react only with
   **Include intimate zones** on.
 - Temperaments are saved per persona in `character-temperaments.json` and
   travel with the shared settings, like the personas.

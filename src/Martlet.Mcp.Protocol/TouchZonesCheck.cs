@@ -161,6 +161,7 @@ internal static class TouchZonesCheck
                 used = temperament is null ? null : new
                 {
                     temperament.Source, summary = CharacterTouchTemperaments.Summary(temperament),
+                    gaze = temperament.Gaze is { } gaze ? CharacterGaze.Word(gaze) : null,
                     groups = temperament.Groups.ToDictionary(g => g.Key, g => Entry(g.Value)),
                     zones = temperament.Zones.ToDictionary(z => z.Key, z => Entry(z.Value)),
                     escalation = temperament.Escalation
@@ -212,9 +213,14 @@ internal static class TouchZonesCheck
     }
 
     private static object Entry(TouchTemperamentEntry entry) =>
-        new { attitude = CharacterTouchTemperaments.AttitudeWord(entry.Attitude), reactions = entry.Reactions, linger = entry.LingerSeconds };
+        new
+        {
+            attitude = CharacterTouchTemperaments.AttitudeWord(entry.Attitude), reactions = entry.Reactions, linger = entry.LingerSeconds,
+            look = entry.LookSeconds
+        };
 
-    private static object Reaction(TouchReactionPlan plan) => new { from = plan.From, attitude = plan.Attitude, escalated = plan.Escalated, linger = plan.LingerSeconds };
+    private static object Reaction(TouchReactionPlan plan) =>
+        new { from = plan.From, attitude = plan.Attitude, escalated = plan.Escalated, linger = plan.LingerSeconds, look = plan.LookSeconds };
 
     // What the Thinking model hears about this one touch when Martlet notices the zone (the ledger's line), or null.
     private static string? Noticed(CharacterTouchZone zone, CharacterTouch touch)
