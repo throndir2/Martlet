@@ -118,15 +118,15 @@ internal static class ContextCheck
     }
 
     // Each message of a captured Chat Completions request as its exact JSON.
-    private static string[] Messages(byte[] body)
+    internal static string[] Messages(byte[] body)
     {
         using var document = JsonDocument.Parse(body);
         return [.. document.RootElement.GetProperty("messages").EnumerateArray().Select(m => m.GetRawText())];
     }
 
-    private sealed record Answered(string? Outcome, long? Input, long? Cached);
+    internal sealed record Answered(string? Outcome, long? Input, long? Cached);
 
-    private static async Task<Answered> AskAsync(ChatCompletionsTextGenerationAdapter adapter, string baseUrl, BoundedTextInput input,
+    internal static async Task<Answered> AskAsync(ChatCompletionsTextGenerationAdapter adapter, string baseUrl, BoundedTextInput input,
         CancellationToken cancellation)
     {
         const string model = "fixture-model";
@@ -178,7 +178,7 @@ internal static class ContextCheck
     }
 
     // A minimal HTTP/1.1 endpoint: records each request and streams a canned reply, then a usage chunk with cached tokens.
-    private static async Task ServeCacheAsync(TcpListener listener, List<byte[]> requests, CancellationToken cancellation)
+    internal static async Task ServeCacheAsync(TcpListener listener, List<byte[]> requests, CancellationToken cancellation)
     {
         while (!cancellation.IsCancellationRequested)
         {

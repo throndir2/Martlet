@@ -436,7 +436,8 @@ internal sealed class LiveConversationConfiguration
     /// the conversation so far, each earlier message as it was sent (with its notes), then the message with its notes
     /// (<see cref="BoundedTextInput.Notes"/>): only what is new since the notes in the conversation sent, that is lore entries
     /// and remembered facts not already there, <paramref name="voices"/>, the style and <paramref name="chattiness"/> when they
-    /// changed, and <paramref name="messageNotes"/> (such as a smart home result). When the conversation outgrows the context, a quarter more
+    /// changed, and <paramref name="messageNotes"/> (such as a smart home result). Last come <paramref name="board"/>, the context
+    /// board's newest notes (ContextBoard), in their own block that is sent but never kept in history. When the conversation outgrows the context, a quarter more
     /// of the oldest exchanges is left out than needed (<see cref="BoundedTextInput.CacheFriendlyStart"/>), so the next replies
     /// can start at the same exchange. <paramref name="controlTags"/> are the tags the reply may write to tell Martlet something
     /// (such as <see cref="ChattinessTags"/>), never shown or spoken.</summary>
@@ -448,7 +449,7 @@ internal sealed class LiveConversationConfiguration
         string? voices = null, string? messageNotes = null,
         Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null, bool withoutReasoning = false,
         CharacterActionPrompt? gaze = null, string? chattiness = null, IReadOnlyList<string>? controlTags = null,
-        Func<CancellationToken, Task<string?>>? spokenWords = null)
+        Func<CancellationToken, Task<string?>>? spokenWords = null, string? board = null)
     {
         ArgumentNullException.ThrowIfNull(history);
         string? persona = null, styleNote = null;
@@ -458,11 +459,9 @@ internal sealed class LiveConversationConfiguration
         // A persona with one style always has it: it stays with the instructions. Otherwise the picked style is noted.
         var oneStyle = Persona is { } selected && new[] { selected.Styles.Helpful, selected.Styles.Sarcastic, selected.Styles.Silly,
             selected.Styles.Distracted, selected.Styles.PlayfulTeasing }.Count(weight => weight > 0) == 1;
-        // The desktop character's emotes and motions: those the speaking voice's own tags don't already set off.
+        // The desktop character's emotes and motions: those the speaking voice's own tags don't already set off. The lingering
+        // emotes it shows now are a context board note (ContextBoard.Character), in board.
         var character = characterActions?.Invoke(voice ? SpeakingEngine() : null, Prompts);
-        // The lingering emotes the character shows now go with the newest message, never the instructions, so the request
-        // starts the same and prompt caches keep working.
-        messageNotes = Join(messageNotes, character?.Showing);
         // A screen glance's look tags (where the character looks), when they fit beside the emote tags a request may carry.
         if (gaze is not null && (character?.Tags.Count ?? 0) + gaze.Tags.Count > ConversationRequest.MaximumCharacterTags) gaze = null;
         IReadOnlyList<string>? characterTags = gaze is null ? character?.Tags : [.. character?.Tags ?? [], .. gaze.Tags];
@@ -478,13 +477,15 @@ internal sealed class LiveConversationConfiguration
         for (var loreCount = hits.Count; loreCount >= 0; loreCount--)
         {
             var entries = hits.Take(loreCount).ToArray();
-            if (!Fits(input, instructions, Notes([], entries, [], voices, messageNotes, styleNote, chattiness: chattiness), [], image, tools, audio))
+            var allNotes = Notes([], entries, [], voices, messageNotes, styleNote, chattiness: chattiness);
+            if (!Fits(input, instructions, allNotes, [], image, tools, audio, ContextNotes([], allNotes, board)))
                 continue;
             for (var memoryCount = facts.Count; memoryCount >= 0; memoryCount--)
             {
                 var recalled = facts.Take(memoryCount).ToArray();
                 // The window is found with every note (none yet in the conversation); dropping repeats only makes it smaller.
-                if (Prompt(input, instructions, Notes([], entries, recalled, voices, messageNotes, styleNote, people, chattiness), [], image, tools, audio) is not { } bare ||
+                var bareNotes = Notes([], entries, recalled, voices, messageNotes, styleNote, people, chattiness);
+                if (Prompt(input, instructions, bareNotes, [], image, tools, audio, ContextNotes([], bareNotes, board)) is not { } bare ||
                     BoundedTextInput.HistoryStart(bare, history, TextLimits.MaxInputBytes, TextInputTokens, TextLimits.MaxInputTokens,
                         TextLimits.MaxHistoryMessages) is not { } first)
                     continue;
@@ -493,7 +494,7 @@ internal sealed class LiveConversationConfiguration
                 {
                     var sent = history.Skip(start).ToArray();
                     var notes = Notes(sent, entries, recalled, voices, messageNotes, styleNote, people, chattiness);
-                    if (Prompt(input, instructions, notes, sent, image, tools, audio) is not { } prompted)
+                    if (Prompt(input, instructions, notes, sent, image, tools, audio, ContextNotes(sent, notes, board)) is not { } prompted)
                         continue;
                     usedHistoryMessages = history.Count - start;
                     usedMemoryFacts = memoryCount;
@@ -558,6 +559,18 @@ internal sealed class LiveConversationConfiguration
     // Lore and remembered text can't close the notes early.
     private static string Clean(string text) => text.Replace(NotesLabel, "notes", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>The context board's notes (<paramref name="board"/>, ContextBoard) for one message, in their own block between
+    /// <see cref="NotesLabel"/> labels after the message's other <paramref name="notes"/>; null when there are none. The block
+    /// is sent but never kept in history (<see cref="BoundedTextInput.Context"/>), so the next request starts like this one. It
+    /// says what notes are only when neither <paramref name="notes"/> nor the earlier messages <paramref name="sent"/> did.</summary>
+    internal string? ContextNotes(IReadOnlyList<TextHistoryMessage> sent, string? notes, string? board)
+    {
+        if (string.IsNullOrWhiteSpace(board)) return null;
+        var explained = notes is not null || sent.Any(m => m.Role == TextHistoryRole.User && m.Text.Contains(NotesLabel, StringComparison.Ordinal))
+            ? null : PromptSettings.Fill(Prompts, PromptCatalog.Notes, ("label", NotesLabel));
+        return $"[{NotesLabel}]\n" + Join(explained, Clean(board)) + $"\n[/{NotesLabel}]";
+    }
+
     // The last block between [label] and [/label] in the earlier notes, or null.
     private static string? Latest(string earlier, string label)
     {
@@ -590,16 +603,17 @@ internal sealed class LiveConversationConfiguration
 
 
     private bool Fits(BoundedTextInput input, string? instructions, string? notes, TextHistoryMessage[] history, BoundedImage? image,
-        DesktopToolset? tools = null, BoundedWaveAudio? audio = null) => Prompt(input, instructions, notes, history, image, tools, audio) is not null;
+        DesktopToolset? tools = null, BoundedWaveAudio? audio = null, string? context = null) =>
+        Prompt(input, instructions, notes, history, image, tools, audio, context) is not null;
 
     // Tool descriptions have their own budget on top of the reply's text budget.
     private BoundedTextInput? Prompt(BoundedTextInput input, string? instructions, string? notes, TextHistoryMessage[] history,
-        BoundedImage? image, DesktopToolset? tools = null, BoundedWaveAudio? audio = null)
+        BoundedImage? image, DesktopToolset? tools = null, BoundedWaveAudio? audio = null, string? context = null)
     {
         BoundedTextInput prompted;
         try
         {
-            prompted = new(input.UserText, instructions, history, image, tools?.Definitions, audio, notes);
+            prompted = new(input.UserText, instructions, history, image, tools?.Definitions, audio, notes, context);
         }
         catch (ContractException)
         {
