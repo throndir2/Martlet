@@ -19,6 +19,7 @@ Each release's section here is also its notes on GitHub.
 - Adding Deep thinking to a computer whose only graphics card already runs a Thinking model now warns you first: both models share the card and each runs at about half speed. Martlet recommends one graphics card for each Thinking model. ([#521](https://github.com/throndir2/Martlet/pull/521))
 
 ### Changed
+- Remembering what you said, naming your character's emotes, deciding its touch temperament and finding its touch zones now run on a free member of the Thinking pool, so they never slow down Martlet's replies. Without a pool member, the conversation model does them as before, but only after Martlet finishes speaking. ([#524](https://github.com/throndir2/Martlet/pull/524))
 - Intimate touch zones now react by default. Turn off **Include intimate zones** in Companion › Character › Touch zones to leave them out. ([#522](https://github.com/throndir2/Martlet/pull/522))
 
 ### Fixed
