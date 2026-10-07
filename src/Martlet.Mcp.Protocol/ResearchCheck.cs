@@ -206,13 +206,19 @@ internal static class ResearchCheck
             .Select(_ => hourly.Start(WebResearch.Kind, "x", (_, _) => Task.FromResult(BackgroundJobOutcome.Done("x"))))
             .Select(start => { Thread.Sleep(30); return start.Refusal; }).ToArray();
         // Placed on Deep thinking's places (ThinkLonger.Places): a think holding the only place keeps research from starting
-        // (the message names it); with a second place free, research runs there.
+        // (the message names it). Research is a long job, so it never takes the pool's last free slot while the pool has two
+        // or more slots: with one other place free it is refused too (the message says why) and a quick job (a screen summary)
+        // takes that place at once; with two other places free, research runs on the one sharing least with the conversation.
         using var placed = new BackgroundJobs();
         var hold = new TaskCompletionSource<BackgroundJobOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
-        BackgroundPlace[] one = [new("diva", "diva")], two = [new("diva", "diva"), new("imouto", "imouto", 1)];
+        BackgroundPlace[] one = [new("diva", "diva")], two = [.. one, new("imouto", "imouto", 1)], three = [.. two, new("ripley", "ripley", 2)];
         var holder = placed.Start(ThinkLonger.Kind(new(), 2), "holds diva", (_, token) => hold.Task.WaitAsync(token), one);
         var blocked = placed.Start(WebResearch.Kind, "x", (_, token) => hold.Task.WaitAsync(token), one);
-        var elsewhere = placed.Start(WebResearch.Kind, "x", (_, token) => hold.Task.WaitAsync(token), two);
+        var lastSlot = placed.Start(WebResearch.Kind, "x", (_, token) => hold.Task.WaitAsync(token), two);
+        string? quickOn;
+        using (var quick = placed.Places.TryAcquire(two, "digest-1", demand: ThinkingDemand.For(ThinkingJobKind.Digest, two)))
+            quickOn = quick?.Place.Name;
+        var elsewhere = placed.Start(WebResearch.Kind, "x", (_, token) => hold.Task.WaitAsync(token), three);
         var researchPlace = elsewhere.Job?.Place?.Name;
         hold.TrySetResult(BackgroundJobOutcome.Done("done"));
         using var broken = new BackgroundJobs();
@@ -228,12 +234,18 @@ internal static class ResearchCheck
             refusals[^1] == "hourly_limit" && refusals[..^1].All(r => r is null) &&
             failing.State == BackgroundJobState.Failed && failing.Problem?.Contains("web search", StringComparison.Ordinal) == true &&
             holder.Job?.Place?.Name == "diva" && blocked.Refusal == "busy" && blocked.Message?.Contains("diva", StringComparison.Ordinal) == true &&
-            researchPlace == "imouto";
+            lastSlot.Refusal == "busy" && lastSlot.Message?.Contains("The last free slot stays free for quick jobs.", StringComparison.Ordinal) == true &&
+            quickOn == "imouto" && researchPlace == "imouto";
         return (ok, new
         {
             ok, secondRefused = second.Refusal, secondTold = second.Started ? null : WebResearch.Refused(second), thinkBeside = think.Started,
             canceled = first.Job?.State.ToString(), hourly = refusals, failedSearch = failing.Problem,
-            placement = new { thinkOn = holder.Job?.Place?.Name, researchRefused = blocked.Refusal, refusedBecause = blocked.Message, researchOn = researchPlace }
+            placement = new
+            {
+                thinkOn = holder.Job?.Place?.Name, researchRefused = blocked.Refusal, refusedBecause = blocked.Message,
+                lastFreeSlot = new { researchRefused = lastSlot.Refusal, refusedBecause = lastSlot.Message, quickJobOn = quickOn },
+                researchOn = researchPlace
+            }
         });
     }
 

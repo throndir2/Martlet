@@ -2877,12 +2877,19 @@ kept, `inputTokens` 24,576 beside 8,192 for output). `pool`: the production
 `DeepThinkingPool` of three paired computers' Deep thinking roles (diva and
 ripley do none of the conversation's jobs, imouto also speaks: `configured`
 with each `rank`), `maxThinks` 3 and the tool's *Up to 3 at once*; the
-production job list places think-1 on diva and think-2 on ripley, both working
-at once on their own fixture endpoints (standing in for the two computers,
-each through a runtime of its own: `thinkingAtOnce`, `overlapped`), think-3 on
-imouto (`placed`), refuses a fourth as `busy` naming each place (`refused`,
-with what the model is told), frees every place once they finish (`freedAfter`)
-and places the next on diva again (`nextPlacedOn`). `moment`: the production
+production job list starts thinks as the desktop does (waiting in line when no
+place may take them), places think-1 on diva and think-2 on ripley, both
+working at once on their own fixture endpoints (standing in for the two
+computers, each through a runtime of its own: `thinkingAtOnce`, `overlapped`).
+A long job never takes the pool's last free slot while the pool has two or more
+slots, so think-3 waits in line behind them (`waitedInLine`, with its
+`progress`) and imouto's slot stays free (`heldWhileBusy`); a quick job (a
+screen summary through the production `ThinkingJobBoard` on the same broker, a
+simulated member, NOT a model) takes that slot at once while think-3 still
+waits (`quickJob`: `on` imouto, `tookMs`, `held`). Think-3 then runs on the
+first of diva and ripley to free up, never on imouto (`placed`,
+`waitedInLine.startedOn`); every place is free once they finish (`freedAfter`)
+and the next think goes to diva again (`nextPlacedOn`). `moment`: the production
 `MomentTurn` plan for eight situations (`plans.cases`: a look that comes due
 while the PC played and work finished, while only work finished, or alone;
 finished work that comes up while the PC played or a look is due; the PC's pace
@@ -2899,10 +2906,15 @@ text). `broker`: the production
 background broker (`BackgroundPlaces`) and scheduler place four thinks on a
 companion PC's three hosts, one general, one kept for image generation and one
 that sings (`places` with `Rank`, `Slots`, `Duties` and `Standing`): the
-general one first, then the others, and the fourth waits in line (`placed`,
-`queuedBehind`); a song holding the singing computer keeps the one in line
-waiting when that computer's think ends (`waitedWhileTheSongHeldTheSinger`),
-and it runs on the general one once that frees up (`nextInLineRanOn`);
+general one first, then the singing one; the images one is the pool's last free
+slot, which a long job never takes while the pool has two or more slots, so the
+third and fourth wait in line (`placed`, `queuedBehind`, `inLine`) and a quick
+job (an end-of-turn judge) takes that slot at once (`quickJob`). A song holding
+the singing computer keeps both waiting when that computer's think ends
+(`waitedWhileTheSongHeldTheSinger`); the third runs on the general one once
+that frees up (`nextInLineRanOn`), the fourth waits until two slots are free
+again (`lastInLineWaitedForTwoFreeSlots`) and runs on the singing one when the
+song ends (`lastInLineRanOn`);
 `decidedMs` is how long the four placements took (no model is asked). Each part has an `ok`; on
 this PC the tool returned in 33 ms and replies beside a parallel think answered
 in 2-7 ms. Loopback only; reads no credentials.
@@ -2933,7 +2945,13 @@ writes a page with its source links (`page.links`) and no scripts (`shown`).
 `tool` and `prompt` are exactly what replies get. `limits`: a second research is
 refused as `busy` (and what the model is told) while a think runs beside it,
 Cancel ends it as `Canceled`, the fifth in an hour is refused (`hourly_limit`),
-and a failed first search fails the job (`failedSearch`). Each part has an `ok`.
+and a failed first search fails the job (`failedSearch`). `limits.placement`:
+on Deep thinking's places, a think holding the only place keeps research from
+starting (the message names it); research is a long job, so with one other
+place free it is refused too, because the pool's last free slot stays free for
+quick jobs (`lastFreeSlot`, where a screen summary takes it at once), and with
+two other places free it runs on the one sharing least with the conversation
+(`researchOn`). Each part has an `ok`.
 No real web search or model is used; reads no credentials; the temporary folder
 is deleted.
 
