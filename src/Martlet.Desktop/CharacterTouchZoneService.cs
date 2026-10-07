@@ -44,6 +44,7 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         Volatile.Write(ref modelId, id);
         Volatile.Write(ref detection, null);
         lock (rested) rested.Clear();
+        lock (streaks) streaks.Clear();
         Changed?.Invoke();
     }
 
@@ -110,8 +111,8 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
 
     /// <summary>A touch on the showing character: the zone it landed in plays its reaction (unless the zone is resting) and may
     /// tell the character. Returns the match, or null.</summary>
-    internal TouchZoneMatch? React(CharacterTouch touch, Func<CharacterTouchZone, IReadOnlyList<CharacterActionSource>> planFor, Func<CharacterActionSource, string, Task> play,
-        Action<string> tell)
+    internal TouchZoneMatch? React(CharacterTouch touch, Func<CharacterTouchZone, int, TouchReactionPlan> planFor,
+        Func<CharacterActionSource, string, double, Task> play, Action<string> tell)
     {
         var match = CharacterTouchZones.Match(Current, touch);
         var when = DateTime.Now.ToString("T", System.Globalization.CultureInfo.CurrentCulture);
@@ -133,17 +134,43 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
             }
             rested[zone.Id] = now + (long)(zone.Reaction.CooldownSeconds * 1000);
         }
-        var plan = planFor(zone);
-        foreach (var source in plan) play(source, $"a touch on {zone.Name.ToLowerInvariant()}").Forget();
+        var repeats = Repeat(zone.Id, now);
+        var reaction = planFor(zone, repeats);
+        var plan = reaction.Actions;
+        for (var i = 0; i < plan.Count; i++) play(plan[i], $"a touch on {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
         var narration = CharacterTouchZones.Narration(zone);
         if (narration is not null) tell(narration);
         Volatile.Write(ref lastMatch, $"{zone.Name} ({match.How}) at {when}: " +
-            (plan.Count == 0 ? "nothing to play" : "played " + string.Join(", ", plan.Select(s => s.Name))) +
+            (plan.Count == 0 ? "nothing to play" : "played " + string.Join(", ", plan.Select(s => s.Name))) + Describe(reaction, repeats) +
             (narration is null ? "." : ", and told the character."));
-        ErrorLog.Info($"Touch on {zone.Id} ({match.How}): {plan.Count} played{(narration is null ? "" : ", told the character")}.");
+        ErrorLog.Info($"Touch on {zone.Id} ({match.How}): {plan.Count} played from {reaction.From}{(reaction.Escalated ? " (escalated)" : "")}" +
+            $"{(narration is null ? "" : ", told the character")}.");
         Changed?.Invoke();
         return match;
     }
+
+    private readonly Dictionary<string, (int Count, long Last)> streaks = new(StringComparer.Ordinal);
+
+    /// <summary>How many touches in a row the zone has had, this one included (each within the repeat window of the one before).</summary>
+    private int Repeat(string zoneId, long now)
+    {
+        lock (streaks)
+        {
+            var count = streaks.TryGetValue(zoneId, out var streak) && now - streak.Last <= CharacterTouchTemperaments.RepeatWindowSeconds * 1000
+                ? streak.Count + 1 : 1;
+            streaks[zoneId] = (count, now);
+            return count;
+        }
+    }
+
+    /// <summary>" (loves it, from the persona's temperament, touch 3 in a row: escalated)" for the last-touch line.</summary>
+    internal static string Describe(TouchReactionPlan reaction, int repeats) =>
+        " (" + (reaction.Attitude is { } attitude ? attitude + " it, " : "") + reaction.From switch
+        {
+            TouchReactionPlan.FromOwner => "your pick for the zone",
+            TouchReactionPlan.FromTemperament => "from the persona's temperament",
+            _ => "built-in reaction"
+        } + (repeats > 1 ? $", touch {repeats} in a row" : "") + (reaction.Escalated ? ": escalated" : "") + ")";
 
     private string Report(string text)
     {

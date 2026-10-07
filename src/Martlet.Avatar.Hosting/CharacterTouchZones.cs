@@ -78,7 +78,7 @@ public sealed record CharacterTouchZoneSettings
     public string? DetectedBy { get; init; }
     public DateTimeOffset? DetectedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
-    public bool IncludeIntimate { get; init; }
+    public bool IncludeIntimate { get; init; } = true;
     public TouchZoneBox? Crop { get; init; }
     public IReadOnlyList<CharacterTouchZone> Zones { get; init; } = [];
 
@@ -351,7 +351,7 @@ public static class CharacterTouchZones
         return new()
         {
             ModelId = modelId, DetectedBy = CharacterTouchZoneSettings.ByVision, DetectedAt = now.ToUniversalTime(), UpdatedAt = now.ToUniversalTime(),
-            IncludeIntimate = saved?.IncludeIntimate ?? false, Crop = crop, Zones = merged
+            IncludeIntimate = saved?.IncludeIntimate ?? true, Crop = crop, Zones = merged
         };
     }
 
@@ -397,12 +397,32 @@ public static class CharacterTouchZones
 
     /// <summary>What touching <paramref name="zone"/> plays on the model: the owner's choice, or for each default slot the first of
     /// its names the model has (its own expressions and motions before Martlet's gestures). Only emotes and motions in use.</summary>
-    public static IReadOnlyList<CharacterActionSource> Plan(CharacterTouchZone zone, CharacterActionCatalog? catalog)
+    public static IReadOnlyList<CharacterActionSource> Plan(CharacterTouchZone zone, CharacterActionCatalog? catalog) => React(zone, catalog, null, 0).Actions;
+
+    /// <summary>What a touch on <paramref name="zone"/> plays, in this order of precedence: the owner's own pick for the zone, the
+    /// persona's <paramref name="temperament"/> for the zone kind or its group (escalated after <paramref name="repeats"/> touches
+    /// in a row), else the zone's built-in default reaction.</summary>
+    public static TouchReactionPlan React(CharacterTouchZone zone, CharacterActionCatalog? catalog, CharacterTouchTemperament? temperament, int repeats)
+    {
+        var attitude = CharacterTouchTemperaments.Attitude(temperament, zone.Id);
+        if (zone.Reaction.Actions is { } chosen)
+        {
+            var entries = catalog?.Entries.Where(e => e.Action.Enabled).ToArray() ?? [];
+            return new(chosen.Select(id => entries.FirstOrDefault(e => e.Source.Id == id).Source).OfType<CharacterActionSource>().Take(MaximumActions).ToArray(),
+                0, attitude, TouchReactionPlan.FromOwner);
+        }
+        if (temperament is not null && CharacterTouchTemperaments.Entry(temperament, zone.Id) is { } entry)
+        {
+            var (words, escalated) = CharacterTouchTemperaments.Words(temperament, entry, repeats);
+            return new(CharacterTouchTemperaments.Resolve(words, catalog), entry.LingerSeconds, attitude, TouchReactionPlan.FromTemperament, escalated);
+        }
+        return new(DefaultPlan(zone, catalog));
+    }
+
+    private static IReadOnlyList<CharacterActionSource> DefaultPlan(CharacterTouchZone zone, CharacterActionCatalog? catalog)
     {
         if (catalog is null) return [];
         var entries = catalog.Entries.Where(e => e.Action.Enabled).ToArray();
-        if (zone.Reaction.Actions is { } chosen)
-            return chosen.Select(id => entries.FirstOrDefault(e => e.Source.Id == id).Source).OfType<CharacterActionSource>().Take(MaximumActions).ToArray();
         var plan = new List<CharacterActionSource>();
         foreach (var slot in Kind(zone.Id)?.Defaults ?? [])
             foreach (var word in slot)

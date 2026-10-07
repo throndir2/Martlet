@@ -270,8 +270,8 @@ touched it. Companion › Character › **Touch zones** lists the zones of the
 model it shows: the top of the head (a head pat), hair, forehead, face, cheeks,
 nose, chin, shoulders, arms, hands, stomach, legs and feet, and extras such as
 animal ears, a tail or wings. Intimate zones (lips, ears, neck, chest,
-waist, hips, groin, buttocks and inner thighs) are found too but react only
-with **Include intimate zones** on, which is off by default.
+waist, hips, groin, buttocks and inner thighs) react too while
+**Include intimate zones** is on, which it is by default; turn it off to leave them out.
 
 - **Detect zones** takes one picture of the character as it stands and sends it
   (never the model's files) to the Thinking model, which must be able to see
@@ -297,6 +297,39 @@ with **Include intimate zones** on, which is off by default.
   or its corner on the picture, or type it), delete or add zones; **Try** plays
   one. Zones are saved per model in `character-touch-zones.json`, with the
   picture in `character-touch-zones\`.
+
+### Touch temperament
+
+The personality decides how the character acts when it is touched. Companion ›
+Character › **Touch temperament** shows, for the persona in use, how it feels
+about each part of its body: hates, dislikes, neutral, likes, loves or craves.
+It also shows what each part plays: up to three of Martlet's reactions, such
+as a smile, a blush, hearts, leaning in, a pout, a sweat drop, an anger vein,
+a flinch or looking away. It decides actions only, never words.
+
+- When you save a personality with a meaningful change (not only spacing,
+  case or punctuation), Martlet asks the Thinking model in the background. It
+  waits a few seconds and never asks while Martlet replies. The answer is
+  compact JSON: an attitude and reactions per zone group (head, torso, arms,
+  lower body, extras), per zone kind where one differs, how long the first
+  reaction lingers, and an escalation. Unknown actions are dropped and values
+  are clamped. When asking fails, the previous temperament stays.
+- **Re-decide from personality** asks again. Change an attitude, a reaction,
+  the linger time or the escalation, or give one part its own line, and your
+  choices win: a later personality change does not replace them until you
+  re-decide. **Use built-in reactions** goes back to the zones' defaults.
+- Repeated touches escalate: from the third touch in a row of a disliked part
+  (each within 30 seconds), it plays the escalation first, such as an anger
+  vein; a loved part plays hearts.
+- A reaction resolves on the model shown: the model's own expression or motion
+  with a matching name (Angry, Love, Blush...) comes first, else Martlet's
+  gesture or overlay.
+- What a touch plays: a zone's own pick under Touch zones, then the
+  temperament for that zone kind or its group, then the zone's built-in
+  reaction. Intimate parts are covered like the others and react only with
+  **Include intimate zones** on.
+- Temperaments are saved per persona in `character-temperaments.json` and
+  travel with the shared settings, like the personas.
 
 ## 1. Choose a renderer, analyzer and feature owners separately
 
