@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { inspectVrm, LIMITS, loadLocalVrm, VRM_GESTURES, VrmRuntime, type PlaybackIdentity, type Selection } from "../src/index.js";
+import { cheekFrame, inspectVrm, LIMITS, loadLocalVrm, VRM_GESTURES, VrmRuntime, type PlaybackIdentity, type Selection } from "../src/index.js";
 import { encodeGlb, fixture, fixtureDocument } from "./fixture.js";
 
 const identity: PlaybackIdentity = {
@@ -347,6 +347,34 @@ test("blush shows an authored cheek expression, held until released, and the fac
   for (let i = 0; i < 50; i++) own.update(0.1);
   assert.ok(vrm.expressionManager.getValue("CheekRed")! < 0.01, "not held, it ends by itself");
   own.dispose();
+});
+
+test("a turned head shows the near cheek wider and the far one narrower, then out of sight", async () => {
+  const runtime = new VrmRuntime(); await runtime.load(fixture());
+  const vrm = (runtime as unknown as { model: { humanoid: { getNormalizedBoneNode(name: string): THREE.Object3D } } }).model;
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 100);
+  const cheeks = (yaw: number) => {
+    vrm.humanoid.getNormalizedBoneNode("head").rotation.set(0, yaw, 0);
+    const face = runtime.faceGeometry()!;
+    camera.position.set(face.center.x, face.center.y, face.center.z + 1);
+    camera.lookAt(face.center);
+    camera.updateMatrixWorld();
+    const project = (v: THREE.Vector3) => { const n = v.clone().project(camera); return { x: (n.x + 1) * 250, y: (1 - n.y) * 250 }; };
+    const down = face.up.clone().negate();
+    return { left: cheekFrame(face.cheekLeft, face.cheekLeftAcross, down, face.cheekLeftNormal, face.width, camera.position, project),
+      right: cheekFrame(face.cheekRight, face.cheekRightAcross, down, face.cheekRightNormal, face.width, camera.position, project) };
+  };
+  const across = (frame: { right: { x: number; y: number } }) => Math.hypot(frame.right.x, frame.right.y);
+  const front = cheeks(0);
+  assert.ok(Math.abs(across(front.left) / across(front.right) - 1) < 1e-3 && front.left.visible === 1 && front.right.visible === 1);
+  assert.ok(front.left.down.y > 0 && Math.abs(front.left.down.x) < 1e-6, "down the cheek is down the canvas");
+  // Turned toward the viewer's right: the character's right cheek (the viewer's left) comes round to face the camera.
+  const turned = cheeks(0.6);
+  assert.ok(across(turned.left) > 1.15 * across(front.left), `the near cheek widens: ${across(turned.left)}`);
+  assert.ok(across(turned.right) < 0.5 * across(front.right), `the far cheek narrows: ${across(turned.right)}`);
+  const away = cheeks(1);
+  assert.ok(away.left.visible === 1 && away.right.visible < 0.05, `the far cheek turns out of sight: ${away.right.visible}`);
+  runtime.dispose();
 });
 
 test("voice emotes move the head, spine, shoulders and arms and return to idle", async () => {

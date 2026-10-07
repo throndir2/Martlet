@@ -189,12 +189,23 @@ what each one is.
 - **Drawings over the character**: the renderer page draws Martlet's own
   effects (the blush glow, and others built on it) on a second canvas laid
   exactly over the model, following zoom, pan and the display's scale, so they
-  also show in pictures of the character. They are placed around where the face
-  is: a VRM's head and eye bones (nothing is drawn while it faces away); for
-  Live2D, which has no face landmarks, an authored head or face hit area, meshes
-  whose IDs name the face or cheeks, or else an estimate from the shape of the
-  top of the model, moved with `ParamAngleX`/`Y`/`Z`. The Live2D adapter's
-  `setFaceHint` lets a face found by vision refine the estimate.
+  also show in pictures of the character. They are placed around the face as
+  the model draws it in each frame, so they follow everything that moves the
+  head: idle motions, body sway, breathing, the mouse, a look at a point and
+  gestures. A VRM's face follows its posed head and eye bones (nothing is drawn
+  while it faces away). Live2D models have no face landmarks, so the face is
+  first found at rest (an authored head or face hit area, meshes whose IDs name
+  the face or cheeks, or else an estimate from the shape of the top of the
+  model). Then it is pinned to the face's own mesh vertices: when the model
+  loads, Martlet moves the head angles (`ParamAngleX`/`Y`/`Z`) to find the
+  vertices that turn with the head, and moves the other parameters to drop the
+  ones that change shape on their own (hair physics, eyelids, eyes, mouth,
+  brows). A model without those angles, or without enough such vertices, uses
+  the earlier estimate moved with `ParamAngleX`/`Y`/`Z`. Each blush lies on its
+  cheek's surface, so a turned head shows the near cheek's blush wider and the
+  far one narrower, fading out as that cheek turns away. The Live2D adapter's
+  `setFaceHint` lets a face found by vision refine the estimate, pinned the
+  same way. Martlet's MCP `character_face` reads where they are drawn.
 - **Voice emotes**: every sound and tone a voice engine makes has a global emote
   of its own, linked to that voice cue from the start, so any character reacts
   when the voice laughs, sighs or turns angry, even before it is named. The

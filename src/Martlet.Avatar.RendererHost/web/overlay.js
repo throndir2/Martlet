@@ -2,9 +2,13 @@
 // canvas. Each overlay is registered once with how long it lasts and how it draws around the face anchor the adapter
 // reports; the layer fades it in and out and redraws every frame.
 //
-// anchor: { x, y, width, angle, cheekLeft:{x,y}, cheekRight:{x,y}, eyeLeft?, eyeRight?, mouth?, top? } in CSS pixels of
-// the page; x/y is the face's middle, width the face's width (zoom included), angle its roll in radians (clockwise on
-// screen), Left/Right the viewer's left and right.
+// anchor: { x, y, width, angle, cheekLeft:{x,y}, cheekRight:{x,y}, eyeLeft?, eyeRight?, mouth?, top?, tracking?,
+// cheekLeftFrame?, cheekRightFrame? } in CSS pixels of the page; x/y is the face's middle, width the face's width (zoom
+// included), angle its roll in radians (clockwise on screen), Left/Right the viewer's left and right. The adapters read it
+// from what they draw each frame (`tracking`: "mesh" when pinned to a Live2D model's own meshes, "bones" from a VRM's head
+// bone, "estimate" from Live2D's head angles), so it follows every move of the head. A cheek's frame is how its surface
+// shows now: `right` and `down`, the steps for one face width across and down it (a turned head squashes the far cheek), and
+// `visible`, 0 to 1 as it turns away.
 
 const registry = new Map();
 const active = new Map();
@@ -98,21 +102,35 @@ export function toCssAnchor(face, scaleX, scaleY) {
   const anchor = { x: face.x * scaleX, y: face.y * scaleY, width: face.width * scaleX, angle: face.angle ?? 0,
     cheekLeft: point(face.cheekLeft), cheekRight: point(face.cheekRight) };
   for (const key of ["eyeLeft", "eyeRight", "mouth", "top"]) if (face[key]) anchor[key] = point(face[key]);
+  for (const key of ["cheekLeftFrame", "cheekRightFrame"]) {
+    const frame = face[key];
+    if (frame?.right && frame?.down && [frame.right.x, frame.right.y, frame.down.x, frame.down.y].every(Number.isFinite))
+      anchor[key] = { right: point(frame.right), down: point(frame.down),
+        visible: Number.isFinite(frame.visible) ? Math.max(0, Math.min(1, frame.visible)) : 1 };
+  }
+  if (typeof face.tracking === "string") anchor.tracking = face.tracking;
   return [anchor.x, anchor.y, anchor.width].every(Number.isFinite) && anchor.width > 0 ? anchor : undefined;
 }
 
 // ---------- the blush ----------
 
 /** Soft pink glows on both cheeks with a few faint diagonal strokes, anime style; the fallback for models without a blush
- *  of their own. */
+ *  of their own. Each glow is laid on its cheek's surface (its frame), so it turns, tilts and squashes with the face and
+ *  fades as the cheek turns away; without a frame it turns with the face's roll. */
 export function drawBlush(ctx, anchor, _t, weight) {
   const radius = anchor.width * 0.17;
-  ctx.globalAlpha = 0.5 * weight;
-  for (const cheek of [anchor.cheekLeft, anchor.cheekRight]) {
+  const c = Math.cos(anchor.angle || 0), s = Math.sin(anchor.angle || 0);
+  for (const [cheek, frame] of [[anchor.cheekLeft, anchor.cheekLeftFrame], [anchor.cheekRight, anchor.cheekRightFrame]]) {
     if (!cheek) continue;
+    const shown = frame ? frame.visible ?? 1 : 1;
+    if (!(shown > 0.01)) continue;
+    // The cheek's steps across and down for one pixel of face width.
+    const across = frame ? { x: frame.right.x / anchor.width, y: frame.right.y / anchor.width } : { x: c, y: s };
+    const down = frame ? { x: frame.down.x / anchor.width, y: frame.down.y / anchor.width } : { x: -s, y: c };
+    const onCheek = () => { ctx.translate(cheek.x, cheek.y); ctx.transform(across.x, across.y, down.x, down.y, 0, 0); };
+    ctx.globalAlpha = 0.5 * weight * Math.min(1, shown);
     ctx.save();
-    ctx.translate(cheek.x, cheek.y);
-    ctx.rotate(anchor.angle || 0);
+    onCheek();
     ctx.scale(1, 0.62);
     const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
     glow.addColorStop(0, "rgba(255, 92, 128, 0.85)");
@@ -122,8 +140,7 @@ export function drawBlush(ctx, anchor, _t, weight) {
     ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
     ctx.save();
-    ctx.translate(cheek.x, cheek.y);
-    ctx.rotate(anchor.angle || 0);
+    onCheek();
     ctx.strokeStyle = "rgba(225, 60, 95, 0.55)";
     ctx.lineCap = "round";
     ctx.lineWidth = Math.max(0.75, radius * 0.07);
