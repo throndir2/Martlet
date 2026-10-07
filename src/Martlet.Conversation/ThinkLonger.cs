@@ -42,7 +42,7 @@ public static class ThinkLonger
     /// and as many again waiting in line for the next free one (at most <see cref="MaxPlaces"/> in all), with no hourly limit
     /// and no time limit (it runs until it is done or canceled).</summary>
     public static BackgroundJobKind Kind(ThinkLongerSettings settings, int slots = 1) =>
-        new(KindName, Math.Clamp(Math.Max(1, slots) * 2, 2, MaxPlaces), null, null, Doing: "Thinking about");
+        new(KindName, Math.Clamp(Math.Max(1, slots) * 2, 2, MaxPlaces), null, null, Doing: "Thinking about") { PoolKind = ThinkingJobKind.ThinkLonger };
 
     /// <summary>How long a think's request may take: the provider contracts' ceiling, so in practice it runs until it is done
     /// or canceled.</summary>
@@ -54,15 +54,19 @@ public static class ThinkLonger
     /// <summary>The places a think (or another kind's work that thinks, such as a song's lyrics) can run on: each usable place
     /// of <paramref name="pool"/>, with its computer's name, how much it shares with the conversation, how many thinks it runs
     /// at once and the other work its computer is kept free for (<paramref name="duties"/>, by computer name: singing, image
-    /// generation), so the broker places a think on a general computer first.</summary>
-    public static IReadOnlyList<BackgroundPlace> Places(DeepThinkingPool pool, IReadOnlyDictionary<string, IReadOnlyList<string>>? duties = null)
+    /// generation), so the broker places a think on a general computer first. <paramref name="can"/> says what each member can
+    /// do (text only when null).</summary>
+    public static IReadOnlyList<BackgroundPlace> Places(DeepThinkingPool pool, IReadOnlyDictionary<string, IReadOnlyList<string>>? duties = null,
+        Func<DeepThinkingSettings, ThinkingCapability>? can = null)
     {
         ArgumentNullException.ThrowIfNull(pool);
         return [.. pool.Usable.Take(MaxPlaces).Select(spot => new BackgroundPlace(spot.Key,
             spot.Computer.Length <= 80 ? spot.Computer : spot.Computer[..80], Math.Clamp(spot.Plan.Rank, 0, BackgroundPlace.MaxRank))
         {
             Slots = Math.Clamp(spot.Settings.ThinksAtOnce, 1, BackgroundPlace.MaxSlots),
-            Duties = duties?.GetValueOrDefault(spot.Computer) is { Count: > 0 } kept ? [.. kept.Take(8)] : []
+            Duties = duties?.GetValueOrDefault(spot.Computer) is { Count: > 0 } kept ? [.. kept.Take(8)] : [],
+            Can = can?.Invoke(spot.Settings) ?? ThinkingCapability.Text,
+            Model = spot.Settings.Separate ? spot.Settings.ModelId : null
         })];
     }
 

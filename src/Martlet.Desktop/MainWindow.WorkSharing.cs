@@ -94,7 +94,7 @@ public partial class MainWindow
         var planned = SharingPlanned(job);
         var places = SharingPlaces(job);
         var detail = deep
-            ? "Deep thinking thinks on the computers chosen in Companion › Deep thinking. Untick one here to keep every companion PC's thinks off it."
+            ? "The Thinking pool works on the computers that joined it in Companion › Thinking pool. Untick one here to keep every companion PC's pool jobs off it."
             : job == WorkSharingJobs.Thinking
                 ? "Off by default: another computer's model starts your conversation without its prompt cache, so its first word comes later, " +
                   "and it pushes that computer's own conversation out of its cache. While off, a reply waits for its computer to finish another."
@@ -225,7 +225,7 @@ public partial class MainWindow
         ErrorLog.Info("Sharing work: " + done);
         ActionText.Text = done + " Your other computers follow it.";
         QueueSettingsSync();
-        conversation?.ReloadDeepThinking();
+        conversation?.ReloadThinkingPool();
         // Rebuilt after the click's own event finishes, so the control that changed isn't replaced under it.
         Dispatcher.InvokeAsync(RenderWorkSharing);
     }

@@ -642,7 +642,7 @@ public sealed class HostSetupCommandsTests
             Route(Martlet.Avatar.Audio2Face.Remote.HostRoute.DeepThinkingRouteId, 3) };
         Assert.Equal(3, new HostCheck(true, "", offers, Routes: routes).DeepThinkingSlots);
         Assert.Null(new HostCheck(true, "", offers, Routes: routes[..1]).DeepThinkingSlots);
-        Assert.Contains("Deep thinking (3 thinks at once)", HostControl.Describe(offers, routes));
+        Assert.Contains("Thinking pool (3 thinks at once)", HostControl.Describe(offers, routes));
         Assert.DoesNotContain("at once", HostControl.Describe(offers, [routes[0], Route(routes[1].RouteId, 1)]));
     }
 }
