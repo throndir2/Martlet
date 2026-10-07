@@ -1078,7 +1078,10 @@ from VTube Studio's idle animation), `saved`, `detectedBy` (`names` or
 are `offered` it for `engine`, a voice engine key, `none` or absent for a voice
 without tags), `replyPrompt` and `replyTags` (what replies get while the
 character shows) and `namingPrompt` (`instructions` and the numbered `list` the
-Thinking model is sent). With `answer`, a simulated Thinking reply such as
+Thinking model is sent). With `voiceTag`, a voice's tag such as `[laugh]` or
+`(sighs)` or a reply tag such as `{nod}`, `setsOff` lists what it sets off
+(`kind` and `name`, such as the `laugh` voice emote; one expression and one
+motion picked at random when several share a cue). With `answer`, a simulated Thinking reply such as
 `1: blush | - | when shy`, `parsed` shows what the production parser makes of
 it (`read`, `problem`, `actions`, `prompt`). Model-authored names only, never
 the model's path; it reads and contacts nothing else.

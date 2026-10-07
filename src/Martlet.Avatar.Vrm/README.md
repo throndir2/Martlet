@@ -27,7 +27,10 @@ Emotes (docs/AVATARS.md "Emotes and motions"): `setAction(name, on)` fades an
 authored emotion or custom expression in or out, one at a time (mouth, blink and
 gaze presets are refused), and `playGesture(name)` plays one of Martlet's own
 gestures the model has the humanoid bones for (`gestures`: `nod`, `shake`,
-`tilt`, `bow`, `sway`, `wave`, `shrug`, `bounce`) on the idle pose. VRM files
+`tilt`, `bow`, `sway`, `wave`, `shrug`, `bounce`, and the voice emotes `laugh`,
+`chuckle`, `sigh`, `gasp`, `cough`, `clear_throat`, `groan`, `sniff`, `shush`,
+`inhale`, `exhale`, `mumble`, `hum`, `sneeze`, `whistle`, `happy`, `sarcastic`,
+`angry`, `fear`, `crying`, `whispering`, `dramatic`) on the idle pose. VRM files
 carry no motions.
 
 `dev` bundles all JavaScript locally to ignored `public/app.js`, then serves only

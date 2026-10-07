@@ -125,6 +125,31 @@ what each one is.
   Live2D parameters are read from the model's `.moc3`, VRM bones from its
   humanoid. A gesture is left out when the model's own emote or motion already
   has its tag (a model with its own `smile` keeps that one).
+- **Voice emotes**: every sound and tone a voice engine makes has a global emote
+  of its own, linked to that voice cue from the start, so any character reacts
+  when the voice laughs, sighs or turns angry, even before it is named. The
+  surprise gesture follows `surprised`; the others are their cue's name (with
+  `_` for spaces) and play on any rig with what they move:
+
+  | Voice emote (tag and cue) | What it does | Live2D needs | VRM needs |
+  | --- | --- | --- | --- |
+  | `laugh`, `chuckle` | smiling eyes, the head bobbing | `ParamAngleY` | `head` (and `spine` for a laugh) |
+  | `sigh`, `exhale` / `inhale` | the head and shoulders drop / rise | `ParamAngleY` | `head`, `spine` |
+  | `gasp`, `sneeze`, `cough` | the head jerks back, snaps forward, jerks forward | `ParamAngleY` | `head`, `spine` |
+  | `clear_throat`, `sniff`, `shush` | a dip aside, two lifts, leaning in | `ParamAngleY` | `head` (and `spine` to shush) |
+  | `groan`, `hum`, `whistle`, `sarcastic` | head back, a gentle sway, looking up and away, an eye roll | `ParamAngleZ` | `head` |
+  | `mumble`, `fear` | looking down and away, trembling back | `ParamAngleX` | `head` (and `spine` for fear) |
+  | `happy` | smiling eyes and a cheerful bob | `ParamEyeLSmile`, `ParamEyeRSmile` | `head`, `spine` |
+  | `angry` | lowered brows and head | `ParamBrowLY`, `ParamBrowRY` | `head`, `spine` |
+  | `crying`, `whispering` | bowed head with sobbing shoulders, leaning in | `ParamAngleY` / `ParamAngleZ` | `head`, `spine` |
+  | `dramatic` | the head thrown back with a flourish (VRM: arms open) | `ParamAngleZ` | `head`, both upper arms |
+
+  A voice emote plays when the voice speaks its tag (Chatterbox Turbo's
+  `[laugh]`, Dia's `(laughs)`), alongside any of the model's own emotes on the
+  same cue. Voice emotes aren't offered to replies as tags, so the reply
+  instructions stay as short as before; clear one's cue to offer it as a tag
+  instead. The model's own emote with the same tag (a VRM's `happy` or `angry`
+  preset) replaces it.
 - **Where it looks**: the head and eyes follow the mouse, or with Companion ›
   Vision › **Where the character looks** set to *Martlet decides*, glance at
   something that just changed on the watched screen or at the part of it a

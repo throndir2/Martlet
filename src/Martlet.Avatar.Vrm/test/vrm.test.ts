@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { inspectVrm, LIMITS, loadLocalVrm, VrmRuntime, type PlaybackIdentity, type Selection } from "../src/index.js";
+import { inspectVrm, LIMITS, loadLocalVrm, VRM_GESTURES, VrmRuntime, type PlaybackIdentity, type Selection } from "../src/index.js";
 import { encodeGlb, fixture, fixtureDocument } from "./fixture.js";
 
 const identity: PlaybackIdentity = {
@@ -301,7 +301,7 @@ test("bone gaze partial overrides scale saturated mapped eye rotation, not input
 
 test("Martlet's gestures play on the humanoid bones and return to idle", async () => {
   const runtime = new VrmRuntime(); await runtime.load(fixture()); runtime.startIdle();
-  assert.deepEqual(runtime.gestures, ["nod", "shake", "tilt", "bow", "sway", "wave", "shrug", "bounce"]);
+  assert.deepEqual(runtime.gestures, [...VRM_GESTURES]);
   assert.equal(runtime.playGesture("smile"), false);
   const vrm = (runtime as unknown as { model: { humanoid: { getNormalizedBoneNode(name: string): THREE.Object3D } } }).model;
   const bone = (name: string) => vrm.humanoid.getNormalizedBoneNode(name);
@@ -321,4 +321,29 @@ test("Martlet's gestures play on the humanoid bones and return to idle", async (
   assert.equal(runtime.playGesture("bow"), true);
   for (let i = 0; i < 20; i++) runtime.update(0.05);
   assert.ok(bone("spine").rotation.x > 0.3, "the spine bends forward");
+});
+
+test("voice emotes move the head, spine, shoulders and arms and return to idle", async () => {
+  const runtime = new VrmRuntime(); await runtime.load(fixture()); runtime.startIdle();
+  const vrm = (runtime as unknown as { model: { humanoid: { getNormalizedBoneNode(name: string): THREE.Object3D } } }).model;
+  const bone = (name: string) => vrm.humanoid.getNormalizedBoneNode(name);
+  runtime.update(0.016);
+  const rest = bone("head").rotation.x;
+  assert.equal(runtime.playGesture("gasp"), true);
+  for (let i = 0; i < 10; i++) runtime.update(0.05);
+  assert.ok(bone("head").rotation.x < rest - 0.08, "the head goes back");
+  assert.ok(bone("spine").rotation.x < -0.1, "the body leans back");
+  for (let i = 0; i < 40; i++) runtime.update(0.05);
+  assert.ok(Math.abs(bone("spine").rotation.x) < 1e-9, "the spine settles");
+  assert.equal(runtime.playGesture("crying"), true);
+  for (let i = 0; i < 20; i++) runtime.update(0.05);
+  assert.ok(bone("head").rotation.x > rest + 0.1, "the head bows");
+  assert.ok(bone("spine").rotation.x > 0.1, "the body curls forward");
+  assert.equal(runtime.playGesture("dramatic"), true);
+  for (let i = 0; i < 24; i++) runtime.update(0.05);
+  assert.ok(bone("leftUpperArm").rotation.z > -0.3 && bone("rightUpperArm").rotation.z < 0.3, "the arms open out");
+  for (let i = 0; i < 40; i++) runtime.update(0.05);
+  assert.ok(bone("rightUpperArm").rotation.z > 1, "the arms come back down");
+  assert.equal(runtime.playGesture("clear_throat"), true);
+  runtime.dispose();
 });
