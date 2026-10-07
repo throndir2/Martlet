@@ -82,6 +82,24 @@ The weights are used as converted by sherpa-onnx (int8 quantization for the
 0.6B models), with no further change. [DEPENDENCIES](../packaging/windows/DEPENDENCIES.txt)
 carries the same attribution for the installer.
 
+## Smart Turn end-of-turn model (bundled)
+
+Always listening's end-of-turn judge uses Pipecat's Smart Turn v3.2 int8 CPU
+model (BSD 2-Clause, Daily;
+[pipecat-ai/smart-turn-v3](https://huggingface.co/pipecat-ai/smart-turn-v3) at
+revision `f766f81d3cfdf7737ac64aad813d91bbfd56bf93`). The licence allows use
+and redistribution in binary form when the copyright notice, the conditions and
+the disclaimer go with it. The Desktop build downloads the 8.7 MB model once
+into `obj` and keeps it only at its pinned SHA-256
+(`Martlet.Desktop.csproj` and `toolchain.json` `voiceModels`). It ships in
+`Desktop\turn-detection\` without changes. The full licence text and the
+attribution are in `src\Martlet.Sherpa\VOICE-RECOGNITION-NOTICES.txt`, which
+the installer copies to `notices\Voice-Recognition-NOTICES.txt`. It runs
+through the bundled ONNX Runtime 1.28.2 with Martlet's own function-pointer
+calls; no managed ONNX Runtime package and no Pipecat code are shipped. Nothing
+is downloaded at run time and the model never sees anything but the
+microphone's audio, on this PC.
+
 ## Distribution handoff
 
 The Windows system audio engine performs conversion; no external resampler DLL,

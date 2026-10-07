@@ -11,7 +11,8 @@ namespace Martlet.Mcp;
 /// (a fixture model judge, NOT AI, slower than <see cref="BargeInJudging.Deadline"/> gives way to the local rules, and one in
 /// time is used) and what a pause does on a simulated clock (<see cref="BargeInHold"/>: the user going quiet after a not-for-me
 /// verdict plays the reply on; talking on past <see cref="BargeInJudging.KeepTalkingLimit"/> stops it; an interrupt verdict
-/// stops it). Reads the saved choice from talk-preferences.json. Nothing is recorded or played; nothing leaves this PC.</summary>
+/// stops it), and the Thinking pool's model judge (<see cref="ModelBargeInJudge"/>) with fixture answers. Reads the saved
+/// choice from talk-preferences.json. Nothing is recorded or played; nothing leaves this PC.</summary>
 internal static class BargeInCheck
 {
     private const int MaximumSamples = 64;
@@ -52,11 +53,13 @@ internal static class BargeInCheck
         if (slow < TimeSpan.Zero || slow > TimeSpan.FromSeconds(10)) throw new ArgumentException("judgeDelayMs must be 0-10000.");
         var deadlines = await DeadlineAsync(deadline, slow, sensitivity, cancellation);
         var holds = Holds();
+        var models = await ModelJudgeAsync(sensitivity, cancellation);
+        var modelsOk = models.All(m => m.Ok);
         var deadlinesOk = deadlines.All(d => d.Ok);
         var holdsOk = holds.All(h => h.Ok);
         return new
         {
-            ok = samplesOk && deadlinesOk && holdsOk,
+            ok = samplesOk && deadlinesOk && holdsOk && modelsOk,
             behavior = behavior.ToString(),
             behaviorSource = source,
             bargeIn,
@@ -75,7 +78,9 @@ internal static class BargeInCheck
             deadlinesOk,
             deadlines = deadlines.Select(d => d.Value),
             holdsOk,
-            holds = holds.Select(h => h.Value)
+            holds = holds.Select(h => h.Value),
+            modelJudgeOk = modelsOk,
+            modelJudge = models.Select(m => m.Value)
         };
     }
 
@@ -114,6 +119,43 @@ internal static class BargeInCheck
             {
                 name, ok, judgeDelayMs = delay.TotalMilliseconds, deadlineMs = limit.TotalMilliseconds, verdict = ruling.Verdict.ToString(),
                 source = ruling.Source.ToString(), judge = ruling.Judge, reason = ruling.Reason, tookMs = Math.Round(tookMs)
+            }));
+        }
+        return [.. results];
+    }
+
+    // The Thinking pool's model judge (ModelBargeInJudge.ForPool) with fixture answers (NOT AI) from a pool member: a verdict is
+    // used; no member (the pool's NoMember or Stale) lets the rules decide at once; an answer without a verdict lets them decide.
+    private static async Task<Result[]> ModelJudgeAsync(ListeningSensitivity sensitivity, CancellationToken cancellation)
+    {
+        var input = new BargeInJudgeInput("What about the weather tomorrow?", "The best part is the view from the top.", null,
+            new UtteranceContext { Voiced = TimeSpan.FromMilliseconds(1100) }, sensitivity, 0.9);
+        var results = new List<Result>();
+        foreach (var (name, answer, verdict, source) in new (string, string?, BargeInVerdict, BargeInSource)[]
+        {
+            ("member answers", "NOTFORME: talking to someone else", BargeInVerdict.NotForMe, BargeInSource.Judge),
+            ("no member", null, BargeInVerdict.Interrupt, BargeInSource.Timeout),
+            ("no verdict in the answer", "Hard to say.", BargeInVerdict.Interrupt, BargeInSource.Timeout)
+        })
+        {
+            // The production pool path: a BargeInJudge job on a job board whose one fixture member answers (none for "no member").
+            var asked = "";
+            var board = new ThinkingJobBoard(new BackgroundPlaces(),
+                () => answer is null ? [] : [new BackgroundPlace("fixture:judge", "fixture member")], (_, job, _) =>
+                {
+                    asked = job.Text;
+                    return Task.FromResult(ThinkingAnswer.Done(answer!));
+                });
+            var judge = ModelBargeInJudge.ForPool(board.RunAsync);
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            // A long deadline: a busy PC never turns these into "too slow"; the reasons show what decided.
+            var ruling = await BargeInJudging.RuleAsync(judge, input, TimeProvider.System, TimeSpan.FromSeconds(5), cancellation);
+            var tookMs = watch.Elapsed.TotalMilliseconds;
+            var ok = ruling.Verdict == verdict && ruling.Source == source && (answer is not null || ruling.Reason.Contains("was available", StringComparison.Ordinal));
+            results.Add(new(ok, new
+            {
+                name, ok, answer, verdict = ruling.Verdict.ToString(), source = ruling.Source.ToString(), judge = ruling.Judge,
+                reason = ruling.Reason, tookMs = Math.Round(tookMs, 1), promptLines = asked.Split('\n').Length
             }));
         }
         return [.. results];

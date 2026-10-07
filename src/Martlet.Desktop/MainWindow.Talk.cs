@@ -22,6 +22,35 @@ public partial class MainWindow
     private IReadOnlyList<CameraDevice>? visionCameras;
     private IReadOnlyList<(HomeCamera Camera, Uri Snapshot)>? homeCameras;
     private bool findingCameras, findingHomeCameras;
+    // Companion › Listening's end-of-turn judge status line while the page shows it (it follows each decision).
+    private TextBlock? turnJudgeStatus;
+
+    /// <summary>Companion › Listening's end-of-turn judge status (TalkJudgeTurnsStatus): whether it is on, which judge runs and
+    /// whether it can, and how the newest turns were decided (no words).</summary>
+    internal static string TurnJudgeText(bool on,
+        (string? Judge, bool Available, string? Problem, TimeSpan? LoadTime, Martlet.Conversation.EndOfTurnDecision[] Decisions)? status)
+    {
+        if (!on) return "Off. The pause above alone decides when you finished talking.";
+        if (status is not { } s || !s.Available)
+            return $"On, but the judge can't run here ({status?.Problem ?? "no judge"}). The pause above decides until it can.";
+        var text = s.Problem is not null
+            ? $"On. Smart Turn can't run here ({s.Problem}), so {s.Judge} judges instead."
+            : $"On. {s.Judge} on this PC" + (s.LoadTime is { } load ? $" (loaded in {load.TotalMilliseconds:0} ms)." : ".");
+        if (s.Decisions.Length == 0) return text + " No turns judged yet.";
+        var complete = s.Decisions.Count(d => d.Outcome == Martlet.Conversation.EndOfTurnDecision.Complete);
+        var unfinished = s.Decisions.Count(d => d.Outcome is Martlet.Conversation.EndOfTurnDecision.Incomplete or Martlet.Conversation.EndOfTurnDecision.WentOn);
+        var plain = s.Decisions.Length - complete - unfinished;
+        var times = s.Decisions.Where(d => d.JudgeTime is not null).Select(d => d.JudgeTime!.Value.TotalMilliseconds).Order().ToArray();
+        text += $" Last {s.Decisions.Length} pause{(s.Decisions.Length == 1 ? "" : "s")}: {complete} finished, {unfinished} unfinished, {plain} left to the pause";
+        if (times.Length > 0) text += $"; judge median {times[times.Length / 2]:0} ms";
+        var last = s.Decisions[^1];
+        return text + $". Last: {last.Outcome} after {last.Silence.TotalMilliseconds:0} ms of silence.";
+    }
+
+    private void ShowTurnJudge()
+    {
+        if (turnJudgeStatus is { } line && conversation is not null) line.Text = TurnJudgeText(Talk.JudgeTurns, conversation.TurnJudgeStatus);
+    }
 
     private static readonly string[] PauseChoices = ["Short (0.5 s)", "Normal (0.8 s)", "Long (1.2 s)"];
     private static readonly string[] ChattinessChoices = ["Quiet", "Normal", "Chatty", "Martlet decides"];
@@ -99,6 +128,20 @@ public partial class MainWindow
             children.Add(Labeled("Reply after", pause));
             children.Add(Note("Martlet listens again after each reply, with or without the talk window open. Stop listening ends it; locking Windows pauses it.",
                 new Thickness(0, 8, 0, 0)));
+
+            var judgeTurns = new CheckBox { Content = "Judge when I finish talking (recommended)", IsChecked = prefs.JudgeTurns, Margin = new Thickness(0, 16, 0, 4) };
+            AutomationProperties.SetAutomationId(judgeTurns, "TalkJudgeTurns");
+            judgeTurns.Checked += (_, _) => { if (!Talk.JudgeTurns) SaveTalk(Talk with { JudgeTurns = true }, render: true); };
+            judgeTurns.Unchecked += (_, _) => { if (Talk.JudgeTurns) SaveTalk(Talk with { JudgeTurns = false }, render: true); };
+            children.Add(judgeTurns);
+            var judgeStatus = Note(TurnJudgeText(prefs.JudgeTurns, conversation?.TurnJudgeStatus), new Thickness(0, 0, 0, 4));
+            AutomationProperties.SetAutomationId(judgeStatus, "TalkJudgeTurnsStatus");
+            turnJudgeStatus = judgeStatus;
+            children.Add(judgeStatus);
+            children.Add(Note("On, a small model on this PC (Smart Turn) listens to how you end each sentence after a short pause. " +
+                "When you clearly finished, Martlet answers sooner than the pause above; when you trail off mid-thought, it waits " +
+                "longer (up to twice that pause) so it cuts you off less. If it ever answers too soon, just keep talking. Off, the " +
+                "pause above alone decides. Your voice never leaves this PC for this.", new Thickness(0, 0, 0, 0)));
 
             var wordCheck = new ComboBox { Width = 240, ItemsSource = WordCheckChoices, SelectedIndex = Array.IndexOf(WordCheckOrder, prefs.WordCheck) };
             AutomationProperties.SetName(wordCheck, "Word check: how readily Martlet takes what it hears as words");

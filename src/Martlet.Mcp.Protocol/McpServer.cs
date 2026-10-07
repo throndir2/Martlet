@@ -207,6 +207,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             martletDirectory = new { type = "string" }
         }),
+        Tool("turn_judge_check", "Companion > Listening > Judge when I finish talking: load the Smart Turn v3.2 end-of-turn model " +
+            "and ONNX Runtime bundled in martletDirectory (optional absolute path, default the installed release's) through the " +
+            "production SmartTurnEngine and judge finished and unfinished phrases a Windows voice says (System.Speech rendered to " +
+            "memory, never played), each ending 260 ms into the pause as always listening asks it: loadMs, each phrase's expected " +
+            "and judged verdict, probability and judgeMs, agreed and medianJudgeMs. Its gate part steps the production " +
+            "EndOfTurnGate with the plain 800 ms pause frame by frame: a complete answer ends the turn at 300 ms, an incomplete one " +
+            "waits for 1600 ms, a slow or failed judge leaves it to 800 ms. ok when the median judge time is at most 100 ms and the " +
+            "gate ends each case where expected (agreement on a synthetic voice is informative only). Nothing is recorded, played, " +
+            "downloaded or sent.", new
+        {
+            martletDirectory = new { type = "string" }
+        }),
         Tool("parakeet_check", "Companion > Listening > Parakeet in Martlet: load each Parakeet model downloaded in speechDirectory " +
             "(optional absolute path, default the data directory's speech folder, where the desktop downloads them; or name them in " +
             "models) through the production ParakeetEngine with the sherpa-onnx runtime from martletDirectory, and transcribe phrases " +
@@ -1025,7 +1037,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "source (Cue, Judge), judge, judgeMs and the action with the saved choice. deadlines: a fixture model judge (NOT AI) " +
             "slower than the deadline (judgeDelayMs, default 1000; deadlineMs, default 400) must give way to the rules within the " +
             "deadline, and one in time must be used. holds: what a pause does on a simulated clock (quiet after notForMe plays on; " +
-            "talking on past 1.5 s stops; interrupt stops; no verdict plays on at the pause's limit). Also returns the saved choice " +
+            "talking on past 1.5 s stops; interrupt stops; no verdict plays on at the pause's limit). modelJudge: the Thinking pool's model " +
+            "judge with fixture answers (NOT AI): a verdict is used, no pool member lets the rules decide at once, an answer without " +
+            "a verdict lets them decide. Also returns the saved choice " +
             "(behavior PauseAndDecide or StopAtOnce from talk-preferences.json, bargeIn, wordCheck) and the timings. ok when every " +
             "expectation held. Nothing is recorded or played; nothing leaves this PC.", new
         {
@@ -1453,6 +1467,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_stroke" => await desktop.StrokeCharacterAsync(StrokePoints(arguments), OptionalInt(arguments, "stepMs") ?? 40),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
+                "turn_judge_check" => await TurnJudgeCheck.RunAsync(arguments, MartletDirectory(arguments), cancellation),
                 "parakeet_check" => await ParakeetCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
                     OptionalString(arguments, "speechDirectory") is not null ? SpeechDirectory(arguments) : Path.Combine(DataDirectory(arguments), "speech"),
                     cancellation),

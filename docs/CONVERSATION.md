@@ -1260,14 +1260,20 @@ voice pipeline never waits for a whole reply:
   reply as before and what you said is answered next; *not for Martlet* plays
   it on. The judge reads Martlet's current sentence (`ConversationTurn.Sentence`),
   the reply's last 400 characters, your words so far and speech-to-text's
-  confidence. Today it is the local rules judge (`RulesBargeInJudge`): the
+  confidence. With a [Thinking pool](#the-thinking-pool) member that can run it,
+  the judge is a model: `ModelBargeInJudge` posts a `BargeInJudge` job (the
+  pool's highest priority, a fast kind that never waits behind long thinking
+  when the pool has two or more slots; 16 tokens out, no reasoning steps, never
+  the conversation's own route, so the reply's prompt cache is left alone) and
+  reads INTERRUPT or NOTFORME from the answer. A pool with no member lets the
+  local rules decide at once; no member free before the deadline, a failed job
+  or an answer that names no verdict lets them decide too. Otherwise it is the local rules judge (`RulesBargeInJudge`): the
   policy first (a backchannel, too few words or non-words are not for Martlet),
   then Martlet's own sentence heard back (three words in a row from it, or
   three different words all in it: a TV, a call or a missed echo) and words
   that only agree or laugh along ("yeah that's so true", "haha no way") are not
-  for Martlet; everything else is. A model judge from the Thinking pool can
-  take its place; one that doesn't answer within 400 ms
-  (`BargeInJudging.Deadline`), or fails, gives way to the rules. While paused,
+  for Martlet; everything else is. The model judge has 400 ms
+  (`BargeInJudging.Deadline`); a slower one gives way to the rules. While paused,
   `BargeInHold` watches your voice frame by frame: an interrupt verdict stops
   the reply, talking on for 1.5 s in all (`KeepTalkingLimit`) stops it
   whatever the verdict, and with a not-for-Martlet verdict 240 ms of quiet
@@ -1757,6 +1763,28 @@ the data folder.
   is uploaded, not the idle wait before it. Sounds shorter than 450 ms (coughs,
   clicks) are ignored. **Sensitivity** trades missed quiet speech against false
   triggers from noise.
+- **Judge when I finish talking** (on by default, Companion › Listening ›
+  How you talk) lets an end-of-turn judge decide when you finished instead of
+  the pause alone. After 260 ms of silence (`EndOfTurnGate`), Smart Turn v3.2
+  (`SmartTurnJudge`, a small model bundled in `turn-detection\` that runs on
+  this PC's processor in about 25-50 ms) hears the end of what you said. With
+  Parakeet on this PC as Listening, a quick transcript of exactly the speech
+  that would be kept starts at the same moment. *Complete* ends the turn at once,
+  and speech-to-text reuses that quick transcript when the kept audio is the same
+  (no second transcription). *Incomplete* keeps listening for up to twice your
+  pause (at least 1.6 s), so trailing off mid-thought is cut off less. A
+  missing, failed or slow judge (no answer before your pause ends) leaves your
+  pause to decide, exactly as with the judge off. Each decision writes one line
+  to the desktop log (*End of turn: complete (Smart Turn v3.2, 0.93) after 280
+  ms of silence; judge 31 ms.*), and the reply latency line shows *end-of-turn
+  wait* and *end-of-turn judge* in place of *end of speech*. A wrong *complete*
+  is recovered the usual way: keep talking (barge-in or the restart below).
+  When Smart Turn is missing or fails, a [Thinking pool](#pool-api-desktop)
+  member judges the quick transcript instead (`PoolTurnJudge`: an
+  `EndOfTurnJudge` job that must answer COMPLETE or INCOMPLETE within 500 ms;
+  without a quick transcript or an answer in time, your pause decides). Other
+  judges plug in the same way through `IEndOfTurnJudge` and
+  `EndOfTurnJudges.WithFallback`.
 - Listening never stops by itself. It runs on its own slot beside replies
   (`LiveListener`): it records one utterance at a time and transcribes each, in
   order, while it already listens for the next, so nothing said while Martlet

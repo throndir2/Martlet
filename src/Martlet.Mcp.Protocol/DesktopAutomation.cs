@@ -367,6 +367,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // quick "yeah" or what this PC plays). Fixed text. Word check: the chosen option (Relaxed, Normal or Sensitive; choosing
         // one with ui_select saves talk-preferences.json, so it needs --allow-ui-effects) and its fixed explanation.
         "TalkBargeInAbout", "TalkWordCheck", "TalkWordCheckAbout",
+        // Companion › Listening › How you talk › Judge when I finish talking: on or off, which end-of-turn judge runs and whether
+        // it can (or why not), how long it took to load, and counts of the newest decisions with the judge's median time and the
+        // last one's outcome and silence (never words or audio). The TalkJudgeTurns check box saves the choice, so it needs
+        // --allow-ui-effects.
+        "TalkJudgeTurnsStatus",
         // Companion › Listening › When you talk over Martlet: the chosen option (Pause and decide or Stop at once; choosing one
         // with ui_select saves talk-preferences.json, so it needs --allow-ui-effects) and its fixed explanation. In the talk
         // window, LiveBargeIn: the last time you talked over Martlet, whether it paused, stopped or played on, the verdict, what
