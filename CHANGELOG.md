@@ -8,11 +8,17 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+- On a Martlet host where the Thinking pool shares a graphics card with your conversation, replies, voices and listening now always go first: the host stops a Thinking pool job on that card the moment a reply needs it and runs it on another computer or later, so your character's voice no longer slows down while it thinks in the background. *martlet-host status* and the host's log say when the Thinking pool shares a card, and how to give it one of its own. ([#541](https://github.com/throndir2/Martlet/pull/541))
+- Companion › Voice now shows a quick rundown for every voice: whether it copies your voice, laughs and sighs, and speaks with emotions, and whether it runs on your graphics card (with about how much of its memory it uses), on your processor or online. ([#539](https://github.com/throndir2/Martlet/pull/539))
+
 ### Changed
+- Your character now shows its emotes more often and mixes them up: Martlet asks your Thinking model to use them freely and to try different ones. In Companion › Character › Emotes and motions, an empty *When to use* box now shows in grey the hint your Thinking model gets for that emote, and the card explains what the box is for. ([#540](https://github.com/throndir2/Martlet/pull/540))
 - The Devices page now shows how much memory each job usually holds and the most it takes while it works hardest, such as *12-14 GB*: Thinking models hold the same amount all the time, while voices grow as they speak. A computer whose jobs usually fit but can run out when they're all busy now says it's *tight* instead of over-full, so you can tell what runs well from what probably won't. ([#538](https://github.com/throndir2/Martlet/pull/538))
 
 ### Fixed
-- The blush and the symbols Martlet draws over your character's face now stay on the face while the head turns, tilts, sways, breathes or follows your mouse, and a turned head's far cheek gets a narrower blush that fades as it turns away. ([#540](https://github.com/throndir2/Martlet/pull/540))
+- The blush and the symbols Martlet draws over your character's face now stay on the face while the head turns, tilts, sways, breathes or follows your mouse, and a turned head's far cheek gets a narrower blush that fades as it turns away. ([#542](https://github.com/throndir2/Martlet/pull/542))
+- Chatterbox Turbo is no longer listed with emotions it can't perform: of its tones, only whispering changes the voice. ([#539](https://github.com/throndir2/Martlet/pull/539))
 
 ## [0.53.0] - 2026-10-07
 

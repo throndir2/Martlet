@@ -89,7 +89,12 @@ what each one is.
   else is numbered (`emote_3`, `motion_2`).
 - **Settings**: Companion › Character › **Emotes and motions** lists each one
   with a check box, its tag, its voice cue and when to use it, a **Try** button
-  (while the character shows) and what it changes. Edits save as you type, per
+  (while the character shows) and what it changes. *When to use* is the hint the
+  reply prompt puts next to the tag (`{sweat} - a sweat drop, for nervousness or
+  an awkward moment`), so the Thinking model knows what each tag shows and when
+  it fits. The naming fills it in for the model's own emotes. While it is
+  empty, replies get Martlet's own hint (a gesture's built-in hint, or *the
+  character's emote named "..."*), which the box shows in grey. Edits save as you type, per
   model (by its ID, the same ID as the shared character list), in
   `character-actions.json`, which is the same on all your computers (the
   `character-actions` [shared setting](CLUSTER.md#one-martlet-on-every-computer)):
@@ -103,7 +108,10 @@ what each one is.
 - **Replies**: while the character shows, replies are offered every emote and
   motion that is on and that the speaking voice doesn't already set off through
   a cue (Companion › Prompts › *Character emotes and motions*), written as
-  `{tag}`. The tags are removed from the chat, captions and the voice, and the
+  `{tag}`. The prompt asks the reply model to use them freely (usually one or
+  two in a reply) and to vary them, because each one is worth showing. This
+  part of the prompt is not longer than before.
+  The tags are removed from the chat, captions and the voice, and the
   character acts each one where it was written: timed within its sentence as
   it plays, after the last sentence for a tag at the end, or at once for a reply
   that isn't spoken. A tag written another way counts too (`[nod]`, `(nod)`,

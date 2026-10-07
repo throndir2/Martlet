@@ -37,12 +37,15 @@ public sealed partial class GatewayInferenceRoute
             capability.Streaming &&
             capability.MaximumDurationMilliseconds > 0 &&
             capability.MaximumDurationMilliseconds <= GatewayInferenceProtocol.MaximumJobDuration.TotalMilliseconds, "worker.invalid");
-        return new(capability.Kind, capability.RequiredRole, capability.RouteId, capability.Path,
+        var route = new GatewayInferenceRoute(capability.Kind, capability.RequiredRole, capability.RouteId, capability.Path,
             capability.ContractId, capability.ContractVersion, capability.DestinationId, capability.WorkerId,
             capability.AdapterVersion, capability.ModelId, capability.ModelRevision, capability.ModelSha256,
             capability.ArtifactIdentitySha256, capability.MaximumRequestBytes, capability.MaximumInputBytes,
             capability.MaximumOutputBytes, capability.MaximumEventBytes, capability.MaximumEvents,
             capability.MaximumStreamBytes, TimeSpan.FromMilliseconds(capability.MaximumDurationMilliseconds),
             capability.Cancellation, maximumConcurrency: capability.MaximumConcurrency);
+        // A host older than GPU priority sends neither; a newer one names the lane its route ID implies.
+        GatewayRules.Require(capability.Lane is null || capability.Lane == route.Lane, "worker.invalid");
+        return capability.Gpus.Count == 0 ? route : route.PlaceOn(capability.Gpus);
     }
 }

@@ -866,6 +866,45 @@ role_gpu() {
   conf_value "${project}/.env" MARTLET_GPU 2>/dev/null || true
 }
 
+# Where installed role $1 runs: the card it was pinned to (its UUID), "cpu" when it was added to run on the processor, "all"
+# when it runs on every card, or nothing when this host doesn't say (the gateway then counts the whole host).
+role_place() {
+  local project="${PROJECTS}/$1" gpu accelerator
+  gpu="$(role_gpu "$1")"
+  if [[ "${gpu}" =~ ^GPU-[A-Za-z0-9-]+$ ]]; then printf '%s' "${gpu}"; return 0; fi
+  accelerator="$(conf_value "${project}/.env" MARTLET_ACCELERATOR 2>/dev/null || true)"
+  if [[ "${accelerator}" == cpu ]]; then printf 'cpu'
+  elif [[ -f "${project}/compose.gpu.yaml" ]]; then printf 'all'; fi
+  return 0
+}
+
+# Whether role $1 can use a graphics card at all: role.conf offers a GPU overlay or requires a GPU (Reading and Home Assistant
+# never do).
+role_uses_gpu() {
+  local conf="${ROLES_DIR}/$1/role.conf"
+  [[ -f "${conf}" ]] || return 0
+  [[ -n "$(conf_any_value "${conf}" gpu)" || " $(conf_value "${conf}" requires) " == *" gpu "* ]]
+}
+
+# For martlet-host status: the gateway gives live turns first claim on a graphics card and stops Deep thinking's work on a card
+# that a live role uses. Says which roles deep-thinking shares a card with, and how to give it one of its own.
+gpu_sharing_note() {
+  [[ -f "$(installed_file deep-thinking)" ]] || return 0
+  local deep other place shared=()
+  deep="$(role_place deep-thinking)"
+  while IFS= read -r other; do
+    [[ -n "${other}" && "${other}" != deep-thinking ]] || continue
+    role_uses_gpu "${other}" || continue
+    place="$(role_place "${other}")"
+    [[ "${place}" != cpu && "${deep}" != cpu ]] || continue
+    if [[ -z "${deep}" || "${deep}" == all || -z "${place}" || "${place}" == all || "${place}" == "${deep}" ]]; then shared+=("${other}"); fi
+  done < <(installed_roles)
+  (( ${#shared[@]} > 0 )) || return 0
+  say "Graphics card sharing"
+  note "deep-thinking shares a graphics card with ${shared[*]}. Live turns go first there: a live request or a desktop's hold stops its thinks, and Martlet runs them on another computer or later."
+  note "On a host with two or more NVIDIA cards, pin each Ollama server to its own GPU (CUDA_VISIBLE_DEVICES): add deep-thinking again in Martlet and choose a card that no live role uses."
+}
+
 # What installed role $1 runs with now, from its .env: "choice|<VAR>|<value>" for each role.conf choice that holds one of
 # its options (a variant's own choice only when that variant runs; installs from before the role had variants run its
 # profile_legacy), and "accelerator|gpu" or "accelerator|cpu" for a role with a gpu entry. Nothing when it isn't installed.
@@ -1024,12 +1063,37 @@ render_config() {
 CONFIG_CHANGED=0
 write_config() {
   mkdir -p "${GW_CONF_DIR}"; chmod 700 "${CONF}" "${GW_CONF_DIR}"
+  write_gpus
   local next; next="$(render_config)"
   CONFIG_CHANGED=0
   if [[ -f "${GW_CONFIG}" && "$(cat "${GW_CONFIG}")" == "${next}" ]]; then return 0; fi
   ( umask 077; printf '%s\n' "${next}" > "${GW_CONFIG}.tmp" && mv -f "${GW_CONFIG}.tmp" "${GW_CONFIG}" )
   gateway validate --config "${GW_CONFIG}" || fail "The generated gateway configuration was rejected."
   CONFIG_CHANGED=1
+}
+
+# gpus.json beside host.json: which graphics card each installed route role runs on, for the gateway's GPU priority (live turn
+# first): a role pinned to one card names its UUID, a role added to run on the processor says "cpu"; a role on every card is
+# left out (the gateway counts it as the whole host). It is not part of the approved configuration, so moving a role to another
+# card needs no new approval and Martlet's automatic updates keep running; the gateway restarts with it (served_stamp).
+GPUS_FILE="${GW_CONF_DIR}/gpus.json"
+render_gpus() {
+  local entries=() file kind place
+  for file in "${CONF}/roles"/*.role; do
+    [[ -e "${file}" ]] || continue
+    kind="$(conf_value "${file}" kind)"
+    [[ "${kind}" =~ ^[a-z0-9-]+$ ]] || continue
+    place="$(role_place "$(basename "${file}" .role)")"
+    if [[ "${place}" =~ ^GPU-[A-Za-z0-9-]+$ || "${place}" == cpu ]]; then entries+=("\"${kind}\":[\"${place}\"]"); fi
+  done
+  local joined; joined="$(IFS=,; printf '%s' "${entries[*]:-}")"
+  printf '{"schemaVersion":1,"roles":{%s}}\n' "${joined}"
+}
+
+write_gpus() {
+  local next; next="$(render_gpus)"
+  if [[ -f "${GPUS_FILE}" && "$(cat "${GPUS_FILE}")" == "${next}" ]]; then return 0; fi
+  ( umask 077; printf '%s\n' "${next}" > "${GPUS_FILE}.tmp" && mv -f "${GPUS_FILE}.tmp" "${GPUS_FILE}" )
 }
 
 service_stop() {
@@ -1182,21 +1246,24 @@ TEXT
 
 approval_matches() { [[ "$(gateway status --config "${GW_CONFIG}" 2>/dev/null || true)" == *'"serviceApproval":"matching"'* ]]; }
 
-# What a gateway opens: host.json, the machine report (without the time it was collected) and the gateway itself (the engine
-# image in Docker, the published Martlet assemblies natively). service_start records it once the gateway is healthy.
+# What a gateway opens: host.json, the machine report (without the time it was collected), where each role runs (gpus.json)
+# and the gateway itself (the engine image in Docker, the published Martlet assemblies natively). service_start records it once
+# the gateway is healthy.
 SERVED_FILE="${CONF}/gateway.served"
 served_stamp() {
   {
     cat "${GW_CONFIG}" 2>/dev/null || true
     sed 's/"collected_at":"[^"]*",//' "${MACHINE_FILE}" 2>/dev/null || true
+    cat "${GPUS_FILE}" 2>/dev/null || true
     if [[ "${MODE}" == docker ]]; then docker image inspect -f '{{.Id}}' "${IMAGE}" 2>/dev/null || true
     else cat "${GW_APP}"/Martlet.*.dll 2>/dev/null || true; fi
   } | sha256sum | cut -d' ' -f1
 }
 
 # Whether the running gateway already serves exactly what is on disk: approved, healthy and started from the same host.json,
-# machine report and gateway. Then a change that touches none of them (adding a role again with the same model, moving one
-# between the GPU and the CPU, running setup again) leaves it running, so the other roles it relays never drop out.
+# machine report, gpus.json and gateway. Then a change that touches none of them (adding a role again with the same model and
+# the same card or processor, running setup again) leaves it running, so the other roles it relays never drop out. Moving a
+# role to another card or between the GPU and the CPU changes gpus.json, so the gateway restarts with it (no new approval).
 gateway_current() {
   [[ -s "${SERVED_FILE}" && "$(cat "${SERVED_FILE}")" == "$(served_stamp)" ]] || return 1
   if [[ "${MODE}" == docker ]]; then
@@ -2582,7 +2649,7 @@ cmd_status() {
     tail -n 12 "${JOURNAL}" | sed 's/^/  /'
   fi
   show_machine
-  local file role port network address
+  local file role port network address place
   for file in "${CONF}/roles"/*.role; do
     [[ -e "${file}" ]] || continue
     role="$(basename "${file}" .role)"
@@ -2598,8 +2665,15 @@ cmd_status() {
     if [[ "${MODE}" == docker ]] && role_detached "${role}"; then
       note "Not in the gateway's network (missing, or left on the network an earlier setup replaced), so the gateway can't reach it. Reconnect it: martlet-host update (Update host in Martlet)"
     fi
+    place="$(role_place "${role}")"
+    case "${place}" in
+      cpu) note "runs on the processor" ;;
+      all) note "runs on every graphics card (not pinned to one)" ;;
+      GPU-*) note "runs on graphics card ${place}" ;;
+    esac
     role_compose "${role}" ps 2>/dev/null || true
   done
+  gpu_sharing_note
 }
 
 if [[ "${MODE}" == docker && "${MARTLET_ENGINE:-launcher}" != inner ]]; then

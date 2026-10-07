@@ -209,6 +209,15 @@ Martlet also uses it to keep impossible roles off its menus (for example F5 on a
 host without an NVIDIA GPU with 6 GB+) and says why; a host without a report is
 allowed with a note. See [Platforms](../../docs/PLATFORMS.md).
 
+`martlet-host status` also says where each role runs (on graphics card
+`GPU-...`, on every card, or on the processor) and, when the `deep-thinking` role
+shares a card with a live role (thinking, listening, the voice), that live turns
+go first there and how to give it a card of its own: pin each Ollama server to
+its own GPU (`CUDA_VISIBLE_DEVICES`) by adding `deep-thinking` again with a card
+no live role uses. The gateway logs the same GPU map and warning when it starts
+and serves it at `GET /martlet/v1/priority`
+([GPU priority](../../src/Martlet.Gateway/README.md#gpu-priority-live-turn-first)).
+
 The report also has a `features` array (up to 16 lowercase tokens). The host
 uses it for route-less and smart-home capabilities: `host-network` means this
 method can run LAN host-network roles (native Linux, or Docker on Linux Engine
@@ -534,7 +543,7 @@ Trust model:
 | --- | --- | --- |
 | Requirements | `requires` | Shared checks/installs: `gpu` (NVIDIA driver), `docker` (Engine + Compose), `docker-engine` (Linux Docker Engine, not Docker Desktop, for LAN host-network roles), `nvidia-toolkit` (native method) |
 | GPU or CPU | `gpu=optional\|<overlay>.yaml`, `gpu=required\|<overlay>.yaml` | Detects NVIDIA GPU memory usable by containers. `optional` asks `gpu` or `cpu` (default: GPU when present, or where an installed role runs now while that is still possible; Martlet sends `choice.accelerator` or lets the host decide); `required` always uses the GPU. `gpu` adds the role's Compose overlay (and the NVIDIA requirements); `cpu` runs without it. `describe` reports an installed role's as `role.accelerator_current`. Inside a `[VAR=value]` section only that variant has it (the `stt` role's whisper engine; Parakeet runs on the CPU), and `describe` adds `role.gpu_when` |
-| Graphics card | (any role with a `gpu` entry) | Only on a host with two or more NVIDIA cards: `choice.gpu` is a card's UUID (`describe` lists them as `role.gpu=<uuid>\|<name>\|<MiB>\|<other roles on it>`, plus `role.gpu_current` once installed) or `all`. A chosen card is written to `.env` as `MARTLET_GPU` and the overlay sets `CUDA_VISIBLE_DEVICES` to its UUID in the role's services, so each role (thinking, deep thinking, listening, the voice, singing) can have a card of its own. Without a choice it keeps the card it runs on (or every card, when it runs on all of them), else takes a card no other role uses, preferring the most memory free now. `choice_by_vram` then counts that card's memory (every card's for `all`). One-card hosts are unchanged |
+| Graphics card | (any role with a `gpu` entry) | Only on a host with two or more NVIDIA cards: `choice.gpu` is a card's UUID (`describe` lists them as `role.gpu=<uuid>\|<name>\|<MiB>\|<other roles on it>`, plus `role.gpu_current` once installed) or `all`. A chosen card is written to `.env` as `MARTLET_GPU` and the overlay sets `CUDA_VISIBLE_DEVICES` to its UUID in the role's services, so each role (thinking, deep thinking, listening, the voice, singing) can have a card of its own. Without a choice it keeps the card it runs on (or every card, when it runs on all of them), else takes a card no other role uses, preferring the most memory free now. `choice_by_vram` then counts that card's memory (every card's for `all`). One-card hosts are unchanged. The gateway gives live turns first claim on each card ([GPU priority](../../src/Martlet.Gateway/README.md#gpu-priority-live-turn-first)): pin `deep-thinking` to a card no live role uses (thinking, listening, the voice), so its thinks never stop for a reply |
 | Choices | `choice=VAR\|label\|options\|default`, `choice_by_vram=VAR\|<MiB>@<value> ...`, `profile_from=VAR` | Asked each time (or chosen in Martlet, where *Automatic* keeps the suggestion), written to the role's `.env`; `choice_by_vram` suggests the default by GPU memory (ascending thresholds, `0` = CPU); `profile_from` makes that choice the role's Compose profile (`COMPOSE_PROFILES`), so one role can offer variants such as the stt or Audio2Face engine (`profile_legacy` names the variant installs from before the role had variants run). The choices that pick a variant (outside any section and not suggested by GPU memory) are asked first, before GPU or CPU; then that variant's own choices. For an installed role the default is what it runs with now (`describe` lists it as `role.choice_current=VAR\|value`; a variant's own choice only while that variant runs), so a re-add changes only the choices answered. Changing the variant on a re-add prepares the chosen one (its image built, its prepare steps run) while the previous one keeps running, and stops the previous one only then (its volumes are kept). Every other variant is stopped before the chosen one starts, so a switch that stopped part-way and is run again still stops the previous one; each service of a role with variants belongs to one variant (profile) |
 | Variants | `[VAR=value]` ... `[end]` | Entries between these lines (terms, secrets, registry, assets, loopback rewrites, the GPU option, choices and their suggestions, prepare steps) apply only when choice `VAR` is `value`; `describe` lists them as `role.terms_when`, `role.secret_when`, `role.choice_when`, `role.suggested_when` and `role.gpu_when`, so Martlet shows them only for that choice. Two variants may each have their own choice of the same `VAR`, such as the stt role's `STT_MODEL` (whisper's or Parakeet's models) |
 | Terms | `terms` | Shown (every one that applies to the choices made); continue only on `yes` (or shown in Martlet, whose Install click confirms) |
@@ -548,7 +557,7 @@ Trust model:
 | Readiness | `port`, `ready_timeout_minutes` | Wait until the service accepts connections (127.0.0.1:`port`, or the host LAN address for Docker `network=host` roles) |
 | Post-start | `post_start=<service>\|<command>` | Runs each command inside that service in order (`docker compose exec`; `{VAR}` uses a choice; plain words only), for example downloading a model; its progress streams to Martlet's run window. When a prepare or post-start step fails and the role's containers can't look up internet names (Docker Desktop's container DNS, 192.168.65.7, can stop answering while Docker itself still pulls images), `add` waits a few minutes for lookups to recover and runs the step again (at most twice); if they don't recover it stops and says to restart Docker and check VPN, firewall or antivirus DNS blocking |
 | Warm | `warm=<service>\|<command>` | Runs after the post-start steps, like them, and loads the role's model into memory (`ollama run {OLLAMA_MODEL} Say ready`, `martlet-f5 warm`, ...). `martlet-host warm` runs these again without installing or downloading anything: it starts the gateway and every installed role (`docker compose up -d --no-build`), waits until each listens and warms it, so the first request after Docker or the computer started doesn't wait for the model. Martlet runs it on this PC's host service when this PC becomes a host PC or starts as one, after starting Docker Desktop |
-| Publish | `gateway_kind`, `model_from`, `slots_from`, `feature` | Route roles add `{kind, endpoint, model}` to the gateway's `host.json` `roles` list (plus `slots`, from the `slots_from` choice, when a role runs several requests at once: the deep-thinking role's thinks at once); when `host.json` changed, renew the service approval (gateway console, or `owner-approve` with `--yes`) and restart. Route-less roles declare `feature=<token>` instead, write an installed role record with `feature`, `port` and `network=host`, collect `machine.json` and restart the gateway without changing `host.json`. Either way the gateway restarts only when something it opens changed (below) |
+| Publish | `gateway_kind`, `model_from`, `slots_from`, `feature` | Route roles add `{kind, endpoint, model}` to the gateway's `host.json` `roles` list (plus `slots`, from the `slots_from` choice, when a role runs several requests at once: the deep-thinking role's thinks at once); when `host.json` changed, renew the service approval (gateway console, or `owner-approve` with `--yes`) and restart. Beside it, `gpus.json` (0600, not part of the approval) says where each route role runs, for the gateway's [GPU priority](../../src/Martlet.Gateway/README.md#gpu-priority-live-turn-first): `{"schemaVersion":1,"roles":{"<kind>":["<card UUID>" or "cpu"]}}` for a role pinned to one card or added to run on the processor; a role on every card is left out, which the gateway counts as the whole host. A changed `gpus.json` restarts the gateway without a new approval, so automatic updates keep running. Route-less roles declare `feature=<token>` instead, write an installed role record with `feature`, `port` and `network=host`, collect `machine.json` and restart the gateway without changing `host.json`. Either way the gateway restarts only when something it opens changed (below) |
 | Retire | `retire=<service>\|<command>` | Once the gateway relays a newly chosen model, runs the command inside that service for the model it replaced (`{PREVIOUS}`); `ollama` uses `ollama stop {PREVIOUS}` so the old model leaves the graphics card's memory (it stays downloaded). A failure is only noted |
 
 ### Reusing what is already there
@@ -564,14 +573,16 @@ Adding a role that is already installed is a reconfiguration, not a reinstall:
   configuration changed; an unchanged one keeps running.
 - The gateway (the single entry point every role on the host goes through)
   restarts only when something it opens changed: `host.json`, the machine report
-  (apart from when it was collected) or the gateway itself (the engine image in
-  Docker, the published assemblies natively). After each healthy start
-  `martlet-host` records a stamp of them in `gateway.served` in the host config;
-  when it still matches, the approval matches and the gateway answers its health
-  check, `add`, `remove` and `setup` leave it running, so the other roles' traffic
-  is never interrupted by a change that doesn't concern it (adding a role again,
-  moving one between the GPU and the CPU, running setup again). `machine` always
-  collects a fresh report and restarts it.
+  (apart from when it was collected), `gpus.json` (where each role runs) or the
+  gateway itself (the engine image in Docker, the published assemblies natively).
+  After each healthy start `martlet-host` records a stamp of them in
+  `gateway.served` in the host config; when it still matches, the approval matches
+  and the gateway answers its health check, `add`, `remove` and `setup` leave it
+  running, so the other roles' traffic is never interrupted by a change that
+  doesn't concern it (adding a role again with the same model and card, running
+  setup again). Moving a role to another card or between the GPU and the CPU
+  changes `gpus.json`, so the gateway restarts with it, without a new approval.
+  `machine` always collects a fresh report and restarts it.
 - Switching a role's model keeps the old one answering until the new one is
   ready: Ollama pulls and loads the new model while the gateway still relays the
   old one, then the gateway switches and the old model is unloaded (`retire`);
