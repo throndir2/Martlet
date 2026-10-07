@@ -84,6 +84,7 @@ public partial class MainWindow
             await ReadMachineAsync();
             await RefreshAsync();
             await CheckLocalServicesAsync();
+            if (HostsHere) await (hostProbe is { IsCompleted: false } reading ? reading : CheckThisPcHostAsync());
             if (closing) return;
             var (issues, _) = BuildHealth();
             var open = issues.Count(i => i.Level != HealthLevel.Notice);
@@ -293,9 +294,12 @@ public partial class MainWindow
             }
         }
 
-        // Jobs that were chosen but don't work: from coverage (hosts, keys, consent, unsupported routes).
+        // Jobs that were chosen but don't work: from coverage (hosts, keys, consent, unsupported routes). Jobs this PC's own
+        // host service can't do are folded into its own item below, which names the cause and the step that fixes it.
+        var ownHostDown = localHost is not null && hostState is { Ready: false };
         foreach (var job in coverage.Where(c => c.IsProblem))
         {
+            if (ownHostDown && job.OwnHost && job.Fixes.Contains(CoverageFix.RepairHostService)) continue;
             var thinking = job.Job == ClusterJobs.Thinking && job.State == CoverageState.Unavailable;
             var fixes = job.Fixes.Select(fix => new HealthFix(fix.ToString().ToLowerInvariant(), CoverageFixLabel(job, fix),
                 () => RunCoverageFix(job, fix), Passive: fix is CoverageFix.OpenSetup or CoverageFix.OpenDevices)).ToList();
@@ -304,18 +308,28 @@ public partial class MainWindow
                 (job.Problem + " " + job.Effect).Trim(), fixes, thinking ? JobCoverageRules.Headline(coverage) : null);
         }
 
-        // This PC's host service (Docker Desktop) runs jobs it can't do while Docker is stopped.
-        if (localHost is not null && !ReferenceEquals(machine, MachineInfo.Unknown) && !machine.DockerRunning)
+        // This PC's own host service (a companion PC that also hosts), checked as the host dashboard checks a host PC's:
+        // Docker Desktop, then the host service itself. What it does for this PC and your other computers stops meanwhile.
+        if (ownHostDown && LocalHostService.Trouble(hostState!) is { } trouble)
         {
-            var jobs = new[] { (SetupRole.Llm, "thinking"), (SetupRole.Stt, "listening"), (SetupRole.Tts, "speaking") }
-                .Where(j => NetworkMap.JobHost(homeSettings, j.Item1) == localHost.HostId).Select(j => j.Item2).ToList();
-            if (NetworkMap.LipSync(homeAvatar) == LipSyncHandler.Host && homeAvatar?.RemoteHost?.HostId == localHost.HostId) jobs.Add("lip-sync");
-            if (jobs.Count > 0)
-                Add("docker", jobs.Contains("thinking") ? HealthLevel.Problem : HealthLevel.Warning,
-                    machine.DockerInstalled ? "Docker Desktop isn't running" : "Docker Desktop isn't installed",
-                    $"This PC's host service does the {string.Join(" and ", jobs)} in Docker Desktop, so {(jobs.Count == 1 ? "it stops" : "they stop")} until Docker runs.",
-                    [machine.DockerInstalled ? new("start-docker", "Start Docker Desktop", StartDocker) : new("install-docker", "Install Docker Desktop", InstallDocker)],
-                    jobs.Contains("thinking") ? "Martlet can't reply right now" : null);
+            var own = hostState!;
+            var here = coverage.Where(c => c.IsProblem && c.OwnHost && c.Fixes.Contains(CoverageFix.RepairHostService)).ToList();
+            var forOthers = clusterEnabled
+                ? ClusterJobs.All.Where(j => clusterPlan.For(j) is { HostId: { } id, Off: false } && id == localHost!.HostId &&
+                    here.All(c => c.Job != j)).ToList()
+                : [];
+            var stopsThinking = here.Any(c => c.Job == ClusterJobs.Thinking && c.State == CoverageState.Unavailable);
+            var step = new[] { DockerStep(own), ServiceStep(own) }.FirstOrDefault(s => !s.Done);
+            var detail = char.ToUpperInvariant(trouble[0]) + trouble[1..] + "." +
+                string.Concat(here.Select(c => $" {c.Title}: {c.Effect}")) +
+                (forOthers.Count > 0 ? $" Your other computers use it for {JoinNames(forOthers)} too." : "") +
+                (here.Count == 0 && forOthers.Count == 0 ? " Nothing uses it right now." : "");
+            Add("host-service", stopsThinking ? HealthLevel.Problem : here.Count > 0 || forOthers.Count > 0 ? HealthLevel.Warning : HealthLevel.Notice,
+                "This PC's host service isn't working", detail,
+                [.. (step?.Commands ?? []).Select((c, i) => new HealthFix("repair-" + i, c.Label, c.Run)),
+                 new("check", "Check again", () => CheckOwnHostServiceAsync().Forget()),
+                 new("show", "Show on the map", () => ShowDevice("this-pc"), Passive: true)],
+                stopsThinking ? "Martlet can't reply right now" : null);
         }
 
         // Requests that failed while talking and haven't worked since.
@@ -456,7 +470,7 @@ public partial class MainWindow
 
         // ---------- tiles ----------
         tiles.Add(JobTile("thinking", CompanionTab.Thinking, llm, thinkingDown, required: true,
-            issues.Any(i => i.Level == HealthLevel.Problem && i.Id is "ollama" or "thinking-retired" or "docker")));
+            issues.Any(i => i.Level == HealthLevel.Problem && i.Id is "ollama" or "thinking-retired" or "host-service")));
         tiles.Add(JobTile("listening", CompanionTab.Listening, stt, Down(ClusterJobs.Listening), required: false, false));
         tiles.Add(JobTile("voice", CompanionTab.Voice, tts, Down(ClusterJobs.Speaking), required: false, false,
             talk.SpeakReplies ? null : "replies aren't spoken"));
@@ -484,6 +498,12 @@ public partial class MainWindow
                   (hostsDown > 0 ? $", {hostsDown} not" : hostsAnswering < others ? ", others not checked yet" : "") +
                   (hostsOld > 0 ? $", {hostsOld} need updates" : ""),
             () => Navigate(NavDevices)));
+        if (localHost is not null)
+            tiles.Add(new("hostservice", "Host service", NetworkMap.ComputerGlyph,
+                hostState is null ? NodeHealth.Unknown : hostState.Ready ? NodeHealth.Ready : NodeHealth.Attention,
+                hostState is null ? "Checking this PC's host service..."
+                    : HostHeadline(hostState) + (hostState.Ready && hostState.Version is { } running ? $", Martlet {running}" : ""),
+                () => ShowDevice("this-pc")));
         var terminalOn = mcpTools.Terminal.Enabled;
         if (toolServers.Count > 0 || mcpTools.ConfigurationError is not null || terminalOn)
         {
@@ -528,12 +548,16 @@ public partial class MainWindow
         return new(id, title, TabGlyph(tab), health, status, () => OpenCompanion(tab));
     }
 
-    private static string CoverageFixLabel(JobCoverage job, CoverageFix fix) => fix switch
+    private string CoverageFixLabel(JobCoverage job, CoverageFix fix) => fix switch
     {
-        CoverageFix.UseFallback => job.Job == ClusterJobs.LipSync ? "Take lip-sync back to this PC" : $"Use {job.Fallback} instead",
-        CoverageFix.CheckHost => $"Check {job.HostId} now",
+        // Lip-sync "back to this PC" from this PC's own host service would be meaningless: it means without the host service.
+        CoverageFix.UseFallback when job.Job == ClusterJobs.LipSync =>
+            job.OwnHost ? "Do lip-sync without the host service" : "Take lip-sync back to this PC",
+        CoverageFix.UseFallback => $"Use {job.Fallback} instead",
+        CoverageFix.CheckHost => job.OwnHost ? "Check this PC's host service" : $"Check {job.HostId} now",
+        CoverageFix.RepairHostService => OwnHostRepair()?.Label ?? "Fix this PC's host service",
         CoverageFix.OpenSetup => $"Change {(job.Job == ClusterJobs.Speaking ? "voice" : job.Job)}",
-        CoverageFix.InstallRole => $"Install {HostRoles.Get(ClusterSync.RoleKind(job.Job)).Name} on {job.HostId}",
+        CoverageFix.InstallRole => $"Install {HostRoles.Get(ClusterSync.RoleKind(job.Job)).Name} on {(job.OwnHost ? "this PC" : job.HostId)}",
         _ => "Open Devices"
     };
 

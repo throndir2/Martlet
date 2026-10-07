@@ -10,6 +10,10 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 - When a PC becomes a Martlet host (or Martlet starts on one), Martlet starts Docker Desktop by itself if this PC's host roles need it, starts every role and loads its model, so the first request from your other computers doesn't wait. It never installs anything by itself, and the host dashboard says what it did or why it couldn't. ([#502](https://github.com/throndir2/Martlet/pull/502))
+- A companion PC that also runs a host service now shows as "Companion PC + host" and checks that host service on Home the way a host PC does: a Host service tile, and when it isn't working (Docker Desktop stopped, not set up, stopped) one item that says which jobs stop and offers the step that fixes it. ([#504](https://github.com/throndir2/Martlet/pull/504))
+
+### Fixed
+- When a job runs on this PC's own host service, Home and Devices now call it "This PC's host service" instead of its host name as if it were another computer, and no longer offer to take lip-sync "back to this PC" when it's already there. ([#504](https://github.com/throndir2/Martlet/pull/504))
 
 ## [0.50.1] - 2026-10-06
 

@@ -153,6 +153,50 @@ public sealed class PlatformCatalogTests
     }
 
     [Fact]
+    public void Coverage_names_this_PCs_own_host_service_and_offers_the_step_that_fixes_it()
+    {
+        // The user's case: a companion PC (IMOUTO) that also hosts gives lip-sync to its own host service, imouto-host.
+        var job = new JobSituation
+        {
+            Job = ClusterJobs.LipSync, Doer = JobDoer.Host, DoerName = "imouto-host", Fallback = "this PC",
+            Host = new()
+            {
+                HostId = "imouto-host", Reachable = false, Engine = "Audio2Face", SyncOn = true, ThisPc = true,
+                Trouble = LocalHostService.Trouble(new() { Stage = LocalHostServiceStage.DockerNotRunning })
+            }
+        };
+        var down = JobCoverageRules.Evaluate(job);
+        Assert.Equal(CoverageState.Limited, down.State);
+        Assert.True(down.OwnHost);
+        Assert.Equal("This PC's host service can't do it: Docker Desktop isn't running. Failover is off for this job.", down.Problem);
+        Assert.DoesNotContain("imouto-host", down.Problem, StringComparison.Ordinal);
+        Assert.Equal([CoverageFix.RepairHostService, CoverageFix.CheckHost, CoverageFix.UseFallback], down.Fixes);
+
+        // Docker reads it as ready but the network check failed: still named as this PC's host service, never by its ID.
+        var silent = JobCoverageRules.Evaluate(job with { Host = job.Host! with { Trouble = null } });
+        Assert.StartsWith("This PC's host service isn't answering.", silent.Problem, StringComparison.Ordinal);
+        Assert.Equal([CoverageFix.CheckHost, CoverageFix.UseFallback, CoverageFix.OpenDevices], silent.Fixes);
+
+        // Once the pairing check reaches it, a stale Docker reading doesn't override it.
+        Assert.Equal(CoverageState.Ready, JobCoverageRules.Evaluate(job with { Host = job.Host! with { Reachable = true, Serves = true } }).State);
+        var missing = JobCoverageRules.Evaluate(job with { Host = job.Host! with { Reachable = true, Serves = false, Trouble = null } });
+        Assert.Contains("isn't installed on this PC", missing.Problem, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Own_host_service_trouble_follows_the_host_dashboard_stages()
+    {
+        Assert.Equal("Docker Desktop isn't installed", LocalHostService.Trouble(new() { Stage = LocalHostServiceStage.DockerMissing }));
+        Assert.Equal("it isn't set up on this PC", LocalHostService.Trouble(new() { Stage = LocalHostServiceStage.NotSetUp }));
+        Assert.Equal("it is stopped", LocalHostService.Trouble(new() { Stage = LocalHostServiceStage.Stopped }));
+        Assert.Equal("this PC's network address changed since it was set up",
+            LocalHostService.Trouble(new() { Stage = LocalHostServiceStage.Running, Answering = true, AddressOnThisPc = false }));
+        Assert.Equal("it runs but isn't answering on your network yet",
+            LocalHostService.Trouble(new() { Stage = LocalHostServiceStage.Running, Answering = false }));
+        Assert.Null(LocalHostService.Trouble(new() { Stage = LocalHostServiceStage.Running, Answering = true, AddressOnThisPc = true }));
+    }
+
+    [Fact]
     public void Forget_and_remove_say_where_each_job_goes_before_anything_changes()
     {
         var thinking = new JobSituation

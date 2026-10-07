@@ -34,6 +34,11 @@ public sealed record JobHostState
     /// <summary>The host failover would move the job to now, or null when no other paired host runs the engine.</summary>
     public string? FailoverTarget { get; init; }
     public bool ForegroundOnly { get; init; }
+    /// <summary>The host is this PC's own host service (a companion PC that also hosts).</summary>
+    public bool ThisPc { get; init; }
+    /// <summary>For this PC's own host service: why it can't work, as read from this PC's Docker ("Docker Desktop isn't
+    /// running"), or null when that reading found it ready or there is none yet.</summary>
+    public string? Trouble { get; init; }
 }
 
 /// <summary>Everything the device you talk to knows about one job, gathered without contacting anything.</summary>
@@ -59,11 +64,13 @@ public sealed record JobSituation
 /// unavailable (nobody can do it right now).</summary>
 public enum CoverageState { Ready, Unknown, NotChosen, Limited, Unavailable }
 
-/// <summary>A fix the app can offer next to a coverage problem.</summary>
-public enum CoverageFix { UseFallback, CheckHost, OpenSetup, OpenDevices, InstallRole }
+/// <summary>A fix the app can offer next to a coverage problem. <see cref="RepairHostService"/> starts or sets up this PC's
+/// own host service (Docker Desktop first when it needs it).</summary>
+public enum CoverageFix { UseFallback, CheckHost, OpenSetup, OpenDevices, InstallRole, RepairHostService }
 
+/// <summary>A job's coverage. <paramref name="OwnHost"/>: the host doing it is this PC's own host service.</summary>
 public sealed record JobCoverage(string Job, CoverageState State, string Problem, string Effect, IReadOnlyList<CoverageFix> Fixes,
-    string? HostId = null, string? Fallback = null)
+    string? HostId = null, string? Fallback = null, bool OwnHost = false)
 {
     public string Title => JobCoverageRules.Title(Job);
     public bool IsProblem => State is CoverageState.Limited or CoverageState.Unavailable;
@@ -102,7 +109,7 @@ public static class JobCoverageRules
         var effect = Effect(job.Job);
         JobCoverage Result(CoverageState state, string problem, params CoverageFix[] fixes) =>
             new(job.Job, state, problem, state is CoverageState.Limited or CoverageState.Unavailable ? effect : "", fixes,
-                job.Host?.HostId, job.Fallback);
+                job.Host?.HostId, job.Fallback, job.Host?.ThisPc == true);
         CoverageFix[] fallback = job.Fallback is null ? [] : [CoverageFix.UseFallback];
 
         switch (job.Doer)
@@ -118,8 +125,10 @@ public static class JobCoverageRules
         if (job.NotConnected is { } why) return Result(down, $"{job.DoerName}: {why}.", [.. fallback, CoverageFix.OpenSetup]);
         if (job.Doer != JobDoer.Host || job.Host is not { } host) return Result(CoverageState.Ready, "");
 
+        // This PC's own host service is named as such, never by its host ID as if it were another computer.
+        var name = host.ThisPc ? "This PC's host service" : host.HostId;
         if (!host.Paired)
-            return Result(down, $"{host.HostId} is no longer paired with this device.", [.. fallback, CoverageFix.OpenDevices]);
+            return Result(down, $"{name} is no longer paired with this device.", [.. fallback, CoverageFix.OpenDevices]);
         string Failover()
         {
             if (!host.Failover) return host.SyncOn ? " Failover is off for this job." : "";
@@ -127,15 +136,19 @@ public static class JobCoverageRules
                 ? $" Failover moves it to {target}, which also runs {host.Engine}, within about 30 seconds."
                 : $" Failover is on, but no other paired host runs {host.Engine} to take over.";
         }
+        // This PC reads its own host service from Docker, so it knows why it can't answer and offers the step that fixes it.
+        if (host.ThisPc && host.Trouble is { } trouble && host.Reachable != true)
+            return Result(down, $"This PC's host service can't do it: {trouble}." + Failover(),
+                [CoverageFix.RepairHostService, CoverageFix.CheckHost, .. fallback]);
         if (host.Reachable == false)
-            return Result(down, $"{host.HostId} isn't answering" +
+            return Result(down, $"{name} isn't answering" +
                 (host.ForegroundOnly ? " (it hosts only while Martlet is open on its screen)." : ".") + Failover(),
                 [CoverageFix.CheckHost, .. fallback, CoverageFix.OpenDevices]);
         if (host.Reachable == true && host.Serves == false)
-            return Result(down, $"{host.HostId} answers but doesn't run {host.Engine}: it isn't installed there." + Failover(),
-                [CoverageFix.InstallRole, .. fallback, CoverageFix.OpenDevices]);
+            return Result(down, $"{name} answers but doesn't run {host.Engine}: it isn't installed {(host.ThisPc ? "on this PC" : "there")}." +
+                Failover(), [CoverageFix.InstallRole, .. fallback, CoverageFix.OpenDevices]);
         if (host.Reachable is null)
-            return Result(CoverageState.Unknown, $"{host.HostId} hasn't been checked since Martlet started.", CoverageFix.CheckHost);
+            return Result(CoverageState.Unknown, $"{name} hasn't been checked since Martlet started.", CoverageFix.CheckHost);
         return Result(CoverageState.Ready, "");
     }
 
