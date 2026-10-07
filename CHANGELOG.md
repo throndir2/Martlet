@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-10-07
+
 ### Added
 - Martlet knows what changed on your screen over the last moments: a new Screen summary over time setting (on by default) asks a Thinking model that sees, in the background, to sum it up for your next message, without making replies slower. ([#533](https://github.com/throndir2/Martlet/pull/533))
 - With **Hear what this PC plays** on, Martlet now also notices the sound that isn't words: music and its mood, game and video sounds, laughter, applause and alarms. About every 10 seconds it describes what plays in one short line for its next reply. A Thinking pool model that can hear does it, or else a small sound tagger on your PC's processor. Turn it off with **Describe PC sounds** in Companion › Listening. The sound stays in memory only and is never saved. ([#532](https://github.com/throndir2/Martlet/pull/532))
@@ -19,7 +21,7 @@ Each release's section here is also its notes on GitHub.
 - With your desktop character's position locked, press and drag across it to stroke it: each part you cross reacts right away, the first one's emote stays on while you stroke, and on zones Martlet notices it hears how it went, such as *They slowly stroked your hair 4 times*. Martlet also hears when you move the character (even to another monitor), zoom in on it, pan, lock, hide or show it, with your next message. ([#527](https://github.com/throndir2/Martlet/pull/527))
 - Martlet notices when you touch your desktop character: turn on *Martlet notices* for a zone in Companion › Character › Touch zones, and your pats, pokes and long presses add up into one line your Thinking model gets with what you say next, or, when you say nothing, in a short reaction of its own a moment after your last touch. The character still reacts right away, and talking or typing never waits for it. This replaces *Tell the character*; zones that had it on keep it. ([#525](https://github.com/throndir2/Martlet/pull/525))
 - The personality now decides how the character reacts when you touch it: which emotes, gestures and face symbols play for each part of its body, from hating it to craving it, and what happens when you keep touching. Your Thinking model decides it in the background when you save a personality, and you can change it yourself in Companion › Character › Touch temperament. ([#523](https://github.com/throndir2/Martlet/pull/523))
-- Adding Deep thinking to a computer whose only graphics card already runs a Thinking model now warns you first: both models share the card and each runs at about half speed. Martlet recommends one graphics card for each Thinking model. ([#521](https://github.com/throndir2/Martlet/pull/521))
+- Adding the Thinking pool role to a computer whose only graphics card already runs a Thinking model now warns you first: both models share the card and each runs at about half speed. Martlet recommends one graphics card for each Thinking model. ([#521](https://github.com/throndir2/Martlet/pull/521))
 
 ### Changed
 - Remembering what you said, naming your character's emotes, deciding its touch temperament and finding its touch zones now run on a free member of the Thinking pool, so they never slow down Martlet's replies. Without a pool member, the conversation model does them as before, but only after Martlet finishes speaking. ([#524](https://github.com/throndir2/Martlet/pull/524))
