@@ -1757,6 +1757,28 @@ the data folder.
   is uploaded, not the idle wait before it. Sounds shorter than 450 ms (coughs,
   clicks) are ignored. **Sensitivity** trades missed quiet speech against false
   triggers from noise.
+- **Judge when I finish talking** (on by default, Companion › Listening ›
+  How you talk) lets an end-of-turn judge decide when you finished instead of
+  the pause alone. After 260 ms of silence (`EndOfTurnGate`), Smart Turn v3.2
+  (`SmartTurnJudge`, a small model bundled in `turn-detection\` that runs on
+  this PC's processor in about 25-50 ms) hears the end of what you said. With
+  Parakeet on this PC as Listening, a quick transcript of exactly the speech
+  that would be kept starts at the same moment. *Complete* ends the turn at once,
+  and speech-to-text reuses that quick transcript when the kept audio is the same
+  (no second transcription). *Incomplete* keeps listening for up to twice your
+  pause (at least 1.6 s), so trailing off mid-thought is cut off less. A
+  missing, failed or slow judge (no answer before your pause ends) leaves your
+  pause to decide, exactly as with the judge off. Each decision writes one line
+  to the desktop log (*End of turn: complete (Smart Turn v3.2, 0.93) after 280
+  ms of silence; judge 31 ms.*), and the reply latency line shows *end-of-turn
+  wait* and *end-of-turn judge* in place of *end of speech*. A wrong *complete*
+  is recovered the usual way: keep talking (barge-in or the restart below).
+  When Smart Turn is missing or fails, a [Thinking pool](#pool-api-desktop)
+  member judges the quick transcript instead (`PoolTurnJudge`: an
+  `EndOfTurnJudge` job that must answer COMPLETE or INCOMPLETE within 500 ms;
+  without a quick transcript or an answer in time, your pause decides). Other
+  judges plug in the same way through `IEndOfTurnJudge` and
+  `EndOfTurnJudges.WithFallback`.
 - Listening never stops by itself. It runs on its own slot beside replies
   (`LiveListener`): it records one utterance at a time and transcribes each, in
   order, while it already listens for the next, so nothing said while Martlet

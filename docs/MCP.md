@@ -2385,7 +2385,9 @@ Every reply writes one *Reply latency* line to the desktop log: how long from
 when you stopped talking (always listening), let go of the talk button or sent
 your message to the first audio (or the first words when nothing was spoken),
 then each step in parentheses, each the wait that ended there, so they add up
-to the total: *end of speech*, *recording*, *Voice ID*, *speech-to-text*,
+to the total: *end of speech* (or, when always listening's end-of-turn judge
+decided, *end-of-turn wait* and *end-of-turn judge*, followed by *end of
+speech* when it found the turn unfinished or was slow), *recording*, *Voice ID*, *speech-to-text*,
 *voice recognition*, *waiting to answer*, *preparing*, *memory*, *lore*,
 *tools*, *Home Assistant*, *building the request*, *Thinking authorization*,
 *Thinking connection*, *Thinking before reasoning* and *hidden reasoning* (or
@@ -2418,6 +2420,24 @@ resumed* or *, paused N ms, then stopped when you talked over it*) and `newest` 
 `voicePausedMs`, `models`,
 `interrupted`, `restarted`, `pausedForYouMs`, `resumed`, `legacy`). It only reads the log: no audio, network or provider
 request.
+
+`turn_judge_check` checks always listening's end-of-turn judge (Companion ›
+Listening › *Judge when I finish talking*, see
+[Voice latency](VOICE_LATENCY.md#the-end-of-turn-judge)). It loads the Smart
+Turn v3.2 model and ONNX Runtime bundled in `martletDirectory` (optional
+absolute path; `Invoke-MartletMcp.ps1` uses this checkout's Desktop build)
+through the production `SmartTurnEngine`. It judges six phrases a Windows voice
+says (three finished, three that trail off; rendered to memory, never played),
+each cut 260 ms into the pause that follows, as always listening asks it. It
+returns `loadMs`, per phrase `expected`, `verdict`, `probability` and `judgeMs`,
+then `agreed` and `medianJudgeMs`. Its `gate` part steps the production
+`EndOfTurnGate` with the plain 800 ms pause, frame by frame: a complete answer
+ends the turn at 300 ms, an incomplete one waits for 1600 ms, and a slow or
+failed judge leaves it to 800 ms (`endedAtMs`, `ok` each). `ok` is a median
+judge time of at most 100 ms and every gate case as expected; agreement on a
+synthetic voice is informative only. Without the model or the runtime it
+returns `ran: false` with the reason. Nothing is recorded, played, downloaded
+or sent.
 
 `context_board` rehearses the [context board](CONVERSATION.md#context-board)
 with the production board, request layout and Chat Completions adapter
@@ -4545,6 +4565,17 @@ always listening, the same card has `TalkWordCheck` (*Word check*: *Relaxed*,
 and words speech-to-text makes up from noise, what Relaxed and Sensitive change,
 that short answers and Martlet's name always count and that ignored sounds show
 faded in the talk window; `utterance_filter_check` runs the filter itself),
+then `TalkJudgeTurns` (*Judge when I finish talking (recommended)*, on by
+default; its `checkedState` is the saved choice, and `ui_toggle` on it needs
+`--allow-ui-effects` because it saves `talk-preferences.json`; an open talk
+window restarts listening with it) and `TalkJudgeTurnsStatus` (returned, never
+words or audio: *Off. The pause above alone decides when you finished
+talking.*, *On, but the judge can't run here (...)*, *On. Smart Turn can't run here (...), so a
+Thinking-pool model judges instead. ...*, or *On. Smart Turn v3.2 on
+this PC (loaded in 1519 ms). Last 4 pauses: 2 finished, 1 unfinished, 1 left
+to the pause; judge median 30 ms. Last: complete after 280 ms of silence.*,
+updated after each decision; the desktop log has one *End of turn: ...* line
+per decision, and `turn_judge_check` runs the judge headless),
 then `TalkBargeIn` (*Let me interrupt Martlet by
 talking*, optional and off by default; its `checkedState` is the saved choice, and
 `ui_toggle` on it needs `--allow-ui-effects` because it saves
@@ -4906,7 +4937,7 @@ call fails or an `until` is not met.
   `ui_*` effects default to 300 ms) and `until` (repeat the call for up to 20
   seconds until its result text contains that string). `-Calls` also takes a
   path to a JSON file.
-- `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `straight_voice_check` and `discord_voice_check` calls without a `martletDirectory`
+- `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
 - Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings

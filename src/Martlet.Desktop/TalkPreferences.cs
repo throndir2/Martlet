@@ -22,12 +22,14 @@ namespace Martlet.Desktop;
 // Companion › Listening › When Thinking can hear you: with HearVoice on and a Thinking model that hears, what you said goes
 // straight to Thinking as the recording alone while speech-to-text runs beside the reply (the default), or TranscribeFirst
 // waits for the transcript and sends both.
+// Companion › Listening › Judge when I finish talking (JudgeTurns, on by default): the end-of-turn judge decides when you
+// finished, sooner than the plain pause when you clearly did and later when you didn't; off, the plain pause (Reply after) decides.
 internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity = 0.5, int PauseIndex = 1, bool VoiceId = false,
     int ScreenChattiness = 1, int ScreenScope = (int)WatchKind.ActiveScreen, string CameraId = "", string CameraName = "",
     string VideoAddress = "", bool SpeakReplies = true, bool Watch = true, int Version = 0, bool? HearVoice = null,
     bool BargeIn = false, bool ReduceEcho = true, bool HearPc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal,
     bool DecideGaze = false, bool TranscribeFirst = false, double VoiceVolume = 1.0,
-    Martlet.Conversation.BargeInBehavior BargeInStyle = Martlet.Conversation.BargeInBehavior.PauseAndDecide)
+    Martlet.Conversation.BargeInBehavior BargeInStyle = Martlet.Conversation.BargeInBehavior.PauseAndDecide, bool JudgeTurns = true)
 {
     private const string FileName = "talk-preferences.json";
 

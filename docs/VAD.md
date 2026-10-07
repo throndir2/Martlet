@@ -189,3 +189,21 @@ Desktop integration and installation qualification are unwired/unqualified.
 Real speech/noise/language/device accuracy, normal performance, incremental
 private memory, signing, novice use and V01/AC-05/G2 are not passed by these
 managed checks or the earlier material probe.
+
+## Always listening's end-of-turn judge (production, separate)
+
+This library stays blocked. Always listening in the desktop uses its own
+energy detector (`EnergyVoiceActivityDetector` in Martlet.Audio) and, on top of
+it, an end-of-turn judge (`EndOfTurnGate` in Martlet.Conversation). With
+Companion › Listening › *Judge when I finish talking* on (the default), the
+detector itself waits for the longer pause for unfinished speech
+(`EndOfTurnGate.DetectorEndSilence`, at least 1.6 s). After 260 ms of silence
+the gate asks Smart Turn v3.2 (`SmartTurnEngine` in Martlet.Sherpa, the
+bundled `turn-detection\smart-turn-v3.2-cpu.onnx`) and ends the speech early
+with `EnergyVoiceActivityDetector.EndSpeech()` when it hears a finished turn.
+At the plain pause (Reply after) the gate ends it unless the judge said the
+turn is unfinished. Off, missing or failed, the detector runs with the plain
+pause exactly as before. Smart Turn runs through the ONNX Runtime that ships
+with sherpa-onnx (1.28.2), not this library's 1.30 package. See
+[Voice latency](VOICE_LATENCY.md#the-end-of-turn-judge) and
+[Conversation](CONVERSATION.md#hands-free-voice-activity-and-voice-id).

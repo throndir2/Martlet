@@ -75,6 +75,12 @@ public static class ReplyLatency
 {
     public const string Prefix = "Reply latency: ";
 
+    // Always listening's first steps when the end-of-turn judge decided: the pause before it was asked, then its answer (the
+    // plain pause rule's step is "end of speech").
+    public const string EndOfTurnWait = "end-of-turn wait";
+    public const string EndOfTurnJudge = "end-of-turn judge";
+    public const string EndOfSpeech = "end of speech";
+
     // The reply's own steps, in order, each named for the wait that ended there.
     public const string ThinkingAuthorization = "Thinking authorization";
     public const string ThinkingConnection = "Thinking connection";

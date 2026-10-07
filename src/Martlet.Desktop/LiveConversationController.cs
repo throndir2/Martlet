@@ -59,10 +59,13 @@ internal sealed record ShownPicture(string Key, string Title, byte[] Image, bool
 // what this PC plays instead of the microphone (Companion › Listening › Hear what this PC plays): never Voice ID, voice
 // recognition, a recording for Thinking or memory. WordCheck: how readily what was heard counts as words (Companion › Listening ›
 // Word check; UtteranceFilter and BargeInPolicy). BargeInStyle: with BargeIn, whether words that aren't a clear cue pause the
-// reply while a judge decides (PauseAndDecide, the default; BargeInJudging) or stop it at once (StopAtOnce).
+// reply while a judge decides (PauseAndDecide, the default; BargeInJudging) or stop it at once (StopAtOnce). JudgeTurns: the
+// end-of-turn judge decides when the user finished talking (Companion › Listening › Judge when I finish talking, on by default;
+// EndOfTurnGate), with the plain pause as its fallback.
 internal sealed record ListeningOptions(bool HandsFree, VoiceActivitySettings Activity, bool RequireVoiceId, bool Hear = false,
     bool BargeIn = false, bool ReduceEcho = false, bool Pc = false, ListeningSensitivity WordCheck = ListeningSensitivity.Normal,
-    bool Straight = false, bool HearLocalOnly = false, BargeInBehavior BargeInStyle = BargeInBehavior.PauseAndDecide)
+    bool Straight = false, bool HearLocalOnly = false, BargeInBehavior BargeInStyle = BargeInBehavior.PauseAndDecide,
+    bool JudgeTurns = true)
 {
     internal static TimeSpan IdleRestart => TimeSpan.FromSeconds(12);
     internal static TimeSpan MinimumUtterance => TimeSpan.FromMilliseconds(450);
@@ -268,6 +271,9 @@ internal sealed class LiveConversationOperation
     internal TimeSpan? Speech { get; set; }
     /// <summary>The controller-clock timestamp the utterance's voice began at (0 when unknown).</summary>
     internal long SpeechStartedAt { get; set; }
+    /// <summary>The end-of-turn judge's quick transcript of exactly the speech kept (Parakeet on this PC); speech-to-text reuses
+    /// it. Null when there is none or the kept audio differs from what it transcribed.</summary>
+    [JsonIgnore] internal QuickWords? QuickWords { get; set; }
     /// <summary>Always listening dropped this utterance (it wasn't words); the transcript is kept only to show it as ignored.</summary>
     internal UtteranceDecision? Ignored { get; set; }
     /// <summary>The utterance's words, said over Martlet, stop it (where speech-to-text isn't on this PC, or a quick check missed them).</summary>
@@ -386,6 +392,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private readonly LocalTranscriptionAdapter? localTranscription;
     // Parakeet on this PC, also used for the quick check of what is said over Martlet (BargeInGate): free and private.
     private readonly ILocalTranscriber? localWords;
+    private readonly IEndOfTurnJudge? turnJudge;
+    private readonly SmartTurnJudge? smartTurn;
+    private readonly object turnGate = new();
+    private readonly Queue<EndOfTurnDecision> turnDecisions = new();
+    private int turnJudgeMissingLogged;
     // When Martlet last finished a reply that asked something (controller clock; 0: not lately), so a short answer counts.
     private long askedAt;
     private readonly LocalVoices? voices;
@@ -690,10 +701,14 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         LocalVoices? voices = null, ILocalTranscriber? localListener = null, EchoReducer? echoReducer = null,
         PcAudioCaptureFactory? pcAudio = null, CharacterCueFeed? characterCues = null,
         Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null,
-        DesktopConversationHistory? history = null, ConversationSinging? singing = null, ContextBoard? board = null)
+        DesktopConversationHistory? history = null, ConversationSinging? singing = null, ContextBoard? board = null,
+        IEndOfTurnJudge? turnJudge = null)
 
     {
         this.operations = operations;
+        // Smart Turn on this PC first; a Thinking-pool member only when it is missing or fails.
+        smartTurn = turnJudge as SmartTurnJudge;
+        this.turnJudge = smartTurn is not null ? EndOfTurnJudges.WithFallback(smartTurn, new PoolTurnJudge(() => ThinkingPool)) : turnJudge;
         this.settings = settings;
         this.vault = vault;
         this.captureDevices = captureDevices;
@@ -1000,7 +1015,50 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             else listener = listening;
         }
         started.SetResult();
+        // The end-of-turn judge loads in the background so the first pause is judged too.
+        if (!options.Pc && options.JudgeTurns && smartTurn is { } smart) smart.WarmAsync().Forget();
         return listening;
+    }
+
+    /// <summary>The end-of-turn judge's state for Companion › Listening and MCP: its name, whether it can answer and why not, how
+    /// long it took to load, and the newest decisions (newest last; no words, no audio).</summary>
+    internal (string? Judge, bool Available, string? Problem, TimeSpan? LoadTime, EndOfTurnDecision[] Decisions) TurnJudgeStatus
+    {
+        get
+        {
+            lock (turnGate)
+                return (turnJudge?.Name, turnJudge?.Available == true, turnJudge is null ? "no judge" : smartTurn?.Problem,
+                    smartTurn?.LoadTime, turnDecisions.ToArray());
+        }
+    }
+
+    /// <summary>Raised (on a background thread) after each end-of-turn decision.</summary>
+    internal event Action? TurnDecided;
+
+    /// <summary>When the end-of-turn judge is asked and how long an unfinished pause may run (EndOfTurnGate).</summary>
+    internal EndOfTurnOptions EndOfTurn { get; set; } = new();
+
+    private void RecordTurn(EndOfTurnDecision decision)
+    {
+        lock (turnGate)
+        {
+            turnDecisions.Enqueue(decision);
+            while (turnDecisions.Count > 20) turnDecisions.Dequeue();
+        }
+        ErrorLog.Info(decision.Describe());
+        TurnDecided?.Invoke();
+    }
+
+    /// <summary>The judge for this utterance, or null for the plain pause rule (judge off, what the PC plays, or no judge that can
+    /// answer, which the log says once).</summary>
+    private IEndOfTurnJudge? TurnJudge(LiveConversationOperation operation)
+    {
+        if (operation.Listening is not { JudgeTurns: true, Pc: false } || turnJudge is null) return null;
+        if (turnJudge.Available) return turnJudge;
+        if (Interlocked.Exchange(ref turnJudgeMissingLogged, 1) == 0)
+            ErrorLog.Warn($"End-of-turn judge: {turnJudge.Name} can't answer ({smartTurn?.Problem ?? "unavailable"}, and no Thinking-pool member can judge); " +
+                "the plain pause decides when you finished talking.");
+        return null;
     }
 
     /// <summary>Stops always listening: the utterance being recorded is discarded and one being transcribed is canceled.</summary>
@@ -3241,6 +3299,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         operation.Publish(new("stt.uploading"));
         operation.BeginTranscription(clock, context.Deadline);
         TranscriptionResult result;
+        // The end-of-turn judge's quick transcript of exactly this speech (Parakeet on this PC) is used instead of a second one.
+        var quick = operation.QuickWords;
+        operation.QuickWords = null;
+        ReusedWords? reused = null;
         try
         {
             var stt = operation.Authorization.Configuration.Route(SetupRole.Stt);
@@ -3250,13 +3312,21 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     LiveConversationConfiguration.TranscriptionLimits, permission, operation.OriginalCaller, worker).ConfigureAwait(false)
                 // Parakeet on this PC: transcribed in memory here, nothing is sent anywhere.
                 : operation.Authorization.Configuration.LocalStt()
-                    ? await (localTranscription ?? throw new LiveActionException("conversation.configuration_unsupported"))
+                    ? await (quick is not null && quick.ModelId == stt.ModelId && localWords is not null
+                            ? new LocalTranscriptionAdapter(reused = new ReusedWords(quick.Transcript, localWords), clock)
+                            : localTranscription ?? throw new LiveActionException("conversation.configuration_unsupported"))
                         .TranscribeAsync(context, stt.ModelId, audio, LiveConversationConfiguration.TranscriptionLimits, permission,
                             operation.OriginalCaller, worker).ConfigureAwait(false)
                 : await openAi.TranscribeAsync(context, stt.ModelId, audio,
                     LiveConversationConfiguration.TranscriptionLimits, permission, operation.OriginalCaller, worker).ConfigureAwait(false);
         }
-        finally { operation.EndTranscription(); }
+        finally
+        {
+            operation.EndTranscription();
+            if (quick is not null) CryptographicOperations.ZeroMemory(quick.Pcm);
+        }
+        if (reused?.Reused == true)
+            ErrorLog.Info($"End of turn: speech-to-text reused the quick transcript started {clock.GetElapsedTime(quick!.StartedAt).TotalMilliseconds:0} ms ago (no second transcription).");
         operation.Authorization.Check(worker);
         operation.Transcription = result;
         if (result.Outcome == TranscriptionOutcome.Completed)
@@ -3739,7 +3809,20 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private async Task<SpeechRange?> EndpointAsync(LiveConversationOperation operation, CaptureRun run)
     {
         var settings = operation.Listening!.Activity;
-        var detector = new EnergyVoiceActivityDetector(settings);
+        // With the end-of-turn judge, the detector itself only ends speech after the longer pause for unfinished speech; the
+        // gate ends it sooner when the judge says the turn is complete, and at the plain pause otherwise.
+        var judge = TurnJudge(operation);
+        var turn = judge is null ? null : new EndOfTurnGate(settings.EndSilence, EndOfTurn);
+        var detector = new EnergyVoiceActivityDetector(turn is null ? settings : settings with { EndSilence = turn.DetectorEndSilence });
+        Task<(EndOfTurnJudgement? Judgement, Exception? Error, long At)>? judging = null;
+        using var judgeCancel = CancellationTokenSource.CreateLinkedTokenSource(operation.OriginalCaller);
+        QuickWords? quick = null;
+        CancellationTokenSource? quickCancel = null;
+        int judgedPause = 0, quiet = 0;
+        long judgeStartedAt = 0, judgeEndedAt = 0;
+        EndOfTurnJudgement? judgement = null;
+        Exception? judgeError = null;
+        var decided = EndOfTurnStep.Wait;
         var talkOver = operation.Listening.Pc ? null : new TalkOverDetector();
         // Quick checks of the words said over Martlet: for barge-in, and while it sings (to hear "stop singing" at once).
         var bargeIn = operation is { Listen: true, Listening.Pc: false } && (operation.Listening.BargeIn || singing is not null) &&
@@ -3781,6 +3864,25 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     if (bargeIn.Gate?.Process(loud, speakers, checking is { IsCompleted: false }) == true && !operation.TalkingOver &&
                         Speaking is { } mode && (operation.Listening.BargeIn || mode == PlaybackMode.Song))
                         checking = CheckWordsAsync(operation, run, bargeIn.Gate, bargeIn.Check, index, mode);
+                    if (turn is not null && transition == VoiceActivityTransition.None && detector.Speaking)
+                    {
+                        TakeJudgement();
+                        var step = turn.Step(detector.SilenceFrames, accepted >= 0);
+                        if (turn.WentOn is { } unfinished)
+                        {
+                            // The judge was right that it wasn't over: the next pause is judged again.
+                            RecordTurn(new(clock.GetUtcNow(), EndOfTurnDecision.WentOn, TimeSpan.FromMilliseconds(quiet * 20),
+                                settings.EndSilence, Took(), unfinished.Probability, judge!.Name));
+                            DropQuick();
+                        }
+                        quiet = detector.SilenceFrames;
+                        if (step == EndOfTurnStep.Judge) AskJudge();
+                        else if (step is EndOfTurnStep.Complete or EndOfTurnStep.Fallback && detector.EndSpeech())
+                        {
+                            decided = step;
+                            transition = VoiceActivityTransition.SpeechEnded;
+                        }
+                    }
                     if (transition == VoiceActivityTransition.SpeechStarted)
                     {
                         if (accepted < 0) operation.Publish(new("mic.hearing_speech"));
@@ -3790,6 +3892,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         // A cough or click, or what the speakers played, is ignored; keep listening for real speech.
                         if (accepted < 0 && (detector.SpeechEndFrame - detector.SpeechStartFrame < minimumFrames || !Voice()))
                         {
+                            decided = EndOfTurnStep.Wait;
                             operation.Publish(new("mic.listening"));
                             continue;
                         }
@@ -3797,11 +3900,13 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         operation.Hearing = true;
                         if (!operation.Listening.Pc)
                         {
-                            // The speech ended where the silence began; the detector noticed after the end-of-speech pause.
+                            // The speech ended where the silence began; the detector noticed after the end-of-speech pause, or the
+                            // end-of-turn judge decided sooner.
                             var now = clock.GetTimestamp();
                             var silence = (long)((index - detector.SpeechEndFrame) * 0.02 * clock.TimestampFrequency);
                             operation.LatencyTimeline = new ReplyTimeline(clock, ReplyTimeline.YouStopped, now - Math.Max(0, silence));
-                            operation.LatencyTimeline.Mark("end of speech", now);
+                            if (turn is not null) TurnEnded(now, silence);
+                            else operation.LatencyTimeline.Mark(ReplyLatency.EndOfSpeech, now);
                         }
                         await run.ReleaseAsync().ConfigureAwait(false);
                         return Range(accepted, detector.SpeechEndFrame);
@@ -3831,7 +3936,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 }
                 if (accepted < 0 && !detector.Speaking && clock.GetElapsedTime(started) >= ListeningOptions.IdleRestart)
                     return null;
-                await Task.WhenAny(run.Completion, Task.Delay(TimeSpan.FromMilliseconds(20), clock)).ConfigureAwait(false);
+                // The judge's answer is acted on at the next frame, so wake for it as well.
+                await (judging is { IsCompleted: false } pending
+                    ? Task.WhenAny(run.Completion, pending, Task.Delay(TimeSpan.FromMilliseconds(20), clock))
+                    : Task.WhenAny(run.Completion, Task.Delay(TimeSpan.FromMilliseconds(20), clock))).ConfigureAwait(false);
             }
             // Duration limit or Finish: send everything from the onset to the end of the recording.
             if (accepted < 0 && detector.Speaking && Voice()) Accept();
@@ -3842,8 +3950,126 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         {
             CryptographicOperations.ZeroMemory(frame);
             operation.VoiceLevel = -100;
+            judgeCancel.Cancel();
+            if (!ReferenceEquals(operation.QuickWords, quick)) DropQuick();
             // The user's voice ended (or listening stopped): a paused reply plays on once its verdict is not for Martlet.
             operation.Held?.Hold.Ended();
+        }
+
+        // The end-of-turn judge's answer, once it is in, for the pause it was asked about.
+        void TakeJudgement()
+        {
+            if (judging is not { IsCompleted: true } done) return;
+            judging = null;
+            (judgement, judgeError, judgeEndedAt) = done.Result;
+            if (!turn!.Judged(judgedPause, judgeError is null ? judgement : null))
+            {
+                judgement = null;
+                judgeError = null;
+            }
+        }
+
+        TimeSpan? Took() => judgeEndedAt > judgeStartedAt && judgeStartedAt != 0
+            ? clock.GetElapsedTime(judgeStartedAt, judgeEndedAt) : null;
+
+        // After a short pause: the judge hears what was said so far (from its pre-roll to now, with the pause), and with Parakeet
+        // on this PC a quick transcript of exactly the speech that would be kept starts beside it, for speech-to-text to reuse.
+        void AskJudge()
+        {
+            DropQuick();
+            judgement = null;
+            judgeError = null;
+            judgeEndedAt = 0;
+            judgedPause = turn!.Pause;
+            var end = index - detector.SilenceFrames;
+            var startSample = Math.Max(0, accepted * EnergyVoiceActivityDetector.FrameSamples - EnergyVoiceActivityDetector.Samples(settings.PreRoll));
+            var endSample = end * EnergyVoiceActivityDetector.FrameSamples + EnergyVoiceActivityDetector.Samples(settings.Tail);
+            var firstFrame = startSample / EnergyVoiceActivityDetector.FrameSamples;
+            var heard = new byte[(index - firstFrame) * EnergyVoiceActivityDetector.FrameBytes];
+            var frames = 0;
+            try
+            {
+                for (var at = firstFrame; at < index; at++, frames++)
+                    if (!run.TryCopyMonoFrame(at, heard.AsSpan(frames * EnergyVoiceActivityDetector.FrameBytes, EnergyVoiceActivityDetector.FrameBytes)))
+                        break;
+            }
+            catch (OperationCanceledException) { }
+            var offset = (startSample - firstFrame * EnergyVoiceActivityDetector.FrameSamples) * 2;
+            var length = frames * EnergyVoiceActivityDetector.FrameBytes - offset;
+            var silence = TimeSpan.FromMilliseconds(detector.SilenceFrames * 20);
+            judgeStartedAt = clock.GetTimestamp();
+            var keptBytes = (endSample - startSample) * 2;
+            var configured = operation.Authorization.Configuration;
+            if (localWords is { } local && configured.LocalStt() && configured.SttHostTarget() is null && length >= keptBytes && keptBytes > 0)
+            {
+                var kept = heard.AsSpan(offset, keptBytes).ToArray();
+                var model = configured.Route(SetupRole.Stt).ModelId;
+                quickCancel = CancellationTokenSource.CreateLinkedTokenSource(operation.OriginalCaller);
+                Task<LocalTranscript> transcript;
+                try { transcript = local.TranscribeAsync(model, kept, quickCancel.Token); }
+                catch (Exception error) when (error is InvalidOperationException or ObjectDisposedException) { transcript = Task.FromException<LocalTranscript>(error); }
+                quick = new(model, kept, transcript, judgeStartedAt);
+            }
+            var request = new EndOfTurnRequest(heard.AsMemory(offset, Math.Max(0, length)), silence,
+                quick?.Transcript.ContinueWith(t => t.IsCompletedSuccessfully ? (string?)t.Result.Text : null, TaskScheduler.Default));
+            var token = judgeCancel.Token;
+            judging = Task.Run(async () =>
+            {
+                try
+                {
+                    var answer = await judge!.JudgeAsync(request, token).ConfigureAwait(false);
+                    return ((EndOfTurnJudgement?)answer, (Exception?)null, clock.GetTimestamp());
+                }
+                catch (Exception error) when (error is not OutOfMemoryException) { return (null, error, clock.GetTimestamp()); }
+                finally { CryptographicOperations.ZeroMemory(heard); }
+            }, CancellationToken.None);
+        }
+
+        void DropQuick()
+        {
+            if (quick is null) return;
+            quickCancel?.Cancel();
+            quickCancel?.Dispose();
+            CryptographicOperations.ZeroMemory(quick.Pcm);
+            quick = null;
+            quickCancel = null;
+        }
+
+        // The turn ended while the judge was on: the decision goes to the log and the status, and the reply latency line gets the
+        // pause before the judge was asked and its answer. The quick transcript of this pause is kept for speech-to-text.
+        void TurnEnded(long now, long silenceTicks)
+        {
+            TakeJudgement();
+            var timeline = operation.LatencyTimeline!;
+            var silence = TimeSpan.FromSeconds(silenceTicks / (double)clock.TimestampFrequency);
+            var asked = turn!.Asked && judgeStartedAt != 0 && judgedPause == turn.Pause;
+            if (asked) timeline.Mark(ReplyLatency.EndOfTurnWait, judgeStartedAt);
+            string outcome;
+            if (decided == EndOfTurnStep.Complete)
+            {
+                outcome = EndOfTurnDecision.Complete;
+                timeline.Mark(ReplyLatency.EndOfTurnJudge, now);
+            }
+            else
+            {
+                if (asked && judgeEndedAt != 0 && judgeEndedAt <= now) timeline.Mark(ReplyLatency.EndOfTurnJudge, judgeEndedAt);
+                timeline.Mark(ReplyLatency.EndOfSpeech, now);
+                outcome = decided != EndOfTurnStep.Fallback ? EndOfTurnDecision.Incomplete : turn.Fallback switch
+                {
+                    EndOfTurnFallback.Failed => EndOfTurnDecision.Failed,
+                    EndOfTurnFallback.Slow => EndOfTurnDecision.Slow,
+                    _ => EndOfTurnDecision.NotJudged
+                };
+            }
+            RecordTurn(new(clock.GetUtcNow(), outcome, silence, settings.EndSilence, asked ? Took() : null,
+                asked ? judgement?.Probability : null, judge!.Name,
+                outcome == EndOfTurnDecision.Failed ? judgeError?.GetBaseException().Message : outcome == EndOfTurnDecision.NotJudged ? "your voice wasn't accepted yet" : null));
+            if (asked && quick is not null)
+            {
+                // Its own cancellation stays with it: the transcript may still be on its way.
+                operation.QuickWords = quick;
+                quickCancel = null;
+            }
         }
 
         // The utterance starts here: when its voice began, on the controller's clock (each frame is 20 ms of it).
@@ -4177,7 +4403,14 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // Hands-free uploads only the detected speech (with pre-roll/tail), not the idle wait before it.
                 var start = Math.Min(heard?.StartSample ?? 0, total);
                 var end = Math.Min(heard?.EndSampleExclusive ?? total, total);
-                return pcm.AsSpan(start * 2, Math.Max(0, end - start) * 2).ToArray();
+                var speech = pcm.AsSpan(start * 2, Math.Max(0, end - start) * 2).ToArray();
+                // The end-of-turn judge's quick transcript is reused only for exactly this audio.
+                if (operation.QuickWords is { } quick && !quick.Pcm.AsSpan().SequenceEqual(speech))
+                {
+                    operation.QuickWords = null;
+                    ErrorLog.Info("End of turn: the speech kept differs from the quick transcript's; speech-to-text transcribes it again.");
+                }
+                return speech;
             }
             finally
             {

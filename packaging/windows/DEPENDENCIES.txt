@@ -155,6 +155,9 @@ folder:
   speaker embedding model (CC BY 4.0, WeSpeaker authors; sherpa-onnx ONNX export).
 - voice-recognition\pyannote-segmentation-3-0\model.onnx and its LICENSE:
   pyannote segmentation 3.0 ONNX export (MIT, CNRS).
+- turn-detection\smart-turn-v3.2-cpu.onnx: Pipecat's Smart Turn v3.2 int8 CPU
+  model (BSD 2-Clause, Daily), the end-of-turn judge always listening uses. It
+  runs through the same onnxruntime.dll with authored function-pointer code.
 The Desktop build downloads the models once and keeps each only if it matches
 the SHA-256 pinned in Martlet.Desktop.csproj and toolchain.json (voiceModels);
 packaging checks the shipped bytes again. notices\Voice-Recognition-NOTICES.txt

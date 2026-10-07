@@ -86,6 +86,28 @@
           DestinationFiles="$(VoiceModelCache)%(VoiceModel.Identity)" />
     <Delete Files="@(VoiceModel->'$(VoiceModelCache)%(Identity).partial')" />
   </Target>
+  <!-- The end-of-turn judge's model ships in turn-detection\ beside Martlet.Desktop.exe: Pipecat's Smart Turn v3.2 int8 CPU model
+       (BSD 2-Clause, Daily; see ..\Martlet.Sherpa\VOICE-RECOGNITION-NOTICES.txt), downloaded once into obj at a pinned revision
+       and SHA-256 (packaging\windows\toolchain.json pins the same), like the voice models. -->
+  <PropertyGroup>
+    <TurnModelCache>$(BaseIntermediateOutputPath)turn-detection\</TurnModelCache>
+  </PropertyGroup>
+  <ItemGroup>
+    <TurnModel Include="smart-turn-v3.2-cpu.onnx" Sha256="2bb026316b14a660486a75b1733cd3fbab8c2fd0314dc9af7be49f8cca967e4f"
+               Url="https://huggingface.co/pipecat-ai/smart-turn-v3/resolve/f766f81d3cfdf7737ac64aad813d91bbfd56bf93/smart-turn-v3.2-cpu.onnx" />
+    <None Include="$(TurnModelCache)smart-turn-v3.2-cpu.onnx" Link="turn-detection\smart-turn-v3.2-cpu.onnx"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+  <Target Name="DownloadTurnModel" BeforeTargets="PrepareForBuild;GetCopyToOutputDirectoryItems"
+          Condition="!$(MSBuildProjectName.EndsWith('_wpftmp'))">
+    <DownloadFile Condition="!Exists('$(TurnModelCache)%(TurnModel.Identity)')" SourceUrl="%(TurnModel.Url)"
+                  DestinationFolder="$(TurnModelCache)" DestinationFileName="%(TurnModel.Identity).partial" SkipUnchangedFiles="false" Retries="3" />
+    <VerifyFileHash Condition="!Exists('$(TurnModelCache)%(TurnModel.Identity)')" File="$(TurnModelCache)%(TurnModel.Identity).partial"
+                    Algorithm="SHA256" Hash="%(TurnModel.Sha256)" />
+    <Copy Condition="!Exists('$(TurnModelCache)%(TurnModel.Identity)')" SourceFiles="$(TurnModelCache)%(TurnModel.Identity).partial"
+          DestinationFiles="$(TurnModelCache)%(TurnModel.Identity)" />
+    <Delete Files="@(TurnModel->'$(TurnModelCache)%(Identity).partial')" />
+  </Target>
   <Target Name="PublishAvatarRenderer" AfterTargets="Publish">
     <MSBuild Projects="..\Martlet.Avatar.RendererHost\Martlet.Avatar.RendererHost.csproj"
              Targets="Publish" Properties="Configuration=$(Configuration);PublishDir=$(PublishDir)AvatarRenderer\;RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=$(SelfContained)" />
