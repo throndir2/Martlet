@@ -6,17 +6,25 @@ using Martlet.Avatar.Hosting;
 namespace Martlet.Desktop;
 
 /// <summary>
-/// Where the showing character looks. Its head and eyes follow the mouse on their own (the overlay does that). With Companion ›
-/// Vision › Where the character looks set to Martlet decides, each new screenshot Martlet takes of your screen (every 3
-/// seconds while vision watches your active window or whole screen) decides it again: something that just appeared or moved in
-/// one place draws a short glance (<see cref="GazeDirector"/>), and a screen glance's Thinking model may start its answer with
-/// a look tag (<c>{look top right}</c>) to look at that part of the picture for a few seconds; otherwise the mouse. Screenshots
-/// are compared on this PC as coarse grey grids, and only a point on the desktop reaches the character.
+/// Where the showing character looks. Its head and eyes follow its usual gaze on their own (the overlay does that): the mouse,
+/// the mouse when it's near, straight ahead or the window you're using, as you chose (Companion › Character › Where the
+/// character looks, or the character's right-click Eyes menu) or else as its personality decided (the persona's temperament).
+/// While the character may change where it looks, a reply's mode tag (<c>{look ahead}</c>) changes that until a reply changes it
+/// again, and every reply is told its usual gaze (with a note while its own choice holds the eyes). A touch whose temperament
+/// says so turns the eyes to the mouse for a few seconds. With Companion › Vision › Glances at your screen set to Martlet
+/// decides, each new screenshot Martlet takes of your screen (every 3 seconds while vision watches your active window or whole
+/// screen) is also a chance to look elsewhere: something that just appeared or moved in one place draws a short glance
+/// (<see cref="GazeDirector"/>), and a screen glance's Thinking model may start its answer with a look tag
+/// (<c>{look top right}</c>) to look at that part of the picture for a few seconds. Screenshots are compared on this PC as
+/// coarse grey grids, and only a point on the desktop or a gaze reaches the character.
 /// </summary>
 internal sealed class CharacterGazeService
 {
     // How recent the last screenshot must be for Martlet to count as watching your screen.
     private static readonly TimeSpan Watching = TimeSpan.FromSeconds(10);
+    // What a newly shown character starts with: following the mouse, with As the personality decides and Let the character
+    // change it checked on its Eyes menu.
+    private static readonly (GazeMode Mode, string Choice, bool Free) Fresh = (GazeMode.Mouse, RendererGaze.Personality, true);
     private readonly AvatarController avatar;
     private readonly TimeProvider clock;
     private readonly GazeDirector director;
@@ -32,6 +40,17 @@ internal sealed class CharacterGazeService
     private GazeVerdict? verdict;
     private (GazeSpot Spot, DateTime At)? lastSpot;
     private RendererLook? look;
+    // The owner's choice (null: as the personality decides), whether the character may change where it looks, the Thinking
+    // model's choice and when it made it, until when (and why) a touch keeps the eyes on the mouse, what the overlay was last
+    // told and what applied when last checked. Messages to the overlay go one after another.
+    private GazeMode? owner;
+    private bool free = true;
+    private GazeMode? chosen;
+    private DateTimeOffset chosenAt;
+    private long attendUntil;
+    private string attendWhy = "";
+    private (GazeMode Mode, string Choice, bool Free) told = Fresh, known = Fresh;
+    private Task sending = Task.CompletedTask;
 
     internal CharacterGazeService(AvatarController avatar, TimeProvider? clock = null)
     {
@@ -40,8 +59,163 @@ internal sealed class CharacterGazeService
         director = new(this.clock);
     }
 
-    /// <summary>Whether Martlet decides where the character looks (Companion › Vision › Where the character looks); off, the
-    /// character follows the mouse.</summary>
+    /// <summary>The usual gaze the active persona's temperament decided, or null (not decided yet).</summary>
+    internal Func<GazeMode?> Personality { get; set; } = () => null;
+
+    /// <summary>Where the eyes go when nothing else draws them, and why.</summary>
+    internal GazeSettings Settings { get { lock (gate) return SettingsLocked(); } }
+
+    private GazeSettings SettingsLocked() => new(owner, Personality(), free, chosen);
+
+    /// <summary>Raised (on any thread) when the usual gaze, the reply's choice or a touch's look changes.</summary>
+    internal event Action? Changed;
+
+    /// <summary>The owner's choice (null: as the personality decides) and whether the character may change where it looks. A new
+    /// choice, or taking that away, ends the Thinking model's own choice; a showing character follows at once.</summary>
+    internal void Configure(GazeMode? usual, bool mayChange)
+    {
+        lock (gate)
+        {
+            if (owner == usual && free == mayChange) return;
+            if (owner != usual || !mayChange) chosen = null;
+            owner = usual;
+            free = mayChange;
+        }
+        Refresh();
+        Changed?.Invoke();
+    }
+
+    /// <summary>Tells a showing character its gaze and Eyes menu again when they changed (also after the persona in use or its
+    /// temperament changed). It goes back to that gaze at once. Raises <see cref="Changed"/> when what applies changed, also
+    /// while the character is hidden.</summary>
+    internal void Refresh()
+    {
+        (GazeMode Mode, string Choice, bool Free) state;
+        bool send;
+        lock (gate)
+        {
+            state = StateLocked();
+            var changed = state != known;
+            known = state;
+            send = avatar.IsShowing && state != told;
+            if (send)
+            {
+                told = state;
+                holding = null;
+                holdUntil = attendUntil = 0;
+            }
+            if (!changed && !send) return;
+        }
+        if (send) Send(new RendererGaze(Mode: state.Mode, Choice: state.Choice, Free: state.Free));
+        Changed?.Invoke();
+    }
+
+    private (GazeMode Mode, string Choice, bool Free) StateLocked() => (SettingsLocked().Mode, RendererGaze.ChoiceOf(owner), free);
+
+    /// <summary>A newly shown character starts following the mouse with As the personality decides and Let the character change
+    /// it checked: it is told otherwise when that isn't so. A failure never stops it showing.</summary>
+    internal async Task RestoreAsync(IAvatarRenderer target, CancellationToken token)
+    {
+        (GazeMode Mode, string Choice, bool Free) state;
+        lock (gate)
+        {
+            state = StateLocked();
+            told = known = state;
+            holding = null;
+            holdUntil = attendUntil = 0;
+        }
+        if (state == Fresh) return;
+        try { await target.SendAsync("gaze", new RendererGaze(Mode: state.Mode, Choice: state.Choice, Free: state.Free), token); }
+        catch (Exception error) when (error is IOException or InvalidOperationException or InvalidDataException or TimeoutException or
+            ObjectDisposedException or JsonException)
+        {
+            ErrorLog.Warn($"The character couldn't be told where to look: {error.Message}");
+        }
+    }
+
+    /// <summary>What a reply is told while the character shows and may change where it looks: its usual gaze and the look tags
+    /// (in the instructions, the same from message to message) and, while its own choice holds the eyes, a note on that
+    /// (<see cref="CharacterActionPrompt.Looking"/>, for the newest message only). Null otherwise.</summary>
+    internal CharacterActionPrompt? Prompt(Martlet.Core.Settings.PromptSettings? prompts)
+    {
+        if (!avatar.IsShowing) return null;
+        GazeSettings settings;
+        DateTimeOffset at;
+        lock (gate)
+        {
+            if (!free) return null;
+            settings = SettingsLocked();
+            at = chosenAt;
+        }
+        return CharacterGaze.ReplyPrompt(prompts, settings.Usual) is { } prompt
+            ? prompt with { Looking = CharacterGaze.Note(prompts, settings, clock.GetUtcNow() - at) } : null;
+    }
+
+    /// <summary>A touch turns the character's eyes to the mouse pointer for <paramref name="seconds"/> (its temperament says so),
+    /// whatever its usual gaze; glances at the screen wait meanwhile.</summary>
+    internal void Attend(double seconds, string why)
+    {
+        if (!double.IsFinite(seconds) || seconds <= 0 || !avatar.IsShowing) return;
+        seconds = Math.Clamp(seconds, RendererGaze.MinimumSeconds, CharacterGaze.MaximumAttention);
+        lock (gate)
+        {
+            attendUntil = clock.GetTimestamp() + (long)(seconds * clock.TimestampFrequency);
+            attendWhy = why;
+            holding = null;
+            holdUntil = 0;
+        }
+        ErrorLog.Info($"The character looks at the mouse for {seconds:0.#} s after {why}.");
+        Send(new RendererGaze(Mouse: true, Seconds: seconds));
+        Changed?.Invoke();
+        // Say so again when the look ends.
+        Task.Delay(TimeSpan.FromSeconds(seconds) + TimeSpan.FromMilliseconds(100)).ContinueWith(_ => Changed?.Invoke(), TaskScheduler.Default).Forget();
+    }
+
+    private bool Attending => attendUntil != 0 && clock.GetTimestamp() < attendUntil;
+
+    /// <summary>What a gaze does, for the owner ("follows your mouse").</summary>
+    internal static string Describe(GazeMode mode) => mode switch
+    {
+        GazeMode.Near => "follows your mouse when it's near, and otherwise looks straight ahead",
+        GazeMode.Ahead => "looks straight ahead",
+        GazeMode.Window => "watches the window you're using",
+        _ => "follows your mouse"
+    };
+
+    private static string Doing(GazeMode mode) => mode switch
+    {
+        GazeMode.Near => "Looking at your mouse when it's near",
+        GazeMode.Ahead => "Looking straight ahead",
+        GazeMode.Window => "Watching the window you're using",
+        _ => "Looking at your mouse"
+    };
+
+    /// <summary>What the eyes do now and why, for the owner (Companion › Character › Where the character looks).</summary>
+    internal string Looking
+    {
+        get
+        {
+            lock (gate)
+            {
+                var settings = SettingsLocked();
+                var usual = Describe(settings.Usual) + settings.UsualFrom switch
+                {
+                    GazeSettings.FromOwner => ", as you chose",
+                    GazeSettings.FromPersonality => ", as its personality decided",
+                    _ => " (Martlet's default until its personality decides)"
+                };
+                var now = settings.Changed
+                    ? $"The character {Describe(settings.Mode)}: it chose that at {chosenAt.ToLocalTime():t}. Usually it {usual}."
+                    : $"The character {usual}.";
+                if (Attending) now += $" Right now it looks at your mouse after {attendWhy}.";
+                else if (Holding && holding is { } spot) now += $" Right now it looks at the {spot.Place} of your screen.";
+                return now + (settings.Free ? " It may change where it looks in its replies." : " It keeps this; it can't change where it looks.");
+            }
+        }
+    }
+
+    /// <summary>Whether Martlet decides where the character looks while it watches your screen (Companion › Vision › Glances at
+    /// your screen); off, the character keeps its usual gaze.</summary>
     internal bool Decides
     {
         get { lock (gate) return decides; }
@@ -55,33 +229,41 @@ internal sealed class CharacterGazeService
                 away = Holding;
                 ForgetLocked();
             }
-            if (away) Send(null);
+            if (away) SendSpot(null);
         }
     }
 
-    /// <summary>What the character looked at when the overlay last answered ("mouse" or "point") and its head and eye
-    /// direction then, or null before Martlet asked it to look anywhere.</summary>
+    /// <summary>What the character looked at when the overlay last answered ("mouse", "point", "window" or "ahead"), its head
+    /// and eye direction then and its usual gaze, or null before Martlet asked it to look anywhere.</summary>
     internal RendererLook? LastLook { get { lock (gate) return look; } }
+
+    /// <summary>The overlay's last answer in words ("The character's overlay last turned toward: ahead (0, 0); usual gaze
+    /// ahead."), or null before it answered.</summary>
+    internal string? LastLookText => LastLook is { } last
+        ? System.FormattableString.Invariant($"The character's overlay last turned toward: {last.Target} ({last.X:0.##}, {last.Y:0.##}); usual gaze {CharacterGaze.Word(last.Mode)}.")
+        : null;
 
     /// <summary>Reads the mouse and the character's windows on the desktop for the renderer's process (replaced in tests).</summary>
     internal Func<int?, (ScreenPoint? Mouse, ScreenRect[] Overlay, ScreenRect[] Hidden)> ReadDesktop { get; set; } = Where;
 
-    /// <summary>What the eyes are on now, in words.</summary>
+    /// <summary>What the eyes are on now while Martlet watches your screen, in words (the glances' status).</summary>
     internal string Status
     {
         get
         {
             lock (gate)
             {
-                if (!decides) return "The character follows your mouse.";
+                var mode = SettingsLocked().Mode;
+                if (!decides) return $"The character {Describe(mode)}.";
                 if (!avatar.IsShowing) return "Martlet decides where the character looks once the character shows.";
                 if (observedAt is not { } at || clock.GetElapsedTime(at) > Watching)
-                    return "Martlet decides where the character looks while vision watches your screen. Until then it follows your mouse.";
-                var now = Holding && holding is { } spot
+                    return $"Martlet decides where the character looks while vision watches your screen. Until then it {Describe(mode)}.";
+                var now = Attending ? $"Looking at your mouse after {attendWhy}."
+                    : Holding && holding is { } spot
                     ? spot.Reason == GazeReason.Thinking
                         ? $"Looking at the {spot.Place} of your screen, where Martlet chose to look."
                         : $"Glancing at something new at the {spot.Place} of your screen."
-                    : "Looking at your mouse" + verdict switch
+                    : Doing(mode) + verdict switch
                     {
                         GazeVerdict.Still => ": nothing new on screen.",
                         GazeVerdict.OnlyCharacter => ": only the character itself moved.",
@@ -130,32 +312,57 @@ internal sealed class CharacterGazeService
             lookArea = area;
             ScreenRect[] character = [.. overlay, .. lastOverlay], shut = [.. hidden, .. lastHidden];
             (lastOverlay, lastHidden) = (overlay, hidden);
-            // A look the Thinking model chose holds until it ends.
-            if (Holding && holding is { Reason: GazeReason.Thinking }) return new(GazeVerdict.TooSoon);
+            // A look the Thinking model chose, or a touch's look at the mouse, holds until it ends.
+            if (Holding && holding is { Reason: GazeReason.Thinking } || Attending) return new(GazeVerdict.TooSoon);
             decision = director.Decide(frame.Changes, area, mouse, character, shut);
             verdict = decision.Verdict;
             if (decision.Spot is { } spot) HoldLocked(spot);
         }
-        if (decision.Spot is { } glance) Send(glance);
+        if (decision.Spot is { } glance) SendSpot(glance);
         return decision;
     }
 
-    /// <summary>A screen glance's Thinking model wrote a look tag: look at that part of the screen its picture showed.</summary>
+    /// <summary>A reply wrote a look tag. A mode tag (<c>{look ahead}</c>) changes the usual gaze while the character may change
+    /// where it looks, until a reply changes it again (<c>{look usual}</c> goes back); returns null. A screen glance's tag for a
+    /// ninth of its picture looks at that part of the screen for a while; returns where.</summary>
     internal GazeSpot? Chosen(string tag)
     {
+        if (CharacterGaze.TryMode(tag, out var mode))
+        {
+            Choose(mode);
+            return null;
+        }
         GazeSpot? spot;
         lock (gate)
         {
-            if (!decides || lookArea is not { } area || CharacterGaze.Chosen(tag, area) is not { } chosen) return null;
-            spot = chosen;
-            HoldLocked(chosen);
+            if (!decides || lookArea is not { } area || CharacterGaze.Chosen(tag, area) is not { } chosenSpot) return null;
+            spot = chosenSpot;
+            HoldLocked(chosenSpot);
         }
         ErrorLog.Info($"The Thinking model turned the character's eyes to the {spot.Place} of the screen.");
-        Send(spot);
+        SendSpot(spot);
         return spot;
     }
 
-    /// <summary>Vision stopped: the eyes go back to the mouse and what was seen is forgotten.</summary>
+    private void Choose(GazeMode? mode)
+    {
+        GazeSettings before, after;
+        lock (gate)
+        {
+            if (!free) return;
+            before = SettingsLocked();
+            chosen = mode is { } picked && picked != before.Usual ? picked : null;
+            chosenAt = clock.GetUtcNow();
+            after = SettingsLocked();
+        }
+        ErrorLog.Info(after.Changed
+            ? $"The Thinking model chose the character's gaze: {CharacterGaze.Word(after.Mode)} (usually {CharacterGaze.Word(after.Usual)})."
+            : $"The Thinking model took the character's eyes back to their usual gaze ({CharacterGaze.Word(after.Usual)}).");
+        if (after.Mode != before.Mode) Refresh();
+        Changed?.Invoke();
+    }
+
+    /// <summary>Vision stopped: the eyes go back to their usual gaze and what was seen is forgotten.</summary>
     internal void Stop()
     {
         bool away;
@@ -164,7 +371,7 @@ internal sealed class CharacterGazeService
             away = Holding;
             ForgetLocked();
         }
-        if (away) Send(null);
+        if (away) SendSpot(null);
     }
 
     private void HoldLocked(GazeSpot spot)
@@ -185,8 +392,13 @@ internal sealed class CharacterGazeService
         verdict = null;
     }
 
-    private void Send(GazeSpot? spot) => SendAsync(spot is null ? new RendererGaze()
-        : new RendererGaze(spot.X, spot.Y, spot.Hold.TotalSeconds)).Forget();
+    private void SendSpot(GazeSpot? spot) => Send(spot is null ? new RendererGaze() : new RendererGaze(spot.X, spot.Y, spot.Hold.TotalSeconds));
+
+    // One after another, in the order they were made, so a later gaze never arrives before an earlier one.
+    private void Send(RendererGaze gaze)
+    {
+        lock (gate) sending = sending.ContinueWith(_ => SendAsync(gaze), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
+    }
 
     private async Task SendAsync(RendererGaze gaze)
     {
@@ -196,6 +408,7 @@ internal sealed class CharacterGazeService
             var reply = await avatar.GazeAsync(gaze, timeout.Token).ConfigureAwait(false);
             if (reply is null) return;
             lock (gate) look = reply;
+            Changed?.Invoke();
         }
         catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
             InvalidDataException or TimeoutException or ObjectDisposedException or JsonException) { }

@@ -80,14 +80,15 @@ internal sealed partial class AvatarController : IAsyncDisposable
 
     // ---------- where the character looks ----------
 
-    /// <summary>Where the character looks: the mouse, or what Martlet decides while it watches the screen.</summary>
+    /// <summary>Where the character looks: its usual gaze (the mouse, the mouse when near, straight ahead or your window), what a
+    /// reply or a touch changes, and what Martlet decides while it watches the screen.</summary>
     internal CharacterGazeService Gaze { get; }
 
     /// <summary>The showing character's renderer process (its windows are the character's own), or null.</summary>
     internal int? RendererProcessId => IsShowing && renderer is { } current ? current.ProcessId : null;
 
-    /// <summary>Turns the showing character's head and eyes toward a point on the desktop for a while, or back to the mouse.
-    /// Returns what it looks at now, or null while the character is hidden.</summary>
+    /// <summary>Tells the showing character where to look (<see cref="RendererGaze"/>: a point or the mouse for a while, back to
+    /// its usual gaze, or a new usual gaze). Returns what it looks at now, or null while the character is hidden.</summary>
     internal async Task<RendererLook?> GazeAsync(RendererGaze gaze, CancellationToken token)
     {
         if (renderer is not { HasExited: false } current || profile is null) return null;
@@ -124,8 +125,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 var catalog = Volatile.Read(ref actions)?.Invoke(profile?.ModelPath);
                 foreach (var cue in line.Cues)
                 {
-                    // A screen glance's look tag turns the eyes; it is never an emote.
-                    if (CharacterGaze.IsTag(cue.Tag)) _ = LookLaterAsync(cue);
+                    // A look tag (a gaze, or a screen glance's ninth of the picture) turns the eyes; it is never an emote.
+                    if (CharacterGaze.IsLookTag(cue.Tag)) _ = LookLaterAsync(cue);
                     else if (catalog?.Off(cue.Tag) is { } off) _ = StopLaterAsync(off, cue);
                     else if (catalog?.For(cue.Tag) is { Count: > 0 } sources) _ = ActLaterAsync(sources, cue, line.Finished, catalog);
                 }
@@ -896,6 +897,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
             if (Camera is { } view) await next.SendAsync("camera", view, attempt.Token);
             // Lingering emotes come back on the same model; another model forgets them.
             await RestoreHeldAsync(next, selected.ModelPath, attempt.Token);
+            // The overlay starts following the mouse; its usual gaze and Eyes menu follow Martlet's.
+            await Gaze.RestoreAsync(next, attempt.Token);
             lock (stateGate)
             {
                 CheckAttempt(attempt, version);

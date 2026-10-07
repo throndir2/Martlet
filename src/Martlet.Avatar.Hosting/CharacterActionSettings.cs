@@ -119,8 +119,10 @@ public sealed record CharacterActionCatalog(CharacterActionInventory Inventory, 
 }
 
 /// <summary>The reply instructions for the character's emotes and motions, the tags a reply may write (on and off tags), and
-/// <see cref="Showing"/>: what lingering emotes show now, for the newest message's notes (null when none show).</summary>
-public sealed record CharacterActionPrompt(string Instructions, IReadOnlyList<string> Tags, string? Showing = null);
+/// <see cref="Showing"/>: what lingering emotes show now, for the newest message's notes (null when none show). With the
+/// character's gaze joined in, <see cref="Looking"/> is where its eyes are while a reply's choice holds them (null when they do
+/// their usual), a note of its own.</summary>
+public sealed record CharacterActionPrompt(string Instructions, IReadOnlyList<string> Tags, string? Showing = null, string? Looking = null);
 
 /// <summary>Default settings, the owner's edits and the Thinking model's naming of a model's emotes and motions, kept per
 /// model in character-actions.json on this PC.</summary>

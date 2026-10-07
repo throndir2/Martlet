@@ -14,16 +14,23 @@ namespace Martlet.Desktop;
 /// still wins over the temperament.</summary>
 public partial class MainWindow
 {
+    private const string NotDecided = "(not decided: follow your mouse)";
     private readonly CharacterTemperamentService characterTemperaments;
     private TextBlock? temperamentDecision;
     private bool decidingTemperament;
 
-    private void WireCharacterTemperament() => characterTemperaments.Changed += () => Dispatcher.InvokeAsync(() =>
+    private void WireCharacterTemperament()
     {
-        if (temperamentDecision is not null) temperamentDecision.Text = characterTemperaments.Status ?? "";
-        if (closing || openTab != CompanionTab.Character || CompanionContent.IsKeyboardFocusWithin || tabEdited) return;
-        if (!characterTemperaments.Busy && !decidingTemperament) RenderTab();
-    });
+        characterTemperaments.Changed += () => Dispatcher.InvokeAsync(() =>
+        {
+            if (temperamentDecision is not null) temperamentDecision.Text = characterTemperaments.Status ?? "";
+            if (closing || openTab != CompanionTab.Character || CompanionContent.IsKeyboardFocusWithin || tabEdited) return;
+            if (!characterTemperaments.Busy && !decidingTemperament) RenderTab();
+        });
+        // A decided (or edited, or shared) temperament may change the character's usual gaze.
+        characterTemperaments.Changed += avatar.Gaze.Refresh;
+        WireCharacterGaze();
+    }
 
     private Task<(string? Answer, string? Failure)> AskThinkingForTemperamentAsync(string purpose, string instructions, string text, CancellationToken token) =>
         conversation is { } live ? live.AskHelperAsync(HelperJobKind.Temperament, purpose, instructions, text, null, token)
@@ -63,10 +70,10 @@ public partial class MainWindow
         {
             Heading("Touch temperament"),
             Note("How the character acts when you touch it: which emotes, gestures and face symbols play for each part, from " +
-                "hating it to craving it. When you save a personality, your Thinking model decides this from it in the background " +
-                "(never while Martlet replies); it decides actions only, never words. Change anything below and your choices stay " +
-                "until you re-decide. A zone's own pick under Touch zones still wins. Intimate parts react only with Include " +
-                "intimate zones on.", new Thickness(0, 0, 0, 8))
+                "hating it to craving it, whether it then looks at your mouse, and where its eyes usually go. When you save a " +
+                "personality, your Thinking model decides this from it in the background (never while Martlet replies); it " +
+                "decides actions only, never words. Change anything below and your choices stay until you re-decide. A zone's own " +
+                "pick under Touch zones still wins. Intimate parts react only with Include intimate zones on.", new Thickness(0, 0, 0, 8))
         };
         var temperament = characterTemperaments.For(persona?.Id);
         var status = Note(persona is null ? "No persona is in use." : $"For {persona.Name}: " + (temperament?.Source switch
@@ -112,6 +119,15 @@ public partial class MainWindow
         var after = new TextBox { Text = (temperament?.Escalation.After ?? new TouchEscalation().After).ToString(CultureInfo.CurrentCulture), Width = 60 };
         AutomationProperties.SetName(after, "Touches in a row before the reaction escalates");
         AutomationProperties.SetAutomationId(after, "TouchTemperamentAfter");
+        // Where the character's eyes usually go (Where the character looks › As the personality decides uses it).
+        var gazeChoices = new[] { NotDecided }.Concat(CharacterGaze.Modes.Select(m => m.Label)).ToArray();
+        var gaze = new ComboBox
+        {
+            ItemsSource = gazeChoices, MinWidth = 260, MinHeight = 26,
+            SelectedIndex = temperament?.Gaze is { } decidedGaze ? 1 + CharacterGaze.Modes.ToList().FindIndex(m => m.Mode == decidedGaze) : 0
+        };
+        AutomationProperties.SetName(gaze, "Where the character's eyes usually go");
+        AutomationProperties.SetAutomationId(gaze, "TouchTemperamentGaze");
         var autoSave = new AutoSave(async () =>
         {
             if (homeSettings?.Companion?.ActivePersonaId != persona.Id) return true;
@@ -121,6 +137,7 @@ public partial class MainWindow
             {
                 PersonaId = persona.Id, Source = CharacterTouchTemperament.ByOwner,
                 PersonalityDigest = current?.PersonalityDigest ?? CharacterTouchTemperaments.Digest(persona.Text), DecidedAt = current?.DecidedAt,
+                Gaze = gaze.SelectedIndex > 0 ? CharacterGaze.Modes[gaze.SelectedIndex - 1].Mode : null,
                 Groups = rows.Where(r => r.IsGroup && !r.Removed).Select(r => (r.Id, Entry: r.Read())).Where(r => r.Entry is not null)
                     .ToDictionary(r => r.Id, r => r.Entry!),
                 Zones = rows.Where(r => !r.IsGroup && !r.Removed).Select(r => (r.Id, Entry: r.Read())).Where(r => r.Entry is not null)
@@ -149,6 +166,11 @@ public partial class MainWindow
             autoSave.Changed();
         }
         after.TextChanged += (_, _) => Edited();
+        gaze.SelectionChanged += (_, _) => Edited();
+        var gazeRow = new WrapPanel { Margin = new Thickness(0, 4, 0, 4) };
+        gazeRow.Children.Add(new Label { Content = "Eyes usually", Target = gaze, Padding = new Thickness(0, 4, 6, 4), Width = 170 });
+        gazeRow.Children.Add(gaze);
+        stack.Add(gazeRow);
 
         foreach (var (_, id, label) in CharacterTouchTemperaments.GroupIds)
         {
@@ -202,12 +224,14 @@ public partial class MainWindow
         return card;
     }
 
-    /// <summary>One group's or part's line: attitude, up to two reactions and how long the first lingers (and Remove for a part).</summary>
+    /// <summary>One group's or part's line: attitude, up to two reactions (or none at all), how long the first lingers, how long
+    /// the eyes then look at your mouse (and Remove for a part).</summary>
     private sealed class TemperamentRow
     {
-        private const string BuiltIn = "(built-in reaction)", AttitudeOwn = "(the attitude's own)", NothingElse = "(nothing else)";
+        private const string BuiltIn = "(built-in reaction)", AttitudeOwn = "(the attitude's own)", NoReaction = "(no reaction)",
+            NothingElse = "(nothing else)";
         private readonly ComboBox attitude, first, second;
-        private readonly TextBox linger;
+        private readonly TextBox linger, look;
         internal string Id { get; }
         internal bool IsGroup { get; }
         internal bool Removed { get; private set; }
@@ -227,8 +251,14 @@ public partial class MainWindow
             attitude.SelectedIndex = entry is null ? 0 : entry.Attitude - CharacterTouchTemperaments.MinimumAttitude + offset;
             AutomationProperties.SetName(attitude, $"How the character feels about a touch on: {label}");
             AutomationProperties.SetAutomationId(attitude, $"TouchTemperamentAttitude-{id}");
-            first = new ComboBox { ItemsSource = new[] { AttitudeOwn }.Concat(words).ToArray(), MinWidth = 150, MinHeight = 26, Margin = new Thickness(6, 0, 0, 0) };
-            first.SelectedIndex = entry?.Reactions is { Count: > 0 } r ? Math.Max(0, IndexOf(words, r[0]) + 1) : 0;
+            // First choices: the attitude's own reactions, no reaction at all, then each reaction.
+            first = new ComboBox { ItemsSource = new[] { AttitudeOwn, NoReaction }.Concat(words).ToArray(), MinWidth = 150, MinHeight = 26, Margin = new Thickness(6, 0, 0, 0) };
+            first.SelectedIndex = entry?.Reactions switch
+            {
+                { Count: 0 } => 1,
+                { Count: > 0 } r when IndexOf(words, r[0]) is var i and >= 0 => i + 2,
+                _ => 0
+            };
             AutomationProperties.SetName(first, $"First reaction to a touch on: {label}");
             AutomationProperties.SetAutomationId(first, $"TouchTemperamentReaction-{id}");
             second = new ComboBox { ItemsSource = new[] { NothingElse }.Concat(words).ToArray(), MinWidth = 140, MinHeight = 26, Margin = new Thickness(6, 0, 0, 0) };
@@ -238,22 +268,29 @@ public partial class MainWindow
             linger = new TextBox { Text = (entry?.LingerSeconds ?? 0).ToString("0.#", CultureInfo.CurrentCulture), Width = 50, Margin = new Thickness(6, 0, 0, 0) };
             AutomationProperties.SetName(linger, $"Seconds the first reaction to {label} stays on");
             AutomationProperties.SetAutomationId(linger, $"TouchTemperamentLinger-{id}");
+            look = new TextBox { Text = (entry?.LookSeconds ?? 0).ToString("0.#", CultureInfo.CurrentCulture), Width = 50, Margin = new Thickness(6, 0, 0, 0) };
+            AutomationProperties.SetName(look, $"Seconds the character looks at your mouse after a touch on {label}");
+            AutomationProperties.SetAutomationId(look, $"TouchTemperamentLook-{id}");
             void Enable()
             {
                 var on = !isGroup || attitude.SelectedIndex > 0;
-                first.IsEnabled = linger.IsEnabled = on;
-                second.IsEnabled = on && first.SelectedIndex > 0;
+                first.IsEnabled = look.IsEnabled = on;
+                linger.IsEnabled = on && first.SelectedIndex != 1;
+                second.IsEnabled = on && first.SelectedIndex > 1;
             }
             Enable();
             attitude.SelectionChanged += (_, _) => { Enable(); edited(); };
             first.SelectionChanged += (_, _) => { Enable(); edited(); };
             second.SelectionChanged += (_, _) => edited();
             linger.TextChanged += (_, _) => edited();
+            look.TextChanged += (_, _) => edited();
             View.Children.Add(attitude);
             View.Children.Add(first);
             View.Children.Add(second);
             View.Children.Add(new TextBlock { Text = "lingers (s)", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
             View.Children.Add(linger);
+            View.Children.Add(new TextBlock { Text = "looks at your mouse (s)", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
+            View.Children.Add(look);
             if (isGroup) return;
             var remove = PageButton("Remove", () =>
             {
@@ -277,14 +314,21 @@ public partial class MainWindow
             var offset = IsGroup ? 1 : 0;
             if (attitude.SelectedIndex < offset) return null;
             var words = CharacterTouchTemperaments.Vocabulary;
-            IReadOnlyList<string>? reactions = first.SelectedIndex <= 0 ? null
-                : new[] { words[first.SelectedIndex - 1] }.Concat(second.SelectedIndex > 0 ? [words[second.SelectedIndex - 1]] : Array.Empty<string>())
-                    .Distinct(StringComparer.Ordinal).ToArray();
+            IReadOnlyList<string>? reactions = first.SelectedIndex switch
+            {
+                <= 0 => null,
+                1 => [],
+                _ => new[] { words[first.SelectedIndex - 2] }.Concat(second.SelectedIndex > 0 ? [words[second.SelectedIndex - 1]] : Array.Empty<string>())
+                    .Distinct(StringComparer.Ordinal).ToArray()
+            };
+            static double Seconds(TextBox box, double most) =>
+                double.TryParse(box.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out var seconds) && double.IsFinite(seconds)
+                    ? Math.Clamp(seconds, 0, most) : 0;
             return new()
             {
                 Attitude = attitude.SelectedIndex - offset + CharacterTouchTemperaments.MinimumAttitude, Reactions = reactions,
-                LingerSeconds = double.TryParse(linger.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out var seconds) && double.IsFinite(seconds)
-                    ? Math.Clamp(seconds, 0, CharacterTouchTemperaments.MaximumLinger) : 0
+                LingerSeconds = Seconds(linger, CharacterTouchTemperaments.MaximumLinger),
+                LookSeconds = Seconds(look, CharacterTouchTemperaments.MaximumLook)
             };
         }
     }

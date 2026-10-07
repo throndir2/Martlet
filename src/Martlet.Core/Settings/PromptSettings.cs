@@ -29,6 +29,8 @@ public static class PromptCatalog
     public const string VoiceTags = "voice_tags";
     public const string CharacterActions = "character_actions";
     public const string CharacterShowing = "character_showing";
+    public const string CharacterGaze = "character_gaze";
+    public const string CharacterLooking = "character_looking";
     public const string Voices = "voices";
     public const string HeardVoice = "heard_voice";
     public const string HeardVoiceOnly = "heard_voice_only";
@@ -247,11 +249,18 @@ public static class PromptCatalog
         "or spoken. Never write tags that aren't listed.";
 
     public const string DefaultGlanceLookInstructions =
-        "You also appear on the user's screen as an animated character whose eyes follow their mouse. When something specific " +
-        "in the picture catches your eye, start your reply with the tag for where it is, and the character looks there for a " +
-        "moment:\n{tags}\nIt works before a remark and before [{silent}]. Use at most one, and only for something worth a look " +
-        "(something new, something moving, or what you remark on); otherwise write none and the character keeps watching their " +
-        "mouse. The tags are never shown or spoken.";
+        "You also appear on the user's screen as an animated character. When something specific in the picture catches your " +
+        "eye, start your reply with the tag for where it is, and the character looks there for a moment:\n{tags}\nIt works " +
+        "before a remark and before [{silent}]. Use at most one, and only for something worth a look (something new, something " +
+        "moving, or what you remark on); otherwise write none and the character keeps its usual gaze. The tags are never shown " +
+        "or spoken.";
+
+    public const string DefaultCharacterGazeInstructions =
+        "Your character's eyes usually {usual}. To change where they look, write one of these tags anywhere in your reply; it " +
+        "stays that way until you change it again:\n{tags}\nChange it only when the moment calls for it, the way you would turn " +
+        "your eyes in person: look away when you're shy, sulking or ignoring them, follow their pointer when you're curious or " +
+        "playful, watch their window when you follow what they do. Most replies need none. While your eyes aren't doing their " +
+        "usual, Martlet's notes say so. The tags are never shown or spoken.";
 
     public const string DefaultCharacterActionNamingInstructions =
         "You set up an animated desktop character (a Live2D or VRM model) for Martlet, a voice companion. Each numbered item is one " +
@@ -422,6 +431,19 @@ public static class PromptCatalog
             "Your character is showing {showing}. Each stays on until you write its off tag, such as {example}; turn one off when " +
             "it no longer fits, otherwise leave it on.",
             ["showing", "example"]),
+        new(CharacterGaze, ConversationGroup, "Where you look",
+            "Added to replies while the desktop character shows and may change where it looks (Companion › Character › Where the " +
+            "character looks). {usual} is what its eyes usually do (\"follow the user's mouse pointer wherever it goes\"), from " +
+            "your choice or the personality; it changes only when that changes, so prompt caches keep working. {tags} lists the " +
+            "look tags, one per line with what each does. Empty it and the character keeps its usual gaze.",
+            DefaultCharacterGazeInstructions, ["usual", "tags"]),
+        new(CharacterLooking, ConversationGroup, "Where you look now",
+            "Added to the notes of a message while the character's eyes do something other than their usual because a reply " +
+            "changed it. It goes with the newest message, never the instructions, so prompt caches keep working. {looking} is " +
+            "what the eyes do now (\"look straight ahead and ignore the pointer\"); {since} is when the reply changed it (\"3 min " +
+            "ago\").",
+            "Right now your eyes {looking}: you changed that {since}. Write {look usual} to go back, or leave it.",
+            ["looking", "since"]),
         new(Voices, ConversationGroup, "Who is talking",
             "Introduces the recognized voices block. {label} is the block's marker; the voices follow it.",
             "Several people may talk to you through the same microphone. Martlet recognizes voices on this PC; the block between the " +
@@ -535,7 +557,7 @@ public static class PromptCatalog
             "know about, give a quick heads-up: who or which app it is from, never the message itself. Otherwise reply [{silent}].)",
             ["what", "title", "remarks", "silent"]),
         new(GlanceLook, VisionGroup, "Where the character looks",
-            "Added to screen glances while Companion › Vision › Where the character looks is Martlet decides and the character " +
+            "Added to screen glances while Companion › Vision › Glances at your screen is Martlet decides and the character " +
             "shows, so the Thinking model can turn the character's eyes to a part of the picture. {tags} lists the nine look tags, " +
             "one per line with where each looks; {silent} is the word for staying quiet. Empty it and only what changes on screen " +
             "draws the character's eyes.",

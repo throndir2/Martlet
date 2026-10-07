@@ -1201,18 +1201,24 @@ vision request.
 Touch temperament (below Touch zones) reads through `TouchTemperamentStatus`
 (for which persona and who decided it: built-in reactions, the Thinking model,
 `FIXTURE - NOT AI` or your own choices), `TouchTemperamentSummary` (the
-attitude per group and zone, such as *head loves, torso dislikes, ...*, and
-after how many touches it escalates), `TouchTemperamentDecision` (how deciding
-went, or that a personality change left your own choices in place),
-`TouchTemperamentSaveState` and each line's `TouchTemperamentAttitude-<group
-or zone ID>` (an attitude word or *(built-in reaction)*). `TouchZonesLast` and
-`TouchZoneState-<n>` also name the attitude and whether the reaction came from
-the temperament. `TouchTemperamentDecide` sends the personality to Thinking,
-and `TouchTemperamentReset`, `TouchTemperamentAttitude-`,
-`TouchTemperamentReaction-`, `TouchTemperamentReaction2-`,
-`TouchTemperamentLinger-`, `TouchTemperamentAfter`, `TouchTemperamentAddKind`,
+attitude per group and zone, such as *head loves, torso neutral (no
+reaction), ...*, the eyes (*eyes: look straight ahead*), the parts whose touch
+turns them to your mouse and after how many touches it escalates),
+`TouchTemperamentDecision` (how deciding went, or that a personality change
+left your own choices in place), `TouchTemperamentSaveState`,
+`TouchTemperamentGaze` (*Eyes usually*: a gaze's label or *(not decided:
+follow your mouse)*), each line's `TouchTemperamentAttitude-<group or zone
+ID>` (an attitude word or *(built-in reaction)*) and `TouchTemperamentLook-<group
+or zone ID>` (the seconds the eyes look at your mouse after a touch there).
+`TouchZonesLast` and `TouchZoneState-<n>` also name the attitude, whether the
+reaction came from the temperament and how long it looks at your mouse.
+`TouchTemperamentDecide` sends the personality to Thinking,
+and `TouchTemperamentReset`, `TouchTemperamentGaze`, `TouchTemperamentAttitude-`,
+`TouchTemperamentReaction-` (its *(no reaction)* plays nothing), `TouchTemperamentReaction2-`,
+`TouchTemperamentLinger-`, `TouchTemperamentLook-`, `TouchTemperamentAfter`, `TouchTemperamentAddKind`,
 `TouchTemperamentAdd` and `TouchTemperamentRemove-` save, so they all need
-`--allow-ui-effects`. Setting `MARTLET_TOUCH_TEMPERAMENT_FIXTURE` to a text
+`--allow-ui-effects`. `character_touch_zones` shows the temperament's `gaze`,
+each entry's `look` and the matched touch's `reaction.look`. Setting `MARTLET_TOUCH_TEMPERAMENT_FIXTURE` to a text
 file before launching the desktop makes deciding read that file (read again
 each time) as the Thinking model's answer (FIXTURE - NOT AI, shown in
 `TouchTemperamentStatus` and `TouchTemperamentDecision`, and saved with the
@@ -1220,10 +1226,27 @@ source `fixture`). Saving a changed personality (`OpenCompanion`,
 `CompanionText`, `CompanionClose`) then runs the real decide, store and route
 path with no model.
 
-`character_gaze` shows [where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks)
-(Companion › Vision › Where the character looks): `saved` (`mouse`, the
-default, or `martlet decides`, from `DecideGaze` in the `dataDirectory`'s
-`talk-preferences.json`), the change `grid` (32×18 cells, `ChangeThreshold`
+`character_gaze` shows [where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks).
+`usual` is the usual gaze from the `dataDirectory`'s `talk-preferences.json`
+(Companion › Character › Where the character looks and the overlay's Eyes
+menu): `choice` (`personality`, the default, `mouse`, `near`, `ahead` or
+`window`; `GazeUsual`), `free` (whether replies may change it; `GazeFree`),
+`personality` (the gaze in `character-temperaments.json` for the active
+persona of `settings.json`, or `personaId`), `personaId`, `gaze` (the gaze
+that applies) and `from` (`owner`, `personality` or `default`), `prompt`
+(what every reply is told: `instructions`, with the data directory's edited
+prompts, and `tags`; null when the character may not change it or *Where you
+look* is emptied) and `noteWhenChanged` (the note a reply gets while its own
+choice holds the eyes, one minute after it chose another gaze). `aim`
+rehearses the production `CharacterGaze.Aim` the overlay runs every 50 ms for
+the character's frame near the lower-right corner, each with its `expected`
+and actual `target` (`mouse`, `ahead`, `window` or `point`) and the point `at`:
+`mouseFar`, `nearModeMouseFar` (`ahead`), `nearModeMouseNear` (`mouse`),
+`aheadModeMouseNear` (`ahead`), `windowMode` (the window's middle),
+`windowModeNoWindow` (`ahead`), `touchWhileAhead` (`mouse`) and
+`glanceWhileFollowing` (`point`). `saved` is Companion › Vision › Glances at
+your screen (`usual gaze`, the default, or `martlet decides`, from `DecideGaze`
+in `talk-preferences.json`), then the change `grid` (32×18 cells, `ChangeThreshold`
 and the stronger `CharacterChangeThreshold` under the character's overlay) and
 `holdSeconds` (`glance`, `chosen` and the `gap` between glances), then
 `scenarios`: the production `GazeDirector` on generated 1920×1080 pictures
@@ -1235,14 +1258,30 @@ the lower-right corner (a glance at the bottom right),
 `sameSpotAgainLater` (a glance), `notificationBehindTheCharacter` (a glance),
 `onlyTheCharacterMoved` and `speechBubble` (`OnlyCharacter`), `newScene`
 (`Everywhere`), `byTheMouse` (`ByMouse`) and `changesAllOver` (`Scattered`);
-`ok` is true when every verdict is as expected. `tags` gives where each look tag
-points on one screen and on two side by side, `notTags` lists tags that aren't
-look tags, `prompt` is what a screen glance is told (`instructions`, with the
+`ok` is true when every verdict and aim is as expected. `tags` gives where each look tag
+points on one screen and on two side by side, `modeTags` the five gaze tags
+and the gaze each sets (`usual` for `{look usual}`), `notTags` lists tags that
+aren't look tags, `prompt` is what a screen glance is told (`instructions`, with the
 data directory's edited prompts, and `tags`; null when *Where the character
 looks* is emptied) and `replies` shows what the production segmenter makes of
-glance answers (`answer` replaces the samples): `spoken`, `shown`, `quiet`
-(a `[pass]`) and `looks` (each look cue's tag, `place` and `afterPiece`, -1 for
-a look without words). Read-only; it contacts nothing.
+answers (`answer` replaces the samples): `spoken`, `shown`, `quiet`
+(a `[pass]`), `looks` (each look cue's tag, `place` and `afterPiece`, -1 for
+a look without words) and `gazes` (each gaze cue's tag, `gaze` and
+`afterPiece`). Read-only; it contacts nothing.
+
+Companion › Character › Where the character looks reads through
+`CharacterGazeNow`: what the eyes do now and why (*The character looks straight
+ahead, as its personality decided. It may change where it looks in its
+replies.*; *as you chose*; what a reply chose and when; *Right now it looks at
+your mouse after a touch on top of head.*), and its `help` is the overlay's
+last answer (*The character's overlay last turned toward: mouse (-0.86,
+-0.39); usual gaze ahead.*). Its `CharacterGaze-personality`, `-mouse`,
+`-near`, `-ahead` and `-window` radio buttons (`selected`) and the
+`CharacterGazeFree` check box (`checkedState`) save `talk-preferences.json`, so
+they need `--allow-ui-effects`. The desktop log records *The character looks at
+the mouse for 3 s after a touch on top of head.*, *The Thinking model chose the
+character's gaze: ahead (usually mouse).* and the overlay menu's *The
+character's menu chose 'look-window'.*
 
 `character_theme` makes a character model's colors and palettes the way
 Settings › Appearance does ([Character palettes](UI_DESIGN.md#character-palettes)),
@@ -3196,7 +3235,7 @@ start*) returns `ProblemHeading`; its report `ProblemText` (exception text and
 paths) is not returned, `Copy-ProblemText` copies it, `ProblemClose` is
 passive and `ProblemOpenLogs` opens Explorer (`--allow-ui-effects`).
 `ui_connect` also attaches to a Martlet that shows only its problem dialog.
-Status fields include `VisionNow` (Companion › Vision's *Now* line: *On. Martlet looks at your whole screen occasionally. Comments: Normal.* by default, or *Off. ...* once turned off; a saved `talk-preferences.json` keeps its choices, and nothing is captured until Start watching), `VisionToggle` (*Turn vision off* while vision is on, *Turn vision on* otherwise; clicking it saves `talk-preferences.json`, so it needs `--allow-ui-effects`; the `VisionSource-ActiveWindow`, `-ActiveScreen`, `-Camera` and `-Url` choices report `selected`, `-ActiveScreen` by default), `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `VisionDisclosure` (Companion › Vision: exactly what vision captures and sends and where, including that what you type or say goes with the newest picture and, for the whole screen, the looks at notifications and flashing taskbar buttons), `VisionGazeStatus` (Companion › Vision › Where the character looks: *The character follows your mouse.*, why Martlet can't decide yet (vision off, a camera, the character hidden, not watching yet) or what the eyes are on now; its `VisionGaze-Mouse` and `VisionGaze-Martlet` choices save `talk-preferences.json`, so they need `--allow-ui-effects`, and `character_gaze` reads the saved choice), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus`'s `help` as *Last look 10:17 PM: the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, whether Thinking steps are off (the default) or on, and the other saved settings), `RepliesThinking` (Companion › Replies › Thinking steps: *Off*, the default, or *On*; choosing one with `ui_select` saves it, so it needs `--allow-ui-effects`) and `RepliesThinkingStatus` (how the Thinking route takes it: *Used by Ollama on this PC.*, *Depends on the model at ...* for servers where it depends on the model, or not used on the OpenAI route), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupJobNow-Thinking`, `SetupJobNow-Voice` and `SetupJobNow-Listening` (the job's *Now* line: where it runs and the model, such as *Ollama on this PC: gemma4:12b*), `SetupJobNetwork-Thinking`, `-Voice` and `-Listening` (shown when a host does the job for your Martlet network: *Your Martlet network does thinking on diva-host, as chosen on desktop-diva. This PC switches to it as soon as it can: pair diva-host with this PC first.*, or *Your other computers use this PC for thinking, through diva-host.*; a computer that hasn't chosen yet then selects `Place-Thinking-Computer` and its *Now* line reads *Not set up on this PC yet.*), `SetupCloudKeyStatus-Thinking`, `-Voice` and `-Listening` (under *A cloud provider*, what the key field does for the chosen provider: keep the saved key, use again *Your OpenRouter key from before*, set aside when the job left that provider, or ask for one; never the key; `SetupCloudSave-<page>` and `SetupUseLocalThinking` save the route, so they need `--allow-ui-effects`, and keys set aside never block them), `SetupLocalRecommendation` (the local Ollama model recommended for this PC: the fastest, Gemma 4 E2B, on every graphics card, and the largest that fits this card as the smarter, slower choice, each leaving about 5 GB for a game and Martlet's character), `SetupLocalModelPicks` (the suggestion picked from the list: its size, the card it fits, whether it *hears your voice* or *gets the transcript*, and *fastest, recommended* or *smartest that fits here*; choosing one with `ui_select` only fills `SetupLocalModel`, the model name, and saves nothing, but needs `--allow-ui-effects`), `AdvisorStep`, `AdvisorSummary` and `AdvisorChoice-<n>` (the setup advisor that Home's `OpenSetupAdvisor` opens: which step it shows, its plan's summary and each role's pick and status, such as *Speech-to-text: Parakeet speech recognition (Available)*; `GoalFastest` and the other goals, `AdvisorNext`, `AdvisorBack` and `AdvisorClose` only change what it shows), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has, read over loopback when the Thinking tab opens, and which one Thinking uses), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `OwnHostUpdateStatus` (Settings › App updates, only on a PC running its own host service: where keeping it on this app's version stands), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*). On Companion › Voice › Voice engine, `VoiceEngineUse-<engine key>` under This PC asks one confirmation (what it installs, the engine it replaces and its model's licence; installing Docker Desktop still asks for its own terms) and then sets up and switches in a run window, so it needs `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. `SetupUseLocalThinking` (*Use Ollama on this PC*, `--allow-ui-effects`) gets the model in `SetupLocalModel` ready before Thinking switches: for a model Ollama doesn't have it first asks `LocalModelDownloadQuestion` (the tag, its size when Martlet knows it and what Thinking keeps using until then; `ConfirmationYes` downloads, `ConfirmationNo` logs *Status: Thinking didn't change.*), then a run window titled *Switch Thinking to <model>* downloads (when needed) and loads it, ending with `HostRunStatus` *<model> is loaded (n s). Thinking switches to it now.*, and only then does `SetupOllamaStatus` say *Thinking uses <model>*. An open talk window follows any saved job change between replies and logs *The open conversation follows the changed setup between replies: Llm ChatCompletions <model>, ...* (`logs_tail` `contains` `open conversation follows`). A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunHide` (*Hide*, also Esc and the window's close button) only hides a running run, which keeps going in Background tasks, and closes the window once the run has finished; `HostRunHideHint` says so while it runs. `HostRunCancel` (*Cancel task...*) asks first (`CancelTaskQuestion`; `ConfirmationYes` cancels, `ConfirmationNo` keeps it running), so it needs `--allow-ui-effects`. A fresh data directory needs no saved settings first: pairing, setting up this PC's host service and a voice engine's setup all work before Setup. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
+Status fields include `VisionNow` (Companion › Vision's *Now* line: *On. Martlet looks at your whole screen occasionally. Comments: Normal.* by default, or *Off. ...* once turned off; a saved `talk-preferences.json` keeps its choices, and nothing is captured until Start watching), `VisionToggle` (*Turn vision off* while vision is on, *Turn vision on* otherwise; clicking it saves `talk-preferences.json`, so it needs `--allow-ui-effects`; the `VisionSource-ActiveWindow`, `-ActiveScreen`, `-Camera` and `-Url` choices report `selected`, `-ActiveScreen` by default), `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `VisionDisclosure` (Companion › Vision: exactly what vision captures and sends and where, including that what you type or say goes with the newest picture and, for the whole screen, the looks at notifications and flashing taskbar buttons), `VisionGazeStatus` (Companion › Vision › Glances at your screen: the character's usual gaze, such as *The character follows your mouse.*, why Martlet can't decide yet (vision off, a camera, the character hidden, not watching yet) or what the eyes are on now; its `VisionGaze-Mouse` (*Keep its usual gaze*) and `VisionGaze-Martlet` choices save `talk-preferences.json`, so they need `--allow-ui-effects`, and `character_gaze` reads the saved choice as `saved`), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus`'s `help` as *Last look 10:17 PM: the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, whether Thinking steps are off (the default) or on, and the other saved settings), `RepliesThinking` (Companion › Replies › Thinking steps: *Off*, the default, or *On*; choosing one with `ui_select` saves it, so it needs `--allow-ui-effects`) and `RepliesThinkingStatus` (how the Thinking route takes it: *Used by Ollama on this PC.*, *Depends on the model at ...* for servers where it depends on the model, or not used on the OpenAI route), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupJobNow-Thinking`, `SetupJobNow-Voice` and `SetupJobNow-Listening` (the job's *Now* line: where it runs and the model, such as *Ollama on this PC: gemma4:12b*), `SetupJobNetwork-Thinking`, `-Voice` and `-Listening` (shown when a host does the job for your Martlet network: *Your Martlet network does thinking on diva-host, as chosen on desktop-diva. This PC switches to it as soon as it can: pair diva-host with this PC first.*, or *Your other computers use this PC for thinking, through diva-host.*; a computer that hasn't chosen yet then selects `Place-Thinking-Computer` and its *Now* line reads *Not set up on this PC yet.*), `SetupCloudKeyStatus-Thinking`, `-Voice` and `-Listening` (under *A cloud provider*, what the key field does for the chosen provider: keep the saved key, use again *Your OpenRouter key from before*, set aside when the job left that provider, or ask for one; never the key; `SetupCloudSave-<page>` and `SetupUseLocalThinking` save the route, so they need `--allow-ui-effects`, and keys set aside never block them), `SetupLocalRecommendation` (the local Ollama model recommended for this PC: the fastest, Gemma 4 E2B, on every graphics card, and the largest that fits this card as the smarter, slower choice, each leaving about 5 GB for a game and Martlet's character), `SetupLocalModelPicks` (the suggestion picked from the list: its size, the card it fits, whether it *hears your voice* or *gets the transcript*, and *fastest, recommended* or *smartest that fits here*; choosing one with `ui_select` only fills `SetupLocalModel`, the model name, and saves nothing, but needs `--allow-ui-effects`), `AdvisorStep`, `AdvisorSummary` and `AdvisorChoice-<n>` (the setup advisor that Home's `OpenSetupAdvisor` opens: which step it shows, its plan's summary and each role's pick and status, such as *Speech-to-text: Parakeet speech recognition (Available)*; `GoalFastest` and the other goals, `AdvisorNext`, `AdvisorBack` and `AdvisorClose` only change what it shows), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has, read over loopback when the Thinking tab opens, and which one Thinking uses), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `SetupProviderHint` (Setup › Jobs prefilled model), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `OwnHostUpdateStatus` (Settings › App updates, only on a PC running its own host service: where keeping it on this app's version stands), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*). On Companion › Voice › Voice engine, `VoiceEngineUse-<engine key>` under This PC asks one confirmation (what it installs, the engine it replaces and its model's licence; installing Docker Desktop still asks for its own terms) and then sets up and switches in a run window, so it needs `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. `SetupUseLocalThinking` (*Use Ollama on this PC*, `--allow-ui-effects`) gets the model in `SetupLocalModel` ready before Thinking switches: for a model Ollama doesn't have it first asks `LocalModelDownloadQuestion` (the tag, its size when Martlet knows it and what Thinking keeps using until then; `ConfirmationYes` downloads, `ConfirmationNo` logs *Status: Thinking didn't change.*), then a run window titled *Switch Thinking to <model>* downloads (when needed) and loads it, ending with `HostRunStatus` *<model> is loaded (n s). Thinking switches to it now.*, and only then does `SetupOllamaStatus` say *Thinking uses <model>*. An open talk window follows any saved job change between replies and logs *The open conversation follows the changed setup between replies: Llm ChatCompletions <model>, ...* (`logs_tail` `contains` `open conversation follows`). A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunHide` (*Hide*, also Esc and the window's close button) only hides a running run, which keeps going in Background tasks, and closes the window once the run has finished; `HostRunHideHint` says so while it runs. `HostRunCancel` (*Cancel task...*) asks first (`CancelTaskQuestion`; `ConfirmationYes` cancels, `ConfirmationNo` keeps it running), so it needs `--allow-ui-effects`. A fresh data directory needs no saved settings first: pairing, setting up this PC's host service and a voice engine's setup all work before Setup. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
 diagnostics controls can be clicked. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
@@ -3792,7 +3831,15 @@ choice or another `MoveAvatar` click. While it is open, snapshots list
 Martlet's voice is muted; see below), `CharacterOpenMartlet` (*Open Martlet*, shows the window like
 `TrayOpen`, also from the notification area) and `CharacterSettings`
 (*Character settings*, opens Companion › Character), which are passive clicks
-(except `CharacterMuteVoice`);
+(except `CharacterMuteVoice`), and `CharacterEyes` (*Eyes*), whose click only
+opens its submenu: `CharacterEyes-personality` (*As the personality decides*),
+`CharacterEyes-mouse`, `CharacterEyes-near`, `CharacterEyes-ahead`,
+`CharacterEyes-window` and `CharacterEyes-free` (*Let the character change
+it*). Their `checkedState` shows what Martlet last told the overlay applies;
+choosing one goes through Martlet (*The character's menu chose
+'look-ahead'.*, `look-free-off`), saves `talk-preferences.json` like Companion ›
+Character › Where the character looks (`character_gaze` `usual`), so they need
+`--allow-ui-effects`;
 then `CharacterZoomIn`, `CharacterZoomOut`, `CharacterResetZoom` (disabled at
 the default zoom), `CharacterResetPosition`, `CharacterLockPosition`, the checkable `CharacterOnTop`
 (*Keep on top*, on by default; its `checkedState` is the current choice for
