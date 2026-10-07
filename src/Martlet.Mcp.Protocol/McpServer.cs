@@ -141,10 +141,46 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "character overlay's drawing, +y down; unzoomed, its head is near 0.5, 0.15), and return the renderer's hit test as " +
             "last: n, x, y, hit, zone (head, hair, face, body, arm, hand, leg or foot), hitAreas and drawables (Live2D), bone, node, " +
             "hair, mesh and material (VRM). Martlet then plays its tap reaction (the desktop log records 'The character was " +
-            "tapped on the ...'). Tapping requires --allow-ui-effects; without x and y it only reads the last tap.", new
+            "tapped on the ...'). holdMs presses that long (600 or more is a hold, up to 10000), repeat taps the same point up to " +
+            "20 times gapMs apart (default 150), and taps ([{x, y, holdMs}], up to 20) taps a sequence of points instead. With " +
+            "Companion > Character > Touch zones showing, noticed reads what Martlet noticed after settleMs: waiting (the touch " +
+            "line that waits for a reply and when a touch reply starts), last (which reply took the last touches and what " +
+            "Thinking was told) and zone (TouchZonesLast). Tapping requires --allow-ui-effects; without x, y or taps it only " +
+            "reads the last tap.", new
         {
             x = new { type = "number", minimum = 0, maximum = 1 },
-            y = new { type = "number", minimum = 0, maximum = 1 }
+            y = new { type = "number", minimum = 0, maximum = 1 },
+            holdMs = new { type = "integer", minimum = 0, maximum = 10_000 },
+            repeat = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumTaps },
+            gapMs = new { type = "integer", minimum = 0, maximum = 10_000 },
+            settleMs = new { type = "integer", minimum = 0, maximum = 15_000 },
+            taps = new
+            {
+                type = "array", maxItems = DesktopAutomation.MaximumTaps,
+                items = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        x = new { type = "number", minimum = 0, maximum = 1 },
+                        y = new { type = "number", minimum = 0, maximum = 1 },
+                        holdMs = new { type = "integer", minimum = 0, maximum = 10_000 }
+                    },
+                    required = new[] { "x", "y" }
+                }
+            }
+        }),
+        Tool("character_stroke", "Stroke the showing character, whose position must be locked, like pressing the left button and " +
+            "dragging across it: along points [[x, y], ...] (2 to 200, fractions 0 to 1 of the character overlay's drawing, +y " +
+            "down; unzoomed, its hair is near 0.5, 0.1 and its face near 0.5, 0.2), one point every stepMs milliseconds (10 to " +
+            "2000, default 40). Martlet hit-tests the path, plays each crossed zone's reaction (the first zone's emote held until " +
+            "the stroke ends) and records the stroke in the touch ledger. Returns the overlay's stroke record as last.stroke (n, " +
+            "samples, hits, ms, coarse zones crossed); Companion > Character > Touch zones' CharacterPhysicalLast reads Martlet's " +
+            "summary (zones, pace, passes). last.physical is the last settled move, zoom or pan (kind, dx, dy, from and to monitors, " +
+            "zoomFrom, zoomTo, focus). Requires --allow-ui-effects; without points it only reads the last stroke.", new
+        {
+            points = new { type = "array", items = new { type = "array", items = new { type = "number", minimum = 0, maximum = 1 }, minItems = 2, maxItems = 2 } },
+            stepMs = new { type = "integer", minimum = 10, maximum = 2000 }
         }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
@@ -467,6 +503,20 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, engine = new { type = "string" },
             answer = new { type = "string" }, voiceTag = new { type = "string" }, showing = new { type = "array", items = new { type = "string" } }
+        }),
+        Tool("character_physical_check", "What Martlet makes of a stroke across the locked character and of moves and zooms " +
+            "(Martlet.Avatar.Hosting CharacterStrokes and CharacterPhysicalWords with Martlet.Conversation's TouchLedger), headless, " +
+            "with no desktop and no model request. stroke is a JSON CharacterStroke {\"id\",\"phase\":\"end\",\"aspect\",\"samples\":" +
+            "[{\"x\",\"y\",\"ms\",\"touch\":CharacterTouch or null}]} summarized against the touch zones saved for modelId in dataDirectory " +
+            "(or the rough zones before any were found): zones crossed, main zone, ms, length, speed, pace (slow, steady or quick) and " +
+            "passes. changes is a JSON array of RendererPhysical {\"kind\":\"moved|home|zoomed|zoom_reset|panned\",\"dx\",\"dy\"," +
+            "\"screenWidth\",\"fromScreen\",\"toScreen\",\"zoomFrom\",\"zoomTo\",\"focus\"}. Returns each change's ledger kind and words, " +
+            "the plain line the next reply would carry (\"They slowly stroked your hair 4 times, then moved you to their other " +
+            "monitor.\"), the history line and whether it would start a reply on its own. noticeAll (default true) treats every zone as " +
+            "having Martlet notices on; false uses the zones' own setting.", new
+        {
+            dataDirectory = new { type = "string" }, modelId = new { type = "string" }, stroke = new { type = "string" },
+            changes = new { type = "string" }, noticeAll = new { type = "boolean" }
         }),
         Tool("character_touch_zones", "Companion > Character > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones; docs/AVATARS.md " +
             "\"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate), the vision request sent with the " +
@@ -828,7 +878,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "time: half its audio, a 1.5 s pause, then the rest, as Chatterbox streams on a busy graphics card; every piece must " +
             "still be spoken whole and the latency line must say the pauses, voice.pauses and voice.pausedMs) or none; muted " +
             "instead has the user mute Martlet's voice (the character's Mute voice) as the failAt-th piece is asked, which ends " +
-            "only what is said aloud and is not a failure (voice.muted); text-only sends the reply with no voice at all (Speak " +
+            "only what is said aloud and is not a failure (voice.muted); paused pauses the reply once its first audio played, as " +
+            "Pause and decide does when you talk over it, holds it 1 s and plays it on: ok also needs no samples played while paused, " +
+            "the next piece still made meanwhile (voice.hold), every piece said once (nothing made again) and the " +
+            "latency line saying it paused and resumed; text-only sends the reply with no voice at all (Speak " +
             "Martlet's replies aloud off), so every sentence goes to the captions; a fixture speaker opens no " +
             "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
             "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
@@ -971,6 +1024,42 @@ internal sealed class McpServer(DesktopAutomation desktop)
                         expectInterrupt = new { type = "boolean" }
                     },
                     required = new[] { "text" },
+                    additionalProperties = false
+                }
+            }
+        }),
+        Tool("barge_in_check", "Companion > Listening > When you talk over Martlet: simulates words said over a reply and returns the " +
+            "production verdict (BargeInJudging with the local rules judge). A clear cue (a stop word, Martlet's name) stops at once and " +
+            "is never judged; other words that the quick check would stop on pause the reply and the judge says interrupt (stop and " +
+            "answer) or notForMe (a backchannel, agreeing, laughing along, Martlet's own words heard back: play on from where it " +
+            "paused). samples: heard with optional sentence (what Martlet is saying), recentReply, voicedMs and expectVerdict " +
+            "(interrupt or notForMe); default: a fixed set with the verdict each must give. Each sample returns verdict, reason, " +
+            "source (Cue, Judge), judge, judgeMs and the action with the saved choice. deadlines: a fixture model judge (NOT AI) " +
+            "slower than the deadline (judgeDelayMs, default 1000; deadlineMs, default 400) must give way to the rules within the " +
+            "deadline, and one in time must be used. holds: what a pause does on a simulated clock (quiet after notForMe plays on; " +
+            "talking on past 1.5 s stops; interrupt stops; no verdict plays on at the pause's limit). Also returns the saved choice " +
+            "(behavior PauseAndDecide or StopAtOnce from talk-preferences.json, bargeIn, wordCheck) and the timings. ok when every " +
+            "expectation held. Nothing is recorded or played; nothing leaves this PC.", new
+        {
+            dataDirectory = new { type = "string" },
+            deadlineMs = new { type = "integer", minimum = 1, maximum = 5000 },
+            judgeDelayMs = new { type = "integer", minimum = 0, maximum = 10000 },
+            samples = new
+            {
+                type = "array", maxItems = 64,
+                items = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        name = new { type = "string", maxLength = 64 },
+                        heard = new { type = "string", maxLength = 1024 },
+                        sentence = new { type = "string", maxLength = 1024 },
+                        recentReply = new { type = "string", maxLength = 1024 },
+                        voicedMs = new { type = "integer", minimum = 0, maximum = 30000 },
+                        expectVerdict = new { type = "string", @enum = new[] { "interrupt", "notForMe" } }
+                    },
+                    required = new[] { "heard" },
                     additionalProperties = false
                 }
             }
@@ -1310,7 +1399,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
                 "ui_set_range" => desktop.SetRange(RequiredString(arguments, "id"), RequiredDouble(arguments, "value")),
                 "ui_move" => desktop.Move(RequiredString(arguments, "id"), RequiredInt(arguments, "dx"), RequiredInt(arguments, "dy")),
-            "character_touch" => await desktop.TouchCharacterAsync(OptionalDouble(arguments, "x"), OptionalDouble(arguments, "y")),
+            "character_touch" => await desktop.TouchCharacterAsync(OptionalDouble(arguments, "x"), OptionalDouble(arguments, "y"),
+                OptionalInt(arguments, "holdMs"), OptionalInt(arguments, "repeat"), OptionalInt(arguments, "gapMs"), Taps(arguments),
+                OptionalInt(arguments, "settleMs")),
+                "character_stroke" => await desktop.StrokeCharacterAsync(StrokePoints(arguments), OptionalInt(arguments, "stepMs") ?? 40),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "turn_judge_check" => await TurnJudgeCheck.RunAsync(arguments, MartletDirectory(arguments), cancellation),
@@ -1348,6 +1440,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_profiles" => CharacterProfiles(arguments),
                 "character_actions" => await CharacterActionsCheckAsync(arguments, cancellation),
                 "character_gaze" => GazeCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer")),
+                "character_physical_check" => PhysicalCheck.Run(DataDirectory(arguments), OptionalString(arguments, "modelId"),
+                    OptionalString(arguments, "stroke"), OptionalString(arguments, "changes"), OptionalBool(arguments, "noticeAll") ?? true),
                 "character_touch_zones" => await TouchZonesCheck.RunAsync(DataDirectory(arguments),
                     OptionalString(arguments, "dataDirectory") is not null, OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"),
                     OptionalString(arguments, "answer"), OptionalInt(arguments, "width"), OptionalInt(arguments, "height"),
@@ -1410,6 +1504,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "echo_check" => await EchoCheck.RunAsync(DataDirectory(arguments), OptionalInt(arguments, "delayMs"), cancellation),
                 "utterance_filter_check" => await UtteranceFilterCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
                     SpeechDirectory(arguments), cancellation),
+                "barge_in_check" => await BargeInCheck.RunAsync(arguments, DataDirectory(arguments), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "discord_call_check" => await DiscordCallCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "discord_text_check" => await DiscordTextCheck.RunAsync(DataDirectory(arguments), arguments, cancellation),
@@ -3228,6 +3323,29 @@ internal sealed class McpServer(DesktopAutomation desktop)
             return null;
         if (value.ValueKind != JsonValueKind.String) throw new ArgumentException($"'{property}' must be a string.");
         return value.GetString();
+    }
+
+    // character_touch's taps: [{x, y, holdMs}].
+    private static IReadOnlyList<(double X, double Y, int HoldMs)>? Taps(JsonElement arguments)
+    {
+        if (arguments.ValueKind != JsonValueKind.Object || !arguments.TryGetProperty("taps", out var taps) || taps.ValueKind == JsonValueKind.Null)
+            return null;
+        if (taps.ValueKind != JsonValueKind.Array) throw new ArgumentException("'taps' must be an array of {x, y, holdMs}.");
+        return taps.EnumerateArray().Take(DesktopAutomation.MaximumTaps + 1).Select(tap => (
+            OptionalDouble(tap, "x") ?? throw new ArgumentException("Each tap needs x."),
+            OptionalDouble(tap, "y") ?? throw new ArgumentException("Each tap needs y."),
+            OptionalInt(tap, "holdMs") ?? 0)).ToArray();
+    }
+
+    /// <summary>character_stroke's points, [[x, y], ...], or null when none were given.</summary>
+    private static (double X, double Y)[]? StrokePoints(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty("points", out var value) || value.ValueKind == JsonValueKind.Null)
+            return null;
+        if (value.ValueKind != JsonValueKind.Array) throw new ArgumentException("'points' must be an array of [x, y] pairs.");
+        return [.. value.EnumerateArray().Select(point =>
+            point.ValueKind == JsonValueKind.Array && point.GetArrayLength() == 2 && point[0].TryGetDouble(out var x) && point[1].TryGetDouble(out var y)
+                ? (x, y) : throw new ArgumentException("Each point must be [x, y]."))];
     }
 
     private static double? OptionalDouble(JsonElement element, string property)

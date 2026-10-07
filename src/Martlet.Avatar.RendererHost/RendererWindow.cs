@@ -16,7 +16,7 @@ using Microsoft.Web.WebView2.Wpf;
 
 namespace Martlet.Avatar.RendererHost;
 
-internal sealed class RendererWindow : Window
+internal sealed partial class RendererWindow : Window
 {
     private readonly Stream input, output;
     // Menu choices Martlet itself carries out (hide, open, talk, settings, lock, mute and unmute); null when started without it (tests).
@@ -111,6 +111,14 @@ internal sealed class RendererWindow : Window
         viewport.MouseMove += (_, e) => TrackPress(e.GetPosition(viewport));
         viewport.MouseLeftButtonUp += (_, e) => EndPress(e.GetPosition(viewport));
         viewport.TouchAt = TouchAt;
+        // A press and drag on a locked character can't move it: it strokes the character instead.
+        viewport.MouseMove += (_, e) => TrackStroke(e.GetPosition(viewport), Environment.TickCount64);
+        viewport.MouseLeftButtonUp += (_, e) => EndStroke(e.GetPosition(viewport), Environment.TickCount64);
+        viewport.StrokeAlong = StrokeAlong;
+        viewport.LostMouseCapture += (_, _) =>
+        {
+            if (stroke is { } lost && !strokeReleasing) EndStroke(lost.Last, Environment.TickCount64);
+        };
         viewport.LostMouseCapture += (_, _) =>
         {
             if (panFrom is null) return;
@@ -136,10 +144,10 @@ internal sealed class RendererWindow : Window
                 case Key.Up when camera is not null: Nudge(0, -step); break;
                 case Key.Down when camera is not null: Nudge(0, step); break;
                 case Key.Home when camera is not null: ResetZoom(); break;
-                case Key.Left when !placementLocked: Left -= step; PlacementChanged(); break;
-                case Key.Right when !placementLocked: Left += step; PlacementChanged(); break;
-                case Key.Up when !placementLocked: Top -= step; PlacementChanged(); break;
-                case Key.Down when !placementLocked: Top += step; PlacementChanged(); break;
+                case Key.Left when !placementLocked: Physically("moved", () => Left -= step); PlacementChanged(); break;
+                case Key.Right when !placementLocked: Physically("moved", () => Left += step); PlacementChanged(); break;
+                case Key.Up when !placementLocked: Physically("moved", () => Top -= step); PlacementChanged(); break;
+                case Key.Down when !placementLocked: Physically("moved", () => Top += step); PlacementChanged(); break;
                 case Key.Home when !placementLocked: ResetToDefault(); break;
                 case Key.OemPlus or Key.Add: Zoom(ZoomStep * ZoomStep, null); break;
                 case Key.OemMinus or Key.Subtract: Zoom(1 / (ZoomStep * ZoomStep), null); break;
@@ -238,6 +246,17 @@ internal sealed class RendererWindow : Window
     /// </summary>
     private void Zoom(double factor, Point? anchor)
     {
+        if (camera is null)
+        {
+            var at = anchor ?? new Point(viewport.ActualWidth / 2, viewport.ActualHeight * 0.3);
+            Physically("zoomed", () => ZoomView(factor, anchor), Fraction(at));
+            return;
+        }
+        ZoomView(factor, anchor);
+    }
+
+    private void ZoomView(double factor, Point? anchor)
+    {
         if (camera is not null)
         {
             var zoom = Math.Clamp(viewZoom * factor, RendererCamera.MinimumZoom, RendererCamera.MaximumZoom);
@@ -286,6 +305,16 @@ internal sealed class RendererWindow : Window
 
     private void ResetZoom()
     {
+        if (camera is null && CanResetZoom)
+        {
+            Physically("zoom_reset", ResetZoomView);
+            return;
+        }
+        ResetZoomView();
+    }
+
+    private void ResetZoomView()
+    {
         SetView(1, 0, 0);
         if (camera is not null) FramingChanged();
         else if (!FixedSize) ResizeOverlay(Math.Min(DefaultFrameWidth, SystemParameters.WorkArea.Width));
@@ -296,6 +325,11 @@ internal sealed class RendererWindow : Window
     private void Nudge(double dx, double dy)
     {
         if (viewport.ActualWidth <= 0 || viewport.ActualHeight <= 0) return;
+        if (camera is null && viewZoom > 1)
+        {
+            Physically("panned", () => SetView(viewZoom, viewX + dx * 2 / (viewport.ActualWidth * FrameFraction), viewY - dy * 2 / viewport.ActualHeight));
+            return;
+        }
         SetView(viewZoom, viewX + dx * 2 / (viewport.ActualWidth * FrameFraction), viewY - dy * 2 / viewport.ActualHeight);
         FramingChanged();
     }
@@ -305,8 +339,11 @@ internal sealed class RendererWindow : Window
     private void ResetToDefault(bool evenLocked = false)
     {
         if (placementLocked && !evenLocked || camera is not null) return;
-        SetView(1, 0, 0);
-        PlaceOnDesktop();
+        Physically("home", () =>
+        {
+            SetView(1, 0, 0);
+            PlaceOnDesktop();
+        });
         PlacementChanged();
     }
 
@@ -583,8 +620,11 @@ internal sealed class RendererWindow : Window
         if (placementLocked) throw new InvalidOperationException("The character's position is locked. Unlock it in Martlet.");
         if (PresentationSource.FromVisual(this)?.CompositionTarget is not { } target) return;
         var offset = target.TransformFromDevice.Transform(screen - viewport.PointToScreen(new Point(0, 0)));
-        Left += offset.X;
-        Top += offset.Y;
+        Physically("moved", () =>
+        {
+            Left += offset.X;
+            Top += offset.Y;
+        });
         PlacementChanged();
     }
 
@@ -656,8 +696,10 @@ internal sealed class RendererWindow : Window
     {
         if (panFrom is not { } from || viewport.ActualWidth <= 0 || viewport.ActualHeight <= 0) return;
         panFrom = position;
-        SetView(viewZoom, viewX + (position.X - from.X) * 2 / (viewport.ActualWidth * FrameFraction),
+        void Step() => SetView(viewZoom, viewX + (position.X - from.X) * 2 / (viewport.ActualWidth * FrameFraction),
             viewY - (position.Y - from.Y) * 2 / viewport.ActualHeight);
+        if (camera is null) Physically("panned", Step);
+        else Step();
     }
 
     private void EndPan()
@@ -781,15 +823,16 @@ internal sealed class RendererWindow : Window
         }
         e.Handled = true;
         if (!placementLocked) DragWindow();
+        else BeginStroke(e.GetPosition(viewport), Environment.TickCount64);
     }
 
     // ---------- tapping the character ----------
 
     // Where (in the viewport) and when the left button went down on the character; cleared once it moves too far to be a tap.
     private (Point At, long Since)? press;
-    private const long TapMilliseconds = 700;
+
     private int touchId;
-    private (int Id, double X, double Y)? touchPending;
+    private (int Id, double X, double Y, int Held)? touchPending;
 
     private static bool Moved(Point from, Point to) =>
         Math.Abs(to.X - from.X) >= SystemParameters.MinimumHorizontalDragDistance ||
@@ -800,6 +843,7 @@ internal sealed class RendererWindow : Window
     private void DragWindow()
     {
         double left = Left, top = Top;
+        var before = OverlayNow();
         var held = press;
         press = null;
         DragMove();
@@ -808,9 +852,10 @@ internal sealed class RendererWindow : Window
             if (Left != left || Top != top) (Left, Top) = (left, top);
             // Windows' move loop can end before the button comes up; then the release (or a move) decides.
             if (PrimaryButtonDown()) press = h;
-            else if (Environment.TickCount64 - h.Since <= TapMilliseconds) Tap(h.At);
+            else Tap(h.At, Environment.TickCount64 - h.Since);
             return;
         }
+        NoteOverlay("moved", before);
         PlacementChanged();
     }
 
@@ -830,25 +875,28 @@ internal sealed class RendererWindow : Window
     {
         if (press is not { } held) return;
         press = null;
-        if (Environment.TickCount64 - held.Since <= TapMilliseconds && !Moved(held.At, at)) Tap(held.At);
+        if (!Moved(held.At, at)) Tap(held.At, Environment.TickCount64 - held.Since);
     }
 
-    private void Tap(Point at)
+    // A press that came up where it went down: a tap, or a hold when it lasted CharacterTouch.HoldMilliseconds or more. A press
+    // longer than CharacterTouch.MaximumHeldMilliseconds is let go.
+    private void Tap(Point at, long heldMilliseconds)
     {
         if (viewport.ActualWidth <= 0 || viewport.ActualHeight <= 0) return;
-        TouchAt(at.X / viewport.ActualWidth, at.Y / viewport.ActualHeight);
+        if (heldMilliseconds is < 0 or > CharacterTouch.MaximumHeldMilliseconds) return;
+        TouchAt(at.X / viewport.ActualWidth, at.Y / viewport.ActualHeight, (int)heldMilliseconds);
     }
 
     /// <summary>Asks the page what of the character is at <paramref name="x"/>, <paramref name="y"/> (fractions of the page, +y
     /// down); its answer arrives unprompted (see <see cref="Touched"/>). A tap through UI Automation (Martlet's MCP
     /// character_touch) comes here too.</summary>
-    private void TouchAt(double x, double y)
+    private void TouchAt(double x, double y, int held)
     {
         if (browser.CoreWebView2 is null || failure.Failed || closed) return;
         x = Math.Round(Math.Clamp(x, 0, 1), 4);
         y = Math.Round(Math.Clamp(y, 0, 1), 4);
         var id = ++touchId;
-        touchPending = (id, x, y);
+        touchPending = (id, x, y, Math.Clamp(held, 0, CharacterTouch.MaximumHeldMilliseconds));
         try
         {
             browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "touch", data = new { id, x, y } },
@@ -865,6 +913,20 @@ internal sealed class RendererWindow : Window
             !answer.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.Number || !id.TryGetInt32(out var number) ||
             number != pending.Id) return;
         touchPending = null;
+        var (hit, touch) = ReadTouch(answer, pending.X, pending.Y);
+        touch = touch with { HeldMilliseconds = pending.Held };
+        viewport.LastTouch = JsonSerializer.Serialize(new
+        {
+            n = pending.Id, x = touch.X, y = touch.Y, hit, zone = hit ? touch.CoarseZone : null, touch.HitAreas, touch.Drawables,
+            touch.Bone, touch.Node, touch.Hair, touch.Mesh, touch.Material, held = touch.HeldMilliseconds
+        }, RendererProtocol.Json);
+        if (hit) SendTouch(touch);
+    }
+
+    /// <summary>One answer of the page's hit test at <paramref name="x"/>, <paramref name="y"/>: whether it found the character
+    /// and what is there. Malformed names are dropped.</summary>
+    private static (bool Hit, CharacterTouch Touch) ReadTouch(JsonElement answer, double x, double y)
+    {
         static string? Name(JsonElement owner, string property) =>
             owner.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String &&
             value.GetString() is { Length: > 0 } text && !text.Any(char.IsControl)
@@ -875,16 +937,11 @@ internal sealed class RendererWindow : Window
                     .Select(item => item.GetString()!).Where(text => text.Length is > 0 and <= CharacterTouch.MaximumName && !text.Any(char.IsControl))
                     .Take(most).ToArray()
                 : [];
+        if (answer.ValueKind != JsonValueKind.Object) return (false, new(x, y, [], [], null, null, false, null, null));
         var hit = answer.TryGetProperty("hit", out var found) && found.ValueKind == JsonValueKind.True;
-        var touch = new CharacterTouch(pending.X, pending.Y, Names(answer, "hitAreas", CharacterTouch.MaximumHitAreas),
+        return (hit, new CharacterTouch(x, y, Names(answer, "hitAreas", CharacterTouch.MaximumHitAreas),
             Names(answer, "drawables", CharacterTouch.MaximumDrawables), Name(answer, "bone"), Name(answer, "node"),
-            answer.TryGetProperty("hair", out var hair) && hair.ValueKind == JsonValueKind.True, Name(answer, "mesh"), Name(answer, "material"));
-        viewport.LastTouch = JsonSerializer.Serialize(new
-        {
-            n = pending.Id, x = touch.X, y = touch.Y, hit, zone = hit ? touch.CoarseZone : null, touch.HitAreas, touch.Drawables,
-            touch.Bone, touch.Node, touch.Hair, touch.Mesh, touch.Material
-        }, RendererProtocol.Json);
-        if (hit) SendTouch(touch);
+            answer.TryGetProperty("hair", out var hair) && hair.ValueKind == JsonValueKind.True, Name(answer, "mesh"), Name(answer, "material")));
     }
 
     private async void SendTouch(CharacterTouch touch)
@@ -1196,6 +1253,12 @@ internal sealed class RendererWindow : Window
                     {
                         // Unsolicited answer to a tap; never a command reply.
                         Touched(touch);
+                        return;
+                    }
+                    if (document.RootElement.TryGetProperty("touches", out var touches))
+                    {
+                        // Unsolicited answer to a batch of hit tests (a stroke's path, a zoom's focus); never a command reply.
+                        TouchesAnswered(touches);
                         return;
                     }
                     failure.ThrowIfFailed();

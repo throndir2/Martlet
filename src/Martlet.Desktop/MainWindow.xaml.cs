@@ -144,6 +144,7 @@ public partial class MainWindow : ThemedWindow
         }
         WireCharacterActions();
         WireCharacterTouchZones();
+        WireCharacterPhysical();
         WireCharacterThemes();
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
         this.startupError = startupError;
@@ -491,9 +492,17 @@ public partial class MainWindow : ThemedWindow
         {
             if (avatar.IsShowing)
             {
-                if (await StopAvatarSafelyAsync()) ActionText.Text = "Character hidden.";
+                if (await StopAvatarSafelyAsync())
+                {
+                    ActionText.Text = "Character hidden.";
+                    NoticeCharacterChange(global::Martlet.Conversation.PhysicalKind.Hidden);
+                }
             }
-            else await ShowSavedCharacterAsync(onlyIfAutoShow: false);
+            else
+            {
+                await ShowSavedCharacterAsync(onlyIfAutoShow: false);
+                if (avatar.IsShowing) NoticeCharacterChange(global::Martlet.Conversation.PhysicalKind.Shown);
+            }
         }
         finally
         {
@@ -608,6 +617,7 @@ public partial class MainWindow : ThemedWindow
             var place = await avatar.LockPlacementAsync(locked, lifetime.Token);
             var saved = CharacterPlacementStore.Save(store?.DataDirectory, place);
             if (closing) return;
+            NoticeCharacterChange(locked ? global::Martlet.Conversation.PhysicalKind.Locked : global::Martlet.Conversation.PhysicalKind.Unlocked);
             ErrorLog.Info(locked && place is { } at
                 ? $"Character position locked at {at.Left:0}, {at.Top:0} ({at.Width:0} × {at.Height:0})" +
                     (at.Screen is { } screen ? $" on {CharacterScreen(screen)}." : ".")

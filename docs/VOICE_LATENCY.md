@@ -72,6 +72,18 @@ says, for each reply it spoke, how much speech it made, when its first audio
 left and whether that was slower than real time. Pauses don't change the time
 to the first audio.
 
+When you talk over a reply with *Pause and decide* on (Companion › Listening ›
+*When you talk over Martlet*, see [pause and decide](CONVERSATION.md#voice-latency-streaming-overlap-and-barge-in)),
+the line also says how long the reply was paused and what happened next:
+*, paused 430 ms when you talked over it, then resumed* or *, paused 380 ms,
+then stopped when you talked over it*. While paused, the Thinking text and the
+voice's synthesis go on and buffer, so playing on starts at once from where it
+paused with nothing made again; the voice (Chatterbox) is usually the slowest
+step, so making the rest again would add seconds. Pausing adds nothing before
+the first audio: the judge runs only while you talk over a reply that is
+already playing, the local rules judge takes well under a millisecond, and a
+model judge has at most 400 ms before the rules decide.
+
 ## Where the time goes today
 
 From the desktop log before this change (it measured from the reply's start

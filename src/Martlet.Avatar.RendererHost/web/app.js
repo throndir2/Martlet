@@ -80,6 +80,19 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
       node: hit?.node ?? null, hair: hit?.hair === true, mesh: hit?.mesh ?? null, material: hit?.material ?? null } });
     return;
   }
+  if (message.kind === "touches") {
+    // A batch of points (a stroke's path, or what a zoom closed in on), hit tested like "touch" and answered unprompted with
+    // {touches: {id, hits}} in the same order; each failed test is only a miss.
+    const { id, points } = message.data;
+    const hits = (Array.isArray(points) ? points.slice(0, 64) : []).map(({ x, y }) => {
+      let hit;
+      try { if (active && !failed) hit = adapter?.hitTest?.(Number(x), Number(y)); } catch { hit = undefined; }
+      return { hit: !!hit, hitAreas: hit?.hitAreas ?? [], drawables: hit?.drawables ?? [], bone: hit?.bone ?? null,
+        node: hit?.node ?? null, hair: hit?.hair === true, mesh: hit?.mesh ?? null, material: hit?.material ?? null };
+    });
+    post({ touches: { id, hits } });
+    return;
+  }
   try {
     if (failed) throw new Error("Renderer is terminally failed; inspect again.");
     const data = message.data;

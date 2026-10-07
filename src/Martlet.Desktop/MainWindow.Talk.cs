@@ -62,6 +62,15 @@ public partial class MainWindow
         "\"no\" or \"stop\" works with all three, especially right after Martlet asks something, and anything with Martlet's name " +
         "counts. What Martlet ignored shows faded in the talk window.";
 
+    // Companion › Listening › When you talk over Martlet, in the order shown.
+    private static readonly string[] BargeInStyleChoices = ["Pause and decide (recommended)", "Stop at once"];
+    private static readonly Martlet.Conversation.BargeInBehavior[] BargeInStyleOrder =
+        [Martlet.Conversation.BargeInBehavior.PauseAndDecide, Martlet.Conversation.BargeInBehavior.StopAtOnce];
+    internal const string BargeInStyleAbout = "Pause and decide: a clear word like \"stop\" or \"wait\", or Martlet's name, still stops it " +
+        "at once. Other words pause Martlet at once, and it decides in a moment: words for Martlet stop the reply and get an answer; " +
+        "a quick \"yeah\", agreeing, laughing along, talking to someone else or a TV leaves the reply playing on from where it paused, " +
+        "with nothing lost. Keep talking and it stops. Stop at once: real words stop the reply right away.";
+
     private TalkPreferences Talk => talk ??= TalkPreferences.Load(store?.DataDirectory);
 
     private void SaveTalk(TalkPreferences next, bool render = false)
@@ -162,6 +171,21 @@ public partial class MainWindow
                 "or turn this off.", new Thickness(0, 0, 0, 0));
             AutomationProperties.SetAutomationId(bargeInAbout, "TalkBargeInAbout");
             children.Add(bargeInAbout);
+            var bargeInStyle = new ComboBox { Width = 240, ItemsSource = BargeInStyleChoices,
+                SelectedIndex = Math.Max(0, Array.IndexOf(BargeInStyleOrder, prefs.BargeInStyle)) };
+            AutomationProperties.SetName(bargeInStyle, "When you talk over Martlet");
+            AutomationProperties.SetAutomationId(bargeInStyle, "TalkBargeInBehavior");
+            bargeInStyle.SelectionChanged += (_, _) =>
+            {
+                if (bargeInStyle.SelectedIndex >= 0 && BargeInStyleOrder[bargeInStyle.SelectedIndex] != Talk.BargeInStyle)
+                    SaveTalk(Talk with { BargeInStyle = BargeInStyleOrder[bargeInStyle.SelectedIndex] });
+            };
+            var bargeInStyleRow = Labeled("When you talk over Martlet", bargeInStyle);
+            bargeInStyleRow.Margin = new Thickness(0, 8, 0, 0);
+            children.Add(bargeInStyleRow);
+            var bargeInStyleAbout = Note(BargeInStyleAbout, new Thickness(0, 4, 0, 0));
+            AutomationProperties.SetAutomationId(bargeInStyleAbout, "TalkBargeInBehaviorAbout");
+            children.Add(bargeInStyleAbout);
         }
 
         var voiceId = new CheckBox { Content = "Only answer my voice", IsChecked = prefs.VoiceId, Margin = new Thickness(0, 16, 0, 4) };

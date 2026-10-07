@@ -37,6 +37,13 @@ public sealed class PlaybackRun
     private ulong? lastClockPosition;
     private ulong lastClockFrequency;
     private readonly Func<double>? volume;
+    // Paused (Pause): nothing more is read from the queue, so what was submitted stays buffered and plays from the same
+    // sample on Resume. The time paused never counts against the deadline or the first-audio limit, and is never an underrun.
+    private bool paused, fadeIn;
+    private long pausedAt;
+    private TimeSpan pausedTime;
+    /// <summary>A resumed voice fades in over this long, so it never starts with a click mid-word.</summary>
+    public static TimeSpan ResumeFade => TimeSpan.FromMilliseconds(10);
 
     internal PlaybackRun(IPlaybackDeviceFactory devices, PlaybackRequest request, PlaybackOptions options,
         TimeProvider time, CancellationToken callerToken, Func<double>? volume = null)
@@ -127,6 +134,45 @@ public sealed class PlaybackRun
         }
     }
 
+    /// <summary>Whether the run is paused (<see cref="Pause"/>).</summary>
+    public bool Paused { get { lock (gate) return paused; } }
+
+    /// <summary>How long the run was paused in all, including a pause still going on.</summary>
+    public TimeSpan PausedTime { get { lock (gate) return PausedSoFar(); } }
+
+    /// <summary>Stops taking audio from the queue: the speakers go quiet once the device's own buffer (at most 100 ms) has
+    /// played, and everything submitted stays buffered. Input is still accepted up to the capacity. Returns false when the run
+    /// has ended or is paused already.</summary>
+    public bool Pause()
+    {
+        lock (gate)
+        {
+            if (terminal || stop.Task.IsCompleted || paused) return false;
+            paused = true;
+            pausedAt = time.GetTimestamp();
+            EndUnderrun();
+            return true;
+        }
+    }
+
+    /// <summary>Plays on from the exact sample where <see cref="Pause"/> stopped reading, fading in over
+    /// <see cref="ResumeFade"/>. Returns false when the run has ended or isn't paused.</summary>
+    public bool Resume()
+    {
+        lock (gate)
+        {
+            if (!paused) return false;
+            pausedTime += time.GetElapsedTime(pausedAt);
+            paused = false;
+            if (terminal || stop.Task.IsCompleted) return false;
+            fadeIn = read > 0;
+            if (state == PlaybackState.Underrun) state = PlaybackState.Playing;
+            return true;
+        }
+    }
+
+    private TimeSpan PausedSoFar() => pausedTime + (paused ? time.GetElapsedTime(pausedAt) : TimeSpan.Zero);
+
     public Task<PlaybackSnapshot> StopAsync(bool replaced = false)
     {
         RequestStop(replaced ? PlaybackState.Replaced : PlaybackState.Canceled);
@@ -171,6 +217,8 @@ public sealed class PlaybackRun
         lock (gate)
         {
             CheckActive();
+            end = false;
+            if (paused) return 0;
             if (!prebuffered)
                 prebuffered = inputCompleted || accepted - read >= Math.Ceiling(request.Format.SampleRate * options.Prebuffer.TotalSeconds);
             var written = 0;
@@ -188,8 +236,29 @@ public sealed class PlaybackRun
             }
             read += written / request.Format.BlockAlignment;
             end = inputCompleted && queue.Count == 0 && written == 0;
+            if (fadeIn && written > 0)
+            {
+                fadeIn = false;
+                FadeIn(destination[..written]);
+            }
             return written;
         }
+    }
+
+    // A short linear fade-in of 16-bit PCM (the only encoding a conversation plays), every channel of each sample alike.
+    private void FadeIn(Span<byte> pcm)
+    {
+        if (request.Format.Encoding != PcmEncoding.Signed16LittleEndian) return;
+        var channels = request.Format.Channels;
+        var fade = Math.Max(1, (int)(request.Format.SampleRate * ResumeFade.TotalSeconds));
+        var samples = Math.Min(fade, pcm.Length / request.Format.BlockAlignment);
+        for (var s = 0; s < samples; s++)
+            for (var c = 0; c < channels; c++)
+            {
+                var at = (s * channels + c) * 2;
+                var value = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(pcm[at..]);
+                System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(pcm[at..], (short)(value * (s + 1) / (fade + 1)));
+            }
     }
 
     private void Drive(IPlaybackDeviceFactory devices)
@@ -287,7 +356,7 @@ public sealed class PlaybackRun
                 {
                     lock (gate)
                     {
-                        if (underrunAt is null && !inputCompleted && !stop.Task.IsCompleted)
+                        if (underrunAt is null && !inputCompleted && !paused && !stop.Task.IsCompleted)
                         {
                             underrunAt = time.GetTimestamp();
                             underruns++;
@@ -406,7 +475,7 @@ public sealed class PlaybackRun
             await Task.WhenAny(DeviceRelease, stop.Task, tick).ConfigureAwait(false);
             lock (gate)
             {
-                var elapsed = time.GetElapsedTime(startedAt);
+                var elapsed = time.GetElapsedTime(startedAt) - PausedSoFar();
                 if (elapsed >= deadline || (!started && elapsed >= options.FirstAudioTimeout))
                     RequestStop(PlaybackState.Failed, PlaybackErrors.Create(ErrorCode.DeadlineExceeded));
                 else if (underrunAt is { } since && time.GetElapsedTime(since) >= options.UnderrunTimeout)

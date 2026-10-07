@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using Martlet.Avatar.Hosting;
+using Martlet.Conversation;
 using Martlet.Core.Settings;
 using Martlet.Providers;
 
@@ -16,12 +17,12 @@ namespace Martlet.Desktop;
 /// <summary>Companion › Character › Touch zones: where a left click on the character lands (top of the head, a cheek, a hand...)
 /// and what the character does then. The Thinking model finds the zones once per model in a snapshot of the character (when it
 /// can see; Detect zones asks again), Martlet binds each to the model's drawables or bones so it follows the model as it moves,
-/// and each zone plays its emotes and gestures, may tell the character (a reply turn) and rests a few seconds. Intimate zones
-/// work only with Include intimate zones on (on by default). Edits save as you make them, per model, on this PC.</summary>
+/// and each zone plays its emotes and gestures, may be noticed by Martlet (the touches go to the Thinking model) and rests a few
+/// seconds. Intimate zones work only with Include intimate zones on (on by default). Edits save as you make them, per model, on this PC.</summary>
 public partial class MainWindow
 {
     private readonly CharacterTouchZoneService characterTouchZones;
-    private TextBlock? touchZonesLast;
+    private TextBlock? touchZonesLast, touchZonesNoticed, touchZonesNoticedLast;
     private bool detectingTouchZones;
 
     private static readonly Color[] ZoneColors =
@@ -36,6 +37,8 @@ public partial class MainWindow
         characterTouchZones.Changed += () => Dispatcher.InvokeAsync(() =>
         {
             if (touchZonesLast is not null) touchZonesLast.Text = characterTouchZones.LastMatch ?? TouchZonesIdle();
+            if (touchZonesNoticed is not null) touchZonesNoticed.Text = characterTouchZones.Noticed ?? TouchZonesNoticedIdle;
+            if (touchZonesNoticedLast is not null) touchZonesNoticedLast.Text = characterTouchZones.NoticedLast ?? "";
             if (closing || openTab != CompanionTab.Character || CompanionContent.IsKeyboardFocusWithin || tabEdited) return;
             if (detectingTouchZones || characterTouchZones.Busy || renderedZonesModel != characterTouchZones.ModelId) RenderTab();
         });
@@ -47,7 +50,7 @@ public partial class MainWindow
 
     private string TouchZonesIdle() => avatar.IsShowing ? "Click the character to try a zone." : "Show the character, then click it to try a zone.";
 
-    // Off the UI thread (the renderer's request relay): the zone's reaction plays at once; telling the character waits for the
+    // Off the UI thread (the renderer's request relay): the zone's reaction plays at once; what Martlet notices goes to the
     // conversation on the UI thread.
     private bool OnCharacterTouched(CharacterTouch touch)
     {
@@ -56,7 +59,9 @@ public partial class MainWindow
         characterTouchZones.Follow(catalog?.Inventory.ModelId ?? characterTouchZones.ModelId);
         var temperament = characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId);
         characterTouchZones.React(touch, (zone, repeats) => TouchPlan(zone, catalog, temperament, repeats), PlayTouchAsync,
-            text => Dispatcher.InvokeAsync(() => TellCharacter(text)));
+            zone => Dispatcher.InvokeAsync(() =>
+                NoticePhysical(touch.Held ? PhysicalKind.Hold : CharacterTouchZones.Pats(zone) ? PhysicalKind.Pat : PhysicalKind.Tap,
+                    CharacterTouchZones.Part(zone), zone.Name.ToLowerInvariant(), hint: CharacterTouchZones.Narration(zone))));
         return true;
     }
 
@@ -88,12 +93,20 @@ public partial class MainWindow
             InvalidDataException or TimeoutException or ObjectDisposedException) { }
     }
 
-    /// <summary>A zone that tells the character starts a new reply turn with its line (like a message you typed).</summary>
-    private void TellCharacter(string text)
+    private const string TouchZonesNoticedIdle = "Nothing waits for Martlet.";
+
+    /// <summary>Something the user did to the desktop character that Martlet notices (a touch on a zone with Martlet notices on,
+    /// a stroke, moving or zooming it...): it goes to the conversation's touch ledger, waits for the next reply and, for touches
+    /// (<see cref="PhysicalKinds.StartsTurn"/>), starts a short reply of its own when the user says nothing. On the UI thread.
+    /// <paramref name="zone"/> is where, as the character hears it ("the top of your head"), <paramref name="label"/> its short
+    /// name for the history ("top of head"), <paramref name="detail"/> more ("to another monitor") and <paramref name="hint"/>
+    /// the owner's own words for it.</summary>
+    internal void NoticePhysical(PhysicalKind kind, string? zone = null, string? label = null, string? detail = null, string? hint = null,
+        IReadOnlyList<string>? zones = null)
     {
-        if (closing || Role == DeviceRole.Host || ConversationSession() is not { } talk) return;
+        if (closing || Role == DeviceRole.Host || conversation is null || ConversationSession() is not { } talk) return;
         if (!talk.IsVisible) talk.StartInBackground();
-        talk.AskFromMessage(text, "You (touch)", speak: true, lifetime.Token).Forget();
+        talk.Physical(new PhysicalEvent(kind, conversation.TouchNow, zone, label, detail, hint, zones));
     }
 
     private async Task DetectTouchZonesAsync()
@@ -130,10 +143,12 @@ public partial class MainWindow
         {
             Heading("Touch zones"),
             Note("Click the character (a click, not a drag) and it reacts to where you touched it: a pat on the head, a poke on " +
-                "the cheek, holding its hand. Detect zones sends one picture of the character to your Thinking model, which marks " +
+                "the cheek, holding its hand. With its position locked, drag across it to stroke it: each part you cross reacts, " +
+                "and Martlet hears about it, like your moves and zooms. Detect zones sends one picture of the character to your Thinking model, which marks " +
                 "where each part is; Martlet then ties each zone to the model's own parts so it follows the character as it moves. " +
-                "Choose what each zone plays, whether it also tells the character (a reply, like a message you typed) and how long " +
-                "it rests. Changes save as you make them, for this model.", new Thickness(0, 0, 0, 8))
+                "Choose what each zone plays, whether Martlet notices it and how long it rests. Martlet notices adds up your touches " +
+                "and tells your Thinking model: with what you say next, or, when you say nothing, in a short reply of its own about " +
+                "a second after your last touch. Changes save as you make them, for this model.", new Thickness(0, 0, 0, 8))
         };
         var status = Note(catalog is null ? "Reading the character..." : TouchZonesStatusText(settings), new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(status, "TouchZonesStatus");
@@ -153,6 +168,16 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(touchZonesLast, "TouchZonesLast");
         AutomationProperties.SetLiveSetting(touchZonesLast, AutomationLiveSetting.Polite);
         stack.Add(touchZonesLast);
+        touchZonesNoticed = Note(characterTouchZones.Noticed ?? TouchZonesNoticedIdle, new Thickness(0, 0, 0, 4));
+        AutomationProperties.SetAutomationId(touchZonesNoticed, "TouchZonesNoticed");
+        stack.Add(touchZonesNoticed);
+        touchZonesNoticedLast = Note(characterTouchZones.NoticedLast ?? "", new Thickness(0, 0, 0, 4));
+        AutomationProperties.SetAutomationId(touchZonesNoticedLast, "TouchZonesNoticedLast");
+        stack.Add(touchZonesNoticedLast);
+        physicalLastText = Note(PhysicalLastText(), new Thickness(0, 0, 0, 4));
+        AutomationProperties.SetAutomationId(physicalLastText, "CharacterPhysicalLast");
+        AutomationProperties.SetLiveSetting(physicalLastText, AutomationLiveSetting.Polite);
+        stack.Add(physicalLastText);
         var saveState = Note("", new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(saveState, "TouchZonesSaveState");
         AutomationProperties.SetLiveSetting(saveState, AutomationLiveSetting.Polite);
@@ -292,15 +317,15 @@ public partial class MainWindow
         for (var i = 0; i < plan.Count; i++) PlayTouchAsync(plan[i], $"a try of {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
         characterTouchZones.Note($"Tried {zone.Name}: " + (plan.Count == 0 ? "nothing to play on this model" : "played " + string.Join(", ", plan.Select(s => s.Name))) +
                 CharacterTouchZoneService.Describe(reaction, 1) + "." +
-                (CharacterTouchZones.Narration(zone) is { } line ? $" A touch also tells the character \"{line}\"." : ""));
+                (zone.Reaction.Notices ? " Martlet notices touches here" + (CharacterTouchZones.Narration(zone) is { } line ? $" (your words: \"{line}\")." : ".") : ""));
     }
 
-    /// <summary>One zone's row: on, name, reaction (two picks), tell, line, rest, box, Try and Delete, and its box on the picture.</summary>
+    /// <summary>One zone's row: on, name, reaction (two picks), Martlet notices, hint, rest, box, Try and Delete, and its box on the picture.</summary>
     private sealed class ZoneRow
     {
         private const string DefaultChoice = "(default)", NothingChoice = "(nothing)", NoSecond = "(nothing else)";
         private readonly CharacterTouchZone zone;
-        private readonly CheckBox on, tell;
+        private readonly CheckBox on, notices;
         private readonly TextBox name, narration, rest, box;
         private readonly ComboBox first, second;
         private readonly IReadOnlyList<(string Id, string Label)> items;
@@ -364,14 +389,15 @@ public partial class MainWindow
             second.IsEnabled = first.SelectedIndex > 1;
             AutomationProperties.SetName(second, $"What else {zone.Name} plays");
             AutomationProperties.SetAutomationId(second, $"TouchZoneReaction2-{number}");
-            tell = new CheckBox { Content = "Tell the character", IsChecked = zone.Reaction.Tell, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 6, 0) };
-            AutomationProperties.SetAutomationId(tell, $"TouchZoneTell-{number}");
+            notices = new CheckBox { Content = "Martlet notices", IsChecked = zone.Reaction.Notices, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 6, 0) };
+            AutomationProperties.SetAutomationId(notices, $"TouchZoneNotices-{number}");
+            AutomationProperties.SetHelpText(notices, "Touches here go to your Thinking model: with what you say next, or in a short reply of their own.");
             narration = new TextBox
             {
-                Text = zone.Reaction.Narration ?? kind?.Narration ?? "", MinWidth = 200, MaxLength = CharacterTouchZones.MaximumNarrationLength,
-                IsEnabled = zone.Reaction.Tell
+                Text = zone.Reaction.Narration is { } own && own != kind?.Narration ? own : "", MinWidth = 200,
+                MaxLength = CharacterTouchZones.MaximumNarrationLength, IsEnabled = zone.Reaction.Notices
             };
-            AutomationProperties.SetName(narration, $"What touching {zone.Name} tells the character");
+            AutomationProperties.SetName(narration, $"Your own words for touching {zone.Name} (optional hint)");
             AutomationProperties.SetAutomationId(narration, $"TouchZoneNarration-{number}");
             rest = new TextBox { Text = zone.Reaction.CooldownSeconds.ToString("0.#", CultureInfo.CurrentCulture), Width = 72 };
             AutomationProperties.SetName(rest, $"Seconds {zone.Name} rests after a touch");
@@ -385,8 +411,8 @@ public partial class MainWindow
             name.TextChanged += (_, _) => edited();
             first.SelectionChanged += (_, _) => { second.IsEnabled = first.SelectedIndex > 1; edited(); };
             second.SelectionChanged += (_, _) => edited();
-            tell.Checked += (_, _) => { narration.IsEnabled = true; edited(); };
-            tell.Unchecked += (_, _) => { narration.IsEnabled = false; edited(); };
+            notices.Checked += (_, _) => { narration.IsEnabled = true; edited(); };
+            notices.Unchecked += (_, _) => { narration.IsEnabled = false; edited(); };
             narration.TextChanged += (_, _) => edited();
             rest.TextChanged += (_, _) => edited();
             box.TextChanged += (_, _) => { Place(); edited(); };
@@ -396,7 +422,7 @@ public partial class MainWindow
             fields.Children.Add(first);
             fields.Children.Add(new Label { Content = "and", Target = second, Padding = new Thickness(6, 4, 6, 4) });
             fields.Children.Add(second);
-            fields.Children.Add(tell);
+            fields.Children.Add(notices);
             fields.Children.Add(narration);
             var more = new WrapPanel { Margin = new Thickness(24, 4, 0, 0) };
             more.Children.Add(new Label { Content = "Rests (seconds)", Target = rest, Padding = new Thickness(0, 4, 6, 4) });
@@ -455,7 +481,7 @@ public partial class MainWindow
                 Box = ParsedBox() ?? zone.Box,
                 Reaction = new()
                 {
-                    Actions = actions, Tell = tell.IsChecked == true,
+                    Actions = actions, Notices = notices.IsChecked == true,
                     Narration = line.Length == 0 || line == CharacterTouchZones.Kind(zone.Id)?.Narration ? null : line,
                     CooldownSeconds = double.TryParse(rest.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out var seconds) &&
                         seconds is >= 0 and <= CharacterTouchReaction.MaximumCooldown ? seconds : zone.Reaction.CooldownSeconds

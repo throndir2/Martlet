@@ -348,6 +348,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // whether edits saved. Each line's attitude (TouchTemperamentAttitude-<group or zone ID>, below) is an attitude word.
         // Re-decide from personality sends the personality to Thinking, and the rest save, so they need --allow-ui-effects.
         "TouchTemperamentStatus", "TouchTemperamentSummary", "TouchTemperamentDecision", "TouchTemperamentSaveState",
+        // What Martlet noticed (zones with Martlet notices on) that waits for a reply and when a touch reply would start, and
+        // which reply took the last touches and what the Thinking model was told (zone names and the touch line, no words).
+        "TouchZonesNoticed", "TouchZonesNoticedLast",
+        // Touch zones' line on the last stroke across the locked character (zones crossed, pace, passes, seconds, samples on the
+        // character) or the last move, zoom, pan, lock, hide or show, as Martlet's touch ledger heard it. Fixed wording and zone
+        // names only.
+        "CharacterPhysicalLast",
         // Companion › Listening › Speakers and echo: whether echo reduction is on and how the last listen went (or why it couldn't
         // run). The TalkReduceEcho check box saves the choice, so it needs --allow-ui-effects.
         "TalkReduceEchoStatus",
@@ -360,6 +367,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // last one's outcome and silence (never words or audio). The TalkJudgeTurns check box saves the choice, so it needs
         // --allow-ui-effects.
         "TalkJudgeTurnsStatus",
+        // Companion › Listening › When you talk over Martlet: the chosen option (Pause and decide or Stop at once; choosing one
+        // with ui_select saves talk-preferences.json, so it needs --allow-ui-effects) and its fixed explanation. In the talk
+        // window, LiveBargeIn: the last time you talked over Martlet, whether it paused, stopped or played on, the verdict, what
+        // decided it and how long the judge and the pause took (never what was said).
+        "TalkBargeInBehavior", "TalkBargeInBehaviorAbout", "LiveBargeIn",
         // Companion › Listening › Watch along: whether Martlet also hears what this PC plays and whether its own voice is left
         // out (TalkHearPc saves the choice, so it needs --allow-ui-effects); and the talk window's line on it (hearing the PC
         // now, or why it can't). Never what was heard.
@@ -600,7 +612,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// click; never the text it copies).</summary>
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
-    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "TouchZoneState-", "TouchTemperamentAttitude-", "VoiceEngine", "SpeakingHost-", "SingingHost-",
+    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchZoneNotices-", "VoiceEngine", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // The welcome wizard: each Martlet found ("WizardFound-0": name, address, version and hosts), each hardware line
         // ("WizardSpecRow-Vram") and each suggested part ("WizardPlanItem-Thinking": what, where, its % of graphics memory,
@@ -923,28 +935,94 @@ internal sealed class DesktopAutomation(bool allowEffects)
     internal const int MaximumMove = 10_000;
 
     /// <summary>Taps the showing character at <paramref name="x"/>, <paramref name="y"/> (fractions 0..1 of the overlay's
-    /// drawing, +y down; needs --allow-ui-effects) through MoveAvatar's UI Automation value, like a click there, and waits for
-    /// the renderer's hit test; without a point it only reads the last tap. Returns the last tap as the overlay reports it.</summary>
-    internal async Task<object> TouchCharacterAsync(double? x, double? y)
+    /// drawing, +y down; needs --allow-ui-effects) through MoveAvatar's UI Automation value, like a click there held for
+    /// <paramref name="holdMs"/> (600 or more: a hold), <paramref name="repeat"/> times <paramref name="gapMs"/> apart, or each
+    /// of <paramref name="taps"/> (x, y, holdMs) in turn, waiting for the renderer's hit test after each; without a point it only
+    /// reads the last tap. Returns the last tap as the overlay reports it and, when Companion › Character › Touch zones shows,
+    /// what Martlet noticed (TouchZonesNoticed, TouchZonesNoticedLast) after <paramref name="settleMs"/>.</summary>
+    internal async Task<object> TouchCharacterAsync(double? x, double? y, int? holdMs = null, int? repeat = null, int? gapMs = null,
+        IReadOnlyList<(double X, double Y, int HoldMs)>? taps = null, int? settleMs = null)
     {
         if ((x is null) != (y is null)) throw new ArgumentException("Give both x and y, or neither to read the last tap.");
+        if (taps is not null && x is not null) throw new ArgumentException("Give x and y, or taps, not both.");
         var element = Find("MoveAvatar");
         if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
             throw new InvalidOperationException("The character overlay can't be tapped through UI Automation.");
         var value = (ValuePattern)pattern;
         static object? Read(string text) => string.IsNullOrEmpty(text) ? null : System.Text.Json.JsonDocument.Parse(text).RootElement.Clone();
-        if (x is null) return new { touched = false, last = Read(value.Current.Value) };
+        if (x is null && taps is null) return new { touched = false, last = Read(value.Current.Value), noticed = Noticed() };
         if (!allowEffects) throw new InvalidOperationException("Tapping the character requires --allow-ui-effects.");
-        if (x is not (>= 0 and <= 1) || y is not (>= 0 and <= 1)) throw new ArgumentException("x and y are fractions from 0 to 1.");
+        var times = repeat ?? 1;
+        if (times is < 1 or > MaximumTaps) throw new ArgumentException($"repeat is 1 to {MaximumTaps}.");
+        if (holdMs is < 0 or > 10_000) throw new ArgumentException("holdMs is 0 to 10000.");
+        if (gapMs is < 0 or > 10_000) throw new ArgumentException("gapMs is 0 to 10000.");
+        if (settleMs is < 0 or > 15_000) throw new ArgumentException("settleMs is 0 to 15000.");
+        var sequence = taps ?? Enumerable.Repeat((x!.Value, y!.Value, holdMs ?? 0), times).ToArray();
+        if (sequence.Count is < 1 or > MaximumTaps) throw new ArgumentException($"taps holds 1 to {MaximumTaps} taps.");
+        if (sequence.Any(t => t.X is not (>= 0 and <= 1) || t.Y is not (>= 0 and <= 1) || t.HoldMs is < 0 or > 10_000))
+            throw new ArgumentException("Each tap's x and y are fractions from 0 to 1 and holdMs is 0 to 10000.");
         if (value.Current.IsReadOnly) throw new InvalidOperationException("The character can't be tapped until it has loaded.");
-        var before = value.Current.Value;
-        value.SetValue(FormattableString.Invariant($"{x},{y}"));
+        var answered = 0;
+        string after = value.Current.Value;
+        for (var i = 0; i < sequence.Count; i++)
+        {
+            if (i > 0) await Task.Delay(gapMs ?? 150);
+            var (tx, ty, held) = sequence[i];
+            var before = value.Current.Value;
+            value.SetValue(held > 0 ? FormattableString.Invariant($"{tx},{ty},{held}") : FormattableString.Invariant($"{tx},{ty}"));
+            var waited = System.Diagnostics.Stopwatch.StartNew();
+            while ((after = value.Current.Value) == before && waited.Elapsed < TimeSpan.FromSeconds(3)) await Task.Delay(50);
+            if (after != before) answered++;
+        }
+        if (settleMs is > 0) await Task.Delay(settleMs.Value);
+        return answered == 0
+            ? new { touched = false, taps = sequence.Count, answered, last = Read(after), noticed = Noticed(), note = (string?)"The renderer didn't answer the tap within 3 seconds." }
+            : new { touched = true, taps = sequence.Count, answered, last = Read(after), noticed = Noticed(), note = (string?)null };
+    }
+
+    internal const int MaximumTaps = 20;
+
+    // What Martlet noticed, when Companion › Character › Touch zones shows (null otherwise).
+    private object? Noticed()
+    {
+        string? Text(string id)
+        {
+            try { return Find(id).Current.Name; }
+            catch (ArgumentException) { return null; }
+        }
+        var waiting = Text("TouchZonesNoticed");
+        return waiting is null ? null : new { waiting, last = Text("TouchZonesNoticedLast"), zone = Text("TouchZonesLast") };
+    }
+
+    /// <summary>Strokes the showing, locked character along <paramref name="points"/> (fractions 0..1 of the overlay's drawing; needs
+    /// --allow-ui-effects) through MoveAvatar's UI Automation value ("stroke:ms;x,y;..."), then waits for the overlay's stroke
+    /// record; without points it only reads the last one. Returns the overlay's reading (last tap, last stroke, last change).</summary>
+    internal async Task<object> StrokeCharacterAsync((double X, double Y)[]? points, int stepMs)
+    {
+        var element = Find("MoveAvatar");
+        if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            throw new InvalidOperationException("The character overlay can't be stroked through UI Automation.");
+        var value = (ValuePattern)pattern;
+        static object? Read(string text) => string.IsNullOrEmpty(text) ? null : System.Text.Json.JsonDocument.Parse(text).RootElement.Clone();
+        static string? Stroke(string text) => string.IsNullOrEmpty(text) ? null :
+            System.Text.Json.JsonDocument.Parse(text).RootElement is { ValueKind: System.Text.Json.JsonValueKind.Object } root &&
+            root.TryGetProperty("stroke", out var stroke) ? stroke.GetRawText() : null;
+        if (points is null) return new { stroked = false, last = Read(value.Current.Value) };
+        if (!allowEffects) throw new InvalidOperationException("Stroking the character requires --allow-ui-effects.");
+        if (points.Length is < 2 or > 200) throw new ArgumentException("Give 2 to 200 points.");
+        if (points.Any(p => p.X is not (>= 0 and <= 1) || p.Y is not (>= 0 and <= 1))) throw new ArgumentException("x and y are fractions from 0 to 1.");
+        if (stepMs is < 10 or > 2000) throw new ArgumentException("stepMs is 10 to 2000.");
+        if (value.Current.IsReadOnly) throw new InvalidOperationException("The character can't be stroked until it has loaded.");
+        var before = Stroke(value.Current.Value);
+        value.SetValue("stroke:" + string.Join(";", new[] { stepMs.ToString(System.Globalization.CultureInfo.InvariantCulture) }
+            .Concat(points.Select(p => FormattableString.Invariant($"{p.X},{p.Y}")))));
         var waited = System.Diagnostics.Stopwatch.StartNew();
+        var limit = TimeSpan.FromMilliseconds(points.Length * stepMs + 3000);
         string after;
-        while ((after = value.Current.Value) == before && waited.Elapsed < TimeSpan.FromSeconds(3)) await Task.Delay(50);
-        return after == before
-            ? new { touched = false, last = Read(after), note = "The renderer didn't answer the tap within 3 seconds." }
-            : new { touched = true, last = Read(after) };
+        while (Stroke(after = value.Current.Value) == before && waited.Elapsed < limit) await Task.Delay(50);
+        return Stroke(after) == before
+            ? new { stroked = false, last = Read(after), note = "The overlay didn't finish the stroke in time." }
+            : new { stroked = true, last = Read(after) };
     }
 
     /// <summary>Moves a movable control (the character overlay's MoveAvatar, like dragging the character) by dx, dy screen

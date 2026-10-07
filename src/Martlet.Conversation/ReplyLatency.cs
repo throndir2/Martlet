@@ -148,7 +148,14 @@ public static class ReplyLatency
         if (passed) text.Append("; Martlet stayed quiet");
         else if (restarted) text.Append("; replaced because you kept talking");
         else if (reply.FirstAudioAfter is null) text.Append(reply.SpeechFailed ? "; the voice failed" : "; not spoken");
-        if (interrupted) text.Append(", stopped when you talked over it");
+        if (interrupted) text.Append(timings.PausesForYou > 0
+            ? $", paused {timings.PausedForYou.TotalMilliseconds.ToString("0", CultureInfo.InvariantCulture)} ms, then stopped when you talked over it"
+            : ", stopped when you talked over it");
+        else if (timings.PausesForYou > 0)
+        {
+            text.Append(CultureInfo.InvariantCulture, $", paused {timings.PausedForYou.TotalMilliseconds:0} ms when you talked over it, then resumed");
+            if (timings.PausesForYou > 1) text.Append(CultureInfo.InvariantCulture, $" ({timings.PausesForYou} times)");
+        }
         text.Append('.');
         if (timings.FirstPieceSpeech is { } speech && timings.FirstPieceSynthesizedAfter is { } made && timings.SpeechRequestAfter is { } asked)
             text.Append(CultureInfo.InvariantCulture,
