@@ -367,6 +367,27 @@ public sealed class CharacterGazeModeTests
         finally { Directory.Delete(directory, recursive: true); }
     }
 
+    [Fact]
+    public async Task A_gaze_the_overlay_did_not_take_is_sent_again_with_the_next_refresh()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer { FailGazes = 1 };
+        await using var avatar = new AvatarController(createRenderer: () => renderer, allowControlledClock: true);
+        await avatar.ShowAsync(scope.Profile() with { LipSync = AvatarLipSync.Loudness }, default);
+        avatar.Gaze.Configure(GazeMode.Ahead, true);
+        await Until(() => renderer.Gazes.Length == 1);
+        // The first one failed: a refresh with nothing changed still sends it again, and then only once.
+        await Task.Delay(100);
+        avatar.Gaze.Refresh();
+        await Until(() => renderer.Gazes.Length == 2);
+        Assert.Equal(GazeMode.Ahead, renderer.Gazes[1].Mode);
+        avatar.Gaze.Refresh();
+        await Task.Delay(100);
+        Assert.Equal(2, renderer.Gazes.Length);
+        Assert.Contains("usual gaze ahead", avatar.Gaze.LastLookText);
+        await avatar.StopAsync();
+    }
+
     private static CharacterActionCatalog Catalog()
     {
         var gestures = CharacterActionInventory.AllGestures
@@ -394,11 +415,14 @@ public sealed class CharacterGazeModeTests
         {
             var message = RendererProtocol.Message(kind, activation, data);
             Messages.Enqueue(message);
+            if (kind == "gaze" && Interlocked.Decrement(ref FailGazes) >= 0) throw new IOException("The overlay didn't answer.");
             return Task.FromResult(kind == "gaze"
                 ? RendererProtocol.Message("look", activation, new RendererLook("mouse", 0.1, 0.2,
                     RendererProtocol.Data<RendererGaze>(message).Mode ?? GazeMode.Near))
                 : RendererProtocol.Message("ok", activation, new { }));
         }
+        // How many gazes fail (as an overlay that doesn't answer) before they go through.
+        internal int FailGazes;
         public ValueTask DisposeAsync() { HasExited = true; exited.TrySetResult(); return ValueTask.CompletedTask; }
         internal RendererGaze[] Gazes => [.. Messages.Where(m => m.Kind == "gaze").Select(RendererProtocol.Data<RendererGaze>)];
     }

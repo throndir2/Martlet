@@ -90,23 +90,21 @@ internal sealed class CharacterGazeService
     /// while the character is hidden.</summary>
     internal void Refresh()
     {
-        (GazeMode Mode, string Choice, bool Free) state;
-        bool send;
         lock (gate)
         {
-            state = StateLocked();
+            var state = StateLocked();
             var changed = state != known;
             known = state;
-            send = avatar.IsShowing && state != told;
+            var send = avatar.IsShowing && state != told;
             if (send)
             {
                 told = state;
                 holding = null;
                 holdUntil = attendUntil = 0;
+                SendLocked(new RendererGaze(Mode: state.Mode, Choice: state.Choice, Free: state.Free));
             }
             if (!changed && !send) return;
         }
-        if (send) Send(new RendererGaze(Mode: state.Mode, Choice: state.Choice, Free: state.Free));
         Changed?.Invoke();
     }
 
@@ -129,6 +127,8 @@ internal sealed class CharacterGazeService
         catch (Exception error) when (error is IOException or InvalidOperationException or InvalidDataException or TimeoutException or
             ObjectDisposedException or JsonException)
         {
+            // The next change sends it again.
+            lock (gate) told = default;
             ErrorLog.Warn($"The character couldn't be told where to look: {error.Message}");
         }
     }
@@ -163,9 +163,9 @@ internal sealed class CharacterGazeService
             attendWhy = why;
             holding = null;
             holdUntil = 0;
+            SendLocked(new RendererGaze(Mouse: true, Seconds: seconds));
         }
         ErrorLog.Info($"The character looks at the mouse for {seconds:0.#} s after {why}.");
-        Send(new RendererGaze(Mouse: true, Seconds: seconds));
         Changed?.Invoke();
         // Say so again when the look ends.
         Task.Delay(TimeSpan.FromSeconds(seconds) + TimeSpan.FromMilliseconds(100)).ContinueWith(_ => Changed?.Invoke(), TaskScheduler.Default).Forget();
@@ -221,15 +221,14 @@ internal sealed class CharacterGazeService
         get { lock (gate) return decides; }
         set
         {
-            bool away;
             lock (gate)
             {
                 if (decides == value) return;
                 decides = value;
-                away = Holding;
+                var away = Holding;
                 ForgetLocked();
+                if (away) SendSpotLocked(null);
             }
-            if (away) SendSpot(null);
         }
     }
 
@@ -316,9 +315,12 @@ internal sealed class CharacterGazeService
             if (Holding && holding is { Reason: GazeReason.Thinking } || Attending) return new(GazeVerdict.TooSoon);
             decision = director.Decide(frame.Changes, area, mouse, character, shut);
             verdict = decision.Verdict;
-            if (decision.Spot is { } spot) HoldLocked(spot);
+            if (decision.Spot is { } spot)
+            {
+                HoldLocked(spot);
+                SendSpotLocked(spot);
+            }
         }
-        if (decision.Spot is { } glance) SendSpot(glance);
         return decision;
     }
 
@@ -338,9 +340,9 @@ internal sealed class CharacterGazeService
             if (!decides || lookArea is not { } area || CharacterGaze.Chosen(tag, area) is not { } chosenSpot) return null;
             spot = chosenSpot;
             HoldLocked(chosenSpot);
+            SendSpotLocked(chosenSpot);
         }
         ErrorLog.Info($"The Thinking model turned the character's eyes to the {spot.Place} of the screen.");
-        SendSpot(spot);
         return spot;
     }
 
@@ -365,13 +367,12 @@ internal sealed class CharacterGazeService
     /// <summary>Vision stopped: the eyes go back to their usual gaze and what was seen is forgotten.</summary>
     internal void Stop()
     {
-        bool away;
         lock (gate)
         {
-            away = Holding;
+            var away = Holding;
             ForgetLocked();
+            if (away) SendSpotLocked(null);
         }
-        if (away) SendSpot(null);
     }
 
     private void HoldLocked(GazeSpot spot)
@@ -392,13 +393,13 @@ internal sealed class CharacterGazeService
         verdict = null;
     }
 
-    private void SendSpot(GazeSpot? spot) => Send(spot is null ? new RendererGaze() : new RendererGaze(spot.X, spot.Y, spot.Hold.TotalSeconds));
+    private void SendSpotLocked(GazeSpot? spot) =>
+        SendLocked(spot is null ? new RendererGaze() : new RendererGaze(spot.X, spot.Y, spot.Hold.TotalSeconds));
 
-    // One after another, in the order they were made, so a later gaze never arrives before an earlier one.
-    private void Send(RendererGaze gaze)
-    {
-        lock (gate) sending = sending.ContinueWith(_ => SendAsync(gaze), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
-    }
+    // With the gate held, where the state the gaze carries was decided: gazes reach the overlay in the order they were decided,
+    // one after another.
+    private void SendLocked(RendererGaze gaze) =>
+        sending = sending.ContinueWith(_ => SendAsync(gaze), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default).Unwrap();
 
     private async Task SendAsync(RendererGaze gaze)
     {
@@ -411,7 +412,11 @@ internal sealed class CharacterGazeService
             Changed?.Invoke();
         }
         catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
-            InvalidDataException or TimeoutException or ObjectDisposedException or JsonException) { }
+            InvalidDataException or TimeoutException or ObjectDisposedException or JsonException)
+        {
+            // A usual gaze the overlay didn't take goes again with the next change.
+            if (gaze.Mode is not null) lock (gate) told = default;
+        }
     }
 
     /// <summary>The mouse and the character's windows on the desktop in physical pixels, like the screenshots: the largest of
