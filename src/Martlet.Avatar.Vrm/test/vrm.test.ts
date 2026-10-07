@@ -347,3 +347,47 @@ test("voice emotes move the head, spine, shoulders and arms and return to idle",
   assert.equal(runtime.playGesture("clear_throat"), true);
   runtime.dispose();
 });
+
+test("touch and mood gestures use the face presets and holdable ones stay until ended", async () => {
+  const runtime = new VrmRuntime(); await runtime.load(fixture()); runtime.startIdle();
+  const vrm = (runtime as unknown as { model: { humanoid: { getNormalizedBoneNode(name: string): THREE.Object3D };
+    expressionManager: { getValue(name: string): number | null } } }).model;
+  const bone = (name: string) => vrm.humanoid.getNormalizedBoneNode(name);
+  const face = (name: string) => vrm.expressionManager.getValue(name) ?? 0;
+  runtime.update(0.016);
+  const rest = bone("head").rotation.x;
+  assert.equal(runtime.playGesture("giggle"), true);
+  assert.deepEqual(runtime.gestureState, { playing: "giggle" });
+  for (let i = 0; i < 10; i++) runtime.update(0.05);
+  assert.ok(face("happy") > 0.7, "giggles with a happy face");
+  for (let i = 0; i < 30; i++) runtime.update(0.05);
+  assert.equal(face("happy"), 0, "the face settles back");
+  assert.deepEqual(runtime.gestureState, {});
+  assert.equal(runtime.playGesture("flinch"), true);
+  runtime.update(0.05); runtime.update(0.05);
+  assert.ok(bone("head").rotation.x < rest - 0.05 && bone("spine").rotation.x < -0.1, "jerks back");
+  for (let i = 0; i < 30; i++) runtime.update(0.05);
+  assert.ok(Math.abs(bone("spine").rotation.x) < 1e-6, "and settles");
+
+  assert.equal(runtime.playGesture("drowsy", true), true);
+  assert.deepEqual(runtime.gestureState, { held: "drowsy" });
+  for (let i = 0; i < 300; i++) runtime.update(0.05);
+  assert.ok(face("blink") >= 0.5 && bone("head").rotation.x > rest + 0.05, "still drowsy after 15 seconds");
+  assert.equal(runtime.playGesture("nod"), true);
+  assert.deepEqual(runtime.gestureState, { playing: "nod", held: "drowsy" });
+  for (let i = 0; i < 30; i++) runtime.update(0.05);
+  assert.deepEqual(runtime.gestureState, { held: "drowsy" }, "the nod played on top and the held pose resumes");
+  assert.ok(face("blink") >= 0.5);
+  assert.equal(runtime.playGesture("shy", true), true);
+  for (let i = 0; i < 30; i++) runtime.update(0.05);
+  assert.deepEqual(runtime.gestureState, { held: "shy" });
+  assert.ok(Math.abs(bone("spine").rotation.y) > 0.1, "shy turns the body away");
+  assert.ok(face("blink") < 0.05, "crossfaded from drowsy");
+  runtime.endGesture("shy");
+  assert.deepEqual(runtime.gestureState, {});
+  for (let i = 0; i < 30; i++) runtime.update(0.05);
+  assert.ok(Math.abs(bone("spine").rotation.y) < 1e-9, "the body comes back once let go");
+  assert.equal(runtime.playGesture("wink", true), true);
+  assert.deepEqual(runtime.gestureState, { playing: "wink" }, "a gesture that can't be held plays once");
+  runtime.dispose();
+});
