@@ -1156,6 +1156,9 @@ the plain touch line, and when a touch-only reply starts, or that it waits for
 your next message because you started talking or typing or Martlet can't reply
 now), `TouchZonesNoticedLast` (which reply took the last touches, the short
 history line and exactly what the Thinking model was told),
+`CharacterPhysicalLast` (the last stroke across the locked character: zones
+crossed, pace, passes, seconds and samples on the character; or the last move,
+zoom, pan, lock, hide or show as Martlet's touch ledger heard it),
 `TouchZonesSaveState` and each zone's `TouchZoneState-<n>` (its ID, the parts
 it follows and its default reaction). `TouchZonesDetect` sends the character's
 picture to Thinking, `TouchZoneTry-<n>` plays on the character, and
@@ -3705,6 +3708,54 @@ own.*; the talk window's `LiveTurnInputs` reads *Last reply took 2 touches.*).
 Without a Thinking setup `TouchZonesNoticed` says the touches wait for your next
 message.
 
+**Stroking the character**: while the character's position is locked, a left
+press that drags beyond Windows' drag distance can't move it, so it strokes
+the character. The overlay samples the path every 40 ms (at most 400
+samples), hit-tests the samples in batches with one `touches` message to the
+renderer page, and sends them to Martlet as `stroke` messages on the request
+pipe (`move` batches while the stroke goes on, then `end`). Martlet matches
+each sample to a touch zone: each zone the stroke enters plays its reaction
+(unless it is resting), and the first zone's first emote or gesture is held
+until the stroke ends. At the end Martlet summarizes the stroke (zones crossed
+in order, pace `slow`, `steady` or `quick`, passes back and forth, seconds)
+and, for the crossed zones with *Martlet notices* on (like a tap there),
+records it in the touch ledger once for each pass (at most 8), so the next
+reply hears *They slowly stroked your hair 4 times*; a stroke, like a tap, can
+start a touch-only reply. Ctrl+drag or middle-drag still pans a zoomed view,
+and an unlocked drag still moves the character. `character_stroke` strokes it
+through UI Automation (`MoveAvatar`'s value, `"stroke:ms;x,y;x,y;..."`) along
+`points` (`[[x, y], ...]`, 2 to 200, fractions of the overlay's drawing), one
+every `stepMs` (default 40), which needs `--allow-ui-effects` and a locked
+position, waits for the stroke to end and returns the overlay's reading as
+`last`: the last tap's fields plus `stroke` (`n`, `samples`, `hits`, `ms` and
+the coarse `zones` crossed) and `physical`. Without `points` it only reads.
+Companion › Character › Touch zones' `CharacterPhysicalLast` shows Martlet's
+summary.
+
+**Moves, zooms and other changes Martlet hears about**: the overlay notes each
+drag, arrow-key nudge, `ui_move`, zoom (wheel, menu, keys or Martlet's zoom
+buttons), reset zoom, pan of a zoomed view and Reset position, and once it has
+settled for 0.8 seconds sends one `physical` message (`moved`, `home`,
+`zoomed`, `zoom_reset` or `panned`, with how far and which way it moved, the
+monitors before and after, the character's size before and after, and the
+renderer page's hit test of what a zoom closed in on or a pan centers on).
+Martlet records it in the touch ledger with Locked, Unlocked, Hidden and Shown
+(from its own buttons and the overlay menu): *They moved you to their other
+monitor*, *They zoomed in on your face*. These never start a reply on their
+own; they go with the next one. `MoveAvatar`'s value carries the last one as
+`physical` (`kind`, `dx`, `dy`, `from`, `to`, `zoomFrom`, `zoomTo`, `focus`),
+and `CharacterPhysicalLast` shows the ledger's words. The camera view's own
+framing is not reported.
+
+`character_physical_check` runs the same summary and wording headless, with no
+desktop and no model request: `stroke` (a JSON `CharacterStroke` with its
+hit-tested samples) is summarized against the touch zones saved for `modelId`
+(or the rough zones before any were found), `changes` (a JSON array of
+`RendererPhysical`) are worded, and both go into a touch ledger. It returns the
+stroke's zones, pace and passes, each change's ledger kind and words, the plain
+`line` the next reply would carry, the `history` line and `startsTurn`.
+`noticeAll` (default true) treats every zone as having *Martlet notices* on.
+
 **Locking the character's position**: Home's `ToggleCharacterLock`
 (*Lock character position*, shown while the character shows or is locked),
 Companion › Character's `SetupCharacterLock` (*Lock position*) and the overlay
@@ -4756,7 +4807,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `straight_voice_check` and `discord_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

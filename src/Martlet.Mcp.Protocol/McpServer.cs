@@ -170,6 +170,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 }
             }
         }),
+        Tool("character_stroke", "Stroke the showing character, whose position must be locked, like pressing the left button and " +
+            "dragging across it: along points [[x, y], ...] (2 to 200, fractions 0 to 1 of the character overlay's drawing, +y " +
+            "down; unzoomed, its hair is near 0.5, 0.1 and its face near 0.5, 0.2), one point every stepMs milliseconds (10 to " +
+            "2000, default 40). Martlet hit-tests the path, plays each crossed zone's reaction (the first zone's emote held until " +
+            "the stroke ends) and records the stroke in the touch ledger. Returns the overlay's stroke record as last.stroke (n, " +
+            "samples, hits, ms, coarse zones crossed); Companion > Character > Touch zones' CharacterPhysicalLast reads Martlet's " +
+            "summary (zones, pace, passes). last.physical is the last settled move, zoom or pan (kind, dx, dy, from and to monitors, " +
+            "zoomFrom, zoomTo, focus). Requires --allow-ui-effects; without points it only reads the last stroke.", new
+        {
+            points = new { type = "array", items = new { type = "array", items = new { type = "number", minimum = 0, maximum = 1 }, minItems = 2, maxItems = 2 } },
+            stepMs = new { type = "integer", minimum = 10, maximum = 2000 }
+        }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
             "[x, y, width, height] in physical screen pixels) and whether Martlet still runs. \"open\" and \"menu\" send the icon " +
@@ -479,6 +491,20 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, engine = new { type = "string" },
             answer = new { type = "string" }, voiceTag = new { type = "string" }, showing = new { type = "array", items = new { type = "string" } }
+        }),
+        Tool("character_physical_check", "What Martlet makes of a stroke across the locked character and of moves and zooms " +
+            "(Martlet.Avatar.Hosting CharacterStrokes and CharacterPhysicalWords with Martlet.Conversation's TouchLedger), headless, " +
+            "with no desktop and no model request. stroke is a JSON CharacterStroke {\"id\",\"phase\":\"end\",\"aspect\",\"samples\":" +
+            "[{\"x\",\"y\",\"ms\",\"touch\":CharacterTouch or null}]} summarized against the touch zones saved for modelId in dataDirectory " +
+            "(or the rough zones before any were found): zones crossed, main zone, ms, length, speed, pace (slow, steady or quick) and " +
+            "passes. changes is a JSON array of RendererPhysical {\"kind\":\"moved|home|zoomed|zoom_reset|panned\",\"dx\",\"dy\"," +
+            "\"screenWidth\",\"fromScreen\",\"toScreen\",\"zoomFrom\",\"zoomTo\",\"focus\"}. Returns each change's ledger kind and words, " +
+            "the plain line the next reply would carry (\"They slowly stroked your hair 4 times, then moved you to their other " +
+            "monitor.\"), the history line and whether it would start a reply on its own. noticeAll (default true) treats every zone as " +
+            "having Martlet notices on; false uses the zones' own setting.", new
+        {
+            dataDirectory = new { type = "string" }, modelId = new { type = "string" }, stroke = new { type = "string" },
+            changes = new { type = "string" }, noticeAll = new { type = "boolean" }
         }),
         Tool("character_touch_zones", "Companion > Character > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones; docs/AVATARS.md " +
             "\"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate), the vision request sent with the " +
@@ -1343,6 +1369,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "character_touch" => await desktop.TouchCharacterAsync(OptionalDouble(arguments, "x"), OptionalDouble(arguments, "y"),
                 OptionalInt(arguments, "holdMs"), OptionalInt(arguments, "repeat"), OptionalInt(arguments, "gapMs"), Taps(arguments),
                 OptionalInt(arguments, "settleMs")),
+                "character_stroke" => await desktop.StrokeCharacterAsync(StrokePoints(arguments), OptionalInt(arguments, "stepMs") ?? 40),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "parakeet_check" => await ParakeetCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
@@ -1379,6 +1406,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_profiles" => CharacterProfiles(arguments),
                 "character_actions" => await CharacterActionsCheckAsync(arguments, cancellation),
                 "character_gaze" => GazeCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer")),
+                "character_physical_check" => PhysicalCheck.Run(DataDirectory(arguments), OptionalString(arguments, "modelId"),
+                    OptionalString(arguments, "stroke"), OptionalString(arguments, "changes"), OptionalBool(arguments, "noticeAll") ?? true),
                 "character_touch_zones" => await TouchZonesCheck.RunAsync(DataDirectory(arguments),
                     OptionalString(arguments, "dataDirectory") is not null, OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"),
                     OptionalString(arguments, "answer"), OptionalInt(arguments, "width"), OptionalInt(arguments, "height"),
@@ -3273,6 +3302,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             OptionalDouble(tap, "x") ?? throw new ArgumentException("Each tap needs x."),
             OptionalDouble(tap, "y") ?? throw new ArgumentException("Each tap needs y."),
             OptionalInt(tap, "holdMs") ?? 0)).ToArray();
+    }
+
+    /// <summary>character_stroke's points, [[x, y], ...], or null when none were given.</summary>
+    private static (double X, double Y)[]? StrokePoints(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty("points", out var value) || value.ValueKind == JsonValueKind.Null)
+            return null;
+        if (value.ValueKind != JsonValueKind.Array) throw new ArgumentException("'points' must be an array of [x, y] pairs.");
+        return [.. value.EnumerateArray().Select(point =>
+            point.ValueKind == JsonValueKind.Array && point.GetArrayLength() == 2 && point[0].TryGetDouble(out var x) && point[1].TryGetDouble(out var y)
+                ? (x, y) : throw new ArgumentException("Each point must be [x, y]."))];
     }
 
     private static double? OptionalDouble(JsonElement element, string property)

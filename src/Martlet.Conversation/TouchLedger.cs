@@ -49,7 +49,7 @@ public static class PhysicalKinds
             PhysicalKind.Tap => $"poked {where}{more}",
             PhysicalKind.Pat => $"patted {where}{more}",
             PhysicalKind.Hold => $"pressed and held {where}{more}",
-            PhysicalKind.Stroke => $"stroked {where}{more}",
+            PhysicalKind.Stroke => detail is "slowly" or "quickly" or "gently" ? $"{detail} stroked {where}" : $"stroked {where}{more}",
             PhysicalKind.Moved => $"moved you{(more.Length > 0 ? more : " around their screen")}",
             PhysicalKind.Zoomed => $"zoomed{(more.Length > 0 ? more : " in on you")}",
             PhysicalKind.Panned => $"panned the view of you{more}",

@@ -143,7 +143,8 @@ public partial class MainWindow
         {
             Heading("Touch zones"),
             Note("Click the character (a click, not a drag) and it reacts to where you touched it: a pat on the head, a poke on " +
-                "the cheek, holding its hand. Detect zones sends one picture of the character to your Thinking model, which marks " +
+                "the cheek, holding its hand. With its position locked, drag across it to stroke it: each part you cross reacts, " +
+                "and Martlet hears about it, like your moves and zooms. Detect zones sends one picture of the character to your Thinking model, which marks " +
                 "where each part is; Martlet then ties each zone to the model's own parts so it follows the character as it moves. " +
                 "Choose what each zone plays, whether Martlet notices it and how long it rests. Martlet notices adds up your touches " +
                 "and tells your Thinking model: with what you say next, or, when you say nothing, in a short reply of its own about " +
@@ -173,6 +174,10 @@ public partial class MainWindow
         touchZonesNoticedLast = Note(characterTouchZones.NoticedLast ?? "", new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(touchZonesNoticedLast, "TouchZonesNoticedLast");
         stack.Add(touchZonesNoticedLast);
+        physicalLastText = Note(PhysicalLastText(), new Thickness(0, 0, 0, 4));
+        AutomationProperties.SetAutomationId(physicalLastText, "CharacterPhysicalLast");
+        AutomationProperties.SetLiveSetting(physicalLastText, AutomationLiveSetting.Polite);
+        stack.Add(physicalLastText);
         var saveState = Note("", new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(saveState, "TouchZonesSaveState");
         AutomationProperties.SetLiveSetting(saveState, AutomationLiveSetting.Polite);

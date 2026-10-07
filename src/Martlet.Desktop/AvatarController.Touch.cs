@@ -17,6 +17,12 @@ internal sealed partial class AvatarController
     /// <summary>The last tap on the character, or null.</summary>
     internal CharacterTouch? LastTouch => Volatile.Read(ref lastTouch);
 
+    /// <summary>A batch of a stroke across the locked character (its hit-tested samples), raised off the UI thread.</summary>
+    internal event Action<CharacterStroke>? Stroked;
+
+    /// <summary>The user moved, zoomed or panned the showing character and it settled, raised off the UI thread.</summary>
+    internal event Action<RendererPhysical>? PhysicalChanged;
+
     private void OnTouched(CharacterTouch touch)
     {
         if (!IsShowing) return;
