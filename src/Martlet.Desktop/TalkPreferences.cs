@@ -33,6 +33,9 @@ namespace Martlet.Desktop;
 // for Thinking on the user's own computers unless EarlyRepliesCloud (Also for cloud models, off by default: a reply let go there
 // may still cost its input); EarlyVoice (on by default) prepares the first spoken words too, for a paid cloud voice only with
 // EarlyRepliesCloud.
+// Companion › Character › Where the character looks (also the character's right-click Eyes menu): its usual gaze (GazeUsual: a
+// GazeMode, or null, the default, for as the personality decides) and whether the character may change where it looks in its
+// replies (GazeFree, on by default).
 internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity = 0.5, int PauseIndex = 1, bool VoiceId = false,
     int ScreenChattiness = 1, int ScreenScope = (int)WatchKind.ActiveScreen, string CameraId = "", string CameraName = "",
     string VideoAddress = "", bool SpeakReplies = true, bool Watch = true, int Version = 0, bool? HearVoice = null,
@@ -40,7 +43,7 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
     bool DecideGaze = false, bool TranscribeFirst = false, double VoiceVolume = 1.0,
     Martlet.Conversation.BargeInBehavior BargeInStyle = Martlet.Conversation.BargeInBehavior.PauseAndDecide, bool JudgeTurns = true,
     bool DescribePcSounds = true, bool ScreenSummary = true, bool EarlyReplies = true, bool EarlyRepliesCloud = false,
-    bool EarlyVoice = true)
+    bool EarlyVoice = true, Martlet.Avatar.Hosting.GazeMode? GazeUsual = null, bool GazeFree = true)
 {
     private const string FileName = "talk-preferences.json";
 
@@ -83,6 +86,7 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
                 WordCheck = Enum.IsDefined(loaded.WordCheck) ? loaded.WordCheck : ListeningSensitivity.Normal,
                 VoiceVolume = Martlet.Audio.PcmGain.Clamp(loaded.VoiceVolume),
                 BargeInStyle = Enum.IsDefined(loaded.BargeInStyle) ? loaded.BargeInStyle : Martlet.Conversation.BargeInBehavior.PauseAndDecide,
+                GazeUsual = loaded.GazeUsual is { } usual && Enum.IsDefined(usual) ? usual : null,
                 Version = CurrentVersion
             };
         }

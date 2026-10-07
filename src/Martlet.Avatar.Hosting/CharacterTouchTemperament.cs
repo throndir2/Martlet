@@ -10,12 +10,14 @@ namespace Martlet.Avatar.Hosting;
 /// <summary>How a persona feels about one zone group or zone kind being touched: its <see cref="Attitude"/>
 /// (<see cref="CharacterTouchTemperaments.MinimumAttitude"/> hates .. <see cref="CharacterTouchTemperaments.MaximumAttitude"/>
 /// craves), the abstract reactions it plays, in order (words from <see cref="CharacterTouchTemperaments.Vocabulary"/>; null
-/// plays the attitude's defaults), and how many seconds the first reaction lingers (0: it plays once).</summary>
+/// plays the attitude's defaults, an empty list nothing at all), how many seconds the first reaction lingers (0: it plays once)
+/// and how many seconds the character then looks at the mouse pointer (<see cref="LookSeconds"/>; 0: it doesn't).</summary>
 public sealed record TouchTemperamentEntry
 {
     public int Attitude { get; init; }
     public IReadOnlyList<string>? Reactions { get; init; }
     public double LingerSeconds { get; init; }
+    public double LookSeconds { get; init; }
 }
 
 /// <summary>What repeated touches of one zone do: from the <see cref="After"/>th touch in a row (each within
@@ -28,7 +30,8 @@ public sealed record TouchEscalation
     public IReadOnlyList<string> Loved { get; init; } = ["hearts", "blush"];
 }
 
-/// <summary>One persona's touch temperament: how the character ACTS (never what it says) when each part of its body is touched.
+/// <summary>One persona's touch temperament: how the character ACTS (never what it says) when each part of its body is touched,
+/// and where its eyes usually go (<see cref="Gaze"/>; null before it is decided: they follow the mouse).
 /// Decided by the Thinking model from the persona's personality (<see cref="ByThinking"/>; <see cref="ByFixture"/> when a
 /// MARTLET_TOUCH_TEMPERAMENT_FIXTURE file stood in for it) or edited by the owner (<see cref="ByOwner"/>). Zone kinds
 /// (<see cref="Zones"/>) win over their group (<see cref="Groups"/>); a zone with neither keeps its built-in default reaction.
@@ -41,6 +44,7 @@ public sealed record CharacterTouchTemperament
     public string? PersonalityDigest { get; init; }
     public DateTimeOffset? DecidedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
+    public GazeMode? Gaze { get; init; }
     public IReadOnlyDictionary<string, TouchTemperamentEntry> Groups { get; init; } = new Dictionary<string, TouchTemperamentEntry>();
     public IReadOnlyDictionary<string, TouchTemperamentEntry> Zones { get; init; } = new Dictionary<string, TouchTemperamentEntry>();
     public TouchEscalation Escalation { get; init; } = new();
@@ -48,10 +52,11 @@ public sealed record CharacterTouchTemperament
 
 /// <summary>What a touch on a zone plays: the model's emotes, motions and gestures, how long the first one lingers, the
 /// persona's attitude word for the zone (null without a temperament), where the reaction came from (<c>owner</c>: the zone's
-/// own pick, <c>temperament</c>: the persona's temperament, <c>default</c>: the zone's built-in reaction) and whether repeated
-/// touches escalated it.</summary>
+/// own pick, <c>temperament</c>: the persona's temperament, <c>default</c>: the zone's built-in reaction), whether repeated
+/// touches escalated it, and how many seconds the character looks at the mouse pointer after it (the temperament's; 0: it
+/// doesn't).</summary>
 public sealed record TouchReactionPlan(IReadOnlyList<CharacterActionSource> Actions, double LingerSeconds = 0, string? Attitude = null,
-    string From = TouchReactionPlan.FromDefault, bool Escalated = false)
+    string From = TouchReactionPlan.FromDefault, bool Escalated = false, double LookSeconds = 0)
 {
     public const string FromOwner = "owner", FromTemperament = "temperament", FromDefault = "default";
 }
@@ -64,7 +69,9 @@ public static class CharacterTouchTemperaments
     public const string FileName = "character-temperaments.json";
     public const int MinimumAttitude = -2, MaximumAttitude = 3, MaximumReactions = 3, MaximumPersonas = 32, MaximumBytes = 1024 * 1024;
     public const int MinimumAfter = 2, MaximumAfter = 20;
-    public const double MaximumLinger = 15, RepeatWindowSeconds = 30;
+    public const double MaximumLinger = 15, RepeatWindowSeconds = 30, MaximumLook = CharacterGaze.MaximumAttention;
+    /// <summary>The word a temperament writes for a part the character doesn't react to at all.</summary>
+    public const string NoReaction = "none";
 
     /// <summary>The attitude words, from <see cref="MinimumAttitude"/> up.</summary>
     public static readonly IReadOnlyList<string> AttitudeWords = ["hates", "dislikes", "neutral", "likes", "loves", "craves"];
@@ -146,11 +153,12 @@ public static class CharacterTouchTemperaments
     public static string? Attitude(CharacterTouchTemperament? temperament, string zoneId) =>
         Entry(temperament, zoneId) is { } entry ? AttitudeWord(entry.Attitude) : null;
 
-    /// <summary>The abstract reactions a touch plays: the entry's (or its attitude's defaults), with the escalation's first after
-    /// <see cref="TouchEscalation.After"/> touches in a row of a disliked or loved zone. At most <see cref="MaximumReactions"/>.</summary>
+    /// <summary>The abstract reactions a touch plays: the entry's (or its attitude's defaults; none when it picked
+    /// <see cref="NoReaction"/>), with the escalation's first after <see cref="TouchEscalation.After"/> touches in a row of a
+    /// disliked or loved zone. At most <see cref="MaximumReactions"/>.</summary>
     public static (IReadOnlyList<string> Words, bool Escalated) Words(CharacterTouchTemperament temperament, TouchTemperamentEntry entry, int repeats)
     {
-        var words = entry.Reactions is { Count: > 0 } picked ? picked : DefaultReactions(entry.Attitude);
+        var words = entry.Reactions ?? DefaultReactions(entry.Attitude);
         var escalation = repeats >= Math.Max(MinimumAfter, temperament.Escalation.After)
             ? entry.Attitude <= -1 ? temperament.Escalation.Disliked : entry.Attitude >= 2 ? temperament.Escalation.Loved : null
             : null;
@@ -185,20 +193,37 @@ public static class CharacterTouchTemperaments
 
     // ---------- the Thinking model's request and answer ----------
 
-    /// <summary>What the Thinking model is asked: how the character physically reacts to touch, from its personality, as JSON.</summary>
+    /// <summary>What the Thinking model is asked: how the character physically reacts to touch and where its eyes usually go,
+    /// from its personality, as JSON.</summary>
     public static string DecisionInstructions =>
-        "You decide how a character physically reacts when the user touches parts of its body on screen, from the character's " +
-        "personality. Decide ACTIONS ONLY: animations, gestures and face overlays. Never write words, dialogue or narration. " +
-        "Characters differ: some love being touched, some hate it, some like a head pat but not a belly touch, some really crave " +
-        "it. Follow the personality; when it says nothing about a part, choose what fits the character best.\n" +
+        "You decide how a character physically reacts when the user touches parts of its body on screen, and where its eyes " +
+        "usually go, from the character's personality. Decide ACTIONS ONLY: animations, gestures, face overlays and where it " +
+        "looks. Never write words, dialogue or narration. Characters differ: some love being touched, some hate it, some like a " +
+        "head pat but not a belly touch, some really crave it; some follow the user's every move and others hardly notice them. " +
+        "Follow the personality; when it says nothing about a part, choose what fits the character best.\n" +
+        "gaze: where the eyes go when nothing else draws them: " + string.Join(", ", GazeHints.Select(h => $"{h.Word} ({h.Hint})")) + ".\n" +
         "attitude: -2 hates, -1 dislikes, 0 neutral, 1 likes, 2 loves, 3 craves (really wants it).\n" +
-        "reactions: up to 3 actions from this list ONLY, most important first: " + string.Join(", ", Vocabulary) + ".\n" +
+        "reactions: up to 3 actions from this list ONLY, most important first: " + string.Join(", ", Vocabulary) + ". Write " +
+        "[\"" + NoReaction + "\"] when the character doesn't react to that touch at all.\n" +
         "linger: seconds (0 to 10) the first reaction stays on; 0 plays it once.\n" +
-        "Give all five groups. Add zones only where they differ from their group. escalation: after that many touches in a row, a " +
-        "disliked zone plays \"disliked\" and a loved zone plays \"loved\" first. Answer with JSON only, no other text, in this form:\n" +
-        "{\"groups\":{\"head\":{\"attitude\":1,\"reactions\":[\"smile\",\"blush\"],\"linger\":0},\"torso\":{...},\"arms\":{...}," +
-        "\"lower_body\":{...},\"extras\":{...}},\"zones\":{\"stomach\":{\"attitude\":-1,\"reactions\":[\"pout\",\"sweat\"]}}," +
+        "look: seconds (0 to 10) the character's eyes turn to the user's mouse pointer after that touch, as if to see who did " +
+        "it; 0 when they don't.\n" +
+        "Give the gaze and all five groups. Add zones only where they differ from their group. escalation: after that many " +
+        "touches in a row, a disliked zone plays \"disliked\" and a loved zone plays \"loved\" first. Answer with JSON only, no " +
+        "other text, in this form:\n" +
+        "{\"gaze\":\"mouse\",\"groups\":{\"head\":{\"attitude\":1,\"reactions\":[\"smile\",\"blush\"],\"linger\":0,\"look\":0}," +
+        "\"torso\":{...},\"arms\":{...},\"lower_body\":{...},\"extras\":{...}},\"zones\":{\"stomach\":{\"attitude\":-1," +
+        "\"reactions\":[\"pout\",\"sweat\"],\"look\":2}}," +
         "\"escalation\":{\"after\":3,\"disliked\":[\"anger\",\"look_away\"],\"loved\":[\"hearts\",\"blush\"]}}";
+
+    // What each gaze suits, for the Thinking model.
+    private static readonly (string Word, string Hint)[] GazeHints =
+    [
+        ("mouse", "follows the user's mouse pointer everywhere: attentive, curious, clingy"),
+        ("near", "looks at the pointer only while it is near the character: calm, easygoing"),
+        ("ahead", "looks straight ahead and ignores the pointer: aloof, passive, shy, stoic"),
+        ("window", "watches the window the user works in: helpful, focused, a study buddy")
+    ];
 
     /// <summary>The message that goes with <see cref="DecisionInstructions"/>: the personality and the zones by group.</summary>
     public static string DecisionRequest(string personality) =>
@@ -230,6 +255,7 @@ public static class CharacterTouchTemperaments
                 foreach (var property in readZones.EnumerateObject())
                     if (CharacterTouchZones.Normalize(property.Name) is { } id && ReadEntry(property.Value) is { } entry) zones.TryAdd(id, entry);
             if (groups.Count == 0 && zones.Count == 0) return null;
+            var gaze = Property(root, "gaze") is { ValueKind: JsonValueKind.String } word ? CharacterGaze.ModeOf(word.GetString()) : null;
             var escalation = new TouchEscalation();
             if (Property(root, "escalation") is { ValueKind: JsonValueKind.Object } readEscalation)
             {
@@ -246,7 +272,7 @@ public static class CharacterTouchTemperaments
             return new()
             {
                 PersonaId = personaId, Source = source, PersonalityDigest = digest, DecidedAt = now.ToUniversalTime(), UpdatedAt = now.ToUniversalTime(),
-                Groups = groups, Zones = zones, Escalation = escalation
+                Gaze = gaze, Groups = groups, Zones = zones, Escalation = escalation
             };
         }
     }
@@ -273,14 +299,33 @@ public static class CharacterTouchTemperaments
         if (Number(value) is { } number) attitude = (int)Math.Clamp(Math.Round(number), MinimumAttitude, MaximumAttitude);
         else if (value is { ValueKind: JsonValueKind.String } text && AttitudeOf(text.GetString()) is { } word) attitude = word;
         if (attitude is null) return null;
-        var reactions = ReadWords(Property(element, "reactions") ?? Property(element, "actions"));
+        var reactions = ReadReactions(Property(element, "reactions") ?? Property(element, "actions"));
         var linger = Number(Property(element, "linger") ?? Property(element, "linger_seconds")) ?? 0;
+        var look = Number(Property(element, "look") ?? Property(element, "look_seconds") ?? Property(element, "looks")) ?? 0;
         return new()
         {
-            Attitude = attitude.Value, Reactions = reactions is { Count: > 0 } ? reactions : null,
-            LingerSeconds = double.IsFinite(linger) ? Math.Clamp(linger, 0, MaximumLinger) : 0
+            Attitude = attitude.Value, Reactions = reactions,
+            LingerSeconds = double.IsFinite(linger) ? Math.Clamp(linger, 0, MaximumLinger) : 0,
+            LookSeconds = double.IsFinite(look) ? Math.Clamp(look, 0, MaximumLook) : 0
         };
     }
+
+    /// <summary>An entry's reactions: the known words (in order, at most <see cref="MaximumReactions"/>), an empty list for no
+    /// reaction (<see cref="NoReaction"/>, or an empty list), or null for the attitude's defaults (missing, or only unknown words).</summary>
+    private static IReadOnlyList<string>? ReadReactions(JsonElement? element)
+    {
+        if (element is { ValueKind: JsonValueKind.String } single)
+            return IsNone(single.GetString()) ? [] : Word(single.GetString()) is { } one ? [one] : null;
+        if (element is not { ValueKind: JsonValueKind.Array } array) return null;
+        if (array.GetArrayLength() == 0) return [];
+        var words = ReadWords(element);
+        if (words is { Count: > 0 }) return words;
+        return array.EnumerateArray().Any(e => e.ValueKind == JsonValueKind.String && IsNone(e.GetString())) ? [] : null;
+    }
+
+    private static bool IsNone(string? word) =>
+        word?.Trim().Trim('{', '}', '*', '[', ']').ToLowerInvariant().Replace(' ', '_').Replace('-', '_') is
+            NoReaction or "nothing" or "no_reaction" or "no_reactions" or "ignore" or "ignores" or "ignore_it" or "no";
 
     /// <summary>An attitude word (or number as text) as its value, or null.</summary>
     public static int? AttitudeOf(string? text)
@@ -326,13 +371,19 @@ public static class CharacterTouchTemperaments
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(words.ToString().Trim())))[..16].ToLowerInvariant();
     }
 
-    /// <summary>The temperament per group in words, for status lines ("head likes, torso dislikes, ..., 2 zones of their own").</summary>
+    /// <summary>The temperament per group in words, for status lines ("head likes, torso dislikes, ..., 2 zones of their own"),
+    /// then its usual gaze and the parts whose touch turns the eyes to the mouse pointer.</summary>
     public static string Summary(CharacterTouchTemperament? temperament)
     {
         if (temperament is null) return "built-in reactions for every zone";
-        var groups = GroupIds.Select(g => temperament.Groups.TryGetValue(g.Id, out var e) ? $"{g.Id} {AttitudeWord(e.Attitude)}" : $"{g.Id} built-in");
-        var zones = temperament.Zones.OrderBy(z => z.Key, StringComparer.Ordinal).Select(z => $"{z.Key} {AttitudeWord(z.Value.Attitude)}").ToArray();
-        return string.Join(", ", groups) + (zones.Length == 0 ? "" : "; zones: " + string.Join(", ", zones.Take(8)) + (zones.Length > 8 ? $" and {zones.Length - 8} more" : ""));
+        string Line(string id, TouchTemperamentEntry e) => $"{id} {AttitudeWord(e.Attitude)}" + (e.Reactions is { Count: 0 } ? " (no reaction)" : "");
+        var groups = GroupIds.Select(g => temperament.Groups.TryGetValue(g.Id, out var e) ? Line(g.Id, e) : $"{g.Id} built-in");
+        var zones = temperament.Zones.OrderBy(z => z.Key, StringComparer.Ordinal).Select(z => Line(z.Key, z.Value)).ToArray();
+        var looks = temperament.Groups.Concat(temperament.Zones).Where(e => e.Value.LookSeconds > 0).Select(e => e.Key)
+            .Order(StringComparer.Ordinal).ToArray();
+        return string.Join(", ", groups) + (zones.Length == 0 ? "" : "; zones: " + string.Join(", ", zones.Take(8)) + (zones.Length > 8 ? $" and {zones.Length - 8} more" : "")) +
+            "; eyes: " + (temperament.Gaze is { } gaze ? CharacterGaze.Label(gaze).ToLowerInvariant() : "not decided (follow your mouse)") +
+            (looks.Length == 0 ? "" : "; looks at your mouse after touches on " + string.Join(", ", looks.Take(6)) + (looks.Length > 6 ? $" and {looks.Length - 6} more" : ""));
     }
 
     // ---------- storage ----------
@@ -377,6 +428,7 @@ public static class CharacterTouchTemperaments
             return $"\"{temperament.Source}\" isn't who decided a temperament.";
         if (temperament.Groups.Keys.Any(k => GroupIds.All(g => g.Id != k))) return "A temperament names a group Martlet doesn't know.";
         if (temperament.Zones.Keys.Any(k => CharacterTouchZones.Kind(k) is null)) return "A temperament names a zone Martlet doesn't know.";
+        if (temperament.Gaze is { } gaze && !Enum.IsDefined(gaze)) return "A temperament names a gaze Martlet doesn't know.";
         foreach (var entry in temperament.Groups.Values.Concat(temperament.Zones.Values))
         {
             if (entry is null) return "A temperament entry is empty.";
@@ -384,6 +436,7 @@ public static class CharacterTouchTemperaments
             if (entry.Reactions is { } reactions && (reactions.Count > MaximumReactions || reactions.Any(r => !Vocabulary.Contains(r))))
                 return $"A zone reacts with at most {MaximumReactions} of Martlet's touch reactions.";
             if (!double.IsFinite(entry.LingerSeconds) || entry.LingerSeconds is < 0 or > MaximumLinger) return $"Lingering must be 0 to {MaximumLinger:0} seconds.";
+            if (!double.IsFinite(entry.LookSeconds) || entry.LookSeconds is < 0 or > MaximumLook) return $"Looking at the mouse must be 0 to {MaximumLook:0} seconds.";
         }
         var e = temperament.Escalation;
         if (e.After is < MinimumAfter or > MaximumAfter) return $"Repeated touches escalate after {MinimumAfter} to {MaximumAfter} touches.";

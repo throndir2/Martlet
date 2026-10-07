@@ -62,12 +62,56 @@ public sealed class VoiceAbilitiesTests
             FootprintCatalog.Default.Find(FootprintCatalog.WindowsVoiceId)!.WhereItRuns);
         Assert.Equal("Runs online: nothing runs on your computers.",
             FootprintCatalog.Default.Find(FootprintCatalog.OpenAiVoiceId)!.WhereItRuns);
-        // The line's smallest card is the one the engine row checks this PC against.
-        foreach (var engine in SpeechEngines.All)
+        // The line's smallest card is the one the engine row checks this PC against; Nano also runs without one.
+        foreach (var engine in SpeechEngines.All.Where(engine => engine.NeedsGpu))
         {
             Assert.Equal(engine.MinimumGpuMemoryGb, engine.Footprint!.MinGpuGb);
             Assert.StartsWith("Runs on an NVIDIA GPU: about ", engine.RunsOn);
+            Assert.EndsWith("card).", engine.RunsOn);
         }
+        Assert.False(SpeechEngines.ChatterboxNano.NeedsGpu);
+        Assert.Matches(@"^Runs on an NVIDIA GPU: about [\d.]+ GB of graphics memory, up to [\d.]+ GB \(4 GB\+ card\); without one, on the CPU\.$",
+            SpeechEngines.ChatterboxNano.RunsOn);
+    }
+
+    [Fact]
+    public void The_chatterbox_family_says_what_each_model_can_do()
+    {
+        Assert.Equal("Voice cloning: yes. Laughs & sighs: yes. Emotions: whispering only.", Rundown(SpeechEngines.ChatterboxNano));
+        Assert.Equal("Voice cloning: yes. Laughs & sighs: no. Emotions: calm or expressive.", Rundown(SpeechEngines.ChatterboxOriginal));
+        var original = SpeechEngines.ChatterboxOriginal.Abilities;
+        Assert.Equal(["[expressive]", "[whispering]"], original.TagsFor(original.Items[2], SpeechEngines.ChatterboxOriginal.Tags).Select(t => t.Text));
+        Assert.Equal(["chatterbox", "chatterbox-original", "chatterbox-nano"], SpeechEngines.All.Take(3).Select(e => e.Key));
+        Assert.All(SpeechEngines.All.Take(3), engine => Assert.True(SpeechEngines.IsChatterbox(engine)));
+        Assert.False(SpeechEngines.IsChatterbox(SpeechEngines.F5));
+    }
+
+    [Fact]
+    public void Chatterbox_style_starts_with_resembles_tips_saves_and_refuses_values_out_of_range()
+    {
+        Assert.Equal(new ChatterboxStyle(0.5, 0.5, 0.7, 0.3), ChatterboxStyle.Default);
+        Assert.Equal("General: exaggeration 0.5, CFG weight 0.5. Expressive: exaggeration 0.7, CFG weight 0.3.", ChatterboxStyle.Default.Describe());
+        var directory = Path.Combine(Path.GetTempPath(), "martlet-style-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Assert.Equal(ChatterboxStyle.Default, ChatterboxStyle.Load(directory));
+            var mine = new ChatterboxStyle(0.4, 0.6, 1.2, 0.2);
+            mine.Save(directory);
+            Assert.Equal(mine, ChatterboxStyle.Load(directory));
+            Assert.Throws<ArgumentOutOfRangeException>(() => (mine with { GeneralCfgWeight = 1.5 }).Save(directory));
+            // A damaged or out-of-range file reads as the defaults.
+            File.WriteAllText(Path.Combine(directory, ChatterboxStyle.FileName),
+                "{\"general\":{\"exaggeration\":5,\"cfgWeight\":0.5},\"expressive\":{\"exaggeration\":0.7,\"cfgWeight\":0.3}}");
+            Assert.Equal(ChatterboxStyle.Default, ChatterboxStyle.Load(directory));
+            File.WriteAllText(Path.Combine(directory, ChatterboxStyle.FileName), "not json");
+            Assert.Equal(ChatterboxStyle.Default, ChatterboxStyle.Load(directory));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+        Assert.Equal("{\"general\":{\"exaggeration\":0.5,\"cfg_weight\":0.5},\"expressive\":{\"exaggeration\":0.7,\"cfg_weight\":0.3}}",
+            ChatterboxStyle.Default.Wire().ToJsonString());
     }
 
     [Theory]

@@ -430,13 +430,16 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private static readonly TimeSpan CharacterNoteAge = TimeSpan.FromMinutes(1);
 
     /// <summary>The context board's fresh notes for one request, the character's first: the lingering emotes it shows now
-    /// (for the voice that speaks the reply, or none for a reply that isn't spoken) are posted again, or cleared, first.</summary>
+    /// (for the voice that speaks the reply, or none for a reply that isn't spoken) and where its eyes are while a reply's choice
+    /// holds them are posted again, or cleared, first.</summary>
     private ContextBoardSnapshot BoardFor(LiveConversationConfiguration configured, bool voice)
     {
         var now = clock.GetLocalNow();
-        var showing = characterActions?.Invoke(voice ? configured.SpeakingEngine() : null, configured.Prompts)?.Showing;
-        if (showing is null) Board.Clear(ContextBoard.Character);
+        var character = characterActions?.Invoke(voice ? configured.SpeakingEngine() : null, configured.Prompts);
+        if (character?.Showing is not { } showing) Board.Clear(ContextBoard.Character);
         else Board.Post(ContextBoard.Character, showing, now, CharacterNoteAge);
+        if (character?.Looking is not { } looking) Board.Clear(ContextBoard.Gaze);
+        else Board.Post(ContextBoard.Gaze, looking, now, CharacterNoteAge);
         return Board.Snapshot(now);
     }
 

@@ -19,7 +19,8 @@ namespace Martlet.Avatar.RendererHost;
 internal sealed partial class RendererWindow : Window
 {
     private readonly Stream input, output;
-    // Menu choices Martlet itself carries out (hide, open, talk, settings, lock, mute and unmute); null when started without it (tests).
+    // Menu choices Martlet itself carries out (hide, open, talk, settings, lock, mute and unmute, where the eyes go); null when
+    // started without it (tests).
     private readonly Stream? requests;
     private readonly SemaphoreSlim requesting = new(1, 1);
     private readonly CancellationTokenSource lifetime = new();
@@ -725,10 +726,13 @@ internal sealed partial class RendererWindow : Window
             };
             return item;
         }
-        // A menu opened through UI Automation stays open on its own (see CharacterViewport), so a choice closes it here.
+        // A menu opened through UI Automation stays open on its own (see CharacterViewport), so a choice closes it here (from a
+        // submenu too).
         static void CloseMenu(MenuItem item)
         {
-            if (item.Parent is ContextMenu { IsOpen: true } owner) owner.IsOpen = false;
+            DependencyObject? at = item;
+            while (at is MenuItem { Parent: var parent }) at = parent;
+            if (at is ContextMenu { IsOpen: true } owner) owner.IsOpen = false;
         }
         var talk = Item("_Talk to Martlet", "CharacterTalk", null, () => Request("talk"));
         // Muting goes through Martlet, which saves it (Speak Martlet's replies aloud) and silences a reply it is speaking.
@@ -737,6 +741,35 @@ internal sealed partial class RendererWindow : Window
         var settings = Item("Character _settings", "CharacterSettings", null, () => Request("settings"));
         // Lingering emotes (glasses, a blush...) stay until a reply turns them off; this turns them all off at once.
         var clearEmotes = Item("_Clear emotes", "CharacterClearEmotes", null, () => Request("clear"));
+        // Where the eyes usually go, and whether the character may change that in its replies. Both go through Martlet, which
+        // saves them and sends them back (gaze), so the checks show what applies.
+        var eyes = new MenuItem { Header = "_Eyes" };
+        AutomationProperties.SetAutomationId(eyes, "CharacterEyes");
+        var eyeLabels = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [RendererGaze.Personality] = "As the _personality decides", [CharacterGaze.Word(GazeMode.Mouse)] = "Follow your _mouse",
+            [CharacterGaze.Word(GazeMode.Near)] = "Follow your mouse when it's _near", [CharacterGaze.Word(GazeMode.Ahead)] = "Look straight _ahead",
+            [CharacterGaze.Word(GazeMode.Window)] = "Watch the _window you're using"
+        };
+        var eyeChoices = RendererGaze.Choices.Select(choice =>
+        {
+            var item = Item(eyeLabels[choice], "CharacterEyes-" + choice, null, () => Request(RendererRequest.LookPrefix + choice));
+            item.IsCheckable = true;
+            eyes.Items.Add(item);
+            return (Choice: choice, Item: item);
+        }).ToArray();
+        var eyesFree = Item("_Let the character change it", "CharacterEyes-free", null,
+            () => Request(gazeFree ? RendererRequest.FreeOff : RendererRequest.FreeOn));
+        eyesFree.IsCheckable = true;
+        eyes.Items.Add(new Separator());
+        eyes.Items.Add(eyesFree);
+        // The checks show what Martlet last said applies (gaze), also when its answer comes while the menu is open.
+        void ShowEyes()
+        {
+            foreach (var (choice, item) in eyeChoices) item.IsChecked = choice == gazeChoice;
+            eyesFree.IsChecked = gazeFree;
+        }
+        eyes.SubmenuOpened += (_, _) => ShowEyes();
         var zoomIn = Item("Zoom _in", "CharacterZoomIn", "+", () => Zoom(ZoomStep * ZoomStep, null));
         var zoomOut = Item("Zoom _out", "CharacterZoomOut", "-", () => Zoom(1 / (ZoomStep * ZoomStep), null));
         var reset = Item("_Reset zoom", "CharacterResetZoom", "0", ResetZoom);
@@ -751,7 +784,7 @@ internal sealed partial class RendererWindow : Window
         var hide = Item("_Hide character", "CharacterHide", "Esc", () => Request("hide"));
         var menu = new ContextMenu
         {
-            Items = { talk, mute, open, settings, clearEmotes, new Separator(), zoomIn, zoomOut, reset, home, placeLock, onTop, new Separator(), hide }
+            Items = { talk, mute, open, settings, clearEmotes, eyes, new Separator(), zoomIn, zoomOut, reset, home, placeLock, onTop, new Separator(), hide }
         };
         AutomationProperties.SetAutomationId(menu, "CharacterMenu");
         AutomationProperties.SetName(menu, "Character");
@@ -759,8 +792,9 @@ internal sealed partial class RendererWindow : Window
         menu.Opened += (_, _) =>
         {
             // Until Martlet has loaded the character there is no one to ask; Hide still closes the overlay then.
-            talk.IsEnabled = mute.IsEnabled = open.IsEnabled = settings.IsEnabled = clearEmotes.IsEnabled = placeLock.IsEnabled = CanRequest;
+            talk.IsEnabled = mute.IsEnabled = open.IsEnabled = settings.IsEnabled = clearEmotes.IsEnabled = placeLock.IsEnabled = eyes.IsEnabled = CanRequest;
             ShowVoice();
+            ShowEyes();
             zoomIn.IsEnabled = CanZoomIn;
             zoomOut.IsEnabled = CanZoomOut;
             reset.IsEnabled = CanResetZoom;
@@ -1506,8 +1540,9 @@ internal sealed partial class RendererWindow : Window
         lifetime.Cancel();
     }
 
-    // The character's head and eyes follow the mouse cursor, or for a while a point on the desktop Martlet asked it to look at
-    // ("gaze"); messages to the browser are fire-and-forget and never replied to.
+    // The character's head and eyes follow its usual gaze (the mouse, the mouse when it's near, straight ahead or the window the
+    // user is using), or for a while a point on the desktop Martlet asked it to look at, or the mouse after a touch ("gaze");
+    // messages to the browser are fire-and-forget and never replied to.
     private void StartLookTracking()
     {
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
@@ -1519,15 +1554,19 @@ internal sealed partial class RendererWindow : Window
         timer.Start();
     }
 
-    // Where Martlet asked the character to look (physical screen pixels, like its screenshots) and until when; the direction
-    // the browser was last given (+x right, +y up, -1 to 1) and whether that was toward the point.
+    // Where Martlet asked the character to look (physical screen pixels, like its screenshots) and until when; until when a touch
+    // keeps its eyes on the mouse; its usual gaze and what the Eyes menu shows checked; the direction the browser was last given
+    // (+x right, +y up, -1 to 1) and what it was toward; and the window the user was last using (for GazeMode.Window).
     private Point? gazePoint;
-    private long gazeUntil;
+    private long gazeUntil, attendUntil;
+    private GazeMode gazeMode = GazeMode.Mouse;
+    private string gazeChoice = RendererGaze.Personality;
+    private bool gazeFree = true;
     private double lookX = double.NaN, lookY = double.NaN;
-    private bool lookingAtPoint;
+    private string lookTarget = "mouse";
+    private ScreenRect? userWindow;
 
-    /// <summary>Turns the head and eyes toward the mouse, or toward the asked-for point while it holds. False once the browser
-    /// can't take messages any more.</summary>
+    /// <summary>Turns the head and eyes toward what the gaze says now. False once the browser can't take messages any more.</summary>
     private bool Look(bool always = false)
     {
         if (LookDirection() is not { } look) return true;
@@ -1546,30 +1585,49 @@ internal sealed partial class RendererWindow : Window
 
     private (double X, double Y)? LookDirection()
     {
-        Point face;
+        Point face, frameTopLeft, frameBottomRight;
         // The face sits at 30% height when unzoomed; follow it through the camera zoom, within the character's frame.
         var faceX = (viewX + 1) / 2;
         var faceY = (1 - (0.4 * viewZoom + viewY)) / 2;
+        var frameLeft = FrameOffset(viewport.ActualWidth);
+        var frameWidth = viewport.ActualWidth * FrameFraction;
         try
         {
-            face = viewport.PointToScreen(new Point(FrameOffset(viewport.ActualWidth) + viewport.ActualWidth * FrameFraction * faceX,
-                viewport.ActualHeight * faceY));
+            face = viewport.PointToScreen(new Point(frameLeft + frameWidth * faceX, viewport.ActualHeight * faceY));
+            frameTopLeft = viewport.PointToScreen(new Point(frameLeft, 0));
+            frameBottomRight = viewport.PointToScreen(new Point(frameLeft + frameWidth, viewport.ActualHeight));
         }
         catch (InvalidOperationException) { return null; }
-        Point target;
-        lookingAtPoint = gazePoint is not null && Environment.TickCount64 < gazeUntil;
-        if (lookingAtPoint)
-        {
-            target = gazePoint!.Value;
-            face = Physical(face);
-        }
-        else
-        {
-            gazePoint = null;
-            if (!GetCursorPos(out var cursor)) return null;
-            target = new(cursor.X, cursor.Y);
-        }
-        return (Math.Clamp((target.X - face.X) / 700, -1, 1), Math.Clamp((face.Y - target.Y) / 700, -1, 1));
+        var now = Environment.TickCount64;
+        if (gazePoint is not null && now >= gazeUntil) gazePoint = null;
+        ScreenPoint? mouse = GetCursorPos(out var cursor) ? new ScreenPoint(cursor.X, cursor.Y) : null;
+        var frame = new ScreenRect((int)Math.Round(frameTopLeft.X), (int)Math.Round(frameTopLeft.Y),
+            (int)Math.Round(frameBottomRight.X - frameTopLeft.X), (int)Math.Round(frameBottomRight.Y - frameTopLeft.Y));
+        // The window the user is using is kept track of in every gaze, so watching it starts at once (also from the Eyes menu,
+        // which is in front then).
+        var used = UserWindow();
+        var (target, at) = CharacterGaze.Aim(gazeMode, gazePoint is { } point ? new ScreenPoint(point.X, point.Y) : null, now < attendUntil,
+            mouse, frame, used);
+        lookTarget = target;
+        if (target == "ahead") return (0, 0);
+        if (at is not { } aim) return null;
+        // Martlet's points are physical pixels; the mouse and windows are read in this process's own coordinates, like the face.
+        if (target == "point") face = Physical(face);
+        return (Math.Clamp((aim.X - face.X) / 700, -1, 1), Math.Clamp((face.Y - aim.Y) / 700, -1, 1));
+    }
+
+    /// <summary>The window the user is using: the one in front, unless it is one of the character's own (its menus; then the one
+    /// before stays), minimized, or the desktop or taskbar (then none). Null when none is known.</summary>
+    private ScreenRect? UserWindow()
+    {
+        var front = GetForegroundWindow();
+        if (front == IntPtr.Zero || GetWindowThreadProcessId(front, out var owner) == 0 || owner == (uint)Environment.ProcessId) return userWindow;
+        var name = new StringBuilder(64);
+        var shell = GetClassName(front, name, name.Capacity) > 0 &&
+            name.ToString() is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd";
+        userWindow = !shell && !IsIconic(front) && GetWindowRect(front, out var rect) && rect.Right > rect.Left && rect.Bottom > rect.Top
+            ? new ScreenRect(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top) : null;
+        return userWindow;
     }
 
     /// <summary>A screen point as this window's process sees it, in physical pixels (unchanged where Windows doesn't scale it).</summary>
@@ -1580,22 +1638,49 @@ internal sealed partial class RendererWindow : Window
         return handle != IntPtr.Zero && LogicalToPhysicalPointForPerMonitorDPI(handle, ref native) ? new(native.X, native.Y) : point;
     }
 
-    /// <summary>Looks at the asked-for point for a while (or the mouse again without one) and says what the character looks at.</summary>
+    /// <summary>Sets the usual gaze and the Eyes menu's choices (when given), then looks at the asked-for point for a while, or at
+    /// the mouse for a while, or (with neither) the usual way at once; says what the character looks at.</summary>
     internal RendererLook Gaze(RendererGaze gaze)
     {
-        if (gaze.X is null && gaze.Y is null) gazePoint = null;
-        else if (gaze.X is { } x && gaze.Y is { } y && double.IsFinite(x) && double.IsFinite(y) && Math.Abs(x) < 1_000_000 &&
-            Math.Abs(y) < 1_000_000 && double.IsFinite(gaze.Seconds))
+        if ((gaze.Mode is { } mode && !Enum.IsDefined(mode)) || (gaze.Choice is { } choice && !RendererGaze.Choices.Contains(choice)) ||
+            !double.IsFinite(gaze.Seconds) || (gaze.X is null) != (gaze.Y is null) || (gaze.Mouse && gaze.X is not null))
+            throw new InvalidDataException("Gaze is invalid.");
+        var seconds = (long)(Math.Clamp(gaze.Seconds, RendererGaze.MinimumSeconds, RendererGaze.MaximumSeconds) * 1000);
+        if (gaze.X is { } x && gaze.Y is { } y)
         {
+            if (!double.IsFinite(x) || !double.IsFinite(y) || Math.Abs(x) >= 1_000_000 || Math.Abs(y) >= 1_000_000)
+                throw new InvalidDataException("Gaze is invalid.");
             gazePoint = new(x, y);
-            gazeUntil = Environment.TickCount64 +
-                (long)(Math.Clamp(gaze.Seconds, RendererGaze.MinimumSeconds, RendererGaze.MaximumSeconds) * 1000);
+            gazeUntil = Environment.TickCount64 + seconds;
         }
-        else throw new InvalidDataException("Gaze is invalid.");
+        else
+        {
+            gazePoint = null;
+            attendUntil = gaze.Mouse ? Environment.TickCount64 + seconds : 0;
+        }
+        if (gaze.Mode is { } usual) gazeMode = usual;
+        if (gaze.Choice is { } chosen) gazeChoice = chosen;
+        if (gaze.Free is { } free) gazeFree = free;
         Look(always: true);
-        return new(lookingAtPoint ? "point" : "mouse", double.IsFinite(lookX) ? Math.Round(lookX, 3) : 0,
-            double.IsFinite(lookY) ? Math.Round(lookY, 3) : 0);
+        return new(lookTarget, double.IsFinite(lookX) ? Math.Round(lookX, 3) : 0, double.IsFinite(lookY) ? Math.Round(lookY, 3) : 0, gazeMode);
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool IsIconic(IntPtr window);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr window, out NativeRect rect);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr window, StringBuilder name, int capacity);
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private struct CursorPoint { public int X, Y; }

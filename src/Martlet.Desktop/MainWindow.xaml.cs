@@ -108,6 +108,9 @@ public partial class MainWindow : ThemedWindow
         characterActions = new(store?.DataDirectory);
         characterTouchZones = new(store?.DataDirectory);
         characterTemperaments = new(store?.DataDirectory);
+        // The character's usual gaze: your choice, else what the active persona's temperament decided.
+        avatar.Gaze.Personality = () => characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId)?.Gaze;
+        avatar.Gaze.Configure(Talk.GazeUsual, Talk.GazeFree);
         characterThemes = new(store?.DataDirectory);
         if (setupService is not null)
         {
@@ -538,8 +541,8 @@ public partial class MainWindow : ThemedWindow
     }
 
     /// <summary>Carries out a choice from the character's own right-click menu (or Esc on it): hide the character, open
-    /// Martlet, talk, open Companion › Character, lock or unlock its position, or mute or unmute Martlet's voice. The overlay
-    /// handles its zoom, position and keep-on-top itself.</summary>
+    /// Martlet, talk, open Companion › Character, lock or unlock its position, mute or unmute Martlet's voice, or choose where
+    /// its eyes go (Eyes). The overlay handles its zoom, position and keep-on-top itself.</summary>
     private void CharacterRequested(string action)
     {
         if (closing) return;
@@ -554,6 +557,11 @@ public partial class MainWindow : ThemedWindow
             return;
         }
         ErrorLog.Info($"The character's menu chose '{action}'.");
+        if (action.StartsWith(Martlet.Avatar.Hosting.RendererRequest.LookPrefix, StringComparison.Ordinal))
+        {
+            ChooseCharacterGaze(action);
+            return;
+        }
         switch (action)
         {
             case "hide":

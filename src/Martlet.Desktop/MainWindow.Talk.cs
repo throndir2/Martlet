@@ -119,6 +119,7 @@ public partial class MainWindow
         if (!next.Save(store?.DataDirectory))
             ActionText.Text = "Couldn't save your talk choices. They apply until Martlet closes.";
         avatar.Gaze.Decides = next.DecideGaze;
+        avatar.Gaze.Configure(next.GazeUsual, next.GazeFree);
         if (conversation is not null) conversation.VoiceVolume = next.VoiceVolume;
         // An open talk window follows the change right away.
         openConversation?.UsePreferences(next, visionAddress);
@@ -699,21 +700,23 @@ public partial class MainWindow
         _ => "Normal: Martlet says something when it's worth saying."
     };
 
-    /// <summary>Companion › Vision › Where the character looks: at your mouse (the default), or Martlet decides with each new
-    /// screenshot of your screen whether to look at your mouse or at something on the screen.</summary>
+    /// <summary>Companion › Vision › Glances at your screen: the character keeps its usual gaze (the default; Companion ›
+    /// Character › Where the character looks), or Martlet decides with each new screenshot of your screen whether to glance at
+    /// something on it.</summary>
     private Border GazeCard(TalkPreferences prefs)
     {
-        var mouse = Choice("VisionGaze", "At your mouse", "The character's head and eyes follow your mouse pointer.",
+        var mouse = Choice("VisionGaze", "Keep its usual gaze",
+            "The character's eyes do what Companion › Character › Where the character looks says: by default, they follow your mouse.",
             !prefs.DecideGaze, "VisionGaze-Mouse");
         var decide = Choice("VisionGaze", "Martlet decides",
-            "With each new screenshot of your screen, Martlet looks at your mouse or at something interesting on the screen: " +
-            "something that just popped up or moved, or what it is about to remark on.",
+            "With each new screenshot of your screen, the character keeps its usual gaze or glances at something interesting on " +
+            "the screen: something that just popped up or moved, or what it is about to remark on.",
             prefs.DecideGaze, "VisionGaze-Martlet");
         mouse.Checked += (_, _) => { if (Talk.DecideGaze) SaveTalk(Talk with { DecideGaze = false }, render: true); };
         decide.Checked += (_, _) => { if (!Talk.DecideGaze) SaveTalk(Talk with { DecideGaze = true }, render: true); };
         var status = Note(GazeStatus(prefs), new Thickness(0, 2, 0, 0));
         AutomationProperties.SetAutomationId(status, "VisionGazeStatus");
-        return Card(Heading("Where the character looks"), mouse, decide, status,
+        return Card(Heading("Glances at your screen"), mouse, decide, status,
             Note("It decides while vision watches your active window or whole screen and the character shows. Screenshots are " +
                 "compared on this PC; the Thinking model only chooses during the looks Martlet already takes, so nothing extra " +
                 "is sent.", new Thickness(0, 6, 0, 0)));
@@ -748,9 +751,10 @@ public partial class MainWindow
 
     private string GazeStatus(TalkPreferences prefs)
     {
-        if (!prefs.DecideGaze) return "The character follows your mouse.";
-        if (!prefs.Watch) return "Vision is off, so the character follows your mouse. Turn vision on below.";
-        if (VisionSource(prefs) is { IsScreen: false }) return "Martlet decides only while it watches your screen; with a camera the character follows your mouse.";
+        var usual = $"The character {CharacterGazeService.Describe(avatar.Gaze.Settings.Mode)}.";
+        if (!prefs.DecideGaze) return usual;
+        if (!prefs.Watch) return "Vision is off, so the character keeps its usual gaze. Turn vision on below. " + usual;
+        if (VisionSource(prefs) is { IsScreen: false }) return "Martlet decides only while it watches your screen; with a camera the character keeps its usual gaze. " + usual;
         return avatar.Gaze.Status;
     }
 
