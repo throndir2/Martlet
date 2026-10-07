@@ -216,8 +216,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
         return started;
     }
 
-    /// <summary>", drawn by Martlet over the face at x, y (n pixels wide)" when the renderer drew the action itself (an overlay
-    /// such as the blush glow, for a model without its own), or null.</summary>
+    /// <summary>", drawn by Martlet over the face at x, y (n pixels wide, tilted d°)" when the renderer drew the action itself (an
+    /// overlay such as the blush glow, for a model without its own), or null. The tilt is the head's roll, clockwise.</summary>
     internal static string? Drawn(System.Text.Json.JsonElement data)
     {
         if (data.ValueKind != System.Text.Json.JsonValueKind.Object || !data.TryGetProperty("overlay", out var overlay) ||
@@ -225,7 +225,11 @@ internal sealed partial class AvatarController : IAsyncDisposable
         if (data.TryGetProperty("face", out var face) && face.ValueKind == System.Text.Json.JsonValueKind.Object &&
             face.TryGetProperty("x", out var x) && x.TryGetDouble(out var left) && face.TryGetProperty("y", out var y) &&
             y.TryGetDouble(out var top) && face.TryGetProperty("width", out var width) && width.TryGetDouble(out var size))
-            return System.FormattableString.Invariant($", drawn by Martlet over the face at {left:0}, {top:0} ({size:0} pixels wide)");
+        {
+            var tilt = face.TryGetProperty("tilt", out var roll) && roll.TryGetDouble(out var degrees)
+                ? System.FormattableString.Invariant($", tilted {degrees:0}°") : "";
+            return System.FormattableString.Invariant($", drawn by Martlet over the face at {left:0}, {top:0} ({size:0} pixels wide{tilt})");
+        }
         return ", drawn by Martlet over the face (not in view now)";
     }
 

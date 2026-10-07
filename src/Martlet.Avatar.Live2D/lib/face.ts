@@ -97,9 +97,17 @@ export function faceFromHint(hint: FaceHint, canvasWidth: number, canvasHeight: 
   return { x: (hint.x - 0.5) * canvasWidth, y: (0.5 - hint.y) * canvasHeight, width: hint.width * canvasWidth, roll: 0 };
 }
 
+/** How far the head really rolls for ParamAngleZ (degrees), in radians, counterclockwise. The parameter's ±30 is a range,
+ *  not an angle: artists roll the head mesh far less (about 10° on Hiyori), so it is scaled down and clamped. */
+export function headRoll(angleZ: number): number {
+  const degrees = Math.max(-MAX_ROLL_DEGREES, Math.min(MAX_ROLL_DEGREES, ROLL_SCALE * angleZ));
+  return Number.isFinite(degrees) ? degrees * Math.PI / 180 : 0;
+}
+const ROLL_SCALE = 0.35, MAX_ROLL_DEGREES = 12;
+
 /** A fixed face moved by the head's angles (degrees; Cubism's ParamAngleX turns right, Y up, Z rolls counterclockwise). */
 export function turnFace(face: Face, angleX: number, angleY: number, angleZ: number): Face {
-  const roll = angleZ * Math.PI / 180;
+  const roll = headRoll(angleZ);
   // The head turns about the neck, below the face.
   const pivot = { x: face.x, y: face.y - 0.9 * face.width };
   const x = face.x + 0.12 * face.width * (angleX / 30), y = face.y + 0.1 * face.width * (angleY / 30);

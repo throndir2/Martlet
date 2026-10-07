@@ -49,7 +49,8 @@ function actGesture(name, on, hold) {
   }
   const anchor = face();
   return { started: startOverlay(name, { hold }), overlay: true,
-    face: anchor ? { x: Math.round(anchor.x), y: Math.round(anchor.y), width: Math.round(anchor.width) } : null };
+    face: anchor ? { x: Math.round(anchor.x), y: Math.round(anchor.y), width: Math.round(anchor.width),
+      tilt: Math.round(anchor.angle * 180 / Math.PI) } : null };
 }
 // Which gesture plays once and which is held, a held overlay included.
 function gestureState() {

@@ -3797,8 +3797,9 @@ tags replies get with the voice chosen now and which follow the voice's cues;
 ...*; for a gesture followed by what the renderer now plays and holds, *Gestures
 now: wink playing, shy held.*; an emote Martlet drew over the face itself, such
 as the blush glow on a model without a blush of its own, adds *drawn by Martlet
-over the face at 414, 88 (50 pixels wide)* with the face's middle and width in
-the overlay's page pixels, or *(not in view now)* when the face can't be found
+over the face at 414, 88 (50 pixels wide, tilted 3°)* with the face's middle and
+width in the overlay's page pixels and the head's roll (clockwise; a Live2D head's
+roll is a damped share of `ParamAngleZ`, at most 12°), or *(not in view now)* when the face can't be found
 or faces away), also in `logs_tail` `desktop` as *Character expression '脸红'
 played for {blush}.* (*Character gesture 'blush' played for a try, drawn by
 Martlet over the face at ...*); and `CharacterActionsSaveState` *All changes saved.* or *Not saved:
