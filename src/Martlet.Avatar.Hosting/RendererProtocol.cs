@@ -140,8 +140,11 @@ public sealed record RendererSnapshot(bool Portrait, int Edge = 512)
 {
     public const int MinimumEdge = 64, MaximumEdge = 512;
 }
-/// <summary>A PNG of the character (base64, small enough for one renderer message) and its size in pixels.</summary>
-public sealed record RendererPicture(string Png, int Width, int Height);
+/// <summary>A PNG of the character (base64, small enough for one renderer message) and its size in pixels. <paramref name="CropLeft"/>,
+/// <paramref name="CropTop"/>, <paramref name="CropWidth"/> and <paramref name="CropHeight"/> say where the picture sat on the
+/// renderer page, as fractions of the page (touch zones compare it with touches).</summary>
+public sealed record RendererPicture(string Png, int Width, int Height, double CropLeft = 0, double CropTop = 0, double CropWidth = 1,
+    double CropHeight = 1);
 public sealed record RendererMapping(string Target, string Aspect);
 public sealed record RendererConfiguration(string SourceId, string ModelRevision, string MappingRevision, RendererMapping[] Targets);
 public sealed record RendererIdentity(Guid SessionId, Guid TurnId, Guid RequestId, string SourceId, long Epoch, int SampleRate);

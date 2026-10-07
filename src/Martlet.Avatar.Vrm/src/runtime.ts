@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { VRM, VRMLoaderPlugin } from "@pixiv/three-vrm";
+import { VRM, VRMHumanBoneList, VRMLoaderPlugin } from "@pixiv/three-vrm";
 import { blinkPresets, finite, gazePresets, inspectVrm, integer, mouthPresets, object, requireValid, VrmError,
   type VrmCapabilities } from "./inspect.js";
 import { hitTestVrm, type VrmHit } from "./touch.js";
@@ -386,6 +386,16 @@ export class VrmRuntime {
   get capabilities(): VrmCapabilities | undefined { return this.inspected; }
   get scene(): THREE.Group | undefined { return this.model?.scene; }
   get isLoaded(): boolean { return this.model !== undefined; }
+
+  /** Each humanoid bone the model has with its node, for touch zones. */
+  get humanoidNodes(): readonly (readonly [string, THREE.Object3D])[] {
+    const model = this.model;
+    if (!model) return [];
+    return VRMHumanBoneList.flatMap(name => {
+      const node = model.humanoid.getRawBoneNode(name);
+      return node ? [[name, node] as const] : [];
+    });
+  }
 
   /** Relaxed arms, breathing, blinking, cursor-follow and loudness lip-sync while no mapped A2F turn is active. */
   startIdle(): void { this.loaded(); this.idle = true; }
