@@ -961,7 +961,8 @@ certificate) on `127.0.0.1` that publishes both of a host's Ollama roles the way
 `martlet-host` does, Thinking's `martlet.gateway.ollama-chat.v1` (the real
 `OllamaRelayWorker` for `gemma4:e4b`) and Deep thinking's own
 `martlet.gateway.deep-thinking-chat.v1` (`OllamaRelayWorker.DeepThinking` for
-`qwen3:8b`), each over its own fixture Ollama (canned text, NOT AI), and a
+`qwen3:8b`), each over its own fixture Ollama (canned text, NOT AI) and placed on
+its own graphics card (so live turn first never stops the think), and a
 simulated desktop that pairs and streams through the desktop's paired client
 (`HostChat.cs`). It runs `src\Martlet.NodeLinkCheck` (mode `deep-thinking`,
 `DeepThinkingRehearsal.cs`) and returns `{exitCode, report}` like
@@ -982,6 +983,45 @@ refuses a route whose ID and path don't match. Nothing leaves loopback and
 nothing is written to disk or Windows Credential Manager; it does not cover
 `martlet-host` installing the role, a real Ollama or model (the slots' graphics
 memory), a GPU or a real LAN.
+
+`gpu_priority_selftest` (no arguments) rehearses GPU priority (live turn first,
+[Gateway README](../src/Martlet.Gateway/README.md#gpu-priority-live-turn-first))
+end to end with the production code: real gateways on `127.0.0.1` (Kestrel,
+pinned TLS) with Thinking's Ollama relay (lane `live`) and the Deep thinking
+role's (lane `pool`) placed on graphics cards the way `martlet-host` places them
+(`gpus.json`), each over its own fixture Ollama server on loopback (canned text,
+NOT AI; no GPU is used), a simulated desktop with the desktop's paired client and
+its hold client (`HostLiveGpuHold`, the desktop's `ILiveGpuHold`). It runs
+`src\Martlet.NodeLinkCheck` (mode `gpu-priority`, `GpuPriorityRehearsal.cs`) and
+returns `{exitCode, report}`. Its steps: the host's GPU map (both routes on one
+card, the warning to pin each Ollama server to its own GPU); a live reply stops a
+running think on the same card at once (`job.preempted`, the fixture sees the
+Ollama request aborted); while a reply runs, a new think there is turned away
+(`job.busy`, detail `live`) and never reaches Ollama; the hold client keeps the
+card (a think is turned away, renewing keeps one hold, release frees it); a 1 s
+hold ends on its own; a hold stops a running think and replies never wait for
+it; a think on its own card runs beside replies and holds; and an older host
+without holds never breaks the live turn (the client notes it once). The
+`report.priority` field is the host's `GET /martlet/v1/priority`: each route's
+lane and cards, each card's hold state (`held`, `live`, `pool`, `holds`),
+`whole_host_held`, the holds, the `preempted` and `refused` counts, the last
+preemptions and refusals (with what held the card) and the warnings. It does not
+cover a real GPU, a real Ollama stopping mid-token, a host with two or more
+cards or when the desktop's live turn holds a card.
+
+```powershell
+.\scripts\Invoke-MartletMcp.ps1 -Build -Calls '[{"name":"gpu_priority_selftest"}]'
+```
+
+`gpu_priority_status` (`dataDirectory`) reads GPU priority on every host paired in
+a desktop data directory (`hosts.json`), through each host's own gateway with the
+desktop's pairing (pinned TLS; the secret from Windows Credential Manager only
+signs the request and is never returned): the host's `GET /martlet/v1/priority`
+report as above, or, for a host older than GPU priority, `gpuPriority: false` with
+the advice to update it, or `reachable: false` with the problem. With no
+`hosts.json` it contacts nothing. Read-only: it takes no hold and starts no work.
+`Invoke-MartletMcp.ps1` gives it the disposable data directory unless one is
+named.
 
 `speaking_voices_selftest` (no arguments) rehearses the
 [shared speaking voices](CLUSTER.md#the-shared-speaking-voices) end to end with
@@ -1135,7 +1175,9 @@ It returns `renderer`, `key` (first 16 hex digits of the model's ID), `files`
 model3.json, with their model-relative file names, and the `Idle` group made
 from VTube Studio's idle animation), `saved`, `detectedBy` (`names` or
 `thinking`), `actions` (each one's `n` as in `CharacterActionName-<n>`, `id`,
-`kind`, `name`, `detail`, `tag`, `cue`, `use`, `enabled`, `mode` (`brief`, or
+`kind`, `name`, `detail`, `tag`, `cue`, `use` (the When to use text, null while
+the box is empty), `hint` (what the reply prompt says next to the tag: `use`, or
+Martlet's own hint while `use` is null), `enabled`, `mode` (`brief`, or
 `lingering`: stays on after `{tag}` until `{/tag}`), `modeSaved` (false while it
 is the default), `vtsToggle` (a VTube Studio ToggleExpression hotkey turns it
 on) and whether replies
@@ -4136,7 +4178,11 @@ Martlet over the face at ...*); and `CharacterActionsSaveState` *All changes sav
 (its name and kind; a status field), `CharacterActionOn-<n>` (check box),
 `CharacterActionTag-<n>` (an English tag; a tag in another script reads *Not
 saved: ... use up to 24 English letters (a-z) ...*), `CharacterActionCue-<n>` (combo box: `(none)` or a
-cue such as `laugh`), `CharacterActionUse-<n>`, `CharacterActionMode-<n>` (the
+cue such as `laugh`), `CharacterActionUse-<n>` (the When to use box),
+`CharacterActionHint-<n>` (the grey
+hint in that box while it is empty, the text replies get then, such as *nod, for
+yes or agreement* or *the character's emote named "Glasses"*; hidden once the
+box has text), `CharacterActionMode-<n>` (the
 *Stays on* check box, its mode as `checkedState`: on for a lingering emote) and `CharacterActionTry-<n>`
 (plays it on the showing character, or turns a lingering one on; its label, a
 status field, reads *Turn off* while that lingering emote is on, and clicking it
@@ -5066,7 +5112,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

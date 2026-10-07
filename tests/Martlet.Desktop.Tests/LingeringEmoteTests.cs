@@ -96,6 +96,30 @@ public sealed class LingeringEmoteTests
     }
 
     [Fact]
+    public void The_reply_prompt_asks_for_varied_tags_and_gives_each_its_when_to_use_hint()
+    {
+        var catalog = Catalog();
+        var prompt = catalog.Prompt(null, null)!.Instructions;
+        Assert.Contains("Use them freely to show what you feel and do, usually one or two in a reply. Vary them: each is worth showing.", prompt);
+        Assert.DoesNotContain("need none", prompt);
+        // The instructions don't grow: the old text was 459 bytes before {tags} and {example} were filled in.
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(PromptCatalog.Default(PromptCatalog.CharacterActions)) <= 459);
+
+        // An empty When to use gives Martlet's own hint (the grey text in the box): a gesture's built-in one, or the emote's name.
+        var sweat = Source("gesture:sweat");
+        var smile = Source("expression:Smile");
+        Assert.Equal("a sweat drop, for nervousness or an awkward moment", CharacterActions.Hint(sweat, catalog.Settings.Find(sweat.Id)!));
+        Assert.Equal("the character's emote named \"Smile\"", CharacterActions.Hint(smile, catalog.Settings.Find(smile.Id)!));
+        Assert.Contains("{sweat} - a sweat drop, for nervousness or an awkward moment", prompt);
+        var written = catalog.Settings with
+        {
+            Actions = catalog.Settings.Actions.Select(a => a.Id == smile.Id ? a with { Use = "when happy or amused" } : a).ToArray()
+        };
+        Assert.Equal("when happy or amused", CharacterActions.Hint(smile, written.Find(smile.Id)!));
+        Assert.Contains("{smile} - when happy or amused", (catalog with { Settings = written }).Prompt(null, null)!.Instructions);
+    }
+
+    [Fact]
     public void A_reply_strips_off_tags_and_passes_them_on_as_cues()
     {
         var tags = Catalog().Prompt(null, null)!.Tags;

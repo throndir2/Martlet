@@ -185,6 +185,7 @@ public sealed class GatewayServer
             application.Logs.Own(Martlet.Core.Logs.LogLevels.Info,
                 $"Gateway {identity.HostId} started on {listener.Origin.CanonicalOrigin}" +
                 (typeof(GatewayServer).Assembly.GetName().Version?.ToString(3) is { } version ? $" (Martlet {version})." : "."));
+            application.LogGpuMap();
             return new InferenceListener(listener, inference, application.Logs);
         }
         catch

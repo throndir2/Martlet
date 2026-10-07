@@ -634,7 +634,14 @@ thinking isn't available: `think_longer` isn't offered, the page says why, and a
 single PC whose Thinking model is local simply doesn't think in the background
 until another place is chosen. A paired computer's Thinking pool role is a
 separate Ollama server with its own route, so it thinks in parallel even on the
-computer that does Thinking (they share its graphics card).
+computer that does Thinking (they share its graphics card). On a shared card the
+live turn goes first: while a reply, a voice or listening runs on that card, or
+a companion PC holds it for a live turn, the host turns a new think there away
+(`job.busy`, detail `live`) and stops a running one at once (`job.preempted`),
+and the Thinking pool runs it on another place or later
+([Live turn first](CLUSTER.md#live-turn-first-on-a-shared-graphics-card)). On a
+host with two or more NVIDIA cards, give the role a card of its own (its *Graphics
+card* choice) so its thinks never stop for a reply.
 
 **A second model on this PC.** Ollama runs each loaded model in a process of its
 own, so a second model answers at the same time as Thinking's, without touching

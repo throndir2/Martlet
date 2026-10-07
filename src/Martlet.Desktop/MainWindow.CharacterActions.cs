@@ -125,7 +125,9 @@ public partial class MainWindow
             Heading("Emotes and motions"),
             Note("Martlet's replies can make the character show its emotes and play its motions, and nod or shake its head. Link one " +
                 "to a voice cue and it plays whenever the voice makes that sound or tone (Chatterbox Turbo's [laugh], Dia's (laughs)); " +
-                "the others are offered to the Thinking model as tags such as {blush}. Tags are always English (a-z), so every " +
+                "the others are offered to the Thinking model as tags such as {blush}, and it is asked to use them freely and " +
+                "vary them. Each tag's When to use is the hint the Thinking model reads with it; leave it empty for " +
+                "Martlet's own hint, shown in grey. Tags are always English (a-z), so every " +
                 "Thinking model can write them; names stay as the model's creator wrote them, in any language. A tag written " +
                 "another way still plays ([blush] or *blushes* for {blush}), and the talk window notes under each reply what it " +
                 "set off. Changes save as you type, for this model.",
@@ -234,6 +236,25 @@ public partial class MainWindow
             var use = new TextBox { Text = action.Use ?? "", MinWidth = 260, MaxLength = CharacterActionCatalog.MaximumUseLength };
             AutomationProperties.SetName(use, $"When to use {source.Name}");
             AutomationProperties.SetAutomationId(use, $"CharacterActionUse-{n}");
+            // Replies get Martlet's own hint while the box is empty; it shows in grey until the owner writes one.
+            var builtIn = CharacterActions.Describe(source);
+            var help = $"What the Thinking model reads next to this tag, so it knows when to use it. Empty: \"{builtIn}\".";
+            AutomationProperties.SetHelpText(use, help);
+            use.ToolTip = help;
+            var hint = new TextBlock
+            {
+                Text = builtIn, IsHitTestVisible = false, MaxWidth = 420, TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(13, 0, 13, 0),
+                Visibility = use.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed
+            };
+            hint.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+            AutomationProperties.SetAutomationId(hint, $"CharacterActionHint-{n}");
+            use.TextChanged += (_, _) => hint.Visibility = use.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+            var useBox = new Grid();
+            useBox.Children.Add(use);
+            useBox.Children.Add(hint);
+            // Keeps the width a long hint gave the box, so the box doesn't get narrower when typing hides the hint.
+            useBox.SizeChanged += (_, e) => { if (hint.Visibility == Visibility.Visible) useBox.MinWidth = e.NewSize.Width; };
             var stays = new CheckBox
             {
                 Content = "Stays on", IsChecked = CharacterActions.Lingers(source, action), VerticalAlignment = VerticalAlignment.Center,
@@ -269,7 +290,7 @@ public partial class MainWindow
             fields.Children.Add(new Label { Content = "}   Voice cue", Target = cue, Padding = new Thickness(4, 4, 6, 4) });
             fields.Children.Add(cue);
             fields.Children.Add(new Label { Content = "When to use", Target = use, Padding = new Thickness(12, 4, 6, 4) });
-            fields.Children.Add(use);
+            fields.Children.Add(useBox);
             fields.Children.Add(stays);
             stack.Add(header);
             stack.Add(fields);
