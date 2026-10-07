@@ -634,7 +634,14 @@ thinking isn't available: `think_longer` isn't offered, the page says why, and a
 single PC whose Thinking model is local simply doesn't think in the background
 until another place is chosen. A paired computer's Thinking pool role is a
 separate Ollama server with its own route, so it thinks in parallel even on the
-computer that does Thinking (they share its graphics card).
+computer that does Thinking (they share its graphics card). On a shared card the
+live turn goes first: while a reply, a voice or listening runs on that card, or
+a companion PC holds it for a live turn, the host turns a new think there away
+(`job.busy`, detail `live`) and stops a running one at once (`job.preempted`),
+and the Thinking pool runs it on another place or later
+([Live turn first](CLUSTER.md#live-turn-first-on-a-shared-graphics-card)). On a
+host with two or more NVIDIA cards, give the role a card of its own (its *Graphics
+card* choice) so its thinks never stop for a reply.
 
 **A second model on this PC.** Ollama runs each loaded model in a process of its
 own, so a second model answers at the same time as Thinking's, without touching
@@ -1255,7 +1262,9 @@ voice pipeline never waits for a whole reply:
   already took, at most 100 ms, plays out), and a sentence that starts meanwhile
   starts paused. The Thinking text and the voice's synthesis go on and buffer,
   so playing on (`Resume`) starts at once from the exact sample where it
-  paused, with a 10 ms fade-in and nothing made again. A judge then decides
+  paused, with a 10 ms fade-in and nothing made again. The character's emotes
+  that the reply hasn't reached wait too, and play at the same point in the
+  speech. A judge then decides
   (`IBargeInJudge`, through `BargeInJudging.RuleAsync`): *interrupt* stops the
   reply as before and what you said is answered next; *not for Martlet* plays
   it on. The judge reads Martlet's current sentence (`ConversationTurn.Sentence`),
@@ -1767,7 +1776,14 @@ VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
   [character tags](AVATARS.md#emotes-and-motions) such as `{blush}`, which the
   segmenter and the chat drop like another engine's tags. Both reach the
   character through the runtime's `CharacterCueFeed`, timed within the sentence
-  as it starts playing (or at once for a reply that isn't spoken).
+  as it starts playing (or at once for a reply that isn't spoken). Each cue
+  waits for its moment on the reply's own clock (`CharacterCueLine.ReachedAsync`).
+  The clock stands still while the reply is paused, so a cue keeps its place in
+  the speech. The clock stops when the reply is stopped, replaced or fails, so
+  the character doesn't act the cues the reply hasn't reached. The desktop log
+  then says *Character cue {wink} wasn't acted: the reply stopped before it got
+  there.* Muting the voice drops no cues: the reply goes on in the captions, and
+  so do its cues.
 - **Under the reply.** The talk window notes how a reply was acted out under
   its bubble (`ReplyTag.Note`): *Tone: happy. Sound: laugh. Emotes: nod,
   blush.*, each part only when the reply wrote one: the tones and sounds its

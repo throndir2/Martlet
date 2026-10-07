@@ -1186,6 +1186,12 @@ public partial class MainWindow
             stack.Add(provider);
         }
         else stack.Add(new TextBlock { Text = providers[0].Name, FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        // Speaking: the same rundown as the voice engines (VoiceEngineAbilities-openai, VoiceEngineRunsOn-openai).
+        if (role == SetupRole.Tts)
+        {
+            stack.Add(AbilitiesLine("openai", VoiceAbilities.OpenAiVoice, []));
+            stack.Add(RunsOnLine("openai", RunsOnText(Martlet.Core.Planning.FootprintCatalog.OpenAiVoiceId)));
+        }
         stack.AddRange(
         [
             baseUrlPanel,

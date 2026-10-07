@@ -25,13 +25,17 @@ namespace Martlet.Mcp;
 /// muted: the user mutes Martlet's voice (ConversationTurn.MuteVoice, as the character's Mute voice does) as the failAt-th piece
 /// is asked; text-only: the reply has no voice (Speak Martlet's replies aloud off). Either way the captions show the rest.
 /// paused: the reply pauses once its first audio played (ConversationTurn.Pause, as Pause and decide does when the user talks
-/// over it) and plays on after <see cref="HoldFor"/>: nothing plays meanwhile, the voice keeps making the next pieces, and every
-/// piece is said once.</summary>
+/// over it) and plays on after <see cref="HoldFor"/>: nothing plays meanwhile, the voice keeps making the next pieces, every
+/// piece is said once, and no character cue acts while it is paused (a cue that falls in the pause waits for it).
+/// stopped: the user stops the reply (ConversationTurn.StopAsync, as Stop or talking over it does) as the failAt-th piece starts
+/// playing: the reply ends canceled, and no character cue acts after the stop (the ones still waiting are dropped).</summary>
 internal static class SpokenReplyCheck
 {
-    internal static readonly string[] Failures = ["server", "unavailable", "stall", "slow", "none", "muted", "text-only", "paused"];
+    internal static readonly string[] Failures = ["server", "unavailable", "stall", "slow", "none", "muted", "text-only", "paused", "stopped"];
     // How long "paused" holds the reply, as if the user talked over it and the judge said it was not for Martlet.
     internal static readonly TimeSpan HoldFor = TimeSpan.FromSeconds(1);
+    // How late a character cue may be noted after a pause or stop began, for a cue the reply reached just before it.
+    private const long CueGraceMs = 50;
     // How long a slow voice keeps the speakers waiting in the middle of each piece.
     internal static readonly TimeSpan SlowGap = TimeSpan.FromMilliseconds(1_500);
     private const string Model = "fixture-model";
@@ -112,9 +116,10 @@ internal static class SpokenReplyCheck
             var shown = new List<(string Text, long AtMs, bool Spoken)>();
             var clock = System.Diagnostics.Stopwatch.StartNew();
             var reading = ReadCaptionsAsync(captions, shown, clock, voice, stop.Token);
-            // What the desktop character is told to do: each cue as its sentence starts playing, with how far into it the cue falls.
+            // What the desktop character is told to do: each cue as its sentence starts playing, with how far into it the cue
+            // falls, and when the character acts it (or that it was dropped), waiting for it as the desktop's character does.
             var cueFeed = new CharacterCueFeed();
-            var posted = new List<(string Tag, long AtMs, long DelayMs)>();
+            var posted = new List<SeenCue>();
             var acting = ReadCuesAsync(cueFeed, posted, clock, stop.Token);
             await using var runtime = ConversationRuntime.Create(new NoCredentials(), speakers, hostSpeech: voice, spokenText: captions,
                 characterCues: cueFeed);
@@ -124,7 +129,7 @@ internal static class SpokenReplyCheck
             timeline.Mark("building the request", startedAt);
             var turn = runtime.Start(request, new Permissions(ChatCompletionsSetup.BaseUri(baseUrl), target), cancellation);
             voice.Turn.TrySetResult(turn);
-            var holding = failure == "paused" ? HoldAsync(turn, voice, speakers, cancellation) : null;
+            var holding = failure == "paused" ? HoldAsync(turn, voice, speakers, clock, cancellation) : null;
             var terminal = await turn.Completion.WaitAsync(TimeSpan.FromSeconds(60), cancellation);
             await turn.OwnershipRelease.WaitAsync(TimeSpan.FromSeconds(10), cancellation);
             var latencyLine = ReplyLatency.Describe(timeline, startedAt, TimeProvider.System, terminal,
@@ -171,20 +176,37 @@ internal static class SpokenReplyCheck
             var characterHidden = !spellings.Any(spelling =>
                 text.Contains(spelling, StringComparison.OrdinalIgnoreCase) || pieces.Any(piece => piece.Contains(spelling, StringComparison.OrdinalIgnoreCase)));
             var acted = turn.Acted;
+            var stopped = failure == "stopped";
             int Posted() { lock (posted) return posted.Count; }
             var cueWait = System.Diagnostics.Stopwatch.StartNew();
-            while (Posted() < acted.Count && cueWait.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(50, cancellation);
-            (string Tag, long AtMs, long DelayMs)[] cues;
+            // A stopped reply posts nothing more: its cues are the lines already in the feed.
+            while ((stopped ? cueFeed.Lines.Count > 0 : Posted() < acted.Count) && cueWait.Elapsed < TimeSpan.FromSeconds(5))
+                await Task.Delay(50, cancellation);
+            if (stopped) await Task.Delay(50, cancellation);
+            SeenCue[] cues;
             lock (posted) cues = [.. posted];
+            // Each cue acts when the reply reaches it (at most 30 s into its sentence, plus a pause), or is dropped.
+            try { await Task.WhenAll(cues.Select(cue => cue.Settled)).WaitAsync(TimeSpan.FromSeconds(35), cancellation); }
+            catch (TimeoutException) { }
             var everyCue = !(everyPiece || failure == "text-only") || cues.Length == acted.Count;
-            var characterOk = characterTags is null || characterHidden && everyCue;
+            var cuesOk = failure switch
+            {
+                // Paused: every cue still acts, but none while the reply is paused: a cue that falls in the pause waits for it.
+                "paused" => hold is { } held && cues.All(cue => cue.ActedMs is { } ms && (ms <= held.PausedAtMs + CueGraceMs || ms >= held.ResumedAtMs)),
+                // Stopped: no cue acts after the stop; the ones still waiting are dropped.
+                "stopped" => voice.StoppedAtMs is { } stoppedAt && cues.All(cue => cue.Dropped || cue.ActedMs <= stoppedAt + CueGraceMs),
+                // The reply plays on (or shows in the captions), so every cue acts.
+                _ when everyPiece || failure == "text-only" => cues.All(cue => cue.ActedMs is not null),
+                _ => true
+            };
+            var characterOk = characterTags is null || characterHidden && everyCue && cuesOk;
             // Captions of unsaid sentences keep coming after the reply ends, one per reading time.
             bool Covered()
             {
                 lock (shown) return Words(string.Join(" ", shown.Select(line => line.Text))) == Words(expectedText);
             }
             var waited = System.Diagnostics.Stopwatch.StartNew();
-            while (!Covered() && waited.Elapsed < TimeSpan.FromSeconds(25)) await Task.Delay(100, cancellation);
+            while (!stopped && !Covered() && waited.Elapsed < TimeSpan.FromSeconds(25)) await Task.Delay(100, cancellation);
             var captionsComplete = Covered();
             var expected = failure switch
             {
@@ -192,17 +214,22 @@ internal static class SpokenReplyCheck
                 "unavailable" => ProviderFailureCode.ModelNotFound,
                 _ => (ProviderFailureCode?)null
             };
+            // The pieces together say the whole reply once: none was made again.
+            var saidOnce = Words(VoiceTags.Strip(string.Join(" ", pieces))) == Words(expectedText);
             var voiceOk = failure switch
             {
                 // Paused: the speakers go quiet while the voice keeps making the next pieces, and on resume every piece is said
                 // once (nothing is made again).
-                "paused" => !terminal.SpeechFailed && voice.Spoken == voice.Calls && voice.Calls == chunks.Length && hold is
+                "paused" => !terminal.SpeechFailed && voice.Spoken == voice.Calls && saidOnce && hold is
                     { Paused: true, Resumed: true } && hold.SamplesAfter == hold.SamplesBefore && hold.MadeAfter >= 2 &&
                     terminal.Timings is { PausesForYou: 1, Resumes: 1 },
                 _ when everyPiece => !terminal.SpeechFailed && voice.Spoken == voice.Calls && voice.Calls > 0,
                 // Muting ends what is said aloud at that piece: nothing more is asked of the voice, and it isn't a failure.
                 "muted" => terminal.VoiceMuted && !terminal.SpeechFailed && voice.Spoken == at - 1 && voice.Calls == at,
                 "text-only" => !terminal.VoiceMuted && !terminal.SpeechFailed && voice.Calls == 0 && speakers.Opens == 0,
+                // Stopping ends the whole reply, as the user asked; the voice didn't fail.
+                "stopped" => terminal.State == ConversationState.Canceled && !terminal.SpeechFailed && voice.StoppedAtMs is not null &&
+                    voice.Spoken >= at,
                 _ => terminal.SpeechFailed && voice.Spoken == at - 1 && voice.Calls >= at &&
                     (expected is null || terminal.ProviderFailure == expected && terminal.FailedProvider == ProviderRole.Tts)
             };
@@ -210,8 +237,8 @@ internal static class SpokenReplyCheck
             lock (shown) lines = [.. shown];
             return new
             {
-                ok = terminal.State == ConversationState.Completed && terminal.TextComplete && full && voiceOk && captionsComplete && latencyOk &&
-                    thinkingOk && tagsHidden && characterOk,
+                ok = (stopped || terminal.State == ConversationState.Completed && terminal.TextComplete && full && captionsComplete) &&
+                    voiceOk && latencyOk && thinkingOk && tagsHidden && characterOk,
                 voiceFailure = failure,
                 failAt = everyPiece || failure == "text-only" ? (int?)null : at,
                 endpoint = baseUrl,
@@ -223,7 +250,8 @@ internal static class SpokenReplyCheck
                     hidden = tagsHidden
                 } : null,
                 // What the reply's tags did, the note the talk window shows under it, and each cue as the character got it: when
-                // its sentence started playing (atMs) and how far into that sentence it falls (delayMs).
+                // its sentence started playing (atMs), how far into that sentence it falls (delayMs) and when the character acted
+                // it (actedMs), or that it was dropped because the reply stopped first (stoppedAtMs: when the user stopped it).
                 character = characterTags is null ? null : new
                 {
                     ok = characterOk,
@@ -231,8 +259,11 @@ internal static class SpokenReplyCheck
                     hidden = characterHidden,
                     acted = acted.Select(tag => new { tag = tag.Tag, kind = tag.Kind.ToString(), name = tag.Name, written = tag.Written }),
                     note = ReplyTag.Note(acted),
-                    cues = cues.Select(cue => new { tag = cue.Tag, atMs = cue.AtMs, delayMs = cue.DelayMs }),
-                    everyCue
+                    cues = cues.Select(cue => new { tag = cue.Tag, atMs = cue.AtMs, delayMs = cue.DelayMs, actedMs = cue.ActedMs, dropped = cue.Dropped }),
+                    everyCue,
+                    cuesOk,
+                    dropped = cues.Count(cue => cue.Dropped),
+                    stoppedAtMs = voice.StoppedAtMs
                 },
                 thinking = new
                 {
@@ -308,31 +339,37 @@ internal static class SpokenReplyCheck
     }
 
     // MadeBefore/MadeAfter: pieces the voice had finished making. Synthesis runs one piece ahead of playback, so by the end of the
-    // pause the piece after the paused one is made and plays at once on resume.
+    // pause the piece after the paused one is made and plays at once on resume. PausedAtMs/ResumedAtMs: on the check's clock,
+    // as the character cues are.
     internal sealed record Hold(bool Paused, bool Resumed, long SamplesBefore, long SamplesAfter, int CallsBefore, int CallsAfter,
-        int MadeBefore, int MadeAfter, double HeldMs);
+        int MadeBefore, int MadeAfter, double HeldMs, long PausedAtMs, long ResumedAtMs);
 
     // Pauses the reply once its first audio has played, as Pause and decide does when the user talks over it, holds it for
     // HoldFor while the text and the voice go on, then plays it on.
-    private static async Task<Hold> HoldAsync(ConversationTurn turn, Voice voice, Speakers speakers, CancellationToken cancellation)
+    private static async Task<Hold> HoldAsync(ConversationTurn turn, Voice voice, Speakers speakers, System.Diagnostics.Stopwatch clock,
+        CancellationToken cancellation)
     {
         var waited = System.Diagnostics.Stopwatch.StartNew();
         while (speakers.Samples == 0 && waited.Elapsed < TimeSpan.FromSeconds(20)) await Task.Delay(5, cancellation);
         var held = System.Diagnostics.Stopwatch.StartNew();
+        var pausedAt = clock.ElapsedMilliseconds;
         var paused = turn.Pause();
         // What the device had already taken still plays out; nothing more after this.
         await Task.Delay(100, cancellation);
         var (samples, calls, made) = (speakers.Samples, voice.Calls, voice.Spoken);
         await Task.Delay(HoldFor - TimeSpan.FromMilliseconds(100), cancellation);
         var (samplesAfter, callsAfter, madeAfter) = (speakers.Samples, voice.Calls, voice.Spoken);
+        var resumedAt = clock.ElapsedMilliseconds;
         var resumed = turn.Resume();
-        return new(paused, resumed, samples, samplesAfter, calls, callsAfter, made, madeAfter, Math.Round(held.Elapsed.TotalMilliseconds));
+        return new(paused, resumed, samples, samplesAfter, calls, callsAfter, made, madeAfter, Math.Round(held.Elapsed.TotalMilliseconds),
+            pausedAt, resumedAt);
     }
 
     private static string Words(string text) =>
         string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     // A line is spoken when the fixture voice had already said that many pieces as it was shown; the rest are unsaid captions.
+    // A spoken line is shown as its piece starts playing, which is when "stopped" stops the reply.
     private static async Task ReadCaptionsAsync(SpokenTextFeed captions, List<(string, long, bool)> shown,
         System.Diagnostics.Stopwatch clock, Voice voice, CancellationToken cancellation)
     {
@@ -344,19 +381,49 @@ internal static class SpokenReplyCheck
                 var aloud = spoken < voice.Started;
                 if (aloud) spoken++;
                 lock (shown) shown.Add((line.Text, clock.ElapsedMilliseconds, aloud));
+                if (aloud) voice.Playing(spoken, clock);
             }
         }
         catch (OperationCanceledException) { }
     }
 
-    private static async Task ReadCuesAsync(CharacterCueFeed feed, List<(string, long, long)> posted,
-        System.Diagnostics.Stopwatch clock, CancellationToken cancellation)
+    // A cue the character got: when its sentence started playing, how far into it the cue falls, and when the character acted it
+    // or that it was dropped (Settled completes then).
+    private sealed class SeenCue(string tag, long atMs, long delayMs)
+    {
+        internal string Tag { get; } = tag;
+        internal long AtMs { get; } = atMs;
+        internal long DelayMs { get; } = delayMs;
+        internal long? ActedMs { get; set; }
+        internal bool Dropped { get; set; }
+        internal Task Settled { get; set; } = Task.CompletedTask;
+    }
+
+    private static async Task ReadCuesAsync(CharacterCueFeed feed, List<SeenCue> posted, System.Diagnostics.Stopwatch clock,
+        CancellationToken cancellation)
     {
         try
         {
             await foreach (var line in feed.Lines.ReadAllAsync(cancellation))
-                lock (posted)
-                    foreach (var cue in line.Cues) posted.Add((cue.Tag, clock.ElapsedMilliseconds, (long)Math.Round(cue.Delay.TotalMilliseconds)));
+                foreach (var cue in line.Cues)
+                {
+                    var seen = new SeenCue(cue.Tag, clock.ElapsedMilliseconds, (long)Math.Round(cue.Delay.TotalMilliseconds));
+                    seen.Settled = ActAsync(line, cue, seen, clock, cancellation);
+                    lock (posted) posted.Add(seen);
+                }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    // Waits for the cue as the desktop's character does (CharacterCueLine.ReachedAsync): acted when the reply reaches it, or
+    // dropped when the reply was stopped first.
+    private static async Task ActAsync(CharacterCueLine line, CharacterCue cue, SeenCue seen, System.Diagnostics.Stopwatch clock,
+        CancellationToken cancellation)
+    {
+        try
+        {
+            if (await line.ReachedAsync(cue, cancellation)) seen.ActedMs = clock.ElapsedMilliseconds;
+            else seen.Dropped = true;
         }
         catch (OperationCanceledException) { }
     }
@@ -418,8 +485,19 @@ internal static class SpokenReplyCheck
         internal int Started => Volatile.Read(ref started);
         // The fixture reply's pieces it was asked to say, in order.
         internal string[] Pieces { get { lock (pieces) return [.. pieces]; } }
-        // The reply being spoken, which "muted" mutes as the failAt-th piece is asked.
+        // The reply being spoken, which "muted" mutes as the failAt-th piece is asked and "stopped" stops as it starts playing.
         internal TaskCompletionSource<ConversationTurn> Turn { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private long stoppedAtMs = -1;
+        // When "stopped" stopped the reply, on the check's clock, or null.
+        internal long? StoppedAtMs => Interlocked.Read(ref stoppedAtMs) is var at and >= 0 ? at : null;
+
+        // The piece-th spoken piece starts playing: "stopped" stops the reply at the failAt-th, as Stop or talking over it does.
+        internal void Playing(int piece, System.Diagnostics.Stopwatch clock)
+        {
+            if (failure != "stopped" || piece != failAt || !Turn.Task.IsCompletedSuccessfully) return;
+            Interlocked.Exchange(ref stoppedAtMs, clock.ElapsedMilliseconds);
+            _ = Turn.Task.Result.StopAsync();
+        }
 
         public async IAsyncEnumerable<byte[]> StreamAsync(HostSpeechTarget target, BoundedSpeechInput input, CorrelationIds ids,
             long epoch, DateTimeOffset deadline, [EnumeratorCancellation] CancellationToken cancellationToken)

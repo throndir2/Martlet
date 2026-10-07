@@ -11,6 +11,9 @@ internal sealed class LinuxControlDirectory : IDisposable
     private int DirectoryFd => chain[^1].Handle.Value;
     internal const string Config = "host.json", Approval = "service-approval.json", Machine = "machine.json";
     internal const string Staging = "service-approval.staging";
+    /// <summary>Which graphics card each role runs on, for GPU priority (written by martlet-host; not part of the approved
+    /// configuration).</summary>
+    internal const string Gpus = "gpus.json";
     /// <summary>The shared cluster plan the gateway keeps for paired desktops (not part of the approved configuration).</summary>
     internal const string Cluster = "cluster.json", ClusterStaging = "cluster.staging";
     /// <summary>The shared voice list (voiceprints and names) the gateway keeps for paired desktops.</summary>
@@ -123,7 +126,7 @@ internal sealed class LinuxControlDirectory : IDisposable
 
     internal byte[]? Read(string name, int maximum)
     {
-        if (name is not (Config or Approval or Machine or Cluster or Voices or SpeakingVoices or CharacterModels or Creations or HomeAssistant or Logs or Network or Exposure or SignIn or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
+        if (name is not (Config or Approval or Machine or Gpus or Cluster or Voices or SpeakingVoices or CharacterModels or Creations or HomeAssistant or Logs or Network or Exposure or SignIn or Commands or AgentToken or ApiKeys or SharedSettings or Memories) &&
             !IsSpeakingVoiceAudio(name) && !IsCharacterModelChunk(name) && !IsCreationChunk(name)) throw Error(GatewayPersistenceFailure.InvalidPath);
         Validate();
         var before = fs.StatAt(DirectoryFd, name);

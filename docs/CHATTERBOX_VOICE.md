@@ -199,9 +199,15 @@ for Chatterbox (`SpeechEngines.ChatterboxTurboTags` in Martlet.Core) passes 17:
 - **Tones of voice:** `[happy]` `[sarcastic]` `[surprised]` `[angry]` `[fear]`
   `[crying]` `[whispering]` `[dramatic]`
 
-`[advertisement]` and `[narration]` (reading genres) are left out. Turbo's
-`generate` ignores the older `exaggeration`/`cfg_weight` sliders, so these style
-tokens are its only emotion control.
+`[advertisement]` and `[narration]` (reading genres) are left out. Turbo has no
+`exaggeration` or `cfg_weight` setting: those belong to the original 500M
+Chatterbox. Turbo's loader turns the exaggeration input (`emotion_adv`) off, its
+decoding has no CFG step, and `generate` logs that it ignores both. So these
+style tokens are its only emotion control, and the measurements below show that
+only `[whispering]` changes the voice (because Martlet makes the whisper).
+Companion › Voice says so in Chatterbox Turbo's rundown
+(`VoiceEngineAbilities-chatterbox`: voice cloning yes, laughs & sighs yes,
+emotions whispering only).
 
 What Resemble documents (checked again 2026-10-07): the
 [model card](https://huggingface.co/ResembleAI/chatterbox-turbo), the
@@ -305,9 +311,11 @@ out of the chat, is in [Conversation](CONVERSATION.md#voice-tags).
 
 `scripts\Invoke-MartletMcp.ps1` with `voice_tags` (engine `chatterbox`)
 shows the catalog, the Thinking prompt and what the segmenter sends; `f5_voices`
-lists the engine as the default with its `features`; `-Desktop` reads
-`VoiceEngine-chatterbox`, `VoiceEngineFeatures-chatterbox` (its chips, including
-*Laughs & sighs* and *Emotions*) and `VoiceEngineUse-chatterbox` on Companion > Voice.
+lists the engine as the default with its `features` and `abilities`; `-Desktop` reads
+`VoiceEngine-chatterbox`, `VoiceEngineAbilities-chatterbox` (its rundown: voice
+cloning yes, laughs & sighs yes, emotions whispering only), `VoiceEngineRunsOn-chatterbox`
+(an NVIDIA GPU, about 3.7 GB of graphics memory, up to 4.2 GB, 6 GB+ card),
+`VoiceEngineFeatures-chatterbox` (its chips) and `VoiceEngineUse-chatterbox` on Companion > Voice.
 `workers/chatterbox/tests` (stdlib unittest, fixture engine) and
 `ChatterboxRelayTests` cover the service and the relay; with
 `MARTLET_CHATTERBOX_LIVE_ENDPOINT` set to a running service the latter speaks a

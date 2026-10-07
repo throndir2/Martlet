@@ -472,7 +472,21 @@ Chatterbox Turbo), `supportsTags` and `tags`, each tag's `text` in the engine's
 syntax, `kind` `Sound` or `Emotion` and `usage`, and `multipleReferences` (true
 for XTTS-v2 and GPT-SoVITS, which learn from each of a voice's several
 recordings); Chatterbox clones only
-recordings longer than 5 s, GPT-SoVITS only 3,000-10,000 ms), each starter
+recordings longer than 5 s, GPT-SoVITS only 3,000-10,000 ms), `features` (its
+other needs: Docker, recording lengths, streaming, languages), `runsOn` (where
+it runs: `on` `gpu`, `cpu` or `online`, `vramGb` its typical and `peakVramGb`
+its most graphics memory, `minimumGpuGb` the smallest card, `evidence`
+`Measured`, `Sourced` or `Estimate`, all from the footprint catalog
+([resource footprints](RESOURCE_FOOTPRINTS.md)), and `text`, the line
+Companion › Voice shows) and `abilities`, the rundown Companion › Voice shows for it:
+`cloning` and `sounds` (true or false), `emotions` (`None`, `WhisperOnly`,
+`Intensity` or `Tags`), `items` (`Voice cloning`, `Laughs & sighs` and
+`Emotions`, each with `level` `Yes`, `Partly` or `No`, a `note` when partly, its
+`help` sentence and the `tags` that do it) and `summary` ("Voice cloning: yes.
+Laughs & sighs: yes. Emotions: whispering only." for Chatterbox Turbo, whose
+tones other than `[whispering]` don't change the voice). `otherVoices` gives the
+same `abilities` and `runsOn` for the `windows` (CPU) and `openai` (online)
+voices, neither of which clones, laughs or shows emotions. Each starter
 voice adds `engines` (the engines that can clone it) and `language` (`en` or
 `ja`, read from its transcript), and `chosenEngine` is the engine chosen on this
 desktop (`speaking-engine.txt`, default `chatterbox`). After the desktop
@@ -947,7 +961,8 @@ certificate) on `127.0.0.1` that publishes both of a host's Ollama roles the way
 `martlet-host` does, Thinking's `martlet.gateway.ollama-chat.v1` (the real
 `OllamaRelayWorker` for `gemma4:e4b`) and Deep thinking's own
 `martlet.gateway.deep-thinking-chat.v1` (`OllamaRelayWorker.DeepThinking` for
-`qwen3:8b`), each over its own fixture Ollama (canned text, NOT AI), and a
+`qwen3:8b`), each over its own fixture Ollama (canned text, NOT AI) and placed on
+its own graphics card (so live turn first never stops the think), and a
 simulated desktop that pairs and streams through the desktop's paired client
 (`HostChat.cs`). It runs `src\Martlet.NodeLinkCheck` (mode `deep-thinking`,
 `DeepThinkingRehearsal.cs`) and returns `{exitCode, report}` like
@@ -968,6 +983,45 @@ refuses a route whose ID and path don't match. Nothing leaves loopback and
 nothing is written to disk or Windows Credential Manager; it does not cover
 `martlet-host` installing the role, a real Ollama or model (the slots' graphics
 memory), a GPU or a real LAN.
+
+`gpu_priority_selftest` (no arguments) rehearses GPU priority (live turn first,
+[Gateway README](../src/Martlet.Gateway/README.md#gpu-priority-live-turn-first))
+end to end with the production code: real gateways on `127.0.0.1` (Kestrel,
+pinned TLS) with Thinking's Ollama relay (lane `live`) and the Deep thinking
+role's (lane `pool`) placed on graphics cards the way `martlet-host` places them
+(`gpus.json`), each over its own fixture Ollama server on loopback (canned text,
+NOT AI; no GPU is used), a simulated desktop with the desktop's paired client and
+its hold client (`HostLiveGpuHold`, the desktop's `ILiveGpuHold`). It runs
+`src\Martlet.NodeLinkCheck` (mode `gpu-priority`, `GpuPriorityRehearsal.cs`) and
+returns `{exitCode, report}`. Its steps: the host's GPU map (both routes on one
+card, the warning to pin each Ollama server to its own GPU); a live reply stops a
+running think on the same card at once (`job.preempted`, the fixture sees the
+Ollama request aborted); while a reply runs, a new think there is turned away
+(`job.busy`, detail `live`) and never reaches Ollama; the hold client keeps the
+card (a think is turned away, renewing keeps one hold, release frees it); a 1 s
+hold ends on its own; a hold stops a running think and replies never wait for
+it; a think on its own card runs beside replies and holds; and an older host
+without holds never breaks the live turn (the client notes it once). The
+`report.priority` field is the host's `GET /martlet/v1/priority`: each route's
+lane and cards, each card's hold state (`held`, `live`, `pool`, `holds`),
+`whole_host_held`, the holds, the `preempted` and `refused` counts, the last
+preemptions and refusals (with what held the card) and the warnings. It does not
+cover a real GPU, a real Ollama stopping mid-token, a host with two or more
+cards or when the desktop's live turn holds a card.
+
+```powershell
+.\scripts\Invoke-MartletMcp.ps1 -Build -Calls '[{"name":"gpu_priority_selftest"}]'
+```
+
+`gpu_priority_status` (`dataDirectory`) reads GPU priority on every host paired in
+a desktop data directory (`hosts.json`), through each host's own gateway with the
+desktop's pairing (pinned TLS; the secret from Windows Credential Manager only
+signs the request and is never returned): the host's `GET /martlet/v1/priority`
+report as above, or, for a host older than GPU priority, `gpuPriority: false` with
+the advice to update it, or `reachable: false` with the problem. With no
+`hosts.json` it contacts nothing. Read-only: it takes no hold and starts no work.
+`Invoke-MartletMcp.ps1` gives it the disposable data directory unless one is
+named.
 
 `speaking_voices_selftest` (no arguments) rehearses the
 [shared speaking voices](CLUSTER.md#the-shared-speaking-voices) end to end with
@@ -1121,7 +1175,9 @@ It returns `renderer`, `key` (first 16 hex digits of the model's ID), `files`
 model3.json, with their model-relative file names, and the `Idle` group made
 from VTube Studio's idle animation), `saved`, `detectedBy` (`names` or
 `thinking`), `actions` (each one's `n` as in `CharacterActionName-<n>`, `id`,
-`kind`, `name`, `detail`, `tag`, `cue`, `use`, `enabled`, `mode` (`brief`, or
+`kind`, `name`, `detail`, `tag`, `cue`, `use` (the When to use text, null while
+the box is empty), `hint` (what the reply prompt says next to the tag: `use`, or
+Martlet's own hint while `use` is null), `enabled`, `mode` (`brief`, or
 `lingering`: stays on after `{tag}` until `{/tag}`), `modeSaved` (false while it
 is the default), `vtsToggle` (a VTube Studio ToggleExpression hotkey turns it
 on) and whether replies
@@ -2145,7 +2201,9 @@ then the rest, as Chatterbox streams on a busy host's graphics card)
 or `none`; `muted` instead has the user mute Martlet's voice (what the
 character's *Mute voice* does, `ConversationTurn.MuteVoice`) as the
 `failAt`-th piece is asked, and `text-only` sends the reply with no voice at
-all (*Speak Martlet's replies aloud* off); a fixture speaker opens no device and plays nothing. It returns
+all (*Speak Martlet's replies aloud* off); `stopped` has the user stop the
+reply (Stop, or talking over it: `ConversationTurn.StopAsync`) as the
+`failAt`-th piece starts playing; a fixture speaker opens no device and plays nothing. It returns
 `reply` (`state`, `failure`, `textComplete`, `fullText`, `characters` of
 `servedCharacters`, and the fixture `text`) and `voice` (`stopped`, `why` (the
 turn's `SpeechFailure`), `muted` (the turn's `VoiceMuted`), `provider` and `failedJob`, `piecesAsked`,
@@ -2162,6 +2220,8 @@ the whole reply. With `muted`, `ok` needs the voice muted at that piece
 (`voice.muted`, no `SpeechFailure`, nothing more asked of the voice) and, with
 `text-only`, no voice request or speaker at all; both still need the whole
 text and captions that show all of it (every line unsaid for `text-only`).
+With `stopped`, `ok` needs the reply `Canceled` instead of completed, no voice
+failure and the `failAt`-th piece made; the text and the captions stop there.
 Before the fix this reported `Partial` with only the text up
 to the failed sentence, and the captions then showed nothing past the last
 spoken piece. With `reply` (up to 1,024 characters of one-line text) that text
@@ -2181,9 +2241,11 @@ talk over it), stays paused for 1 s and plays on (`Resume`): `ok` also needs
 `voice.hold` to show no samples played while paused (`SamplesBefore` equals
 `SamplesAfter`), the next piece made by the end of the pause (`MadeAfter` at
 least 2: synthesis runs one piece ahead of playback and goes on while paused),
-every piece said once (nothing made again), `timings` with one
+every piece said once (nothing made again: the pieces together say the reply's
+words once), `timings` with one
 pause and one resume, and the latency line ending *, paused N ms when you
-talked over it, then resumed*. It reads no
+talked over it, then resumed*. `voice.hold` also has `PausedAtMs` and
+`ResumedAtMs`, on the same clock as the character cues. It reads no
 credentials and nothing leaves loopback. A real
 paired host's voice failing is NOT reproduced; the talk window then notes
 *The voice failed, so this wasn't spoken.* or *The voice stopped partway, so
@@ -2243,10 +2305,17 @@ desktop character's tags as while the character shows
 tags did, from `ConversationTurn.Acted`, as `voice_tags` lists it: `tag`,
 `kind`, `name`, `written`), `note` (the line the talk window shows under the
 reply), `cues` (each cue the character got: `tag`, `atMs` when its sentence
-started playing and `delayMs` into that sentence) and `hidden`; `ok` also needs
+started playing, `delayMs` into that sentence, and `actedMs` when the
+character acted it or `dropped` when the reply stopped first), `dropped` (how
+many), `cuesOk`, `stoppedAtMs` (with `stopped`, when the stop came) and
+`hidden`. The check waits for each cue through `CharacterCueLine.ReachedAsync`,
+as the desktop's character does. `ok` also needs
 every [spelling](CONVERSATION.md#voice-tags) of the tags out of `reply.text`
 and `voice.pieces` and, with `voiceFailure` `none`, `slow` or `text-only`, a
-cue for every tag acted (`everyCue`). For example
+cue for every tag acted (`everyCue`) and every cue acted (`cuesOk`). With
+`paused`, `cuesOk` needs every cue acted and none while the reply was paused:
+a cue that falls in the pause waits for it. With `stopped`, `cuesOk` needs no
+cue acted after the stop: the cues still waiting are dropped. For example
 `{"voiceFailure":"none","characterTags":["{nod}","{shake_head}","{blush}"],"reply":"Oh, look at all that activity! [nod] What are you working on right now? I bet it's cool *blushes* tell me everything."}`
 spoke all three sentences, with `{nod}` (written `[nod]`) at the start of the
 second and `{blush}` (written `*blushes*`) 1071 ms into the third, and `note`
@@ -2254,6 +2323,19 @@ second and `{blush}` (written `*blushes*`) 1071 ms into the third, and `note`
 the talk window (chat text isn't returned by `ui_snapshot`), and `logs_tail`
 `contains` `Reply acted` reads *Reply acted: {nod} (written [nod]).* next to
 *Character gesture 'nod' played for {nod}.*
+
+For example, `{"voiceFailure":"paused","characterTags":["{wink}"],"reply":"Hey cutie (winks), I like you. Tell me all about your day."}`
+paused the reply from 330 to 1349 ms. The wink was due 643 ms into a sentence
+that started at 315 ms, inside the pause. It acted at 1989 ms, at the same
+point in the speech. With the cue clock's pause and stop taken out, the same
+call had the wink act at 1047 ms, during the pause (`cuesOk` false). With
+`stopped` and *Hey cutie, I like how you are (winks). Tell me all about your
+day.*, the stop came at 372 ms and the wink, due 2071 ms into its sentence, was
+`dropped`; without the cue clock it acted at 2446 ms, after the stop. With
+`failAt` 2 and *(winks) Hey cutie, I like you. Okay, I see you better now
+{wink} so tell me more.*, the first wink acted at once and the second, due
+151 ms after the stop, was dropped. In the desktop a dropped cue logs
+*Character cue {wink} wasn't acted: the reply stopped before it got there.*
 
 `chattiness_status` reads Companion › Vision › **How often it comments** (the
 same choice as Listening › Watch along) from a data directory's
@@ -4135,7 +4217,11 @@ Martlet over the face at ...*); and `CharacterActionsSaveState` *All changes sav
 (its name and kind; a status field), `CharacterActionOn-<n>` (check box),
 `CharacterActionTag-<n>` (an English tag; a tag in another script reads *Not
 saved: ... use up to 24 English letters (a-z) ...*), `CharacterActionCue-<n>` (combo box: `(none)` or a
-cue such as `laugh`), `CharacterActionUse-<n>`, `CharacterActionMode-<n>` (the
+cue such as `laugh`), `CharacterActionUse-<n>` (the When to use box),
+`CharacterActionHint-<n>` (the grey
+hint in that box while it is empty, the text replies get then, such as *nod, for
+yes or agreement* or *the character's emote named "Glasses"*; hidden once the
+box has text), `CharacterActionMode-<n>` (the
 *Stays on* check box, its mode as `checkedState`: on for a lingering emote) and `CharacterActionTry-<n>`
 (plays it on the showing character, or turns a lingering one on; its label, a
 status field, reads *Turn off* while that lingering emote is on, and clicking it
@@ -4219,8 +4305,18 @@ Above the voices, the Voice engine card lists every way Martlet can speak on the
 shown computer as one row each, keyed by engine (`chatterbox`, `f5`, `xtts`,
 `gpt-sovits`, `dia`, and `windows` for a Windows voice under This PC):
 `VoiceEngine-<key>` reads its name and badge ("Chatterbox Turbo · recommended",
-"Windows voice · in use"), `VoiceEngineFeatures-<key>` its chips ("NVIDIA GPU,
-6 GB+, Docker, Voice cloning, 5 s+ samples, Laughs & sighs, Emotions, English";
+"Windows voice · in use"), `VoiceEngineAbilities-<key>` the rundown of what it
+can do ("Voice cloning: yes. Laughs & sighs: yes. Emotions: whispering only.";
+shown as ✓ yes, ◐ partly and ✕ no, the same as `abilities.summary` in
+`f5_voices`), `VoiceEngineRunsOn-<key>` where it runs and how much graphics
+memory it takes ("Runs on an NVIDIA GPU: about 3.7 GB of graphics memory, up to
+4.2 GB (6 GB+ card).", "Runs on the CPU: no graphics card needed." for a Windows
+voice; `runsOn.text` in `f5_voices`; the cloud provider card shows
+`VoiceEngineAbilities-openai` and `VoiceEngineRunsOn-openai`, "Runs online:
+nothing runs on your computers.", when Speaking uses OpenAI),
+`VoiceEngineFeatures-<key>` its other needs as chips ("Docker, 5 s+ samples,
+English" for Chatterbox Turbo, "No Docker or download, Built-in Windows voices"
+for a Windows voice;
 the same list as `features` in `f5_voices`), `VoiceEngineState-<key>` (shown only
 when the button doesn't already say it) where it stands ("Speaking on this PC.",
 "Ready on gpu-pc.", "Setting up on gpu-pc...", or why it can't run there), and
@@ -5072,7 +5168,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
