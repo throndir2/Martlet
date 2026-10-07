@@ -1,0 +1,521 @@
+using System.Globalization;
+using System.IO;
+using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
+using Martlet.Avatar.Hosting;
+using Martlet.Core.Settings;
+using Martlet.Providers;
+
+namespace Martlet.Desktop;
+
+/// <summary>Companion › Character › Touch zones: where a left click on the character lands (top of the head, a cheek, a hand...)
+/// and what the character does then. The Thinking model finds the zones once per model in a snapshot of the character (when it
+/// can see; Detect zones asks again), Martlet binds each to the model's drawables or bones so it follows the model as it moves,
+/// and each zone plays its emotes and gestures, may tell the character (a reply turn) and rests a few seconds. Intimate zones
+/// work only with Include intimate zones on (off by default). Edits save as you make them, per model, on this PC.</summary>
+public partial class MainWindow
+{
+    private readonly CharacterTouchZoneService characterTouchZones;
+    private TextBlock? touchZonesLast;
+    private bool detectingTouchZones;
+
+    private static readonly Color[] ZoneColors =
+    [
+        Color.FromRgb(0xE9, 0x4F, 0x64), Color.FromRgb(0x3B, 0x82, 0xF6), Color.FromRgb(0x10, 0xB9, 0x81), Color.FromRgb(0xF5, 0x9E, 0x0B),
+        Color.FromRgb(0x8B, 0x5C, 0xF6), Color.FromRgb(0xEC, 0x48, 0x99), Color.FromRgb(0x06, 0xB6, 0xD4), Color.FromRgb(0x84, 0xCC, 0x16)
+    ];
+
+    private void WireCharacterTouchZones()
+    {
+        characterActions.Changed += () => characterTouchZones.Follow(characterActions.Current?.Inventory.ModelId);
+        characterTouchZones.Changed += () => Dispatcher.InvokeAsync(() =>
+        {
+            if (touchZonesLast is not null) touchZonesLast.Text = characterTouchZones.LastMatch ?? TouchZonesIdle();
+            if (closing || openTab != CompanionTab.Character || CompanionContent.IsKeyboardFocusWithin || tabEdited) return;
+            if (detectingTouchZones || characterTouchZones.Busy || renderedZonesModel != characterTouchZones.ModelId) RenderTab();
+        });
+        avatar.TouchRouter = OnCharacterTouched;
+    }
+
+    private string? renderedZonesModel;
+
+    private string TouchZonesIdle() => avatar.IsShowing ? "Click the character to try a zone." : "Show the character, then click it to try a zone.";
+
+    // Off the UI thread (the renderer's request relay): the zone's reaction plays at once; telling the character waits for the
+    // conversation on the UI thread.
+    private bool OnCharacterTouched(CharacterTouch touch)
+    {
+        if (closing || !avatar.IsShowing) return false;
+        var catalog = characterActions.For(avatar.InspectedProfile?.ModelPath);
+        characterTouchZones.Follow(catalog?.Inventory.ModelId ?? characterTouchZones.ModelId);
+        characterTouchZones.React(touch, zone => TouchPlan(zone, catalog), PlayTouchAsync, text => Dispatcher.InvokeAsync(() => TellCharacter(text)));
+        return true;
+    }
+
+    /// <summary>What touching <paramref name="zone"/> plays: the owner's choice, or by default the model's own tap motion for
+    /// that part (TapHead, TapBody...) when it has one, then the zone's default emotes and gestures.</summary>
+    private IReadOnlyList<CharacterActionSource> TouchPlan(CharacterTouchZone zone, CharacterActionCatalog? catalog)
+    {
+        var plan = CharacterTouchZones.Plan(zone, catalog);
+        if (zone.Reaction.Actions is not null || catalog is null) return plan;
+        var part = CharacterTouchZones.Kind(zone.Id)?.Group == TouchZoneGroup.Head ? zone.Id.StartsWith("hair", StringComparison.Ordinal) ? "hair" : "head" : "body";
+        var motions = catalog.Entries.Where(e => e.Action.Enabled && e.Source.Kind == CharacterActionKind.Motion).Select(e => e.Source).ToArray();
+        return AvatarController.TouchMotion([.. motions.Select(m => m.Name)], part) is { } group && motions.FirstOrDefault(m => m.Name == group) is { } motion
+            ? [motion, .. plan.Where(s => s != motion)] : plan;
+    }
+
+    private async Task PlayTouchAsync(CharacterActionSource source, string reason)
+    {
+        try { await avatar.PlayActionAsync(source, reason, null, lifetime.Token); }
+        catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
+            InvalidDataException or TimeoutException or ObjectDisposedException) { }
+    }
+
+    /// <summary>A zone that tells the character starts a new reply turn with its line (like a message you typed).</summary>
+    private void TellCharacter(string text)
+    {
+        if (closing || Role == DeviceRole.Host || ConversationSession() is not { } talk) return;
+        if (!talk.IsVisible) talk.StartInBackground();
+        talk.AskFromMessage(text, "You (touch)", speak: true, lifetime.Token).Forget();
+    }
+
+    private async Task DetectTouchZonesAsync()
+    {
+        if (conversation is null || detectingTouchZones) return;
+        detectingTouchZones = true;
+        try
+        {
+            characterTouchZones.Follow(characterActions.For(avatar.InspectedProfile?.ModelPath)?.Inventory.ModelId);
+            // MARTLET_TOUCH_ZONES_FIXTURE: a file whose text stands in for the Thinking model's answer (FIXTURE - NOT AI), so MCP
+            // verification runs the real snapshot, probe, binding and saving without a vision request.
+            var fixture = Environment.GetEnvironmentVariable(CharacterTouchZoneService.FixtureVariable);
+            Func<string, string, string, Martlet.Providers.BoundedImage?, CancellationToken, Task<(string? Answer, string? Failure)>> ask =
+                fixture is { Length: > 0 } ? (_, _, _, _, _) => Task.FromResult<(string?, string?)>((File.Exists(fixture) ? File.ReadAllText(fixture) : null, null))
+                : conversation.AskThinkingAsync;
+            await characterTouchZones.DetectAsync(avatar, ask, lifetime.Token);
+        }
+        finally
+        {
+            detectingTouchZones = false;
+            tabEdited = false;
+            if (!closing && openTab == CompanionTab.Character) RenderTab();
+        }
+    }
+
+    private Border CharacterTouchZonesCard()
+    {
+        var catalog = characterActions.Current;
+        characterTouchZones.Follow(catalog?.Inventory.ModelId);
+        renderedZonesModel = characterTouchZones.ModelId;
+        var settings = characterTouchZones.Current;
+        var stack = new List<UIElement>
+        {
+            Heading("Touch zones"),
+            Note("Click the character (a click, not a drag) and it reacts to where you touched it: a pat on the head, a poke on " +
+                "the cheek, holding its hand. Detect zones sends one picture of the character to your Thinking model, which marks " +
+                "where each part is; Martlet then ties each zone to the model's own parts so it follows the character as it moves. " +
+                "Choose what each zone plays, whether it also tells the character (a reply, like a message you typed) and how long " +
+                "it rests. Changes save as you make them, for this model.", new Thickness(0, 0, 0, 8))
+        };
+        var status = Note(catalog is null ? "Reading the character..." : TouchZonesStatusText(settings), new Thickness(0, 0, 0, 4));
+        AutomationProperties.SetAutomationId(status, "TouchZonesStatus");
+        stack.Add(status);
+        var thinking = conversation?.Configuration;
+        var vision = Note(thinking is null ? "Set up Thinking to detect zones." : thinking.VisionAdvice(), new Thickness(0, 0, 0, 4));
+        AutomationProperties.SetAutomationId(vision, "TouchZonesVision");
+        stack.Add(vision);
+        if (characterTouchZones.Detection is { } detection)
+        {
+            var found = Note(detection, new Thickness(0, 0, 0, 4));
+            AutomationProperties.SetAutomationId(found, "TouchZonesDetection");
+            AutomationProperties.SetLiveSetting(found, AutomationLiveSetting.Polite);
+            stack.Add(found);
+        }
+        touchZonesLast = Note(characterTouchZones.LastMatch ?? TouchZonesIdle(), new Thickness(0, 0, 0, 4));
+        AutomationProperties.SetAutomationId(touchZonesLast, "TouchZonesLast");
+        AutomationProperties.SetLiveSetting(touchZonesLast, AutomationLiveSetting.Polite);
+        stack.Add(touchZonesLast);
+        var saveState = Note("", new Thickness(0, 0, 0, 4));
+        AutomationProperties.SetAutomationId(saveState, "TouchZonesSaveState");
+        AutomationProperties.SetLiveSetting(saveState, AutomationLiveSetting.Polite);
+        stack.Add(saveState);
+
+        var busy = detectingTouchZones || characterTouchZones.Busy;
+        var detect = PageButton(busy ? "Detecting..." : settings is { Zones.Count: > 0 } ? "Detect again" : "Detect zones",
+            () => DetectTouchZonesAsync().Forget(), id: "TouchZonesDetect");
+        detect.IsEnabled = !busy && conversation is not null && avatar.IsShowing && catalog is not null &&
+            thinking?.Vision() != VisionSupport.Unsupported;
+        AutomationProperties.SetHelpText(detect, "Sends one picture of the character (never its files) to your Thinking model, which marks where its parts are.");
+        stack.Add(Row(detect));
+        if (catalog is null) return Card([.. stack]);
+
+        var modelId = catalog.Inventory.ModelId;
+        var intimate = new CheckBox
+        {
+            Content = "Include intimate zones (lips, neck, ears, chest, waist, hips and below)", IsChecked = settings?.IncludeIntimate == true,
+            Margin = new Thickness(0, 4, 0, 4)
+        };
+        AutomationProperties.SetAutomationId(intimate, "TouchZonesIntimate");
+        stack.Add(intimate);
+
+        var rows = new List<ZoneRow>();
+        var autoSave = new AutoSave(async () =>
+        {
+            if (characterTouchZones.ModelId != modelId) return true;
+            var next = (characterTouchZones.Current ?? new CharacterTouchZoneSettings { ModelId = modelId, DetectedBy = CharacterTouchZoneSettings.ByOwner }) with
+            {
+                IncludeIntimate = intimate.IsChecked == true,
+                Zones = rows.Where(r => !r.Deleted).Select(r => r.Read()).ToArray()
+            };
+            var why = await characterTouchZones.SaveAsync(next, lifetime.Token);
+            saveState.Text = why is null ? "All changes saved." : "Not saved: " + why;
+            saveState.SetResourceReference(TextBlock.ForegroundProperty, why is null ? "MutedBrush" : "WarningBrush");
+            if (why is null) { tabEdited = false; status.Text = TouchZonesStatusText(characterTouchZones.Current); }
+            return true;
+        });
+        void Edited()
+        {
+            tabEdited = true;
+            saveState.Text = "Saving...";
+            autoSave.Changed();
+        }
+        intimate.Checked += (_, _) => Edited();
+        intimate.Unchecked += (_, _) => Edited();
+
+        // The snapshot with each zone as a colored, labeled box; drag a box to move it, its corner to resize it.
+        var canvas = new Canvas { Margin = new Thickness(0, 8, 0, 8), HorizontalAlignment = HorizontalAlignment.Left, ClipToBounds = true };
+        AutomationProperties.SetAutomationId(canvas, "TouchZonesPicture");
+        AutomationProperties.SetName(canvas, "Touch zones on the character's picture");
+        double width = 0, height = 0;
+        if (characterTouchZones.SnapshotPath is { } picture)
+        {
+            try
+            {
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.UriSource = new Uri(picture);
+                bitmap.EndInit();
+                var scale = Math.Min(480.0 / bitmap.PixelHeight, 400.0 / bitmap.PixelWidth);
+                (width, height) = (bitmap.PixelWidth * scale, bitmap.PixelHeight * scale);
+                canvas.Width = width;
+                canvas.Height = height;
+                canvas.Children.Add(new Image { Source = bitmap, Width = width, Height = height, Stretch = Stretch.Fill });
+                canvas.Background = new SolidColorBrush(Color.FromArgb(0x18, 0x80, 0x80, 0x80));
+            }
+            catch (Exception error) when (error is IOException or NotSupportedException or UriFormatException or InvalidOperationException) { width = height = 0; }
+        }
+        if (width > 0) stack.Add(canvas);
+
+        var reactionItems = new List<(string Id, string Label)>();
+        foreach (var (source, action) in catalog.Entries.Where(e => e.Action.Enabled))
+            reactionItems.Add((source.Id, $"{source.Name}  \u00b7  " + source.Kind switch
+            {
+                CharacterActionKind.Expression => "emote", CharacterActionKind.Motion => "motion", _ => "gesture"
+            }));
+        var showing = avatar.IsShowing && characterActions.For(avatar.InspectedProfile?.ModelPath) is not null;
+        var index = 0;
+        foreach (var zone in (settings?.Zones ?? []).Take(CharacterTouchZones.MaximumZones))
+        {
+            var row = new ZoneRow(this, zone, index++, catalog, reactionItems, settings!, showing, Edited);
+            rows.Add(row);
+            stack.Add(row.View);
+            if (width > 0) row.Draw(canvas, width, height, ZoneColors[(row.Number) % ZoneColors.Length]);
+        }
+
+        // Add a zone the Thinking model missed: it starts in the middle of the picture; move it into place.
+        var missing = CharacterTouchZones.Kinds.Where(k => settings?.Zones.Any(z => z.Id == k.Id) != true).ToArray();
+        if (missing.Length > 0)
+        {
+            var kinds = new ComboBox { ItemsSource = missing.Select(k => k.Label).ToArray(), SelectedIndex = 0, MinWidth = 180, MinHeight = 26 };
+            AutomationProperties.SetName(kinds, "Zone to add");
+            AutomationProperties.SetAutomationId(kinds, "TouchZonesAddKind");
+            var add = PageButton("Add zone", () =>
+            {
+                var kind = missing[Math.Max(0, kinds.SelectedIndex)];
+                var current = characterTouchZones.Current ?? new CharacterTouchZoneSettings { ModelId = modelId, DetectedBy = CharacterTouchZoneSettings.ByOwner };
+                var added = current with
+                {
+                    IncludeIntimate = intimate.IsChecked == true,
+                    Zones = [.. rows.Where(r => !r.Deleted).Select(r => r.Read()), new CharacterTouchZone { Id = kind.Id, Box = new(0.4, 0.4, 0.2, 0.2) }]
+                };
+                SaveAndRender(added);
+            }, id: "TouchZonesAdd");
+            var addRow = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
+            addRow.Children.Add(kinds);
+            add.Margin = new Thickness(8, 0, 0, 0);
+            addRow.Children.Add(add);
+            stack.Add(addRow);
+        }
+        var card = Card([.. stack]);
+        card.Unloaded += (_, _) => { if (autoSave.Pending) autoSave.SaveNowAsync().Forget(); };
+        return card;
+
+        async void SaveAndRender(CharacterTouchZoneSettings next)
+        {
+            var why = await characterTouchZones.SaveAsync(next, lifetime.Token);
+            tabEdited = false;
+            if (why is not null) saveState.Text = "Not saved: " + why;
+            else if (openTab == CompanionTab.Character) RenderTab();
+        }
+    }
+
+    private static string TouchZonesStatusText(CharacterTouchZoneSettings? settings) =>
+        settings is null || settings.Zones.Count == 0
+            ? "No zones found yet for this model. Until then a click reacts to the rough part (head, face, body, arm, hand, leg)."
+            : $"{settings.Zones.Count} zone{(settings.Zones.Count == 1 ? "" : "s")}, {settings.Zones.Count(settings.Active)} in use" +
+              (settings.DetectedBy == CharacterTouchZoneSettings.ByVision && settings.DetectedAt is { } at
+                ? $". Found by the Thinking model on {at.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}." : ". Made by you.");
+
+    private void TryTouchZone(CharacterTouchZone zone, CharacterActionCatalog catalog)
+    {
+        var plan = TouchPlan(zone, catalog);
+        foreach (var source in plan) PlayTouchAsync(source, $"a try of {zone.Name.ToLowerInvariant()}").Forget();
+        characterTouchZones.Note($"Tried {zone.Name}: " + (plan.Count == 0 ? "nothing to play on this model." : "played " + string.Join(", ", plan.Select(s => s.Name)) + ".") +
+                (CharacterTouchZones.Narration(zone) is { } line ? $" A touch also tells the character \"{line}\"." : ""));
+    }
+
+    /// <summary>One zone's row: on, name, reaction (two picks), tell, line, rest, box, Try and Delete, and its box on the picture.</summary>
+    private sealed class ZoneRow
+    {
+        private const string DefaultChoice = "(default)", NothingChoice = "(nothing)", NoSecond = "(nothing else)";
+        private readonly CharacterTouchZone zone;
+        private readonly CheckBox on, tell;
+        private readonly TextBox name, narration, rest, box;
+        private readonly ComboBox first, second;
+        private readonly IReadOnlyList<(string Id, string Label)> items;
+        private readonly Action edited;
+        internal int Number { get; }
+        internal bool Deleted { get; private set; }
+        internal StackPanel View { get; } = new() { Margin = new Thickness(0, 10, 0, 0) };
+
+        internal ZoneRow(MainWindow window, CharacterTouchZone zone, int number, CharacterActionCatalog catalog,
+            IReadOnlyList<(string Id, string Label)> items, CharacterTouchZoneSettings settings, bool showing, Action edited)
+        {
+            this.zone = zone;
+            this.items = items;
+            this.edited = edited;
+            Number = number;
+            var kind = CharacterTouchZones.Kind(zone.Id);
+            on = new CheckBox { IsChecked = zone.Enabled, VerticalAlignment = VerticalAlignment.Center };
+            AutomationProperties.SetName(on, $"Use {zone.Name}");
+            AutomationProperties.SetAutomationId(on, $"TouchZoneOn-{number}");
+            name = new TextBox { Text = zone.Name, Width = 160, MaxLength = CharacterTouchZones.MaximumLabelLength, Margin = new Thickness(6, 0, 0, 0) };
+            AutomationProperties.SetName(name, $"Name of {zone.Name}");
+            AutomationProperties.SetAutomationId(name, $"TouchZoneName-{number}");
+            var state = new TextBlock
+            {
+                Text = Describe(zone, settings, CharacterTouchZones.Plan(zone with { Reaction = zone.Reaction with { Actions = null } }, catalog)),
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), TextWrapping = TextWrapping.Wrap
+            };
+            state.SetResourceReference(StyleProperty, "Muted");
+            AutomationProperties.SetAutomationId(state, $"TouchZoneState-{number}");
+            var tryIt = PageButton("Try", () => window.TryTouchZone(Read(), catalog), id: $"TouchZoneTry-{number}");
+            tryIt.MinWidth = 60;
+            tryIt.IsEnabled = showing;
+            var delete = PageButton("Delete", () =>
+            {
+                Deleted = true;
+                View.Visibility = Visibility.Collapsed;
+                rectangle?.SetValue(UIElement.VisibilityProperty, Visibility.Collapsed);
+                label?.SetValue(UIElement.VisibilityProperty, Visibility.Collapsed);
+                edited();
+            }, id: $"TouchZoneDelete-{number}");
+            delete.MinWidth = 60;
+            delete.Margin = tryIt.Margin = new Thickness(8, 0, 0, 0);
+            var header = new DockPanel();
+            DockPanel.SetDock(delete, Dock.Right);
+            DockPanel.SetDock(tryIt, Dock.Right);
+            header.Children.Add(delete);
+            header.Children.Add(tryIt);
+            header.Children.Add(on);
+            header.Children.Add(name);
+            header.Children.Add(state);
+
+            var labels = new[] { DefaultChoice, NothingChoice }.Concat(items.Select(i => i.Label)).ToArray();
+            var chosen = zone.Reaction.Actions;
+            first = new ComboBox { ItemsSource = labels, MinWidth = 180, MinHeight = 26 };
+            first.SelectedIndex = chosen is null ? 0 : chosen.Count == 0 ? 1 : Math.Max(0, IndexOf(chosen[0]) + 2);
+            AutomationProperties.SetName(first, $"What {zone.Name} plays");
+            AutomationProperties.SetAutomationId(first, $"TouchZoneReaction-{number}");
+            second = new ComboBox { ItemsSource = new[] { NoSecond }.Concat(items.Select(i => i.Label)).ToArray(), MinWidth = 160, MinHeight = 26 };
+            second.SelectedIndex = chosen is { Count: > 1 } ? Math.Max(0, IndexOf(chosen[1]) + 1) : 0;
+            second.IsEnabled = first.SelectedIndex > 1;
+            AutomationProperties.SetName(second, $"What else {zone.Name} plays");
+            AutomationProperties.SetAutomationId(second, $"TouchZoneReaction2-{number}");
+            tell = new CheckBox { Content = "Tell the character", IsChecked = zone.Reaction.Tell, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 6, 0) };
+            AutomationProperties.SetAutomationId(tell, $"TouchZoneTell-{number}");
+            narration = new TextBox
+            {
+                Text = zone.Reaction.Narration ?? kind?.Narration ?? "", MinWidth = 200, MaxLength = CharacterTouchZones.MaximumNarrationLength,
+                IsEnabled = zone.Reaction.Tell
+            };
+            AutomationProperties.SetName(narration, $"What touching {zone.Name} tells the character");
+            AutomationProperties.SetAutomationId(narration, $"TouchZoneNarration-{number}");
+            rest = new TextBox { Text = zone.Reaction.CooldownSeconds.ToString("0.#", CultureInfo.CurrentCulture), Width = 72 };
+            AutomationProperties.SetName(rest, $"Seconds {zone.Name} rests after a touch");
+            AutomationProperties.SetAutomationId(rest, $"TouchZoneCooldown-{number}");
+            box = new TextBox { Text = BoxText(zone.Box), Width = 190 };
+            AutomationProperties.SetName(box, $"Box of {zone.Name}: left, top, width, height in percent of the picture");
+            AutomationProperties.SetAutomationId(box, $"TouchZoneBox-{number}");
+
+            on.Checked += (_, _) => edited();
+            on.Unchecked += (_, _) => edited();
+            name.TextChanged += (_, _) => edited();
+            first.SelectionChanged += (_, _) => { second.IsEnabled = first.SelectedIndex > 1; edited(); };
+            second.SelectionChanged += (_, _) => edited();
+            tell.Checked += (_, _) => { narration.IsEnabled = true; edited(); };
+            tell.Unchecked += (_, _) => { narration.IsEnabled = false; edited(); };
+            narration.TextChanged += (_, _) => edited();
+            rest.TextChanged += (_, _) => edited();
+            box.TextChanged += (_, _) => { Place(); edited(); };
+
+            var fields = new WrapPanel { Margin = new Thickness(24, 4, 0, 0) };
+            fields.Children.Add(new Label { Content = "Plays", Target = first, Padding = new Thickness(0, 4, 6, 4) });
+            fields.Children.Add(first);
+            fields.Children.Add(new Label { Content = "and", Target = second, Padding = new Thickness(6, 4, 6, 4) });
+            fields.Children.Add(second);
+            fields.Children.Add(tell);
+            fields.Children.Add(narration);
+            var more = new WrapPanel { Margin = new Thickness(24, 4, 0, 0) };
+            more.Children.Add(new Label { Content = "Rests (seconds)", Target = rest, Padding = new Thickness(0, 4, 6, 4) });
+            more.Children.Add(rest);
+            more.Children.Add(new Label { Content = "Box (%: left, top, width, height)", Target = box, Padding = new Thickness(12, 4, 6, 4) });
+            more.Children.Add(box);
+            View.Children.Add(header);
+            View.Children.Add(fields);
+            View.Children.Add(more);
+        }
+
+        private int IndexOf(string id)
+        {
+            for (var i = 0; i < items.Count; i++) if (items[i].Id == id) return i;
+            return -1;
+        }
+
+        private static string Describe(CharacterTouchZone zone, CharacterTouchZoneSettings settings, IReadOnlyList<CharacterActionSource> defaults)
+        {
+            var kind = CharacterTouchZones.Kind(zone.Id);
+            var parts = zone.Drawables.Count > 0 ? $"{zone.Drawables.Count} part{(zone.Drawables.Count == 1 ? "" : "s")}"
+                : zone.Bones.Count > 0 ? string.Join(", ", zone.Bones.Take(3)) : "box only";
+            return $"{zone.Id}  \u00b7  {parts}" + (kind?.Intimate == true && !settings.IncludeIntimate ? "  \u00b7  intimate, off" : "") +
+                $"  \u00b7  default: {(defaults.Count == 0 ? "nothing" : string.Join(" + ", defaults.Select(s => s.Name)))}";
+        }
+
+        private static string BoxText(TouchZoneBox b) => string.Join(", ", new[] { b.X, b.Y, b.Width, b.Height }
+            .Select(v => (v * 100).ToString("0.#", CultureInfo.CurrentCulture)));
+
+        private TouchZoneBox? ParsedBox()
+        {
+            var values = box.Text.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries)
+                .Select(t => double.TryParse(t, NumberStyles.Float, CultureInfo.CurrentCulture, out var v) ? v / 100 : double.NaN).ToArray();
+            if (values.Length != 4 || values.Any(v => !double.IsFinite(v))) return null;
+            var parsed = new TouchZoneBox(values[0], values[1], values[2], values[3]);
+            return parsed.Valid ? parsed : null;
+        }
+
+        /// <summary>The zone as the row shows it now (an unreadable box or rest keeps the saved one).</summary>
+        internal CharacterTouchZone Read()
+        {
+            IReadOnlyList<string>? actions = first.SelectedIndex switch
+            {
+                <= 0 => null,
+                1 => [],
+                var i => new[] { items[i - 2].Id }.Concat(second.SelectedIndex > 0 ? [items[second.SelectedIndex - 1].Id] : Array.Empty<string>())
+                    .Distinct(StringComparer.Ordinal).ToArray()
+            };
+            var given = name.Text.Trim();
+            var line = narration.Text.Trim();
+            return zone with
+            {
+                Enabled = on.IsChecked == true,
+                Label = given.Length == 0 || given == CharacterTouchZones.Kind(zone.Id)?.Label ? null : given,
+                Box = ParsedBox() ?? zone.Box,
+                Reaction = new()
+                {
+                    Actions = actions, Tell = tell.IsChecked == true,
+                    Narration = line.Length == 0 || line == CharacterTouchZones.Kind(zone.Id)?.Narration ? null : line,
+                    CooldownSeconds = double.TryParse(rest.Text, NumberStyles.Float, CultureInfo.CurrentCulture, out var seconds) &&
+                        seconds is >= 0 and <= CharacterTouchReaction.MaximumCooldown ? seconds : zone.Reaction.CooldownSeconds
+                }
+            };
+        }
+
+        private Border? rectangle;
+        private TextBlock? label;
+        private double pictureWidth, pictureHeight;
+
+        /// <summary>Draws the zone's box on the picture; dragging it moves the box, dragging its corner resizes it.</summary>
+        internal void Draw(Canvas canvas, double width, double height, Color color)
+        {
+            (pictureWidth, pictureHeight) = (width, height);
+            label = new TextBlock
+            {
+                Text = zone.Name, Foreground = Brushes.White, FontSize = 10, Padding = new Thickness(2, 0, 2, 0), TextWrapping = TextWrapping.NoWrap,
+                Background = new SolidColorBrush(Color.FromArgb(0xC0, color.R, color.G, color.B)), VerticalAlignment = VerticalAlignment.Top,
+                HorizontalAlignment = HorizontalAlignment.Left, IsHitTestVisible = false
+            };
+            var grip = new Rectangle
+            {
+                Width = 8, Height = 8, Fill = new SolidColorBrush(color), HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Bottom, Cursor = Cursors.SizeNWSE
+            };
+            var inside = new Grid();
+            inside.Children.Add(grip);
+            rectangle = new Border
+            {
+                BorderBrush = new SolidColorBrush(color), BorderThickness = new Thickness(1.5), Child = inside, Cursor = Cursors.SizeAll,
+                Background = new SolidColorBrush(Color.FromArgb(0x30, color.R, color.G, color.B)), ToolTip = zone.Name
+            };
+            AutomationProperties.SetAutomationId(rectangle, $"TouchZoneRect-{Number}");
+            AutomationProperties.SetName(rectangle, zone.Name);
+            canvas.Children.Add(rectangle);
+            canvas.Children.Add(label);
+            Place();
+            Point? from = null;
+            var resizing = false;
+            TouchZoneBox start = zone.Box;
+            rectangle.MouseLeftButtonDown += (_, e) =>
+            {
+                from = e.GetPosition(canvas);
+                resizing = ReferenceEquals(e.OriginalSource, grip);
+                start = ParsedBox() ?? zone.Box;
+                rectangle.CaptureMouse();
+                e.Handled = true;
+            };
+            rectangle.MouseMove += (_, e) =>
+            {
+                if (from is not { } origin) return;
+                var at = e.GetPosition(canvas);
+                double dx = (at.X - origin.X) / pictureWidth, dy = (at.Y - origin.Y) / pictureHeight;
+                var moved = resizing
+                    ? start with { Width = Math.Clamp(start.Width + dx, 0.02, 1 - start.X), Height = Math.Clamp(start.Height + dy, 0.02, 1 - start.Y) }
+                    : start with { X = Math.Clamp(start.X + dx, 0, 1 - start.Width), Y = Math.Clamp(start.Y + dy, 0, 1 - start.Height) };
+                box.Text = BoxText(moved);
+            };
+            rectangle.MouseLeftButtonUp += (_, e) =>
+            {
+                from = null;
+                rectangle.ReleaseMouseCapture();
+                e.Handled = true;
+            };
+        }
+
+        private void Place()
+        {
+            if (rectangle is null || pictureWidth <= 0 || ParsedBox() is not { } b) return;
+            Canvas.SetLeft(rectangle, b.X * pictureWidth);
+            Canvas.SetTop(rectangle, b.Y * pictureHeight);
+            rectangle.Width = Math.Max(4, b.Width * pictureWidth);
+            rectangle.Height = Math.Max(4, b.Height * pictureHeight);
+            if (label is null) return;
+            Canvas.SetLeft(label, b.X * pictureWidth + 1);
+            Canvas.SetTop(label, b.Y * pictureHeight + 1);
+        }
+    }
+}

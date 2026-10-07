@@ -101,6 +101,18 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
       }
       post({});
     } else if (message.kind === "stop") { adapter.stop(); post({}); }
+    else if (message.kind === "zones") {
+      // Where the model's drawables (Live2D) or humanoid bones (VRM) are now, as fractions of the page, for touch zones.
+      const rect = canvas.getBoundingClientRect(), pageWidth = Math.max(1, window.innerWidth), pageHeight = Math.max(1, window.innerHeight);
+      const px = x => (rect.left + x * rect.width) / pageWidth, py = y => (rect.top + y * rect.height) / pageHeight;
+      const round = value => Math.round(value * 10000) / 10000;
+      // A probe that fails never fails the character; the reply is then empty.
+      try {
+        if (renderer === "Live2D") post({ drawables: adapter.drawableBounds().map(d => ({ id: d.id,
+          left: round(px(d.left)), top: round(py(d.top)), right: round(px(d.right)), bottom: round(py(d.bottom)) })) });
+        else post({ bones: adapter.bonePoints().map(b => ({ bone: b.bone, x: round(px(b.x)), y: round(py(b.y)) })) });
+      } catch { post({}); }
+    }
     else if (message.kind === "mouth") {
       const level = Number(data.level);
       if (!Number.isFinite(level) || level < 0 || level > 1) throw new Error("Invalid mouth level.");

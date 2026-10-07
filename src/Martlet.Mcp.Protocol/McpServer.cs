@@ -100,9 +100,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "(with a status line's tooltip details as help), " +
             "and whether each window can be resized, minimized and maximized. With layout, each control also returns its screen " +
             "bounds and, for text, where its first line of text sits (geometry only, never the text), and each window its bounds " +
-            "and its monitor's work area.", new
+            "and its monitor's work area. idPrefix keeps only controls whose automation ID starts with it (the first 200 controls are " +
+            "returned, so a long page's later sections need it).", new
         {
-            layout = new { type = "boolean" }
+            layout = new { type = "boolean" }, idPrefix = new { type = "string" }
         }),
         Tool("ui_click", "Invoke an automation-ID control. Only safe navigation controls work without --allow-ui-effects. With " +
             "several windows that have the control (side-by-side run windows each have HostRunCancel), window names the one to use: " +
@@ -452,6 +453,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, engine = new { type = "string" },
             answer = new { type = "string" }, voiceTag = new { type = "string" }, showing = new { type = "array", items = new { type = "string" } }
+        }),
+        Tool("character_touch_zones", "Companion > Character > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones; docs/AVATARS.md " +
+            "\"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate), the vision request sent with the " +
+            "character's snapshot, what the production parser makes of answer (a simulated vision reply: JSON boxes as fractions, " +
+            "pixels of a width x height picture or Qwen-style 0..1000 bbox_2d grounding) bound to probe (a simulated renderer zones " +
+            "probe: {\"drawables\":[{\"id\",\"left\",\"top\",\"right\",\"bottom\"}],\"bones\":[{\"bone\",\"x\",\"y\"}]} in page " +
+            "fractions) with crop (\"left,top,width,height\": where the snapshot sat on the page), the zones saved for the model " +
+            "(modelPath, modelId or the model dataDirectory's avatar.json shows) in character-touch-zones.json, and with touch (a " +
+            "CharacterTouch: {\"x\",\"y\",\"hitAreas\",\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\"}) the zone it " +
+            "lands in, how it was found, what it plays and what it tells the character. save writes the parsed zones (and " +
+            "snapshotPath, a PNG, as their picture; includeIntimate sets Include intimate zones) into an explicit, disposable " +
+            "dataDirectory as Detect zones would. Contacts nothing; never returns the model's path.", new
+        {
+            dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, modelId = new { type = "string" },
+            answer = new { type = "string" }, width = new { type = "integer" }, height = new { type = "integer" },
+            crop = new { type = "string" }, probe = new { type = "string" }, touch = new { type = "string" },
+            save = new { type = "boolean" }, includeIntimate = new { type = "boolean" }, snapshotPath = new { type = "string" }
         }),
         Tool("character_gaze", "Where the character looks (Companion > Vision > Where the character looks; docs/SCREEN_COMMENTARY.md " +
             "\"Where the character looks\"): the saved choice in a data directory's talk-preferences.json (mouse unless Martlet " +
@@ -1254,7 +1272,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "latency_report" => LatencyReport.Read(OptionalString(arguments, "dataDirectory"), OptionalInt(arguments, "replies")),
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
-                "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false),
+                "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false, OptionalString(arguments, "idPrefix")),
                 "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id"), OptionalString(arguments, "window")),
                 "ui_select" => desktop.Select(RequiredString(arguments, "id"), RequiredString(arguments, "item")),
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"),
@@ -1299,6 +1317,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_profiles" => CharacterProfiles(arguments),
                 "character_actions" => await CharacterActionsCheckAsync(arguments, cancellation),
                 "character_gaze" => GazeCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer")),
+                "character_touch_zones" => await TouchZonesCheck.RunAsync(DataDirectory(arguments),
+                    OptionalString(arguments, "dataDirectory") is not null, OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"),
+                    OptionalString(arguments, "answer"), OptionalInt(arguments, "width"), OptionalInt(arguments, "height"),
+                    OptionalString(arguments, "crop"), OptionalString(arguments, "probe"), OptionalString(arguments, "touch"),
+                    OptionalBool(arguments, "save") ?? false, OptionalBool(arguments, "includeIntimate"), OptionalString(arguments, "snapshotPath"),
+                    cancellation),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),

@@ -106,6 +106,7 @@ public partial class MainWindow : ThemedWindow
         avatar.Requested += action => Dispatcher.InvokeAsync(() => CharacterRequested(action));
         avatar.Gaze.Decides = Talk.DecideGaze;
         characterActions = new(store?.DataDirectory);
+        characterTouchZones = new(store?.DataDirectory);
         characterThemes = new(store?.DataDirectory);
         if (setupService is not null)
         {
@@ -139,6 +140,7 @@ public partial class MainWindow : ThemedWindow
             discord.UseReplies(setupService, vault, conversation, memory, lorebooks);
         }
         WireCharacterActions();
+        WireCharacterTouchZones();
         WireCharacterThemes();
         audioSessionEvents.LockedChanged += AvatarSessionLocked;
         this.startupError = startupError;

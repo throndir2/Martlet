@@ -220,6 +220,37 @@ what each one is.
   Look tags are never emotes; see
   [Where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks).
 
+## Touch zones
+
+Click the character (a left click, not a drag) and it reacts to where you
+touched it. Companion › Character › **Touch zones** lists the zones of the
+model it shows: the top of the head (a head pat), hair, forehead, face, cheeks,
+nose, chin, shoulders, arms, hands, stomach, legs and feet, and extras such as
+animal ears, a tail or wings. Intimate zones (lips, ears, neck, chest,
+waist, hips, groin, buttocks and inner thighs) are found too but react only
+with **Include intimate zones** on, which is off by default.
+
+- **Detect zones** takes one picture of the character as it stands and sends it
+  (never the model's files) to the Thinking model, which must be able to see
+  (Companion › Vision says whether it can and where pictures go). It answers
+  with a box per zone; left and right are the character's own. Local vision
+  models such as Qwen2.5-VL on Ollama work, as do cloud ones. Nothing is sent
+  until you press it, and it is never on the conversation's path.
+- Martlet ties each zone to the model's own parts so it follows the character as
+  it moves: the Live2D drawables mostly inside its box, or the VRM humanoid
+  bones inside it (hair follows the head's hair). A click is matched to the
+  topmost part it hit, then the bone, then the smallest box around the point,
+  then the rough part of the body (head, face, body, arm, hand, leg, foot);
+  before any zones are found, clicks use that rough part.
+- Each zone plays its emotes and gestures (by default the model's own where it
+  has them: a head pat leans in or tilts and smiles, a cheek blushes, an
+  intimate zone blushes and flinches), can **Tell the character** (a reply,
+  like a message you typed, such as *\*gently pats your head\**) and rests a few
+  seconds before reacting again. Rename, turn off, move or resize (drag the box
+  or its corner on the picture, or type it), delete or add zones; **Try** plays
+  one. Zones are saved per model in `character-touch-zones.json`, with the
+  picture in `character-touch-zones\`.
+
 ## 1. Choose a renderer, analyzer and feature owners separately
 
 A renderer draws a model. An analyzer derives animation from speech. A mapping

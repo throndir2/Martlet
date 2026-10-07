@@ -11,6 +11,9 @@ internal sealed partial class AvatarController
     /// Raised off the UI thread, after the default reaction (<see cref="ReactToTouch"/>) has started.</summary>
     internal event Action<CharacterTouch>? Touched;
 
+    /// <summary>Plays a tap's reaction in place of the built-in one (Touch zones); returns whether it handled the tap.</summary>
+    internal Func<CharacterTouch, bool>? TouchRouter { get; set; }
+
     /// <summary>The last tap on the character, or null.</summary>
     internal CharacterTouch? LastTouch => Volatile.Read(ref lastTouch);
 
@@ -30,6 +33,8 @@ internal sealed partial class AvatarController
     /// (or a gasp or nod) elsewhere. Local only: it sends nothing to a model and never waits on a reply.</summary>
     private void ReactToTouch(CharacterTouch touch)
     {
+        // Companion › Character › Touch zones routes the tap to the zone it landed in and plays that zone's reaction instead.
+        if (TouchRouter?.Invoke(touch) == true) return;
         var zone = touch.CoarseZone;
         var headward = zone is "head" or "hair" or "face";
         var plays = new List<CharacterActionSource>();
