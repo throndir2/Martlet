@@ -156,12 +156,30 @@ what each one is.
   | nod (`nod`), shake (`shake_head`), tilt (`tilt_head`) | `ParamAngleY`, `ParamAngleX`, `ParamAngleZ` | `head` bone |
   | bow (`bow`) | `ParamAngleY` | `spine` bone |
   | sway (`sway`) | `ParamBodyAngleZ` | `spine` bone |
-  | smile (`smile`), blush (`blush`), surprise (`surprised`) | `ParamEyeLSmile`/`ParamEyeRSmile`, `ParamCheek`, `ParamBrowLY`/`ParamBrowRY` | not offered (VRM uses its own emotion presets) |
+  | smile (`smile`), surprise (`surprised`) | `ParamEyeLSmile`/`ParamEyeRSmile`, `ParamBrowLY`/`ParamBrowRY` | not offered (VRM uses its own emotion presets) |
+  | blush (`blush`) | nothing (see below) | `head` bone |
   | wave (`wave`), shrug (`shrug`), bounce (`bounce`) | not offered (no standard arm or position parameters) | right arm, both arms, `hips` bones |
 
   Live2D parameters are read from the model's `.moc3`, VRM bones from its
   humanoid. A gesture is left out when the model's own emote or motion already
   has its tag (a model with its own `smile` keeps that one).
+
+  **Every model blushes.** The blush uses, in order: the model's own blush emote
+  (an expression named like `blush`, `脸红` or `照れ`, which then replaces the
+  gesture), a Live2D model's `ParamCheek`, a VRM's custom expression named like
+  `blush` or `cheek`, and otherwise a soft pink glow with a few faint strokes
+  that Martlet draws on the cheeks over the character. It fades in and out over
+  0.6 seconds and lasts 4 seconds, or stays while held (the renderer action's
+  `hold`) until turned off.
+- **Drawings over the character**: the renderer page draws Martlet's own
+  effects (the blush glow, and others built on it) on a second canvas laid
+  exactly over the model, following zoom, pan and the display's scale, so they
+  also show in pictures of the character. They are placed around where the face
+  is: a VRM's head and eye bones (nothing is drawn while it faces away); for
+  Live2D, which has no face landmarks, an authored head or face hit area, meshes
+  whose IDs name the face or cheeks, or else an estimate from the shape of the
+  top of the model, moved with `ParamAngleX`/`Y`/`Z`. The Live2D adapter's
+  `setFaceHint` lets a face found by vision refine the estimate.
 - **Voice emotes**: every sound and tone a voice engine makes has a global emote
   of its own, linked to that voice cue from the start, so any character reacts
   when the voice laughs, sighs or turns angry, even before it is named. The

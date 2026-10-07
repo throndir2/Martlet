@@ -257,7 +257,8 @@ export class LocalModelBundle {
         "INVALID_MODEL_JSON", "Layout values must be finite.");
       diagnostics.push({ code: "INACTIVE_LAYOUT", message: "Uses canvas-fit framing; authored Layout is not applied." });
     }
-    // Tapping the character reports which of these it touched (see touch.ts); no authored script runs.
+    // Tapping the character reports which of these it touched (see touch.ts), and a head area locates the face (face.ts);
+    // no authored script runs.
     const hitAreas: { id: string; name: string }[] = [];
     if (root.HitAreas !== undefined) {
       for (const value of array(root.HitAreas, 128, "HitAreas")) {

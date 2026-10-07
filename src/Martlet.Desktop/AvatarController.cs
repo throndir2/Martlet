@@ -192,14 +192,15 @@ internal sealed partial class AvatarController : IAsyncDisposable
         var reply = await current.SendAsync("action", new RendererAction(kind, source.Name, true, hold), token).ConfigureAwait(false);
         var started = reply.Data.ValueKind == System.Text.Json.JsonValueKind.Object && reply.Data.TryGetProperty("started", out var value) &&
             value.ValueKind == System.Text.Json.JsonValueKind.True;
+        var drawn = started ? Drawn(reply.Data) : null;
         var when = DateTime.Now.ToString("T", System.Globalization.CultureInfo.CurrentCulture);
         // A held gesture is one the renderer keeps (one at a time); a gesture it can't hold plays once.
         var heldGesture = HeldGestureOf(reply.Data);
         var holds = hold && started && (source.Kind != CharacterActionKind.Gesture || heldGesture == source.Name);
         Volatile.Write(ref lastAction, (started
-            ? $"{(holds ? "Turned on" : "Played")} the {kind} \"{source.Name}\" for {reason} at {when}."
+            ? $"{(holds ? "Turned on" : "Played")} the {kind} \"{source.Name}\" for {reason} at {when}{drawn}."
             : $"The character couldn't play the {kind} \"{source.Name}\" ({reason}, {when}).") + GestureState(reply.Data));
-        ErrorLog.Info(started ? $"Character {kind} '{source.Name}' {(holds ? "held" : "played")} for {reason}." : $"Character {kind} '{source.Name}' didn't play ({reason}).");
+        ErrorLog.Info(started ? $"Character {kind} '{source.Name}' {(holds ? "held" : "played")} for {reason}{drawn}." : $"Character {kind} '{source.Name}' didn't play ({reason}).");
         if (source.Kind == CharacterActionKind.Gesture && reply.Data.ValueKind == System.Text.Json.JsonValueKind.Object &&
             reply.Data.TryGetProperty("gesture", out _))
             // Another held gesture the renderer let go of is no longer on.
@@ -213,6 +214,19 @@ internal sealed partial class AvatarController : IAsyncDisposable
         else if (started && source.Kind == CharacterActionKind.Expression) HoldExpression(current, source.Name, finished);
         ActionPlayed?.Invoke();
         return started;
+    }
+
+    /// <summary>", drawn by Martlet over the face at x, y (n pixels wide)" when the renderer drew the action itself (an overlay
+    /// such as the blush glow, for a model without its own), or null.</summary>
+    internal static string? Drawn(System.Text.Json.JsonElement data)
+    {
+        if (data.ValueKind != System.Text.Json.JsonValueKind.Object || !data.TryGetProperty("overlay", out var overlay) ||
+            overlay.ValueKind != System.Text.Json.JsonValueKind.True) return null;
+        if (data.TryGetProperty("face", out var face) && face.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            face.TryGetProperty("x", out var x) && x.TryGetDouble(out var left) && face.TryGetProperty("y", out var y) &&
+            y.TryGetDouble(out var top) && face.TryGetProperty("width", out var width) && width.TryGetDouble(out var size))
+            return System.FormattableString.Invariant($", drawn by Martlet over the face at {left:0}, {top:0} ({size:0} pixels wide)");
+        return ", drawn by Martlet over the face (not in view now)";
     }
 
     /// <summary>Turns off a lingering emote the character shows because of <paramref name="reason"/> (a reply's <c>{/tag}</c>,

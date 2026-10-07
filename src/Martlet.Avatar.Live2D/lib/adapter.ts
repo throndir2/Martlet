@@ -1,6 +1,8 @@
 import { LIMITS, LocalModelBundle, pngDimensions, scaledSize } from "./assets.js";
 import { boundedInteger, Diagnostic, finite, Live2DError, requireCondition } from "./diagnostics.js";
-import { type Gesture, GesturePlayer, type GestureState, isGesture, supportedGestures } from "./gestures.js";
+import { type Face, faceFeatures, faceFromBox, faceFromHint, faceFromLayout, type FaceHint, faceSource, type FaceSource,
+  bounds, type Point, turnFace } from "./face.js";
+import { BLUSH_PARAMETERS, type Gesture, GesturePlayer, type GestureState, isGesture, supportedGestures } from "./gestures.js";
 import { Capabilities, ChannelMapping, inspectParameters, MappingPlan, Parameter } from "./mapping.js";
 import { checkRuntime, type Animator, type AnimatorAssets, CubismMoc, CubismModel, CubismRenderer, SdkModules } from "./sdk.js";
 import { hitTestModel, type Live2DHit } from "./touch.js";
@@ -159,6 +161,8 @@ export class Live2DAdapter {
   #gestures = new GesturePlayer();
   #view = { zoom: 1, x: 0, y: 0, frame: 1 };
   #modelTop: number | undefined;
+  #faceSource: FaceSource | undefined;
+  #faceHint: Face | undefined;
   #eyeBlinkIds: readonly string[] = [];
   #lipSyncIds: readonly string[] = [];
 
@@ -270,6 +274,7 @@ export class Live2DAdapter {
   get gestures(): readonly Gesture[] { return this.animated ? supportedGestures(this.#parameters.map(p => p.id)) : []; }
 
   /**
+  /**
    * What of the character is at a point of the canvas (`x`, `y` fractions 0..1, origin top-left, +y down) as last drawn:
    * the authored hit areas there and the visible drawables, topmost first. Undefined when the point misses the model.
    */
@@ -287,10 +292,12 @@ export class Live2DAdapter {
   }
 
   /** Starts one of Martlet's gestures (see `gestures`), replacing one already playing, or with `hold` keeps a holdable one
-   *  (shy, drowsy, pout, look_away) until `endGesture`; a gesture played meanwhile plays on top of it. */
+   *  (shy, drowsy, pout, look_away, blush) until `endGesture`; a gesture played meanwhile plays on top of it. */
   gesture(name: string, hold = false): boolean {
     this.#ready();
     if (!isGesture(name) || !this.gestures.includes(name)) return false;
+    // Without ParamCheek the page draws the blush over the face instead.
+    if (name === "blush" && !BLUSH_PARAMETERS.every(id => this.#parameters.some(p => p.id === id))) return false;
     this.#gestures.play(name, hold);
     return true;
   }
@@ -300,6 +307,52 @@ export class Live2DAdapter {
 
   /** The gesture playing once and the one held, if any. */
   get gestureState(): GestureState { return this.#gestures.state; }
+
+  /**
+   * Refines where the face is with what vision found (fractions of the model's canvas, 0,0 at its top left, y down; the
+   * width a fraction of its width); undefined goes back to Martlet's estimate.
+   */
+  setFaceHint(hint: FaceHint | undefined): void {
+    const model = this.#resources?.model;
+    this.#faceHint = hint && model ? faceFromHint(hint, model.getCanvasWidth(), model.getCanvasHeight()) : undefined;
+  }
+
+  /**
+   * Where the face is now, in the canvas's drawing-buffer pixels (y down), for drawings over it: its middle, width, roll
+   * (radians, clockwise), the cheeks, eyes and mouth (left and right as the viewer sees them) and the top of the head.
+   * Estimated (see face.ts); undefined before a model shows.
+   */
+  faceAnchor(): { x: number; y: number; width: number; angle: number; cheekLeft: Point; cheekRight: Point; eyeLeft: Point;
+    eyeRight: Point; mouth: Point; top: Point } | undefined {
+    const model = this.#resources?.model;
+    const source = this.#faceSource;
+    if (!model || this.#loading || (!source && !this.#faceHint)) return undefined;
+    const value = (id: string) => {
+      const parameter = this.#parameters.find(p => p.id === id);
+      return parameter && model.getParameterValueByIndex ? model.getParameterValueByIndex(parameter.index) : 0;
+    };
+    const roll = value("ParamAngleZ") * Math.PI / 180;
+    let face: Face | undefined;
+    if (this.#faceHint) face = turnFace(this.#faceHint, value("ParamAngleX"), value("ParamAngleY"), value("ParamAngleZ"));
+    else if (source!.kind === "fixed") face = turnFace(source!.face, value("ParamAngleX"), value("ParamAngleY"), value("ParamAngleZ"));
+    else {
+      // The meshes already turn with the head; only the roll is read from the angle.
+      const box = bounds(source!.drawables.map(i => model.getDrawableVertices(i)));
+      face = box && faceFromBox(source!.kind, box, roll);
+    }
+    if (!face || ![face.x, face.y, face.width, face.roll].every(Number.isFinite)) return undefined;
+    const features = faceFeatures(face);
+    const { width, height } = this.#canvas;
+    const scale = this.#fitScale(model) * this.#view.zoom, aspect = width / height;
+    const point = (p: Point): Point => ({
+      x: ((p.x * scale / aspect + this.#view.x * this.#view.frame) + 1) / 2 * width,
+      y: (1 - (p.y * scale + this.#view.y)) / 2 * height,
+    });
+    const middle = point(features);
+    return { x: middle.x, y: middle.y, width: features.width * scale / aspect * width / 2, angle: -features.roll,
+      cheekLeft: point(features.cheekLeft), cheekRight: point(features.cheekRight), eyeLeft: point(features.eyeLeft),
+      eyeRight: point(features.eyeRight), mouth: point(features.mouth), top: point(features.top) };
+  }
 
   async load(bundle: LocalModelBundle): Promise<Capabilities> {
     this.#ensureAlive();
@@ -393,6 +446,7 @@ export class Live2DAdapter {
       this.#neutral();
       this.update(0);
       this.#modelTop = visibleTop(model);
+      this.#faceSource = this.#findFace(model, bundle);
       return this.#plan.capabilities;
     } catch (error) {
       if (this.#resources === resources) this.#release();
@@ -660,6 +714,19 @@ export class Live2DAdapter {
     return Math.min(2 / model.getCanvasHeight(), 2 * frameAspect / model.getCanvasWidth());
   }
 
+  /** How to find the face (see face.ts): from the model's resting pose, which the fixed estimate is measured in. */
+  #findFace(model: CubismModel, bundle: LocalModelBundle): FaceSource | undefined {
+    const count = model.getDrawableCount();
+    const ids: string[] = [];
+    if (model.getDrawableId) for (let i = 0; i < count; i++) ids.push(model.getDrawableId(i).getString().s);
+    return faceSource(bundle.description.hitAreas, ids, () => {
+      const visible: Float32Array[] = [];
+      for (let i = 0; i < count; i++)
+        if (model.getDrawableDynamicFlagIsVisible(i) && model.getDrawableOpacity(i) >= 0.05) visible.push(model.getDrawableVertices(i));
+      return faceFromLayout(visible);
+    });
+  }
+
   #validateCanvas(): void {
     for (const dimension of [this.#canvas.width, this.#canvas.height]) {
       boundedInteger(dimension, LIMITS.canvasDimension, "canvas dimension");
@@ -720,6 +787,8 @@ export class Live2DAdapter {
     this.#look = { x: 0, y: 0 };
     this.#gestures.clear();
     this.#modelTop = undefined;
+    this.#faceSource = undefined;
+    this.#faceHint = undefined;
     this.#eyeBlinkIds = [];
     this.#lipSyncIds = [];
     if (!resources) return;

@@ -60,7 +60,7 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
             ["ParamBodyAngleZ"], Spine),
         new("smile", "smile", "smile with your eyes, for warmth or happiness", "smiles with the eyes and mouth for a few seconds",
             ["ParamEyeLSmile", "ParamEyeRSmile"], null),
-        new("blush", "blush", "blush, for embarrassment or being flattered", "blushes for a few seconds", ["ParamCheek"], null),
+        new("blush", "blush", "blush, for embarrassment or being flattered", "blushes for a few seconds", [], Head),
         new("surprise", "surprised", "raise your brows wide-eyed, for surprise", "raises the brows and widens the eyes",
             ["ParamBrowLY", "ParamBrowRY"], null, "surprised"),
         new("wave", "wave", "wave your hand, for hello or goodbye", "raises the right hand and waves", null, ["rightUpperArm", "rightLowerArm"]),
@@ -125,10 +125,17 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
     public static IReadOnlyList<CharacterGesture> GesturesFor(AvatarRenderer renderer, IReadOnlySet<string> rig) =>
         AllGestures.Where(g => (renderer == AvatarRenderer.Vrm ? g.VrmBones : g.Live2DParameters) is { } needs && needs.All(rig.Contains)).ToArray();
 
-    private static CharacterActionSource Source(CharacterGesture gesture, AvatarRenderer renderer) =>
-        new(gesture.Id, CharacterActionKind.Gesture, gesture.Name, $"Martlet's own gesture: {gesture.Does} (moves " +
-            (renderer == AvatarRenderer.Vrm ? "the " + string.Join(", ", gesture.VrmBones!) + (gesture.VrmBones!.Count == 1 ? " bone" : " bones")
-                : string.Join(", ", gesture.Live2DParameters!)) + ").");
+    private static CharacterActionSource Source(CharacterGesture gesture, AvatarRenderer renderer, IReadOnlySet<string> rig) =>
+        new(gesture.Id, CharacterActionKind.Gesture, gesture.Name, $"Martlet's own gesture: {gesture.Does} (" + (gesture.Name == "blush"
+            // Every model blushes: with its own ParamCheek (Live2D) or blush expression (VRM, offered as its own emote instead),
+            // otherwise Martlet draws a glow on the cheeks over the character.
+            ? renderer == AvatarRenderer.Live2D && rig.Contains(Live2DBlushParameter) ? "moves " + Live2DBlushParameter
+                : "Martlet draws a pink glow on the cheeks, following the " + (renderer == AvatarRenderer.Vrm ? "head bone" : "face")
+            : "moves " + (renderer == AvatarRenderer.Vrm ? "the " + string.Join(", ", gesture.VrmBones!) + (gesture.VrmBones!.Count == 1 ? " bone" : " bones")
+                : string.Join(", ", gesture.Live2DParameters!))) + ").");
+
+    /// <summary>The Live2D parameter a model's own blush moves; models without it get one Martlet draws.</summary>
+    private const string Live2DBlushParameter = "ParamCheek";
 
     public CharacterActionSource? Find(string id) => Sources.FirstOrDefault(s => s.Id == id);
 
@@ -149,7 +156,7 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
         // A gesture whose tag the model's own emote or motion already has is left to the model's.
         var own = sources.Select((s, i) => CharacterActions.EnglishTag(s, sources.Take(i).Count(o => o.Kind == s.Kind) + 1))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var gestures = GesturesFor(renderer, rig).Where(g => !own.Contains(g.Tag)).Select(g => Source(g, renderer)).ToArray();
+        var gestures = GesturesFor(renderer, rig).Where(g => !own.Contains(g.Tag)).Select(g => Source(g, renderer, rig)).ToArray();
         return new(id, renderer, [.. sources.Take(MaximumSources - gestures.Length), .. gestures]);
     }
 
@@ -172,7 +179,7 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
         var directory = Path.GetDirectoryName(entry.Replace('\\', '/'))?.Replace('\\', '/');
         var bytes = assets.FirstOrDefault(a => a.Name == mocName || a.Name == (string.IsNullOrEmpty(directory) ? mocName : directory + "/" + mocName))?.Bytes;
         if (bytes is null) return found;
-        foreach (var parameter in AllGestures.SelectMany(g => g.Live2DParameters ?? []).Distinct())
+        foreach (var parameter in AllGestures.SelectMany(g => g.Live2DParameters ?? []).Append(Live2DBlushParameter).Distinct())
         {
             var needle = Encoding.ASCII.GetBytes(parameter + "\0");
             var span = bytes.AsSpan();

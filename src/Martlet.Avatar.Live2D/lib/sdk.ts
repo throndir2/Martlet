@@ -24,6 +24,7 @@ export interface CubismModel {
   getDrawableId(index: number): { getString(): { s: string } };
   getDrawableVertexIndices(index: number): Uint16Array;
   getDrawableRenderOrders(): Int32Array;
+  getParameterValueByIndex?(index: number): number;
   update(): void;
 }
 

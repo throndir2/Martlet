@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Every character can now blush: a model without a blush of its own gets a soft pink glow drawn on its cheeks, on Live2D and VRM alike. ([#511](https://github.com/throndir2/Martlet/pull/511))
 - Companion › Character › Touch zones: your Thinking model (when it can see) marks where the character's head, cheeks, hands and other parts are in one picture, and each zone reacts its own way when you click it: a head pat, a blush, a flinch, optionally telling the character. Rename, move, resize or turn zones off; intimate zones stay off unless you turn them on. ([#514](https://github.com/throndir2/Martlet/pull/514))
 - Emotes can now stay on, like a VTuber's toggle: glasses, a blush, an angry face, a pout or any look set to "Stays on" stays until Martlet writes {/tag} to turn it off, several at once, and Martlet knows what is showing so it can decide. Choose per emote in Companion › Character › Emotes and motions; Clear emotes on the character's right-click menu turns them all off. ([#513](https://github.com/throndir2/Martlet/pull/513))
 - The character has new gestures for touches and moods: it can wink, pout, act shy, giggle, flinch, lean in for a head pat, look away, think, roll its eyes and get drowsy, on any Live2D or VRM model that supports them; pouting, shyness, looking away and drowsiness can also stay on until they're turned off. ([#512](https://github.com/throndir2/Martlet/pull/512))

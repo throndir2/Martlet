@@ -4,13 +4,13 @@ import { GESTURES, GesturePlayer, HOLDABLE_GESTURES, drowse, flinchJolt, gesture
   supportedGestures } from "../dist/index.js";
 
 test("a model gets only the gestures whose standard parameters it has", () => {
-  assert.deepEqual(supportedGestures(["ParamAngleX", "ParamAngleY"]), ["nod", "shake", "bow", "laugh", "chuckle", "sigh", "gasp",
+  assert.deepEqual(supportedGestures(["ParamAngleX", "ParamAngleY"]), ["nod", "shake", "bow", "blush", "laugh", "chuckle", "sigh", "gasp",
     "cough", "clear_throat", "sniff", "shush", "inhale", "exhale", "mumble", "sneeze", "fear", "crying",
     "shy", "giggle", "flinch", "look_away", "think"]);
   assert.deepEqual(supportedGestures(["ParamAngleX", "ParamAngleY", "ParamAngleZ", "ParamBodyAngleZ", "ParamEyeLSmile",
     "ParamEyeRSmile", "ParamCheek", "ParamBrowLY", "ParamBrowRY", "ParamEyeLOpen", "ParamEyeROpen", "ParamMouthForm",
     "ParamEyeBallX", "ParamEyeBallY"]), [...GESTURES]);
-  assert.deepEqual(supportedGestures(["ParamEyeLSmile"]), []);
+  assert.deepEqual(supportedGestures(["ParamEyeLSmile"]), ["blush"], "every model blushes (drawn when it has no ParamCheek)");
   assert.equal(isGesture("wave"), false);
   assert.equal(isGesture("laugh"), true);
 });
@@ -45,9 +45,9 @@ test("voice emotes move the head and face and settle back", () => {
 });
 
 test("touch and mood gestures need their standard parameters and move the face naturally", () => {
-  assert.deepEqual(supportedGestures(["ParamEyeLOpen"]), ["wink"]);
-  assert.deepEqual(supportedGestures(["ParamEyeLOpen", "ParamEyeROpen", "ParamMouthForm"]), ["wink", "pout", "drowsy"]);
-  assert.deepEqual(supportedGestures(["ParamEyeBallX", "ParamEyeBallY"]), ["eye_roll"]);
+  assert.deepEqual(supportedGestures(["ParamEyeLOpen"]), ["blush", "wink"]);
+  assert.deepEqual(supportedGestures(["ParamEyeLOpen", "ParamEyeROpen", "ParamMouthForm"]), ["blush", "wink", "pout", "drowsy"]);
+  assert.deepEqual(supportedGestures(["ParamEyeBallX", "ParamEyeBallY"]), ["blush", "eye_roll"]);
   const wink = gestureFrame("wink", 0.5);
   assert.ok(wink.parameters.ParamEyeLOpen < -0.99 && !("ParamEyeROpen" in wink.parameters), "only the left eye closes");
   assert.ok(gestureFrame("pout", 1.3).parameters.ParamMouthForm < -0.99 && gestureFrame("pout", 1.3).parameters.ParamCheekPuff > 0.7);
@@ -69,7 +69,7 @@ test("touch and mood gestures need their standard parameters and move the face n
 });
 
 test("holdable gestures stay until ended and gestures played meanwhile play on top", () => {
-  assert.deepEqual([...HOLDABLE_GESTURES], ["pout", "shy", "look_away", "drowsy"]);
+  assert.deepEqual([...HOLDABLE_GESTURES], ["pout", "shy", "look_away", "drowsy", "blush"]);
   assert.ok(isHoldable("shy") && !isHoldable("wink"));
   const player = new GesturePlayer();
   assert.equal(player.advance(0.1), undefined);

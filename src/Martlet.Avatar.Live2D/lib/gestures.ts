@@ -9,7 +9,7 @@ export const GESTURES = Object.freeze(["nod", "shake", "tilt", "bow", "sway", "s
 export type Gesture = typeof GESTURES[number];
 
 /** The gestures that can be held (a renderer action with `hold: true`): eased into and kept, gently alive, until ended. */
-export const HOLDABLE_GESTURES = Object.freeze(["pout", "shy", "look_away", "drowsy"] as const);
+export const HOLDABLE_GESTURES = Object.freeze(["pout", "shy", "look_away", "drowsy", "blush"] as const);
 export type HoldableGesture = typeof HOLDABLE_GESTURES[number];
 export const isHoldable = (name: string): name is HoldableGesture => (HOLDABLE_GESTURES as readonly string[]).includes(name);
 
@@ -28,7 +28,9 @@ export const GESTURE_REQUIREMENTS: Readonly<Record<Gesture, readonly string[]>> 
   bow: angleY,
   sway: ["ParamBodyAngleZ"],
   smile: ["ParamEyeLSmile", "ParamEyeRSmile"],
-  blush: ["ParamCheek"],
+  // Every model blushes: with ParamCheek when it has it, otherwise Martlet draws a glow on the cheeks (the renderer page's
+  // overlay; see BLUSH_PARAMETERS).
+  blush: [],
   surprise: ["ParamBrowLY", "ParamBrowRY"],
   laugh: angleY, chuckle: angleY, sigh: angleY, gasp: angleY, cough: angleY, clear_throat: angleY, groan: angleZ, sniff: angleY,
   shush: angleY, inhale: angleY, exhale: angleY, mumble: angleX, hum: angleZ, sneeze: angleY, whistle: angleZ,
@@ -50,6 +52,9 @@ const DURATION: Readonly<Record<Gesture, number>> = Object.freeze({
 export function isGesture(name: string): name is Gesture {
   return (GESTURES as readonly string[]).includes(name);
 }
+
+/** The parameters the model's own blush needs; without them the adapter declines and the page draws one instead. */
+export const BLUSH_PARAMETERS: readonly string[] = Object.freeze(["ParamCheek"]);
 
 /** The gestures a model with `parameterIds` can play. */
 export function supportedGestures(parameterIds: Iterable<string>): readonly Gesture[] {
@@ -284,6 +289,7 @@ function moodFrame(name: HoldableGesture, t: number, a: number): GestureFrame {
       const glance = Math.max(0, wave(t - 2, 6)) ** 6;
       return { look: { x: (0.65 - 0.3 * glance) * a, y: 0.05 * a }, parameters: { ParamEyeBallX: (0.6 - 0.4 * glance) * a, ParamAngleZ: -4 * a } };
     }
+    case "blush": return { look: { x: 0, y: 0 }, parameters: { ParamCheek: a } };
     case "drowsy": {
       const droop = drowse(t);
       return { look: { x: 0, y: -(0.25 + 0.3 * droop) * a }, parameters: {

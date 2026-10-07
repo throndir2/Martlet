@@ -3,6 +3,8 @@ import { finite, integer, requireValid, type VrmCapabilities } from "./inspect.j
 import { VrmRuntime } from "./runtime.js";
 import type { VrmHit } from "./touch.js";
 
+interface Point { x: number; y: number }
+
 /** Host-driven WebGL renderer. Construct one per canvas; no hidden RAF or audio activation. */
 export class VrmAvatarAdapter extends VrmRuntime {
   private renderer: THREE.WebGLRenderer;
@@ -72,6 +74,33 @@ export class VrmAvatarAdapter extends VrmRuntime {
 
   /** Top of the character (top of the head) in fitted clip space, before view zoom/pan; 1 is the canvas top. */
   get contentTop(): number | undefined { return this.top; }
+
+  /**
+   * Where the face is now, in the canvas's drawing-buffer pixels (y down), for drawings over it: its middle, width, roll
+   * (radians, clockwise), the cheeks, eyes and mouth (left and right as the viewer sees them) and the top of the head.
+   * Undefined without a head bone or while the face points away from the camera.
+   */
+  faceAnchor(): { x: number; y: number; width: number; angle: number; cheekLeft: Point; cheekRight: Point; eyeLeft: Point;
+    eyeRight: Point; mouth: Point; top: Point } | undefined {
+    if (this.closed) return undefined;
+    const face = this.faceGeometry();
+    if (!face) return undefined;
+    const toCamera = this.camera.getWorldPosition(new THREE.Vector3()).sub(face.center).normalize();
+    if (face.forward.dot(toCamera) < 0.15) return undefined;
+    const { width, height } = this.renderer.domElement;
+    const point = (v: THREE.Vector3): Point => {
+      const n = v.clone().project(this.camera);
+      return { x: (n.x + 1) / 2 * width, y: (1 - n.y) / 2 * height };
+    };
+    const middle = point(face.center);
+    const left = point(face.center.clone().addScaledVector(face.side, -face.width / 2));
+    const right = point(face.center.clone().addScaledVector(face.side, face.width / 2));
+    const size = Math.hypot(right.x - left.x, right.y - left.y);
+    if (![middle.x, middle.y, size].every(Number.isFinite) || size <= 0) return undefined;
+    return { x: middle.x, y: middle.y, width: size, angle: Math.atan2(right.y - left.y, right.x - left.x),
+      cheekLeft: point(face.cheekLeft), cheekRight: point(face.cheekRight), eyeLeft: point(face.eyeLeft),
+      eyeRight: point(face.eyeRight), mouth: point(face.mouth), top: point(face.top) };
+  }
 
   /** What of the posed character is at a point of the canvas (`x`, `y` fractions 0..1, origin top-left, +y down), through
    *  the camera with its view zoom and pan; undefined when nothing is there. */
