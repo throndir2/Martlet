@@ -50,13 +50,13 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.52.0
+## 🆕 What's new in 0.53.0
 
-- 👆 **Touch your character**: click it and it reacts. Your Thinking model marks touch zones such as the head, cheeks and hands, and each zone reacts its own way.
-- 😊 **Emotes that stay on**: glasses, a blush, a pout or an angry face can stay on until Martlet turns them off, and Martlet knows what is showing.
-- 💦 **Anime emote symbols**: sweat drops, hearts, sparkles, gloom lines and a sleepy Zzz appear over any Live2D or VRM character's face.
-- 😉 **New gestures and voice reactions**: winks, pouts, shy looks and head-pat leans, plus laughs, sighs and gasps along with the voice.
-- 📖 **Reads your screen**: while it watches, Martlet reads the text on your screen, such as a score or "Victory", set up in Companion › Reading.
+- 🧠 **The Thinking pool**: Deep thinking is now one shared set of Thinking models for background work. Memory, emote naming and touch zones run there, so replies never slow down.
+- ✋ **Talk over Martlet**: it pauses at once and decides. Words meant for it stop the reply; a quick "yeah" or laughing along lets the reply play on from where it paused.
+- 👂 **Knows when you've finished talking**: a small model on your PC hears how you end a sentence, so Martlet answers sooner when you're done and waits when you trail off.
+- 🖥️ **Screen and sound summaries**: Martlet keeps a short summary of what changed on your screen and of what your PC plays, such as music, game sounds and laughter.
+- 🤚 **Touches Martlet notices**: stroke your locked character or pat a zone, and Martlet hears about it. The personality decides how the character reacts to each touch.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
