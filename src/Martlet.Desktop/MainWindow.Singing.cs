@@ -352,7 +352,7 @@ public partial class MainWindow
             {
                 var target = pc.Target(Version);
                 await HostLocal.EnsureDockerAsync(run, Martlet.Core.Installation.ContinueSetupKind.Docker);
-                await HostLocal.EnsureImageAsync(target, run);
+                target = await HostLocal.EngineForChangeAsync(target, HostRoles.Singing, run);
                 var inputs = await HostLocal.DescribeAsync(target, HostRoles.Singing, run.Output, run.Token);
                 var chosen = HostInputDialog.WithGpu(run, "this PC", what, inputs, answers) ?? throw new OperationCanceledException();
                 run.Status(vevosing ? "Adding VevoSing on this PC (about 4.5 GB)..." : "Installing Singing on this PC (a large download)...");
