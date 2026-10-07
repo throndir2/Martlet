@@ -84,6 +84,18 @@ export class VrmAvatarAdapter extends VrmRuntime {
     return this.hitTestRay(raycaster);
   }
 
+  /** Where each humanoid bone is now, as fractions of the canvas (origin top-left, +y down), for touch zones. */
+  bonePoints(): { bone: string; x: number; y: number }[] {
+    requireValid(!this.closed, "Renderer is disposed.");
+    this.scene?.updateWorldMatrix(true, true);
+    const point = new THREE.Vector3();
+    return this.humanoidNodes.flatMap(([bone, node]) => {
+      node.getWorldPosition(point).project(this.camera);
+      return Number.isFinite(point.x) && Number.isFinite(point.y) && point.z < 1
+        ? [{ bone, x: (point.x + 1) / 2, y: (1 - point.y) / 2 }] : [];
+    });
+  }
+
   private updateProjection(): void {
     this.camera.updateProjectionMatrix();
     const { zoom, x, y, frame } = this.view;

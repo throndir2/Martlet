@@ -361,3 +361,13 @@ test("final host parameters are approved, model-bounded and never mapped a secon
   adapter.configure([mouthMapping]);
   assert.throws(() => adapter.applyComposedParameters(final(0)), code("INPUT_MODE_MISMATCH"));
 });
+
+test("drawableBounds reports each visible drawable's bounds as canvas fractions for touch zones", async t => {
+  const adapter = await loaded(environment(), t);
+  const [mesh] = adapter.drawableBounds();
+  assert.equal(mesh.id, "ArtMesh0");
+  assert.ok(mesh.left >= 0 && mesh.left < mesh.right && mesh.right <= 1, JSON.stringify(mesh));
+  assert.ok(mesh.top >= 0 && mesh.top < mesh.bottom && mesh.bottom <= 1, JSON.stringify(mesh));
+  // The head (model y 1.5) is above the feet (model y -2) on the canvas.
+  assert.ok(mesh.bottom - mesh.top > 0.5);
+});

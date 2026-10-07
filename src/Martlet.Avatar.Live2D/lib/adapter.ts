@@ -227,6 +227,29 @@ export class Live2DAdapter {
     return model && this.#modelTop !== undefined && !this.#loading ? this.#modelTop * this.#fitScale(model) : undefined;
   }
 
+  /** Each visible drawable's bounds now, as fractions of the canvas (origin top-left, +y down), for touch zones. */
+  drawableBounds(): { id: string; left: number; top: number; right: number; bottom: number }[] {
+    this.#ready();
+    const model = this.#resources!.model!;
+    const aspect = this.#canvas.width / this.#canvas.height;
+    const view = this.#view;
+    const scale = this.#fitScale(model) * view.zoom;
+    const bounds = [];
+    for (let i = 0; i < model.getDrawableCount() && bounds.length < 2000; i++) {
+      if (!model.getDrawableDynamicFlagIsVisible(i) || model.getDrawableOpacity(i) < 0.05) continue;
+      const vertices = model.getDrawableVertices(i);
+      let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
+      for (let v = 0; v + 1 < vertices.length; v += 2) {
+        const x = (vertices[v]! * scale / aspect + view.x * view.frame + 1) / 2;
+        const y = (1 - (vertices[v + 1]! * scale + view.y)) / 2;
+        left = Math.min(left, x); right = Math.max(right, x); top = Math.min(top, y); bottom = Math.max(bottom, y);
+      }
+      if (Number.isFinite(left) && Number.isFinite(top) && right > left && bottom > top)
+        bounds.push({ id: model.getDrawableId(i).getString().s, left, top, right, bottom });
+    }
+    return bounds;
+  }
+
   playMotion(group: string): boolean {
     this.#ready();
     return this.#resources?.animator?.playMotion(group) ?? false;

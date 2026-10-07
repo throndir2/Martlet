@@ -322,6 +322,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // naming progress, the tags offered to replies and what follows the voice's cues, the last one played (model-authored
         // names only) and whether edits saved. Each row's name and kind (CharacterActionName-<n>, a model-authored name).
         "CharacterActionsStatus", "CharacterActionsNaming", "CharacterActionsOffered", "CharacterActionsLast", "CharacterActionsSaveState",
+        // Companion › Character › Touch zones: how many zones the shown model has, how many are in use and who found them, whether
+        // the Thinking model can see (and where pictures go), how Detect zones went, which zone the last touch landed in and what
+        // it played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows and default reaction).
+        // Detect zones sends the character's picture to Thinking, Try plays on the character and the rest save, so those need
+        // --allow-ui-effects.
+        "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState",
         // Companion › Listening › Speakers and echo: whether echo reduction is on and how the last listen went (or why it couldn't
         // run). The TalkReduceEcho check box saves the choice, so it needs --allow-ui-effects.
         "TalkReduceEchoStatus",
@@ -565,7 +571,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// click; never the text it copies).</summary>
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
-    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "VoiceEngine", "SpeakingHost-", "SingingHost-",
+    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "TouchZoneState-", "VoiceEngine", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // The welcome wizard: each Martlet found ("WizardFound-0": name, address, version and hosts), each hardware line
         // ("WizardSpecRow-Vram") and each suggested part ("WizardPlanItem-Thinking": what, where, its % of graphics memory,
@@ -649,7 +655,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         return new { processId = pid, windows = windows.Select(window => window.Current.Name).ToArray(), inTray = !MainWindowVisible(windows) };
     }
 
-    internal object Snapshot(bool layout = false)
+    internal object Snapshot(bool layout = false, string? idPrefix = null)
     {
         var windows = ConnectedWindows();
         return new
@@ -679,7 +685,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 if (layout) (state["bounds"], state["workArea"]) = Placement(handle);
                 return state;
             }).ToArray(),
-            controls = Controls(windows).Select(control =>
+            controls = Controls(windows).Where(control => idPrefix is null ||
+                control.Item2.Current.AutomationId.StartsWith(idPrefix, StringComparison.Ordinal)).Select(control =>
             {
                 var (window, element) = control;
                 var id = element.Current.AutomationId;

@@ -1227,7 +1227,7 @@ internal sealed class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "gaze" or "where" or "camera" or "snapshot"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "gaze" or "where" or "camera" or "snapshot" or "zones"))
                     throw new InvalidDataException("Renderer command is invalid.");
                 if (message.Kind == "camera")
                 {
@@ -1394,7 +1394,8 @@ internal sealed class RendererWindow : Window
             encoder.Save(png);
             // Base64 grows by a third; the reply must stay well inside one renderer message.
             if (png.Length * 4 / 3 < RendererProtocol.MaximumMessageBytes - 4096)
-                return new(Convert.ToBase64String(png.GetBuffer(), 0, (int)png.Length), scaled.PixelWidth, scaled.PixelHeight);
+                return new(Convert.ToBase64String(png.GetBuffer(), 0, (int)png.Length), scaled.PixelWidth, scaled.PixelHeight,
+                    (double)crop.X / width, (double)crop.Y / height, (double)crop.Width / width, (double)crop.Height / height);
         }
         throw new InvalidDataException("The character's picture is too large.");
     }

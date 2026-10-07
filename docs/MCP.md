@@ -1086,6 +1086,46 @@ motion picked at random when several share a cue). With `answer`, a simulated Th
 it (`read`, `problem`, `actions`, `prompt`). Model-authored names only, never
 the model's path; it reads and contacts nothing else.
 
+`character_touch_zones` rehearses Companion › Character › [Touch zones](AVATARS.md#touch-zones)
+with no vision request: `zones` (how many Martlet knows and which are
+`intimate`, used only with *Include intimate zones*), `request` (the
+`instructions` and zone `list` sent with the character's snapshot), `parsed`
+(what the production parser makes of `answer`, a simulated vision reply: JSON
+boxes as fractions, pixels of a `width` × `height` picture, 400 × 800 by
+default, or Qwen-style 0..1000 `bbox_2d` grounding), `detected` (those zones
+bound to `probe`, a simulated renderer zones probe of Live2D `drawables` and
+VRM `bones` in page fractions, with `crop`, `"left,top,width,height"` where
+the snapshot sat on the page), `saved` (the model's zones in
+`character-touch-zones.json`: how many, how many are `active`, who found them,
+whether a snapshot is kept, and each zone's parts, `plays` and `tells`) and,
+with `touch` (a `CharacterTouch` object as JSON), `match`: the zone it lands
+in, `how` (`drawable`, `bone`, `hair`, `box` or `coarse`), its rough `coarse`
+zone, what it `plays`, what it `tells` the character and how long it `rests`.
+The model is `modelPath`, `modelId` or the one the `dataDirectory`'s
+`avatar.json` shows. `save` (an explicit, disposable `dataDirectory` only)
+writes the parsed zones as *Detect zones* would, with `snapshotPath` (a PNG)
+as their picture and `includeIntimate` setting the switch, so the section can
+be checked with `-Desktop`. Never the model's path; it contacts nothing.
+
+The section's status fields are `TouchZonesStatus` (how many zones, how many in
+use and who found them, or that none are found yet), `TouchZonesVision`
+(whether the Thinking model can see and where pictures go), `TouchZonesDetection`
+(how *Detect zones* went), `TouchZonesLast` (the zone the last click landed in,
+how it was found and what it played or that it was resting),
+`TouchZonesSaveState` and each zone's `TouchZoneState-<n>` (its ID, the parts
+it follows and its default reaction). `TouchZonesDetect` sends the character's
+picture to Thinking, `TouchZoneTry-<n>` plays on the character, and
+`TouchZonesIntimate`, `TouchZonesAdd`/`TouchZonesAddKind` and each zone's
+`TouchZoneOn-`, `TouchZoneName-`, `TouchZoneReaction-`, `TouchZoneReaction2-`,
+`TouchZoneTell-`, `TouchZoneNarration-`, `TouchZoneCooldown-`, `TouchZoneBox-`,
+`TouchZoneDelete-` and its box on the picture (`TouchZoneRect-<n>`, inside
+`TouchZonesPicture`) save, so they all need `--allow-ui-effects`. Setting
+`MARTLET_TOUCH_ZONES_FIXTURE` to a text file before launching the desktop makes
+*Detect zones* read that file as the Thinking model's answer (FIXTURE - NOT AI,
+shown in `TouchZonesDetection`) after taking the real snapshot and probing the
+showing model's drawables or bones, so the whole detection runs with no
+vision request.
+
 `character_gaze` shows [where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks)
 (Companion › Vision › Where the character looks): `saved` (`mouse`, the
 default, or `martlet decides`, from `DecideGaze` in the `dataDirectory`'s
@@ -2869,6 +2909,9 @@ interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
 automation IDs, enabled states, checkbox states, and selected read-only status
 fields (a text block's text, or a button's accessible name); it does not dump arbitrary editable fields or credentials.
+It returns the first 200 controls; `idPrefix` keeps only those whose automation ID
+starts with it (`TouchZone` for Companion › Character › Touch zones, below the
+long emotes list).
 A status text whose details sit in its tooltip (the talk window's `LiveVisionStatus`,
 `LivePcAudio`, `LiveChattiness` and `LiveContext`) also returns them as `help`
 (its accessible help text).
@@ -4586,7 +4629,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `straight_voice_check` and `discord_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_theme` and `singing_status` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
