@@ -5,15 +5,20 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>The touch zones of the character this PC shows (Companion › Character › Touch zones): found once per model by the
-/// Thinking model (when it can see) in a snapshot of the character, bound to the model's drawables or bones, saved per model in
-/// character-touch-zones.json, and what a touch on each does.</summary>
+/// <summary>The touch zones of the character this PC shows (Companion › Character › Touch zones): found per model by the
+/// Thinking model (when it can see) step by step in a snapshot of the character (<see cref="TouchZoneDetection"/>), bound to the
+/// model's drawables or bones, saved per model in character-touch-zones.json with the pictures the model saw, and what a touch
+/// on each does.</summary>
 internal sealed class CharacterTouchZoneService(string? dataDirectory)
 {
+    /// <summary>A file whose zones (JSON as a vision model answers about the whole snapshot) stand in for the vision model: every
+    /// request of a detection is answered from them (FIXTURE - NOT AI), so MCP verification runs the real snapshot, pictures,
+    /// probe, binding and saving without a vision request.</summary>
     internal const string FixtureVariable = "MARTLET_TOUCH_ZONES_FIXTURE";
 
     private readonly Dictionary<string, long> rested = new(StringComparer.Ordinal);
     private CharacterTouchZoneSettings? current;
+    private TouchZoneSent? sent;
     private string? modelId;
     private string? detection;
     private string? lastMatch, noticed, noticedLast;
@@ -40,11 +45,25 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
     internal string? SnapshotPath => dataDirectory is not null && ModelId is { } id && CharacterTouchZones.SnapshotPath(dataDirectory, id) is var path &&
         File.Exists(path) ? path : null;
 
+    /// <summary>What the loaded model's last detection sent to the vision model, or null before one ran.</summary>
+    internal TouchZoneSent? Sent => Volatile.Read(ref sent);
+
+    /// <summary>The folder with the pictures the vision model saw in the loaded model's last detection, or null.</summary>
+    internal string? SentFolder => dataDirectory is not null && ModelId is { } id && CharacterTouchZones.SentFolder(dataDirectory, id) is var folder &&
+        Directory.Exists(folder) ? folder : null;
+
+    /// <summary>The first picture the vision model saw (the whole character with its grid) when that detection saved the zones
+    /// shown (its snapshot is the one under the boxes), or null.</summary>
+    internal string? SentWholePicture => SentFolder is { } folder && Sent is { Saved: true } sent &&
+        sent.Pictures.FirstOrDefault(p => p.Kind == nameof(ZoneAskKind.Parts)) is { } first &&
+        Path.Combine(folder, first.File) is var path && File.Exists(path) ? path : null;
+
     /// <summary>Loads the zones of the model with <paramref name="id"/> unless they are already loaded.</summary>
     internal void Follow(string? id)
     {
         if (id == ModelId) return;
         Volatile.Write(ref current, id is null || dataDirectory is null ? null : CharacterTouchZones.Load(dataDirectory, id));
+        Volatile.Write(ref sent, id is null || dataDirectory is null ? null : CharacterTouchZones.LoadSent(dataDirectory, id));
         Volatile.Write(ref modelId, id);
         Volatile.Write(ref detection, null);
         lock (rested) rested.Clear();
@@ -66,51 +85,112 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         return null;
     }
 
-    /// <summary>Takes a snapshot of the showing character and asks the Thinking model (through <paramref name="ask"/>, with the
-    /// picture) where its zones are, then binds them to the model's drawables or bones and saves them. Returns what happened.</summary>
+    /// <summary>Takes a snapshot of the showing character and finds its zones step by step with the Thinking model (through
+    /// <paramref name="ask"/>, one picture each: <see cref="TouchZoneDetection"/>), saving the zones as they are found, bound to
+    /// the model's drawables or bones, and keeping every picture sent (<see cref="Sent"/>). Returns what happened.</summary>
     internal async Task<string> DetectAsync(AvatarController avatar,
         Func<string, string, string, BoundedImage?, CancellationToken, Task<(string? Answer, string? Failure)>> ask, CancellationToken token)
     {
         if (ModelId is not { } id || !avatar.IsShowing) return Report("Show the character first.");
         Volatile.Write(ref busy, true);
         Report("Taking a picture of the character...");
+        var fixture = Environment.GetEnvironmentVariable(FixtureVariable) is { Length: > 0 } file ? file : null;
+        var tag = fixture is null ? "" : "FIXTURE - NOT AI: ";
+        var pictures = new List<TouchZoneSentPicture>();
+        var steps = new List<string>();
+        var requests = 0;
+        // Whether this detection saved zones (and so its snapshot), so its pictures belong to the boxes shown.
+        var pictureKept = false;
         try
         {
             if (await avatar.ZoneSnapshotAsync(token) is not { } shot) return Report("Martlet couldn't take a picture of the character. Try again.");
-            BoundedImage image;
-            try { image = new(shot.Png, ImageMediaType.Png, shot.Picture.Width, shot.Picture.Height); }
-            catch (ContractException) { return Report("The character's picture couldn't be used. Try again."); }
-            Report(Environment.GetEnvironmentVariable(FixtureVariable) is { Length: > 0 }
-                ? "FIXTURE - NOT AI: reading the zones from MARTLET_TOUCH_ZONES_FIXTURE instead of asking the Thinking model..."
-                : "Asking the Thinking model where the character's touch zones are...");
-            var (answer, failure) = await ask("Finding touch zones", CharacterTouchZones.DetectionInstructions, CharacterTouchZones.DetectionList, image, token);
-            return await FoundAsync(id, answer, failure, shot.Png, shot.Picture, shot.Probe, token);
+            ZonePixels snapshot;
+            try { snapshot = await Task.Run(() => TouchZoneImages.Decode(shot.Png), token); }
+            catch (Exception error) when (error is NotSupportedException or FileFormatException or ArgumentException or InvalidOperationException or IOException)
+            {
+                return Report("The character's picture couldn't be used. Try again.");
+            }
+            // The fixture's zones stand in for the vision model: every request is answered from them (FIXTURE - NOT AI).
+            var truth = fixture is null ? null
+                : CharacterTouchZones.Parse(File.Exists(fixture) ? await File.ReadAllTextAsync(fixture, token) : null, snapshot.Width, snapshot.Height);
+            var crop = new TouchZoneBox(shot.Picture.CropLeft, shot.Picture.CropTop, shot.Picture.CropWidth, shot.Picture.CropHeight);
+            var hints = TouchZoneDetection.Hints(shot.Probe, crop);
+            var before = Current;
+            var folder = dataDirectory is null ? null : CharacterTouchZones.ClearSent(dataDirectory, id);
+            IReadOnlyList<CharacterTouchZone>? latest = null, shown = null;
+            ErrorLog.Info($"Finding touch zones: a {snapshot.Width}x{snapshot.Height} picture of the character ({shot.Png.Length / 1024} KB), " +
+                (hints is null ? "no probe" : $"{hints.Bones.Count} bones and {hints.Areas.Count} named parts from the model") + ".");
+
+            async Task<(string? Answer, string? Failure)> AskAsync(ZoneAsk zoneAsk, CancellationToken cancel)
+            {
+                // The zones found so far show on the picture before the next request.
+                if (latest is { Count: > 0 } found && !ReferenceEquals(found, shown))
+                {
+                    shown = found;
+                    await KeepAsync(id, before, found, pictureKept ? null : shot.Png, crop, shot.Probe, cancel);
+                    pictureKept = true;
+                }
+                var image = TouchZoneImages.Encode(zoneAsk.Picture);
+                var name = $"{pictures.Count + 1:00}-{zoneAsk.Step.Replace(' ', '-')}.{(image.MediaType == ImageMediaType.Png ? "png" : "jpg")}";
+                if (folder is not null) await File.WriteAllBytesAsync(Path.Combine(folder, name), image.Content.ToArray(), cancel);
+                pictures.Add(new(name, zoneAsk.Step, zoneAsk.Kind.ToString(), image.Width, image.Height, image.ByteCount, image.MimeType));
+                requests++;
+                ErrorLog.Info($"Finding touch zones ({zoneAsk.Step}): {(truth is null ? "sending" : "FIXTURE - NOT AI, not sending")} a {image.Width}x{image.Height} " +
+                    $"{image.MimeType} picture ({image.ByteCount / 1024} KB) with a grid{(zoneAsk.Marks.Count > 0 ? $" and {zoneAsk.Marks.Count} numbered boxes" : "")}.");
+                if (truth is not null) return (TouchZoneDetection.Oracle(zoneAsk, truth), null);
+                if (fixture is not null) return (null, null);
+                return await ask($"Finding touch zones ({zoneAsk.Step})", zoneAsk.Instructions, zoneAsk.Text, image, cancel);
+            }
+
+            var result = await Task.Run(() => TouchZoneDetection.RunAsync(snapshot, hints, AskAsync, progress =>
+            {
+                latest = progress.Zones;
+                Report(tag + progress.Text);
+            }, token), token);
+            steps.AddRange(result.Steps);
+            foreach (var step in result.Steps) ErrorLog.Info($"Finding touch zones: {step}.");
+            if (result.Zones is null)
+                return Report(result.Failure is not null ? $"Couldn't ask the Thinking model ({result.Failure})."
+                    : tag + "The Thinking model's answers had no zones Martlet could read. Try again, or choose a model that can see (Companion › Vision).");
+            if (await KeepAsync(id, before, result.Zones, pictureKept ? null : shot.Png, crop, shot.Probe, token) is { } why)
+                return Report("The zones were found but couldn't be saved: " + why);
+            pictureKept = true;
+            var settings = Current!;
+            var bound = settings.Zones.Count(z => z.Drawables.Count > 0 || z.Bones.Count > 0);
+            var checks = pictures.Count(p => p.Kind == nameof(ZoneAskKind.Check));
+            ErrorLog.Info($"The Thinking model found {result.Zones.Count} touch zones in {requests} requests ({bound} bound to the model's parts).");
+            return Report(tag + $"Found {result.Zones.Count} zone{(result.Zones.Count == 1 ? "" : "s")} at {DateTime.Now:t} in {requests} " +
+                $"request{(requests == 1 ? "" : "s")} ({checks} check{(checks == 1 ? "" : "s")} of the boxes); {bound} follow the model's parts as it moves.");
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { return Report("Finding zones was stopped."); }
-        finally { Volatile.Write(ref busy, false); Changed?.Invoke(); }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return Report("Finding zones was stopped. The zones found until then are kept.");
+        }
+        finally
+        {
+            if (dataDirectory is not null && pictures.Count > 0)
+            {
+                var record = new TouchZoneSent(DateTimeOffset.Now, fixture is not null, requests, [.. pictures], [.. steps], pictureKept);
+                Volatile.Write(ref sent, record);
+                try { await CharacterTouchZones.SaveSentAsync(dataDirectory, id, record, CancellationToken.None); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { ErrorLog.Warn($"Couldn't keep what finding zones sent: {error.Message}"); }
+            }
+            Volatile.Write(ref busy, false);
+            Changed?.Invoke();
+        }
     }
 
-    /// <summary>What the vision model's <paramref name="answer"/> about <paramref name="picture"/> gives, saved for the model.</summary>
-    internal async Task<string> FoundAsync(string id, string? answer, string? failure, byte[] png, RendererPicture picture, RendererZoneProbe? probe,
-        CancellationToken token)
+    // Saves zones found (so far) in the snapshot, with the owner's choices for each zone from before this detection, and the
+    // snapshot they belong to. Returns why they couldn't be saved, or null.
+    private async Task<string?> KeepAsync(string id, CharacterTouchZoneSettings? before, IReadOnlyList<CharacterTouchZone> zones, byte[]? png,
+        TouchZoneBox crop, RendererZoneProbe? probe, CancellationToken token)
     {
-        var found = CharacterTouchZones.Parse(answer, picture.Width, picture.Height);
-        if (found is null)
-            return Report(failure is null
-                ? "The Thinking model's answer had no zones Martlet could read. Try again, or choose a model that can see (Companion › Vision)."
-                : $"Couldn't ask the Thinking model ({failure}).");
-        var crop = new TouchZoneBox(picture.CropLeft, picture.CropTop, picture.CropWidth, picture.CropHeight);
-        var settings = CharacterTouchZones.Detected(Current, id, found, crop, probe, DateTimeOffset.Now);
-        if (await SaveAsync(settings, token) is { } why) return Report("The zones were found but couldn't be saved: " + why);
-        if (dataDirectory is not null)
+        if (dataDirectory is not null && png is not null)
         {
             try { await CharacterTouchZones.SaveSnapshotAsync(dataDirectory, id, png, token); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { ErrorLog.Warn($"Couldn't keep the touch zones' picture: {error.Message}"); }
         }
-        var bound = settings.Zones.Count(z => z.Drawables.Count > 0 || z.Bones.Count > 0);
-        ErrorLog.Info($"The Thinking model found {found.Count} touch zones ({bound} bound to the model's parts).");
-        return Report((Environment.GetEnvironmentVariable(FixtureVariable) is { Length: > 0 } ? "FIXTURE - NOT AI: " : "") +
-            $"Found {found.Count} zone{(found.Count == 1 ? "" : "s")} at {DateTime.Now:t}; {bound} follow the model's parts as it moves.");
+        return await SaveAsync(CharacterTouchZones.Detected(before, id, zones, crop, probe, DateTimeOffset.Now, whole: true), token);
     }
 
     /// <summary>A touch on the showing character: the zone it landed in plays its reaction (unless the zone is resting), and

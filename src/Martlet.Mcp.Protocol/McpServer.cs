@@ -518,17 +518,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" }, modelId = new { type = "string" }, stroke = new { type = "string" },
             changes = new { type = "string" }, noticeAll = new { type = "boolean" }
         }),
-        Tool("character_touch_zones", "Companion > Character > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones; docs/AVATARS.md " +
-            "\"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate), the vision request sent with the " +
-            "character's snapshot, what the production parser makes of answer (a simulated vision reply: JSON boxes as fractions, " +
-            "pixels of a width x height picture or Qwen-style 0..1000 bbox_2d grounding) bound to probe (a simulated renderer zones " +
-            "probe: {\"drawables\":[{\"id\",\"left\",\"top\",\"right\",\"bottom\"}],\"bones\":[{\"bone\",\"x\",\"y\"}]} in page " +
-            "fractions) with crop (\"left,top,width,height\": where the snapshot sat on the page), the zones saved for the model " +
-            "(modelPath, modelId or the model dataDirectory's avatar.json shows) in character-touch-zones.json, and with touch (a " +
-            "CharacterTouch: {\"x\",\"y\",\"hitAreas\",\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\"}) the zone it " +
-            "lands in, how it was found, what it plays and what it tells the character. save writes the parsed zones (and " +
-            "snapshotPath, a PNG, as their picture; includeIntimate sets Include intimate zones) into an explicit, disposable " +
-            "dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
+        Tool("character_touch_zones", "Companion > Character > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones and TouchZoneDetection; " +
+            "docs/AVATARS.md \"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate), the step-by-step vision " +
+            "requests (parts on the whole character, zones on each close-up, checks of the numbered boxes), what the production parser makes " +
+            "of answer (a simulated vision reply about the whole picture: JSON boxes as fractions or named edges, pixels of a width x height " +
+            "picture or Qwen-style 0..1000 bbox_2d grounding) bound to probe (a simulated renderer zones probe: {\"drawables\":[{\"id\",\"left\"," +
+            "\"top\",\"right\",\"bottom\"}],\"bones\":[{\"bone\",\"x\",\"y\"}]} in page fractions) with crop (\"left,top,width,height\": where the " +
+            "snapshot sat on the page), the zones saved for the model (modelPath, modelId or the model dataDirectory's avatar.json shows) in " +
+            "character-touch-zones.json with what its last detection sent, and with touch (a CharacterTouch: {\"x\",\"y\",\"hitAreas\"," +
+            "\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\",\"wholeX\",\"wholeY\"}) the zone it lands in, how it was found, what it " +
+            "plays and what it tells the character. detect runs the production detection on snapshotPath (a PNG of the character, transparent " +
+            "around it), composing and encoding every picture it would send (previewDirectory keeps them), with a FIXTURE - NOT AI stand-in " +
+            "that answers from answer's zones (guess, a wrong first answer, makes the checks correct it; checks sets the rounds, 0 to 5); it " +
+            "reports each request, the steps and how far the found boxes are from answer's. save writes the parsed (or detected) zones (and " +
+            "snapshotPath as their picture, and with detect the pictures sent; includeIntimate sets Include intimate zones) into an explicit, " +
+            "disposable dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
             "{\"attitude\":2,\"reactions\":[\"hearts\",\"blush\"],\"linger\":3}},\"zones\":{...},\"escalation\":{\"after\":3,...}}) or " +
             "personaId (the temperament saved in the dataDirectory's character-temperaments.json) decides what the touch plays when the " +
             "zone has no pick of its own, with repeats (touches in a row, for escalation); personality shows the request Thinking gets. " +
@@ -539,7 +543,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             crop = new { type = "string" }, probe = new { type = "string" }, touch = new { type = "string" },
             save = new { type = "boolean" }, includeIntimate = new { type = "boolean" }, snapshotPath = new { type = "string" },
             temperament = new { type = "string" }, personaId = new { type = "string" }, personality = new { type = "string" },
-            repeats = new { type = "integer", minimum = 1 }
+            repeats = new { type = "integer", minimum = 1 }, detect = new { type = "boolean" }, guess = new { type = "string" },
+            previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 }
         }),
         Tool("character_gaze", "Where the character looks (Companion > Vision > Where the character looks; docs/SCREEN_COMMENTARY.md " +
             "\"Where the character looks\"): the saved choice in a data directory's talk-preferences.json (mouse unless Martlet " +
@@ -1522,7 +1527,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "crop"), OptionalString(arguments, "probe"), OptionalString(arguments, "touch"),
                     OptionalBool(arguments, "save") ?? false, OptionalBool(arguments, "includeIntimate"), OptionalString(arguments, "snapshotPath"),
                     cancellation, OptionalString(arguments, "temperament"), OptionalString(arguments, "personaId"), OptionalString(arguments, "personality"),
-                    OptionalInt(arguments, "repeats")),
+                    OptionalInt(arguments, "repeats"), OptionalBool(arguments, "detect") ?? false, OptionalString(arguments, "guess"),
+                    OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks")),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),

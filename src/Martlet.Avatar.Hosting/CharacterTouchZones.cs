@@ -19,6 +19,8 @@ public sealed record TouchZoneKind(string Id, string Label, TouchZoneGroup Group
 public sealed record TouchZoneBox(double X, double Y, double Width, double Height)
 {
     [JsonIgnore] public double Area => Width * Height;
+    [JsonIgnore] public double CenterX => X + Width / 2;
+    [JsonIgnore] public double CenterY => Y + Height / 2;
     [JsonIgnore] public bool Valid => double.IsFinite(X) && double.IsFinite(Y) && double.IsFinite(Width) && double.IsFinite(Height) &&
         Width > 0.002 && Height > 0.002 && X >= -0.01 && Y >= -0.01 && X + Width <= 1.01 && Y + Height <= 1.01;
     public bool Contains(double x, double y) => x >= X && x <= X + Width && y >= Y && y <= Y + Height;
@@ -35,9 +37,14 @@ public sealed record TouchZoneBox(double X, double Y, double Width, double Heigh
     public TouchZoneBox Within(TouchZoneBox frame) =>
         new(frame.X + X * frame.Width, frame.Y + Y * frame.Height, Width * frame.Width, Height * frame.Height);
 
+    /// <summary>This box (a fraction of what <paramref name="frame"/> is a fraction of) as a fraction of <paramref name="frame"/>;
+    /// the reverse of <see cref="Within"/>.</summary>
+    public TouchZoneBox Relative(TouchZoneBox frame) =>
+        new((X - frame.X) / frame.Width, (Y - frame.Y) / frame.Height, Width / frame.Width, Height / frame.Height);
+
     public TouchZoneBox Clamped()
     {
-        double x = Math.Clamp(X, 0, 1), y = Math.Clamp(Y, 0, 1);
+        double x = Math.Clamp(X, 0, 0.99), y = Math.Clamp(Y, 0, 0.99);
         return new(x, y, Math.Clamp(Width, 0.01, 1 - x), Math.Clamp(Height, 0.01, 1 - y));
     }
 }
@@ -89,6 +96,9 @@ public sealed record CharacterTouchZoneSettings
     public DateTimeOffset UpdatedAt { get; init; }
     public bool IncludeIntimate { get; init; } = true;
     public TouchZoneBox? Crop { get; init; }
+    /// <summary>The snapshot framed the character whole (no zoom, no pan): boxes compare with where a touch lands in that
+    /// framing (<see cref="CharacterTouch.WholeX"/>), whatever the view is now.</summary>
+    public bool Whole { get; init; }
     public IReadOnlyList<CharacterTouchZone> Zones { get; init; } = [];
 
     /// <summary>Whether touching <paramref name="zone"/> does anything: it is on, and an intimate zone only with Include intimate zones.</summary>
@@ -221,113 +231,19 @@ public static class CharacterTouchZones
         return slug == "glasses_hat" ? "glasses_or_hat" : null;
     }
 
-    // ---------- the vision model's request and answer ----------
+    // ---------- the vision model's answer ----------
 
-    /// <summary>What the vision model is asked with the snapshot: where each zone is, as boxes, in JSON.</summary>
-    public static string DetectionInstructions =>
-        "You find body zones on a picture of a character (a 2D or 3D avatar) in its usual pose, for a touch-reaction feature. " +
-        "Only locate them; don't describe or judge the character. Left and right are the CHARACTER's own left and right: when " +
-        "the character faces you, its left side is on the right of the picture. Include only zones you can see and place; " +
-        "leave out the rest. Answer with JSON only, no other text, in this form:\n" +
-        "{\"zones\":[{\"id\":\"top_of_head\",\"box\":[x1,y1,x2,y2],\"center\":[x,y]}]}\n" +
-        "where x1,y1 is the box's top-left corner and x2,y2 its bottom-right, as fractions of the picture's width and height " +
-        "from 0 to 1, measured from the top-left of the picture.";
-
-    /// <summary>The list of zones the vision model is asked for (the message that goes with the picture).</summary>
-    public static string DetectionList => "Zones (id - what):\n" + string.Join("\n", Kinds.Select(k => $"{k.Id} - {k.Label.ToLowerInvariant()}"));
-
-    /// <summary>The zones in the vision model's answer, with their boxes as fractions of the picture (<paramref name="width"/> by
-    /// <paramref name="height"/> pixels): JSON as asked, a bare list, or Qwen-style <c>bbox_2d</c> grounding in pixels or
-    /// 0..1000. Unknown zones and boxes that can't be placed are left out; null when nothing could be read.</summary>
+    /// <summary>The zones in a vision model's answer about a whole <paramref name="width"/> by <paramref name="height"/> picture
+    /// (the fixture's stand-in answer and MCP's simulated one), with their boxes as fractions of the picture: JSON with boxes as
+    /// arrays or named edges, a bare list, boxes keyed by zone, or Qwen-style <c>bbox_2d</c> grounding in pixels or 0..1000; an
+    /// answer cut off part way keeps the zones it finished. Unknown zones and boxes that can't be placed are left out; null when
+    /// nothing could be read. Detection itself asks step by step (<see cref="TouchZoneDetection"/>).</summary>
     public static IReadOnlyList<CharacterTouchZone>? Parse(string? answer, int width, int height)
     {
-        if (string.IsNullOrWhiteSpace(answer) || width <= 0 || height <= 0) return null;
-        var start = answer.IndexOfAny(['{', '[']);
-        var end = Math.Max(answer.LastIndexOf('}'), answer.LastIndexOf(']'));
-        if (start < 0 || end <= start) return null;
-        JsonDocument document;
-        try { document = JsonDocument.Parse(answer[start..(end + 1)], new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip, MaxDepth = 16 }); }
-        catch (JsonException) { return null; }
-        using (document)
-        {
-            var root = document.RootElement;
-            JsonElement list = root;
-            if (root.ValueKind == JsonValueKind.Object)
-            {
-                if (Property(root, "zones") is { ValueKind: JsonValueKind.Array } zones) list = zones;
-                else if (root.EnumerateObject().All(p => p.Value.ValueKind is JsonValueKind.Array or JsonValueKind.Object))
-                    return ReadKeyed(root, width, height);
-                else return null;
-            }
-            if (list.ValueKind != JsonValueKind.Array) return null;
-            var raw = new List<(string Id, double[] Box, double[]? Center)>();
-            foreach (var item in list.EnumerateArray())
-            {
-                if (item.ValueKind != JsonValueKind.Object) continue;
-                var id = Normalize((Property(item, "id") ?? Property(item, "label") ?? Property(item, "zone") ?? Property(item, "name")) is
-                    { ValueKind: JsonValueKind.String } name ? name.GetString() : null);
-                var box = Numbers(Property(item, "box") ?? Property(item, "bbox_2d") ?? Property(item, "bbox"));
-                if (id is null || box is not { Length: 4 }) continue;
-                raw.Add((id, box, Numbers(Property(item, "center") ?? Property(item, "point_2d") ?? Property(item, "point"))));
-            }
-            return Scale(raw, width, height);
-        }
-    }
-
-    private static IReadOnlyList<CharacterTouchZone>? ReadKeyed(JsonElement root, int width, int height)
-    {
-        var raw = new List<(string, double[], double[]?)>();
-        foreach (var property in root.EnumerateObject())
-        {
-            if (Normalize(property.Name) is not { } id) continue;
-            var box = property.Value.ValueKind == JsonValueKind.Array ? Numbers(property.Value)
-                : Numbers(Property(property.Value, "box") ?? Property(property.Value, "bbox_2d") ?? Property(property.Value, "bbox"));
-            if (box is { Length: 4 }) raw.Add((id, box, property.Value.ValueKind == JsonValueKind.Object ? Numbers(Property(property.Value, "center")) : null));
-        }
-        return Scale(raw, width, height);
-    }
-
-    private static IReadOnlyList<CharacterTouchZone>? Scale(List<(string Id, double[] Box, double[]? Center)> raw, int width, int height)
-    {
-        if (raw.Count == 0) return null;
-        // Fractions as asked, else pixels of the picture, else Qwen2-VL's 0..1000 grid.
-        var largest = raw.SelectMany(r => r.Box).Max();
-        double sx, sy;
-        if (largest <= 1.0001) (sx, sy) = (1, 1);
-        else if (largest <= Math.Max(width, height) * 1.05) (sx, sy) = (width, height);
-        else (sx, sy) = (1000, 1000);
-        var zones = new List<CharacterTouchZone>();
-        foreach (var (id, b, _) in raw)
-        {
-            if (zones.Any(z => z.Id == id)) continue;
-            double x1 = Math.Min(b[0], b[2]) / sx, x2 = Math.Max(b[0], b[2]) / sx, y1 = Math.Min(b[1], b[3]) / sy, y2 = Math.Max(b[1], b[3]) / sy;
-            var box = new TouchZoneBox(x1, y1, x2 - x1, y2 - y1);
-            if (!box.Valid) continue;
-            zones.Add(new() { Id = id, Box = box.Clamped(), Enabled = true });
-            if (zones.Count >= MaximumZones) break;
-        }
-        return zones.Count == 0 ? null : zones;
-    }
-
-    private static JsonElement? Property(JsonElement element, string name)
-    {
-        if (element.ValueKind != JsonValueKind.Object) return null;
-        foreach (var property in element.EnumerateObject())
-            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)) return property.Value;
-        return null;
-    }
-
-    private static double[]? Numbers(JsonElement? element)
-    {
-        if (element is not { ValueKind: JsonValueKind.Array } array) return null;
-        var values = new List<double>();
-        foreach (var item in array.EnumerateArray())
-        {
-            if (item.ValueKind == JsonValueKind.Number) values.Add(item.GetDouble());
-            else if (item.ValueKind == JsonValueKind.String && double.TryParse(item.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var n)) values.Add(n);
-            else return null;
-        }
-        return values.All(double.IsFinite) ? [.. values] : null;
+        if (width <= 0 || height <= 0) return null;
+        var zones = TouchZoneDetection.ReadBoxes(answer, width, height, Normalize).Take(MaximumZones)
+            .Select(z => new CharacterTouchZone { Id = z.Key, Box = z.Value.Clamped(), Enabled = true }).ToArray();
+        return zones.Length == 0 ? null : zones;
     }
 
     // ---------- binding zones to the model ----------
@@ -350,9 +266,9 @@ public static class CharacterTouchZones
     }
 
     /// <summary>Newly found zones merged with the saved ones: a zone found again keeps the owner's label, choice and reaction;
-    /// one not found again is dropped unless the owner made it.</summary>
+    /// one not found again is dropped. <paramref name="whole"/>: the snapshot framed the character whole.</summary>
     public static CharacterTouchZoneSettings Detected(CharacterTouchZoneSettings? saved, string modelId, IReadOnlyList<CharacterTouchZone> found,
-        TouchZoneBox? crop, RendererZoneProbe? probe, DateTimeOffset now)
+        TouchZoneBox? crop, RendererZoneProbe? probe, DateTimeOffset now, bool whole = false)
     {
         var bound = Bind(found, crop, probe);
         var merged = bound.Select(zone => saved?.Zones.FirstOrDefault(z => z.Id == zone.Id) is { } old
@@ -360,7 +276,7 @@ public static class CharacterTouchZones
         return new()
         {
             ModelId = modelId, DetectedBy = CharacterTouchZoneSettings.ByVision, DetectedAt = now.ToUniversalTime(), UpdatedAt = now.ToUniversalTime(),
-            IncludeIntimate = saved?.IncludeIntimate ?? true, Crop = crop, Zones = merged
+            IncludeIntimate = saved?.IncludeIntimate ?? true, Crop = crop, Whole = whole, Zones = merged
         };
     }
 
@@ -374,10 +290,12 @@ public static class CharacterTouchZones
     {
         var active = settings?.Zones.Where(settings.Active).ToArray() ?? [];
         TouchZoneBox Page(CharacterTouchZone zone) => settings?.Crop is { } crop ? zone.Box.Within(crop) : zone.Box;
+        // Zones found with the character framed whole compare with where the touch lands in that framing.
+        var (x, y) = settings is { Whole: true } && touch is { WholeX: { } wholeX, WholeY: { } wholeY } ? (wholeX, wholeY) : (touch.X, touch.Y);
         CharacterTouchZone Best(IEnumerable<CharacterTouchZone> zones)
         {
             var list = zones.ToArray();
-            return list.Where(z => Page(z).Contains(touch.X, touch.Y)).OrderBy(z => z.Box.Area).FirstOrDefault() ??
+            return list.Where(z => Page(z).Contains(x, y)).OrderBy(z => z.Box.Area).FirstOrDefault() ??
                 list.OrderBy(z => z.Box.Area).First();
         }
         foreach (var drawable in touch.Drawables)
@@ -391,7 +309,7 @@ public static class CharacterTouchZones
             var owners = active.Where(z => z.Bones.Contains(bone, StringComparer.Ordinal)).ToArray();
             if (owners.Length > 0) return new(Best(owners), "bone");
         }
-        var boxed = active.Where(z => Page(z).Contains(touch.X, touch.Y)).OrderBy(z => z.Box.Area).FirstOrDefault();
+        var boxed = active.Where(z => Page(z).Contains(x, y)).OrderBy(z => z.Box.Area).FirstOrDefault();
         if (boxed is not null) return new(boxed, "box");
         if (!Coarse.TryGetValue(touch.CoarseZone, out var candidates)) return null;
         foreach (var id in candidates)
@@ -548,10 +466,72 @@ public static class CharacterTouchZones
         finally { Gate.Release(); }
     }
 
+    /// <summary>Where the pictures the vision model saw in the model's last detection are kept, with <see cref="SentFile"/>.</summary>
+    public static string SentFolder(string dataDirectory, string modelId) => System.IO.Path.ChangeExtension(SnapshotPath(dataDirectory, modelId), null) + "-sent";
+
+    public const string SentFile = "sent.json";
+
+    /// <summary>What the model's last detection sent, or null before one ran (or when it can't be read).</summary>
+    public static TouchZoneSent? LoadSent(string dataDirectory, string modelId)
+    {
+        try
+        {
+            var path = System.IO.Path.Combine(SentFolder(dataDirectory, modelId), SentFile);
+            return File.Exists(path) && new FileInfo(path).Length <= MaximumBytes ? JsonSerializer.Deserialize<TouchZoneSent>(File.ReadAllBytes(path), Json) : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or NotSupportedException) { return null; }
+    }
+
+    /// <summary>Clears the model's sent folder before a new detection, so it holds only what that one sends.</summary>
+    public static string ClearSent(string dataDirectory, string modelId)
+    {
+        var folder = SentFolder(dataDirectory, modelId);
+        if (Directory.Exists(folder))
+            foreach (var file in Directory.EnumerateFiles(folder)) File.Delete(file);
+        Directory.CreateDirectory(folder);
+        return folder;
+    }
+
+    public static async Task SaveSentAsync(string dataDirectory, string modelId, TouchZoneSent sent, CancellationToken token = default)
+    {
+        var folder = SentFolder(dataDirectory, modelId);
+        Directory.CreateDirectory(folder);
+        await File.WriteAllBytesAsync(System.IO.Path.Combine(folder, SentFile), JsonSerializer.SerializeToUtf8Bytes(sent, Json), token);
+    }
     public static async Task SaveSnapshotAsync(string dataDirectory, string modelId, byte[] png, CancellationToken token = default)
     {
         var path = SnapshotPath(dataDirectory, modelId);
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
         await File.WriteAllBytesAsync(path, png, token);
+    }
+}
+
+/// <summary>One picture the vision model was sent while finding zones: its file in the sent folder, the step, what it asked
+/// (Parts, Zones or Check), its size in pixels and bytes, and its media type.</summary>
+public sealed record TouchZoneSentPicture(string File, string Step, string Kind, int Width, int Height, int Bytes, string MediaType);
+
+/// <summary>What a detection sent to the vision model: when, whether a FIXTURE stood in for it, how many requests it made, each
+/// picture, one line per step and whether it saved zones (so its pictures belong to the snapshot under the boxes)
+/// (character-touch-zones\&lt;model&gt;-sent\sent.json).</summary>
+public sealed record TouchZoneSent(DateTimeOffset At, bool Fixture, int Requests, IReadOnlyList<TouchZoneSentPicture> Pictures, IReadOnlyList<string> Steps,
+    bool Saved = false)
+{
+    /// <summary>One plain line: how many pictures, how large, and what they showed.</summary>
+    public string Describe()
+    {
+        var largest = Pictures.Count == 0 ? 0 : Pictures.Max(p => Math.Max(p.Width, p.Height));
+        var closeUps = Pictures.Where(p => p.Kind == nameof(ZoneAskKind.Zones)).Select(p => p.Step.Replace('_', ' ')).Distinct().ToArray();
+        var checks = Pictures.Count(p => p.Kind == nameof(ZoneAskKind.Check));
+        var parts = closeUps.Length switch
+        {
+            0 => "",
+            1 => closeUps[0],
+            _ => string.Join(", ", closeUps[..^1]) + " and " + closeUps[^1]
+        };
+        return (Fixture ? "FIXTURE - NOT AI answered these. " : "") +
+            $"Thinking saw {Pictures.Count} picture{(Pictures.Count == 1 ? "" : "s")} on {At.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}, " +
+            $"up to {largest} pixels on the longer side, each on a plain backdrop with a grid of tenths" +
+            (parts.Length > 0 ? $": the whole character, then close-ups of the {parts}" : "") +
+            (checks > 0 ? $", with its boxes drawn and numbered for {checks} check{(checks == 1 ? "" : "s")}" : "") + ".";
     }
 }

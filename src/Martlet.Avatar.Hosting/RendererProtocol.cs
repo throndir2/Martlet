@@ -134,17 +134,21 @@ public sealed record RendererRequest(string Action)
 public sealed record RendererView(double Width, double Height, double? ScreenTop, double Zoom, double? HeadTop, double? DrawWidth = null,
     bool? Locked = null, double? X = null, double? Y = null, bool? Camera = null);
 /// <summary>Over the character's renderer pipe: a picture of the character as it shows now (Discord's bot picture and
-/// <c>/selfie</c>). <paramref name="Portrait"/> crops a square around the head and shoulders, else the whole character; the
-/// longer side is at most <paramref name="Edge"/> pixels (64 to 512). Replied to with <see cref="RendererPicture"/>.</summary>
-public sealed record RendererSnapshot(bool Portrait, int Edge = 512)
+/// <c>/selfie</c>, and touch zones). <paramref name="Portrait"/> crops a square around the head and shoulders, else the whole
+/// character; the longer side is at most <paramref name="Edge"/> pixels (64 to 2048; never larger than the capture, and smaller
+/// when the PNG would not fit one renderer message). With <paramref name="Whole"/> (touch zones) the character is framed whole
+/// for the picture (no zoom, no pan; it shows so for a moment) and the reply also carries the zones probe taken in that
+/// framing. Replied to with <see cref="RendererPicture"/>.</summary>
+public sealed record RendererSnapshot(bool Portrait, int Edge = 512, bool Whole = false)
 {
-    public const int MinimumEdge = 64, MaximumEdge = 512;
+    public const int MinimumEdge = 64, MaximumEdge = 2048;
 }
 /// <summary>A PNG of the character (base64, small enough for one renderer message) and its size in pixels. <paramref name="CropLeft"/>,
 /// <paramref name="CropTop"/>, <paramref name="CropWidth"/> and <paramref name="CropHeight"/> say where the picture sat on the
-/// renderer page, as fractions of the page (touch zones compare it with touches).</summary>
+/// renderer page, as fractions of the page (touch zones compare it with touches). <paramref name="Probe"/>: for a
+/// <see cref="RendererSnapshot.Whole"/> picture, where the model's drawables or bones were in the same framing.</summary>
 public sealed record RendererPicture(string Png, int Width, int Height, double CropLeft = 0, double CropTop = 0, double CropWidth = 1,
-    double CropHeight = 1);
+    double CropHeight = 1, RendererZoneProbe? Probe = null);
 public sealed record RendererMapping(string Target, string Aspect);
 public sealed record RendererConfiguration(string SourceId, string ModelRevision, string MappingRevision, RendererMapping[] Targets);
 public sealed record RendererIdentity(Guid SessionId, Guid TurnId, Guid RequestId, string SourceId, long Epoch, int SampleRate);
@@ -153,7 +157,8 @@ public sealed record RendererParameters(RendererIdentity Identity, long Sequence
 
 public static class RendererProtocol
 {
-    public const int MaximumMessageBytes = 262_144;
+    // A touch zones snapshot (a PNG of the character at its full size, base64) is the largest message.
+    public const int MaximumMessageBytes = 8 * 1024 * 1024;
     public static JsonSerializerOptions Json { get; } = new(JsonSerializerDefaults.Web)
     {
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,

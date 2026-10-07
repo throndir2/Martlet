@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Changed
+- Detect zones finds your character's touch zones much more accurately. It now shows your Thinking model the whole character at full size on a plain backdrop with a grid, then a close-up of the head, the body and the legs, and lets it check and correct its own numbered boxes until they're right. Martlet fits each box to the character, puts left and right back the right way round and points out boxes that look wrong. The picture always holds the whole character, even when you've zoomed in, and **Show the picture Thinking saw** and **Open the pictures** let you see exactly what was sent. Detection now takes several requests; **Stop** keeps what it found so far. ([#539](https://github.com/throndir2/Martlet/pull/539))
 - The Devices page now shows how much memory each job usually holds and the most it takes while it works hardest, such as *12-14 GB*: Thinking models hold the same amount all the time, while voices grow as they speak. A computer whose jobs usually fit but can run out when they're all busy now says it's *tight* instead of over-full, so you can tell what runs well from what probably won't. ([#538](https://github.com/throndir2/Martlet/pull/538))
 
 ## [0.53.0] - 2026-10-07
