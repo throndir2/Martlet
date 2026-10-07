@@ -29,15 +29,16 @@ public sealed class BackgroundPlacesTests
         using var jobs = new BackgroundJobs();
         var release = new TaskCompletionSource();
         Assert.Equal(6, Think.MaxActive);
-        var started = Enumerable.Range(0, 3).Select(_ => jobs.Start(Think, "a task", Until(release.Task), Pool)).ToArray();
+        var started = Enumerable.Range(0, 2).Select(_ => jobs.Start(Think, "a task", Until(release.Task), Pool)).ToArray();
         Assert.All(started, start => Assert.True(start.Started));
-        Assert.Equal(["diva", "ripley", "imouto"], started.Select(start => start.Job!.Place!.Name));
-        Assert.Equal(3, jobs.Places.Leases.Count);
+        Assert.Equal(["diva", "ripley"], started.Select(start => start.Job!.Place!.Name));
+        Assert.Equal(2, jobs.Places.Leases.Count);
 
-        // Without waiting in line, a full pool is refused, naming what holds each place.
+        // Without waiting in line, a full pool is refused, naming what holds each place: the last free slot (imouto) stays free
+        // for the Thinking pool's fast jobs (judges and summaries).
         var busy = jobs.Start(Think, "one more", Until(release.Task), Pool);
         Assert.Equal("busy", busy.Refusal);
-        Assert.Equal("Every place it can run on is busy: think-1 on diva, think-2 on ripley and think-3 on imouto.", busy.Message);
+        Assert.Equal("Every place it can run on is busy: think-1 on diva and think-2 on ripley. The last free slot stays free for quick jobs.", busy.Message);
         Assert.Contains("still thinking about something else", ThinkLonger.Refused(busy), StringComparison.Ordinal);
 
         // Finishing frees its place for the next job.
@@ -58,12 +59,14 @@ public sealed class BackgroundPlacesTests
         var release = new TaskCompletionSource();
         IReadOnlyList<BackgroundPlace> two = [Diva, Ripley];
         // Another kind's step (a song's lyrics) holds diva for a while.
+        // Without the Thinking pool's fast-slot rule, so both places can take a think.
+        var think = ThinkLonger.Kind(new ThinkLongerSettings(), 2) with { PoolKind = null };
         using (var lyrics = jobs.Places.TryAcquire(two, "song-1"))
         {
             Assert.Equal("diva", lyrics!.Place.Name);
-            var first = jobs.Start(ThinkLonger.Kind(new ThinkLongerSettings(), 2), "a task", Until(release.Task), two);
+            var first = jobs.Start(think, "a task", Until(release.Task), two);
             Assert.Equal("ripley", first.Job!.Place!.Name);
-            var none = jobs.Start(ThinkLonger.Kind(new ThinkLongerSettings(), 2), "another", Until(release.Task), two);
+            var none = jobs.Start(think, "another", Until(release.Task), two);
             Assert.Equal("busy", none.Refusal);
             Assert.Equal("Every place it can run on is busy: song-1 on diva and think-1 on ripley.", none.Message);
             Assert.Null(jobs.Places.TryAcquire(two, "song-2"));
