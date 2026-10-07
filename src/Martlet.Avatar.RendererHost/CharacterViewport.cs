@@ -18,8 +18,9 @@ internal sealed class CharacterViewport : Grid
     /// <summary>The character's place is locked: it can't be moved (Martlet unlocks it).</summary>
     internal bool PlacementLocked { get; set; }
 
-    /// <summary>Taps the character at a point given as fractions 0..1 of this surface (+y down), like a click there.</summary>
-    internal Action<double, double>? TouchAt { get; set; }
+    /// <summary>Taps the character at a point given as fractions 0..1 of this surface (+y down), like a click there held for the
+    /// given milliseconds (0: a quick tap).</summary>
+    internal Action<double, double, int>? TouchAt { get; set; }
 
     /// <summary>The last tap's hit test as JSON (its number, point, whether it hit, the coarse zone, hit areas, drawables, bone,
     /// node, hair, mesh and material), or empty before the first tap. UI Automation reads it as this surface's value.</summary>
@@ -38,7 +39,8 @@ internal sealed class CharacterViewport : Grid
             _ => base.GetPattern(patternInterface)
         };
 
-        // Value: reads the last tap; setting "x,y" (invariant fractions of the surface) taps the character there.
+        // Value: reads the last tap; setting "x,y" (invariant fractions of the surface) taps the character there, and "x,y,ms"
+        // presses there for ms milliseconds (a hold from 600).
         public string Value => owner.LastTouch;
         public bool IsReadOnly => owner.TouchAt is null;
 
@@ -47,12 +49,15 @@ internal sealed class CharacterViewport : Grid
             if (!owner.IsEnabled) throw new ElementNotEnabledException();
             if (owner.TouchAt is not { } touch) throw new InvalidOperationException("The character can't be tapped yet.");
             var parts = (value ?? "").Split(',');
-            if (parts.Length != 2 ||
+            var held = 0;
+            if (parts.Length is not (2 or 3) ||
+                parts.Length == 3 && (!int.TryParse(parts[2], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out held) ||
+                    held is < 0 or > Martlet.Avatar.Hosting.CharacterTouch.MaximumHeldMilliseconds) ||
                 !double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var x) ||
                 !double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var y) ||
                 x is < 0 or > 1 || y is < 0 or > 1)
-                throw new ArgumentException("Tap with \"x,y\": fractions 0 to 1 of the character's surface.", nameof(value));
-            touch(x, y);
+                throw new ArgumentException("Tap with \"x,y\" (fractions 0 to 1 of the character's surface), or press and hold with \"x,y,ms\".", nameof(value));
+            touch(x, y, held);
         }
 
         public bool CanMove => !owner.PlacementLocked && owner.MoveTo is not null;

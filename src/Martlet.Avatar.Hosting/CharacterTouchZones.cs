@@ -43,13 +43,22 @@ public sealed record TouchZoneBox(double X, double Y, double Width, double Heigh
 }
 
 /// <summary>What touching a zone does: the gestures, emotes and motions it plays (their <see cref="CharacterActionSource.Id"/>s;
-/// null plays the zone's default, an empty list nothing), whether it also tells the character (a new reply turn with
-/// <see cref="Narration"/>, or the zone's own line when null) and how long the zone then rests.</summary>
+/// null plays the zone's default, an empty list nothing), whether Martlet notices it (<see cref="Notices"/>: the touch goes to
+/// the Thinking model, with what the user says or as a short reply of its own, <see cref="Narration"/> an optional hint in the
+/// owner's words) and how long the zone then rests.</summary>
 public sealed record CharacterTouchReaction
 {
     public const double DefaultCooldown = 4, MaximumCooldown = 600;
     public IReadOnlyList<string>? Actions { get; init; }
-    public bool Tell { get; init; }
+    /// <summary>Martlet notices touches on this zone (was "Tell the character", saved as <c>tell</c> before).</summary>
+    public bool Notices { get; init; }
+    // Settings saved before Martlet notices replaced Tell the character keep working.
+    [JsonInclude, JsonPropertyName("tell")]
+    private bool? Tell
+    {
+        get => null;
+        init { if (value == true) Notices = true; }
+    }
     public string? Narration { get; init; }
     public double CooldownSeconds { get; init; } = DefaultCooldown;
 }
@@ -441,9 +450,24 @@ public static class CharacterTouchZones
         (entry.Source.Kind == CharacterActionKind.Gesture && string.Equals(entry.Source.Name, word, StringComparison.OrdinalIgnoreCase)) ||
         CharacterActions.Slug(entry.Source.Name) == word;
 
-    /// <summary>The line a touch tells the character (a new reply turn), or null when the zone doesn't tell it.</summary>
-    public static string? Narration(CharacterTouchZone zone) => !zone.Reaction.Tell ? null
-        : zone.Reaction.Narration is { Length: > 0 } own ? own : Kind(zone.Id)?.Narration ?? $"*touches your {zone.Name.ToLowerInvariant()}*";
+    /// <summary>The owner's own words for a touch on a zone Martlet notices (a hint that goes with it), or null: none, the zone's
+    /// built-in line, or Martlet doesn't notice the zone.</summary>
+    public static string? Narration(CharacterTouchZone zone) => zone.Reaction.Notices && zone.Reaction.Narration is { Length: > 0 } own &&
+        own != Kind(zone.Id)?.Narration ? own : null;
+
+    /// <summary>Whether a quick tap on <paramref name="zone"/> is a pat (the top of the head, the hair, animal ears) rather than a poke.</summary>
+    public static bool Pats(CharacterTouchZone zone) => zone.Id is "top_of_head" or "hair" or "animal_ears";
+
+    /// <summary>Where <paramref name="zone"/> is, as the character hears it ("the top of your head", "your left cheek").</summary>
+    public static string Part(CharacterTouchZone zone) => zone.Label is null ? zone.Id switch
+    {
+        "top_of_head" => "the top of your head",
+        "face" => "your face",
+        "waist" => "your sides",
+        "held_item" => "what you're holding",
+        "skirt_hem" => "the hem of your skirt",
+        _ => "your " + zone.Name.ToLowerInvariant()
+    } : "your " + zone.Name.ToLowerInvariant();
 
     // ---------- storage ----------
 

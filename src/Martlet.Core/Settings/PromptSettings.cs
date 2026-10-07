@@ -73,6 +73,8 @@ public static class PromptCatalog
     public const string BackgroundDoneNotes = "background_done_notes";
     public const string ReminderDue = "reminder_due";
     public const string ReminderDueNotes = "reminder_due_notes";
+    public const string Touched = "touched";
+    public const string TouchedNotes = "touched_notes";
     public const string Singing = "singing";
     public const string WhileSinging = "while_singing";
     public const string SongLyrics = "song_lyrics";
@@ -133,6 +135,15 @@ public static class PromptCatalog
     public const string DefaultReminderDueNotesInstructions =
         "A reminder the user asked you for is due now:\n{reminders}\nAnswer what the user just said first; then, in the same reply, " +
         "remind them naturally and in character (\"...oh, and by the way, ...\"), without mentioning notes or tools.";
+
+    public const string DefaultTouchedInstructions =
+        "(Martlet's note, not said by the user: the user just touched you, their desktop character, without saying anything.) " +
+        "{touches} React in character, briefly, the way you would to being touched like that: one short line, a sound or a " +
+        "fitting emote is enough. Don't mention notes.";
+
+    public const string DefaultTouchedNotesInstructions =
+        "While talking, the user also touched you, their desktop character: {touches} Answer what they said first; react to the " +
+        "touch only briefly and only if it fits.";
 
     public const string DefaultSingingInstructions =
         "You can sing: sing_song makes a song in your own voice in the background (a few minutes). When the user asks you to sing " +
@@ -365,6 +376,15 @@ public static class PromptCatalog
             "Goes in the notes of your next message instead, when you talk before Martlet brought a due reminder up, so it fits it " +
             "into its answer. {reminders} lists each due reminder.",
             DefaultReminderDueNotesInstructions, ["reminders"]),
+        new(Touched, ConversationGroup, "Touched",
+            "The message of the short reply Martlet starts on its own when you touch the desktop character (a zone with Martlet " +
+            "notices on, Companion › Character › Touch zones) and say nothing: about 1.2 seconds after the last touch, at most once " +
+            "every 4 seconds. {touches} says what you did, such as They patted the top of your head 3 times over 2 seconds.",
+            DefaultTouchedInstructions, ["touches"]),
+        new(TouchedNotes, ConversationGroup, "Touched, with your message",
+            "Goes in the notes of your next message instead, when you touched the character just before or while you talked or " +
+            "typed. {touches} says what you did.",
+            DefaultTouchedNotesInstructions, ["touches"]),
         new(Singing, ConversationGroup, "Singing",
             "Added to every reply offered sing_song, play_song and stop_singing (while singing is set up in Companion › Voice › " +
             "Singing and the Thinking route does function calling), after Martlet's other tool prompts. It stays the same from " +

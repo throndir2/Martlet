@@ -141,10 +141,34 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "character overlay's drawing, +y down; unzoomed, its head is near 0.5, 0.15), and return the renderer's hit test as " +
             "last: n, x, y, hit, zone (head, hair, face, body, arm, hand, leg or foot), hitAreas and drawables (Live2D), bone, node, " +
             "hair, mesh and material (VRM). Martlet then plays its tap reaction (the desktop log records 'The character was " +
-            "tapped on the ...'). Tapping requires --allow-ui-effects; without x and y it only reads the last tap.", new
+            "tapped on the ...'). holdMs presses that long (600 or more is a hold, up to 10000), repeat taps the same point up to " +
+            "20 times gapMs apart (default 150), and taps ([{x, y, holdMs}], up to 20) taps a sequence of points instead. With " +
+            "Companion > Character > Touch zones showing, noticed reads what Martlet noticed after settleMs: waiting (the touch " +
+            "line that waits for a reply and when a touch reply starts), last (which reply took the last touches and what " +
+            "Thinking was told) and zone (TouchZonesLast). Tapping requires --allow-ui-effects; without x, y or taps it only " +
+            "reads the last tap.", new
         {
             x = new { type = "number", minimum = 0, maximum = 1 },
-            y = new { type = "number", minimum = 0, maximum = 1 }
+            y = new { type = "number", minimum = 0, maximum = 1 },
+            holdMs = new { type = "integer", minimum = 0, maximum = 10_000 },
+            repeat = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumTaps },
+            gapMs = new { type = "integer", minimum = 0, maximum = 10_000 },
+            settleMs = new { type = "integer", minimum = 0, maximum = 15_000 },
+            taps = new
+            {
+                type = "array", maxItems = DesktopAutomation.MaximumTaps,
+                items = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        x = new { type = "number", minimum = 0, maximum = 1 },
+                        y = new { type = "number", minimum = 0, maximum = 1 },
+                        holdMs = new { type = "integer", minimum = 0, maximum = 10_000 }
+                    },
+                    required = new[] { "x", "y" }
+                }
+            }
         }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
@@ -1298,7 +1322,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
                 "ui_set_range" => desktop.SetRange(RequiredString(arguments, "id"), RequiredDouble(arguments, "value")),
                 "ui_move" => desktop.Move(RequiredString(arguments, "id"), RequiredInt(arguments, "dx"), RequiredInt(arguments, "dy")),
-            "character_touch" => await desktop.TouchCharacterAsync(OptionalDouble(arguments, "x"), OptionalDouble(arguments, "y")),
+            "character_touch" => await desktop.TouchCharacterAsync(OptionalDouble(arguments, "x"), OptionalDouble(arguments, "y"),
+                OptionalInt(arguments, "holdMs"), OptionalInt(arguments, "repeat"), OptionalInt(arguments, "gapMs"), Taps(arguments),
+                OptionalInt(arguments, "settleMs")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "parakeet_check" => await ParakeetCheck.RunAsync(arguments, DataDirectory(arguments), MartletDirectory(arguments),
@@ -3215,6 +3241,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             return null;
         if (value.ValueKind != JsonValueKind.String) throw new ArgumentException($"'{property}' must be a string.");
         return value.GetString();
+    }
+
+    // character_touch's taps: [{x, y, holdMs}].
+    private static IReadOnlyList<(double X, double Y, int HoldMs)>? Taps(JsonElement arguments)
+    {
+        if (arguments.ValueKind != JsonValueKind.Object || !arguments.TryGetProperty("taps", out var taps) || taps.ValueKind == JsonValueKind.Null)
+            return null;
+        if (taps.ValueKind != JsonValueKind.Array) throw new ArgumentException("'taps' must be an array of {x, y, holdMs}.");
+        return taps.EnumerateArray().Take(DesktopAutomation.MaximumTaps + 1).Select(tap => (
+            OptionalDouble(tap, "x") ?? throw new ArgumentException("Each tap needs x."),
+            OptionalDouble(tap, "y") ?? throw new ArgumentException("Each tap needs y."),
+            OptionalInt(tap, "holdMs") ?? 0)).ToArray();
     }
 
     private static double? OptionalDouble(JsonElement element, string property)

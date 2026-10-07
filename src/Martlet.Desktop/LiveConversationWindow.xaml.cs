@@ -214,6 +214,7 @@ public partial class LiveConversationWindow : ThemedWindow
         controller.PictureShown += PictureShown;
         controller.VoicesNamed += VoicesNamed;
         controller.ChattinessDecided += ChattinessDecided;
+        controller.TouchesSent += TouchesSent;
         if (controller.Home is { } smartHome) smartHome.Confirm = ConfirmHomeAsync;
         RenderActions();
     }
@@ -458,6 +459,7 @@ public partial class LiveConversationWindow : ThemedWindow
         Settle();
         Collect();
         FollowCall();
+        WatchTouches();
         if (loading is not null) return;
         // While Windows is locked only messages from paired chats are answered (text only, never aloud).
         if (locked)
@@ -510,6 +512,7 @@ public partial class LiveConversationWindow : ThemedWindow
         }
         if (TryAnswer()) return;
         if (TryRemote()) return;
+        if (TryTouch()) return;
         if (TryReport()) return;
         TryStartCommentary();
     }
@@ -1269,6 +1272,13 @@ public partial class LiveConversationWindow : ThemedWindow
             yielded = report;
             controller.Stop(report, "report.interrupted", keepContext: true);
         }
+        // A short reaction to being touched gives way the same way; its touches go with what you say instead.
+        if (talking && owned is { OwnershipReleased: false, Touch: true } touched && !ReferenceEquals(yielded, touched) &&
+            (over || !Speaking(touched)))
+        {
+            yielded = touched;
+            controller.Stop(touched, "touch.interrupted", keepContext: true);
+        }
     }
 
     /// <summary>Martlet is saying it (or may already have said some of it).</summary>
@@ -1509,7 +1519,7 @@ public partial class LiveConversationWindow : ThemedWindow
         // Voice latency for every reply, in the desktop log (logs_tail and MCP's latency_report read it): how long from when you
         // stopped talking (or sent your message) to the first audio, step by step (ReplyLatency). Martlet bringing up its
         // background work on its own isn't a wait of yours, so it has no line.
-        if (!done.Report && !notWords && done.Turn?.Snapshot is { } finishedReply &&
+        if (!done.OnItsOwn && !notWords && done.Turn?.Snapshot is { } finishedReply &&
             ReplyLatency.Describe(done.LatencyTimeline, done.ReplyStartedAt, done.LatencyTimeline?.Clock ?? clock, finishedReply,
                 done.Authorization.Configuration.LatencyModels(done.Spoken || done.Authorization.Microphone),
                 interrupted: ReferenceEquals(yielded, done) && code == "conversation.interrupted",
@@ -1603,7 +1613,7 @@ public partial class LiveConversationWindow : ThemedWindow
         {
             "runtime.Completed" or "commentary.glance" or "conversation.typing" or "conversation.listening_paused" or
                 "commentary.interrupted" or "conversation.interrupted" or "conversation.closed" or "mic.no_speech" or
-                "listen.passed" or "conversation.continued" or "report.interrupted" or LiveConversationController.NotWordsCode => null,
+                "listen.passed" or "conversation.continued" or "report.interrupted" or "touch.interrupted" or LiveConversationController.NotWordsCode => null,
             "speaker.not_user" or "speaker.too_short" or "stt.NoSpeech" when done.HandsFree || done.Spoken => null,
             var code when code.StartsWith("policy.", StringComparison.Ordinal) && (done.HandsFree || done.Spoken) => null,
             var code => Remedy(code)
@@ -2839,6 +2849,7 @@ public partial class LiveConversationWindow : ThemedWindow
         controller.PictureShown -= PictureShown;
         controller.VoicesNamed -= VoicesNamed;
         controller.ChattinessDecided -= ChattinessDecided;
+        controller.TouchesSent -= TouchesSent;
         homeQuestion?.TrySetResult(false);
         if (controller.Home is { } smartHome && smartHome.Confirm == ConfirmHomeAsync) smartHome.Confirm = null;
     }

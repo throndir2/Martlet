@@ -13,12 +13,21 @@ namespace Martlet.Avatar.Hosting;
 /// VRM: <paramref name="Bone"/> is the humanoid bone (VRM name such as <c>head</c> or <c>leftUpperArm</c>) of the mesh skinned
 /// most to the hit triangle, or of its nearest humanoid ancestor; <paramref name="Node"/> the actual node (a spring-bone hair
 /// joint, say); <paramref name="Hair"/> whether that node is a non-humanoid descendant of the head; <paramref name="Mesh"/> and
-/// <paramref name="Material"/> the hit mesh and material names.
+/// <paramref name="Material"/> the hit mesh and material names. <paramref name="HeldMilliseconds"/>: how long the press lasted
+/// (0 when unknown); <see cref="HoldMilliseconds"/> or more is a hold.
 /// </summary>
 public sealed record CharacterTouch(double X, double Y, IReadOnlyList<string> HitAreas, IReadOnlyList<string> Drawables, string? Bone,
-    string? Node, bool Hair, string? Mesh, string? Material)
+    string? Node, bool Hair, string? Mesh, string? Material, int HeldMilliseconds = 0)
 {
     public const int MaximumHitAreas = 32, MaximumDrawables = 8, MaximumName = 256;
+    /// <summary>A press held at least this long without moving is a hold, not a tap.</summary>
+    public const int HoldMilliseconds = 600;
+    /// <summary>The longest press the renderer still counts as touching the character.</summary>
+    public const int MaximumHeldMilliseconds = 10_000;
+
+    /// <summary>The press was held (<see cref="HoldMilliseconds"/> or longer) rather than a quick tap.</summary>
+    [JsonIgnore]
+    public bool Held => HeldMilliseconds >= HoldMilliseconds;
 
     /// <summary>The zones <see cref="CoarseZone"/> reports.</summary>
     public static IReadOnlyList<string> Zones { get; } = ["head", "hair", "face", "body", "arm", "hand", "leg", "foot"];
@@ -47,7 +56,7 @@ public sealed record CharacterTouch(double X, double Y, IReadOnlyList<string> Hi
     /// <summary>Finite fractions near the page, bounded lists and names without control characters.</summary>
     [JsonIgnore]
     public bool IsValid => double.IsFinite(X) && double.IsFinite(Y) && X is >= -0.01 and <= 1.01 && Y is >= -0.01 and <= 1.01 &&
-        HitAreas is { Count: <= MaximumHitAreas } && Drawables is { Count: <= MaximumDrawables } &&
+        HeldMilliseconds is >= 0 and <= MaximumHeldMilliseconds && HitAreas is { Count: <= MaximumHitAreas } && Drawables is { Count: <= MaximumDrawables } &&
         HitAreas.Concat(Drawables).All(Safe) && new[] { Bone, Node, Mesh, Material }.All(name => name is null || Safe(name));
 
     private static bool Safe(string? name) => name is { Length: > 0 and <= MaximumName } && !name.Any(char.IsControl);
