@@ -47,10 +47,31 @@ cannot responsibly be resolved from the user's goal and available evidence.
   If blocked, try reasonable alternatives within scope and authorization, then
   preserve the work and report the exact blocker and smallest human action
   needed. Do not repeat unsuccessful attempts without new evidence.
-- Minimize narration and token use: batch relevant reads, avoid duplicate
-  investigation and report only meaningful decisions, blockers and outcomes.
-  Distinguish local work, open review and verified integration; completion
-  requires a working persistent result, not a proposal or queued merge.
+- Batch relevant reads and avoid duplicate investigation. When work changes
+  code or files, distinguish local work, open review and verified
+  integration; completion requires a working persistent result, not a
+  proposal or queued merge.
+
+## Write in Simplified Technical English
+
+Write responses, progress updates, PR descriptions and developer
+documentation in ASD-STE100 Simplified Technical English (STE), so that
+technical text is easy to understand. Give as much detail as the reader needs;
+do not cut useful information only to be short.
+
+- Use simple, common words, each with only one meaning. Use the same word for
+  the same thing every time.
+- Keep sentences short: no more than 20 words in an instruction and no more
+  than 25 words in a description. Put one instruction in each sentence.
+- Use the active voice. Write instructions in the imperative and write
+  procedures as numbered steps.
+- Keep each paragraph to one topic and no more than six sentences.
+- Use a technical term only when it is necessary, and explain it in simple
+  words the first time.
+- Do not use slang, idioms or unexplained abbreviations.
+
+User-facing text (`CHANGELOG.md`, the README and the app) keeps its own plain,
+friendly voice; apply the STE rules where they do not conflict with it.
 
 ## Never add conversation latency
 
