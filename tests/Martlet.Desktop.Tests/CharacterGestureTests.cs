@@ -47,11 +47,12 @@ public sealed class CharacterGestureTests
         ]);
 
         Assert.Equal(["nod", "shake", "tilt", "bow", "blush", "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat", "groan", "sniff",
-            "shush", "inhale", "exhale", "mumble", "hum", "sneeze", "whistle", "happy", "sarcastic", "fear", "crying", "whispering", "dramatic"],
-            Gestures(inventory));
+            "shush", "inhale", "exhale", "mumble", "hum", "sneeze", "whistle", "happy", "sarcastic", "fear", "crying", "whispering", "dramatic",
+            "shy", "giggle", "flinch", "lean_in", "look_away", "think"], Gestures(inventory));
         var prompt = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null)).Prompt(null, null);
         Assert.NotNull(prompt);
-        Assert.Equal(["{smile}", "{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{blush}"], prompt.Tags);
+        Assert.Equal(["{smile}", "{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{blush}", "{shy}", "{giggle}", "{flinch}", "{lean_in}",
+            "{look_away}", "{think}"], prompt.Tags);
         Assert.Contains("{tilt_head} - tilt your head, for curiosity or confusion", prompt.Instructions);
         Assert.Contains("ParamAngleZ", inventory.Find("gesture:tilt")!.Detail);
     }
@@ -66,7 +67,7 @@ public sealed class CharacterGestureTests
 
         Assert.Equal(["nod", "shake", "tilt", "bow", "sway", "wave", "bounce", "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat",
             "groan", "sniff", "shush", "inhale", "exhale", "mumble", "hum", "sneeze", "whistle", "sarcastic", "angry", "fear", "crying",
-            "whispering"], Gestures(inventory));
+            "whispering", "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy"], Gestures(inventory));
         var prompt = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null)).Prompt(null, null);
         Assert.NotNull(prompt);
         Assert.Contains("{wave}", prompt.Tags);
@@ -98,7 +99,8 @@ public sealed class CharacterGestureTests
 
         // Voice emotes follow the voice and never lengthen the reply instructions; the reply gestures stay offered.
         var silent = catalog.Prompt(null, null)!.Tags;
-        Assert.Equal(["{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{smile}", "{surprised}"], silent);
+        Assert.Equal(["{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{smile}", "{surprised}", "{shy}", "{giggle}", "{flinch}", "{lean_in}",
+            "{look_away}", "{think}"], silent);
         var chatterbox = catalog.Prompt(Martlet.Core.Settings.SpeechEngines.Chatterbox, null)!.Tags;
         Assert.DoesNotContain("{surprised}", chatterbox);
         Assert.DoesNotContain("{laugh}", chatterbox);
@@ -108,5 +110,33 @@ public sealed class CharacterGestureTests
             .Select(a => a.Id == "gesture:laugh" ? a with { Cue = null } : a).ToArray() } };
         Assert.Contains("{laugh}", cleared.Prompt(null, null)!.Tags);
         Assert.Empty(cleared.For("[laugh]"));
+    }
+
+    [Fact]
+    public void TouchAndMoodGesturesAreOfferedAfterTheOthersAndTheMoodsCanBeHeld()
+    {
+        var names = CharacterActionInventory.AllGestures.Select(g => g.Name).ToArray();
+        string[] added = ["wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy"];
+        Assert.Equal(added, names[^added.Length..]);
+        Assert.Equal(["pout", "shy", "look_away", "drowsy"], CharacterActionInventory.AllGestures.Where(g => g.Holdable).Select(g => g.Name));
+        Assert.All(CharacterActionInventory.AllGestures, g => Assert.True(CharacterActions.IsTag(g.Tag) &&
+            g.Use.Length <= CharacterActionCatalog.MaximumUseLength, g.Name));
+        Assert.Equal(names.Length, names.Distinct().Count());
+
+        var moc = Moc("ParamEyeLOpen", "ParamEyeROpen", "ParamMouthForm", "ParamEyeBallX", "ParamEyeBallY");
+        var model = Encoding.UTF8.GetBytes("{\"Version\":3,\"FileReferences\":{\"Moc\":\"m.moc3\",\"Textures\":[]}}");
+        var inventory = CharacterActionInventory.From(AvatarRenderer.Live2D, "m.model3.json",
+            [new("m.model3.json", model, "application/json"), new("m.moc3", moc, "application/octet-stream")]);
+        Assert.Equal(["wink", "pout", "eye_roll", "drowsy"], Gestures(inventory));
+    }
+
+    [Fact]
+    public void TheLastActionSaysWhichGesturePlaysAndWhichIsHeld()
+    {
+        static System.Text.Json.JsonElement Reply(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement;
+        Assert.Equal(" Gestures now: wink playing, shy held.",
+            AvatarController.GestureState(Reply("{\"started\":true,\"gesture\":{\"playing\":\"wink\",\"held\":\"shy\"}}")));
+        Assert.Equal(" Gestures now: none playing, none held.", AvatarController.GestureState(Reply("{\"started\":true,\"gesture\":{}}")));
+        Assert.Equal("", AvatarController.GestureState(Reply("{\"started\":true}")));
     }
 }

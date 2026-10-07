@@ -17,9 +17,11 @@ public enum CharacterActionKind { Expression, Motion, Gesture }
 /// never gets it. The renderers (Martlet.Avatar.Live2D's gestures.ts, Martlet.Avatar.Vrm's runtime.ts) check the same.
 /// <see cref="Cue"/> is the voice cue (<see cref="Martlet.Core.Settings.VoiceTag.Cue"/>) it is linked to by default. A
 /// <see cref="VoiceOnly"/> gesture (a voice emote, such as a laugh or a cough) plays when the voice makes its sound or tone and
-/// isn't offered to replies as a tag while it keeps a cue, so replies' instructions don't grow.</summary>
+/// isn't offered to replies as a tag while it keeps a cue, so replies' instructions don't grow. A <see cref="Holdable"/> gesture
+/// can also be held (a renderer action with <c>hold</c>): eased into and kept, gently alive, until it is ended.</summary>
 public sealed record CharacterGesture(string Name, string Tag, string Use, string Does,
-    IReadOnlyList<string>? Live2DParameters, IReadOnlyList<string>? VrmBones, string? Cue = null, bool VoiceOnly = false)
+    IReadOnlyList<string>? Live2DParameters, IReadOnlyList<string>? VrmBones, string? Cue = null, bool VoiceOnly = false,
+    bool Holdable = false)
 {
     public string Id => "gesture:" + Name;
 }
@@ -92,7 +94,27 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
         Voice("whispering", "whisper, for a secret or something hushed", "leans in with the head tilted, as if whispering",
             AngleZ, HeadSpine),
         Voice("dramatic", "dramatic, for playful theatrics", "throws the head back with a sweeping flourish", AngleZ,
-            ["head", "leftUpperArm", "rightUpperArm"])
+            ["head", "leftUpperArm", "rightUpperArm"]),
+        // Touch and mood gestures, after the rest so the reply instructions' earlier lines (and prompt caches) stay the same.
+        new("wink", "wink", "wink, for a playful joke, teasing or a shared secret", "winks one eye with a little smile and a head tilt",
+            ["ParamEyeLOpen"], Head),
+        new("pout", "pout", "pout, for playful sulking or mock annoyance", "pouts: the mouth turns down, the cheeks puff, the head turns aside",
+            ["ParamMouthForm"], Head, Holdable: true),
+        new("shy", "shy", "act shy, for being flattered, teased or touched gently",
+            "looks down and away bashfully with a half smile, peeking back now and then", ["ParamAngleX", "ParamAngleY"], HeadSpine,
+            Holdable: true),
+        new("giggle", "giggle", "giggle, for something cute or ticklish", "giggles: quick little bounces with smiling eyes", AngleY, HeadSpine),
+        new("flinch", "flinch", "flinch, when startled or poked unexpectedly", "jerks back startled, then settles", AngleY, HeadSpine),
+        new("lean_in", "lean_in", "lean in, for affection or enjoying a head pat", "leans in with the head tilted and the eyes softly closing",
+            AngleZ, HeadSpine),
+        new("look_away", "look_away", "look away, for embarrassment or dodging a question",
+            "turns the head and eyes aside, glancing back now and then", AngleX, Head, Holdable: true),
+        new("think", "think", "think it over, for pondering or remembering", "looks up and to the side, thinking", AngleY, Head),
+        new("eye_roll", "eye_roll", "roll your eyes, for playful exasperation", "rolls the eyes up and around",
+            ["ParamEyeBallX", "ParamEyeBallY"], Head),
+        new("drowsy", "drowsy", "be drowsy, for tiredness or late at night",
+            "half closes the eyes, the head slowly nodding off and catching itself", ["ParamEyeLOpen", "ParamEyeROpen"], HeadSpine,
+            Holdable: true)
     ];
 
     public static CharacterGesture? Gesture(string id) => AllGestures.FirstOrDefault(g => g.Id == id);
