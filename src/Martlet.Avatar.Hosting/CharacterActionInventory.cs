@@ -14,9 +14,12 @@ public enum CharacterActionKind { Expression, Motion, Gesture }
 /// <summary>One of Martlet's own gestures. <see cref="Name"/> is what the renderer plays, <see cref="Tag"/> the default reply
 /// tag and <see cref="Use"/> when to use it. A Live2D model gets it when it has every standard Cubism parameter in
 /// <see cref="Live2DParameters"/>, a VRM when it has every humanoid bone in <see cref="VrmBones"/>; null means that renderer
-/// never gets it. The renderers (Martlet.Avatar.Live2D's gestures.ts, Martlet.Avatar.Vrm's runtime.ts) check the same.</summary>
+/// never gets it. The renderers (Martlet.Avatar.Live2D's gestures.ts, Martlet.Avatar.Vrm's runtime.ts) check the same.
+/// <see cref="Cue"/> is the voice cue (<see cref="Martlet.Core.Settings.VoiceTag.Cue"/>) it is linked to by default. A
+/// <see cref="VoiceOnly"/> gesture (a voice emote, such as a laugh or a cough) plays when the voice makes its sound or tone and
+/// isn't offered to replies as a tag while it keeps a cue, so replies' instructions don't grow.</summary>
 public sealed record CharacterGesture(string Name, string Tag, string Use, string Does,
-    IReadOnlyList<string>? Live2DParameters, IReadOnlyList<string>? VrmBones)
+    IReadOnlyList<string>? Live2DParameters, IReadOnlyList<string>? VrmBones, string? Cue = null, bool VoiceOnly = false)
 {
     public string Id => "gesture:" + Name;
 }
@@ -35,9 +38,15 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
     public const int MaximumSources = 160;
     private const int MaximumDetail = 400;
 
-    private static readonly string[] Head = ["head"], Spine = ["spine"];
+    private static readonly string[] Head = ["head"], Spine = ["spine"], HeadSpine = ["head", "spine"],
+        AngleX = ["ParamAngleX"], AngleY = ["ParamAngleY"], AngleZ = ["ParamAngleZ"];
 
-    /// <summary>Every gesture Martlet has; each model gets those its renderer and rig support (<see cref="GesturesFor"/>).</summary>
+    private static CharacterGesture Voice(string cue, string use, string does, string[] live2D, string[] vrm) =>
+        new(cue.Replace(' ', '_'), cue.Replace(' ', '_'), use, does, live2D, vrm, cue, true);
+
+    /// <summary>Every gesture Martlet has; each model gets those its renderer and rig support (<see cref="GesturesFor"/>).
+    /// After the reply gestures come the voice emotes, one for each sound and tone a voice engine makes (except
+    /// <c>surprised</c>, which the surprise gesture follows).</summary>
     public static readonly IReadOnlyList<CharacterGesture> AllGestures =
     [
         new("nod", "nod", "nod, for yes or agreement", "nods the head twice", ["ParamAngleY"], Head),
@@ -50,11 +59,40 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
             ["ParamEyeLSmile", "ParamEyeRSmile"], null),
         new("blush", "blush", "blush, for embarrassment or being flattered", "blushes for a few seconds", ["ParamCheek"], null),
         new("surprise", "surprised", "raise your brows wide-eyed, for surprise", "raises the brows and widens the eyes",
-            ["ParamBrowLY", "ParamBrowRY"], null),
+            ["ParamBrowLY", "ParamBrowRY"], null, "surprised"),
         new("wave", "wave", "wave your hand, for hello or goodbye", "raises the right hand and waves", null, ["rightUpperArm", "rightLowerArm"]),
         new("shrug", "shrug", "shrug, for not knowing or not minding", "shrugs with both arms",
             null, ["leftUpperArm", "rightUpperArm", "leftLowerArm", "rightLowerArm"]),
-        new("bounce", "bounce", "bounce with excitement", "bounces up and down", null, ["hips"])
+        new("bounce", "bounce", "bounce with excitement", "bounces up and down", null, ["hips"]),
+        Voice("laugh", "laugh, after something genuinely funny", "laughs: smiling eyes, the head thrown back and bobbing", AngleY, HeadSpine),
+        Voice("chuckle", "a small amused chuckle", "chuckles: a small smile and a little bob of the head", AngleY, Head),
+        Voice("sigh", "sigh, for relief, tiredness or mild exasperation", "sighs: the head and shoulders drop, the eyes half close",
+            AngleY, HeadSpine),
+        Voice("gasp", "gasp, for a surprise", "gasps: the head jerks back, the eyes and brows go wide", AngleY, HeadSpine),
+        Voice("cough", "cough", "coughs: the head and body jerk forward a few times", AngleY, HeadSpine),
+        Voice("clear throat", "clear your throat before saying something", "clears the throat: a small dip of the head, looking aside",
+            AngleY, Head),
+        Voice("groan", "groan, for something annoying or painful", "groans: the head rolls back, the eyes close", AngleZ, Head),
+        Voice("sniff", "sniff", "sniffs: two quick lifts of the head", AngleY, Head),
+        Voice("shush", "shush, for quiet", "shushes: leans in with the head down and the eyes narrowed", AngleY, HeadSpine),
+        Voice("inhale", "breathe in, before something big", "breathes in: the chest and head rise", AngleY, HeadSpine),
+        Voice("exhale", "breathe out, letting go of tension", "breathes out: the shoulders settle and the head lowers", AngleY, HeadSpine),
+        Voice("mumble", "mumble", "mumbles: looks down and away", AngleX, Head),
+        Voice("hum", "hum", "hums: the eyes close and the head sways gently", AngleZ, Head),
+        Voice("sneeze", "sneeze", "sneezes: the head tips back, then snaps forward", AngleY, HeadSpine),
+        Voice("whistle", "whistle, impressed or surprised", "whistles: looks up and away with the head tilted", AngleZ, Head),
+        Voice("happy", "happy and cheerful, for good news or delight", "beams: smiling eyes and a cheerful bob of the head",
+            ["ParamEyeLSmile", "ParamEyeRSmile"], HeadSpine),
+        Voice("sarcastic", "sarcastic, for dry teasing or an obvious joke", "rolls the eyes with the head tilted", AngleZ, Head),
+        Voice("angry", "angry, for real annoyance or outrage", "glowers: the brows drop and the head lowers",
+            ["ParamBrowLY", "ParamBrowRY"], HeadSpine),
+        Voice("fear", "fearful, for something scary or worrying", "shrinks back trembling, the brows raised", AngleX, HeadSpine),
+        Voice("crying", "tearful, for something genuinely sad", "cries: the head bows, the eyes close and the shoulders sob",
+            AngleY, HeadSpine),
+        Voice("whispering", "whisper, for a secret or something hushed", "leans in with the head tilted, as if whispering",
+            AngleZ, HeadSpine),
+        Voice("dramatic", "dramatic, for playful theatrics", "throws the head back with a sweeping flourish", AngleZ,
+            ["head", "leftUpperArm", "rightUpperArm"])
     ];
 
     public static CharacterGesture? Gesture(string id) => AllGestures.FirstOrDefault(g => g.Id == id);

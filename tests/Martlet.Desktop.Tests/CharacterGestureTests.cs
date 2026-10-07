@@ -46,7 +46,9 @@ public sealed class CharacterGestureTests
             new("smile.exp3.json", expression, "application/json")
         ]);
 
-        Assert.Equal(["nod", "shake", "tilt", "bow", "blush"], Gestures(inventory));
+        Assert.Equal(["nod", "shake", "tilt", "bow", "blush", "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat", "groan", "sniff",
+            "shush", "inhale", "exhale", "mumble", "hum", "sneeze", "whistle", "happy", "sarcastic", "fear", "crying", "whispering", "dramatic"],
+            Gestures(inventory));
         var prompt = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null)).Prompt(null, null);
         Assert.NotNull(prompt);
         Assert.Equal(["{smile}", "{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{blush}"], prompt.Tags);
@@ -62,7 +64,9 @@ public sealed class CharacterGestureTests
             "}},\"expressions\":{\"preset\":{\"happy\":{},\"aa\":{}}}}}}");
         var inventory = CharacterActionInventory.From(AvatarRenderer.Vrm, "m.vrm", [new("m.vrm", glb, "model/gltf-binary")]);
 
-        Assert.Equal(["nod", "shake", "tilt", "bow", "sway", "wave", "bounce"], Gestures(inventory));
+        Assert.Equal(["nod", "shake", "tilt", "bow", "sway", "wave", "bounce", "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat",
+            "groan", "sniff", "shush", "inhale", "exhale", "mumble", "hum", "sneeze", "whistle", "sarcastic", "angry", "fear", "crying",
+            "whispering"], Gestures(inventory));
         var prompt = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null)).Prompt(null, null);
         Assert.NotNull(prompt);
         Assert.Contains("{wave}", prompt.Tags);
@@ -70,5 +74,39 @@ public sealed class CharacterGestureTests
         Assert.DoesNotContain("{blush}", prompt.Tags);
         Assert.DoesNotContain("{shrug}", prompt.Tags);
         Assert.Contains("rightUpperArm", inventory.Find("gesture:wave")!.Detail);
+    }
+
+    [Fact]
+    public void EveryVoiceSoundAndToneHasAGlobalEmoteLinkedToItThatFollowsTheVoiceOnly()
+    {
+        var gestureCues = CharacterActionInventory.AllGestures.Where(g => g.Cue is not null).Select(g => g.Cue!).ToArray();
+        Assert.Equal(Martlet.Core.Settings.VoiceTags.Cues.Order(), gestureCues.Order());
+        Assert.All(CharacterActionInventory.AllGestures.Where(g => g.VoiceOnly), g => Assert.True(CharacterActions.IsTag(g.Tag), g.Tag));
+
+        var moc = Moc("ParamAngleX", "ParamAngleY", "ParamAngleZ", "ParamEyeLSmile", "ParamEyeRSmile", "ParamBrowLY", "ParamBrowRY");
+        var model = Encoding.UTF8.GetBytes("{\"Version\":3,\"FileReferences\":{\"Moc\":\"m.moc3\",\"Textures\":[]}}");
+        var inventory = CharacterActionInventory.From(AvatarRenderer.Live2D, "m.model3.json",
+            [new("m.model3.json", model, "application/json"), new("m.moc3", moc, "application/octet-stream")]);
+        var catalog = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null));
+        Assert.Null(CharacterActions.Problem(catalog.Settings));
+
+        Assert.Equal(["laugh"], catalog.For("[laugh]").Select(s => s.Name));
+        Assert.Equal(["clear_throat"], catalog.For("[clear throat]").Select(s => s.Name));
+        Assert.Equal(["surprise"], catalog.For("[surprised]").Select(s => s.Name));
+        Assert.Equal(["sigh"], catalog.For("(sighs)").Select(s => s.Name));
+        Assert.Equal("laugh", catalog.Settings.Find("gesture:laugh")!.Cue);
+
+        // Voice emotes follow the voice and never lengthen the reply instructions; the reply gestures stay offered.
+        var silent = catalog.Prompt(null, null)!.Tags;
+        Assert.Equal(["{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{smile}", "{surprised}"], silent);
+        var chatterbox = catalog.Prompt(Martlet.Core.Settings.SpeechEngines.Chatterbox, null)!.Tags;
+        Assert.DoesNotContain("{surprised}", chatterbox);
+        Assert.DoesNotContain("{laugh}", chatterbox);
+
+        // Clearing a voice emote's cue offers it to replies as a tag instead.
+        var cleared = catalog with { Settings = catalog.Settings with { Actions = catalog.Settings.Actions
+            .Select(a => a.Id == "gesture:laugh" ? a with { Cue = null } : a).ToArray() } };
+        Assert.Contains("{laugh}", cleared.Prompt(null, null)!.Tags);
+        Assert.Empty(cleared.For("[laugh]"));
     }
 }

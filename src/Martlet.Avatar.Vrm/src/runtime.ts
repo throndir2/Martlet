@@ -6,16 +6,71 @@ import { blinkPresets, finite, gazePresets, inspectVrm, integer, mouthPresets, o
 
 type BoneName = Parameters<VRM["humanoid"]["getNormalizedBoneNode"]>[0];
 
-/** Martlet's own gestures, played on any VRM that has the humanoid bones they move. */
-export const VRM_GESTURES = Object.freeze(["nod", "shake", "tilt", "bow", "sway", "wave", "shrug", "bounce"] as const);
+/** Martlet's own gestures, played on any VRM that has the humanoid bones they move. After the reply gestures come the voice
+ *  emotes, played when the voice makes their sound or tone (laugh, sigh, gasp...). */
+export const VRM_GESTURES = Object.freeze(["nod", "shake", "tilt", "bow", "sway", "wave", "shrug", "bounce",
+  "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat", "groan", "sniff", "shush", "inhale", "exhale", "mumble", "hum",
+  "sneeze", "whistle", "happy", "sarcastic", "angry", "fear", "crying", "whispering", "dramatic"] as const);
 export type VrmGesture = typeof VRM_GESTURES[number];
+const head: readonly BoneName[] = ["head"], headSpine: readonly BoneName[] = ["head", "spine"];
 const GESTURE_BONES: Readonly<Record<VrmGesture, readonly BoneName[]>> = Object.freeze({
-  nod: ["head"], shake: ["head"], tilt: ["head"], bow: ["spine"], sway: ["spine"],
+  nod: head, shake: head, tilt: head, bow: ["spine"], sway: ["spine"],
   wave: ["rightUpperArm", "rightLowerArm"], shrug: ["leftUpperArm", "rightUpperArm", "leftLowerArm", "rightLowerArm"], bounce: ["hips"],
+  laugh: headSpine, chuckle: head, sigh: headSpine, gasp: headSpine, cough: headSpine, clear_throat: head, groan: head, sniff: head,
+  shush: headSpine, inhale: headSpine, exhale: headSpine, mumble: head, hum: head, sneeze: headSpine, whistle: head,
+  happy: headSpine, sarcastic: head, angry: headSpine, fear: headSpine, crying: headSpine, whispering: headSpine,
+  dramatic: ["head", "leftUpperArm", "rightUpperArm"],
 });
 const GESTURE_SECONDS: Readonly<Record<VrmGesture, number>> = Object.freeze({
   nod: 1.1, shake: 1.2, tilt: 1.8, bow: 2, sway: 2.4, wave: 2.4, shrug: 1.8, bounce: 1.2,
+  laugh: 2, chuckle: 1.4, sigh: 2.4, gasp: 1.6, cough: 1.5, clear_throat: 1.2, groan: 2.2, sniff: 1, shush: 2, inhale: 1.6,
+  exhale: 1.8, mumble: 2, hum: 2.6, sneeze: 1.6, whistle: 2, happy: 2.4, sarcastic: 1.8, angry: 2.4, fear: 2, crying: 3,
+  whispering: 2.2, dramatic: 2.4,
 });
+const GESTURE_FADE: Partial<Record<VrmGesture, number>> = { bounce: 0.15, gasp: 0.12, fear: 0.15, cough: 0.1, sniff: 0.1, sneeze: 0.1 };
+
+/** How a voice emote moves the body `t` seconds in at weight `w`: head yaw (gx, right) and pitch (gy, up) like the look,
+ *  head roll (tilt), spine bend (forward) and lean (sideways), shoulders (up) and arms opened out to the sides (open). */
+export interface GesturePose { gx: number; gy: number; tilt: number; spineX: number; spineZ: number; shoulders: number; open: number }
+
+const cycle = (t: number, period: number) => Math.sin(2 * Math.PI * t / period);
+const smoothstep = (x: number) => { const c = Math.max(0, Math.min(1, x)); return c * c * (3 - 2 * c); };
+
+export function gesturePose(name: VrmGesture, t: number, w: number): GesturePose {
+  const pose: GesturePose = { gx: 0, gy: 0, tilt: 0, spineX: 0, spineZ: 0, shoulders: 0, open: 0 };
+  switch (name) {
+    case "laugh": { const bob = Math.abs(cycle(t, 0.64)); pose.gy = (0.25 - 0.35 * bob) * w; pose.spineX = (0.06 * bob - 0.05) * w; break; }
+    case "chuckle": pose.gy = -0.25 * Math.abs(cycle(t, 0.7)) * w; break;
+    case "sigh": pose.gy = -0.5 * w; pose.spineX = 0.12 * w; pose.shoulders = -w; break;
+    case "gasp": pose.gy = 0.6 * w; pose.spineX = -0.12 * w; pose.shoulders = 0.5 * w; break;
+    case "cough": { const jerk = t < 1.2 ? Math.max(0, cycle(t, 0.4)) ** 3 : 0; pose.gy = -0.6 * jerk * w; pose.spineX = 0.2 * jerk * w; break; }
+    case "clear_throat": pose.gx = 0.3 * w; pose.gy = -0.3 * w; break;
+    case "groan": pose.gy = 0.45 * w; pose.tilt = -0.2 * w; break;
+    case "sniff": pose.gy = 0.25 * (t < 0.6 ? Math.max(0, cycle(t, 0.3)) : 0) * w; break;
+    case "shush": pose.gy = -0.35 * w; pose.tilt = 0.1 * w; pose.spineX = 0.1 * w; break;
+    case "inhale": pose.gy = 0.25 * w; pose.spineX = -0.08 * w; pose.shoulders = 0.6 * w; break;
+    case "exhale": pose.gy = -0.3 * w; pose.spineX = 0.1 * w; pose.shoulders = -0.5 * w; break;
+    case "mumble": pose.gx = -0.4 * w; pose.gy = -0.4 * w; break;
+    case "hum": pose.tilt = 0.15 * cycle(t, 1.3) * w; pose.gy = -0.1 * w; break;
+    case "sneeze": {
+      const lift = t < 0.7 ? 0.4 * smoothstep(t / 0.7) : t < 0.85 ? 0.4 - 1.2 * smoothstep((t - 0.7) / 0.15) : -0.8 * (1 - smoothstep((t - 0.85) / 0.75));
+      pose.gy = lift * w; pose.spineX = -0.3 * lift * w; break;
+    }
+    case "whistle": pose.gx = 0.3 * w; pose.gy = 0.4 * w; pose.tilt = 0.15 * w; break;
+    case "happy": pose.gy = 0.15 * cycle(t, 0.6) * w; pose.tilt = 0.12 * cycle(t, 1.2) * w; pose.spineZ = 0.05 * cycle(t, 1.2) * w; break;
+    case "sarcastic": pose.gx = 0.3 * Math.cos(Math.PI * t / GESTURE_SECONDS.sarcastic) * w; pose.gy = 0.35 * w; pose.tilt = 0.15 * w; break;
+    case "angry": pose.gy = -0.3 * w; pose.spineX = 0.08 * w; pose.shoulders = 0.3 * w; break;
+    case "fear": pose.gx = 0.08 * cycle(t, 0.12) * w; pose.gy = 0.2 * w; pose.spineX = -0.12 * w; pose.shoulders = 0.7 * w; break;
+    case "crying": {
+      const sob = Math.max(0, cycle(t, 0.7));
+      pose.gy = -(0.6 + 0.1 * sob) * w; pose.spineX = (0.12 + 0.04 * sob) * w; pose.shoulders = 0.3 * sob * w; break;
+    }
+    case "whispering": pose.gx = 0.3 * w; pose.tilt = 0.25 * w; pose.spineX = 0.12 * w; pose.spineZ = 0.06 * w; break;
+    case "dramatic": pose.gx = 0.3 * Math.sin(Math.PI * t / GESTURE_SECONDS.dramatic) * w; pose.gy = 0.4 * w; pose.spineX = -0.1 * w; pose.open = w; break;
+    default: break;
+  }
+  return pose;
+}
 
 // 0 to 1 over `fade` seconds, held, then back to 0 by `total`.
 function envelope(seconds: number, total: number, fade: number): number {
@@ -284,7 +339,7 @@ export class VrmRuntime {
   }
 
   /** Starts one of Martlet's gestures (see `gestures`), replacing one already playing: head gestures, a bow, a sway, a wave,
-   *  a shrug or an excited bounce. */
+   *  a shrug, an excited bounce or a voice emote (a laugh, a sigh, a gasp...). */
   playGesture(name: string): boolean {
     const model = this.loaded();
     if (!(this.gestures as readonly string[]).includes(name)) return false;
@@ -300,7 +355,7 @@ export class VrmRuntime {
     const t = gesture.seconds += deltaSeconds;
     const total = GESTURE_SECONDS[gesture.name];
     if (t >= total) { this.gesture = undefined; return undefined; }
-    return { name: gesture.name, t, weight: envelope(t, total, gesture.name === "bounce" ? 0.15 : 0.35) };
+    return { name: gesture.name, t, weight: envelope(t, total, GESTURE_FADE[gesture.name] ?? 0.35) };
   }
 
   private updateActions(model: VRM, deltaSeconds: number): void {
@@ -325,16 +380,18 @@ export class VrmRuntime {
     const w = gesture?.weight ?? 0;
     const lerp = (from: number, to: number, amount: number) => from + (to - from) * amount;
     const wave = gesture?.name === "wave" ? w : 0, shrug = gesture?.name === "shrug" ? w : 0;
+    const pose = gesture ? gesturePose(gesture.name, gesture.t, w) : undefined;
+    const open = pose?.open ?? 0, shoulders = 0.2 * shrug + 0.12 * (pose?.shoulders ?? 0);
     const waving = wave > 0 ? 0.35 * Math.sin(2 * Math.PI * gesture!.t / 0.5) : 0;
-    bone("leftUpperArm")?.rotation.set(0, 0, lerp(-1.2 + breath * 0.02, -0.95, shrug));
-    bone("rightUpperArm")?.rotation.set(0, 0, lerp(lerp(1.2 - breath * 0.02, 0.95, shrug), -0.25, wave));
-    bone("leftLowerArm")?.rotation.set(0, lerp(-0.15, -1.1, shrug), 0);
-    bone("rightLowerArm")?.rotation.set(0, lerp(lerp(0.15, 1.1, shrug), 0, wave), lerp(0, -1.4 + waving, wave));
-    bone("leftShoulder")?.rotation.set(0, 0, 0.2 * shrug);
-    bone("rightShoulder")?.rotation.set(0, 0, -0.2 * shrug);
+    bone("leftUpperArm")?.rotation.set(0, 0, lerp(lerp(-1.2 + breath * 0.02, -0.95, shrug), -0.15, open));
+    bone("rightUpperArm")?.rotation.set(0, 0, lerp(lerp(lerp(1.2 - breath * 0.02, 0.95, shrug), -0.25, wave), 0.15, open));
+    bone("leftLowerArm")?.rotation.set(0, lerp(lerp(-0.15, -1.1, shrug), 0, open), 0);
+    bone("rightLowerArm")?.rotation.set(0, lerp(lerp(lerp(0.15, 1.1, shrug), 0, wave), 0, open), lerp(0, -1.4 + waving, wave));
+    bone("leftShoulder")?.rotation.set(0, 0, shoulders);
+    bone("rightShoulder")?.rotation.set(0, 0, -shoulders);
     bone("chest")?.rotation.set(breath * 0.015, 0, 0);
     const side = gesture?.name === "sway" ? w * Math.sin(2 * Math.PI * gesture.t / 1.2) : 0;
-    bone("spine")?.rotation.set(gesture?.name === "bow" ? 0.35 * w : 0, 0, 0.08 * side);
+    bone("spine")?.rotation.set((gesture?.name === "bow" ? 0.35 * w : 0) + (pose?.spineX ?? 0), 0, 0.08 * side + (pose?.spineZ ?? 0));
     const hips = bone("hips");
     if (hips && this.hipsRest !== undefined)
       hips.position.y = this.hipsRest + (gesture?.name === "bounce" ? 0.035 * w * Math.abs(Math.sin(2 * Math.PI * gesture.t / 0.6)) : 0);
@@ -343,7 +400,8 @@ export class VrmRuntime {
       if (gesture?.name === "nod") { const phase = Math.sin(Math.PI * gesture.t / 0.55); gy = -0.9 * phase * phase; }
       if (gesture?.name === "shake") gx = 0.8 * Math.sin(2 * Math.PI * gesture.t / 0.4) * Math.sin(Math.PI * gesture.t / 1.2);
       if (gesture?.name === "bow") gy = -0.5 * w;
-      const tilt = (gesture?.name === "tilt" ? 0.3 * w : 0) + (gesture?.name === "shrug" ? 0.12 * w : 0) - 0.06 * side;
+      gx += pose?.gx ?? 0; gy += pose?.gy ?? 0;
+      const tilt = (gesture?.name === "tilt" ? 0.3 * w : 0) + (gesture?.name === "shrug" ? 0.12 * w : 0) - 0.06 * side + (pose?.tilt ?? 0);
       const x = this.look.x + gx, y = this.look.y + gy;
       bone("neck")?.rotation.set(-y * 0.15, x * 0.2, Math.sin(this.idleTime * 0.7) * 0.02);
       bone("head")?.rotation.set(-y * 0.2, x * 0.3, tilt);

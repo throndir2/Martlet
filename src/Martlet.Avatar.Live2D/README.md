@@ -40,7 +40,10 @@ animation, named by the host). `setExpression(name)` fades an expression in and
 `playMotion(group)` plays one motion of a group once at normal priority, then
 idling resumes; `gesture(name)` plays one of Martlet's own gestures the model has
 the standard parameters for (`gestures`: `nod`, `shake`, `tilt`, `bow`, `sway`,
-`smile`, `blush`, `surprise`), added to the look-at angles and those parameters
+`smile`, `blush`, `surprise`, and the voice emotes `laugh`, `chuckle`, `sigh`,
+`gasp`, `cough`, `clear_throat`, `groan`, `sniff`, `shush`, `inhale`, `exhale`,
+`mumble`, `hum`, `sneeze`, `whistle`, `happy`, `sarcastic`, `angry`, `fear`,
+`crying`, `whispering`, `dramatic`), added to the look-at angles and those parameters
 (`lib/gestures.ts`).
 
 Licenses: Core is under the Live2D Proprietary Software License (redistributable

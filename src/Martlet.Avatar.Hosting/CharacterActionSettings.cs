@@ -47,10 +47,12 @@ public sealed record CharacterActionCatalog(CharacterActionInventory Inventory, 
             CharacterActions.Default(source, CharacterActions.Number(Inventory, source))));
 
     /// <summary>The emotes and motions a reply may write as tags: those turned on that the speaking voice doesn't already set
-    /// off with its own tag for their cue (null <paramref name="engine"/>: a reply that isn't spoken, so all of them).</summary>
+    /// off with its own tag for their cue (null <paramref name="engine"/>: a reply that isn't spoken, so all of them), except
+    /// Martlet's voice emotes while they keep a cue (they follow the voice only).</summary>
     public IReadOnlyList<(CharacterActionSource Source, CharacterAction Action)> Offered(SpeechEngine? engine) =>
         Entries.Where(e => e.Action is { Enabled: true, Tag: { Length: > 0 } } &&
-            !(e.Action.Cue is { } cue && engine?.Tags.Any(t => t.Cue == cue) == true)).ToArray();
+            !(e.Action.Cue is { } cue && (engine?.Tags.Any(t => t.Cue == cue) == true ||
+                CharacterActionInventory.Gesture(e.Source.Id) is { VoiceOnly: true }))).ToArray();
 
     /// <summary>What a reply's tag (<c>{blush}</c>, or a voice tag such as <c>[laugh]</c> through its cue) sets off. A cue
     /// several emotes follow plays one of its expressions and one of its motions, picked at random, and its gestures.</summary>
@@ -180,7 +182,7 @@ public static partial class CharacterActions
     public static CharacterAction Default(CharacterActionSource source, int number = 1)
     {
         var tag = EnglishTag(source, number);
-        if (source.Kind == CharacterActionKind.Gesture) return new() { Id = source.Id, Tag = tag };
+        if (source.Kind == CharacterActionKind.Gesture) return new() { Id = source.Id, Tag = tag, Cue = CharacterActionInventory.Gesture(source.Id)?.Cue };
         var cue = tag.Split('_').Select(word => CueWords.GetValueOrDefault(word)).FirstOrDefault(found => found is not null);
         return new() { Id = source.Id, Tag = tag, Cue = cue is not null && VoiceTags.Cues.Contains(cue) ? cue : null };
     }

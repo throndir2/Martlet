@@ -427,14 +427,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "them (Martlet.Avatar.Hosting, docs/AVATARS.md \"Emotes and motions\"): modelPath (a .model3.json or .vrm on this PC) or the " +
             "model dataDirectory's avatar.json shows. Returns the renderer, the model's key, how many files the renderer reads (a VTube " +
             "Studio model's .vtube.json and loose .exp3/.motion3 files included) and what came from VTube Studio's settings, then each " +
-            "expression, motion group and Martlet gesture the model's rig supports (nod, shake, tilt, bow, sway; Live2D smile, blush, surprise; VRM wave, shrug, bounce) with what it changes, its tag, voice cue, when to use it, whether " +
+            "expression, motion group and Martlet gesture the model's rig supports (nod, shake, tilt, bow, sway; Live2D smile, blush, surprise; VRM wave, shrug, bounce; " +
+            "and the voice emotes linked to every voice sound and tone: laugh, chuckle, sigh, gasp, cough, clear_throat, groan, sniff, shush, inhale, exhale, " +
+            "mumble, hum, sneeze, whistle, happy, sarcastic, angry, fear, crying, whispering, dramatic) with what it changes, its tag, voice cue, when to use it, whether " +
             "it is on and whether replies are offered it for engine (a voice engine key; \"none\" or absent: a voice without tags); the " +
             "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; the reply prompt and tags; " +
-            "and the Thinking naming prompt. With answer (a simulated Thinking reply such as \"1: blush | - | when shy\"), also what the " +
+            "and the Thinking naming prompt. With voiceTag (a voice's tag such as \"[laugh]\" or \"(sighs)\", or a reply tag such as " +
+            "\"{nod}\"), also what it sets off (setsOff: kind and name; with several expressions or motions on one cue, one picked at random). " +
+            "With answer (a simulated Thinking reply such as \"1: blush | - | when shy\"), also what the " +
             "production parser makes of it. Reads only; contacts nothing and never returns the model's path.", new
         {
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, engine = new { type = "string" },
-            answer = new { type = "string" }
+            answer = new { type = "string" }, voiceTag = new { type = "string" }
         }),
         Tool("character_gaze", "Where the character looks (Companion > Vision > Where the character looks; docs/SCREEN_COMMENTARY.md " +
             "\"Where the character looks\"): the saved choice in a data directory's talk-preferences.json (mouse unless Martlet " +
@@ -2095,6 +2099,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             };
         }
         var extras = vrm ? null : Martlet.Avatar.Hosting.LocalAvatarFiles.Extras(assets, Path.GetFileName(path));
+        var voiceTag = OptionalString(arguments, "voiceTag");
         return new
         {
             renderer = avatarRenderer.ToString(), key = inventory.ModelId[..16], files = assets.Count,
@@ -2109,6 +2114,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             engine = engine?.Key, actions = Describe(catalog),
             replyPrompt = reply?.Instructions, replyTags = reply?.Tags,
             namingPrompt = naming is { } ask ? new { instructions = ask.Instructions, list = ask.List } : null,
+            voiceTag, setsOff = voiceTag is null ? null
+                : catalog.For(voiceTag).Select(s => new { kind = s.Kind.ToString().ToLowerInvariant(), name = s.Name }).ToArray(),
             parsed
         };
     }
