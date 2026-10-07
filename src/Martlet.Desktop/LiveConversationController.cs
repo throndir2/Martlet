@@ -446,6 +446,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private int capturesPending;
     private bool captureQuarantined;
     private string? lastCaptureFailure;
+    // Memory, emote naming and touch zones: on a Thinking pool member when one can take them, else here after the reply.
+    private readonly HelperJobs helpers;
+    private IHelperJobPool? helperPool;
     // How many input tokens the last reply or glance read and how many of them came from the model's prompt cache, when the
     // provider said; shown on the talk window's context line.
     private (long Input, long Cached)? lastCache;
@@ -580,6 +583,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// <summary>Martlet's background work in this conversation (think_longer): what runs, what finished and what waits to be
     /// brought up.</summary>
     internal BackgroundJobs Jobs => jobs;
+    /// <summary>Where memory, emote naming and touch-zone detection ran last (a Thinking pool member or the conversation's own
+    /// Thinking model after the reply).</summary>
+    internal HelperJobs Helpers => helpers;
+    /// <summary>Where helper jobs go first: the Thinking pool (<see cref="ThinkingPool"/>); tests put a fixture pool here.</summary>
+    internal IHelperJobPool? HelperPool { get => Volatile.Read(ref helperPool); set => Volatile.Write(ref helperPool, value); }
     /// <summary>The background-jobs.json status file in the data directory (kinds, states and times only; never a task or
     /// result), which MCP's think_longer_status reads.</summary>
     internal const string JobsStatusFile = "background-jobs.json";
@@ -736,6 +744,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         hostTranscription = new(hostListener ?? new HostTranscriptionClient(), this.clock);
         policy = new(runtime.SessionId, new ParticipationConfiguration(), new ParticipationState(), this.clock);
         jobs = new(this.clock);
+        helperPool = new ThinkingPoolHelpers(() => ThinkingPool);
+        helpers = new(() => Volatile.Read(ref helperPool), () => Replying || ReplySpeaking(), dataDirectory);
         songCredentials = new(() => Volatile.Read(ref songAuthorization));
         if (singing is not null)
             songHandler = CreationRegistry.Shared.Handle(SongCreations.KindName, new CreationHandler(SingCreationAsync));
@@ -3546,7 +3556,15 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 job.Configuration.Prompts, job.Conversation, job.Configuration.FitsContext, remember ? job.Present : null,
                 remember ? MemoryPeople.Labels(known!, roster) : null);
             var purpose = remember && job.Heard is not null ? "Remembering and learning names" : remember ? "Remembering" : "Learning names";
-            var (answer, failure) = await AskAsync(purpose, job.Configuration, prompt.Input, token).ConfigureAwait(false);
+            // A Thinking pool member reads the short excerpt (it has no copy of this conversation in its cache); the conversation's
+            // own model continues the reply's request as before, after the reply finished speaking.
+            AfterReplyPrompt? pooled = null;
+            var (answer, failure, onPool) = await helpers.RunAsync(HelperJobKind.Memory, purpose, HelperCapability.Text,
+                () => (pooled = AfterReply.Prompt(remember ? known : null, naming, job.EarlierUser, job.EarlierReply, job.User, job.Reply,
+                    job.Configuration.Prompts, null, null, remember ? job.Present : null,
+                    remember ? MemoryPeople.Labels(known!, roster) : null)).Input,
+                worker => AskAsync(purpose, job.Configuration, prompt.Input, worker), token).ConfigureAwait(false);
+            if (onPool) prompt = pooled!;
             if (answer is null)
                 return (remember && !token.IsCancellationRequested && failure is not null ? new(Failure: failure) : report, null);
             IReadOnlyList<Martlet.Core.Speakers.VoiceUpdateResult>? learned = null;
@@ -3666,6 +3684,18 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         {
             Interlocked.CompareExchange(ref captureAuthorization, null, authorization);
         }
+    }
+
+    /// <summary>A helper job outside a conversation (naming a character's emotes, finding its touch zones): on a Thinking pool
+    /// member that can take it, else on the saved Thinking model (<see cref="AskThinkingAsync(string, string, string, BoundedImage?, CancellationToken)"/>)
+    /// once no reply runs or speaks.</summary>
+    internal async Task<(string? Answer, string? Failure)> AskHelperAsync(HelperJobKind kind, string purpose, string instructions,
+        string text, BoundedImage? image, CancellationToken token)
+    {
+        var (answer, failure, _) = await helpers.RunAsync(kind, purpose, image is null ? HelperCapability.Text : HelperCapability.Vision,
+            () => new BoundedTextInput(text, instructions, image: image),
+            worker => AskThinkingAsync(purpose, instructions, text, image, worker), token).ConfigureAwait(false);
+        return (answer, failure);
     }
 
     /// <summary>One request to the saved Thinking model outside a conversation (naming a character's emotes, finding its touch
