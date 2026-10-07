@@ -40,12 +40,15 @@ internal static partial class LatencyReport
     // What the live floor did to background work for the turn ("held 2 pool jobs, stopped 1 (think longer)").
     [GeneratedRegex(@"Live floor: (?<floor>.*?)\.(?: Models: |$)")]
     private static partial Regex Floor();
+    // A quick sound in Martlet's own voice played while the reply's first audio wasn't ready, from the line's own moment.
+    [GeneratedRegex(@"Quick sound at (?<ms>\d+) ms\.")]
+    private static partial Regex QuickSound();
 
     internal sealed record Reply(DateTimeOffset At, string Measured, double? TotalMs, string? From, IReadOnlyDictionary<string, double> Steps,
         double? FirstWordsMs, double? FirstAudioMs, int? SpokenPieces, double? FirstPieceSpeechSeconds, double? FirstPieceMadeMs,
         string? Models, bool Interrupted, bool Legacy, bool Restarted = false, int VoicePauses = 0, double VoicePausedMs = 0,
         double? PausedForYouMs = null, bool Resumed = false, double? StartedEarlyMs = null, int EarlyStarts = 0, int EarlyCancelled = 0,
-        string? Floor = null);
+        string? Floor = null, double? QuickSoundMs = null);
 
     internal static object Read(string? dataDirectory, int? replies)
     {
@@ -109,6 +112,14 @@ internal static partial class LatencyReport
                 firstAudioPromoted = Stats(spoken.Where(r => r.StartedEarlyMs is not null).Select(r => r.TotalMs!.Value)),
                 firstAudioOthers = Stats(spoken.Where(r => r.StartedEarlyMs is null).Select(r => r.TotalMs!.Value))
             },
+            // Replies that played a quick sound in Martlet's own voice while their first audio wasn't ready (Companion › Voice ›
+            // Quick sounds while Martlet thinks), when it played, and their first audio.
+            quickSounds = new
+            {
+                replies = parsed.Count(r => r.QuickSoundMs is not null),
+                atMs = Stats(parsed.Where(r => r.QuickSoundMs is not null).Select(r => r.QuickSoundMs!.Value)),
+                firstAudio = Stats(spoken.Where(r => r.QuickSoundMs is not null).Select(r => r.TotalMs!.Value))
+            },
             newest = parsed.Reverse().Select(r => new
             {
                 at = r.At, measured = r.Measured, totalMs = r.TotalMs, from = r.From, steps = r.Steps, firstWordsMs = r.FirstWordsMs,
@@ -116,7 +127,7 @@ internal static partial class LatencyReport
                 firstPieceMadeMs = r.FirstPieceMadeMs, voicePauses = r.VoicePauses, voicePausedMs = r.VoicePausedMs, models = r.Models,
                 interrupted = r.Interrupted, restarted = r.Restarted, pausedForYouMs = r.PausedForYouMs, resumed = r.Resumed,
                 startedEarlyMs = r.StartedEarlyMs, earlyStarts = r.EarlyStarts, earlyCancelled = r.EarlyCancelled,
-                liveFloor = r.Floor, legacy = r.Legacy
+                liveFloor = r.Floor, quickSoundMs = r.QuickSoundMs, legacy = r.Legacy
             }).ToArray()
         };
     }
@@ -163,6 +174,7 @@ internal static partial class LatencyReport
         var earlyCancelled = promoted is { Success: true } && promoted.Groups["cancelled"].Success ? (int)Number(promoted.Groups["cancelled"].Value)!.Value
             : started is { Success: true } ? (int)Number(started.Groups["cancelled"].Value)!.Value : 0;
         var floor = Floor().Match(rest);
+        var quick = QuickSound().Match(rest);
         return new(at, line.Groups["what"].Value, Number(line.Groups["total"].Value), line.Groups["from"].Value.Trim(), steps,
             start.Success ? Number(start.Groups["words"].Value) : null,
             start.Success && start.Groups["audio"].Success ? Number(start.Groups["audio"].Value) : null,
@@ -174,7 +186,7 @@ internal static partial class LatencyReport
             pauses.Success ? Number(pauses.Groups["ms"].Value)!.Value : 0,
             held.Success ? Number(held.Groups["ms"].Value) : null, held.Success && held.Value.EndsWith("resumed", StringComparison.Ordinal),
             promoted.Success ? Number(promoted.Groups["at"].Value) : null, earlyStarts, earlyCancelled,
-            floor.Success ? floor.Groups["floor"].Value : null);
+            floor.Success ? floor.Groups["floor"].Value : null, quick.Success ? Number(quick.Groups["ms"].Value) : null);
     }
 
     private static double? Number(string text) =>

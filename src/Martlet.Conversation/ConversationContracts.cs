@@ -286,14 +286,15 @@ public sealed record SequenceIssueInfo(Martlet.Core.Streaming.SequenceIssue Issu
 /// how many times it paused because the user talked over it (<see cref="ConversationTurn.Pause"/>), how many of those it
 /// resumed after and how long it stayed paused in all. A reply started early (<see cref="ConversationRuntime.StartEarly"/>)
 /// has <see cref="StartedEarly"/>, and <see cref="ReleasedAfter"/> once it was let go on as the reply
-/// (<see cref="ConversationTurn.Release"/>).
+/// (<see cref="ConversationTurn.Release"/>). <see cref="QuickSoundAfter"/> is when a quick sound started ahead of the reply's
+/// own voice (<see cref="ConversationTurn.PlayQuickSound"/>).
 /// Diagnostics only (the desktop log's reply latency line); nothing depends on them.</summary>
 public sealed record ConversationTimings(
     TimeSpan? TextRequestAfter = null, TimeSpan? TextResponseAfter = null, TimeSpan? FirstReasoningAfter = null,
     TimeSpan? FirstSegmentAfter = null, TimeSpan? SpeechRequestAfter = null, TimeSpan? FirstSpeechAudioAfter = null,
     TimeSpan? FirstPieceSynthesizedAfter = null, TimeSpan? FirstPieceSpeech = null, TimeSpan? PlaybackStartedAfter = null,
     int VoiceWaits = 0, TimeSpan VoiceWaited = default, int PausesForYou = 0, int Resumes = 0, TimeSpan PausedForYou = default,
-    bool StartedEarly = false, TimeSpan? ReleasedAfter = null);
+    bool StartedEarly = false, TimeSpan? ReleasedAfter = null, TimeSpan? QuickSoundAfter = null);
 
 public sealed class ConversationContent(string text, string? refusal)
 {

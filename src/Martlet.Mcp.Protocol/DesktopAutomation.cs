@@ -223,6 +223,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Voice › Voice volume: the slider's number (0 to 100) and its label ("80%"). ui_set_range on VoiceVolume
         // saves talk-preferences.json, so it needs --allow-ui-effects.
         "VoiceVolume", "VoiceVolumeLevel",
+        // Companion › Voice › Quick sounds while Martlet thinks: the check box (checkedState; off by default), the chosen delay
+        // ("After 0.7 s (recommended)") and where it stands (off, being made, ready with how many clips in which voice, waiting
+        // for a click with a paid cloud voice, or why they couldn't be made). Changing the box or the delay saves
+        // talk-preferences.json, and VoiceQuickSoundsMake makes the clips with the voice, so they need --allow-ui-effects.
+        "VoiceQuickSounds", "VoiceQuickSoundsDelay", "VoiceQuickSoundsStatus",
         // Companion › Voice › Chatterbox Original style: its four sliders' numbers (exaggeration 0.25-2, CFG weight 0-1) and what
         // is saved ("Saved on this PC. General: exaggeration 0.5, CFG weight 0.5. Expressive: ..."); each value's label is
         // ChatterboxStyleValue-<name>. ui_set_range on a slider and ChatterboxStyleReset save chatterbox-style.json, so they

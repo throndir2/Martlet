@@ -83,7 +83,8 @@ public sealed class ReplyTimeline
 /// The pauses are said only when the speakers ran dry mid-reply because the voice was made slower than real time. A reply
 /// started early (<see cref="EarlyStarts"/>) adds, just before the live floor's part, <c>Started early at 262 ms, promoted.</c> (or how many starts the turn let
 /// go: <c>Started early 2 times, 2 cancelled.</c>), and its own steps show among the end of the turn's, in the order they
-/// happened.
+/// happened. A reply that played a quick sound ahead of its own voice says when, from the same moment as the total:
+/// <c>Quick sound at 712 ms.</c>
 /// MCP's latency_report reads these lines; the models are the desktop's list of model IDs.</summary>
 public static class ReplyLatency
 {
@@ -190,6 +191,10 @@ public static class ReplyLatency
             text.Append(CultureInfo.InvariantCulture,
                 $" The voice paused {timings.VoiceWaits} time{(timings.VoiceWaits == 1 ? "" : "s")} for " +
                 $"{timings.VoiceWaited.TotalMilliseconds:0} ms in all, waiting for its next audio.");
+        // A quick sound in Martlet's own voice played while the reply's first audio wasn't ready (QuickSoundWatcher), counted
+        // from the same moment as the line's total.
+        if (timings.QuickSoundAfter is { } quick)
+            text.Append(CultureInfo.InvariantCulture, $" Quick sound at {Milliseconds(Math.Max(0, At(quick) - origin), clock)} ms.");
         if (reply.FellBack) text.Append(" Answered by the Thinking fallback.");
         // Replies started early in this turn: the one this reply is (how far into the wait it started), and those let go. Next to
         // what the live floor did, which a reply started early holds from its start.

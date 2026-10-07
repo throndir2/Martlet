@@ -441,7 +441,11 @@ public partial class MainWindow
         if (section == CompanionTab.Voice && place != JobPlace.Cloud) page.Children.Add(VoicesCard(route));
 
         if (section == CompanionTab.Voice) page.Children.Add(AudioCard(output: true));
-        if (section == CompanionTab.Voice) page.Children.Add(SpeakRepliesCard());
+        if (section == CompanionTab.Voice)
+        {
+            page.Children.Add(SpeakRepliesCard());
+            page.Children.Add(QuickSoundsCard());
+        }
         if (section == CompanionTab.Listening) page.Children.Add(AudioCard(output: false));
         if (section == CompanionTab.Listening) page.Children.Add(TalkModeCard());
         if (section == CompanionTab.Listening) page.Children.Add(EchoCard());

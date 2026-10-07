@@ -820,6 +820,73 @@ window's `AlwaysListeningStartsTheReplyEarlyAndShowsItOnlyOnceYourTurnEnds`).
 The requests are the ones a turn sends, so prompt caching can't get worse; a
 request let go costs a local model only the work it did.
 
+## Quick sounds while Martlet thinks
+
+**2026-10-07, opt-in, off by default.** Companion › Voice › *Quick sounds while
+Martlet thinks*. When a reply is slow to start, Martlet first says a short sound
+in its own voice (*"Mm,"*, *"Hmm..."*, *"Oh,"*, *"Ah,"*; with Dia also a soft
+breath in) and the reply follows it. ElevenLabs Agents do the same with a
+filler message when the model is slow
+([soft timeout](https://elevenlabs.io/docs/eleven-agents/customization/conversation-flow)),
+and OpenAI's realtime guide calls the short sentence before a slow step a
+*preamble*. A quick sound doesn't make the reply's words come sooner: it fills
+the silence, so the wait feels shorter.
+
+**When one plays** (`QuickSoundGate`, `QuickSoundWatcher` in
+Martlet.Conversation; checked every 25 ms beside the reply, never on its path):
+
+- Only on a spoken reply to you that is confirmed: at once for a typed or heard
+  reply, or the moment a [reply started early](#starting-replies-early) is
+  taken. Never while it is held, never for one that is let go, never for a
+  song.
+- Only when it is slow: its own first audio isn't there 700 ms after it was
+  confirmed (0.5, 0.7, 1 or 1.5 s, the owner's choice), or 300 ms after when
+  the Thinking model thinks before it answers (Thinking steps on, or hidden
+  reasoning streams before any words).
+- Never when the reply's own audio is ready, never twice in one reply, at most
+  one every 20 seconds, never while the reply is paused because you talked over
+  it. The clips take turns.
+- The clip plays on its own playback run ahead of the reply
+  (`ConversationTurn.PlayQuickSound`); the reply's first piece waits for it to
+  end and then plays, so neither is cut. It is never in the reply's text,
+  captions or history.
+
+**The cost.** The reply's own first audio can wait for the rest of a clip that
+already started: at most 1.2 s (the longest clip kept), usually less than
+0.5 s. That is why it is off by default; turned on, the first sound you hear
+still comes sooner than the reply's first words would on a slow turn.
+
+**Made once per voice and character.** The clips are said by the reply's own
+voice through the same path and one-use permission as a reply's pieces
+(`ConversationRuntime.SynthesizeAsync`), never beside a reply, and kept in
+`quick-sounds\<key>\` in the data folder (the silence around them cut, at most
+1.2 s each). A Windows voice or a paired host's voice makes them as soon as the
+choice is on or the voice changes; a paid cloud voice (OpenAI's) makes them
+only when you press *Make quick sounds now* (one short request each).
+
+**Measured** with MCP's `quick_sounds_check` (fixture turns through the
+production runtime, Chat Completions adapter, host voice stream and playback
+sink; the fixture model answers after a set wait, the fixture voice is a tone,
+NOT AI):
+
+| Scenario | Quick sound | From confirmation |
+| --- | --- | --- |
+| First words after 1.8 s | *"Mm,"*, then the reply on its own run, uncut | 701 ms |
+| First words after 40 ms | none: its own first audio was ready | |
+| A second slow reply 2 s later | none: one played 2 s ago | |
+| Started early, held for 1 s, then taken | played 1,747 ms after the start | 717 ms after it was taken |
+| Started early, then let go | none, nothing played | |
+| Hidden reasoning before the words | *"Mm,"* | 313 ms |
+| Paused because you talked over it | none | |
+
+The reply latency line then ends with *Quick sound at 712 ms.* (from the same
+moment as its total), and MCP's `latency_report` counts the replies with one.
+
+**NOT RUN:** a real voice making the clips and a person listening to them: this
+PC has no paired voice host, and a Windows voice was tested only through a
+fixture (Martlet.Desktop.Tests `QuickSoundDesktopTests`); no speakers played
+anything.
+
 ## How others get fast
 
 Research summary (sources checked 2026-10-03; vendor claims marked):

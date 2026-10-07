@@ -2659,8 +2659,46 @@ times, M cancelled*) and `newest` (each reply's
 `voicePausedMs`, `models`,
 `interrupted`, `restarted`, `pausedForYouMs`, `resumed`, `startedEarlyMs`,
 `earlyStarts`, `earlyCancelled`, `liveFloor` (what the live floor held and stopped for
-that turn, from *Live floor: held 2 pool jobs, stopped 1 (think longer).*, else null), `legacy`). It only reads the log: no audio, network or provider
+that turn, from *Live floor: held 2 pool jobs, stopped 1 (think longer).*, else null), `quickSoundMs`
+(when a quick sound played, from *Quick sound at 712 ms.*, else null), `legacy`), and `quickSounds`
+(replies that played a quick sound in Martlet's own voice: `replies`, `atMs` and their `firstAudio`
+statistics). It only reads the log: no audio, network or provider
 request.
+
+`quick_sounds_status` reads Companion › Voice › *Quick sounds while Martlet
+thinks* from a data directory (optional absolute `dataDirectory`; the script
+gives a disposable one): `on` (off by default) and `delayMs` (500, 700, 1000 or
+1500; 700 by default) from `talk-preferences.json` with their `source`,
+`cooldownSeconds` (20), the `voice` replies speak with (`words`, whether it is
+`paid` (OpenAI's cloud voice) and its `key` per voice and character, or null
+without a voice), whether its clips are `ready` (each clip's `text` and
+`milliseconds`) or it `needsClick` (a paid voice waits for *Make quick sounds
+now*), every set `kept` in `quick-sounds\` (`key`, `voice`, `madeAt`, `clips`)
+and the newest desktop `log` lines about quick sounds (*Quick sound: "Mm," 712
+ms after the reply was confirmed (...)*, *Quick sounds: made 4 with ...*).
+Read-only; it never plays anything.
+
+`quick_sounds_check` rehearses quick sounds (see
+[Voice latency](VOICE_LATENCY.md#quick-sounds-while-martlet-thinks)) with the
+production rules (`QuickSoundGate`, `QuickSoundWatcher`,
+`ConversationTurn.PlayQuickSound`) on fixture turns through the production
+conversation runtime, Chat Completions adapter, host voice stream and playback
+sink. FIXTURES, NOT AI: a Chat Completions endpoint on 127.0.0.1 answers one
+sentence after a set wait, a host voice makes a quiet tone and the speakers
+open no device. `scenario` (default all): `slow` (first words after 1.8 s: the
+quick sound plays once the reply had no audio for the delay, the whole clip
+before the reply, which follows on its own run uncut), `fast` (none: its own
+audio was ready), `cooldown` (a second slow reply within 20 s gets none),
+`early` (a reply started early is held for 1 s, then taken: counted from when
+it was taken), `let-go` (held, then let go: none, nothing played),
+`reasoning` (hidden reasoning streams before the words: after 300 ms) and
+`paused` (paused because you talked over it: none). `delayMs` is 500, 700,
+1000 or 1500 (700 by default). Per turn it returns `played`, `why`, `clip`,
+`quickSoundAtMs` (from the turn's start), `afterConfirmedMs`, `releasedAtMs`
+(a reply started early), `firstAudioAtMs`, `playbackRuns`,
+`replyFollowedUncut` (the clip's run closed before the reply's opened, and it
+played whole), `state` and the reply `latencyLine`; `ok` when every scenario
+does what it should. Nothing is recorded, played or sent off this PC.
 
 `turn_judge_check` checks always listening's end-of-turn judge (Companion ›
 Listening › *Judge when I finish talking*, see
@@ -4116,6 +4154,20 @@ because it saves `talk-preferences.json` (`VoiceVolume`, 0 to 1, this PC only
 and not shared with paired computers); `character_status`'s `voice.volume`
 reads the saved level (1 without a file).
 
+**Quick sounds while Martlet thinks**: Companion › Voice's card has the
+`VoiceQuickSounds` check box (off by default), `VoiceQuickSoundsDelay` (*After
+0.5 s*, *After 0.7 s (recommended)*, *After 1 s* or *After 1.5 s*),
+`VoiceQuickSoundsStatus` (*Off.*, *On. Making the quick sounds with ...*, *On:
+4 quick sounds in the Windows voice ...*, *On, but OpenAI ... is a paid cloud
+voice: press Make quick sounds now ...*, why they couldn't be made, or *On, but
+Martlet has no voice to make them with yet ...*) and `VoiceQuickSoundsMake`
+(*Make quick sounds now*, shown once they are on and a voice is set up). All
+three values are in `SafeValues`; changing the box or the delay saves
+`talk-preferences.json` (`QuickSounds`, `QuickSoundDelayMs`; this PC only), and
+the button makes the clips with the voice, so they need `--allow-ui-effects`.
+`quick_sounds_status` reads the same choice headless, and `quick_sounds_check`
+rehearses the rules.
+
 **Chatterbox Original style**: while Speaking uses Chatterbox Original or it is
 the chosen engine (`speaking-engine.txt` is `chatterbox-original`), Companion ›
 Voice shows its card with four sliders,
@@ -5381,7 +5433,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

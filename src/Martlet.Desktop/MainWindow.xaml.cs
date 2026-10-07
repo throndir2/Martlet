@@ -144,6 +144,8 @@ public partial class MainWindow : ThemedWindow
             conversation.EarlyDecided += () => Dispatcher.BeginInvoke(ShowEarlyReplies);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
             conversation.VoiceVolume = Talk.VoiceVolume;
+            conversation.QuickSounds = Talk.QuickSoundOptions;
+            conversation.QuickSoundsChanged += () => Dispatcher.BeginInvoke(ShowQuickSounds);
             conversation.ChattinessDecided += (_, _) => Dispatcher.BeginInvoke(FollowChattiness);
             discord.UseReplies(setupService, vault, conversation, memory, lorebooks);
         }

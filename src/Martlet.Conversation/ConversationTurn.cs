@@ -46,6 +46,14 @@ public sealed class ConversationTurn
     private readonly bool holdVoice;
     private List<Action>? heldBack;
     private TimeSpan? releasedAfter;
+    // A quick sound (PlayQuickSound) playing ahead of the reply's own voice: its playback task, run and lip-sync observation, and
+    // when it started. The reply's first piece waits for it to end and never cuts it (ownAudioStarted: none may begin after);
+    // at most one per turn, and none once the work ended (quickClosed). Guarded by Sync.
+    private Task? quickSound;
+    private PlaybackRun? quickRun;
+    private GeneratedSpeechObservation? quickObservation;
+    private TimeSpan? quickSoundAfter;
+    private bool ownAudioStarted, quickClosed;
     // Captions for words the voice couldn't say, shown one after another (ShowUnsaid).
     private Task unsaidCaptions = Task.CompletedTask;
     // A reply that isn't spoken still shows in the captions (speech bubble, subtitles), each sentence once it is written.
@@ -61,6 +69,10 @@ public sealed class ConversationTurn
     private long? inputTokens, cachedInputTokens;
     private TimeSpan? textRequestAfter, textResponseAfter, firstReasoningAfter, firstSegmentAfter, speechRequestAfter,
         firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter;
+    // The Thinking stream being read now and when its request was sent: its response headers and hidden reasoning show in the
+    // timings as soon as they arrive (SuperviseAsync), before the first words.
+    private ITextGenerationStream? openStream;
+    private TimeSpan openStreamAfter;
     // Finished pieces' waits for the voice's next audio (playback underruns).
     private int voiceWaits;
     private TimeSpan voiceWaited;
@@ -179,6 +191,30 @@ public sealed class ConversationTurn
     /// <summary>Whether what Martlet says aloud is paused (<see cref="Pause"/>).</summary>
     public bool Paused { get { lock (Sync) return paused; } }
 
+    /// <summary>Whether this reply is spoken (it has a voice).</summary>
+    public bool Spoken => request.Speech is not null;
+
+    /// <summary>Plays <paramref name="pcm"/> now, ahead of this reply's own voice: a quick sound in Martlet's own voice (24 kHz
+    /// mono 16-bit PCM, at most <see cref="QuickSoundAudio.MaximumBytes"/>) while the reply's first audio isn't ready
+    /// (<see cref="QuickSoundWatcher"/>). The reply's first piece waits until it has played and then follows it, so neither is
+    /// cut. It is never part of the reply's text, captions or history. Returns false, and plays nothing, for a reply that isn't
+    /// spoken, is held, paused, finished or stopped, already played a quick sound, or whose own audio started.</summary>
+    public bool PlayQuickSound(ReadOnlyMemory<byte> pcm)
+    {
+        if (pcm.Length is 0 || pcm.Length > QuickSoundAudio.MaximumBytes || pcm.Length % 2 != 0) return false;
+        lock (Sync)
+        {
+            if (request.Speech is not { } voice || quickSound is not null || quickClosed || heldBack is not null || paused ||
+                invalidated || workFinished || terminal || speaking.IsCancellationRequested || ownAudioStarted || playback is not null)
+                return false;
+            quickSoundAfter = Clock.GetElapsedTime(startedAt);
+            var token = speaking.Token;
+            quickSound = Task.Run(() => PlayQuickSoundAsync(pcm, voice, token));
+            Emit(ConversationEventKind.Playback);
+            return true;
+        }
+    }
+
     /// <summary>Started early (<see cref="ConversationRuntime.StartEarly"/>) and not released yet: its Thinking text streams
     /// (and its first piece may be synthesized), but nothing shows, acts, calls a tool or plays.</summary>
     public bool Held { get { lock (Sync) return heldBack is not null; } }
@@ -231,6 +267,7 @@ public sealed class ConversationTurn
             pausedAt = Clock.GetTimestamp();
             pauses++;
             playback?.Pause();
+            quickRun?.Pause();
             cueClock.Pause();
             return true;
         }
@@ -246,6 +283,7 @@ public sealed class ConversationTurn
             pausedTime += Clock.GetElapsedTime(pausedAt);
             resumes++;
             playback?.Resume();
+            quickRun?.Resume();
             cueClock.Resume();
             return true;
         }
@@ -272,6 +310,8 @@ public sealed class ConversationTurn
         segments.Writer.TryComplete();
         // Capture-scoped handle: never use sink-wide Stop, even during delayed teardown.
         _ = playback?.StopAsync();
+        quickObservation?.Stop();
+        _ = quickRun?.StopAsync();
         cueClock.Stop();
         SetState(userStopped ? ConversationState.Canceled : text.Length > 0 ? ConversationState.Partial : ConversationState.Failed);
         stopSignal.TrySetResult();
@@ -306,6 +346,14 @@ public sealed class ConversationTurn
             TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         await Task.WhenAll(writing, GuardStageAsync(SpeakAsync)).ConfigureAwait(false);
         synthesized.TrySetResult();
+        // A quick sound still playing ends before the turn lets go of its speakers; none may start after this.
+        Task? quick;
+        lock (Sync)
+        {
+            quickClosed = true;
+            quick = quickSound;
+        }
+        if (quick is not null) await quick.ConfigureAwait(false);
     }
 
     private async Task GuardStageAsync(Func<Task> operation)
@@ -385,6 +433,8 @@ public sealed class ConversationTurn
         speechObservation?.Stop();
         // Capture-scoped handle: never use sink-wide Stop.
         _ = playback?.StopAsync();
+        quickObservation?.Stop();
+        _ = quickRun?.StopAsync();
         speechCallbacks = speaking.CancelAsync();
         // Muted before the text started: the turn is still authorizing its Thinking request.
         if (!textComplete && textProvenance is not null && state != ConversationState.Generating) SetState(ConversationState.Generating);
@@ -675,6 +725,8 @@ public sealed class ConversationTurn
             CheckActive();
             segmentation = segmenter;
             textProvenance = stream.Capabilities.Provenance;
+            openStream = stream;
+            openStreamAfter = requestedAfter;
             SetState(ConversationState.Generating);
         }
         var said = new StringBuilder();
@@ -1110,6 +1162,8 @@ public sealed class ConversationTurn
                 CheckSpeaking(window);
                 if (run is null)
                 {
+                    // A quick sound playing ahead of the reply ends first: the reply follows it and never cuts it.
+                    await AfterQuickSoundAsync().ConfigureAwait(false);
                     lock (Sync)
                     {
                         CheckActive();
@@ -1209,6 +1263,104 @@ public sealed class ConversationTurn
         }
     }
 
+    // Waits for a quick sound still playing (PlayQuickSound); once the reply's own audio starts, none may begin.
+    private async Task AfterQuickSoundAsync()
+    {
+        while (true)
+        {
+            Task? playing;
+            lock (Sync)
+            {
+                playing = quickSound is { IsCompleted: false } running ? running : null;
+                if (playing is null)
+                {
+                    ownAudioStarted = true;
+                    return;
+                }
+            }
+            await playing.WaitAsync(speaking.Token).ConfigureAwait(false);
+        }
+    }
+
+    // Plays a quick sound on its own playback run, 20 ms a frame, and lets go of the speakers when it ends. It never fails the
+    // reply: a quick sound that can't play (the reply stopped, the speakers failed) just ends, and the reply's own voice goes on.
+    private async Task PlayQuickSoundAsync(ReadOnlyMemory<byte> pcm, SpeechOutput voice, CancellationToken token)
+    {
+        PlaybackRun? run = null;
+        var ids = NewIds();
+        var format = OpenAiSpeechSynthesisCatalog.PcmFormat;
+        var window = new MonotonicWindow(Clock, voice.Limits.MaxRequestTime);
+        try
+        {
+            lock (Sync)
+            {
+                CheckActive();
+                token.ThrowIfCancellationRequested();
+                run = Owner.StartPlayback(this, ids, voice.Output, Deadline(window), token);
+                if (paused) run.Pause();
+                quickRun = run;
+                quickObservation = Owner.GeneratedSpeech?.Begin(run, format);
+            }
+            var frameBytes = format.SampleRate / 50 * format.BlockAlignment;
+            long samples = 0, sequence = 0;
+            for (var offset = 0; offset < pcm.Length; offset += frameBytes)
+            {
+                var frame = new PcmFrame(ids, Epoch, sequence++, samples, format, pcm.Span.Slice(offset, Math.Min(frameBytes, pcm.Length - offset)));
+                await SubmitQuickAsync(run, frame, window, token).ConfigureAwait(false);
+                samples += frame.SamplesPerChannel;
+            }
+            if (!run.CompleteInput(samples)) return;
+            lock (Sync) quickObservation?.CompleteInput(samples);
+            await run.Completion.WaitAsync(token).ConfigureAwait(false);
+        }
+        catch (Exception) { }
+        finally
+        {
+            if (run is not null)
+            {
+                GeneratedSpeechObservation? observation;
+                lock (Sync) observation = quickObservation;
+                observation?.Stop();
+                // Never release a native device concurrently with its own run.
+                await run.StopAsync().ConfigureAwait(false);
+                await run.DeviceRelease.ConfigureAwait(false);
+                lock (Sync)
+                {
+                    var final = run.Snapshot;
+                    quarantined |= !final.DeviceReleased || final.Error?.Code == ErrorCode.AudioPlaybackFailed;
+                    quickRun = null;
+                    quickObservation = null;
+                    Emit(ConversationEventKind.Playback);
+                }
+            }
+        }
+    }
+
+    private async Task SubmitQuickAsync(PlaybackRun run, PcmFrame frame, MonotonicWindow window, CancellationToken token)
+    {
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            Check(window);
+            var snapshot = run.Snapshot;
+            if (run.Completion.IsCompleted) throw new ConversationException(ConversationFailure.PlaybackFailed);
+            var capacity = (long)(frame.Format.SampleRate * Owner.PlaybackOptions.Capacity.TotalSeconds);
+            if (snapshot.AcceptedSamples - snapshot.DeviceConsumedSamples + frame.SamplesPerChannel <= capacity &&
+                snapshot.QueuedFrames < Owner.PlaybackOptions.MaximumQueuedFrames)
+            {
+                lock (Sync)
+                {
+                    CheckActive();
+                    var mapped = PlaybackFrameMapping.Map(frame, snapshot.Ids, Epoch, snapshot.Epoch);
+                    if (run.Submit(mapped) != FrameAcceptance.Accepted) throw new ConversationException(ConversationFailure.InvalidStream);
+                    quickObservation?.Submit(mapped);
+                }
+                return;
+            }
+            await Task.Delay(TimeSpan.FromMilliseconds(10), Clock, token).ConfigureAwait(false);
+        }
+    }
+
     private MonotonicWindow ValidateReservation(BudgetReservation? reservation, OperationBudget expected,
         DateTimeOffset authorizationExpiry, DateTimeOffset actionDeadline, MonotonicWindow original)
     {
@@ -1268,6 +1420,13 @@ public sealed class ConversationTurn
                     if (!invalidated && progress.State == PlaybackState.Playing) SetState(ConversationState.Playing);
                     Emit(ConversationEventKind.Playback);
                 }
+                // The first request's response headers and hidden reasoning show as soon as they arrive, not only with the first
+                // words, so a quick sound knows at once that the model thinks before it answers.
+                if (openStream is { } open && textRequestAfter == openStreamAfter)
+                {
+                    if (open.ResponseAfter is { } headers) textResponseAfter ??= openStreamAfter + headers;
+                    if (open.FirstReasoningAfter is { } thinking) firstReasoningAfter ??= openStreamAfter + thinking;
+                }
                 // The whole turn ran out of time: after the text finished, only the voice still speaking ends.
                 if (whole.Expired)
                 {
@@ -1323,7 +1482,8 @@ public sealed class ConversationTurn
             speechFailure, new(textRequestAfter, textResponseAfter, firstReasoningAfter, firstSegmentAfter, speechRequestAfter,
                 firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter,
                 voiceWaits + (currentPlayback?.Underruns ?? 0), voiceWaited + (currentPlayback?.UnderrunTime ?? TimeSpan.Zero),
-                pauses, resumes, pausedTime + (paused ? Clock.GetElapsedTime(pausedAt) : TimeSpan.Zero), hold is not null, releasedAfter),
+                pauses, resumes, pausedTime + (paused ? Clock.GetElapsedTime(pausedAt) : TimeSpan.Zero), hold is not null, releasedAfter,
+                quickSoundAfter),
             inputTokens, cachedInputTokens,
             reasoningRejected, voiceMuted);
     }

@@ -120,7 +120,11 @@ public partial class MainWindow
             ActionText.Text = "Couldn't save your talk choices. They apply until Martlet closes.";
         avatar.Gaze.Decides = next.DecideGaze;
         avatar.Gaze.Configure(next.GazeUsual, next.GazeFree);
-        if (conversation is not null) conversation.VoiceVolume = next.VoiceVolume;
+        if (conversation is not null)
+        {
+            conversation.VoiceVolume = next.VoiceVolume;
+            conversation.QuickSounds = next.QuickSoundOptions;
+        }
         // An open talk window follows the change right away.
         openConversation?.UsePreferences(next, visionAddress);
         if (spoke != next.SpeakReplies) FollowVoice(next.SpeakReplies);
@@ -477,6 +481,78 @@ public partial class MainWindow
 
     /// <summary>Companion › Voice › Voice volume's level, as a percentage ("80%").</summary>
     internal static string VoiceVolumeLabel(double volume) => $"{Math.Round(Martlet.Audio.PcmGain.Clamp(volume) * 100):0}%";
+
+    // ---------- Voice: quick sounds while Martlet thinks ----------
+
+    private TextBlock? quickSoundsStatus;
+    private Button? quickSoundsMake;
+    private static readonly string[] QuickSoundDelayNames = ["After 0.5 s", "After 0.7 s (recommended)", "After 1 s", "After 1.5 s"];
+
+    private Border QuickSoundsCard()
+    {
+        var prefs = Talk;
+        var on = new CheckBox { Content = "Play a quick sound while Martlet thinks", IsChecked = prefs.QuickSounds };
+        AutomationProperties.SetAutomationId(on, "VoiceQuickSounds");
+        on.Checked += (_, _) => { if (!Talk.QuickSounds) SaveTalk(Talk with { QuickSounds = true }, render: true); };
+        on.Unchecked += (_, _) => { if (Talk.QuickSounds) SaveTalk(Talk with { QuickSounds = false }, render: true); };
+        var delay = new ComboBox
+        {
+            Width = 240, ItemsSource = QuickSoundDelayNames,
+            SelectedIndex = Math.Max(0, Martlet.Conversation.QuickSoundOptions.DelayChoices.ToList().IndexOf(prefs.QuickSoundDelayMs))
+        };
+        AutomationProperties.SetName(delay, "How long a reply may stay silent before a quick sound plays");
+        AutomationProperties.SetAutomationId(delay, "VoiceQuickSoundsDelay");
+        delay.SelectionChanged += (_, _) =>
+        {
+            if (delay.SelectedIndex >= 0 && Martlet.Conversation.QuickSoundOptions.DelayChoices[delay.SelectedIndex] is var ms && ms != Talk.QuickSoundDelayMs)
+                SaveTalk(Talk with { QuickSoundDelayMs = ms });
+        };
+        var status = quickSoundsStatus = Note("", new Thickness(0, 6, 0, 0));
+        AutomationProperties.SetAutomationId(status, "VoiceQuickSoundsStatus");
+        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
+        quickSoundsMake = PageButton("Make quick sounds now", () =>
+        {
+            if (conversation?.MakeQuickSounds() != true) ActionText.Text = "Quick sounds need a voice: choose one above first.";
+        }, link: true, id: "VoiceQuickSoundsMake");
+        ShowQuickSounds();
+        var delayRow = Labeled("Play one", delay);
+        delayRow.Margin = new Thickness(0, 10, 0, 0);
+        return Card(Heading("Quick sounds while Martlet thinks"), on,
+            Note("When a reply is slow to start, Martlet first says a quick \"Mm,\" or \"Hmm...\" in its own voice, and the reply " +
+                "follows it. It never plays when the reply is quick, never twice in one reply and at most once every 20 seconds. " +
+                "The sounds are made once with your voice and kept on this PC; with a paid cloud voice, Martlet makes them only " +
+                "when you press Make quick sounds now (one short request for each).", new Thickness(0, 6, 0, 0)),
+            delayRow, status, Row(quickSoundsMake));
+    }
+
+    // Companion › Voice's quick sounds line and its Make button, as the conversation says they stand.
+    private void ShowQuickSounds()
+    {
+        if (quickSoundsStatus is not { } line) return;
+        line.Text = QuickSoundsText(Talk.QuickSounds, conversation?.QuickSoundStatus, Talk.QuickSoundDelayMs);
+        if (quickSoundsMake is { } make)
+            make.Visibility = Talk.QuickSounds && conversation?.QuickSoundStatus.State is not (null or QuickSoundState.Making or QuickSoundState.NoVoice)
+                ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>Companion › Voice › Quick sounds while Martlet thinks, in words (VoiceQuickSoundsStatus).</summary>
+    internal static string QuickSoundsText(bool on, (QuickSoundState State, string? Voice, int Clips, string? Problem)? status, int delayMs)
+    {
+        if (!on) return "Off.";
+        var after = (delayMs / 1000.0).ToString("0.0#", System.Globalization.CultureInfo.CurrentCulture);
+        return status?.State switch
+        {
+            QuickSoundState.Ready => $"On: {status.Value.Clips} quick sounds in {status.Value.Voice}. One plays when a reply has no audio " +
+                $"of its own {after} s after Martlet starts answering (sooner when Thinking thinks first)." +
+                (status.Value.Problem is { } kept ? $" Note: {kept}." : ""),
+            QuickSoundState.Making => $"On. Making the quick sounds with {status.Value.Voice}...",
+            QuickSoundState.NeedsClick => $"On, but {status.Value.Voice} is a paid cloud voice: press Make quick sounds now to make them " +
+                "once (one short request for each). Until then none play.",
+            QuickSoundState.Failed => $"On, but the quick sounds couldn't be made with {status.Value.Voice} ({status.Value.Problem}). " +
+                "Press Make quick sounds now to try again.",
+            _ => "On, but Martlet has no voice to make them with yet: set up Martlet's voice first."
+        };
+    }
 
     /// <summary>Mute voice or Unmute voice on the character's right-click menu: the same choice as Speak Martlet's replies aloud
     /// (Companion › Voice), so it is saved and shared with your other computers like it.</summary>
