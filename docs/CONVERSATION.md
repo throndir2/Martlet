@@ -241,6 +241,11 @@ reads the entire conversation again before every reply (on a 12B model, about
   picked style when the persona has several and it changed. The first notes
   start with what notes are (Companion › Prompts › *Notes with messages*).
   Notes are never shown and never what the user said.
+- **The context board's notes** close the message, in their own
+  `[MARTLET_NOTES]` block after the other notes: the newest short note of each
+  background source that is still fresh ([Context board](#context-board)).
+  They are sent with this message only and never kept in the conversation,
+  so the message the next request carries again is the start of what was sent.
 - When the conversation outgrows the context, Martlet lets go of a quarter
   more of the oldest exchanges than it must (and forgets them), so the next
   several replies start at the same exchange instead of moving by one every
@@ -264,6 +269,68 @@ them (92 %) from the model's prompt cache.* when the provider reports it
 (OpenAI, OpenRouter and others report cached tokens unasked; Martlet asks
 Ollama on this PC for them), and the talk window's context line ends with
 *Last reply: 92% of its 568 input tokens came from the model's cache.*
+
+## Context board
+
+The context board is where background sources keep their newest short note
+for the live conversation: what the character shows now, a digest of the last
+seconds of the screen, a line about the sounds this PC plays, touches on the
+character. A reply or a look never waits for a source. As it builds its
+request, it takes a snapshot of the board, and the fresh notes go last in the
+message (see [the request layout](#prompt-caching-and-the-request-layout)).
+The board's notes are never kept in the conversation, so the start of every
+request stays the same and prompt caches keep working.
+
+The talk window's `LiveTurnInputs` line counts them (*Last reply took your
+words and 2 context notes.*), and the desktop log says *Context board: the
+request took 2 notes (screen, touch; 96 bytes; 1 consumed).* MCP's
+`context_board` tool rehearses the board with the production request layout
+([MCP](MCP.md)).
+
+### Context board API (for new sources)
+
+The board is `Martlet.Conversation.ContextBoard`
+(`src\Martlet.Conversation\ContextBoard.cs`). It is thread-safe, so a source
+can post from any thread.
+
+1. Get the instance. In the desktop, use `MainWindow.contextBoard`
+   (`MainWindow.CharacterActions.cs`). The live conversation has the same
+   instance as `LiveConversationController.Board`. Pass it to a service
+   through its constructor.
+2. Post your newest note with
+   `Post(source, text, at, maxAge, consume: false, kept: null)`. A new post
+   replaces the source's note before it. Empty text clears the note, and so
+   does `Clear(source)`.
+3. Use a known source name when one fits: `ContextBoard.Character`
+   (`character`, posted by the conversation itself), `ContextBoard.Screen`
+   (`screen`), `ContextBoard.Sound` (`sound`) or `ContextBoard.Touch`
+   (`touch`). Another name is 1 to 32 lower-case letters, digits or `-`.
+4. Write the text as one short sentence to the model, such as *Screen over
+   the last 20 s: a code editor, then a browser.* The board makes it one line
+   and cuts it to 600 UTF-8 bytes.
+5. Choose `maxAge` (at most one hour). A note older than that at the time of
+   a request is skipped and removed from the board.
+
+Rules of the board:
+
+- **Order.** A request takes the notes in a stable order: `character`,
+  `screen`, `sound`, `touch`, then other sources by name. The notes of one
+  request are at most 2,048 UTF-8 bytes together; a note later in the order
+  that does not fit is left out. The board keeps at most 16 sources.
+- **Consume on read.** A note posted with `consume: true` goes with exactly
+  one request: the board removes it when a request that carried it is sent,
+  unless the source posted a newer note since.
+- **Delivery.** The `Sent` event is raised once for each request that was
+  actually sent (after the request started), with the snapshot it carried.
+  Find your note in `snapshot.Notes` by its `Version` (`Post` returns the
+  note): if it is there, it was delivered. A turn stopped before its request
+  was sent raises nothing, and its notes stay on the board for the next one.
+  `LastSent` is the newest delivered snapshot.
+- **Kept line.** `kept` is an optional short line, such as *(touch: a pat on
+  the head)*. When a request that carried the note is sent and its reply
+  completes, the conversation keeps this line as the last line of the user's
+  message (or of the look's line). It goes at the end, never at the start, so
+  the prompt cache still holds the message before it.
 
 ## One moment: everything in one reply
 
@@ -1617,8 +1684,9 @@ first word and paired hosts reject it.
   about 150 ms for 10 seconds) names what it hears, and `SoundDigest.Line`
   turns the labels into a line such as *Music: pop with singing, happy;
   laughter*. Speech, room tone and noise labels are left out.
-- **Where the line goes.** To the context board as source `sound`, with a
-  maximum age of 45 seconds. A reply never waits for it, and it never goes
+- **Where the line goes.** To the context board as source `sound` (*Sound
+  playing on this PC besides speech: ...*), with a maximum age of 45 seconds,
+  and cleared when the digest stops. A reply never waits for it, and it never goes
   into the history or memory. Companion's `TalkDescribePcSoundsStatus` says
   which judge is used and shows the last line with its age (in memory only);
   `sound-digest.json` in the data folder keeps the state, the judge, counts

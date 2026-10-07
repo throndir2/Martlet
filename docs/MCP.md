@@ -2419,6 +2419,26 @@ resumed* or *, paused N ms, then stopped when you talked over it*) and `newest` 
 `interrupted`, `restarted`, `pausedForYouMs`, `resumed`, `legacy`). It only reads the log: no audio, network or provider
 request.
 
+`context_board` rehearses the [context board](CONVERSATION.md#context-board)
+with the production board, request layout and Chat Completions adapter
+against a fixture endpoint on 127.0.0.1 (canned reply, NOT AI). It posts
+FIXTURE notes from four sources (`screen`, `character`, a stale `sound` note
+and a `touch` note that is consumed on read), plus an optional test note of
+your own: `source` (1-32 lower-case letters, digits or `-`), `text`,
+`maxAgeSeconds` (1-3600, default 60), `ageSeconds` (0-7200, how long ago it
+was posted) and `consume`. It sends two requests in a row and returns
+`firstRequest` and `secondRequest` (`notes`: the sources each snapshot took,
+`bytes`, `carried`: the fixture sources found in the sent message,
+`outcome`), `staleSkipped`, `consumedOnce`, `orderStable`, `boardAt` (*end
+of the user's message, after Martlet's other notes*),
+`historyKeepsBoardNotes` (false), `keptMessageIsStartOfSent`,
+`messagesSentAgainUnchanged`, `lastSent`, `posted` (your note: `inFirstRequest`,
+`inSecondRequest`) and `limits` (`noteBytes` 600, `totalBytes` 2048,
+`sources` 16, `maxAgeSeconds` 3600); `ok` is true when all of them hold.
+Live replies and looks log *Context board: the request took N notes (sources;
+bytes; consumed)* in the desktop log (`logs_tail`), and `LiveTurnInputs`
+counts them (*... and 2 context notes*). Loopback only; no credentials.
+
 `context_check` shows the Thinking model's [context](CONVERSATION.md) as
 replies use it (optional absolute `dataDirectory`, default the current user's):
 `settings` (`none`, `loaded` or `unreadable`), `thinking` (`routeType`,
@@ -4383,7 +4403,7 @@ took your words, 1 line this PC played and the picture.*, *Last reply took 2
 lines this PC played, the picture (a notification) and 2 finished jobs,
 counted as a look.*, *Last report took the picture and 1 finished job.* or
 *Last look took the picture.*; counts only, never what was said, seen or
-found; the desktop log has the same as *Turn took: ...* lines),
+found; *... and 2 context notes* when it carried\n[context board](CONVERSATION.md#context-board) notes; the desktop log has the\nsame as *Turn took: ...* lines),
 `LiveTasks` (the header's background
 tasks chip, shown once Martlet starts a task in the conversation: its name reads
 *Background tasks: 2 running*, *1 running · 1 ready*, *1 ready* or *3 done*; a
@@ -4897,7 +4917,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check` and `discord_voice_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

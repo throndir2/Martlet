@@ -216,6 +216,12 @@ internal sealed class LiveConversationOperation
     internal bool Look { get; init; }
     /// <summary>What this reply took (MomentTurn.Describe: never what was said, seen or found), once its request started.</summary>
     internal string? Inputs { get; set; }
+    /// <summary>How many context board notes this reply's request carried (ContextBoard).</summary>
+    internal int BoardNotes { get; set; }
+    /// <summary>The kept lines of the context board notes this reply's request carried (ContextNote.Kept), or null.</summary>
+    internal string? BoardKept { get; set; }
+    /// <summary><paramref name="text"/> (a message as the conversation keeps it) with <see cref="BoardKept"/> as its last line.</summary>
+    internal string? WithBoardKept(string? text) => text is null || BoardKept is null ? text : text + "\n" + BoardKept;
     internal ListeningOptions? Listening { get; init; }
     /// <summary>One utterance recorded by always listening (<see cref="LiveListener"/>): capture and speech-to-text only.</summary>
     internal bool Listen { get; init; }
@@ -391,6 +397,33 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private readonly Action? revokeAvatar;
     // The desktop character's emotes and motions a reply may use, for the speaking engine (null: a reply that isn't spoken).
     private readonly Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions;
+
+    /// <summary>The context board: background sources post their newest short note here, and every reply and look takes the
+    /// fresh ones in its notes, without waiting (docs/CONVERSATION.md, Context board).</summary>
+    internal ContextBoard Board { get; }
+
+    // How long the character's note stays fresh: Martlet posts it again as it builds each request.
+    private static readonly TimeSpan CharacterNoteAge = TimeSpan.FromMinutes(1);
+
+    /// <summary>The context board's fresh notes for one request, the character's first: the lingering emotes it shows now
+    /// (for the voice that speaks the reply, or none for a reply that isn't spoken) are posted again, or cleared, first.</summary>
+    private ContextBoardSnapshot BoardFor(LiveConversationConfiguration configured, bool voice)
+    {
+        var now = clock.GetLocalNow();
+        var showing = characterActions?.Invoke(voice ? configured.SpeakingEngine() : null, configured.Prompts)?.Showing;
+        if (showing is null) Board.Clear(ContextBoard.Character);
+        else Board.Post(ContextBoard.Character, showing, now, CharacterNoteAge);
+        return Board.Snapshot(now);
+    }
+
+    // The request carrying the board's notes was sent: consume-on-read notes go, and the desktop log says what went.
+    private void BoardSent(ContextBoardSnapshot sent)
+    {
+        var consumed = Board.MarkSent(sent);
+        if (sent.Notes.Count > 0)
+            ErrorLog.Info($"Context board: the request took {sent.Notes.Count} note{(sent.Notes.Count == 1 ? "" : "s")} " +
+                $"({string.Join(", ", sent.Sources)}; {sent.Utf8Bytes} bytes{(consumed > 0 ? $"; {consumed} consumed" : "")}).");
+    }
     private readonly DesktopMemoryService? memory;
     // The record of conversations on this PC (Companion › Memory › Conversation history), and which conversation this is: a
     // conversation runs until the exchanges kept in mind are cleared (Refresh context, pause, lock, closing the talk window).
@@ -654,7 +687,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         LocalVoices? voices = null, ILocalTranscriber? localListener = null, EchoReducer? echoReducer = null,
         PcAudioCaptureFactory? pcAudio = null, CharacterCueFeed? characterCues = null,
         Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null,
-        DesktopConversationHistory? history = null, ConversationSinging? singing = null)
+        DesktopConversationHistory? history = null, ConversationSinging? singing = null, ContextBoard? board = null)
 
     {
         this.operations = operations;
@@ -667,6 +700,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         this.pcAudio = pcAudio;
         this.characterActions = characterActions;
         this.history = history;
+        Board = board ?? new();
         if (echoReducer is not null) echoReducer.Reported += EchoReported;
         this.clock = clock ?? TimeProvider.System;
         this.nextStyle = nextStyle ?? RandomNumberGenerator.GetInt32;
@@ -681,7 +715,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         this.dataDirectory = dataDirectory;
         if (pcAudio?.Sound is { } sound)
             soundDigest = new PcSoundDigest(sound, () => pcAudio.WithoutMartlet != true && Speaking is not null,
-                () => PoolSoundJudge.For(ThinkingPool), dataDirectory: dataDirectory);
+                () => PoolSoundJudge.For(ThinkingPool), Board, dataDirectory);
         localTranscription = localListener is null ? null : new(localListener, this.clock);
         localWords = localListener;
         context = new();
@@ -1394,6 +1428,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             var lore = await ScanLoreAsync(operation, prompt, earlier, operation.Authorization.Configuration.Persona, worker)
                 .ConfigureAwait(false);
             ConversationTurn turn;
+            ContextBoardSnapshot board;
             lock (gate)
             {
                 operation.Authorization.Check(worker);
@@ -1403,6 +1438,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // Earlier messages go exactly as they were sent (with their notes), so the request starts like the one before.
                 var history = context.Snapshot(sent: true);
                 var level = ChattinessTags.Level(chattiness, decided);
+                board = BoardFor(configured, operation.Authorization.Voice);
                 var request = configured.Request(new(GlanceMessage(prompt, read)), operation.Authorization.Voice, style, history, null, lore,
                     out var usedHistory, out _, out var usedLore, image,
                     Join(LiveConversationConfiguration.Moment(configured.Prompts),
@@ -1410,7 +1446,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     LiveConversationConfiguration.SilentReply, characterActions: characterActions,
                     gaze: look ? CharacterGaze.Prompt(configured.Prompts, LiveConversationConfiguration.SilentReply) : null,
                     chattiness: decides ? configured.ChattinessNote(level) : null,
-                    controlTags: LiveConversationConfiguration.ControlTags(decides, picture: true, configured.Prompts));
+                    controlTags: LiveConversationConfiguration.ControlTags(decides, picture: true, configured.Prompts),
+                    board: board.Text);
                 operation.LookOffered = request.CharacterTags.Any(CharacterGaze.IsTag);
                 // Exchanges a look had to leave out are never sent again, so later requests start the same way.
                 context.LetGoBefore(context.Start + (history.Count - usedHistory) / 2);
@@ -1424,8 +1461,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 turn = runtime.Start(request, operation.Authorization, operation.OriginalCaller);
                 operation.Attach(turn);
             }
+            BoardSent(board);
+            operation.BoardNotes = board.Notes.Count;
+            operation.BoardKept = board.KeptText;
             // Nothing else waited (that would have made it a reply that takes the look along): the look alone.
-            operation.Inputs = MomentTurn.Describe(false, 0, true, operation.Attention?.Plain, 0);
+            operation.Inputs = MomentTurn.Describe(false, 0, true, operation.Attention?.Plain, 0, contextNotes: operation.BoardNotes);
             ErrorLog.Info($"Turn took: {operation.Inputs} (a look).");
             var terminal = await turn.Completion.ConfigureAwait(false);
             NoteFallback(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, terminal);
@@ -1447,7 +1487,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         // [seen: ...] words, never the picture), then its remark or [pass]. Passes in a row keep only the last.
                         var remark = passed ? $"[{LiveConversationConfiguration.SilentReply}]" : text.Trim();
                         var seen = SeenTags.Description(turn.Controls);
-                        var replaced = context.AddLook(looked.HistoryLine(seen, why: operation.Attention?.Describe()), remark, passed);
+                        var replaced = context.AddLook(operation.WithBoardKept(looked.HistoryLine(seen, why: operation.Attention?.Describe()))!, remark, passed);
                         ErrorLog.Info($"Vision: the conversation keeps a {(camera ? "camera look" : "screen glance")} " +
                             $"({(passed ? "passed" : "remark")}, {(seen is null ? "no description" : "described")}" +
                             $"{(replaced ? ", in place of the passed look before it" : "")}).");
@@ -1630,6 +1670,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             }
             operation.Authorization.Check(worker);
             ConversationTurn turn;
+            ContextBoardSnapshot board = ContextBoardSnapshot.Empty;
             PersonaProfile? persona;
             ResponseStyle? style;
             IReadOnlyList<TextHistoryMessage> history, sentHistory;
@@ -1779,6 +1820,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // While Martlet decides how chatty it is (and vision is on or it hears this PC), every reply is told how to switch
                 // the level, the same way every time; the level goes in the notes when the conversation's notes don't say it yet.
                 var decides = operation.BackgroundChattiness == ChattinessChoice.MartletDecides;
+                // The context board's fresh notes, taken once (never waited for), go last in the notes and never into history.
+                board = BoardFor(configured, operation.Authorization.Voice);
                 // What the user did to the desktop character since the last reply goes in the notes of their own message (after
                 // their words, never the instructions, so the request starts the same); nothing is there when they did nothing.
                 // A touch-only reply already carries it as its message.
@@ -1809,7 +1852,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()),
                         chattiness: decides ? operation.Authorization.Configuration.ChattinessNote(decided) : null,
                         controlTags: LiveConversationConfiguration.ControlTags(decides, picture is not null, prompts),
-                        spokenWords: straight ? token => SpokenWords.TranscriptAsync(operation.StraightWords!, token) : null);
+                        spokenWords: straight ? token => SpokenWords.TranscriptAsync(operation.StraightWords!, token) : null,
+                        board: board.Text);
                 ConversationRequest request;
                 int usedHistory, usedMemory, usedLore;
                 var picture = seen;
@@ -1849,12 +1893,16 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 if (straight)
                     foreach (var words in operation.StraightWords!) words.ReplyStarted(operation.ReplyStartedAt);
             }
+            // The request is sent: the board's consume-on-read notes go with this reply only.
+            BoardSent(board);
+            operation.BoardNotes = board.Notes.Count;
+            operation.BoardKept = board.KeptText;
             // What this reply took (MomentTurn): the talk window's LiveTurnInputs line and the desktop log, after the request
             // started so the first words never wait for it.
             operation.Inputs = MomentTurn.Describe(own is not null || straight,
                 operation.PcAudio ? input!.UserText.Split('\n').Count(line => line.StartsWith(LiveConversationConfiguration.PcAudioMarker, StringComparison.Ordinal)) : 0,
                 operation.ScreenSent, operation.ScreenSent ? operation.Attention?.Plain : null, operation.Delivery?.Jobs.Count ?? 0, operation.Report,
-                operation.Touches?.Touches ?? 0);
+                operation.Touches?.Touches ?? 0, operation.BoardNotes);
             if (operation.Touches is { } carriedTouches)
             {
                 ErrorLog.Info($"Touches: {carriedTouches.Count} went to Thinking " +
@@ -1943,7 +1991,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             // Straight to Thinking: the exchange is kept now and its words replace what stands in for them once
                             // speech-to-text has them; the record of conversations, memory and learning names follow then.
                             var exchange = context.Add(Saw(VoicePromptContext.Prefix(operation.Heard) + LiveConversationConfiguration.VoiceOnlyText)!,
-                                kept, configured.HostTarget() is null ? Saw(operation.Sent?.SentUserText) : null);
+                                kept, configured.HostTarget() is null ? Saw(operation.WithBoardKept(operation.Sent?.KeptUserText)) : null);
                             ConversationContextBuffer.Pending(exchange,
                                 KeepWordsAsync(new(operation, configured, conversation, earlier, exchange, turn.Content.Text, passed, sawLine)));
                         }
@@ -1954,7 +2002,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             said = operation.Touch && operation.Touches is { } reacted ? reacted.HistoryLine
                                 : operation.PcAudio ? input!.UserText : VoicePromptContext.Prefix(operation.Heard) + input!.UserText;
                             // A pass stays in the conversation too, so later replies know what was said around Martlet.
-                            context.Add(Saw(said)!, kept, configured.HostTarget() is null ? Saw(operation.Sent?.SentUserText) : null);
+                            context.Add(Saw(said)!, kept, configured.HostTarget() is null ? Saw(operation.WithBoardKept(operation.Sent?.KeptUserText)) : null);
                             // The record of conversations keeps the user's own words (never what the PC played) and the reply,
                             // written in the background after the reply. A pass wasn't said to Martlet, and glances never get here.
                             if (!passed && this.history is { } historyRecord && historyRecord.Active(configured.Memory) &&
@@ -2147,7 +2195,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             var current = conversationId == keep.Conversation;
             // A picture that came with the message stays noted after its words (VisionHistory).
             if (current) filled = context.Fill(keep.Exchange, keep.SawLine is null ? said : VisionHistory.After(said, keep.SawLine),
-                hostless && sent is not null ? keep.SawLine is null ? sent.SentUserText : VisionHistory.After(sent.SentUserText, keep.SawLine) : null);
+                hostless && sent is not null ? keep.SawLine is null ? operation.WithBoardKept(sent.KeptUserText) : VisionHistory.After(operation.WithBoardKept(sent.KeptUserText)!, keep.SawLine) : null);
             if (!keep.Passed && history is { } historyRecord && historyRecord.Active(keep.Configured.Memory))
             {
                 historyRecord.Record(keep.Conversation, HistoryInputKind.Spoken, userWords, keep.Reply,

@@ -27,6 +27,21 @@ public sealed class ChatCompletionsTests
         Chunk("Hello ") + Chunk("world.", "stop") + "data: [DONE]\n\n";
 
     [Fact]
+    public void Context_notes_are_sent_last_but_never_kept()
+    {
+        var input = new BoundedTextInput("Words", "Persona", notes: "Notes", context: "Board");
+        Assert.Equal("Words\n\nNotes\n\nBoard", input.SentUserText);
+        Assert.Equal("Words\n\nNotes", input.KeptUserText);
+        Assert.StartsWith(input.KeptUserText, input.SentUserText);
+        Assert.Equal("Persona\n\nNotes\n\nBoard", input.PersonalityWithNotes);
+        var bare = new BoundedTextInput("Words", context: "Board");
+        Assert.Equal("Words\n\nBoard", bare.SentUserText);
+        Assert.Equal("Words", bare.KeptUserText);
+        Assert.Equal("Board", bare.PersonalityWithNotes);
+        Assert.True(input.Utf8Bytes > new BoundedTextInput("Words", "Persona", notes: "Notes").Utf8Bytes);
+    }
+
+    [Fact]
     public async Task Production_http_path_sends_explicit_context_and_optional_scoped_key()
     {
         foreach (var keyed in new[] { false, true })
@@ -39,7 +54,7 @@ public sealed class ChatCompletionsTests
             var stream = adapter.Stream(context, Model,
                 new("Current message", "Persona and explicitly selected memory",
                     [new(TextHistoryRole.User, "History question"), new(TextHistoryRole.Assistant, "History answer")],
-                    notes: "Per-turn notes"),
+                    notes: "Per-turn notes", context: "Board notes"),
                 limits, Authorize(context, limits, server.BaseUrl));
             var result = await TextFixtures.Collect(stream);
             Assert.Equal(TextGenerationOutcome.Completed, result.Result.Outcome);
@@ -57,7 +72,7 @@ public sealed class ChatCompletionsTests
             var messages = root.GetProperty("messages").EnumerateArray().ToArray();
             Assert.Equal(new[] { "system", "user", "assistant", "user" }, messages.Select(m => m.GetProperty("role").GetString()));
             Assert.Equal("Persona and explicitly selected memory", messages[0].GetProperty("content").GetString());
-            Assert.Equal("Current message\n\nPer-turn notes", messages[3].GetProperty("content").GetString());
+            Assert.Equal("Current message\n\nPer-turn notes\n\nBoard notes", messages[3].GetProperty("content").GetString());
             Assert.Equal(keyed ? 1 : 0, credentials.Calls);
         }
     }

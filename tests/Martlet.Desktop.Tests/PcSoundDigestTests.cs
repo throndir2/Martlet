@@ -102,13 +102,15 @@ public sealed class PcSoundDigestTests
         {
             var buffer = new PcSoundBuffer();
             var posted = new List<SoundDigestLine>();
+            var board = new Martlet.Conversation.ContextBoard();
             ISoundJudge? pool = null;
-            using var digest = new PcSoundDigest(buffer, () => false, () => pool, posted.Add, directory,
+            using var digest = new PcSoundDigest(buffer, () => false, () => pool, board, directory,
                 new FixedJudge("Music: J-pop with singing; laughter"), options: new() { Interval = Timeout.InfiniteTimeSpan });
             Assert.Equal(SoundJudgeKind.Cpu, digest.Status.JudgeKind);
             pool = new Pool();
             Assert.Equal(SoundJudgeKind.Pool, digest.Status.JudgeKind);
             pool = null;
+            digest.Posted += posted.Add;
             digest.On = true;
             var tone = new byte[10 * PcSoundBuffer.SampleRate * 2];
             for (var i = 0; i < tone.Length / 2; i++)
@@ -118,6 +120,14 @@ public sealed class PcSoundDigestTests
             await digest.Scheduler.Idle;
             Assert.Equal("Music: J-pop with singing; laughter", Assert.Single(posted).Text);
             Assert.Equal("Music: J-pop with singing; laughter", digest.Fresh?.Text);
+            var note = Assert.Single(board.Snapshot(DateTimeOffset.UtcNow).Notes);
+            Assert.Equal(Martlet.Conversation.ContextBoard.Sound, note.Source);
+            Assert.Equal("Sound playing on this PC besides speech: Music: J-pop with singing; laughter.", note.Text);
+            Assert.Equal(TimeSpan.FromSeconds(45), note.MaxAge);
+            var note = Assert.Single(board.Snapshot(DateTimeOffset.UtcNow).Notes);
+            Assert.Equal(Martlet.Conversation.ContextBoard.Sound, note.Source);
+            Assert.Equal("Sound playing on this PC besides speech: Music: J-pop with singing; laughter.", note.Text);
+            Assert.Equal(TimeSpan.FromSeconds(45), note.MaxAge);
             var json = File.ReadAllText(Path.Combine(directory, PcSoundDigest.StatusFile));
             Assert.DoesNotContain("J-pop", json, StringComparison.Ordinal);
             using (var document = JsonDocument.Parse(json))
@@ -130,6 +140,7 @@ public sealed class PcSoundDigestTests
             }
             digest.On = false;
             Assert.Equal(TimeSpan.Zero, buffer.Buffered);
+            Assert.Empty(board.Snapshot(DateTimeOffset.UtcNow).Notes);
             Assert.False(JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, PcSoundDigest.StatusFile))).RootElement.GetProperty("on").GetBoolean());
         }
         finally { Directory.Delete(directory, recursive: true); }

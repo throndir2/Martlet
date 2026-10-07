@@ -50,8 +50,9 @@ internal sealed class ConversationContextBuffer
     /// so a snapshot's indices can be matched with the buffer later.</summary>
     internal long Start => removed;
 
-    /// <summary>Keeps an exchange. <paramref name="sent"/> is the user's message exactly as the Thinking model got it (the words
-    /// and Martlet's notes): the next replies send it again as it was (see <see cref="Snapshot"/>), so each request starts like
+    /// <summary>Keeps an exchange. <paramref name="sent"/> is the user's message as the Thinking model got it (the words and
+    /// Martlet's notes, <see cref="Martlet.Providers.BoundedTextInput.KeptUserText"/>; the context board's notes are left out, so
+    /// it is the start of what was sent): the next replies send it again as it was (see <see cref="Snapshot"/>), so each request starts like
     /// the one before and the provider's prompt cache (or Ollama's, which reuses only a request that starts with a whole earlier
     /// one) holds it. Null for a paired host, which gets the notes with its instructions. Returns the exchange, for
     /// <see cref="Fill"/>.</summary>

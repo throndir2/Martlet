@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using Martlet.Audio;
+using Martlet.Conversation;
 using Martlet.Sherpa;
 
 namespace Martlet.Desktop;
@@ -15,12 +16,10 @@ namespace Martlet.Desktop;
 internal sealed class PcSoundDigest : IDisposable
 {
     internal const string StatusFile = "sound-digest.json";
-    /// <summary>The context board's source name for the sound digest's line.</summary>
-    internal const string Source = "sound";
     private readonly SoundDigestScheduler scheduler;
     private readonly CpuSoundJudge? cpu;
     private readonly Func<ISoundJudge?> pool;
-    private readonly Action<SoundDigestLine>? board;
+    private readonly ContextBoard? board;
     private readonly string? dataDirectory;
     private readonly TimeProvider clock;
     private readonly object writing = new();
@@ -28,9 +27,9 @@ internal sealed class PcSoundDigest : IDisposable
     /// <param name="buffer">What the PC capture keeps for the digest.</param>
     /// <param name="martletAudible">Martlet's own voice may be in what the PC plays right now.</param>
     /// <param name="pool">An audio-capable Thinking pool member's judge, or null when the pool has none.</param>
-    /// <param name="board">Where each line goes for the next reply (the context board).</param>
+    /// <param name="board">Where each line goes for the next reply (the context board, source "sound").</param>
     internal PcSoundDigest(PcSoundBuffer buffer, Func<bool> martletAudible, Func<ISoundJudge?>? pool = null,
-        Action<SoundDigestLine>? board = null, string? dataDirectory = null, ISoundJudge? cpuJudge = null,
+        ContextBoard? board = null, string? dataDirectory = null, ISoundJudge? cpuJudge = null,
         string? appDirectory = null, SoundDigestOptions? options = null)
     {
         this.pool = pool ?? (() => null);
@@ -39,12 +38,21 @@ internal sealed class PcSoundDigest : IDisposable
         clock = buffer.Clock;
         if (cpuJudge is null && SoundTagger.Included(appDirectory)) cpu = new CpuSoundJudge(new SoundTagger(appDirectory));
         var fallback = cpuJudge ?? cpu;
-        scheduler = new SoundDigestScheduler(buffer, () => this.pool() ?? fallback, martletAudible, Posted, options);
+        scheduler = new SoundDigestScheduler(buffer, () => this.pool() ?? fallback, martletAudible, Post, options);
         scheduler.Changed += WriteStatus;
     }
 
     /// <summary>Whether the digest runs now (the talk window turns it on while it hears this PC with Describe PC sounds on).</summary>
-    internal bool On { get => scheduler.On; set => scheduler.On = value; }
+    internal bool On
+    {
+        get => scheduler.On;
+        set
+        {
+            scheduler.On = value;
+            // A line about what played before is no use once Martlet no longer hears the PC.
+            if (!value) board?.Clear(ContextBoard.Sound);
+        }
+    }
 
     internal SoundDigestStatus Status => scheduler.Status;
 
@@ -60,7 +68,17 @@ internal sealed class PcSoundDigest : IDisposable
         remove => scheduler.Changed -= value;
     }
 
-    private void Posted(SoundDigestLine line) => board?.Invoke(line);
+    /// <summary>Raised off the dispatcher with each new line (after it went to the board).</summary>
+    internal event Action<SoundDigestLine>? Posted;
+
+    private void Post(SoundDigestLine line)
+    {
+        board?.Post(ContextBoard.Sound, Note(line.Text), clock.GetUtcNow() - clock.GetElapsedTime(line.At), scheduler.Options.MaximumAge);
+        Posted?.Invoke(line);
+    }
+
+    /// <summary>The note the reply reads: what plays on the PC besides words, as the judge described it.</summary>
+    internal static string Note(string line) => $"Sound playing on this PC besides speech: {line.TrimEnd('.')}.";
 
     /// <summary>Which judge describes the sound, for Companion: the pool model or the CPU sound tagger, or why there is none.</summary>
     internal static string JudgeText(string? judge, SoundJudgeKind? kind) => kind switch
