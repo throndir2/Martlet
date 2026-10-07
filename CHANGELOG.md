@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.52.0] - 2026-10-06
+
 ### Added
 - Characters can show anime emote symbols drawn over their face: a sweat drop, an anger vein, floating hearts, sparkles, tears, gloom lines, a question or exclamation mark, a sleepy Zzz and music notes, on every Live2D model and VRM. Sweat, hearts, gloom and Zzz can stay on until they're turned off. ([#516](https://github.com/throndir2/Martlet/pull/516))
 - Martlet reads the text on your screen while it watches: new text such as a score, "Victory" or a new message makes it more likely to look, and each look gets the words it read. Choose where it reads in the new Companion › Reading page: Windows' own text recognition on this PC (the default; fast and private), or Martlet's new Reading role (RapidOCR, often better with game fonts) on this PC or another of your computers, without a graphics card. Your own messages never wait for it. ([#515](https://github.com/throndir2/Martlet/pull/515))
