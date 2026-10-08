@@ -109,13 +109,17 @@ public enum ThinkingJobOutcome { Succeeded, NoMember, Stale, Failed, TimedOut, P
 
 /// <summary>A member's answer to one attempt: its text, or that it was busy, unavailable or failed (try the next member).
 /// <see cref="HeldForLive"/>: the member's computer keeps its graphics card for a live conversation turn (its own or another
-/// companion PC's), so the job waits and tries again; it is not a failure of the member.</summary>
+/// companion PC's), so the job waits and tries again; it is not a failure of the member. <see cref="Refused"/>: the member's
+/// computer refused the request itself as invalid (a paired computer's gateway answered request.invalid), so it would refuse the
+/// same kind of job again: the board passes it over for such jobs for a while (<see cref="ThinkingJobBoard.RefusedRest"/>).</summary>
 public sealed record ThinkingAnswer(string? Text, string? Problem = null, bool Cut = false)
 {
     public bool HeldForLive { get; init; }
+    public bool Refused { get; init; }
     public static ThinkingAnswer Done(string text, bool cut = false) => new(text, null, cut);
     public static ThinkingAnswer Failed(string problem) => new(null, problem);
     public static ThinkingAnswer Held(string problem) => new(null, problem) { HeldForLive = true };
+    public static ThinkingAnswer Rejected(string problem) => new(null, problem) { Refused = true };
     public override string ToString() => $"{nameof(ThinkingAnswer)} (problem: {Problem is not null})";
 }
 
@@ -154,6 +158,10 @@ public sealed record ThinkingPoolMemberStatus(string Id, string Name, int Slots,
     public bool Online { get; init; } = true;
 }
 
+/// <summary>A member the board passes over until <paramref name="Until"/> for jobs that need at least <paramref name="Needs"/>,
+/// because its computer refused such a request as invalid (<see cref="ThinkingAnswer.Refused"/>).</summary>
+public sealed record ThinkingPoolRest(string Id, string Name, ThinkingCapability Needs, DateTimeOffset Until);
+
 /// <summary>What the Thinking pool does now (no job text): its members, slots, the slot kept free for fast kinds, running and
 /// waiting jobs by kind, and guidance. <see cref="Slots"/> and <see cref="Free"/> count the members whose computers answer now;
 /// <see cref="ConfiguredSlots"/> counts every member. With the live floor: its level (<see cref="Floor"/>), the waiting jobs
@@ -170,6 +178,8 @@ public sealed record ThinkingPoolStatus(IReadOnlyList<ThinkingPoolMemberStatus> 
     public IReadOnlyDictionary<string, int> Stopped { get; init; } = new Dictionary<string, int>();
     /// <summary>The members that share the live conversation's hardware (their place IDs).</summary>
     public IReadOnlyList<string> SharesLive { get; init; } = [];
+    /// <summary>The members the board passes over for a while because their computer refused a request as invalid.</summary>
+    public IReadOnlyList<ThinkingPoolRest> Resting { get; init; } = [];
 }
 
 /// <summary>The Thinking pool's job board: one in-process board for every Thinking pool job. Members are places
@@ -183,14 +193,21 @@ public sealed record ThinkingPoolStatus(IReadOnlyList<ThinkingPoolMemberStatus> 
 /// (<see cref="LiveFloorRules"/>, the broker's <see cref="BackgroundPlaces.Rules"/>) decide besides: a job they stop (or a member
 /// whose computer holds its graphics card for a live turn, <see cref="ThinkingAnswer.HeldForLive"/>) waits in line again and runs
 /// later, except a summary (<see cref="ThinkingJobKind.Digest"/>), which is dropped (<see cref="ThinkingJobOutcome.Preempted"/>).
+/// A member whose computer refused a request as invalid (<see cref="ThinkingAnswer.Refused"/>) rests for
+/// <see cref="RefusedRest"/>: the board gives it no job that needs at least what the refused job needed, so the pool never sends
+/// that computer request after request it refuses.
 /// Thread-safe.</summary>
 public sealed class ThinkingJobBoard
 {
     /// <summary>How long a job waits before it asks a member again whose computer held its graphics card for a live turn.</summary>
     public static TimeSpan HeldRetry { get; } = TimeSpan.FromSeconds(1);
+    /// <summary>How long a member whose computer refused a request as invalid gets no job that needs at least what that job
+    /// needed: the refusal comes again for each such job until that computer and this PC run versions that agree.</summary>
+    public static TimeSpan RefusedRest { get; } = TimeSpan.FromMinutes(10);
     private readonly Func<IReadOnlyList<BackgroundPlace>> members;
     private readonly Func<BackgroundPlace, ThinkingJob, CancellationToken, Task<ThinkingAnswer>> run;
     private readonly TimeProvider clock;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, ThinkingPoolRest> rests = new(StringComparer.Ordinal);
     private long number;
 
     /// <param name="members">The pool's members now (read on each call, so a settings change takes effect at once), whether their
@@ -215,24 +232,27 @@ public sealed class ThinkingJobBoard
     /// <summary>The members whose computers answer now.</summary>
     public IReadOnlyList<BackgroundPlace> Online => [.. Members.Where(Places.Answers)];
 
+    /// <summary>Raised on the job's thread when a member starts to rest (<see cref="RefusedRest"/>), after the board recorded it.</summary>
+    public event Action<ThinkingPoolRest>? Rested;
+
     /// <summary>Whether a member that answers now can take a job of <paramref name="kind"/> that needs <paramref name="needs"/>,
     /// without posting it (no waiting and no slot taken): callers choose their fallback when it is false.</summary>
     public bool CanRun(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text) =>
-        Online.Any(member => (member.Can & needs) == needs);
+        Online.Any(member => Takes(member, needs));
 
     /// <summary>Whether a member that can take such a job may start it now (it answers, and the live floor's rules allow it; no
     /// slot taken), so a caller doesn't prepare work no member would take before it is stale.</summary>
     public bool MayStartNow(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text)
     {
         var rules = Places.Rules;
-        return Online.Any(member => (member.Can & needs) == needs && (rules?.MayStart(member, kind) ?? true));
+        return Online.Any(member => Takes(member, needs) && (rules?.MayStart(member, kind) ?? true));
     }
 
     /// <summary>Whether a member that answers and can take such a job shares no hardware with the live conversation (no slot taken).</summary>
     public bool CanRunBeside(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text)
     {
         var rules = Places.Rules;
-        return Online.Any(member => (member.Can & needs) == needs && rules?.Shares(member) != true);
+        return Online.Any(member => Takes(member, needs) && rules?.Shares(member) != true);
     }
 
     /// <summary>The member a job of <paramref name="kind"/> needing <paramref name="needs"/> would go to first when every slot is
@@ -241,8 +261,24 @@ public sealed class ThinkingJobBoard
     public BackgroundPlace? Find(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text)
     {
         var rules = Places.Rules;
-        return Online.Where(member => (member.Can & needs) == needs)
+        return Online.Where(member => Takes(member, needs))
             .OrderBy(member => rules?.Avoid(member) == true ? 1 : 0).ThenBy(member => member.Standing).FirstOrDefault();
+    }
+
+    // A member takes a job when it can do what the job needs and doesn't rest for such jobs.
+    private bool Takes(BackgroundPlace member, ThinkingCapability needs) => (member.Can & needs) == needs && !Rests(member, needs);
+
+    // A member rests for the jobs that need at least what a job it refused needed, until its rest ends.
+    private bool Rests(BackgroundPlace member, ThinkingCapability needs) =>
+        rests.TryGetValue(member.Id, out var rest) && (needs & rest.Needs) == rest.Needs && rest.Until > clock.GetUtcNow();
+
+    private void Rest(BackgroundPlace member, ThinkingCapability needs)
+    {
+        var now = clock.GetUtcNow();
+        // A member that already rests for other jobs rests for what both refused jobs needed (the wider set of jobs).
+        var rest = rests.AddOrUpdate(member.Id, _ => new(member.Id, member.Name, needs, now + RefusedRest),
+            (_, old) => new(member.Id, member.Name, old.Until > now ? old.Needs & needs : needs, now + RefusedRest));
+        Rested?.Invoke(rest);
     }
 
     /// <summary>Runs <paramref name="job"/> on the pool (see the class summary) and returns its result. A pool without a capable
@@ -257,6 +293,11 @@ public sealed class ThinkingJobBoard
         var pool = Members;
         var capable = pool.Where(member => (member.Can & needs) == needs).ToArray();
         if (capable.Length == 0) return ThinkingJobResult.NoMember(needs);
+        // A computer that refused such a request as invalid gets no more of them until its rest ends; the caller's fallback runs.
+        if (capable.All(member => Rests(member, needs)))
+            return new(ThinkingJobOutcome.NoMember, null, null, null,
+                $"{string.Join(", ", capable.Select(member => member.Name))} refused such a request as invalid a short time ago", 0);
+        capable = [.. capable.Where(member => !Rests(member, needs))];
         if (!capable.Any(Places.Answers)) return ThinkingJobResult.Offline(needs);
         var holder = $"{ThinkingJobKinds.Name(job.Kind)}-{Interlocked.Increment(ref number)}";
         if (holder.Length > 64) holder = holder[..64];
@@ -277,7 +318,7 @@ public sealed class ThinkingJobBoard
         }
         while (true)
         {
-            var left = capable.Where(member => !tried.Contains(member.Id)).ToArray();
+            var left = capable.Where(member => !tried.Contains(member.Id) && !Rests(member, needs)).ToArray();
             if (left.Length == 0)
                 return new(ThinkingJobOutcome.Failed, null, null, null, problem ?? "no member could do it", attempts) { Preemptions = preemptions };
             // The members left are all offline (one may have stopped answering during the last attempt): don't wait for them.
@@ -334,6 +375,7 @@ public sealed class ThinkingJobBoard
                 {
                     problem = answer.Problem ?? $"{member.Name} came back empty";
                     tried.Add(member.Id);
+                    if (answer.Refused) Rest(member, needs);
                 }
             }
             if (!pause) continue;
@@ -345,7 +387,15 @@ public sealed class ThinkingJobBoard
     private static string Wait(TimeSpan time) => time < TimeSpan.FromSeconds(1) ? $"{time.TotalMilliseconds:0} ms" : BackgroundJobs.Duration(time);
 
     /// <summary>What the pool does now, with guidance in plain words.</summary>
-    public ThinkingPoolStatus Status() => Describe(Members, Places);
+    public ThinkingPoolStatus Status()
+    {
+        var pool = Members;
+        var now = clock.GetUtcNow();
+        return Describe(pool, Places) with
+        {
+            Resting = [.. rests.Values.Where(rest => rest.Until > now && pool.Any(member => member.Id == rest.Id)).OrderBy(rest => rest.Id, StringComparer.Ordinal)]
+        };
+    }
 
     /// <summary>The status of <paramref name="pool"/> on <paramref name="places"/>.</summary>
     public static ThinkingPoolStatus Describe(IReadOnlyList<BackgroundPlace> pool, BackgroundPlaces places)

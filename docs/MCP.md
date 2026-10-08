@@ -209,9 +209,13 @@ priority, whether it is fast and whether a member can run it (`canRun`);
 guidance and likely-slowdown warnings; and the desktop's
 `thinking-pool-status.json` (`leftByOwner`, running and waiting jobs by kind, the live floor's
 level, the jobs waiting for the conversation and the ones it stopped this turn
-and in all, never a job's text). `thinking_pool_check` rehearses the production job board with simulated
+and in all, `resting`: each member whose computer refused a request as invalid
+with what such jobs need and when it gets them again, never a job's text).
+`thinking_pool_check` rehearses the production job board with simulated
 members (NOT models): no member, capabilities, the fast slot, priorities, retry
-on another member, a stale job dropped and the migration. Its `auto-join` steps
+on another member, a stale job dropped, the migration, and a member that
+refused a request as invalid resting for such jobs while it still takes the
+others. Its `auto-join` steps
 run the production rule (`ThinkingPoolAutoJoin`) on sample hosts: a host with
 the Thinking pool role joins with its slots, an Ollama-only host joins unless it
 does this PC's Thinking, a member on Ollama moves to the role, and a computer
@@ -1081,7 +1085,11 @@ bound fits the saved settings; a think on the
 Deep thinking route is held mid-answer while a reply streams on Thinking's
 route, and the reply finishes first (parallel, never queued); each request
 reached its own Ollama (the think with `"think":true`, its own model and a
-32,768-token context, the reply without Thinking steps); two thinks run at once
+32,768-token context, the reply without Thinking steps); a Thinking pool job's
+request (remembering: a budget of 25,600 tokens, the role's largest 32,768-token
+window and Thinking steps off) is accepted and loads that window (Martlet 0.54.0
+sent the budget as `maximum_context_tokens` below `context_tokens`, and the
+gateway refused it with `request.invalid`); two thinks run at once
 on the Deep thinking role's two slots (`OllamaRelayWorker.DeepThinking` with
 `slots: 2`, advertised as the route's `maximum_concurrency` and read as
 `HostRoute.MaximumConcurrency`) while a reply streams, a third is turned away
