@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.61.0] - 2026-10-08
+
 ### Added
 
 - Recommended setup lists every part of Martlet in priority order: what it needs, what's optional, where each part runs, and **Off** with the reason. Tick **Off** on an optional part (advanced lip-sync, Deep thinking, singing, pictures) to plan without it. ([#651](https://github.com/throndir2/Martlet/pull/651))
