@@ -29,6 +29,12 @@ public sealed class CharacterGazeModeTests
         Assert.Equal(("ahead", null), Aim(GazeMode.Ahead, Near));
         Assert.Equal(("window", new ScreenPoint(700, 500)), CharacterGaze.Aim(GazeMode.Window, null, false, Far, Frame, new ScreenRect(100, 100, 1200, 800)));
         Assert.Equal(("ahead", null), CharacterGaze.Aim(GazeMode.Window, null, false, Far, Frame, null));
+        // Where you work in the window you use, while it is still in the window; else its middle.
+        Assert.Equal(("window", new ScreenPoint(1150, 820)),
+            CharacterGaze.Aim(GazeMode.Window, null, false, Far, Frame, new ScreenRect(100, 100, 1200, 800), new ScreenPoint(1150, 820)));
+        Assert.Equal(("window", new ScreenPoint(700, 500)),
+            CharacterGaze.Aim(GazeMode.Window, null, false, Far, Frame, new ScreenRect(100, 100, 1200, 800), new ScreenPoint(1700, 950)));
+        Assert.Equal(("ahead", null), CharacterGaze.Aim(GazeMode.Window, null, false, Far, Frame, null, new ScreenPoint(1150, 820)));
         // A touch turns the eyes to the mouse whatever the gaze; a point Martlet asked for wins over both.
         Assert.Equal(("mouse", Far), CharacterGaze.Aim(GazeMode.Ahead, null, true, Far, Frame, null));
         Assert.Equal(("point", new ScreenPoint(5, 6)), CharacterGaze.Aim(GazeMode.Ahead, new ScreenPoint(5, 6), true, Far, Frame, null));
@@ -39,6 +45,84 @@ public sealed class CharacterGazeModeTests
         Assert.False(CharacterGaze.IsNear(new ScreenRect(0, 0, 0, 0), Near));
 
         static (string, ScreenPoint?) Aim(GazeMode mode, ScreenPoint? mouse) => CharacterGaze.Aim(mode, null, false, mouse, Frame, null);
+    }
+
+    [Fact]
+    public void The_window_gaze_watches_where_you_point_and_type_in_the_window_you_use()
+    {
+        var editor = new ScreenRect(100, 100, 1200, 800);
+        var onCharacter = new ScreenPoint(1600, 700);
+        var watch = new WindowWatch();
+        (string? Watching, ScreenPoint? At) Moment(nint used, ScreenRect? area, ScreenPoint? pointer, bool over, ScreenPoint? caret = null)
+        {
+            watch.Update(used, pointer, over, caret);
+            return (watch.Watching(area), CharacterGaze.Aim(GazeMode.Window, null, false, pointer, Frame, area, watch.Working).At);
+        }
+
+        // Switched to with the keyboard, with the pointer on the character: the window's middle.
+        Assert.Equal((WindowWatch.Middle, editor.Middle), Moment(1, editor, onCharacter, false));
+        // The pointer moving over the window draws the eyes; on the character it doesn't, and they stay where you pointed.
+        Assert.Equal((WindowWatch.Pointer, new ScreenPoint(400, 300)), Moment(1, editor, new(400, 300), true));
+        Assert.Equal((WindowWatch.Pointer, new ScreenPoint(400, 300)), Moment(1, editor, onCharacter, false));
+        // Typing moves the text cursor, which the eyes follow while the pointer rests.
+        Assert.Equal((WindowWatch.TextCursor, new ScreenPoint(250, 180)), Moment(1, editor, onCharacter, false, new(250, 180)));
+        Assert.Equal((WindowWatch.TextCursor, new ScreenPoint(320, 180)), Moment(1, editor, onCharacter, false, new(320, 180)));
+        // A text cursor that can't be read for a moment (the character's menu in front) and comes back isn't typing.
+        Assert.Equal((WindowWatch.TextCursor, new ScreenPoint(320, 180)), Moment(1, editor, null, false));
+        Assert.Equal((WindowWatch.Pointer, new ScreenPoint(900, 600)), Moment(1, editor, new(900, 600), true, new(320, 180)));
+        Assert.Equal((WindowWatch.Pointer, new ScreenPoint(900, 600)), Moment(1, editor, new(900, 600), true, new(320, 180)));
+        // Another window starts at its text cursor; the desktop in front has none (straight ahead); a click back starts there.
+        Assert.Equal((WindowWatch.TextCursor, new ScreenPoint(500, 700)), Moment(2, new ScreenRect(200, 150, 900, 700), onCharacter, false, new(500, 700)));
+        Assert.Equal(((string?)null, (ScreenPoint?)null), Moment(0, null, onCharacter, false));
+        Assert.Equal((WindowWatch.Pointer, new ScreenPoint(700, 500)), Moment(1, editor, new(700, 500), true));
+        // A place left outside the window (it was resized or moved) gives way to its middle.
+        Assert.Equal((WindowWatch.Middle, new ScreenPoint(300, 300)), Moment(1, new ScreenRect(200, 200, 200, 200), new(700, 500), false));
+        Assert.True(editor.Contains(new ScreenPoint(100, 100)));
+        Assert.False(editor.Contains(new ScreenPoint(1300, 500)));
+    }
+
+    [Fact]
+    public void The_overlay_surface_reads_where_the_character_looks_on_request()
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var viewport = new CharacterViewport();
+                var reads = 0;
+                viewport.ReadLook = () => viewport.LastLook =
+                    $$"""{"n":{{++reads}},"target":"window","x":-0.4,"y":0.1,"usual":"window","watching":"pointer"}""";
+                var value = (System.Windows.Automation.Provider.IValueProvider)System.Windows.Automation.Peers.UIElementAutomationPeer
+                    .CreatePeerForElement(viewport).GetPattern(System.Windows.Automation.Peers.PatternInterface.Value);
+                Assert.Equal("", value.Value);
+                value.SetValue("look");
+                value.SetValue("look");
+                var look = JsonDocument.Parse(value.Value).RootElement.GetProperty("look");
+                Assert.Equal((2, "pointer"), (look.GetProperty("n").GetInt32(), look.GetProperty("watching").GetString()));
+                // A tap's reading stays as it was, with the look beside it.
+                viewport.LastTouch = """{"n":1,"hit":true}""";
+                var reading = JsonDocument.Parse(value.Value).RootElement;
+                Assert.True(reading.GetProperty("hit").GetBoolean());
+                Assert.Equal("window", reading.GetProperty("look").GetProperty("target").GetString());
+            }
+            catch (Exception error) { failure = error; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        if (failure is not null) throw failure;
+
+        static JsonElement Look(string text) => JsonDocument.Parse(text).RootElement.Clone();
+        var summary = JsonDocument.Parse(JsonSerializer.Serialize(Martlet.Mcp.DesktopAutomation.LookSummary(
+        [
+            Look("""{"n":1,"target":"window","x":-1,"y":0.14,"watching":"middle"}"""),
+            Look("""{"n":2,"target":"window","x":-0.31,"y":-0.2,"watching":"pointer"}"""),
+            Look("""{"n":3,"target":"window","x":-0.31,"y":-0.2,"watching":"pointer"}""")
+        ]))).RootElement;
+        Assert.Equal(["window"], summary.GetProperty("targets").EnumerateArray().Select(t => t.GetString()));
+        Assert.Equal(["middle", "pointer"], summary.GetProperty("watching").EnumerateArray().Select(t => t.GetString()));
+        Assert.Equal((-1, -0.31), (summary.GetProperty("x").GetProperty("least").GetDouble(), summary.GetProperty("x").GetProperty("most").GetDouble()));
     }
 
     [Fact]
@@ -365,7 +449,7 @@ public sealed class CharacterGazeModeTests
         try
         {
             var fresh = JsonSerializer.SerializeToElement(Martlet.Mcp.GazeCheck.Run(directory, null));
-            Assert.True(fresh.GetProperty("ok").GetBoolean(), fresh.GetProperty("aim").ToString());
+            Assert.True(fresh.GetProperty("ok").GetBoolean(), fresh.GetProperty("aim").ToString() + fresh.GetProperty("watch"));
             Assert.Equal("usual gaze", fresh.GetProperty("saved").GetString());
             var usual = fresh.GetProperty("usual");
             Assert.Equal(("personality", "mouse", "default", true), (usual.GetProperty("choice").GetString(), usual.GetProperty("gaze").GetString(),
@@ -375,7 +459,14 @@ public sealed class CharacterGazeModeTests
             var hmph = fresh.GetProperty("replies").EnumerateArray().Single(r => r.GetProperty("answer").GetString() == "{look ahead} Hmph. Whatever.");
             Assert.Equal("ahead", hmph.GetProperty("gazes")[0].GetProperty("gaze").GetString());
             Assert.Equal("Hmph. Whatever.", string.Join(" ", hmph.GetProperty("spoken").EnumerateArray().Select(s => s.GetString())));
-            Assert.Equal(8, fresh.GetProperty("aim").GetArrayLength());
+            Assert.Equal(10, fresh.GetProperty("aim").GetArrayLength());
+            // The window gaze's rehearsal: where you point or type in the window you use, its middle until then, nothing without one.
+            var watch = fresh.GetProperty("watch").EnumerateArray().ToDictionary(m => m.GetProperty("name").GetString()!, m => m);
+            Assert.All(watch.Values, moment => Assert.True(moment.GetProperty("ok").GetBoolean(), moment.ToString()));
+            Assert.Equal("middle", watch["switchedWithTheKeyboard"].GetProperty("watching").GetString());
+            Assert.Equal("text cursor", watch["pointerOnTheCharacter"].GetProperty("watching").GetString());
+            Assert.Equal("pointer", watch["pointerBackOnTheCharacter"].GetProperty("watching").GetString());
+            Assert.Equal("ahead", watch["desktopInFront"].GetProperty("target").GetString());
 
             var persona = Guid.NewGuid();
             await CharacterTouchTemperaments.SaveAsync(directory, CharacterTouchTemperaments.Parse("{\"gaze\":\"ahead\",\"groups\":{\"head\":{\"attitude\":0}}}",

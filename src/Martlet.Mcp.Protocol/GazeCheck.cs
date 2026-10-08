@@ -9,7 +9,9 @@ namespace Martlet.Mcp;
 /// <summary>character_gaze: where the character looks as saved in a data directory. Its usual gaze (talk-preferences.json
 /// GazeUsual and GazeFree: Companion › Character › Where the character looks and the overlay's Eyes menu; the persona's gaze in
 /// character-temperaments.json; else the mouse), what replies are told about it and an aim rehearsal of each gaze (the
-/// production CharacterGaze.Aim the overlay uses, with a mouse near and far from the character and a window). Then Companion ›
+/// production CharacterGaze.Aim the overlay uses, with a mouse near and far from the character and a window, with and without a
+/// place the user worked in it), and a watch rehearsal of the window gaze (the production WindowWatch on a sequence of moments).
+/// Then Companion ›
 /// Vision › Glances at your screen (DecideGaze: the usual gaze unless Martlet decides) and a rehearsal of the production decision
 /// (Martlet.Avatar.Hosting's CharacterGaze and GazeDirector) on generated pictures (NOT screenshots; nothing is captured or
 /// shown): each scenario is a screenshot before and after on a 1920×1080 screen, compared as the desktop compares them, with
@@ -38,6 +40,7 @@ internal static class GazeCheck
                 "{look ahead} Hmph. Whatever.", "Fine, fine. {look usual} I'm listening." };
         var (scenarios, ok) = Scenarios();
         var (aim, aimOk) = Aims();
+        var (watch, watchOk) = Watch();
         var (owner, free) = Usual(dataDirectory);
         var persona = Guid.TryParse(personaId, out var id) ? id : settings?.Companion?.ActivePersonaId;
         var temperament = persona is { } chosenPersona ? CharacterTouchTemperaments.Used(dataDirectory, chosenPersona) : null;
@@ -56,8 +59,9 @@ internal static class GazeCheck
                 // The note a reply gets while its own choice holds the eyes, for example one minute after it chose another gaze.
                 noteWhenChanged = CharacterGaze.Note(settings?.Prompts, gaze with { Chosen = other }, TimeSpan.FromMinutes(1))
             },
-            ok = ok && aimOk,
+            ok = ok && aimOk && watchOk,
             aim,
+            watch,
             grid = new { columns = CharacterGaze.Columns, rows = CharacterGaze.Rows, CharacterGaze.ChangeThreshold, CharacterGaze.CharacterChangeThreshold },
             holdSeconds = new { glance = CharacterGaze.GlanceHold.TotalSeconds, chosen = CharacterGaze.ChosenHold.TotalSeconds,
                 gap = CharacterGaze.GlanceGap.TotalSeconds },
@@ -117,7 +121,8 @@ internal static class GazeCheck
     }
 
     // Where the overlay turns the eyes for each gaze (CharacterGaze.Aim, the code the overlay runs every 50 ms): the character's
-    // frame near the lower-right corner, the mouse far from it or right beside it, and a window being used.
+    // frame near the lower-right corner, the mouse far from it or right beside it, and a window being used, with or without a
+    // place the user worked in it.
     private static (object[] Results, bool Ok) Aims()
     {
         ScreenPoint far = new(300, 300), near = new(1400, 700);
@@ -125,13 +130,14 @@ internal static class GazeCheck
         var results = new List<object>();
         var ok = true;
         void Aim(string name, string expected, GazeMode mode, ScreenPoint? mouse, ScreenRect? used = null, bool attending = false,
-            ScreenPoint? point = null)
+            ScreenPoint? point = null, ScreenPoint? working = null, ScreenPoint? expectedAt = null)
         {
-            var (target, at) = CharacterGaze.Aim(mode, point, attending, mouse, Frame, used);
-            ok &= target == expected;
+            var (target, at) = CharacterGaze.Aim(mode, point, attending, mouse, Frame, used, working);
+            var right = target == expected && (expectedAt is null || at == expectedAt);
+            ok &= right;
             results.Add(new
             {
-                name, gaze = CharacterGaze.Word(mode), expected, target, ok = target == expected,
+                name, gaze = CharacterGaze.Word(mode), expected, target, ok = right,
                 at = at is { } spot ? new { x = Math.Round(spot.X), y = Math.Round(spot.Y) } : null
             });
         }
@@ -139,10 +145,49 @@ internal static class GazeCheck
         Aim("nearModeMouseFar", "ahead", GazeMode.Near, far);
         Aim("nearModeMouseNear", "mouse", GazeMode.Near, near);
         Aim("aheadModeMouseNear", "ahead", GazeMode.Ahead, near);
-        Aim("windowMode", "window", GazeMode.Window, far, window);
+        Aim("windowMode", "window", GazeMode.Window, far, window, expectedAt: window.Middle);
+        Aim("windowModeWorking", "window", GazeMode.Window, far, window, working: new(1150, 820), expectedAt: new(1150, 820));
+        Aim("windowModeWorkedOutside", "window", GazeMode.Window, far, window, working: new(1700, 950), expectedAt: window.Middle);
         Aim("windowModeNoWindow", "ahead", GazeMode.Window, far);
         Aim("touchWhileAhead", "mouse", GazeMode.Ahead, far, attending: true);
         Aim("glanceWhileFollowing", "point", GazeMode.Mouse, far, point: new ScreenPoint(1700, 1000));
+        return ([.. results], ok);
+    }
+
+    // What the window gaze watches (the production WindowWatch with CharacterGaze.Aim, as the overlay runs them every 50 ms) over
+    // a sequence of moments: the window in use, the mouse pointer and whether it is over that window (not the character or
+    // another window), and its text cursor.
+    private static (object[] Results, bool Ok) Watch()
+    {
+        ScreenRect editor = new(100, 100, 1200, 800), chat = new(200, 150, 900, 700);
+        ScreenPoint onCharacter = new(1600, 700);
+        var watch = new WindowWatch();
+        var results = new List<object>();
+        var ok = true;
+        void Moment(string name, string? expected, ScreenPoint? expectedAt, nint used, ScreenRect? area, ScreenPoint? pointer, bool over,
+            ScreenPoint? textCursor = null)
+        {
+            watch.Update(used, pointer, over, textCursor);
+            var (target, at) = CharacterGaze.Aim(GazeMode.Window, null, false, pointer, Frame, area, watch.Working);
+            var watching = target == "window" ? watch.Watching(area) : null;
+            var right = watching == expected && at == expectedAt;
+            ok &= right;
+            results.Add(new
+            {
+                name, expected, watching, target, ok = right,
+                at = at is { } spot ? new { x = Math.Round(spot.X), y = Math.Round(spot.Y) } : null
+            });
+        }
+        Moment("switchedWithTheKeyboard", WindowWatch.Middle, editor.Middle, 1, editor, onCharacter, false);
+        Moment("pointerMovesOverTheWindow", WindowWatch.Pointer, new(400, 300), 1, editor, new(400, 300), true);
+        Moment("typingWhileThePointerRests", WindowWatch.TextCursor, new(250, 180), 1, editor, new(400, 300), true, new(250, 180));
+        Moment("typingOn", WindowWatch.TextCursor, new(320, 180), 1, editor, new(400, 300), true, new(320, 180));
+        Moment("pointerOnTheCharacter", WindowWatch.TextCursor, new(320, 180), 1, editor, onCharacter, false, new(320, 180));
+        Moment("pointerMovesOverTheWindowAgain", WindowWatch.Pointer, new(950, 640), 1, editor, new(950, 640), true, new(320, 180));
+        Moment("pointerBackOnTheCharacter", WindowWatch.Pointer, new(950, 640), 1, editor, onCharacter, false, new(320, 180));
+        Moment("anotherWindowWithATextCursor", WindowWatch.TextCursor, new(500, 700), 2, chat, onCharacter, false, new(500, 700));
+        Moment("desktopInFront", null, null, 0, null, onCharacter, false);
+        Moment("clickedBackIntoTheWindow", WindowWatch.Pointer, new(700, 500), 1, editor, new(700, 500), true);
         return ([.. results], ok);
     }
 

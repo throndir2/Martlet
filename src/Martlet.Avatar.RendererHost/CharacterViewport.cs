@@ -10,7 +10,8 @@ namespace Martlet.Avatar.RendererHost;
 /// open its menu through UI Automation's expand/collapse, move the character through its transform (like a drag), which
 /// is refused while its place is locked, tap it through its value ("x,y"), which then reads the last tap's hit test, read
 /// where Martlet draws over its face ("face"), take a picture of it as it shows ("picture"), read what its idle body does
-/// ("pose") and who moves its mouth ("mouth"), and move its mouth as Martlet's voice does ("voice:ms;level;...").
+/// ("pose"), who moves its mouth ("mouth") and where it looks ("look"), and move its mouth as Martlet's voice does
+/// ("voice:ms;level;...").
 /// </summary>
 internal sealed class CharacterViewport : Grid
 {
@@ -68,6 +69,14 @@ internal sealed class CharacterViewport : Grid
     /// surface's value.</summary>
     internal string LastMouth { get; set; } = "";
 
+    /// <summary>Reads where the character looks now; the reading arrives as <see cref="LastLook"/>.</summary>
+    internal Action? ReadLook { get; set; }
+
+    /// <summary>The last reading of where the character looks as JSON (its number, what the eyes are on, the direction and the
+    /// point, the usual gaze, and the window the user is using and what the eyes watch in it), or empty. Read as the "look"
+    /// field of this surface's value.</summary>
+    internal string LastLook { get; set; } = "";
+
     /// <summary>Moves the mouth with loudness levels (0 to 1), one every so many milliseconds, as Martlet's voice does, without
     /// a sound.</summary>
     internal Action<IReadOnlyList<double>, int>? PlayVoice { get; set; }
@@ -76,11 +85,11 @@ internal sealed class CharacterViewport : Grid
     internal const int MaximumVoiceLevels = 400;
 
     /// <summary>The value UI Automation reads: the last tap's hit test with the last stroke, physical change, face reading,
-    /// picture, pose reading and mouth reading added.</summary>
+    /// picture, pose reading, mouth reading and look reading added.</summary>
     internal string Reading()
     {
         if (LastStroke.Length == 0 && LastPhysical.Length == 0 && LastFace.Length == 0 && LastPicture.Length == 0 &&
-            LastPose.Length == 0 && LastMouth.Length == 0) return LastTouch;
+            LastPose.Length == 0 && LastMouth.Length == 0 && LastLook.Length == 0) return LastTouch;
         var node = (LastTouch.Length > 0 ? System.Text.Json.Nodes.JsonNode.Parse(LastTouch) as System.Text.Json.Nodes.JsonObject : null) ?? [];
         if (LastStroke.Length > 0) node["stroke"] = System.Text.Json.Nodes.JsonNode.Parse(LastStroke);
         if (LastPhysical.Length > 0) node["physical"] = System.Text.Json.Nodes.JsonNode.Parse(LastPhysical);
@@ -88,6 +97,7 @@ internal sealed class CharacterViewport : Grid
         if (LastPicture.Length > 0) node["picture"] = System.Text.Json.Nodes.JsonNode.Parse(LastPicture);
         if (LastPose.Length > 0) node["pose"] = System.Text.Json.Nodes.JsonNode.Parse(LastPose);
         if (LastMouth.Length > 0) node["mouth"] = System.Text.Json.Nodes.JsonNode.Parse(LastMouth);
+        if (LastLook.Length > 0) node["look"] = System.Text.Json.Nodes.JsonNode.Parse(LastLook);
         return node.ToJsonString();
     }
 
@@ -122,17 +132,23 @@ internal sealed class CharacterViewport : Grid
             _ => base.GetPattern(patternInterface)
         };
 
-        // Value: reads the last tap (with the last stroke, move or zoom, face reading, picture, pose reading and mouth reading);
-        // setting "x,y" (invariant fractions of the surface) taps the character there, "stroke:ms;x,y;x,y;..." strokes the
-        // locked character along those points, "voice:ms;level;..." moves its mouth as Martlet's voice does (without a sound),
-        // "face" reads where Martlet draws over the face now, "picture" takes a picture of the character as it shows now, "pose"
-        // reads what its idle body does now and "mouth" who moves its mouth now (they change nothing).
+        // Value: reads the last tap (with the last stroke, move or zoom, face reading, picture, pose reading, mouth reading and
+        // look reading); setting "x,y" (invariant fractions of the surface) taps the character there, "stroke:ms;x,y;x,y;..."
+        // strokes the locked character along those points, "voice:ms;level;..." moves its mouth as Martlet's voice does (without
+        // a sound), "face" reads where Martlet draws over the face now, "picture" takes a picture of the character as it shows
+        // now, "pose" reads what its idle body does now, "mouth" who moves its mouth now and "look" where it looks now (they
+        // change nothing).
         public string Value => owner.Reading();
         public bool IsReadOnly => owner.TouchAt is null;
 
         public void SetValue(string value)
         {
             if (!owner.IsEnabled) throw new ElementNotEnabledException();
+            if (value == "look")
+            {
+                (owner.ReadLook ?? throw new InvalidOperationException("Where the character looks can't be read yet."))();
+                return;
+            }
             if (value == "face")
             {
                 (owner.ReadFace ?? throw new InvalidOperationException("The character's face can't be read yet."))();

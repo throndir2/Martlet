@@ -25,6 +25,7 @@ public sealed class McpServerTests(ITestOutputHelper output)
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_touch");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_pose");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_mouth");
+        Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_look");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "deep_thinking_role_selftest");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "gpu_priority_selftest");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "gpu_priority_status");

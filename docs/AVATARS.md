@@ -466,8 +466,8 @@ what each one is.
   `aa` when it has no `oh`; a composed (Audio2Face) turn keeps the mouth it
   drives.
 - **Where it looks**: the head and eyes follow the character's usual gaze (your
-  mouse, your mouse only when it's near, straight ahead, or the window you're
-  using), chosen on Companion › Character › **Where the character looks** or
+  mouse, your mouse only when it's near, straight ahead, or where you point or
+  type in the window you're using), chosen on Companion › Character › **Where the character looks** or
   the character's right-click **Eyes** menu, or by its personality. Replies may
   change it with gaze tags (`{look ahead}`), a touch can turn the eyes to your
   mouse for a moment, and with Companion › Vision › **Glances at your screen**

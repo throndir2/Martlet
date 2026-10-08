@@ -1345,6 +1345,54 @@ internal sealed class DesktopAutomation(bool allowEffects)
         };
     }
 
+    internal const int MaximumLookSamples = 60;
+
+    /// <summary>Reads where the showing character looks now <paramref name="samples"/> times, <paramref name="gapMs"/> apart,
+    /// through MoveAvatar's UI Automation value ("look"). It changes nothing, so it needs no --allow-ui-effects. Returns each
+    /// reading (what the eyes are on, the direction and the point, the usual gaze, and the window you're using and what the eyes
+    /// watch in it) and a summary: the targets and what the eyes watched in the window, and the range of the direction.</summary>
+    internal async Task<object> LookCharacterAsync(int? samples, int? gapMs)
+    {
+        var count = samples ?? 1;
+        if (count is < 1 or > MaximumLookSamples) throw new ArgumentException($"samples is 1 to {MaximumLookSamples}.");
+        if (gapMs is < 0 or > 5000) throw new ArgumentException("gapMs is 0 to 5000.");
+        var element = Find("MoveAvatar");
+        if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            throw new InvalidOperationException("The character overlay can't be read through UI Automation.");
+        var value = (ValuePattern)pattern;
+        if (value.Current.IsReadOnly) throw new InvalidOperationException("Where the character looks can't be read until it has loaded.");
+        static System.Text.Json.JsonElement? Look(string text) => string.IsNullOrEmpty(text) ? null :
+            System.Text.Json.JsonDocument.Parse(text).RootElement is { ValueKind: System.Text.Json.JsonValueKind.Object } root &&
+            root.TryGetProperty("look", out var look) ? look.Clone() : null;
+        var looks = new List<System.Text.Json.JsonElement>();
+        for (var i = 0; i < count; i++)
+        {
+            if (i > 0) await Task.Delay(gapMs ?? 250);
+            var before = Look(value.Current.Value)?.GetRawText();
+            value.SetValue("look");
+            var waited = Stopwatch.StartNew();
+            System.Text.Json.JsonElement? after;
+            while ((after = Look(value.Current.Value))?.GetRawText() == before && waited.Elapsed < TimeSpan.FromSeconds(3)) await Task.Delay(20);
+            if (after is { } read && read.GetRawText() != before) looks.Add(read);
+        }
+        return new { samples = count, read = looks.Count, looks, summary = LookSummary(looks),
+            note = looks.Count == 0 ? "The renderer didn't answer within 3 seconds." : null };
+    }
+
+    // The targets and what the eyes watched in the window across the readings, and the least and most of the direction.
+    internal static object LookSummary(IReadOnlyList<System.Text.Json.JsonElement> looks)
+    {
+        string[] Words(string name) => [.. looks.Select(look => look.TryGetProperty(name, out var word) &&
+            word.ValueKind == System.Text.Json.JsonValueKind.String ? word.GetString() : null).OfType<string>().Distinct()];
+        object? Range(string name)
+        {
+            double[] values = [.. looks.Where(look => look.TryGetProperty(name, out var number) && number.ValueKind == System.Text.Json.JsonValueKind.Number)
+                .Select(look => look.GetProperty(name).GetDouble())];
+            return values.Length == 0 ? null : new { least = values.Min(), most = values.Max() };
+        }
+        return new { targets = Words("target"), watching = Words("watching"), x = Range("x"), y = Range("y") };
+    }
+
     internal const int MaximumPoseSamples = 60;
 
     /// <summary>Reads what the showing character's idle body does (a VRM's breath, arm hang, finger curl and sway)
