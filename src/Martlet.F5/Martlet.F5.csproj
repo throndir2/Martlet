@@ -4,7 +4,7 @@
     <ProjectReference Include="..\Martlet.Core\Martlet.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The reference voices Martlet bundles for F5 (public domain, CC0 or CMU ARCTIC); see BundledVoices\NOTICES.txt. -->
+    <!-- The reference voices Martlet bundles for F5 (public domain, CC0, CMU ARCTIC or the Jenny TTS dataset); see BundledVoices\NOTICES.txt. -->
     <EmbeddedResource Include="BundledVoices\*.wav" LogicalName="Martlet.F5.BundledVoices.%(Filename).wav" />
   </ItemGroup>
 </Project>

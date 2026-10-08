@@ -170,6 +170,23 @@ internal static class VoiceRehearsal
                     $"waiting: {result.Waiting}; lab-voice-1: {(Gone(on1.Library) ? "removed" : "still listed")}; after the older copy: " +
                     $"{(Gone(stale.Library) ? "still removed" : "back")}");
             });
+            await Run("A list from before a new starter voice (Jenny) gets it in the next reconcile, once, with its recording from Martlet itself; a starter the owner removed stays removed", async () =>
+            {
+                var c = new LabDesktop("lab-desktop-c", Path.Combine(root, "c"));
+                var newest = F5BundledVoices.Find("jenny-dioco")!;
+                var gone = F5BundledVoices.Find("lj-speech")!;
+                string Id(F5BundledVoice voice) => SpeakingVoiceLibrary.ReferenceId(voice.AudioSha256, voice.Transcript);
+                c.Library = SpeakingVoiceLibrary.Empty.Seed(F5SharedVoices.Starters.Where(s => s.AudioSha256 != newest.AudioSha256))
+                    .Remove(Id(gone), c.DeviceId, DateTimeOffset.UtcNow);
+                var first = await c.ReconcileAsync(null, token);
+                var second = await c.ReconcileAsync(null, token);
+                var joined = c.Library.Find(Id(newest));
+                return (joined is { Removed: false, Revision: SpeakingVoiceLibrary.StarterRevision } && first.Local.ContainsKey(Id(newest)) &&
+                        first.Waiting == 0 && c.Library.Find(Id(gone))?.Removed == true && !first.Local.ContainsKey(Id(gone)) && second.Added == 0,
+                    $"{newest.Name}: {(joined is { Removed: false } ? "joined" : "missing")} at revision {joined?.Revision}, recording here: " +
+                    $"{first.Local.ContainsKey(Id(newest))}; {gone.Name}: {(c.Library.Find(Id(gone))?.Removed == true ? "still removed" : "back")}; " +
+                    $"the next reconcile added {second.Added}");
+            });
             await Run("Speaking with a removed voice falls back to sending the recording, which the host does not keep", async () =>
             {
                 var reply = await a.SpeakAsync(h1, starterId, token, starter.ReadAudio(), starter.Transcript);

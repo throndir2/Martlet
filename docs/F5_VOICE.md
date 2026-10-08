@@ -161,7 +161,7 @@ invalidation, and preview separation. It opens no network or audio device.
 
 ## Desktop voices and playback
 
-There are no built-in voices. A new voice list starts with five **starter
+There are no built-in voices. A new voice list starts with six **starter
 voices** that are free to use and share (`Martlet.F5.F5BundledVoices`, clips in
 `src\Martlet.F5\BundledVoices`); once in the list they are ordinary voices the
 owner can use, share and remove like any other. The two **cute voices** come
@@ -170,11 +170,18 @@ heroine of Anne of Green Gables, in Chapter II, as read: Annie Coleman
 Rothenberg (public domain, "Annie (cute, chatty)") and WoollyBee (CC0, "Bee
 (cute, bubbly)"). Locally on F5 v1 Base (3 sentences, 2 seeds each) they spoke
 at a median 265 Hz (Annie) and about 340 Hz (Bee) against LJ's 217 Hz, with
-every word recognized. Then come a select few others: LJ Speech (public domain,
-female narrator) and two CMU ARCTIC speakers (slt, US female; bdl, US male;
-free for any use with the notice kept).
+every word recognized. Next is **Jenny (Dioco)**, a professional Irish
+voice-over artist who recorded the Jenny TTS dataset for speech synthesis: an
+8.35 s line of Meg's from Little Women, a natural, cheerful adult voice (a
+median 183 Hz). Its licence allows any use, including commercial use, and
+requires the voice to be called "Jenny (Dioco)". Then come a select few others:
+LJ Speech (public domain, female narrator) and two CMU ARCTIC speakers (slt, US
+female; bdl, US male; free for any use with the notice kept).
 Earlier versions offered seven more (two LibriVox narrators and five more CMU
 ARCTIC speakers); a list that already holds one keeps it as an ordinary voice.
+A starter voice added in an update (Jenny) joins an existing list once
+(`F5SharedVoices.WithStarters`, at revision 1 like every starter entry); one
+the owner removed doesn't come back.
 `BundledVoices\NOTICES.txt` lists each source file with its SHA-256, transcript
 and the marked modifications, and `scripts\Build-F5BundledVoices.py` rebuilds
 the clips from the pinned sources (reproducibly). Each clip is 6.5-11

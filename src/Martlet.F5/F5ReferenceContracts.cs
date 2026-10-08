@@ -54,7 +54,7 @@ public enum F5VoiceRightsBasis
     OwnVoice,
     ExplicitPermission,
     /// <summary>A published recording anyone may use, such as Martlet's starter voices (<see cref="F5BundledVoices"/>: public
-    /// domain, CC0 or CMU ARCTIC). Earlier versions also used it for the F5-TTS example clip they bundled.</summary>
+    /// domain, CC0, CMU ARCTIC or the Jenny TTS dataset). Earlier versions also used it for the F5-TTS example clip they bundled.</summary>
     PublishedSample
 }
 

@@ -1371,8 +1371,9 @@ These need building before the recipes in 11.2 work:
    whisper.cpp, no Docker) exists as a disabled candidate. Wiring it in
    removes WSL, Docker Desktop and the host service from the most common
    *This PC* listening setup.
-3. ~~A bundled default F5 voice~~: done in #145; since replaced by five starter
-   voices that are free to use and share (public domain or CMU ARCTIC) and are
+3. ~~A bundled default F5 voice~~: done in #145; since replaced by six starter
+   voices that are free to use and share (public domain, CMU ARCTIC or the
+   Jenny TTS dataset) and are
    ordinary, removable voices once in the list, the first cute voice used when
    no voice is chosen; recording is optional.
 4. **One key per provider.** Keys are bound per job today; an OpenAI key
@@ -1395,7 +1396,7 @@ Each flow below asks for a step Martlet could do itself.
 | --- | --- | --- | --- | --- |
 | 1 | Thinking › This PC | *Install Ollama and use it* (installs, downloads the suggested model and switches, in a run window); *Check Ollama* and *Download model* remain | Selecting *This PC* runs the whole chain (C2) | `MainWindow.SetupPages.cs:314-345` |
 | 2 | Voice / Listening › This PC | One click per option and one confirmation: Docker (installed when missing) › host service › role › switch run in one run window. Listening picks GPU or CPU in Martlet from the card's free memory and what already runs on it | Selecting *This PC* runs Docker › host service › role › model › test › switch as one chain; Listening uses native whisper.cpp with no Docker (11.6) | `MainWindow.SetupPages.cs:408-420` |
-| 3 | Voice › F5 | Done: no built-in voices; a new list starts with five starter voices (two cute ones first, then LJ, SLT and BDL; public domain or CMU ARCTIC), the first (cute and chatty) is used without a picker, and the Voice tab's *Voices* list plays, switches (*Use*, one click, on every computer) and removes any voice inline (D2). The list, choice and recordings are shared with every paired Martlet computer, so replies name the recording instead of sending it | Keep | `MainWindow.Voices.cs`, `HostSpeech.cs`, `F5SharedVoices.cs`, `SpeakingVoiceLibrary.cs` |
+| 3 | Voice › F5 | Done: no built-in voices; a new list starts with six starter voices (two cute ones first, then Jenny (Dioco), LJ, SLT and BDL; public domain, the Jenny TTS dataset or CMU ARCTIC), the first (cute and chatty) is used without a picker, and the Voice tab's *Voices* list plays, switches (*Use*, one click, on every computer) and removes any voice inline (D2). The list, choice and recordings are shared with every paired Martlet computer, so replies name the recording instead of sending it | Keep | `MainWindow.Voices.cs`, `HostSpeech.cs`, `F5SharedVoices.cs`, `SpeakingVoiceLibrary.cs` |
 | 4 | Cloud card | Consent checkbox, key per job, a button named for the provider (*Use OpenRouter*; was *Save*) | Paste key = switch; key reused across jobs (C4) | `MainWindow.SetupPages.cs:540-580` |
 | 5 | Legacy Setup window | Removed (done) | Removed | — |
 | 6 | Audio setup | Per-test confirmation; the microphone test gates *Working* (Save removed: picking applies) | Windows default devices, no gate | `AudioSetupWindow.xaml(.cs)` |

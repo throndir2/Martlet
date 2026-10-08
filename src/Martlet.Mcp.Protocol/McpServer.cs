@@ -617,8 +617,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "desktop's paired client and Martlet.F5's reconcile engine. Checks the starter voices, sharing the list and recordings, " +
             "speaking by recording SHA-256 alone, the one-time fallback that sends a recording a host lacks, a new desktop taking every " +
             "voice from a host, the shared choice, removal everywhere (host and desktop copies deleted), stale copies, retired starter " +
-            "voices leaving an older list, a host restart and upload checks. Loopback only; the temporary folder is deleted and the " +
-            "credential vault is not touched.", new { }),
+            "voices leaving an older list, a new starter voice joining an older list once, a host restart and upload checks. Loopback " +
+            "only; the temporary folder is deleted and the credential vault is not touched.", new { }),
         Tool("character_models", "Read the shared character models from a data directory (character-models.json and the copies in " +
             "character-models, docs/CLUSTER.md \"The shared character models\"): live characters and tombstones, total size, and for " +
             "each character its key (first 16 hex digits of its ID, as in CharacterModelState-<key>), renderer, files, pieces, size, " +

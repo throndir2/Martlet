@@ -1,13 +1,16 @@
 """Builds the starter voices Martlet adds to every voice list (src/Martlet.F5/BundledVoices) from their pinned upstream recordings.
 
-Every source is public domain or CC0 (the cute voices' LibriVox readings of Anne of Green Gables, LJ Speech) or CMU ARCTIC
-(free for any use; its notice is kept in src/Martlet.F5/BundledVoices/NOTICES.txt). Download the sources into one directory
-with their upstream layout:
+Every source is public domain or CC0 (the cute voices' LibriVox readings of Anne of Green Gables, LJ Speech), CMU ARCTIC
+(free for any use; its notice is kept in src/Martlet.F5/BundledVoices/NOTICES.txt) or the Jenny TTS dataset (free for any
+use; the voice is credited as "Jenny (Dioco)"). Download the sources into one directory with their upstream layout:
 
   librivox/anneofgreengables_02_montgomery.mp3 https://archive.org/download/anneofgreengables_sp_librivox/
   librivox/agg_02_montgomery.mp3               https://archive.org/download/anne_gables_0808/
   LJSpeech-1.1/wavs/LJ001-0009.wav             https://data.keithito.com/data/speech/LJSpeech-1.1.tar.bz2
   cmu_us_<speaker>_arctic/wav/arctic_a00NN.wav http://festvox.org/cmu_arctic/cmu_arctic/cmu_us_<speaker>_arctic/wav/
+  jenny/10003.flac                             the audio bytes of row "jenny/10003" in data/train-00000-of-00010.parquet of
+                                               https://huggingface.co/datasets/reach-vb/jenny_tts_dataset (the Jenny TTS
+                                               dataset, https://github.com/dioco-group/jenny-tts-dataset, as FLAC)
 
 then run (needs numpy and miniaudio):
 
@@ -17,8 +20,8 @@ then run (needs numpy and miniaudio):
 
 Modifications (marked here as the CMU ARCTIC terms require): the spoken passage is cut out at its silences (short pauses
 kept, ARCTIC's two sentences joined by 0.3 s of silence), DC offset and rumble below 50 Hz are removed, the level is set
-to -20 dBFS speech RMS (peaks at most -1 dBFS), 10 ms fades are applied at each cut, MP3s are decoded and resampled to
-24 kHz, and the result is written as mono 16-bit PCM WAV. No clip's pitch, speed or timbre is changed.
+to -20 dBFS speech RMS (peaks at most -1 dBFS), 10 ms fades are applied at each cut, MP3s and FLACs are decoded and
+resampled to 24 kHz, and the result is written as mono 16-bit PCM WAV. No clip's pitch, speed or timbre is changed.
 """
 
 import hashlib
@@ -48,6 +51,10 @@ VOICES = {
     # WoollyBee as Anne (Chapter II): "It isn't heavy. I've got all my worldly goods in it, but it isn't heavy. And if it
     # isn't carried in just a certain way the handle pulls out, so I'd better keep it because I know the exact knack of it."
     "librivox-woollybee": ([(*ANNE_V6, 413.30, 423.72)], 24_000),
+    # Jenny, a professional Irish voice-over artist, as Meg in Little Women (Chapter IX): "Well, I am happy, and I won't fret,
+    # but it does seem as if the more one gets the more one wants, doesn't it?" The cut starts at 0.075 s, after the key
+    # knock the dataset's raw takes can begin with.
+    "jenny-dioco": ([("jenny/10003.flac", "c2b3c1a9c823deb9874b8c489fdf86e4ac6e1e6cf4954326a72d536beb0c8e4f", 0.075, None)], 24_000),
     "lj-speech": ([("LJSpeech-1.1/wavs/LJ001-0009.wav", "d003373f9c769b17995cfff2a99818e720a56f3376678b27fc6c9c27539c3f75", 0, None)], None),
 }
 for speaker, digests in ARCTIC_SOURCES.items():
