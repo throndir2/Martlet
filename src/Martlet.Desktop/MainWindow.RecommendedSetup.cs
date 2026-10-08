@@ -90,7 +90,7 @@ public partial class MainWindow
     private void ShowRecommendedSetup(SetupRequestBuild build, NetworkRecommendation recommendation)
     {
         var review = RecommendedSetupReview.From(recommendation, build);
-        var window = new RecommendedSetupWindow(review, RecommendedPrepare(recommendation), RecommendedApply(recommendation));
+        var window = new RecommendedSetupWindow(review, RecommendedPrepare(recommendation, build.Names), RecommendedApply(recommendation));
         if (IsVisible) window.Owner = this;
         window.Declined += DeclineRecommendedSetup;
         window.Closed += (_, _) =>
@@ -105,12 +105,56 @@ public partial class MainWindow
 
     // ---------- the reconfiguration (Prepare and Apply) ----------
 
-    /// <summary>What Reconfigure needs first, from the executor's preflight; null while this Martlet can't reconfigure.</summary>
-    private Func<CancellationToken, Task<RecommendedSetupPreflightView>>? RecommendedPrepare(NetworkRecommendation recommendation) => null;
+    /// <summary>What Reconfigure needs first, from the executor's preflight (<see cref="PrepareRecommendedSetupAsync"/>): each
+    /// change's state, the terms Reconfigure accepts and the keys it asks for. Reconfigure waits while another run is active.</summary>
+    private Func<CancellationToken, Task<RecommendedSetupPreflightView>>? RecommendedPrepare(NetworkRecommendation recommendation,
+        IReadOnlyDictionary<string, string> names) =>
+        async cancel =>
+        {
+            SetupRunPreflight preflight;
+            try { preflight = await PrepareRecommendedSetupAsync(recommendation, cancel); }
+            catch (InvalidOperationException error)
+            {
+                ErrorLog.Warn("Recommended setup: couldn't check what the change needs.", error);
+                return new RecommendedSetupPreflightView([], false, "Martlet couldn't check what the change needs: " + error.Message);
+            }
+            var problem = setupApplying ? "Martlet is already reconfiguring your computers. Home shows its progress; check again when it's done."
+                : preflight.CanApply ? null
+                : "Martlet can't make any of these changes from here. Make them at each computer, or connect it on the Devices page.";
+            return new RecommendedSetupPreflightView([.. preflight.Items.Select(i => i.Text).Where(t => t.Length > 0)], problem is null, problem,
+                preflight)
+            {
+                Terms = [.. preflight.WithTerms.Select(i => i.Terms!).Distinct(StringComparer.Ordinal)],
+                Secrets = [.. preflight.Unanswered.Select(need => new RecommendedSetupSecretField(SecretKey(need),
+                    $"{need.Name} for {names.GetValueOrDefault(need.MachineId) ?? need.MachineId}", need.Prompt))]
+            };
+        };
 
-    /// <summary>Applies the recommendation on every computer with progress; null while this Martlet can't reconfigure.</summary>
+    /// <summary>Applies the recommendation on every computer (<see cref="ApplyRecommendedSetupAsync"/>) with the keys typed in the
+    /// review, reporting the run's progress in words, and returns the outcome in words. Choosing Reconfigure accepts the terms
+    /// shown; the executor records them.</summary>
     private Func<RecommendedSetupPreflightView, IReadOnlyDictionary<string, string>, IProgress<string>, Task<string>>? RecommendedApply(
-        NetworkRecommendation recommendation) => null;
+        NetworkRecommendation recommendation) => async (view, typed, progress) =>
+        {
+            if (view.Run is not SetupRunPreflight preflight) return "Martlet couldn't start the reconfiguration.";
+            if (setupApplying) return "Martlet is already reconfiguring your computers. Home shows its progress.";
+            foreach (var need in preflight.Unanswered)
+                if (typed.GetValueOrDefault(SecretKey(need)) is { Length: > 0 } value) preflight = preflight.WithSecret(need, value);
+            try
+            {
+                var outcome = await ApplyRecommendedSetupAsync(recommendation, preflight,
+                    new Progress<SetupRun>(run => progress.Report(run.Summary(DateTimeOffset.UtcNow))), lifetime.Token);
+                ErrorLog.Info($"Recommended setup: reconfigured ({(outcome.Succeeded ? "every change done" : "not every change done")}).");
+                return outcome.Summary;
+            }
+            catch (InvalidOperationException error)
+            {
+                ErrorLog.Warn("Recommended setup: couldn't reconfigure.", error);
+                return error.Message;
+            }
+        };
+
+    private static string SecretKey(SetupSecretNeed need) => $"{need.Index}/{need.MachineId}/{need.RoleKind}/{need.Name}";
 
     // ---------- automatic checks ----------
 
