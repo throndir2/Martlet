@@ -1398,6 +1398,75 @@ internal sealed class DesktopAutomation(bool allowEffects)
         };
     }
 
+    internal const int MaximumMouthSamples = 60;
+    internal const int MaximumVoiceLevels = 400;
+
+    /// <summary>Reads who moves the showing character's mouth, the voice or its emotes, <paramref name="samples"/> times,
+    /// <paramref name="gapMs"/> apart, through MoveAvatar's UI Automation value ("mouth"). With <paramref name="levels"/> (0 to
+    /// 1, one every <paramref name="stepMs"/>; needs --allow-ui-effects) the mouth first moves as Martlet's loudness lip-sync moves
+    /// it, without a sound ("voice:ms;level;..."), and the readings start at once. Returns each reading and a summary.</summary>
+    internal async Task<object> MouthCharacterAsync(double[]? levels, int? stepMs, int? samples, int? gapMs)
+    {
+        var count = samples ?? 1;
+        if (count is < 1 or > MaximumMouthSamples) throw new ArgumentException($"samples is 1 to {MaximumMouthSamples}.");
+        if (gapMs is < 0 or > 5000) throw new ArgumentException("gapMs is 0 to 5000.");
+        var step = stepMs ?? 50;
+        if (levels is not null)
+        {
+            if (!allowEffects) throw new InvalidOperationException("Moving the character's mouth requires --allow-ui-effects.");
+            if (levels.Length is < 1 or > MaximumVoiceLevels) throw new ArgumentException($"Give 1 to {MaximumVoiceLevels} levels.");
+            if (levels.Any(level => level is not (>= 0 and <= 1))) throw new ArgumentException("Each level is a number from 0 to 1.");
+            if (step is < 10 or > 1000) throw new ArgumentException("stepMs is 10 to 1000.");
+        }
+        var element = Find("MoveAvatar");
+        if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            throw new InvalidOperationException("The character overlay can't be read through UI Automation.");
+        var value = (ValuePattern)pattern;
+        if (value.Current.IsReadOnly) throw new InvalidOperationException("The character's mouth can't be read until it has loaded.");
+        static System.Text.Json.JsonElement? Mouth(string text) => string.IsNullOrEmpty(text) ? null :
+            System.Text.Json.JsonDocument.Parse(text).RootElement is { ValueKind: System.Text.Json.JsonValueKind.Object } root &&
+            root.TryGetProperty("mouth", out var mouth) ? mouth.Clone() : null;
+        if (levels is not null)
+            value.SetValue("voice:" + string.Join(";", new[] { step.ToString(System.Globalization.CultureInfo.InvariantCulture) }
+                .Concat(levels.Select(level => level.ToString("R", System.Globalization.CultureInfo.InvariantCulture)))));
+        var mouths = new List<System.Text.Json.JsonElement>();
+        for (var i = 0; i < count; i++)
+        {
+            if (i > 0) await Task.Delay(gapMs ?? 250);
+            var before = Mouth(value.Current.Value)?.GetRawText();
+            value.SetValue("mouth");
+            var waited = Stopwatch.StartNew();
+            System.Text.Json.JsonElement? after;
+            while ((after = Mouth(value.Current.Value))?.GetRawText() == before && waited.Elapsed < TimeSpan.FromSeconds(3)) await Task.Delay(20);
+            if (after is { } read && read.GetRawText() != before) mouths.Add(read);
+        }
+        return new { played = levels?.Length ?? 0, stepMs = levels is null ? (int?)null : step, samples = count, read = mouths.Count, mouths,
+            summary = MouthSummary(mouths), note = mouths.Count == 0 ? "The renderer didn't answer within 3 seconds." : null };
+    }
+
+    // How the readings went together: how many found the mouth, the share in which the voice had it (speaking), the least and
+    // most of how much the voice had it, its loudness, the emotes' opening, the mouth's opening and a VRM's block, and the last
+    // reading (where the mouth ended up).
+    internal static object MouthSummary(IReadOnlyList<System.Text.Json.JsonElement> mouths)
+    {
+        static bool Is(System.Text.Json.JsonElement owner, string key, System.Text.Json.JsonValueKind kind) =>
+            owner.ValueKind == System.Text.Json.JsonValueKind.Object && owner.TryGetProperty(key, out var value) && value.ValueKind == kind;
+        static object? Range(IEnumerable<System.Text.Json.JsonElement> items, string key)
+        {
+            double[] values = [.. items.Where(item => Is(item, key, System.Text.Json.JsonValueKind.Number)).Select(item => item.GetProperty(key).GetDouble())];
+            return values.Length == 0 ? null : new { least = values.Min(), most = values.Max() };
+        }
+        var found = mouths.Where(mouth => Is(mouth, "found", System.Text.Json.JsonValueKind.True)).ToArray();
+        return new
+        {
+            found = found.Length,
+            speaking = found.Length == 0 ? 0 : Math.Round((double)found.Count(mouth => Is(mouth, "speaking", System.Text.Json.JsonValueKind.True)) / found.Length, 2),
+            voice = Range(found, "voice"), level = Range(found, "level"), emote = Range(found, "emote"), open = Range(found, "open"),
+            blocked = Range(found, "blocked"),
+            last = found.Length == 0 ? (System.Text.Json.JsonElement?)null : found[^1]
+        };
+    }
+
     /// <summary>Moves a movable control (the character overlay's MoveAvatar, like dragging the character) by dx, dy screen
     /// pixels through UI Automation's Transform pattern, then reports where it was and is. Refused while it can't move, as
     /// when the character's position is locked in Martlet.</summary>

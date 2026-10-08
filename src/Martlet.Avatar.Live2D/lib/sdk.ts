@@ -84,7 +84,8 @@ export interface AnimatorInput {
   readonly lipSync: number;
   /** Additive offsets to parameters by ID (a Martlet gesture); IDs the model lacks are ignored. */
   readonly gesture?: Readonly<Record<string, number>>;
-  /** Host-composed parameter writes, applied after motion/breath and before physics/pose. */
+  /** Runs after motions, expressions, gestures and breath, before physics, lip-sync and pose: the host's composed parameter
+   *  writes, and the mouth given to the voice while it speaks (see Live2DAdapter.update). */
   readonly overrides: () => void;
 }
 

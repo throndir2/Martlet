@@ -243,6 +243,25 @@ internal sealed class McpServer(DesktopAutomation desktop)
             samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumPoseSamples },
             gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
         }),
+        Tool("character_mouth", "Read who moves the showing character's mouth, Martlet's voice or its emotes, samples times (1 to 60, " +
+            "default 1) gapMs apart (0 to 5000, default 250), as each frame is drawn. While the voice speaks, until a second after " +
+            "its last sound, it has the mouth: what the emotes put on the mouth (a held mouth_open, an expression that opens it, a " +
+            "VRM emotion whose overrideMouth blocks lip-sync) gives way, and comes back once the voice is done. With levels (1 to " +
+            $"{DesktopAutomation.MaximumVoiceLevels} loudness levels from 0 to 1, one every stepMs: 10 to 1000, default 50; needs " +
+            "--allow-ui-effects) the mouth first moves as Martlet's loudness lip-sync moves it, without a sound, and the readings " +
+            "start at once. Each reading (mouths) has n, found (false before a model shows), renderer, parameter (Live2D: the " +
+            "parameter read, ParamMouthOpenY when the model has it), voice (0 to 1: how much the voice has the mouth), speaking " +
+            "(the voice moved it within the last second), level (the voice's loudness on it), emote (how far the emotes open the " +
+            "mouth before the voice takes it; a VRM: its held open mouth), open (how far it is open now, 0 at rest to 1) and, for " +
+            "a VRM, blocked (how much the expressions showing block its mouth expressions). summary gives the share of readings " +
+            "speaking, the voice, level, emote, open and blocked ranges (least, most) and the last reading. Reading alone changes " +
+            "nothing, so it needs no --allow-ui-effects.", new
+        {
+            levels = new { type = "array", items = new { type = "number", minimum = 0, maximum = 1 }, minItems = 1, maxItems = DesktopAutomation.MaximumVoiceLevels },
+            stepMs = new { type = "integer", minimum = 10, maximum = 1000 },
+            samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumMouthSamples },
+            gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
+        }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
             "[x, y, width, height] in physical screen pixels) and whether Martlet still runs. \"open\" and \"menu\" send the icon " +
@@ -1811,6 +1830,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_face" => await desktop.FaceCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "character_picture" => await desktop.PictureCharacterAsync(OptionalString(arguments, "outputPath")),
                 "character_pose" => await desktop.PoseCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
+                "character_mouth" => await desktop.MouthCharacterAsync(MouthLevels(arguments), OptionalInt(arguments, "stepMs"),
+                    OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "turn_judge_check" => await TurnJudgeCheck.RunAsync(arguments, MartletDirectory(arguments), cancellation),
@@ -3950,6 +3971,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
         return [.. value.EnumerateArray().Select(point =>
             point.ValueKind == JsonValueKind.Array && point.GetArrayLength() == 2 && point[0].TryGetDouble(out var x) && point[1].TryGetDouble(out var y)
                 ? (x, y) : throw new ArgumentException("Each point must be [x, y]."))];
+    }
+
+    /// <summary>character_mouth's loudness levels, [0.2, 0.8, ...], or null when none were given.</summary>
+    private static double[]? MouthLevels(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty("levels", out var value) || value.ValueKind == JsonValueKind.Null)
+            return null;
+        if (value.ValueKind != JsonValueKind.Array) throw new ArgumentException("'levels' must be an array of numbers from 0 to 1.");
+        return [.. value.EnumerateArray().Take(DesktopAutomation.MaximumVoiceLevels + 1).Select(level =>
+            level.ValueKind == JsonValueKind.Number && level.TryGetDouble(out var number)
+                ? number : throw new ArgumentException("Each level must be a number from 0 to 1."))];
     }
 
     private static double? OptionalDouble(JsonElement element, string property)

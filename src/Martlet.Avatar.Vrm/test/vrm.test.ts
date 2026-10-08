@@ -774,9 +774,13 @@ test("held gestures that move different parts layer, and one that shares a part 
   assert.ok(face("aa") > 0.6, "the mouth opens (with aa: this model has no oh)");
   assert.ok(face("CheekRed") > 0.99, "the cheeks blush");
   for (let i = 0; i < 20; i++) { runtime.setLipSync(0); runtime.update(0.05); }
-  assert.ok(face("aa") < 0.3, "the held mouth eases back while the voice speaks");
+  assert.ok(face("aa") < 0.01, "the held mouth gives way to the voice entirely: closed between its sounds");
   for (let i = 0; i < 5; i++) { runtime.setLipSync(1); runtime.update(0.05); }
-  assert.ok(face("aa") > 0.9, "and the voice still opens it");
+  assert.ok(face("aa") > 0.9, "and the voice opens it");
+  for (let i = 0; i < 18; i++) runtime.update(0.05);
+  assert.ok(face("aa") < 0.01, "a pause in the speech keeps the mouth the voice's");
+  for (let i = 0; i < 24; i++) runtime.update(0.05);
+  assert.ok(face("aa") > 0.6, "a second after the voice stops, the held mouth opens again");
   assert.equal(runtime.playGesture("pout", true), true);
   assert.deepEqual(runtime.gestureState, { held: ["eyes_up", "pout", "blush"] }, "pout moves the mouth too, so mouth_open lets go");
   assert.equal(runtime.playGesture("look_away", true), true);
@@ -800,4 +804,31 @@ test("held gestures that move different parts layer, and one that shares a part 
   for (let i = 0; i < 40; i++) round.update(0.05);
   assert.ok(roundFace("oh") < 1e-6, "and closes it when let go");
   round.dispose();
+});
+
+test("an emote that blocks the mouth never holds it still while the voice speaks, and has it again a second after", async () => {
+  // The fixture's happy is authored with overrideMouth "block", as VRoid's emotions often are.
+  const runtime = new VrmRuntime(); await runtime.load(fixture()); runtime.startIdle();
+  assert.equal(runtime.setAction("happy", true), true);
+  for (let i = 0; i < 20; i++) runtime.update(0.05);
+  let mouth = runtime.mouthReading!;
+  assert.deepEqual([mouth.speaking, mouth.voice, mouth.blocked, mouth.open], [false, 0, 1, 0], "quiet, happy has the mouth");
+  for (let i = 0; i < 6; i++) { runtime.setLipSync(1); runtime.update(0.05); }
+  mouth = runtime.mouthReading!;
+  assert.ok(mouth.speaking && mouth.blocked === 0 && mouth.open > 0.99 && mouth.level > 0.99, JSON.stringify(mouth));
+  assert.ok(morphs(runtime)[0]! > 0.99 && morphs(runtime)[1]! > 0.99, "the voice opens aa fully, and happy stays on");
+  for (let i = 0; i < 18; i++) runtime.update(0.05);
+  mouth = runtime.mouthReading!;
+  assert.ok(mouth.speaking && mouth.blocked === 0, `a pause in the speech keeps it the voice's: ${JSON.stringify(mouth)}`);
+  for (let i = 0; i < 10; i++) runtime.update(0.05);
+  mouth = runtime.mouthReading!;
+  assert.ok(!mouth.speaking && mouth.blocked === 1 && morphs(runtime)[1]! > 0.99, `then happy has the mouth again: ${JSON.stringify(mouth)}`);
+  runtime.setLipSync(1); runtime.update(0.05);
+  assert.equal(runtime.mouthReading!.blocked, 0, "and the voice takes it at its first sound");
+  const happy = (runtime as unknown as { model: { expressionManager: { getExpression(name: string): { overrideMouth: string } } } })
+    .model.expressionManager.getExpression("happy");
+  assert.equal(happy.overrideMouth, "none", "while the voice has the mouth");
+  runtime.stop();
+  assert.equal(happy.overrideMouth, "block", "stopping gives the model its own setting back");
+  runtime.dispose();
 });
