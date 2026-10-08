@@ -43,7 +43,8 @@ public partial class MainWindow
             open.Activate();
             return;
         }
-        if (!InMartletNetwork())
+        // The FIXTURE (SimulatedRecommendedSetup) plans its own network, also on a PC alone.
+        if (!InMartletNetwork() && !SimulatedRecommendedSetup.Active)
         {
             await SetUpDefaultsAsync();
             return;
@@ -77,6 +78,7 @@ public partial class MainWindow
 
     private SetupSources RecommendedSetupSources()
     {
+        if (SimulatedRecommendedSetup.Active) return RecommendedSetupInputs.Fixture(DateTimeOffset.UtcNow);
         var inputs = Inputs();
         var directory = store?.DataDirectory;
         var poolSettings = ThinkingPoolSettings.Load(directory);
@@ -118,7 +120,7 @@ public partial class MainWindow
                 ErrorLog.Warn("Recommended setup: couldn't check what the change needs.", error);
                 return new RecommendedSetupPreflightView([], false, "Martlet couldn't check what the change needs: " + error.Message);
             }
-            var problem = setupApplying ? "Martlet is already reconfiguring your computers. Home shows its progress; check again when it's done."
+            var problem = setupApplying ? "Martlet is already reconfiguring your computers. Background tasks shows its progress; check again when it's done."
                 : preflight.CanApply ? null
                 : "Martlet can't make any of these changes from here. Make them at each computer, or connect it on the Devices page.";
             return new RecommendedSetupPreflightView([.. preflight.Items.Select(i => i.Text).Where(t => t.Length > 0)], problem is null, problem,
@@ -130,28 +132,27 @@ public partial class MainWindow
             };
         };
 
-    /// <summary>Applies the recommendation on every computer (<see cref="ApplyRecommendedSetupAsync"/>) with the keys typed in the
-    /// review, reporting the run's progress in words, and returns the outcome in words. Choosing Reconfigure accepts the terms
-    /// shown; the executor records them.</summary>
-    private Func<RecommendedSetupPreflightView, IReadOnlyDictionary<string, string>, IProgress<string>, Task<string>>? RecommendedApply(
-        NetworkRecommendation recommendation) => async (view, typed, progress) =>
+    /// <summary>Reconfigure in the review: starts applying the recommendation on every computer as a background task
+    /// (<see cref="ReconfigureAsync"/>), with the keys typed in the review, over <c>owner</c> (the review, which then closes).
+    /// Returns null once it started, else why it couldn't start. Choosing Reconfigure accepts the terms shown; the executor
+    /// records them.</summary>
+    private Func<Window, RecommendedSetupPreflightView, IReadOnlyDictionary<string, string>, string?>? RecommendedApply(
+        NetworkRecommendation recommendation) => (owner, view, typed) =>
         {
             if (view.Run is not SetupRunPreflight preflight) return "Martlet couldn't start the reconfiguration.";
-            if (setupApplying) return "Martlet is already reconfiguring your computers. Home shows its progress.";
-            foreach (var need in preflight.Unanswered)
-                if (typed.GetValueOrDefault(SecretKey(need)) is { Length: > 0 } value) preflight = preflight.WithSecret(need, value);
+            if (setupApplying || HostRunWindow.IsRunningTitled(SetupRunTitle))
+                return "Martlet is already reconfiguring your computers. Background tasks shows its progress.";
             try
             {
-                var outcome = await ApplyRecommendedSetupAsync(recommendation, preflight,
-                    new Progress<SetupRun>(run => progress.Report(run.Summary(DateTimeOffset.UtcNow))), lifetime.Token);
-                ErrorLog.Info($"Recommended setup: reconfigured ({(outcome.Succeeded ? "every change done" : "not every change done")}).");
-                return outcome.Summary;
+                foreach (var need in preflight.Unanswered)
+                    if (typed.GetValueOrDefault(SecretKey(need)) is { Length: > 0 } value) preflight = preflight.WithSecret(need, value);
             }
-            catch (InvalidOperationException error)
+            catch (ArgumentException error)
             {
-                ErrorLog.Warn("Recommended setup: couldn't reconfigure.", error);
-                return error.Message;
+                return "Martlet couldn't use a key you typed: " + error.Message;
             }
+            ReconfigureAsync(owner, recommendation, preflight).Forget();
+            return null;
         };
 
     private static string SecretKey(SetupSecretNeed need) => $"{need.Index}/{need.MachineId}/{need.RoleKind}/{need.Name}";

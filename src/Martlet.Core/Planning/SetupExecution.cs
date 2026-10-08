@@ -482,9 +482,10 @@ public static class SetupExecutor
     /// <summary>Applies <paramref name="recommendation"/>'s changes in order through <paramref name="targets"/>. Only changes the
     /// owner saw in <paramref name="preflight"/> (the review) are made; one without its review item, or one the review said
     /// Martlet can't make, is skipped and reported. A failed step doesn't stop the others. The run is published at the start,
-    /// at every step and at the end (and refreshed during long steps), and reported to <paramref name="progress"/>.</summary>
+    /// at every step and at the end (and refreshed during long steps), and reported to <paramref name="progress"/>. What a role
+    /// change prints (its host engine's lines) goes to <paramref name="output"/>.</summary>
     public static async Task<SetupRunOutcome> ApplyAsync(NetworkRecommendation recommendation, SetupRunPreflight preflight, ISetupTargets targets,
-        IProgress<SetupRun>? progress, CancellationToken cancel, TimeProvider? clock = null, string? runId = null)
+        IProgress<SetupRun>? progress, CancellationToken cancel, TimeProvider? clock = null, string? runId = null, IProgress<string>? output = null)
     {
         ArgumentNullException.ThrowIfNull(recommendation);
         ArgumentNullException.ThrowIfNull(preflight);
@@ -524,7 +525,7 @@ public static class SetupExecutor
             {
                 await Publish(run.With(machine, SetupMachineState.Configuring, $"{Doing(change, targets)} ({step} of {total})",
                     done.GetValueOrDefault(machine), clock.GetUtcNow()));
-                result = await WithHeartbeatAsync(() => ApplyOneAsync(index, change, recommendation, preflight, targets, cancel),
+                result = await WithHeartbeatAsync(() => ApplyOneAsync(index, change, recommendation, preflight, targets, output, cancel),
                     () => Publish(run with { UpdatedAt = clock.GetUtcNow() }), clock);
             }
             var outcome = new SetupStepOutcome(index, change, result.State, result.Text);
@@ -591,7 +592,7 @@ public static class SetupExecutor
     }
 
     private static async Task<SetupStepResult> ApplyOneAsync(int index, SetupChange change, NetworkRecommendation recommendation,
-        SetupRunPreflight preflight, ISetupTargets targets, CancellationToken cancel)
+        SetupRunPreflight preflight, ISetupTargets targets, IProgress<string>? output, CancellationToken cancel)
     {
         var item = preflight.Items.FirstOrDefault(i => i.Index == index);
         if (item is null || item.Change != change)
@@ -614,7 +615,7 @@ public static class SetupExecutor
                     var add = change.Kind != SetupChangeKind.RemoveRole;
                     if (add && item.Terms is not null) targets.Accepted(item);
                     return await targets.ChangeRoleAsync(new(change.MachineId, change.RoleKind!, add, add ? item.Arguments : new Dictionary<string, string>(),
-                        add ? preflight.SecretsFor(index) : new Dictionary<string, string>()), new Progress<string>(), cancel);
+                        add ? preflight.SecretsFor(index) : new Dictionary<string, string>()), output ?? new Progress<string>(), cancel);
                 case SetupChangeKind.AssignJob when OwnRoute(change, recommendation):
                     if (item.Terms is not null) targets.Accepted(item);
                     return await targets.UseRouteAsync(change.Job!, Handover(change, recommendation).Option!, cancel);

@@ -117,6 +117,32 @@ public sealed record SetupRun
     /// <summary>The computers it changes now.</summary>
     public IReadOnlyList<SetupRunMachine> Configuring => Machines.Where(m => m.State == SetupMachineState.Configuring).ToArray();
 
+    /// <summary>One line for each computer whose state or step changed since <paramref name="before"/> (the same run as
+    /// reported earlier; null: the run just started), for a run window's output: "gpu-box: Installing Chatterbox Turbo (1 of
+    /// 2)...", "gpu-box: 1 of 2 done; waiting for its next step." or "gpu-box: done. All 2 changes made." A refresh that only
+    /// shows the run is alive adds nothing.</summary>
+    public IReadOnlyList<string> ChangesSince(SetupRun? before)
+    {
+        var lines = new List<string>();
+        foreach (var machine in Machines)
+        {
+            var earlier = before?.Machine(machine.MachineId);
+            if (earlier is null ? machine is { State: SetupMachineState.Pending, Step: null }
+                    : earlier.State == machine.State && earlier.Step == machine.Step)
+                continue;
+            var step = machine.Step is { Length: > 0 } text ? text.TrimEnd('.') : null;
+            lines.Add(machine.State switch
+            {
+                SetupMachineState.Configuring => $"{machine.MachineId}: {step ?? "working"}...",
+                SetupMachineState.Pending => $"{machine.MachineId}: {step ?? "waiting for its turn"}.",
+                SetupMachineState.Done => $"{machine.MachineId}: done. {step ?? "Nothing left to change"}.",
+                SetupMachineState.Failed => $"{machine.MachineId}: failed. {step ?? "A change stopped"}.",
+                _ => $"{machine.MachineId}: needs you. {step ?? "A change was skipped"}."
+            });
+        }
+        return lines;
+    }
+
     /// <summary>The run in one or two plain sentences, for Home and the tray ("Configuring your computers: 1 of 3 done.
     /// gpu-box: Installing Chatterbox Turbo (2 of 4).").</summary>
     public string Summary(DateTimeOffset now)

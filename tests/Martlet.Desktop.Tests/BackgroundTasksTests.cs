@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Threading;
+using Martlet.Core.Planning;
 using Martlet.Core.Settings;
 using Martlet.Desktop;
 
@@ -307,6 +308,70 @@ public sealed class BackgroundTasksTests
         }
         finally { BackgroundTasks.Reset(); }
     }
+
+    [Fact]
+    public void DiscardDropsOnlyAFinishedTaskWhoseWindowIsClosed()
+    {
+        BackgroundTasks.Reset();
+        try
+        {
+            var other = BackgroundTasks.Start("Download Martlet 9.9.9", () => { });
+            var busy = BackgroundTasks.Start("Update gpu-box to Martlet 9.9.9", () => { });
+            BackgroundTasks.Discard(busy);
+            Assert.Contains(busy, BackgroundTasks.All);
+            busy.Finish(BackgroundTaskState.Done, "gpu-box is busy with another change (installing ollama), so nothing was changed.");
+            BackgroundTasks.Discard(busy);
+            Assert.Same(other, Assert.Single(BackgroundTasks.All));
+        }
+        finally { BackgroundTasks.Reset(); }
+    }
+
+    [Fact]
+    public Task ReconfigureStartsTheRunAndTheReviewClosesOrSaysWhyItCouldNot() => OnDispatcher(async () =>
+    {
+        var build = RecommendedSetupInputs.Request(RecommendedSetupInputs.Fixture(DateTimeOffset.UtcNow));
+        var recommendation = NetworkRecommender.Recommend(build.Request, FootprintCatalog.Default);
+        Assert.NotEmpty(recommendation.Changes);
+        var review = RecommendedSetupReview.From(recommendation, build);
+        var owners = new List<Window>();
+        string? problem = null;
+        RecommendedSetupWindow Open()
+        {
+            var window = new RecommendedSetupWindow(review, _ => Task.FromResult(new RecommendedSetupPreflightView(["Install it."], true)),
+                (owner, _, _) =>
+                {
+                    owners.Add(owner);
+                    return problem;
+                }) { ShowActivated = false, ShowInTaskbar = false };
+            window.Show();
+            return window;
+        }
+
+        // Started: the run window takes over (Background tasks lists it) and the review closes.
+        var started = Open();
+        var closed = false;
+        started.Closed += (_, _) => closed = true;
+        await Until(() => Field<Button>(started, "ApplyButton").IsEnabled);
+        Click(started, "ApplyButton");
+        Assert.Same(started, Assert.Single(owners));
+        Assert.True(closed);
+        Assert.NotNull(started.Outcome);
+
+        // It couldn't start: the review stays open and says why.
+        problem = "Martlet is already reconfiguring your computers. Background tasks shows its progress.";
+        var refused = Open();
+        try
+        {
+            await Until(() => Field<Button>(refused, "ApplyButton").IsEnabled);
+            Click(refused, "ApplyButton");
+            Assert.True(refused.IsVisible);
+            Assert.Equal(problem, Field<TextBlock>(refused, "StatusText").Text);
+            Assert.Equal(Visibility.Collapsed, Field<Button>(refused, "ApplyButton").Visibility);
+            Assert.Equal(Visibility.Visible, Field<Button>(refused, "CloseButton").Visibility);
+            Assert.Null(refused.Outcome);
+        }
+        finally { refused.Close(); }
+    });
 
     [Fact]
     public void FinishedTaskOutputHidesPairingCodes() =>

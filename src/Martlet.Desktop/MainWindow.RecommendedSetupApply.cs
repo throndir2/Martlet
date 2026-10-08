@@ -13,14 +13,16 @@ namespace Martlet.Desktop;
 /// <summary>Applies the recommended setup to all your computers (docs/CLUSTER.md, "Applying the recommended setup") and shows
 /// the Configuring state everywhere ("Configuring"). <see cref="PrepareRecommendedSetupAsync"/> reads what the review must
 /// show before Reconfigure (each role's terms, secrets, downloads, changes that need someone at a computer or can't be made);
-/// <see cref="ApplyRecommendedSetupAsync"/> makes the changes in order through Martlet's existing paths: host roles through
+/// <see cref="ReconfigureAsync"/> runs <see cref="ApplyRecommendedSetupAsync"/> as a background task (its run window, in
+/// Background tasks), which makes the changes in order through Martlet's existing paths: host roles through
 /// Martlet on that computer (node commands), this PC's own host service or SSH; who does each job through the shared cluster
 /// plan with failover on; Devices › Sharing work; then one cluster check, so every companion PC follows within one check. The
 /// run is published as this PC's setup-run entry in the shared settings, so every computer shows Configuring.</summary>
 public partial class MainWindow
 {
-    /// <summary>How the engine runs on this PC name a recommended-setup change to other runs that wait for the same step.</summary>
-    private const string SetupRunTitle = "Reconfiguring your computers";
+    /// <summary>The background task (run window) that applies the recommended setup. The engine runs on this PC name it to other
+    /// runs that wait for the same step.</summary>
+    internal const string SetupRunTitle = "Reconfigure your computers";
     /// <summary>How long Prepare waits for Martlet on a host to read a role there.</summary>
     private static readonly TimeSpan DescribePatience = TimeSpan.FromMinutes(2);
     /// <summary>How long a role change waits for Martlet on that host to take it.</summary>
@@ -38,13 +40,63 @@ public partial class MainWindow
     /// <summary>What the owner must see or accept before Reconfigure. Reads each role to install from its computer (martlet-host
     /// describe there); changes nothing.</summary>
     internal Task<SetupRunPreflight> PrepareRecommendedSetupAsync(NetworkRecommendation recommendation, CancellationToken cancel) =>
-        SetupExecutor.PrepareAsync(recommendation, new SetupTargets(this), cancel);
+        SetupExecutor.PrepareAsync(recommendation, SetupRunTargets(), cancel);
+
+    /// <summary>The paths a run takes: this PC's real ones, or the FIXTURE's simulated computers (<see cref="SimulatedRecommendedSetup"/>).</summary>
+    private ISetupTargets SetupRunTargets() => SimulatedRecommendedSetup.Active
+        ? new SimulatedRecommendedSetup.Targets(ClusterDevice, run =>
+        {
+            setupRun = run;
+            ShowConfiguring();
+        })
+        : new SetupTargets(this);
+
+    /// <summary>Reconfigure: applies <paramref name="recommendation"/> as a background task, in a run window over
+    /// <paramref name="owner"/> (the review, which closes; the run stays with Martlet's main window). The window lists the
+    /// changes, then each computer's steps and what its host engine prints, and ends with each change's outcome; Hide keeps it
+    /// going in Background tasks, and Cancel task stops the changes not made yet (each says so). A second Reconfigure while it
+    /// runs shows the same run.</summary>
+    private Task<string?> ReconfigureAsync(Window owner, NetworkRecommendation recommendation, SetupRunPreflight preflight) =>
+        HostRunWindow.RunAsync(owner, SetupRunTitle, async run =>
+        {
+            var changes = recommendation.Changes;
+            run.Status($"Starting {changes.Count} change{(changes.Count == 1 ? "" : "s")} on your computers...");
+            for (var i = 0; i < changes.Count; i++) run.Output.Report($"{i + 1}. {changes[i].Summary}");
+            // Each computer's new state is a line, in order with what its host engine prints.
+            SetupRun? shown = null;
+            var progress = new RunProgress(next =>
+            {
+                foreach (var line in next.ChangesSince(shown)) run.Output.Report(line);
+                shown = next;
+                if (!next.Finished) run.Status(next.Summary(DateTimeOffset.UtcNow));
+            });
+            var outcome = await ApplyRecommendedSetupAsync(recommendation, preflight, progress, run.Output, run.Token);
+            foreach (var step in outcome.Steps)
+                run.Output.Report(step.State switch
+                {
+                    SetupMachineState.Done => "Done",
+                    SetupMachineState.Failed => "Failed",
+                    _ => "Needs you"
+                } + $": {step.Change.Summary} {step.Text}");
+            ErrorLog.Info($"Recommended setup: reconfigured ({(outcome.Succeeded ? "every change done" : "not every change done")}).");
+            // Canceled: the changes not made are listed above, and the task shows it was canceled.
+            run.Token.ThrowIfCancellationRequested();
+            return outcome.Summary;
+        }, join: true);
+
+    /// <summary>Takes the executor's reports where it makes them (on the UI thread, which the run started on), without a
+    /// second trip through the dispatcher.</summary>
+    private sealed class RunProgress(Action<SetupRun> report) : IProgress<SetupRun>
+    {
+        public void Report(SetupRun value) => report(value);
+    }
 
     /// <summary>Applies <paramref name="recommendation"/> after the owner's Reconfigure in the review that showed
     /// <paramref name="preflight"/> (the click accepts the terms it showed). Makes the changes in order, continues past a failed
-    /// one and reports each computer; never throws for a failed step.</summary>
+    /// one and reports each computer (and what each role change's host engine prints, to <paramref name="output"/>); never
+    /// throws for a failed step.</summary>
     internal async Task<SetupRunOutcome> ApplyRecommendedSetupAsync(NetworkRecommendation recommendation, SetupRunPreflight preflight,
-        IProgress<SetupRun>? progress, CancellationToken cancel)
+        IProgress<SetupRun>? progress, IProgress<string>? output, CancellationToken cancel)
     {
         if (setupApplying) throw new InvalidOperationException("Martlet is already reconfiguring your computers.");
         setupApplying = true;
@@ -52,7 +104,7 @@ public partial class MainWindow
         {
             ErrorLog.Info($"Recommended setup: reconfiguring your computers ({recommendation.Changes.Count} changes, " +
                 $"{recommendation.Changes.Select(c => SetupExecutor.RunMachine(c, ClusterDevice)).Distinct(StringComparer.Ordinal).Count()} computers).");
-            var outcome = await SetupExecutor.ApplyAsync(recommendation, preflight, new SetupTargets(this), progress, cancel);
+            var outcome = await SetupExecutor.ApplyAsync(recommendation, preflight, SetupRunTargets(), progress, cancel, output: output);
             foreach (var step in outcome.Steps)
                 if (step.State == SetupMachineState.Done) ErrorLog.Info($"Recommended setup: {step.Change.Summary} Done: {step.Text}");
                 else ErrorLog.Warn($"Recommended setup: {step.Change.Summary} {step.State}: {step.Text}");
@@ -248,9 +300,18 @@ public partial class MainWindow
                     break;
                 default:
                     var arguments = new Dictionary<string, string>(command.Arguments, StringComparer.Ordinal) { ["role"] = command.RoleKind };
+                    // Martlet there reports where the command stands; each new state is a line in the run's output too.
+                    string? reported = null;
+                    void Status(string now)
+                    {
+                        activity.Update(now);
+                        if (now == reported) return;
+                        reported = now;
+                        progress.Report($"{host.HostId}: {now}");
+                    }
                     var sent = await ThroughAgentAsync(host, connection => SetupHostCommands.RunAsync(connection, host.HostId,
                         command.Add ? NodeCommandKinds.AddRole : NodeCommandKinds.RemoveRole, arguments,
-                        command.Add && command.Secrets.Count > 0 ? command.Secrets : null, TakePatience, activity.Update, cancel), cancel);
+                        command.Add && command.Secrets.Count > 0 ? command.Secrets : null, TakePatience, Status, cancel), cancel);
                     return sent.State == NodeCommandState.Succeeded
                         ? SetupStepResult.Done(sent.Summary ?? $"{name} {(command.Add ? "runs" : "was removed")} on {here}.")
                         : SetupStepResult.Failed(sent.Summary ?? $"Martlet on {here} couldn't finish it.");

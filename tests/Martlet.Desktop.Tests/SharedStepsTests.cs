@@ -152,6 +152,21 @@ public sealed class SharedStepsTests
         Assert.True(await waiting);
         Assert.True(await install);
     }
+
+    [Fact]
+    public void The_Docker_Desktop_step_says_what_a_run_does_with_Docker_Desktop_while_it_runs()
+    {
+        _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
+        Assert.Null(MainWindow.DockerWorkLabel([], installing: false));
+        Assert.Null(MainWindow.DockerWorkLabel([SharedSteps.Firewall, SharedSteps.Image("martlet-host:1.0.0")], installing: false));
+        // A new host PC starting Docker Desktop by itself (or anyone pressing Start Docker Desktop): one label for the whole start,
+        // also while that start checks Windows.
+        Assert.Equal("Starting Docker Desktop...", MainWindow.DockerWorkLabel([SharedSteps.DockerStart], installing: false));
+        Assert.Equal("Starting Docker Desktop...", MainWindow.DockerWorkLabel([SharedSteps.DockerStart, SharedSteps.WindowsReady], installing: false));
+        Assert.Equal("Getting Windows ready...", MainWindow.DockerWorkLabel([SharedSteps.WindowsReady], installing: false));
+        Assert.Equal("Installing Docker Desktop...", MainWindow.DockerWorkLabel([SharedSteps.DockerInstall, SharedSteps.WindowsReady], installing: false));
+        Assert.Equal("Installing Docker Desktop...", MainWindow.DockerWorkLabel([SharedSteps.WindowsReady], installing: true));
+    }
 }
 
 /// <summary>Settings changes from the main window take turns: one that finds another saving waits for it instead of being

@@ -17,8 +17,9 @@ namespace Martlet.Desktop;
 /// work (or works in a reduced way); a notice is good to know (optional setup, an update, the last run ending badly).</summary>
 internal enum HealthLevel { Problem, Warning, Notice }
 
-/// <summary>A fix offered next to a health item. A <paramref name="Passive"/> fix only opens a page or hides the item.</summary>
-internal sealed record HealthFix(string Id, string Label, Action Run, bool Passive = false);
+/// <summary>A fix offered next to a health item. A <paramref name="Passive"/> fix only opens a page or hides the item.
+/// <paramref name="Enabled"/> false shows it greyed out while a run already does it (its label then says so).</summary>
+internal sealed record HealthFix(string Id, string Label, Action Run, bool Passive = false, bool Enabled = true);
 
 /// <summary>Something on Home that is wrong, missing or worth knowing. <paramref name="Headline"/> replaces the hero's title
 /// when this is the top problem.</summary>
@@ -326,7 +327,7 @@ public partial class MainWindow
                 (here.Count == 0 && forOthers.Count == 0 ? " Nothing uses it right now." : "");
             Add("host-service", stopsThinking ? HealthLevel.Problem : here.Count > 0 || forOthers.Count > 0 ? HealthLevel.Warning : HealthLevel.Notice,
                 "This PC's host service isn't working", detail,
-                [.. (step?.Commands ?? []).Select((c, i) => new HealthFix("repair-" + i, c.Label, c.Run)),
+                [.. (step?.Commands ?? []).Select((c, i) => new HealthFix("repair-" + i, c.Label, c.Run, Enabled: c.Enabled)),
                  new("check", "Check again", () => CheckOwnHostServiceAsync().Forget()),
                  new("show", "Show on the map", () => ShowDevice("this-pc"), Passive: true)],
                 stopsThinking ? "Martlet can't reply right now" : null);
@@ -598,7 +599,8 @@ public partial class MainWindow
         {
             StageTitle.Text = top.Headline ?? top.Title;
             StageText.Text = top.Headline is null || top.Headline == top.Title || top.Id == "thinking-setup" ? top.Detail : $"{top.Title}. {top.Detail}";
-            var fix = top.Fixes.FirstOrDefault();
+            // The hero offers the first fix that can be pressed now (not one greyed out while a run already does it).
+            var fix = top.Fixes.FirstOrDefault(f => f.Enabled);
             stageFix = fix?.Run;
             PrimaryStageButton.Content = fix?.Label ?? "";
             PrimaryStageButton.Visibility = fix is null ? Visibility.Collapsed : Visibility.Visible;
@@ -690,7 +692,7 @@ public partial class MainWindow
             var primary = issue.Level == HealthLevel.Problem;
             foreach (var fix in issue.Fixes)
             {
-                var button = new Button { Content = fix.Label, Margin = new Thickness(0, 0, 8, 4), Padding = new Thickness(12, 6, 12, 6) };
+                var button = new Button { Content = fix.Label, Margin = new Thickness(0, 0, 8, 4), Padding = new Thickness(12, 6, 12, 6), IsEnabled = fix.Enabled };
                 if (fix.Id == "dismiss") button.SetResourceReference(StyleProperty, "LinkButton");
                 else if (primary) button.SetResourceReference(StyleProperty, "PrimaryButton");
                 primary = false;

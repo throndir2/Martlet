@@ -405,21 +405,45 @@ public partial class MainWindow
         whatsAppBusy = true;
         whatsAppNote = "Downloading cloudflared...";
         RenderTab();
+        string? problem = null;
+        BackgroundTask? task = null;
         try
         {
-            var progress = new Progress<double>(done =>
+            // A background task (Background tasks lists it); this page shows its progress too.
+            var done = await HostRunWindow.RunAsync(this, "Download cloudflared", async run =>
             {
-                whatsAppNote = $"Downloading cloudflared... {done:P0}";
-                if (!closing && openTab == CompanionTab.Messaging && System.Windows.Input.Keyboard.FocusedElement is not (PasswordBox or System.Windows.Controls.Primitives.TextBoxBase)) RenderTab();
+                task = run.BackgroundTask;
+                run.Status(whatsAppNote);
+                run.Output.Report($"Downloading cloudflared from {CloudflareQuickTunnel.Download.Host} (about 60 MB) into {tools}.");
+                var progress = new Progress<double>(fraction =>
+                {
+                    whatsAppNote = $"Downloading cloudflared... {fraction:P0}";
+                    run.Status(whatsAppNote);
+                    if (!closing && openTab == CompanionTab.Messaging && System.Windows.Input.Keyboard.FocusedElement is not (PasswordBox or System.Windows.Controls.Primitives.TextBoxBase)) RenderTab();
+                });
+                using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, run.Token);
+                try
+                {
+                    var path = await CloudflareQuickTunnel.DownloadAsync(tools, progress, cancellation.Token);
+                    run.Output.Report($"Saved {path}.");
+                }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
+                catch (Exception error) when (error is System.Net.Http.HttpRequestException or IOException or UnauthorizedAccessException or
+                    InvalidDataException or OperationCanceledException)
+                {
+                    problem = error.Message;
+                    throw new InvalidOperationException(error.Message, error);
+                }
+                return "cloudflared is ready.";
             });
-            var path = await CloudflareQuickTunnel.DownloadAsync(tools, progress, lifetime.Token);
-            whatsAppNote = "cloudflared is ready.";
-            ErrorLog.Info("WhatsApp: downloaded cloudflared.");
-            return true;
-        }
-        catch (Exception error) when (error is System.Net.Http.HttpRequestException or IOException or UnauthorizedAccessException or InvalidDataException or TaskCanceledException)
-        {
-            whatsAppNote = $"Couldn't download cloudflared ({error.Message}). Install it yourself (winget install Cloudflare.cloudflared) and try again.";
+            if (done is not null)
+            {
+                whatsAppNote = "cloudflared is ready.";
+                ErrorLog.Info("WhatsApp: downloaded cloudflared.");
+                return true;
+            }
+            whatsAppNote = task?.State == BackgroundTaskState.Canceled ? "The cloudflared download was canceled."
+                : $"Couldn't download cloudflared ({problem ?? task?.Status}). Install it yourself (winget install Cloudflare.cloudflared) and try again.";
             return false;
         }
         finally

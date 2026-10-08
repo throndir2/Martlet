@@ -2055,7 +2055,15 @@ can't run it), so nothing is installed; the helper records the failure and
 starts Martlet again (`--after-update`, same data directory), which reports
 *The update to 9.9.9 didn't finish* and doesn't install it automatically again
 that session. Turning on `AutomaticUpdateInstall` (`ui_toggle`) saves
-`updates.json`, so it needs `--allow-ui-effects`.
+`updates.json`, so it needs `--allow-ui-effects`. Every download is a
+background task, *Download Martlet x.y.z*: out of sight when Martlet downloads
+by itself, in its run window when you chose Install. `TaskState-<id>` reads its
+percentage while it runs and *Done at ... Martlet x.y.z is downloaded and ready
+to install.* at the end, and its Cancel task stops the download (`AppUpdateStatus`
+*The download of Martlet x.y.z was canceled.*). With the fixture the download
+ends at once; to keep Martlet from installing it while you look, launch with
+`MARTLET_SIMULATE_BACKGROUND_TASK` too: `AppUpdateStatus` then reads *... Waiting:
+simulated background task (in Background tasks).*
 
 **This PC's own host service after an update.** On a PC that runs a host
 service (a host PC, or one paired with its host service on Docker Desktop),
@@ -2069,7 +2077,14 @@ stopped. Martlet starts it right after its own startup (after an update, once it
 window is back) and looks again every minute, whatever `AutomaticHostUpdate`
 says; `logs_tail` shows *Updating this PC's host service from Martlet a.b.c to
 x.y.z in the background.* and *Updated ... (n s).*, and `host-runs` the run
-(*Keep this PC's host service current*). To exercise it without touching a real
+(*Keep this PC's host service current*). That run is a background task out of
+sight: `TaskTitle-<id>` *Keep this PC's host service current*, `TaskState-<id>`
+*Running for 1 s. Updating this PC's host service from Martlet a.b.c to Martlet
+x.y.z...*, then *Done at ... This PC's host service runs Martlet x.y.z.* A try
+that finds the host busy changes nothing and leaves Background tasks. Its
+Cancel task stops it, and `OwnHostUpdateStatus` then reads *You canceled
+updating this PC's host service to Martlet x.y.z; nothing more changes by
+itself...*: Martlet doesn't start it again by itself for that version. To exercise it without touching a real
 host service, set `MARTLET_SIMULATE_OWN_HOST` to an older version (for example
 `0.37.0`, or `0.37.0,busy` to have the first try find the host busy) and
 `DOCKER_HOST` to an unused named pipe before launching the desktop, on a
@@ -3432,10 +3447,28 @@ benefit, the summary and why), `RecommendedSetupComputer-<n>`,
 `RecommendedSetupPreflight-<n>`, `RecommendedSetupTerms-<n>`,
 `RecommendedSetupSecret-<n>` (the label only; the key box `SetupSecretInput-<n>`
 is never read), `RecommendedSetupNote-<n>` and `RecommendedSetupStatus` (the
-preflight state, the progress while it reconfigures and the outcome).
+preflight state, or why Reconfigure couldn't start, such as *Martlet is already
+reconfiguring your computers. Background tasks shows its progress.*).
 `RecommendedSetupClose` only closes the window. `RecommendedSetupApply`
 (Reconfigure: it changes every computer) and `RecommendedSetupCancel` (Not now:
-it saves `recommended-setup.json`) need `--allow-ui-effects`. When an automatic
+it saves `recommended-setup.json`) need `--allow-ui-effects`. Reconfigure
+closes the review and starts the background task *Reconfigure your computers*
+in its run window: `HostRunStatus` and `TaskState-<id>` read the progress
+(*Configuring your computers: 0 of 2 finished. gpu-box: Installing Chatterbox
+Turbo (1 of 6).*), then the outcome (*Reconfigured your computers: 9 of 9
+changes made.*), and `logs_tail` `host-runs` returns its output: the numbered
+changes, each computer's steps (*gpu-box: done. All 6 changes made.*), what
+each host engine prints and each change's outcome (*Done: ...*, *Failed: ...* or
+*Needs you: ...*). Cancel task stops the changes not made yet (*Needs you: ...
+Stopped before it ran.*) and the task reads *Canceled at ...*. To drive
+Reconfigure without your computers, set `MARTLET_SIMULATE_RECOMMENDED_SETUP` to a
+number of seconds (1-600) before launching the desktop (FIXTURE, **NOT real
+computers**): Home's Recommended setup then plans the fixture network that
+`recommended_setup_status` plans with `fixture: "network"` (also on a PC
+alone), and Reconfigure applies it to simulated computers. Each role change
+takes that many seconds and writes `FIXTURE` lines; nothing is installed,
+contacted, saved or shared, and the run shows on this PC's Home
+(`HomeConfiguringStatus`) only. When an automatic
 check finds a better setup, Home shows `HealthIssue-recommended-setup`. Its
 Review (`HealthOpen-recommended-setup-review`) opens the review, and its Not now
 (`HealthFix-recommended-setup-decline`) saves `recommended-setup.json`, so it
@@ -4666,7 +4699,14 @@ twice. While runs work, `HostRunsNow` (returned) lists them with their status
 lines (*2 runs working side by side: Start Docker Desktop: Waiting for Docker
 Desktop to start... · Check this PC's host: Waiting: ...*), `StepDetail-docker`
 says which run is installing or starting Docker Desktop (*"Start Docker Desktop"
-is starting Docker Desktop. You don't have to wait: ...*), and, while a host
+is starting Docker Desktop. You don't have to wait: ...*), and `Step-docker-0`
+says what that run does (*Installing Docker Desktop...*, *Starting Docker
+Desktop...* or *Getting Windows ready...*) and is disabled (`enabled: false`)
+until it ends. This includes the hidden *Start this host's roles* run of a PC
+that just became a host PC. When no run works on Docker Desktop any more, the
+dashboard reads the host service again at once (the desktop log says *No run
+works on Docker Desktop any more; reading this PC's host service again now.*),
+so the step ticks or offers its button again. While a host
 service Martlet hasn't seen set up waits for Docker Desktop, `StepDetail-service`
 offers `Step-service-0` *Set up host service* already (its run waits for Docker
 Desktop and continues). The dashboard keeps reading the host service every 30
@@ -4675,7 +4715,17 @@ one to click: `ui_click` `{"id":"HostRunCancel","window":"Martlet - Start Docker
 Desktop"}`. To exercise it without the real engine, launch the desktop with
 `DOCKER_HOST` pointing at a missing pipe and Docker Desktop already running:
 *Start Docker Desktop* (`Step-docker-0`) then waits for an engine that never
-answers, and `HostStatusConsole` (*Show host status*) waits for it.
+answers, and `HostStatusConsole` (*Show host status*) waits for it. To exercise
+a start without touching Docker Desktop or Windows at all, also set
+`MARTLET_SIMULATE_DOCKER_START` to a number of seconds (1-600) before launching
+the desktop (FIXTURE, `SimulatedDockerStart.cs`): every Docker Desktop start
+then waits that long, shared by the runs that need it as a real start is, and
+stops as a start that failed; the host-runs log says *FIXTURE
+(MARTLET_SIMULATE_DOCKER_START)*. With `this-pc-host-roles.txt` (one role per
+line, such as `ollama`) in the data directory, a desktop made a host PC (for
+example with `role_lab ask host`) starts Docker Desktop by itself, so
+`Step-docker-0` reads *Starting Docker Desktop...* and is disabled until the
+fixture ends.
 Devices' `AddComputer` (and Settings' `OpenHosts`, and on a new PC Home's
 `HomeConnectComputers` or the `HealthOpen-thinking-setup-network` fix) opens the *Add a computer*
 wizard (`HostsWindow`, titled *Martlet - add a computer*; the click may return
@@ -4778,8 +4828,15 @@ conversation replies or hears you): `HealthCheck-hostservice` shows its stage
 *Host is running*), and while it isn't ready `HealthIssue-host-service` says
 why and which of this PC's jobs stop (they no longer show as `job-<job>`
 items), with the host dashboard's next step as `HealthFix-host-service-repair-0`
-(Install or Start Docker Desktop, Set up or Start host service), then
-`HealthFix-host-service-check` and `HealthOpen-host-service-show`. On Devices,
+(Install or Start Docker Desktop, Set up or Start host service; its label is
+returned, such as *Start Docker Desktop: This PC's host service isn't working*),
+then `HealthFix-host-service-check` and `HealthOpen-host-service-show`. While a
+run installs or starts Docker Desktop, `HealthFix-host-service-repair-0` reads
+*Starting Docker Desktop...* (or *Installing Docker Desktop...*) and is
+disabled, the hero (when this item is the top problem) offers *Check again*
+instead, and on Devices the
+`CoverageFix-<job>-RepairHostService` buttons are disabled with the same label
+until that run ends. On Devices,
 `Node-this-pc` and `SelectedDeviceHealth` read *Host service not working* (or
 *not answering*), and coverage names it *This PC's host service*, never by its
 host ID. To see it, pair a disposable data directory's `hosts.json` with
@@ -4799,8 +4856,18 @@ power loss (a made-up marker PID gives the latter, about 20 seconds after
 launch).
 
 The Background tasks page (`NavTasks`) lists every run window's run since
-Martlet started, newest first: setting up, updating or pairing a computer, a
-download, Docker Desktop and the like. Hiding a run window (`HostRunHide`, Esc
+Martlet started, newest first: setting up, updating or pairing a computer,
+reconfiguring your computers with the recommended setup (*Reconfigure your
+computers*), a download (*Download Martlet x.y.z*, *Download Parakeet ...*,
+*Download cloudflared*, a model), Docker Desktop and the like. What Martlet
+starts by itself runs out of sight from the start and is listed the same way:
+the automatic update download, host updates (*Update gpu-box to Martlet
+x.y.z*; a try that finds the host busy changes nothing and leaves the list),
+*Keep this PC's host service current*, and the changes your other computers ask
+this PC's host service to make (*Install chatterbox (from desk-main)*, *Update
+this PC's host service to Martlet x.y.z (from desk-main)*; their output still
+goes back to that computer, and Cancel task tells it the owner canceled it
+here). Hiding a run window (`HostRunHide`, Esc
 or its close button) only hides it while it runs; a question the run asks (a
 password, a role's choices, a confirmation) shows its window again with it, and
 a run outlives the window that started it (the hosts wizard). `NavTasksCount`
@@ -6441,9 +6508,11 @@ notification area.
 **Exiting.** `ExitMartlet`, `TrayExit` and (with *Keep running when closed*
 off) `ui_tray` `close` exit Martlet, so they need `--allow-ui-effects`. An exit
 that would cut work short (backup and restore, a setup task other than a reply,
-a troubleshooting report being made or waiting to be exported, an update
-download, a Parakeet download, a host update, a command
-from another computer, a running run window, shown or hidden in Background tasks (listed as *<run> (in Background tasks)*), or *Prepare this computer*) waits
+a troubleshooting report being made or waiting to be exported, a command
+from another computer, a running run window, shown or hidden in Background
+tasks and listed as *<run> (in Background tasks)* (for example an update,
+Parakeet or cloudflared download, a host update, reconfiguring your computers or
+a change another computer asked for), or *Prepare this computer*) waits
 up to 1.5 seconds for quick work to finish, then shows the window and asks in
 an *Exit Martlet* confirmation whose `ExitBusyQuestion` lists what Martlet is
 still busy with: `ConfirmationYes` (*Exit anyway*) interrupts it,
