@@ -15,6 +15,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 - Your computers with a Thinking model now join the Thinking pool by themselves, so you no longer tick *Join the Thinking pool* when a computer comes online or gets a Thinking model. A computer's Thinking pool role joins with its slots, and its Ollama joins when it doesn't already do your Thinking. Untick **In the Thinking pool** on a computer in Companion › Thinking pool to keep it out; a computer that goes offline stays in the pool and its slots come back when it answers again. ([#571](https://github.com/throndir2/Martlet/pull/571))
+- Companion › Character › **Touch temperament** is now one neat table: each part of the body is a line under the headings **Feels**, **Plays**, **Then**, **Lingers** and **Looks at mouse**, a line shows only the choices that apply, and the explanations are shorter. On a narrow window a line's choices wrap neatly beside its name instead of being cut off, and pointing at the status line shows the whole temperament in words. ([#567](https://github.com/throndir2/Martlet/pull/567))
 - Companion › Character's **Touch zones**, **Touch temperament** and **Emotes and motions** lists are tidier and take much less room: their boxes, choices and buttons are slimmer and line up, each label sits beside what it names, and a zone's box for your own words shows only while **Martlet notices** is on. Text boxes all over Martlet are slimmer too, as tall as the choices beside them. ([#565](https://github.com/throndir2/Martlet/pull/565))
 
 ### Fixed
