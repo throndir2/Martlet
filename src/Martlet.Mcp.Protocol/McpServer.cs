@@ -198,15 +198,34 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the character overlay's drawing, +y down), tilt (degrees, clockwise), cheekLeft and cheekRight (x, y; visible, 0 to " +
             "1 as the cheek turns away; across, the cheek's width against the face's, below 1 on a turned head's far cheek; and " +
             "the renderer's hit test there: hit, drawables, bone, mesh), eyeLeft, eyeRight, mouth and top (x, y: the eye and mouth " +
-            "points the overlay emotes such as tears or tongue_out are drawn from, and the top of the head), the overlays " +
-            "showing and pinned (Live2D: carriers, the " +
-            "mesh vertices the face rides on, and milliseconds, how long finding them took at load). summary says which tracking " +
-            "was used, how far the face moved (x, y, width, tilt) and, per cheek, the share of readings over the character, " +
-            "what it was mostly over and for what share, the least it showed and its across range. Reading changes nothing, so " +
-            "it needs no --allow-ui-effects.", new
+            "points the overlay emotes such as tears or tongue_out are drawn from, and the top of the head; an eye with a known " +
+            "iris has its point at the eye's middle), the eyes for drawings over them: eyesFrom (mesh: a Live2D " +
+            "model's iris and eye-white meshes; bones: a VRM's eye bones with its iris and eye-white meshes; vision: eyes measured " +
+            "by vision fill what the model can't give; estimate: an eye has neither, so its iris and opening are left out), " +
+            "irisLeft and irisRight (x, y, rx, ry: the iris's middle and radii, x and rx fractions of the drawing's width, y and ry " +
+            "of its height; null when unknown) and eyeLeftShape and eyeRightShape (the eye's visible opening now: points, " +
+            "triangles (null for an outline), its box left, top, right, bottom, and irisInside, whether the iris's middle is in " +
+            "it; 0 points when the eye is closed or hidden), the overlays showing and pinned (Live2D: carriers, the mesh vertices " +
+            "the face rides on, milliseconds, how long finding them took at load, and eyeMilliseconds, how long finding the eyes' " +
+            "meshes took). summary says which tracking was used, how far the face moved (x, y, width, tilt), per cheek the share " +
+            "of readings over the character, what it was mostly over and for what share, the least it showed and its across " +
+            "range, eyesFrom (the sources seen) and per eye (eyeLeft, eyeRight) the share of readings with an iris, how far the " +
+            "iris moved (irisMoved x, y), the share of open readings with the iris inside its opening, the opening's least and " +
+            "most height (a blink closes it) and the share of readings it was closed. Reading changes nothing, so it needs no " +
+            "--allow-ui-effects.", new
         {
             samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumFaceSamples },
             gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
+        }),
+        Tool("character_picture", "Take a picture of the showing character as it shows now: the renderer's own capture of the " +
+            "overlay's page (WebView2), so Martlet's drawings over the face (its blush glow and overlay emotes such as heart eyes) " +
+            "are in it, cropped to the character with a little room. Zoom the character first (SetupCharacterZoomIn) to see small " +
+            "parts such as the eyes larger. Returns taken, picture (n, path: the renderer's PNG file in the temp folder, replaced " +
+            "each time; width and height in pixels; left, top, cropWidth and cropHeight: where it sits on the overlay's drawing, " +
+            "as fractions like character_face's positions; or error) and saved, the copy at outputPath (a full path to a .png " +
+            "file) when given. Taking it changes nothing on the character, so it needs no --allow-ui-effects.", new
+        {
+            outputPath = new { type = "string" }
         }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
@@ -1737,6 +1756,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 OptionalInt(arguments, "settleMs")),
                 "character_stroke" => await desktop.StrokeCharacterAsync(StrokePoints(arguments), OptionalInt(arguments, "stepMs") ?? 40),
                 "character_face" => await desktop.FaceCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
+                "character_picture" => await desktop.PictureCharacterAsync(OptionalString(arguments, "outputPath")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "turn_judge_check" => await TurnJudgeCheck.RunAsync(arguments, MartletDirectory(arguments), cancellation),

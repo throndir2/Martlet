@@ -274,6 +274,24 @@ what each one is.
   cheek too. The Live2D adapter's
   `setFaceHint` lets a face found by vision refine the estimate, pinned the
   same way. Martlet's MCP `character_face` reads where they are drawn.
+
+  **The eyes.** Drawings over the eyes (such as heart eyes) cover only each
+  iris and stay inside the eye. For them the face also has each eye's iris (its
+  middle and size) and its visible opening between the eyelids, as the model
+  draws them in each frame. A Live2D model gives them from its own meshes. When
+  it loads, Martlet moves `ParamEyeBallX` and `ParamEyeBallY` to find the
+  drawables they move: the largest in each eye is its iris, the smaller ones its
+  highlights. The iris's clipping mask is the eye white, and its triangles are
+  the opening, which closes as the model blinks. A VRM's eye bones place each
+  eye, and the iris turns with its bone. The model's iris and eye-white meshes
+  give the iris's size and the opening: VRoid's `EyeIris` and `EyeWhite`
+  materials, or names with iris, pupil, hitomi, 瞳 or 白目. For an eye the model
+  can't give, eyes measured by vision give a sized iris that follows the gaze
+  and an outline that closes on a blink. `eyesFrom` says where they came from:
+  `mesh` (Live2D meshes), `bones` (VRM bones and meshes), `vision`, or
+  `estimate` while an eye has neither. Then that eye's iris and opening are left
+  out, and drawings over the eyes use their own estimate. The bundled Hiyori
+  gets `mesh`.
 - **Voice emotes**: every sound and tone a voice engine makes has a global emote
   of its own, linked to that voice cue from the start, so any character reacts
   when the voice laughs, sighs or turns angry, even before it is named. The

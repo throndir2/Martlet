@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { EyeFields } from "./eyes.js";
 import { finite, integer, requireValid, type VrmCapabilities } from "./inspect.js";
 import { cheekFrame, VrmRuntime } from "./runtime.js";
 import type { VrmHit } from "./touch.js";
@@ -80,12 +81,13 @@ export class VrmAvatarAdapter extends VrmRuntime {
    * Where the face is now, in the canvas's drawing-buffer pixels (y down), for drawings over it: its middle, width, roll
    * (radians, clockwise), the cheeks, eyes and mouth (left and right as the viewer sees them) and the top of the head, from
    * the posed head bone (`tracking` "bones"), so it follows every turn of the head. Each cheek's surface comes with it: one
-   * face width across and down it on the canvas, and how much it shows as the head turns. Undefined without a head bone or
-   * while the face points away from the camera.
+   * face width across and down it on the canvas, and how much it shows as the head turns. Each eye with a known iris (from
+   * the eye bones and the model's meshes, or the eye hint; see `eyesFrom`) adds its iris and opening (see eyes.ts) and puts
+   * `eyeLeft`/`eyeRight` at the eye's middle. Undefined without a head bone or while the face points away from the camera.
    */
   faceAnchor(): { x: number; y: number; width: number; angle: number; cheekLeft: Point; cheekRight: Point; eyeLeft: Point;
     eyeRight: Point; mouth: Point; top: Point; tracking: "bones"; cheekLeftFrame: CheekSurface; cheekRightFrame: CheekSurface }
-    | undefined {
+    & EyeFields | undefined {
     if (this.closed) return undefined;
     const face = this.faceGeometry();
     if (!face) return undefined;
@@ -107,7 +109,8 @@ export class VrmAvatarAdapter extends VrmRuntime {
       cheekLeft: point(face.cheekLeft), cheekRight: point(face.cheekRight), eyeLeft: point(face.eyeLeft),
       eyeRight: point(face.eyeRight), mouth: point(face.mouth), top: point(face.top), tracking: "bones",
       cheekLeftFrame: cheekFrame(face.cheekLeft, face.cheekLeftAcross, down, face.cheekLeftNormal, face.width, camera, point),
-      cheekRightFrame: cheekFrame(face.cheekRight, face.cheekRightAcross, down, face.cheekRightNormal, face.width, camera, point) };
+      cheekRightFrame: cheekFrame(face.cheekRight, face.cheekRightAcross, down, face.cheekRightNormal, face.width, camera, point),
+      ...this.eyeFields(face, point) };
   }
 
   /** What of the posed character is at a point of the canvas (`x`, `y` fractions 0..1, origin top-left, +y down), through
