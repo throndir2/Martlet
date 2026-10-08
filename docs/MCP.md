@@ -4715,8 +4715,8 @@ top-left corner as that scale would shrink it, which `workArea` does not show
 `[0, 0, 1920, 999]`).
 Every read-only text box has a Copy button `Copy-<box ID>` (the box's
 automation ID, or its `x:Name` when it has none: `Copy-HostRunOutput`,
-`Copy-PrepareOutput`, `Copy-SupportReport`, `Copy-LogDetail`,
-`Copy-FoundationStatus`) above its top-right corner (its `bounds` sit above the
+`Copy-PrepareOutput`, `Copy-SupportReport`, `Copy-LogDetail`) above its
+top-right corner (its `bounds` sit above the
 box's text and scroll bar, which keep the box's full width), shown only while
 the box has text. Snapshots return
 its label (*Copy*, or *Copied*/*Couldn't copy* for about three seconds after a
@@ -4749,8 +4749,11 @@ its `bounds`. Scrolling changes only what shows, so `ui_scroll` needs no
 `--allow-ui-effects`. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
 `NavDevices`, `NavCompanion`, `NavCreations`, `NavTasks`, `NavDiagnostics` or `NavSettings` first (for example
-`NavCompanion` before `CompanionTab-Listening`). On Settings, click `DiagnosticsSection` to
-expand the pipeline and status fields. On a fresh data directory, the welcome wizard shows
+`NavCompanion` before `CompanionTab-Listening`). Settings › Tools'
+`OpenTroubleshooting` opens Troubleshooting: `SupportReport` returns the status
+report (each check's state and remedy, and the last conversation activity),
+`SupportRefresh` runs the read-only status checks again and `SupportClose`
+closes it. On a fresh data directory, the welcome wizard shows
 ([WELCOME_WIZARD.md](WELCOME_WIZARD.md)): `TourSkip` dismisses it, and `TourBegin`
 and `TourBack` step through it. Step 1's `WizardNewNetwork` and
 `WizardJoinNetwork` save the device role, so they need `--allow-ui-effects`;
