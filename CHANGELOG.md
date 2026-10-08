@@ -18,6 +18,7 @@ Each release's section here is also its notes on GitHub.
 - When you switch another computer between companion and host PC, the computer you are at now tells you when it has switched. A host PC that has no host service yet now says so, instead of looking like it works for your other computers. ([#612](https://github.com/throndir2/Martlet/pull/612))
 
 ### Fixed
+- While Martlet starts Docker Desktop on a host PC, for example right after you make a companion PC a host PC, the host dashboard's Docker Desktop button is now greyed out and says **Starting Docker Desktop...** instead of offering to start it again. The step ticks as soon as Docker Desktop runs. ([#615](https://github.com/throndir2/Martlet/pull/615))
 - **Manage memory** now shows what Martlet remembers the moment it opens, even while Martlet is answering you, and it keeps up on its own: facts Martlet remembers, changes or forgets while it's open show up right away, with no need to press **Refresh**. ([#614](https://github.com/throndir2/Martlet/pull/614))
 
 ## [0.57.0] - 2026-10-07
