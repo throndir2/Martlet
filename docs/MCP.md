@@ -1310,10 +1310,13 @@ showing {blush} (12 min), ...*); it never goes in the instructions. With `voiceT
 (`kind`, `name` and `holds`, whether it lingers, such as the `laugh` voice emote; one expression and one
 motion picked at random when several share a cue; for a combo's tag such as `{flustered}`, each of its parts that is on)
 and `turnsOff` lists what an off tag turns off (the lingering emote, or a combo's lingering parts); `combo` is the combo
-the tag names, or null. `combos` lists the owner's [combos](AVATARS.md#emotes-and-motions) for the model: each one's `n`
+the tag names, or null. `combos` lists the model's [combos](AVATARS.md#emotes-and-motions) (Martlet's own and the owner's): each one's `n`
 as in `CharacterComboTag-<n>`, `tag`, `parts` (each part's `id`, `kind`, `name`, `tag`, `enabled` and `mode`; `kind`
 is `missing` for a part the model doesn't have), `use`, `hint` (what replies get next to the tag), `enabled`, `lingers`
-(a part that is on lingers, so `{/tag}` is offered too) and `offered`. With `combos`, strings such as
+(a part that is on lingers, so `{/tag}` is offered too) and `offered`. `martletCombos` lists each of Martlet's own
+combos: `tag`, `parts` (gesture tags), `use`, `startsOn` (false for `ahegao`), `given` (whether the model was given
+it; `given_combos` in `character-actions.json`) and `n` (its row in `combos` while one has its tag, otherwise null,
+such as after the owner removed it). With `combos`, strings such as
 `flustered: blush hearts nod | when flattered` read the way the Combos section's boxes are read, those combos replace
 the saved ones; when they can't be saved, `combosProblem` says why (such as *no emote has the tag 'wave'.*) and the
 saved ones stay. With `answer`, a simulated Thinking reply such as
@@ -5208,11 +5211,14 @@ menu's `CharacterClearEmotes` turn every lingering emote off (*Cleared 2
 lingering emotes for Clear emotes ...*).
 
 The card ends with **Combos**. `CharacterCombosStatus` reads how many combos
-the model has and which tags replies get (*1 combo. Replies can use 1:
-{flustered}.* or *No combos yet.*). `CharacterCombosAdd` (*Add a combo*,
+the model has and which tags replies get (*9 combos. Replies can use 8:
+{lovestruck} {flustered} {overheated} {fuming} {heartbroken} {dozing}
+{starstruck} {shocked}.* for the built-in character, which has all of
+Martlet's combos with `{ahegao}` off, or *No combos yet.*). `CharacterCombosAdd` (*Add a combo*,
 passive) adds an empty row; nothing is saved until the row has a tag and parts.
 Row `<n>` (as in `character_actions`' `combos`) has `CharacterComboOn-<n>`
-(check box), `CharacterComboName-<n>` (*{flustered} · combo*, or *New combo*;
+(check box: its `checkedState`, and `ui_toggle` turns it on or off),
+`CharacterComboName-<n>` (*{flustered} · combo*, or *New combo*;
 a status field), `CharacterComboState-<n>` (a status field: what it sets off,
 such as *Turns on "hearts" until {/flustered}; plays "blush" and "nod" once.*,
 or why its parts can't be read, such as *No emote has the tag 'wave'.*),

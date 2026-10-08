@@ -3,8 +3,9 @@ namespace Martlet.Avatar.Hosting;
 /// <summary>An emote combo: a tag the owner ties to 2 to 6 of one model's emotes, motions and gestures (<see cref="Parts"/>, their
 /// <see cref="CharacterAction.Id"/>s). A reply's <c>{tag}</c> sets off every part that is turned on at once (a lingering part stays
 /// on, a brief one shows a moment) and <c>{/tag}</c> turns its lingering parts off. <see cref="Use"/> is the hint replies get next
-/// to the tag (null: what it combines, such as "a combination of {blush}, {hearts} and {nod}"). Combos are the owner's own, saved
-/// with the model's settings; Martlet has none of its own.</summary>
+/// to the tag (null: what it combines, such as "a combination of {blush}, {hearts} and {nod}"). Combos are saved with the model's
+/// settings. Each model also gets Martlet's own combos once (<see cref="CharacterActions.MartletCombos"/>); then they are the
+/// owner's like the rest.</summary>
 public sealed record CharacterCombo
 {
     public required string Tag { get; init; }
@@ -12,6 +13,10 @@ public sealed record CharacterCombo
     public string? Use { get; init; }
     public bool Enabled { get; init; } = true;
 }
+
+/// <summary>One of Martlet's own combos: its tag, its parts as the tags of Martlet's gestures (<see cref="CharacterGesture.Tag"/>),
+/// when to use it and whether it starts turned on.</summary>
+public sealed record MartletCombo(string Tag, IReadOnlyList<string> Parts, string Use, bool Enabled = true);
 
 public sealed partial record CharacterActionCatalog
 {
@@ -68,11 +73,30 @@ public sealed partial record CharacterActionCatalog
 public static partial class CharacterActions
 {
     /// <summary>The most combos one model may have.</summary>
-    public const int MaximumCombos = 16;
+    public const int MaximumCombos = 24;
+    /// <summary>The most tags <see cref="CharacterActionSettings.GivenCombos"/> keeps.</summary>
+    public const int MaximumGivenCombos = 64;
     /// <summary>The fewest parts a combo may have.</summary>
     public const int MinimumComboParts = 2;
     /// <summary>The most parts a combo may have.</summary>
     public const int MaximumComboParts = 6;
+
+    /// <summary>Martlet's own combos of its gestures. Each model gets each one once (<see cref="CharacterActionSettings.GivenCombos"/>),
+    /// after the owner's combos, with the parts it can play; then it is the owner's, to change, turn off or remove. New ones go
+    /// last, so the reply instructions' earlier lines (and prompt caches) stay the same. ahegao starts turned off.</summary>
+    public static readonly IReadOnlyList<MartletCombo> MartletCombos =
+    [
+        new("lovestruck", ["heart_eyes", "hearts", "blush_deep", "sway"], "heart eyes, hearts and a deep blush, for being smitten or madly in love"),
+        new("flustered", ["blush_deep", "sweat", "shy"], "a deep blush, a sweat drop and a shy look, for being flustered by praise or teasing"),
+        new("overheated", ["blush_fierce", "steam", "dizzy"], "a fierce flush, steam and swirly eyes, for being too embarrassed to think"),
+        new("fuming", ["pout", "anger", "steam"], "a pout, an anger vein and steam, for being playfully furious"),
+        new("heartbroken", ["tears", "gloom", "crying"], "tears, gloom and sobs, for being heartbroken or crushed"),
+        new("dozing", ["drowsy", "sleepy", "drool"], "heavy eyes, a Zzz and drool, for nodding off"),
+        new("starstruck", ["star_eyes", "sparkles", "mouth_open"], "starry eyes, sparkles and an open mouth, for being amazed or thrilled"),
+        new("shocked", ["exclaim", "gasp", "surprised"], "an exclamation mark, a gasp and wide eyes, for a big shock"),
+        new("ahegao", ["eyes_up", "mouth_open", "tongue_out", "drool", "blush_fierce", "heart_eyes"],
+            "eyes rolled up, tongue out and flushed, for being overwhelmed with pleasure", Enabled: false)
+    ];
 
     /// <summary>How a combo's default hint names a part: its tag (<c>{blush}</c>), or its name while it has no tag.</summary>
     public static string PartLabel(CharacterActionSource source, CharacterAction action) =>
@@ -119,6 +143,8 @@ public static partial class CharacterActions
     // Why the combos of settings can't be saved, or null.
     private static string? ComboProblem(CharacterActionSettings settings)
     {
+        if (settings.GivenCombos is { } given && (given.Count > MaximumGivenCombos || !given.All(IsTag)))
+            return "The list of Martlet's combos given to this model is damaged.";
         var combos = settings.Combos ?? [];
         if (combos.Count > MaximumCombos) return $"A model can have at most {MaximumCombos} combos.";
         var actionTags = settings.Actions.Select(a => a.Tag).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -161,4 +187,33 @@ public static partial class CharacterActions
         }
         return kept.Count == 0 ? null : kept;
     }
+
+    // Gives the model the Martlet combos it wasn't given yet, after its combos: each with the parts the model can play (at least
+    // MinimumComboParts), while there is room and no emote or combo has its tag. Each is given once, added or not, so one the
+    // owner removed or renamed never comes back. Returns the combos (null for none) and the tags of every Martlet combo given.
+    private static (IReadOnlyList<CharacterCombo>? Combos, IReadOnlyList<string> Given) GiveCombos(CharacterActionInventory inventory,
+        IReadOnlyList<CharacterAction> actions, IReadOnlyList<CharacterCombo>? combos, IReadOnlyList<string>? given)
+    {
+        var had = (given ?? []).Where(IsTag).Distinct(StringComparer.Ordinal).Take(MaximumGivenCombos).ToList();
+        var all = new List<CharacterCombo>(combos ?? []);
+        var tags = actions.Select(a => a.Tag).OfType<string>().Concat(all.Select(c => c.Tag)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var combo in MartletCombos)
+        {
+            if (had.Contains(combo.Tag)) continue;
+            if (had.Count < MaximumGivenCombos) had.Add(combo.Tag);
+            if (all.Count >= MaximumCombos || tags.Contains(combo.Tag)) continue;
+            var parts = combo.Parts.Select(tag => PartOf(inventory, actions, tag)).OfType<string>().Distinct(StringComparer.Ordinal).ToArray();
+            if (parts.Length < MinimumComboParts) continue;
+            all.Add(new() { Tag = combo.Tag, Parts = parts, Use = combo.Use, Enabled = combo.Enabled });
+            tags.Add(combo.Tag);
+        }
+        return (all.Count == 0 ? null : all, had);
+    }
+
+    // The part a Martlet combo names by a gesture's tag: Martlet's gesture, or the model's own emote that replaces it (the one
+    // with that tag); null when the model has neither.
+    private static string? PartOf(CharacterActionInventory inventory, IReadOnlyList<CharacterAction> actions, string tag) =>
+        CharacterActionInventory.AllGestures.FirstOrDefault(g => g.Tag == tag) is { } gesture && inventory.Find(gesture.Id) is not null
+            ? gesture.Id
+            : actions.Where(a => string.Equals(a.Tag, tag, StringComparison.OrdinalIgnoreCase)).OrderBy(a => a.Enabled ? 0 : 1).FirstOrDefault()?.Id;
 }
