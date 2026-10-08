@@ -181,6 +181,7 @@ public partial class MainWindow
         {
             RenderBackground();
             RenderAppearance();
+            RenderOtherRoles();
         }
         if (ReferenceEquals(page, DiagnosticsPage)) EnterDiagnostics();
         else LeaveDiagnostics();
@@ -214,8 +215,20 @@ public partial class MainWindow
         ApplyRole();
         RenderBackground();
         UpdateStayAwake();
-        if (role == DeviceRole.Host) StopCompanionForHostAsync().Forget();
-        else if (previous != role) messaging.Start();
+        if (role == DeviceRole.Host)
+        {
+            // What was on, so it comes back when this PC is your companion PC again.
+            if (previous != DeviceRole.Host)
+                companionBeforeHost = (avatar.IsShowing, openConversation is { HandsFree: true, ListeningStarted: true, Paused: false },
+                    openConversation is { WatchingStarted: true, Paused: false });
+            StopCompanionForHostAsync().Forget();
+        }
+        else if (previous != role)
+        {
+            messaging.Start();
+            // A host PC that is your companion PC again (chosen here or asked from another computer) talks with you at once.
+            if (previous == DeviceRole.Host) ResumeCompanionAsync().Forget();
+        }
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
         QueueNetworkSync();

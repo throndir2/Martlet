@@ -730,6 +730,11 @@
                                 <Button Content="Replay the welcome tour" Click="ReplayTour_Click" Margin="0,0,10,6"
                                         AutomationProperties.AutomationId="ReplayTour"/>
                             </WrapPanel>
+                            <!-- Your other computers, each a companion or a host PC, switched from here (MainWindow.RoleRequests.cs) -->
+                            <TextBlock Text="Your other computers" FontWeight="SemiBold" Margin="0,16,0,4"/>
+                            <TextBlock x:Name="OtherRolesText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,4"
+                                       AutomationProperties.AutomationId="OtherRolesStatus" AutomationProperties.LiveSetting="Polite"/>
+                            <StackPanel x:Name="OtherRolesPanel" AutomationProperties.Name="Your other computers: companion or host PC"/>
                         </StackPanel>
                     </Border>
 

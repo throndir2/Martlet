@@ -1052,6 +1052,36 @@ then poll `network_status` until the laptop is `"removed":true` and
 `pairedHosts` (each paired host in `hosts.json` and how many outside addresses
 are kept with its pairing).
 
+`role_lab` (`action` `start`, `status`, `ask` or `stop`; `dataDirectory` filled
+in by the script) runs a live lab for [switching your computers between
+companion and host PC](CLUSTER.md#switching-another-computer-between-companion-and-host)
+from both sides, for the desktop on a disposable data directory:
+`src\Martlet.NodeLinkCheck` mode `role-lab` (`RoleLab.cs`) starts a gateway on
+127.0.0.1 that keeps the network and the shared settings in memory, pairs the
+desktop of the data directory under the device ID that desktop names itself by
+(`desktop-<computer>`; `hosts.json` there, the secret in the lab credential
+folder, so it also needs `Invoke-MartletMcp.ps1 -LabCredentials`), and runs a
+simulated companion PC, `lab-companion` (*LAB-COMPANION*). Once the desktop has
+bound the host to its network, the simulated PC asks to join it. Every
+2 seconds it syncs the shared settings with the real sync engine as a desktop
+does: it says what it is (`pc.lab-companion`) and follows an ask that it switch
+(`role.lab-companion`). `ask` with `role` `host` or `companion` makes it ask the
+desktop to switch (`role.<desktop device>`). `status` returns `companionRole`,
+`companionMember`, `companionWaiting` (its check number while it waits to be
+let in), what the host's copy says each computer is (`desktopSays`,
+`companionSays`) and the newest ask about each (`desktopAsk`, `companionAsk`:
+value, by, at), and its events. The values are JSON text, so an `until` that
+looks inside them has to match its escaped form. Example (with `-Desktop
+-LabCredentials -AllowUiEffects`): click `TourSkip`, start the lab, click
+`NavDevices` and `RefreshDevices` (the desktop reads `hosts.json` again), poll
+`network_status` until `"state":"member"` and `role_lab status` until
+`"companionWaiting":"`, click `NetworkCheck`, `NetworkAllow-lab-companion` and
+`ConfirmationYes`, poll until `"companionMember":true`; then click
+`Node-pc:lab-companion`, `NodeAction-MakeHostPc` and `ConfirmationYes` and poll
+`role_lab status` until `"companionRole":"host"` and `logs_tail` until *LAB-COMPANION
+is a host PC now, as you asked*; `role_lab ask host` and poll `DeviceRoleSummary`
+until *Host PC*.
+
 Sign-in from outside in the desktop: Add a computer's **Join with an invite**
 (`HostsJoinWithInvite`) opens `SignInJoinWindow` (invite `SignInInvite`,
 `SignInConnect`, provider choices `SignInProvider-<id>`, `SignInUser`,
@@ -4410,7 +4440,13 @@ roles; on another of your computers that said what it is, `NodeAction-MakeHostPc
 `NodeAction-MakeCompanionPc` (*Make it a companion PC*, or *Keep it a companion PC* while an ask to become a host PC waits),
 which switch that computer, so they need `--allow-ui-effects` and then `ConfirmationYes`; while the ask waits,
 its `DeviceComponentDetail-member` ends with *Asked by this PC at ... to become a host PC: it switches the next time
-Martlet there syncs its settings ...*), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
+Martlet there syncs its settings ...*; once it has switched, the desktop log and status line say *IMOUTO is a host PC now,
+as you asked.*, and a host PC with no host service yet reads *Its host service isn't set up yet, so it does no work for your
+other computers until someone at it chooses Set up host service on its Home ...* there instead of the host service it runs;
+Settings › What this PC is for lists the same computers of your network: `OtherRolesStatus` (what the list offers, or why it
+is empty or can't switch them), `OtherRole-<device ID>` (*IMOUTO (desktop-imouto). Companion PC that also runs a host service
+(imouto-host). Active now on diva-host.*, with the waiting ask) and `OtherRoleSwitch-<device ID>`, the same button, which
+needs `--allow-ui-effects`), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
 default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text), `SettingsSyncStatus` (text: how many
 settings are shared, on how many hosts they are the same, when checked and
@@ -6352,8 +6388,13 @@ instead (the character's *Show at startup* and Parakeet's warm-up are skipped
 too). Choosing `UseAsHost` (Settings › *What this PC is for*; it saves
 `device-role.txt`, so it needs `--allow-ui-effects`) ends a running
 conversation and hides the character, logging *This PC became a Martlet host,
-so Martlet ended the conversation...*; `UseAsCompanion` changes no saved
-companion choice, so they apply again from the next start. `DeviceRoleSummary`
+so Martlet ended the conversation...*. `UseAsCompanion` on a host PC (or
+another computer's ask that it be a companion PC again) brings back at once what
+was on when it became a host: the character, always listening and watching
+(*This PC is your companion PC again, so Martlet brings back what was on before
+it became a host: showing the character.*); after Martlet started as a host it
+does what it does at the start of a companion PC instead (the character's *Show
+at startup*, `StartCompanion`). It changes no saved companion choice. `DeviceRoleSummary`
 (*Companion PC* or *Host PC*) and `DeviceRoleText` return the role as text. A second start with the
 same data directory shows the running Martlet and exits (with `--tray` it only
 exits); a different `--data-directory` runs beside it, so disposable

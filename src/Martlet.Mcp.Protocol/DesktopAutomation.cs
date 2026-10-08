@@ -658,8 +658,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // follow it) and its status line, and the character's colors (how many and where the accent comes from, or why they
         // couldn't be read; never its name). AppearanceColor-<n> and AppearancePreview-<id> read through the prefixes below.
         "AppearanceTheme", "AppearanceStatus", "AppearanceCharacterStatus",
-        // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role.
-        "DeviceRoleSummary", "DeviceRoleText",
+        // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role; and
+        // under it, Your other computers: what the list offers (or why it is empty or can't switch them). Each computer's row reads
+        // through OtherRole- below; its OtherRoleSwitch- button asks that computer to switch, so it needs --allow-ui-effects.
+        "DeviceRoleSummary", "DeviceRoleText", "OtherRolesStatus",
         // The host dashboard's status under its icon ("Host is running", "Needs Windows restart", "Waiting for Docker Desktop", ...), its
         // steps' heading ("This host is ready" or "Get this host running"), the line under it (how many steps are left and
         // the next one, or "All set", and when Martlet last checked) and the setup runs working now, side by side, each with
@@ -744,7 +746,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// network's computers ("NetworkMember-host-gpu-pc" reads "gpu-pc. Host, paired with this PC; added on desktop-a.") and
     /// requests to join ("NetworkJoin-desktop-b" reads "DESKTOP-B asks to join. desktop-b, through gpu-pc. Check number ...")
     /// and computers that use one of this PC's hosts but aren't in the network ("NetworkPaired-desktop-c" reads "DESKTOP-C
-    /// (desktop-c). Uses gpu-pc; active now. ..."); each device role's detail line in the selected device's details
+    /// (desktop-c). Uses gpu-pc; active now. ..."); Settings' Your other computers ("OtherRole-desktop-imouto" reads "IMOUTO
+    /// (desktop-imouto). Companion PC that also runs a host service (imouto-host). Active now on diva-host."); each device role's detail line in the selected device's details
     /// ("DeviceComponentDetail-users" reads "IMOUTO (desktop-imouto), active now; This PC, active now.",
     /// "DeviceComponentDetail-host-service" reads "Paired as diva-host. Used by IMOUTO (desktop-imouto), active now.",
     /// "DeviceComponentDetail-member" reads "In your Martlet network. Active now on diva-host.");
@@ -774,7 +777,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Ana by voice"). Never a token.
         "DiscordFriend-",
         "HostChoice",
-        "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
+        "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "OtherRole-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
         "SmartHomeDevice-", "SmartHomeUpdate-", "DiscordRule-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-", "DeviceFilter-",
         // The selected device's resource bars ("DeviceResource-vram" reads "Graphics memory: 14 of 32 GB planned (44%), 15 GB
         // free for Martlet."; a range such as "11-14 of 32 GB planned (34-44%)" when jobs grow while they work, with ", tight: ..."

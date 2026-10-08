@@ -398,6 +398,39 @@ public sealed class HostRolesTests
     }
 
     [Fact]
+    public void A_host_PC_without_its_host_service_says_so_and_Settings_lists_each_computer_with_the_maps_switch()
+    {
+        var hostPc = new MartletComputer("desktop-b", "DESK-B", ComputerStanding.Member, "Active now on gpu-a.", true, Role: DeviceRole.Host);
+        NetworkNode Device(MartletComputer computer, IReadOnlyList<PairedHost>? hosts = null) =>
+            NetworkMap.Build(new(MachineInfo.Unknown, DeviceRole.Companion, null, null, false, new Dictionary<string, HostCheck>(),
+                Hosts: hosts, Computers: [computer])).Single(n => n.Roles.Any(r => r.Component == DeviceComponent.Member));
+        string Member(NetworkNode node) => node.Roles.Single(r => r.Component == DeviceComponent.Member).Detail;
+
+        // A host PC with no host service yet does no work for the others: its row says so instead of naming a host service.
+        Assert.Contains(NetworkMap.NoHostServiceYet, Member(Device(hostPc)), StringComparison.Ordinal);
+        Assert.Equal("Host PC. " + NetworkMap.NoHostServiceYet + " Active now on gpu-a.", NetworkMap.RoleLine(hostPc, null));
+        // One that said it runs a host service, or whose host service (named after it) this PC is paired with, runs it.
+        Assert.Contains("Runs Martlet's host service (desk-b-host)", Member(Device(hostPc with { HostId = "desk-b-host" })), StringComparison.Ordinal);
+        var paired = Device(hostPc, [new PairedHost { Pairing = Remote("desk-b-host", "192.168.1.52") }]);
+        Assert.Equal("host:desk-b-host", paired.Id);
+        Assert.Contains("Runs Martlet's host service (desk-b-host)", Member(paired), StringComparison.Ordinal);
+        Assert.Equal("Host PC, runs desk-b-host. Active now on gpu-a.", NetworkMap.RoleLine(hostPc, "desk-b-host"));
+
+        // Settings offers the same switch as the map: a host PC is made a companion PC again, a companion PC a host PC, and
+        // while an ask waits the switch withdraws it; a computer that hasn't said what it is, or asks to join, gets none.
+        Assert.Equal((NodeAction.MakeCompanionPc, "Make it a companion PC"), (NetworkMap.RoleCommand(hostPc)!.Action, NetworkMap.RoleCommand(hostPc)!.Label));
+        var companion = hostPc with { Role = DeviceRole.Companion, HostId = "desk-b-host" };
+        Assert.Equal(NodeAction.MakeHostPc, NetworkMap.RoleCommand(companion)!.Action);
+        Assert.Equal("Companion PC that also runs a host service (desk-b-host). Active now on gpu-a.", NetworkMap.RoleLine(companion, null));
+        var asked = companion with { Asked = DeviceRole.Host, AskedBy = "this PC", AskedAt = DateTimeOffset.UtcNow };
+        Assert.Equal("Keep it a companion PC", NetworkMap.RoleCommand(asked)!.Label);
+        Assert.Contains("Asked by this PC", NetworkMap.RoleLine(asked, null), StringComparison.Ordinal);
+        Assert.Null(NetworkMap.RoleCommand(hostPc with { Role = null }));
+        Assert.Contains("older Martlet", NetworkMap.RoleLine(hostPc with { Role = null }, null), StringComparison.Ordinal);
+        Assert.Null(NetworkMap.RoleCommand(companion with { Standing = ComputerStanding.Asking }));
+    }
+
+    [Fact]
     public void Add_a_computer_offers_only_ways_to_add_one_each_saying_what_it_does()
     {
         NetworkNode Add(DeviceRole role) =>
