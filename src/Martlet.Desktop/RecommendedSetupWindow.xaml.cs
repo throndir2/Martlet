@@ -225,8 +225,10 @@ public partial class RecommendedSetupWindow : ThemedWindow
             panel.Children.Add(text);
             panel.Children.Add(MainWindow.BarVisual(bar));
         }
-        var card = new Border { Child = panel, CornerRadius = new CornerRadius(14), Padding = new Thickness(16, 12, 16, 8), Margin = new Thickness(0, 0, 0, 10) };
-        card.SetResourceReference(Border.BackgroundProperty, "CanvasBrush");
+        var card = new Border { Child = panel, CornerRadius = new CornerRadius(14), Padding = new Thickness(16, 12, 16, 8), Margin = new Thickness(0, 0, 0, 10),
+            BorderThickness = new Thickness(1) };
+        card.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
+        card.SetResourceReference(Border.BorderBrushProperty, "BorderBrush");
         return card;
     }
 }
