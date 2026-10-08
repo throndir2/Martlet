@@ -113,6 +113,73 @@ public sealed class CharacterTouchZoneTests
         Assert.Equal(("top_of_head", "coarse"), Of(CharacterTouchZones.Match(null, Touch(0.5, 0.05, hitAreas: ["Head"]))));
     }
 
+    // A standing VRM character on the page (fractions), facing the viewer: its left side is on the picture's right.
+    private static readonly RendererZoneProbe Skeleton = new(null,
+    [
+        new("hips", 0.5, 0.55), new("spine", 0.5, 0.5), new("chest", 0.5, 0.42), new("neck", 0.5, 0.3), new("head", 0.5, 0.27),
+        new("leftEye", 0.52, 0.2), new("rightEye", 0.48, 0.2), new("leftUpperLeg", 0.52, 0.56), new("leftLowerLeg", 0.53, 0.72),
+        new("leftFoot", 0.53, 0.88), new("leftToes", 0.53, 0.92), new("rightUpperLeg", 0.48, 0.56), new("rightLowerLeg", 0.47, 0.72),
+        new("leftUpperArm", 0.56, 0.32), new("leftLowerArm", 0.58, 0.44), new("leftHand", 0.6, 0.55)
+    ]);
+
+    [Fact]
+    public void AVrmZoneBindsTheBonesOfThePartItLiesOn()
+    {
+        CharacterTouchZone Zone(string id, double x, double y, double width, double height) => new() { Id = id, Box = new(x, y, width, height) };
+
+        var bones = CharacterTouchZones.Bind(
+        [
+            Zone("knee_left", 0.515, 0.7, 0.03, 0.04), Zone("calf_left", 0.515, 0.75, 0.03, 0.1), Zone("cheek_left", 0.51, 0.21, 0.02, 0.03),
+            Zone("breast_left", 0.505, 0.34, 0.04, 0.05), Zone("groin", 0.485, 0.56, 0.03, 0.04), Zone("buttocks", 0.45, 0.575, 0.1, 0.035)
+        ], null, Skeleton).ToDictionary(z => z.Id, z => z.Bones);
+
+        // The knee holds the shin bone's joint, which the thigh bone's part ends at; the calf the shin bone's part (knee to ankle).
+        Assert.Equal(["leftLowerLeg", "leftUpperLeg"], bones["knee_left"]);
+        Assert.Equal(["leftLowerLeg"], bones["calf_left"]);
+        // The hips move the pelvis, from their joint down to the crotch (a quarter of the way from the hip joints to the knees),
+        // even with their joint level with the hip joints.
+        Assert.Equal(["hips"], bones["groin"]);
+        Assert.Equal(["hips", "leftUpperLeg", "rightUpperLeg"], bones["buttocks"]);
+        // No joint inside and no part crossing: the bones of the zone's own part of the body whose parts pass near it (the
+        // head, not an eye or the neck; the chest).
+        Assert.Equal(["head"], bones["cheek_left"]);
+        Assert.Equal(["chest"], bones["breast_left"]);
+    }
+
+    [Fact]
+    public void AVrmTapTakesTheSmallestZoneOnTheTouchedPartUnderItAndAMovedPartItsOwnZone()
+    {
+        // Bound as before this change: only the face holds the head bone, the knee the shin bone and the calf the ankle.
+        var settings = new CharacterTouchZoneSettings
+        {
+            ModelId = "model-1", Crop = new(0, 0, 1, 1),
+            Zones =
+            [
+                new() { Id = "face", Box = new(0.45, 0.18, 0.1, 0.1), Bones = ["head", "leftEye", "rightEye"] },
+                new() { Id = "cheek_left", Box = new(0.51, 0.22, 0.03, 0.03) }, new() { Id = "lips", Box = new(0.485, 0.255, 0.03, 0.015) },
+                new() { Id = "chest", Box = new(0.45, 0.32, 0.1, 0.12), Bones = ["chest"] }, new() { Id = "breast_left", Box = new(0.505, 0.34, 0.04, 0.05) },
+                new() { Id = "knee_left", Box = new(0.515, 0.7, 0.03, 0.04), Bones = ["leftLowerLeg"] },
+                new() { Id = "calf_left", Box = new(0.515, 0.75, 0.03, 0.1), Bones = ["leftFoot"] },
+                new() { Id = "hand_left", Box = new(0.58, 0.52, 0.04, 0.06), Bones = ["leftHand"] }
+            ]
+        };
+
+        // The head bone moves the whole head and the shin bone the knee to the ankle: the zone under the tap wins.
+        Assert.Equal(("cheek_left", "box"), Of(CharacterTouchZones.Match(settings, Touch(0.52, 0.235, bone: "head"))));
+        Assert.Equal(("lips", "box"), Of(CharacterTouchZones.Match(settings, Touch(0.5, 0.26, bone: "head"))));
+        Assert.Equal(("face", "bone"), Of(CharacterTouchZones.Match(settings, Touch(0.47, 0.2, bone: "head"))));
+        Assert.Equal(("breast_left", "box"), Of(CharacterTouchZones.Match(settings, Touch(0.52, 0.36, bone: "chest"))));
+        Assert.Equal(("calf_left", "box"), Of(CharacterTouchZones.Match(settings, Touch(0.53, 0.8, bone: "leftLowerLeg"))));
+        Assert.Equal(("knee_left", "bone"), Of(CharacterTouchZones.Match(settings, Touch(0.53, 0.72, bone: "leftLowerLeg"))));
+        // A hand raised to the face is still the hand, and a part no box holds any more finds the zone that holds its bone.
+        Assert.Equal(("hand_left", "bone"), Of(CharacterTouchZones.Match(settings, Touch(0.52, 0.235, bone: "leftHand"))));
+        Assert.Equal(("calf_left", "bone"), Of(CharacterTouchZones.Match(settings, Touch(0.53, 0.95, bone: "leftFoot"))));
+        // The zones lie on the character's own side.
+        Assert.False(CharacterTouchZones.OnPart("calf_left", "rightLowerLeg"));
+        Assert.True(CharacterTouchZones.OnPart("groin", "hips"));
+        Assert.False(CharacterTouchZones.OnPart("cheek_left", "leftHand"));
+    }
+
     [Fact]
     public void ZonesSavedWithTellTheCharacterLoadWithMartletNotices()
     {

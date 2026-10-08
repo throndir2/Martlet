@@ -299,6 +299,26 @@ public sealed class TouchZoneDetectionTests
     }
 
     [Fact]
+    public void TheChestAndStomachAreExpectedInTheMiddleOfWhatTheirBonesMove()
+    {
+        // The chest and spine bones' joints sit low on what they move (the spine's near the waist); a VRM without an upper chest
+        // has nothing higher to say where the chest is.
+        var zones = new Dictionary<string, TouchZoneBox> { ["chest"] = Truth[2].Box, ["stomach"] = Truth[3].Box };
+        ZoneMark[] marks = [new(1, "chest", Truth[2].Box), new(2, "stomach", Truth[3].Box)];
+        ZoneHints Skeleton(params ZoneHintPoint[] bones) => new(bones, [], true);
+        string[] Missed(ZoneHints hints) => [.. TouchZoneDetection.Problems(marks, zones, Character(), true, hints, new(0, 0, 1, 1))
+            .Where(p => p.Contains("own skeleton", StringComparison.Ordinal))];
+
+        Assert.Empty(Missed(Skeleton(new("spine", 0.5, 0.56), new("chest", 0.5, 0.42), new("neck", 0.5, 0.2))));
+        Assert.Empty(Missed(Skeleton(new("spine", 0.5, 0.56), new("chest", 0.5, 0.45), new("upperChest", 0.5, 0.31), new("neck", 0.5, 0.2))));
+        var missed = Assert.Single(Missed(Skeleton(new("spine", 0.5, 0.56), new("chest", 0.5, 0.45), new("upperChest", 0.5, 0.45), new("neck", 0.5, 0.2))));
+        Assert.Contains("(chest)", missed, StringComparison.Ordinal);
+        var text = TouchZoneDetection.CheckText("the upper body", marks, [], [], Skeleton(new("chest", 0.5, 0.45), new("spine", 0.5, 0.56)), new(0, 0, 1, 1));
+        Assert.Contains("chest (its base, below the breasts) (0.50, 0.45)", text, StringComparison.Ordinal);
+        Assert.Contains("spine (its base, near the waist) (0.50, 0.56)", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ZonesFoundWithTheCharacterFramedWholeMatchWhereATouchLandsInThatFraming()
     {
         var settings = new CharacterTouchZoneSettings

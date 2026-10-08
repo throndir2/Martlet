@@ -232,8 +232,8 @@ public static partial class TouchZoneDetection
     // the shoulder joint, the lower arm at the elbow, the hand at the wrist, the lower leg at the knee, the foot at the ankle.
     private static readonly Dictionary<string, string> BoneWords = new(StringComparer.Ordinal)
     {
-        ["head"] = "head (base of the skull)", ["neck"] = "neck (its base)", ["upperChest"] = "upper chest", ["chest"] = "chest",
-        ["spine"] = "spine (the stomach)", ["hips"] = "hips", ["jaw"] = "jaw", ["leftEye"] = "the character's left eye",
+        ["head"] = "head (base of the skull)", ["neck"] = "neck (its base)", ["upperChest"] = "upper chest", ["chest"] = "chest (its base, below the breasts)",
+        ["spine"] = "spine (its base, near the waist)", ["hips"] = "hips", ["jaw"] = "jaw", ["leftEye"] = "the character's left eye",
         ["rightEye"] = "the character's right eye", ["leftUpperArm"] = "the character's left shoulder joint",
         ["rightUpperArm"] = "the character's right shoulder joint", ["leftLowerArm"] = "the character's left elbow",
         ["rightLowerArm"] = "the character's right elbow", ["leftHand"] = "the character's left wrist", ["rightHand"] = "the character's right wrist",

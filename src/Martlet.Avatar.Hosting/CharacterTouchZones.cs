@@ -25,6 +25,10 @@ public sealed record TouchZoneBox(double X, double Y, double Width, double Heigh
         Width > 0.002 && Height > 0.002 && X >= -0.01 && Y >= -0.01 && X + Width <= 1.01 && Y + Height <= 1.01;
     public bool Contains(double x, double y) => x >= X && x <= X + Width && y >= Y && y <= Y + Height;
 
+    /// <summary>How far a point is from this box (0 inside it), in the same fractions.</summary>
+    public double Distance(double x, double y) =>
+        Math.Sqrt(Math.Pow(Math.Max(0, Math.Max(X - x, x - (X + Width))), 2) + Math.Pow(Math.Max(0, Math.Max(Y - y, y - (Y + Height))), 2));
+
     /// <summary>The fraction of <paramref name="other"/>'s area inside this box.</summary>
     public double Covers(TouchZoneBox other)
     {
@@ -253,19 +257,100 @@ public static class CharacterTouchZones
 
     // ---------- binding zones to the model ----------
 
+    // The renderer page's shape (width to height: the overlay's 3:4 frame with the room beside it), so distances on it are even.
+    private const double PageAspect = 1.5;
+
+    // The next humanoid bone along the body after each one (the first of these the model has): a bone moves the part from its
+    // joint to that bone's joint (the shin bone: the knee to the ankle). The head's part reaches up to between the eyes.
+    private static readonly Dictionary<string, string[]> NextBones = new(StringComparer.Ordinal)
+    {
+        ["hips"] = ["spine"], ["spine"] = ["chest", "upperChest", "neck"], ["chest"] = ["upperChest", "neck"], ["upperChest"] = ["neck"],
+        ["neck"] = ["head"],
+        ["leftShoulder"] = ["leftUpperArm"], ["leftUpperArm"] = ["leftLowerArm"], ["leftLowerArm"] = ["leftHand"], ["leftHand"] = ["leftMiddleProximal"],
+        ["rightShoulder"] = ["rightUpperArm"], ["rightUpperArm"] = ["rightLowerArm"], ["rightLowerArm"] = ["rightHand"], ["rightHand"] = ["rightMiddleProximal"],
+        ["leftUpperLeg"] = ["leftLowerLeg"], ["leftLowerLeg"] = ["leftFoot"], ["leftFoot"] = ["leftToes"],
+        ["rightUpperLeg"] = ["rightLowerLeg"], ["rightLowerLeg"] = ["rightFoot"], ["rightFoot"] = ["rightToes"]
+    };
+
+    // The part each humanoid bone in the probe moves, from its joint to the next bone's (just its joint for a last bone such as a
+    // toe or a finger tip). The hips move the pelvis: from their joint down through the middle of the hip joints to the crotch, a
+    // quarter of the way on to the knees. The eyes and the jaw are left out: they lie inside the head's part.
+    private static List<(string Bone, double FromX, double FromY, double ToX, double ToY)> BoneParts(IReadOnlyList<RendererBonePoint> joints)
+    {
+        var at = new Dictionary<string, RendererBonePoint>(StringComparer.Ordinal);
+        foreach (var joint in joints) at.TryAdd(joint.Bone, joint);
+        var parts = new List<(string, double, double, double, double)>();
+        foreach (var joint in at.Values)
+        {
+            if (joint.Bone is "leftEye" or "rightEye" or "jaw") continue;
+            var next = NextBones.TryGetValue(joint.Bone, out var names) ? names.Select(n => at.GetValueOrDefault(n)).FirstOrDefault(n => n is not null) : null;
+            (double X, double Y)? to = null;
+            if (joint.Bone == "hips" && Middle("leftUpperLeg", "rightUpperLeg") is { } hip)
+                to = Middle("leftLowerLeg", "rightLowerLeg") is { } knee ? (hip.X + (knee.X - hip.X) / 4, hip.Y + (knee.Y - hip.Y) / 4)
+                    : (2 * hip.X - joint.X, 2 * hip.Y - joint.Y);
+            else if (next is not null) to = (next.X, next.Y);
+            else if (joint.Bone == "head" && Middle("leftEye", "rightEye") is { } eyes) to = eyes;
+            var (toX, toY) = to ?? (joint.X, joint.Y);
+            parts.Add((joint.Bone, joint.X, joint.Y, toX, toY));
+        }
+        return parts;
+
+        (double X, double Y)? Middle(string left, string right) =>
+            at.TryGetValue(left, out var l) && at.TryGetValue(right, out var r) ? ((l.X + r.X) / 2, (l.Y + r.Y) / 2) : null;
+    }
+
+    // How far a point of the page is from a bone's part (a line from its joint to the next bone's), with the page's width
+    // counted in its height.
+    private static double Distance((string Bone, double FromX, double FromY, double ToX, double ToY) part, double x, double y)
+    {
+        double ax = part.FromX * PageAspect, ay = part.FromY, dx = part.ToX * PageAspect - ax, dy = part.ToY - ay, px = x * PageAspect, py = y;
+        var length = dx * dx + dy * dy;
+        var t = length > 0 ? Math.Clamp(((px - ax) * dx + (py - ay) * dy) / length, 0, 1) : 0;
+        return Math.Sqrt(Math.Pow(px - (ax + t * dx), 2) + Math.Pow(py - (ay + t * dy), 2));
+    }
+
+    // Whether a bone's part (a line from its joint to the next bone's) crosses a box.
+    private static bool Crosses((string Bone, double FromX, double FromY, double ToX, double ToY) part, TouchZoneBox box)
+    {
+        double dx = part.ToX - part.FromX, dy = part.ToY - part.FromY, enter = 0, leave = 1;
+        foreach (var (p, q) in new[] { (-dx, part.FromX - box.X), (dx, box.X + box.Width - part.FromX), (-dy, part.FromY - box.Y),
+            (dy, box.Y + box.Height - part.FromY) })
+        {
+            if (p == 0) { if (q < 0) return false; continue; }
+            var r = q / p;
+            if (p < 0) enter = Math.Max(enter, r); else leave = Math.Min(leave, r);
+            if (enter > leave) return false;
+        }
+        return true;
+    }
+
     /// <summary>The zones with the drawables (Live2D) and humanoid bones (VRM) that lie in each: a drawable whose bounds are
-    /// mostly (<see cref="MostlyInside"/>) inside a zone's box, a bone whose point is. <paramref name="crop"/> is where the
-    /// snapshot sat on the page (null: the boxes are already fractions of the page).</summary>
+    /// mostly (<see cref="MostlyInside"/>) inside a zone's box; a bone of the zone's own part of the body (<see cref="OnPart"/>)
+    /// whose joint is inside the box or whose part (from its joint to the next bone's) crosses it, else those whose part crosses
+    /// the box grown by half its size, else the one whose part passes nearest (a cheek: the head; a breast: the chest; the
+    /// groin: the hips). <paramref name="crop"/> is where the snapshot sat on the page (null: the boxes are already fractions of
+    /// the page).</summary>
     public static IReadOnlyList<CharacterTouchZone> Bind(IReadOnlyList<CharacterTouchZone> zones, TouchZoneBox? crop, RendererZoneProbe? probe)
     {
         if (probe is null) return zones;
+        var joints = (probe.Bones ?? []).Where(b => double.IsFinite(b.X) && double.IsFinite(b.Y) && !string.IsNullOrEmpty(b.Bone)).ToArray();
+        var parts = BoneParts(joints);
         return zones.Select(zone =>
         {
             var page = crop is null ? zone.Box : zone.Box.Within(crop);
             var drawables = (probe.Drawables ?? []).Where(d => d.Right > d.Left && d.Bottom > d.Top &&
                     page.Covers(new(d.Left, d.Top, d.Right - d.Left, d.Bottom - d.Top)) >= MostlyInside)
                 .Select(d => d.Id).Distinct(StringComparer.Ordinal).Take(256).ToArray();
-            var bones = (probe.Bones ?? []).Where(b => page.Contains(b.X, b.Y)).Select(b => b.Bone).Distinct(StringComparer.Ordinal).Take(32).ToArray();
+            var bones = joints.Where(b => page.Contains(b.X, b.Y)).Select(b => b.Bone).Concat(parts.Where(p => Crosses(p, page)).Select(p => p.Bone))
+                .Where(b => OnPart(zone.Id, b)).Distinct(StringComparer.Ordinal).Take(32).ToArray();
+            if (bones.Length == 0)
+            {
+                var near = parts.Where(p => OnPart(zone.Id, p.Bone)).ToList();
+                if (near.Count == 0) near = parts;
+                var grown = new TouchZoneBox(page.X - page.Width / 2, page.Y - page.Height / 2, page.Width * 2, page.Height * 2);
+                bones = near.Where(p => Crosses(p, grown)).Select(p => p.Bone).Distinct(StringComparer.Ordinal).Take(32).ToArray();
+                if (bones.Length == 0 && near.Count > 0) bones = [near.MinBy(p => Distance(p, page.CenterX, page.CenterY)).Bone];
+            }
             return zone with { Drawables = drawables, Bones = bones };
         }).ToArray();
     }
@@ -287,10 +372,41 @@ public static class CharacterTouchZones
 
     // ---------- matching a touch ----------
 
-    /// <summary>The zone a touch landed in: the topmost touched drawable or the touched bone that belongs to a zone in use (with
-    /// several, the smallest whose box holds the point), hair, then the smallest box in use that holds the point, then the
-    /// touch's rough zone (a found zone of that kind, else that kind's default zone). Null when nothing fits (a touch only on
-    /// zones that aren't in use).</summary>
+    // The rough parts of the body (CharacterTouch.BoneZone of a VRM bone) each group's zones lie on.
+    private static readonly string[] HeadParts = ["head", "face", "hair"], TorsoParts = ["body"], ArmParts = ["arm", "hand"],
+        LowerBodyParts = ["leg", "foot", "body"];
+
+    /// <summary>Whether a zone lies on the part of the body a VRM <paramref name="bone"/> moves, on the same side: the head's
+    /// zones on the head bone, the left hand's on the left hand or arm, the hips' on the hips or a leg, and so on. A zone Martlet
+    /// doesn't know lies on every part.</summary>
+    public static bool OnPart(string zoneId, string bone)
+    {
+        string[]? parts = zoneId switch
+        {
+            "neck" => ["body", "head", "face"],
+            "shoulder_left" or "shoulder_right" => ["body", "arm"],
+            "animal_ears" or "horns" or "glasses_or_hat" => HeadParts,
+            "tail" or "wings" or "skirt_hem" => ["body", "leg"],
+            "held_item" => ArmParts,
+            _ => Kind(zoneId)?.Group switch
+            {
+                TouchZoneGroup.Head => HeadParts, TouchZoneGroup.Torso => TorsoParts, TouchZoneGroup.Arms => ArmParts,
+                TouchZoneGroup.LowerBody => LowerBodyParts, _ => null
+            }
+        };
+        if (parts is not null && CharacterTouch.BoneZone(bone) is { } part && !parts.Contains(part, StringComparer.Ordinal)) return false;
+        // Left and right are the character's own, in zone IDs and VRM bone names alike.
+        var side = zoneId.EndsWith("_left", StringComparison.Ordinal) ? "left" : zoneId.EndsWith("_right", StringComparison.Ordinal) ? "right" : null;
+        return side is null || !(bone.StartsWith("left", StringComparison.Ordinal) || bone.StartsWith("right", StringComparison.Ordinal)) ||
+            bone.StartsWith(side, StringComparison.Ordinal);
+    }
+
+    /// <summary>The zone a touch landed in: the topmost touched drawable that belongs to a zone in use (with several, the
+    /// smallest whose box holds the point, else the nearest), hair, then for a touched VRM bone the smallest zone in use on that
+    /// part of the body (<see cref="OnPart"/>) whose box holds the point (a bone moves a whole part, such as the head, and its
+    /// zones are found in a picture in the same pose), else the zone on that part that holds the bone, nearest the point (the
+    /// part has moved since); without a bone, the smallest box in use that holds the point; then the touch's rough zone (a found
+    /// zone of that kind, else that kind's default zone). Null when nothing fits (a touch only on zones that aren't in use).</summary>
     public static TouchZoneMatch? Match(CharacterTouchZoneSettings? settings, CharacterTouch touch)
     {
         var active = settings?.Zones.Where(settings.Active).ToArray() ?? [];
@@ -301,7 +417,7 @@ public static class CharacterTouchZones
         {
             var list = zones.ToArray();
             return list.Where(z => Page(z).Contains(x, y)).OrderBy(z => z.Box.Area).FirstOrDefault() ??
-                list.OrderBy(z => z.Box.Area).First();
+                list.OrderBy(z => Page(z).Distance(x, y)).ThenBy(z => z.Box.Area).First();
         }
         foreach (var drawable in touch.Drawables)
         {
@@ -311,11 +427,13 @@ public static class CharacterTouchZones
         if (touch.Hair && active.FirstOrDefault(z => z.Id == "hair") is { } hair) return new(hair, "hair");
         if (touch.Bone is { } bone)
         {
-            var owners = active.Where(z => z.Bones.Contains(bone, StringComparer.Ordinal)).ToArray();
+            var part = active.Where(z => OnPart(z.Id, bone)).ToArray();
+            if (part.Where(z => Page(z).Contains(x, y)).OrderBy(z => z.Box.Area).FirstOrDefault() is { } under)
+                return new(under, under.Bones.Contains(bone, StringComparer.Ordinal) ? "bone" : "box");
+            var owners = part.Where(z => z.Bones.Contains(bone, StringComparer.Ordinal)).ToArray();
             if (owners.Length > 0) return new(Best(owners), "bone");
         }
-        var boxed = active.Where(z => Page(z).Contains(x, y)).OrderBy(z => z.Box.Area).FirstOrDefault();
-        if (boxed is not null) return new(boxed, "box");
+        else if (active.Where(z => Page(z).Contains(x, y)).OrderBy(z => z.Box.Area).FirstOrDefault() is { } boxed) return new(boxed, "box");
         if (!Coarse.TryGetValue(touch.CoarseZone, out var candidates)) return null;
         foreach (var id in candidates)
             if (active.FirstOrDefault(z => z.Id == id) is { } found) return new(found, "coarse");

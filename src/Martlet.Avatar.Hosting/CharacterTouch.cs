@@ -74,7 +74,9 @@ public sealed record CharacterTouch(double X, double Y, IReadOnlyList<string> Hi
 
     private static bool Safe(string? name) => name is { Length: > 0 and <= MaximumName } && !name.Any(char.IsControl);
 
-    private static string? BoneZone(string? bone)
+    /// <summary>The rough part a VRM humanoid bone moves ("head", "face", "hand", "arm", "foot", "leg" or "body"), or null
+    /// without a bone.</summary>
+    internal static string? BoneZone(string? bone)
     {
         if (string.IsNullOrEmpty(bone)) return null;
         var name = bone.ToLowerInvariant();
