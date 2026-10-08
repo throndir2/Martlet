@@ -36,6 +36,9 @@ namespace Martlet.Desktop;
 // Companion › Character › Where the character looks (also the character's right-click Eyes menu): its usual gaze (GazeUsual: a
 // GazeMode, or null, the default, for as the personality decides) and whether the character may change where it looks in its
 // replies (GazeFree, on by default).
+// Companion › Voice › Quick sounds while Martlet thinks (QuickSounds, off by default; this PC only, since the clips are made on
+// it): a short sound in Martlet's own voice when a reply has no audio of its own QuickSoundDelayMs after it was confirmed
+// (QuickSoundOptions.DelayChoices, 700 by default).
 internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity = 0.5, int PauseIndex = 1, bool VoiceId = false,
     int ScreenChattiness = 1, int ScreenScope = (int)WatchKind.ActiveScreen, string CameraId = "", string CameraName = "",
     string VideoAddress = "", bool SpeakReplies = true, bool Watch = true, int Version = 0, bool? HearVoice = null,
@@ -43,13 +46,18 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
     bool DecideGaze = false, bool TranscribeFirst = false, double VoiceVolume = 1.0,
     Martlet.Conversation.BargeInBehavior BargeInStyle = Martlet.Conversation.BargeInBehavior.PauseAndDecide, bool JudgeTurns = true,
     bool DescribePcSounds = true, bool ScreenSummary = true, bool EarlyReplies = true, bool EarlyRepliesCloud = false,
-    bool EarlyVoice = true, Martlet.Avatar.Hosting.GazeMode? GazeUsual = null, bool GazeFree = true)
+    bool EarlyVoice = true, Martlet.Avatar.Hosting.GazeMode? GazeUsual = null, bool GazeFree = true, bool QuickSounds = false,
+    int QuickSoundDelayMs = 700)
 {
     private const string FileName = "talk-preferences.json";
 
     /// <summary>Companion › Listening › Start replies early, for always listening.</summary>
     internal Martlet.Conversation.EarlyReplyOptions EarlyReplyOptions =>
         new() { Enabled = EarlyReplies, Cloud = EarlyRepliesCloud, Voice = EarlyVoice };
+
+    /// <summary>Companion › Voice › Quick sounds while Martlet thinks, for replies.</summary>
+    internal Martlet.Conversation.QuickSoundOptions QuickSoundOptions =>
+        Martlet.Conversation.QuickSoundOptions.Of(QuickSounds, QuickSoundDelayMs);
 
     /// <summary>Whether Thinking hears your recording with the Thinking route <paramref name="thinking"/>, and why: your own
     /// choice (ticked or turned off) always wins; never chosen, it is on only while the recording stays on this PC
@@ -86,6 +94,8 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
                 WordCheck = Enum.IsDefined(loaded.WordCheck) ? loaded.WordCheck : ListeningSensitivity.Normal,
                 VoiceVolume = Martlet.Audio.PcmGain.Clamp(loaded.VoiceVolume),
                 BargeInStyle = Enum.IsDefined(loaded.BargeInStyle) ? loaded.BargeInStyle : Martlet.Conversation.BargeInBehavior.PauseAndDecide,
+                QuickSoundDelayMs = Martlet.Conversation.QuickSoundOptions.DelayChoices.Contains(loaded.QuickSoundDelayMs)
+                    ? loaded.QuickSoundDelayMs : (int)Martlet.Conversation.QuickSoundOptions.DefaultDelay.TotalMilliseconds,
                 GazeUsual = loaded.GazeUsual is { } usual && Enum.IsDefined(usual) ? usual : null,
                 Version = CurrentVersion
             };

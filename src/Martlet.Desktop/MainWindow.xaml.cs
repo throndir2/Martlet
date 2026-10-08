@@ -139,11 +139,13 @@ public partial class MainWindow : ThemedWindow
                 pcAudio: simulated is not null ? null : new Martlet.Audio.PcAudioCaptureFactory(discordCalls.Sources(new WasapiPcAudioSourceFactory()),
                     sound: new Martlet.Audio.PcSoundBuffer()),
                 characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, history: conversationHistory, singing: singing,
-                board: contextBoard, turnJudge: SmartTurnJudge.Bundled());
+                board: contextBoard, turnJudge: SmartTurnJudge.Bundled(), listeningStandIn: ListeningStandIn);
             conversation.TurnDecided += () => Dispatcher.BeginInvoke(ShowTurnJudge);
             conversation.EarlyDecided += () => Dispatcher.BeginInvoke(ShowEarlyReplies);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
             conversation.VoiceVolume = Talk.VoiceVolume;
+            conversation.QuickSounds = Talk.QuickSoundOptions;
+            conversation.QuickSoundsChanged += () => Dispatcher.BeginInvoke(ShowQuickSounds);
             conversation.ChattinessDecided += (_, _) => Dispatcher.BeginInvoke(FollowChattiness);
             discord.UseReplies(setupService, vault, conversation, memory, lorebooks);
         }

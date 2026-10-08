@@ -82,18 +82,72 @@ public sealed class ConversationRuntime : IAsyncDisposable
 
     // The saved TTS destination: a paired Martlet host's F5 voice, an installed Windows voice or the OpenAI speech adapter.
     internal ISpeechSynthesisStream StreamSpeech(ProviderRequestContext context, ConversationRequest request,
-        BoundedSpeechInput input, SpeechDisclosureAuthorization consent, CancellationToken caller)
+        BoundedSpeechInput input, SpeechDisclosureAuthorization consent, CancellationToken caller) =>
+        StreamSpeech(context, request.Speech!, request.HostSpeech, request.WindowsVoice, input, consent, caller);
+
+    private ISpeechSynthesisStream StreamSpeech(ProviderRequestContext context, SpeechOutput voice, HostSpeechTarget? hostSpeech,
+        WindowsVoiceTarget? windowsVoice, BoundedSpeechInput input, SpeechDisclosureAuthorization consent, CancellationToken caller)
     {
-        var voice = request.Speech!;
-        if (request.WindowsVoice is { } windows)
+        if (windowsVoice is { } windows)
             return new WindowsVoiceSynthesisStream(WindowsVoice ?? throw new InvalidOperationException(
                 "This runtime was not composed with a Windows voice client."), windows, context, voice.Selection,
                 input, voice.Limits, consent, Clock, caller);
-        if (request.HostSpeech is { } host)
+        if (hostSpeech is { } host)
             return new HostSpeechSynthesisStream(HostSpeech ?? throw new InvalidOperationException(
                 "This runtime was not composed with a Martlet host speech client."), host, context, voice.Selection,
                 input, voice.Limits, consent, Clock, caller);
-        return Speech!.Stream(context, voice.Selection, input, voice.Limits, consent, caller);
+        return (Speech ?? throw new InvalidOperationException("This runtime was not composed with a voice."))
+            .Stream(context, voice.Selection, input, voice.Limits, consent, caller);
+    }
+
+    /// <summary>Says <paramref name="text"/> once with a reply's voice into memory, never to the speakers: 24 kHz mono 16-bit
+    /// PCM. It goes to the same voice as a reply's pieces (<paramref name="voice"/> with <paramref name="hostSpeech"/> or
+    /// <paramref name="windowsVoice"/>, as a reply's request has them) under the same one-use permission: piece
+    /// <paramref name="segment"/>, counted from 1, of <paramref name="authorization"/>'s action, so a paid voice is used only when
+    /// the caller allows it. Martlet's quick sounds are made this way, once per voice. Throws when the voice isn't authorized or
+    /// fails.</summary>
+    public async Task<byte[]> SynthesizeAsync(SpeechOutput voice, HostSpeechTarget? hostSpeech, WindowsVoiceTarget? windowsVoice,
+        string text, int segment, IConversationAuthorizationSource authorization, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(voice);
+        ArgumentNullException.ThrowIfNull(authorization);
+        var input = new BoundedSpeechInput(text);
+        var ids = new CorrelationIds { SessionId = SessionId, TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
+        var context = new ProviderRequestContext { Ids = ids, Epoch = 1, Deadline = Clock.GetUtcNow() + voice.Limits.MaxRequestTime };
+        var budget = new OperationBudget(ids, 1, ProviderRole.Tts, 1, input.Utf8Bytes, 0, 0, voice.Limits.MaxSamples);
+        var permission = await authorization.AuthorizeSpeechAsync(new(context, segment, input, voice.Selection, voice.Limits, budget),
+            cancellationToken).ConfigureAwait(false);
+        if (permission?.Authorization is not { } consent) throw new InvalidOperationException("The voice wasn't authorized.");
+        var stream = StreamSpeech(context with { Deadline = consent.ExpiresAt < context.Deadline ? consent.ExpiresAt : context.Deadline },
+            voice, hostSpeech, windowsVoice, input, consent, cancellationToken);
+        using var pcm = new MemoryStream();
+        await foreach (var frame in stream.WithCancellation(cancellationToken).ConfigureAwait(false)) pcm.Write(frame.Data.Span);
+        if (stream.Result is not { Outcome: SpeechSynthesisOutcome.Completed })
+            throw new InvalidOperationException("The voice couldn't say it.");
+        return pcm.ToArray();
+    }
+
+    /// <summary>Opens one Thinking text stream for <paramref name="request"/> (its input, model, limits and generation settings)
+    /// under <paramref name="authorization"/>'s one-use permission for exactly that request, with <paramref name="ids"/> and
+    /// <paramref name="epoch"/> on its events, for a caller that reads and checks the stream itself: another reply's Backup
+    /// Thinking (<see cref="IThinkingBackup"/>). <paramref name="cancellationToken"/> stops the stream too. Nothing is sent until
+    /// the stream is read. Throws when the request isn't authorized.</summary>
+    public async Task<ITextGenerationStream> OpenTextAsync(ConversationRequest request, IConversationAuthorizationSource authorization,
+        CorrelationIds ids, long epoch, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(authorization);
+        ArgumentNullException.ThrowIfNull(ids);
+        var input = request.Input;
+        var deadline = Clock.GetUtcNow() + request.TextLimits.MaxRequestTime;
+        var context = new ProviderRequestContext { Ids = ids, Epoch = epoch, Deadline = deadline };
+        var budget = new OperationBudget(ids, epoch, ProviderRole.Llm, 1, input.Utf8Bytes, input.InputTokenReservation,
+            request.TextLimits.MaxOutputTokens, 0);
+        var permission = await authorization.AuthorizeTextAsync(new(context, input, request.Model, request.TextLimits, budget),
+            cancellationToken).ConfigureAwait(false);
+        if (permission?.Authorization is not { } consent) throw new InvalidOperationException("The Thinking request wasn't authorized.");
+        return StreamText(context with { Deadline = consent.ExpiresAt < deadline ? consent.ExpiresAt : deadline }, request, input, consent,
+            cancellationToken);
     }
 
     // One passive adapter per exact destination; the turn's authorization still binds base URL, model and key.

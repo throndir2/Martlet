@@ -223,6 +223,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Voice › Voice volume: the slider's number (0 to 100) and its label ("80%"). ui_set_range on VoiceVolume
         // saves talk-preferences.json, so it needs --allow-ui-effects.
         "VoiceVolume", "VoiceVolumeLevel",
+        // Companion › Voice › Quick sounds while Martlet thinks: the check box (checkedState; off by default), the chosen delay
+        // ("After 0.7 s (recommended)") and where it stands (off, being made, ready with how many clips in which voice, waiting
+        // for a click with a paid cloud voice, or why they couldn't be made). Changing the box or the delay saves
+        // talk-preferences.json, and VoiceQuickSoundsMake makes the clips with the voice, so they need --allow-ui-effects.
+        "VoiceQuickSounds", "VoiceQuickSoundsDelay", "VoiceQuickSoundsStatus",
         // Companion › Voice › Chatterbox Original style: its four sliders' numbers (exaggeration 0.25-2, CFG weight 0-1) and what
         // is saved ("Saved on this PC. General: exaggeration 0.5, CFG weight 0.5. Expressive: ..."); each value's label is
         // ChatterboxStyleValue-<name>. ui_set_range on a slider and ChatterboxStyleReset save chatterbox-style.json, so they
@@ -472,6 +477,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // conversation model when the pool is empty box (ticking it saves thinking-pool.json, so it needs --allow-ui-effects).
         // Each member's line reads through ThinkingPoolMember- below.
         "ThinkingPoolSummary", "ThinkingPoolGuidance", "ThinkingPoolWarnings", "ThinkingPoolLiveFloor", "ThinkingPoolUseConversationModel",
+        // Companion › Thinking pool › Backup Thinking (off by default): its box, how long a reply waits for its first words
+        // before a member that may answer for the conversation is asked too (automatic or a fixed time) and its line (which
+        // members may answer, and the wait now; member names only). The box and the wait save thinking-pool.json, so they need
+        // --allow-ui-effects. Each member's May answer for the conversation box reads through ThinkingPoolAnswers- below.
+        "ThinkingPoolBackup", "ThinkingPoolBackupDelay", "ThinkingPoolBackupStatus",
         // Companion › Deep thinking › Web research (off by default): whether Martlet may search the web when asked and why it
         // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
         // needs --allow-ui-effects.
@@ -497,6 +507,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The job's line about your Martlet network: the host your computers use for it and why this PC hasn't switched yet,
         // or that your other computers use this PC for it (host IDs and reasons only).
         "SetupJobNetwork-Thinking", "SetupJobNetwork-Voice", "SetupJobNetwork-Listening",
+        // Companion › Listening's line on what hears you when Listening's own choice (a paired host or OpenAI) can't: the
+        // Parakeet model on this PC's processor, or the one to download (host IDs and model names only). Its
+        // SetupListenStandInDownload button downloads that model, so it needs --allow-ui-effects.
+        "SetupJobStandIn-Listening",
         "SetupCloudKeyStatus-Thinking", "SetupCloudKeyStatus-Voice", "SetupCloudKeyStatus-Listening",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
         "LogSummary", "LogShareStatus", "LogDetail",
@@ -697,11 +711,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // whether it is ticked; ticking it saves thinking-pool.json, so it needs --allow-ui-effects). Each pool member's line
         // ("ThinkingPoolMember-0" reads "diva's Thinking pool (qwen3-8b): 2 slots; text only."), its slot choice
         // (ThinkingPoolSlots-0) and its Remove button (ThinkingPoolRemove-0); both save thinking-pool.json, so they need
-        // --allow-ui-effects.
+        // --allow-ui-effects. Its May answer for the conversation box ("ThinkingPoolAnswers-0" reads "diva's Thinking pool
+        // (qwen3-8b) may answer for the conversation" and whether it is ticked; ticking it saves thinking-pool.json, so it needs
+        // --allow-ui-effects).
         // Each paired computer's shared-card warning, when Deep thinking there shares one graphics card with its Thinking model
         // ("DeepThinkingShare-diva" reads "diva: diva already runs a Thinking model (gemma4:e4b) on its only graphics card. ...").
         "DeepThinkingHost-", "DeepThinkingShare-", "DeepThinkingAddRole-", "DeepThinkingChangeModel-", "DeepThinkingPool-", "SetupChangeHost-",
-        "ThinkingPoolMember-", "ThinkingPoolSlots-",
+        "ThinkingPoolMember-", "ThinkingPoolSlots-", "ThinkingPoolAnswers-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...").
         "AppearanceColor-", "AppearancePreview-",

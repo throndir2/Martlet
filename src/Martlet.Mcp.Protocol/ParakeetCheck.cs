@@ -56,7 +56,8 @@ internal static class ParakeetCheck
         throw new ArgumentException($"'{id}' isn't a Parakeet model Martlet knows: {string.Join(", ", ParakeetModels.All.Select(m => m.Id))}.");
 
     /// <summary>voices_status's Parakeet part: the models, which are downloaded in <paramref name="speechDirectory"/>, the one
-    /// Listening uses (with the route type) and the one recommended for Windows' display language.</summary>
+    /// Listening uses (with the route type), the one that stands in when Listening's own route fails, and the one recommended
+    /// for Windows' display language.</summary>
     internal static object Status(string dataDirectory, string speechDirectory)
     {
         var route = Listening(dataDirectory);
@@ -71,6 +72,7 @@ internal static class ParakeetCheck
                 known = chosen is null ? (bool?)null : ParakeetModels.Find(chosen) is not null,
                 downloaded = chosen is null ? (bool?)null : SherpaComponents.IsParakeetInstalled(speechDirectory, chosen)
             },
+            standIn = StandIn(route, speechDirectory, CultureInfo.CurrentUICulture),
             displayLanguage = CultureInfo.CurrentUICulture.Name,
             recommended,
             models = ParakeetModels.All.Select(model => new
@@ -81,6 +83,25 @@ internal static class ParakeetCheck
                 notice = File.Exists(Path.Combine(speechDirectory, "models", model.NoticeFile)),
                 recommended = model.Id == recommended, inUse = model.Id == chosen
             })
+        };
+    }
+
+    /// <summary>The Parakeet model that hears an utterance on this PC's processor when Listening's own route (a paired host or
+    /// OpenAI) fails, as the desktop chooses it (<see cref="LocalSpeechSetup.ListeningStandIn"/>, without the model the desktop
+    /// may have loaded), or why there is none.</summary>
+    internal static object StandIn(SetupRoute? route, string speechDirectory, CultureInfo displayLanguage)
+    {
+        var model = LocalSpeechSetup.ListeningStandIn(route, id => SherpaComponents.IsParakeetInstalled(speechDirectory, id), displayLanguage);
+        var wanted = model ?? LocalSpeechSetup.ListeningStandIn(route, _ => true, displayLanguage);
+        return new
+        {
+            model, name = ParakeetModels.Find(model)?.ToString(),
+            reason = model is not null ? null
+                : route is null ? "Listening isn't set up"
+                : wanted is null && route.RouteType is not (null or SetupRouteType.OpenAi or SetupRouteType.GatewayStt)
+                    ? "Listening already runs on this PC"
+                : wanted is null ? $"no Parakeet model hears Windows' display language ({displayLanguage.Name})"
+                : $"{wanted} isn't downloaded in speechDirectory"
         };
     }
 

@@ -215,6 +215,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "folder) includes the voice recognition runtime and models, whether any Parakeet model is downloaded (parakeet) and, in " +
             "parakeetModels, each model Companion > Listening > Parakeet in Martlet offers (id, name, languages, download size, " +
             "downloaded, its NOTICE, recommended for Windows' display language, in use), the Listening route and its Parakeet model, " +
+            "the Parakeet model that hears you on this PC's processor when that route (a paired host or OpenAI) fails, or why none " +
+            "(standIn), " +
             "and counts of known voices (never names, voiceprints or audio), including how many go by a name of the companion's own " +
             "(from the saved personas) or a placeholder such as \"no name yet\", and the most names one voice has; and clips: whether " +
             "People keeps the last few clips of voices not named yet (voice-clips.txt) and how many clips over how many voices (never " +
@@ -265,7 +267,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "a Windows voice says (System.Speech rendered to memory, never played; optional phrases, up to 8 English sentences). Per " +
             "model: loadMs, memoryMb (process memory it added), each phrase's transcript, word errors and transcribeMs, the word " +
             "error rate and the median time; ok when every model ran with at most 20% word errors. Also returns voices_status's " +
-            "Parakeet part. Nothing is downloaded, recorded or played; nothing leaves this PC.", new
+            "Parakeet part, with standIn: the model that hears you here when Listening's own route fails. Nothing is downloaded, " +
+            "recorded or played; nothing leaves this PC.", new
         {
             dataDirectory = new { type = "string" },
             martletDirectory = new { type = "string" },
@@ -1382,7 +1385,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "and whether one is kept free for fast jobs (judges and summaries); each job kind's priority, whether it is fast and " +
             "whether a member can run it (the cheap CanRun answer); guidance (such as 1 slot: long thinking can delay screen and " +
             "sound summaries); warnings about likely slowdowns (a member beside the conversation's Thinking model or the voice); " +
-            "and the desktop's thinking-pool-status.json (running and waiting jobs by kind, never a job's text). Read-only.", new
+            "Backup Thinking's choices (on or off, the delay or automatic, each member's May answer for the conversation and whether " +
+            "it is a paid cloud provider) and the member it would ask now for a reply that is taken; " +
+            "and the desktop's thinking-pool-status.json (running and waiting jobs by kind, never a job's text; Backup Thinking's " +
+            "automatic delay, recent replies and how it ended lately). Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -1392,6 +1398,46 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "slot, one slot where waiting jobs run highest priority first (barge-in judge, digest, research), a busy member passed " +
             "over for the next, a stale judge dropped, and deep-thinking.json read once into thinking-pool.json. In-process; " +
             "reads nothing.", new { }),
+        Tool("backup_thinking_check", "Rehearse Backup Thinking (Companion > Thinking pool, a hedged request: when the " +
+            "conversation's Thinking model has no first words after the delay, the same request also goes to a pool member that " +
+            "may answer for the conversation, and whichever starts first gives the reply) with the production race in " +
+            "ConversationTurn, ConversationRuntime.OpenTextAsync and the production member choice (ThinkingBackupMembers) on " +
+            "fixture turns: two fixture Chat Completions endpoints on 127.0.0.1 answer after set waits (canned words, NOT AI) and " +
+            "note when the client stopped their stream. Scenarios: backup-wins (the conversation's model is slow: the member is " +
+            "asked at the delay and answers, the conversation's stream is stopped, the latency line says Backup Thinking won), " +
+            "conversation-wins (fast: no member asked), late-conversation (the conversation's model starts after the member was " +
+            "asked: the member is stopped), conversation-fails (it fails after the member was asked: the member answers), " +
+            "no-member (none may answer), held (a reply started early with only a paid cloud member: asked only once the reply is " +
+            "taken), let-go (a reply started early and let go: its member's stream stops with it) and members (the rules: off, no " +
+            "member ticked, a cloud member never unless ticked, a member on the conversation's computer passed over, tools only on " +
+            "an endpoint). scenario runs one; delayMs is one of 500, 700, 900, 1200, 1500, 2000, 3000 (900 by default). Loopback " +
+            "only; plays nothing.", new
+        {
+            scenario = new { type = "string", @enum = BackupThinkingCheck.Scenarios },
+            delayMs = new { type = "integer", @enum = new[] { 500, 700, 900, 1200, 1500, 2000, 3000 } }
+        }),
+        Tool("quick_sounds_status", "Companion > Voice > Quick sounds while Martlet thinks, from a data directory: the choice (on or " +
+            "off, off by default, and the delay, from talk-preferences.json), the voice replies speak with (in words, whether it is " +
+            "a paid cloud voice, and its key per voice and character), whether its quick sounds are made (each clip's words and " +
+            "length) or need the owner's click (a paid voice), every set kept in quick-sounds\\ and the newest desktop log lines " +
+            "about quick sounds. Read-only; never plays anything.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("quick_sounds_check", "Rehearse quick sounds with the production rules (QuickSoundGate, QuickSoundWatcher, " +
+            "ConversationTurn.PlayQuickSound) on fixture turns through the production conversation runtime, Chat Completions " +
+            "adapter, host voice stream and playback sink: a fixture endpoint on 127.0.0.1 answers after a set wait (canned " +
+            "words, NOT AI), a fixture voice makes a quiet tone (NOT AI) and a fixture speaker plays nothing. Scenarios: slow (the " +
+            "quick sound plays once the reply has had no audio for the delay, the whole clip before the reply, which follows it on " +
+            "its own run uncut, and the reply latency line says when), fast (none), cooldown (a second slow reply within 20 s gets " +
+            "none), early (a reply started early and held for a second: counted from when it is taken, never while held), let-go " +
+            "(held, then let go: none), reasoning (hidden reasoning before the words: after 300 ms) and paused (paused because you " +
+            "talked over it: none). scenario runs one; delayMs is one of 500, 700, 1000, 1500 (700 by default). Loopback only; " +
+            "plays nothing.", new
+        {
+            scenario = new { type = "string", @enum = QuickSoundCheck.Scenarios },
+            delayMs = new { type = "integer", @enum = new[] { 500, 700, 1000, 1500 } }
+        }),
         Tool("live_floor_status", "The live floor (the live conversation turn comes before all background work) from a data directory: " +
             "what the conversation runs on (its Thinking, voice and listening routes, each on this PC, a computer on the home network " +
             "or a cloud provider, with the paired hosts and routes the floor holds while you talk), which Thinking pool members share " +
@@ -1718,7 +1764,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "helper_jobs_status" => HelperJobsCheck.Status(DataDirectory(arguments)),
                 "helper_jobs_check" => await HelperJobsCheck.RunAsync(cancellation),
                 "thinking_pool_status" => await ThinkingPoolCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "quick_sounds_status" => QuickSoundCheck.Status(DataDirectory(arguments)),
+                "quick_sounds_check" => await QuickSoundCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),
                 "thinking_pool_check" => await ThinkingPoolCheck.RunAsync(cancellation),
+                "backup_thinking_check" => await BackupThinkingCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),
                 "live_floor_status" => await LiveFloorCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),
                 "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),

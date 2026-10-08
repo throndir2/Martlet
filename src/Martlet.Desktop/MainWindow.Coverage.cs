@@ -42,7 +42,8 @@ public partial class MainWindow
                 Job = job.Job, Doer = JobDoer.Host, DoerName = gateway.HostId, Enabled = enabled, Reviewed = reviewed,
                 Host = HostState(gateway.HostId, job.Job, job.RouteId, job.Engine, hardware,
                     paired: route.CredentialId is not null && route.GatewayDeviceId is not null),
-                Fallback = saved is null ? null : SavedName(saved), FallbackIsCloud = saved is not null && IsCloud(saved)
+                Fallback = saved is null ? null : SavedName(saved), FallbackIsCloud = saved is not null && IsCloud(saved),
+                StandIn = job.Role == SetupRole.Stt && ListeningStandIn(route) is { } standIn ? ParakeetName(standIn) : null
             };
         }
         if (route.RouteType == SetupRouteType.LocalWindowsTts)

@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Martlet.Conversation;
 using Martlet.Core.Settings;
+using Martlet.Providers;
 
 namespace Martlet.Mcp;
 
@@ -42,9 +43,20 @@ internal static class ThinkingPoolCheck
                     key = m.Key, where = m.Describe(), place = m.Place.ToString(), model = m.ModelId, hostId = m.HostId,
                     hostRole = m.OnHostRole, slots = m.ThinksAtOnce, ownKey = m.CredentialId is not null,
                     text = true, vision = can.HasFlag(ThinkingCapability.Vision), audio = can.HasFlag(ThinkingCapability.Audio),
-                    available = spot?.Plan.Available ?? false, rank = spot?.Plan.Rank, why = spot?.Plan.Why
+                    available = spot?.Plan.Available ?? false, rank = spot?.Plan.Rank, why = spot?.Plan.Why,
+                    // May answer for the conversation (Backup Thinking), off by default; a paid cloud member only when ticked.
+                    answersForConversation = pool.Answers(m.Key), paid = ThinkingBackupMembers.Paid(m)
                 };
             }),
+            // Backup Thinking: its choices and who it would ask now for a plain reply that is taken (the production choice, on
+            // what the conversation's routes run on).
+            backup = new
+            {
+                on = pool.BackupThinking, delayMs = pool.BackupDelayMs, automaticDelay = pool.BackupDelayMs is null,
+                minimumAutomaticDelayMs = FirstWordTimes.Minimum.TotalMilliseconds, startingDelayMs = FirstWordTimes.Starting.TotalMilliseconds,
+                wouldAsk = ThinkingBackupMembers.Choose(pool, plan, places, LiveResources.For(routes), new BoundedTextInput("status"), held: false) is var choice
+                    ? new { member = choice.Spot?.Settings.Describe(), why = choice.Why } : null
+            },
             usable = places.Length, slots, keepsFastSlot = slots >= 2,
             conversationModel = pool.Members.Count == 0 && pool.UseConversationModelWhenEmpty
                 ? new { used = true, available = plan.Plan.Available, why = plan.Plan.Why } : null,

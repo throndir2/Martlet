@@ -43,6 +43,22 @@ public sealed class ReplyLatencyTests
     }
 
     [Fact]
+    public async Task A_turn_parakeet_heard_because_listening_failed_names_it_in_the_line()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var configured = fixture.Controller.Configuration!;
+        Assert.EndsWith(", voice gpt-4o-mini-tts-2025-12-15, speech-to-text gpt-transcribe", configured.LatencyModels(spokenInput: true));
+        var models = configured.LatencyModels(spokenInput: true, standIn: "parakeet-tdt-110m-en");
+        Assert.EndsWith(", speech-to-text parakeet-tdt-110m-en on this PC, standing in for gpt-transcribe", models);
+        // The timeline carries it from the utterance to the reply that answers it, and latency_report reads the line back.
+        var clock = TimeProvider.System;
+        var timeline = new ReplyTimeline(clock, ReplyTimeline.YouStopped) { StandIn = "parakeet-tdt-110m-en" };
+        Assert.Equal("parakeet-tdt-110m-en", timeline.Copy().StandIn);
+        var line = ReplyLatency.Describe(null, clock.GetTimestamp(), clock, Reply(new()), models)!;
+        Assert.Equal(models, LatencyReport.Parse(DateTimeOffset.Now, line)!.Models);
+    }
+
+    [Fact]
     public void A_reply_started_early_is_said_in_the_line_and_read_back_by_latency_report()
     {
         var clock = TimeProvider.System;
@@ -95,6 +111,85 @@ public sealed class ReplyLatencyTests
         Assert.Equal("Live", floor.GetProperty("atTurnEnd").GetString());
         Assert.Equal(1, floor.GetProperty("repliesAtTurnEnd").GetInt32());
         Assert.Equal(0, floor.GetProperty("repliesWhenDone").GetInt32());
+    }
+
+    [Fact]
+    public void Backup_thinking_is_said_in_the_line_and_read_back_by_latency_report()
+    {
+        var clock = TimeProvider.System;
+        var stopped = clock.GetTimestamp() - 3 * clock.TimestampFrequency;
+        var started = stopped + (long)(0.3 * clock.TimestampFrequency);
+        var timeline = new ReplyTimeline(clock, ReplyTimeline.YouStopped, stopped);
+        ConversationSnapshot With(ThinkingBackupResult backup) => Reply(new ConversationTimings()) with { Backup = backup };
+        // Counted from the same moment as the line's total: 300 ms to the reply's start, then the member was asked at 912 ms.
+        var won = ReplyLatency.Describe(timeline, started, clock, With(new(ThinkingBackupOutcome.Won, TimeSpan.FromMilliseconds(900),
+            "diva (qwen3-8b)", TimeSpan.FromMilliseconds(912), TimeSpan.FromMilliseconds(1_104))), "Thinking qwen3:8b")!;
+        Assert.Contains(" Backup Thinking won at 1404 ms (diva (qwen3-8b), asked at 1212 ms). Models: Thinking qwen3:8b.", won);
+        var lost = ReplyLatency.Describe(timeline, started, clock, With(new(ThinkingBackupOutcome.Lost, TimeSpan.FromMilliseconds(900),
+            "openrouter.ai (x-ai/grok-4.3)", TimeSpan.FromMilliseconds(900), TimeSpan.FromMilliseconds(1_300))), null)!;
+        Assert.Contains(" Backup Thinking asked at 1200 ms (openrouter.ai (x-ai/grok-4.3)); the conversation's model won.", lost);
+        var none = ReplyLatency.Describe(timeline, started, clock, With(new(ThinkingBackupOutcome.NoMember, TimeSpan.FromMilliseconds(900))), null)!;
+        Assert.Contains(" Backup Thinking: no member could take it.", none);
+        // A fast reply asks no member and says nothing about it.
+        var fast = ReplyLatency.Describe(timeline, started, clock, With(new(ThinkingBackupOutcome.NotNeeded, TimeSpan.FromMilliseconds(900))), null)!;
+        Assert.DoesNotContain("Backup Thinking", fast);
+
+        var parsed = LatencyReport.Parse(DateTimeOffset.Now, won)!;
+        Assert.Equal(("won", 1212d, 1404d, "diva (qwen3-8b)"), (parsed.Backup, parsed.BackupAskedMs!.Value, parsed.BackupWonMs!.Value, parsed.BackupMember));
+        Assert.Equal("Thinking qwen3:8b", parsed.Models);
+        var other = LatencyReport.Parse(DateTimeOffset.Now, lost)!;
+        Assert.Equal(("lost", 1200d, "openrouter.ai (x-ai/grok-4.3)"), (other.Backup, other.BackupAskedMs!.Value, other.BackupMember));
+        Assert.Equal("no member", LatencyReport.Parse(DateTimeOffset.Now, none)!.Backup);
+        Assert.Null(LatencyReport.Parse(DateTimeOffset.Now, fast)!.Backup);
+        var summary = System.Text.Json.JsonSerializer.SerializeToElement(LatencyReport.Summarize([parsed, other])).GetProperty("backupThinking");
+        Assert.Equal(2, summary.GetProperty("replies").GetInt32());
+        Assert.Equal(1, summary.GetProperty("won").GetInt32());
+        Assert.Equal(1, summary.GetProperty("lost").GetInt32());
+        Assert.Equal(1404, summary.GetProperty("wonAtMs").GetProperty("Median").GetDouble());
+    }
+
+    [Fact]
+    public async Task The_backup_thinking_check_races_two_fixture_endpoints_through_the_production_runtime()
+    {
+        // Production race, runtime, Chat Completions adapter and member choice with two fixture endpoints (NOT AI).
+        var result = System.Text.Json.JsonSerializer.SerializeToElement(await BackupThinkingCheck.RunAsync("backup-wins", 900, CancellationToken.None));
+        Assert.True(result.GetProperty("ok").GetBoolean(), result.ToString());
+        var turn = result.GetProperty("scenarios")[0].GetProperty("turn");
+        Assert.Equal("Won", turn.GetProperty("Outcome").GetString());
+        Assert.NotEqual(System.Text.Json.JsonValueKind.Null, turn.GetProperty("Conversation").GetProperty("StoppedMs").ValueKind);
+        Assert.Contains("Backup Thinking won at", turn.GetProperty("Line").GetString());
+    }
+
+    [Fact]
+    public void A_quick_sound_is_said_in_the_line_and_read_back_by_latency_report()
+    {
+        var clock = TimeProvider.System;
+        var stopped = clock.GetTimestamp() - 2 * clock.TimestampFrequency;
+        var started = stopped + (long)(0.3 * clock.TimestampFrequency);
+        var timeline = new ReplyTimeline(clock, ReplyTimeline.YouStopped, stopped);
+        // Counted from the same moment as the line's total: 300 ms to the reply's start, then 712 ms.
+        var line = ReplyLatency.Describe(timeline, started, clock,
+            Reply(new ConversationTimings(QuickSoundAfter: TimeSpan.FromMilliseconds(712))), "Thinking qwen3:8b")!;
+        Assert.Contains(" Quick sound at 1012 ms. Models: Thinking qwen3:8b.", line);
+        var parsed = LatencyReport.Parse(DateTimeOffset.Now, line)!;
+        Assert.Equal(1012, parsed.QuickSoundMs);
+        var plain = LatencyReport.Parse(DateTimeOffset.Now, ReplyLatency.Describe(null, clock.GetTimestamp(), clock, Reply(new()), null)!)!;
+        Assert.Null(plain.QuickSoundMs);
+        var summary = System.Text.Json.JsonSerializer.SerializeToElement(LatencyReport.Summarize([parsed, plain])).GetProperty("quickSounds");
+        Assert.Equal(1, summary.GetProperty("replies").GetInt32());
+        Assert.Equal(1012, summary.GetProperty("atMs").GetProperty("Median").GetDouble());
+    }
+
+    [Fact]
+    public async Task The_quick_sound_check_plays_one_in_front_of_a_slow_reply_through_the_production_runtime()
+    {
+        // Production rules, conversation runtime, Chat Completions adapter, host voice stream and playback sink with fixtures (NOT AI).
+        var result = System.Text.Json.JsonSerializer.SerializeToElement(await QuickSoundCheck.RunAsync("slow", 700, CancellationToken.None));
+        Assert.True(result.GetProperty("ok").GetBoolean(), result.ToString());
+        var turn = result.GetProperty("scenarios")[0].GetProperty("turns")[0];
+        Assert.True(turn.GetProperty("played").GetBoolean());
+        Assert.True(turn.GetProperty("replyFollowedUncut").GetBoolean());
+        Assert.Contains("Quick sound at", turn.GetProperty("latencyLine").GetString());
     }
 
     [Fact]

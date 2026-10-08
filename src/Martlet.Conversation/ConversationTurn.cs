@@ -46,6 +46,14 @@ public sealed class ConversationTurn
     private readonly bool holdVoice;
     private List<Action>? heldBack;
     private TimeSpan? releasedAfter;
+    // A quick sound (PlayQuickSound) playing ahead of the reply's own voice: its playback task, run and lip-sync observation, and
+    // when it started. The reply's first piece waits for it to end and never cuts it (ownAudioStarted: none may begin after);
+    // at most one per turn, and none once the work ended (quickClosed). Guarded by Sync.
+    private Task? quickSound;
+    private PlaybackRun? quickRun;
+    private GeneratedSpeechObservation? quickObservation;
+    private TimeSpan? quickSoundAfter;
+    private bool ownAudioStarted, quickClosed;
     // Captions for words the voice couldn't say, shown one after another (ShowUnsaid).
     private Task unsaidCaptions = Task.CompletedTask;
     // A reply that isn't spoken still shows in the captions (speech bubble, subtitles), each sentence once it is written.
@@ -61,6 +69,12 @@ public sealed class ConversationTurn
     private long? inputTokens, cachedInputTokens;
     private TimeSpan? textRequestAfter, textResponseAfter, firstReasoningAfter, firstSegmentAfter, speechRequestAfter,
         firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter;
+    // The Thinking stream being read now and when its request was sent: its response headers and hidden reasoning show in the
+    // timings as soon as they arrive (SuperviseAsync), before the first words.
+    private ITextGenerationStream? openStream;
+    private TimeSpan openStreamAfter;
+    // What Backup Thinking did for the reply's first request, once decided (RaceAsync).
+    private ThinkingBackupResult? backupResult;
     // Finished pieces' waits for the voice's next audio (playback underruns).
     private int voiceWaits;
     private TimeSpan voiceWaited;
@@ -179,6 +193,30 @@ public sealed class ConversationTurn
     /// <summary>Whether what Martlet says aloud is paused (<see cref="Pause"/>).</summary>
     public bool Paused { get { lock (Sync) return paused; } }
 
+    /// <summary>Whether this reply is spoken (it has a voice).</summary>
+    public bool Spoken => request.Speech is not null;
+
+    /// <summary>Plays <paramref name="pcm"/> now, ahead of this reply's own voice: a quick sound in Martlet's own voice (24 kHz
+    /// mono 16-bit PCM, at most <see cref="QuickSoundAudio.MaximumBytes"/>) while the reply's first audio isn't ready
+    /// (<see cref="QuickSoundWatcher"/>). The reply's first piece waits until it has played and then follows it, so neither is
+    /// cut. It is never part of the reply's text, captions or history. Returns false, and plays nothing, for a reply that isn't
+    /// spoken, is held, paused, finished or stopped, already played a quick sound, or whose own audio started.</summary>
+    public bool PlayQuickSound(ReadOnlyMemory<byte> pcm)
+    {
+        if (pcm.Length is 0 || pcm.Length > QuickSoundAudio.MaximumBytes || pcm.Length % 2 != 0) return false;
+        lock (Sync)
+        {
+            if (request.Speech is not { } voice || quickSound is not null || quickClosed || heldBack is not null || paused ||
+                invalidated || workFinished || terminal || speaking.IsCancellationRequested || ownAudioStarted || playback is not null)
+                return false;
+            quickSoundAfter = Clock.GetElapsedTime(startedAt);
+            var token = speaking.Token;
+            quickSound = Task.Run(() => PlayQuickSoundAsync(pcm, voice, token));
+            Emit(ConversationEventKind.Playback);
+            return true;
+        }
+    }
+
     /// <summary>Started early (<see cref="ConversationRuntime.StartEarly"/>) and not released yet: its Thinking text streams
     /// (and its first piece may be synthesized), but nothing shows, acts, calls a tool or plays.</summary>
     public bool Held { get { lock (Sync) return heldBack is not null; } }
@@ -231,6 +269,7 @@ public sealed class ConversationTurn
             pausedAt = Clock.GetTimestamp();
             pauses++;
             playback?.Pause();
+            quickRun?.Pause();
             cueClock.Pause();
             return true;
         }
@@ -246,6 +285,7 @@ public sealed class ConversationTurn
             pausedTime += Clock.GetElapsedTime(pausedAt);
             resumes++;
             playback?.Resume();
+            quickRun?.Resume();
             cueClock.Resume();
             return true;
         }
@@ -272,6 +312,8 @@ public sealed class ConversationTurn
         segments.Writer.TryComplete();
         // Capture-scoped handle: never use sink-wide Stop, even during delayed teardown.
         _ = playback?.StopAsync();
+        quickObservation?.Stop();
+        _ = quickRun?.StopAsync();
         cueClock.Stop();
         SetState(userStopped ? ConversationState.Canceled : text.Length > 0 ? ConversationState.Partial : ConversationState.Failed);
         stopSignal.TrySetResult();
@@ -306,6 +348,14 @@ public sealed class ConversationTurn
             TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         await Task.WhenAll(writing, GuardStageAsync(SpeakAsync)).ConfigureAwait(false);
         synthesized.TrySetResult();
+        // A quick sound still playing ends before the turn lets go of its speakers; none may start after this.
+        Task? quick;
+        lock (Sync)
+        {
+            quickClosed = true;
+            quick = quickSound;
+        }
+        if (quick is not null) await quick.ConfigureAwait(false);
     }
 
     private async Task GuardStageAsync(Func<Task> operation)
@@ -385,6 +435,8 @@ public sealed class ConversationTurn
         speechObservation?.Stop();
         // Capture-scoped handle: never use sink-wide Stop.
         _ = playback?.StopAsync();
+        quickObservation?.Stop();
+        _ = quickRun?.StopAsync();
         speechCallbacks = speaking.CancelAsync();
         // Muted before the text started: the turn is still authorizing its Thinking request.
         if (!textComplete && textProvenance is not null && state != ConversationState.Generating) SetState(ConversationState.Generating);
@@ -476,7 +528,7 @@ public sealed class ConversationTurn
                     // A reply started early asks the Thinking fallback (it may be a paid cloud model) only once it is taken.
                     if (fallback) await WhileHeldAsync().ConfigureAwait(false);
                     result = await RequestAsync(imageDropped ? sent.WithoutImage() : sent,
-                        attempt == 0 ? TextIds : NewIds(), segmenter, fallback, reasoningDropped).ConfigureAwait(false);
+                        attempt == 0 ? TextIds : NewIds(), segmenter, fallback, reasoningDropped, hedged: attempt == 0).ConfigureAwait(false);
                 }
                 // The selected destination failed without answering (no reply in time or a broken stream): ask the fallback.
                 catch (Exception error) when (error is ConversationException { Failure: ConversationFailure.DeadlineExceeded or
@@ -638,7 +690,7 @@ public sealed class ConversationTurn
     }
 
     private async Task<RoundResult> RequestAsync(BoundedTextInput input, CorrelationIds ids, SpeechSegmenter? segmenter,
-        bool fallback = false, bool withoutReasoning = false)
+        bool fallback = false, bool withoutReasoning = false, bool hedged = false)
     {
         var model = fallback ? request.Fallback!.Model : request.Model;
         var window = new MonotonicWindow(Clock, request.TextLimits.MaxRequestTime);
@@ -659,38 +711,54 @@ public sealed class ConversationTurn
         context = context with { Deadline = Deadline(window) };
         var requestedAfter = Clock.GetElapsedTime(startedAt);
         lock (Sync) textRequestAfter ??= requestedAfter;
-        var stream = Owner.StreamText(context, request, input, consent, originalCaller, fallback, withoutReasoning);
-        using var validator = new ProviderSequenceValidator(new()
+        // Backup Thinking races the reply's first request only. That request then has a stop of its own, so the stream that
+        // loses is stopped alone.
+        var backup = hedged && !fallback ? request.Backup : null;
+        var own = backup is null ? null : CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
+        TextRun run;
+        try
         {
-            Ids = ids, Epoch = Epoch, Capabilities = stream.Capabilities
-        }, new()
-        {
-            MaxIngressEvents = request.TextLimits.MaxEvents + 2,
-            MaxTextCharacters = request.TextLimits.MaxTextCharacters, MaxQueuedChunks = 1,
-            FirstEventTimeout = request.TextLimits.FirstDeltaTimeout, IdleTimeout = request.TextLimits.IdleTimeout,
-            TotalTimeout = request.TextLimits.MaxRequestTime, AllowEmptyCompletion = input.Tools.Count > 0
-        }, Clock, stop.Token);
-        lock (Sync)
-        {
-            CheckActive();
-            segmentation = segmenter;
-            textProvenance = stream.Capabilities.Provenance;
-            SetState(ConversationState.Generating);
+            var stream = Owner.StreamText(context, request, input, consent, originalCaller, fallback, withoutReasoning);
+            run = new(stream, TextValidator(ids, stream, input), own, own?.Token ?? stop.Token, requestedAfter);
         }
-        var said = new StringBuilder();
-        await using (var enumeration = stream.GetAsyncEnumerator(stop.Token))
+        catch
         {
+            own?.Dispose();
+            throw;
+        }
+        try
+        {
+            lock (Sync)
+            {
+                CheckActive();
+                segmentation = segmenter;
+                textProvenance = run.Stream.Capabilities.Provenance;
+                openStream = run.Stream;
+                openStreamAfter = requestedAfter;
+                SetState(ConversationState.Generating);
+            }
+            if (backup is not null) run = await RaceAsync(run, backup, input).ConfigureAwait(false);
+            var said = new StringBuilder();
+            // What the race already read from the stream that answers.
+            var step = run.Step;
             while (true)
             {
-                Check(window);
-                bool moved = await enumeration.MoveNextAsync().ConfigureAwait(false);
-                Check(window);
-                NoteTextTimings(stream, requestedAfter);
-                if (!moved) break;
-                var update = validator.Accept(enumeration.Current);
-                if (update.Snapshot.Result?.Outcome == TurnOutcome.Failed)
-                    return new(RoundEnd.Failed, said.ToString(), [], stream.Result?.Failure?.Code, update.Snapshot.Issue);
-                while (validator.TryReadText(out var chunk))
+                if (step == RunStep.None)
+                {
+                    Check(window);
+                    bool moved = await run.Events.MoveNextAsync().ConfigureAwait(false);
+                    Check(window);
+                    NoteTextTimings(run.Stream, run.RequestedAfter);
+                    if (!moved) break;
+                    var update = run.Validator.Accept(run.Events.Current);
+                    if (update.Snapshot.Result?.Outcome == TurnOutcome.Failed)
+                        return new(RoundEnd.Failed, said.ToString(), [], run.Stream.Result?.Failure?.Code, update.Snapshot.Issue);
+                }
+                else if (step == RunStep.Ended) break;
+                else if (step == RunStep.Failed)
+                    return new(RoundEnd.Failed, said.ToString(), [], run.Stream.Result?.Failure?.Code, run.Validator.Snapshot.Issue);
+                step = RunStep.None;
+                while (run.Validator.TryReadText(out var chunk))
                 {
                     Check(window);
                     lock (Sync)
@@ -709,24 +777,253 @@ public sealed class ConversationTurn
                     if (segmenter is not null) await StageAsync(segmenter.Push(chunk.Text), window).ConfigureAwait(false);
                 }
             }
-        }
-        Check(window);
-        var end = validator.EndOfInput().Snapshot;
-        lock (Sync)
-        {
-            textWindow = null;
-            if (stream.Result?.Usage is { InputTokens: { } read } usage)
+            Check(window);
+            var end = run.Validator.EndOfInput().Snapshot;
+            lock (Sync)
             {
-                inputTokens = (inputTokens ?? 0) + read;
-                if (usage.CachedInputTokens is { } cached) cachedInputTokens = (cachedInputTokens ?? 0) + Math.Min(cached, read);
+                textWindow = null;
+                if (run.Stream.Result?.Usage is { InputTokens: { } read } usage)
+                {
+                    inputTokens = (inputTokens ?? 0) + read;
+                    if (usage.CachedInputTokens is { } cached) cachedInputTokens = (cachedInputTokens ?? 0) + Math.Min(cached, read);
+                }
+            }
+            return end.Result?.Outcome switch
+            {
+                TurnOutcome.Completed => new(RoundEnd.Completed, said.ToString(), run.Stream.Result?.ToolCalls ?? []),
+                TurnOutcome.Refused => new(RoundEnd.Refused, said.ToString(), [], Refusal: run.Validator.RefusalText),
+                _ => new(RoundEnd.Invalid, said.ToString(), [], run.Stream.Result?.Failure?.Code, end.Issue)
+            };
+        }
+        finally
+        {
+            await run.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    private ProviderSequenceValidator TextValidator(CorrelationIds ids, ITextGenerationStream stream, BoundedTextInput input) =>
+        new(new()
+        {
+            Ids = ids, Epoch = Epoch, Capabilities = stream.Capabilities
+        }, new()
+        {
+            MaxIngressEvents = request.TextLimits.MaxEvents + 2,
+            MaxTextCharacters = request.TextLimits.MaxTextCharacters, MaxQueuedChunks = 1,
+            FirstEventTimeout = request.TextLimits.FirstDeltaTimeout, IdleTimeout = request.TextLimits.IdleTimeout,
+            TotalTimeout = request.TextLimits.MaxRequestTime, AllowEmptyCompletion = input.Tools.Count > 0
+        }, Clock, stop.Token);
+
+    private enum RunStep { None, Words, Ended, Failed }
+
+    // One Thinking stream being read: its checks and its events (with a stop of its own while Backup Thinking races it), when its
+    // request started, what the race already read from it, and a backup member's stream and lease.
+    private sealed class TextRun(ITextGenerationStream stream, ProviderSequenceValidator validator, CancellationTokenSource? stop,
+        CancellationToken token, TimeSpan requestedAfter, ThinkingBackupStream? backup = null) : IAsyncDisposable
+    {
+        private int disposed;
+        internal ITextGenerationStream Stream { get; } = stream;
+        internal ProviderSequenceValidator Validator { get; } = validator;
+        internal CancellationTokenSource? Stop { get; } = stop;
+        internal IAsyncEnumerator<ProviderEvent> Events { get; } = stream.GetAsyncEnumerator(token);
+        internal TimeSpan RequestedAfter { get; } = requestedAfter;
+        internal ThinkingBackupStream? Backup { get; } = backup;
+        internal RunStep Step { get; set; }
+
+        // It answered the race: it has words, or it ended with a whole answer without words (a tool call or a refusal).
+        internal bool Answered => Step == RunStep.Words ||
+            Step == RunStep.Ended && Validator.Snapshot.Result?.Outcome is TurnOutcome.Completed or TurnOutcome.Refused;
+
+        public async ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref disposed, 1) != 0) return;
+            try { await Events.DisposeAsync().ConfigureAwait(false); }
+            finally
+            {
+                Validator.Dispose();
+                Stop?.Dispose();
+                if (Backup?.Lease is { } lease) await lease.DisposeAsync().ConfigureAwait(false);
             }
         }
-        return end.Result?.Outcome switch
+    }
+
+    // Backup Thinking's race (IThinkingBackup): the reply's first request reads on alone until its first words. With none Delay
+    // after it started, the same request also goes to the backup, and the stream with words first answers. The other is
+    // stopped at once and let go off the reply's path, so it never holds up the words. A reply started early asks a paid member
+    // only once it is taken. When neither answers (both failed or ended), the reply's own request goes on as if alone: its
+    // failure leads to the usual retries and the Thinking fallback.
+    private async Task<TextRun> RaceAsync(TextRun primary, IThinkingBackup backup, BoundedTextInput input)
+    {
+        var delay = backup.Delay;
+        var primaryWords = FirstWordsAsync(primary);
+        TextRun? second = null;
+        Task<RunStep>? secondWords = null;
+        CancellationTokenSource? backupStop = null;
+        try
         {
-            TurnOutcome.Completed => new(RoundEnd.Completed, said.ToString(), stream.Result?.ToolCalls ?? []),
-            TurnOutcome.Refused => new(RoundEnd.Refused, said.ToString(), [], Refusal: validator.RefusalText),
-            _ => new(RoundEnd.Invalid, said.ToString(), [], stream.Result?.Failure?.Code, end.Issue)
-        };
+            var wait = primary.RequestedAfter + delay - Clock.GetElapsedTime(startedAt);
+            if (wait > TimeSpan.Zero)
+            {
+                using var timer = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
+                await Task.WhenAny(primaryWords, Task.Delay(wait, Clock, timer.Token)).ConfigureAwait(false);
+                await timer.CancelAsync().ConfigureAwait(false);
+            }
+            stop.Token.ThrowIfCancellationRequested();
+            if (primaryWords.IsCompleted)
+            {
+                primary.Step = await primaryWords.ConfigureAwait(false);
+                Decided(backup, new(ThinkingBackupOutcome.NotNeeded, delay));
+                return primary;
+            }
+            backupStop = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
+            var ids = NewIds();
+            var held = Held;
+            var opened = await OpenBackupAsync(backup, input, ids, held, backupStop.Token).ConfigureAwait(false);
+            if (opened is null && held && hold is { } taken)
+            {
+                // Started early: a paid member may answer only once the reply is taken.
+                await Task.WhenAny(primaryWords, taken.Task).WaitAsync(stop.Token).ConfigureAwait(false);
+                if (!primaryWords.IsCompleted) opened = await OpenBackupAsync(backup, input, ids = NewIds(), false, backupStop.Token).ConfigureAwait(false);
+            }
+            var askedAfter = Clock.GetElapsedTime(startedAt);
+            if (opened is null)
+            {
+                backupStop.Dispose();
+                backupStop = null;
+                Decided(backup, new(ThinkingBackupOutcome.NoMember, delay));
+                primary.Step = await primaryWords.ConfigureAwait(false);
+                return primary;
+            }
+            try
+            {
+                second = new(opened.Stream, TextValidator(ids, opened.Stream, input), backupStop, backupStop.Token, askedAfter, opened);
+                backupStop = null;
+            }
+            catch (Exception error) when (error is ContractException or ArgumentException or InvalidOperationException)
+            {
+                backupStop?.Dispose();
+                backupStop = null;
+                if (opened.Lease is { } lease) _ = lease.DisposeAsync().AsTask();
+                Decided(backup, new(ThinkingBackupOutcome.Failed, delay, opened.Name, askedAfter, Why: "its stream can't be read"));
+                primary.Step = await primaryWords.ConfigureAwait(false);
+                return primary;
+            }
+            // The conversation's model had words while the member was chosen: nothing is sent to the member.
+            if (primaryWords.IsCompletedSuccessfully)
+            {
+                primary.Step = primaryWords.Result;
+                if (primary.Answered)
+                {
+                    LetGo(second, null);
+                    second = null;
+                    Decided(backup, new(ThinkingBackupOutcome.NotNeeded, delay));
+                    return primary;
+                }
+            }
+            secondWords = FirstWordsAsync(second);
+            TextRun? winner = null;
+            Exception? primaryError = null;
+            string? backupWhy = null;
+            List<Task<RunStep>> pending = [primaryWords, secondWords];
+            while (winner is null && pending.Count > 0)
+            {
+                var done = await Task.WhenAny(pending).ConfigureAwait(false);
+                pending.Remove(done);
+                var run = done == primaryWords ? primary : second;
+                try
+                {
+                    run.Step = await done.ConfigureAwait(false);
+                    if (run.Answered) winner = run;
+                    else if (run == second) backupWhy = run.Step == RunStep.Failed ? "it failed" : "it ended without an answer";
+                }
+                catch (Exception error) when (run == primary) { primaryError = error; }
+                catch (Exception error) { backupWhy = error is OperationCanceledException ? "it was stopped" : "it failed"; }
+                stop.Token.ThrowIfCancellationRequested();
+                // A member that failed lets go of its slot and its computer at once, while the conversation's model goes on.
+                if (backupWhy is not null && winner is null) LetGo(second, secondWords);
+            }
+            if (winner is null)
+            {
+                // Neither answered: the reply's own request goes on as if alone.
+                LetGo(second, secondWords);
+                second = null;
+                Decided(backup, new(ThinkingBackupOutcome.Failed, delay, opened.Name, askedAfter, Why: backupWhy));
+                if (primaryError is not null) ExceptionDispatchInfo.Throw(primaryError);
+                return primary;
+            }
+            var firstWords = Clock.GetElapsedTime(startedAt);
+            if (winner == second)
+            {
+                LetGo(primary, primaryWords);
+                lock (Sync)
+                {
+                    textProvenance = second.Stream.Capabilities.Provenance;
+                    openStream = second.Stream;
+                    openStreamAfter = askedAfter;
+                }
+                second = null;
+                Decided(backup, new(ThinkingBackupOutcome.Won, delay, opened.Name, askedAfter, firstWords));
+                return winner;
+            }
+            LetGo(second, secondWords);
+            second = null;
+            Decided(backup, new(backupWhy is null ? ThinkingBackupOutcome.Lost : ThinkingBackupOutcome.Failed, delay, opened.Name, askedAfter,
+                firstWords, backupWhy));
+            return primary;
+        }
+        catch
+        {
+            // The turn stopped (or the reply's own request failed with no backup to answer): the backup's stream is let go here,
+            // the reply's own by the caller once its read ended.
+            backupStop?.Dispose();
+            if (second is not null) LetGo(second, secondWords);
+            try { primary.Stop?.Cancel(); }
+            catch (ObjectDisposedException) { }
+            try { await primaryWords.ConfigureAwait(false); }
+            catch (Exception) { }
+            throw;
+        }
+    }
+
+    // Reads a stream for the race until it has words to show, ends (a whole answer without words ends it too) or fails.
+    private static async Task<RunStep> FirstWordsAsync(TextRun run)
+    {
+        while (true)
+        {
+            if (!await run.Events.MoveNextAsync().ConfigureAwait(false)) return RunStep.Ended;
+            var snapshot = run.Validator.Accept(run.Events.Current).Snapshot;
+            if (snapshot.Result?.Outcome == TurnOutcome.Failed) return RunStep.Failed;
+            if (snapshot.QueuedChunks > 0) return RunStep.Words;
+        }
+    }
+
+    // The backup's stream, or null when no member may take the request or it couldn't be opened.
+    private async Task<ThinkingBackupStream?> OpenBackupAsync(IThinkingBackup backup, BoundedTextInput input, CorrelationIds ids,
+        bool held, CancellationToken token)
+    {
+        try { return await backup.OpenAsync(request, input, ids, Epoch, held, token).ConfigureAwait(false); }
+        catch (Exception error) when (error is not OperationCanceledException || !token.IsCancellationRequested) { return null; }
+    }
+
+    // The stream that lost the race (or failed in it) is stopped at once and let go once its read ended, off the reply's path.
+    private static void LetGo(TextRun run, Task<RunStep>? reading)
+    {
+        try { run.Stop?.Cancel(); }
+        catch (ObjectDisposedException) { }
+        _ = Task.Run(async () =>
+        {
+            if (reading is not null)
+                try { await reading.ConfigureAwait(false); }
+                catch (Exception) { }
+            try { await run.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception) { }
+        });
+    }
+
+    private void Decided(IThinkingBackup backup, ThinkingBackupResult result)
+    {
+        lock (Sync) backupResult = result;
+        try { backup.Ended(result); }
+        catch (Exception error) when (error is not OutOfMemoryException) { }
     }
 
     // The first request's response headers and first hidden reasoning, in the turn's own time (the stream counts from its
@@ -1110,6 +1407,8 @@ public sealed class ConversationTurn
                 CheckSpeaking(window);
                 if (run is null)
                 {
+                    // A quick sound playing ahead of the reply ends first: the reply follows it and never cuts it.
+                    await AfterQuickSoundAsync().ConfigureAwait(false);
                     lock (Sync)
                     {
                         CheckActive();
@@ -1209,6 +1508,104 @@ public sealed class ConversationTurn
         }
     }
 
+    // Waits for a quick sound still playing (PlayQuickSound); once the reply's own audio starts, none may begin.
+    private async Task AfterQuickSoundAsync()
+    {
+        while (true)
+        {
+            Task? playing;
+            lock (Sync)
+            {
+                playing = quickSound is { IsCompleted: false } running ? running : null;
+                if (playing is null)
+                {
+                    ownAudioStarted = true;
+                    return;
+                }
+            }
+            await playing.WaitAsync(speaking.Token).ConfigureAwait(false);
+        }
+    }
+
+    // Plays a quick sound on its own playback run, 20 ms a frame, and lets go of the speakers when it ends. It never fails the
+    // reply: a quick sound that can't play (the reply stopped, the speakers failed) just ends, and the reply's own voice goes on.
+    private async Task PlayQuickSoundAsync(ReadOnlyMemory<byte> pcm, SpeechOutput voice, CancellationToken token)
+    {
+        PlaybackRun? run = null;
+        var ids = NewIds();
+        var format = OpenAiSpeechSynthesisCatalog.PcmFormat;
+        var window = new MonotonicWindow(Clock, voice.Limits.MaxRequestTime);
+        try
+        {
+            lock (Sync)
+            {
+                CheckActive();
+                token.ThrowIfCancellationRequested();
+                run = Owner.StartPlayback(this, ids, voice.Output, Deadline(window), token);
+                if (paused) run.Pause();
+                quickRun = run;
+                quickObservation = Owner.GeneratedSpeech?.Begin(run, format);
+            }
+            var frameBytes = format.SampleRate / 50 * format.BlockAlignment;
+            long samples = 0, sequence = 0;
+            for (var offset = 0; offset < pcm.Length; offset += frameBytes)
+            {
+                var frame = new PcmFrame(ids, Epoch, sequence++, samples, format, pcm.Span.Slice(offset, Math.Min(frameBytes, pcm.Length - offset)));
+                await SubmitQuickAsync(run, frame, window, token).ConfigureAwait(false);
+                samples += frame.SamplesPerChannel;
+            }
+            if (!run.CompleteInput(samples)) return;
+            lock (Sync) quickObservation?.CompleteInput(samples);
+            await run.Completion.WaitAsync(token).ConfigureAwait(false);
+        }
+        catch (Exception) { }
+        finally
+        {
+            if (run is not null)
+            {
+                GeneratedSpeechObservation? observation;
+                lock (Sync) observation = quickObservation;
+                observation?.Stop();
+                // Never release a native device concurrently with its own run.
+                await run.StopAsync().ConfigureAwait(false);
+                await run.DeviceRelease.ConfigureAwait(false);
+                lock (Sync)
+                {
+                    var final = run.Snapshot;
+                    quarantined |= !final.DeviceReleased || final.Error?.Code == ErrorCode.AudioPlaybackFailed;
+                    quickRun = null;
+                    quickObservation = null;
+                    Emit(ConversationEventKind.Playback);
+                }
+            }
+        }
+    }
+
+    private async Task SubmitQuickAsync(PlaybackRun run, PcmFrame frame, MonotonicWindow window, CancellationToken token)
+    {
+        while (true)
+        {
+            token.ThrowIfCancellationRequested();
+            Check(window);
+            var snapshot = run.Snapshot;
+            if (run.Completion.IsCompleted) throw new ConversationException(ConversationFailure.PlaybackFailed);
+            var capacity = (long)(frame.Format.SampleRate * Owner.PlaybackOptions.Capacity.TotalSeconds);
+            if (snapshot.AcceptedSamples - snapshot.DeviceConsumedSamples + frame.SamplesPerChannel <= capacity &&
+                snapshot.QueuedFrames < Owner.PlaybackOptions.MaximumQueuedFrames)
+            {
+                lock (Sync)
+                {
+                    CheckActive();
+                    var mapped = PlaybackFrameMapping.Map(frame, snapshot.Ids, Epoch, snapshot.Epoch);
+                    if (run.Submit(mapped) != FrameAcceptance.Accepted) throw new ConversationException(ConversationFailure.InvalidStream);
+                    quickObservation?.Submit(mapped);
+                }
+                return;
+            }
+            await Task.Delay(TimeSpan.FromMilliseconds(10), Clock, token).ConfigureAwait(false);
+        }
+    }
+
     private MonotonicWindow ValidateReservation(BudgetReservation? reservation, OperationBudget expected,
         DateTimeOffset authorizationExpiry, DateTimeOffset actionDeadline, MonotonicWindow original)
     {
@@ -1268,6 +1665,13 @@ public sealed class ConversationTurn
                     if (!invalidated && progress.State == PlaybackState.Playing) SetState(ConversationState.Playing);
                     Emit(ConversationEventKind.Playback);
                 }
+                // The first request's response headers and hidden reasoning show as soon as they arrive, not only with the first
+                // words, so a quick sound knows at once that the model thinks before it answers.
+                if (openStream is { } open && textRequestAfter == openStreamAfter)
+                {
+                    if (open.ResponseAfter is { } headers) textResponseAfter ??= openStreamAfter + headers;
+                    if (open.FirstReasoningAfter is { } thinking) firstReasoningAfter ??= openStreamAfter + thinking;
+                }
                 // The whole turn ran out of time: after the text finished, only the voice still speaking ends.
                 if (whole.Expired)
                 {
@@ -1323,8 +1727,9 @@ public sealed class ConversationTurn
             speechFailure, new(textRequestAfter, textResponseAfter, firstReasoningAfter, firstSegmentAfter, speechRequestAfter,
                 firstSpeechAudioAfter, firstPieceSynthesizedAfter, firstPieceSpeech, playbackStartedAfter,
                 voiceWaits + (currentPlayback?.Underruns ?? 0), voiceWaited + (currentPlayback?.UnderrunTime ?? TimeSpan.Zero),
-                pauses, resumes, pausedTime + (paused ? Clock.GetElapsedTime(pausedAt) : TimeSpan.Zero), hold is not null, releasedAfter),
+                pauses, resumes, pausedTime + (paused ? Clock.GetElapsedTime(pausedAt) : TimeSpan.Zero), hold is not null, releasedAfter,
+                quickSoundAfter),
             inputTokens, cachedInputTokens,
-            reasoningRejected, voiceMuted);
+            reasoningRejected, voiceMuted, backupResult);
     }
 }

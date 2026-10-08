@@ -243,6 +243,10 @@ words, and up to 16 s when the first reply after a start pays the warm-up.
    so it comes from the prompt cache after the first reply. Its effect on the
    *first sentence* step depends on the model and wasn't measured here (no
    Thinking model on the test PC; see the change's pull request).
+8. **Backup Thinking** (Companion › Thinking pool, off by default): a reply
+   whose Thinking model has no first words after a wait also asks a pool member
+   the owner allowed, and the first to start gives the reply
+   ([below](#backup-thinking-a-second-model-for-slow-starts)).
 
 Thinking longer, measured through a disposable desktop with Thinking on a
 single-slot loopback fixture (one request at a time with a one-slot prompt
@@ -819,6 +823,127 @@ fixtures instead (Martlet.Desktop.Tests: `EarlyReplyDesktopTests` and the talk
 window's `AlwaysListeningStartsTheReplyEarlyAndShowsItOnlyOnceYourTurnEnds`).
 The requests are the ones a turn sends, so prompt caching can't get worse; a
 request let go costs a local model only the work it did.
+
+## Quick sounds while Martlet thinks
+
+**2026-10-07, opt-in, off by default.** Companion › Voice › *Quick sounds while
+Martlet thinks*. When a reply is slow to start, Martlet first says a short sound
+in its own voice (*"Mm,"*, *"Hmm..."*, *"Oh,"*, *"Ah,"*; with Dia also a soft
+breath in) and the reply follows it. ElevenLabs Agents do the same with a
+filler message when the model is slow
+([soft timeout](https://elevenlabs.io/docs/eleven-agents/customization/conversation-flow)),
+and OpenAI's realtime guide calls the short sentence before a slow step a
+*preamble*. A quick sound doesn't make the reply's words come sooner: it fills
+the silence, so the wait feels shorter.
+
+**When one plays** (`QuickSoundGate`, `QuickSoundWatcher` in
+Martlet.Conversation; checked every 25 ms beside the reply, never on its path):
+
+- Only on a spoken reply to you that is confirmed: at once for a typed or heard
+  reply, or the moment a [reply started early](#starting-replies-early) is
+  taken. Never while it is held, never for one that is let go, never for a
+  song.
+- Only when it is slow: its own first audio isn't there 700 ms after it was
+  confirmed (0.5, 0.7, 1 or 1.5 s, the owner's choice), or 300 ms after when
+  the Thinking model thinks before it answers (Thinking steps on, or hidden
+  reasoning streams before any words).
+- Never when the reply's own audio is ready, never twice in one reply, at most
+  one every 20 seconds, never while the reply is paused because you talked over
+  it. The clips take turns.
+- The clip plays on its own playback run ahead of the reply
+  (`ConversationTurn.PlayQuickSound`); the reply's first piece waits for it to
+  end and then plays, so neither is cut. It is never in the reply's text,
+  captions or history.
+
+**The cost.** The reply's own first audio can wait for the rest of a clip that
+already started: at most 1.2 s (the longest clip kept), usually less than
+0.5 s. That is why it is off by default; turned on, the first sound you hear
+still comes sooner than the reply's first words would on a slow turn.
+
+**Made once per voice and character.** The clips are said by the reply's own
+voice through the same path and one-use permission as a reply's pieces
+(`ConversationRuntime.SynthesizeAsync`), never beside a reply, and kept in
+`quick-sounds\<key>\` in the data folder (the silence around them cut, at most
+1.2 s each). A Windows voice or a paired host's voice makes them as soon as the
+choice is on or the voice changes; a paid cloud voice (OpenAI's) makes them
+only when you press *Make quick sounds now* (one short request each).
+
+**Measured** with MCP's `quick_sounds_check` (fixture turns through the
+production runtime, Chat Completions adapter, host voice stream and playback
+sink; the fixture model answers after a set wait, the fixture voice is a tone,
+NOT AI):
+
+| Scenario | Quick sound | From confirmation |
+| --- | --- | --- |
+| First words after 1.8 s | *"Mm,"*, then the reply on its own run, uncut | 701 ms |
+| First words after 40 ms | none: its own first audio was ready | |
+| A second slow reply 2 s later | none: one played 2 s ago | |
+| Started early, held for 1 s, then taken | played 1,747 ms after the start | 717 ms after it was taken |
+| Started early, then let go | none, nothing played | |
+| Hidden reasoning before the words | *"Mm,"* | 313 ms |
+| Paused because you talked over it | none | |
+
+The reply latency line then ends with *Quick sound at 712 ms.* (from the same
+moment as its total), and MCP's `latency_report` counts the replies with one.
+
+**NOT RUN:** a real voice making the clips and a person listening to them: this
+PC has no paired voice host, and a Windows voice was tested only through a
+fixture (Martlet.Desktop.Tests `QuickSoundDesktopTests`); no speakers played
+anything.
+
+## Backup Thinking: a second model for slow starts
+
+**2026-10-07, opt-in, off by default.** Companion › Thinking pool › *Backup
+Thinking*. A Thinking model is sometimes slow to start: it is busy with another
+request, loading, or a cloud provider's queue is long. Most replies start in
+the usual time, but the slow ones are the ones you remember. Dean and Barroso
+("The Tail at Scale", Communications of the ACM 56(2), 2013) call the fix a
+*hedged request*: when a request takes longer than most do, send the same
+request to a second server and use whichever answers first. Waiting until
+about the 95th percentile keeps the extra requests to about 1 in 20.
+
+**What Martlet does** (details:
+[Backup Thinking](CONVERSATION.md#backup-thinking-a-hedged-request)):
+
+- It waits for the reply's first words for the 95th percentile of the last 20
+  replies' first words (never under 900 ms; 1.5 s until 3 replies are known),
+  or a fixed 0.5 s to 3 s.
+- Then the same request also goes to the first Thinking pool member the owner
+  ticked *May answer for the conversation* that shares no hardware with the
+  conversation and can take the request as it is. A paid cloud member is asked
+  only when ticked, and only for a reply that is taken.
+- The stream with words first gives the reply; the other is stopped at once,
+  off the reply's path, so stopping it never delays the words.
+- The conversation's own request doesn't change, so its prompt cache is kept.
+  The time to the first words can only stay the same or get shorter: the
+  backup is asked only after the wait, and its words are used only when they
+  come first.
+
+**Measured** with MCP's `backup_thinking_check` (the production race,
+`ConversationRuntime.OpenTextAsync` and member choice; two fixture Chat
+Completions endpoints on 127.0.0.1 answer after set waits, canned words, NOT AI;
+900 ms wait):
+
+| Scenario | Reply from | Member asked | First words | The other stream |
+| --- | --- | --- | --- | --- |
+| The conversation's model needs 3 s; the member 100 ms | the member | at 962 ms | 1,091 ms | stopped at 1,121 ms |
+| The conversation's model needs 200 ms | the conversation's model | not asked | 193 ms | |
+| The conversation's model needs 1.3 s; the member 1.5 s | the conversation's model | at 911 ms | 1,303 ms | the member stopped at 1,305 ms |
+| The conversation's model fails at 1.1 s; the member needs 600 ms | the member | at 911 ms | 1,513 ms | |
+| No member may answer | the conversation's model | none | 1,515 ms | |
+| Started early, held 1.5 s, only a paid cloud member | the member | at 1,505 ms, once taken | 1,609 ms | stopped at 1,610 ms |
+| Started early, then let go at 1.5 s | nothing | at 908 ms (home network) | | both stopped at 1,501 ms |
+
+The reply latency line then says *Backup Thinking won at 1104 ms (diva
+(qwen3-8b), asked at 912 ms).* (from the same moment as its total) or *... the
+conversation's model won.*, and MCP's `latency_report` counts the results.
+
+**NOT RUN:** a real slow Thinking model and a real pool member racing it: this
+PC has no Ollama and no paired Thinking host, and no paid request was made.
+The *Reply latency* and *Thinking input* lines before and after the change on a
+real model are NOT RUN for the same reason. The race runs only when the owner
+turns it on; with it off, nothing is raced and a reply's request is read as
+before.
 
 ## How others get fast
 

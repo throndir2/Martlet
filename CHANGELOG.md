@@ -8,6 +8,11 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+- When the computer you listen with (or OpenAI) can't hear you, because it's off, its service stopped or its key is gone, a Parakeet model downloaded on this PC hears you instead, on your processor, so the conversation goes on and nothing is sent anywhere. For the next minute Martlet goes straight to Parakeet, then tries your choice again. Companion › Listening says which model stands in, or lets you download one without changing Listening. ([#559](https://github.com/throndir2/Martlet/pull/559))
+- New in Companion › Thinking pool: **Backup Thinking**. When your Thinking model is slow to start a reply, Martlet can send the same message to a Thinking pool member you picked, and whichever starts answering first gives the reply, so a busy or loading model doesn't keep you waiting. Tick **May answer for the conversation** on the members it may use (ideally running the same model). It's off by default, and a paid cloud member is only asked when you tick it. ([#557](https://github.com/throndir2/Martlet/pull/557))
+- New in Companion › Voice: **Quick sounds while Martlet thinks**. When a reply is slow to start, Martlet first says a quick "Mm," or "Hmm..." in its own voice, and the reply follows it, so you're never left in silence. It never plays when the reply is quick, never twice in one reply and at most once every 20 seconds. It's off by default; the sounds are made once with your voice and kept on this PC, and with a paid cloud voice only when you press **Make quick sounds now**. ([#555](https://github.com/throndir2/Martlet/pull/555))
+
 ## [0.54.0] - 2026-10-07
 
 ### Added

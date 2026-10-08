@@ -123,6 +123,26 @@ internal sealed partial class LiveConversationController
         }
     }
 
+    /// <summary>Backup Thinking's part of thinking-pool-status.json: its choices, the automatic delay from recent replies and how
+    /// it ended lately (never what was said).</summary>
+    internal object BackupStatus(ThinkingPoolSettings settings)
+    {
+        var (recent, counts) = BackupHistory;
+        return new
+        {
+            on = settings.BackupThinking, delayMs = settings.BackupDelayMs, usedDelayMs = BackupDelay.TotalMilliseconds,
+            automaticDelayMs = firstWords.Delay.TotalMilliseconds, recentReplies = firstWords.Count,
+            percentile95Ms = firstWords.Percentile95?.TotalMilliseconds, answering = settings.AnswersForConversation,
+            recent = recent.Select(r => new
+            {
+                at = r.At, outcome = r.Result.Outcome.ToString(), member = r.Result.Member, delayMs = r.Result.Delay.TotalMilliseconds,
+                askedAfterMs = r.Result.AskedAfter?.TotalMilliseconds, firstWordsAfterMs = r.Result.FirstWordsAfter?.TotalMilliseconds,
+                why = r.Result.Why
+            }),
+            counts = counts.ToDictionary(c => c.Key.ToString(), c => c.Value)
+        };
+    }
+
     // thinking-pool-status.json: counts, names and kinds only (never a job's text).
     private void WritePoolStatus()
     {
@@ -147,7 +167,9 @@ internal sealed partial class LiveConversationController
                 // The live floor: its level, jobs waiting only for the conversation (held), and jobs it stopped this turn and in all.
                 floor = status.Floor, waitingForConversation = status.Held, stoppedThisTurn = status.StoppedNow, stopped = status.Stopped,
                 sharesLive = status.SharesLive,
-                warnings = ThinkingPoolWarnings.For(plan, Configuration?.Routes ?? [])
+                warnings = ThinkingPoolWarnings.For(plan, Configuration?.Routes ?? []),
+                // Backup Thinking: its choices, the automatic delay from recent replies and how it ended lately (never what was said).
+                backup = BackupStatus(settings)
             }, new JsonSerializerOptions { WriteIndented = true });
             var path = Path.Combine(dataDirectory, PoolStatusFile);
             var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
