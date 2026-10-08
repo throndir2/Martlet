@@ -11,8 +11,10 @@ namespace Martlet.Avatar.Audio2Face.Remote;
 /// <param name="Route">"home", "outside" or "none" (not connected yet, or nothing answered).</param>
 /// <param name="Address">The address that answered ("192.168.1.20:9443" or an outside address).</param>
 /// <param name="Error">Why the last connection attempt failed, when it did.</param>
+/// <param name="Connections">How many connections this PC opened (or tried to open) to the host since Martlet started.
+/// Requests share kept connections (<see cref="Audio2FaceHostClient.MaximumConnectionsPerHost"/>), so this grows slowly.</param>
 public sealed record HostRouteStatus(string Origin, string? HostId, string Route, string? Address, DateTimeOffset? At, string? Error,
-    DateTimeOffset? ErrorAt, IReadOnlyList<string> Outside);
+    DateTimeOffset? ErrorAt, IReadOnlyList<string> Outside, long Connections = 0);
 
 /// <summary>
 /// Chooses which address a connection to a host dials. Requests keep the host's home origin (so TLS still checks the host
@@ -157,6 +159,7 @@ public static class HostRoutes
         var key = Key(target.Host, target.Port);
         var entry = key is null ? null : Entries.GetOrAdd(key, k => new Entry(Origin(target.Host, target.Port)));
         if (entry is null) return await DialAsync(target, token).ConfigureAwait(false);
+        Interlocked.Increment(ref entry.Connections);
         string[] outside;
         bool preferOutside;
         var now = Clock.GetUtcNow();
@@ -175,7 +178,9 @@ public static class HostRoutes
             }
             catch (Exception error) when (error is SocketException or OperationCanceledException && !token.IsCancellationRequested)
             {
-                entry.Failed(Clock.GetUtcNow(), $"The home address {entry.HomeAddress} didn't answer ({Describe(error)}), and this host " +
+                entry.Failed(Clock.GetUtcNow(), Shortage(error) is { } shortage
+                    ? ShortageText(entry.HomeAddress, shortage)
+                    : $"The home address {entry.HomeAddress} didn't answer ({Describe(error)}), and this host " +
                     "has no outside addresses (Devices › your Martlet network › Outside addresses).");
                 throw;
             }
@@ -223,6 +228,7 @@ public static class HostRoutes
         var pending = outside.Select(a => TryAsync(Parse(a), a, cancel.Token)).ToList();
         if (home is not null && !home.IsCompleted) pending.Add(home);
         else if (home is { Result.Error: { } homeError } && errors.Count == 0) errors.Add($"home {entry.HomeAddress}: {Describe(homeError)}");
+        SocketError? shortage = home is { IsCompleted: true } && home.Result.Error is { } homeFailure ? Shortage(homeFailure) : null;
         while (pending.Count > 0)
         {
             var done = await Task.WhenAny(pending).ConfigureAwait(false);
@@ -235,12 +241,15 @@ public static class HostRoutes
                 entry.Connected(done == home ? "home" : "outside", address, Clock.GetUtcNow());
                 return stream;
             }
+            shortage ??= Shortage(error);
             errors.Add($"{(done == home ? "home " : "")}{address}: {Describe(error)}");
         }
         token.ThrowIfCancellationRequested();
-        entry.Failed(Clock.GetUtcNow(), "Couldn't reach the host at home or outside: " + string.Join("; ", errors) + ". Check that this " +
+        // This PC itself had no free ports or socket buffers: say so, rather than blame the host or the router.
+        entry.Failed(Clock.GetUtcNow(), shortage is { } local ? ShortageText(entry.HomeAddress, local)
+            : "Couldn't reach the host at home or outside: " + string.Join("; ", errors) + ". Check that this " +
             "PC is online, the overlay network (Tailscale, ZeroTier, WireGuard) is connected, or the router still forwards the port.");
-        throw new SocketException((int)SocketError.HostUnreachable);
+        throw new SocketException((int)(shortage ?? SocketError.HostUnreachable));
     }
 
     private static async Task<(Stream? Stream, string Address, Exception? Error)> TryAsync(DnsEndPoint endpoint, string address,
@@ -271,16 +280,37 @@ public static class HostRoutes
         return new DnsEndPoint(address[..colon].Trim('[', ']'), int.Parse(address[(colon + 1)..], System.Globalization.CultureInfo.InvariantCulture));
     }
 
-    private static string Describe(Exception? error) => error switch
+    /// <summary>Why a connection attempt failed, in a few words: "refused", "name not found", "no answer in time",
+    /// "unreachable", "this PC is out of network resources" (<see cref="Shortage"/>), or the socket error's name.</summary>
+    public static string Describe(Exception? error) => error switch
     {
         SocketException { SocketErrorCode: SocketError.ConnectionRefused } => "refused",
         SocketException { SocketErrorCode: SocketError.HostNotFound or SocketError.NoData } => "name not found",
         SocketException { SocketErrorCode: SocketError.TimedOut } or OperationCanceledException => "no answer in time",
         SocketException { SocketErrorCode: SocketError.NetworkUnreachable or SocketError.HostUnreachable } => "unreachable",
+        SocketException { SocketErrorCode: SocketError.NoBufferSpaceAvailable or SocketError.TooManyOpenSockets } =>
+            "this PC is out of network resources",
         SocketException socket => socket.SocketErrorCode.ToString(),
         null => "no answer in time",
         _ => error.Message
     };
+
+    /// <summary>The socket error when <paramref name="error"/> (or an exception inside it) says this PC itself ran out of
+    /// network resources: Windows had no free connection port or socket buffer (WSAENOBUFS, NoBufferSpaceAvailable) or no
+    /// free socket (WSAEMFILE). The host is not at fault then. Null for any other failure.</summary>
+    public static SocketError? Shortage(Exception? error)
+    {
+        for (var depth = 0; error is not null && depth < 8; depth++, error = error.InnerException)
+            if (error is SocketException { SocketErrorCode: SocketError.NoBufferSpaceAvailable or SocketError.TooManyOpenSockets } socket)
+                return socket.SocketErrorCode;
+        return null;
+    }
+
+    /// <summary>What to tell the owner when this PC ran out of network resources while it connected to <paramref name="address"/>.</summary>
+    public static string ShortageText(string address, SocketError error) =>
+        $"This PC ran out of network resources, so it couldn't open a connection to {address} (Windows: {error}, no free " +
+        "connection ports or socket buffers). The host may be fine. Martlet tries again by itself; if this keeps happening, close " +
+        "programs that open many connections, or restart this PC.";
 
     private static string? Key(string? origin)
     {
@@ -310,6 +340,7 @@ public static class HostRoutes
         internal string? Error { get; set; }
         internal DateTimeOffset? ErrorAt { get; set; }
         internal DateTimeOffset HomeSkippedUntil { get; set; }
+        internal long Connections;
 
         internal void Connected(string route, string address, DateTimeOffset now)
         {
@@ -351,7 +382,7 @@ public static class HostRoutes
 
         internal HostRouteStatus Status()
         {
-            lock (this) return new(Origin, HostId, Route, Address, At, Error, ErrorAt, Outside);
+            lock (this) return new(Origin, HostId, Route, Address, At, Error, ErrorAt, Outside, Interlocked.Read(ref Connections));
         }
     }
 }

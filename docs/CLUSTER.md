@@ -120,6 +120,14 @@ hosts**) the desktop:
    idle;
 7. merges its copy into every reachable host whose copy differs.
 
+A host counts as not answering only after it misses two consecutive checks
+(about 30 seconds), as for failover: one slow answer from a busy host keeps its
+last status, and a host that answers with its routes but is late with its copy
+of the plan still answers. The desktop log says each change once: `Host gpu-box
+stopped answering: ...` (or `didn't answer` when it never answered since Martlet
+started) when it goes, and `Host gpu-box answers again.` when it is back. MCP
+`host_connections_selftest` rehearses this on loopback.
+
 Changes made on this PC (the Devices page, Setup, forgetting a host, failover
 choices) are recorded immediately, even while sync is off, so turning sync on
 later keeps whichever change is actually newest. The same holds for computers

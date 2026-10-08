@@ -83,6 +83,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "host that was down catching up, a host that lost its newest lines in a power cut getting them back, the copy of everyone's " +
             "lines surviving a restart, Save logs to share holding every computer " +
             "and an unsigned request refused. Synthetic lines only; loopback only; the folder is deleted.", new { }),
+        Tool("host_connections_selftest", "Rehearse how the desktop connects to a paired host and reports its status, with the " +
+            "production code: one real gateway on 127.0.0.1 (pinned TLS, signed requests) behind a loopback TCP forwarder stopped and " +
+            "started at the same address, and a simulated desktop checking it as the 15-second sync does (a new paired connection per " +
+            "check) and logging through the desktop's status tracker. Checks that twelve checks share one kept TCP and TLS connection " +
+            "(connections dialed and accepted are counted), that one missed check is not reported, that a host that stops is logged " +
+            "once as stopped answering with the refused address named, and once as answering again when it is back, and that a host " +
+            "missing every other check is never reported. Returns the log lines. Loopback only; writes nothing.", new { }),
         Tool("latency_report", "Summarize voice latency from the desktop log's reply latency lines: for the newest replies, how long " +
             "from when you stopped talking (or sent your message) to the first audio, each step's milliseconds (end of speech, " +
             "speech-to-text, preparing, Thinking connection, hidden reasoning, first sentence, voice synthesis, speakers...), the " +
@@ -1674,6 +1681,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "source")),
                 "logs_export" => LogTimeline.Export(OptionalString(arguments, "dataDirectory"), RequiredString(arguments, "outputPath")),
                 "logs_share_selftest" => await NodeLinkCheckAsync(cancellation, "logs"),
+                "host_connections_selftest" => await NodeLinkCheckAsync(cancellation, "host-connections"),
                 "latency_report" => LatencyReport.Read(OptionalString(arguments, "dataDirectory"), OptionalInt(arguments, "replies")),
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),

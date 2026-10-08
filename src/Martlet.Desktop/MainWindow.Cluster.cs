@@ -28,6 +28,8 @@ public partial class MainWindow
     /// <summary>Consecutive checks in which a host did not serve a job, keyed "host/job".</summary>
     private readonly Dictionary<string, int> clusterMisses = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ClusterProbe> clusterProbes = new(StringComparer.Ordinal);
+    /// <summary>Whether each host answers the checks, for the log and the status line (one missed check is not a change).</summary>
+    private readonly HostAnswers hostAnswers = new(ClusterSync.FailAfter);
     /// <summary>Why this PC does not follow the shared plan for a job (not paired with that host, no voice chosen...).</summary>
     private readonly Dictionary<string, string> clusterFollow = new(StringComparer.Ordinal);
     /// <summary>What this PC did for each job when last observed, to notice changes made elsewhere in Martlet (Setup).</summary>
@@ -73,6 +75,7 @@ public partial class MainWindow
         clusterEnabled = on;
         clusterMisses.Clear();
         clusterProbes.Clear();
+        hostAnswers.Clear();
         clusterFollow.Clear();
         clusterCheckedAt = null;
         settingsCheckedAt = null;
@@ -162,6 +165,7 @@ public partial class MainWindow
     private void ForgetClusterHost(string hostId)
     {
         clusterProbes.Remove(hostId);
+        hostAnswers.Forget(hostId);
         if (store is null) return;
         if (clusterPlan.Node(hostId) is not { Removed: false }) return;
         clusterPlan = clusterPlan.Observe(hostId, null, [], true, ClusterDevice, DateTimeOffset.UtcNow);
@@ -312,13 +316,17 @@ public partial class MainWindow
         }
         var previous = hostChecks.GetValueOrDefault(probe.HostId);
         var release = previous?.MartletVersion ?? hostReleases.GetValueOrDefault(probe.HostId);
-        if (previous?.Reachable != false && !probe.Reachable)
-            ErrorLog.Warn($"Host {probe.HostId} {(previous is null ? "didn't answer" : "stopped answering")}: {probe.Text}");
-        else if (previous?.Reachable == false && probe.Reachable)
-            ErrorLog.Info($"Host {probe.HostId} answers again.");
+        // Logged once per change: a host counts as not answering only after it missed ClusterSync.FailAfter checks in a row.
+        if (hostAnswers.Record(probe.HostId, probe.Reachable, probe.Text) is { } change)
+        {
+            if (change.Answering) ErrorLog.Info(change.Text);
+            else ErrorLog.Warn(change.Text);
+        }
         HostPresence.Note(probe.HostId, probe.Reachable);
         if (!probe.Reachable)
         {
+            // One slow answer from a busy host is not a change: its last check stands until it counts as not answering.
+            if (previous?.Reachable == true && hostAnswers.Answering(probe.HostId)) return;
             hostChecks[probe.HostId] = new(false, probe.Text, null, release);
             return;
         }
@@ -521,7 +529,7 @@ public partial class MainWindow
         }
         var digest = clusterPlan.Digest();
         var current = probes.Count(p => p.Plan?.Digest() == digest);
-        var down = probes.Count(p => !p.Reachable);
+        var down = probes.Count(p => !p.Reachable && !hostAnswers.Answering(p.HostId));
         var old = probes.Count(p => p.Reachable && !p.Shares);
         ClusterStatusText.Text = $"Sync is on. {current}/{probes.Count} hosts are up to date; checked {checkedAt.ToLocalTime():t}." +
             (down > 0 ? $" {down} not responding." : "") +

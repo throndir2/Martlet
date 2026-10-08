@@ -391,19 +391,47 @@ public static class Audio2FaceHostClient
         return address.AddressFamily == AddressFamily.InterNetworkV6 && (address.GetAddressBytes()[0] & 0xFE) == 0xFC;
     }
 
-    internal static HttpClient CreateHttpClient(string origin, string spkiFingerprint, TimeProvider? clock = null) =>
-        CreateHttpClient(origin, presented => presented == spkiFingerprint, clock);
+    internal static HttpClient CreateHttpClient(string origin, string spkiFingerprint, TimeProvider? clock = null)
+    {
+        // Every paired connection to the same host (same home origin, pinned key and clock) shares one pool of kept
+        // connections, so the desktop's regular checks and syncs don't open a new TCP and TLS connection each time.
+        var handler = Pools.GetOrAdd((origin, spkiFingerprint, clock ?? TimeProvider.System),
+            key => new(() => CreateHandler(key.Origin, presented => presented == key.Spki, key.Clock))).Value;
+        return new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri(origin + "/"), Timeout = Timeout.InfiniteTimeSpan };
+    }
+
+    /// <summary>The most connections this PC keeps open to one host at the same time (the gateway takes 64 from all computers
+    /// together); a request beyond that waits for one to be free.</summary>
+    public const int MaximumConnectionsPerHost = 32;
+    /// <summary>How long a kept connection may stay idle: shorter than the gateway's 30-second keep-alive, so a request never
+    /// goes out on a connection the host is closing.</summary>
+    public static readonly TimeSpan ConnectionIdleLimit = TimeSpan.FromSeconds(20);
+    /// <summary>How long one connection is used at most. A new one dials again, so a host reached over an outside address is
+    /// reached at home again within this time once home answers (<see cref="HostRoutes"/>).</summary>
+    public static readonly TimeSpan ConnectionLifetime = TimeSpan.FromMinutes(2);
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(string Origin, string Spki, TimeProvider Clock),
+        Lazy<SocketsHttpHandler>> Pools = new();
 
     /// <summary>A client for <paramref name="origin"/> that accepts the host key only when <paramref name="accept"/> says so
-    /// for its SPKI fingerprint (still requiring a current certificate for that address).</summary>
-    internal static HttpClient CreateHttpClient(string origin, Func<string, bool> accept, TimeProvider? clock = null)
+    /// for its SPKI fingerprint (still requiring a current certificate for that address). It has its own connections (pairing).</summary>
+    internal static HttpClient CreateHttpClient(string origin, Func<string, bool> accept, TimeProvider? clock = null) =>
+        new(CreateHandler(origin, accept, clock ?? TimeProvider.System), disposeHandler: true)
+        {
+            BaseAddress = new Uri(origin + "/"), Timeout = Timeout.InfiniteTimeSpan
+        };
+
+    private static SocketsHttpHandler CreateHandler(string origin, Func<string, bool> accept, TimeProvider now)
     {
-        var now = clock ?? TimeProvider.System;
         var handler = new SocketsHttpHandler
         {
             AllowAutoRedirect = false, UseCookies = false, UseProxy = false, Credentials = null,
             AutomaticDecompression = DecompressionMethods.None, ConnectTimeout = TimeSpan.FromSeconds(5),
-            PooledConnectionLifetime = TimeSpan.FromMinutes(5)
+            PooledConnectionLifetime = ConnectionLifetime, PooledConnectionIdleTimeout = ConnectionIdleLimit,
+            MaxConnectionsPerServer = MaximumConnectionsPerHost,
+            // A response given up before its end (a reply stream stopped, a request canceled) closes its connection at
+            // once, so the host stops that job at once; only completely read responses leave their connection for reuse.
+            MaxResponseDrainSize = 0
         };
         handler.SslOptions.EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13;
         handler.SslOptions.CertificateChainPolicy = new()
@@ -419,10 +447,7 @@ public static class Audio2FaceHostClient
         // The request keeps the home origin (TLS checks the pinned key, signatures are unchanged); HostRoutes only picks
         // which address the TCP connection dials: home, or an outside address when home doesn't answer.
         handler.ConnectCallback = HostRoutes.ConnectAsync;
-        return new HttpClient(handler, disposeHandler: true)
-        {
-            BaseAddress = new Uri(origin + "/"), Timeout = Timeout.InfiniteTimeSpan
-        };
+        return handler;
     }
 
     internal static bool ValidateCertificate(X509Certificate? certificate, X509Chain? chain, SslPolicyErrors errors,
@@ -492,7 +517,11 @@ public static class Audio2FaceHostClient
         catch (Exception error) when (error is HttpRequestException ||
             error is OperationCanceledException && !token.IsCancellationRequested && RecentRouteError(http) is not null)
         {
-            var route = HostRoutes.For(http.BaseAddress?.GetLeftPart(UriPartial.Authority));
+            var authority = http.BaseAddress?.GetLeftPart(UriPartial.Authority);
+            // This PC itself had no free ports or socket buffers: the host isn't at fault, so say what is.
+            if (HostRoutes.Shortage(error) is { } shortage)
+                throw new Audio2FaceHostException("host.unreachable", HostRoutes.ShortageText(http.BaseAddress?.Authority ?? "the host", shortage));
+            var route = HostRoutes.For(authority);
             throw new Audio2FaceHostException("host.unreachable", route is { Error: { } why, Outside.Count: > 0, ErrorAt: { } at } &&
                 DateTimeOffset.UtcNow - at < TimeSpan.FromMinutes(1)
                 ? why
@@ -524,7 +553,8 @@ public static class Audio2FaceHostClient
 }
 
 /// <summary>A paired connection to a Martlet host's gateway: lists the roles it offers and relays requests to them
-/// (Audio2Face lip-sync here, the Ollama conversation model in HostChat.cs).</summary>
+/// (Audio2Face lip-sync here, the Ollama conversation model in HostChat.cs). Every instance for the same host shares one pool
+/// of kept TCP and TLS connections, so making one per request is cheap; disposing it ends its own requests only.</summary>
 public sealed partial class Audio2FaceHostConnection : IDisposable
 {
     private const string Role = "voice";
