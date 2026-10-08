@@ -34,6 +34,9 @@ if (args is ["exposure"])
 // With "signin-lab <data directory>" it runs a live sign-in lab for the desktop on that data directory (SignInLab).
 if (args is ["signin-lab", var labDirectory])
     return await Martlet.NodeLinkCheck.SignInLab.RunAsync(labDirectory);
+// With "role-lab <data directory>" it runs a live lab for switching computers between companion and host PC (RoleLab).
+if (args is ["role-lab", var roleLabDirectory])
+    return await Martlet.NodeLinkCheck.RoleLab.RunAsync(roleLabDirectory);
 // With "signin" it rehearses joining from outside home by signing in (SignInRehearsal) and prints its report.
 if (args is ["signin"])
 {
