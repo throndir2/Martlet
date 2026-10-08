@@ -53,8 +53,15 @@ gestures layer: holding one lets go only of the held ones that move a part it
 moves too (`HOLD_PARTS`: eyes, mouth, cheeks, brows, head; every blush level is
 the cheeks). A gesture played
 meanwhile plays on top, and `gestureState` says which plays once and every one
-held (`held` is a list). A held `eyes_up` keeps the look out of the eyeballs,
-and a held open mouth eases back while lip-sync moves the mouth. Every blush
+held (`held` is a list). A held `eyes_up` keeps the look out of the eyeballs.
+While the voice speaks (`setLipSync` or a composed frame, until
+`VOICE_HOLD_SECONDS`, 1 s, after the last), it has the mouth: each frame, after
+motions, expressions and gestures and before lip-sync, what they put on the
+lip-sync parameters and `ParamMouthOpenY` eases back to the model's rest, so an
+emote that sets the mouth (a held open mouth, an expression that opens it) never
+holds it still. Once the voice is done, the emote's mouth comes back.
+`mouthReading` says how much the voice has the mouth and how far the emotes and
+the mouth open it. Every blush
 level (`BLUSH_LEVELS`) moves `ParamCheek` fully; without it `gesture` returns
 false and the renderer page draws the level over the face instead.
 

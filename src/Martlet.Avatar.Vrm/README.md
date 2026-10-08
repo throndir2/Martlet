@@ -39,7 +39,13 @@ expression)) on the idle pose. `playGesture(name, true)` holds `pout`, `shy`,
 `endGesture(name)`. Held gestures layer: holding one lets go only of the held
 ones that move a part it moves too (`VRM_HOLD_PARTS`: eyes, mouth, cheeks,
 brows, head). `gestureState` says which plays once and every one held (`held`
-is a list). A held open mouth eases back while lip-sync moves the mouth. VRM files
+is a list). While the voice speaks (`setLipSync` or a composed frame, until
+`VOICE_HOLD_SECONDS`, 1 s, after the last), it has the mouth: a held open mouth
+gives way completely, and the emotes showing (`setAction` expressions and the
+gestures' face) don't block or blend the mouth expressions (their
+`overrideMouth` is `none` until the voice is done, then the model's own again).
+`mouthReading` says how much the voice has the mouth, how far the held mouth and
+the mouth expressions open it and how much the expressions block them. VRM files
 carry no motions.
 
 The renderer's `faceAnchor()` says where the face is now, for Martlet's drawings
@@ -169,6 +175,8 @@ explicitly omit that aspect. Do not bypass missing rig controls.
 
 The official expression manager applies `overrideMouth`, `overrideBlink`, and
 `overrideLookAt`. Custom mouth/blink mappings are included in those groups.
+While the voice has the mouth, Martlet's emotes don't use `overrideMouth` (see
+above); a composed turn's own mapped expressions keep it.
 Bone gaze also honors look-at override amounts. Automatic blinking or additional
 mouth controllers are not started. Gaze needs both usable eye bones or all four
 directional morph expressions plus lookAt. Head is a local normalized humanoid

@@ -139,6 +139,8 @@ internal sealed partial class RendererWindow : Window
         viewport.ReadFace = ReadFace;
         viewport.TakePicture = TakePicture;
         viewport.ReadPose = ReadPose;
+        viewport.ReadMouth = ReadMouth;
+        viewport.PlayVoice = PlayVoice;
         viewport.LostMouseCapture += (_, _) =>
         {
             if (stroke is { } lost && !strokeReleasing) EndStroke(lost.Last, Environment.TickCount64);
@@ -1123,6 +1125,48 @@ internal sealed partial class RendererWindow : Window
         viewport.LastPose = CharacterPoseReading.From(answer, number);
     }
 
+    private int mouthId;
+    private int? mouthPending;
+
+    /// <summary>Asks the page who moves the character's mouth now: the voice or its emotes (Martlet's MCP character_mouth,
+    /// through UI Automation). Its answer arrives unprompted (see <see cref="MouthAnswered"/>). Reading it changes nothing on
+    /// the character.</summary>
+    private void ReadMouth()
+    {
+        if (browser.CoreWebView2 is null || failure.Failed || closed) return;
+        var id = ++mouthId;
+        mouthPending = id;
+        try
+        {
+            browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "mouthState", data = new { id } }, RendererProtocol.Json));
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
+    }
+
+    /// <summary>The page's reading of the mouth, remembered for UI Automation; a stale or malformed one is ignored and never
+    /// fails the renderer.</summary>
+    private void MouthAnswered(JsonElement answer)
+    {
+        if (mouthPending is not { } pending || answer.ValueKind != JsonValueKind.Object || !answer.TryGetProperty("id", out var id) ||
+            id.ValueKind != JsonValueKind.Number || !id.TryGetInt32(out var number) || number != pending) return;
+        mouthPending = null;
+        viewport.LastMouth = CharacterMouthReading.From(answer, number);
+    }
+
+    /// <summary>Moves the character's mouth with loudness levels (0 to 1) the way Martlet's voice does, one every
+    /// <paramref name="stepMs"/> milliseconds, without a sound (Martlet's MCP character_mouth). The page plays them on its own
+    /// frame clock and never answers, so the request pipe's replies stay in step.</summary>
+    private void PlayVoice(IReadOnlyList<double> levels, int stepMs)
+    {
+        if (browser.CoreWebView2 is null || failure.Failed || closed) return;
+        try
+        {
+            browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "voiceLevels", data = new { levels, stepMs } },
+                RendererProtocol.Json));
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
+    }
+
     /// <summary>The page's hit test for the last tap: remembered for UI Automation and, when it found the character, sent to
     /// Martlet on the request pipe. A malformed or stale answer is ignored; it never fails the renderer.</summary>
     private void Touched(JsonElement answer)
@@ -1480,6 +1524,12 @@ internal sealed partial class RendererWindow : Window
                     {
                         // Unsolicited answer to a reading of the idle body (MCP's character_pose); never a command reply.
                         PoseAnswered(poseReading);
+                        return;
+                    }
+                    if (document.RootElement.TryGetProperty("mouthReading", out var mouthReading))
+                    {
+                        // Unsolicited answer to a reading of the mouth (MCP's character_mouth); never a command reply.
+                        MouthAnswered(mouthReading);
                         return;
                     }
                     failure.ThrowIfFailed();

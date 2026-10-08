@@ -4967,6 +4967,36 @@ to 18 degrees from straight down, its elbows bent about 16 degrees and its
 fingers curled about 60 degrees. `MoveAvatar`'s value in `ui_snapshot` shows
 the last reading as `pose`.
 
+**Who moves the character's mouth**: while Martlet speaks, its voice has the
+character's mouth, and an emote's mouth comes back about a second after the
+voice stops (see *The voice has the mouth* in
+[Emotes and motions](AVATARS.md#emotes-and-motions)). `character_mouth` reads
+it through UI Automation (`MoveAvatar`'s value `"mouth"`), `samples` times (1
+to 60) `gapMs` apart (default 250). Each reading in `mouths` has `n`, `found`
+(false before a model shows), `renderer`, `parameter` (Live2D: the parameter
+read, `ParamMouthOpenY` when the model has it), `voice` (0 to 1: how much the
+voice has the mouth), `speaking` (the voice moved the mouth within the last
+second), `level` (the voice's loudness on it), `emote` (how far the emotes
+open the mouth before the voice takes it; a VRM: its held open mouth), `open`
+(how far the mouth is open now, 0 at rest to 1) and, for a VRM, `blocked` (how
+much the expressions showing block its mouth expressions). `summary` gives
+`found`, the share of readings `speaking`, the `voice`, `level`, `emote`,
+`open` and `blocked` ranges (`least`, `most`) and the `last` reading. Reading
+changes nothing, so it needs no `--allow-ui-effects`.
+
+With `levels` (1 to 400 loudness levels from 0 to 1), the mouth first moves as
+Martlet's loudness lip-sync moves it, one level every `stepMs` (10 to 1000,
+default 50), without a sound (`MoveAvatar`'s value `"voice:ms;level;..."`).
+The readings start at once. This changes the character, so it needs
+`--allow-ui-effects`. For example:
+
+1. Hold `mouth_open` with its `CharacterActionTry-<n>` button.
+2. Send 20 levels with 40 samples 100 ms apart.
+3. Check that `open` follows the levels while `speaking`, stays near 0 in a
+   pause, and goes back to `emote` about a second after the last level.
+
+`MoveAvatar`'s value in `ui_snapshot` shows the last reading as `mouth`.
+
 **Moves, zooms and other changes Martlet hears about**: the overlay notes each
 drag, arrow-key nudge, `ui_move`, zoom (wheel, menu, keys or Martlet's zoom
 buttons), reset zoom, pan of a zoomed view and Reset position, and once it has
