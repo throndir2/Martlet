@@ -292,7 +292,9 @@ Such a server keeps the conversation in its prompt cache only while requests sta
 like it, so a request with another start would make the next reply read the whole
 conversation again. It quotes the persona-free excerpt instead elsewhere, when
 what this PC played is in the conversation (remembering never reads that) or when
-it wouldn't fit the context.
+it wouldn't fit the context. The excerpt marks the character's lines with the
+name of the persona Martlet uses (*Ivy: ...*; *Martlet: ...* without one), with a
+line that says those are the companion's own words.
 When the [Thinking pool](#helper-jobs-on-the-thinking-pool) has a free member that
 reads text, the pool takes this request instead (a low-priority Memory job). The
 member gets the short excerpt, because it has no copy of this conversation in

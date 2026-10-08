@@ -65,6 +65,29 @@ public sealed class ConversationHistoryDesktopTests
         Assert.Equal(2, history.Store.Stats.Conversations);
     }
 
+    // A recalled reply is the character's: the notes carry the name of the persona it is, so the Thinking model reads it as its own.
+    [Fact]
+    public async Task RecalledRepliesCarryThePersonasName()
+    {
+        await using var fixture = await LiveFixture.Create(history: true);
+        var loaded = await fixture.Store.LoadAsync();
+        var persona = loaded.Settings!.Companion!.ActivePersona;
+        await fixture.Save(loaded.Settings with { Companion = loaded.Settings.Companion.Update(persona.Id, "Ivy", persona.Text) });
+        await fixture.EnableMemory();
+        fixture.Controller.AutoCapture = false;
+        fixture.Answer("Radiohead is a great choice.");
+        await fixture.Finish(fixture.Start("My favorite band is Radiohead."));
+        await fixture.History!.Idle;
+        Assert.True(fixture.Controller.ForgetContext());
+        fixture.Answer("Radiohead, of course.");
+        var asked = fixture.Start("Do you remember my favorite band?");
+        await fixture.Finish(asked);
+        Assert.Equal(1, asked.PastExchanges);
+        var notes = Notes(fixture.Llm.Body)!;
+        Assert.Contains("\"My favorite band is Radiohead.\" Ivy: \"Radiohead is a great choice.\"", notes);
+        Assert.DoesNotContain("Martlet: ", notes);
+    }
+
     [Fact]
     public async Task NothingIsRecordedWhileMemoryIsOffOrTheOwnerKeepsNoRecord()
     {

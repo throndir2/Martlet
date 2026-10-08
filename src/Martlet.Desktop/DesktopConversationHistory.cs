@@ -189,9 +189,11 @@ internal sealed class DesktopConversationHistory
     }
 
     /// <summary>The notes for a message that refers to an earlier conversation: the best matching exchanges of other
-    /// conversations not already in the notes of <paramref name="sent"/> (the earlier messages this request carries), or null.
-    /// Reads only what is in memory: while the record is still being read, the message goes without (and reading starts).</summary>
-    internal string? RecallNotes(string words, Guid conversation, IReadOnlyList<TextHistoryMessage> sent, PromptSettings? prompts, out int recalled)
+    /// conversations not already in the notes of <paramref name="sent"/> (the earlier messages this request carries), or null,
+    /// with the replies under <paramref name="companion"/>'s name (the persona's). Reads only what is in memory: while the record
+    /// is still being read, the message goes without (and reading starts).</summary>
+    internal string? RecallNotes(string words, Guid conversation, IReadOnlyList<TextHistoryMessage> sent, PromptSettings? prompts, out int recalled,
+        string? companion = null)
     {
         recalled = 0;
         if (!PastConversations.RefersToPast(words)) return null;
@@ -207,7 +209,7 @@ internal sealed class DesktopConversationHistory
             message.Text.Contains(PastConversations.Label, StringComparison.Ordinal)).Select(message => message.Text));
         var found = PastConversations.Recall(Store, words, now, zone, conversation, PastConversations.MaximumRecalled,
             exchange => earlier.Length > 0 && earlier.Contains(
-                PastConversations.Line(exchange, zone, PastConversations.RecallUserCharacters, PastConversations.RecallReplyCharacters),
+                PastConversations.Line(exchange, zone, PastConversations.RecallUserCharacters, PastConversations.RecallReplyCharacters, companion),
                 StringComparison.Ordinal)).ToArray();
         var took = Stopwatch.GetElapsedTime(started);
         ErrorLog.Info(found.Length == 0
@@ -215,13 +217,14 @@ internal sealed class DesktopConversationHistory
             : $"Past conversations: {found.Length} earlier exchange{(found.Length == 1 ? "" : "s")} went with your message ({took.TotalMilliseconds:0.#} ms).");
         if (found.Length == 0) return null;
         recalled = found.Length;
-        return PastConversations.Notes(found, now, zone, prompts);
+        return PastConversations.Notes(found, now, zone, prompts, companion);
     }
 
     /// <summary>search_conversations: what the model asked for in the record (other conversations than
-    /// <paramref name="conversation"/>), or what was wrong with the call.</summary>
+    /// <paramref name="conversation"/>), with the replies under <paramref name="companion"/>'s name, or what was wrong with the
+    /// call.</summary>
     internal async ValueTask<(ConversationToolResult Result, string Outcome)> SearchAsync(TextToolCall call, Guid conversation,
-        CancellationToken token)
+        CancellationToken token, string? companion = null)
     {
         var now = clock.GetUtcNow();
         var (request, problem) = PastConversations.Parse(call.ArgumentsJson, now, zone);
@@ -236,7 +239,7 @@ internal sealed class DesktopConversationHistory
         }
         var found = PastConversations.Find(Store, request, conversation);
         ErrorLog.Info($"Past conversations: the Thinking model searched the record and found {found.Count} exchange{(found.Count == 1 ? "" : "s")}.");
-        return (new(PastConversations.Result(found, request, now, zone)), $"found {found.Count}");
+        return (new(PastConversations.Result(found, request, now, zone, companion)), $"found {found.Count}");
     }
 
     /// <summary>Deletes one recorded conversation; with <paramref name="there"/>, its messages in Telegram and Discord too (as

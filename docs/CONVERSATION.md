@@ -86,7 +86,15 @@ model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
    **Stop listening** does.
    Escape works anywhere in the window and does not close it or send anything.
 6. The history shows your messages, what you said (the transcript) and
-   Martlet's replies as they stream in. A refusal is shown as such and never
+   Martlet's replies as they stream in. The talk window calls the character by
+   the name of the persona Martlet uses (Companion › Personality): its title,
+   header, message box and empty conversation, each reply's label (*Ivy ·
+   10:39 PM*, *Ivy, about your whole screen*) and the notes in the history
+   (*You touched Ivy (touch: ...)*, *Ivy saw your whole screen.*, *Ivy stayed
+   quiet.*). Excerpts of conversations the Thinking model reads (past
+   conversations, remembering and learning names) label the character's lines
+   with that name too. Status lines and settings keep saying Martlet, the app.
+   A refusal is shown as such and never
    spoken as ordinary speech; a stopped or failed reply keeps its text with a
    *Cut short* note. Replies are kept short by asking, not by cutting: every
    reply to what you type or say ends its instructions (after the persona and
