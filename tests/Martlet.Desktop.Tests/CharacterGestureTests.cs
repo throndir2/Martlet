@@ -310,8 +310,8 @@ public sealed class CharacterGestureTests
             "{/blush_fierce})", prompt.Instructions);
         Assert.True(prompt.Instructions.IndexOf("{blush_deep}", StringComparison.Ordinal) > prompt.Instructions.IndexOf("{music}", StringComparison.Ordinal),
             "the new lines come after the ones before them, so the start of the instructions stays the same");
-        Assert.Equal("blush_fierce", catalog.Off("{/blush_fierce}")!.Name);
-        Assert.Null(catalog.Off("{/blush}"));
+        Assert.Equal(["blush_fierce"], catalog.Off("{/blush_fierce}").Select(s => s.Name));
+        Assert.Empty(catalog.Off("{/blush}"));
         Assert.Equal(["blush_deep"], catalog.For("{blush_deep}").Select(s => s.Name));
 
         // A VRM gets them with the head bone its face is found from.
