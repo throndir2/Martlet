@@ -74,18 +74,22 @@ internal sealed class CharacterEyeService(string? dataDirectory)
         var tag = fixture is null ? "" : "FIXTURE - NOT AI: ";
         try
         {
-            if (await avatar.ZoneSnapshotAsync(profile, token) is not { } shot) return Report("Martlet couldn't take a picture of the character. Try again.");
+            if (await avatar.ZoneSnapshotAsync(profile, token) is not { } shot) return Stop("Martlet couldn't take a picture of the character. Try again.");
             ZonePixels snapshot;
             try { snapshot = await Task.Run(() => TouchZoneImages.Decode(shot.Png), token); }
             catch (Exception error) when (error is NotSupportedException or FileFormatException or ArgumentException or InvalidOperationException or IOException)
             {
-                return Report("The character's picture couldn't be used. Try again.");
+                return Stop("The character's picture couldn't be used. Try again.");
             }
             var crop = new TouchZoneBox(shot.Picture.CropLeft, shot.Picture.CropTop, shot.Picture.CropWidth, shot.Picture.CropHeight);
             if (EyeFace.InSnapshot(shot.Probe?.Face, crop, snapshot.Width, snapshot.Height) is not { } face)
-                return Report("Martlet couldn't find the character's face in its picture, so it can't measure the eyes.");
+            {
+                ErrorLog.Info($"Measuring the eyes: the picture's probe has {(shot.Probe?.Face is { } seen ? $"a face that can't be used ({(seen.IsValid ? "outside the picture" : "not valid")})" : "no face")} " +
+                    $"({shot.Probe?.Drawables?.Length ?? 0} drawables, {shot.Probe?.Bones?.Length ?? 0} bones).");
+                return Stop("Martlet couldn't find the character's face in its picture, so it can't measure the eyes.");
+            }
             if (CharacterEyes.CloseUp(snapshot, face) is not { } closeUp)
-                return Report("The character's face is too small (or outside) its picture, so Martlet can't measure the eyes.");
+                return Stop("The character's face is too small (or outside) its picture, so Martlet can't measure the eyes.");
             var answerText = fixture is null ? null : File.Exists(fixture) ? await File.ReadAllTextAsync(fixture, token) : null;
             var folder = CharacterEyes.ClearPictures(dataDirectory, id);
             var pictures = new List<EyeSentPicture>();
@@ -127,7 +131,7 @@ internal sealed class CharacterEyeService(string? dataDirectory)
             try { await CharacterEyes.SaveAsync(dataDirectory, measurement, token); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
             {
-                return Report(tag + "The eyes were measured but couldn't be saved: " + error.Message);
+                return Stop(tag + "The eyes were measured but couldn't be saved: " + error.Message);
             }
             if (ModelId == id) Volatile.Write(ref current, measurement);
             ErrorLog.Info((fixture is null ? "The Thinking model" : "FIXTURE - NOT AI: a stand-in") + FormattableString.Invariant(
@@ -135,10 +139,10 @@ internal sealed class CharacterEyeService(string? dataDirectory)
                 FormattableString.Invariant($"the irises {hint.Right.Iris.X - hint.Left.Iris.X:0.###} face widths apart."));
             return Report(CharacterEyes.Measured(measurement, DateTimeOffset.Now) + $" in {result.Requests} request{(result.Requests == 1 ? "" : "s")}.");
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { return Report("Measuring the eyes was stopped."); }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { return Stop("Measuring the eyes was stopped."); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            return Report($"Martlet couldn't keep the pictures for measuring the eyes: {error.Message}");
+            return Stop($"Martlet couldn't keep the pictures for measuring the eyes: {error.Message}");
         }
         finally
         {
@@ -171,5 +175,12 @@ internal sealed class CharacterEyeService(string? dataDirectory)
         Volatile.Write(ref progress, text);
         Changed?.Invoke();
         return text;
+    }
+
+    // A measurement that ends without a result: the desktop log says why too.
+    private string Stop(string text)
+    {
+        ErrorLog.Info($"Measuring the eyes stopped: {text}");
+        return Report(text);
     }
 }
