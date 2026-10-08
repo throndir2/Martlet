@@ -587,7 +587,9 @@ removed like any other ([F5 voice](F5_VOICE.md#one-voice-list-on-every-computer)
   recording SHA-256 and length, why it may be used and when it joined; and one
   entry for the voice chosen on all computers. Same hybrid revisions and merge
   rules as the plan; removed voices leave tombstones. Starter entries are
-  revision 1, so a removal anywhere wins everywhere. JSON, snake case, schema 1,
+  revision 1, so a removal anywhere wins everywhere. A recording Martlet no
+  longer ships (the former "anime" starter voices) is removed the same way by
+  the first updated desktop. JSON, snake case, schema 1,
   at most 1 MiB, 32 voices and 64 tombstones.
 - **A voice made from several recordings** (2 to 10, each at least 0.5 s) is
   still one recording on the wire: the desktop joins them, in order, after a

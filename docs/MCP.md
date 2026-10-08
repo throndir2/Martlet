@@ -580,16 +580,21 @@ SHA-256, sample rate and duration; each clip is checked against its SHA-256 and 
 reference store's audio, name and transcript rules, `valid` or the failure; a new
 voice list starts with them, after which they are ordinary voices), the
 `default` key, `defaultName`, `defaultFemale` and `defaultCute` (both always true;
-the default is the first cute voice, `librivox-annie-anime`) and `cute`, the
-keys of the cute, high-pitched voices listed first. From a data
+the default is the first cute voice, `librivox-annie`), `cute`, the
+keys of the cute voices listed first, and `retired`, the recordings Martlet no
+longer ships (`key` and `name`: `retired-sample`, the F5-TTS example clip, and
+`retired-librivox-annie-anime` and `retired-librivox-woollybee-anime`, the
+former "anime" voices). From a data
 directory (optional absolute `dataDirectory`, default the current user's) it reads
 the shared voice list as `library` (`speaking-voices.json`; `state` `none` until a
 voice is first used, added or removed or the desktop shares voices with a host,
 `loaded` or `unreadable`): the number of live `voices`, `revision`, the keys of
-the starter voices in it (`starters`), the count of the owner's own voices
-(`own`), tombstones (`removed`) and the keys of removed starter voices
-(`removedStarters`), and the voice chosen on all computers (`chosen`: a starter
-key, `own` or null) with the device that chose it (`chosenBy`), and
+the starter voices in it (`starters`), the keys of former starter voices it still
+lists (`retired`: an older Martlet's list, empty once this desktop brings its
+voices in step), the count of the owner's own voices
+(`own`), tombstones (`removed`) and the keys of removed starter and former
+starter voices (`removedStarters`), and the voice chosen on all computers
+(`chosen`: a starter key, a retired key, `own` or null) with the device that chose it (`chosenBy`), and
 `severalRecordings`: each voice made from several recordings, by the key the
 Voices page uses (the first 16 hex digits of its ID), with how many `recordings`,
 each one's length (`clipMs`), the joined `durationMs` and `sampleRate`, the
@@ -597,12 +602,13 @@ each one's length (`clipMs`), the joined `durationMs` and `sampleRate`, the
 (`learnsFromEach`; the others hear them joined). `list` is this PC's
 recordings (the `f5-voices` store): `state` (`none`, `loaded`, `busy` while the desktop holds it,
 or `unreadable`), the number of voices, the keys of starter voices in it (`starters`), the
-count of the owner's own voices, whether the retired F5-TTS example clip is still
-there and the applied voice (a starter key, `own`, `retired-sample` or null).
+count of the owner's own voices, the keys of retired recordings still there
+(`retired`; each is deleted once nothing speaks with it) and the applied voice
+(a starter key, a retired key, `own` or null).
 `speaking` reads `settings.json`: `state` (`none`, `loaded` or `unreadable` with
 the settings rule it broke or the error type as `problem`), the
 speaking route's type (for example `GatewayF5`, null without one) and the voice it
-records (a starter key, `own`, `retired-sample` or null), plus `engine` (the
+records (a starter key, a retired key, `own` or null), plus `engine` (the
 self-hosted voice engine whose route it records: `chatterbox`, `chatterbox-original`, `chatterbox-nano`, `f5`, `xtts`, `gpt-sovits` or `dia`), `host` and
 `model` for a host route. `engines` lists the voice engines
 ([Chatterbox Turbo, Chatterbox Original and Chatterbox Nano](CHATTERBOX_VOICE.md), [F5-TTS](F5_VOICE.md),
@@ -636,7 +642,7 @@ desktop (`speaking-engine.txt`, default `chatterbox`) and `chatterboxStyle` is
 Chatterbox Original's style saved there (`saved`, `generalExaggeration`,
 `generalCfgWeight`, `expressiveExaggeration`, `expressiveCfgWeight` and
 `summary`; Resemble's suggestions until Companion › Voice saves one). After the desktop
-loads settings, a route or applied voice that was `retired-sample` reads the
+loads settings, a route or applied voice that was a retired key reads the
 chosen or first voice. It never returns own voices' names, transcripts or audio, plays
 nothing and contacts nothing.
 
@@ -1221,7 +1227,10 @@ list but not the recording gets it once (`reference.missing`, then kept) and the
 next reply names it; a new, empty desktop takes every voice from a host (starter
 recordings from Martlet, the own one downloaded); a choice made on one desktop
 reaches the other; removing a starter voice deletes its recording on both hosts
-and the other desktop's copy; a stale copy can't bring it back; speaking with a
+and the other desktop's copy; a stale copy can't bring it back; a list from an
+older Martlet that still lists the retired "anime" voices loses them in the
+next reconcile without waiting for their recordings, the host follows and a
+stale copy can't bring them back; speaking with a
 removed voice sends the recording, which the host doesn't keep; a host restart
 keeps the list and recordings; a wrong SHA-256, a recording no voice has and a
 listed recording that isn't a WAV are refused; reading a missing recording
@@ -5661,8 +5670,8 @@ voice comes from a cloud provider). There are no built-in voices and no groups:
 one list, in the order voices joined it (a new list starts with the starter
 voices). `F5VoicesStatus` reads how many voices there are and which is chosen or in
 use (a starter voice's name, "one of your recordings", or "a voice no longer in
-the list"), for example "7 voices. None chosen yet; Martlet starts with Annie
-(cute anime girl)." `F5VoicesShared` reads whether the list is shared with the
+the list"), for example "5 voices. None chosen yet; Martlet starts with Annie
+(cute, chatty)." `F5VoicesShared` reads whether the list is shared with the
 paired Martlet computers ("Voices shared with 2 of 2 computers at 7:15 PM.",
 voices still copying to this PC, hosts to update, or "No other Martlet computers
 are paired yet, so your voices stay on this PC."). Each voice whose recording is a

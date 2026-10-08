@@ -161,29 +161,37 @@ invalidation, and preview separation. It opens no network or audio device.
 
 ## Desktop voices and playback
 
-There are no built-in voices. A new voice list starts with seven **starter
+There are no built-in voices. A new voice list starts with five **starter
 voices** that are free to use and share (`Martlet.F5.F5BundledVoices`, clips in
 `src\Martlet.F5\BundledVoices`); once in the list they are ordinary voices the
-owner can use, share and remove like any other. The four **cute voices** come
+owner can use, share and remove like any other. The two **cute voices** come
 first (`Cute`): two LibriVox readers voicing Anne Shirley, the excitable young
-heroine of Anne of Green Gables, in Chapter II: WoollyBee (CC0) and Annie
-Coleman Rothenberg (public domain), each as read ("Bee (cute, bubbly)", "Annie
-(cute, chatty)") and with pitch raised 1.33x and formants 1.12x by Praat's PSOLA
-"Change gender" ("Bee (cute anime girl)", "Annie (cute anime girl)"). Locally on
-F5 v1 Base (3 sentences, 2 seeds each) they spoke at a median 365, 341, 336 and
-265 Hz respectively against LJ's 217 Hz, with every word recognized. Then come a
-select few others: LJ Speech (public domain, female narrator) and two CMU ARCTIC
-speakers (slt, US female; bdl, US male; free for any use with the notice kept).
+heroine of Anne of Green Gables, in Chapter II, as read: Annie Coleman
+Rothenberg (public domain, "Annie (cute, chatty)") and WoollyBee (CC0, "Bee
+(cute, bubbly)"). Locally on F5 v1 Base (3 sentences, 2 seeds each) they spoke
+at a median 265 Hz (Annie) and about 340 Hz (Bee) against LJ's 217 Hz, with
+every word recognized. Then come a select few others: LJ Speech (public domain,
+female narrator) and two CMU ARCTIC speakers (slt, US female; bdl, US male;
+free for any use with the notice kept).
 Earlier versions offered seven more (two LibriVox narrators and five more CMU
 ARCTIC speakers); a list that already holds one keeps it as an ordinary voice.
 `BundledVoices\NOTICES.txt` lists each source file with its SHA-256, transcript
 and the marked modifications, and `scripts\Build-F5BundledVoices.py` rebuilds
-the clips from the pinned sources (reproducibly; the anime lift needs
-praat-parselmouth and seeds Praat's random generator). Each clip is 6.5-11
+the clips from the pinned sources (reproducibly). Each clip is 6.5-11
 seconds of speech with its exact transcript; an embedded clip is verified
 against its SHA-256 before use. The default voice is cute and female:
 `F5BundledVoices.Default` is the first starter voice marked `Cute` and `Female`
-(Annie, cute anime girl). Owners who already chose a voice keep it.
+(Annie, cute and chatty). Owners who already chose a voice keep it.
+
+Some recordings are no longer shipped (`F5BundledVoices.Retired`): the F5-TTS
+example clip and the two "anime" voices, the cute voices with pitch and
+formants raised ("Annie (cute anime girl)", once the default, and "Bee (cute
+anime girl)"), which sounded artificial. The first updated desktop removes them
+from the shared list, so every computer drops them and an older copy of the
+list can't bring them back. A speaking route or applied voice that still uses
+one moves to the chosen or first voice (and becomes the chosen voice when the
+chosen one was removed), and this PC's copy is deleted once nothing speaks with
+it.
 When Speaking is first handed to a host, Desktop uses the voice chosen on all
 computers, else the one applied here, else the first voice in the list the
 engine can clone, with no picker. Starter recordings are snapshotted with the

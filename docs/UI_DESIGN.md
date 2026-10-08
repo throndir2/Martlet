@@ -487,7 +487,7 @@ window ends it unless Martlet is listening or watching, which only hides it.
     PC's hardware suits) first: **F5 voice, with Docker** (*Set up F5 with
     Docker* sets up and pairs Martlet's host service on this PC, so this PC
     also becomes one of your hosts, installs F5 and switches over with the first
-    of Martlet's starter voices, a cute, high-pitched one) or **Windows voice, no Docker** (*Use a Windows
+    of Martlet's starter voices, a cute, chatty one) or **Windows voice, no Docker** (*Use a Windows
     voice* picks an installed voice in this PC's language, with no host
     service; a voice list and *Hear it* follow). Listening offers the same kind
     of two choices for whisper in Martlet's host service: **On the graphics
