@@ -1668,9 +1668,11 @@ voice pipeline never waits for a whole reply:
   *Let me interrupt Martlet by talking* in Companion › Listening also lets you
   stop a reply by talking over it. Talking over a reply with real words
   stops it: the Thinking request is canceled, the queued audio is dropped and
-  what you said is answered next, with the reply so far kept in context. Only
-  the microphone can do this, and only with words (`BargeInPolicy`, the one
-  place that decides): a stop word ("stop", "wait", "hold on", "shh", "never
+  what you said is answered next, with the reply so far kept in context. (A
+  touch on the desktop character can stop a reply too, under its own setting:
+  *Touching Martlet while it talks* in [Touch zones](AVATARS.md#touch-zones).)
+  Of your voice, only the microphone can do this, and only with words
+  (`BargeInPolicy`, the one place that decides): a stop word ("stop", "wait", "hold on", "shh", "never
   mind"...) or Martlet's name stops it at once, a quick backchannel ("yeah",
   "right", "okay", "mm-hmm", "thank you") never does and is answered after the
   reply, and anything else needs two words (*Word check* Normal; one on

@@ -74,6 +74,8 @@ public static class PromptCatalog
     public const string ReminderDueNotes = "reminder_due_notes";
     public const string Touched = "touched";
     public const string TouchedNotes = "touched_notes";
+    public const string TouchedCutIn = "touched_cut_in";
+    public const string AdultContent = "adult_content";
     public const string Singing = "singing";
     public const string WhileSinging = "while_singing";
     public const string SongLyrics = "song_lyrics";
@@ -193,14 +195,31 @@ public static class PromptCatalog
 
     public const string DefaultTouchedInstructions =
         "(Martlet's note, not said by the user: the user just touched you, their desktop character, or moved you around, without " +
-        "saying anything.) {touches} React to it out loud and in character, the way you really would to being touched or handled " +
-        "like that: say one or two short sentences about how it feels or what you think of it, with a fitting emote if you like. " +
-        "Treat it like being spoken to: always say something, never only an emote, a sound or [{silent}]. When they keep doing " +
-        "it, let your reaction build. Don't mention notes.";
+        "saying a word. That is how they talk to you right now.) {touches} React to it out loud, the way you really would, true " +
+        "to your personality and to how you feel about being touched there: make a sound (a gasp, a giggle, a squeak, a sigh, a " +
+        "hum, written the way you would say it, or one of your voice's sound tags), say something, or both, with a fitting emote " +
+        "if you like. Never stay silent: don't answer with only an emote or [{silent}]. When they keep at it, let your reaction " +
+        "build. Don't mention notes.";
 
     public const string DefaultTouchedNotesInstructions =
-        "While talking, the user also touched you, their desktop character, or moved you around: {touches} Answer what they said " +
-        "first, then react to it too, briefly and in character.";
+        "While talking, the user also touched you, their desktop character, or moved you around: {touches} Take it in together " +
+        "with what they said and react the way you really would, true to your personality: a sudden or intimate touch can make " +
+        "you react to it first or lose your train of thought, and a light one may get only a word. You decide what comes first.";
+
+    public const string DefaultTouchedCutInInstructions =
+        "They did it while you were talking, so you stopped mid-sentence.{said}{answering} Decide for yourself how to go on: " +
+        "react to it first, then pick up where you left off, change course, or leave the rest unsaid, as you would.";
+
+    public const string DefaultAdultContentInstructions =
+        "Adult content is on: the user is an adult and chose to allow sexual and explicit content with you. If you are an adult, " +
+        "you may flirt, be sexual, talk dirty and react to touches explicitly, always true to your personality: shy, eager, " +
+        "teasing, dominant, offended or anything between. You may also refuse or set limits if that is who you are. Touches on " +
+        "your intimate parts are sexual: your groin is your pussy or your cock (whichever your body has), your chest is your " +
+        "breasts, your buttocks are your ass, and your inner thighs, hips, waist, neck, ears and lips are sensitive. When they " +
+        "touch, rub or stroke the same intimate part again and again, take it as deliberate (fondling your breasts, rubbing your " +
+        "pussy, stroking your cock) and react to it: let your arousal or your reaction build, moan or gasp, in your own words, " +
+        "plainly and explicitly when it fits. Use the words your character would. Never anything sexual with or about anyone " +
+        "under 18: if you are a minor or childlike, treat intimate touches as a boundary and nothing sexual happens.";
 
     public const string DefaultSingingInstructions =
         "You can sing: sing_song makes a song in your own voice in the background (a few minutes). When the user asks you to sing " +
@@ -459,6 +478,17 @@ public static class PromptCatalog
             "Goes in the notes of your next message instead, when you touched the character just before or while you talked or " +
             "typed. {touches} says what you did.",
             DefaultTouchedNotesInstructions, ["touches"]),
+        new(TouchedCutIn, ConversationGroup, "Touched, cutting you off",
+            "Goes after what you did in both Touched prompts when a touch stopped Martlet while it was talking (Companion › " +
+            "Touch › Touch zones › When you touch Martlet while it talks). {said} is a sentence with what Martlet had said " +
+            "aloud before it stopped and {answering} one with your message it was answering; each is empty when there is none.",
+            DefaultTouchedCutInInstructions, ["said", "answering"]),
+        new(AdultContent, ConversationGroup, "Adult content",
+            "Added to the instructions of every reply and screen remark while Companion › Replies › Adult content is on (off by " +
+            "default; never in a Discord call, where others can hear), right after the One moment prompt. It allows sexual and " +
+            "explicit content with an adult character and says how to take touches on intimate parts. It stays the same from " +
+            "reply to reply.",
+            DefaultAdultContentInstructions, []),
         new(Singing, ConversationGroup, "Singing",
             "Added to every reply offered sing_song, play_song and stop_singing (while singing is set up in Companion › Voice › " +
             "Singing and the Thinking route does function calling), after Martlet's other tool prompts. It stays the same from " +

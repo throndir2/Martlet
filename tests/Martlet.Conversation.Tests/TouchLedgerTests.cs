@@ -145,6 +145,125 @@ public sealed class TouchLedgerTests
     }
 
     [Fact]
+    public void ATouchThatStoppedMartletIsAnsweredSoonerAndWithoutTheCooldown()
+    {
+        var debounce = new TouchDebounce();
+        debounce.Touched(S(10));
+        debounce.Started(S(10));
+        // Without it, the next reply would wait for the cooldown (14 s).
+        debounce.Touched(S(11));
+        Assert.Equal(S(14), debounce.DueAt);
+        debounce.CutIn();
+        Assert.True(debounce.CutInWaiting);
+        Assert.Equal(S(11.5), debounce.DueAt);
+        debounce.Touched(S(11.3));
+        Assert.Equal(S(11.8), debounce.DueAt);
+        debounce.Started(S(12));
+        Assert.False(debounce.CutInWaiting);
+        // The next touches wait as usual again.
+        debounce.Touched(S(13));
+        Assert.Equal(S(16), debounce.DueAt);
+        // With nothing waiting there is nothing to hurry.
+        new TouchDebounce().CutIn();
+    }
+
+    [Fact]
+    public void OnlyTouchesStopMartletAndOnlyTheChosenOnes()
+    {
+        var poke = new PhysicalEvent(PhysicalKind.Tap, S(1), "your nose", "nose");
+        var groin = new PhysicalEvent(PhysicalKind.Stroke, S(1), "your groin", "groin", Intimate: true);
+        var moved = new PhysicalEvent(PhysicalKind.Moved, S(1), Detail: "to the left");
+        Assert.True(PhysicalKinds.Interrupts(TouchInterrupts.Any, poke));
+        Assert.True(PhysicalKinds.Interrupts(TouchInterrupts.Any, groin));
+        Assert.False(PhysicalKinds.Interrupts(TouchInterrupts.Any, moved));
+        Assert.False(PhysicalKinds.Interrupts(TouchInterrupts.Intimate, poke));
+        Assert.True(PhysicalKinds.Interrupts(TouchInterrupts.Intimate, groin));
+        Assert.False(PhysicalKinds.Interrupts(TouchInterrupts.Never, groin));
+    }
+
+    [Fact]
+    public void HowThePersonaFeelsGoesWithTheTouchAndTheOwnersWords()
+    {
+        var ledger = new TouchLedger();
+        ledger.Record(new(PhysicalKind.Pat, S(1), "the top of your head", "top of head", Feeling: "you love being touched there"));
+        Assert.Equal("They patted the top of your head once (you love being touched there).", ledger.Peek(S(1))!.Line);
+        ledger.Record(new(PhysicalKind.Pat, S(2), "the top of your head", "top of head", Hint: "*ruffles your hair*"));
+        Assert.Equal("They patted the top of your head twice over 1 second (\"*ruffles your hair*\"; you love being touched there).",
+            ledger.Peek(S(2))!.Line);
+    }
+
+    [Fact]
+    public void PlacesTheUserKeepsComingBackToAreNamedAcrossReplies()
+    {
+        var ledger = new TouchLedger();
+        PhysicalEvent Groin(double at) => new(PhysicalKind.Tap, S(at), "your groin", "groin", Intimate: true);
+        for (var i = 0; i < 3; i++) ledger.Record(Groin(i));
+        // A burst on its own already says how many times.
+        Assert.Null(ledger.Drain(S(3))!.Often);
+        for (var i = 0; i < 3; i++) ledger.Record(Groin(30 + i));
+        var burst = ledger.Peek(S(33))!;
+        Assert.Equal([("your groin", 6)], burst.Often!.Select(h => (h.Place, h.Count)));
+        Assert.Equal("They poked your groin 3 times over 2 seconds. They keep coming back to your groin: 6 times in the last minute.", burst.Line);
+        Assert.Equal("(touch: groin poke x3)", burst.HistoryLine);
+        ledger.Drain(S(33));
+
+        // A stroke counts for each zone it crossed; moving the character counts for none.
+        ledger.Record(new(PhysicalKind.Stroke, S(200), "down from your stomach to your groin", "stomach → groin", Zones: ["your stomach", "your groin"]));
+        ledger.Record(new(PhysicalKind.Moved, S(201), Detail: "to the left"));
+        Assert.EndsWith("They keep coming back to your groin: 7 times in the last 4 minutes.", ledger.Peek(S(201))!.Line);
+
+        // What is older than ten minutes no longer counts.
+        ledger.Drain(S(201));
+        ledger.Record(Groin(900));
+        Assert.Null(ledger.Peek(S(900))!.Often);
+        ledger.Clear();
+        ledger.Record(Groin(901));
+        Assert.Null(ledger.Peek(S(901))!.Often);
+    }
+
+    [Fact]
+    public void ATouchThatStoppedMartletGoesWithTheNextBurstAndTellsWhatItWasSaying()
+    {
+        var ledger = new TouchLedger();
+        ledger.Record(Poke(10));
+        ledger.CutIn(new("Once upon a time there was a fox.", "Tell me a story.", S(10)));
+        var burst = ledger.Drain(S(11))!;
+        Assert.NotNull(burst.Cut);
+        Assert.Equal("They poked your left cheek once. They did it while you were talking, so you stopped mid-sentence. You had said, " +
+            "out loud: \"Once upon a time there was a fox.\" You were answering their message: \"Tell me a story.\" Decide for yourself " +
+            "how to go on: react to it first, then pick up where you left off, change course, or leave the rest unsaid, as you would.",
+            TouchWording.Told(null, burst));
+        // The next touches don't carry it; a reply that never answered puts it back.
+        ledger.Record(Poke(12));
+        Assert.Null(ledger.Peek(S(12))!.Cut);
+        ledger.Restore(burst);
+        Assert.Equal(burst.Cut, ledger.Peek(S(12))!.Cut);
+        // A remark it was making has no message it answered; what it said goes alone, and an emptied prompt leaves the line.
+        var remark = new TouchBurst([new(PhysicalKind.Tap, "your nose", "nose", null, null, 1, S(1), S(1))], Cut: new("Nice shot!", null, S(1)));
+        Assert.EndsWith("You had said, out loud: \"Nice shot!\" Decide for yourself how to go on: react to it first, then pick up where you " +
+            "left off, change course, or leave the rest unsaid, as you would.", TouchWording.Told(null, remark));
+        var emptied = Martlet.Core.Settings.PromptSettings.Normalize(new Dictionary<string, string> { [Martlet.Core.Settings.PromptCatalog.TouchedCutIn] = "" });
+        Assert.Equal(remark.Line, TouchWording.Told(emptied, remark));
+        // Too old, it is let go with the touches.
+        ledger.Clear();
+        ledger.Record(Poke(0));
+        ledger.CutIn(new("Hello.", null, S(0)));
+        Assert.Null(ledger.Peek(S(0) + TouchLedger.MaximumAge + S(1)));
+    }
+
+    [Fact]
+    public void OnlyTheEndOfALongReplyIsKept()
+    {
+        var said = string.Join(" ", Enumerable.Repeat("word", 200)) + " and the end.";
+        var tail = TouchCut.Tail(said)!;
+        Assert.StartsWith("…", tail);
+        Assert.EndsWith("and the end.", tail);
+        Assert.True(tail.Length <= TouchCut.MaximumCharacters + 1);
+        Assert.Null(TouchCut.Tail("  "));
+        Assert.Equal("Short.", TouchCut.Tail(" Short. "));
+    }
+
+    [Fact]
     public void ATouchReplyTakesNothingElse()
     {
         var plan = MomentTurn.Plan(MomentTrigger.Touch, pcWaiting: true, jobsWaiting: true, lookDue: true);

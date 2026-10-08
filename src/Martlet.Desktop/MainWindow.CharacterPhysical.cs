@@ -95,9 +95,12 @@ public partial class MainWindow
     {
         if (closing) return;
         var labels = crossed.Select(z => z.Name.ToLowerInvariant()).ToArray();
-        var words = CharacterPhysicalWords.Stroke(summary, [.. crossed.Where(z => z.Reaction.Notices)]);
+        var noticed = crossed.Where(z => z.Reaction.Notices).ToArray();
+        var words = CharacterPhysicalWords.Stroke(summary, noticed);
+        var feeling = CharacterTouchTemperaments.Feeling(characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId), noticed);
         for (var i = 0; words is not null && i < words.Times; i++)
-            NoticePhysical(PhysicalKind.Stroke, words.Where, words.Label, words.Pace, words.Hint);
+            NoticePhysical(PhysicalKind.Stroke, words.Where, words.Label, words.Pace, words.Hint, [.. noticed.Select(CharacterTouchZones.Part)],
+                noticed.Any(z => CharacterTouchZones.Kind(z.Id)?.Intimate == true), feeling);
         var when = DateTime.Now.ToString("T", System.Globalization.CultureInfo.CurrentCulture);
         var text = $"Last stroke at {when}: " + (labels.Length == 0 ? "the character" : string.Join(" → ", labels)) +
             $", {summary.Pace}, {summary.Passes} pass{(summary.Passes == 1 ? "" : "es")}, {summary.Ms / 1000.0:0.0} s, " +

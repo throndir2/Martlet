@@ -1760,6 +1760,7 @@ public partial class LiveConversationWindow : ThemedWindow
                 if (ReplyTag.Note(acted) is { } how) reply.AddNote(how);
                 var refusal = done.Turn?.Content.Refusal?.Trim();
                 if (!string.IsNullOrEmpty(refusal) && reply.Text != refusal) reply.AddNote($"{CharacterName} declined: {refusal}");
+                else if (code == TouchCutInCode) reply.AddNote("Stopped for your touch.");
                 else if (done.Turn?.Snapshot.State is not (ConversationState.Completed or ConversationState.Refused)) reply.AddNote("Cut short.");
                 else if (done.Turn?.Snapshot is { SpeechFailed: true } voiceless)
                     reply.AddNote(voiceless.MayHavePlayed ? "The voice stopped partway, so only the beginning was spoken."
@@ -1828,7 +1829,8 @@ public partial class LiveConversationWindow : ThemedWindow
         {
             "runtime.Completed" or "commentary.glance" or "conversation.typing" or "conversation.listening_paused" or
                 "commentary.interrupted" or "conversation.interrupted" or "conversation.closed" or "mic.no_speech" or
-                "listen.passed" or "conversation.continued" or "report.interrupted" or "touch.interrupted" or LiveConversationController.NotWordsCode => null,
+                "listen.passed" or "conversation.continued" or "report.interrupted" or "touch.interrupted" or TouchCutInCode or
+                LiveConversationController.NotWordsCode => null,
             "speaker.not_user" or "speaker.too_short" or "stt.NoSpeech" when done.HandsFree || done.Spoken => null,
             var code when code.StartsWith("policy.", StringComparison.Ordinal) && (done.HandsFree || done.Spoken) => null,
             var code => Remedy(code)

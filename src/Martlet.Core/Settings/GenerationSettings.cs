@@ -77,6 +77,13 @@ public sealed record GenerationSettings : IContract
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? ShortFirstSentence { get; init; }
 
+    /// <summary>Companion › Replies › Adult content (18+): whether replies and screen remarks may be sexual and explicit with an
+    /// adult character, and take touches on intimate parts that way (Companion › Prompts › Adult content). Null (nothing chosen)
+    /// is Off, the default; true turns it on. Never sent to a provider: it only adds the prompt to the instructions, and never
+    /// in a Discord call.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? AdultContent { get; init; }
+
     /// <summary>How hard a request with <see cref="Reasoning"/> On thinks, for routes that take an effort (OpenAI's
     /// <c>reasoning_effort</c>, OpenRouter's <c>reasoning.effort</c>): "medium" or "high". Only a background think sets it
     /// (<see cref="ThinkLongerSettings.Effort"/>); never saved, and null sends the route's usual On.</summary>
@@ -92,7 +99,7 @@ public sealed record GenerationSettings : IContract
     [JsonIgnore]
     public bool IsDefault => Temperature is null && TopP is null && TopK is null && MinP is null && RepeatPenalty is null &&
         FrequencyPenalty is null && PresencePenalty is null && MaxReplyTokens is null && ContextTokens is null && Reasoning is null &&
-        ThinkLonger is null && ShortFirstSentence is null;
+        ThinkLonger is null && ShortFirstSentence is null && AdultContent is null;
 
     /// <summary>The reply token budget requested from the model (the default when unset).</summary>
     [JsonIgnore]
@@ -103,6 +110,9 @@ public sealed record GenerationSettings : IContract
 
     /// <summary>Whether spoken replies are asked for a short first sentence with <paramref name="settings"/> (unset is On).</summary>
     public static bool StartsShort(GenerationSettings? settings) => settings?.ShortFirstSentence ?? DefaultShortFirstSentence;
+
+    /// <summary>Whether adult content is on with <paramref name="settings"/> (unset is Off).</summary>
+    public static bool Adult(GenerationSettings? settings) => settings?.AdultContent ?? false;
 
     /// <summary>The settings a request sends: <paramref name="settings"/> with Thinking steps resolved (unset is Off).</summary>
     public static GenerationSettings WithReasoning(GenerationSettings? settings) =>
