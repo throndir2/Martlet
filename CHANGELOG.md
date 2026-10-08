@@ -8,6 +8,9 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+- Share your hosts with friends right from the app: **Devices › Friends** lists each person and the hosts you share with them, with **Share** and **Stop sharing**, and **Sign-in from outside** says which sign-ins are your own computers and which are friends'. A friend's Martlet keeps a host you share under **Devices › Hosts shared with this PC** and uses it for thinking, listening, speaking, lip-sync and reading without ever joining your network, and your own work always comes first. ([#625](https://github.com/throndir2/Martlet/pull/625))
+
 ### Fixed
 - Touch zones stay on the right part of your character while it moves: a tap on its cheek, eye or mouth lands on that zone even while its head follows your mouse, nods or tilts. The whites of the eyes, the lashes and a wide blush now count as their eye or cheek instead of the hair, and a blush near an ear no longer counts as the ear. ([#624](https://github.com/throndir2/Martlet/pull/624))
 
