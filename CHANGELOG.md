@@ -8,6 +8,9 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+- Your character now starts with ready-made combos that show several emotes at once: lovestruck, flustered, overheated, fuming, heartbroken, dozing, starstruck and shocked, and ahegao, which stays off until you turn it on. Change, turn off or remove any of them in Companion › Character › Emotes and motions › Combos; one you remove doesn't come back. A character can now have 24 combos. ([#596](https://github.com/throndir2/Martlet/pull/596))
+
 ## [0.55.0] - 2026-10-07
 
 ### Added

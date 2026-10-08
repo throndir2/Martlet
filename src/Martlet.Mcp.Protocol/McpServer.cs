@@ -2796,6 +2796,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 offered = reply?.Tags.Contains("{" + c.Tag + "}") == true
             }).ToArray(),
             combosProblem,
+            // Martlet's own combos: whether the model was given each one, and its row in combos while one has its tag.
+            martletCombos = Martlet.Avatar.Hosting.CharacterActions.MartletCombos.Select(m => new
+            {
+                tag = m.Tag, parts = m.Parts, use = m.Use, startsOn = m.Enabled, given = catalog.Settings.GivenCombos?.Contains(m.Tag) == true,
+                n = catalog.Combos.Select((c, i) => (c.Tag, i)).Where(c => string.Equals(c.Tag, m.Tag, StringComparison.OrdinalIgnoreCase))
+                    .Select(c => (int?)c.i).FirstOrDefault()
+            }).ToArray(),
             voiceTag, setsOff = voiceTag is null ? null
                 : catalog.For(voiceTag).Select(s => new
                 {

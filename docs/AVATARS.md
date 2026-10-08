@@ -217,14 +217,37 @@ what each one is.
     request may carry, next to the emotes' tags. Room always stays for the
     tags that move the character's eyes, so combos never push them out.
   - Combos are saved with the model's settings in `character-actions.json`
-    (`combos`: `tag`, `parts` as IDs, `use`, `enabled`), at most 16 for each
+    (`combos`: `tag`, `parts` as IDs, `use`, `enabled`), at most 24 for each
     model. A combo's tag must be a valid tag that no emote and no other combo
-    of the model has. A file without combos reads and writes as before.
+    of the model has. `given_combos` lists the tags of Martlet's combos the
+    model was given (see below). A file without them reads as before.
   - **Try** sets a combo off on the showing character. While one of its
     lingering parts is on, the button shows **Turn off**. **Use the model's own
     names** keeps the combos. A Martlet that doesn't have a part (an older
     version without a new gesture) leaves that part out.
-  - Martlet has no combos of its own: combos are the owner's, for each model.
+  - **Martlet's combos** (`CharacterActions.MartletCombos`): every model starts
+    with Martlet's own combos of its gestures. Martlet gives each one to a model
+    once, after the owner's combos, with the parts that model can play (at
+    least two). A part is Martlet's gesture, or the model's own emote that
+    replaces it (an emote tagged `heart_eyes`, or a VRM's own `surprised`).
+    Martlet doesn't give a combo when an emote or one of the owner's combos
+    already has its tag, or when the model already has 24 combos. After that,
+    the combo is the owner's: change it, turn it off or remove it. A removed or
+    renamed one doesn't come back, because it is in `given_combos`. **ahegao**
+    starts turned off, so replies get it only after the owner turns it on. New
+    Martlet combos go last, so the earlier combo lines stay the same.
+
+    | Combo (tag) | Parts | Starts |
+    | --- | --- | --- |
+    | `lovestruck` | `heart_eyes`, `hearts`, `blush_deep`, `sway` | on |
+    | `flustered` | `blush_deep`, `sweat`, `shy` | on |
+    | `overheated` | `blush_fierce`, `steam`, `dizzy` | on |
+    | `fuming` | `pout`, `anger`, `steam` | on |
+    | `heartbroken` | `tears`, `gloom`, `crying` | on |
+    | `dozing` | `drowsy`, `sleepy`, `drool` | on |
+    | `starstruck` | `star_eyes`, `sparkles`, `mouth_open` | on |
+    | `shocked` | `exclaim`, `gasp`, `surprised` (all brief, so no off tag) | on |
+    | `ahegao` | `eyes_up`, `mouth_open`, `tongue_out`, `drool`, `blush_fierce`, `heart_eyes` | off |
 - **Renderer protocol**: `RendererAction(Kind, Name, On, Hold)`. With `Hold`,
   an expression, gesture or overlay stays on until the same action comes with
   `On` set to false. The reply to a gesture action says which gesture plays
