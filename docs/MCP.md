@@ -1390,23 +1390,34 @@ zones* is on without a model that can see).
 
 Touch temperament (below Touch zones) reads through `TouchTemperamentStatus`
 (for which persona and who decided it: built-in reactions, the Thinking model,
-`FIXTURE - NOT AI` or your own choices), `TouchTemperamentSummary` (the
-attitude per group and zone, such as *head loves, torso neutral (no
+`FIXTURE - NOT AI` or your own choices; its `help` is the whole temperament in
+words: the attitude per group and zone, such as *head loves, torso neutral (no
 reaction), ...*, the eyes (*eyes: look straight ahead*), the parts whose touch
 turns them to your mouse and after how many touches it escalates),
 `TouchTemperamentDecision` (how deciding went, or that a personality change
-left your own choices in place), `TouchTemperamentSaveState`,
+left your own choices in place; shown until you change something yourself),
+`TouchTemperamentSaveState` (both only while they have something to say),
 `TouchTemperamentGaze` (*Eyes usually*: a gaze's label or *(not decided:
-follow your mouse)*), each line's `TouchTemperamentAttitude-<group or zone
-ID>` (an attitude word or *(built-in reaction)*) and `TouchTemperamentLook-<group
-or zone ID>` (the seconds the eyes look at your mouse after a touch there).
+follow your mouse)*), `TouchTemperamentAfter` (touches in a row before it
+escalates) and each table line's `TouchTemperamentAttitude-<group or zone
+ID>` (an attitude word or *(built-in)*), `TouchTemperamentReaction-` (*(default)*,
+the feeling's usual reactions, *(nothing)* or a reaction such as *look away*),
+`TouchTemperamentReaction2-` (*(nothing)* or a reaction),
+`TouchTemperamentLinger-` and `TouchTemperamentLook-<group or zone ID>` (the
+seconds the first reaction stays on and the eyes look at your mouse after a
+touch there). A line shows only the controls that apply: a group at
+*(built-in)* shows only its attitude, `TouchTemperamentReaction2-` shows after
+a chosen first reaction and `TouchTemperamentLinger-` not after *(nothing)*,
+so the others are not in `ui_snapshot` until then.
 `TouchZonesLast` and `TouchZoneState-<n>` also name the attitude, whether the
 reaction came from the temperament and how long it looks at your mouse.
-`TouchTemperamentDecide` sends the personality to Thinking,
+`TouchTemperamentDecide` (*Decide from personality* before anything is
+decided, then *Re-decide from personality*) sends the personality to Thinking,
 and `TouchTemperamentReset`, `TouchTemperamentGaze`, `TouchTemperamentAttitude-`,
-`TouchTemperamentReaction-` (its *(no reaction)* plays nothing), `TouchTemperamentReaction2-`,
+`TouchTemperamentReaction-`, `TouchTemperamentReaction2-`,
 `TouchTemperamentLinger-`, `TouchTemperamentLook-`, `TouchTemperamentAfter`, `TouchTemperamentAddKind`,
-`TouchTemperamentAdd` and `TouchTemperamentRemove-` save, so they all need
+`TouchTemperamentAdd` and `TouchTemperamentRemove-<zone ID>` (the small ✕ by a
+part's name) save, so they all need
 `--allow-ui-effects`. `character_touch_zones` shows the temperament's `gaze`,
 each entry's `look` and the matched touch's `reaction.look`. Setting `MARTLET_TOUCH_TEMPERAMENT_FIXTURE` to a text
 file before launching the desktop makes deciding read that file (read again

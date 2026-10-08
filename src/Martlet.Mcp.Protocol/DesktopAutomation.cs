@@ -370,12 +370,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
         "TouchZonesDetectNote",
         // Companion › Character › Touch temperament: who decided the active persona's temperament (built-in, the Thinking model,
-        // FIXTURE - NOT AI or the owner), its attitude per group and part ("head loves, torso hates, ...", its eyes and the parts
-        // whose touch turns them to your mouse), how deciding went and whether edits saved. Each line's attitude
-        // (TouchTemperamentAttitude-<group or zone ID>, below) is an attitude word, its TouchTemperamentLook-<group or zone ID>
-        // the seconds the eyes then look at your mouse, and TouchTemperamentGaze where the eyes usually go.
-        // Re-decide from personality sends the personality to Thinking, and the rest save, so they need --allow-ui-effects.
-        "TouchTemperamentStatus", "TouchTemperamentSummary", "TouchTemperamentDecision", "TouchTemperamentSaveState", "TouchTemperamentGaze",
+        // FIXTURE - NOT AI or the owner; its help text is the whole temperament in words: "head loves, torso hates, ...", its eyes
+        // and the parts whose touch turns them to your mouse), how deciding went and whether edits saved (both only while they
+        // have something to say). Each line's attitude (TouchTemperamentAttitude-<group or zone ID>, below) is an attitude word,
+        // its TouchTemperamentReaction-/TouchTemperamentReaction2- the reactions, its TouchTemperamentLinger- and
+        // TouchTemperamentLook-<group or zone ID> the seconds the first reaction stays on and the eyes then look at your mouse,
+        // TouchTemperamentAfter the touches in a row before it escalates and TouchTemperamentGaze where the eyes usually go.
+        // Decide (later Re-decide) from personality sends the personality to Thinking, and the rest save, so they need
+        // --allow-ui-effects.
+        "TouchTemperamentStatus", "TouchTemperamentDecision", "TouchTemperamentSaveState", "TouchTemperamentGaze", "TouchTemperamentAfter",
         // Companion › Character › Where the character looks: what the eyes do now and why (your choice, the personality's or
         // the character's own in a reply; a touch's look at your mouse; whether it may change where it looks). Its
         // CharacterGaze-<choice> radio buttons (selected) and CharacterGazeFree check box (checkedState) save
@@ -677,7 +680,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// click; never the text it copies).</summary>
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
-    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchTemperamentLook-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
+    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default
