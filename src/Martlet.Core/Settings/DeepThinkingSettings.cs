@@ -237,6 +237,14 @@ public sealed record DeepThinkingSettings
 /// Martlet checks that before each think.</summary>
 public sealed record DeepThinkingPlan(bool Available, string Why, bool ChecksFit = false, int Rank = 0)
 {
+    /// <summary>Whether the place would run but its computer doesn't answer now (<see cref="DeepThinkingPool.For"/>'s offline
+    /// hosts): its slots come back when it answers again.</summary>
+    public bool Offline { get; init; }
+
+    /// <summary>The plan of a place on <paramref name="host"/>, which would run but doesn't answer now.</summary>
+    public static DeepThinkingPlan Away(string host) =>
+        new(false, $"{host} is offline; its slots come back when it answers again.") { Offline = true };
+
     public static DeepThinkingPlan For(DeepThinkingSettings deep, IReadOnlyList<SetupRoute> routes)
     {
         ArgumentNullException.ThrowIfNull(deep);
@@ -315,15 +323,24 @@ public sealed record DeepThinkingPool(IReadOnlyList<DeepThinkingSpot> Spots)
 {
     /// <param name="sharing">Devices › Sharing work: a paired computer Deep thinking never uses, or one kept for other companion
     /// PCs than <paramref name="device"/>, can't run a think from this PC.</param>
+    /// <param name="offline">The paired computers that don't answer now (by host ID; null: every computer counts as online). A
+    /// place on one of them that would run gets an <see cref="DeepThinkingPlan.Offline"/> plan instead, so <see cref="Usable"/>
+    /// and the slots leave it out until it answers again.</param>
     public static DeepThinkingPool For(DeepThinkingSettings deep, IReadOnlyList<SetupRoute> routes,
-        Martlet.Core.Cluster.WorkSharingSettings? sharing = null, string? device = null)
+        Martlet.Core.Cluster.WorkSharingSettings? sharing = null, string? device = null, IReadOnlyCollection<string>? offline = null)
     {
         ArgumentNullException.ThrowIfNull(deep);
         ArgumentNullException.ThrowIfNull(routes);
         var thinking = routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
-        return new([.. deep.Places.Select(place => new DeepThinkingSpot(place, Kept(place, sharing, device) ?? DeepThinkingPlan.For(place, routes),
-            place.Computer(thinking)))]);
+        return new([.. deep.Places.Select(place => new DeepThinkingSpot(place, Kept(place, sharing, device) ??
+            Present(place, DeepThinkingPlan.For(place, routes), offline), place.Computer(thinking)))]);
     }
+
+    // A place that would run, on a computer that doesn't answer now: offline until it answers again. A place that can't run
+    // anyway keeps its own reason, which is the one the owner can act on.
+    private static DeepThinkingPlan Present(DeepThinkingSettings place, DeepThinkingPlan plan, IReadOnlyCollection<string>? offline) =>
+        plan.Available && place.Place == DeepThinkingPlace.Host && place.HostId is { } host && offline?.Contains(host, StringComparer.Ordinal) == true
+            ? DeepThinkingPlan.Away(host) : plan;
 
     private static DeepThinkingPlan? Kept(DeepThinkingSettings place, Martlet.Core.Cluster.WorkSharingSettings? sharing, string? device)
     {
@@ -345,22 +362,35 @@ public sealed record DeepThinkingPool(IReadOnlyList<DeepThinkingSpot> Spots)
     /// the most thinks that run or wait at once.</summary>
     public static int AtOnce(int slots) => Math.Min(slots >= 2 ? slots - 1 : Math.Max(slots, 0), DeepThinkingSettings.MaxPlaces);
 
-    /// <summary>Whether Deep thinking can run anywhere and why: the first place's plan with one place, else how many think at once.</summary>
+    /// <summary>Whether Deep thinking can run anywhere and why: the first place's plan with one place, else how many think at once.
+    /// When nothing can run because computers that would run are offline, it says so (<see cref="DeepThinkingPlan.Offline"/>).</summary>
     public DeepThinkingPlan Plan
     {
         get
         {
             var usable = Usable;
+            if (usable.Count == 0 && Spots.Where(spot => spot.Plan.Offline).ToArray() is { Length: > 0 } away) return Gone(away);
             if (Spots.Count == 1 || usable.Count == 0) return Spots[0].Plan;
             if (usable.Count == 1) return usable[0].Plan;
             var names = usable.Select(spot => spot.Computer).Distinct(StringComparer.Ordinal).ToArray();
             var atOnce = AtOnce(usable.Sum(spot => spot.Settings.ThinksAtOnce));
             return new(true, (atOnce == 1 ? "One think runs at a time" : $"Up to {atOnce} thinks run at once") +
-                " alongside the conversation on its places (" +
-                (names.Length == 1 ? names[0] : $"{string.Join(", ", names[..^1])} and {names[^1]}") +
+                " alongside the conversation on its places (" + Names(names) +
                 "); each new one goes to a free place that shares least with the conversation and isn't kept for other work, " +
                 "and waits in line when every place is busy. The last free slot stays free for quick jobs (judges and summaries).",
                 Rank: usable.Min(spot => spot.Plan.Rank));
         }
     }
+
+    // Nothing can run, and these places would but their computers are offline.
+    private DeepThinkingPlan Gone(IReadOnlyList<DeepThinkingSpot> away)
+    {
+        if (away.Count == 1) return away[0].Plan;
+        var names = Names([.. away.Select(spot => spot.Computer).Distinct(StringComparer.Ordinal)]);
+        return new(false, (away.Count == Spots.Count(spot => spot.Settings.Separate) ? $"Every Thinking pool computer is offline ({names})"
+            : $"{names} are offline") + "; their slots come back when they answer again.") { Offline = true };
+    }
+
+    private static string Names(IReadOnlyList<string> names) =>
+        names.Count == 1 ? names[0] : $"{string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
 }

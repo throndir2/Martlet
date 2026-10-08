@@ -84,7 +84,8 @@ internal sealed partial class LiveConversationController
         var thinking = routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
         var limits = dataDirectory is null ? null : ModelLimits.Load(dataDirectory);
         var targets = new Dictionary<string, DeepThinkTarget>(StringComparer.Ordinal);
-        var choice = ThinkingBackupMembers.Choose(Volatile.Read(ref thinkingPool), PoolPlan(routes), PoolMembers(), floorRules.Resources,
+        // A member whose computer is offline now can't answer (HostPresence).
+        var choice = ThinkingBackupMembers.Choose(Volatile.Read(ref thinkingPool), PoolPlan(routes, live: true), PoolMembers(), floorRules.Resources,
             input, held, member =>
             {
                 DeepThinkTarget target;

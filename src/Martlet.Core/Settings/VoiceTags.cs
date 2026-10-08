@@ -5,7 +5,7 @@ namespace Martlet.Core.Settings;
 
 /// <summary>Finds, keeps and strips voice-engine tags (<see cref="SpeechEngine.Tags"/>) in reply text. Matching ignores case
 /// and writes the engine's own spelling. The chat, captions and voices without a tag catalog get every registered engine's
-/// tags stripped, so OpenAI, Windows, F5 or XTTS never read "[laugh]" aloud. Models often write a tag they were given in
+/// and cloud voice's tags stripped, so OpenAI, Windows, F5 or XTTS never read "[laugh]" aloud. Models often write a tag they were given in
 /// other brackets or as a stage direction ([nod] or *nods* for {nod}, (sighs) for [sigh]); those spellings
 /// (<see cref="Spellings"/>) count as the tag itself.</summary>
 public static class VoiceTags
@@ -182,13 +182,13 @@ public static class VoiceTags
         return string.Join("\n", new[] { Group(VoiceTagKind.Sound, SoundsHeading), Group(VoiceTagKind.Emotion, TonesHeading) }
             .Where(group => group is not null));
     }
-    /// <summary>Every registered engine's tags (what chat and captions never show).</summary>
-    public static IReadOnlyList<VoiceTag> Known => SpeechEngines.All.SelectMany(engine => engine.Tags)
+    /// <summary>Every registered engine's tags and every cloud voice's (what chat and captions never show).</summary>
+    public static IReadOnlyList<VoiceTag> Known => SpeechEngines.All.Concat(SpeechEngines.CloudVoices).SelectMany(engine => engine.Tags)
         .DistinctBy(tag => tag.Text, StringComparer.OrdinalIgnoreCase).ToArray();
 
-    /// <summary>Every engine-independent cue (<see cref="VoiceTag.Cue"/>) a registered engine speaks, sounds first, each
-    /// once: what a character's emote or motion can follow.</summary>
-    public static IReadOnlyList<string> Cues => SpeechEngines.All.SelectMany(engine => engine.Tags)
+    /// <summary>Every engine-independent cue (<see cref="VoiceTag.Cue"/>) a registered engine or cloud voice speaks, sounds
+    /// first, each once: what a character's emote or motion can follow.</summary>
+    public static IReadOnlyList<string> Cues => SpeechEngines.All.Concat(SpeechEngines.CloudVoices).SelectMany(engine => engine.Tags)
         .OrderBy(tag => tag.Kind).Select(tag => tag.Cue).Distinct(StringComparer.Ordinal).ToArray();
 
     /// <summary>The cue of the tag of <paramref name="engine"/> written as <paramref name="text"/>, or null.</summary>
