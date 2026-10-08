@@ -1297,7 +1297,10 @@ Martlet's own hint while `use` is null), `enabled`, `mode` (`brief`, or
 is the default), `vtsToggle` (a VTube Studio ToggleExpression hotkey turns it
 on) and whether replies
 are `offered` it for `engine`, a voice engine key, `none` or absent for a voice
-without tags), `replyPrompt` and `replyTags` (what replies get while the
+without tags), `blushLevels` (the model's blush levels, faintest first: `level`
+1 to 3 for `blush`, `blush_deep` and `blush_fierce`, with the row's `n`, `id`,
+`kind`, `name`, `tag`, `mode` and `offered`; the first is the model's own emote
+tagged `blush` when that replaces Martlet's blush), `replyPrompt` and `replyTags` (what replies get while the
 character shows; lingering emotes add their `{/tag}` off tags) and `namingPrompt` (`instructions` and the numbered `list` the
 Thinking model is sent). With `showing`, the lingering emotes the character
 would show now (`["glasses", "blush:12"]`, minutes after the colon),
@@ -3272,6 +3275,47 @@ from a data directory's `shared-settings.json` (optional absolute
 *Done*, *Cancel* or *Missed*, `by` and `at`), plus the `reminders` `tool`
 exactly as the model gets it. Read-only.
 
+`setup_run_status` shows how applying the recommended setup to all your
+computers stands ([Applying the recommended setup](CLUSTER.md#applying-the-recommended-setup),
+[Configuring](CLUSTER.md#configuring)), from a data directory (optional
+absolute `dataDirectory`): `state` (*none* without `shared-settings.json`,
+*no-runs*, *loaded*), every computer's published run (`setup-run.<device>`
+entries: `runId`, `startedBy`, `startedAt`, `updatedAt`, `finishedAt`,
+`active`, `shown`, `summary` and each computer's `machineId`, `state`
+*Pending*, *Configuring*, *Done*, *Failed* or *NeedsAttention*, `step`, `done`
+and `steps`; an entry a newer Martlet wrote is `readable: false`), `plan` (who
+does each job in `cluster.json`, with `failover` and `movedFrom`) and `sharing`
+(Sharing work: each job's `shares`, `order` and `never`). Machine IDs, role
+names and counts only. Read-only.
+
+`setup_run_check` rehearses applying a recommended setup with the production
+executor (`SetupExecutor`) on a fixture recommendation against simulated
+computers (FIXTURE, NOT real hosts): gpu-box with two NVIDIA cards (through
+Martlet there), desk-host (this PC's own host service), linux-box (SSH),
+old-box (Martlet can't reach it) and laptop (no host service). The preflight:
+Chatterbox Turbo's terms with the RTX 4090 by UUID, Parakeet chosen as the stt
+variant with that variant's terms only, moving Thinking keeping its model, Audio2Face
+showing and sending its default engine's terms, an NGC key the owner enters, old-box needing someone there, laptop unable to run
+host roles, the Thinking pool joining by itself and the downloads added up.
+The run: the host commands in order with their arguments (nothing for skipped
+changes), the key only to Audio2Face and never in text, the terms recorded as
+accepted, speaking on gpu-box with failover and thinking back to each PC's
+choice in the plan, Sharing work, one cluster check, a failed removal that
+doesn't stop the others, a job this PC can't follow yet reported, the run
+record (all waiting, then *Configuring* with the step and its count, then how
+each computer ended) read back from the shared settings as
+`setup-run.<device>`, a per-computer entry, and a change missing from the
+review skipped. `passed` and each step's `passed` and `detail`. In-process; no
+network, model or credential.
+
+Home's `HomeConfiguring` (on a host PC `HostConfiguring`; passive: it opens
+the Devices map) and `HomeConfiguringStatus` (`HostConfiguringStatus`) show
+the newest run from any computer, for example *Configuring your computers: 1
+of 3 finished. gpu-box: Installing Chatterbox Turbo (2 of 4). Started on
+desk-b.*, then for ten minutes how it ended (*Your computers were reconfigured
+at 6:30 PM: 2 done, 1 needs you.*), or a host role this PC changes now.
+Hidden when nothing is configured.
+
 `reminders_check` rehearses reminders with the production code (`Reminders`,
 `ReminderBoard`, `BackgroundJobs`, `SharedSettings`) on two simulated companion
 PCs whose entries merge through the shared settings: set in minutes and at a
@@ -3742,6 +3786,24 @@ comes back from a power cut without its newest lines (it restarts from an older
 saved `logs.json`) is read from the start again and gets them back; an unsigned
 request is refused. Synthetic lines; loopback only; the folder is deleted.
 
+`host_connections_selftest` (no arguments) rehearses how the desktop connects
+to a paired host and reports its status (`src\Martlet.NodeLinkCheck`, mode
+`host-connections`, `HostConnectionRehearsal.cs`; returns `{exitCode, report}`).
+One real gateway (`lab-connections`; Kestrel, pinned TLS, signed requests) runs
+on 127.0.0.1 behind a loopback TCP forwarder that the check stops and starts at
+the same address. A simulated desktop checks the host as the 15-second sync does
+(a new `Audio2FaceHostConnection` per check: routes, then the plan copy) and
+logs through the desktop's status tracker (`HostAnswers`). Its steps: twelve
+checks share one kept TCP and TLS connection (`HostRoutes` connections dialed
+and connections the forwarder accepted are both 0 after the first); the host
+stops and one missed check logs nothing, the second logs `Host lab-connections
+stopped answering: ...` once, later misses log nothing, and the route status
+says the home address didn't answer (refused); the host comes back and the next
+check logs `Host lab-connections answers again.` once over one new connection;
+a host that misses every other check logs nothing. The report's `log` holds the
+lines. Loopback only; writes nothing. Windows running out of ports
+(`NoBufferSpaceAvailable`) is not simulated; unit tests check its wording.
+
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
@@ -3897,7 +3959,14 @@ or `DIVA, desktop-diva · diva-host. Connected. Runs: Martlet host PC, Speaking,
 so one snapshot shows the whole map. The map fits up to six devices on each
 side of This PC; the rest fold into a `Node-more:computers` (or
 `Node-more:services`) card, *44 more computers* with how many need attention,
-whose click opens the list. `DevicesViewMap` and `DevicesViewList` switch
+whose click opens the list.
+A device that Martlet changes now (a recommended setup applied from any of
+your computers, a host role this PC changes, a host PC running a role command
+from another computer, this PC following a plan change) shows the status
+*Configuring: <step>* on its card and in `SelectedDeviceHealth`, for example
+*Configuring: Installing Chatterbox Turbo (2 of 4)*
+([Configuring](CLUSTER.md#configuring)).
+`DevicesViewMap` and `DevicesViewList` switch
 between the map and the list (passive); the list shows by itself once the map
 can't fit every device. The list shows every device as a `Node-<id>` card (This
 PC, then those needing attention, then by name) with `DeviceFilter-all`,
@@ -4554,8 +4623,9 @@ the coarse `zones` crossed) and `physical`. Without `points` it only reads.
 Companion › Character › Touch zones' `CharacterPhysicalLast` shows Martlet's
 summary.
 
-**Where Martlet draws over the face**: the blush glow (on a model without a
-blush of its own) and the overlay emotes are drawn around the face each time
+**Where Martlet draws over the face**: the blush levels (the blush on a model
+without a blush of its own, and `blush_deep` and `blush_fierce` on every model,
+over its own blush) and the overlay emotes are drawn around the face each time
 the renderer page draws a frame. A Live2D model's face is pinned to its own
 face meshes. When the model loads, the page moves each head angle
 (`ParamAngleX`, `ParamAngleY`, `ParamAngleZ`) to find the mesh vertices that
@@ -4575,7 +4645,8 @@ has `n`, `found`, `tracking` (`mesh`, `bones` or `estimate`), `x`, `y` and
 `width` (fractions of the overlay's drawing, +y down), `tilt` (degrees,
 clockwise), `cheekLeft` and `cheekRight` (`x`, `y`, `visible` from 0 to 1,
 `across`, the cheek's width against the face's width, and the hit test there:
-`hit`, `drawables`, `bone`, `mesh`), `overlays` (the overlays showing) and
+`hit`, `drawables`, `bone`, `mesh`), `overlays` (the overlays showing, such as
+`["blush_deep"]`; one fading out is listed until it is gone) and
 `pinned` (Live2D: `carriers`, how many mesh vertices the face rides on, and
 `milliseconds`, how long finding them took at load). `summary` gives the
 `tracking` used, how far the face `moved` (`x`, `y`, `width`, `tilt`) and, for
@@ -4678,6 +4749,29 @@ show while the character shows or a place is saved: showing, they move it to
 the lower-right of the main screen even when locked (it stays locked there)
 and save that; hidden, they forget the saved place so it next shows at its
 default spot, unlocked (`placement.state` `none`).
+
+**When the character's renderer fails a command** (its pipe breaks, it sends
+something unreadable or it runs out of time): only the work that draws the
+character ends. A sentence's lip-sync (loudness mouth or Audio2Face frames), a
+song's mouth, a gaze, an emote or saving where the character is stops, and the
+voice goes on. `ToggleCharacter` (*Hide character*) always finishes, and no
+*Martlet recovered from an unexpected error* dialog shows. Each kind of failure
+gets one short desktop log line a minute, without a stack trace, for example
+*The character's new position couldn't be read to save it: Renderer message
+length is invalid (InvalidDataException).*; the next line for the same failure
+adds *(N more like it in the minute before weren't logged.)*. To check this
+without a broken renderer, set `MARTLET_SIMULATE_RENDERER_FAILURE` to the
+renderer commands to fail, comma-separated (for example `where,lock,zoom`),
+before launching the desktop (`-Desktop` passes the environment on). FIXTURE,
+never a real failure: the shown character's renderer fails those commands the
+way a broken pipe does (*Renderer message length is invalid (simulated by
+MARTLET_SIMULATE_RENDERER_FAILURE).*), and the desktop log says so each time
+the character shows (*FIXTURE: the character renderer fails its ... commands*).
+The renderer still starts, draws and closes normally. Commands include `where`
+(saving its place after `ui_move`), `lock` (`ToggleCharacterLock`), `zoom`
+(`ResetCharacterZoom`), `home` (`ResetCharacterPosition`), `mouth` (the
+loudness mouth), `reset` and `apply` (Audio2Face frames), `gaze`, `action`
+(emotes and motions), `say` (speech bubbles), `theme` and `camera`.
 
 The same page's *Speech bubbles and subtitles* card has the checkboxes
 `SetupCharacterSpeechBubbles` (on by default) and `SetupCharacterSubtitles`
@@ -4806,7 +4900,8 @@ tags replies get with the voice chosen now and which follow the voice's cues;
 and drawing it holds, *Gestures now: wink playing, eyes_up, mouth_open, blush,
 hearts held.* (held gestures layer; see
 [Layers](AVATARS.md#emotes-and-motions)); an emote Martlet drew over the face itself, such
-as the blush glow on a model without a blush of its own, adds *drawn by Martlet
+as the blush glow on a model without a blush of its own, or `blush_deep` and
+`blush_fierce` on any model, adds *drawn by Martlet
 over the face at 414, 88 (50 pixels wide, tilted 3°, pinned to the face's meshes)* with the face's middle and
 width in the overlay's page pixels, the head's roll (clockwise) and how the face is followed (*pinned to the
 face's meshes* for Live2D, *following the head bone* for VRM, or *estimated from the head's angles* for a

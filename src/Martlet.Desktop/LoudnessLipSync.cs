@@ -67,12 +67,14 @@ internal static class LoudnessLipSync
 {
     private static readonly TimeSpan Tick = TimeSpan.FromMilliseconds(33);
 
-    /// <summary>Sends the mouth level for the currently audible part of the segment until playback ends.</summary>
+    /// <summary>Sends the mouth level for the currently audible part of the segment until playback ends. A character renderer
+    /// that fails a level ends this sentence's mouth movement with one short log line; the voice goes on.</summary>
     /// <param name="paused">While true (another lip-sync source is animating), no levels are sent.</param>
     internal static async Task PresentAsync(GeneratedSpeechObservation segment, LoudnessMeter meter,
         Func<double, Task> send, Func<bool> paused, CancellationToken token)
     {
         double last = -1;
+        var failed = false;
         try
         {
             while (!token.IsCancellationRequested && !segment.Stopped.IsCompleted)
@@ -87,7 +89,13 @@ internal static class LoudnessLipSync
                     var level = position is { } played && snapshot.State == PlaybackState.Playing ? meter.LevelAt(played) : 0;
                     if (Math.Abs(level - last) > 0.02 || level == 0 && last != 0)
                     {
-                        await send(Math.Round(level, 3));
+                        try { await send(Math.Round(level, 3)); }
+                        catch (Exception error) when (RendererFailures.Is(error, token))
+                        {
+                            failed = true;
+                            RendererFailures.Log("The character's mouth stopped following Martlet's voice for a sentence", error);
+                            return;
+                        }
                         last = level;
                     }
                 }
@@ -96,9 +104,9 @@ internal static class LoudnessLipSync
         }
         finally
         {
-            if (last > 0 && !token.IsCancellationRequested)
+            if (last > 0 && !failed && !token.IsCancellationRequested)
                 try { await send(0); }
-                catch (Exception error) when (error is IOException or InvalidOperationException or OperationCanceledException or TimeoutException) { }
+                catch (Exception error) when (error is OperationCanceledException || RendererFailures.Is(error, token)) { }
         }
     }
 

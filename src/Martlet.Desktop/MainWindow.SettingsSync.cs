@@ -117,6 +117,8 @@ public partial class MainWindow
             if (!closing)
             {
                 ShowSettingsStatus();
+                // Another computer's run applying the recommended setup arrives with the settings.
+                ShowConfiguring();
                 // Another computer's role (companion or host PC) arrives with the settings and changes how the map draws it.
                 if (DevicesPage.IsVisible && NetworkDevicesSignature() != networkDevicesShown) RenderMap();
             }
