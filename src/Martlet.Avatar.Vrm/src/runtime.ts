@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { VRM, VRMHumanBoneList, VRMLoaderPlugin } from "@pixiv/three-vrm";
+import { VRM, type VRMExpression, VRMHumanBoneList, VRMLoaderPlugin } from "@pixiv/three-vrm";
 import { blinkPresets, finite, gazePresets, inspectVrm, integer, mouthPresets, object, requireValid, VrmError,
   type VrmCapabilities } from "./inspect.js";
 import { type EyeFields, type EyeHint, type EyesFrom, type FaceFrame, VrmEyes } from "./eyes.js";
@@ -72,6 +72,26 @@ const BLUSH_EXPRESSION = /blush|cheek|照れ|赤面|頬|脸红|臉紅|홍조/i;
 function mouthShape(model: VRM): "oh" | "aa" | undefined {
   const expressions = model.expressionManager;
   return expressions?.getExpression("oh") ? "oh" : expressions?.getExpression("aa") ? "aa" : undefined;
+}
+
+/** How long the voice keeps the character's mouth after its last sound, in seconds, so the pauses between its words and
+ *  sentences don't give the mouth back to the emotes. */
+export const VOICE_HOLD_SECONDS = 1;
+
+/** Who moves the mouth now (VrmRuntime.mouthReading). */
+export interface VrmMouthReading {
+  /** 0 to 1: how much the voice has the mouth now; it eases in when the voice starts and out after VOICE_HOLD_SECONDS. */
+  readonly voice: number;
+  /** The voice (a lip-sync level or a composed frame) moved the mouth within the last VOICE_HOLD_SECONDS. */
+  readonly speaking: boolean;
+  /** The voice's loudness on the mouth now (0 to 1). */
+  readonly level: number;
+  /** How far a held open mouth (mouth_open) opens the mouth before the voice takes it (0 to 1). */
+  readonly emote: number;
+  /** How far the mouth expressions (aa, ih, ou, ee, oh) open the mouth now, after what blocks them (0 to 1). */
+  readonly open: number;
+  /** 0 to 1: how much the expressions showing block the mouth expressions now (their overrideMouth). */
+  readonly blocked: number;
 }
 
 /** How far the eyes turn (radians) at a held eyes gesture's full strength: the model's own look-up range for its eye bones
@@ -481,8 +501,13 @@ export class VrmRuntime {
   private gesture: { name: VrmGesture; seconds: number } | undefined;
   private blush: { name: string; level: BlushLevel; seconds: number; hold: boolean } | undefined;
   private held: { name: HoldableGesture; seconds: number; progress: number; on: boolean }[] = [];
-  // 0 to 1: how much the voice moves the mouth now (eased), so a held open mouth makes room for lip-sync.
+  // 0 to 1: how much the voice has the mouth now (eased), whether it spoke within the last VOICE_HOLD_SECONDS, and how far a
+  // held open mouth opens it before the voice takes it.
   private talk = 0;
+  private speaking = false;
+  private heldMouth = 0;
+  // The expressions whose overrideMouth is "none" while the voice has the mouth, with the model's own setting to give back.
+  private readonly mouthOverrides = new Map<VRMExpression, VRMExpression["overrideMouth"]>();
   private face: Readonly<Record<string, number>> = {};
   // Expressions the gestures' face wrote last frame and their values before, put back before the next frame is composed.
   private readonly faceRestore = new Map<string, number>();
@@ -632,6 +657,31 @@ export class VrmRuntime {
   private restoreFace(model: VRM): void {
     for (const [name, value] of this.faceRestore) model.expressionManager?.setValue(name, value);
     this.faceRestore.clear();
+  }
+
+  /** While the voice has the mouth, the emotes showing (expressions turned on, passing or held, and the gestures' face) never
+   *  block or blend the mouth expressions it moves: an emote that sets the mouth (a VRoid surprised, an authored shout) would
+   *  otherwise hold it still while the character talks. Their overrideMouth is "none" until the voice is done; then each gets
+   *  the model's own setting back, so the mouth is the emote's again. */
+  private giveMouth(model: VRM): void {
+    const expressions = model.expressionManager;
+    const emotes = this.speaking && expressions ? new Set([...this.actions.keys(), ...this.faceRestore.keys()]) : new Set<string>();
+    for (const [expression, override] of this.mouthOverrides) {
+      if (emotes.has(expression.expressionName)) continue;
+      expression.overrideMouth = override;
+      this.mouthOverrides.delete(expression);
+    }
+    for (const name of emotes) {
+      const expression = expressions!.getExpression(name);
+      if (!expression || expression.overrideMouth === "none" || this.mouthOverrides.has(expression)) continue;
+      this.mouthOverrides.set(expression, expression.overrideMouth);
+      expression.overrideMouth = "none";
+    }
+  }
+
+  private giveMouthBack(): void {
+    for (const [expression, override] of this.mouthOverrides) expression.overrideMouth = override;
+    this.mouthOverrides.clear();
   }
 
   /**
@@ -790,9 +840,13 @@ export class VrmRuntime {
     this.speech += (target - this.speech) * Math.min(1, deltaSeconds * (target > this.speech ? 30 : 14));
     // Fresh composed (Audio2Face) frames own the mouth; loudness resumes when they stop.
     const composing = this.identity !== undefined && this.composedAge < 0.25;
-    // A held open mouth eases back while the voice moves the mouth, so lip-sync still shows on it.
-    this.talk += ((composing || this.speechAge <= 0.3 ? 1 : 0) - this.talk) * Math.min(1, deltaSeconds * 5);
-    const mouthOpen = Math.min(1, pose.mouth) * (1 - 0.7 * this.talk), shape = mouthShape(model);
+    // The voice (a lip-sync level or a composed frame) has the mouth from its first sound until VOICE_HOLD_SECONDS after its
+    // last. Meanwhile a held open mouth gives way to it entirely, and it opens again once the voice is done.
+    this.speaking = Math.min(this.speechAge, this.identity !== undefined ? this.composedAge : Number.POSITIVE_INFINITY) <= VOICE_HOLD_SECONDS;
+    // The voice takes the mouth quickly, so its first sound shows, and gives it back gently.
+    this.talk += ((this.speaking ? 1 : 0) - this.talk) * Math.min(1, deltaSeconds * (this.speaking ? 10 : 5));
+    this.heldMouth = Math.min(1, pose.mouth);
+    const mouthOpen = this.heldMouth * (1 - this.talk), shape = mouthShape(model);
     if (!composing && expressions.getExpression("aa")) expressions.setValue("aa", Math.min(1, this.speech + (shape === "aa" ? mouthOpen : 0)));
     if (shape === "oh" && !(this.identity !== undefined && this.selection?.mappings.some(m => m.expression === "oh")))
       expressions.setValue("oh", mouthOpen);
@@ -841,6 +895,18 @@ export class VrmRuntime {
       curl: { ...(curlLeft !== undefined ? { left: curlLeft } : {}), ...(curlRight !== undefined ? { right: curlRight } : {}) },
       sway: degrees(this.sway),
     });
+  }
+
+  /** Who moves the mouth now, for Martlet's MCP (character_mouth; see VrmMouthReading): how much the voice has it, its
+   *  loudness, how far a held open mouth would open it, how far the mouth expressions open it after what blocks them, and how
+   *  much the expressions showing block them. Undefined before a model with expressions loads. */
+  get mouthReading(): VrmMouthReading | undefined {
+    const expressions = this.model?.expressionManager;
+    if (!expressions) return undefined;
+    const blocked = Math.min(1, expressions.expressions.reduce((sum, expression) => sum + expression.overrideMouthAmount, 0));
+    const open = Math.max(0, ...mouthPresets.map(name => expressions.getValue(name) ?? 0)) * (1 - blocked);
+    return Object.freeze({ voice: this.talk, speaking: this.speaking, level: this.speech, emote: this.heldMouth,
+      open: Math.min(1, open), blocked });
   }
 
   async load(buffer: ArrayBuffer): Promise<VrmCapabilities> {
@@ -1016,6 +1082,7 @@ export class VrmRuntime {
     if (this.idle) this.animateIdle(model, deltaSeconds); else this.face = {};
     this.updateActions(model, deltaSeconds);
     this.applyFace(model);
+    this.giveMouth(model);
     model.humanoid.update();
     const neutralEyes: { node: THREE.Object3D; rotation: THREE.Quaternion }[] = [];
     if (model.lookAt && this.identity && this.selection?.gaze) {
@@ -1077,6 +1144,7 @@ export class VrmRuntime {
     this.identity = undefined; this.sequence = -1; this.sampleOffset = -1; this.playbackOffset = -1; this.pose = {};
     this.composedAge = Number.POSITIVE_INFINITY;
     this.faceRestore.clear(); this.face = {};
+    this.giveMouthBack();
     this.poses++;
     if (this.model) {
       this.model.humanoid.resetNormalizedPose();
@@ -1097,6 +1165,6 @@ export class VrmRuntime {
     this.model = undefined; this.inspected = undefined; this.selection = undefined; this.revision = undefined; this.inputMode = undefined;
     this.eyes = undefined;
     this.actions.clear(); this.heldExpressions.clear(); this.gesture = undefined; this.held = []; this.blush = undefined; this.hipsRest = undefined;
-    this.talk = 0;
+    this.talk = 0; this.speaking = false; this.heldMouth = 0;
   }
 }

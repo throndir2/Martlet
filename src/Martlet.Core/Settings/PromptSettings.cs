@@ -42,6 +42,7 @@ public static class PromptCatalog
     public const string CommentaryScreen = "commentary_screen";
     public const string CommentaryCamera = "commentary_camera";
     public const string SeenWithMessage = "seen_with_message";
+    public const string SeenApp = "seen_app";
     public const string SeenTag = "seen_tag";
     public const string ReadOnScreen = "read_on_screen";
     public const string ScreenDigest = "screen_digest";
@@ -191,8 +192,8 @@ public static class PromptCatalog
         "or camera and what plays on their PC. There are three levels:\n" +
         "quiet: speak up only when something is clearly remarkable or they'd want to know; otherwise [{silent}].\n" +
         "normal: say something when it's worth saying; otherwise [{silent}].\n" +
-        "chatty: react more often to what they do and what happens, like a friend enjoying it with them, but never to their " +
-        "setup or what merely sits on screen, and still [{silent}] when nothing new happened.\n" +
+        "chatty: react more often to what they do and what happens, like a friend enjoying it with them, but never to the UI, " +
+        "their setup or what merely sits on screen, and still [{silent}] when nothing new happened.\n" +
         "Levels only change remarks nobody asked for: always answer the user when they talk to you. Martlet's notes say your " +
         "level right now. Change it whenever what's happening or what the user says calls for it: go quiet when they're " +
         "focused, busy, on a call, watching or listening closely, seem tired of your remarks or ask for quiet; go chatty when " +
@@ -489,21 +490,28 @@ public static class PromptCatalog
 
         new(CommentaryScreen, VisionGroup, "Screen glance instructions",
             "Instructions for a look at your screen. The chattiness line follows.",
-            "You can see the user's screen: the attached image is what they are looking at right now, which may include the " +
-            "taskbar and pop-up notifications. You are hanging out with them like a friend in the room while they play or work.\n" +
+            "You can see the user's screen: the attached image is what they are looking at right now, which may also show other " +
+            "windows, other monitors, the taskbar and pop-up notifications. You are hanging out with them like a friend in the " +
+            "room while they play or work.\n" +
+            "Focus only on what the user is actively doing or watching: what happens in the active app that Martlet's message " +
+            "names (the game they play, the video or stream they watch, what they write, code, read or chat about). When that " +
+            "app is full screen, they are immersed in it: talk only about what happens there. Everything else in the picture is " +
+            "background, apart from a new message, call or reminder that pops up.\n" +
             "First make a quick educated guess, to yourself, at what they are doing right now (playing, watching, coding, writing, " +
-            "chatting, reading, shopping...) and what they are trying to do. Use this picture, what you saw at your last looks, " +
-            "what they said lately, what you heard playing on their PC and Martlet's notes on how their screen changed.\n" +
+            "chatting, reading, shopping...) and what they are trying to do. Use this picture, the active app, what you saw at " +
+            "your last looks, what they said lately, what you heard playing on their PC and Martlet's notes on how their screen " +
+            "changed.\n" +
             "Real friends stay quiet most of the time. Reply with exactly [{silent}] unless something about what they are doing is " +
             "genuinely worth a remark right now: a notable moment, a win or a fail, progress or a setback, something funny or " +
             "surprising, a switch to something new, a quick tip they would welcome, or a new message, call or reminder they may " +
             "want to know about.\n" +
             "If you speak, talk about that activity like a friend glancing over (\"Ooh, that boss is almost down!\" or \"Nice, the " +
-            "build went green.\"); when you aren't sure, a light guess is fine. Never comment on their computer or setup: how many " +
-            "monitors, windows, apps or tabs, the layout, wallpaper, icons, theme or taskbar, or how busy or complicated it looks " +
-            "(not \"Wow, you have such a complicated setup!\", \"That's a lot of Discord friends!\" or \"Nice wallpaper!\"). " +
-            "Menus, sidebars, contact, server or channel lists and anything else that is just there are never worth a remark. If " +
-            "you can't tie a remark to what they are doing or what just happened, reply [{silent}].\n" +
+            "build went green.\"); when you aren't sure, a light guess is fine. Never comment on the UI, their computer or their " +
+            "setup: the app's own buttons, menus, toolbars, sidebars, tabs, panels, settings, icons or theme; their monitors, " +
+            "windows, apps, layout, wallpaper or taskbar; or how busy or complicated it looks (not \"Wow, you have such a " +
+            "complicated setup!\", \"That's a lot of Discord friends!\", \"Nice dark theme!\" or \"Nice wallpaper!\"). Contact, " +
+            "server or channel lists and anything else that is just there are never worth a remark. If you can't tie a remark to " +
+            "what they are doing or what just happened, reply [{silent}].\n" +
             "Never describe or narrate the screen, never mention images or screenshots, never repeat or paraphrase something you said recently, " +
             "and never ask them to answer. For a message or notification, say only who or which app it is from, like \"Sam just messaged " +
             "you\"; never read out the message itself or other private details you can see (messages, emails, numbers).\n" +
@@ -527,8 +535,8 @@ public static class PromptCatalog
         new(ChattinessNormal, VisionGroup, "Chattiness: normal", "Closes the glance instructions when vision is normal.",
             "Answer [{silent}] unless it is worth saying.", ["silent"]),
         new(ChattinessChatty, VisionGroup, "Chattiness: chatty", "Closes the glance instructions when vision is chatty.",
-            "You are in a chatty mood: react more readily to what the user is doing, but never to their setup or what merely sits " +
-            "on screen, and still answer [{silent}] when nothing new happened.", ["silent"]),
+            "You are in a chatty mood: react more readily to what the user is doing, but never to the UI, their setup or what " +
+            "merely sits on screen, and still answer [{silent}] when nothing new happened.", ["silent"]),
         new(ChattinessDecides, VisionGroup, "Chattiness: Martlet decides",
             "Closes the glance instructions, and is added to replies to what this PC plays and to your messages while vision is on " +
             "or Martlet hears this PC, when How often it comments is Martlet decides. It stays the same from message to message. " +
@@ -540,9 +548,12 @@ public static class PromptCatalog
             "say the level (it starts at normal and changes when a reply switches it). {level} is quiet, normal or chatty.",
             "Your chattiness right now: {level}.", ["level"]),
         new(GlanceScreen, VisionGroup, "Screen glance message",
-            "The message sent with each screenshot. {title} is the active window's title; {remarks} is the line below when Martlet already said something.",
-            "(Screen glance. Active window: \"{title}\".{remarks} Reply [{silent}] or one short remark on what they're doing.)",
-            ["title", "remarks", "silent"]),
+            "The message sent with each screenshot. {app} is the program in front by name (such as Google Chrome), with " +
+            "(full screen) when its window fills its monitor, a borderless one too; {title} is the active window's title; " +
+            "{remarks} is the line below when Martlet already said something.",
+            "(Screen glance. Active app: {app}. Active window: \"{title}\".{remarks} Reply [{silent}] or one short remark on what " +
+            "they're doing.)",
+            ["app", "title", "remarks", "silent"]),
         new(GlanceCamera, VisionGroup, "Camera look message",
             "The message sent with each camera image. {title} is the camera's name; {remarks} is the line below when Martlet already said something.",
             "(Camera glance. Camera: \"{title}\".{remarks} Reply [{silent}] or one short remark.)",
@@ -552,11 +563,13 @@ public static class PromptCatalog
             "What you already said while watching, oldest first: {remarks}.", ["remarks"]),
         new(GlanceAttention, VisionGroup, "Notification glance message",
             "The message sent with the screenshot Martlet takes right away when a notification pops up or a taskbar button flashes " +
-            "while it watches your whole screen. {what} says which; {title} is the active window's title; {remarks} is the " +
-            "Earlier remarks line when Martlet already said something.",
-            "(Screen glance: {what}. Active window: \"{title}\".{remarks} If it is a message, call or reminder they would want to " +
-            "know about, give a quick heads-up: who or which app it is from, never the message itself. Otherwise reply [{silent}].)",
-            ["what", "title", "remarks", "silent"]),
+            "while it watches your whole screen. {what} says which; {app} is the program in front (as in the Screen glance " +
+            "message); {title} is the active window's title; {remarks} is the Earlier remarks line when Martlet already said " +
+            "something.",
+            "(Screen glance: {what}. Active app: {app}. Active window: \"{title}\".{remarks} If it is a message, call or reminder " +
+            "they would want to know about, give a quick heads-up: who or which app it is from, never the message itself. " +
+            "Otherwise reply [{silent}].)",
+            ["what", "app", "title", "remarks", "silent"]),
         new(GlanceLook, VisionGroup, "Where the character looks",
             "Added to screen glances while Companion › Vision › Glances at your screen is Martlet decides and the character " +
             "shows, so the Thinking model can turn the character's eyes to a part of the picture. {tags} lists the nine look tags, " +
@@ -565,12 +578,25 @@ public static class PromptCatalog
             DefaultGlanceLookInstructions, ["tags", "silent"]),
         new(SeenWithMessage, VisionGroup, "Screen with your message",
             "Added to replies while vision is on: the newest picture of what Martlet watches goes with what you type or say. " +
-            "{source} says what the picture shows.",
-            "When the user's message comes with a picture, it shows {source} right now, so you see what they see. Use it when " +
+            "{source} says what the picture shows (your active window, your whole screen or a camera). It stays the same when " +
+            "you switch windows, so the model's prompt cache keeps it: the program in front and its window's title go in the " +
+            "message's notes (Active app with your message) when they changed since the conversation's latest [Screen] line.",
+            "When the user's message comes with a picture, it shows {source} right now, so you see what they see. The active app " +
+            "is the one Martlet's notes name, or, without such a note, the one in the latest [Screen] line. Use the picture when " +
             "it helps your answer, especially when they refer to something on it (\"this\", \"look at that\", \"who messaged " +
-            "me?\"); otherwise answer normally. Never describe it unprompted, never mention images or screenshots, and never read " +
-            "out private details from it (messages, emails, numbers) unless they ask about them.",
+            "me?\"), and then talk about what they are doing or watching in the active app, never about the UI or their setup " +
+            "unless they ask; otherwise answer normally. Never describe it unprompted, never mention images or screenshots, and " +
+            "never read out private details from it (messages, emails, numbers) unless they ask about them.",
             ["source"]),
+        new(SeenApp, VisionGroup, "Active app with your message",
+            "Goes with your message when its picture shows your screen and the program in front or its window changed since " +
+            "the conversation's latest [Screen] line, in the notes that are sent but not kept (the conversation keeps the " +
+            "message's [Screen] line instead), so the instructions stay the same when you switch windows and nothing is added " +
+            "while you stay in one window. {app} is the program in front by name (such as Google Chrome), with (full screen) " +
+            "when its window fills its monitor, a borderless one too; {title} is its window's title. Empty it and replies " +
+            "aren't told which app is in front.",
+            "Active app in the picture: {app}. Active window: \"{title}\".",
+            ["app", "title"]),
         new(SeenTag, VisionGroup, "What you saw",
             "Added to every screen glance and camera look, and to replies whose message comes with a picture, after their own " +
             "instructions; it never changes, so the instructions stay the same. The reply ends with [seen: ...]: a few words on " +
@@ -578,8 +604,8 @@ public static class PromptCatalog
             "line) instead of the picture, which is never kept. {silent} is the word for staying quiet. Empty it and the " +
             "conversation keeps only where Martlet looked.",
             "When you get a picture, end your answer (also after [{silent}]) with [seen: a few words on what is going on right " +
-            "now, mainly what the user is doing], like [seen: they're racing, final lap, in first]: at most 12 plain words, once, " +
-            "at the very end. It is " +
+            "now, mainly what the user is doing or watching, not the UI or their setup], like [seen: they're racing, final lap, " +
+            "in first]: at most 12 plain words, once, at the very end. It is " +
             "never shown or spoken; it only helps you remember what you saw. Never put private details in it (messages, emails, " +
             "names in them, numbers).",
             ["silent"]),
@@ -592,13 +618,13 @@ public static class PromptCatalog
             ["text"]),
         new(ScreenDigest, VisionGroup, "Screen summary over time",
             "Sent in the background, never on the live conversation's route, while Screen summary over time is on: one picture " +
-            "made of {count} small screenshots from the last {seconds} seconds ({panels} says where each is and when it was " +
-            "taken), then the text read on them. The one or two lines it answers go with your next message as a note; " +
-            "[{silent}] means nothing changed. A reply never waits for it.",
+            "made of {count} small screenshots from the last {seconds} seconds ({panels} says where each is, when it was " +
+            "taken and the program in front), then the text read on them. The one or two lines it answers go with your next " +
+            "message as a note; [{silent}] means nothing changed. A reply never waits for it.",
             "This picture holds {count} small screenshots of the user's screen from the last {seconds} seconds, oldest first: " +
             "{panels}. In one or two short lines, say what the user did and what changed over that time, like a note to " +
             "yourself: \"They switched from VS Code to a boss fight; health dropped to 20%.\" Name the apps, games, places and " +
-            "numbers that show what they are doing; skip their setup and what only sits on screen. Never " +
+            "numbers that show what they are doing or watching; skip the UI, their setup and what only sits on screen. Never " +
             "copy private details (messages, emails, names in them, account numbers). If nothing worth noting changed, answer " +
             "exactly [{silent}]. Answer with the note only.",
             ["count", "seconds", "panels", "silent"]),

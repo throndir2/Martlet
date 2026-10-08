@@ -2790,6 +2790,29 @@ conversation's looks show in `logs_tail` `contains` `Vision:` as *Vision: the
 conversation keeps a screen glance (passed, described, in place of the passed
 look before it).* It reads no credentials and contacts nothing.
 
+`active_app_check` reads the [program in
+front](SCREEN_COMMENTARY.md#the-program-in-front) the way Martlet's screen
+glances do, with the desktop's production `ActiveApp`: `inFront` is the window
+in front right now (`found`, `app`, its name such as *Visual Studio Code*,
+`fullScreen`, `told`, the words a look sends, such as *Google Chrome (full
+screen)*, and `readMs`, how long reading it took the `first` time and `again`
+with the name already known, as each capture every 3 seconds reads it; never
+the window's title), `sample` is the name `explorer.exe` gets
+(*Windows Explorer*), and `rules` is the full-screen rule on FIXTURE windows
+(`window`, `maximized`, `titleBar`, `fullScreen`): a borderless full-screen
+game or video and a maximized borderless window fill their monitor, a
+maximized window with a title bar never does (also over a taskbar that hides
+itself), a window smaller than its monitor doesn't, and a borderless window
+filling the second monitor does. `prompts` shows, for a FIXTURE full-screen
+game, Companion › Prompts › *Screen glance message* (`glance`) and *Active app
+with your message* (`withMessage`) as the data directory's settings.json fills
+them (`state` `none`, `loaded` or `unreadable`; optional absolute
+`dataDirectory`, a disposable one through `scripts\Invoke-MartletMcp.ps1`), and
+the `[Screen]` line the conversation keeps (`kept`). In a running
+conversation, the talk window's `LiveVisionStatus` `help` shows it as *Active
+app: Google Chrome (full screen).* It reads no credentials and contacts
+nothing.
+
 `screen_digest_check` runs the [screen summary over
 time](SCREEN_COMMENTARY.md#martlet-knows-what-changed-over-time) once with the
 desktop's production `ScreenDigester` on **FIXTURE** frames (made-up pictures of
@@ -4946,6 +4969,36 @@ to 18 degrees from straight down, its elbows bent about 16 degrees and its
 fingers curled about 60 degrees. `MoveAvatar`'s value in `ui_snapshot` shows
 the last reading as `pose`.
 
+**Who moves the character's mouth**: while Martlet speaks, its voice has the
+character's mouth, and an emote's mouth comes back about a second after the
+voice stops (see *The voice has the mouth* in
+[Emotes and motions](AVATARS.md#emotes-and-motions)). `character_mouth` reads
+it through UI Automation (`MoveAvatar`'s value `"mouth"`), `samples` times (1
+to 60) `gapMs` apart (default 250). Each reading in `mouths` has `n`, `found`
+(false before a model shows), `renderer`, `parameter` (Live2D: the parameter
+read, `ParamMouthOpenY` when the model has it), `voice` (0 to 1: how much the
+voice has the mouth), `speaking` (the voice moved the mouth within the last
+second), `level` (the voice's loudness on it), `emote` (how far the emotes
+open the mouth before the voice takes it; a VRM: its held open mouth), `open`
+(how far the mouth is open now, 0 at rest to 1) and, for a VRM, `blocked` (how
+much the expressions showing block its mouth expressions). `summary` gives
+`found`, the share of readings `speaking`, the `voice`, `level`, `emote`,
+`open` and `blocked` ranges (`least`, `most`) and the `last` reading. Reading
+changes nothing, so it needs no `--allow-ui-effects`.
+
+With `levels` (1 to 400 loudness levels from 0 to 1), the mouth first moves as
+Martlet's loudness lip-sync moves it, one level every `stepMs` (10 to 1000,
+default 50), without a sound (`MoveAvatar`'s value `"voice:ms;level;..."`).
+The readings start at once. This changes the character, so it needs
+`--allow-ui-effects`. For example:
+
+1. Hold `mouth_open` with its `CharacterActionTry-<n>` button.
+2. Send 20 levels with 40 samples 100 ms apart.
+3. Check that `open` follows the levels while `speaking`, stays near 0 in a
+   pause, and goes back to `emote` about a second after the last level.
+
+`MoveAvatar`'s value in `ui_snapshot` shows the last reading as `mouth`.
+
 **Moves, zooms and other changes Martlet hears about**: the overlay notes each
 drag, arrow-key nudge, `ui_move`, zoom (wheel, menu, keys or Martlet's zoom
 buttons), reset zoom, pan of a zoomed view and Reset position, and once it has
@@ -5614,7 +5667,9 @@ screen.* or *Watching the window behind Martlet.*, then only a look in progress
 *Taking a break from looking.*, *The provider is busy; waiting before the next
 look.*, *Martlet noticed a notification and looks once you're done talking.*)
 or a look that failed; its `help` (the tooltip) says how many monitors the
-whole screen spans (*Your whole screen is 2 monitors.*), how the last look went
+whole screen spans (*Your whole screen is 2 monitors.*), the program in front
+as the Thinking model is told it (*Active app: Google Chrome (full screen).*),
+how the last look went
 (*Last look 10:17 PM (a flashing taskbar button): nothing to say.*) and what
 wanted your attention but wasn't looked at (*Noticed a notification at 10:17 PM
 but didn't look: you seem away.*); whether a message went with the picture is
@@ -6198,7 +6253,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

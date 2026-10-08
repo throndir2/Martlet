@@ -336,8 +336,8 @@ export function heldFrame(name: HoldableGesture, seconds: number, weight: number
 }
 
 /** The frames added up. A gesture holding the eyes takes `look` (the head direction the gestures' looks add to) out of the
- *  eyeballs; while the voice speaks (`talk`, 0 to 1), a held open mouth eases back, so lip-sync still moves the mouth. */
-function combine(frames: readonly GestureFrame[], look: { readonly x: number; readonly y: number }, talk: number): GestureFrame {
+ *  eyeballs. While the voice speaks, the adapter gives it the mouth (a held open mouth included; see Live2DAdapter.update). */
+function combine(frames: readonly GestureFrame[], look: { readonly x: number; readonly y: number }): GestureFrame {
   const turn = { x: 0, y: 0 }, parameters: Record<string, number> = {};
   let eyes = 0;
   for (const frame of frames) {
@@ -349,7 +349,6 @@ function combine(frames: readonly GestureFrame[], look: { readonly x: number; re
     parameters.ParamEyeBallX = (parameters.ParamEyeBallX ?? 0) - eyes * (look.x + turn.x);
     parameters.ParamEyeBallY = (parameters.ParamEyeBallY ?? 0) - eyes * (look.y + turn.y);
   }
-  if (parameters.ParamMouthOpenY) parameters.ParamMouthOpenY *= 1 - 0.7 * talk;
   return { look: turn, parameters, ...(eyes > 0 ? { eyes } : {}) };
 }
 
@@ -367,7 +366,6 @@ const HOLD_EASE = 0.8;
 export class GesturePlayer {
   #playing: { name: Gesture; seconds: number } | undefined;
   #held: { name: HoldableGesture; seconds: number; progress: number; on: boolean }[] = [];
-  #talk = 0;
 
   /** Plays `name` once, or holds it when `hold` and it can be held (see `HOLDABLE_GESTURES`). */
   play(name: Gesture, hold = false): void {
@@ -382,7 +380,7 @@ export class GesturePlayer {
     for (const held of this.#held) if (held.name === name) held.on = false;
   }
 
-  clear(): void { this.#playing = undefined; this.#held = []; this.#talk = 0; }
+  clear(): void { this.#playing = undefined; this.#held = []; }
 
   get state(): GestureState {
     return Object.freeze({ ...(this.#playing ? { playing: this.#playing.name } : {}),
@@ -390,10 +388,8 @@ export class GesturePlayer {
   }
 
   /** The combined frame `deltaSeconds` later, or undefined when nothing plays. `look` is where the head and eyes turn
-   *  without the gestures (the mouse, a point): a gesture holding the eyes (eyes_up) keeps it out of the eyeballs.
-   *  `speaking`: lip-sync moves the mouth now. */
-  advance(deltaSeconds: number, look: { readonly x: number; readonly y: number } = { x: 0, y: 0 }, speaking = false): GestureFrame | undefined {
-    this.#talk += ((speaking ? 1 : 0) - this.#talk) * Math.min(1, deltaSeconds * 5);
+   *  without the gestures (the mouse, a point): a gesture holding the eyes (eyes_up) keeps it out of the eyeballs. */
+  advance(deltaSeconds: number, look: { readonly x: number; readonly y: number } = { x: 0, y: 0 }): GestureFrame | undefined {
     const frames: GestureFrame[] = [];
     let duck = 0;
     if (this.#playing) {
@@ -409,6 +405,6 @@ export class GesturePlayer {
       frames.push(moodFrame(held.name, held.seconds, smooth(held.progress) * (1 - duck)));
     }
     this.#held = this.#held.filter(held => held.on || held.progress > 0);
-    return frames.length ? combine(frames, look, this.#talk) : undefined;
+    return frames.length ? combine(frames, look) : undefined;
   }
 }

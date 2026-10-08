@@ -15,14 +15,20 @@ internal enum GlanceSkip { None, MartletInFront, NoWindow, Minimized, Private, B
 /// <summary>One downscaled look at what the user has in front of them. Pixels live only in memory (BGRA32, top-down)
 /// and are zeroed by <see cref="Clear"/>; nothing is written to disk or logs. A screenshot also knows where on the desktop it
 /// was taken (<see cref="Area"/>, physical pixels) and how much each cell of a coarse grey grid changed since the screenshot
-/// before of the same area (<see cref="Changes"/>, for where the character looks).</summary>
+/// before of the same area (<see cref="Changes"/>, for where the character looks). A screenshot of the screen also knows the
+/// program in front (<see cref="App"/>) and whether its window fills its monitor (<see cref="FullScreen"/>).</summary>
 internal sealed class ScreenFrame(byte[] pixels, int width, int height, string title, double change, ScreenRect? area = null,
-    byte[]? changes = null)
+    byte[]? changes = null, string app = "", bool fullScreen = false)
 {
     private byte[]? pixels = pixels;
     internal int Width { get; } = width;
     internal int Height { get; } = height;
     internal string Title { get; } = title;
+    /// <summary>The program the active window belongs to, by name (<see cref="ActiveApp"/>); empty for a camera, or when
+    /// Windows doesn't say.</summary>
+    internal string App { get; } = app;
+    /// <summary>The active window fills its monitor: a full-screen game (borderless too), video or slide show.</summary>
+    internal bool FullScreen { get; } = fullScreen;
     /// <summary>How much the picture changed since the previous capture, 0 (identical) to 1.</summary>
     internal double Change { get; } = change;
     /// <summary>Where on the desktop the screenshot was taken; null for a camera.</summary>
@@ -83,7 +89,8 @@ internal interface IScreenGlancer
 /// monitor). No hooking or injection. When a Martlet window is in front, it looks at the window behind it. Martlet's own
 /// windows, password managers and private browsing windows are painted over wherever they show; a minimized window or a
 /// password manager / private window in front is never captured; protected video and windows that exclude themselves from
-/// capture read back black and are skipped.</summary>
+/// capture read back black and are skipped. Each screenshot also names the program in front and says whether its window
+/// fills its monitor (<see cref="ActiveApp"/>).</summary>
 internal sealed class ScreenGlancer : IScreenGlancer
 {
     internal const int MaximumEdge = 1024;
@@ -180,7 +187,7 @@ internal sealed class ScreenGlancer : IScreenGlancer
         var protectedContent = false;
         var pixels = GrabMonitor(monitorHandle, area, width, height, ref note, ref protectedContent);
         if (pixels is null) return new(null, GlanceSkip.CaptureFailed, note);
-        return Finish(pixels, width, height, area, title, own, window, note, protectedContent, behind, 1);
+        return Finish(pixels, width, height, area, title, own, window, note, protectedContent, behind, 1, ActiveApp.Of(window));
     }
 
     // Every monitor in one picture, laid out as Windows arranges them; areas no monitor covers stay black.
@@ -221,12 +228,14 @@ internal sealed class ScreenGlancer : IScreenGlancer
             Array.Clear(pixels);
             return new(null, GlanceSkip.CaptureFailed, note, Monitors: monitors.Count);
         }
-        return Finish(pixels, width, height, area, title, own, window, note, protectedContent, behind, monitors.Count);
+        return Finish(pixels, width, height, area, title, own, window, note, protectedContent, behind, monitors.Count,
+            window == 0 ? ("", false) : ActiveApp.Of(window));
     }
 
-    // The black check, painting over Martlet's own and private windows, and the change score.
+    // The black check, painting over Martlet's own and private windows, and the change score. The program in front and whether
+    // it fills its monitor go with the picture.
     private GlanceResult Finish(byte[] pixels, int width, int height, NativeRect area, string title, uint own, nint target,
-        string? note, bool protectedContent, bool behind, int monitors)
+        string? note, bool protectedContent, bool behind, int monitors, (string Name, bool FullScreen) app)
     {
         var signature = Signature(pixels, width, height);
         if (signature.Max() < 10)
@@ -248,7 +257,8 @@ internal sealed class ScreenGlancer : IScreenGlancer
         previousGrid = grid;
         previousArea = area;
         return new(new(pixels, width, height, title.Length > 80 ? title[..80] : title, change,
-            new ScreenRect(area.Left, area.Top, area.Width, area.Height), changes), GlanceSkip.None, note, protectedContent, behind, monitors);
+            new ScreenRect(area.Left, area.Top, area.Width, area.Height), changes, app.Name, app.FullScreen),
+            GlanceSkip.None, note, protectedContent, behind, monitors);
     }
 
     // Duplication first: it sees full-screen games and does not stall the game the way a GDI screen read can. A still desktop

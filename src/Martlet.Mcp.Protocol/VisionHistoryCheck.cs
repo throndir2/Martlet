@@ -23,7 +23,7 @@ internal static class VisionHistoryCheck
         "[pass]"
     ];
 
-    private const string Where = "the user's active window \"Program.cs - Visual Studio Code\"";
+    private static readonly string Where = VisionHistory.Screen(false, "Program.cs - Visual Studio Code", "Visual Studio Code");
 
     internal static async Task<object> RunAsync(string directory, string? reply, CancellationToken cancellation)
     {

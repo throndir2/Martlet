@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Martlet now knows which app you're using and whether it's full screen, like a game, a video or a slide show, and it talks about what you're doing or watching in it instead of your screen's menus, buttons, layout or setup. Hover over the talk window's vision line to see the app it tells your Thinking model about. Replies also stay quick when you switch windows. ([#600](https://github.com/throndir2/Martlet/pull/600))
 - Martlet now reacts when you move your desktop character around, not only when you touch it: drag it somewhere new or to another monitor and it says something about it a moment later, unless you talk or type first. ([#597](https://github.com/throndir2/Martlet/pull/597))
 - Your character now starts with ready-made combos that show several emotes at once: lovestruck, flustered, overheated, fuming, heartbroken, dozing, starstruck and shocked, and ahegao, which stays off until you turn it on. Change, turn off or remove any of them in Companion › Character › Emotes and motions › Combos; one you remove doesn't come back. A character can now have 24 combos. ([#596](https://github.com/throndir2/Martlet/pull/596))
 
@@ -20,6 +21,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 - Chat bubbles in the talk window are now only as wide as their words, without the empty space that a longer name, time or note next to them used to add. ([#602](https://github.com/throndir2/Martlet/pull/602))
+- While Martlet speaks, its voice now always moves your character's mouth, even when an emote sets the mouth, such as an open mouth, `{starstruck}`, `{ahegao}` or one of the character's own expressions (a VRoid emotion, for example). About a second after Martlet stops talking, the emote's mouth comes back. ([#601](https://github.com/throndir2/Martlet/pull/601))
 - Martlet's drawings on a Live2D character's face, such as the blush, tears, sweat drops and symbols over the head, now stay in place when she looks down at your mouse or turns and tilts her head, also on characters whose head moves through their own physics. ([#598](https://github.com/throndir2/Martlet/pull/598))
 
 ## [0.55.0] - 2026-10-07

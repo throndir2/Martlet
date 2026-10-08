@@ -22,8 +22,8 @@ internal sealed record ScreenDigestTiming
     internal TimeSpan Window { get; init; } = TimeSpan.FromSeconds(24);
     /// <summary>The most pictures kept.</summary>
     internal int MaximumFrames { get; init; } = 8;
-    /// <summary>How much a picture must change (0 to 1, the glancer's grey thumbnail score) to be kept; a new window title
-    /// is always kept.</summary>
+    /// <summary>How much a picture must change (0 to 1, the glancer's grey thumbnail score) to be kept; a new window title or
+    /// program in front is always kept.</summary>
     internal double MinimumChange { get; init; } = 0.01;
     /// <summary>The least time between two summaries while the picture changes.</summary>
     internal TimeSpan Every { get; init; } = TimeSpan.FromSeconds(15);
@@ -44,12 +44,15 @@ internal sealed record ScreenDigestTiming
 }
 
 /// <summary>One kept picture: downscaled BGRA32 pixels (top-down) in memory only, zeroed by <see cref="Clear"/>.</summary>
-internal sealed class ScreenDigestFrame(byte[] pixels, int width, int height, string title, DateTimeOffset at, string? text)
+internal sealed class ScreenDigestFrame(byte[] pixels, int width, int height, string title, DateTimeOffset at, string? text,
+    string app = "")
 {
     private byte[]? pixels = pixels;
     internal int Width { get; } = width;
     internal int Height { get; } = height;
     internal string Title { get; } = title;
+    /// <summary>The program in front, as the conversation names it ("Google Chrome, full screen"); empty when unknown.</summary>
+    internal string App { get; } = app;
     /// <summary>When Martlet first saw this picture; it stayed on screen until the next kept one.</summary>
     internal DateTimeOffset At { get; } = at;
     /// <summary>The text Companion › Reading read on the screen at that time, or null.</summary>
@@ -63,7 +66,8 @@ internal sealed class ScreenDigestFrame(byte[] pixels, int width, int height, st
 }
 
 /// <summary>The recent pictures that changed, for the screen summary over time. Memory only: never saved or logged, and
-/// every picture it lets go is zeroed. A picture that hardly changed (and has the same window title) is skipped, so the newest
+/// every picture it lets go is zeroed. A picture that hardly changed (and has the same window title and program in front) is
+/// skipped, so the newest
 /// kept picture is still what the screen shows. A picture goes once the picture after it is older than
 /// <see cref="ScreenDigestTiming.Window"/>; the newest always stays.</summary>
 internal sealed class ScreenDigestRing(ScreenDigestTiming timing)
@@ -76,17 +80,18 @@ internal sealed class ScreenDigestRing(ScreenDigestTiming timing)
 
     /// <summary>Keeps a picture when it changed enough or shows another window. <paramref name="pixels"/> (BGRA32, top-down)
     /// is read only then and downscaled to <see cref="ScreenDigestTiming.PanelEdge"/>; the caller keeps (and clears) its own
-    /// copy. Returns whether the picture was kept.</summary>
-    internal bool Observe(int width, int height, string title, double change, DateTimeOffset at, string? text, Func<byte[]?> pixels)
+    /// copy. <paramref name="app"/> is the program in front. Returns whether the picture was kept.</summary>
+    internal bool Observe(int width, int height, string title, double change, DateTimeOffset at, string? text, Func<byte[]?> pixels,
+        string app = "")
     {
         Prune(at);
         if (width <= 0 || height <= 0) return false;
-        if (frames.Count > 0 && change < timing.MinimumChange && frames[^1].Title == title) return false;
+        if (frames.Count > 0 && change < timing.MinimumChange && frames[^1].Title == title && frames[^1].App == app) return false;
         if (pixels() is not { } source || source.Length < width * height * 4) return false;
         try
         {
             var (small, w, h) = Downscale(source, width, height, timing.PanelEdge);
-            frames.Add(new(small, w, h, title, at, string.IsNullOrWhiteSpace(text) ? null : text));
+            frames.Add(new(small, w, h, title, at, string.IsNullOrWhiteSpace(text) ? null : text, app));
         }
         finally { Array.Clear(source); }
         while (frames.Count > Math.Max(2, timing.MaximumFrames)) RemoveAt(0);
@@ -238,7 +243,10 @@ internal static class ScreenDigestPrompt
         {
             var ago = (int)Math.Round((now - frame.At).TotalSeconds);
             var title = Clean(frame.Title);
-            return $"{places[i]} {(ago <= 1 ? "just now" : $"{ago} s ago")}{(title.Length > 0 ? $" (window \"{title}\")" : "")}";
+            var app = Clean(frame.App);
+            var where = title.Length > 0 && app.Length > 0 ? $" ({app}, window \"{title}\")"
+                : title.Length > 0 ? $" (window \"{title}\")" : app.Length > 0 ? $" ({app})" : "";
+            return $"{places[i]} {(ago <= 1 ? "just now" : $"{ago} s ago")}{where}";
         }));
         var seconds = Math.Max(1, (int)Math.Round((now - picked[0].At).TotalSeconds));
         var prompt = PromptSettings.Fill(prompts, PromptCatalog.ScreenDigest, ("count", picked.Count.ToString()),
@@ -400,13 +408,14 @@ internal sealed class ScreenDigester
         covered = null;
     }
 
-    /// <summary>Offers a new picture of what Martlet watches; <paramref name="pixels"/> is read only when it is kept.</summary>
-    internal bool Observe(int width, int height, string title, double change, string? text, Func<byte[]?> pixels)
+    /// <summary>Offers a new picture of what Martlet watches; <paramref name="pixels"/> is read only when it is kept.
+    /// <paramref name="app"/> is the program in front, as the conversation names it.</summary>
+    internal bool Observe(int width, int height, string title, double change, string? text, Func<byte[]?> pixels, string app = "")
     {
         lock (gate)
         {
             if (!on || !thinker.CanSee) return false;
-            return ring.Observe(width, height, title, change, clock.GetUtcNow(), text, pixels);
+            return ring.Observe(width, height, title, change, clock.GetUtcNow(), text, pixels, app);
         }
     }
 

@@ -186,6 +186,26 @@ what each one is.
   The head part includes the body. The tables are `HOLD_PARTS` in
   `Martlet.Avatar.Live2D`'s `lib/gestures.ts` and `VRM_HOLD_PARTS` in
   `Martlet.Avatar.Vrm`'s `src/runtime.ts`.
+- **The voice has the mouth**: while Martlet speaks, its voice moves the
+  character's mouth, whatever the emotes showing do to the mouth. An emote that
+  sets the mouth gives way to the voice, so the lips follow the words. Examples
+  are `mouth_open`, a combo such as `{starstruck}` or `{ahegao}`, and a model's
+  own expression that opens the mouth or holds it in a shape. The rest of the
+  emote (the eyes, brows, cheeks and drawings) stays on.
+  - The voice keeps the mouth through the pauses between words and sentences.
+    About a second after its last sound, the emote's mouth comes back: an open
+    mouth opens again. The voice takes the mouth again at its next sound.
+  - Live2D: each frame, what idle motions, expressions and gestures put on the
+    lip-sync parameters and `ParamMouthOpenY` eases back to the model's rest
+    while the voice speaks. Lip-sync then moves them alone.
+  - VRM: a held open mouth gives way completely. The emotes showing also don't
+    block or blend the mouth expressions while the voice speaks. VRoid
+    emotions often set this (`overrideMouth: block`), which held the mouth
+    still. Each expression gets the model's own setting back afterwards. One
+    VRM expression can't be split into its mouth and the rest, so an emotion
+    whose own shape opens the mouth keeps that shape under the voice's mouth.
+  - Audio2Face frames count as the voice. Martlet's MCP `character_mouth`
+    reads who moves the mouth.
 - **What the reply model knows**: while lingering emotes show, the notes of the
   newest message tell the reply model (Companion › Prompts › *Character emotes
   showing now*). An example: *Your character is showing {glasses} (12 min),
@@ -419,7 +439,7 @@ what each one is.
   | `eye_roll` | the eyes roll up and over | `ParamEyeBallX`, `ParamEyeBallY` | `head` |
   | `drowsy` | half-closed eyes, the head slowly nodding off and catching itself | `ParamEyeLOpen`, `ParamEyeROpen` | `head`, `spine` (`blink`) |
   | `eyes_up` | only the eyes turn up and stay up; the head doesn't move | `ParamEyeBallY` | `leftEye`, `rightEye` |
-  | `mouth_open` | the mouth opens and stays open; the voice still moves it | `ParamMouthOpenY` | `head` (the `oh` mouth expression, or `aa`) |
+  | `mouth_open` | the mouth opens and stays open; while Martlet speaks, the voice moves it | `ParamMouthOpenY` | `head` (the `oh` mouth expression, or `aa`) |
 
   `eyes_up` and `mouth_open` come last in `AllGestures`, after the overlay
   emotes, so the reply instructions' earlier lines stay the same.
@@ -439,10 +459,12 @@ what each one is.
   eyes follow the usual gaze again. Live2D moves `ParamEyeBallY` and takes the
   look out of the eyeballs. A VRM turns its eye bones up as far as its own
   look-up range (12° when it has none). While `mouth_open` is held and the
-  voice speaks, the held opening eases back to a third, so lip-sync still moves
-  the mouth. When the voice stops, the mouth opens fully again. Live2D adds to
-  `ParamMouthOpenY`. A VRM uses its `oh` mouth expression, or `aa` when it has
-  no `oh`; a composed (Audio2Face) turn keeps the mouth it drives.
+  voice speaks, the voice has the mouth (see *The voice has the mouth* above):
+  the held opening gives way completely, so lip-sync opens and closes the
+  mouth. About a second after the voice stops, the mouth opens fully again.
+  Live2D adds to `ParamMouthOpenY`. A VRM uses its `oh` mouth expression, or
+  `aa` when it has no `oh`; a composed (Audio2Face) turn keeps the mouth it
+  drives.
 - **Where it looks**: the head and eyes follow the character's usual gaze (your
   mouse, your mouse only when it's near, straight ahead, or the window you're
   using), chosen on Companion › Character › **Where the character looks** or
