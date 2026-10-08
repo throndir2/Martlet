@@ -29,6 +29,9 @@ internal static class ThinkingPoolCheck
         var places = ThinkLonger.Places(plan, null, member => ThinkingPoolCapabilities.For(member, abilities)).Where(p => p.Id != "thinking").ToArray();
         var members = places.Select(p => new ThinkingPoolMemberStatus(p.Id, p.Name, p.Slots, 0, p.Can, p.Rank)).ToArray();
         var slots = members.Sum(m => m.Slots);
+        var (desktop, file) = DesktopStatus(dataDirectory);
+        // Which members' computers answer now: only the desktop knows (its host checks), through thinking-pool-status.json.
+        JsonNode? Seen(string key) => (file?["members"] as JsonArray)?.FirstOrDefault(m => m?["id"]?.GetValue<string>() == key);
         return new
         {
             file = state,
@@ -40,12 +43,15 @@ internal static class ThinkingPoolCheck
             {
                 var spot = plan.Find(m.Key);
                 var can = ThinkingPoolCapabilities.For(m, abilities);
+                var seen = Seen(m.Key);
                 return new
                 {
                     key = m.Key, where = m.Describe(), place = m.Place.ToString(), model = m.ModelId, hostId = m.HostId,
                     hostRole = m.OnHostRole, slots = m.ThinksAtOnce, ownKey = m.CredentialId is not null,
                     text = true, vision = can.HasFlag(ThinkingCapability.Vision), audio = can.HasFlag(ThinkingCapability.Audio),
                     available = spot?.Plan.Available ?? false, rank = spot?.Plan.Rank, why = spot?.Plan.Why,
+                    // Whether its computer answers now (null: the desktop hasn't said), and since when it doesn't.
+                    online = seen?["online"]?.GetValue<bool>(), offlineSince = seen?["offlineSince"]?.GetValue<DateTimeOffset>(),
                     // May answer for the conversation (Backup Thinking), off by default; a paid cloud member only when ticked.
                     answersForConversation = pool.Answers(m.Key), paid = ThinkingBackupMembers.Paid(m)
                 };
@@ -70,22 +76,30 @@ internal static class ThinkingPoolCheck
             }),
             guidance = ThinkingJobBoard.Guidance(members),
             warnings = ThinkingPoolWarnings.For(plan, routes),
-            desktop = DesktopStatus(dataDirectory)
+            // The pool now, as the desktop last wrote it: slots of the members that answer, of every member, and who is offline.
+            presence = file is null ? null : new
+            {
+                slots = file["slots"]?.GetValue<int>(), free = file["free"]?.GetValue<int>(), configuredSlots = file["configuredSlots"]?.GetValue<int>(),
+                offline = (file["members"] as JsonArray)?.Where(m => m?["online"]?.GetValue<bool>() == false).Select(m => m!["name"]?.GetValue<string>()).ToArray() ?? [],
+                conversationModelStandsIn = file["conversationModelStandsIn"]?.GetValue<bool>(), updated = file["updated"]?.GetValue<DateTimeOffset>()
+            },
+            desktop
         };
     }
 
-    private static object DesktopStatus(string dataDirectory)
+    private static (object Status, JsonNode? File) DesktopStatus(string dataDirectory)
     {
         var path = Path.Combine(dataDirectory, "thinking-pool-status.json");
         try
         {
-            if (!File.Exists(path)) return new { state = "none", why = "The desktop hasn't run a conversation with this data directory." };
-            if (new FileInfo(path).Length > 262_144) return new { state = "unreadable", why = "thinking-pool-status.json is too large." };
-            return new { state = "loaded", file = JsonNode.Parse(File.ReadAllText(path)) };
+            if (!File.Exists(path)) return (new { state = "none", why = "The desktop hasn't run a conversation with this data directory." }, null);
+            if (new FileInfo(path).Length > 262_144) return (new { state = "unreadable", why = "thinking-pool-status.json is too large." }, null);
+            var file = JsonNode.Parse(File.ReadAllText(path));
+            return (new { state = "loaded", file }, file);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {
-            return new { state = "unreadable", why = error.GetType().Name };
+            return (new { state = "unreadable", why = error.GetType().Name }, null);
         }
     }
 
@@ -255,6 +269,75 @@ internal static class ThinkingPoolCheck
                 never.Change == ThinkingPoolHostChange.None && full.Members.Count == DeepThinkingSettings.MaxPlaces &&
                 ninth.Change == ThinkingPoolHostChange.None && hostPc.Change == ThinkingPoolHostChange.None,
                 $"{left.Why} {never.Why} {ninth.Why} {hostPc.Why}");
+        }
+
+        // 9. Presence: a member's computer goes offline and answers again (the desktop's HostPresence feeds the broker's Reachable).
+        {
+            var thinkingRoute = new SetupRoute
+            {
+                RouteType = SetupRouteType.ChatCompletions, Role = SetupRole.Llm, ProviderAlias = ChatCompletionsSetup.Alias,
+                Origin = ChatCompletionsEndpointCatalog.OpenRouterBaseUrl, ModelId = "x-ai/grok-4.3", ConfigurationRevision = Guid.NewGuid(), Enabled = true
+            };
+            SetupRoute[] routes = [thinkingRoute];
+            static DeepThinkingSettings Role(string host, int slots) => new()
+            {
+                Place = DeepThinkingPlace.Host, ModelId = "qwen3:8b", HostId = host, HostOrigin = $"https://{host}.local:9443",
+                HostSpkiFingerprint = "sha256/fixture", HostDeviceId = "desk-pc", HostCredentialId = Guid.NewGuid(),
+                HostRouteId = SelfHostSetup.DeepThinkingRouteId, Slots = slots
+            };
+            var settings = new ThinkingPoolSettings().Add(Role("diva", 2)).Add(Role("ripley", 1));
+            var offline = new System.Collections.Concurrent.ConcurrentDictionary<string, bool>(StringComparer.Ordinal);
+            var places = new BackgroundPlaces { Reachable = place => !(place.Id.StartsWith("host:", StringComparison.Ordinal) && offline.ContainsKey(place.Id[5..])) };
+            // The members the board reads: every configured member, whether its computer answers or not (as the desktop's PoolMembers).
+            var configured = ThinkLonger.Places(settings.Plan(routes));
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var board = new ThinkingJobBoard(places, () => configured, async (m, job, token) =>
+            {
+                if (job.Kind == ThinkingJobKind.Memory) await release.Task.WaitAsync(token);
+                return ThinkingAnswer.Done(m.Name);
+            });
+            // The tool text a reply carries comes from the configured members only (the desktop's ReplyThinkTools).
+            string Tools() => JsonSerializer.Serialize(ThinkLonger.Definitions(new ThinkLongerSettings(), ThinkLonger.Slots(ThinkLonger.Places(settings.Plan(routes)))));
+            var tools = Tools();
+            var all = board.Status();
+
+            offline["diva"] = true;
+            places.Reconsider();
+            var away = board.Status();
+            var live = settings.Plan(routes, offline: [.. offline.Keys]);
+            var ran = await board.RunAsync(Job(ThinkingJobKind.Digest), cancellation);
+            Check("presence: an offline member's slots leave the pool and jobs go to the others",
+                all is { Slots: 3, ConfiguredSlots: 3 } && away is { Slots: 1, ConfiguredSlots: 3 } &&
+                away.Members.Single(m => m.Id == "host:diva").Online == false && ran.Member == "ripley" &&
+                live.Usable.Select(s => s.Computer).SequenceEqual(["ripley"]) && live.Find("host:diva")!.Plan.Offline,
+                $"slots {all.Slots} -> {away.Slots} of {away.ConfiguredSlots}; digest on {ran.Member}; diva: {live.Find("host:diva")!.Plan.Why}");
+
+            // ripley busy and diva offline: a memory job waits in line, and starts on diva once it answers again.
+            var holding = places.TryAcquire([configured.Single(p => p.Name == "ripley")], "other-job")!;
+            var waiting = board.RunAsync(Job(ThinkingJobKind.Memory), cancellation);
+            await WaitAsync(() => places.WaitingKinds.Count == 1, cancellation);
+            var waited = !waiting.IsCompleted;
+            offline["ripley"] = true;
+            var none = settings.Plan(routes, offline: [.. offline.Keys]);
+            var noneStatus = board.Status();
+            var toolsAllOffline = Tools();
+            offline.Clear();
+            places.Reconsider();
+            await WaitAsync(() => places.Leases.Any(l => l.Holder.StartsWith("memory", StringComparison.Ordinal)), cancellation);
+            var placedOn = places.Leases.FirstOrDefault(l => l.Holder.StartsWith("memory", StringComparison.Ordinal))?.Place.Name;
+            release.TrySetResult();
+            var back = await waiting;
+            holding.Dispose();
+            var again = board.Status();
+            Check("presence: a job waiting in line starts on a member that answers again, and its slots come back",
+                waited && placedOn == "diva" && back.Member == "diva" && again is { Slots: 3, ConfiguredSlots: 3 },
+                $"waited {waited}; placed on {placedOn}; slots back to {again.Slots}");
+            Check("presence: every computer offline lets the conversation model stand in",
+                none.Plan.Available && none.Usable.Single().Settings.Separate == false && noneStatus.Slots == 0 &&
+                noneStatus.Guidance[0].StartsWith("Every Thinking pool computer is offline", StringComparison.Ordinal),
+                none.Plan.Why);
+            Check("presence: the think_longer tool text stays byte-identical", Tools() == tools && toolsAllOffline == tools,
+                ThinkLonger.Description(new ThinkLongerSettings(), ThinkLonger.Slots(ThinkLonger.Places(settings.Plan(routes)))));
         }
 
         return new

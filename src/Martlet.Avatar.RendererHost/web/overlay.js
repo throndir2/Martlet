@@ -31,14 +31,15 @@ export const activeOverlays = () => [...active.keys()];
 /** The overlays held on (started with `hold` and not stopped). */
 export const heldOverlays = () => [...active].filter(([, state]) => state.hold && !state.stop).map(([name]) => name);
 
-/** Starts an overlay from the beginning; held, it stays until `stopOverlay`. False when no overlay has that name. */
+/** Starts an overlay from the beginning; held, it stays until `stopOverlay`. Played once while it is held, it stays held, as
+ *  a model's held gesture does. False when no overlay has that name. */
 export function startOverlay(name, { hold = false } = {}) {
   const overlay = registry.get(String(name));
   if (!overlay) return false;
   const running = active.get(String(name));
   // Restarting one that shows keeps its current strength instead of flashing off.
   const t = running ? Math.min(overlayWeight(running), 1) * overlay.fadeIn : 0;
-  active.set(String(name), { overlay, t, hold: hold === true, stop: undefined });
+  active.set(String(name), { overlay, t, hold: hold === true || running?.hold === true && !running.stop, stop: undefined });
   return true;
 }
 

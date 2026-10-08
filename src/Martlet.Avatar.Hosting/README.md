@@ -179,8 +179,22 @@ position** on the locked character's right-click menu unlocks it. The locked pla
 (`character-placement.json`, never shared with other computers), so a locked
 character shows there again after it is hidden or Martlet restarts (at the
 default spot, still locked, if that place is no longer on a screen). Unlocked,
-position is session-only. This is not a global click-through or game-injected
-overlay. Exclusive-fullscreen applications may cover it.
+position is session-only.
+
+**Let clicks pass through** on the character's right-click menu, **Turn on
+click-through** (home screen, shown while the character is visible), **Turn on
+click-through** on Companion > Character or **Let clicks pass through the
+character** on the notification-area menu makes the overlay ignore the mouse
+(`RendererClickThrough`, Windows' `WS_EX_TRANSPARENT` on the overlay and its
+speech bubble): clicks, the wheel and right-clicks go to the window under it,
+for example a game. The character still follows the mouse with its eyes, talks
+and moves. The mouse can't reach its menu then, so **Turn off click-through**
+(home screen or Companion > Character, also while the character is hidden) or
+the notification-area menu turns it off. The choice is saved on this PC
+(`character-click-through.json`, never shared with other computers), so a
+character shows click-through again after it is hidden or Martlet restarts;
+Reset position leaves it alone. The camera view always catches clicks. This is
+not a game-injected overlay. Exclusive-fullscreen applications may cover it.
 
 The character's head and eyes follow the mouse. Martlet can also send the overlay
 a `gaze` command (`RendererGaze`): a point on the desktop in physical screen

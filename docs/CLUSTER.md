@@ -73,7 +73,11 @@ another host** choice.
   to a free one of those computers, the one sharing least with the conversation
   first (one doing none of its jobs before one that also speaks, before the
   computer doing Thinking), so with four computers one speaks and three think
-  about three things at once. Each result comes back to the speaking computer
+  about three things at once. A member whose computer stops answering (the
+  device sync check, or a pool job that can't reach it) gets no new work, and
+  its slots leave the pool until it answers again; work waiting in line then
+  starts there ([Computers that go
+  offline](CONVERSATION.md#computers-that-go-offline)). Each result comes back to the speaking computer
   and is brought into its conversation as usual. Other kinds of background work
   use the same placement (`BackgroundPlaces`; see [Background job
   API](CONVERSATION.md#background-job-api-for-new-kinds-of-background-work)).

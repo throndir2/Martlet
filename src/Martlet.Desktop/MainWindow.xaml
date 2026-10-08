@@ -103,6 +103,10 @@
                                         <!-- Locks the character where it is; only this window (here or Companion › Character) unlocks it. -->
                                         <Button x:Name="LockCharacterButton" Content="Lock character p_osition" Click="LockCharacter_Click" Padding="16,12" Margin="0,0,12,8"
                                                 Visibility="Collapsed" AutomationProperties.AutomationId="ToggleCharacterLock"/>
+                                        <!-- Lets clicks pass through the character; the character can't turn it off itself, so it is turned off here,
+                                             in Companion › Character or from the notification-area icon. -->
+                                        <Button x:Name="ClickThroughCharacterButton" Content="Turn on click-thro_ugh" Click="ClickThroughCharacter_Click" Padding="16,12" Margin="0,0,12,8"
+                                                Visibility="Collapsed" AutomationProperties.AutomationId="ToggleCharacterClickThrough"/>
                                     </WrapPanel>
                                     <!-- Character profiles (MainWindow.CharacterProfiles.cs): switch look, voice and personality at once -->
                                     <WrapPanel x:Name="HomeCharacterRow" Margin="0,0,0,8" Visibility="Collapsed">

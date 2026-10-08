@@ -62,7 +62,7 @@ public partial class MainWindow
                 Job = job.Job, Doer = JobDoer.ThisDevice, DoerName = name, Enabled = enabled, Reviewed = reviewed,
                 NotConnected = "this option can be saved, but conversations don't use it yet. Choose OpenAI or one of your hosts"
             };
-        var keyMissing = route.CredentialId is null && (route.RouteType is null or SetupRouteType.OpenAi ||
+        var keyMissing = route.CredentialId is null && (route.RouteType is null or SetupRouteType.OpenAi or SetupRouteType.ElevenLabs ||
             route.RouteType == SetupRouteType.ChatCompletions && ChatCompletionsEndpointCatalog.Named(route.Origin) is not null);
         return new()
         {
