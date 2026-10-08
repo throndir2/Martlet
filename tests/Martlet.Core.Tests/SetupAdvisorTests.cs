@@ -7,17 +7,57 @@ public sealed class SetupAdvisorTests
     private static AdvisorRole Role(SetupAdvice advice, string prefix) => advice.Roles.Single(r => r.Role.StartsWith(prefix, StringComparison.Ordinal));
 
     [Fact]
-    public void BalancedGamingPcKeepsGpuFreeAndOffloadsTheLlm()
+    public void BalancedGamingPcKeepsTheGpuForGamesAndThinksOnTheProcessor()
     {
         var advice = SetupAdvisor.Recommend(new() { ThisPcGpu = AdvisorGpu.Nvidia16, GamesOnThisPc = true, Character = true });
 
-        Assert.Equal("Online", Role(advice, "Thinking").Where);
+        Assert.Equal("This PC (CPU)", Role(advice, "Thinking").Where);
         Assert.Equal(AdvisorAvailability.Available, Role(advice, "Thinking").Availability);
-        Assert.NotNull(Role(advice, "Thinking").HowTo);
+        Assert.Contains("no account", Role(advice, "Thinking").Why, StringComparison.Ordinal);
         Assert.Equal("This PC (CPU)", Role(advice, "Speech-to-text").Where);
-        Assert.Equal("Online", Role(advice, "Voice").Where);
+        Assert.Equal("This PC (CPU)", Role(advice, "Voice").Where);
         Assert.Equal("Loudness lip-sync", Role(advice, "Lip-sync").Choice);
+        Assert.DoesNotContain(advice.Roles, r => r.Where == "Online");
+        Assert.Contains(AdvisorInstall.Ollama, advice.ThisPcInstalls);
         Assert.DoesNotContain(AdvisorNextStep.Hosts, advice.NextSteps);
+    }
+
+    [Fact]
+    public void BalancedPutsThinkingOnTheGpuFirstAndTheRestWhereThereIsRoom()
+    {
+        var small = SetupAdvisor.Recommend(new() { ThisPcGpu = AdvisorGpu.Nvidia8, Character = true });
+        Assert.Equal("This PC (GPU)", Role(small, "Thinking").Where);
+        Assert.Equal(AdvisorAvailability.Available, Role(small, "Thinking").Availability);
+        Assert.Equal("This PC (CPU)", Role(small, "Voice").Where);
+        Assert.Equal("Loudness lip-sync", Role(small, "Lip-sync").Choice);
+        Assert.DoesNotContain(small.Roles, r => r.Where == "Online");
+        Assert.Contains("Nothing leaves your computers.", small.Notes);
+
+        var large = SetupAdvisor.Recommend(new() { ThisPcGpu = AdvisorGpu.Nvidia24, Character = true });
+        Assert.Equal("This PC (GPU)", Role(large, "Thinking").Where);
+        Assert.Equal("This PC (GPU)", Role(large, "Voice").Where);
+        Assert.Equal("This PC (GPU)", Role(large, "Lip-sync").Where);
+        Assert.DoesNotContain(large.Roles, r => r.Where == "Online");
+    }
+
+    [Fact]
+    public void BalancedWithoutAnyGpuStillNeedsNoAccount()
+    {
+        var advice = SetupAdvisor.Recommend(new());
+
+        Assert.Equal("This PC (CPU)", Role(advice, "Thinking").Where);
+        Assert.Contains("needs no account", Role(advice, "Thinking").Why, StringComparison.Ordinal);
+        Assert.DoesNotContain(advice.Roles, r => r.Where == "Online");
+        Assert.Contains(advice.Notes, n => n.StartsWith("For quicker replies", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void OnlySmartestAnswersSendsThinkingOnline()
+    {
+        var advice = SetupAdvisor.Recommend(new() { Goal = AdvisorGoal.Smartest, ThisPcGpu = AdvisorGpu.Nvidia16 });
+
+        Assert.Equal("Online", Role(advice, "Thinking").Where);
+        Assert.NotNull(Role(advice, "Thinking").HowTo);
     }
 
     [Fact]
@@ -98,8 +138,8 @@ public sealed class SetupAdvisorTests
     {
         var advice = SetupAdvisor.Recommend(new() { CustomVoice = true });
 
-        Assert.Equal("Online", Role(advice, "Voice").Where);
-        Assert.Contains(advice.Notes, n => n.StartsWith("A custom voice needs an NVIDIA GPU", StringComparison.Ordinal));
+        Assert.Equal("This PC (CPU)", Role(advice, "Voice").Where);
+        Assert.Contains(advice.Notes, n => n.StartsWith("A custom voice needs a free NVIDIA GPU", StringComparison.Ordinal));
     }
 
     [Fact]

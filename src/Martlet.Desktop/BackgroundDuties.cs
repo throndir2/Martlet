@@ -5,7 +5,7 @@ namespace Martlet.Desktop;
 
 /// <summary>The other work each of your computers is kept free for, by the computer's name, so the background broker
 /// (<see cref="BackgroundPlaces"/>) puts thinks on a general computer first and on these only when the general ones are busy:
-/// the computer that sings (Companion › Voice › Singing) and the one that draws pictures (Companion › Pictures, a paired
+/// the computer that sings (Companion › Singing) and the one that draws pictures (Companion › Pictures, a paired
 /// computer's pictures role). Read from this PC's files without the network, so asking costs nothing. A new kind of
 /// on-demand work on a computer adds its computer here.</summary>
 internal static class BackgroundDuties

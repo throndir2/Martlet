@@ -5280,6 +5280,15 @@ filter pills, list items), a combo box in the status fields reads as its
 chosen option, and a check box in the status fields reads as its label (its
 `checkedState` says whether it is ticked).
 
+Companion's side list starts with *How it works*, the jobs Martlet needs in
+priority order: `CompanionTab-Thinking`, `CompanionTab-Listening`,
+`CompanionTab-Voice` and `CompanionTab-LipSync`. *Optional extras* follows with
+the jobs Martlet works without, each with an intro that starts with
+"Optional.": `CompanionTab-DeepThinking` (Thinking pool),
+`CompanionTab-Singing`, `CompanionTab-Pictures`, `CompanionTab-Vision` and
+`CompanionTab-Reading`. Every page shows its group as `CompanionGroupTitle`
+("HOW IT WORKS", "OPTIONAL EXTRAS", ...) and its intro as `CompanionIntro`.
+
 The desktop character has its own group in Companion's side list, *How it
 looks*: `CompanionTab-Character` (the character model, showing and hiding it,
 its position, zoom and your characters), `CompanionTab-SpeechBubbles`,
@@ -6167,7 +6176,8 @@ Thinking in Ollama on this PC), so its voice can fall behind
 voice engine there, or says one would share the card before one is set up.
 `f5_voices` returns the chosen engine as `chosenEngine`.
 
-Below the voice engine, the Singing card ([Singing](SINGING.md)) reads like a
+Companion › Singing (`CompanionTab-Singing`, under *Optional extras*) holds the
+Singing card ([Singing](SINGING.md)), which reads like a
 voice engine row: `SingingEngine` ("Singing" or "Singing · ready"),
 `SingingFeatures` its chips ("NVIDIA GPU 6 GB+, shared, Docker, Sings in your cloned
 voice, With backing music, A few minutes per song, ACE-Step MIT · SoulX-Singer

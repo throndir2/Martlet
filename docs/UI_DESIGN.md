@@ -414,18 +414,24 @@ window ends it unless Martlet is listening or watching, which only hides it.
   Devices tiles and nodes, fix cards, the tour and the advisor all open the matching page
   (Companion opens on the last page used, *Thinking* at first):
 
-  - **How it works** (where each job runs):
+  - **How it works** (the jobs Martlet needs, in priority order, and where
+    each runs):
     1. *Thinking*: where the conversation model runs, the provider, the model
-       and its API key.
-    2. *Voice*: where the voice runs and the voice itself, then the speakers,
-       then *Speak Martlet's replies aloud* (on by default).
-    3. *Listening*: the speech-to-text provider, model and key, then the
+       and its API key. Martlet needs it to answer, so it comes first.
+    2. *Listening*: the speech-to-text provider, model and key, then the
        microphone, then **How you talk**: *Always listening* (the default;
        once you press *Start listening* in the talk window Martlet hears you
        until *Stop listening*, with sensitivity
        and how long a pause ends your turn) or *Push-to-talk*, and Voice ID
        (*Only respond to my voice* and *Set up Voice ID*).
-    4. *Vision*: whether Martlet may look at your screen or a camera when you
+    3. *Voice*: where the voice runs and the voice itself, then the speakers,
+       then *Speak Martlet's replies aloud* (on by default).
+    4. *Lip-sync*: who moves the character's mouth, and where it runs.
+  - **Optional extras** (jobs Martlet works without; each page's intro starts
+    with "Optional."): *Thinking pool* (background thinking on your other
+    models), *Singing* (the Singing card, see [Singing](SINGING.md)),
+    *Pictures*, *Reading* and:
+    5. *Vision*: whether Martlet may look at your screen or a camera when you
        press *Start watching* (on by default, looking at your whole screen):
        what it looks at (whole screen, active
        window, a camera found with *Find cameras*, a phone or
@@ -433,7 +439,6 @@ window ends it unless Martlet is listening or watching, which only hides it.
        connected), how chatty it is, what is captured and where it is sent,
        and *Turn vision off* / *Turn vision on* (which only allows it; *Start
        watching* starts looking).
-    5. *Lip-sync*: who moves the character's mouth, and where it runs.
   - **Who it is**:
     6. *Personality*: the active persona, *Edit
        personality*, and *Import a character card*. The Personality window
