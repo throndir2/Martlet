@@ -620,9 +620,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "snapshotPath as their picture, and with detect the pictures sent; includeIntimate sets Include intimate zones) into an explicit, " +
             "disposable dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
             "{\"attitude\":2,\"reactions\":[\"hearts\",\"blush\"],\"linger\":3}},\"zones\":{...},\"escalation\":{\"after\":3,...}}) or " +
-            "personaId (the temperament saved in the dataDirectory's character-temperaments.json) decides what the touch plays when the " +
-            "zone has no pick of its own, with repeats (touches in a row, for escalation); personality shows the request Thinking gets. " +
-            "Contacts nothing; never returns the model's path.", new
+            "personaId (the temperament that persona uses in the dataDirectory's character-temperaments.json: its own, the built-in " +
+            "reactions or a custom one) decides what the touch plays when the zone has no pick of its own, with repeats (touches in a " +
+            "row, for escalation); personality shows the request Thinking gets. The result's temperament also lists the categories with " +
+            "the zone kinds each covers (intimate holds every intimate kind), the custom temperaments and which temperament each persona " +
+            "uses. Contacts nothing; never returns the model's path.", new
         {
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, modelId = new { type = "string" },
             answer = new { type = "string" }, width = new { type = "integer" }, height = new { type = "integer" },
@@ -636,8 +638,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("character_gaze", "Where the character looks (Companion > Character > Where the character looks, the overlay's Eyes " +
             "menu and Companion > Vision > Glances at your screen; docs/SCREEN_COMMENTARY.md \"Where the character looks\"): usual " +
             "is the usual gaze saved in a data directory's talk-preferences.json (GazeUsual: personality, mouse, near, ahead or " +
-            "window; GazeFree: whether the character may change it in replies), the persona's gaze from character-temperaments.json " +
-            "(the active persona, or personaId), the gaze that applies and who set it, what every reply is told about it and the " +
+            "window; GazeFree: whether the character may change it in replies), the gaze of the touch temperament the persona uses in " +
+            "character-temperaments.json (its own or a custom one; the active persona, or personaId), the gaze that applies and who set it, what every reply is told about it and the " +
             "note while its own choice holds the eyes. aim rehearses the production CharacterGaze.Aim the overlay runs for each " +
             "gaze (a mouse far from and near the character, a window, a touch's look at the mouse, a glance). saved is the glances " +
             "choice (DecideGaze: usual gaze unless Martlet decides), then a rehearsal of the production decision " +

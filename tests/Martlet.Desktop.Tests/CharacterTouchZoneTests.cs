@@ -51,6 +51,17 @@ public sealed class CharacterTouchZoneTests
     }
 
     [Fact]
+    public void IncludeIntimateZonesNamesEveryIntimatePart()
+    {
+        // The check box's words (and the Thinking model's) name each intimate kind, left and right together.
+        foreach (var kind in CharacterTouchZones.Kinds.Where(k => k.Intimate))
+            Assert.Contains(kind.Label.ToLowerInvariant().Replace("left ", "").Replace("right ", ""), CharacterTouchZones.IntimateParts);
+        Assert.Contains("breasts", CharacterTouchZones.IntimateParts);
+        Assert.Contains("groin", CharacterTouchZones.IntimateParts);
+        Assert.Contains(CharacterTouchZones.Kinds, k => k.Id is "breast_left" or "breast_right" or "groin");
+    }
+
+    [Fact]
     public void BindsDrawablesMostlyInsideAndBonesInsideEachBox()
     {
         var zones = new[]

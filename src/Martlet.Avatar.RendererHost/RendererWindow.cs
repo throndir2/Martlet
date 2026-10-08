@@ -22,7 +22,11 @@ internal sealed partial class RendererWindow : Window
     // Menu choices Martlet itself carries out (hide, open, talk, settings, lock, mute and unmute, click-through, where the eyes
     // go); null when started without it (tests).
     private readonly Stream? requests;
-    private readonly SemaphoreSlim requesting = new(1, 1);
+    // Every message to Martlet goes whole and in order: a write is never cut part way (see RendererPipeWriter).
+    private readonly RendererPipeWriter replyWriter;
+    private readonly RendererPipeWriter? requestWriter;
+    // Why the overlay closes by itself, for avatar-renderer.log (Martlet ends the renderer without closing it).
+    private string? closeReason;
     private readonly CancellationTokenSource lifetime = new();
     private readonly Dictionary<string, AvatarAsset> resources = new(StringComparer.Ordinal);
     // Composition avoids the child-HWND airspace/opacity of the ordinary WPF WebView2.
@@ -71,6 +75,8 @@ internal sealed partial class RendererWindow : Window
         this.input = input;
         this.output = output;
         this.requests = requests;
+        replyWriter = new RendererPipeWriter(output, capacity: 4);
+        if (requests is not null) requestWriter = new RendererPipeWriter(requests);
         this.still = still;
         Resources.MergedDictionaries.Add(new ResourceDictionary
         {
@@ -177,6 +183,7 @@ internal sealed partial class RendererWindow : Window
         Closed += (_, _) =>
         {
             closed = true;
+            ErrorLog.Info($"The character overlay closed: {closeReason ?? "its window was closed (not by Martlet)"}.");
             SystemParameters.StaticPropertyChanged -= SystemAppearanceChanged;
             lifetime.Cancel();
             input.Dispose();
@@ -891,24 +898,36 @@ internal sealed partial class RendererWindow : Window
     {
         if (!CanRequest)
         {
-            if (action == "hide") Close();
+            if (action == "hide") CloseBecause("Hide character was chosen and Martlet couldn't be asked to hide it");
             return;
         }
+        if (!await SendRequestAsync("request", new RendererRequest(action), $"The character's '{action}' choice") &&
+            action == "hide" && !closed)
+            CloseBecause("Hide character was chosen and Martlet didn't take the request in time");
+    }
+
+    /// <summary>Sends one unprompted message to Martlet on the request pipe, whole and in order. Waits at most 2 seconds for it
+    /// to go out (after that it still goes out whole, later); returns whether it went out in time.</summary>
+    private async Task<bool> SendRequestAsync<T>(string kind, T data, string what)
+    {
         try
         {
-            await requesting.WaitAsync(lifetime.Token);
-            try
-            {
-                await RendererProtocol.WriteAsync(requests!, RendererProtocol.Message("request", activation, new RendererRequest(action)),
-                    lifetime.Token).WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
-            }
-            finally { requesting.Release(); }
+            await requestWriter!.WriteAsync(RendererProtocol.Message(kind, activation, data))
+                .WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
+            return true;
         }
-        catch (Exception error) when (error is IOException or ObjectDisposedException or OperationCanceledException or TimeoutException)
+        catch (Exception error) when (error is IOException or ObjectDisposedException or OperationCanceledException or
+            TimeoutException or InvalidDataException)
         {
-            ErrorLog.Warn($"The character's '{action}' choice couldn't reach Martlet.", error);
-            if (action == "hide" && !closed) Close();
+            ErrorLog.Warn($"{what} couldn't reach Martlet.", error);
+            return false;
         }
+    }
+
+    private void CloseBecause(string reason)
+    {
+        closeReason ??= reason;
+        Close();
     }
 
     private void DragCharacter(object sender, MouseButtonEventArgs e)
@@ -1086,20 +1105,7 @@ internal sealed partial class RendererWindow : Window
     private async void SendTouch(CharacterTouch touch)
     {
         if (!CanRequest) return;
-        try
-        {
-            await requesting.WaitAsync(lifetime.Token);
-            try
-            {
-                await RendererProtocol.WriteAsync(requests!, RendererProtocol.Message("touch", activation, touch), lifetime.Token)
-                    .WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
-            }
-            finally { requesting.Release(); }
-        }
-        catch (Exception error) when (error is IOException or ObjectDisposedException or OperationCanceledException or TimeoutException)
-        {
-            ErrorLog.Warn("A tap on the character couldn't reach Martlet.", error);
-        }
+        await SendRequestAsync("touch", touch, "A tap on the character");
     }
 
     private const double BubbleRadius = 16, BubblePadX = 16, BubblePadY = 10, TailLength = 22, TailHalfBase = 9,
@@ -1535,13 +1541,17 @@ internal sealed partial class RendererWindow : Window
             System.Runtime.InteropServices.COMException or TimeoutException or JsonException or InvalidDataException or
             Martlet.Core.Contracts.ContractException or OperationCanceledException)
         {
+            // Without this line the log only says the renderer exited cleanly, and Martlet sees a character that just went away.
+            closeReason ??= $"it stopped after an error ({error.GetType().Name}: {error.Message})";
+            ErrorLog.Warn("The character renderer stopped after an error; it tells Martlet and closes.", error);
             try
             {
+                // After any reply still going out, never into it.
                 if (activation != Guid.Empty)
-                    await RendererProtocol.WriteAsync(output, RendererProtocol.Message("error", activation, modelRejection is { Length: > 0 } rejected
+                    await replyWriter.WriteAsync(RendererProtocol.Message("error", activation, modelRejection is { Length: > 0 } rejected
                         ? new { code = "avatar.model_rejected", message = $"This model can't be shown: {rejected}" }
-                        : new { code = "avatar.renderer_unavailable", message = "Renderer/runtime/resource operation failed. Inspect local prerequisites and retry explicitly." }),
-                        CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(1));
+                        : new { code = "avatar.renderer_unavailable", message = "Renderer/runtime/resource operation failed. Inspect local prerequisites and retry explicitly." }))
+                        .WaitAsync(TimeSpan.FromSeconds(1));
             }
             catch (Exception failure) when (failure is IOException or ObjectDisposedException or TimeoutException) { }
         }
@@ -1911,5 +1921,5 @@ internal sealed partial class RendererWindow : Window
     }
 
     private Task ReplyAsync<T>(string kind, T data) =>
-        RendererProtocol.WriteAsync(output, RendererProtocol.Message(kind, activation, data), lifetime.Token);
+        replyWriter.WriteAsync(RendererProtocol.Message(kind, activation, data)).WaitAsync(lifetime.Token);
 }

@@ -1377,15 +1377,24 @@ as their picture and `includeIntimate` setting the switch, so the section can
 be checked with `-Desktop`. With `temperament` (a simulated Thinking answer
 for [Touch temperament](AVATARS.md#touch-temperament), such as
 `{"groups":{"head":{"attitude":2,"reactions":["hearts","blush"]}}}`) or
-`personaId` (the temperament saved for that persona in the `dataDirectory`'s
-`character-temperaments.json`), `match` plays what the temperament decides
+`personaId` (the temperament that persona uses in the `dataDirectory`'s
+`character-temperaments.json`: its own, the built-in reactions or a custom
+one), `match` plays what the temperament decides
 when the zone has no pick of its own, and its `reaction` tells `from`
 (`owner`, `temperament` or `default`), the `attitude` word, whether it
 `escalated` (with `repeats`, the touches in a row) and how long it `linger`s.
 `temperament` in the result shows the request Thinking gets (with
-`personality`, its text), the `vocabulary` and `attitudes` allowed, whether the
-answer was `read`, and what is `used` (who decided it, a `summary`, each group
-and zone and the escalation). Never the model's path; it contacts nothing.
+`personality`, its text), the `vocabulary` and `attitudes` allowed, the six
+`categories` (each `Id`, `Label` and the zone kinds it covers, `parts`; every
+zone kind is in exactly one, and `intimate` holds the intimate ones), whether the
+answer was `read`, and what is `used` (who decided it, or `custom` with
+`custom` naming the custom temperament, a `summary`, each category and zone
+and the escalation). `personas` lists each persona of `settings.json` (and any
+other the file names): its `personaId`, `name`, whether it is `active`, what it
+`uses` (`own`, `built-in` or `custom`), the `custom` temperament's name and its
+`own` temperament's source and summary. `custom` lists the custom temperaments:
+`Id`, `Name`, `summary`, `groups`, `zones` and the personas that use it
+(`usedBy`). Never the model's path; it contacts nothing.
 
 The section's status fields are `TouchZonesStatus` (how many zones, how many in
 use and who found them, or that none are found yet), `TouchZonesVision`
@@ -1434,7 +1443,9 @@ stops it and keeps the zones found until then, `TouchZonesSentView` (*Show the
 picture Thinking saw*, a check box) shows the whole character as Thinking saw
 it under the boxes, `TouchZonesSentOpen` opens the folder of pictures in
 Explorer, `TouchZoneTry-<n>` plays on the character, and
-`TouchZonesIntimate`, `TouchZonesAdd`/`TouchZonesAddKind` and each zone's
+`TouchZonesIntimate` (its value is its label, which names every intimate part,
+the breasts and the groin too), `TouchZonesAdd`/`TouchZonesAddKind` (its value
+is the zone chosen to add; it offers every zone the model doesn't have yet) and each zone's
 `TouchZoneOn-`, `TouchZoneName-`, `TouchZoneReaction-`, `TouchZoneReaction2-`,
 `TouchZoneNotices-` (*Martlet notices*; its checked state reads in `ui_snapshot`), `TouchZoneNarration-` (the owner's optional hint; it shows only while *Martlet notices* is on), `TouchZoneCooldown-`, `TouchZoneBox-`,
 `TouchZoneDelete-` and its box on the picture (`TouchZoneRect-<n>`, inside
@@ -1458,37 +1469,60 @@ from before (FIXTURE - NOT AI in `TouchZonesDetection`).
 
 Touch temperament (below Touch zones) reads through `TouchTemperamentStatus`
 (for which persona and who decided it: built-in reactions, the Thinking model,
-`FIXTURE - NOT AI` or your own choices; its `help` is the whole temperament in
-words: the attitude per group and zone, such as *head loves, torso neutral (no
-reaction), ...*, the eyes (*eyes: look straight ahead*), the parts whose touch
-turns them to your mouse and after how many touches it escalates),
+`FIXTURE - NOT AI` or your own choices; or what it uses instead: *built-in
+reactions, as you chose* or *your custom temperament "Shy cat"*; its `help` is
+the whole temperament in words: the attitude per category and zone, such as
+*head loves, torso neutral (no reaction), ..., intimate hates*, or *intimate as
+body groups* for a temperament without an intimate line, the eyes (*eyes: look
+straight ahead*), the parts whose touch turns them to your mouse and after how
+many touches it escalates),
 `TouchTemperamentDecision` (how deciding went, or that a personality change
 left your own choices in place; shown until you change something yourself),
-`TouchTemperamentSaveState` (both only while they have something to say),
+`TouchTemperamentSaveState` (whether table edits saved),
+`TouchTemperamentUseState` (what the last *Uses*, *Create*, *Rename* or
+*Delete* did, or why not, such as *Not saved: "Built-in reactions" is already
+a choice...*; these three only while they have something to say),
+`TouchTemperamentUse` (*Uses*: *Decided from its personality*, *Built-in
+reactions* or a custom temperament's name), `TouchTemperamentNewName` (the
+name typed for a new custom temperament), `TouchTemperamentName` and
+`TouchTemperamentCustomUsers` (shown while the persona uses a custom
+temperament: its name and *Used by Mira and Aki...*),
 `TouchTemperamentGaze` (*Eyes usually*: a gaze's label or *(not decided:
 follow your mouse)*), `TouchTemperamentAfter` (touches in a row before it
-escalates) and each table line's `TouchTemperamentAttitude-<group or zone
-ID>` (an attitude word or *(built-in)*), `TouchTemperamentReaction-` (*(default)*,
-the feeling's usual reactions, *(nothing)* or a reaction such as *look away*),
-`TouchTemperamentReaction2-` (*(nothing)* or a reaction),
-`TouchTemperamentLinger-` and `TouchTemperamentLook-<group or zone ID>` (the
-seconds the first reaction stays on and the eyes look at your mouse after a
-touch there). A line shows only the controls that apply: a group at
+escalates), each table line's `TouchTemperamentAttitude-<category or zone
+ID>` (an attitude word, *(built-in)*, or for `intimate` *(as the body)*),
+`TouchTemperamentReaction-` (*(default)*, the feeling's usual reactions,
+*(nothing)* or a reaction such as *look away*), `TouchTemperamentReaction2-`
+(*(nothing)* or a reaction), `TouchTemperamentLinger-` and
+`TouchTemperamentLook-<category or zone ID>` (the seconds the first reaction
+stays on and the eyes look at your mouse after a touch there), each category's
+`TouchTemperamentParts-<category ID>` (*Parts:* and the zones it covers; the six
+categories are `head`, `torso`, `arms`, `lower_body`, `extras` and
+`intimate`, and `TouchTemperamentParts-intimate` names the breasts and the
+groin) and `TouchTemperamentAddKind` (the part chosen to give its own line;
+it offers every zone). A line shows only the controls that apply: a category at
 *(built-in)* shows only its attitude, `TouchTemperamentReaction2-` shows after
 a chosen first reaction and `TouchTemperamentLinger-` not after *(nothing)*,
 so the others are not in `ui_snapshot` until then.
 `TouchZonesLast` and `TouchZoneState-<n>` also name the attitude, whether the
 reaction came from the temperament and how long it looks at your mouse.
 `TouchTemperamentDecide` (*Decide from personality* before anything is
-decided, then *Re-decide from personality*) sends the personality to Thinking,
-and `TouchTemperamentReset`, `TouchTemperamentGaze`, `TouchTemperamentAttitude-`,
+decided, then *Re-decide from personality*) sends the personality to Thinking
+(and the persona then uses its own decided temperament),
+and `TouchTemperamentUse`, `TouchTemperamentNewName`, `TouchTemperamentNew`
+(*Create*: a custom temperament copied from what the persona uses now, which
+it then uses), `TouchTemperamentName`, `TouchTemperamentRename`,
+`TouchTemperamentDelete` (the personas that used it use their own again),
+`TouchTemperamentGaze`, `TouchTemperamentAttitude-`,
 `TouchTemperamentReaction-`, `TouchTemperamentReaction2-`,
 `TouchTemperamentLinger-`, `TouchTemperamentLook-`, `TouchTemperamentAfter`, `TouchTemperamentAddKind`,
 `TouchTemperamentAdd` and `TouchTemperamentRemove-<zone ID>` (the small ✕ by a
 part's name) save, so they all need
-`--allow-ui-effects`. `character_touch_zones` shows the temperament's `gaze`,
-each entry's `look` and the matched touch's `reaction.look`. Setting `MARTLET_TOUCH_TEMPERAMENT_FIXTURE` to a text
-file before launching the desktop makes deciding read that file (read again
+`--allow-ui-effects`. While the persona uses a custom temperament, the table
+edits that custom temperament for every persona that uses it; with *Built-in
+reactions* the table is hidden. `character_touch_zones` shows the temperament's `gaze`,
+each entry's `look`, the matched touch's `reaction.look`, the categories, the
+custom temperaments and which persona uses which. Setting `MARTLET_TOUCH_TEMPERAMENT_FIXTURE` to a textfile before launching the desktop makes deciding read that file (read again
 each time) as the Thinking model's answer (FIXTURE - NOT AI, shown in
 `TouchTemperamentStatus` and `TouchTemperamentDecision`, and saved with the
 source `fixture`). Saving a changed personality (`OpenCompanion`,
@@ -1500,8 +1534,9 @@ path with no model.
 (Companion › Character › Where the character looks and the overlay's Eyes
 menu): `choice` (`personality`, the default, `mouse`, `near`, `ahead` or
 `window`; `GazeUsual`), `free` (whether replies may change it; `GazeFree`),
-`personality` (the gaze in `character-temperaments.json` for the active
-persona of `settings.json`, or `personaId`), `personaId`, `gaze` (the gaze
+`personality` (the gaze of the temperament that the active persona of
+`settings.json`, or `personaId`, uses in `character-temperaments.json`: its own
+or a custom one), `personaId`, `gaze` (the gaze
 that applies) and `from` (`owner`, `personality` or `default`), `prompt`
 (what every reply is told: `instructions`, with the data directory's edited
 prompts, and `tags`; null when the character may not change it or *Where you
@@ -4493,8 +4528,9 @@ and `HealthOpen-crash-diagnostics` open this page.
 
 `ui_snapshot` reports `selected` (true or false) for controls that are chosen
 rather than ticked (navigation, Companion's side list, radio buttons and
-filter pills, list items), and a combo box in the status fields reads as its
-chosen option.
+filter pills, list items), a combo box in the status fields reads as its
+chosen option, and a check box in the status fields reads as its label (its
+`checkedState` says whether it is ticked).
 
 For the desktop character, open `CompanionTab-Character`; with
 `--allow-ui-effects`, `SetupCharacterToggle` shows or hides it and
@@ -4556,6 +4592,21 @@ the same), which need `--allow-ui-effects`. Talk, Mute, Open, Settings and Hide 
 carried out by Martlet itself, so the desktop log records *The character's menu
 chose 'hide'.* (and so on), and a hide is followed by *Avatar renderer stopped
 by Martlet.* and `SetupCharacterNow` reading *hidden*.
+
+**Renderer health** shows in the logs (`logs_tail`). Martlet and the renderer
+send only whole messages, so a slow reply or a timeout never puts later
+commands out of step; a reply that comes after its caller stopped waiting is
+dropped. When the renderer's messages break (an unreadable message, a reply
+when nothing was asked, a failed write) or it answers nothing for 90 seconds,
+Martlet ends it and the character counts as stopped. Then `desktop` records
+*Martlet ended the character renderer because it stopped answering properly:
+...* and *Avatar renderer ended by Martlet (code 0x00000001) ...*. When the
+renderer closes by itself, `avatar-renderer` records why: *The character
+overlay closed: its window was closed (not by Martlet).* or *The character
+renderer stopped after an error; it tells Martlet and closes.* with the error.
+Then `desktop` records the warning *Avatar renderer closed itself ...* (with
+the error code when it sent one). Only another exit code (a crash or a kill)
+is an error: *Avatar renderer exited unexpectedly with code ...*.
 
 **Muting Martlet's voice**: the overlay menu's `CharacterMuteVoice` (in
 `SafeValues`: its name, *Mute voice* or *Unmute voice*, carries the state)

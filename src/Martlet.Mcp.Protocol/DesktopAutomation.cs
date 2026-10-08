@@ -398,15 +398,25 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
         "TouchZonesDetectNote",
         // Companion › Character › Touch temperament: who decided the active persona's temperament (built-in, the Thinking model,
-        // FIXTURE - NOT AI or the owner; its help text is the whole temperament in words: "head loves, torso hates, ...", its eyes
-        // and the parts whose touch turns them to your mouse), how deciding went and whether edits saved (both only while they
-        // have something to say). Each line's attitude (TouchTemperamentAttitude-<group or zone ID>, below) is an attitude word,
-        // its TouchTemperamentReaction-/TouchTemperamentReaction2- the reactions, its TouchTemperamentLinger- and
-        // TouchTemperamentLook-<group or zone ID> the seconds the first reaction stays on and the eyes then look at your mouse,
-        // TouchTemperamentAfter the touches in a row before it escalates and TouchTemperamentGaze where the eyes usually go.
-        // Decide (later Re-decide) from personality sends the personality to Thinking, and the rest save, so they need
-        // --allow-ui-effects.
+        // FIXTURE - NOT AI or the owner) or which custom temperament or built-in reactions it uses instead; its help text is the
+        // whole temperament in words: "head loves, torso hates, ..., intimate loves", its eyes and the parts whose touch turns them to
+        // your mouse), how deciding went and whether edits saved or what a Uses, Create, Rename or Delete did (each only while it has
+        // something to say). Each line's attitude (TouchTemperamentAttitude-<category or zone ID>, below) is an attitude word, its
+        // TouchTemperamentReaction-/TouchTemperamentReaction2- the reactions, its TouchTemperamentLinger- and
+        // TouchTemperamentLook-<category or zone ID> the seconds the first reaction stays on and the eyes then look at your mouse,
+        // TouchTemperamentParts-<category ID> the parts the category covers ("Parts: lips, left ear, ..."), TouchTemperamentAfter the
+        // touches in a row before it escalates and TouchTemperamentGaze where the eyes usually go. TouchTemperamentUse is the
+        // temperament the persona uses (Decided from its personality, Built-in reactions or a custom temperament's name),
+        // TouchTemperamentName and TouchTemperamentNewName the custom temperament's name and the name typed for a new one,
+        // TouchTemperamentCustomUsers the personas that use the custom temperament, and TouchTemperamentAddKind the part chosen to
+        // give its own line. Decide (later Re-decide) from personality sends the personality to Thinking, and the rest save, so
+        // they need --allow-ui-effects.
         "TouchTemperamentStatus", "TouchTemperamentDecision", "TouchTemperamentSaveState", "TouchTemperamentGaze", "TouchTemperamentAfter",
+        "TouchTemperamentUse", "TouchTemperamentUseState", "TouchTemperamentName", "TouchTemperamentNewName", "TouchTemperamentCustomUsers",
+        "TouchTemperamentAddKind",
+        // Touch zones' Include intimate zones check box (its label names every intimate part; checkedState says whether it is on)
+        // and the zone chosen to add (TouchZonesAddKind).
+        "TouchZonesIntimate", "TouchZonesAddKind",
         // Companion › Character › Where the character looks: what the eyes do now and why (your choice, the personality's or
         // the character's own in a reply; a touch's look at your mouse; whether it may change where it looks). Its
         // CharacterGaze-<choice> radio buttons (selected) and CharacterGazeFree check box (checkedState) save
@@ -725,7 +735,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// click; never the text it copies).</summary>
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
-    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
+    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchTemperamentParts-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default
@@ -883,7 +893,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
                         ? ((RangeValuePattern)range).Current.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
                     : element.Current.ControlType == ControlType.Text || element.Current.ControlType == ControlType.Button ||
                         element.Current.ControlType == ControlType.ListItem || element.Current.ControlType == ControlType.MenuItem ||
-                        element.Current.ControlType == ControlType.RadioButton
+                        element.Current.ControlType == ControlType.RadioButton || element.Current.ControlType == ControlType.CheckBox
                         ? element.Current.Name
                     // A combo box without a value pattern reads as its selected option.
                     : element.TryGetCurrentPattern(SelectionPattern.Pattern, out var choice)
