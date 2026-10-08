@@ -416,6 +416,8 @@ public partial class MainWindow
             ContractException or JsonException or OperationCanceledException) { }
         finally { refreshingHome = false; }
         if (closing) return;
+        // A character profile switched to on another computer brings back what it keeps on this PC.
+        FollowCharacterProfile();
         // Another persona may be in use now, with another usual gaze.
         avatar.Gaze.Refresh();
         var hostIds = string.Join(",", homeHosts.Select(h => h.HostId + "/" + h.Pairing.CredentialId));
