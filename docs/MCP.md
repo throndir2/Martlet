@@ -1443,7 +1443,8 @@ keeps the zones it finished), `detected` (those zones
 bound to `probe`, a simulated renderer zones probe of Live2D `drawables` (each
 with the `part` it belongs to) and VRM `bones` in page fractions, and a Live2D
 model's own `parts` (`id`, its DisplayInfo `name`, such as 头 or 右腿, and its
-`parent`), with `crop`, `"left,top,width,height"` where
+`parent`); a zone also takes the drawables of its own feature's part that lie
+by its box, such as an eye's white and lashes outside a tight eye box), with `crop`, `"left,top,width,height"` where
 the snapshot sat on the page; `probePath` reads the `probe.json` that *Detect
 zones* keeps with the pictures it sent, crop and all, or a bare probe), `hints`
 (what the probe tells: how many parts the model has (`modelParts`) and names
@@ -1464,10 +1465,19 @@ each zone's parts, `plays`, whether Martlet `notices` it, whether the owner
 `added` it, whether it is `special` to the character (found as special, not
 added) and the owner's `hint`) and,
 with `touch` (a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
-it lands with the character framed whole), `match`: the zone it lands
+it lands with the character framed whole, `restX`, `restY`, `restWholeX` and
+`restWholeY` where the touched point of the character was in its rest pose, now
+and framed whole, as the renderer traces it on the touched mesh, and `hair`
+whether the topmost drawable is hair), `match`: the zone it lands
 in, `how` (`drawable`, `bone`, `hair`, `box` or `coarse`; with a VRM `bone`, the
 smallest zone on the part of the body that bone moves whose box holds the
-point wins, and reads `bone` when it holds that bone, else `box`), its rough `coarse`
+point wins, and reads `bone` when it holds that bone, else `box`; a zone whose
+box holds the point inside the box of a zone that owns the touched drawable,
+with none of its own drawables under the touch, wins as its finer part and reads `box`;
+without `hair`, a drawable lower in `drawables` that a smaller zone inside the
+top drawable's zones owns wins, as an overlay over that part), `traced`
+(whether the boxes were compared with the rest point), `at` (the point they were
+compared with: `x`, `y` and `rest`, true when it is the rest point), its rough `coarse`
 zone, what it `plays`, whether Martlet `notices` it, the line the Thinking model would get for that one touch (`noticed`, such as *They patted the top of your head once.*; a press of 600 ms or more in `heldMilliseconds` is a hold) and how long it `rests`.
 With `detect`, the production detection (`TouchZoneDetection`) runs on
 `snapshotPath` (a PNG of the character, transparent around it, as the renderer
@@ -1582,7 +1592,8 @@ their first guesses on the picture and the others stay until it is done), `Touch
 pictures, how large and what they showed, such as *..., and the whole character
 again for the zones the close-ups missed*, or *FIXTURE - NOT AI answered
 these.*), `TouchZonesLast` (the zone the last click landed in,
-how it was found and what it played or that it was resting, and whether Martlet
+how it was found (*box, traced to the rest pose* when the renderer traced the
+touched point back to the rest pose the zones were found in) and what it played or that it was resting, and whether Martlet
 noticed it), `TouchZonesNoticed` (what Martlet noticed that waits for a reply,
 the plain touch line, *Martlet stopped talking for it.* when a touch stopped
 Martlet talking, and when a touch-only reply starts, or that it waits for
@@ -5149,7 +5160,9 @@ it. **Locking the character's position**: Home's `ToggleCharacterLock`
 it (it comes up within Windows' drag distance, within 0.7 seconds; also when
 its position is locked, while zoomed in with Ctrl and in the camera view) is a
 tap. The renderer page hit-tests the point: Live2D reports the model3.json
-HitAreas there and the visible drawables under it (topmost first, at most 8),
+HitAreas there and the visible drawables under it (topmost first, at most 8)
+and whether the topmost is hair (it sits in a part the model names as hair,
+by its ID or DisplayInfo name, such as `PartHairSide` or 前髪),
 VRM the humanoid bone of the mesh skinned most to the hit triangle (or its
 nearest humanoid ancestor), the actual node, whether that node is hair (a
 spring-bone or hair-named joint under the head), the mesh and the material.
@@ -5168,7 +5181,13 @@ which needs `--allow-ui-effects`, waits for the hit test and returns it as
 `last`: `n` (the tap's number), `x`, `y`, `hit`, `zone` (`head`, `hair`,
 `face`, `body`, `arm`, `hand`, `leg` or `foot`; null on a miss), `hitAreas`,
 `drawables`, `bone`, `node`, `hair`, `mesh` and `material` (model-authored
-names only, never paths) and `held` (how long the press lasted, in ms). `holdMs` presses
+names only, never paths), `held` (how long the press lasted, in ms) and `rest`
+(`{x, y}`, fractions like `x` and `y`: where the touched point of the character
+was in its rest pose, the pose the touch zones picture shows, traced on the
+touched mesh and drawn as the overlay frames it now; null when the renderer
+can't trace it). At rest `rest` equals `x`, `y`; while the head follows the mouse
+or a motion moves the character, it stays on the spot of the skin that was
+touched, and the touch zones compare it with their boxes. `holdMs` presses
 that long (`"x,y,ms"` as `MoveAvatar`'s value; 600 or more is a hold), `repeat`
 taps the same point up to 20 times `gapMs` apart, and `taps`
 (`[{x, y, holdMs}]`, up to 20) taps a sequence of points, each after the hit

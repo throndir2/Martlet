@@ -364,6 +364,7 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
             return null;
         }
         var zone = match.Zone;
+        var how = Describe(match);
         var noticed = zone.Reaction.Notices;
         if (noticed) notice(zone);
         var now = Environment.TickCount64;
@@ -371,7 +372,7 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         {
             if (rested.TryGetValue(zone.Id, out var until) && now < until)
             {
-                Volatile.Write(ref lastMatch, $"{zone.Name} ({match.How}) at {when}: resting, so nothing played" +
+                Volatile.Write(ref lastMatch, $"{zone.Name} ({how}) at {when}: resting, so nothing played" +
                     (noticed ? ", but Martlet noticed it." : "."));
                 Changed?.Invoke();
                 return match;
@@ -383,14 +384,18 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         var plan = reaction.Actions;
         for (var i = 0; i < plan.Count; i++) play(plan[i], $"a {kind} on {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
         if (reaction.LookSeconds > 0) look?.Invoke(reaction.LookSeconds, $"a {kind} on {zone.Name.ToLowerInvariant()}");
-        Volatile.Write(ref lastMatch, (kind == "stroke" ? "Stroke: " : "") + $"{zone.Name} ({match.How}) at {when}: " +
+        Volatile.Write(ref lastMatch, (kind == "stroke" ? "Stroke: " : "") + $"{zone.Name} ({how}) at {when}: " +
             (plan.Count == 0 ? "nothing to play" : "played " + string.Join(", ", plan.Select(s => s.Name))) + Describe(reaction, repeats) +
             (noticed ? ", and Martlet noticed it." : "."));
-        ErrorLog.Info($"{(kind == "stroke" ? "Stroke" : "Touch")} on {zone.Id} ({match.How}{(touch.Held ? ", held" : "")}): {plan.Count} played from {reaction.From}{(reaction.Escalated ? " (escalated)" : "")}" +
+        ErrorLog.Info($"{(kind == "stroke" ? "Stroke" : "Touch")} on {zone.Id} ({how}{(touch.Held ? ", held" : "")}): {plan.Count} played from {reaction.From}{(reaction.Escalated ? " (escalated)" : "")}" +
             $"{(noticed ? ", Martlet noticed it" : "")}.");
         Changed?.Invoke();
         return match;
     }
+
+    /// <summary>How a touch found its zone, for the last-touch line and the log: "box", or "box, traced to the rest pose" when
+    /// the boxes were compared with where the touched point was in the rest pose the zones were found in.</summary>
+    internal static string Describe(TouchZoneMatch match) => match.Traced ? match.How + ", traced to the rest pose" : match.How;
 
     private readonly Dictionary<string, (int Count, long Last)> streaks = new(StringComparer.Ordinal);
 

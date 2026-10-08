@@ -160,10 +160,13 @@ internal static class TouchZonesCheck
         {
             var given = JsonSerializer.Deserialize<CharacterTouch>(touch, Web) ?? throw new ArgumentException("touch must be a CharacterTouch object.");
             var found = CharacterTouchZones.Match(settings, given);
-            match = found is null ? new { zone = (string?)null, how = (string?)null, coarse = given.CoarseZone, plays = Array.Empty<string>(), notices = false, noticed = (string?)null }
+            // The point the boxes compare with: where the touched point was in the rest pose when the touch carries it.
+            var (atX, atY, traced) = CharacterTouchZones.TouchPoint(settings, given);
+            var compared = new { x = Math.Round(atX, 4), y = Math.Round(atY, 4), rest = traced };
+            match = found is null ? new { zone = (string?)null, how = (string?)null, traced = false, at = compared, coarse = given.CoarseZone, plays = Array.Empty<string>(), notices = false, noticed = (string?)null }
                 : new
                 {
-                    zone = found.Zone.Id, name = found.Zone.Name, how = found.How, coarse = given.CoarseZone,
+                    zone = found.Zone.Id, name = found.Zone.Name, how = found.How, traced = found.Traced, at = compared, coarse = given.CoarseZone,
                     plays = CharacterTouchZones.React(found.Zone, catalog, temperament, touches).Actions.Select(s => $"{s.Kind}: {s.Name}").ToArray(),
                     reaction = Reaction(CharacterTouchZones.React(found.Zone, catalog, temperament, touches)), repeats = touches,
                     notices = found.Zone.Reaction.Notices, noticed = Noticed(found.Zone, given), rests = found.Zone.Reaction.CooldownSeconds

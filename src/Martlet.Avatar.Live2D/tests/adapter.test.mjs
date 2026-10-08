@@ -393,6 +393,33 @@ test("each drawable names its part, and modelParts gives the model's own parts w
   assert.deepEqual(adapter.modelParts(), [{ id: "Part", name: "立绘" }, { id: "Part31", name: "右腿", parent: "Part" }, { id: "Part37" }]);
 });
 
+test("a touch says when the topmost drawable sits in a part the model names as hair, by its ID or its DisplayInfo name", async () => {
+  // The body sits in Part12, inside Part3: hair when either is named as hair, whatever the other is called.
+  async function touched(ids, names) {
+    const env = environment();
+    Object.assign(env.model, {
+      getDrawableParentPartIndex: () => 1,
+      getPartCount: () => ids.length,
+      getPartId: i => ({ getString: () => ({ s: ids[i] }) }),
+      getPartParentPartIndices: () => new Int32Array([-1, 0]),
+    });
+    const input = files({ FileReferences: { Moc: "avatar.moc3", Textures: ["texture.png"], DisplayInfo: "avatar.cdi3.json" } });
+    input.set("avatar.cdi3.json", new TextEncoder().encode(JSON.stringify({ Version: 3, Parts: names })));
+    // Only one Live2D renderer may be active at a time.
+    const adapter = create(env);
+    try {
+      await adapter.load(new LocalModelBundle(input, "avatar.model3.json"));
+      return adapter.hitTest(0.5, 0.5);
+    } finally { adapter.dispose(); }
+  }
+  assert.equal((await touched(["Part3", "PartHairSide"], [])).hair, true);
+  assert.equal((await touched(["Part3", "Part12"], [{ Id: "Part12", Name: "前髪右(スキニング)" }])).hair, true);
+  assert.equal((await touched(["PartHairBack", "Part12"], [])).hair, true, "a part it sits in");
+  const face = await touched(["Part3", "Part12"], [{ Id: "Part12", Name: "顔" }]);
+  assert.equal(face.hair, undefined);
+  assert.deepEqual(face.drawables, ["ArtMeshBody"]);
+});
+
 // Stands in for the official Framework animator in the order it runs: the saved pose, then the expressions (here one that opens
 // the mouth wide), then the host's overrides, then lip-sync added at 0.8 (as the Cubism samples do).
 function animated(env) {
