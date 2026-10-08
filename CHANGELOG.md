@@ -20,6 +20,9 @@ Each release's section here is also its notes on GitHub.
 ### Fixed
 - **Manage memory** now shows what Martlet remembers the moment it opens, even while Martlet is answering you, and it keeps up on its own: facts Martlet remembers, changes or forgets while it's open show up right away, with no need to press **Refresh**. ([#614](https://github.com/throndir2/Martlet/pull/614))
 
+### Removed
+- The two "cute anime girl" voices are gone, because their raised pitch sounded artificial. Martlet now starts with **Annie (cute, chatty)**, and if Martlet spoke with an anime voice it switches to your chosen or first voice on all your computers. ([#617](https://github.com/throndir2/Martlet/pull/617))
+
 ## [0.57.0] - 2026-10-07
 
 ### Added
