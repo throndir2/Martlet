@@ -93,6 +93,12 @@ public static class WholeFraming
         Drawables = probe.Drawables?.Select(d => Unframed(new TouchZoneBox(d.Left, d.Top, d.Right - d.Left, d.Bottom - d.Top), zoom, x, y, frame) is var box
             ? d with { Left = box.X, Top = box.Y, Right = box.X + box.Width, Bottom = box.Y + box.Height } : d).ToArray(),
         Bones = probe.Bones?.Select(b => CharacterTouch.Unframed(b.X, b.Y, zoom, x, y, frame) is var (bx, by) ? new RendererBonePoint(b.Bone, bx, by) : b).ToArray(),
+        Chains = probe.Chains?.Select(c => Unframed(new TouchZoneBox(c.Left, c.Top, c.Right - c.Left, c.Bottom - c.Top), zoom, x, y, frame) is var box
+            ? c with { Left = box.X, Top = box.Y, Right = box.X + box.Width, Bottom = box.Y + box.Height } : c).ToArray(),
+        Springs = probe.Springs?.Select(s => s with
+        {
+            Joints = [.. s.Joints.Select(j => CharacterTouch.Unframed(j.X, j.Y, zoom, x, y, frame) is var (jx, jy) ? j with { X = jx, Y = jy } : j)]
+        }).ToArray(),
         Face = probe.Face is { } face && CharacterTouch.Unframed(face.X, face.Y, zoom, x, y, frame) is var (fx, fy)
             ? face with { X = fx, Y = fy, Width = face.Width / (zoom > 0 && double.IsFinite(zoom) ? zoom : 1) } : probe.Face
     };

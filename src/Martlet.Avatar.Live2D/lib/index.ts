@@ -1,5 +1,6 @@
 export * from "./adapter.js";
 export * from "./assets.js";
+export * from "./chains.js";
 export * from "./diagnostics.js";
 export * from "./eyes.js";
 export * from "./face.js";

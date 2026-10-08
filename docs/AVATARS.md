@@ -679,6 +679,53 @@ default; turn it off to leave them out. The check box names each of these parts.
   whose box takes in the edge of the cheek. The drawable's middle must lie
   within half the zone's size of its box, and the drawable must be at most four
   times the box's size.
+- **Zones in several areas, and parts that move on their own.** A zone can
+  have several areas. Each area is a box on the picture with the model's
+  parts that lie in it, and a click in any of them is a click on the zone.
+  **Add area** on a zone's line adds a box beside its last one, and **Remove
+  area** takes the last one away; the zone's box field shows each area,
+  separated by `|`. A tail, wings and animal ears swing on their own, and at
+  rest they often hang behind the body, where no box around what shows (the
+  tip of a tail below the boots) can hold the rest of them. So these zones
+  follow the model's own part, not only their boxes. Martlet needs no vision
+  model for this:
+  1. When the renderer draws the character for its zones, it moves each
+     physics setting of a Live2D model (its `physics3.json`) to its end and
+     notes which drawables move. Each group is a *swinging part*, from its
+     root (the drawable that moves least) to its tip. A setting that moves
+     almost the whole body is left out, and settings named alike that move the
+     same drawables are one part. This happens off screen, once for each
+     picture, never while Martlet talks (about a second on a heavy model).
+  2. A tail, wings or animal ears zone follows a part whose own names say it
+     is one (the DisplayInfo name 尾巴, or a physics setting named 尾巴 or
+     Tail) that its box holds some of or lies near. Without such names, it
+     follows the smallest swinging part that its box holds some of (a tail or
+     wings never one rooted in the head, animal ears only one rooted above
+     the eyes). It follows all of that part, also what hides behind the legs
+     at rest, in areas from the root to the tip (about one for each eighth of
+     the page's height, at most 8).
+  3. The hair keeps its box and also follows the swinging hair that its box
+     doesn't hold, such as a ponytail that hangs to the hips.
+  4. A drawable that a zone follows this way belongs to that zone only. A click
+     on it is that zone wherever the part swung, and other zones' boxes let it
+     go. The areas' boxes only show where the part was at rest, so a click on
+     what is now at that place doesn't count as the zone.
+
+  When the model's own names say it has a tail, wings or animal ears, the first
+  guess and **Detect zones** place them too, without **Add zone** (see above).
+  The zone's line says,
+  for example, *tail · follows the model's own 尾巴 / 尾巴(2) wherever it
+  moves: 21 parts in 6 areas*. To put such a zone on another part, move one of
+  its areas there: the zone becomes that one box, and Martlet finds what it
+  follows from there. Each time you move, add or change a box, Martlet ties
+  the zones to the model's parts again, with the probe it keeps beside the
+  picture (`character-touch-zones\<model>.probe.json`). So a tail zone added in
+  the middle of the picture and dragged onto the tip of the tail follows all of
+  the tail.
+- **Show the zones on the character** (a check box below the picture, for this
+  session only) draws each area of the zones in use over the character as it
+  moves, in its zone's color. An area that follows Live2D drawables is the box
+  around them where they are drawn now, so a tail's areas swing with the tail.
 - A click is traced back to the rest pose before it is matched. The zones'
   boxes are drawn on a picture of the character at rest, but the character
   you click moves: its head turns and nods to follow the mouse, it breathes
@@ -726,7 +773,11 @@ default; turn it off to leave them out. The check box names each of these parts.
   hair's box around an eye) is left out, because the smaller zone tells better
   where the click landed. A stroke across zones that overlap crosses each of
   them, and Martlet hears them all on the stroke's path. The last-touch line
-  names the other zones: *Groin (box), with Left thigh, at ...*.
+  names the other zones: *Groin (box), with Left thigh, at ...*. A click on a
+  part that swings on its own, such as a tail, is compared with the other
+  zones' boxes where the part is now, not where it hung at rest. So a click on
+  the tail where it swung beside the waist doesn't also touch the calf that
+  hid the tail at rest.
 - Each zone plays its emotes and gestures (by default the model's own where it
   has them: a head pat leans in or tilts and smiles, a cheek blushes, an
   intimate zone blushes and flinches) and rests a few seconds before reacting

@@ -6,6 +6,7 @@ import { type Carrier, type CheekFrame, type Face, faceFeatures, type FaceFeatur
   type FaceHint, faceSkin, faceSource, type FaceSource, bounds, HEAD_ANGLES, headRoll, type Pin, pinFace, type PinnedFace,
   type Point, POSE_PARAMETERS, skinCarriers, trackFace, turnFace } from "./face.js";
 import { BLUSH_PARAMETERS, type Gesture, GesturePlayer, type GestureState, isBlush, isGesture, supportedGestures } from "./gestures.js";
+import { CHAIN_LIMITS, findSwingingChains, type SwingingChain } from "./chains.js";
 import { Capabilities, ChannelMapping, inspectParameters, MappingPlan, Parameter } from "./mapping.js";
 import { checkRuntime, type Animator, type AnimatorAssets, CubismMoc, CubismModel, CubismRenderer, SdkModules } from "./sdk.js";
 import { HAIR_PART, hitTestModel, type Live2DHit } from "./touch.js";
@@ -347,6 +348,22 @@ export class Live2DAdapter {
     const ids: string[] = [];
     for (let i = 0; i < Math.min(model.getPartCount(), LIMITS.parts); i++) ids.push(model.getPartId(i).getString().s);
     return ids;
+  }
+
+  /** The parts of the model that swing on their own (a tail, a ponytail, a skirt, ears), for touch zones: the drawables each of
+   *  its physics settings moves, root first, and where they can reach, as fractions of the canvas (origin top-left, +y down)
+   *  as last framed (see findSwingingChains). The pose doesn't change. Empty without a physics file. */
+  swingingChains(): SwingingChain[] {
+    this.#ready();
+    const model = this.#resources!.model!;
+    const settings = this.#bundle?.physicsSettings() ?? [];
+    if (settings.length === 0) return [];
+    const aspect = this.#canvas.width / this.#canvas.height;
+    const view = this.#view;
+    const scale = this.#fitScale(model) * view.zoom;
+    const until = this.#services.now() + CHAIN_LIMITS.milliseconds;
+    return findSwingingChains(model, settings,
+      (x, y) => [(x * scale / aspect + view.x * view.frame + 1) / 2, (1 - (y * scale + view.y)) / 2], () => this.#services.now() > until);
   }
 
   /** The drawables that sit in a part the model names as hair (its ID or DisplayInfo name, or a part it sits in), such as

@@ -1054,6 +1054,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
             next.Physical += change => { if (ReferenceEquals(Volatile.Read(ref renderer), next) && IsShowing) PhysicalChanged?.Invoke(change); };
             renderer = next;
             ForgetEyes();
+            ForgetZoneView();
             await next.StartAsync(selected, snapshot.Revision, Placement, VoiceMuted, attempt.Token);
             // A camera view that was open stays open when the character shows again.
             if (Camera is { } view) await next.SendAsync("camera", view, attempt.Token);
@@ -1066,6 +1067,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
             // The eyes' vision measurement for this model, if one is saved; the answer says what the eyes use (the model's own
             // data comes first), and Martlet measures them when they are only estimated.
             await SendEyesAsync(next, Volatile.Read(ref eyesFor)?.Invoke(selected.ModelPath), attempt.Token);
+            // Its touch zones, so Show the zones on the character and Martlet's MCP (character_zones) find them as it moves.
+            await SendZoneViewAsync(next, Volatile.Read(ref zoneViewFor)?.Invoke(selected.ModelPath), attempt.Token);
             lock (stateGate)
             {
                 CheckAttempt(attempt, version);

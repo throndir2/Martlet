@@ -25,9 +25,9 @@ public sealed record ZoneHintArea(string Part, TouchZoneBox Box, int Drawables, 
 
 /// <summary>A drawable of a Live2D model in parts the model's own part names call body parts (from its DisplayInfo file, else the
 /// part IDs), as fractions of the snapshot: its box, those body parts (nearest part first: an eye's drawable in 左眼 inside 头 is
-/// eyes, then head) and, for a part that comes in pairs, its side, the character's own "left" or "right", told by where it lies
-/// and which way the character faces (a name's 左 or L only groups a limb's drawables; null in the middle).</summary>
-public sealed record ZoneHintPiece(TouchZoneBox Box, IReadOnlyList<string> Parts, string? Side);
+/// eyes, then head), for a part that comes in pairs its side, the character's own "left" or "right", told by where it lies
+/// and which way the character faces (a name's 左 or L only groups a limb's drawables; null in the middle), and its ID.</summary>
+public sealed record ZoneHintPiece(TouchZoneBox Box, IReadOnlyList<string> Parts, string? Side, string? Id = null);
 
 /// <summary>Where the renderer's face anchor put the face in the snapshot: the middle of its eye line (fractions of the snapshot)
 /// and its width (a fraction of the snapshot's width).</summary>
@@ -160,6 +160,10 @@ public static partial class TouchZoneDetection
             SpecialBefore = [.. (saved?.Zones ?? []).Where(z => !z.Added && IsSpecial(z.Id)).Select(z => (z.Id, z.Name))]
         };
     }
+
+    /// <summary>The extras (a tail, wings or animal ears) the model's own part names place: the first guess and Detect zones add
+    /// them as zones special to the character even when the vision model doesn't list them.</summary>
+    public static string[] Named(ZoneHints? hints) => hints is { Named: true } ? [.. NamedSpecial.Where(id => NamedPlace(id, hints) is not null)] : [];
 
     /// <summary>The step that asks again, on the whole character, for zones that must be found and the close-ups missed.</summary>
     public const string MissingStep = "missing";

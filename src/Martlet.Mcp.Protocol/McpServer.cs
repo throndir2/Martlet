@@ -257,6 +257,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumPoseSamples },
             gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
         }),
+        Tool("character_zones", "Read where each area of the showing character's touch zones is now, samples times (1 to 60, default " +
+            "1) gapMs apart (0 to 5000, default 250), as each frame is drawn: the zones Martlet last gave the renderer (the saved " +
+            "zones in use of the model it shows; Companion > Touch > Touch zones > Show the zones on the character draws them over " +
+            "it). An area that follows Live2D drawables (a tail's, which swings) is the box around them where they are drawn now " +
+            "(from: drawables); one that follows VRM bones or joints keeps its size around where they are now (bones); any other " +
+            "stays at its box, moved by the view's zoom and pan (box). last has n, found, renderer, draw and areas (each zone, " +
+            "area (0 for its first), from, left, top, right, bottom: fractions of the character overlay's drawing, +y down). " +
+            "summary gives per area what placed it, its last box and how far its middle moved (x, y). Reading changes nothing, " +
+            "so it needs no --allow-ui-effects.", new
+        {
+            samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumZoneSamples },
+            gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
+        }),
         Tool("character_mouth", "Read who moves the showing character's mouth, Martlet's voice or its emotes, samples times (1 to 60, " +
             "default 1) gapMs apart (0 to 5000, default 250), as each frame is drawn. While the voice speaks, until a second after " +
             "its last sound, it has the mouth: what the emotes put on the mouth (a held mouth_open, an expression that opens it, a " +
@@ -1973,6 +1986,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_face" => await desktop.FaceCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "character_picture" => await desktop.PictureCharacterAsync(OptionalString(arguments, "outputPath")),
                 "character_pose" => await desktop.PoseCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
+                "character_zones" => await desktop.ZonesCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "character_mouth" => await desktop.MouthCharacterAsync(MouthLevels(arguments), OptionalInt(arguments, "stepMs"),
                     OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "character_look" => await desktop.LookCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
