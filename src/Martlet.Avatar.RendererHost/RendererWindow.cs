@@ -137,6 +137,7 @@ internal sealed partial class RendererWindow : Window
         viewport.MouseLeftButtonUp += (_, e) => EndStroke(e.GetPosition(viewport), Environment.TickCount64);
         viewport.StrokeAlong = StrokeAlong;
         viewport.ReadFace = ReadFace;
+        viewport.ReadPose = ReadPose;
         viewport.LostMouseCapture += (_, _) =>
         {
             if (stroke is { } lost && !strokeReleasing) EndStroke(lost.Last, Environment.TickCount64);
@@ -1061,6 +1062,34 @@ internal sealed partial class RendererWindow : Window
         viewport.LastFace = CharacterFaceReading.From(answer, number);
     }
 
+    private int poseId;
+    private int? posePending;
+
+    /// <summary>Asks the page what the character's idle body does now: a VRM's breath, arms, fingers and sway (Martlet's MCP
+    /// character_pose, through UI Automation). Its answer arrives unprompted (see <see cref="PoseAnswered"/>). Reading it changes
+    /// nothing on the character.</summary>
+    private void ReadPose()
+    {
+        if (browser.CoreWebView2 is null || failure.Failed || closed) return;
+        var id = ++poseId;
+        posePending = id;
+        try
+        {
+            browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "pose", data = new { id } }, RendererProtocol.Json));
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
+    }
+
+    /// <summary>The page's reading of the idle body, remembered for UI Automation; a stale or malformed one is ignored and never
+    /// fails the renderer.</summary>
+    private void PoseAnswered(JsonElement answer)
+    {
+        if (posePending is not { } pending || answer.ValueKind != JsonValueKind.Object || !answer.TryGetProperty("id", out var id) ||
+            id.ValueKind != JsonValueKind.Number || !id.TryGetInt32(out var number) || number != pending) return;
+        posePending = null;
+        viewport.LastPose = CharacterPoseReading.From(answer, number);
+    }
+
     /// <summary>The page's hit test for the last tap: remembered for UI Automation and, when it found the character, sent to
     /// Martlet on the request pipe. A malformed or stale answer is ignored; it never fails the renderer.</summary>
     private void Touched(JsonElement answer)
@@ -1412,6 +1441,12 @@ internal sealed partial class RendererWindow : Window
                     {
                         // Unsolicited answer to a reading of the face (MCP's character_face); never a command reply.
                         FaceAnswered(faceReading);
+                        return;
+                    }
+                    if (document.RootElement.TryGetProperty("poseReading", out var poseReading))
+                    {
+                        // Unsolicited answer to a reading of the idle body (MCP's character_pose); never a command reply.
+                        PoseAnswered(poseReading);
                         return;
                     }
                     failure.ThrowIfFailed();
