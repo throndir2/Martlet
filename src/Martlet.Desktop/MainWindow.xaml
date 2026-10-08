@@ -215,6 +215,24 @@
                     </StackPanel>
 
                     <StackPanel x:Name="HostHome" Visibility="Collapsed">
+                        <!-- The way back comes first: a host PC doesn't talk or listen, and one click makes it your companion PC again. -->
+                        <Border x:Name="SwitchToCompanionCard" Style="{DynamicResource CardStyle}" Padding="20,16"
+                                BorderBrush="{DynamicResource AccentBrush}" BorderThickness="2">
+                            <DockPanel>
+                                <Button DockPanel.Dock="Right" Style="{DynamicResource PrimaryButton}" Content="Switch to companion PC"
+                                        Click="UseCompanion_Click" Padding="20,12" FontSize="15" Margin="16,0,0,0" VerticalAlignment="Center"
+                                        AutomationProperties.AutomationId="SwitchToCompanion"/>
+                                <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE76E;" Foreground="{DynamicResource AccentBrush}"/>
+                                </Border>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Want to talk with Martlet on this PC?" FontSize="16" FontWeight="SemiBold"/>
+                                    <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0"
+                                               Text="As a host PC, it doesn't talk or listen. Switch to make it your companion PC."/>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
                         <Border Style="{DynamicResource HeroCard}">
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -281,11 +299,8 @@
                                 <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" TextWrapping="Wrap" Text="&#x2022; Paired computers connect only on your private network. Your other computers can find this PC there and ask to pair; you allow each one here."/>
                                 <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,4" Text="&#x2022; Lip-sync may send generated voice here. Microphone audio and files stay on your main PC."/>
                                 <TextBlock Style="{DynamicResource Muted}" Margin="0,0,0,10" Text="&#x2022; GPU tasks need an NVIDIA graphics card, current drivers and Docker Desktop."/>
-                                <WrapPanel>
-                                    <Button Style="{DynamicResource LinkButton}" Content="Use this PC as a companion instead" Click="UseCompanion_Click"
-                                            AutomationProperties.AutomationId="SwitchToCompanion"/>
-                                    <Button Style="{DynamicResource LinkButton}" Content="Set up a host on another computer" Click="Hosts_Click"/>
-                                </WrapPanel>
+                                <Button Style="{DynamicResource LinkButton}" Content="Set up a host on another computer" Click="Hosts_Click"
+                                        HorizontalAlignment="Left"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
