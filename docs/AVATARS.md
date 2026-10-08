@@ -133,8 +133,9 @@ what each one is.
   - an expression whose name or tag names a look that stays (glasses, a hat, a
     blush, an angry or sad face, tears, a dark face, an outfit or accessory).
 
-  Martlet's holdable gestures (pout, shy, look_away and drowsy, and the overlay
-  emotes sweat, hearts, gloom and sleepy) also stay on by
+  Martlet's holdable gestures (pout, shy, look_away and drowsy, the overlay
+  emotes sweat, hearts, gloom and sleepy, and the blush levels blush_deep and
+  blush_fierce) also stay on by
   default. The renderer holds one gesture at a time, so a new held gesture
   replaces the one before. A gesture that the renderer cannot hold plays once.
   Motions and the other gestures are brief by default. The Thinking model's
@@ -172,22 +173,32 @@ what each one is.
   | bow (`bow`) | `ParamAngleY` | `spine` bone |
   | sway (`sway`) | `ParamBodyAngleZ` | `spine` bone |
   | smile (`smile`), surprise (`surprised`) | `ParamEyeLSmile`/`ParamEyeRSmile`, `ParamBrowLY`/`ParamBrowRY` | not offered (VRM uses its own emotion presets) |
-  | blush (`blush`) | nothing (see below) | `head` bone |
+  | blush (`blush`), deep blush (`blush_deep`), fierce flush (`blush_fierce`) | nothing (see below) | `head` bone |
   | wave (`wave`), shrug (`shrug`), bounce (`bounce`) | not offered (no standard arm or position parameters) | right arm, both arms, `hips` bones |
 
   Live2D parameters are read from the model's `.moc3`, VRM bones from its
   humanoid. A gesture is left out when the model's own emote or motion already
   has its tag (a model with its own `smile` keeps that one).
 
-  **Every model blushes.** The blush uses, in order: the model's own blush emote
+  **Every model blushes, at three levels.** The blush levels are, faintest
+  first, `blush`, `blush_deep` (a deep blush: redder and wider, with more
+  lines) and `blush_fierce` (a fierce flush: deep red across both cheeks and
+  over the bridge of the nose, densely lined, with a slow pulse). They come
+  after all other gestures, so the start of the reply instructions stays the
+  same. One level shows at a time: a new level replaces the one before, also
+  when it is fainter. The blush uses, in order: the model's own blush emote
   (an expression named like `blush`, `脸红` or `照れ`, which then replaces the
   gesture), a Live2D model's `ParamCheek`, a VRM's custom expression named like
   `blush` or `cheek`, and otherwise a soft pink glow with a few faint strokes
-  that Martlet draws on the cheeks over the character. It fades in and out over
-  0.6 seconds and lasts 4 seconds, or stays while held (the renderer action's
-  `hold`) until turned off.
+  that Martlet draws on the cheeks over the character. The stronger levels
+  also use the model's `ParamCheek` or blush expression, at full strength, and
+  Martlet always draws the level over it, so each level looks different on
+  every model. Each level fades in and out over 0.6 seconds and lasts 4
+  seconds, or stays while held (the renderer action's `hold`) until turned
+  off. `blush` is brief by default; `blush_deep` and `blush_fierce` linger by
+  default (`{/blush_deep}` turns the deep blush off).
 - **Drawings over the character**: the renderer page draws Martlet's own
-  effects (the blush glow, and others built on it) on a second canvas laid
+  effects (the blush levels, and others built on them) on a second canvas laid
   exactly over the model, following zoom, pan and the display's scale, so they
   also show in pictures of the character. They are placed around the face as
   the model draws it in each frame, so they follow everything that moves the
@@ -201,9 +212,11 @@ what each one is.
   vertices that turn with the head, and moves the other parameters to drop the
   ones that change shape on their own (hair physics, eyelids, eyes, mouth,
   brows). A model without those angles, or without enough such vertices, uses
-  the earlier estimate moved with `ParamAngleX`/`Y`/`Z`. Each blush lies on its
+  the earlier estimate moved with `ParamAngleX`/`Y`/`Z`. Each blush level lies on its
   cheek's surface, so a turned head shows the near cheek's blush wider and the
-  far one narrower, fading out as that cheek turns away. The Live2D adapter's
+  far one narrower (with fewer of a stronger level's lines), fading out as that
+  cheek turns away; the fierce flush's band over the nose fades toward that
+  cheek too. The Live2D adapter's
   `setFaceHint` lets a face found by vision refine the estimate, pinned the
   same way. Martlet's MCP `character_face` reads where they are drawn.
 - **Voice emotes**: every sound and tone a voice engine makes has a global emote

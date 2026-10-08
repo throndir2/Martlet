@@ -3,7 +3,7 @@ import { boundedInteger, Diagnostic, finite, Live2DError, requireCondition } fro
 import { type Carrier, type CheekFrame, type Face, faceFeatures, type FaceFeatures, faceFromBox, faceFromHint, faceFromLayout,
   type FaceHint, faceSource, type FaceSource, bounds, HEAD_ANGLES, headRoll, pinFace, type PinnedFace, type Point,
   POSE_PARAMETERS, trackFace, turnFace } from "./face.js";
-import { BLUSH_PARAMETERS, type Gesture, GesturePlayer, type GestureState, isGesture, supportedGestures } from "./gestures.js";
+import { BLUSH_PARAMETERS, type Gesture, GesturePlayer, type GestureState, isBlush, isGesture, supportedGestures } from "./gestures.js";
 import { Capabilities, ChannelMapping, inspectParameters, MappingPlan, Parameter } from "./mapping.js";
 import { checkRuntime, type Animator, type AnimatorAssets, CubismMoc, CubismModel, CubismRenderer, SdkModules } from "./sdk.js";
 import { hitTestModel, type Live2DHit } from "./touch.js";
@@ -297,12 +297,12 @@ export class Live2DAdapter {
   }
 
   /** Starts one of Martlet's gestures (see `gestures`), replacing one already playing, or with `hold` keeps a holdable one
-   *  (shy, drowsy, pout, look_away, blush) until `endGesture`; a gesture played meanwhile plays on top of it. */
+   *  (shy, drowsy, pout, look_away, a blush level) until `endGesture`; a gesture played meanwhile plays on top of it. */
   gesture(name: string, hold = false): boolean {
     this.#ready();
     if (!isGesture(name) || !this.gestures.includes(name)) return false;
-    // Without ParamCheek the page draws the blush over the face instead.
-    if (name === "blush" && !BLUSH_PARAMETERS.every(id => this.#parameters.some(p => p.id === id))) return false;
+    // Without ParamCheek the page draws every blush level over the face instead.
+    if (isBlush(name) && !BLUSH_PARAMETERS.every(id => this.#parameters.some(p => p.id === id))) return false;
     this.#gestures.play(name, hold);
     return true;
   }

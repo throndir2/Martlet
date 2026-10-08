@@ -1261,7 +1261,10 @@ Martlet's own hint while `use` is null), `enabled`, `mode` (`brief`, or
 is the default), `vtsToggle` (a VTube Studio ToggleExpression hotkey turns it
 on) and whether replies
 are `offered` it for `engine`, a voice engine key, `none` or absent for a voice
-without tags), `replyPrompt` and `replyTags` (what replies get while the
+without tags), `blushLevels` (the model's blush levels, faintest first: `level`
+1 to 3 for `blush`, `blush_deep` and `blush_fierce`, with the row's `n`, `id`,
+`kind`, `name`, `tag`, `mode` and `offered`; the first is the model's own emote
+tagged `blush` when that replaces Martlet's blush), `replyPrompt` and `replyTags` (what replies get while the
 character shows; lingering emotes add their `{/tag}` off tags) and `namingPrompt` (`instructions` and the numbered `list` the
 Thinking model is sent). With `showing`, the lingering emotes the character
 would show now (`["glasses", "blush:12"]`, minutes after the colon),
@@ -4337,8 +4340,9 @@ the coarse `zones` crossed) and `physical`. Without `points` it only reads.
 Companion › Character › Touch zones' `CharacterPhysicalLast` shows Martlet's
 summary.
 
-**Where Martlet draws over the face**: the blush glow (on a model without a
-blush of its own) and the overlay emotes are drawn around the face each time
+**Where Martlet draws over the face**: the blush levels (the blush on a model
+without a blush of its own, and `blush_deep` and `blush_fierce` on every model,
+over its own blush) and the overlay emotes are drawn around the face each time
 the renderer page draws a frame. A Live2D model's face is pinned to its own
 face meshes. When the model loads, the page moves each head angle
 (`ParamAngleX`, `ParamAngleY`, `ParamAngleZ`) to find the mesh vertices that
@@ -4358,7 +4362,8 @@ has `n`, `found`, `tracking` (`mesh`, `bones` or `estimate`), `x`, `y` and
 `width` (fractions of the overlay's drawing, +y down), `tilt` (degrees,
 clockwise), `cheekLeft` and `cheekRight` (`x`, `y`, `visible` from 0 to 1,
 `across`, the cheek's width against the face's width, and the hit test there:
-`hit`, `drawables`, `bone`, `mesh`), `overlays` (the overlays showing) and
+`hit`, `drawables`, `bone`, `mesh`), `overlays` (the overlays showing, such as
+`["blush_deep"]`; one fading out is listed until it is gone) and
 `pinned` (Live2D: `carriers`, how many mesh vertices the face rides on, and
 `milliseconds`, how long finding them took at load). `summary` gives the
 `tracking` used, how far the face `moved` (`x`, `y`, `width`, `tilt`) and, for
@@ -4556,7 +4561,8 @@ tags replies get with the voice chosen now and which follow the voice's cues;
 {blush} at 3:14:05 PM.*, *... for a try ...*, or *The character couldn't play
 ...*; for a gesture followed by what the renderer now plays and holds, *Gestures
 now: wink playing, shy held.*; an emote Martlet drew over the face itself, such
-as the blush glow on a model without a blush of its own, adds *drawn by Martlet
+as the blush glow on a model without a blush of its own, or `blush_deep` and
+`blush_fierce` on any model, adds *drawn by Martlet
 over the face at 414, 88 (50 pixels wide, tilted 3°, pinned to the face's meshes)* with the face's middle and
 width in the overlay's page pixels, the head's roll (clockwise) and how the face is followed (*pinned to the
 face's meshes* for Live2D, *following the head bone* for VRM, or *estimated from the head's angles* for a

@@ -103,6 +103,28 @@ test("blush uses ParamCheek when the model has it and can be held until released
   assert.equal(held.gestures.at(-1), undefined, "released, it fades out and ends");
 });
 
+test("every blush level moves ParamCheek fully when the model has it; without it the page draws them", async t => {
+  const env = environment();
+  const { adapter } = await adapterWith(env, {}, t);
+  for (const level of ["blush", "blush_deep", "blush_fierce"]) {
+    assert.ok(adapter.gestures.includes(level), level);
+    assert.equal(adapter.gesture(level, true), false, `${level}: no ParamCheek, the page draws it`);
+  }
+  adapter.dispose();
+
+  const withCheek = environment();
+  withCheek.parameters.push(["ParamCheek", 0, 1, 0]);
+  withCheek.values.push(0);
+  const held = await adapterWith(withCheek, {}, t);
+  assert.equal(held.adapter.gesture("blush_fierce", true), true);
+  for (let i = 0; i < 20; i++) held.adapter.update(0.1);
+  assert.equal(held.gestures.at(-1).ParamCheek, 1, "the model's own blush, fully, under Martlet's drawing");
+  assert.deepEqual(held.adapter.gestureState, { held: "blush_fierce" });
+  held.adapter.endGesture("blush_fierce");
+  for (let i = 0; i < 10; i++) held.adapter.update(0.1);
+  assert.equal(held.gestures.at(-1), undefined, "turned off, it fades out and ends");
+});
+
 const near = (a, b, tolerance = 1e-3) => Math.hypot(a.x - b.x, a.y - b.y) < tolerance;
 
 test("a face pinned to mesh vertices follows them however they move, turn, tilt and squash", () => {

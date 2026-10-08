@@ -114,47 +114,125 @@ export function toCssAnchor(face, scaleX, scaleY) {
 
 // ---------- the blush ----------
 
-/** Soft pink glows on both cheeks with a few faint diagonal strokes, anime style; the fallback for models without a blush
- *  of their own. Each glow is laid on its cheek's surface (its frame), so it turns, tilts and squashes with the face and
- *  fades as the cheek turns away; without a frame it turns with the face's roll. */
-export function drawBlush(ctx, anchor, _t, weight) {
-  const radius = anchor.width * 0.17;
+/** Martlet's blush levels, faintest first: the blush, a deep blush and a fierce flush. One shows at a time, so a new level
+ *  lets the one before go. A model with a blush of its own shows it for every level, and Martlet draws the stronger levels
+ *  over it, so each level looks different on every model. */
+export const BLUSH_LEVELS = Object.freeze(["blush", "blush_deep", "blush_fierce"]);
+
+// How each level looks, for one face width: the glow's radius, height (squash), strength (alpha) and colors from the middle
+// out, and its strokes (how many, how far apart, how long, their color). The fierce flush also crosses the nose (bridge) and
+// its glow pulses slowly (seconds a pulse).
+const LOOKS = Object.freeze({
+  blush: { radius: 0.17, squash: 0.62, alpha: 0.5, glow: ["rgba(255, 92, 128, 0.85)", "rgba(255, 110, 140, 0.45)", "rgba(255, 130, 150, 0)"],
+    strokes: 3, step: 0.32, length: 0.32, color: "rgba(225, 60, 95, 0.55)" },
+  blush_deep: { radius: 0.2, squash: 0.66, alpha: 0.64, glow: ["rgba(238, 46, 84, 0.9)", "rgba(244, 68, 100, 0.55)", "rgba(250, 96, 122, 0)"],
+    strokes: 5, step: 0.25, length: 0.36, color: "rgba(196, 26, 62, 0.68)" },
+  blush_fierce: { radius: 0.23, squash: 0.7, alpha: 0.76, glow: ["rgba(214, 14, 50, 0.95)", "rgba(226, 30, 64, 0.62)", "rgba(236, 56, 86, 0)"],
+    strokes: 7, step: 0.2, length: 0.4, color: "rgba(160, 8, 40, 0.75)", bridge: true, pulse: 1.6 },
+});
+
+// A soft glow around the origin, `radius` wide and squashed to the look's height.
+function glow(ctx, look, radius) {
+  ctx.scale(1, look.squash);
+  const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+  gradient.addColorStop(0, look.glow[0]);
+  gradient.addColorStop(0.55, look.glow[1]);
+  gradient.addColorStop(1, look.glow[2]);
+  ctx.fillStyle = gradient;
+  ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
+}
+
+// `count` short diagonal strokes side by side around the origin, anime style.
+function hatch(ctx, look, radius, count, scale = 1) {
+  ctx.strokeStyle = look.color;
+  ctx.lineCap = "round";
+  ctx.lineWidth = Math.max(0.75, radius * 0.07);
+  const step = radius * look.step, length = radius * look.length * scale;
+  for (let i = 0; i < count; i++) {
+    const x = (i - (count - 1) / 2) * step;
+    ctx.beginPath();
+    ctx.moveTo(x - length * 0.35, length * 0.5);
+    ctx.lineTo(x + length * 0.35, -length * 0.5);
+    ctx.stroke();
+  }
+}
+
+// Draws one blush level. Each cheek's glow and strokes are laid on its surface (its frame), so they turn, tilt and squash
+// with the face and fade as the cheek turns away; without a frame they turn with the face's roll. A cheek squashed by a
+// turned head keeps fewer of a stronger level's strokes (at least the blush's three). The fierce flush's band over the nose
+// runs between the cheeks, bowed a little toward the eyes, each end as strong as its cheek shows.
+function drawLevel(look, ctx, anchor, t, weight) {
+  const radius = anchor.width * look.radius;
   const c = Math.cos(anchor.angle || 0), s = Math.sin(anchor.angle || 0);
-  for (const [cheek, frame] of [[anchor.cheekLeft, anchor.cheekLeftFrame], [anchor.cheekRight, anchor.cheekRightFrame]]) {
-    if (!cheek) continue;
-    const shown = frame ? frame.visible ?? 1 : 1;
-    if (!(shown > 0.01)) continue;
+  const pulse = look.pulse ? 0.93 + 0.07 * Math.cos(2 * Math.PI * t / look.pulse) : 1;
+  const sides = [[anchor.cheekLeft, anchor.cheekLeftFrame], [anchor.cheekRight, anchor.cheekRightFrame]].map(([cheek, frame]) => cheek && {
+    cheek, shown: Math.min(1, frame ? frame.visible ?? 1 : 1),
     // The cheek's steps across and down for one pixel of face width.
-    const across = frame ? { x: frame.right.x / anchor.width, y: frame.right.y / anchor.width } : { x: c, y: s };
-    const down = frame ? { x: frame.down.x / anchor.width, y: frame.down.y / anchor.width } : { x: -s, y: c };
+    across: frame ? { x: frame.right.x / anchor.width, y: frame.right.y / anchor.width } : { x: c, y: s },
+    down: frame ? { x: frame.down.x / anchor.width, y: frame.down.y / anchor.width } : { x: -s, y: c } });
+  for (const side of sides) {
+    if (!side || !(side.shown > 0.01)) continue;
+    const { cheek, across, down } = side;
     const onCheek = () => { ctx.translate(cheek.x, cheek.y); ctx.transform(across.x, across.y, down.x, down.y, 0, 0); };
-    ctx.globalAlpha = 0.5 * weight * Math.min(1, shown);
+    ctx.globalAlpha = look.alpha * weight * side.shown;
     ctx.save();
     onCheek();
-    ctx.scale(1, 0.62);
-    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
-    glow.addColorStop(0, "rgba(255, 92, 128, 0.85)");
-    glow.addColorStop(0.55, "rgba(255, 110, 140, 0.45)");
-    glow.addColorStop(1, "rgba(255, 130, 150, 0)");
-    ctx.fillStyle = glow;
-    ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
+    if (look.pulse) ctx.globalAlpha *= pulse;
+    glow(ctx, look, radius);
     ctx.restore();
     ctx.save();
     onCheek();
-    ctx.strokeStyle = "rgba(225, 60, 95, 0.55)";
-    ctx.lineCap = "round";
-    ctx.lineWidth = Math.max(0.75, radius * 0.07);
-    const step = radius * 0.32, length = radius * 0.32;
-    for (let i = -1; i <= 1; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * step - length * 0.35, length * 0.5);
-      ctx.lineTo(i * step + length * 0.35, -length * 0.5);
-      ctx.stroke();
-    }
+    hatch(ctx, look, radius, look.strokes > 3 ? Math.max(3, Math.round(look.strokes * Math.min(1, Math.hypot(across.x, across.y))))
+      : look.strokes);
+    ctx.restore();
+  }
+  const [left, right] = sides;
+  if (!look.bridge || !left || !right || !(Math.max(left.shown, right.shown) > 0.01)) return;
+  const dx = right.cheek.x - left.cheek.x, dy = right.cheek.y - left.cheek.y, span = Math.hypot(dx, dy);
+  if (!(span > 1e-6)) return;
+  const along = { x: dx / span, y: dy / span };
+  const eyes = anchor.eyeLeft && anchor.eyeRight
+    ? { x: (anchor.eyeLeft.x + anchor.eyeRight.x) / 2, y: (anchor.eyeLeft.y + anchor.eyeRight.y) / 2 } : { x: anchor.x, y: anchor.y };
+  const lift = { x: 0.15 * (eyes.x - (left.cheek.x + right.cheek.x) / 2), y: 0.15 * (eyes.y - (left.cheek.y + right.cheek.y) / 2) };
+  // A point `f` of the way from the left cheek to the right one, on the band, and how strongly it shows there.
+  const at = f => ({ x: left.cheek.x + dx * f + lift.x * Math.sin(Math.PI * f), y: left.cheek.y + dy * f + lift.y * Math.sin(Math.PI * f),
+    shown: left.shown + (right.shown - left.shown) * f });
+  const onBand = point => { ctx.translate(point.x, point.y); ctx.transform(along.x, along.y, -along.y, along.x, 0, 0); };
+  for (const f of [0.2, 0.35, 0.5, 0.65, 0.8]) {
+    const point = at(f);
+    if (!(point.shown > 0.01)) continue;
+    ctx.save();
+    ctx.globalAlpha = 0.6 * look.alpha * weight * point.shown * pulse;
+    onBand(point);
+    glow(ctx, look, radius * 0.55);
+    ctx.restore();
+  }
+  // Strokes over the nose, as far apart as the cheeks' strokes, so the hatching runs across the face.
+  const step = radius * look.step / span;
+  for (const k of [-1.5, -0.5, 0.5, 1.5]) {
+    const point = at(0.5 + k * step);
+    if (!(point.shown > 0.01)) continue;
+    ctx.save();
+    ctx.globalAlpha = look.alpha * weight * point.shown;
+    onBand(point);
+    hatch(ctx, look, radius, 1, 0.85);
     ctx.restore();
   }
 }
 
+/** Soft pink glows on both cheeks with a few faint diagonal strokes, anime style: the blush, drawn for models without a
+ *  blush of their own. */
+export function drawBlush(ctx, anchor, t, weight) { drawLevel(LOOKS.blush, ctx, anchor, t, weight); }
+
+/** The draw function of a blush level (see BLUSH_LEVELS): the deep blush is redder and wider with more strokes; the fierce
+ *  flush is deep red across both cheeks and over the nose, densely hatched, its glow pulsing slowly. */
+export const blushDrawing = level => {
+  const look = Object.hasOwn(LOOKS, level) ? LOOKS[level] : undefined;
+  if (!look) throw new RangeError(`No blush level is named ${level}.`);
+  return (ctx, anchor, t, weight) => drawLevel(look, ctx, anchor, t, weight);
+};
+
 export function registerBlush(register = registerOverlay) {
   register("blush", { duration: 4, fadeIn: 0.6, fadeOut: 0.6, draw: drawBlush });
+  for (const level of BLUSH_LEVELS.slice(1)) register(level, { duration: 4, fadeIn: 0.6, fadeOut: 0.6, draw: blushDrawing(level) });
 }

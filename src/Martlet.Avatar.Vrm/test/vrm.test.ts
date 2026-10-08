@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { cheekFrame, inspectVrm, LIMITS, loadLocalVrm, VRM_GESTURES, VrmRuntime, type PlaybackIdentity, type Selection } from "../src/index.js";
+import { cheekFrame, inspectVrm, LIMITS, loadLocalVrm, VRM_BLUSH_LEVELS, VRM_GESTURES, VrmRuntime, type PlaybackIdentity, type Selection } from "../src/index.js";
 import { encodeGlb, fixture, fixtureDocument } from "./fixture.js";
 
 const identity: PlaybackIdentity = {
@@ -344,6 +344,43 @@ test("blush shows an authored cheek expression, held until released, and the fac
   for (let i = 0; i < 20; i++) own.update(0.1);
   assert.ok(vrm.expressionManager.getValue("CheekRed")! < 0.01);
   assert.equal(own.playGesture("blush"), true);
+  for (let i = 0; i < 50; i++) own.update(0.1);
+  assert.ok(vrm.expressionManager.getValue("CheekRed")! < 0.01, "not held, it ends by itself");
+  own.dispose();
+});
+
+test("every blush level shows the model's own cheek expression fully and says which level is held", async () => {
+  const runtime = new VrmRuntime(); await runtime.load(fixture()); runtime.startIdle();
+  assert.deepEqual([...VRM_BLUSH_LEVELS], ["blush", "blush_deep", "blush_fierce"]);
+  assert.deepEqual(VRM_GESTURES.slice(-2), ["blush_deep", "blush_fierce"]);
+  for (const level of VRM_BLUSH_LEVELS) {
+    assert.ok(runtime.gestures.includes(level), level);
+    assert.equal(runtime.playGesture(level, true), false, `${level}: no blush of its own, the page draws it`);
+  }
+  runtime.dispose();
+
+  const { document, bin } = fixtureDocument();
+  (document.extensions.VRMC_vrm.expressions.custom as Record<string, unknown>).CheekRed = { morphTargetBinds: [{ node: 17, index: 7, weight: 1 }] };
+  const own = new VrmRuntime(); await own.load(encodeGlb(document, bin)); own.startIdle();
+  const vrm = (own as unknown as { model: { expressionManager: { getValue(name: string): number } } }).model;
+  assert.equal(own.playGesture("blush_deep", true), true);
+  for (let i = 0; i < 30; i++) own.update(0.1);
+  assert.ok(vrm.expressionManager.getValue("CheekRed")! > 0.99, "the model's own blush, fully, under Martlet's drawing");
+  assert.deepEqual(own.gestureState, { held: "blush_deep" });
+  // The page lets the level before go as it holds the next: the cheeks stay flushed.
+  own.endGesture("blush_deep");
+  assert.equal(own.playGesture("blush_fierce", true), true);
+  for (let i = 0; i < 5; i++) {
+    own.update(0.1);
+    assert.ok(vrm.expressionManager.getValue("CheekRed")! > 0.99);
+  }
+  own.endGesture("blush_deep");
+  assert.deepEqual(own.gestureState, { held: "blush_fierce" }, "ending another level changes nothing");
+  own.endGesture("blush_fierce");
+  assert.deepEqual(own.gestureState, {});
+  for (let i = 0; i < 20; i++) own.update(0.1);
+  assert.ok(vrm.expressionManager.getValue("CheekRed")! < 0.01);
+  assert.equal(own.playGesture("blush_fierce"), true);
   for (let i = 0; i < 50; i++) own.update(0.1);
   assert.ok(vrm.expressionManager.getValue("CheekRed")! < 0.01, "not held, it ends by itself");
   own.dispose();

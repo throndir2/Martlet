@@ -44,10 +44,13 @@ the standard parameters for (`gestures`: `nod`, `shake`, `tilt`, `bow`, `sway`,
 `gasp`, `cough`, `clear_throat`, `groan`, `sniff`, `shush`, `inhale`, `exhale`,
 `mumble`, `hum`, `sneeze`, `whistle`, `happy`, `sarcastic`, `angry`, `fear`,
 `crying`, `whispering`, `dramatic`, then `wink`, `pout`, `shy`, `giggle`, `flinch`,
-`lean_in`, `look_away`, `think`, `eye_roll`, `drowsy`), added to the look-at angles and those parameters
-(`lib/gestures.ts`). `gesture(name, true)` holds `pout`, `shy`, `look_away` or
-`drowsy` until `endGesture(name)`; a gesture played meanwhile plays on top, and
-`gestureState` says which plays once and which is held.
+`lean_in`, `look_away`, `think`, `eye_roll`, `drowsy`, and last the stronger
+blush levels `blush_deep` and `blush_fierce`), added to the look-at angles and those parameters
+(`lib/gestures.ts`). `gesture(name, true)` holds `pout`, `shy`, `look_away`,
+`drowsy` or a blush level until `endGesture(name)`; a gesture played meanwhile plays on top, and
+`gestureState` says which plays once and which is held. Every blush level
+(`BLUSH_LEVELS`) moves `ParamCheek` fully; without it `gesture` returns false
+and the renderer page draws the level over the face instead.
 
 `faceAnchor()` says where the face is now, for Martlet's drawings over it
 (`lib/face.ts`). At load the adapter finds the face at rest, then pins its

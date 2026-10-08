@@ -105,6 +105,61 @@ test("Martlet's overlay emotes play on any model, a held one reported as the hel
   assert.equal(posts.at(-1).gesture.held, undefined);
 });
 
+test("one blush level shows at a time, the stronger ones drawn over the model's own blush and on any model without one", async () => {
+  const posts = [], played = [];
+  let own = true;
+  class Renderer {
+    #held;
+    load() { return Promise.resolve({ expressions: [] }); }
+    resize() {}
+    update() {}
+    setView() {}
+    dispose() {}
+    playGesture(name, hold) { played.push([name, hold]); if (!own) return false; if (hold) this.#held = name; return true; }
+    endGesture(name) { played.push(["release", name]); if (this.#held === name) this.#held = undefined; }
+    get gestureState() { return this.#held ? { held: this.#held } : {}; }
+    faceAnchor() { return { x: 250, y: 100, width: 80, angle: 0, tracking: "bones", cheekLeft: { x: 230, y: 115 }, cheekRight: { x: 270, y: 115 } }; }
+  }
+  const { send, draw } = await page(Renderer, posts);
+  await send({ kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm" } });
+  const reply = () => JSON.parse(JSON.stringify(posts.at(-1)));
+  const overlays = async () => { await send({ kind: "face", data: { id: 1 } }); return reply().faceReading.overlays; };
+  let now = 0;
+  const wait = seconds => { for (let i = 0; i < seconds * 10; i++) draw(now += 100); };
+
+  // The model's own blush shows the blush, and Martlet draws nothing over it.
+  await send({ kind: "action", data: { kind: "gesture", name: "blush", hold: true } });
+  assert.deepEqual(reply(), { started: true, gesture: { held: "blush" } });
+  assert.deepEqual(await overlays(), []);
+  // A deep blush: the model's own blush with Martlet's deep blush drawn over it; the blush before lets go.
+  await send({ kind: "action", data: { kind: "gesture", name: "blush_deep", hold: true } });
+  assert.deepEqual(reply(), { started: true, overlay: true, face: { x: 250, y: 100, width: 80, tilt: 0, tracking: "bones" },
+    gesture: { held: "blush_deep" } });
+  assert.deepEqual(played.slice(-3), [["release", "blush"], ["release", "blush_fierce"], ["blush_deep", true]]);
+  assert.deepEqual(await overlays(), ["blush_deep"]);
+  // A fierce flush replaces it, and a passing blush replaces the fierce flush.
+  await send({ kind: "action", data: { kind: "gesture", name: "blush_fierce", hold: true } });
+  assert.equal(reply().gesture.held, "blush_fierce");
+  wait(1);
+  assert.deepEqual(await overlays(), ["blush_fierce"], "the deep blush faded out");
+  await send({ kind: "action", data: { kind: "gesture", name: "blush" } });
+  assert.deepEqual(reply(), { started: true, gesture: {} });
+  wait(1);
+  assert.deepEqual(await overlays(), []);
+
+  // A model without a blush of its own: Martlet draws every level, one at a time.
+  own = false;
+  for (const level of ["blush", "blush_deep", "blush_fierce"]) {
+    await send({ kind: "action", data: { kind: "gesture", name: level, hold: true } });
+    assert.deepEqual([reply().started, reply().overlay, reply().gesture.held], [true, true, level], level);
+  }
+  wait(1);
+  assert.deepEqual(await overlays(), ["blush_fierce"]);
+  await send({ kind: "action", data: { kind: "gesture", name: "blush_fierce", on: false, hold: true } });
+  assert.equal(reply().gesture.held, undefined);
+  assert.ok(!posts.some(post => post.error));
+});
+
 test("the face Martlet draws over is read unprompted for MCP: how it is followed, where and what is under each cheek", async () => {
   const posts = [];
   class Renderer {
