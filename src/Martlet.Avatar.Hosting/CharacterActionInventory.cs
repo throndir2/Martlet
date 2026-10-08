@@ -133,7 +133,15 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
         Overlay("exclaim", "an exclamation mark, for being startled or suddenly realizing something",
             "an exclamation mark pops up beside the head"),
         Overlay("sleepy", "a floating Zzz, for sleepiness or boredom", "Zzz floats up from the head", holdable: true),
-        Overlay("music", "music notes, for humming or a happy, carefree mood", "music notes float up around the head")
+        Overlay("music", "music notes, for humming or a happy, carefree mood", "music notes float up around the head"),
+        Overlay("heart_eyes", "heart eyes, for being smitten or adoring", "pink hearts pulse in the eyes", holdable: true),
+        Overlay("star_eyes", "starry eyes, for being starstruck or thrilled", "stars twinkle in the eyes", holdable: true),
+        Overlay("tongue_out", "stick your tongue out, for a playful tease", "a little tongue pokes out below the mouth", holdable: true),
+        Overlay("drool", "drool, for craving something tasty or dozing off", "a drop of drool runs from a corner of the mouth", holdable: true),
+        Overlay("steam", "steam puffs, for fuming or being overheated", "puffs of steam blow out from the head", holdable: true),
+        Overlay("dizzy", "swirly eyes, for being dizzy or dazed", "swirls spin in the eyes and little stars circle the head", holdable: true),
+        Overlay("idea", "a light bulb, for a sudden idea", "a light bulb lights up above the head"),
+        Overlay("ellipsis", "an ellipsis, for being speechless or an awkward silence", "three dots appear one by one beside the head")
     ];
 
     public static CharacterGesture? Gesture(string id) => AllGestures.FirstOrDefault(g => g.Id == id);

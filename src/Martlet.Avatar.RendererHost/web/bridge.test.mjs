@@ -92,7 +92,8 @@ test("Martlet's overlay emotes play on any model, a held one reported as the hel
   }
   const { send } = await page(Renderer, posts);
   await send({ kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm" } });
-  for (const name of ["sweat", "anger", "hearts", "sparkles", "tears", "gloom", "question", "exclaim", "sleepy", "music"]) {
+  for (const name of ["sweat", "anger", "hearts", "sparkles", "tears", "gloom", "question", "exclaim", "sleepy", "music", "heart_eyes",
+    "star_eyes", "tongue_out", "drool", "steam", "dizzy", "idea", "ellipsis"]) {
     await send({ kind: "action", data: { kind: "gesture", name } });
     assert.equal(posts.at(-1).started, true, name);
     assert.equal(posts.at(-1).overlay, true, name);
@@ -118,7 +119,8 @@ test("the face Martlet draws over is read unprompted for MCP: how it is followed
     get gestureState() { return {}; }
     hitTest(x) { return x < 0.5 ? { bone: "head", mesh: "Face" } : undefined; }
     faceAnchor() { return { x: 250, y: 100, width: 80, angle: Math.PI / 18, tracking: "bones",
-      cheekLeft: { x: 230, y: 115 }, cheekRight: { x: 270, y: 115 },
+      cheekLeft: { x: 230, y: 115 }, cheekRight: { x: 270, y: 115 }, eyeLeft: { x: 234, y: 100 }, eyeRight: { x: 266, y: 100 },
+      mouth: { x: 250, y: 130 },
       cheekLeftFrame: { right: { x: 100, y: 0 }, down: { x: 0, y: 80 }, visible: 1 },
       cheekRightFrame: { right: { x: 40, y: 0 }, down: { x: 0, y: 80 }, visible: 0.25 } }; }
   }
@@ -134,6 +136,8 @@ test("the face Martlet draws over is read unprompted for MCP: how it is followed
     [2, true, "bones", 0.5, 0.2, 0.16, 10]);
   assert.deepEqual(reading.cheekLeft, { x: 0.46, y: 0.23, visible: 1, across: 1.25, hit: true, drawables: [], bone: "head", mesh: "Face" });
   assert.deepEqual([reading.cheekRight.visible, reading.cheekRight.across, reading.cheekRight.hit], [0.25, 0.5, false]);
+  assert.deepEqual([reading.eyeLeft, reading.eyeRight, reading.mouth, reading.top],
+    [{ x: 0.468, y: 0.2 }, { x: 0.532, y: 0.2 }, { x: 0.5, y: 0.26 }, null], "where the eye and mouth emotes sit");
   assert.deepEqual(reading.overlays, ["blush"]);
   assert.ok(!posts.some(post => post.error));
 });

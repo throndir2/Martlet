@@ -30,9 +30,11 @@ public sealed class CharacterGestureTests
         return glb;
     }
 
-    private static readonly string[] HeldOverlays = ["{/sweat}", "{/hearts}", "{/gloom}", "{/sleepy}"];
+    private static readonly string[] HeldOverlays = ["{/sweat}", "{/hearts}", "{/gloom}", "{/sleepy}", "{/heart_eyes}", "{/star_eyes}",
+        "{/tongue_out}", "{/drool}", "{/steam}", "{/dizzy}"];
 
-    private static readonly string[] Overlays = ["sweat", "anger", "hearts", "sparkles", "tears", "gloom", "question", "exclaim", "sleepy", "music"];
+    private static readonly string[] Overlays = ["sweat", "anger", "hearts", "sparkles", "tears", "gloom", "question", "exclaim", "sleepy", "music",
+        "heart_eyes", "star_eyes", "tongue_out", "drool", "steam", "dizzy", "idea", "ellipsis"];
 
     private static string[] Gestures(CharacterActionInventory inventory) =>
         inventory.Sources.Where(s => s.Kind == CharacterActionKind.Gesture).Select(s => s.Name).ToArray();
@@ -142,7 +144,8 @@ public sealed class CharacterGestureTests
         var names = CharacterActionInventory.AllGestures.Select(g => g.Name).ToArray();
         string[] added = ["wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy"];
         Assert.Equal(added, names.Where(n => !Overlays.Contains(n)).ToArray()[^added.Length..]);
-        Assert.Equal(["pout", "shy", "look_away", "drowsy", "sweat", "hearts", "gloom", "sleepy"], CharacterActionInventory.AllGestures.Where(g => g.Holdable).Select(g => g.Name));
+        Assert.Equal(["pout", "shy", "look_away", "drowsy", "sweat", "hearts", "gloom", "sleepy", "heart_eyes", "star_eyes", "tongue_out", "drool",
+            "steam", "dizzy"], CharacterActionInventory.AllGestures.Where(g => g.Holdable).Select(g => g.Name));
         Assert.All(CharacterActionInventory.AllGestures, g => Assert.True(CharacterActions.IsTag(g.Tag) &&
             g.Use.Length <= CharacterActionCatalog.MaximumUseLength, g.Name));
         Assert.Equal(names.Length, names.Distinct().Count());
@@ -202,5 +205,39 @@ public sealed class CharacterGestureTests
         var vrm = CharacterActionInventory.From(AvatarRenderer.Vrm, "m.vrm", [new("m.vrm", Glb(Vrm("head")), "model/gltf-binary")]);
         Assert.Equal(Overlays, Gestures(vrm).Intersect(Overlays));
         Assert.EndsWith("(drawn over the character).", vrm.Find("gesture:tears")!.Detail);
+    }
+
+    [Fact]
+    public void TheEyeAndMouthOverlaysComeLastAndLingerAndAModelsOwnReplacesThem()
+    {
+        // Appended after music, so the reply instructions' earlier lines (and prompt caches) stay the same.
+        var model = Encoding.UTF8.GetBytes("{\"Version\":3,\"FileReferences\":{\"Moc\":\"m.moc3\",\"Textures\":[]}}");
+        var plain = CharacterActionInventory.From(AvatarRenderer.Live2D, "m.model3.json",
+            [new("m.model3.json", model, "application/json"), new("m.moc3", Moc("ParamAngleX"), "application/octet-stream")]);
+        var prompt = new CharacterActionCatalog(plain, CharacterActions.Merge(plain, null)).Prompt(null, null)!;
+        Assert.Contains("{music} - music notes, for humming or a happy, carefree mood\n" +
+            "{heart_eyes} - heart eyes, for being smitten or adoring (stays on until you write {/heart_eyes})\n" +
+            "{star_eyes} - starry eyes, for being starstruck or thrilled (stays on until you write {/star_eyes})\n" +
+            "{tongue_out} - stick your tongue out, for a playful tease (stays on until you write {/tongue_out})\n" +
+            "{drool} - drool, for craving something tasty or dozing off (stays on until you write {/drool})\n" +
+            "{steam} - steam puffs, for fuming or being overheated (stays on until you write {/steam})\n" +
+            "{dizzy} - swirly eyes, for being dizzy or dazed (stays on until you write {/dizzy})\n" +
+            "{idea} - a light bulb, for a sudden idea\n" +
+            "{ellipsis} - an ellipsis, for being speechless or an awkward silence", prompt.Instructions);
+
+        // A model whose own expressions are named 爱心眼 (heart eyes) and 吐舌 (tongue out) keeps them for those tags.
+        var named = Encoding.UTF8.GetBytes("{\"Version\":3,\"FileReferences\":{\"Moc\":\"m.moc3\",\"Textures\":[]," +
+            "\"Expressions\":[{\"Name\":\"爱心眼\",\"File\":\"a.exp3.json\"},{\"Name\":\"吐舌\",\"File\":\"b.exp3.json\"}]}}");
+        var expression = Encoding.UTF8.GetBytes("{\"Type\":\"Live2D Expression\",\"Parameters\":[{\"Id\":\"ParamEyeForm\",\"Value\":1}]}");
+        var own = CharacterActionInventory.From(AvatarRenderer.Live2D, "m.model3.json",
+        [
+            new("m.model3.json", named, "application/json"), new("m.moc3", Moc("ParamEyeForm"), "application/octet-stream"),
+            new("a.exp3.json", expression, "application/json"), new("b.exp3.json", expression, "application/json")
+        ]);
+        Assert.Equal(["blush", .. Overlays.Except(["heart_eyes", "tongue_out"])], Gestures(own));
+        var tags = new CharacterActionCatalog(own, CharacterActions.Merge(own, null)).Prompt(null, null)!.Tags;
+        Assert.Equal(["{heart_eyes}", "{tongue_out}"], tags.Take(2));
+        Assert.Single(tags, "{heart_eyes}");
+        Assert.Contains("{star_eyes}", tags);
     }
 }
