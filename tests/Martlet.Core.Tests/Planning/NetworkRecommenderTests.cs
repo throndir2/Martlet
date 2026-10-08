@@ -604,4 +604,112 @@ public sealed class NetworkRecommenderTests
         // The Speaking pool has one place for each other companion PC at most among new places.
         Assert.InRange(recommendation.Target.Job(ClusterJobs.Speaking)!.Pool.Count, 0, 2);
     }
+
+    /// <summary>The owner's report: one companion PC (a 12 GB card by default) runs Singing and a Listening pool place, and
+    /// both hosts (Thinking, the voice and lip-sync on miku; Listening on imouto) haven't answered for 155 minutes.</summary>
+    private static NetworkSetupRequest HostsGoneForHours(double cardGb = 12) => Network(
+        Companion("this-pc", true, Nvidia(cardGb)) with { Roles = [Role("singing", "ace-step-v15-soulx-svc"), Role("stt", "large-v3-turbo")] },
+        Host("miku", Nvidia(16)) with
+        {
+            Online = false, OfflineFor = TimeSpan.FromMinutes(155),
+            Roles = [Role("ollama", "gemma4:e2b"), Role("chatterbox", "chatterbox-turbo"), Role("audio2face")]
+        },
+        Host("imouto", Nvidia(12)) with { Online = false, OfflineFor = TimeSpan.FromMinutes(155), Roles = [Role("stt", "large-v3-turbo")] }) with
+    {
+        CurrentJobs =
+        [
+            new JobPlan(ClusterJobs.Thinking, "miku", OptionId: "gemma4:e2b"),
+            new JobPlan(ClusterJobs.Speaking, "miku", OptionId: "chatterbox-turbo"),
+            new JobPlan(ClusterJobs.Listening, "imouto", OptionId: "whisper-large-v3-turbo-cuda") { Pool = ["this-pc"] },
+            new JobPlan(ClusterJobs.LipSync, "miku", OptionId: "audio2face-3d")
+        ],
+        Preference = HostingPreference.PreferLocal
+    };
+
+    private static void AssertWithinCapacity(NetworkRecommendation recommendation)
+    {
+        foreach (var machine in recommendation.Target.Machines.Where(m => m.Usage is not null))
+            Assert.All(machine.Usage!.Gpus, g => Assert.True(g.Vram.Used <= g.Vram.Capacity + 1e-6, $"{machine.MachineId} card {g.Index}: {g.Vram.Used} > {g.Vram.Capacity}"));
+    }
+
+    [Fact]
+    public void ACompanionPcWhoseHostsAreGoneThinksItselfAndSingingYields()
+    {
+        // Needed jobs come before optional extras: Thinking first (in the PC's own Ollama, on its card), then the voice and
+        // lip-sync on the card, listening in the app; Singing (optional) has no room left and goes.
+        var request = HostsGoneForHours();
+
+        var recommendation = NetworkRecommender.Recommend(request);
+
+        var thinking = recommendation.Target.Job(ClusterJobs.Thinking)!;
+        Assert.Null(thinking.HostId);
+        Assert.Equal("gemma4:e2b", thinking.OptionId);
+        Assert.DoesNotContain(recommendation.Notes, n => n.Contains("No computer can run a Thinking model", StringComparison.Ordinal));
+        Assert.Equal("this-pc", recommendation.Target.Job(ClusterJobs.Speaking)!.HostId);
+        Assert.Equal("this-pc", recommendation.Target.Job(ClusterJobs.LipSync)!.HostId);
+        Assert.False(recommendation.Target.Job(ClusterJobs.LipSync)!.Off);
+        var listening = recommendation.Target.Job(ClusterJobs.Listening)!;
+        Assert.Null(listening.HostId);
+        Assert.StartsWith("parakeet", listening.OptionId, StringComparison.Ordinal);
+        var roles = RolesOf(recommendation, "this-pc");
+        Assert.Contains(roles, r => r.Kind == "chatterbox");
+        Assert.Contains(roles, r => r.Kind == "audio2face");
+        Assert.DoesNotContain(roles, r => r.Kind is "singing" or "stt");
+        var singing = recommendation.Changes.Single(c => c.Kind == SetupChangeKind.RemoveRole && c.RoleKind == "singing");
+        Assert.Equal("this-pc", singing.MachineId);
+        Assert.Equal(SetupChangeBenefit.Required, singing.Benefit);
+        Assert.Contains("optional", singing.Why, StringComparison.Ordinal);
+        // One companion PC alone: no "each companion PC" wording.
+        Assert.DoesNotContain(recommendation.Changes, c => c.Summary.Contains("ach companion PC", StringComparison.Ordinal) ||
+            c.Why.Contains("ach companion PC", StringComparison.Ordinal));
+        AssertWithinCapacity(recommendation);
+        var again = NetworkRecommender.Recommend(Apply(request, recommendation));
+        Assert.True(again.AlreadyOptimal, string.Join("\n", again.Changes.Select(c => c.Summary)));
+    }
+
+    [Fact]
+    public void ACompanionPcKeepsSingingWhenTheNeededJobsLeaveRoom()
+    {
+        var request = HostsGoneForHours(cardGb: 24);
+
+        var recommendation = NetworkRecommender.Recommend(request);
+
+        Assert.Equal("gemma4:e2b", recommendation.Target.Job(ClusterJobs.Thinking)!.OptionId);
+        Assert.Equal("this-pc", recommendation.Target.Job(ClusterJobs.Speaking)!.HostId);
+        Assert.Contains(RolesOf(recommendation, "this-pc"), r => r.Kind == "singing");
+        Assert.DoesNotContain(recommendation.Changes, c => c.RoleKind == "singing");
+        AssertWithinCapacity(recommendation);
+        Assert.True(NetworkRecommender.Recommend(Apply(request, recommendation)).AlreadyOptimal);
+    }
+
+    [Fact]
+    public void ASavedFreeProviderKeyThinksHostedOnlyWhenTheCardHasNoRoomForALocalModel()
+    {
+        // Desktop plans Balanced with a saved provider key and PreferLocal without one (RecommendedSetupInputs.PreferenceFor).
+        NetworkSetupRequest WithKey(double cardGb) => HostsGoneForHours(cardGb) with
+        {
+            Preference = HostingPreference.Balanced, ConfiguredProviders = ["nvidia-build"]
+        };
+
+        // 12 GB: the voice, lip-sync and a local model all fit; the local model stays, because its first word comes sooner.
+        var roomy = NetworkRecommender.Recommend(WithKey(12));
+        Assert.Equal("gemma4:e2b", roomy.Target.Job(ClusterJobs.Thinking)!.OptionId);
+        Assert.Null(roomy.Target.Job(ClusterJobs.Thinking)!.HostId);
+
+        // 8 GB: the voice and lip-sync take the card, and Thinking uses the free hosted model the owner saved a key for.
+        var tight = NetworkRecommender.Recommend(WithKey(8));
+        var thinking = tight.Target.Job(ClusterJobs.Thinking)!;
+        Assert.Null(thinking.HostId);
+        Assert.Equal("hosted:nvidia-build", thinking.OptionId);
+        Assert.Equal("this-pc", tight.Target.Job(ClusterJobs.Speaking)!.HostId);
+        Assert.Equal("this-pc", tight.Target.Job(ClusterJobs.LipSync)!.HostId);
+        Assert.Contains(RolesOf(tight, "this-pc"), r => r.Kind == "audio2face");
+        Assert.DoesNotContain(tight.Notes, n => n.StartsWith("Sign up", StringComparison.Ordinal));
+        AssertWithinCapacity(tight);
+
+        // Without a key the same 8 GB PC thinks locally first: Thinking comes before every other job.
+        var local = NetworkRecommender.Recommend(HostsGoneForHours(8));
+        Assert.Equal("gemma4:e2b", local.Target.Job(ClusterJobs.Thinking)!.OptionId);
+        Assert.Null(local.Target.Job(ClusterJobs.Thinking)!.HostId);
+    }
 }

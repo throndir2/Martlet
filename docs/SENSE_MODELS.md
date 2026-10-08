@@ -154,36 +154,179 @@ This is the design that the image and audio pipelines follow.
 
 ## Pictures: the image model
 
-Owned by the image pipeline's pull request; this is its design.
+Built by the image pipeline's pull request. With an image model of its own
+(the Described path), Thinking never gets a picture: the image model puts
+each picture into words, and Thinking gets the words.
 
-- **Replies.** When the image path is Described, no picture goes to Thinking.
-  The image model describes the newest picture ahead of time: when you start
-  to speak and when the watched picture changes. A reply takes the newest
-  description of the picture it would have sent, and never waits for one.
-- **Looks.** A screen glance or a camera look has two steps: the image model
-  describes the screenshot, then Thinking gets the glance message with the
-  description. Thinking decides whether to say something, as now.
-- **Screen summary over time.** It uses the image model first, then the
-  Thinking pool, as now.
-- **Can't see.** Vision works when the image path is Thinking or Described.
-  Companion and the talk window say *Can't see* only for None.
+**When it describes.** While Martlet watches, the talk window gives each
+screenshot a *picture version*. The version stays the same while nothing
+changes on the picture, and changes when it changes enough (the glancer's
+change score is 0.01 or more) or shows another window, program, full-screen
+state or source. The image model describes the newest picture ahead of time:
+
+1. While you talk or type: always listening hears you, you press the talk
+   button, you type, or something you said or typed waits for a reply. At
+   most one new description every 4 seconds.
+2. When a look is due, and the picture Martlet keeps of something that wants
+   your attention.
+3. When the picture changed, at most one every 15 seconds, and only while
+   you talked with Martlet in the last 2 minutes. Nothing is described while
+   you play or watch alone.
+
+All picture jobs use one key (`picture`) on the image model's line, so only
+the newest picture waits. After a failed description, nothing new starts for
+5 seconds, and the same picture isn't asked for again for 30 seconds.
+
+**What the image model gets.** Companion › Prompts › *Image model: describe
+the picture* (the same every time), the picture, and a message: what the
+picture shows, the program in front and the window's title (a screen only),
+and the last lines of the conversation (at most 6 messages, 200 characters
+each and 1,200 in all; seen tags removed, `[pass]` left out). It answers with
+one summary line, then details, in at most 300 tokens. Martlet keeps at most
+1,200 characters of it.
+
+**Replies.**
+
+1. When a reply's request is built, the reply takes a description only if one
+   is ready for the picture it would have sent: the same source and the same
+   window (title and program), and either nothing changed on the picture since
+   the described screenshot, or that screenshot is at most 10 seconds old
+   (the freshness rule for a picture that goes with a message). It never takes
+   one older than 60 seconds. A look at something that wants your attention
+   needs the exact picture.
+2. The description goes in the notes sent with that request only (*What the
+   image model saw*), after the *Active app with your message* note, which
+   names the window the description was made of.
+3. While the path is Described, every reply's instructions carry *Pictures as
+   words*, with or without a description, so prompt caches keep them. The
+   reply isn't told *Screen with your message* or *What you saw*, and it gets
+   no `[seen: ...]` tag.
+4. The conversation keeps `[Screen] With this message you saw <where>:
+   <summary>.`, never the note.
+5. Without a ready description, the reply goes without the picture. Your
+   message's bubble says so: *The image model's description of your whole
+   screen wasn't ready, so Martlet answered without it.* With one, it says
+   *Martlet saw your whole screen through the image model's description.*
+
+**Looks.** A screen glance or camera look has two stages:
+
+1. The image model describes the look's own picture. A description of that
+   exact picture is used again, and one being made of it is awaited.
+2. Thinking gets the glance message with the description (and the text read
+   on the screen, last), no picture, no seen tag and no look tags: without the
+   picture, Thinking can't say where the character should look, so the
+   character's eyes follow what changes on screen. The conversation keeps
+   `[Screen] You looked at <where>: <summary>.`
+
+When the image model can't describe the picture, the look ends without asking
+Thinking, and the next look waits a while, as for a busy provider. When the
+model refuses the picture, Martlet remembers that it can't see, and watching
+stops with what to change. Talking or typing stops a look in its first stage
+as it stops any look; a description being made goes on for the reply.
+
+**Screen summary over time.** While the path is Described, the summary job
+goes to the image model's line first, with the lowest priority (key
+`screen-summary`), so the next reply's picture goes first. On the
+conversation's own computer and graphics card it starts only while the live
+floor is Idle. Otherwise, or when no image model takes it, the Thinking pool
+makes it, as before.
+
+**The conversation comes first.** On the conversation's computer and graphics
+card, the foundation's hold stops a description when a reply starts and
+starts none until the reply's voice is made ([Latency rules](#latency-rules)).
+A stopped description leaves nothing for that reply, and no back-off follows.
+
+**Can't see.** Vision works when the path is Thinking or Described. Companion
+› Vision (`VisionStatus`, `VisionDisclosure`), Home's warning (*Martlet can't
+see with your image model* or *... with your thinking model*), the talk
+window's *Can't see* and `commentary.vision_unsupported` follow the path and
+apply only to None. An image model that can't see never sends the pictures to
+Thinking instead.
+
+**Privacy.** Pictures go to the image model only while vision is on and you
+pressed Start watching. Martlet's own windows, password managers and private
+windows are greyed out or skipped, as for every look. The image model is told
+never to copy private details and to say only who or which app a notification
+is from; Thinking is told never to read out private details. Descriptions are
+kept in memory only (the newest three), go when the conversation is cleared,
+paused or locked and when watching stops, and never go to logs or status
+files.
+
+**How to check it.** The desktop log says `Image model: described your whole
+screen in 1.4 s (...)` and `Picture path: described (...)` with times only.
+`image-model-status.json` counts described replies, replies that went without,
+looks and descriptions. MCP's `image_model_check` reads both and rehearses the
+pipeline against fixture endpoints ([MCP](MCP.md#image-and-audio-models)).
+Code: `PictureDescriptions.cs` (shared with MCP), `LiveConversationController.Pictures.cs`,
+`LiveConversationWindow.Pictures.cs` and `ImageModelScreenDigestThinker`
+(`PoolScreenDigestThinker.cs`). Tests: `ImageModelPipelineTests`
+(Martlet.Desktop.Tests).
+
+NOT RUN in the change that built it: a real image model and a real screen
+capture in the talk window; fixture endpoints stood in.
 
 ## Recordings: the audio model
 
-Owned by the audio pipeline's pull request; this is its design.
+In place since the audio pipeline's pull request. With an audio model of its
+own (`SenseRoute(Audio).Model` is set), Thinking never gets a recording; with
+the default (the text model) nothing below runs and no request changes.
 
 - **Your voice.** When the audio path is Described, your recording never goes
-  to Thinking, and the straight path is off. Speech-to-text makes the words as
-  now, and the reply waits only for them. Beside speech-to-text, the audio
-  model describes how you said it. When its words are ready as the reply's
-  request is built, they go with that request; otherwise they go to the
-  context board for the next one.
+  to Thinking, and the straight path is off (it needs Thinking to hear).
+  Speech-to-text makes the words as before, and the reply waits only for them.
+  As soon as an utterance ends, the audio model gets it beside speech-to-text
+  (a `your voice` job on the audio lane, priority 10, 15 seconds at most):
+  the recording, the fixed instructions *Describing your voice* (Companion ›
+  Prompts) and a short context (your last message and Martlet's last words,
+  without `[PC audio]`, `[Screen]` and `[Camera]` lines). It answers with one
+  summary line of at most 20 words and, when it helps, a line of details, or
+  *none* when nothing stands out.
+- **With the reply, or with the next request.** When its words are ready as
+  the reply's request is built, they go in that request's context notes
+  (*How you sounded*: "How the user sounded saying this message, as the audio
+  model heard it: ..."), and the conversation keeps only a short line after the
+  message, such as `(voice: sighs, sounds tired)`. Otherwise the request goes
+  without them, and once they come they wait on the context board as one
+  consume-once note (source `voice`, fresh for 3 minutes, up to 3 late notes
+  together, "... in what they said before this message ..."), kept as
+  `(voice, earlier: ...)` after the message that carried them. A reply never
+  waits for them. Words that came after the conversation was cleared are
+  dropped.
+- **The fixed instruction.** While the audio path is Described, every reply's
+  instructions have *Your voice, described by the audio model*, the same in
+  every request, so the prompt cache keeps the start of each request. Looks
+  get no new instruction; the note says what it is.
+- **When nothing follows.** What isn't words, another voice, a failed
+  transcription or something the talk window drops cancels the job. When
+  Martlet doesn't answer a message, its words go to the board for the next
+  request. A reply started early takes no words; they go to the next request.
+- **Shared hardware.** When the audio model shares the conversation's computer
+  and graphics card (`SenseSharesConversation`), an utterance's job starts only
+  once its reply's request has started (or no reply follows, at most 30 seconds
+  later); the lane then holds it until the reply's voice is made, so it never
+  runs beside Thinking before the first audio. Its words always go to the next
+  request. A job stopped for a new reply (`Preempted`) goes once more.
 - **Consent.** A recording goes to an audio model under the same rule as *Let
-  Thinking hear my voice*: on without a tick only while the recording stays on
-  this PC (Ollama on this PC, not a cloud model); otherwise only when you tick
-  it.
-- **What this PC plays.** The sound digest uses the audio model first, then a
-  Thinking pool member that hears, then the CPU sound tagger, as now.
+  Thinking hear my voice*: your own choice wins; never chosen, it is on only
+  while the recording stays on this PC (the audio model is Ollama on this PC,
+  not a `:cloud` or `-cloud` model). The check box, its words and the
+  disclosure on Companion › Listening name the audio model then (*Let the
+  audio model hear my voice*; `TalkHearVoice`, `TalkHearVoiceChoice`,
+  `TalkHearVoiceStatus`), and the straight path and *Test hearing* (both about
+  Thinking hearing you) are hidden.
+- **What this PC plays.** The sound digest uses the audio model first (a `PC
+  sounds` job with the same clip and prompt as a pool judge), then a Thinking
+  pool member that hears, then the CPU sound tagger, as before. On a model that
+  shares the conversation's computer, it skips its turn while the live floor
+  isn't idle.
+- **What you see.** The talk window notes under your words whether the reply
+  took the audio model's words (*The audio model described how you sounded (0.6
+  s after you stopped), and the reply took it.*) or that they go with your next
+  message, and `LiveTurnInputs` says *how you sounded*. The desktop log says
+  *Voice path: described by the audio model (...)* and, for late words,
+  *Voice description: ready N ms after you stopped ...* (times only, never the
+  words). MCP `hearing_check`, `sound_digest_check` and `audio_model_check`
+  show it ([MCP](MCP.md#image-and-audio-models)).
 
 ## Helper jobs with a picture
 
@@ -339,10 +482,15 @@ is kept in memory only.
 - MCP: `sense_models_status` reads a data folder's choices, routes and the
   desktop's status file. `sense_models_check` rehearses the routing and the
   lines with a simulated runner ([MCP](MCP.md#image-and-audio-models)).
+  `audio_model_check` rehearses the audio path against fixture endpoints on
+  127.0.0.1 with the desktop's own voice notes.
 - Tests: `SenseModelsTests` (Martlet.Core.Tests), `SenseRoutingTests` and
   `SenseLanesTests` (Martlet.Conversation.Tests), and `SenseModelsDesktopTests`
   (Martlet.Desktop.Tests: a fixture endpoint gets the picture, a refused
   picture is remembered, and a job waits for, or stops for, a reply on the
-  same computer).
+  same computer). `AudioModelVoiceTests` (Martlet.Desktop.Tests): no recording
+  goes to Thinking, the reply never waits, ready words go with it and late
+  ones with the next request, the consent rule, shared hardware, the sound
+  digest's judge, the words and the defaults.
 - NOT RUN: a real image or audio model. Each pipeline's pull request says what
   it ran.

@@ -30,6 +30,9 @@ public static class PromptCatalog
     public const string Voices = "voices";
     public const string HeardVoice = "heard_voice";
     public const string HeardVoiceOnly = "heard_voice_only";
+    public const string HeardVoiceDescribed = "heard_voice_described";
+    public const string HeardVoiceNote = "heard_voice_note";
+    public const string VoiceDescription = "voice_description";
     public const string Lorebook = "lorebook";
     public const string MemoryRecall = "memory_recall";
     public const string PastConversations = "past_conversations";
@@ -44,6 +47,9 @@ public static class PromptCatalog
     public const string SeenWithMessage = "seen_with_message";
     public const string SeenApp = "seen_app";
     public const string SeenTag = "seen_tag";
+    public const string SeenDescribed = "seen_described";
+    public const string SeenDescribedNote = "seen_described_note";
+    public const string DescribePicture = "describe_picture";
     public const string ReadOnScreen = "read_on_screen";
     public const string ScreenDigest = "screen_digest";
     public const string ChattinessQuiet = "chattiness_quiet";
@@ -97,6 +103,7 @@ public static class PromptCatalog
     public const string BackgroundGroup = "After a reply";
     public const string CheckInGroup = "Check-ins";
     public const string HomeGroup = "Smart home";
+    public const string AudioModelGroup = "Audio model";
 
     public const string DefaultToolInstructions =
         "You can use tools on the user's PC: the functions you were given come from MCP servers the user set up, Martlet's own " +
@@ -133,6 +140,17 @@ public static class PromptCatalog
         "worth a word right now. Never answer them one by one or list them. When the user talks to you, always answer them; " +
         "when the message holds none of their words and nothing in it is worth saying anything about, reply with exactly " +
         "[{silent}].";
+
+    public const string DefaultDescribePictureInstructions =
+        "You are the eyes of a companion app that talks with the user but can't see. Describe the attached picture of what the " +
+        "user sees right now, for the companion. Start with one short line, at most 15 words, that says what the user is doing " +
+        "or watching. Then write up to 6 short lines with the details that matter for that: what happens in the active app that " +
+        "the message names (the game, video, stream, document, code or chat), and the names, numbers and short text on screen " +
+        "that show what is going on. Use what was said lately to pick what matters. Skip the UI, menus, icons, the taskbar and " +
+        "the user's setup unless they are what matters. Never copy private details (messages, emails, names in them, account or " +
+        "phone numbers, passwords); for a notification, say only who or which app it is from. For a camera picture, never try " +
+        "to identify anyone, never guess anyone's age, health or identity, and don't describe bodies, looks or clothes. Plain " +
+        "text only, no markdown, at most 120 words.";
 
     public const string DefaultSaidLatelyInstructions =
         "What you said lately, oldest first (it is {time} now):\n{said}\nBefore you speak, check what you're about to say " +
@@ -466,6 +484,22 @@ public static class PromptCatalog
             "to it for what they said and how they said it (tone, emotion, emphasis, laughter, hesitation), and answer that. Answer in " +
             "text as usual, without mentioning the recording.",
             []),
+        new(HeardVoiceDescribed, ConversationGroup, "Your voice, described by the audio model",
+            "Added to every reply while an audio model of its own describes your voice (Companion › Listening › Audio model): " +
+            "Thinking gets the transcript, never the recording, and the audio model's words about how you sounded come in a note " +
+            "(How you sounded). It is the same in every reply, so the start of every request stays the same.",
+            "The user talks to you by voice and you get the transcript. A separate audio model also listens to their recording " +
+            "and notes what the words miss: tone and emotion, laughing, sighing, hesitation, whispering or shouting, other voices " +
+            "and background sounds. Its note starts with \"How the user sounded\" and comes with the message, or with a later one " +
+            "when it was late. Take it into account as if you heard them yourself, and never mention the note or the audio model.",
+            []),
+        new(HeardVoiceNote, ConversationGroup, "How you sounded",
+            "Goes in the notes of one request only (never kept in the conversation) when the audio model described your voice. " +
+            "{when} says which message it is about (\"saying this message\", or \"in what they said before this message\" when " +
+            "it came late) and {voice} is what the audio model said. The conversation keeps only a short line after the message, " +
+            "such as (voice: sighs, sounds tired). Empty it to send nothing.",
+            "How the user sounded {when}, as the audio model heard it: {voice}",
+            ["when", "voice"]),
         new(Tools, ConversationGroup, "Tools", "Added when a reply is offered tools: MCP servers', Martlet's own (think_longer, and " +
             "search_conversations when Companion › Memory lets Martlet search past conversations) and the terminal (Companion › Tools).",
             DefaultToolInstructions, []),
@@ -727,6 +761,32 @@ public static class PromptCatalog
             "never shown or spoken; it only helps you remember what you saw. Never put private details in it (messages, emails, " +
             "names in them, numbers).",
             ["silent"]),
+        new(SeenDescribed, VisionGroup, "Pictures as words",
+            "Added to every reply and look while an image model of its own describes pictures for the Thinking model (Companion " +
+            "› Vision › Image model), in place of Screen with your message and What you saw. It never changes, so the model's " +
+            "prompt cache keeps it. The image model's description goes in the notes of the message it came with, or in a look's " +
+            "message (What the image model saw).",
+            "Martlet's image model sees for you: it looks at the picture of what the user sees and describes it in words. A note " +
+            "that starts with \"What the user sees now\" is that description: treat it as your own look at the picture, and " +
+            "wherever your instructions mention the picture or the image, use it. Use it when it helps your answer, especially " +
+            "when they refer to something on it (\"this\", \"look at that\", \"who messaged me?\"), and then talk about what they " +
+            "are doing or watching, never about the UI or their setup unless they ask. Never mention the note, the description or " +
+            "an image model, never describe it unprompted, and never read out private details from it (messages, emails, numbers) " +
+            "unless they ask about them. Without such a note you don't know what is on their screen right now: don't guess.",
+            []),
+        new(SeenDescribedNote, VisionGroup, "What the image model saw",
+            "The image model's description of the newest picture: in the notes of your message (sent but not kept; the " +
+            "conversation keeps a [Screen] line made from its first line instead), or in a look's message. {source} says what " +
+            "the picture shows (your active window, your whole screen or a camera); {description} is the image model's answer. " +
+            "A reply takes it only when it is ready and never waits for it.",
+            "What the user sees now ({source}), as Martlet's image model describes it:\n{description}",
+            ["source", "description"]),
+        new(DescribePicture, VisionGroup, "Image model: describe the picture",
+            "The instructions an image model of its own (Companion › Vision › Image model) gets with each picture it describes " +
+            "for the Thinking model: while you talk or type, and for each look. Martlet's message with the picture says what it " +
+            "shows, the program in front and its window's title, and the last few lines of the conversation. The first line of " +
+            "the answer stays in the conversation as what Martlet saw.",
+            DefaultDescribePictureInstructions, []),
         new(ReadOnScreen, VisionGroup, "Text on screen",
             "Added at the end of a screen glance, and of a reply that takes a look, while Companion › Reading reads the text on " +
             "your screen. {text} is the text read from that screenshot, one line each, top to bottom. It never goes with what " +
@@ -865,7 +925,19 @@ public static class PromptCatalog
             "so nothing was sent to Home Assistant. Acknowledge briefly that you left it alone.", []),
         new(HomeUnreachable, HomeGroup, "Home: unreachable", "Martlet couldn't reach Home Assistant.",
             CannotAct + " Martlet couldn't reach Home Assistant just now, so nothing in the home changed. Only if they asked about their home, tell them " +
-            "you couldn't reach it. Otherwise ignore this note.", [])
+            "you couldn't reach it. Otherwise ignore this note.", []),
+
+        new(VoiceDescription, AudioModelGroup, "Describing your voice",
+            "The instructions the audio model gets with the recording of each thing you say, while an audio model of its own " +
+            "describes your voice for Thinking (Companion › Listening › Audio model). The last lines of the conversation follow, " +
+            "so it knows what matters. Its first line goes after your message in the conversation (How you sounded); none means " +
+            "nothing stood out. Empty it and the audio model gets no recordings of your voice.",
+            "You listen to a short recording of a user talking to their desktop companion. The companion only reads the " +
+            "transcript, so describe only what the words miss: tone and emotion, laughing, sighing, hesitation, whispering or " +
+            "shouting, other voices and background sounds. Answer with one short line of at most 20 words, then, only when it " +
+            "helps, one more line of details. Never transcribe, repeat or answer what was said. If nothing stands out, answer " +
+            "exactly: none",
+            [])
     ];
 
     private static readonly Dictionary<string, PromptDefinition> ById = All.ToDictionary(p => p.Id, StringComparer.Ordinal);
@@ -879,7 +951,7 @@ public static class PromptCatalog
 
     /// <summary>Prompts that are the message itself, so they can't be emptied.</summary>
     public static bool Required(string id) => id is GlanceScreen or GlanceCamera or GlanceAttention or BackgroundThink or BackgroundDone or ReminderDue or
-        SongLyrics or ResearchStep or CheckInDue;
+        SongLyrics or ResearchStep or CheckInDue or DescribePicture;
 
     public static string Default(string id) =>
         Find(id)?.Default ?? throw new ContractException(ErrorCode.InvalidContract, $"Unknown prompt '{id}'.");

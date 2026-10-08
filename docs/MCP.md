@@ -317,6 +317,72 @@ outlasts is dropped). In-process; it reads nothing.
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"sense_models_check"},{"name":"sense_models_status"}]'
 ```
 
+`image_model_check` (`dataDirectory`; optional `imageOrigin` and `imageModel`
+to rehearse an image model of its own that isn't saved; optional `delayMs`,
+200 to 10,000, default 1,500) shows the image model's side
+([Pictures: the image model](SENSE_MODELS.md#pictures-the-image-model)).
+`route` is where pictures go now (the production `SenseRouting` over
+`sense-models.json`, the Thinking route and `model-abilities.json`), and
+`prompts` says whether *Image model: describe the picture*, *Pictures as words*
+and *What the image model saw* are the default, edited or empty. `live` is the
+desktop's `image-model-status.json`: the path, model and why, `sharesConversation`,
+how many descriptions were `made` and `failed` and how many are `running`, the
+`newest` one's age, time, trigger, model and source, how many replies took a
+description (`replies.described`) or went without one (`replies.without`), how
+many looks were described, `reused` a description or `failed`, and the
+`lastReply`. Never a description. `lastTurn` is the newest `Picture path:` and
+`Image model:` lines of the desktop log.
+
+`rehearsal` runs the production `SenseLanes`, `PictureDescriptions`, prompts
+and Chat Completions adapter against two fixture endpoints on 127.0.0.1 (the
+image model and Thinking; canned words, NOT AI) with synthetic screenshots (no
+screen capture). `ahead`: you start to talk, and the image model describes the
+newest picture with the program in front, the window's title and what was said
+lately. `describedReply`: the reply takes the description at once, as a note;
+Thinking gets no picture (`picturesToThinking` 0), the fixed *Pictures as
+words* instruction and no seen tag; `keptLine` is the `[Screen]` line the
+conversation keeps. `neverWaits`: the picture changed and the image model
+answers only after `delayMs`; the reply is sent at once without a description
+(`replySentWithoutWaitingMs`), and the description is ready for the next
+reply. `look`: a look at the same picture uses the description again (no new
+request) and sends Thinking the glance message with it; a look at a new
+picture asks the image model first. `ok` is true when all of these hold.
+
+```powershell
+.\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"image_model_check","arguments":{"imageOrigin":"http://127.0.0.1:11434/v1","imageModel":"qwen2.5vl:7b"}}]'
+```
+
+The talk window shows the image model too: `LiveTurnInputs` says *the image
+model's description of the picture* when a reply or look took one, and the help
+text of `LiveVisionStatus` names the image model, how long its last
+description took and whether the last reply took it. Companion › Vision's
+`VisionStatus` and `VisionDisclosure` say where pictures go.
+
+`audio_model_check` rehearses the audio model ([Recordings: the audio
+model](SENSE_MODELS.md#recordings-the-audio-model)) with the production pieces
+against two fixture Chat Completions endpoints on 127.0.0.1 (canned answers,
+NOT AI): the Chat Completions adapter, `SenseLanes`, `SenseRouting`,
+`ContextBoard` and the desktop's own `VoiceNote.cs` (the job, the note, the kept
+line and the consent rule). `steps` (each `Name`, `Passed`, `Detail`):
+`route-*` (where recordings go: the defaults, an audio model of its own beside
+a text-only or a hearing Thinking model, one that is exactly Thinking's model,
+the same as an image model that can't hear, one that refused a recording
+before), `consent` (with `consent` listing Ollama on this PC, an Ollama cloud
+model, another server on this PC and a cloud provider: `staysOnThisPc` and the
+result never chosen, ticked and unticked), `in-time-audio-model-request` (the
+audio model got the recording, its fixed instructions and the last lines said),
+`in-time-reply-takes-the-words` (Thinking got the transcript and the note,
+never the recording), `in-time-kept-line` (the next request keeps only
+`(voice: ...)`), `late-reply-never-waits` (the reply's request went without
+the words while the audio model still answered), `late-words-go-to-the-board`
+(one consume-once note that the next request took), `nothing-stands-out`
+(*none* adds nothing) and `refused` (`Refused`). `requests` counts what each
+fixture got; `ok` needs every step. With `dataDirectory` (the script passes its
+disposable one), `saved` says where recordings go with its `sense-models.json`:
+`path`, `model`, `why`, `staysOnThisPc` and `thinkingGetsRecordings`. The
+recording is a synthesized clip, never a microphone; nothing leaves loopback and
+no credentials are read.
+
 ### Live floor (the live turn first)
 
 The live floor puts the live conversation turn before all background work
@@ -2860,24 +2926,34 @@ route's, the production decision `HearingModelCatalog.ForRoute`: only Chat
 Completions endpoints take audio, Ollama on this PC included, then what
 `model-abilities.json` says about the model, then its name; null with
 `modelId`), `savedAbility` (what Martlet found out about the saved model:
-`Hears`, `Sees`, `Source` and `CheckedAt`, or null), `hearVoice` (whether
-Thinking hears your recording as replies decide it: your choice, or, never
-chosen, on only while the recording stays on this PC), `hearVoiceChoice` (`on`,
+`Hears`, `Sees`, `Source` and `CheckedAt`, or null), `audioRoute` (the audio
+model from `sense-models.json`: `file`, `source`, `path` `Thinking`, `Described`
+or `None`, `model`, `unknown` and `why`; [Image and audio
+models](SENSE_MODELS.md#recordings-the-audio-model)), `voiceGoes` (`thinking`,
+`audioModel` or `transcriptOnly`), `hearVoice` (whether a model hears your
+recording as replies decide it: your choice, or, never chosen, on only while
+the recording stays on this PC where it goes, Thinking or the audio model of its
+own), `hearVoiceChoice` (`on`,
 `off` or `unset`; a `false` saved before talk-preferences version 4 counts as
-`unset`), `staysOnThisPc` (the saved route is Ollama on this PC,
+`unset`), `staysOnThisPc` (the recording's destination, the audio model of its
+own or else the saved route, is Ollama on this PC,
 `http://127.0.0.1:11434/v1`, with a model that isn't a `:cloud` or `-cloud` tag), `hearVoiceWhy`
 (in words), `voicePath` (Companion › Listening › **When Thinking
 can hear you**: `straight`, the default, or `transcribeFirst`),
 `straightApplies` (always listening sends the recording alone right away: the
-choice is on, straight and the route hears) and `lastTurn`: which way the newest
-spoken reply's message went, from the desktop log (`path` `straight` or
-`transcribeFirst` and its *Voice path* `line`; for a straight one
+choice is on, straight, the route hears and no audio model of its own takes
+recordings) and `lastTurn`: which way the newest
+spoken reply's message went, from the desktop log (`path` `straight`,
+`transcribeFirst` or `described` and its *Voice path* `line`; for a straight one
 `transcriptReadyAfterReplyStartMs` and `speechToTextMs` from the *Background
 transcript ready* line, `wordsLine`, the *Straight to Thinking:* line saying
 where the words went: the conversation, its record, remembering; never the
 words, and `notWords`: `dropped` when the quick check of something short found
 it wasn't words and the reply was dropped before it played, `tooLate` when the
-reply had begun, with its `notWordsLine`), or null before one. Its `fixture`
+reply had begun, with its `notWordsLine`; for a described one
+`descriptionTaken` (the reply took the audio model's words),
+`descriptionReadyAfterSpeechMs` and `descriptionLine`, the *Voice
+description:* line of words that came late), or null before one. Its `fixture`
 rehearses the production Chat Completions adapter against a canned endpoint
 on 127.0.0.1 (NOT AI) with a 1.5 s synthesized speech-like clip (never
 microphone audio, nothing played): `withRecording` (outcome, the user
@@ -2890,7 +2966,13 @@ nothing leaves loopback. On the Listening page `TalkHearVoiceStatus` reads
 whether the saved Thinking model hears and where the recording goes, or what to
 change, and `TalkHearVoiceChoice` which applies: *On: you turned it on.*, *Off:
 you turned it off...*, *On: your voice stays on this PC...* or *Off until you
-tick it: your recording would leave this PC for ...*. The `TalkHearVoice` check
+tick it: your recording would leave this PC for ...*. With an audio model of its
+own, both name it instead (*On: your voice stays on this PC (the audio model
+runs here), so the audio model hears it unless you turn this off.*, *Your
+recording goes to Ollama on this PC (gemma3n:e4b), the audio model, which
+describes how you sound for Thinking; ...*), the check box reads *Let the audio
+model hear my voice*, and the straight-path choice and Test hearing are hidden.
+The `TalkHearVoice` check
 box shows the effective value; ticking or unticking it saves your choice, so it
 needs `--allow-ui-effects`. While Thinking hears and the choice is on, the page shows
 **When Thinking can hear you**: the radio buttons `TalkVoicePathStraight` and
@@ -3776,7 +3858,12 @@ second companion PC; no Thinking pool change); make before break; a host with
 two NVIDIA cards (Thinking and Deep thinking pinned to cards of their own); a
 Windows host whose voice shares its card (the voice moves to a card of its
 own); a crowded network (no card over its capacity); Deep thinking beside the
-voice (it moves to the card no live job uses); heavy roles on a companion PC
+voice (it moves to the card no live job uses); a companion PC that runs
+Singing and a Listening pool place while both hosts are gone for 155 minutes
+(needed jobs first: with no provider key, Thinking runs on its own card, the
+voice and lip-sync join it, and Singing goes as Required because it is
+optional; with a saved free key on an 8 GB card, Thinking uses the free hosted
+model and the voice and lip-sync get the card); heavy roles on a companion PC
 (they move to the host, Improvement); Thinking on a companion PC's card with
 only a processor host (it stays: no added latency); hosted Thinking that the
 owner chose (it stays, unless everything is kept local); a host left out of
@@ -4401,8 +4488,12 @@ exercised.
 (Companion › Listening › Watch along › **Describe PC sounds**; optional absolute
 `dataDirectory`, `martletDirectory` and `wavFile`). `saved` has `HearPc` (off
 by default), `DescribePcSounds` (on by default) and `Source` (`saved` or
-`default`). `status` is the desktop's `sound-digest.json` or null: `on`, the
-active `judge` and `judgeKind` (`pool` or `cpu`), `runs`, `lines`, `dropped`,
+`default`). `judges` says which judges describe PC sounds, in order, as the
+desktop picks them: `audioRoute` (the audio model from `sense-models.json`:
+`file`, `path`, `model`, `unknown`, `why`) and `order` (`audiomodel`, `pool`,
+`cpu` while an audio model of its own takes recordings, else `pool`, `cpu`).
+`status` is the desktop's `sound-digest.json` or null: `on`, the
+active `judge` and `judgeKind` (`audiomodel`, `pool` or `cpu`), `runs`, `lines`, `dropped`,
 `skipped`, `lastStep`, `lastJudge`, `lastAgeSeconds`, `lastMs`,
 `maximumAgeSeconds`, `everySeconds` and `clipSeconds`; it never holds a line
 or a sound. `tagger` says whether `martletDirectory` (by default the installed
@@ -5229,6 +5320,15 @@ rather than ticked (navigation, Companion's side list, radio buttons and
 filter pills, list items), a combo box in the status fields reads as its
 chosen option, and a check box in the status fields reads as its label (its
 `checkedState` says whether it is ticked).
+
+Companion's side list starts with *How it works*, the jobs Martlet needs in
+priority order: `CompanionTab-Thinking`, `CompanionTab-Listening`,
+`CompanionTab-Voice` and `CompanionTab-LipSync`. *Optional extras* follows with
+the jobs Martlet works without, each with an intro that starts with
+"Optional.": `CompanionTab-DeepThinking` (Thinking pool),
+`CompanionTab-Singing`, `CompanionTab-Pictures`, `CompanionTab-Vision` and
+`CompanionTab-Reading`. Every page shows its group as `CompanionGroupTitle`
+("HOW IT WORKS", "OPTIONAL EXTRAS", ...) and its intro as `CompanionIntro`.
 
 The desktop character has its own group in Companion's side list, *How it
 looks*: `CompanionTab-Character` (the character model, showing and hiding it,
@@ -6117,7 +6217,8 @@ Thinking in Ollama on this PC), so its voice can fall behind
 voice engine there, or says one would share the card before one is set up.
 `f5_voices` returns the chosen engine as `chosenEngine`.
 
-Below the voice engine, the Singing card ([Singing](SINGING.md)) reads like a
+Companion › Singing (`CompanionTab-Singing`, under *Optional extras*) holds the
+Singing card ([Singing](SINGING.md)), which reads like a
 voice engine row: `SingingEngine` ("Singing" or "Singing · ready"),
 `SingingFeatures` its chips ("NVIDIA GPU 6 GB+, shared, Docker, Sings in your cloned
 voice, With backing music, A few minutes per song, ACE-Step MIT · SoulX-Singer
@@ -6973,7 +7074,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `sense_models_status`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

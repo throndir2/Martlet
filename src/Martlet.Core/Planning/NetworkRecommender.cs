@@ -24,10 +24,13 @@ namespace Martlet.Core.Planning;
 /// <item>Every card keeps headroom (<see cref="PlacementEngine.GpuCapacityGb"/>: <see cref="PlacementEngine.GpuReserveGb"/> or
 /// 10%), and nothing is planned over capacity: every language model stays in graphics memory (catalog peak plus context).</item>
 /// <item>Live lane before pool lane: Deep thinking goes on a card that no live role (thinking, listening, voice, lip-sync)
-/// uses when one exists.</item>
+/// uses when one exists. Needed jobs before optional extras (<see cref="ComponentRanking"/>): Thinking, then the voice,
+/// listening and lip-sync, each on a graphics card first and on the processor when no card has room; singing and pictures
+/// keep only the room those leave, and new roles nothing needs never push them out.</item>
 /// <item>Companion PCs stay light (they often run games): no host roles there while a host can take the work. Only what no
 /// host can run and Martlet needs (Thinking without a hosted provider, the owner's voice engine) goes to the companion PC with
-/// the most free hardware. A network of one companion PC alone uses its card as <see cref="PlacementEngine"/> does.</item>
+/// the most free hardware. A network of one companion PC alone (computers away past the grace don't count) uses its card as
+/// <see cref="PlacementEngine"/> does.</item>
 /// <item>Never add conversation latency (AGENTS.md): a live job never moves to an option with a later first word
 /// (<see cref="ComponentOption.FirstWordMs"/>) or to a busier card than today's, unless its computer stays away or its card
 /// is too full. New jobs get the fastest options (a small model that hears on an idle card; docs/RECOMMENDED_SETUPS.md).</item>
@@ -48,6 +51,9 @@ public static partial class NetworkRecommender
 {
     /// <summary>The host role kinds the recommender places, besides the voice engines.</summary>
     public const string ThinkingRole = "ollama", DeepThinkingRole = "deep-thinking", ListeningRole = "stt", LipSyncRole = "audio2face";
+
+    /// <summary>The host role kinds of the optional extras, which get only the room the needed jobs leave.</summary>
+    private const string SingingRole = "singing", PicturesRole = "pictures";
 
     private const string SpeakingPool = "speaking-pool", ListeningPool = "listening-pool", ThinkingPoolPlace = "thinking-pool", Kept = "kept";
     private const double Epsilon = 1e-6;
@@ -195,6 +201,9 @@ public static partial class NetworkRecommender
         public bool MostRoom { get; init; }
         /// <summary>A computer to prefer when all else is equal (where the job runs today).</summary>
         public string? Prefer { get; init; }
+        /// <summary>Today's optional extras (singing, pictures) keep their room against this query: it places a role nothing
+        /// needs, or it moves a job only to make it better (rule 7). A job Martlet needs to talk takes their room.</summary>
+        public bool SparesExtras => Optional || MaxContention is not null;
     }
 
     private static bool Same(string? a, string? b) => a is not null && b is not null && string.Equals(a, b, StringComparison.OrdinalIgnoreCase);

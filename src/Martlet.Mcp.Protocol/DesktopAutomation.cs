@@ -382,7 +382,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("F5AddVoiceRecording", then "F5AddVoiceRecording-2" and so on in SafeValuePrefixes), and its intro, which names the
         // speech-to-text that fills in the words (or how to get one). Each recording's F5AddVoiceHeard line reads through the
         // prefix below.
-        // Companion › Voice › Singing: the role on the shown computer (title with its badge, chips, where it stands: not set up,
+        // Companion › Singing (under Optional extras): the role on the shown computer (title with its badge, chips, where it stands: not set up,
         // setting up, ready with the voice matches set up there, failed with the reason, or why that computer can't sing), the
         // Set up button's label, whether it needs a graphics card of its own (SingingGpu, fixed text) and the saved quality and
         // voice match; with VevoSing chosen where it isn't set up, that it isn't (or is being added) and the Add VevoSing there
@@ -390,6 +390,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // (singing_check exercises them headlessly).
         "SingingEngine", "SingingFeatures", "SingingState", "SingingSetUp", "SingingGpu", "SingingQuality", "SingingVoiceMatch",
         "SingingVoiceMatchState", "SingingSetUpVevo",
+        // Every Companion page: its group in the side list ("HOW IT WORKS", "OPTIONAL EXTRAS", ...) and its fixed intro, which
+        // starts with "Optional." on a page Martlet works without.
+        "CompanionGroupTitle", "CompanionIntro",
         // Companion › Pictures: where Martlet draws now (PicturesNow), what Check or Draw a test picture found (PicturesTestState:
         // ready, why not, or the test picture's size, place and seconds), the Pictures role on the shown computer (title, chips,
         // where it stands, the Set up button), the ComfyUI address and what Connect found (version, checkpoints, whether

@@ -177,6 +177,14 @@ picture: Google Chrome (full screen). Active window: "..."*); otherwise that
 line already says them, and nothing is added. The conversation keeps the
 message's `[Screen]` line instead of the note.
 
+With an **image model of its own** (Companion › Vision, see [Pictures: the
+image model](SENSE_MODELS.md#pictures-the-image-model)), the picture never
+goes to Thinking. The image model describes the newest picture ahead of time
+while you talk or type, and the reply takes its description as a note when it
+is ready. A reply never waits for it. Your message's bubble says *Martlet saw
+your whole screen through the image model's description*, or that the
+description wasn't ready yet.
+
 ## Martlet knows what changed over time
 
 Each reply gets only the **newest** picture, so it starts to speak as fast as
@@ -204,7 +212,9 @@ also keeps a short **screen summary over time**:
    on them, and Companion › Prompts › *Screen summary over time*. One job runs at
    a time. The pool drops a job that no member takes, or that does not finish,
    within 15 seconds. A job that takes longer than 20 seconds after its newest
-   picture is stopped and its answer dropped.
+   picture is stopped and its answer dropped. With an image model of its own,
+   the job goes to that model first, behind the pictures it describes for
+   replies, and to the Thinking pool only when no image model takes it.
 3. The one or two lines it answers (*"They switched from VS Code to a boss
    fight; health dropped to 20%."*) go to the context board as source `screen`
    (*Screen over the last 9 s: …*) for 45 seconds. The next reply or look takes
@@ -212,7 +222,8 @@ also keeps a short **screen summary over time**:
    the note is never kept in the history, so the prompt cache stays the same.
    `[pass]` means nothing changed and posts nothing.
 4. **Companion › Vision › Screen summary over time** is on by default. It runs
-   only while vision is on, Martlet watches, and the Thinking pool has a
+   only while vision is on, Martlet watches, and an image model of its own
+   describes pictures or the Thinking pool has a
    member that sees other than the conversation's own model (Companion ›
    Thinking pool); otherwise the
    card says why and what to do. Each summary is one more request with a
@@ -471,15 +482,24 @@ and borderless games only. The watch status then says why duplication is off:
 
 ## What processes the images?
 
-The **Thinking model itself** (single stage): the image rides with the current
-message on the same route that answers you. There is no separate captioning
-model. The routes carry it like this:
+By default, the **Thinking model itself** (single stage): the image rides with
+the current message on the same route that answers you. The routes carry it
+like this:
 
 | Thinking route | How the image is sent |
 | --- | --- |
 | OpenAI (`gpt-4.1-mini`, `gpt-4.1`) | Responses API `input_image` data URL |
 | OpenRouter / NVIDIA Build / any OpenAI-compatible Chat Completions (including a local Ollama, LM Studio or llama.cpp server on this PC) | `image_url` content part with a data URL |
 | Ollama on a paired Martlet host | Gateway `images` field (one base64 JPEG/PNG, at most 1 MiB), relayed to Ollama's `/api/chat` `images` on the current message |
+
+With an **image model of its own** (Companion › Vision), two stages: the image
+model gets the picture, in the same way as a Thinking route at the same place,
+with what the picture shows, the program in front, the window's title and the
+last lines of the conversation (Companion › Prompts › *Image model: describe
+the picture*). It answers in words, and Thinking gets the words, never the
+picture. A look describes its picture first and then asks Thinking; a reply
+takes a description made ahead of time, or goes without the picture. See
+[Pictures: the image model](SENSE_MODELS.md#pictures-the-image-model).
 
 An image always needs its own permission (`AllowImageDisclosure`); text
 permission never covers it. The old isolated `Martlet.Perception` P01/P02
@@ -500,6 +520,10 @@ foundations remain unwired; this feature does not use them.
 `VisionModelCatalog` classifies the configured model as **Supported**,
 **Unsupported** or **Unknown**. There is no shared capability-discovery API
 across these routes, so it is a curated name list, not proof.
+
+With an image model of its own, the Thinking model can be text-only: the image
+model is the one that must see. What Martlet found out about it (the server's
+metadata, Test vision, a refused picture) comes first, then the same names.
 
 ### Vision on NVIDIA Build's Free Endpoints
 
@@ -552,8 +576,12 @@ must also run this Martlet version so its gateway accepts images.
 
 Companion › Vision always states the result for the **current** Thinking selection:
 
-- **Ready:** the model sees; screenshots go to the named destination.
-- **Can't see yet:** the model is text-only. Vision may be on (it is by
+- **Ready:** the model sees; screenshots go to the named destination. With an
+  image model of its own, the message names it and says that only its words
+  go to Thinking.
+- **Can't see yet:** no model takes pictures: the Thinking model is text-only
+  and no image model of its own is chosen, or the image model of its own
+  doesn't see (Home then says *Martlet can't see with your image model*). Vision may be on (it is by
   default), but **Turn vision on** stays disabled once it is off, Home shows a
   *Martlet can't see with your thinking model* warning while it is on, and the
   talk window's button says *Can't see*; the message names the fix for your route: on a host, add the
@@ -582,8 +610,11 @@ choices once Martlet is free.
   *if the picture is also still*; a moving game keeps watching.
 - Window-title privacy filtering is a keyword list; anything else in the
   captured window can reach the model when a look happens.
-- No separate "eyes" model (describe with model A, talk with model B). A
-  text-only Thinking model has to be swapped for a vision one.
+- With an image model of its own, a look doesn't turn the character's eyes to
+  part of the picture (Thinking doesn't see it), and a reply goes without the
+  picture when the image model's description isn't ready yet.
+- A real image model of its own was not run in the change that added it;
+  fixture endpoints stood in (see the pull request).
 - Real capture on a game and a real vision model reply were not run in the
   change that added this; see the pull request for what was checked.
 - Pop-up notification detection relies on the shell's window class and was not

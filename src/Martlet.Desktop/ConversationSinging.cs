@@ -18,7 +18,7 @@ internal interface ISongSource
     (SongSetup? Setup, string? Problem) Current();
 }
 
-/// <summary>Where songs come from on this PC: Companion › Voice › Singing's computer through <see cref="SongClient"/> (or the
+/// <summary>Where songs come from on this PC: Companion › Singing's computer through <see cref="SongClient"/> (or the
 /// FIXTURE - NOT AI song maker when <c>MARTLET_SINGING_FIXTURE=1</c>, for automated checks), sung in the voice Martlet speaks
 /// with and the card's quality and voice match (singing.json). Whether singing is set up is read without the network
 /// (<see cref="SongClient.IsSetUp"/>) and kept for a few seconds, so asking for every reply costs nothing. In fixture mode songs
@@ -45,7 +45,7 @@ internal sealed class DesktopSongSource(string dataDirectory) : ISongSource
 
     public (SongSetup? Setup, string? Problem) Current()
     {
-        if (!SongClient.IsSetUp(dataDirectory)) return (null, "singing isn't set up on any of your computers (Companion › Voice › Singing).");
+        if (!SongClient.IsSetUp(dataDirectory)) return (null, "singing isn't set up on any of your computers (Companion › Singing).");
         var voice = SongClient.SpeakingVoiceId(dataDirectory) ?? (Fixture ? "fixture-voice" : null);
         if (voice is null) return (null, "there's no voice to sing with yet (Companion › Voice).");
         var choices = SingingPreferences.Load(dataDirectory);

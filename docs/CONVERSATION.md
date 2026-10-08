@@ -1047,7 +1047,7 @@ A new think goes to a free slot on the place that shares least with the
 conversation (its rank: none of the conversation's jobs, the voice or
 listening, Thinking, Thinking's graphics card on this PC). Among places of the
 same rank, a computer kept free for other work (the one that sings, Companion ›
-Voice › Singing, and the one that makes pictures) comes after the general
+Singing, and the one that makes pictures) comes after the general
 ones. Then the least busy place, then the order you chose them in. While a song
 is being made, its computer is held whole, so no think is placed there until
 the song is done (thinks already running there carry on); lyrics are written
@@ -1422,7 +1422,7 @@ sing and never called it, so nothing was made). It makes
 the song in the background while the conversation carries on, brings it up when
 it's ready (*"Nice job on killing that noob! Oh, and that song's ready, wanna
 hear?"*) and sings it on a yes. It is offered while singing is set up (Companion
-› Voice › Singing, see [Singing](SINGING.md)) and the Thinking route does
+› Singing, see [Singing](SINGING.md)) and the Thinking route does
 function calling; replies then always get the same three tools after Martlet's
 other own tools (`think_longer` and `cancel_thinking` while Deep thinking can
 think), with the *Singing* prompt (Companion › Prompts), so the start of every
@@ -2010,6 +2010,21 @@ known and where it came from (*This Thinking model can hear (Ollama on this PC
 says so, checked 3 Oct)*). MCP `model_ability_check` and `hearing_check` show it
 ([MCP](MCP.md)).
 
+**An audio model of its own.** Companion › Listening › Audio model can give
+recordings to a model of their own instead of Thinking, for example a small
+model that hears beside a text-only Thinking model ([Image and audio
+models](SENSE_MODELS.md#recordings-the-audio-model)). Then Thinking never gets
+your recording, even when it hears, and the straight path below is off: the
+reply waits for speech-to-text as before. Beside speech-to-text, the audio
+model gets the recording and says in a line what the words miss (tone,
+laughing, sighing, hesitation, whispering or shouting, other voices,
+background sounds). When that line is ready as the reply's request is built,
+it goes with that request only, and the conversation keeps a short `(voice:
+...)` line after your message; otherwise it goes to the context board for the
+next request. A reply never waits for it. The same check box decides (*Let the
+audio model hear my voice*): never chosen, it is on only while the audio model
+is Ollama on this PC.
+
 ### Straight to Thinking
 
 While Thinking hears and **Let Thinking hear my voice** is on (by default with a
@@ -2083,7 +2098,9 @@ the PC played (`[PC audio]` lines are transcripts, context rather than you, so
 your words go beside them as words), something said over Martlet while it
 speaks that the quick check didn't decide (its words decide whether it stops
 Martlet), a message for Home Assistant's Assist (Smart home control on without
-model tools), and any message once the model refused a recording.
+model tools), and any message once the model refused a recording. With an
+audio model of its own (above), nothing goes straight: Thinking gets the
+transcript and the audio model's words, never the recording.
 
 **A refused recording.** If the model refuses the recording, the reply waits
 for the words and asks again with them (the Thinking fallback gets the words
@@ -2311,9 +2328,14 @@ first word and paired hosts reject it.
   starts 1 second after Martlet last spoke or sang. A judge that takes longer
   than 15 seconds is canceled and its clip dropped. Each clip is cleared once
   judged.
-- **Who judges.** An audio-capable model in the Thinking pool gets the clip as
+- **Who judges.** The audio model of its own, while it takes recordings
+  (Companion › Listening › Audio model, [Image and audio
+  models](SENSE_MODELS.md#recordings-the-audio-model)), gets the clip first
+  (a `PC sounds` job on its lane, the same WAV and prompt; on a model that
+  shares the conversation's computer, only while the live floor is idle).
+  Otherwise an audio-capable model in the Thinking pool gets the clip as
   a WAV with `SoundDigest.Prompt` (one line of at most 20 words about the
-  non-speech sound; *none* for speech or silence). Without one, the small CPU
+  non-speech sound; *none* for speech or silence). Without either, the small CPU
   sound tagger bundled with Martlet (`SoundTagger`: the sherpa-onnx Zipformer
   small AudioSet tagger, Apache-2.0, on one thread below normal priority,
   about 150 ms for 10 seconds) names what it hears, and `SoundDigest.Line`

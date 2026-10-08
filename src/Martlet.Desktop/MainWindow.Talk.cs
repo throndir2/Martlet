@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Audio;
+using Martlet.Conversation;
 using Martlet.Core.Settings;
 using Martlet.Home;
 using Martlet.Providers;
@@ -362,8 +363,9 @@ public partial class MainWindow
                 new Thickness(0, 0, 0, 8)),
             describe, describeStatus,
             Note("Words aren't everything: about every 10 seconds while something plays, Martlet describes the rest of the sound " +
-                "(music and its mood, game or video sounds, laughter, applause, alarms) in one short line for its next reply. A " +
-                "Thinking pool model that can hear gets a short clip; without one, a small sound tagger on this PC's processor names " +
+                "(music and its mood, game or video sounds, laughter, applause, alarms) in one short line for its next reply. The " +
+                "audio model gets a short clip first when it is a model of its own (Listening › Audio model); otherwise a Thinking pool " +
+                "model that can hear does; without either, a small sound tagger on this PC's processor names " +
                 "what it hears. The last few seconds of sound stay in memory only; the line is never saved or remembered, and a " +
                 "reply never waits for it.", new Thickness(0, 0, 0, 8)),
             Note("How chatty Martlet is about it (the same choice as Vision's How often it comments):", new Thickness(0, 0, 0, 4)),
@@ -393,30 +395,36 @@ public partial class MainWindow
             $"Martlet hears only what plays on {output ?? "your speakers"} and stops hearing it while it speaks.", false)
         : ("On. While Martlet listens it also hears what this PC plays, without its own voice.", false);
 
-    // ---------- Listening: let Thinking hear your voice ----------
+    // ---------- Listening: let Thinking (or the audio model) hear your voice ----------
 
-    /// <summary>Companion › Listening: whether a Thinking model that hears also gets the recording of what you said. Your own choice
-    /// always wins; never chosen, it is on only while the recording stays on this PC (Thinking in Ollama on this PC, not a
-    /// cloud model), and anywhere else ticking it is the consent. The text under it says which applies, what
-    /// is sent and where.</summary>
+    /// <summary>Companion › Listening: whether a Thinking model that hears also gets the recording of what you said, or, with an
+    /// audio model of its own (Companion › Listening › Audio model, docs/SENSE_MODELS.md), whether that model hears it and
+    /// describes how you sound for Thinking. Your own choice always wins; never chosen, it is on only while the recording stays on
+    /// this PC where it goes (Ollama on this PC, not a cloud model), and anywhere else ticking it is the consent. The text under it
+    /// says which applies, what is sent and where.</summary>
     private Border HearVoiceCard()
     {
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         var abilities = SavedModelAbilities();
-        var hears = LiveConversationConfiguration.Hearing(thinking, abilities) == HearingSupport.Supported;
-        var on = Talk.HearVoiceFor(thinking).On;
-        var hear = new CheckBox { Content = "Let Thinking hear my voice", IsChecked = on, Margin = new Thickness(0, 0, 0, 6),
-            IsEnabled = on || hears };
+        var audio = Martlet.Conversation.SenseRouting.For(SenseKind.Audio, SenseModels.Load(store?.DataDirectory), thinking, abilities);
+        // An audio model of its own takes recordings in Thinking's place: Thinking never gets one then.
+        var own = audio.Model;
+        var hears = own is not null ? audio.Described : LiveConversationConfiguration.Hearing(thinking, abilities) == HearingSupport.Supported;
+        var on = (own is not null ? Talk.HearVoiceFor(VoiceNotes.StaysOnThisPc(own)) : Talk.HearVoiceFor(thinking)).On;
+        var hear = new CheckBox { Content = own is not null ? "Let the audio model hear my voice" : "Let Thinking hear my voice",
+            IsChecked = on, Margin = new Thickness(0, 0, 0, 6), IsEnabled = on || hears };
         AutomationProperties.SetAutomationId(hear, "TalkHearVoice");
         hear.Checked += (_, _) => { if (Talk.HearVoice != true) SaveTalk(Talk with { HearVoice = true }, render: true); };
         hear.Unchecked += (_, _) => { if (Talk.HearVoice != false) SaveTalk(Talk with { HearVoice = false }, render: true); };
-        var choice = Note(LiveConversationConfiguration.HearVoiceChoice(Talk.HearVoice, thinking), new Thickness(0, 0, 0, 4));
+        var choice = Note(LiveConversationConfiguration.HearVoiceChoice(Talk.HearVoice, thinking, audio), new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(choice, "TalkHearVoiceChoice");
-        var advice = LiveConversationConfiguration.HearingAdvice(thinking, abilities);
+        var advice = LiveConversationConfiguration.HearingAdvice(thinking, abilities, audio);
         var status = hears || !on ? Note(advice, new Thickness(0, 0, 0, 6)) : Warning(advice);
         AutomationProperties.SetAutomationId(status, "TalkHearVoiceStatus");
-        return Card([Heading("Hear how you say it"), hear, choice, status, .. hears && on ? VoicePathControls() : [],
-            .. HearingTestControls(thinking), Note(LiveConversationConfiguration.HearingDisclosure(thinking), new Thickness(0, 0, 0, 0))]);
+        // The straight path and Test hearing are about Thinking hearing you, which an audio model of its own replaces.
+        return Card([Heading("Hear how you say it"), hear, choice, status, .. hears && on && own is null ? VoicePathControls() : [],
+            .. own is null ? HearingTestControls(thinking) : [],
+            Note(LiveConversationConfiguration.HearingDisclosure(thinking, audio), new Thickness(0, 0, 0, 0))]);
     }
 
     /// <summary>Companion › Listening › When Thinking can hear you, shown while Thinking hears your voice: your voice straight to
@@ -608,7 +616,9 @@ public partial class MainWindow
         var prefs = Talk;
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         var abilities = SavedModelAbilities();
-        var canSee = thinking is not null && LiveConversationConfiguration.Vision(thinking, abilities) != VisionSupport.Unsupported;
+        // Martlet can see when its pictures go to Thinking or to an image model of its own (docs/SENSE_MODELS.md).
+        var image = SavedImageRoute(thinking, abilities);
+        var canSee = thinking is not null && image.Path != SensePath.None;
         var source = VisionSource(prefs);
         var chosen = source.IsScreen || source.Id.Length > 0;
         var chattiness = ChattinessTags.Choice(prefs.ScreenChattiness);
@@ -623,7 +633,7 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(nowText, "VisionNow");
         var now = new List<UIElement> { Heading("Now"), nowText };
         if (prefs.Watch && !chosen) now.Add(Warning(source.Kind == WatchKind.Camera ? "Choose a camera below." : "Enter the camera address below."));
-        var advice = LiveConversationConfiguration.VisionAdvice(thinking, abilities);
+        var advice = LiveConversationConfiguration.VisionAdvice(thinking, abilities, image);
         var adviceText = canSee ? Note(advice, new Thickness(0, 0, 0, 0)) : Warning(advice);
         AutomationProperties.SetAutomationId(adviceText, "VisionStatus");
         now.Add(adviceText);
@@ -722,7 +732,7 @@ public partial class MainWindow
                 "to what this PC plays (Listening › Watch along).", new Thickness(0, 0, 0, 8)),
             .. ChattinessPicker("VisionChattiness")]));
         page.Children.Add(GazeCard(prefs));
-        page.Children.Add(ScreenSummaryCard(prefs));
+        page.Children.Add(ScreenSummaryCard(prefs, image.Path == SensePath.Described));
 
         toggle = PageButton(prefs.Watch ? "Turn vision off" : "Turn vision on", () =>
         {
@@ -731,7 +741,7 @@ public partial class MainWindow
             ActionText.Text = on ? "Vision is on. Press Start watching on Home or in the talk window when you want Martlet to look." : "Vision is off.";
         }, primary: !prefs.Watch, id: "VisionToggle");
         toggle.IsEnabled = prefs.Watch || canSee && chosen;
-        var disclosure = Note(LiveConversationConfiguration.ScreenDisclosure(thinking, chattiness, source), new Thickness(0, 0, 0, 8));
+        var disclosure = Note(LiveConversationConfiguration.ScreenDisclosure(thinking, chattiness, source, image), new Thickness(0, 0, 0, 8));
         AutomationProperties.SetAutomationId(disclosure, "VisionDisclosure");
         page.Children.Add(Card(Heading(prefs.Watch ? "Vision is on" : "Let Martlet see"), disclosure, Row(toggle)));
     }
@@ -802,31 +812,34 @@ public partial class MainWindow
                 "is sent.", new Thickness(0, 6, 0, 0)));
     }
 
-    /// <summary>Companion › Vision › Screen summary over time (on by default): while Martlet watches, a Thinking model that sees
-    /// in the Thinking pool sums up in the background what changed on the screen, and the next reply gets it as a note.</summary>
-    private Border ScreenSummaryCard(TalkPreferences prefs)
+    /// <summary>Companion › Vision › Screen summary over time (on by default): while Martlet watches, an image model of its own
+    /// (<paramref name="byImageModel"/>, the saved choice) or a Thinking model that sees in the Thinking pool sums up in the
+    /// background what changed on the screen, and the next reply gets it as a note.</summary>
+    private Border ScreenSummaryCard(TalkPreferences prefs, bool byImageModel)
     {
-        var canSee = conversation?.ScreenDigestThinker.CanSee == true;
+        var canSee = byImageModel || conversation?.ScreenDigestThinker.CanSee == true;
         var box = new CheckBox { Content = "Screen summary over time", IsChecked = prefs.ScreenSummary, Margin = new Thickness(0, 0, 0, 6) };
         AutomationProperties.SetAutomationId(box, "VisionScreenSummary");
         box.Checked += (_, _) => { if (!Talk.ScreenSummary) SaveTalk(Talk with { ScreenSummary = true }, render: true); };
         box.Unchecked += (_, _) => { if (Talk.ScreenSummary) SaveTalk(Talk with { ScreenSummary = false }, render: true); };
-        var text = ScreenSummaryStatus(prefs.ScreenSummary, prefs.Watch, canSee);
+        var text = ScreenSummaryStatus(prefs.ScreenSummary, prefs.Watch, canSee, byImageModel);
         var status = prefs.ScreenSummary && prefs.Watch && !canSee ? Warning(text) : Note(text, new Thickness(0, 0, 0, 6));
         AutomationProperties.SetAutomationId(status, "VisionScreenSummaryStatus");
         return Card(Heading("Screen summary over time"), box, status,
             Note("Each reply gets only the newest picture, so it starts to speak as fast as before. With this on, Martlet also " +
                 "keeps the last few pictures that changed (about 25 seconds, in memory only, never saved) and, every 15 seconds " +
-                "while they change or when you start to talk, sends a small sheet of them with the text read on them to a Thinking " +
-                "model that sees in the background. It is never the model your conversation uses. The one or two lines it " +
+                "while they change or when you start to talk, sends a small sheet of them with the text read on them to your " +
+                "image model (when you chose one) or a Thinking model that sees in the Thinking pool, in the background. It is " +
+                "never the model your conversation uses. The one or two lines it " +
                 "answers (\"They switched from VS Code to a boss fight\") go with your next message as a note. A reply never " +
                 "waits for it. Each summary is one more request with a picture, which may cost more.", new Thickness(0, 6, 0, 0)));
     }
 
-    internal static string ScreenSummaryStatus(bool on, bool vision, bool canSee) =>
+    internal static string ScreenSummaryStatus(bool on, bool vision, bool canSee, bool byImageModel = false) =>
         !on ? "Off. Replies know only the newest picture."
         : !vision ? "On, but vision is off. Turn vision on below."
         : !canSee ? "Off for now: the Thinking pool has no other model that sees. Add one that sees in Companion › Thinking pool."
+        : byImageModel ? "On. While Martlet watches, your image model sums up what changed for your next message."
         : "On. While Martlet watches, a Thinking model that sees sums up what changed for your next message.";
 
     private string GazeStatus(TalkPreferences prefs)

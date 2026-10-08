@@ -25,10 +25,10 @@ public static partial class NetworkRecommender
                 if (moved || switched)
                 {
                     var option = Find(decision.OptionId);
-                    var summary = decision.Off ? "The character's face follows the voice's loudness on each companion PC."
+                    var summary = decision.Off ? $"The character's face follows the voice's loudness on {OwnPcs()}."
                         : decision.HostId is { } host ? $"{NameOf(host)} does {Lower(job)}" + (option is null ? "." : $" with {Plain(option)}.")
                         : option is { IsLocal: false } ? $"{option.DisplayName} does {Lower(job)}."
-                        : option is not null ? $"{(singlePc ? "This PC" : "Each companion PC")} does {Lower(job)} itself with {Plain(option)}."
+                        : option is not null ? $"{OwnPcs(capital: true)} does {Lower(job)} itself with {Plain(option)}."
                         : $"Nobody does {Lower(job)}.";
                     changes.Add(new SetupChange(SetupChangeKind.AssignJob, decision.HostId ?? "", summary, Reason(decision.Why, summary))
                     {

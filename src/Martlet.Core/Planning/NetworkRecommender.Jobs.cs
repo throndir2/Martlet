@@ -170,14 +170,17 @@ public static partial class NetworkRecommender
             // In the app on each companion PC, or a hosted provider the owner chose; the upgrade step may give a host the job.
             var option = now ?? InAppListening().FirstOrDefault();
             Decide(job, null, option?.Id, option is null ? ""
-                : option.IsLocal ? $"{Label(option)} on each companion PC's processor{FirstWord(option)}."
+                : option.IsLocal ? $"{Label(option)} on {OwnPcs()}'s processor{FirstWord(option)}."
                 : $"{option.DisplayName}, as you chose.");
         }
 
+        /// <summary>A new place for listening: a host's card (or another card as fast), else the app's Parakeet on the processor.
+        /// One companion PC alone hears in the app first, as the placement engine does, so its card goes to the voice and the
+        /// face; the upgrade step moves listening to the card when room is left.</summary>
         private void ChooseListening((SetupChangeBenefit Benefit, string Why, bool Slower) forced, ComponentOption? now)
         {
             const string job = ClusterJobs.Listening;
-            var slot = FindSlot(ListeningOrder(now), new Query(ListeningRole) { MaxMs = forced.Slower ? null : now?.FirstWordMs });
+            var slot = singlePc ? null : FindSlot(ListeningOrder(now), new Query(ListeningRole) { MaxMs = forced.Slower ? null : now?.FirstWordMs });
             if (slot is not null)
             {
                 var why = $"{forced.Why} {Plain(slot.Option)} on {CardText(slot)} hears instead{FirstWord(slot.Option)}.";
@@ -186,7 +189,7 @@ public static partial class NetworkRecommender
                 return;
             }
             var app = InAppListening().FirstOrDefault();
-            Decide(job, null, app?.Id, $"{forced.Why} {Label(app, "Parakeet")} hears on each companion PC's processor instead.", forced.Benefit);
+            Decide(job, null, app?.Id, $"{forced.Why} {Label(app, "Parakeet")} hears on {OwnPcs()}'s processor instead.", forced.Benefit);
         }
 
         /// <summary>Listening in the app (or hosted, when the owner keeps everything local) moves to a host's card when a
@@ -237,7 +240,7 @@ public static partial class NetworkRecommender
             }
             if (today is not null)
             {
-                Decide(job, null, today.OptionId, "Each companion PC moves the character's face itself.");
+                Decide(job, null, today.OptionId, $"{OwnPcs(capital: true)} moves the character's face itself.");
                 return;
             }
         }
@@ -267,7 +270,8 @@ public static partial class NetworkRecommender
                 return;
             }
             Decide(job, null, "loudness-lipsync",
-                $"{forced.Why} No other host has room for advanced lip-sync, so the character's face follows the voice's loudness.", forced.Benefit, off: true);
+                $"{forced.Why} {(singlePc ? "This PC has no room left" : "No other host has room")} for advanced lip-sync, so the character's face follows the voice's loudness.",
+                forced.Benefit, off: true);
         }
     }
 }

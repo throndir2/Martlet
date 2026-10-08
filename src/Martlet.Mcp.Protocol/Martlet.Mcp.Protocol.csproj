@@ -44,12 +44,15 @@
     <Compile Include="..\Martlet.Desktop\HostSupplies.cs" Link="Hosts\HostSupplies.cs" />
     <!-- straight_voice_check: the desktop's own words of a recording sent straight to Thinking and the conversation it keeps. -->
     <Compile Include="..\Martlet.Desktop\SpokenWords.cs" Link="Shared\SpokenWords.cs" />
+    <!-- audio_model_check: the desktop's own words of the audio model about your voice (the job, the note and the consent rule). -->
+    <Compile Include="..\Martlet.Desktop\VoiceNote.cs" Link="Shared\VoiceNote.cs" />
     <Compile Include="..\Martlet.Desktop\ConversationContextBuffer.cs" Link="Shared\ConversationContextBuffer.cs" />
     <Compile Include="..\Martlet.Desktop\VisionHistory.cs" Link="Shared\VisionHistory.cs" />
     <!-- active_app_check: the desktop's own reading of the program in front and whether it fills its monitor. -->
     <Compile Include="..\Martlet.Desktop\ActiveApp.cs" Link="Shared\ActiveApp.cs" />
     <!-- screen_digest_check: the desktop's own screen summary over time on fixture frames. -->
     <Compile Include="..\Martlet.Desktop\ScreenDigest.cs" Link="Shared\ScreenDigest.cs" />
+    <Compile Include="..\Martlet.Desktop\PictureDescriptions.cs" Link="Shared\PictureDescriptions.cs" />
     <!-- sound_digest_check: the desktop's own CPU sound judge (the bundled sound tagger and SoundDigest.Line). -->
     <Compile Include="..\Martlet.Desktop\CpuSoundJudge.cs" Link="Shared\CpuSoundJudge.cs" />
     <!-- helper_jobs_check: the desktop's own router for memory, emote naming and touch zones (Thinking pool or fallback). -->

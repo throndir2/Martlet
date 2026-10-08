@@ -91,6 +91,19 @@ public static partial class NetworkRecommender
 
         private static bool LiveOn(Node node, int card) => node.Roles.Any(r => r.Card == card && r.Kind != DeepThinkingRole);
 
+        /// <summary>Needed jobs before optional extras (<see cref="ComponentRanking"/>): today's singing and pictures stay where
+        /// the jobs Martlet needs to talk (Thinking, the voice, listening, lip-sync) and their pools left room, and go where
+        /// they didn't.</summary>
+        private void Extras()
+        {
+            foreach (var node in nodes.Where(n => n.Presence == Presence.Here))
+                foreach (var role in node.Pending.Where(r => Extra(r.Kind) && r.Leave is null).ToList())
+                    if (!Keep(node, role, Kept, out _))
+                        role.Leave = (SetupChangeBenefit.Required,
+                            $"{Label(role.Option, role.Kind)} is optional: {CardText(node, role.Card)} has no room left for it beside " +
+                            "the jobs Martlet needs to talk, which come first.");
+        }
+
         private bool VoiceOnWindowsCard(Node node, int card) => node.OnWindows && node.Roles.Any(r => r.Card == card && IsVoice(r.Kind));
 
         /// <summary>Rules 1, 5 and 9: the Thinking pool. Today's Deep thinking roles stay on hosts, moved to a card no live job

@@ -1,4 +1,5 @@
 using Martlet.Conversation;
+using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
@@ -49,4 +50,42 @@ internal sealed class BoardScreenDigest(ContextBoard board) : IScreenDigestBoard
 {
     public void Post(string text, DateTimeOffset at, TimeSpan maximumAge) => board.Post(ContextBoard.Screen, text, at, maximumAge);
     public void Clear() => board.Clear(ContextBoard.Screen);
+}
+
+/// <summary>Screen summaries on the image model first while it describes pictures (the Described path, docs/SENSE_MODELS.md):
+/// the same job as the pool's, on the image model's lane with the lowest priority, so the next reply's picture goes first. On the
+/// conversation's own computer and graphics card it starts only while the live floor is Idle. Otherwise, or when no image model
+/// takes it now, the Thinking pool's digest jobs exactly as before (<paramref name="pool"/>).</summary>
+internal sealed class ImageModelScreenDigestThinker(LiveConversationController controller, IScreenDigestThinker pool) : IScreenDigestThinker
+{
+    /// <summary>The lane key of screen summaries: a newer one takes the place of one that waits.</summary>
+    internal const string Key = "screen-summary";
+
+    private bool Described => controller.ImageDescribed;
+    private bool Shares => controller.SenseSharesConversation(SenseKind.Image);
+
+    public bool CanSee => Described || pool.CanSee;
+
+    public bool MayStartNow => Described ? !Shares || controller.LiveFloor.Level == LiveFloorLevel.Idle : pool.MayStartNow;
+
+    public bool SeesBesideConversation => Described ? !Shares : pool.SeesBesideConversation;
+
+    public async Task<string?> DigestAsync(ScreenDigestJob job, CancellationToken cancellation)
+    {
+        if (!Described) return await pool.DigestAsync(job, cancellation).ConfigureAwait(false);
+        var result = await controller.RunSenseAsync(SenseKind.Image, new SenseJob
+        {
+            Purpose = "screen summary", Key = Key, Priority = 0, Instructions = PoolScreenDigestThinker.Instructions, Text = job.Message,
+            Image = job.Picture, Timeout = PoolScreenDigestThinker.Timeout, DropWhenStale = true, MaxOutputTokens = 160, Reasoning = false
+        }, cancellation).ConfigureAwait(false);
+        return result.Outcome switch
+        {
+            SenseJobOutcome.Succeeded => result.Text,
+            // Pictures went back to Thinking meanwhile: the Thinking pool, as before.
+            SenseJobOutcome.NoModel => await pool.DigestAsync(job, cancellation).ConfigureAwait(false),
+            // A summary the conversation stopped, or that got stale, is only dropped.
+            SenseJobOutcome.Stale or SenseJobOutcome.TimedOut or SenseJobOutcome.Preempted => throw new OperationCanceledException(result.Problem),
+            _ => throw new InvalidOperationException(result.Problem ?? "The image model could not make a screen summary.")
+        };
+    }
 }

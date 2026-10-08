@@ -23,23 +23,25 @@ namespace Martlet.Desktop;
 /// TabIntro and RenderTab.</summary>
 internal enum CompanionTab
 {
-    Thinking, DeepThinking, Voice, Listening, Vision, Reading, LipSync, Profiles, Personality, Prompts, Lorebook, Memory, People,
-    Character, SpeechBubbles, Emotes, Eyes, Touch, Replies, CheckIns, Tools, Pictures, SmartHome, Discord, Messaging
+    Thinking, Listening, Voice, LipSync, DeepThinking, Singing, Pictures, Vision, Reading, Profiles, Personality, Prompts, Lorebook,
+    Memory, People, Character, SpeechBubbles, Emotes, Eyes, Touch, Replies, CheckIns, Tools, SmartHome, Discord, Messaging
 }
 
-/// <summary>The side list's groups, in order: how it works (where each job runs), who it is (personality and what it knows),
-/// how it looks (the desktop character: its model, speech bubbles, emotes, eyes and touch) and what it does (how it answers and
-/// acts). A group with no pages yet is not shown.</summary>
-internal enum CompanionGroup { HowItWorks, WhoItIs, HowItLooks, WhatItDoes }
+/// <summary>The side list's groups, in order: how it works (the jobs Martlet needs, in priority order: Thinking, then listening,
+/// voice and lip-sync), optional extras (jobs Martlet works without: the Thinking pool, singing, pictures and seeing your screen),
+/// who it is (personality and what it knows), how it looks (the desktop character: its model, speech bubbles, emotes, eyes and
+/// touch) and what it does (how it answers and acts). A group with no pages yet is not shown.</summary>
+internal enum CompanionGroup { HowItWorks, Extras, WhoItIs, HowItLooks, WhatItDoes }
 
 /// <summary>A conversation model Ollama can download and run on this PC. <paramref name="MinimumVramGb"/> is the graphics card
 /// it needs to run comfortably beside a game and Martlet's character (0 means any PC). <paramref name="Hears"/>: Ollama takes
 /// your recording for it (Gemma 4 E2B, E4B and 12B); the others always get the transcript (the Parakeet cascade).</summary>
 internal sealed record LocalChatModel(string Id, string Size, string Fits, double MinimumVramGb, bool Hears);
 
-/// <summary>The Companion page: a side list of pages in groups (How it works: Thinking, Voice, Listening, Lip-sync; Who it is:
-/// Profiles, Personality, Lorebook, Memory; How it looks: Character, Speech bubbles, Emotes and motions, Eyes, Touch; What it
-/// does: Smart home, Discord). Each job page asks where the job runs (this PC by default, another of your computers, or a
+/// <summary>The Companion page: a side list of pages in groups (How it works: Thinking, Listening, Voice, Lip-sync; Optional
+/// extras: Thinking pool, Singing, Pictures, Vision, Reading; Who it is: Profiles, Personality, Lorebook, Memory; How it looks:
+/// Character, Speech bubbles, Emotes and motions, Eyes, Touch; What it does: Smart home, Discord). Each job page asks where the
+/// job runs (this PC by default, another of your computers, or a
 /// cloud provider; voice loudness for lip-sync) and shows only that place's fields, including the API key for a cloud provider.
 /// Everything saves through the same setup service, consent and credential rules as Setup.</summary>
 public partial class MainWindow
@@ -116,13 +118,13 @@ public partial class MainWindow
 
     internal static CompanionGroup GroupOf(CompanionTab section) => section switch
     {
-        CompanionTab.Thinking or CompanionTab.DeepThinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.Vision or CompanionTab.Reading or CompanionTab.LipSync => CompanionGroup.HowItWorks,
+        CompanionTab.Thinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.LipSync => CompanionGroup.HowItWorks,
+        CompanionTab.DeepThinking or CompanionTab.Singing or CompanionTab.Pictures or CompanionTab.Vision or CompanionTab.Reading => CompanionGroup.Extras,
         CompanionTab.Profiles or CompanionTab.Personality or CompanionTab.Prompts or CompanionTab.Lorebook or CompanionTab.Memory or CompanionTab.People => CompanionGroup.WhoItIs,
         CompanionTab.Character or CompanionTab.SpeechBubbles or CompanionTab.Emotes or CompanionTab.Eyes or CompanionTab.Touch => CompanionGroup.HowItLooks,
         CompanionTab.Replies => CompanionGroup.WhatItDoes,
         CompanionTab.CheckIns => CompanionGroup.WhatItDoes,
         CompanionTab.Tools => CompanionGroup.WhatItDoes,
-        CompanionTab.Pictures => CompanionGroup.WhatItDoes,
         CompanionTab.SmartHome => CompanionGroup.WhatItDoes,
         CompanionTab.Discord => CompanionGroup.WhatItDoes,
         CompanionTab.Messaging => CompanionGroup.WhatItDoes,
@@ -132,6 +134,7 @@ public partial class MainWindow
     internal static string GroupTitle(CompanionGroup group) => group switch
     {
         CompanionGroup.HowItWorks => "How it works",
+        CompanionGroup.Extras => "Optional extras",
         CompanionGroup.WhoItIs => "Who it is",
         CompanionGroup.HowItLooks => "How it looks",
         _ => "What it does"
@@ -141,6 +144,7 @@ public partial class MainWindow
     {
         CompanionTab.Thinking => "Thinking",
         CompanionTab.DeepThinking => "Thinking pool",
+        CompanionTab.Singing => "Singing",
         CompanionTab.Voice => "Voice",
         CompanionTab.Listening => "Listening",
         CompanionTab.Vision => "Vision",
@@ -172,6 +176,7 @@ public partial class MainWindow
     {
         CompanionTab.Thinking => "\uE82F",
         CompanionTab.DeepThinking => "\uE945",
+        CompanionTab.Singing => "\uEC4F",
         CompanionTab.Voice => "\uE767",
         CompanionTab.Listening => "\uE720",
         CompanionTab.Vision => "\uE890",
@@ -201,12 +206,13 @@ public partial class MainWindow
     /// <summary>The line under the page title: what the page decides, in one or two sentences.</summary>
     internal static string TabIntro(CompanionTab section) => section switch
     {
-        CompanionTab.Thinking => "Choose where Martlet thinks and which model it uses. This PC keeps conversations local.",
-        CompanionTab.DeepThinking => "Thinking answers you. The Thinking pool works out hard tasks and other background jobs on your other models, ideally on another machine, so Martlet keeps talking.",
+        CompanionTab.Thinking => "Martlet needs Thinking to answer you. Choose where it thinks and which model it uses. This PC keeps conversations local, free and with no account.",
+        CompanionTab.DeepThinking => "Optional. Thinking answers you. The Thinking pool works out hard tasks and other background jobs on your other models, ideally on another machine, so Martlet keeps talking.",
+        CompanionTab.Singing => "Optional. Martlet sings songs you ask for, in the voice it speaks with. It needs an NVIDIA graphics card; Martlet talks fine without it.",
         CompanionTab.Voice => "Choose how Martlet speaks and where speech is generated.",
         CompanionTab.Listening => "Choose the microphone, push-to-talk mode and speech recognition.",
-        CompanionTab.Vision => "Choose whether Martlet can see your screen or camera once you press Start watching.",
-        CompanionTab.Reading => "Choose where Martlet reads the text on your screen while it watches: Windows OCR on this PC, or Martlet's Reading role on one of your computers.",
+        CompanionTab.Vision => "Optional. Choose whether Martlet can see your screen or camera once you press Start watching.",
+        CompanionTab.Reading => "Optional. Choose where Martlet reads the text on your screen while it watches: Windows OCR on this PC, or Martlet's Reading role on one of your computers.",
         CompanionTab.LipSync => "Choose what moves the character's mouth.",
         CompanionTab.Profiles => "Switch who Martlet is in one step: each profile sets the character's look, voice and personality together.",
         CompanionTab.Character => "Choose Martlet's character, and its size and position on your desktop.",
@@ -222,7 +228,7 @@ public partial class MainWindow
         CompanionTab.Replies => "Control reply length and creativity.",
         CompanionTab.CheckIns => "Every few minutes the Thinking pool checks what Martlet left on and said, and reminds it of what it forgot: small models forget a lot.",
         CompanionTab.Tools => "Let Martlet run terminal commands and use MCP tools while you talk, and choose when it must ask first.",
-        CompanionTab.Pictures => "Let Martlet draw pictures when you ask: on your own graphics card with ComfyUI, or with a paid cloud provider.",
+        CompanionTab.Pictures => "Optional. Let Martlet draw pictures when you ask: on your own graphics card with ComfyUI, or with a paid cloud provider.",
         CompanionTab.SmartHome => "Find, set up or install Home Assistant, share it with your other computers, and let Martlet control your home when you ask.",
         CompanionTab.Discord => "Put Martlet on Discord: set up its bot, connect it, invite it to servers and choose where it chats.",
         CompanionTab.Messaging => "Talk to Martlet from Telegram or WhatsApp on your phone, with the same memory and personality, while Martlet runs on this PC.",
@@ -402,12 +408,15 @@ public partial class MainWindow
         page.Children.Clear();
         var group = new TextBlock { Text = GroupTitle(GroupOf(section)).ToUpperInvariant() };
         group.SetResourceReference(StyleProperty, "Eyebrow");
+        AutomationProperties.SetAutomationId(group, "CompanionGroupTitle");
         page.Children.Add(group);
         var heading = new TextBlock { Text = TabTitle(section), Margin = new Thickness(0, 4, 0, 0) };
         heading.SetResourceReference(StyleProperty, "PageTitle");
         AutomationProperties.SetHeadingLevel(heading, AutomationHeadingLevel.Level1);
         page.Children.Add(heading);
-        page.Children.Add(Note(TabIntro(section), new Thickness(0, 4, 0, 18)));
+        var intro = Note(TabIntro(section), new Thickness(0, 4, 0, 18));
+        AutomationProperties.SetAutomationId(intro, "CompanionIntro");
+        page.Children.Add(intro);
 
         var body = new StackPanel();
         AutomationProperties.SetName(body, TabTitle(section));
@@ -432,6 +441,7 @@ public partial class MainWindow
             case CompanionTab.Replies: RenderRepliesTab(body); break;
             case CompanionTab.CheckIns: RenderCheckInsTab(body); break;
             case CompanionTab.DeepThinking: RenderDeepThinkingTab(body); break;
+            case CompanionTab.Singing: body.Children.Add(SingingCard()); break;
             case CompanionTab.Tools: RenderToolsTab(body); break;
             case CompanionTab.Pictures: RenderPicturesTab(body); break;
             case CompanionTab.SmartHome: RenderSmartHomeTab(body); break;
@@ -511,9 +521,6 @@ public partial class MainWindow
 
         // Speaking in the cloud can also be ElevenLabs: a voice cloned from one of yours, with tones.
         if (section == CompanionTab.Voice && place == JobPlace.Cloud) page.Children.Add(ElevenLabsCard(route));
-
-        // Singing uses the voices of the voice library on a computer with the singing role, wherever Speaking runs.
-        if (section == CompanionTab.Voice) page.Children.Add(SingingCard());
 
         // Chatterbox Original's General and Expressive style, while it speaks or is the chosen engine.
         if (section == CompanionTab.Voice && place != JobPlace.Cloud &&

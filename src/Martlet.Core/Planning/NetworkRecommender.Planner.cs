@@ -18,7 +18,8 @@ public static partial class NetworkRecommender
         /// <summary>The voice engine Speaking uses in the plan: <see cref="engine"/>, or Chatterbox Nano while no computer has
         /// room for it.</summary>
         private string? voice;
-        /// <summary>One companion PC alone: it may use its own card as the placement engine does.</summary>
+        /// <summary>One companion PC alone (computers away past the grace don't count): it may use its own card as the
+        /// placement engine does.</summary>
         private readonly bool singlePc;
         private readonly int companions;
         private readonly Dictionary<string, Decision> decisions = new(StringComparer.Ordinal);
@@ -39,7 +40,7 @@ public static partial class NetworkRecommender
                 .GroupBy(m => m.Specs.Id, StringComparer.Ordinal).Select(g => g.First())
                 .OrderBy(m => m.Specs.Id, StringComparer.Ordinal).Select(Build).ToList();
             var present = nodes.Where(n => n.Presence != Presence.Gone).ToList();
-            singlePc = present.Count == 1 && present[0].Companion && nodes.All(n => n.Companion);
+            singlePc = present.Count == 1 && present[0].Companion;
             companions = nodes.Count(n => n.Companion && n.Presence != Presence.Gone);
             engine = Engine();
             voice = engine;
@@ -66,6 +67,7 @@ public static partial class NetworkRecommender
             Pool(ClusterJobs.Speaking);
             Pool(ClusterJobs.Listening);
             SpareThinkingModels();
+            Extras();
             DeepThinking();
             Leftovers();
             var target = BuildTarget();
@@ -117,7 +119,7 @@ public static partial class NetworkRecommender
                 var role = new Role
                 {
                     Kind = placement.Kind, Model = placement.Model, Option = option, Card = card, Was = placement,
-                    Fixed = node.Presence != Presence.Here || !Managed(placement.Kind)
+                    Fixed = node.Presence != Presence.Here || !Managed(placement.Kind) && !Extra(placement.Kind)
                 };
                 node.Today.Add(role);
                 if (node.Presence == Presence.Gone) continue;
@@ -188,6 +190,10 @@ public static partial class NetworkRecommender
             _ => voiceKinds.Contains(kind) && Wants(PlanComponent.Voice)
         };
 
+        /// <summary>An optional extra (singing, pictures): it keeps its place only with the room the jobs Martlet needs to talk
+        /// leave (<see cref="ComponentRanking"/>).</summary>
+        private static bool Extra(string kind) => kind is SingingRole or PicturesRole;
+
         private bool IsVoice(string kind) => voiceKinds.Contains(kind);
 
         /// <summary>A role a step may still need: not a voice engine other than the owner's or the plan's fallback, and not one
@@ -209,6 +215,11 @@ public static partial class NetworkRecommender
         private ComponentOption? Known(ComponentOption? option) => option is null ? null : catalog.Find(option.Id);
 
         private Node? NodeOf(string? id) => id is null ? null : nodes.FirstOrDefault(n => n.Id == id);
+
+        /// <summary>Where a job runs when no host does it: "this PC" for one companion PC alone, else "each companion PC".</summary>
+        private string OwnPcs(bool capital = false) => singlePc
+            ? capital ? "This PC" : "this PC"
+            : capital ? "Each companion PC" : "each companion PC";
 
         private string NameOf(string? id) => NodeOf(id)?.Name ?? id ?? "";
 
@@ -293,7 +304,7 @@ public static partial class NetworkRecommender
             if (card is { } c)
             {
                 var onCard = node.Roles.Where(r => r.Card == c).ToList();
-                var reserved = node.Pending.Where(r => r.Card == c && !(r.Kind == query.Kind && r.Native == query.Native) && Reserved(node, r)).ToList();
+                var reserved = node.Pending.Where(r => r.Card == c && !(r.Kind == query.Kind && r.Native == query.Native) && Reserved(node, r, query)).ToList();
                 if (node.Free(c) - reserved.Sum(r => r.Gb) + Epsilon < option.GpuGb) return false;
                 if (onCard.Any(r => r.Option is { CanShareGpu: false }) || !option.CanShareGpu && onCard.Count > 0) return false;
                 if (query.Kind is ThinkingRole or DeepThinkingRole && onCard.Concat(reserved).Any(r => r.IsModel)) return false;
@@ -303,7 +314,7 @@ public static partial class NetworkRecommender
             else if (!query.Native && catalog.Options.Any(o => o.IsLocal && o.HostRoleKind == query.Kind && o.UsesGpu && node.Cards(o).Any()))
                 return false;
             var ram = option.Peak.RamGb + (card is { } u && node.Spec.Gpus[u].UnifiedMemory ? option.GpuGb : 0);
-            var reservedRam = node.Pending.Where(r => !(r.Kind == query.Kind && r.Native == query.Native) && Reserved(node, r))
+            var reservedRam = node.Pending.Where(r => !(r.Kind == query.Kind && r.Native == query.Native) && Reserved(node, r, query))
                 .Sum(r => r.Option is { IsLocal: true } o ? o.Peak.RamGb : 0);
             if (node.RamCapacity - node.RamUsed - reservedRam + Epsilon < ram) return false;
             if (node.CpuCapacity * PlacementEngine.CpuOversubscription - node.CpuUsed + Epsilon < option.Steady.CpuThreads) return false;
@@ -344,8 +355,14 @@ public static partial class NetworkRecommender
             ];
         }
 
+        /// <summary><see cref="Reserved(Node, Role)"/>, and today's optional extras against <paramref name="query"/> when it
+        /// places something only nice to have or only makes things better (<see cref="Query.SparesExtras"/>).</summary>
+        private bool Reserved(Node node, Role role, Query query) =>
+            Reserved(node, role) || query.SparesExtras && Extra(role.Kind) && role.Leave is null;
+
         /// <summary>Today's role of a job or pool place keeps its room until the step that decides that job or pool (rule 11):
-        /// a new role never pushes it out first. Deep thinking, spare Thinking models and other voice engines don't.</summary>
+        /// a new role never pushes it out first. Deep thinking, spare Thinking models, other voice engines, optional extras
+        /// and a companion PC's pool place (it leaves when a host can share the job; rule 6) don't.</summary>
         private bool Reserved(Node node, Role role)
         {
             if (role.Leave is not null || !Useful(role) || role.Kind == DeepThinkingRole) return false;
@@ -359,7 +376,7 @@ public static partial class NetworkRecommender
                     continue;
                 }
                 if (today.HostId == node.Id && !decided) return true;
-                if (today.Pool.Contains(node.Id) && !poolsDone.Contains(job)) return true;
+                if (today.Pool.Contains(node.Id) && !poolsDone.Contains(job) && !node.Companion) return true;
             }
             return false;
         }
@@ -496,7 +513,7 @@ public static partial class NetworkRecommender
         private const int CompanionLoad = 2;
 
         /// <summary>Singing and pictures free the card after a few idle minutes, so they don't make a card busy.</summary>
-        private static bool OnDemand(string kind) => kind is "singing" or "pictures";
+        private static bool OnDemand(string kind) => Extra(kind);
 
         private static string CardText(Node node, int? card) => card is { } c && c < node.Spec.Gpus.Count
             ? $"{node.Name}'s {GpuName(node, c)}"
