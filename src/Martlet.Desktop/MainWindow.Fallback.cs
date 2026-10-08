@@ -42,7 +42,11 @@ public partial class MainWindow
         var provider = new ComboBox { ItemsSource = FallbackProviders, MinHeight = 30, MaxWidth = 420, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(provider, "Fallback provider");
         AutomationProperties.SetAutomationId(provider, "FallbackProvider");
-        provider.SelectedItem = saved is null ? FallbackProviders[0]
+        provider.SelectedItem = saved is null
+            // Add your key (FreeKeyPrompt) for If Thinking fails: NVIDIA Build's free keys, ready for the one the owner pastes.
+            ? freeKeyPreset == FreeKeyUse.Fallback &&
+              FallbackProviders.FirstOrDefault(p => p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl) is { } free
+                ? free : FallbackProviders[0]
             : FallbackProviders.FirstOrDefault(p => p.BaseUrl == saved.Origin) ?? CustomCloud;
         var baseUrl = new TextBox { MaxLength = 2048, Width = 420, HorizontalAlignment = HorizontalAlignment.Left, Text = saved?.Origin ?? "" };
         AutomationProperties.SetName(baseUrl, "Fallback API base URL");
@@ -54,6 +58,11 @@ public partial class MainWindow
         var key = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(key, "Fallback API key");
         AutomationProperties.SetAutomationId(key, "FallbackKey");
+        if (freeKeyFocus && freeKeyPreset == FreeKeyUse.Fallback)
+        {
+            freeKeyFocus = false;
+            FocusWhenShown(key);
+        }
         var keyStatus = Note("", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(keyStatus, "FallbackKeyStatus");
         var consent = new CheckBox { Margin = new Thickness(0, 12, 0, 8) };

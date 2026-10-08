@@ -249,7 +249,6 @@ public partial class MainWindow
     /// doesn't count as work in the way.</summary>
     private string? InstallBlocker(bool asked = false) =>
         closing ? "Martlet is closing"
-        : saving ? "Martlet is saving your changes"
         : conversation?.Replying == true ? "Martlet is replying"
         : openConversation?.HearingYou == true ? "you're talking to Martlet"
         : ComponentDispatcher.IsThreadModal ? "a Martlet question is waiting for your answer"

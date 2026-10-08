@@ -21,6 +21,16 @@ internal static class SimulatedRecommendedSetup
 
     internal static bool Active => StepTakes is not null;
 
+    /// <summary>With <see cref="Variable"/> set, "offline" here plans <see cref="RecommendedSetupInputs.OfflineFixture"/> (two
+    /// hosts away for hours, so nobody can think) instead of the four-computer network.</summary>
+    internal const string NetworkVariable = "MARTLET_SIMULATE_RECOMMENDED_SETUP_NETWORK";
+
+    /// <summary>The FIXTURE network Home's Recommended setup plans while <see cref="Active"/>.</summary>
+    internal static SetupSources Sources(DateTimeOffset now) =>
+        string.Equals(Environment.GetEnvironmentVariable(NetworkVariable), "offline", StringComparison.OrdinalIgnoreCase)
+            ? RecommendedSetupInputs.OfflineFixture(now)
+            : RecommendedSetupInputs.Fixture(now);
+
     /// <summary>The simulated computers a run changes. <paramref name="publish"/> shows the run on this PC only.</summary>
     internal sealed class Targets(string device, Action<SetupRun> publish) : ISetupTargets
     {

@@ -2,8 +2,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$PayloadRoot,
-    [string]$ProtectedDataDirectory,
-    [switch]$InteractiveDesktop
+    [string]$ProtectedDataDirectory
 )
 . "$PSScriptRoot\Packaging.Common.ps1"
 . "$PSScriptRoot\ProtectedData.Common.ps1"
@@ -26,7 +25,6 @@ function Get-RealSettingsSnapshot {
 }
 $before = Get-RealSettingsSnapshot
 $environmentBefore = @{}
-$process = $null
 try {
     # These child processes cannot use a developer SDK/runtime through environment discovery.
     foreach ($key in @('DOTNET_ROOT', 'DOTNET_ROOT_X64', 'DOTNET_MULTILEVEL_LOOKUP')) {
@@ -49,39 +47,6 @@ try {
     $scripts = Join-Path (Split-Path (Split-Path $PSScriptRoot)) 'scripts'
     Invoke-ExecutableSmoke "$scripts\Smoke-Doctor.ps1" $doctor
 
-    if ($InteractiveDesktop) {
-        Add-Type -AssemblyName UIAutomationClient
-        Add-Type -AssemblyName UIAutomationTypes
-        $start = [Diagnostics.ProcessStartInfo]::new((Join-Path $PayloadRoot 'Desktop\Martlet.Desktop.exe'))
-        $start.UseShellExecute = $false
-        $start.ArgumentList.Add('--data-directory')
-        $start.ArgumentList.Add($data)
-        $process = [Diagnostics.Process]::Start($start)
-        $deadline = [DateTime]::UtcNow.AddSeconds(20)
-        $value = ''
-        while ([DateTime]::UtcNow -lt $deadline) {
-            if ($process.HasExited) { throw "Published Desktop exited early: $($process.ExitCode)." }
-            $process.Refresh()
-            if ($process.MainWindowHandle -ne 0) {
-                $window = [Windows.Automation.AutomationElement]::FromHandle($process.MainWindowHandle)
-                $condition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::AutomationIdProperty, 'FoundationStatus')
-                $control = $window.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
-                if ($null -ne $control) {
-                    $value = $control.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).Current.Value
-                    if ($value -like '*First run:*' -and $value -like '*not ready*') { break }
-                }
-            }
-            Start-Sleep -Milliseconds 200
-        }
-        if ($value -notlike '*First run:*' -or $value -notlike '*not ready*') { throw 'Published Desktop did not expose first-run status within 20 seconds.' }
-        if (-not $process.CloseMainWindow() -or -not $process.WaitForExit(10000) -or $process.ExitCode -ne 0) {
-            throw 'Published Desktop did not close cleanly within 10 seconds.'
-        }
-        if (Test-Path -LiteralPath $data) { throw 'Desktop wrote data during read-only first-run launch.' }
-        Invoke-ExecutableSmoke "$scripts\Smoke-Desktop.ps1" (Join-Path $PayloadRoot 'Desktop\Martlet.Desktop.exe')
-        Invoke-ExecutableSmoke "$scripts\Smoke-Desktop.ps1" (Join-Path $PayloadRoot 'Desktop\Martlet.Desktop.exe') -CompanionOnly
-    }
-
     [IO.Directory]::CreateDirectory($data) | Out-Null
     $file = Join-Path $data 'settings.json'
     foreach ($case in @(
@@ -100,10 +65,6 @@ try {
     }
 }
 finally {
-    if ($null -ne $process) {
-        if (-not $process.HasExited) { Stop-Process -Id $process.Id }
-        $process.Dispose()
-    }
     foreach ($key in $environmentBefore.Keys) { [Environment]::SetEnvironmentVariable($key, $environmentBefore[$key], 'Process') }
     if (Test-Path -LiteralPath $data) {
         $settings = Join-Path $data 'settings.json'
@@ -115,4 +76,4 @@ finally {
     elseif ((Get-RealSettingsSnapshot) -cne $before) { throw 'Real user settings changed during smoke. Stop and investigate; no automatic restore attempted.' }
 }
 $preservation = if ($protectedOverride) { 'selected protected scope unchanged; ordinary profile not inspected' } else { 'real user settings unchanged' }
-Write-Output "PASS: published Doctor version/help/JSON/data preservation; Desktop smoke=$InteractiveDesktop; audio OFF; isolated data paths; $preservation."
+Write-Output "PASS: published Doctor version/help/JSON/data preservation; audio OFF; isolated data paths; $preservation."

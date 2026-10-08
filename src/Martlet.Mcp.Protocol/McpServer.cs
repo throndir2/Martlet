@@ -1882,14 +1882,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("recommended_setup_status", "Home's Recommended setup without the desktop: builds the network recommender's request with " +
             "the desktop's own builder from a data directory (hosts.json, host-hardware.json, cluster.json, settings.json, " +
             "work-sharing.json, thinking-pool.json, speaking-engine.txt; every host counts as online, roles are the shared plan's " +
-            "record) or, with fixture \"network\", from a built-in four-computer network (NOT real computers), runs the production " +
+            "record) or, with fixture \"network\", from a built-in four-computer network, or with fixture \"offline\", from a small " +
+            "companion PC whose two hosts haven't answered for 155 minutes (both NOT real computers), runs the production " +
             "recommender (NetworkRecommender) and lists the computers (kind, planned or left as they are, manageable), today's jobs " +
             "and Thinking pool, the recommended changes (summary, why, benefit, downloads, someone needed at the computer), each " +
             "computer's recommended roles and load, and whether a companion PC in use would ask (declined setups in " +
             "recommended-setup.json count). Read-only; contacts nothing and reads no keys.", new
         {
             dataDirectory = new { type = "string" },
-            fixture = new { type = "string", @enum = new[] { "network" } }
+            fixture = new { type = "string", @enum = new[] { "network", "offline" } }
         }),
         Tool("network_recommendation_check", "Rehearse Home's Recommended setup for all your computers with the production network " +
             "recommender (NetworkRecommender) on built-in fixture networks, NOT real computers: two companion PCs and two hosts with " +

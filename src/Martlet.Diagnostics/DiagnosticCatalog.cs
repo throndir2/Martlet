@@ -16,10 +16,10 @@ public static class DiagnosticCatalog
     public static IReadOnlyList<DiagnosticRemedy> Remedies { get; } = Array.AsReadOnly<DiagnosticRemedy>(
     [
         new("diagnostics.refresh", "Refresh local status. A local pass does not test audio, providers or GPU readiness."),
-        new("diagnostics.wait", "Stop diagnostics and wait for the active check to finish. If it does not finish, close Martlet and retry. No automatic repair is performed."),
+        new("diagnostics.wait", "Wait for the active check to finish, then refresh the status. If it does not finish, close Martlet and retry. No automatic repair is performed."),
         new("diagnostics.report", "Retry local diagnostics. If the same internal error remains, report the probe ID and diagnostic code, not settings contents or secrets."),
         new("cli.help", "Use --help for implemented commands. Probe IDs are exact and case-sensitive; each may be selected only once."),
-        new("settings.create", "Choose Thinking, Voice or Listening on the desktop's Companion page, or use Create profile. Explicit save creates settings; opening a page does not connect or look up credentials."),
+        new("settings.create", "Choose Thinking, Voice or Listening on the desktop's Companion page. Saving a choice creates settings; opening a page does not connect or look up credentials."),
         new("settings.restore", "Keep a backup of the original settings. Correct malformed settings or restore a compatible backup; use a compatible Martlet build for newer settings. Do not delete or reset the file."),
         new("settings.check_access", "Check data directory access and other Martlet processes, then retry. Do not run as administrator or disable protection."),
         new("settings.reload", "Reload and review the current profile before saving; another writer changed the settings."),

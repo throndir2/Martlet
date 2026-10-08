@@ -317,6 +317,9 @@ public partial class MainWindow
         }
         companionTab = tab;
         tabPlace.Remove(tab);
+        freeKeyPreset = FreeKeyUse.None;
+        freeKeyFocus = false;
+        reviewAfterKey = false;
         if (NavCompanion.IsChecked == true) ShowCompanionTab(entering: false);
         else NavCompanion.IsChecked = true;
     }
@@ -498,7 +501,8 @@ public partial class MainWindow
                 $"Use another paired computer on your network for {job.Job}."),
             (JobPlace.Cloud, "A cloud provider", role switch
             {
-                SetupRole.Llm => "Use OpenAI, OpenRouter, NVIDIA Build or another compatible provider. Requests may cost money.",
+                SetupRole.Llm => "Use NVIDIA Build with a free key, or OpenAI, OpenRouter or another compatible provider. " +
+                    "Some of them charge for requests.",
                 SetupRole.Tts => "Use OpenAI's voices, or ElevenLabs with a voice cloned from yours and tones. Requests cost money.",
                 _ => "Use OpenAI with your API key. Requests may cost money."
             })));
@@ -529,6 +533,20 @@ public partial class MainWindow
             (SpeechEngines.ForRoute(route?.GatewaySnapshot?.RouteId) == SpeechEngines.ChatterboxOriginal ||
              SpeakingEngineChoice.Current == SpeechEngines.ChatterboxOriginal))
             page.Children.Add(ChatterboxStyleCard());
+
+        // No hosted provider has a key: a free one from NVIDIA Build keeps Martlet able to reply when your computers are offline or
+        // have no room for thinking. It goes to If Thinking fails while Thinking has a place (a local model answers sooner), and
+        // to Thinking itself when nothing does it.
+        if (section == CompanionTab.Thinking && place != JobPlace.Cloud && FreeKeyPrompt.Shows(ConfiguredProviders()))
+        {
+            var nobody = route is null && networkHost is null ||
+                recommendedNotice is { } notice && RecommendedSetupReview.CannotReplyIn(notice.Recommendation);
+            var tip = Note(FreeKeyPrompt.Tip, new Thickness(0, 0, 0, 0));
+            AutomationProperties.SetAutomationId(tip, "FreeKeyTip-Thinking");
+            page.Children.Add(Card(Heading(FreeKeyPrompt.Title), tip,
+                Row(PageButton(FreeKeyPrompt.AddLabel, () => OpenFreeKey(FreeKeyPrompt.Use(true, nobody), fromReview: false), id: "FreeKeyAdd-Thinking"),
+                    PageButton(FreeKeyPrompt.GetLabel, () => OpenKeyPageFrom(tip), link: true, id: "FreeKeyGet-Thinking"))));
+        }
 
         if (role == SetupRole.Llm) page.Children.Add(FallbackCard());
 
@@ -1200,6 +1218,10 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(provider, "SetupCloudProvider-" + section);
         provider.SelectedItem = cloudRoute?.RouteType == SetupRouteType.ChatCompletions
             ? providers.FirstOrDefault(p => p.BaseUrl == cloudRoute.Origin) ?? CustomCloud
+            // Add your key (FreeKeyPrompt): NVIDIA Build's free keys, ready for the one the owner pastes.
+            : cloudRoute is null && freeKeyPreset == FreeKeyUse.Thinking &&
+              providers.FirstOrDefault(p => p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl) is { } free
+                ? free
             : OpenAiCloud;
 
         var baseUrl = new TextBox { MaxLength = 2048, Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
@@ -1221,6 +1243,11 @@ public partial class MainWindow
         var key = new PasswordBox { MaxLength = SecretLease.MaximumLength, Width = 420, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(key, "API key");
         AutomationProperties.SetAutomationId(key, "SetupCloudKey-" + section);
+        if (freeKeyFocus && freeKeyPreset == FreeKeyUse.Thinking && role == SetupRole.Llm)
+        {
+            freeKeyFocus = false;
+            FocusWhenShown(key);
+        }
         var keySavedMark = new TextBlock
         {
             Text = "••••••••  Key saved (type to replace)", IsHitTestVisible = false, VerticalAlignment = VerticalAlignment.Center,
@@ -1236,6 +1263,9 @@ public partial class MainWindow
         }
         var keyStatus = Note("", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(keyStatus, "SetupCloudKeyStatus-" + section);
+        var keyLabel = new Label { Target = key, Padding = new Thickness(0, 8, 0, 4) };
+        var getKey = PageButton(FreeKeyPrompt.GetLabel, () => OpenKeyPageFrom(keyStatus), link: true, id: "SetupCloudGetKey-" + section);
+        getKey.HorizontalAlignment = HorizontalAlignment.Left;
         var hint = Note("", new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(hint, "SetupCloudHint-" + section);
         var consent = new CheckBox { Margin = new Thickness(0, 12, 0, 8) };
@@ -1285,6 +1315,7 @@ public partial class MainWindow
                 : saved ? $"Your {p.Name} key is saved. Leave this empty to keep it, or paste a new key."
                 : p.NeedsKey ? $"Paste your {p.Name} API key. Martlet saves it in Windows Credential Manager."
                 : "Add a key only if your server needs one.";
+            getKey.Visibility = p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl && !saved ? Visibility.Visible : Visibility.Collapsed;
             var retired = SameAsSaved(p) && p.Chat ? ChatCompletionsEndpointCatalog.RetiredOn(p.BaseUrl, cloudRoute!.ModelId) : null;
             hint.Text = (retired is null ? "" : $"{retired.Name} no longer supports {cloudRoute!.ModelId}. Choose another model. ") +
                 (p == OpenAiCloud ? (role == SetupRole.Llm ? $"Recommended: {OpenAiTextGenerationCatalog.DefaultModelId}." : "The recommended model is prefilled.")
@@ -1293,8 +1324,9 @@ public partial class MainWindow
                 : ChatCompletionsEndpointCatalog.Named(p.BaseUrl)?.Guidance is { } guidance ? guidance
                 : "Use the server's HTTPS base URL and enter the exact model ID. For a model app on this PC (LM Studio, llama.cpp and " +
                     "others), choose This PC › A model app you already use.");
-            consentText.Text = $"I choose {p.Name} for {job.Job}. {job.Sent} will be sent there, and requests may cost money. " +
-                OpenAiSetup.Boundary(role);
+            consentText.Text = $"I choose {p.Name} for {job.Job}. {job.Sent} will be sent there" +
+                (FreeKeyPrompt.IsFree(p.BaseUrl) ? ". " : ", and requests may cost money. ") + OpenAiSetup.Boundary(role);
+            keyLabel.Content = p == CustomCloud ? "API _key (only if the server needs one)" : $"Your {p.Name} _key";
             consent.IsChecked = SameAsSaved(p) && cloudRoute!.Consent is not null && keepModel;
         }
         Refresh(keepModel: false);
@@ -1341,9 +1373,10 @@ public partial class MainWindow
             stack.Add(new Label { Content = "_Voice", Target = voice, Padding = new Thickness(0, 8, 0, 4) });
             stack.Add(voice);
         }
-        stack.Add(new Label { Content = "API _key", Target = key, Padding = new Thickness(0, 8, 0, 4) });
+        stack.Add(keyLabel);
         stack.Add(keyField);
         stack.Add(keyStatus);
+        stack.Add(getKey);
         stack.Add(Note(OpenAiSetup.Disclosure, new Thickness(0, 10, 0, 0)));
         stack.Add(consent);
         stack.Add(Row(save));
@@ -1392,7 +1425,8 @@ public partial class MainWindow
             if (!await SaveSectionRouteAsync(job, settings => provider.Chat
                     ? ChatCompletionsSetup.SelectRoute(settings, url!, model)
                     : SetupSettings.SelectRoute(settings, role, model, role == SetupRole.Tts ? voice : null),
-                key, $"{job.Title} now uses {provider.Name} ({model}{(voice is null ? "" : ", voice " + voice)}).{(key is null ? "" : " Your API key is saved in Windows Credential Manager.")} Requests may cost money there.",
+                key, $"{job.Title} now uses {provider.Name} ({model}{(voice is null ? "" : ", voice " + voice)}).{(key is null ? "" : " Your API key is saved in Windows Credential Manager.")}" +
+                    (FreeKeyPrompt.IsFree(url) ? "" : " Requests may cost money there."),
                 provider.NeedsKey ? missingKey : null))
                 return;
             // A new Thinking model: ask its server how much context it takes, so replies stay within it.

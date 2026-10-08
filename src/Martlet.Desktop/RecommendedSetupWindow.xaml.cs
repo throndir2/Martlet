@@ -57,6 +57,9 @@ public partial class RecommendedSetupWindow : ThemedWindow
     {
         TitleText.Text = review.Title;
         SummaryText.Text = review.Summary;
+        OfflineText.Text = review.Offline ?? "";
+        OfflineText.Visibility = review.Offline is null ? Visibility.Collapsed : Visibility.Visible;
+        RenderBanner();
         ChangesSection.Visibility = review.Changes.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         ChangesPanel.Children.Clear();
         for (var i = 0; i < review.Changes.Count; i++) ChangesPanel.Children.Add(ChangeRow(review.Changes[i], i));
@@ -89,6 +92,36 @@ public partial class RecommendedSetupWindow : ThemedWindow
         }
         else StatusText.Text = prepare is null ? "Reconfigure isn't available in this Martlet." : "Checking what the change needs on each computer...";
     }
+
+    /// <summary>The problem (Martlet can't reply) or the free-key tip at the top; nothing when neither applies.</summary>
+    private void RenderBanner()
+    {
+        Banner.Visibility = review.CannotReply || review.OffersFreeKey ? Visibility.Visible : Visibility.Collapsed;
+        BannerTitle.Text = review.CannotReply ? FreeKeyPrompt.ProblemTitle : FreeKeyPrompt.Title;
+        BannerText.Text = review.CannotReply ? FreeKeyPrompt.Problem(review.OffersFreeKey) : FreeKeyPrompt.Tip;
+        Banner.SetResourceReference(Border.BorderBrushProperty, review.CannotReply ? "WarningBrush" : "BorderBrush");
+        BannerTitle.SetResourceReference(TextBlock.ForegroundProperty, review.CannotReply ? "WarningBrush" : "TextBrush");
+        FreeKeyAddButton.Content = review.OffersFreeKey ? FreeKeyPrompt.AddLabel : FreeKeyPrompt.OpenThinkingLabel;
+        AutomationProperties.SetName(FreeKeyAddButton, (string)FreeKeyAddButton.Content);
+        AutomationProperties.SetName(FreeKeyGetButton, FreeKeyPrompt.GetLabel + " (opens NVIDIA Build in your browser)");
+        FreeKeyGetButton.Visibility = review.OffersFreeKey ? Visibility.Visible : Visibility.Collapsed;
+        if (review.CannotReply) FreeKeyAddButton.SetResourceReference(StyleProperty, "PrimaryButton");
+    }
+
+    /// <summary>The owner chose Add your key (Companion › Thinking with NVIDIA Build ready for the key: Thinking itself when
+    /// Martlet can't reply, else If Thinking fails) or Open Thinking (<see cref="FreeKeyUse.None"/>). The review closes: it would
+    /// cover the page, and it opens again with the new setup once the key is saved.</summary>
+    internal event Action<FreeKeyUse>? OpenThinking;
+
+    private void FreeKeyAdd_Click(object sender, RoutedEventArgs e)
+    {
+        if (applying) return;
+        OpenThinking?.Invoke(FreeKeyPrompt.Use(review.OffersFreeKey, review.CannotReply));
+        Close();
+    }
+
+    private void FreeKeyGet_Click(object sender, RoutedEventArgs e) =>
+        BannerText.Text = FreeKeyPrompt.OpenKeyPage() ?? FreeKeyPrompt.OpenedText;
 
     private async Task PrepareAsync()
     {
