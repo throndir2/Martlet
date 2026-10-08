@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
 using Martlet.Core.Settings;
@@ -135,7 +136,7 @@ public sealed class CharacterTouchTemperamentTests
                 await CharacterTouchTemperaments.ReplaceAllAsync(elsewhere, shared);
                 Assert.Equal(CharacterTouchTemperament.ByOwner, CharacterTouchTemperaments.Load(elsewhere, other)!.Source);
                 await Assert.ThrowsAsync<Martlet.Core.Contracts.ContractException>(() =>
-                    CharacterTouchTemperaments.ReplaceAllAsync(elsewhere, "{\"version\":2,\"personas\":[]}"));
+                    CharacterTouchTemperaments.ReplaceAllAsync(elsewhere, "{\"version\":3,\"personas\":[]}"));
             }
             finally { Directory.Delete(elsewhere, true); }
 
@@ -198,4 +199,225 @@ public sealed class CharacterTouchTemperamentTests
         }
         finally { Directory.Delete(directory, true); }
     }
-}
+
+    [Fact]
+    public void EveryZoneKindIsInExactlyOneCategoryAndIntimatePartsHoldTheBreastsAndGroin()
+    {
+        Assert.Equal(["head", "torso", "arms", "lower_body", "extras", CharacterTouchTemperaments.IntimateId], CharacterTouchTemperaments.GroupIds.Select(g => g.Id));
+        Assert.Equal("Intimate parts", CharacterTouchTemperaments.GroupIds[^1].Label);
+        foreach (var kind in CharacterTouchZones.Kinds)
+            Assert.Single(CharacterTouchTemperaments.GroupIds, g => CharacterTouchTemperaments.KindsIn(g.Id).Contains(kind));
+        var intimate = CharacterTouchTemperaments.KindsIn(CharacterTouchTemperaments.IntimateId).Select(k => k.Id).ToArray();
+        Assert.Equal(CharacterTouchZones.Kinds.Where(k => k.Intimate).Select(k => k.Id), intimate);
+        Assert.Contains("breast_left", intimate);
+        Assert.Contains("breast_right", intimate);
+        Assert.Contains("groin", intimate);
+        Assert.All(CharacterTouchTemperaments.GroupIds.Where(g => g.Group is not null),
+            g => Assert.DoesNotContain(CharacterTouchTemperaments.KindsIn(g.Id), k => k.Intimate));
+
+        // The Thinking model is asked for all six groups, each zone under its category, and for actions only.
+        Assert.Contains("all six groups", CharacterTouchTemperaments.DecisionInstructions);
+        Assert.Contains("\"intimate\":{...}", CharacterTouchTemperaments.DecisionInstructions);
+        Assert.Contains("ACTIONS ONLY", CharacterTouchTemperaments.DecisionInstructions);
+        var lines = CharacterTouchTemperaments.DecisionRequest("Shy.").Split('\n');
+        var intimateLine = Assert.Single(lines, l => l.StartsWith("intimate: ", StringComparison.Ordinal));
+        Assert.Contains("breast_left (left breast)", intimateLine);
+        Assert.Contains("groin (groin)", intimateLine);
+        Assert.DoesNotContain("breast_left", Assert.Single(lines, l => l.StartsWith("torso: ", StringComparison.Ordinal)));
+        Assert.DoesNotContain("groin", Assert.Single(lines, l => l.StartsWith("lower_body: ", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void TheIntimateCategoryCoversIntimatePartsAndAnOlderTemperamentKeepsTheirBodyGroups()
+    {
+        var decided = Temperament("{\"groups\":{\"torso\":{\"attitude\":1},\"lower_body\":{\"attitude\":0},\"intimate\":{\"attitude\":-2," +
+            "\"reactions\":[\"anger\"],\"look\":2}},\"zones\":{\"breast_right\":{\"attitude\":3}}}");
+        Assert.Equal("hates", CharacterTouchTemperaments.Attitude(decided, "breast_left"));
+        Assert.Equal("likes", CharacterTouchTemperaments.Attitude(decided, "stomach"));
+        // The part's own line still wins.
+        Assert.Equal("craves", CharacterTouchTemperaments.Attitude(decided, "breast_right"));
+        var groin = CharacterTouchZones.React(new CharacterTouchZone { Id = "groin", Box = new(0, 0, 1, 1) }, Catalog(), decided, 1);
+        Assert.Equal((TouchReactionPlan.FromTemperament, "hates", 2.0), (groin.From, groin.Attitude, groin.LookSeconds));
+        Assert.Equal(["anger"], groin.Actions.Select(s => s.Name));
+        Assert.Contains("intimate hates", CharacterTouchTemperaments.Summary(decided));
+
+        // Saved before the intimate category: its intimate parts react as their body group, as they did then.
+        var older = Temperament("{\"groups\":{\"torso\":{\"attitude\":1},\"lower_body\":{\"attitude\":-1}}}");
+        Assert.Equal("likes", CharacterTouchTemperaments.Attitude(older, "breast_left"));
+        Assert.Equal("dislikes", CharacterTouchTemperaments.Attitude(older, "groin"));
+        Assert.Contains("intimate as body groups", CharacterTouchTemperaments.Summary(older));
+    }
+
+    [Theory]
+    [InlineData("intimate")]
+    [InlineData("intimate_parts")]
+    [InlineData("Intimate parts")]
+    [InlineData("erogenous")]
+    [InlineData("erogenous_zones")]
+    [InlineData("private")]
+    [InlineData("sensitive")]
+    public void ReadsTheIntimateCategoryByItsCommonNames(string name)
+    {
+        var parsed = Temperament($"{{\"groups\":{{\"{name}\":{{\"attitude\":2}},\"Shoulders and torso\":{{\"attitude\":0}}}}}}");
+        Assert.Equal(2, parsed.Groups[CharacterTouchTemperaments.IntimateId].Attitude);
+        Assert.Equal(0, parsed.Groups["torso"].Attitude);
+    }
+
+    [Fact]
+    public async Task CustomTemperamentsAreMadeChosenSharedRenamedAndDeleted()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-temperament-").FullName;
+        try
+        {
+            var service = new CharacterTemperamentService(directory);
+            var other = Guid.NewGuid();
+            Assert.Null(await service.SaveAsync(Temperament("{\"groups\":{\"head\":{\"attitude\":2}}}"), CancellationToken.None));
+            Assert.Null(await service.CreateCustomAsync(Persona, " Shy cat ", CancellationToken.None));
+            var custom = Assert.Single(service.Saved.Custom);
+            Assert.Equal("Shy cat", custom.Name);
+            // It starts as a copy of what the persona used, and the persona now uses it.
+            var used = service.For(Persona)!;
+            Assert.Equal((CharacterTouchTemperament.ByCustom, "Shy cat", 2), (used.Source, used.Custom?.Name, used.Groups["head"].Attitude));
+            Assert.Equal(CharacterTouchTemperament.ByThinking, service.Own(Persona)!.Source);
+            // Names are short, one of a kind (ignoring case) and not one of the other choices.
+            Assert.NotNull(await service.CreateCustomAsync(Persona, "shy CAT", CancellationToken.None));
+            Assert.NotNull(await service.CreateCustomAsync(Persona, CharacterTouchTemperaments.BuiltInLabel, CancellationToken.None));
+            Assert.NotNull(await service.CreateCustomAsync(Persona, new string('x', CharacterTouchTemperaments.MaximumNameLength + 1), CancellationToken.None));
+            Assert.NotNull(await service.CreateCustomAsync(Persona, "  ", CancellationToken.None));
+            Assert.Single(service.Saved.Custom);
+
+            // Another persona uses it too, and changing it changes it for both.
+            Assert.Null(await service.ChooseAsync(other, custom.Id.ToString(), CancellationToken.None));
+            Assert.Null(await service.SaveCustomAsync(service.Saved.Custom[0] with
+            {
+                Groups = new Dictionary<string, TouchTemperamentEntry> { [CharacterTouchTemperaments.IntimateId] = new() { Attitude = -2 } }
+            }, CancellationToken.None));
+            Assert.Equal("hates", CharacterTouchTemperaments.Attitude(service.For(Persona), "groin"));
+            Assert.Equal("hates", CharacterTouchTemperaments.Attitude(service.For(other), "breast_left"));
+            Assert.Equal(new[] { Persona, other }.Order(), service.Saved.UsedBy(custom.Id));
+
+            // The built-in reactions keep the persona's own temperament for later.
+            Assert.Null(await service.ChooseAsync(Persona, CharacterTouchTemperaments.BuiltIn, CancellationToken.None));
+            Assert.Null(service.For(Persona));
+            Assert.NotNull(service.Own(Persona));
+
+            Assert.Null(await service.RenameCustomAsync(custom.Id, "Tsundere", CancellationToken.None));
+            Assert.Equal("Tsundere", service.For(other)!.Custom!.Name);
+
+            // The owner's other computers get them all, with who uses which, in a version 2 file.
+            Assert.Contains("\"version\": 2", File.ReadAllText(CharacterTouchTemperaments.Path(directory)));
+            var elsewhere = Directory.CreateTempSubdirectory("martlet-temperament-").FullName;
+            try
+            {
+                await CharacterTouchTemperaments.ReplaceAllAsync(elsewhere, CharacterTouchTemperaments.Share(directory));
+                var there = CharacterTouchTemperaments.LoadSet(elsewhere);
+                Assert.Equal("Tsundere", there.CustomOf(other)!.Name);
+                Assert.True(there.UsesBuiltIn(Persona));
+            }
+            finally { Directory.Delete(elsewhere, true); }
+
+            // Deleted: the persona that used it uses its own again (it has none, so the built-in reactions).
+            Assert.Null(await service.DeleteCustomAsync(custom.Id, CancellationToken.None));
+            Assert.Empty(service.Saved.Custom);
+            Assert.False(service.Saved.Uses.ContainsKey(other));
+            Assert.Null(service.For(other));
+            Assert.True(service.Saved.UsesBuiltIn(Persona));
+
+            // Re-decide from personality sends only the personality, and the persona then uses its own decided temperament.
+            var persona = new PersonaProfile { Id = Persona, ConfigurationRevision = Guid.NewGuid(), Name = "Mira", Text = "Mira adores head pats." };
+            string? sent = null;
+            await service.DecideAsync(persona, (_, instructions, text, _) =>
+            {
+                sent = instructions + text;
+                return Task.FromResult<(string?, string?)>(("{\"groups\":{\"head\":{\"attitude\":3},\"intimate\":{\"attitude\":-1}}}", null));
+            }, CancellationToken.None, use: true);
+            Assert.DoesNotContain("Tsundere", sent);
+            Assert.Equal(CharacterTouchTemperament.ByThinking, service.For(Persona)!.Source);
+            Assert.Equal("dislikes", CharacterTouchTemperaments.Attitude(service.For(Persona), "groin"));
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public async Task AVersion1FileStillLoadsAndAFileFromANewerMartletIsReported()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-temperament-").FullName;
+        try
+        {
+            File.WriteAllText(CharacterTouchTemperaments.Path(directory), "{\"version\":1,\"personas\":[{\"persona_id\":\"" + Persona +
+                "\",\"source\":\"owner\",\"groups\":{\"torso\":{\"attitude\":-1}},\"zones\":{}}]}");
+            var set = CharacterTouchTemperaments.LoadSet(directory);
+            Assert.Equal(CharacterTouchTemperament.ByOwner, set.Own(Persona)!.Source);
+            Assert.Empty(set.Custom);
+            Assert.Equal("dislikes", CharacterTouchTemperaments.Attitude(set.For(Persona), "breast_left"));
+
+            // The next change writes version 2 and keeps what was there.
+            await CharacterTouchTemperaments.UpdateAsync(directory, s => s.Choose(Guid.NewGuid(), CharacterTouchTemperaments.BuiltIn));
+            Assert.Contains("\"version\": 2", File.ReadAllText(CharacterTouchTemperaments.Path(directory)));
+            Assert.Equal(CharacterTouchTemperament.ByOwner, CharacterTouchTemperaments.Load(directory, Persona)!.Source);
+
+            // A persona can't use a custom temperament that isn't there, and a newer Martlet's temperaments are reported, not dropped.
+            await Assert.ThrowsAsync<Martlet.Core.Contracts.ContractException>(() =>
+                CharacterTouchTemperaments.UpdateAsync(directory, s => s.Choose(Persona, Guid.NewGuid().ToString())));
+            await Assert.ThrowsAsync<Martlet.Core.Contracts.ContractException>(() =>
+                CharacterTouchTemperaments.ReplaceAllAsync(directory, "{\"version\":3,\"personas\":[]}"));
+            Assert.Equal(CharacterTouchTemperament.ByOwner, CharacterTouchTemperaments.Load(directory, Persona)!.Source);
+
+            // An older Martlet's temperaments (version 1) replace the personas' own but keep this PC's custom ones and choices.
+            var made = CustomTouchTemperament.Copy("Shy cat", null, DateTimeOffset.Now);
+            await CharacterTouchTemperaments.UpdateAsync(directory, s => s.WithCustom(made).Choose(Persona, made.Id.ToString()));
+            await CharacterTouchTemperaments.ReplaceAllAsync(directory, "{\"version\":1,\"personas\":[{\"persona_id\":\"" + Persona +
+                "\",\"source\":\"thinking\",\"groups\":{\"head\":{\"attitude\":3}},\"zones\":{}}]}");
+            var merged = CharacterTouchTemperaments.LoadSet(directory);
+            Assert.Equal(CharacterTouchTemperament.ByThinking, merged.Own(Persona)!.Source);
+            Assert.Equal("Shy cat", merged.CustomOf(Persona)!.Name);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public async Task TheMcpCheckPlaysTheCustomTemperamentOnIntimatePartsAndShowsWhoUsesIt()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-temperament-").FullName;
+        try
+        {
+            var made = new CustomTouchTemperament
+            {
+                Id = Guid.NewGuid(), Name = "Shy cat",
+                Groups = new Dictionary<string, TouchTemperamentEntry>
+                {
+                    ["torso"] = new() { Attitude = 1 },
+                    [CharacterTouchTemperaments.IntimateId] = new() { Attitude = -2, Reactions = ["anger"], LookSeconds = 3 }
+                }
+            };
+            await CharacterTouchTemperaments.UpdateAsync(directory, s => s.WithCustom(made).Choose(Persona, made.Id.ToString()));
+            const string answer = "{\"zones\":[{\"id\":\"breast_left\",\"box\":[0.55,0.3,0.65,0.38]},{\"id\":\"groin\",\"box\":[0.45,0.55,0.55,0.62]}," +
+                "{\"id\":\"stomach\",\"box\":[0.4,0.4,0.6,0.5]}]}";
+            async Task<JsonElement> TouchAsync(string point) => JsonSerializer.SerializeToElement(await Martlet.Mcp.TouchZonesCheck.RunAsync(directory, true,
+                null, "model-1", answer, 400, 800, null, null, "{" + point + ",\"hitAreas\":[],\"drawables\":[]}", false, null, null, CancellationToken.None,
+                personaId: Persona.ToString()));
+
+            var breast = await TouchAsync("\"x\":0.6,\"y\":0.34");
+            var match = breast.GetProperty("match");
+            var reaction = match.GetProperty("reaction");
+            Assert.Equal(("breast_left", "temperament", "hates", 3.0), (match.GetProperty("zone").GetString(), reaction.GetProperty("from").GetString(),
+                reaction.GetProperty("attitude").GetString(), reaction.GetProperty("look").GetDouble()));
+            var groin = (await TouchAsync("\"x\":0.5,\"y\":0.58")).GetProperty("match");
+            Assert.Equal(("groin", "hates"), (groin.GetProperty("zone").GetString(), groin.GetProperty("reaction").GetProperty("attitude").GetString()));
+            Assert.Equal("likes", (await TouchAsync("\"x\":0.42,\"y\":0.45")).GetProperty("match").GetProperty("reaction").GetProperty("attitude").GetString());
+
+            var temperament = breast.GetProperty("temperament");
+            Assert.Equal(("custom", "Shy cat"), (temperament.GetProperty("used").GetProperty("Source").GetString(),
+                temperament.GetProperty("used").GetProperty("custom").GetString()));
+            var persona = Assert.Single(temperament.GetProperty("personas").EnumerateArray());
+            Assert.Equal((Persona.ToString(), "custom", "Shy cat"), (persona.GetProperty("personaId").GetString(), persona.GetProperty("uses").GetString(),
+                persona.GetProperty("custom").GetString()));
+            var custom = Assert.Single(temperament.GetProperty("custom").EnumerateArray());
+            Assert.Equal(Persona.ToString(), Assert.Single(custom.GetProperty("usedBy").EnumerateArray()).GetString());
+            var intimate = Assert.Single(temperament.GetProperty("categories").EnumerateArray(),
+                c => c.GetProperty("Id").GetString() == CharacterTouchTemperaments.IntimateId);
+            Assert.Equal("Intimate parts", intimate.GetProperty("Label").GetString());
+            Assert.Contains("groin", intimate.GetProperty("parts").EnumerateArray().Select(p => p.GetString()));
+        }
+        finally { Directory.Delete(directory, true); }
+    }}
