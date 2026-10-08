@@ -93,6 +93,9 @@ public sealed record CheckInState
     public string? Screen { get; init; }
     /// <summary>The newest line about what this PC plays (the context board's sound note), or null.</summary>
     public string? Sound { get; init; }
+    /// <summary>What the character said lately (replies, remarks, reactions; never a [pass]), oldest first, each with when
+    /// (<see cref="SaidLately"/>).</summary>
+    public IReadOnlyList<Saying> Said { get; init; } = [];
 
     /// <summary>The character's name for the check: the personality's, or Martlet.</summary>
     public string Who => string.IsNullOrWhiteSpace(Name) ? "Martlet" : Name.Trim();
@@ -123,20 +126,23 @@ public sealed record CheckInVerdict(bool Act, IReadOnlyList<string> Tags, string
 /// every few minutes, each with the facts that matter for it, because a small conversation model forgets what it left on.
 /// Built in: <see cref="Emotes"/> (do the lingering emotes a reply turned on still fit? Martlet turns off those that don't),
 /// <see cref="Gaze"/> (does the gaze a reply chose still fit? Martlet takes the eyes back to their usual), <see cref="Promises"/>
-/// (did the character say it would do something it never started?) and <see cref="Character"/> (did its last replies drift from
-/// its personality?), whose answers become a reminder in the notes of the next message. The owner adds their own: a task, the
+/// (did the character say it would do something it never started?), <see cref="Character"/> (did its last replies drift from
+/// its personality?) and <see cref="Repeats"/> (does it keep saying the same things?), whose answers become a reminder in the
+/// notes of the next message. The owner adds their own: a task, the
 /// facts it gets and whether its answer reminds the character in its next reply or is brought up on Martlet's own. A check-in
 /// runs only on a Thinking pool member (<see cref="ThinkingJobKind.CheckIn"/>, never the conversation's own Thinking route),
 /// one at a time, when it is due and has something to check (<see cref="Wait"/>).
 /// </summary>
 public static partial class CheckIns
 {
-    public const string Emotes = "emotes", Gaze = "gaze", Promises = "promises", Character = "character";
+    public const string Emotes = "emotes", Gaze = "gaze", Promises = "promises", Character = "character", Repeats = "repeats";
     /// <summary>The background job kind of what a check-in brings up on Martlet's own (checkin-1...).</summary>
     public const string SayKindName = "checkin";
     public const int MaximumCustom = 8, MaximumNameCharacters = 60, MaximumTaskCharacters = 2_000, MaximumAnswerCharacters = 300;
     /// <summary>How many new exchanges Staying in character waits for between two checks.</summary>
     public const int CharacterReplies = 4;
+    /// <summary>How many things the character must have said in the last hour before Saying the same things reads them.</summary>
+    public const int RepeatsSayings = 3;
     /// <summary>How long an emote or a gaze a reply chose shows before a check-in looks at it (unless the owner asks now).</summary>
     public static TimeSpan MinimumShown => TimeSpan.FromMinutes(3);
     /// <summary>How long a check-in waits after the conversation last did something, so it never races a reply.</summary>
@@ -157,7 +163,8 @@ public static partial class CheckIns
     /// <summary>How often a check-in may run: every 2 minutes to every 2 hours.</summary>
     public static IReadOnlyList<int> EveryChoices { get; } = [2, 5, 10, 15, 30, 60, 120];
 
-    /// <summary>The built-in check-ins with their defaults: all on, every 5 minutes (Staying in character every 15).</summary>
+    /// <summary>The built-in check-ins with their defaults: all on, every 5 minutes (Saying the same things every 10, Staying in
+    /// character every 15).</summary>
     public static IReadOnlyList<CheckIn> BuiltIn { get; } =
     [
         new(Emotes, "Lingering emotes", "Checks whether the emotes a reply turned on and left on (such as a blush or glasses) still " +
@@ -169,7 +176,10 @@ public static partial class CheckIns
             { PromptId = PromptCatalog.CheckInPromises },
         new(Character, "Staying in character", "Reads Martlet's last replies against its personality and, when they drift (out " +
             "of character, saying the same things, too long), reminds it how to talk in its next reply.", CheckInOutcome.Note, true, 15)
-            { PromptId = PromptCatalog.CheckInCharacter }
+            { PromptId = PromptCatalog.CheckInCharacter },
+        new(Repeats, "Saying the same things", "Reads what Martlet said in the last hour, each with when it said it, and when it " +
+            "keeps saying the same things (the same remark, joke or question again and again), reminds it in its next reply to " +
+            "say something new.", CheckInOutcome.Note, true, 10) { PromptId = PromptCatalog.CheckInRepeats }
     ];
 
     /// <summary>The background job kind that brings up what a check-in said to bring up: a notice, always brought up as soon as
@@ -239,6 +249,10 @@ public static partial class CheckIns
                 if (!now && state.Exchanged - (last?.Exchanged ?? 0) < CharacterReplies)
                     return $"it waits for {CharacterReplies} new replies";
                 return busy ? "the conversation is busy" : null;
+            case Repeats:
+                if (Said(state).Count < RepeatsSayings) return $"it needs at least {RepeatsSayings} things Martlet said in the last hour";
+                if (!now && last is not null && state.Exchanged <= last.Exchanged) return "nothing new was said since the last check";
+                return busy ? "the conversation is busy" : null;
             case null:
                 if (string.IsNullOrWhiteSpace(checkIn.Task)) return "its prompt is empty";
                 return busy ? "the conversation is busy" : null;
@@ -300,6 +314,8 @@ public static partial class CheckIns
             Character when Replies(state).Count > 0 && !string.IsNullOrWhiteSpace(state.Persona) =>
                 PromptSettings.Fill(prompts, PromptCatalog.CheckInCharacter, ("name", who), ("persona", Clip(state.Persona.Trim(), 2_000)),
                     ("replies", string.Join("\n", Replies(state).TakeLast(6).Select((reply, n) => $"{n + 1}. {Clip(reply, 500)}")))),
+            Repeats when Said(state).Count > 0 => PromptSettings.Fill(prompts, PromptCatalog.CheckInRepeats, ("name", who),
+                ("said", SaidLately.Lines(Said(state), state.Now)), ("time", time)),
             _ => null
         };
         return string.IsNullOrWhiteSpace(text) ? null : ExtraLines().Replace(text.Trim(), "\n\n");
@@ -388,6 +404,10 @@ public static partial class CheckIns
     /// <summary>The character's replies that said something (not [pass]), oldest first.</summary>
     public static IReadOnlyList<string> Replies(CheckInState state) =>
         [.. state.Exchanges.Select(e => e.Martlet).Where(reply => !string.IsNullOrWhiteSpace(reply) && !StayQuiet.IsQuiet(reply))];
+
+    /// <summary>What the character said in the last hour (<see cref="SaidLately.Window"/>; the newest
+    /// <see cref="SaidLately.MaximumSayings"/>), oldest first.</summary>
+    public static IReadOnlyList<Saying> Said(CheckInState state) => SaidLately.Within(state.Said, state.Now);
 
     /// <summary>What one of the owner's own check-ins gets to know (<paramref name="facts"/>), as the check reads it.</summary>
     public static string Facts(CheckInFacts facts, CheckInState state)

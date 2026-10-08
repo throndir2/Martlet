@@ -23,26 +23,37 @@ public sealed class CheckInsTests
         Emotes = [new("glasses", "when reading", TimeSpan.FromMinutes(9)), new("blush", "when flattered", TimeSpan.FromMinutes(14)),
             new("smile", "when happy", TimeSpan.FromSeconds(30))],
         Gaze = new("look straight ahead and ignore the pointer", "follow the user's mouse pointer wherever it goes", TimeSpan.FromMinutes(12)),
-        Work = ["Thinking longer (running): a trip plan"]
+        Work = ["Thinking longer (running): a trip plan"],
+        Said =
+        [
+            new(Now.AddMinutes(-75), "Good evening!"),
+            new(Now.AddMinutes(-30), "Ooh, that boss is almost down!"),
+            new(Now.AddMinutes(-12), "Ooh, that boss is almost down!"),
+            new(Now.AddMinutes(-2), "Ooh, that boss is almost down!")
+        ]
     };
 
     [Fact]
     public void BuiltInCheckInsAreOnByDefaultAndFollowTheOwnersChoices()
     {
         var defaults = CheckIns.All(null);
-        Assert.Equal([CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character], defaults.Select(c => c.Id));
+        Assert.Equal([CheckIns.Emotes, CheckIns.Gaze, CheckIns.Promises, CheckIns.Character, CheckIns.Repeats], defaults.Select(c => c.Id));
         Assert.All(defaults, c => Assert.True(c.On));
         Assert.Equal(15, defaults.Single(c => c.Id == CheckIns.Character).EveryMinutes);
+        Assert.Equal((10, CheckInOutcome.Note, PromptCatalog.CheckInRepeats),
+            defaults.Single(c => c.Id == CheckIns.Repeats) is var repeats ? (repeats.EveryMinutes, repeats.Outcome, repeats.PromptId) : default);
 
         var settings = new CheckInSettings().With(CheckIns.Gaze, false, 30)
             .With(new CustomCheckIn { Id = "c1", Name = "Breaks", On = true, EveryMinutes = 60, Task = "Suggest a break.", Outcome = CheckInOutcome.Say });
         var all = CheckIns.All(settings);
-        Assert.Equal(5, all.Count);
+        Assert.Equal(6, all.Count);
         Assert.Equal((false, 30), (all[1].On, all[1].EveryMinutes));
-        Assert.True(all[4].Custom);
-        Assert.Equal(CheckInOutcome.Say, all[4].Outcome);
+        Assert.True(all[5].Custom);
+        Assert.Equal(CheckInOutcome.Say, all[5].Outcome);
         Assert.Equal("check-in-promises", CheckIns.Source(CheckIns.Promises));
         Assert.True(ContextBoard.IsSource(CheckIns.Source(CheckIns.Character)));
+        Assert.True(ContextBoard.IsSource(CheckIns.Source(CheckIns.Repeats)));
+        new CheckInSettings().With(CheckIns.Repeats, false, 30).Validate();
     }
 
     [Fact]
@@ -91,6 +102,17 @@ public sealed class CheckInsTests
             CheckIns.Wait(Built(CheckIns.Character), state with { Exchanged = 6 }, new(Now.AddMinutes(-20), 4, "nothing to remind Martlet of", false)));
         Assert.NotNull(CheckIns.Wait(Built(CheckIns.Character), state with { Persona = " " }, null));
 
+        // Saying the same things reads what was said in the last hour, once something new was said.
+        Assert.Null(CheckIns.Wait(Built(CheckIns.Repeats), state, null));
+        Assert.Equal("next in 4 min", CheckIns.Wait(Built(CheckIns.Repeats), state with { Exchanged = 6 },
+            new(Now.AddMinutes(-6), 4, "nothing to remind Martlet of", false)));
+        Assert.Null(CheckIns.Wait(Built(CheckIns.Repeats), state with { Exchanged = 6 }, new(Now.AddMinutes(-11), 4, "nothing to remind Martlet of", false)));
+        Assert.Equal("nothing new was said since the last check",
+            CheckIns.Wait(Built(CheckIns.Repeats), state, new(Now.AddMinutes(-11), 4, "nothing to remind Martlet of", false)));
+        Assert.Equal("it needs at least 3 things Martlet said in the last hour",
+            CheckIns.Wait(Built(CheckIns.Repeats), state with { Said = [.. state.Said.Take(3)] }, null));
+        Assert.Equal("the conversation is busy", CheckIns.Wait(Built(CheckIns.Repeats), state with { Quiet = TimeSpan.Zero }, null));
+
         var own = CheckIns.Of(new() { Id = "c1", Name = "Breaks", Task = "" });
         Assert.Equal("its prompt is empty", CheckIns.Wait(own, state, null, now: true));
         // Check now runs a check-in that is off, not due and young, as long as it has something to check.
@@ -129,6 +151,17 @@ public sealed class CheckInsTests
         var promises = CheckIns.Message(Built(CheckIns.Promises), state, null)!;
         Assert.Contains("- Thinking longer (running): a trip plan", promises);
         Assert.Contains("check the oven", promises);
+
+        // Saying the same things gets what was said in the last hour, each with when, and nothing older.
+        var repeats = CheckIns.Message(Built(CheckIns.Repeats), state, null)!;
+        Assert.Contains("Mira, the user's desktop companion, said these things lately", repeats);
+        Assert.Contains("- 9:47 PM (30 min ago): \"Ooh, that boss is almost down!\"\n- 10:05 PM (12 min ago): \"Ooh, that boss is almost down!\"\n" +
+            "- 10:15 PM (2 min ago): \"Ooh, that boss is almost down!\"", repeats);
+        Assert.DoesNotContain("Good evening!", repeats);
+        Assert.Contains("It is Wednesday, October 7, 10:17 PM.", repeats);
+        Assert.Contains("REMIND:", repeats);
+        Assert.DoesNotContain("I beat the boss", repeats);
+        Assert.Null(CheckIns.Message(Built(CheckIns.Repeats), state with { Said = [] }, null));
 
         var own = CheckIns.Of(new()
         {
@@ -282,7 +315,8 @@ public sealed class CheckInsTests
     public void CheckInPromptsAreInTheirOwnGroupAndTheBroughtUpMessageCantBeEmptied()
     {
         string[] ids = [PromptCatalog.CheckIn, PromptCatalog.CheckInEmotes, PromptCatalog.CheckInGaze, PromptCatalog.CheckInPromises,
-            PromptCatalog.CheckInCharacter, PromptCatalog.CheckInCustom, PromptCatalog.CheckInNote, PromptCatalog.CheckInDue, PromptCatalog.CheckInDueNotes];
+            PromptCatalog.CheckInCharacter, PromptCatalog.CheckInRepeats, PromptCatalog.CheckInCustom, PromptCatalog.CheckInNote,
+            PromptCatalog.CheckInDue, PromptCatalog.CheckInDueNotes];
         foreach (var id in ids)
         {
             var prompt = PromptCatalog.Find(id)!;

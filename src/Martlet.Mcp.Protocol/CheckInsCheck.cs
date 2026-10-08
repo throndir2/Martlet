@@ -56,7 +56,8 @@ internal static class CheckInsCheck
         tickSeconds = 15, minimumShownMinutes = CheckIns.MinimumShown.TotalMinutes, settleSeconds = CheckIns.Settle.TotalSeconds,
         idleMinutes = CheckIns.Idle.TotalMinutes, promiseWindowMinutes = CheckIns.PromiseWindow.TotalMinutes,
         noteAgeMinutes = CheckIns.NoteAge.TotalMinutes, timeoutSeconds = CheckIns.Timeout.TotalSeconds, keptPace = CheckIns.KeptPace,
-        characterReplies = CheckIns.CharacterReplies, everyChoices = CheckIns.EveryChoices, maximumCustom = CheckIns.MaximumCustom,
+        characterReplies = CheckIns.CharacterReplies, repeatsSayings = CheckIns.RepeatsSayings,
+        saidLatelyMinutes = SaidLately.Window.TotalMinutes, everyChoices = CheckIns.EveryChoices, maximumCustom = CheckIns.MaximumCustom,
         jobKind = ThinkingJobKinds.Name(ThinkingJobKind.CheckIn), priority = ThinkingJobKinds.Priority(ThinkingJobKind.CheckIn).ToString(),
         fast = ThinkingJobKinds.IsFast(ThinkingJobKind.CheckIn), stoppedWhenLive = LiveFloorRules.Stops(ThinkingJobKind.CheckIn)
     };
@@ -92,7 +93,7 @@ internal static class CheckInsCheck
             var refused = false;
             try { new CheckInSettings().With(CheckIns.Emotes, true, 7).Validate(); }
             catch (Martlet.Core.Contracts.ContractException) { refused = true; }
-            Step("settings saved and read back", wrote && state == "loaded" && all.Count == 5 &&
+            Step("settings saved and read back", wrote && state == "loaded" && all.Count == CheckIns.BuiltIn.Count + 1 &&
                 all.Single(c => c.Id == CheckIns.Gaze) is { On: false, EveryMinutes: 10 } && all.Single(c => c.Id == "c1") is { Custom: true, Outcome: CheckInOutcome.Say } &&
                 CheckIns.All(new CheckInSettings()).All(c => c.On) && refused,
                 new { state, checkIns = all.Select(c => $"{c.Id}: {(c.On ? "on" : "off")}, every {c.EveryMinutes} min, {c.Outcome}"), badPaceRefused = refused });
@@ -120,7 +121,14 @@ internal static class CheckInsCheck
             Emotes = [new("blush", "when flattered or embarrassed", TimeSpan.FromMinutes(14)), new("glasses", "when reading or thinking", TimeSpan.FromMinutes(9)),
                 new("smile", "when happy", TimeSpan.FromSeconds(40))],
             Gaze = new("look straight ahead and ignore the pointer", "follow the user's mouse pointer wherever it goes", TimeSpan.FromMinutes(12)),
-            Work = ["Thinking longer (running): FIXTURE plan for the trip"]
+            Work = ["Thinking longer (running): FIXTURE plan for the trip"],
+            Said =
+            [
+                new(now.AddMinutes(-31), "FIXTURE: Ooh, that boss is almost down!"),
+                new(now.AddMinutes(-20), "{blush} No way, you did it! I'm so proud of you!"),
+                new(now.AddMinutes(-12), "FIXTURE: Ooh, that boss is almost down!"),
+                new(now.AddMinutes(-2), "FIXTURE: Ooh, that boss is almost down!")
+            ]
         };
         var waits = new Dictionary<string, string?>
         {
@@ -138,6 +146,9 @@ internal static class CheckInsCheck
             ["promises: nothing new"] = CheckIns.Wait(Built(CheckIns.Promises), facts, new(now.AddMinutes(-6), 4, "nothing to remind Martlet of", false)),
             ["character: 4 new replies"] = CheckIns.Wait(Built(CheckIns.Character), facts, null),
             ["character: no personality"] = CheckIns.Wait(Built(CheckIns.Character), facts with { Persona = null }, null),
+            ["repeats: said enough"] = CheckIns.Wait(Built(CheckIns.Repeats), facts, new(now.AddMinutes(-11), 3, "nothing to remind Martlet of", false)),
+            ["repeats: said too little"] = CheckIns.Wait(Built(CheckIns.Repeats), facts with { Said = [.. facts.Said.Take(2)] }, null),
+            ["repeats: nothing new"] = CheckIns.Wait(Built(CheckIns.Repeats), facts, new(now.AddMinutes(-11), 4, "nothing to remind Martlet of", false)),
             ["own: off, but Check now"] = CheckIns.Wait(CheckIns.Of(new() { Id = "c2", Name = "FIXTURE", Task = "Check something." }), facts,
                 new(now.AddMinutes(-1), 4, "nothing to remind Martlet of", false), now: true)
         };
@@ -147,7 +158,9 @@ internal static class CheckInsCheck
             waits["emotes: you talk"] == "the conversation is busy" && waits["emotes: nobody here"]?.StartsWith("nobody used this PC", StringComparison.Ordinal) == true &&
             waits["gaze: due"] is null && waits["gaze: chosen 1 min ago"] is not null && waits["promises: new exchanges"] is null &&
             waits["promises: nothing new"] == "nothing new was said since the last check" && waits["character: 4 new replies"] is null &&
-            waits["character: no personality"] is not null && waits["own: off, but Check now"] is null,
+            waits["character: no personality"] is not null && waits["own: off, but Check now"] is null &&
+            waits["repeats: said enough"] is null && waits["repeats: said too little"] == "it needs at least 3 things Martlet said in the last hour" &&
+            waits["repeats: nothing new"] == "nothing new was said since the last check",
             waits.ToDictionary(w => w.Key, w => w.Value ?? "runs"));
 
         // 4. The messages and their run on a production job board with a fixture member (canned answers, NOT AI).
@@ -157,6 +170,8 @@ internal static class CheckInsCheck
             [CheckIns.Gaze] = "Hmm, she is helping with a bug now, so following the mouse fits better.\n**USUAL**",
             [CheckIns.Promises] = "- REMIND: You said you'd remind them to check the oven in 10 minutes but never set the reminder; set it now, or tell them you can't.",
             [CheckIns.Character] = "OK",
+            [CheckIns.Repeats] = "<think>The boss remark came three times.</think>\nREMIND: You said the boss was almost down three times in " +
+                "30 minutes; don't bring it up again unless something changes, and talk about something new.",
             ["c1"] = "SAY: They've been at it for hours; suggest a short stretch break."
         };
         var places = new BackgroundPlaces();
@@ -175,7 +190,8 @@ internal static class CheckInsCheck
         });
         var verdicts = new Dictionary<string, CheckInVerdict>();
         var messages = new Dictionary<string, object>();
-        foreach (var checkIn in new[] { Built(CheckIns.Emotes), Built(CheckIns.Gaze), Built(CheckIns.Promises), Built(CheckIns.Character), own })
+        foreach (var checkIn in new[] { Built(CheckIns.Emotes), Built(CheckIns.Gaze), Built(CheckIns.Promises), Built(CheckIns.Character),
+            Built(CheckIns.Repeats), own })
         {
             var focused = CheckIns.Focus(checkIn, facts);
             var job = CheckIns.Prepare(checkIn, focused, null);
@@ -191,13 +207,15 @@ internal static class CheckInsCheck
             messages[checkIn.Id] = new { member = result.Member, outcome = result.Outcome.ToString(), message = job.Text };
         }
         var emotesMessage = asked.FirstOrDefault(a => a.Text.Contains(Marker(CheckIns.Emotes), StringComparison.Ordinal)).Text ?? "";
-        Step("messages carry the facts each needs", asked.Count == 5 && asked.All(a => a.Kind == ThinkingJobKind.CheckIn && a.Instructions.Length > 0) &&
+        Step("messages carry the facts each needs", asked.Count == 6 && asked.All(a => a.Kind == ThinkingJobKind.CheckIn && a.Instructions.Length > 0) &&
             emotesMessage.Contains("{blush} - when flattered", StringComparison.Ordinal) && emotesMessage.Contains("{glasses}", StringComparison.Ordinal) &&
             !emotesMessage.Contains("{smile}", StringComparison.Ordinal) && emotesMessage.Contains("OFF {blush}", StringComparison.Ordinal) &&
             emotesMessage.Contains("Wednesday, October 7, 10:17 PM", StringComparison.Ordinal) &&
             asked.Any(a => a.Text.Contains("look straight ahead", StringComparison.Ordinal) && a.Text.Contains("12 min ago", StringComparison.Ordinal)) &&
             asked.Any(a => a.Text.Contains("FIXTURE plan for the trip", StringComparison.Ordinal) && a.Text.Contains("check the oven", StringComparison.Ordinal)) &&
             asked.Any(a => a.Text.Contains("playful and teasing", StringComparison.Ordinal) && a.Text.Contains("1. {blush} No way", StringComparison.Ordinal)) &&
+            asked.Any(a => a.Text.Contains("- 10:05 PM (12 min ago): \"FIXTURE: Ooh, that boss is almost down!\"", StringComparison.Ordinal) &&
+                a.Text.Contains("- 10:15 PM (2 min ago):", StringComparison.Ordinal) && a.Text.Contains("keeps saying the same things", StringComparison.Ordinal)) &&
             asked.Any(a => a.Text.Contains("SAY:", StringComparison.Ordinal) && a.Text.Contains("Nobody has used this PC", StringComparison.Ordinal) == false &&
                 a.Text.Contains("The user is using this PC now.", StringComparison.Ordinal)),
             messages);
@@ -205,6 +223,7 @@ internal static class CheckInsCheck
             verdicts.GetValueOrDefault(CheckIns.Gaze) is { Act: true } &&
             verdicts.GetValueOrDefault(CheckIns.Promises) is { Act: true, Text: { } remind } && remind.StartsWith("You said you'd remind them", StringComparison.Ordinal) &&
             verdicts.GetValueOrDefault(CheckIns.Character) is { Act: false, Readable: true } &&
+            verdicts.GetValueOrDefault(CheckIns.Repeats) is { Act: true, Text: { } repeated } && repeated.StartsWith("You said the boss was almost down", StringComparison.Ordinal) &&
             verdicts.GetValueOrDefault("c1") is { Act: true, Text: { } say } && say.Contains("stretch break", StringComparison.Ordinal),
             verdicts.ToDictionary(v => v.Key, v => new { v.Value.Act, v.Value.Readable, v.Value.Tags, v.Value.Text }));
         var odd = new Dictionary<string, CheckInVerdict>
