@@ -269,9 +269,9 @@ internal static class NetworkRecommendationCheck
         var processor = NetworkRecommender.Recommend(Lone(true));
         Step("voice", "Fallback 2: no graphics card, so Chatterbox Nano speaks on the processor (about 8 threads)",
             Option(processor) == "chatterbox-nano-cpu" && processor.Target.Job(ClusterJobs.Speaking)?.HostId == "desk-1", Report(processor));
-        var keyed = NetworkRecommender.Recommend(Lone(false) with { ConfiguredProviders = ["openai"] });
+        var hostedVoice = NetworkRecommender.Recommend(Lone(false) with { ConfiguredProviders = ["openai"] });
         Step("voice", "Fallback 3: no computer can run a voice engine, so the hosted voice with your saved key speaks",
-            Option(keyed) == FootprintCatalog.OpenAiVoiceId, Report(keyed));
+            Option(hostedVoice) == FootprintCatalog.OpenAiVoiceId, Report(hostedVoice));
         var mute = NetworkRecommender.Recommend(Lone(false));
         Step("voice", "Fallback 4: nothing can speak, so a note says how to set up the host service for Chatterbox Nano (never silent)",
             Option(mute) is null && mute.Notes.Any(n => n.StartsWith("Martlet can't speak yet", StringComparison.Ordinal) &&

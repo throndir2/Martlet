@@ -213,6 +213,23 @@ public sealed class ChatCompletionsSettingsTests : IDisposable
     }
 
     [Fact]
+    public void A_saved_windows_voice_route_still_loads_and_is_dropped_so_speaking_asks_for_a_voice_engine()
+    {
+        var settings = WindowsSpeechSetup.SelectStt(Settings, "installed recognizer");
+        settings = SetupSettings.ReplaceRoute(settings, new()
+        {
+            RouteSchemaVersion = 1, RouteType = SetupRouteType.LocalWindowsTts, Enabled = true, Role = SetupRole.Tts,
+            ProviderAlias = WindowsSpeechSetup.TtsAlias, Origin = SelfHostSetup.LocalOrigin, ModelId = WindowsSpeechSetup.TtsModelId,
+            VoiceId = @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\TTS_MS_EN-US_ZIRA_11.0", ConfigurationRevision = Guid.NewGuid()
+        });
+
+        var read = SettingsJson.Read(ContractJson.Write(settings));
+
+        Assert.DoesNotContain(read.Setup!.Routes, route => route.Role == SetupRole.Tts);
+        Assert.Equal(SetupRouteType.LocalWindowsStt, read.Setup.Routes.Single(route => route.Role == SetupRole.Stt).RouteType);
+    }
+
+    [Fact]
     public void Keyless_and_local_credential_checks_do_not_consult_vault()
     {
         using var native = new FakeCredentialNative();

@@ -520,6 +520,61 @@ public sealed class NetworkRecommenderTests
         Assert.True(NetworkRecommender.Recommend(request).AlreadyOptimal);
     }
 
+    private static NetworkSetupRequest LoneVoice(bool hostService, params MachineGpu[] gpus) =>
+        Network(Companion("desk-1", hostService, gpus)) with { Wanted = [PlanComponent.Voice] };
+
+    [Fact]
+    public void ChatterboxNanoSpeaksOnACardWithNoRoomForTheOwnersEngineAndStaysWhenApplied()
+    {
+        var request = LoneVoice(true, Nvidia(4, "GTX 1650"));
+        var plan = NetworkRecommender.Recommend(request);
+
+        var speaking = plan.Target.Job(ClusterJobs.Speaking)!;
+        Assert.Equal("desk-1", speaking.HostId);
+        Assert.Equal(FootprintCatalog.FallbackVoiceKind, speaking.OptionId);
+        Assert.Contains(plan.Notes, n => n.StartsWith("No computer has room for Chatterbox Turbo: Martlet speaks with Chatterbox Nano",
+            StringComparison.Ordinal));
+        Assert.DoesNotContain(plan.Changes, c => c.Summary.Contains("Windows", StringComparison.Ordinal));
+        Assert.True(NetworkRecommender.Recommend(Apply(request, plan)).AlreadyOptimal);
+    }
+
+    [Fact]
+    public void ChatterboxNanoSpeaksOnTheProcessorWhenNoComputerHasACard()
+    {
+        var plan = NetworkRecommender.Recommend(LoneVoice(true));
+
+        var speaking = plan.Target.Job(ClusterJobs.Speaking)!;
+        Assert.Equal("desk-1", speaking.HostId);
+        Assert.Equal("chatterbox-nano-cpu", speaking.OptionId);
+        Assert.Contains(plan.Changes, c => c.Kind == SetupChangeKind.AddRole && c.Summary.Contains("desk-1's processor", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AHostedVoiceSpeaksOnlyWithASavedKeyAndOtherwiseANoteSaysHowToGiveMartletAVoice()
+    {
+        var keyed = NetworkRecommender.Recommend(LoneVoice(false) with { ConfiguredProviders = ["openai"] });
+        Assert.Equal(FootprintCatalog.OpenAiVoiceId, keyed.Target.Job(ClusterJobs.Speaking)!.OptionId);
+
+        var mute = NetworkRecommender.Recommend(LoneVoice(false));
+        Assert.Null(mute.Target.Job(ClusterJobs.Speaking)?.OptionId);
+        Assert.Contains(mute.Notes, n => n.StartsWith("Martlet can't speak yet", StringComparison.Ordinal) &&
+            n.Contains("host service", StringComparison.Ordinal) && n.Contains("Chatterbox Nano", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TheOwnersVoiceEngineComesBackWhenAComputerHasRoomForItAgain()
+    {
+        var small = LoneVoice(true, Nvidia(4, "GTX 1650"));
+        var applied = Apply(small, NetworkRecommender.Recommend(small));
+        var desk = applied.Machines.Single();
+        var upgraded = applied with { Machines = [desk with { Specs = desk.Specs with { Gpus = [Nvidia(12)] } }] };
+
+        var plan = NetworkRecommender.Recommend(upgraded);
+
+        Assert.Equal("chatterbox-turbo", plan.Target.Job(ClusterJobs.Speaking)!.OptionId);
+        Assert.DoesNotContain(plan.Target.Machine("desk-1")!.Roles, r => r.Kind == FootprintCatalog.FallbackVoiceKind);
+    }
+
     [Fact]
     public void DeepThinkingMovesToACardNoLiveJobUses()
     {
