@@ -695,10 +695,17 @@ default; turn it off to leave them out. The check box names each of these parts.
      root (the drawable that moves least) to its tip. A setting that moves
      almost the whole body is left out, and settings named alike that move the
      same drawables are one part. This happens off screen, once for each
-     picture, never while Martlet talks (about a second on a heavy model).
+     picture, never while Martlet talks (about a second on a heavy model). A
+     VRM model needs no measuring: each chain of its spring bones (its
+     `VRMC_springBone` springs, such as a tail, hair or a skirt) is a swinging
+     part, from its root joint to its tip. The renderer reports each joint's
+     node name and where the joint is in the picture.
   2. A tail, wings or animal ears zone follows a part whose own names say it
-     is one (the DisplayInfo name 尾巴, or a physics setting named 尾巴 or
-     Tail) that its box holds some of or lies near. Without such names, it
+     is one (the DisplayInfo name 尾巴, a physics setting named 尾巴 or Tail,
+     or a VRM spring chain whose root joint is named, for example,
+     `J_Sec_Tail_01` or `CatEar_L`) that its box holds some of or lies near. A
+     box holds a VRM joint when the bone from that joint to the next one
+     crosses the box. Without such names, it
      follows the smallest swinging part that its box holds some of (a tail or
      wings never one rooted in the head, animal ears only one rooted above
      the eyes). It follows all of that part, also what hides behind the legs
@@ -706,10 +713,13 @@ default; turn it off to leave them out. The check box names each of these parts.
      the page's height, at most 8).
   3. The hair keeps its box and also follows the swinging hair that its box
      doesn't hold, such as a ponytail that hangs to the hips.
-  4. A drawable that a zone follows this way belongs to that zone only. A click
-     on it is that zone wherever the part swung, and other zones' boxes let it
-     go. The areas' boxes only show where the part was at rest, so a click on
-     what is now at that place doesn't count as the zone.
+  4. A drawable or VRM joint that a zone follows this way belongs to that zone
+     only. A click on it is that zone wherever the part swung, and other zones'
+     boxes let it go. A click on a VRM mesh goes to the joint that moves that
+     part of the mesh most, so a click on a VRM's cat ears is the animal ears,
+     not the hair, though they hang from the head. The areas' boxes only show
+     where the part was at rest, so a click on what is now at that place
+     doesn't count as the zone.
 
   When the model's own names say it has a tail, wings or animal ears, the first
   guess and **Detect zones** place them too, without **Add zone** (see above).
@@ -725,7 +735,9 @@ default; turn it off to leave them out. The check box names each of these parts.
 - **Show the zones on the character** (a check box below the picture, for this
   session only) draws each area of the zones in use over the character as it
   moves, in its zone's color. An area that follows Live2D drawables is the box
-  around them where they are drawn now, so a tail's areas swing with the tail.
+  around them where they are drawn now, and an area that follows a VRM's
+  spring-bone joints is the box around those joints where they are now, so a
+  tail's areas swing with the tail.
 - A click is traced back to the rest pose before it is matched. The zones'
   boxes are drawn on a picture of the character at rest, but the character
   you click moves: its head turns and nods to follow the mouse, it breathes

@@ -42,6 +42,20 @@ test("synthetic importer inspects actual authored controls, not guessed ARKit de
   VRMUtils.deepDispose(vrm.scene);
 });
 
+test("each spring-bone chain is read root first, a tail from the hips as hair from the head, for touch zones", async () => {
+  assert.deepEqual(new VrmRuntime().springNodes, [], "nothing before a model loads");
+  const { document, bin } = fixtureDocument();
+  // A tail hanging behind the hips: its own spring, after the hair's.
+  document.nodes.push({ name: "TailRoot", translation: [0, -0.05, -0.1], children: [22] },
+    { name: "TailMiddle", translation: [0, -0.15, -0.05], children: [23] }, { name: "TailTip", translation: [0, -0.15, 0] });
+  (document.nodes[0]!.children as number[]).push(21);
+  document.extensions.VRMC_springBone.springs.push({ joints: [{ node: 21 }, { node: 22 }, { node: 23 }] });
+  const runtime = new VrmRuntime(); await runtime.load(encodeGlb(document, bin));
+  assert.deepEqual(runtime.springNodes.map(chain => chain.map(node => node.name)),
+    [["HairRoot", "HairMiddle", "HairTip"], ["TailRoot", "TailMiddle", "TailTip"]]);
+  runtime.dispose();
+});
+
 test("missing optional expressions stay absent and cannot be selected", async () => {
   const { document, bin } = fixtureDocument();
   Reflect.deleteProperty(document.extensions.VRMC_vrm, "expressions");

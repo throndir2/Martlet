@@ -254,6 +254,84 @@ public sealed class TouchZoneAreasTests
         Assert.Equal("尾巴 / 尾巴(2)", tail.Follows);
     }
 
+    // ---------- a VRM character's spring bones ----------
+
+    // A VRM character standing whole (fractions of the page): its humanoid bones, its face, and its spring-bone chains as the
+    // renderer reports them, each named by its root joint: a tail hanging behind its legs from the hips, cat ears on its head and
+    // hair hanging to its neck. Unnamed, the joints' names say nothing.
+    private static RendererZoneProbe VrmProbe(bool named = true)
+    {
+        string Joint(string name, int i) => named ? $"J_Sec_{name}_{i:00}" : $"Bone.{name.Length * 10 + i:000}";
+        RendererSpring Spring(string name, params (double X, double Y)[] at) =>
+            new(Joint(name, 1), [.. at.Select((p, i) => new RendererBonePoint(Joint(name, i + 1), p.X, p.Y))]);
+        return new(Bones:
+            [
+                new("hips", 0.5, 0.5), new("spine", 0.5, 0.42), new("chest", 0.5, 0.34), new("neck", 0.5, 0.25), new("head", 0.5, 0.2),
+                new("leftUpperLeg", 0.53, 0.52), new("leftLowerLeg", 0.53, 0.7), new("leftFoot", 0.53, 0.88), new("rightUpperLeg", 0.47, 0.52),
+                new("rightLowerLeg", 0.47, 0.7), new("rightFoot", 0.47, 0.88), new("leftUpperArm", 0.56, 0.3), new("rightUpperArm", 0.44, 0.3)
+            ],
+            Face: new(0.5, 0.15, 0.08),
+            Springs:
+            [
+                Spring("Tail", (0.5, 0.52), (0.5, 0.6), (0.5, 0.68), (0.51, 0.76), (0.52, 0.84)),
+                Spring("L_CatEar", (0.53, 0.09), (0.54, 0.06), (0.545, 0.04)),
+                Spring("Hair1", (0.5, 0.12), (0.52, 0.2), (0.53, 0.28))
+            ]);
+    }
+
+    private static CharacterTouch VrmTouch(double x, double y, string bone, string node, bool hair = false, (double X, double Y)? rest = null) =>
+        new(x, y, [], [], bone, node, hair, "Body", null, WholeX: x, WholeY: y, RestX: rest?.X, RestY: rest?.Y, RestWholeX: rest?.X, RestWholeY: rest?.Y);
+
+    [Fact]
+    public void AVrmTailFollowsItsSpringBonesAndATouchOnAJointIsTheTailWhereverItSwung()
+    {
+        var zones = CharacterTouchZones.Bind([Zone("tail", new(0.49, 0.8, 0.05, 0.06)), Zone("hips", new(0.44, 0.45, 0.12, 0.1)),
+            Zone("animal_ears", new(0.51, 0.02, 0.06, 0.06)), Zone("hair", new(0.44, 0.04, 0.12, 0.14))], Whole, VrmProbe());
+        var settings = new CharacterTouchZoneSettings { ModelId = "vrm", Crop = Whole, Whole = true, Zones = zones };
+
+        // A box on the tip that shows between the boots follows the whole tail, root first.
+        var tail = zones.Single(z => z.Id == "tail");
+        Assert.Equal("J_Sec_Tail_01", tail.Follows);
+        Assert.All(tail.AllAreas, a => Assert.True(a.FromModel));
+        Assert.Equal(["J_Sec_Tail_01", "J_Sec_Tail_02", "J_Sec_Tail_03", "J_Sec_Tail_04", "J_Sec_Tail_05"], tail.AllAreas.SelectMany(a => a.Nodes));
+        Assert.InRange(tail.AllAreas.Count, 2, 5);
+
+        // The tail's root swung up beside the hips; the renderer traced the hit to where it hung at rest, inside the hips' box.
+        var swung = VrmTouch(0.62, 0.45, "hips", "J_Sec_Tail_01", rest: (0.5, 0.53));
+        var match = CharacterTouchZones.Match(settings, swung)!;
+        Assert.Equal(("tail", "node", false, 0), (match.Zone.Id, match.How, match.Traced, match.Area));
+        Assert.Equal(["tail"], CharacterTouchZones.Touched(settings, swung, match).Select(z => z.Id));
+
+        // Cat ears hang from the head as hair does; a touch on their joint is the ears, not the hair.
+        Assert.Equal("J_Sec_L_CatEar_01", zones.Single(z => z.Id == "animal_ears").Follows);
+        Assert.Equal("animal_ears", CharacterTouchZones.Match(settings, VrmTouch(0.54, 0.06, "head", "J_Sec_L_CatEar_02", hair: true))!.Zone.Id);
+
+        // The hair keeps its box and follows the hair hanging past it, to the neck.
+        var hair = zones.Single(z => z.Id == "hair");
+        Assert.Equal("J_Sec_Hair1_01", hair.Follows);
+        Assert.False(hair.AllAreas[0].FromModel);
+        Assert.Equal(["J_Sec_Hair1_01", "J_Sec_Hair1_02", "J_Sec_Hair1_03"], hair.AllAreas.Where(a => a.FromModel).SelectMany(a => a.Nodes));
+
+        // The zones drawn over the character name the joint where each of the tail's areas ends, so the page draws its bones.
+        var view = RendererZoneView.Of(settings, true, ["#E94F64"]).Areas.Where(a => a.Zone == "tail").ToArray();
+        Assert.Equal(tail.AllAreas[1].Nodes[0], view[0].Nodes[^1]);
+        Assert.Equal(tail.AllAreas[^1].Nodes, view[^1].Nodes);
+    }
+
+    [Fact]
+    public void AnUnnamedVrmChainATailBoxHoldsIsTheTailButNeverOneRootedInTheHead()
+    {
+        var probe = VrmProbe(named: false);
+
+        var tip = Assert.Single(CharacterTouchZones.Bind([Zone("tail", new(0.49, 0.8, 0.05, 0.06))], Whole, probe));
+        Assert.Equal(["Bone.041", "Bone.042", "Bone.043", "Bone.044", "Bone.045"], tip.AllAreas.SelectMany(a => a.Nodes));
+
+        // A tail box over the hair behind the head: a chain rooted above the chin is never a tail.
+        var head = Assert.Single(CharacterTouchZones.Bind([Zone("tail", new(0.48, 0.1, 0.07, 0.2))], Whole, probe));
+        Assert.Null(head.Follows);
+        Assert.All(head.AllAreas, a => Assert.Empty(a.Nodes));
+    }
+
     // Her picture: each drawable opaque, transparent around her.
     private static ZonePixels Picture()
     {

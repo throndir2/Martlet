@@ -143,6 +143,38 @@ export class VrmAvatarAdapter extends VrmRuntime {
     });
   }
 
+  /** The model's spring-bone chains (a tail, hair, a skirt) for touch zones, at most 64 of at most 64 joints: each named by its
+   *  root joint's node, with each joint's node name and where it is now, root first, as fractions of the canvas (origin
+   *  top-left, +y down). A joint whose node has no name is left out: a touch names the node it hit by its name. */
+  springChains(): { name: string; joints: { bone: string; x: number; y: number }[] }[] {
+    requireValid(!this.closed, "Renderer is disposed.");
+    this.scene?.updateWorldMatrix(true, true);
+    return this.springNodes.flatMap(chain => {
+      const joints = chain.filter(node => node.name).slice(0, 64).flatMap(node => {
+        const at = this.place(node);
+        return at ? [{ bone: node.name, ...at }] : [];
+      });
+      return joints.length > 0 ? [{ name: joints[0]!.bone, joints }] : [];
+    }).slice(0, 64);
+  }
+
+  /** Where each spring-bone joint is now, by its node's name, as fractions of the canvas (origin top-left, +y down), for the
+   *  touch zones drawn over the character: a tail's areas swing with its joints. */
+  nodePoints(): { node: string; x: number; y: number }[] {
+    requireValid(!this.closed, "Renderer is disposed.");
+    this.scene?.updateWorldMatrix(true, true);
+    return this.springNodes.flat().filter(node => node.name).flatMap(node => {
+      const at = this.place(node);
+      return at ? [{ node: node.name, ...at }] : [];
+    });
+  }
+
+  // Where a node is now, as fractions of the canvas; undefined when the camera can't place it.
+  private place(node: THREE.Object3D): Point | undefined {
+    const point = node.getWorldPosition(new THREE.Vector3()).project(this.camera);
+    return Number.isFinite(point.x) && Number.isFinite(point.y) && point.z < 1 ? { x: (point.x + 1) / 2, y: (1 - point.y) / 2 } : undefined;
+  }
+
   private updateProjection(): void {
     this.camera.updateProjectionMatrix();
     const { zoom, x, y, frame } = this.view;
