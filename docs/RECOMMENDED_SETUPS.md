@@ -408,7 +408,10 @@ The planner uses these rules, in this order of importance:
     grace time (10 minutes) is planned as if it were back, with no changes
     there. A computer that is away for longer is planned without, and its jobs
     and pool places move (Required). A computer without a hardware report stays
-    as it is.
+    as it is. The recommendation lists the computers that stay away, and it
+    says when nobody can do Thinking and why (for example *no free API key is
+    saved*), so the review window shows one sentence for each and doesn't
+    read the change texts.
 11. **Stability.** What runs stays where it runs unless the change helps. Each
     change is *Required* (something is missing, too full or on a computer that
     stays away), an *Improvement* (sooner replies, lighter companion PCs, more

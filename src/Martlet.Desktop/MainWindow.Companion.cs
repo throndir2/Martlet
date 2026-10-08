@@ -538,7 +538,7 @@ public partial class MainWindow
         if (section == CompanionTab.Thinking && place != JobPlace.Cloud && FreeKeyPrompt.Shows(ConfiguredProviders()))
         {
             var nobody = route is null && networkHost is null ||
-                recommendedNotice is { } notice && RecommendedSetupReview.CannotReplyIn(notice.Recommendation);
+                recommendedNotice is { } notice && notice.Recommendation.CannotReply;
             var tip = Note(FreeKeyPrompt.Tip, new Thickness(0, 0, 0, 0));
             AutomationProperties.SetAutomationId(tip, "FreeKeyTip-Thinking");
             page.Children.Add(Card(Heading(FreeKeyPrompt.Title), tip,

@@ -26,6 +26,11 @@ public static partial class NetworkRecommender
         /// <summary>The jobs whose pool a step has decided.</summary>
         private readonly HashSet<string> poolsDone = new(StringComparer.Ordinal);
         private readonly List<string> notes = [];
+        /// <summary>Every sentence a step wrote about a computer that stays away (SetupChange.Away).</summary>
+        private readonly HashSet<string> awayWords = new(StringComparer.Ordinal);
+        private readonly List<OfflineComputer> offline = [];
+        /// <summary>The note that says Martlet can't reply: no computer and no hosted provider can do Thinking.</summary>
+        private string? cannotReply;
 
         public NetworkSetup Current { get; }
 
@@ -71,10 +76,20 @@ public static partial class NetworkRecommender
             DeepThinking();
             Leftovers();
             var target = BuildTarget();
-            var changes = Diff(target);
+            var changes = Diff(target).Select(MarkAway).ToList();
             AddNotes(target, changes);
-            return new(Current, target, changes) { Fingerprint = FingerprintOf(target), Notes = notes.Distinct(StringComparer.Ordinal).ToArray() };
+            // Today's Thinking job kept exactly as it is (each companion PC itself, no option known) isn't a new problem.
+            var stays = TodayJob(ClusterJobs.Thinking) is { HostId: null, OptionId: null, Off: false };
+            return new(Current, target, changes)
+            {
+                Fingerprint = FingerprintOf(target), Notes = notes.Distinct(StringComparer.Ordinal).ToArray(), Offline = offline.ToArray(),
+                CannotReplyNote = stays ? null : cannotReply
+            };
         }
+
+        private SetupChange MarkAway(SetupChange change) =>
+            awayWords.Where(w => change.Why.Contains(w, StringComparison.Ordinal)).OrderByDescending(w => w.Length).FirstOrDefault() is { } away
+                ? change with { Away = away } : change;
 
         // ---------- Today's network ----------
 
@@ -147,7 +162,7 @@ public static partial class NetworkRecommender
         {
             var ofKind = catalog.Options.Where(o => o.IsLocal && o.HostRoleKind == kind).ToList();
             if (ofKind.Count == 0) return null;
-            var named = model is null ? ofKind : ofKind.Where(o => Same(o.ModelId, model) || Same(o.Id, model)).ToList();
+            var named = model is null ? ofKind : ofKind.Where(o => Names(o, model)).ToList();
             if (named.Count == 0 && model is not null)
             {
                 var inApp = catalog.For(ofKind[0].Component).FirstOrDefault(o => o.RunsInApp && o.ModelId is { } id &&
@@ -167,6 +182,12 @@ public static partial class NetworkRecommender
                 ?? named.FirstOrDefault(o => !o.UsesGpu)
                 ?? named.OrderByDescending(o => o.GpuGb).First();
         }
+
+        /// <summary>Whether a host role's <paramref name="model"/> is <paramref name="option"/>'s: its id, its model, or its model
+        /// with the engine's name in front ("whisper-large-v3-turbo" is the catalog's "large-v3-turbo", not "small").</summary>
+        private static bool Names(ComponentOption option, string model) =>
+            Same(option.ModelId, model) || Same(option.Id, model) || option.ModelId is { Length: > 0 } id &&
+            (model.EndsWith("-" + id, StringComparison.OrdinalIgnoreCase) || model.EndsWith("/" + id, StringComparison.OrdinalIgnoreCase));
 
         /// <summary>About how much graphics memory an Ollama model takes from the size in its name ("14b": 4-bit weights,
         /// about 0.65 GB per billion parameters, plus its context and buffers), or null.</summary>

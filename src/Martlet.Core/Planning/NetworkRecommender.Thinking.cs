@@ -23,7 +23,14 @@ public static partial class NetworkRecommender
                 : "as soon";
 
         private string Gone(Node node, string job) =>
-            $"{node.Name} hasn't answered for {Minutes(node.Machine.OfflineFor)}, so {Lower(job)} moves.";
+            Away($"{node.Name} hasn't answered for {Minutes(node.Machine.OfflineFor)}, so {Lower(job)} moves.");
+
+        /// <summary>A sentence about a computer that stays away, remembered so each change can say which of its words they are.</summary>
+        private string Away(string sentence)
+        {
+            awayWords.Add(sentence);
+            return sentence;
+        }
 
         /// <summary>Today's option first, then the same model's other variants (rule 8: what the owner chose).</summary>
         private IReadOnlyList<ComponentOption> SameModel(ComponentOption? now, string kind) => now is not { IsLocal: true }
@@ -272,9 +279,18 @@ public static partial class NetworkRecommender
                 Decide(job, slot.Node.Id, slot.Option.Id, why.TrimStart(), forced.Benefit);
                 return;
             }
-            Decide(job, null, null, $"{forced.Why} No computer can run a Thinking model, and no hosted endpoint is allowed.".TrimStart(), forced.Benefit);
-            notes.Add("No computer can run a Thinking model, and no hosted endpoint is allowed. Martlet can't reply until one is set up.");
+            var nobody = $"No computer has room for a Thinking model, and {NoHostedThinking()}.";
+            Decide(job, null, null, $"{forced.Why} {nobody}".TrimStart(), forced.Benefit);
+            cannotReply = $"{nobody} Martlet can't reply until one is set up.";
+            notes.Add(cannotReply);
         }
+
+        /// <summary>Why no hosted provider does Thinking: no saved key for one, the owner keeps everything on their computers,
+        /// or none answers as soon as today's model.</summary>
+        private string NoHostedThinking() =>
+            !catalog.For(PlanComponent.Thinking).Any(o => !o.IsLocal && Configured(o)) ? "no free API key is saved"
+            : request.Preference == HostingPreference.PreferLocal ? "you keep everything on your computers"
+            : "no hosted provider answers as soon";
 
         private bool ThinkHere(ComponentOption? now, SetupChangeBenefit benefit, string reason, int? most, bool strict, bool gpu = true)
         {

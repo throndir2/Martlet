@@ -52,6 +52,8 @@ internal static class NetworkRecommendationCheck
             jobs = recommendation.Target.Jobs.Select(j => new { j.Job, j.HostId, j.Off, j.OptionId, j.Pool }),
             thinkingPool = recommendation.Target.ThinkingPool
         },
+        recommendation.CannotReply,
+        offline = recommendation.Offline.Select(o => o.Id),
         recommendation.Notes
     };
 
