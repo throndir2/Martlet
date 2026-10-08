@@ -242,6 +242,7 @@ public sealed class LingeringEmoteTests
         }
         public Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token, TimeSpan? timeout = null)
         {
+            if (data is RendererAction && FailActions is { } failure) return Task.FromException<RendererMessage>(failure);
             if (data is not RendererAction action) return Task.FromResult(RendererProtocol.Message("ok", activation, new { started = true }));
             Actions.Enqueue(action);
             if (action.Kind != "gesture") return Task.FromResult(RendererProtocol.Message("ok", activation, new { started = true }));
@@ -252,6 +253,8 @@ public sealed class LingeringEmoteTests
             return Task.FromResult(RendererProtocol.Message("ok", activation, new { started = true, gesture = state }));
         }
         private string? heldGesture;
+        /// <summary>The failure every emote or motion meets now, or null when they play.</summary>
+        internal Exception? FailActions { get; set; }
         public ValueTask DisposeAsync() { HasExited = true; return ValueTask.CompletedTask; }
     }
 
@@ -309,6 +312,39 @@ public sealed class LingeringEmoteTests
 
     private static CharacterActionSource Gesture(string name) =>
         new("gesture:" + name, CharacterActionKind.Gesture, name, "");
+
+    [Fact]
+    public async Task A_renderer_that_runs_out_of_time_bringing_a_lingering_emote_back_still_shows_the_character()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer();
+        await using var avatar = new AvatarController(createRenderer: () => renderer, allowControlledClock: true);
+        avatar.UseActions(_ => Catalog());
+        var profile = scope.Profile() with { LipSync = AvatarLipSync.Loudness };
+        await avatar.ShowAsync(profile, default);
+        Assert.True(await avatar.PlayActionAsync(Source("expression:Star"), "a try", null, default, hold: true));
+        await avatar.StopAsync();
+        Assert.True(avatar.Held.Holds("expression:Star"));
+
+        // The renderer's own time limit runs out (not the caller's token): the emote is forgotten, the character shows.
+        renderer.FailActions = new OperationCanceledException(new CancellationToken(true));
+        await avatar.ShowAsync(profile, default);
+        Assert.True(avatar.IsShowing);
+        Assert.Empty(avatar.Held.Current);
+
+        // Turning lingering emotes off on a renderer that can't answer still forgets them, and a caller's own cancellation stays one.
+        renderer.FailActions = null;
+        Assert.True(await avatar.PlayActionAsync(Source("expression:Star"), "a try", null, default, hold: true));
+        renderer.FailActions = new InvalidDataException("Renderer message length is invalid.");
+        Assert.Equal(1, await avatar.ClearHeldAsync("Clear emotes", default));
+        Assert.Empty(avatar.Held.Current);
+        renderer.FailActions = null;
+        Assert.True(await avatar.PlayActionAsync(Source("expression:Star"), "a try", null, default, hold: true));
+        renderer.FailActions = new OperationCanceledException();
+        using var canceled = new CancellationTokenSource();
+        await canceled.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => avatar.ClearHeldAsync("Clear emotes", canceled.Token));
+    }
 
     [Fact]
     public async Task The_character_waits_out_a_pause_and_never_acts_a_cue_its_reply_stopped_before()

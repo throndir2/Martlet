@@ -103,7 +103,7 @@ public partial class AvatarWindow : ThemedWindow
             await controller.ShowAsync(selected, lifetime.Token);
             return note;
         }
-        catch (Exception error) when (error is ContractException or InvalidOperationException)
+        catch (Exception error) when (error is ContractException or InvalidOperationException or InvalidDataException)
         {
             modelProblem = error.Message;
             throw;
@@ -386,7 +386,7 @@ public partial class AvatarWindow : ThemedWindow
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException or
-            InvalidOperationException or ArgumentException or JsonException or TimeoutException or Win32Exception)
+            InvalidOperationException or ArgumentException or JsonException or TimeoutException or Win32Exception or InvalidDataException)
         {
             ResultText.Text = "Saved, but the character couldn't switch: " + error.Message;
         }
@@ -632,7 +632,7 @@ public partial class AvatarWindow : ThemedWindow
         try { await action(); }
         catch (OperationCanceledException) { ResultText.Text = "Character action canceled."; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException or
-            InvalidOperationException or ArgumentException or JsonException or TimeoutException or Win32Exception)
+            InvalidOperationException or ArgumentException or JsonException or TimeoutException or Win32Exception or InvalidDataException)
         { ResultText.Text = error.Message; }
         finally
         {
