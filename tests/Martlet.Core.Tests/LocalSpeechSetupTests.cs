@@ -33,6 +33,51 @@ public sealed class LocalSpeechSetupTests
         Assert.Equal(expected, LocalSpeechSetup.RecommendedParakeetModel(CultureInfo.GetCultureInfo(language)));
 
     [Theory]
+    // English: the model already loaded when it fits, else the fastest one downloaded.
+    [InlineData("en-US", "110m v2 v3", null, LocalSpeechSetup.Parakeet110mEnglishModelId)]
+    [InlineData("en-GB", "v2 v3", null, LocalSpeechSetup.ParakeetV2EnglishModelId)]
+    [InlineData("en-US", "v3", null, LocalSpeechSetup.ParakeetV3ModelId)]
+    [InlineData("en-US", "110m v2", "v2", LocalSpeechSetup.ParakeetV2EnglishModelId)]
+    [InlineData("en-US", "110m", "v2", LocalSpeechSetup.Parakeet110mEnglishModelId)]
+    // One of v3's 25 languages: only v3 hears it. Any other language: no Parakeet does, so nothing stands in.
+    [InlineData("de-DE", "110m v2 v3", "110m", LocalSpeechSetup.ParakeetV3ModelId)]
+    [InlineData("pl-PL", "v3", null, LocalSpeechSetup.ParakeetV3ModelId)]
+    [InlineData("de-DE", "110m v2", null, null)]
+    [InlineData("ja-JP", "110m v2 v3", null, null)]
+    [InlineData("en-US", "", null, null)]
+    public void A_downloaded_parakeet_stands_in_when_a_host_or_openai_fails(string language, string downloaded, string? loaded, string? expected)
+    {
+        var installed = downloaded.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(Id).ToHashSet();
+        var openAi = Stt(SetupSettings.SelectRoute(Settings, SetupRole.Stt, "gpt-transcribe", null));
+        foreach (var type in new SetupRouteType?[] { SetupRouteType.GatewayStt, SetupRouteType.OpenAi, null })
+            Assert.Equal(expected, LocalSpeechSetup.ListeningStandIn(openAi with { RouteType = type }, installed.Contains,
+                CultureInfo.GetCultureInfo(language), loaded is null ? null : Id(loaded)));
+    }
+
+    [Fact]
+    public void Nothing_stands_in_for_listening_that_already_runs_on_this_pc()
+    {
+        static bool All(string _) => true;
+        var english = CultureInfo.GetCultureInfo("en-US");
+        Assert.Null(LocalSpeechSetup.ListeningStandIn(null, All, english));
+        Assert.Null(LocalSpeechSetup.ListeningStandIn(Stt(LocalSpeechSetup.SelectParakeet(Settings, LocalSpeechSetup.ParakeetV3ModelId)), All, english));
+        var openAi = Stt(SetupSettings.SelectRoute(Settings, SetupRole.Stt, "gpt-transcribe", null));
+        foreach (var type in new[] { SetupRouteType.LocalWhisper, SetupRouteType.LocalWindowsStt })
+            Assert.Null(LocalSpeechSetup.ListeningStandIn(openAi with { RouteType = type }, All, english));
+        // Only Listening's own route gets one, never a voice route.
+        var voice = SetupSettings.SelectRoute(Settings, SetupRole.Tts, "gpt-4o-mini-tts-2025-12-15", "coral").Setup!.Routes.Single(r => r.Role == SetupRole.Tts);
+        Assert.Null(LocalSpeechSetup.ListeningStandIn(voice, All, english));
+        Assert.Equal(25, LocalSpeechSetup.ParakeetV3Languages.Count);
+    }
+
+    private static string Id(string shortName) => shortName switch
+    {
+        "110m" => LocalSpeechSetup.Parakeet110mEnglishModelId,
+        "v2" => LocalSpeechSetup.ParakeetV2EnglishModelId,
+        _ => LocalSpeechSetup.ParakeetV3ModelId
+    };
+
+    [Theory]
     [InlineData(LocalSpeechSetup.Parakeet110mEnglishModelId)]
     [InlineData(LocalSpeechSetup.ParakeetV2EnglishModelId)]
     [InlineData(LocalSpeechSetup.ParakeetV3ModelId)]

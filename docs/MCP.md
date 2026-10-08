@@ -442,7 +442,12 @@ the voice models (`included`: `found`, `runtime`, `voiceModels`), whether any
 Parakeet model is downloaded (`parakeet`), `parakeetModels` (Companion ›
 Listening › *Parakeet in Martlet*: `listening`, the Listening route type with
 its `parakeetModel`, whether this Martlet `known`s it and whether it is
-`downloaded`; `displayLanguage` and the `recommended` model for it,
+`downloaded`; `standIn`, the Parakeet model that hears an utterance on this
+PC's processor when Listening's own route (a paired host or OpenAI) fails, as
+the desktop chooses it (`model`, `name`), or why none does (`reason`:
+*Listening isn't set up*, *Listening already runs on this PC*, *no Parakeet
+model hears Windows' display language (ja-JP)* or *parakeet-tdt-110m-en isn't
+downloaded in speechDirectory*); `displayLanguage` and the `recommended` model for it,
 `parakeet-tdt-110m-en` for English and `parakeet-tdt-0.6b-v3-int8` otherwise;
 and `models`, each with `id`, `name`, `languages`, `englishOnly`,
 `downloadMb`, `revision`, `downloaded`, `notice` (its NOTICE file is there),
@@ -1770,8 +1775,13 @@ of audible audio), `engine`, `route`, `voice`, `text`, `style` (Chatterbox
 Original's sent style in words, else null), `statusBefore` and
 `statusAfter` (the service's own `/status`: `answered`, `state`, `ready`,
 `error`, `model` and `device` (`cuda:0` or `cpu`) and `runtime`, for Chatterbox
-its torch, torchaudio and CUDA versions, `decoderSteps` (the decoder steps a
-whole piece takes on Chatterbox Turbo or Nano: 1 on the CPU, 2 on a GPU), `cpu`
+its torch, torchaudio and CUDA versions, `decoderSteps` (the decoder steps
+each decoding takes on Chatterbox Turbo or Nano: 1 on the CPU, 2 on a GPU),
+`streaming` (Turbo and Nano: `on`, whether pieces are spoken as they are made;
+on the CPU also `first_tokens`, the speech tokens before a piece's first chunk
+(55, 0 for whole pieces), and what the service measured to time its chunks:
+`token_ms`, T3's time for a speech token, and `decoding_scale`, decoding times
+against the expected shape; null on a GPU), `cpu`
 on the CPU (`threads`, PyTorch's threads, at most 8 and never more than the
 performance cores, and `pinned_cpus`, the CPUs of the performance cores it is
 pinned to on native Linux, empty when not pinned, as always on Docker Desktop; null on a GPU)
@@ -1781,7 +1791,10 @@ the `parts` it has [whispered](CHATTERBOX_VOICE.md#tags)) and, for Chatterbox
 Original, `style` (`default`, `expressive_parts` and `last`, the style the last
 reply asked for, so the owner's values can be checked at the service), or why
 it could not be read), `seconds` of 24 kHz audio, `firstAudioMs`,
-`elapsedMs`, `realTimeFactor`, `peakDbfs`, `rmsDbfs`, `audible`,
+`elapsedMs`, `realTimeFactor`, `pauses` and `pauseMs` (what a listener who
+plays the first audio at once would hear: the pauses longer than 20 ms, when
+audio arrives after everything before it has played, and all pauses together;
+0 for a piece that streams in time or comes whole), `peakDbfs`, `rmsDbfs`, `audible`,
 `voicedShare` (the share of the loud 40 ms frames that have a pitch between 70
 and 400 Hz, from `Martlet.Core.Audio.Voicing`; about 0.6-0.9 for ordinary
 speech and nearly 0 for a whisper, so a `text` that starts with `[whispering]`
@@ -2142,7 +2155,7 @@ settings, so they need `--allow-ui-effects`; `ui_set_text` with an empty
 data directory (optional absolute `dataDirectory`, default the current
 user's): `personality` (`state` `none`, `loaded` or `unreadable` with
 `problem`; `active`, the persona Martlet uses; and each persona's `name`,
-`active`, `instructionCharacters`, `styles` weights and `speechBreaks`
+`active`, `instructionCharacters` and `speechBreaks`
 (`periods`, `questionMarks`, `exclamationMarks`, `shortEndingWords`
 and `isDefault`), never its
 instructions), `character` (from `avatar.json`: `model` `built-in` with
@@ -2189,8 +2202,8 @@ apps. `HistoryEditSave`, `HistoryDeleteMessage`, `HistoryDeleteConversation`,
 `HistoryDeleteAll` and `HistoryPlatformCancel` write (deletes ask first, No by
 default) and need `--allow-ui-effects`. Each editor's footer line, `CompanionSaveState`,
 `AvatarSaveState` and `LorebookSaveState`, reads *All changes saved.*,
-*Saving...*, *Not saved yet: <why>* (for example an empty persona name, all
-response styles at zero, or *Choose your model file: an existing .vrm or
+*Saving...*, *Not saved yet: <why>* (for example an empty persona name, or
+*Choose your model file: an existing .vrm or
 .model3.json file.*) or *Not saved: <why>*; `AvatarStatus` reads the
 character's state (*Character is showing. ...*, *Character hidden.*). Memory's
 `MemoryFactStatus` reads how many facts it remembers, how many belong to how
@@ -2202,7 +2215,7 @@ the `MemoryStorageSection` and `MemoryExportSection` expanders are passive
 clicks; `MemoryDeleteFact` (the selected fact or facts), `MemoryDeleteShown`
 (every fact listed now: one person's or what the search found) and
 `MemoryDeleteAll` ask first and need `--allow-ui-effects`. Their
-fields (`CompanionName`, `CompanionText`, the `CompanionHelpful`... sliders,
+fields (`CompanionName`, `CompanionText`,
 the *Where the voice pauses* check boxes
 `CompanionBreakPeriods`, `CompanionBreakQuestions` and
 `CompanionBreakExclamations` (their `checkedState` is the persona's choice) and
@@ -3634,7 +3647,22 @@ and use* asks one confirmation, `ConfirmationYes`, then downloads that model
 and switches Listening to it; *Use it* switches to a downloaded model at once),
 they
 change data or download and need `--allow-ui-effects` (People has no sharing
-switch of its own: the list follows `ClusterSync`). Each voice's
+switch of its own: the list follows `ClusterSync`). While Listening uses a paired
+host or OpenAI, Listening's *Now* card has `SetupJobStandIn-Listening` (a passive
+value): what hears you on this PC's processor when that route can't (*If OpenAI
+can't hear you, Parakeet TDT 110M (English) hears you on this PC's processor
+instead. Nothing is sent anywhere.*), or *... Martlet can't either. Download
+Parakeet TDT 110M (English) and this PC's processor hears you instead.* with
+`SetupListenStandInDownload`, which asks one confirmation (`ConfirmationYes`),
+downloads that model and leaves Listening as it is, so it needs
+`--allow-ui-effects`. A turn the stand-in heard shows in `logs_tail` as
+*Transcription failed (outcome Failed, provider ...; Parakeet &lt;model&gt; on
+this PC heard it instead in N ms)*, then, for 60 s while the route isn't asked,
+*Listening: Parakeet &lt;model&gt; on this PC heard it instead in N ms, without
+asking Listening's own route ...*; its *Reply latency* line ends with
+*speech-to-text &lt;model&gt; on this PC, standing in for &lt;route model&gt;*,
+and Home's `HealthIssue-failed-listening` keeps the route's failure until it
+answers again. Each voice's
 `PeopleMemories-3` (*Memories*: what Martlet remembers about them) only opens Memory
 showing that voice's facts, so it is a passive click; read `MemoryFactStatus`
 there (*Showing N.*) or `memory_status` for whose facts are. On Devices, `Node-<id>`

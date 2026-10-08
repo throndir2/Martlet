@@ -77,7 +77,7 @@ internal static class SettingsRehearsal
                 await a.EditAsync(s =>
                 {
                     var persona = s.Companion!.ActivePersona;
-                    return s with { Companion = s.Companion.Update(persona.Id, "Martlet", "Martlet is cheerful and remembers the owner's projects.", persona.Styles) };
+                    return s with { Companion = s.Companion.Update(persona.Id, "Martlet", "Martlet is cheerful and remembers the owner's projects.") };
                 });
                 var bRoute = (await b.SettingsAsync()).Setup!.Routes.Single(r => r.Role == SetupRole.Llm);
                 return (bRoute.Origin == NvidiaBuild && b.Key(await b.SettingsAsync(), SetupRole.Llm) == NvidiaKey,
@@ -489,7 +489,7 @@ internal static class SettingsRehearsal
         internal Task EditPersonaAsync(string text) => EditAsync(s =>
         {
             var persona = s.Companion!.ActivePersona;
-            return s with { Companion = s.Companion.Update(persona.Id, persona.Name, text, persona.Styles) };
+            return s with { Companion = s.Companion.Update(persona.Id, persona.Name, text) };
         });
 
         /// <summary>Saves the Thinking fallback as Companion › Thinking does (its own key first; the replaced key removed after).</summary>

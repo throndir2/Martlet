@@ -392,7 +392,7 @@ public sealed class AppSettingsSections
         if (result.Settings?.Companion is not { } companion) return null;
         var persona = companion.Personas.Count == 1 ? companion.Personas[0] : null;
         var isDefault = persona is not null && persona.Name == "Martlet" && persona.Text == CompanionSettings.Create().Personas[0].Text &&
-            persona.Styles == ResponseStyleWeights.HelpfulOnly() && persona.Breaks is null;
+            persona.Breaks is null;
         return new(Write(companion), null, isDefault, SettingsTime());
     }
 

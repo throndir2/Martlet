@@ -137,7 +137,7 @@ holds its own copy.
 | `dia` | N (8 GB) | 4.4 S / **9.8** M | 3-4 E | 1 E (CPU-bound) | 15 E | 17-60 s M | M (peak) |
 | `chatterbox-original` | N (6 GB) | 3.9 / 4.8 E | 3-3.5 E | 1-1.5 E | 11.2 (3.2 S weights + ~8 E image) | ~2 s E (whole pieces) | E |
 | `chatterbox-nano` | N (4 GB) | 2.6 / 3.1 E | 2.5-3 E | 1-1.5 E | 9.9 (1.9 S weights + ~8 E image) | ~0.45 s E (streams as Turbo) | E |
-| `chatterbox-nano-cpu` | CPU | 0 | 2.5 / 4.5 M | 8 M | 9.9 | ~1.4 s M (whole pieces: 0.75 s for 1.2 s of speech, 2.1 s for 4 s) | M |
+| `chatterbox-nano-cpu` | CPU | 0 | 2.5 / 4.5 M | 8 M | 9.9 | ~1.4 s M (streamed: 2.0-3.4 s for a 5.5 s sentence on a busy CPU; whole pieces 0.75 s for 1.2 s of speech, 2.1 s for 4 s) | M |
 | `windows-speech` | CPU | 0 | 0.1-0.2 M | 0.9-1 M | 0 (built in) | ~50 ms E | M |
 
 - **Chatterbox Original and Nano:** their graphics-card numbers are estimates

@@ -11,19 +11,19 @@ voice uploads, native VAD execution, or changes to the user's machines.
 Martlet should feel like a conversational participant: listen, retain enough
 recent context to understand what is happening, sometimes say nothing, and
 yield when a person starts talking. The user controls its persona, voice,
-models, participation frequency, and mix of response styles without editing
+models and participation frequency without editing
 source code. Silence and processing states must be understandable, not look
 like a broken connection.
 
 | Requirement | User-facing outcome | Current boundary |
 | --- | --- | --- |
-| R19: Editable personas | Edit persona text, save several named profiles, import a replacement text file, or bring in a SillyTavern/Chub character card | **V05a/V05b implemented internally:** local named profiles, UTF-8 import/export, character card import (PNG/JSON/CHARX, V1-V3) and weights persist; fresh explicit turns use the fixed selected revision |
+| R19: Editable personas | Edit persona text, save several named profiles, import a replacement text file, or bring in a SillyTavern/Chub character card | **V05a/V05b implemented internally:** local named profiles, UTF-8 import/export, character card import (PNG/JSON/CHARX, V1-V3) persist; fresh explicit turns use the fixed selected revision |
 | R19b: Lorebooks | SillyTavern-style World Info: keyword-triggered lore entries added to a reply, imported from SillyTavern or character cards | **Implemented:** local lorebooks with persona scope, keyword/regex/secondary-key activation, always-on entries, budget, recursion, SillyTavern import/export and a local test; see [Lorebooks](LOREBOOKS.md) |
 | R20: Replaceable F5 voice | Select or replace reference audio and its matching transcript, then apply or preview the new voice | No app-integrated F5 worker or reference-voice picker; installing upstream F5 alone does not integrate it |
 | R21: Replaceable LLM and VLM | Independently select compatible models from settings, without rebuilding Martlet | V02c exposes exact compatible LLM catalog choices and validates fresh route consent; no Desktop VLM route yet |
 | R22: Listen-first participation | Collect bounded recent context and decide whether/when a reply is useful instead of answering every utterance | Explicit completed turns now supply bounded ephemeral context; automatic listening/observation collection remains unavailable |
 | R23: Speech barge-in | Detect a person speaking during playback and promptly stop Martlet's voice | Stop/cancellation foundations exist; standalone post-capture VAD is production-blocked and is not live barge-in |
-| R24: Adjustable response mix | Tune helpful, sarcastic, silly, distracted and playful trolling/teasing styles | Per-persona controls persist and the explicit conversation path selects one bounded dominant style; human-perceived style qualification remains |
+| R24: Adjustable response mix | **Removed:** the persona text sets how Martlet talks | No style sliders and no per-reply style pick; see [R24](#r24-response-style-mix-removed) |
 
 See [the implemented conversation](CONVERSATION.md),
 [participation policy](../src/Martlet.Participation/README.md) and
@@ -34,16 +34,15 @@ do not satisfy these new end-user requirements.
 
 **Implemented settings slice:** Desktop now exposes **Companion personas**.
 It can create, duplicate, select and delete up to 16 named profiles; edit
-bounded persona text; import/export UTF-8 text; and edit validated style
-weights. Settings v3 owns this data, atomically snapshots v1/v2 on migration,
+bounded persona text; and import/export UTF-8 text. Settings v3 owns this data, atomically snapshots v1/v2 on migration,
 and includes personas in same-profile configuration recovery. A v1/v2 recovery
 source preserves current v3 personas because those older snapshots contain no
 persona data. Import and export use explicit selected files; export is
 create-only and never overwrites an existing file.
 
-The follow-on V05b slice sends the fixed active persona revision and one
-weighted style only after an explicit typed/PTT action passes participation.
-The combined user/persona/style input must fit the existing byte/token
+The follow-on V05b slice sends the fixed active persona revision only after
+an explicit typed/PTT action passes participation.
+The combined user/persona input must fit the existing byte/token
 reservation and is never silently truncated. The subsequent bounded explicit
 context slice includes recent completed exchanges within that same budget;
 neither slice enables automatic listening, provider permission, capture or preview.
@@ -51,8 +50,8 @@ neither slice enables automatic listening, provider permission, capture or previ
 Provide a **Companion** settings page with a multiline persona text editor and
 named profiles. Create, duplicate, rename, select, save and delete profiles;
 keep one active persona at a time initially, not multiple autonomous agents.
-Each profile holds the persona text, companion name/aliases, response-style
-weights and where its voice may pause between spoken pieces (see
+Each profile holds the persona text, companion name/aliases
+and where its voice may pause between spoken pieces (see
 [voice latency](CONVERSATION.md#voice-latency-streaming-overlap-and-barge-in)). Participation controls remain separately labeled; switching personas
 must not arm a microphone, increase capture permission or change provider routes.
 
@@ -77,7 +76,7 @@ JSON card or a CHARX archive's `card.json`, in TavernAI V1, Character Card V2
 card** adds the card as a new draft persona (also by dropping a card onto the
 Companion window, or *Import a character card* on Companion › Personality);
 **Update this persona from a character card** loads it into the selected
-persona's editor, keeping its identity and response-style weights. Both stay
+persona's editor, keeping its identity and where its voice pauses. Both stay
 drafts until Save.
 
 The card's name (its V3 nickname when present) becomes the persona name, made
@@ -250,28 +249,18 @@ VAD library cannot monitor live playback without new reviewed integration.
 This is a required companion capability, deferred behind real qualification,
 not permission to bypass the current VAD hold or drop the requirement.
 
-## R24: Response-style mix, separate from response frequency
+## R24: Response-style mix (removed)
 
-Provide labeled weights/sliders for **helpful**, **sarcastic**, **silly**,
-**distracted**, and **playful trolling/teasing**. Store them per persona and show
-the normalized intended mix. Proposed representation: integer weights 0-100,
-at least one positive; reject all-zero/invalid input rather than invent a mix.
-Initial conservative preset is helpful 100, others 0; users can edit it freely.
+Martlet no longer has response-style weights. Earlier versions had sliders for
+**helpful**, **sarcastic**, **silly**, **distracted** and **playful teasing** on
+each persona. Each reply picked one style at random by these weights and sent
+that style's prompt line with the persona. No character card format has these
+fields, and the persona text can say the same thing. Thus the persona text (for
+example from a SillyTavern character card) alone now sets how Martlet talks.
 
-After participation allows a reply, the V05b runtime chooses one dominant style using these
-relative weights, then supply it with the active persona and bounded context.
-Zero-weight styles are never sampled; a single nonzero weight always wins.
-Inject the random source for reproducible production-path tests. These are
-long-run selection proportions, not guaranteed percentages in a short chat
-or proof that an LLM's wording actually expresses the selected style.
-
-Style never changes permission, response rate, Stop behavior or factual
-correctness. A serious request or explicit request for help takes precedence
-over comedic flourish. "Distracted" is a conversational style, not fabricated
-screen awareness, ignored controls or intentionally broken task execution.
-"Trolling" means opt-in harmless banter, not harassment, deceptive factual
-answers or sabotage. Verify perceived style on consented held-out conversations
-separately from deterministic weight-selection tests.
+Settings that hold saved weights or edits to the style prompts still load.
+Martlet ignores them and does not save them again. A Persona prompt edit that
+still has the old `{style}` line loses that line.
 
 ## Delivery order and acceptance
 

@@ -48,14 +48,14 @@ of a computer without an NVIDIA GPU. Its role (`deploy/host/roles/chatterbox-nan
 is `gpu=optional`: `martlet-host` adds the GPU overlay when the host can run GPU
 containers and asks GPU or CPU, and the service (`MARTLET_CHATTERBOX_DEVICE=auto`)
 uses the card it was given, or the CPU. It uses the same image as Turbo
-(`martlet-chatterbox:9`, whose CUDA PyTorch also runs on the CPU) and its own
+(`martlet-chatterbox:10`, whose CUDA PyTorch also runs on the CPU) and its own
 volume, `martlet-chatterbox-nano-models`.
 
 - On a GPU it decodes like Turbo (the CUDA graph and streaming below).
-- On the CPU there is no CUDA graph: each piece is spoken whole with the
-  library's own decoding, within the same speech-token budget as Turbo's, so its
-  first audio comes when the whole piece is made. The idle check doesn't run on
-  the CPU (it is for graphics memory).
+- On the CPU there is no CUDA graph. T3 draws each speech token with the same
+  sampling as the library, within the same speech-token budget as Turbo's,
+  and each piece streams on a CPU schedule (below). The idle check doesn't run
+  on the CPU (it is for graphics memory).
 - **Threads on the CPU** (image `martlet-chatterbox:9`). The service uses at
   most 8 threads, and never more than the CPU's performance cores
   (`MARTLET_CHATTERBOX_CPU_THREADS` sets another count). On native Linux, a
@@ -68,7 +68,7 @@ volume, `martlet-chatterbox-nano-models`.
   role gets the "8 on any core" row below, not the pinned row. PyTorch's own
   choice is every physical core, efficiency cores too, and that was clearly
   slower.
-- **Decoder steps on the CPU** (image `martlet-chatterbox:9`). A whole piece
+- **Decoder steps on the CPU** (image `martlet-chatterbox:9`). Each decoding
   takes 1 step of the meanflow decoder instead of the library's 2
   (`MARTLET_CHATTERBOX_CPU_DECODER_STEPS`); a GPU keeps 2. `/status` reports
   `cpu` (`threads`, `pinned_cpus`) and `decoder_steps`, and so does
@@ -98,16 +98,52 @@ volume, `martlet-chatterbox-nano-models`.
   paired takes (the same seeds), UTMOS changed by +0.005, speaker similarity by
   +0.0001 and the word error rate not at all. Nobody has compared them by ear
   yet.
-- **Why whole pieces on the CPU.** Each decoder call costs a fixed 0.35-0.40 s
-  (it reads the voice's reference again) plus about 70 ms per second of speech,
-  and the vocoder about 75-90 ms per second. The GPU's streaming schedule
-  decodes every token again at each chunk, so on the CPU its first audio came
-  after 0.66-0.93 s, but at 0.79-1.1x real time with pauses in every piece
-  (1.2-1.3 s in all for a 4 s sentence, 1.8 s for a 13 s one; only a 1 s piece
-  paused as little as 0.3-0.4 s). One early chunk at 55 speech tokens and then
-  the rest gave first audio after 1.57 s without pauses for these sentences,
-  but a 13 s piece still paused 3.4-4.5 s, so the service doesn't stream on the
-  CPU yet.
+- **Streaming on the CPU** (image `martlet-chatterbox:10`). Each decoding
+  decodes every speech token so far again, so on the CPU it costs a fixed
+  0.35-0.40 s (it reads the voice's reference again) plus about 70 ms per
+  second of speech so far, and the vocoder adds about 75-90 ms per second of
+  new speech. The GPU's schedule (a chunk after 12 tokens, then 25, 50 and 100
+  more) therefore paused in every piece on the CPU: first audio after
+  0.66-0.93 s, but 0.79-1.1x real time, with 1.2-1.3 s of pauses for a 4 s
+  sentence. One early chunk after 55 tokens and then the rest gave first audio
+  after 1.57 s for 3.3-4.3 s sentences without a pause, but a 13 s piece then
+  paused for 3.4-4.5 s. So the CPU has its own schedule (`_Playback` in the
+  service):
+  - The first chunk waits for 55 speech tokens (2.2 s of speech;
+    `MARTLET_CHATTERBOX_CPU_FIRST_TOKENS`, 0 speaks whole pieces). A piece
+    expected to be longer (7 speech tokens for each text token) waits for more,
+    as many as the rest needs to keep up.
+  - Each later chunk comes as late as playback allows: when the audio already
+    sent would run out before a decoding started later could finish, with
+    0.2 s to spare. It always has enough new tokens to pay for its own drawing
+    and decoding, because a smaller chunk only brings the next pause sooner.
+  - The service measures the time a token takes and how long each decoding
+    takes, from the warm-up on. It times every chunk with those measurements, so
+    a busy CPU gets bigger chunks. When the CPU is too slow for any later
+    chunk, the rest of the piece is decoded whole, once.
+  - A short piece (expected under 55 tokens) is spoken whole, as before.
+    `/status` reports `streaming` (`on`, `first_tokens`, and the measured
+    `token_ms` and `decoding_scale`). `voice_engine_check` reports the pauses
+    a listener hears (`pauses`, `pauseMs`).
+
+  Measured with the real Nano on this repository's development PC (i7-13700K,
+  8 threads not pinned, native Windows Python, not the container), each
+  sentence alternating between a streaming service and one that speaks whole
+  pieces, three times, while other programs used 7-92 % of the CPU:
+
+  | Piece | First audio, streamed | First audio, whole | Pauses, streamed |
+  | --- | --- | --- | --- |
+  | Short reply ("Yes, of course.", 1.2-1.6 s) | 1.7-2.4 s | 1.6-2.4 s (the same: spoken whole) | none |
+  | A 5.5 s sentence | 2.0-3.4 s | 4.4-6.3 s | 0.16 s in one of three |
+  | Two sentences in one piece (7 s) | 3.1-4.3 s | 5.3-5.8 s | none |
+  | One 13 s sentence | 2.8-3.4 s | 8.8-11.1 s | 2.7 s in one of three, during a load spike |
+
+  Timed in one process with a quieter CPU, the 13 s sentence came in four or
+  five chunks (after 73, then about 70-110 more tokens each), each sent
+  0.02-0.6 s before the audio before it ran out, with first audio after
+  2.2-2.3 s. Streaming makes more decodings, so a streamed piece takes longer
+  in all (0.8-1.3x real time against 0.7-1.2x whole, under the same load), and
+  the next request waits for it.
 - **Nano against Turbo** (20 paired takes, scored with faster-whisper
   large-v3-turbo, WavLM-base-plus-sv and UTMOS22): UTMOS 3.74 against 3.83,
   speaker similarity 0.941 against 0.936, word error rate 0.003 against 0.001.

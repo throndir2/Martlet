@@ -199,15 +199,17 @@ internal sealed class LiveConversationConfiguration
     internal SetupRoute Route(SetupRole role) => Routes.Single(r => r.Role == role);
 
     /// <summary>Which Thinking model, voice and speech-to-text a reply used, for the desktop log's reply latency line (model IDs
-    /// only), or null when none is set.</summary>
-    internal string? LatencyModels(bool spokenInput)
+    /// only), or null when none is set. <paramref name="standIn"/> is the Parakeet model on this PC that transcribed the turn
+    /// because Listening's own route failed.</summary>
+    internal string? LatencyModels(bool spokenInput, string? standIn = null)
     {
         string? Model(SetupRole role) => Routes.FirstOrDefault(route => route.Role == role && route.Enabled == true)?.ModelId;
         var parts = new List<string>();
         if (Model(SetupRole.Llm) is { } llm)
             parts.Add("Thinking " + llm + $" (thinking steps {(GenerationSettings.ThinkingSteps(Generation) ? "on" : "off")})");
         if (Model(SetupRole.Tts) is { } tts) parts.Add("voice " + tts);
-        if (spokenInput && Model(SetupRole.Stt) is { } stt) parts.Add("speech-to-text " + stt);
+        if (spokenInput && Model(SetupRole.Stt) is { } stt)
+            parts.Add("speech-to-text " + (standIn is null ? stt : $"{standIn} on this PC, standing in for {stt}"));
         return parts.Count == 0 ? null : string.Join(", ", parts);
     }
 
@@ -440,17 +442,17 @@ internal sealed class LiveConversationConfiguration
 
     /// <summary>One reply's request, laid out so every request starts like the one before and the model's prompt cache (or
     /// Ollama's) can reuse it. The instructions (<see cref="BoundedTextInput.Personality"/>) hold what doesn't change from
-    /// message to message: the persona (and its style when it has one), tools, voice tags, the notes prompt,
+    /// message to message: the persona, tools, voice tags, the notes prompt,
     /// <paramref name="extraInstructions"/> and <paramref name="closingInstructions"/> last, where models weigh them most. Then
     /// the conversation so far, each earlier message as it was sent (with its notes), then the message with its notes
     /// (<see cref="BoundedTextInput.Notes"/>): only what is new since the notes in the conversation sent, that is lore entries
-    /// and remembered facts not already there, <paramref name="voices"/>, the style and <paramref name="chattiness"/> when they
+    /// and remembered facts not already there, <paramref name="voices"/> and <paramref name="chattiness"/> when they
     /// changed, and <paramref name="messageNotes"/> (such as a smart home result). Last come <paramref name="board"/>, the context
     /// board's newest notes (ContextBoard), in their own block that is sent but never kept in history. When the conversation outgrows the context, a quarter more
     /// of the oldest exchanges is left out than needed (<see cref="BoundedTextInput.CacheFriendlyStart"/>), so the next replies
     /// can start at the same exchange. <paramref name="controlTags"/> are the tags the reply may write to tell Martlet something
     /// (such as <see cref="ChattinessTags"/>), never shown or spoken.</summary>
-    internal ConversationRequest Request(BoundedTextInput input, bool voice, ResponseStyle? style,
+    internal ConversationRequest Request(BoundedTextInput input, bool voice,
         IReadOnlyList<TextHistoryMessage> history, DesktopMemoryRecall? memory, LorebookScanResult? lore,
         out int usedHistoryMessages, out int usedMemoryFacts, out int usedLoreEntries, BoundedImage? image = null,
         string? extraInstructions = null, string? silentReply = null, DesktopToolset? tools = null,
@@ -461,23 +463,17 @@ internal sealed class LiveConversationConfiguration
         Func<CancellationToken, Task<string?>>? spokenWords = null, string? board = null, IThinkingBackup? backup = null)
     {
         ArgumentNullException.ThrowIfNull(history);
-        string? persona = null, styleNote = null;
-        if (Persona is not null)
-            (persona, styleNote) = PersonaInstructions(Persona, Prompts, style ??
-                throw new LiveActionException("conversation.input_limit"));
-        // A persona with one style always has it: it stays with the instructions. Otherwise the picked style is noted.
-        var oneStyle = Persona is { } selected && new[] { selected.Styles.Helpful, selected.Styles.Sarcastic, selected.Styles.Silly,
-            selected.Styles.Distracted, selected.Styles.PlayfulTeasing }.Count(weight => weight > 0) == 1;
+        var persona = Persona is null ? null
+            : PromptSettings.Fill(Prompts, PromptCatalog.Persona, ("name", Persona.Name), ("persona", Persona.Text));
         // The desktop character's emotes and motions: those the speaking voice's own tags don't already set off. The lingering
         // emotes it shows now are a context board note (ContextBoard.Character), in board.
         var character = characterActions?.Invoke(voice ? SpeakingEngine() : null, Prompts);
         // A screen glance's look tags (where the character looks), when they fit beside the emote tags a request may carry.
         if (gaze is not null && (character?.Tags.Count ?? 0) + gaze.Tags.Count > ConversationRequest.MaximumCharacterTags) gaze = null;
         IReadOnlyList<string>? characterTags = gaze is null ? character?.Tags : [.. character?.Tags ?? [], .. gaze.Tags];
-        var instructions = Join(persona, oneStyle ? styleNote : null, tools is null ? null : PromptSettings.Fill(Prompts, PromptCatalog.Tools),
+        var instructions = Join(persona, tools is null ? null : PromptSettings.Fill(Prompts, PromptCatalog.Tools),
             tools?.Guidance, voice ? VoiceTagInstructions() : null, character?.Instructions, extraInstructions, gaze?.Instructions,
             closingInstructions);
-        if (oneStyle) styleNote = null;
         var facts = memory?.Facts ?? [];
         var people = memory?.People;
         var hits = lore?.Included ?? [];
@@ -486,14 +482,14 @@ internal sealed class LiveConversationConfiguration
         for (var loreCount = hits.Count; loreCount >= 0; loreCount--)
         {
             var entries = hits.Take(loreCount).ToArray();
-            var allNotes = Notes([], entries, [], voices, messageNotes, styleNote, chattiness: chattiness);
+            var allNotes = Notes([], entries, [], voices, messageNotes, chattiness: chattiness);
             if (!Fits(input, instructions, allNotes, [], image, tools, audio, ContextNotes([], allNotes, board)))
                 continue;
             for (var memoryCount = facts.Count; memoryCount >= 0; memoryCount--)
             {
                 var recalled = facts.Take(memoryCount).ToArray();
                 // The window is found with every note (none yet in the conversation); dropping repeats only makes it smaller.
-                var bareNotes = Notes([], entries, recalled, voices, messageNotes, styleNote, people, chattiness);
+                var bareNotes = Notes([], entries, recalled, voices, messageNotes, people, chattiness);
                 if (Prompt(input, instructions, bareNotes, [], image, tools, audio, ContextNotes([], bareNotes, board)) is not { } bare ||
                     BoundedTextInput.HistoryStart(bare, history, TextLimits.MaxInputBytes, TextInputTokens, TextLimits.MaxInputTokens,
                         TextLimits.MaxHistoryMessages) is not { } first)
@@ -502,7 +498,7 @@ internal sealed class LiveConversationConfiguration
                 for (var start = BoundedTextInput.CacheFriendlyStart(first, history.Count); start <= history.Count; start += 2)
                 {
                     var sent = history.Skip(start).ToArray();
-                    var notes = Notes(sent, entries, recalled, voices, messageNotes, styleNote, people, chattiness);
+                    var notes = Notes(sent, entries, recalled, voices, messageNotes, people, chattiness);
                     if (Prompt(input, instructions, notes, sent, image, tools, audio, ContextNotes(sent, notes, board)) is not { } prompted)
                         continue;
                     usedHistoryMessages = history.Count - start;
@@ -543,10 +539,10 @@ internal sealed class LiveConversationConfiguration
 
     /// <summary>Martlet's notes on one message, between <see cref="NotesLabel"/> labels; null when nothing is new. Lore entries
     /// and remembered facts already in the notes of <paramref name="sent"/> (the earlier messages this request carries) are left
-    /// out, and so are the voices, the style and the chattiness level when the latest ones there are the same: notes on earlier
+    /// out, and so are the voices and the chattiness level when the latest ones there are the same: notes on earlier
     /// messages still hold. <paramref name="message"/> (such as a smart home result) is about this message only, so it is always noted.</summary>
     private string? Notes(IReadOnlyList<TextHistoryMessage> sent, IReadOnlyList<LorebookHit> lore, IReadOnlyList<Martlet.Memory.MemoryFact> facts,
-        string? voices, string? message, string? style, IReadOnlyDictionary<string, string>? people = null, string? chattiness = null)
+        string? voices, string? message, IReadOnlyDictionary<string, string>? people = null, string? chattiness = null)
     {
         var earlier = string.Join("\n", sent.Where(m => m.Role == TextHistoryRole.User && m.Text.Contains(NotesLabel, StringComparison.Ordinal))
             .Select(m => m.Text));
@@ -557,8 +553,7 @@ internal sealed class LiveConversationConfiguration
         var whoseSaid = PromptSettings.Fill(Prompts, PromptCatalog.MemoryPeople) is { } whose && Noted(whose);
         var (before, after) = newLore.Length == 0 ? (null, null) : LorebookPromptContext.Blocks(newLore, Prompts);
         var body = Join(before, after, newFacts.Length == 0 ? null : MemoryPromptContext.Instructions(newFacts, Prompts, people, !whoseSaid),
-            voices is not null && Latest(earlier, VoicePromptContext.Label) == Clean(voices) ? null : voices,
-            message, style is not null && LatestStyle(earlier) == Clean(style) ? null : style,
+            voices is not null && Latest(earlier, VoicePromptContext.Label) == Clean(voices) ? null : voices, message,
             chattiness is not null && LatestChattiness(earlier) == Clean(chattiness) ? null : chattiness);
         if (body is null) return null;
         // What notes are is said once, in the first notes of the conversation sent: the instructions never change for it.
@@ -588,12 +583,6 @@ internal sealed class LiveConversationConfiguration
         var end = at < 0 ? -1 : earlier.IndexOf($"[/{label}]", at, StringComparison.Ordinal);
         return end < 0 ? null : earlier[at..(end + label.Length + 3)];
     }
-
-    // The style noted last in the earlier notes: whichever style prompt appears latest.
-    private string? LatestStyle(string earlier) =>
-        Enum.GetValues<ResponseStyle>().Select(style => PromptSettings.Fill(Prompts, PromptCatalog.Style, ("style", StyleText(Prompts, style))))
-            .Where(text => text is not null).Select(text => (Text: Clean(text!), At: earlier.LastIndexOf(Clean(text!), StringComparison.Ordinal)))
-            .Where(found => found.At >= 0).OrderByDescending(found => found.At).Select(found => found.Text).FirstOrDefault();
 
     // The chattiness level noted last in the earlier notes: whichever level's note appears latest.
     private string? LatestChattiness(string earlier) =>
@@ -879,27 +868,6 @@ internal sealed class LiveConversationConfiguration
 
     /// <summary>The note that says the level while Martlet decides how chatty it is (Companion › Prompts › Chattiness right now).</summary>
     internal string? ChattinessNote(Chattiness level) => ChattinessTags.Note(Prompts, level);
-
-    /// <summary>The persona's instructions and the style note for this reply. The style goes in the notes (Companion › Prompts ›
-    /// Style for this message), so the persona stays the same from reply to reply; a persona prompt edited before that still
-    /// gets <c>{style}</c> filled in where it was written, and then no style note is added.</summary>
-    private static (string? Persona, string? Style) PersonaInstructions(PersonaProfile persona, PromptSettings? prompts, ResponseStyle style)
-    {
-        var picked = StyleText(prompts, style);
-        var inPersona = PromptSettings.Text(prompts, PromptCatalog.Persona).Contains("{style}", StringComparison.Ordinal);
-        return (PromptSettings.Fill(prompts, PromptCatalog.Persona, ("name", persona.Name), ("persona", persona.Text), ("style", picked)),
-            inPersona ? null : PromptSettings.Fill(prompts, PromptCatalog.Style, ("style", picked)));
-    }
-
-    private static string StyleText(PromptSettings? prompts, ResponseStyle style) => PromptSettings.Text(prompts, style switch
-    {
-        ResponseStyle.Helpful => PromptCatalog.StyleHelpful,
-        ResponseStyle.Sarcastic => PromptCatalog.StyleSarcastic,
-        ResponseStyle.Silly => PromptCatalog.StyleSilly,
-        ResponseStyle.Distracted => PromptCatalog.StyleDistracted,
-        ResponseStyle.PlayfulTeasing => PromptCatalog.StylePlayfulTeasing,
-        _ => throw new ContractException(ErrorCode.InvalidContract, "The selected response style is unsupported.")
-    });
 
     public override string ToString() => nameof(LiveConversationConfiguration);
 }

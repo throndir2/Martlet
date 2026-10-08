@@ -89,7 +89,7 @@ Per-engine detail by Android version is in the
 | Speaking: on-device voices | Windows voices | **Yes: installed Android voices** | **Yes: new generic speech route** | `TextToSpeech.synthesizeToFile` | AN05, AN07 |
 | Speaking: F5 voice cloning | Paired host | Yes via paired NVIDIA host | **No** (NVIDIA only) | Gateway client | AN10 |
 | Voice ID (only respond to me) | Yes | Yes (port of the GE2E encoder) | - | Kotlin port checked against C# vectors | AN10 |
-| Persona, response styles, participation policy | Yes | Yes (port) | - | Kotlin port | AN07 |
+| Persona, participation policy | Yes | Yes (port) | - | Kotlin port | AN07 |
 | Local memory | Yes | Yes (port of the lexical store) | - | Kotlin port, app-private storage | AN10 |
 | Watch my screen (game commentary) | Yes | **Yes: system consent each start; share only the game on Android 14+** | - | `MediaProjection` | AN08 |
 | Vision model for screen commentary | OpenAI, Chat Completions, host Ollama | Same, plus small on-device vision models (not while gaming) | Chat route accepts the image for vision models | LiteRT-LM (Gemma 3n), Prompt API image input | AN04, AN08 |

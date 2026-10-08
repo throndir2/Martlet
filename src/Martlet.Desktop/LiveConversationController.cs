@@ -148,6 +148,9 @@ internal sealed class LiveConversationOperation
     internal CaptureRun? Capture => Volatile.Read(ref capture);
     internal ConversationTurn? Turn => Volatile.Read(ref turn);
     internal TranscriptionResult? Transcription { get; set; }
+    /// <summary>The Parakeet model on this PC that heard this utterance because Listening's own route (a paired host or OpenAI)
+    /// failed; null when the route heard it, or nothing stood in.</summary>
+    internal string? StandIn { get; set; }
     /// <summary>When each step before the reply happened (<see cref="ReplyTimeline"/>), for the desktop log's reply latency line.</summary>
     [JsonIgnore] internal ReplyTimeline? LatencyTimeline { get; set; }
     /// <summary>The controller-clock timestamp the reply's turn started at (0 until it starts).</summary>
@@ -173,7 +176,6 @@ internal sealed class LiveConversationOperation
     /// PC (<see cref="AfterReply"/>). In memory only, never saved.</summary>
     [JsonIgnore] internal BoundedTextInput? Sent { get; set; }
     internal Guid? PersonaRevision { get; set; }
-    internal ResponseStyle? ResponseStyle { get; set; }
     internal int ContextMessages { get; set; }
     internal int ContextMessagesOmitted { get; set; }
     internal bool MemoryRequested { get; set; }
@@ -405,6 +407,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private readonly LocalTranscriptionAdapter? localTranscription;
     // Parakeet on this PC, also used for the quick check of what is said over Martlet (BargeInGate): free and private.
     private readonly ILocalTranscriber? localWords;
+    // The Parakeet model on this PC that hears an utterance when Listening's own route fails (LocalSpeechSetup.ListeningStandIn).
+    private readonly Func<SetupRoute, string?>? listeningStandIn;
     private readonly IEndOfTurnJudge? turnJudge;
     private readonly SmartTurnJudge? smartTurn;
     private readonly object turnGate = new();
@@ -417,7 +421,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private readonly ConversationContextBuffer context;
     private readonly string? dataDirectory;
     private readonly TimeProvider clock;
-    private readonly Func<int, int> nextStyle;
     private readonly Action? revokeAvatar;
     // The desktop character's emotes and motions a reply may use, for the speaking engine (null: a reply that isn't spoken).
     private readonly Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions;
@@ -720,7 +723,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         ICaptureDeviceFactory captureDevices, IPlaybackDeviceFactory playbackDevices, TimeProvider? clock = null,
         Func<IProviderCredentialSource, TimeProvider, ConversationRuntime>? runtimeFactory = null,
         Func<IProviderCredentialSource, TimeProvider, OpenAiTranscriptionAdapter>? transcriptionFactory = null,
-        Func<int, int>? nextStyle = null,
         DesktopMemoryService? memory = null,
         GeneratedSpeechObserver? generatedSpeech = null, Action? revokeAvatar = null, VoiceIdentity? voiceIdentity = null,
         IHostTranscriptionClient? hostListener = null, string? dataDirectory = null, SpokenTextFeed? spokenText = null,
@@ -729,7 +731,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         PcAudioCaptureFactory? pcAudio = null, CharacterCueFeed? characterCues = null,
         Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null,
         DesktopConversationHistory? history = null, ConversationSinging? singing = null, ContextBoard? board = null,
-        IEndOfTurnJudge? turnJudge = null)
+        IEndOfTurnJudge? turnJudge = null, Func<SetupRoute, string?>? listeningStandIn = null)
 
     {
         this.operations = operations;
@@ -748,7 +750,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         Board = board ?? new();
         if (echoReducer is not null) echoReducer.Reported += EchoReported;
         this.clock = clock ?? TimeProvider.System;
-        this.nextStyle = nextStyle ?? RandomNumberGenerator.GetInt32;
         this.revokeAvatar = revokeAvatar;
         this.memory = memory;
         this.lorebooks = lorebooks;
@@ -763,6 +764,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 () => PoolSoundJudge.For(ThinkingPool), Board, dataDirectory, held: () => PoolSoundJudge.Held(ThinkingPool));
         localTranscription = localListener is null ? null : new(localListener, this.clock);
         localWords = localListener;
+        this.listeningStandIn = listeningStandIn;
         context = new();
         captureCredentials = new(() => Volatile.Read(ref captureAuthorization));
         var credentials = new ConversationCredentialSource(() => Volatile.Read(ref active)?.Authorization);
@@ -1547,12 +1549,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 operation.Authorization.Check(worker);
                 var configured = operation.Authorization.Configuration;
                 var persona = configured.Persona;
-                ResponseStyle? style = persona is null ? null : ResponseStyleSelector.Select(persona.Styles, nextStyle);
                 // Earlier messages go exactly as they were sent (with their notes), so the request starts like the one before.
                 var history = context.Snapshot(sent: true);
                 var level = ChattinessTags.Level(chattiness, decided);
                 board = BoardFor(configured, operation.Authorization.Voice);
-                var request = configured.Request(new(GlanceMessage(prompt, read)), operation.Authorization.Voice, style, history, null, lore,
+                var request = configured.Request(new(GlanceMessage(prompt, read)), operation.Authorization.Voice, history, null, lore,
                     out var usedHistory, out _, out var usedLore, image,
                     Join(LiveConversationConfiguration.Moment(configured.Prompts),
                         LiveConversationConfiguration.CommentaryInstructions(level, camera, configured.Prompts, decides)),
@@ -1565,7 +1566,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // Exchanges a look had to leave out are never sent again, so later requests start the same way.
                 context.LetGoBefore(context.Start + (history.Count - usedHistory) / 2);
                 operation.PersonaRevision = persona?.ConfigurationRevision;
-                operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;
                 operation.ContextMessagesOmitted = history.Count - usedHistory;
                 RecordLore(operation, lore, usedLore);
@@ -1821,7 +1821,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             ConversationTurn turn;
             ContextBoardSnapshot board = ContextBoardSnapshot.Empty;
             PersonaProfile? persona;
-            ResponseStyle? style;
             IReadOnlyList<TextHistoryMessage> history, sentHistory;
             long historyStart;
             Guid conversation;
@@ -1845,8 +1844,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     lease = committed;
                 }
                 persona = operation.Authorization.Configuration.Persona;
-                style = persona is null ? null :
-                    ResponseStyleSelector.Select(persona.Styles, nextStyle);
                 history = context.Snapshot();
                 // Earlier messages go exactly as they were sent (with their notes), so the request starts like the one before;
                 // lore, memory and learning names read what was said (history).
@@ -1987,7 +1984,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 var backup = BackupFor(operation);
                 ConversationRequest Ask(SeenScreen? picture, string? recalled, out int keptHistory, out int keptFacts, out int keptEntries) =>
                     operation.Authorization.Configuration.Request(
-                        input!, operation.Authorization.Voice, style, sentHistory, memoryResult, lore,
+                        input!, operation.Authorization.Voice, sentHistory, memoryResult, lore,
                         out keptHistory, out keptFacts, out keptEntries, image: picture?.Image,
                         extraInstructions: Join(LiveConversationConfiguration.Moment(prompts),
                             home is { Kind: HomeTurnKind.Tools } ? home.Instructions : null,
@@ -2036,7 +2033,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 if (early is null) context.LetGoBefore(letGo);
                 else early.LetGoBefore = letGo;
                 operation.PersonaRevision = persona?.ConfigurationRevision;
-                operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;
                 operation.ContextMessagesOmitted = history.Count - usedHistory;
                 operation.MemoryFactsUsed = usedMemory;
@@ -3439,6 +3435,14 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     {
         operation.Authorization.Check(worker);
         await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
+        var stt = operation.Authorization.Configuration.Route(SetupRole.Stt);
+        // Listening's own route failed moments ago: Parakeet on this PC hears this turn at once, instead of waiting for the route
+        // to fail again (a computer that is off takes seconds to time out). The route is asked again after StandInFor.
+        if (RouteFailedAgo(stt) is { } ago && StandInModel(stt) is { } standIn)
+        {
+            operation.Publish(new("stt.uploading"));
+            return await StandInAsync(operation, audio, null, standIn, worker, ago).ConfigureAwait(false);
+        }
         var context = new ProviderRequestContext
         {
             Ids = Ids(), Epoch = operation.Capture!.Snapshot.Epoch,
@@ -3454,7 +3458,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         ReusedWords? reused = null;
         try
         {
-            var stt = operation.Authorization.Configuration.Route(SetupRole.Stt);
             // Listening handed to a paired host: the utterance goes only to its pinned gateway.
             result = operation.Authorization.Configuration.SttHostTarget() is { } listener
                 ? await hostTranscription.TranscribeAsync(context, listener, stt.ModelId, audio,
@@ -3477,18 +3480,104 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (reused?.Reused == true)
             ErrorLog.Info($"End of turn: speech-to-text reused the quick transcript started {clock.GetElapsedTime(quick!.StartedAt).TotalMilliseconds:0} ms ago (no second transcription).");
         operation.Authorization.Check(worker);
+        // Listening's own route (a paired host or OpenAI) failed: Parakeet on this PC's processor hears the same utterance, still
+        // in memory, when a model is downloaded here. A route that answers is never held up by it.
+        if (result.Outcome is TranscriptionOutcome.Failed or TranscriptionOutcome.DeadlineExceeded &&
+            result.Failure?.Code != ProviderFailureCode.AudioLimit && StandInModel(stt) is { } model)
+            return await StandInAsync(operation, audio, result, model, worker).ConfigureAwait(false);
         operation.Transcription = result;
+        // The route answered: turns ask it first again.
+        if (result.Outcome is TranscriptionOutcome.Completed or TranscriptionOutcome.NoSpeech) lock (gate) routeFailed = null;
         if (result.Outcome == TranscriptionOutcome.Completed)
         {
             Succeeded(SetupRole.Stt);
             return result;
         }
         if (result.Outcome != TranscriptionOutcome.NoSpeech)
-            LogFailure("Transcription", operation.Authorization.Configuration, SetupRole.Stt,
-                $"outcome {result.Outcome}" + (result.Failure?.Code is { } sttCode ? $", provider {sttCode}" : ""));
+            LogFailure("Transcription", operation.Authorization.Configuration, SetupRole.Stt, Outcome(result));
         operation.Publish(new("stt." + result.Outcome, Finished: true, ProviderFailure: result.Failure?.Code));
         return null;
     }
+
+    /// <summary>How long Listening's stand-in hears every turn at once after Listening's own route failed, before the route is
+    /// asked again.</summary>
+    internal static readonly TimeSpan StandInFor = TimeSpan.FromSeconds(60);
+    // Listening's own route as it was when it last failed, and when (controller clock); null once it answers.
+    private (SetupRoute Route, long At)? routeFailed;
+
+    /// <summary>How long ago <paramref name="stt"/> failed, while that is less than <see cref="StandInFor"/>; null otherwise.</summary>
+    private TimeSpan? RouteFailedAgo(SetupRoute stt)
+    {
+        lock (gate)
+        {
+            if (routeFailed is not { } failed || failed.Route != stt) return null;
+            var ago = clock.GetElapsedTime(failed.At);
+            return ago < StandInFor ? ago : null;
+        }
+    }
+
+    /// <summary>The Parakeet model on this PC that hears an utterance in place of <paramref name="stt"/>, or null. Asked only once
+    /// the route failed, so a route that answers costs nothing more.</summary>
+    private string? StandInModel(SetupRoute stt) => localTranscription is null ? null : listeningStandIn?.Invoke(stt);
+
+    /// <summary>Listening's own route failed (<paramref name="failed"/>), or failed <paramref name="ago"/> and isn't asked again
+    /// yet (<paramref name="failed"/> null): Parakeet <paramref name="model"/> on this PC's processor hears the utterance with its
+    /// own local-only permission, so the turn goes on and nothing is sent anywhere. The route's failure stays on Home until the
+    /// route answers again. Null (with the reason published) when nothing usable came back; a stand-in that fails after the
+    /// route did publishes the route's own failure.</summary>
+    private async Task<TranscriptionResult?> StandInAsync(LiveConversationOperation operation, BoundedWaveAudio audio,
+        TranscriptionResult? failed, string model, CancellationToken worker, TimeSpan? ago = null)
+    {
+        var context = new ProviderRequestContext
+        {
+            Ids = Ids(), Epoch = operation.Capture!.Snapshot.Epoch,
+            Deadline = operation.Authorization.Deadline(TimeSpan.FromSeconds(30))
+        };
+        var permission = operation.Authorization.AuthorizeStandIn(context, model);
+        operation.StandIn = model;
+        operation.BeginTranscription(clock, context.Deadline);
+        var started = clock.GetTimestamp();
+        TranscriptionResult heard;
+        try
+        {
+            heard = await localTranscription!.TranscribeAsync(context, model, audio, LiveConversationConfiguration.TranscriptionLimits,
+                permission, operation.OriginalCaller, worker).ConfigureAwait(false);
+        }
+        finally { operation.EndTranscription(); }
+        var took = $"{clock.GetElapsedTime(started).TotalMilliseconds:0} ms";
+        var stoodIn = heard.Outcome is TranscriptionOutcome.Completed or TranscriptionOutcome.NoSpeech;
+        // Later turns skip the route only while the stand-in hears them; one that fails sends them back to the route.
+        if (stoodIn && failed is not null)
+            lock (gate) routeFailed = (operation.Authorization.Configuration.Route(SetupRole.Stt), started);
+        else if (!stoodIn && heard.Outcome != TranscriptionOutcome.Canceled)
+            lock (gate) routeFailed = null;
+        var standIn = stoodIn ? $"Parakeet {model} on this PC heard it instead in {took}"
+            : heard.Outcome == TranscriptionOutcome.Canceled ? null
+            : $"Parakeet {model} on this PC couldn't hear it either ({Outcome(heard)}, {took})";
+        if (failed is not null)
+            LogFailure("Transcription", operation.Authorization.Configuration, SetupRole.Stt, Outcome(failed) + (standIn is null ? "" : "; " + standIn));
+        else if (standIn is not null)
+        {
+            var line = $"Listening: {standIn}, without asking Listening's own route: it failed {ago!.Value.TotalSeconds:0} s ago " +
+                $"and is asked again {StandInFor.TotalSeconds:0} s after that.";
+            if (stoodIn) ErrorLog.Info(line);
+            else ErrorLog.Warn(line);
+        }
+        operation.Authorization.Check(worker);
+        var result = failed is not null && heard.Outcome is TranscriptionOutcome.Failed or TranscriptionOutcome.DeadlineExceeded ? failed : heard;
+        operation.Transcription = result;
+        if (result.Outcome == TranscriptionOutcome.Completed)
+        {
+            // The reply latency line names the model that heard the turn.
+            if (operation.LatencyTimeline is { } timeline) timeline.StandIn = model;
+            return result;
+        }
+        operation.Publish(new("stt." + result.Outcome, Finished: true, ProviderFailure: result.Failure?.Code));
+        return null;
+    }
+
+    private static string Outcome(TranscriptionResult result) =>
+        $"outcome {result.Outcome}" + (result.Failure?.Code is { } code ? $", provider {code}" : "");
 
     private static string? Join(params string?[] parts) =>
         parts.Where(part => part is not null).ToArray() is { Length: > 0 } present ? string.Join("\n\n", present) : null;
