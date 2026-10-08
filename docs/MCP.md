@@ -3562,6 +3562,24 @@ comes back from a power cut without its newest lines (it restarts from an older
 saved `logs.json`) is read from the start again and gets them back; an unsigned
 request is refused. Synthetic lines; loopback only; the folder is deleted.
 
+`host_connections_selftest` (no arguments) rehearses how the desktop connects
+to a paired host and reports its status (`src\Martlet.NodeLinkCheck`, mode
+`host-connections`, `HostConnectionRehearsal.cs`; returns `{exitCode, report}`).
+One real gateway (`lab-connections`; Kestrel, pinned TLS, signed requests) runs
+on 127.0.0.1 behind a loopback TCP forwarder that the check stops and starts at
+the same address. A simulated desktop checks the host as the 15-second sync does
+(a new `Audio2FaceHostConnection` per check: routes, then the plan copy) and
+logs through the desktop's status tracker (`HostAnswers`). Its steps: twelve
+checks share one kept TCP and TLS connection (`HostRoutes` connections dialed
+and connections the forwarder accepted are both 0 after the first); the host
+stops and one missed check logs nothing, the second logs `Host lab-connections
+stopped answering: ...` once, later misses log nothing, and the route status
+says the home address didn't answer (refused); the host comes back and the next
+check logs `Host lab-connections answers again.` once over one new connection;
+a host that misses every other check logs nothing. The report's `log` holds the
+lines. Loopback only; writes nothing. Windows running out of ports
+(`NoBufferSpaceAvailable`) is not simulated; unit tests check its wording.
+
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
