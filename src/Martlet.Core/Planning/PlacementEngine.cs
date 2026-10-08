@@ -156,7 +156,42 @@ public static class PlacementEngine
         return count;
     }
 
-    private static bool GpuMatches(ComponentOption option, GpuVendor vendor, double totalGb) =>
+    /// <summary>The graphics memory the planner may use on <paramref name="gpu"/>: its size less what other programs use or
+    /// the headroom kept for the driver and desktop (<see cref="GpuReserveGb"/>, or 10% of bigger cards; none for unified
+    /// memory), and nothing when the card is kept for games.</summary>
+    public static double GpuCapacityGb(MachineGpu gpu, bool keepForGames = false)
+    {
+        ArgumentNullException.ThrowIfNull(gpu);
+        var reserve = gpu.UnifiedMemory ? 0 : Math.Max(GpuReserveGb, gpu.VramGb * 0.1);
+        var capacity = keepForGames ? 0 : Math.Max(0, gpu.VramGb - Math.Max(gpu.UsedGb, reserve));
+        return Math.Round(capacity, 2);
+    }
+
+    /// <summary>The main memory the planner may use on <paramref name="spec"/> (a quarter, at least 4 GB, stays for the PC
+    /// the user talks to; 15%, at least 2 GB, on other computers).</summary>
+    public static double RamCapacityGb(MachineSpecs spec)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+        var reserve = spec.IsPrimary ? Math.Max(4, spec.RamGb * 0.25) : Math.Max(2, spec.RamGb * 0.15);
+        return Math.Round(Math.Max(0, spec.RamGb - reserve), 2);
+    }
+
+    /// <summary>The processor threads the planner may use on <paramref name="spec"/> (before <see cref="CpuOversubscription"/>).</summary>
+    public static double CpuCapacity(MachineSpecs spec)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+        return Math.Max(spec.CpuThreads > 0 ? 1 : 0, spec.CpuThreads - (spec.IsPrimary ? 2 : 1));
+    }
+
+    /// <summary>The disk space the planner may use on <paramref name="spec"/>: 0 when its free space is unknown.</summary>
+    public static double DiskCapacityGb(MachineSpecs spec)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+        return spec.DiskFreeGb is { } disk ? Math.Max(0, disk - 10) : 0;
+    }
+
+    /// <summary>Whether <paramref name="option"/> can run on a card of <paramref name="vendor"/> and <paramref name="totalGb"/>.</summary>
+    internal static bool GpuMatches(ComponentOption option, GpuVendor vendor, double totalGb) =>
         option.Gpu switch
         {
             GpuRequirement.Nvidia => vendor == GpuVendor.Nvidia,
@@ -223,19 +258,11 @@ public static class PlacementEngine
 
         private static Node Build(MachineSpecs spec)
         {
-            var cards = spec.Gpus.Select((gpu, i) =>
-            {
-                var reserve = gpu.UnifiedMemory ? 0 : Math.Max(GpuReserveGb, gpu.VramGb * 0.1);
-                var capacity = spec.KeepGpuForGames ? 0 : Math.Max(0, gpu.VramGb - Math.Max(gpu.UsedGb, reserve));
-                return new Card(i, gpu, Math.Round(capacity, 2));
-            }).ToList();
-            var ramReserve = spec.IsPrimary ? Math.Max(4, spec.RamGb * 0.25) : Math.Max(2, spec.RamGb * 0.15);
-            var cpuReserve = spec.IsPrimary ? 2 : 1;
+            var cards = spec.Gpus.Select((gpu, i) => new Card(i, gpu, GpuCapacityGb(gpu, spec.KeepGpuForGames))).ToList();
             return new Node
             {
-                Spec = spec, Cards = cards, RamCapacity = Math.Round(Math.Max(0, spec.RamGb - ramReserve), 2),
-                CpuCapacity = Math.Max(spec.CpuThreads > 0 ? 1 : 0, spec.CpuThreads - cpuReserve),
-                DiskCapacity = spec.DiskFreeGb is { } disk ? Math.Max(0, disk - 10) : 0
+                Spec = spec, Cards = cards, RamCapacity = RamCapacityGb(spec), CpuCapacity = CpuCapacity(spec),
+                DiskCapacity = DiskCapacityGb(spec)
             };
         }
 
