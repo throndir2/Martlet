@@ -58,6 +58,16 @@ DEFAULT_CPU_THREADS = 8
 # The meanflow decoder's steps on the CPU (the library always asks for 2; the GPU keeps 2). With 1, Nano's mel took 0.23-0.32 s
 # a piece instead of 0.40-0.60 s, with the same UTMOS, speaker similarity and word error rate on 20 paired takes.
 CPU_DECODER_STEPS = max(1, int(os.environ.get("MARTLET_CHATTERBOX_CPU_DECODER_STEPS", "1")))
+# On the CPU a piece streams too, but not on the GPU's schedule (12, then 25, 50 and 100 more tokens): each decoder call costs
+# a fixed 0.35-0.40 s there and decodes every token again, so that schedule paused in every piece. Instead the first chunk
+# waits for CPU_FIRST_TOKENS speech tokens (2.2 s of speech; one such early chunk gave first audio after 1.57 s instead of
+# 2.39 s for 3.3-4.3 s sentences, without a pause), and each later chunk comes only when the audio already sent is about to run
+# out (_Playback), so a long piece doesn't pause either. 0 speaks whole pieces on the CPU.
+CPU_FIRST_TOKENS = max(0, int(os.environ.get("MARTLET_CHATTERBOX_CPU_FIRST_TOKENS", "55")))
+# A later chunk on the CPU has at least this many new speech tokens (1 s of speech), and is decoded this many seconds before
+# the audio already sent runs out, beyond the time its decoding is expected to take (_Playback).
+CPU_CHUNK_TOKENS = 25
+CPU_MARGIN_SECONDS = 0.2
 SYSFS_DEVICES = Path("/sys/devices")
 
 CONTRACT_ID = "martlet.f5.worker"
@@ -780,7 +790,7 @@ class EngineHost:
             model = getattr(self.model, "device", None)
             status = {
                 "cpu": self.cpu,
-                # The meanflow decoder's steps a whole piece takes (Turbo and Nano; CPU_DECODER_STEPS on the CPU).
+                # The meanflow decoder's steps a piece takes (Turbo and Nano; CPU_DECODER_STEPS on the CPU).
                 "decoder_steps": None if self.fast is None else self.fast.decoder_steps,
                 "device": None if self.model is None else str(model or DEVICE),
                 "error": self.error,
@@ -789,6 +799,13 @@ class EngineHost:
                 "model": MODEL,
                 "ready": self.state == "ready",
                 "state": self.state,
+                # Whether Turbo or Nano speaks each piece as it is made (FastTurbo.streams): on a GPU with the CUDA graph, and
+                # on the CPU with its first chunk after CPU_FIRST_TOKENS speech tokens (first_tokens; 0 is whole pieces), timed
+                # by what this CPU measured (token_ms: T3's time for a speech token; decoding_scale: decodings against the shape).
+                "streaming": None if self.fast is None else {
+                    "decoding_scale": round(self.fast.cpu_speed.scale, 2) if self.fast.on_cpu else None,
+                    "first_tokens": CPU_FIRST_TOKENS if self.fast.on_cpu else None, "on": self.fast.streams,
+                    "token_ms": round(self.fast.cpu_speed.token * 1000, 1) if self.fast.on_cpu else None},
                 "whisper": {"level_db": WHISPER_DB, "parts": self.whispered_parts},
                 "worker": self.identity,
             }
@@ -957,6 +974,8 @@ class EngineHost:
                     samples = 0
                     first_audio: float | None = None
                     streaming = fast is not None and fast.streams
+                    # On the CPU the reply's pieces share one playback clock, so a later piece streams only when needed.
+                    playback = _Playback(speed=fast.cpu_speed) if fast is not None else None
                     capped = 0
                     whispered_parts = 0
                     for chunk in job.request.chunks:
@@ -973,9 +992,11 @@ class EngineHost:
                             whispered_parts += whisper
                             spoken = False
                             if streaming:
-                                # Spoken as it is made: the first audio leaves after about a dozen speech tokens.
+                                # Spoken as it is made: the first audio leaves after about a dozen speech tokens on a GPU,
+                                # CPU_FIRST_TOKENS on the CPU.
                                 try:
-                                    for pcm in fast.stream(part, cancelled=lambda: job.cancel_requested, whisper=whisper):
+                                    for pcm in fast.stream(part, cancelled=lambda: job.cancel_requested, whisper=whisper,
+                                                           playback=playback):
                                         spoken = True
                                         first_audio = first_audio if first_audio is not None else time.monotonic() - started
                                         samples += len(pcm) // 2
@@ -991,7 +1012,7 @@ class EngineHost:
                                 samples += len(pcm) // 2
                                 if not job.emit_pcm(chunk.index, pcm):
                                     return
-                            if fast is not None and fast.graph is not None and fast.graph.capped:
+                            if fast is not None and fast.capped:
                                 capped += 1
                         if not job.chunk_completed(chunk.index):
                             return
@@ -1621,6 +1642,118 @@ def _pcm16(wav: Any, sr: int) -> bytes:
         return (np.clip(array, -1.0, 1.0) * 32767.0).astype("<i2").tobytes()
 
 
+def _expected_speech_tokens(text_tokens: Any) -> int:
+    """About how many speech tokens a Turbo or Nano piece of these text tokens takes: the median, not the most (_speech_budget).
+    Measured: 6.7 a text token for Turbo (270 pieces), 6.4 and 7.1 for two long Nano sentences; a sound tag adds 0.4-1.2 s."""
+    tags = int(((text_tokens >= TAG_TOKEN_FIRST) & (text_tokens <= TAG_TOKEN_LAST)).sum())
+    return 7 * (int(text_tokens.shape[1]) - tags) + 25 * tags
+
+
+class _CpuSpeed:
+    """How fast this CPU draws speech tokens and decodes chunks, measured while it streams and kept across replies (the
+    warm-up measures it first). token: seconds T3 takes for a speech token; scale: measured decoding times against
+    _Playback's shape of one."""
+
+    def __init__(self, token: float = 0.018, scale: float = 1.0) -> None:
+        self.token = token
+        self.scale = scale
+
+
+class _Playback:
+    """The listener's playback of one reply while the CPU streams it, to decide when the next chunk must be decoded.
+
+    Each decoding decodes every speech token so far again, so on the CPU it takes a fixed 0.36 s, 2.8 ms for every token so
+    far and 5.3 ms for every new one (the vocoder and the watermark): measured with Nano, 8 threads not pinned, and scaled
+    by the decodings this CPU measures (_CpuSpeed). Chunks are therefore as few and as late as playback allows:
+    - When nothing is playing, a piece's first chunk waits for first_tokens speech tokens (2.2 s of speech), or more when
+      the expected piece is so long that later chunks, each as late as possible, would fall behind before its end.
+    - After that, a chunk is due once the audio already sent would run out before a decoding started later could finish,
+      with CPU_MARGIN_SECONDS to spare, but never with fewer new tokens than pay for their own drawing and decoding
+      (_least): a smaller one only brings the next pause sooner. A piece whose audio isn't needed yet is decoded whole,
+      once, and so is the rest of a piece when this CPU can't keep up at all."""
+
+    FIXED, PER_TOKEN, PER_NEW = 0.36, 0.0028, 0.0053
+    TOKEN_SECONDS = 0.04
+
+    def __init__(self, first_tokens: int = CPU_FIRST_TOKENS, clock: Any = time.monotonic, speed: _CpuSpeed | None = None) -> None:
+        self.first_tokens = first_tokens
+        self.clock = clock
+        self.speed = speed if speed is not None else _CpuSpeed()
+        # When the audio sent so far will have played (None: nothing sent yet).
+        self.ends: float | None = None
+        # This piece: its expected speech tokens, the tokens before its first chunk and those decoded so far; and the
+        # (time, count) of the first and latest token drawn since the last decoding.
+        self.expected = 0
+        self.first = first_tokens
+        self.decoded = 0
+        self.run: tuple[float, int] | None = None
+        self.latest: tuple[float, int] | None = None
+
+    def begin_piece(self, expected: int = 0) -> None:
+        self.expected, self.decoded = expected, 0
+        self.run = self.latest = None
+        self.first = self.first_tokens
+        while self.first < self.expected and not self._keeps_up(self.first):
+            self.first += 5
+
+    def decoding(self, count: int) -> float:
+        """The expected seconds to decode a chunk of this piece's first count speech tokens."""
+        return self.speed.scale * (self.FIXED + self.PER_TOKEN * count + self.PER_NEW * (count - self.decoded))
+
+    def _keeps_up(self, first: int) -> bool:
+        """Whether, after a first chunk of first speech tokens, chunks each as late as playback allows (and no smaller than
+        _least allows) reach the expected end of the piece without the audio running out."""
+        speed = self.speed
+        decoded, buffer = first, (first - 3) * self.TOKEN_SECONDS
+        per_new = speed.token + speed.scale * (self.PER_TOKEN + self.PER_NEW)
+        while decoded < self.expected:
+            new = int((buffer - CPU_MARGIN_SECONDS - speed.scale * (self.FIXED + self.PER_TOKEN * decoded)) / per_new)
+            if new >= self.expected - decoded:
+                return True
+            if new < self._least(speed.token, decoded):
+                return False
+            decoded, buffer = decoded + new, CPU_MARGIN_SECONDS + new * self.TOKEN_SECONDS
+        return True
+
+    def _least(self, token: float, decoded: int) -> float:
+        """The fewest new speech tokens worth a chunk after decoded: CPU_CHUNK_TOKENS, and no fewer than take as long to draw
+        (token seconds each) and decode as they last; a smaller chunk only brings the next pause sooner. Infinite when this
+        CPU can't keep up at all: the rest of the piece is then decoded whole, once."""
+        spare = self.TOKEN_SECONDS - token - self.speed.scale * (self.PER_TOKEN + self.PER_NEW)
+        if spare <= 0:
+            return math.inf
+        return max(CPU_CHUNK_TOKENS, self.speed.scale * (self.FIXED + self.PER_TOKEN * decoded) / spare)
+
+    def due(self, count: int) -> bool:
+        now = self.clock()
+        if self.run is None:
+            self.run = (now, count)
+        self.latest = (now, count)
+        left = 0.0 if self.ends is None else self.ends - now
+        if left <= 0 and self.decoded == 0:
+            return count >= self.first + 3
+        # T3's speed since the last decoding when it has drawn enough tokens to tell, else what this CPU measured before.
+        token = (now - self.run[0]) / (count - self.run[1]) if count - self.run[1] >= 10 else self.speed.token
+        if count - self.decoded < self._least(token, self.decoded):
+            return False
+        return left <= self.decoding(count) + CPU_MARGIN_SECONDS
+
+    def decoded_chunk(self, count: int, seconds: float, cost: float) -> None:
+        """A chunk of this piece's first count speech tokens was decoded in cost seconds and sent as seconds of audio."""
+        now = self.clock()
+        speed = self.speed
+        shape = self.FIXED + self.PER_TOKEN * count + self.PER_NEW * (count - self.decoded)
+        speed.scale = min(5.0, max(0.2, (speed.scale + cost / shape) / 2))
+        if self.run is not None and self.latest is not None and self.latest[1] - self.run[1] >= 10:
+            token = (self.latest[0] - self.run[0]) / (self.latest[1] - self.run[1])
+            speed.token = min(0.2, max(0.003, (speed.token + token) / 2))
+        if seconds > 0:
+            # It plays on after what was sent before, or at once when that has run out (the listener heard a pause).
+            self.ends = max(now, self.ends if self.ends is not None else now) + seconds
+        self.decoded = count
+        self.run = self.latest = None
+
+
 class FastTurbo:
     """Makes Chatterbox Turbo answer sooner without changing what it says or how it sounds.
 
@@ -1654,10 +1787,15 @@ class FastTurbo:
         # Decoding goes through _inference_turbo with or without the graph, so a piece that never stops ends at its budget on
         # the CPU too.
         model.t3.inference_turbo = self._inference_turbo
-        # The library's generate() always asks the meanflow decoder for 2 steps; on the CPU a whole piece takes
-        # CPU_DECODER_STEPS. The streamed path (GPU only) passes its own.
+        self.on_cpu = str(model.device).split(":")[0] == "cpu"
+        # Whether the last piece streamed on the CPU stopped at its speech-token budget (the graph keeps its own), and how
+        # fast this CPU draws and decodes (measured as it streams, from the warm-up on).
+        self.eager_capped = False
+        self.cpu_speed = _CpuSpeed()
+        # The library's generate() always asks the meanflow decoder for 2 steps; on the CPU every piece takes
+        # CPU_DECODER_STEPS, whole (here) or streamed (stream()).
         self.decoder_steps = 2
-        if str(model.device).split(":")[0] == "cpu" and CPU_DECODER_STEPS != 2:
+        if self.on_cpu and CPU_DECODER_STEPS != 2:
             self.decoder_steps = CPU_DECODER_STEPS
             inference = model.s3gen.inference
 
@@ -1682,13 +1820,22 @@ class FastTurbo:
         self.warm_conds = None
 
     @property
-    def streams(self) -> bool:
-        """Whether each piece is spoken as it is made (first audio after about a dozen speech tokens) rather than whole."""
-        return self.graph_ready and os.environ.get("MARTLET_CHATTERBOX_STREAM", "1") != "0"
+    def capped(self) -> bool:
+        """Whether the last piece stopped at its speech-token budget rather than at the stop token."""
+        return self.graph.capped if self.graph is not None else self.eager_capped
 
-    def stream(self, text: str, cancelled: Any = None, whisper: bool = False) -> Any:
-        """One piece of speech as 24 kHz mono PCM16 chunks, each watermarked, the first after about 12 speech tokens (half a
-        second of speech) and then 25, 50 and 100 more at a time. Each chunk decodes every token so far with the same noise
+    @property
+    def streams(self) -> bool:
+        """Whether each piece is spoken as it is made rather than whole: on a GPU with the CUDA graph (first audio after about
+        a dozen speech tokens), and on the CPU unless CPU_FIRST_TOKENS is 0 (first audio after CPU_FIRST_TOKENS)."""
+        if os.environ.get("MARTLET_CHATTERBOX_STREAM", "1") == "0":
+            return False
+        return self.graph_ready or (self.on_cpu and CPU_FIRST_TOKENS > 0)
+
+    def stream(self, text: str, cancelled: Any = None, whisper: bool = False, playback: "_Playback | None" = None) -> Any:
+        """One piece of speech as 24 kHz mono PCM16 chunks, each watermarked. On a GPU the first comes after about 12 speech
+        tokens (half a second of speech) and then 25, 50 and 100 more at a time; on the CPU, when playback (the reply's
+        _Playback, shared by its pieces) says one is due. Each chunk decodes every token so far with the same noise
         and holds back the last 3 tokens' frames until their lookahead is known; the vocoder carries its source and an 8-frame
         mel overlap across chunks, and the 160 ms where chunks meet is crossfaded (CosyVoice 2's streaming scheme, which
         S3Gen comes from). Measured against a whole-piece decode: the same length, less difference than two whole decodes
@@ -1715,20 +1862,30 @@ class FastTurbo:
                 # The library's finalize=False trims the encoder output but not its mask, so decode everything and hold back the
                 # last 3 tokens' frames until the next chunk brings their lookahead.
                 count = tokens.shape[1]
-                out = S3Token2Mel.forward(s3, tokens, ref_wav=None, ref_sr=None, ref_dict=conds.gen, n_cfm_timesteps=2,
-                                          finalize=True, noised_mels=noise[:, :, :2 * (prompt + count)])
+                out = S3Token2Mel.forward(s3, tokens, ref_wav=None, ref_sr=None, ref_dict=conds.gen,
+                                          n_cfm_timesteps=self.decoder_steps, finalize=True,
+                                          noised_mels=noise[:, :, :2 * (prompt + count)])
                 return out if last else out[:, :, :2 * (count - 3)]
 
+            if self.graph_ready:
+                pieces = self.graph.chunks(conds.t3, tokens_in, cancelled)
+                playback = None
+            else:
+                playback = playback if playback is not None else _Playback(speed=self.cpu_speed)
+                playback.begin_piece(_expected_speech_tokens(tokens_in))
+                pieces = self._eager_chunks(conds.t3, tokens_in, cancelled, playback.due)
             emitted, cache, first = 0, None, True
-            for tokens, last in self.graph.chunks(conds.t3, tokens_in, cancelled):
+            for tokens, last in pieces:
                 # A stopped reply frees the model now, not after decoding audio nobody will hear.
                 if cancelled is not None and cancelled():
                     return
+                drawn = tokens.shape[1]
                 tokens = tokens[:, tokens[0] < 6561]
                 if last:
                     tokens = torch.cat([tokens, torch.full((1, 3), S3GEN_SIL, device=tokens.device, dtype=tokens.dtype)], dim=1)
                 if not last and tokens.shape[1] <= 3:
                     continue
+                decoding = time.monotonic()
                 spec = mel(tokens, last)
                 fresh = spec[:, :, emitted:]
                 emitted = spec.shape[2]
@@ -1749,11 +1906,59 @@ class FastTurbo:
                     samples = whisperer.feed(samples)
                     if last:
                         samples = np.concatenate([samples, whisperer.finish()])
+                pcm = None
                 if samples.size:
                     marked = model.watermarker.apply_watermark(samples, sample_rate=model.sr)
-                    yield (np.clip(np.asarray(marked, dtype=np.float32), -1.0, 1.0) * 32767.0).astype("<i2").tobytes()
+                    pcm = (np.clip(np.asarray(marked, dtype=np.float32), -1.0, 1.0) * 32767.0).astype("<i2").tobytes()
+                if playback is not None:
+                    playback.decoded_chunk(drawn, samples.size / model.sr, time.monotonic() - decoding)
+                if pcm is not None:
+                    yield pcm
                 if last or (cancelled is not None and cancelled()):
                     return
+
+    def _eager_chunks(self, t3_cond: Any, text_tokens: Any, cancelled: Any, due: Any) -> Any:
+        """T3 decoding on the CPU, without a CUDA graph, as (speech tokens so far, last): sampled exactly as
+        T3.inference_turbo does (the same processors, the same multinomial draws in the same order, the same stop), within
+        the piece's speech-token budget; yielded whenever due(count) says so and once at the end."""
+        import torch  # type: ignore
+        import torch.nn.functional as F  # type: ignore
+        from transformers.generation.logits_process import (  # type: ignore
+            LogitsProcessorList, RepetitionPenaltyLogitsProcessor, TemperatureLogitsWarper, TopKLogitsWarper, TopPLogitsWarper)
+
+        t3 = self.model.t3
+        processors = LogitsProcessorList([TemperatureLogitsWarper(0.8), TopKLogitsWarper(1000), TopPLogitsWarper(0.95),
+                                          RepetitionPenaltyLogitsProcessor(1.2)])
+        stop = t3.hp.stop_speech_token
+        self.eager_capped = False
+        with torch.inference_mode():
+            start = t3.hp.start_speech_token * torch.ones_like(text_tokens[:, :1])
+            embeds, _ = t3.prepare_input_embeds(t3_cond=t3_cond, text_tokens=text_tokens, speech_tokens=start, cfg_weight=0.0)
+            out = t3.tfmr(inputs_embeds=embeds, use_cache=True)
+            past = out.past_key_values
+            logits = t3.speech_head(out[0][:, -1:])
+            token = torch.multinomial(F.softmax(processors(start, logits[:, -1, :]), dim=-1), num_samples=1)
+            # The first token is kept whatever it is, as the library does; from the second on, the stop token ends the piece.
+            ids = [token]
+            for _ in range(_speech_budget(text_tokens)):
+                if cancelled is not None and cancelled():
+                    return
+                out = t3.tfmr(inputs_embeds=t3.speech_emb(token), past_key_values=past, use_cache=True)
+                past = out.past_key_values
+                so_far = torch.cat(ids, dim=1)
+                scores = processors(so_far, t3.speech_head(out[0])[:, -1, :])
+                if torch.all(scores == -float("inf")):
+                    yield so_far, True
+                    return
+                token = torch.multinomial(F.softmax(scores, dim=-1), num_samples=1)
+                if int(token) == stop:
+                    yield so_far, True
+                    return
+                ids.append(token)
+                if due(len(ids)):
+                    yield torch.cat(ids, dim=1), False
+            self.eager_capped = True
+            yield torch.cat(ids, dim=1), True
 
     def use_reference(self, audio: bytes) -> bool:
         """Sets the model's voice conditionals for this reference; True when they were already kept."""

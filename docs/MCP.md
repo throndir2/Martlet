@@ -1739,8 +1739,13 @@ of audible audio), `engine`, `route`, `voice`, `text`, `style` (Chatterbox
 Original's sent style in words, else null), `statusBefore` and
 `statusAfter` (the service's own `/status`: `answered`, `state`, `ready`,
 `error`, `model` and `device` (`cuda:0` or `cpu`) and `runtime`, for Chatterbox
-its torch, torchaudio and CUDA versions, `decoderSteps` (the decoder steps a
-whole piece takes on Chatterbox Turbo or Nano: 1 on the CPU, 2 on a GPU), `cpu`
+its torch, torchaudio and CUDA versions, `decoderSteps` (the decoder steps
+each decoding takes on Chatterbox Turbo or Nano: 1 on the CPU, 2 on a GPU),
+`streaming` (Turbo and Nano: `on`, whether pieces are spoken as they are made;
+on the CPU also `first_tokens`, the speech tokens before a piece's first chunk
+(55, 0 for whole pieces), and what the service measured to time its chunks:
+`token_ms`, T3's time for a speech token, and `decoding_scale`, decoding times
+against the expected shape; null on a GPU), `cpu`
 on the CPU (`threads`, PyTorch's threads, at most 8 and never more than the
 performance cores, and `pinned_cpus`, the CPUs of the performance cores it is
 pinned to on native Linux, empty when not pinned, as always on Docker Desktop; null on a GPU)
@@ -1750,7 +1755,10 @@ the `parts` it has [whispered](CHATTERBOX_VOICE.md#tags)) and, for Chatterbox
 Original, `style` (`default`, `expressive_parts` and `last`, the style the last
 reply asked for, so the owner's values can be checked at the service), or why
 it could not be read), `seconds` of 24 kHz audio, `firstAudioMs`,
-`elapsedMs`, `realTimeFactor`, `peakDbfs`, `rmsDbfs`, `audible`,
+`elapsedMs`, `realTimeFactor`, `pauses` and `pauseMs` (what a listener who
+plays the first audio at once would hear: the pauses longer than 20 ms, when
+audio arrives after everything before it has played, and all pauses together;
+0 for a piece that streams in time or comes whole), `peakDbfs`, `rmsDbfs`, `audible`,
 `voicedShare` (the share of the loud 40 ms frames that have a pitch between 70
 and 400 Hz, from `Martlet.Core.Audio.Voicing`; about 0.6-0.9 for ordinary
 speech and nearly 0 for a whisper, so a `text` that starts with `[whispering]`
