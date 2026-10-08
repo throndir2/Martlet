@@ -40,12 +40,14 @@ internal static partial class MemoryCapture
 
     /// <param name="heard">The voices heard in the latest message (to say whose new facts are), or null.</param>
     /// <param name="people">The label of each voice the known facts belong to (<see cref="MemoryPeople.Labels"/>).</param>
+    /// <param name="companion">The name of the persona the companion is: its lines in the excerpt carry it (<see cref="Speaker"/>).</param>
     internal static MemoryCapturePrompt Prompt(string? earlierUser, string? earlierReply, string user, string reply,
         IReadOnlyList<MemoryFact> known, PromptSettings? prompts = null, HeardVoices? heard = null,
-        IReadOnlyDictionary<string, string>? people = null)
+        IReadOnlyDictionary<string, string>? people = null, string? companion = null)
     {
         ArgumentNullException.ThrowIfNull(known);
         if (heard is { Known.Count: 0 }) heard = null;
+        var speaker = Speaker(companion);
         // Drop context before the latest exchange if an unusually large excerpt would not fit the LLM input budget.
         foreach (var (earlier, shown) in new[] { (true, Math.Min(known.Count, MaximumShownFacts)), (false, Math.Min(known.Count, 4)), (false, 0) })
         {
@@ -57,14 +59,15 @@ internal static partial class MemoryCapture
                 VoiceNaming.AppendVoices(text, heard);
                 AppendWhose(text, heard);
             }
+            AppendCompanion(text, companion);
             if (earlier && (earlierUser is not null || earlierReply is not null))
             {
                 text.Append("\nEarlier in the conversation (context only):\n");
                 if (earlierUser is not null) text.Append("User: ").Append(Clip(earlierUser, 300)).Append('\n');
-                if (earlierReply is not null) text.Append("Martlet: ").Append(Clip(earlierReply, 300)).Append('\n');
+                if (earlierReply is not null) text.Append(speaker).Append(Clip(earlierReply, 300)).Append('\n');
             }
             text.Append("\nLatest exchange:\n").Append(heard is null ? "User: " : VoiceNaming.UserLabel(heard)).Append(Clip(user, 1400))
-                .Append("\nMartlet: ").Append(Clip(reply, 800));
+                .Append('\n').Append(speaker).Append(Clip(reply, 800));
             try
             {
                 var input = new BoundedTextInput(text.ToString(), PromptSettings.Fill(prompts, PromptCatalog.MemoryCapture, ("nothing", Nothing)));
@@ -181,6 +184,21 @@ internal static partial class MemoryCapture
             fact.Contains(MemoryPromptContext.Label, StringComparison.OrdinalIgnoreCase))
             return null;
         return fact;
+    }
+
+    /// <summary>"Ivy: ", the label of the companion's lines in an excerpt: the name of the persona it is ("Martlet" without one),
+    /// so the Thinking model reads who said them as the character it plays.</summary>
+    internal static string Speaker(string? companion) =>
+        Clip(Martlet.Core.Speakers.CompanionNames.Character(companion), PersonaProfile.MaximumNameCharacters) + ": ";
+
+    /// <summary>When the companion goes by its persona's name, a line that says the lines with that label are its own, since
+    /// the Remembering and Learning names instructions call it Martlet. Nothing when it is called Martlet.</summary>
+    internal static void AppendCompanion(StringBuilder text, string? companion)
+    {
+        var label = Speaker(companion);
+        if (label == Martlet.Core.Speakers.CompanionNames.Default + ": ") return;
+        text.Append("\nMartlet, the companion, goes by its persona's name here: the lines marked \"").Append(label.TrimEnd())
+            .Append("\" are its own words.\n");
     }
 
     /// <summary>One line of at most <paramref name="maximum"/> characters, never splitting a surrogate pair.</summary>

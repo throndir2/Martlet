@@ -17,6 +17,10 @@ internal sealed class LiveConversationConfiguration
     /// <summary>The saved microphone and speakers, or the Windows defaults when none were saved in Audio setup.</summary>
     internal AudioSettings Audio { get; }
     internal PersonaProfile? Persona { get; }
+    /// <summary>What the conversation calls the character: the persona's name, or "Martlet" without one
+    /// (<see cref="Martlet.Core.Speakers.CompanionNames.Character"/>). The Thinking model reads it as who says the character's
+    /// lines in excerpts of the conversation (past conversations, remembering and learning names).</summary>
+    internal string CharacterName => Martlet.Core.Speakers.CompanionNames.Character(Persona?.Name);
     /// <summary>The names the companion itself goes by (Martlet and every persona's), never learned as a voice's name. Worked
     /// out on first use, off the reply's path.</summary>
     internal Martlet.Core.Speakers.CompanionNames CompanionNames => companionNames.Value;

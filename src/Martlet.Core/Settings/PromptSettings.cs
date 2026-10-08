@@ -218,10 +218,10 @@ public static class PromptCatalog
         "answer, keep it to one short sentence; the song is turned down while you talk.)";
 
     public const string DefaultSongLyricsInstructions =
-        "Write an original song for Martlet to sing: {about}.{style}\n" +
+        "Write an original song for yourself to sing: {about}.{style}\n" +
         "It lasts about {seconds} seconds, so write about {lines} short, singable lines in sections tagged [verse], [chorus] and " +
         "[bridge] (a chorus that comes back is welcome), one sung line per line, in the language of the conversation and in " +
-        "Martlet's own personality. Answer in exactly this form and nothing else:\n" +
+        "your own personality. Answer in exactly this form and nothing else:\n" +
         "TITLE: <a short title>\nSTYLE: <genre, instruments, mood and vocal style, under 200 characters>\n" +
         "BPM: <a tempo from 60 to 180>\nKEY: <a key such as G major>\nLYRICS:\n[verse]\n<the lines, section by section>";
 

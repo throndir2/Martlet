@@ -34,6 +34,11 @@ public sealed partial class CompanionNames
     /// <summary>Only "Martlet".</summary>
     public static CompanionNames Martlet { get; } = new();
 
+    /// <summary>What a conversation calls the character: <paramref name="persona"/>, the name of the persona Martlet uses
+    /// (Companion › Personality), or "Martlet" without one. The talk window shows it and the Thinking model reads it as the
+    /// name of who says the character's lines.</summary>
+    public static string Character(string? persona) => string.IsNullOrWhiteSpace(persona) ? Default : persona.Trim();
+
     /// <summary>The companion's full names, "Martlet" first.</summary>
     public IReadOnlyList<string> Names => listed;
 
