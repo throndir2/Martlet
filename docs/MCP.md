@@ -4245,6 +4245,21 @@ carried out by Martlet itself, so the desktop log records *The character's menu
 chose 'hide'.* (and so on), and a hide is followed by *Avatar renderer stopped
 by Martlet.* and `SetupCharacterNow` reading *hidden*.
 
+**Renderer health** shows in the logs (`logs_tail`). Martlet and the renderer
+send only whole messages, so a slow reply or a timeout never puts later
+commands out of step; a reply that comes after its caller stopped waiting is
+dropped. When the renderer's messages break (an unreadable message, a reply
+when nothing was asked, a failed write) or it answers nothing for 90 seconds,
+Martlet ends it and the character counts as stopped. Then `desktop` records
+*Martlet ended the character renderer because it stopped answering properly:
+...* and *Avatar renderer ended by Martlet (code 0x00000001) ...*. When the
+renderer closes by itself, `avatar-renderer` records why: *The character
+overlay closed: its window was closed (not by Martlet).* or *The character
+renderer stopped after an error; it tells Martlet and closes.* with the error.
+Then `desktop` records the warning *Avatar renderer closed itself ...* (with
+the error code when it sent one). Only another exit code (a crash or a kill)
+is an error: *Avatar renderer exited unexpectedly with code ...*.
+
 **Muting Martlet's voice**: the overlay menu's `CharacterMuteVoice` (in
 `SafeValues`: its name, *Mute voice* or *Unmute voice*, carries the state)
 asks Martlet to mute (*The character's menu chose 'mute'.*) or unmute it. It is
