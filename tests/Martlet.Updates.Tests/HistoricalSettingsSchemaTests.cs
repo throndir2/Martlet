@@ -14,7 +14,7 @@ public sealed class HistoricalSettingsSchemaTests(SigningKeys keys) : IClassFixt
         var loaded = await f.Settings.LoadAsync();
         var companion = loaded.Settings!.Companion!;
         var persona = companion.ActivePersona;
-        companion = companion.Update(persona.Id, persona.Name, new string('\u00e9', 8192), persona.Styles);
+        companion = companion.Update(persona.Id, persona.Name, new string('\u00e9', 8192));
         companion = companion.Add("Second", companion.ActivePersona);
         Assert.True((await f.Settings.SaveAsync(loaded.Settings with { Companion = companion }, loaded.Revision)).Saved);
         f.RefreshFacts();

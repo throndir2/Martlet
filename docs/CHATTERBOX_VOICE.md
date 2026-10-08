@@ -460,7 +460,8 @@ style tokens are its only emotion control, and the measurements below show that
 only `[whispering]` changes the voice (because Martlet makes the whisper).
 Companion › Voice says so in Chatterbox Turbo's rundown
 (`VoiceEngineAbilities-chatterbox`: voice cloning yes, laughs & sighs yes,
-emotions whispering only).
+emotions whispering only). For tones such as angry or sad with a cloned voice,
+Martlet offers [ElevenLabs](ELEVENLABS_VOICE.md), a paid cloud voice.
 
 What Resemble documents (checked again 2026-10-07): the
 [model card](https://huggingface.co/ResembleAI/chatterbox-turbo), the

@@ -45,10 +45,11 @@ model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
 
 ## First configured action
 
-1. In **Setup / resume**, choose the cloud API profile. Apply explicit
-   supported model IDs, store each role's key in its scoped Windows vault target,
-   then review that role's destination choice again (changing a key invalidates
-   the choice). Save the checkpoint. Do not put keys in model fields or files.
+1. On Companion › **Thinking**, **Voice** and **Listening**, choose *A cloud
+   provider* and a supported model ID, paste the provider's key next to it (it
+   goes to its scoped Windows vault target), tick the consent box and press the
+   page's *Use* button (changing a key invalidates the choice until you confirm
+   it again). Do not put keys in model fields or files.
 2. The OpenAI LLM route supports `gpt-4.1-mini-2025-04-14` and
    `gpt-4.1-2025-04-14`. Alternatively the LLM can use OpenRouter, NVIDIA Build
    or any OpenAI-compatible Chat Completions endpoint with the exact model ID
@@ -139,7 +140,7 @@ model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
    sentence in the speech bubble and subtitles too, without a voice request or
    an output device.
 7. **Companion › Prompts** lists every internal prompt Martlet sends to the
-   Thinking model: the persona wrapper, the style line and each response style,
+   Thinking model: the persona wrapper,
    reply length, always listening, tools, Thinking longer, who is talking,
    lorebook, memory and past conversations introductions, notes with messages, the screen and
    camera glance instructions, messages (including the one sent
@@ -150,7 +151,7 @@ model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
    that joins them, and the smart home notes. Each
    one is editable; a saved edit replaces the built-in text wherever it is used
    (settings `prompts.overrides`, by prompt ID, absent while nothing is
-   edited). Words in braces such as `{name}`, `{persona}`, `{style}` or
+   edited). Words in braces such as `{name}`, `{persona}` or
    `{silent}` are filled in when the prompt is sent, and an emptied prompt
    sends nothing (the glance messages, the Thinking longer task and *Background
    work finished* can't be emptied). Martlet still parses
@@ -163,10 +164,12 @@ model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
 
 STT receives only the selected microphone's completed bounded utterance. LLM
 receives the typed text or that final transcript plus the fixed active persona
-revision, one weighted response style selected only after participation
-accepts the turn, and the reply-length instruction (all as worded in Companion › Prompts). Persona/style and user input share the existing byte/token
+revision and the reply-length instruction (both as worded in Companion › Prompts). Persona and user input share the existing byte/token
 reservation; an over-budget combination is rejected without truncation or a
-provider call. Valid legacy v1/v2 profiles upload no implicit persona/style
+provider call. Martlet has no response styles: the persona text alone sets how
+Martlet talks. Response-style weights and style prompt edits that older
+versions saved still load, are ignored and are not saved again; a Persona
+prompt edit loses its old `{style}` line. Valid legacy v1/v2 profiles upload no implicit persona
 instruction until settings v3 is explicitly
 saved. The conversation so far is supplied from volatile memory: every
 completed exchange of the open talk window, the newest that fit the context
@@ -398,12 +401,33 @@ pool jobs never use that route, except the empty-pool fallback below.
 **Members.** A member is one place with a slot count (how many jobs it runs at
 once, 1 to 8):
 
-- A paired Martlet host joins only when this PC's owner ticks *Join the
-  Thinking pool* for it (`DeepThinkingPool-<host>`). It works on the host's
+- A paired Martlet host with a Thinking model joins by itself
+  (`ThinkingPoolAutoJoin`, Martlet.Core). Each time a check sees it answer (the
+  cluster sync every 15 s while *Keep in sync* is on, *Check computers*, any
+  other check of all hosts and the host update check), a host that offers its
   Thinking pool role (a second Ollama server of its own, route
-  `martlet.gateway.deep-thinking-chat.v1`; its slots are the role's
-  `OLLAMA_NUM_PARALLEL`, advertised as `maximum_concurrency`). The host that
-  runs the conversation may join too.
+  `martlet.gateway.deep-thinking-chat.v1`) joins on that role with its slots
+  (the role's `OLLAMA_NUM_PARALLEL`, advertised as `maximum_concurrency`, at
+  most 8). A host that offers only its Ollama joins on it when it doesn't do
+  this PC's conversation Thinking. A member on a host's Ollama moves to the
+  host's Thinking pool role once it has one, and a member on the role follows
+  the role's slot count. The host that runs the conversation may join with its
+  role too. Martlet writes `thinking-pool.json` only when something changes,
+  never over a file it can't read, and says it once in the status line and
+  the desktop log (*diva joined the Thinking pool by itself (its Thinking pool
+  role, qwen3:8b, 2 slots). Untick it in Companion › Thinking pool to keep it
+  out.*). A member whose computer stops answering stays a member; its line
+  says *In the pool, offline now* and its slots come back when it answers.
+  A computer never joins by itself when the owner took it out (`LeftByOwner`,
+  below), Devices › Sharing work says the Thinking pool never uses it or keeps
+  it for other companion PCs, the pool already has 8 members, or this PC is a
+  host PC.
+- *In the Thinking pool* (`DeepThinkingPool-<host>`) is the owner's opt-out.
+  Unticking it, or *Remove* on the computer's member, takes the computer out
+  and adds its host ID to `LeftByOwner` in `thinking-pool.json` (a file saved
+  before this list existed reads as empty), so it doesn't join again. Ticking
+  it clears that and adds the computer at once. `DeepThinkingAutoJoin` states
+  the rule and names the computers kept out.
 - A model in Ollama on this PC, beside Thinking's (checked to fit on the
   graphics card before each job).
 - An OpenAI-compatible endpoint (a cloud provider or another server).
@@ -792,15 +816,12 @@ which machine is free to think depends on the computer you talk to):
   Windows Credential Manager, Thinking's key for the same base URL, or none. The
   conversation that fits the model's context and the task go there, no tools.
 
-**Several computers at once.** Each paired computer on *Another of your
-computers* has *Join the Thinking pool* (`DeepThinkingPool-<host>`): ticked, Deep
-thinking thinks there as well as where it is set to think, so several thinks
-run at once, one on each place (`DeepThinkingPool`, up to 8 places; saved as
-`Pool` in `deep-thinking.json`, which a file saved before it existed simply
-lacks, so the old choice reads unchanged). *Use it*, *Same as Thinking*, *Ollama
-on this PC* and a cloud provider change the first place and keep the ticked
-computers; unticking the first place's computer makes the next one first.
-`think_longer` may then run several thinks at once: one fewer than the usable
+**Several computers at once.** Your paired computers with a Thinking model join
+the pool by themselves (see Members above); each one on *One of your computers*
+has *In the Thinking pool* (`DeepThinkingPool-<host>`): ticked, the pool thinks
+there as well as on its other members, so several thinks run at once, one on
+each place (up to 8 places). Untick a computer to keep it out; tick it again to
+add it back. `think_longer` may then run several thinks at once: one fewer than the usable
 places' slots in all. A long job never takes the pool's last free slot while
 the pool has two or more slots, because that slot stays free for quick jobs
 (judges and summaries); with one slot in all, one think runs at a time. The
@@ -1964,6 +1985,12 @@ default self-hosted engine, has `[laugh]`, `[chuckle]`, `[sigh]`, `[gasp]`,
 `[whispering]`, `[dramatic]`. Another engine registers its own with one
 `SpeechEngines.Register(new SpeechEngine(..., TagCatalog: [new("(laughs)",
 VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
+[ElevenLabs](ELEVENLABS_VOICE.md#tags), a cloud voice that speaks with a
+voice cloned from yours, has its own catalog (`SpeechEngines.ElevenLabsTags`:
+`[laughs]`, `[sighs]`, `[whispers]`, `[happy]`, `[sad]`...) in
+`SpeechEngines.CloudVoices`. Cloud voices are not host engines, so they are not
+in `SpeechEngines.All`, but their tags work the same way below and are
+stripped from the chat for every voice.
 
 - **Thinking prompt.** When a spoken reply's voice has tags, Companion ›
   Prompts › *Voice sounds and tones* is added to its instructions with exactly
@@ -2029,7 +2056,8 @@ VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
 `voice_tags` in [Martlet MCP](MCP.md) shows all of these for any engine (with
 `characterTags`, the character cues too, plus `acted` and `note`), and
 `spoken_reply_check` with `characterTags` runs them through the production
-runtime.
+runtime. `elevenlabs_check` runs ElevenLabs' tags through the production
+runtime against a local ElevenLabs protocol fixture.
 
 ## Hands-free voice activity and Voice ID
 

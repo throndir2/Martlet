@@ -30,17 +30,11 @@ public sealed class CompanionWindowTests
         {
             await Until(() => Field<StackPanel>(window, "EditorPanel").IsEnabled);
             Assert.Equal("Martlet", Field<TextBox>(window, "PersonaName").Text);
-            Assert.Equal(100, Field<Slider>(window, "HelpfulWeight").Value);
             Assert.Equal(original, await File.ReadAllBytesAsync(store.FilePath));
 
             Click(window, "CompanionImport");
             await Until(() => Field<TextBox>(window, "PersonaText").Text == "Listen first.\nBe concise.");
             Field<TextBox>(window, "PersonaName").Text = "Game friend ";
-            Field<Slider>(window, "HelpfulWeight").Value = 50;
-            Field<Slider>(window, "SarcasticWeight").Value = 20;
-            Field<Slider>(window, "SillyWeight").Value = 15;
-            Field<Slider>(window, "DistractedWeight").Value = 5;
-            Field<Slider>(window, "TeasingWeight").Value = 10;
             Assert.Equal("Saving...", Field<TextBlock>(window, "SaveStateText").Text);
 
             // No Save button: the changes are written a moment after the last one.
@@ -52,10 +46,7 @@ public sealed class CompanionWindowTests
             var persona = loaded.Settings.Companion!.ActivePersona;
             Assert.Equal("Game friend", persona.Name);
             Assert.Equal("Listen first.\nBe concise.", persona.Text);
-            Assert.Equal(new ResponseStyleWeights
-            {
-                Helpful = 50, Sarcastic = 20, Silly = 15, Distracted = 5, PlayfulTeasing = 10
-            }, persona.Styles);
+            Assert.DoesNotContain("\"styles\"", await File.ReadAllTextAsync(store.FilePath), StringComparison.Ordinal);
             Assert.Equal(original, await File.ReadAllBytesAsync(Assert.Single(
                 Directory.GetFiles(scope.Data, "settings.v1.*.bak"))));
 
@@ -74,7 +65,7 @@ public sealed class CompanionWindowTests
     });
 
     [Fact]
-    public Task AllZeroWeightsAreNotSavedAndSayWhy() => OnDispatcher(async () =>
+    public Task EmptyNameIsNotSavedAndSaysWhy() => OnDispatcher(async () =>
     {
         using var scope = new Scope();
         var store = new SettingsStore(scope.Data);
@@ -91,17 +82,17 @@ public sealed class CompanionWindowTests
         try
         {
             await Until(() => Field<StackPanel>(window, "EditorPanel").IsEnabled);
-            foreach (var name in new[] { "HelpfulWeight", "SarcasticWeight", "SillyWeight", "DistractedWeight", "TeasingWeight" })
-                Field<Slider>(window, name).Value = 0;
-            await Until(() => Field<TextBlock>(window, "SaveStateText").Text.Contains("greater than zero", StringComparison.Ordinal));
+            Assert.Null(window.FindName("HelpfulWeight"));
+            Field<TextBox>(window, "PersonaName").Text = " ";
+            await Until(() => Field<TextBlock>(window, "SaveStateText").Text.Contains("Persona names must be", StringComparison.Ordinal));
             Assert.StartsWith("Not saved yet", Field<TextBlock>(window, "SaveStateText").Text);
             Assert.False(runner.IsRunning);
             Assert.Equal(original, await File.ReadAllBytesAsync(store.FilePath));
         }
         finally
         {
-            // Put a style back so closing has nothing unsaved to ask about.
-            Field<Slider>(window, "HelpfulWeight").Value = 100;
+            // Put the name back so closing has nothing unsaved to ask about.
+            Field<TextBox>(window, "PersonaName").Text = "Martlet";
             await Until(() => window.AllSaved && !runner.IsRunning);
             window.Close();
         }

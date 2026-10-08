@@ -42,11 +42,15 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
     private readonly AnonymousPipeServerStream requests = new(PipeDirection.In, HandleInheritability.Inheritable);
     private readonly SemaphoreSlim exchange = new(1, 1);
     private readonly CancellationTokenSource lifetime = new();
+    // A still renderer (--still) draws the touch zones picture: never on screen, never animated.
+    private readonly bool still;
     private Process? process;
     private SafeFileHandle? job;
     private bool disposed;
     private Task? disposal;
     private readonly object disposeGate = new();
+
+    internal AvatarRendererProcess(bool still = false) => this.still = still;
     internal Guid Activation { get; } = Guid.NewGuid();
     public RendererCapabilities? Capabilities { get; private set; }
     public bool HasExited
@@ -89,6 +93,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         info.ArgumentList.Add(commands.GetClientHandleAsString());
         info.ArgumentList.Add(replies.GetClientHandleAsString());
         info.ArgumentList.Add(requests.GetClientHandleAsString());
+        if (still) info.ArgumentList.Add("--still");
         job = CreateJobObjectW(IntPtr.Zero, null);
         if (job.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
         var limits = new JobLimits { Basic = new() { Flags = 0x2000 } };
@@ -130,7 +135,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
             model.Expressions is < 0 or > 128 || model.MotionGroups.Length > 96 || model.EyeBlink.Length > 64 || model.LipSync.Length > 64 ||
             model.EyeBlink.Concat(model.LipSync).Concat(model.MotionGroups).Any(name => name.Length is 0 or > 256 || name.Any(char.IsControl))))
             throw new InvalidOperationException("The character renderer reported an unsupported model summary.");
-        ErrorLog.Info($"Character model loaded: {Describe(Capabilities)}");
+        ErrorLog.Info($"Character model loaded{(still ? " off screen for its touch zones picture" : "")}: {Describe(Capabilities)}");
         _ = Task.Run(RelayRequestsAsync);
     }
 

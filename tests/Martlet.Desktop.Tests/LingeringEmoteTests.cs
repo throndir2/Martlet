@@ -63,10 +63,10 @@ public sealed class LingeringEmoteTests
         Assert.Null(CharacterActions.OffTagName("{glasses}"));
         Assert.Null(CharacterActions.OffTagName("{/}"));
         Assert.Null(CharacterActions.OffTagName("[/glasses]"));
-        Assert.Equal("expression:Glasses", catalog.Off("{/glasses}")!.Id);
-        Assert.Equal("expression:Glasses", catalog.Off("{/Glasses}")!.Id);
-        Assert.Null(catalog.Off("{/smile}"));
-        Assert.Null(catalog.Off("{/nothing}"));
+        Assert.Equal("expression:Glasses", Assert.Single(catalog.Off("{/glasses}")).Id);
+        Assert.Equal("expression:Glasses", Assert.Single(catalog.Off("{/Glasses}")).Id);
+        Assert.Empty(catalog.Off("{/smile}"));
+        Assert.Empty(catalog.Off("{/nothing}"));
         Assert.Empty(catalog.For("{/glasses}"));
         Assert.Equal("expression:Glasses", Assert.Single(catalog.For("{glasses}")).Id);
     }
@@ -209,7 +209,7 @@ public sealed class LingeringEmoteTests
     {
         await using var fixture = await LiveFixture.Create();
         var configuration = LiveConversationConfiguration.From(await fixture.Store.LoadAsync())!;
-        ConversationRequest Ask(string? showing) => configuration.Request(new("Hi."), false, ResponseStyle.Helpful, [], null, null,
+        ConversationRequest Ask(string? showing) => configuration.Request(new("Hi."), false, [], null, null,
             out _, out _, out _, characterActions: (_, _) => new CharacterActionPrompt("Emote tags.", ["{glasses}", "{/glasses}"], showing),
             board: showing);
         var without = Ask(null);

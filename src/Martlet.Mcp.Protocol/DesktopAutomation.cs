@@ -12,9 +12,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
     {
         // Martlet for Linux and macOS (Martlet.Companion) on a Windows dev run: its three tabs (passive navigation).
         "TalkTab", "SettingsTab", "ComputerTab",
-        "OpenTroubleshooting", "OpenSetup", "OpenAudioSetup", "OpenLiveConversation",
+        "OpenTroubleshooting", "OpenAudioSetup", "OpenLiveConversation",
         "OpenConfigurationRecovery", "RefreshDiagnostics",
-        "SetupClose", "AudioClose", "CloseLive", "SupportClose",
+        "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
         "NavHome", "NavDevices", "NavCompanion", "NavCreations", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
         // The welcome wizard: Look again only asks the local network which Martlet desktops answer (as Add a computer's Find
@@ -37,6 +37,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Character › Touch zones' Stop only stops finding zones; it sends nothing (the zones found until then were
         // already saved).
         "TouchZonesStop",
+        // Companion › Character › Emotes and motions › Combos: Add a combo only adds an empty row. Nothing saves until the row has
+        // a tag and parts, and typing them needs --allow-ui-effects.
+        "CharacterCombosAdd",
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
         // Companion › Pictures' Check only asks the saved place whether it can draw now (a cloud provider: only whether a key is
@@ -198,7 +201,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Discord's voice line: where Martlet is in Discord voice, counts of speakers heard, utterances transcribed
         // and replies spoken (never what was said), whether DAVE is on, whether libdave loaded, and the last problem.
         "DiscordVoiceStatus",
-        "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "LiveContext", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
+        "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "LiveContext", "AudioResult", "RecoveryResult", "SupportResult",
         // Home's Start talking reads "Show conversation" while a conversation runs (the talk window open, or hidden while Martlet
         // listens or watches); Home's Start listening / Stop listening button and its listening indicator ("Listening. Just start
         // talking.", "Hearing you…", "Not listening" or why Martlet can't listen), and its Start watching / Stop watching button
@@ -281,7 +284,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // the reason code is the outsideAccessBlockedReason. Its "Set up sign-in first" button (OutsideAccessSetUpSignIn) only opens
         // the sign-in window, which changes nothing until its own buttons are used.
         "OutsideAccessBlockedReason",
-        "VisionStatus", "VisionDisclosure", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "F5VoicesStatus",
+        "VisionStatus", "VisionDisclosure", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "F5VoicesStatus",
         // Companion › Vision's Now line: whether vision is on (the default) and what Martlet looks at (your whole screen by
         // default, your active window, or a camera's name or host without its path or password) and how often it comments.
         // The VisionSource-<kind> choices are radio buttons (ui_snapshot's selected) and VisionToggle's label says what it does
@@ -360,20 +363,33 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // the character shows, so they need --allow-ui-effects.
         "CharacterActionsStatus", "CharacterActionsNaming", "CharacterActionsOffered", "CharacterActionsLast", "CharacterActionsSaveState",
         "CharacterActionsHeld",
+        // Emotes and motions › Combos: how many combos the model has and the combo tags replies get ("2 combos. Replies can use 1:
+        // {flustered}." or "No combos yet."). Each combo's title (CharacterComboName-<n>: "{flustered}  ·  combo", or "New combo"),
+        // what it sets off (CharacterComboState-<n>: "Turns on "hearts" until {/flustered}; plays "blush" and "nod" once.", or why
+        // its parts can't be read), the grey hint in its empty When to use box (CharacterComboHint-<n>: "a combination of {blush},
+        // {hearts} and {nod}") and its Try button's label (CharacterComboTry-<n>: "Try", or "Turn off" while one of its lingering
+        // parts is on); all four read through SafeValuePrefixes. Typing a combo's tag, parts or When to use, its on box and Remove
+        // save, and Try and Turn off change what the character shows, so they need --allow-ui-effects.
+        "CharacterCombosStatus",
         // Companion › Character › Touch zones: how many zones the shown model has, how many are in use and who found them, whether
         // the Thinking model can see (and where pictures go), how Detect zones went (each step while it runs), what the last
         // detection sent (how many pictures, how large, what they showed), which zone the last touch landed in and what it
         // played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows and default reaction).
+        // TouchZonesDetectNote says why Detect zones is off (no model that can see pictures).
         // Detect zones sends the character's pictures to Thinking, Try plays on the character, Open the pictures opens Explorer,
         // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
+        "TouchZonesDetectNote",
         // Companion › Character › Touch temperament: who decided the active persona's temperament (built-in, the Thinking model,
-        // FIXTURE - NOT AI or the owner), its attitude per group and part ("head loves, torso hates, ...", its eyes and the parts
-        // whose touch turns them to your mouse), how deciding went and whether edits saved. Each line's attitude
-        // (TouchTemperamentAttitude-<group or zone ID>, below) is an attitude word, its TouchTemperamentLook-<group or zone ID>
-        // the seconds the eyes then look at your mouse, and TouchTemperamentGaze where the eyes usually go.
-        // Re-decide from personality sends the personality to Thinking, and the rest save, so they need --allow-ui-effects.
-        "TouchTemperamentStatus", "TouchTemperamentSummary", "TouchTemperamentDecision", "TouchTemperamentSaveState", "TouchTemperamentGaze",
+        // FIXTURE - NOT AI or the owner; its help text is the whole temperament in words: "head loves, torso hates, ...", its eyes
+        // and the parts whose touch turns them to your mouse), how deciding went and whether edits saved (both only while they
+        // have something to say). Each line's attitude (TouchTemperamentAttitude-<group or zone ID>, below) is an attitude word,
+        // its TouchTemperamentReaction-/TouchTemperamentReaction2- the reactions, its TouchTemperamentLinger- and
+        // TouchTemperamentLook-<group or zone ID> the seconds the first reaction stays on and the eyes then look at your mouse,
+        // TouchTemperamentAfter the touches in a row before it escalates and TouchTemperamentGaze where the eyes usually go.
+        // Decide (later Re-decide) from personality sends the personality to Thinking, and the rest save, so they need
+        // --allow-ui-effects.
+        "TouchTemperamentStatus", "TouchTemperamentDecision", "TouchTemperamentSaveState", "TouchTemperamentGaze", "TouchTemperamentAfter",
         // Companion › Character › Where the character looks: what the eyes do now and why (your choice, the personality's or
         // the character's own in a reply; a touch's look at your mouse; whether it may change where it looks). Its
         // CharacterGaze-<choice> radio buttons (selected) and CharacterGazeFree check box (checkedState) save
@@ -470,6 +486,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort",
         "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingLocalShare", "DeepThinkingSameStatus",
         "DeepThinkingKeyStatus", "DeepThinkingPoolStatus", "LiveTasks", "LiveJobs", "LiveSong",
+        // Companion › Thinking pool › One of your computers: the rule that computers with a Thinking model join by themselves,
+        // and which computers you keep out (computer names only).
+        "DeepThinkingAutoJoin",
         // Companion › Thinking pool › Pool members: the member count and usable slots, the guidance ("1 slot: long thinking can
         // delay screen and sound summaries; add a second slot for the full experience."), the likely-slowdown warnings (a member
         // beside the conversation's Thinking model or the voice), the live floor's line (which members start no new pool work
@@ -512,6 +531,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // SetupListenStandInDownload button downloads that model, so it needs --allow-ui-effects.
         "SetupJobStandIn-Listening",
         "SetupCloudKeyStatus-Thinking", "SetupCloudKeyStatus-Voice", "SetupCloudKeyStatus-Listening",
+        // Companion › Voice › A cloud provider › ElevenLabs (the owner's cloned voice with tones): whether it is in use, its model,
+        // on and confirmed, whether a key is saved and whether ElevenLabs asked to verify the voice (never the voice's name, its
+        // voice ID or the key); what the key field will do; and the chosen model ("Eleven v4 Turbo (real time, recommended)").
+        // Its abilities and where it runs read through the VoiceEngine prefix (VoiceEngineAbilities-elevenlabs,
+        // VoiceEngineRunsOn-elevenlabs). The voice choice (ElevenLabsVoice) holds the owner's voice names, so it is not readable;
+        // ElevenLabsSave uploads a recording and saves the route, so it needs --allow-ui-effects (and spends money on ElevenLabs).
+        "ElevenLabsStatus", "ElevenLabsKeyStatus", "ElevenLabsModel",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
         "LogSummary", "LogShareStatus", "LogDetail",
         "HostStatus", "PairedHost", "PairCodeHelp", "DockerState", "RolesSummaryText", "HostRunPairAddress", "NetworkStatus",
@@ -599,6 +625,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // (model tag, its size when Martlet knows it and what Thinking keeps using until it's ready). ConfirmationYes downloads
         // it, so it needs --allow-ui-effects.
         "LocalModelDownloadQuestion",
+        // Companion › Thinking, Voice and Listening › Keys from before: the question before a key set aside is removed for good
+        // (which key, by provider or paired computer; never the key). ConfirmationYes removes it, so it needs --allow-ui-effects.
+        "OldKeyRemoveQuestion",
         // Companion › Deep thinking: the question before a Deep thinking model joins a Thinking model on the same graphics card
         // (on a paired computer's Add Deep thinking or This PC's Use Ollama on this PC): the computer, Thinking's model tag and
         // the one-graphics-card-for-each-Thinking-model advice. ConfirmationYes adds or uses it, so it needs --allow-ui-effects.
@@ -672,7 +701,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// click; never the text it copies).</summary>
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
-    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchTemperamentLook-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
+    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default
@@ -707,8 +736,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // reads the role's settings there and opens its dialog, so it needs --allow-ui-effects). Thinking's, Listening's and
         // Lip-sync's computers have the same button for the role they run ("SetupChangeHost-thinking-diva" reads "Change model:
         // conversation model on diva (now gemma4-e4b)").
-        // Each paired computer's Join the Thinking pool box ("DeepThinkingPool-diva" reads "Join the Thinking pool on diva" and
-        // whether it is ticked; ticking it saves thinking-pool.json, so it needs --allow-ui-effects). Each pool member's line
+        // Each paired computer's In the Thinking pool box ("DeepThinkingPool-diva" reads "diva in the Thinking pool" and whether
+        // it is ticked: a computer with a Thinking model joins by itself; unticking takes it out and keeps it out, ticking adds it
+        // again; both save thinking-pool.json, so they need --allow-ui-effects). Its line (DeepThinkingHost-diva) says when a
+        // member is offline now or a computer is kept out. Each pool member's line
         // ("ThinkingPoolMember-0" reads "diva's Thinking pool (qwen3-8b): 2 slots; text only."), its slot choice
         // (ThinkingPoolSlots-0) and its Remove button (ThinkingPoolRemove-0); both save thinking-pool.json, so they need
         // --allow-ui-effects. Its May answer for the conversation box ("ThinkingPoolAnswers-0" reads "diva's Thinking pool
@@ -744,7 +775,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // "WorkSharingOwnFirst-speaking"), each Use box ("WorkSharingUse-speaking-diva-host") and Up/Down buttons
         // ("WorkSharingUp-speaking-diva-host"). Changing any of them saves work-sharing.json and shares it with your other
         // computers, so it needs --allow-ui-effects. Host IDs, device IDs and fixed text only.
-        "WorkSharing"];
+        "WorkSharing",
+        // Companion › Thinking, Voice and Listening › Keys from before: each key Martlet set aside when the job stopped using it
+        // ("SetupOldKey-Thinking-0" reads "Your OpenRouter key" or "The pairing key for diva-host"; never the key) and its
+        // Remove button's name ("SetupOldKeyRemove-Thinking-0" reads "Remove your OpenRouter key"). Remove deletes the key from
+        // Windows Credential Manager after OldKeyRemoveQuestion, so clicking it needs --allow-ui-effects.
+        "SetupOldKey"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

@@ -9,8 +9,9 @@ namespace Martlet.Desktop;
 
 /// <summary>Companion › Character › Emotes and motions: every emote (expression) and motion of the character this PC shows,
 /// plus Martlet's own nod and shake, with the tag replies write for each ({blush}), when to use it, the voice cue that also
-/// sets it off ([laugh] with Chatterbox Turbo, (laughs) with Dia) and whether it is used. The Thinking model names them once
-/// for each new model (Name them with Thinking asks again); edits save as you type, per model, on this PC.</summary>
+/// sets it off ([laugh] with Chatterbox Turbo, (laughs) with Dia) and whether it is used, then the owner's combos of them
+/// (MainWindow.CharacterCombos.cs). The Thinking model names them once for each new model (Name them with Thinking asks
+/// again); edits save as you type, per model, on this PC.</summary>
 public partial class MainWindow
 {
     private readonly CharacterActionService characterActions;
@@ -48,6 +49,7 @@ public partial class MainWindow
                 button.Content = label;
                 AutomationProperties.SetName(button, label);
             }
+            RefreshComboTries();
         });
         characterActions.Changed += () =>
         {
@@ -186,26 +188,31 @@ public partial class MainWindow
 
         var showing = avatar.IsShowing && characterActions.For(avatar.InspectedProfile?.ModelPath) is not null;
         var rows = new List<(CharacterActionSource Source, CheckBox On, TextBox Tag, ComboBox Cue, TextBox Use, CheckBox Stays)>();
+        var comboRows = new List<ComboRow>();
         characterActionTries.Clear();
+        // The emotes as their rows show them now: what is saved, and what the combos' parts name.
+        IReadOnlyList<CharacterAction> CurrentActions() => [.. rows.Select(r => new CharacterAction
+        {
+            Id = r.Source.Id, Enabled = r.On.IsChecked == true,
+            Tag = r.Tag.Text.Trim().Trim('{', '}').Trim().ToLowerInvariant() is { Length: > 0 } tag ? tag : null,
+            Use = r.Use.Text.Trim() is { Length: > 0 } use ? use : null,
+            Cue = r.Cue.SelectedItem as string is { } cue && cue != NoCue ? cue : null,
+            Mode = r.Stays.IsChecked == true ? CharacterActions.Lingering : CharacterActions.Brief
+        })];
         var autoSave = new AutoSave(async () =>
         {
             var current = characterActions.Current;
             if (current is null || !ReferenceEquals(current.Inventory, catalog.Inventory)) return true;
-            var settings = current.Settings with
-            {
-                Actions = rows.Select(r => new CharacterAction
-                {
-                    Id = r.Source.Id, Enabled = r.On.IsChecked == true,
-                    Tag = r.Tag.Text.Trim().Trim('{', '}').Trim().ToLowerInvariant() is { Length: > 0 } tag ? tag : null,
-                    Use = r.Use.Text.Trim() is { Length: > 0 } use ? use : null,
-                    Cue = r.Cue.SelectedItem as string is { } cue && cue != NoCue ? cue : null,
-                    Mode = r.Stays.IsChecked == true ? CharacterActions.Lingering : CharacterActions.Brief
-                }).ToArray()
-            };
-            var why = await characterActions.SaveAsync(settings, lifetime.Token);
+            var actions = CurrentActions();
+            var combos = ReadCombos(comboRows, actions, out var comboProblem);
+            var why = comboProblem ?? await characterActions.SaveAsync(current.Settings with { Actions = actions, Combos = combos }, lifetime.Token);
             saveState.Text = why is null ? "All changes saved." : "Not saved: " + why;
             saveState.SetResourceReference(TextBlock.ForegroundProperty, why is null ? "MutedBrush" : "WarningBrush");
-            if (why is null) offered.Text = Offered(characterActions.Current ?? catalog);
+            if (why is null)
+            {
+                offered.Text = Offered(characterActions.Current ?? catalog);
+                if (characterCombosStatus is not null) characterCombosStatus.Text = CombosStatus(characterActions.Current ?? catalog);
+            }
             return true;
         });
         tabAutoSave = autoSave;
@@ -214,6 +221,8 @@ public partial class MainWindow
             tabEdited = true;
             saveState.Text = "Saving...";
             autoSave.Changed();
+            // A combo's line follows its parts' rows (turned off, stays on, a new tag).
+            foreach (var combo in comboRows) combo.Refresh();
         }
         var cues = new[] { NoCue }.Concat(VoiceTags.Cues).ToArray();
         var index = 0;
@@ -224,22 +233,24 @@ public partial class MainWindow
             {
                 CharacterActionKind.Expression => "emote", CharacterActionKind.Motion => "motion", _ => "Martlet gesture"
             };
-            var on = new CheckBox { IsChecked = action.Enabled, VerticalAlignment = VerticalAlignment.Center };
+            var on = RowSwitch(action.Enabled);
             AutomationProperties.SetName(on, $"Use {source.Name}");
             AutomationProperties.SetAutomationId(on, $"CharacterActionOn-{n}");
             var title = new TextBlock
             {
                 Text = $"{source.Name}  \u00b7  {kind}", FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap,
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0)
+                VerticalAlignment = VerticalAlignment.Center
             };
             AutomationProperties.SetAutomationId(title, $"CharacterActionName-{n}");
-            var tag = new TextBox { Text = action.Tag ?? "", Width = 150, MaxLength = CharacterActionCatalog.MaximumTagLength };
+            var detail = new TextBlock { Text = source.Detail, FontSize = 13, Margin = new Thickness(RowIndent, 1, 8, 0) };
+            detail.SetResourceReference(StyleProperty, "Muted");
+            var tag = Compact(new TextBox { Text = action.Tag ?? "", Width = 120, MaxLength = CharacterActionCatalog.MaximumTagLength });
             AutomationProperties.SetName(tag, $"Tag for {source.Name}");
             AutomationProperties.SetAutomationId(tag, $"CharacterActionTag-{n}");
-            var cue = new ComboBox { ItemsSource = cues, SelectedItem = action.Cue ?? NoCue, MinWidth = 130, MinHeight = 26 };
+            var cue = Compact(new ComboBox { ItemsSource = cues, SelectedItem = action.Cue ?? NoCue, Width = 120 });
             AutomationProperties.SetName(cue, $"Voice cue for {source.Name}");
             AutomationProperties.SetAutomationId(cue, $"CharacterActionCue-{n}");
-            var use = new TextBox { Text = action.Use ?? "", MinWidth = 260, MaxLength = CharacterActionCatalog.MaximumUseLength };
+            var use = Compact(new TextBox { Text = action.Use ?? "", MinWidth = 150, MaxLength = CharacterActionCatalog.MaximumUseLength });
             AutomationProperties.SetName(use, $"When to use {source.Name}");
             AutomationProperties.SetAutomationId(use, $"CharacterActionUse-{n}");
             // Replies get Martlet's own hint while the box is empty; it shows in grey until the owner writes one.
@@ -247,32 +258,18 @@ public partial class MainWindow
             var help = $"What the Thinking model reads next to this tag, so it knows when to use it. Empty: \"{builtIn}\".";
             AutomationProperties.SetHelpText(use, help);
             use.ToolTip = help;
-            var hint = new TextBlock
-            {
-                Text = builtIn, IsHitTestVisible = false, MaxWidth = 420, TextTrimming = TextTrimming.CharacterEllipsis,
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(13, 0, 13, 0),
-                Visibility = use.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed
-            };
-            hint.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
-            AutomationProperties.SetAutomationId(hint, $"CharacterActionHint-{n}");
-            use.TextChanged += (_, _) => hint.Visibility = use.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-            var useBox = new Grid();
-            useBox.Children.Add(use);
-            useBox.Children.Add(hint);
-            // Keeps the width a long hint gave the box, so the box doesn't get narrower when typing hides the hint.
-            useBox.SizeChanged += (_, e) => { if (hint.Visibility == Visibility.Visible) useBox.MinWidth = e.NewSize.Width; };
+            var useBox = WithHint(use, builtIn, $"CharacterActionHint-{n}");
             var stays = new CheckBox
             {
                 Content = "Stays on", IsChecked = CharacterActions.Lingers(source, action), VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(12, 0, 0, 0)
+                Margin = new Thickness(0, 0, 18, 6)
             };
             AutomationProperties.SetName(stays, $"{source.Name} stays on until turned off");
             AutomationProperties.SetAutomationId(stays, $"CharacterActionMode-{n}");
             AutomationProperties.SetHelpText(stays, "On: a reply's tag turns it on and it stays until the reply writes the tag with a slash, " +
                 "such as {/glasses}. Off: it shows for a moment.");
-            var tryIt = PageButton(avatar.Held.Holds(source.Id) ? "Turn off" : "Try", () => TryCharacterActionAsync(source).Forget(),
-                id: $"CharacterActionTry-{n}");
-            tryIt.MinWidth = 60;
+            var tryIt = Compact(PageButton(avatar.Held.Holds(source.Id) ? "Turn off" : "Try", () => TryCharacterActionAsync(source).Forget(),
+                id: $"CharacterActionTry-{n}"));
             tryIt.IsEnabled = showing;
             characterActionTries.Add((source.Id, tryIt));
             on.Checked += (_, _) => Edited();
@@ -284,24 +281,31 @@ public partial class MainWindow
             cue.SelectionChanged += (_, _) => Edited();
             rows.Add((source, on, tag, cue, use, stays));
 
-            var header = new DockPanel { Margin = new Thickness(0, 10, 0, 0) };
+            // Its name with what it changes under it, then its fields: When to use takes the rest of the line, or a line of its own.
+            var named = new DockPanel();
+            named.Children.Add(on);
+            named.Children.Add(title);
+            var heading = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            heading.Children.Add(named);
+            if (source.Detail.Length > 0) heading.Children.Add(detail);
+            var header = new DockPanel { Margin = new Thickness(0, 14, 0, 0) };
             DockPanel.SetDock(tryIt, Dock.Right);
             tryIt.Margin = new Thickness(8, 0, 0, 0);
             header.Children.Add(tryIt);
-            header.Children.Add(on);
-            header.Children.Add(title);
-            var fields = new WrapPanel { Margin = new Thickness(24, 4, 0, 0) };
-            fields.Children.Add(new Label { Content = "Tag {", Target = tag, Padding = new Thickness(0, 4, 4, 4) });
-            fields.Children.Add(tag);
-            fields.Children.Add(new Label { Content = "}   Voice cue", Target = cue, Padding = new Thickness(4, 4, 6, 4) });
-            fields.Children.Add(cue);
-            fields.Children.Add(new Label { Content = "When to use", Target = use, Padding = new Thickness(12, 4, 6, 4) });
-            fields.Children.Add(useBox);
+            header.Children.Add(heading);
+            var fields = new FillWrapPanel { Margin = new Thickness(RowIndent, 6, 0, 0), FillMinimum = 300 };
+            fields.Children.Add(RowGroup(RowLabel("Tag  {", tag, 0, 4), tag, RowLabel("}", tag, 4, 0)));
+            fields.Children.Add(RowGroup(RowLabel("Voice cue", cue), cue));
             fields.Children.Add(stays);
+            var when = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+            when.Children.Add(RowLabel("When to use", use));
+            when.Children.Add(useBox);
+            fields.Children.Add(when);
             stack.Add(header);
             stack.Add(fields);
-            stack.Add(Note(source.Detail, new Thickness(24, 2, 0, 0)));
         }
+        // The owner's combos of these emotes, after them (MainWindow.CharacterCombos.cs).
+        stack.Add(CharacterCombosSection(catalog, comboRows, CurrentActions, Edited, showing));
         return Card([.. stack]);
     }
 

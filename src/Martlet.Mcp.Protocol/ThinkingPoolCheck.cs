@@ -33,6 +33,8 @@ internal static class ThinkingPoolCheck
         {
             file = state,
             useConversationModelWhenEmpty = pool.UseConversationModelWhenEmpty,
+            // The paired computers the owner keeps out (host IDs only): they never join the pool by themselves.
+            leftByOwner = pool.LeftByOwner,
             migratedAt = pool.MigratedAt,
             members = pool.Members.Select(m =>
             {
@@ -220,6 +222,39 @@ internal static class ThinkingPoolCheck
             {
                 try { Directory.Delete(directory, true); } catch (IOException) { }
             }
+        }
+
+        // 8. Auto-join (the production rule, ThinkingPoolAutoJoin): a host with the Thinking pool role joins with its slots, an
+        // Ollama-only host joins unless it does this PC's conversation Thinking, a member on Ollama moves to the role, and a
+        // computer the owner took out, one Sharing work never uses and a full pool are skipped. Sample hosts only.
+        {
+            static ThinkingPoolHost Seen(string id, params ThinkingPoolOffer[] offers) =>
+                new(id, $"https://{id}.local:9443", "sha256/fixture", "desk-pc", Guid.NewGuid(), offers);
+            ThinkingPoolOffer role = new(SelfHostSetup.DeepThinkingRouteId, "qwen3:8b", 2), ollama = new(SelfHostSetup.OllamaRouteId, "gemma4:e4b");
+            var now = DateTimeOffset.UtcNow;
+            var joined = ThinkingPoolAutoJoin.For(new(), Seen("diva", role), null, now: now);
+            var thinker = ThinkingPoolAutoJoin.For(new(), Seen("ripley", ollama), "ripley", now: now);
+            var other = ThinkingPoolAutoJoin.For(new(), Seen("quiet", ollama), "ripley", now: now);
+            var moved = ThinkingPoolAutoJoin.For(other.Pool, Seen("quiet", ollama, role), "ripley", now: now);
+            var left = ThinkingPoolAutoJoin.For(joined.Pool.TakeOut("diva"), Seen("diva", role), null, now: now);
+            var never = ThinkingPoolAutoJoin.For(new(), Seen("diva", role), null,
+                new Martlet.Core.Cluster.WorkSharingSettings().With(new Martlet.Core.Cluster.WorkSharingJob { Job = Martlet.Core.Cluster.WorkSharingJobs.DeepThinking, Never = ["diva"] }), now: now);
+            var full = Enumerable.Range(0, DeepThinkingSettings.MaxPlaces).Aggregate(new ThinkingPoolSettings(),
+                (pool, i) => ThinkingPoolAutoJoin.For(pool, Seen("gpu-" + i, role), null, now: now).Pool);
+            var ninth = ThinkingPoolAutoJoin.For(full, Seen("gpu-8", role), null, now: now);
+            var hostPc = ThinkingPoolAutoJoin.For(new(), Seen("diva", role), null, hostPc: true, now: now);
+            Check("auto-join: a host with the Thinking pool role joins with its slots",
+                joined is { Change: ThinkingPoolHostChange.Joined, Member: { OnHostRole: true, Slots: 2 } } && joined.Pool.Members.Count == 1, joined.Why);
+            Check("auto-join: an Ollama-only host joins unless it does this PC's Thinking",
+                thinker.Change == ThinkingPoolHostChange.None && other is { Change: ThinkingPoolHostChange.Joined, Member.OnHostRole: false },
+                $"ripley: {thinker.Why} quiet: {other.Why}");
+            Check("auto-join: a member on Ollama moves to the Thinking pool role",
+                moved is { Change: ThinkingPoolHostChange.MovedToRole, Member.OnHostRole: true } && moved.Pool.Members.Count == 1, moved.Why);
+            Check("auto-join: kept out, never used, a full pool and a host PC are skipped",
+                left.Change == ThinkingPoolHostChange.None && left.Pool.Left("diva") && left.Pool.Members.Count == 0 &&
+                never.Change == ThinkingPoolHostChange.None && full.Members.Count == DeepThinkingSettings.MaxPlaces &&
+                ninth.Change == ThinkingPoolHostChange.None && hostPc.Change == ThinkingPoolHostChange.None,
+                $"{left.Why} {never.Why} {ninth.Why} {hostPc.Why}");
         }
 
         return new

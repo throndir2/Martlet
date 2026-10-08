@@ -55,7 +55,12 @@ your setup can't.
      look is one model request; while Martlet decides, the level it picked sets
      these, so it may use up to Chatty's 45 (what Companion discloses).
 5. A look sends **one** screenshot (JPEG) with the window title, your persona
-   and recent conversation to the Thinking model. The model is told that real
+   and recent conversation to the Thinking model. The model is told to make an
+   educated guess at what you are doing right now (from the picture, what it saw
+   at its last looks, what you said, what it heard your PC play and the screen
+   summary), and to talk only about that: never about your computer or setup
+   (monitors, windows, apps, tabs, layout, wallpaper or how busy it looks). It is
+   also told that real
    friends stay quiet and to answer exactly `[pass]` unless something is worth a
    remark, never to narrate the screen, repeat itself (it is given what it said
    in the last 30 minutes) or read out private details. A new message, call or
@@ -196,7 +201,7 @@ work as one conversation.
   next replies send: a line that starts with `[Screen]` (or `[Camera]`) and says
   where Martlet looked and what it saw, then its remark or `[pass]`, such as
   *[Screen] You looked at the user's active window "Program.cs - Visual Studio
-  Code": a code editor, a build running.* The source and the window's title (or
+  Code": they're coding, a build is running.* The source and the window's title (or
   the camera's name) are cleaned the way the look's prompt gets them; a look a
   notification or a flashing taskbar button started says so in brackets.
 - **Passes don't pile up.** A look Martlet passes on takes the place of the
@@ -210,7 +215,8 @@ work as one conversation.
 - **What it saw** comes from the reply itself, adding no wait: a look, and a
   reply whose message came with a picture, is told (Companion › Prompts ›
   *What you saw*, the same on every request, so the instructions stay the same)
-  to end with `[seen: a few words]`, after its last sentence or after
+  to end with `[seen: a few words]` on what is going on, mainly what you are
+  doing, after its last sentence or after
   `[pass]`. It is a control tag like the chattiness tags: never shown, spoken,
   captioned or kept as Martlet's words, and as soon as what follows a finished
   sentence can only be it (`[see...`), that sentence goes to the voice. Its

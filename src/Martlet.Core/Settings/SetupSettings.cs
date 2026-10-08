@@ -8,7 +8,7 @@ namespace Martlet.Core.Settings;
 
 public enum SetupRole { Stt, Llm, Tts }
 public enum SetupStep { Choice, Destinations, Credentials, Review }
-public enum SetupRouteType { OpenAi, GatewayOllama, GatewayF5, LocalWhisper, ChatCompletions, LocalWindowsStt, LocalWindowsTts, GatewayStt, LocalParakeet }
+public enum SetupRouteType { OpenAi, GatewayOllama, GatewayF5, LocalWhisper, ChatCompletions, LocalWindowsStt, LocalWindowsTts, GatewayStt, LocalParakeet, ElevenLabs }
 public enum GatewayCancellationMode { DiscardOnly, RequestAbort, CooperativeComputeCancel }
 
 public static class OpenAiSetup
@@ -413,6 +413,9 @@ public sealed record SetupRoute : IContract
     public F5ReferenceSettings? Reference { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public LocalSttPackageSettings? LocalStt { get; init; }
+    /// <summary>For an ElevenLabs route, the saved speaking voice its <see cref="VoiceId"/> was cloned from.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ClonedVoiceSettings? ClonedVoice { get; init; }
     public DestinationConsent? Consent { get; init; }
 
     public DestinationConsent Selection()
@@ -446,9 +449,11 @@ public sealed record SetupRoute : IContract
             RouteSchemaVersion = RouteSchemaVersion,
             Enabled = Enabled,
             SelectionSha256 = SelectionDigest(),
-            AllowNetworkDisclosure = routeType is SetupRouteType.OpenAi or SetupRouteType.ChatCompletions || SelfHostSetup.IsGateway(routeType),
+            AllowNetworkDisclosure = routeType is SetupRouteType.OpenAi or SetupRouteType.ChatCompletions or SetupRouteType.ElevenLabs ||
+                SelfHostSetup.IsGateway(routeType),
             AllowLocalProcess = routeType is SetupRouteType.LocalWhisper or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts or SetupRouteType.LocalParakeet,
-            AllowReferenceAudio = routeType == SetupRouteType.GatewayF5,
+            // An ElevenLabs voice was cloned from an uploaded recording: the owner's consent covers that recording.
+            AllowReferenceAudio = routeType is SetupRouteType.GatewayF5 or SetupRouteType.ElevenLabs,
             AllowPotentialCost = routeType is not (SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts or SetupRouteType.LocalParakeet)
         };
     }
@@ -471,7 +476,7 @@ public sealed record SetupRoute : IContract
     private void ValidateLegacy()
     {
         ContractRules.Require(RouteSchemaVersion is null && Enabled is null && Gateway is null &&
-            GatewayDeviceId is null && GatewaySnapshot is null && Reference is null && LocalStt is null,
+            GatewayDeviceId is null && GatewaySnapshot is null && Reference is null && LocalStt is null && ClonedVoice is null,
             "Legacy routes cannot contain versioned route fields.");
         ContractRules.Require(ProviderAlias == OpenAiSetup.Alias(Role) && Origin == OpenAiSetup.Origin,
             "Only the named OpenAI destination is supported by legacy routes.");
@@ -495,8 +500,17 @@ public sealed record SetupRoute : IContract
             if (routeType == SetupRouteType.LocalWindowsTts) WindowsSpeechSetup.InstalledId(VoiceId);
             else OpenAiSetup.UpstreamId(VoiceId);
         }
+        ContractRules.Require(routeType == SetupRouteType.ElevenLabs || ClonedVoice is null,
+            "Only an ElevenLabs route keeps a cloned voice.");
         switch (routeType)
         {
+            case SetupRouteType.ElevenLabs:
+                ContractRules.Require(Role == SetupRole.Tts && ProviderAlias == ElevenLabsSetup.Alias && Origin == ElevenLabsSetup.Origin &&
+                    ElevenLabsSetup.SupportsModel(ModelId) && ElevenLabsSetup.IsVoiceId(VoiceId) && ClonedVoice is not null &&
+                    Gateway is null && GatewayDeviceId is null && GatewaySnapshot is null && Reference is null && LocalStt is null,
+                    "The ElevenLabs route needs its exact origin, a supported model and the voice cloned from one of your recordings.");
+                ClonedVoice!.Validate();
+                break;
             case SetupRouteType.LocalWindowsStt:
             case SetupRouteType.LocalWindowsTts:
                 var stt = routeType == SetupRouteType.LocalWindowsStt;
@@ -565,7 +579,7 @@ public sealed record SetupRoute : IContract
             ContractRules.Require(routeType switch
             {
                 SetupRouteType.OpenAi or SetupRouteType.ChatCompletions or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts or
-                    SetupRouteType.LocalParakeet => true,
+                    SetupRouteType.LocalParakeet or SetupRouteType.ElevenLabs => true,
                 SetupRouteType.GatewayOllama or SetupRouteType.GatewayStt => GatewaySnapshot is not null && CredentialId is not null,
                 SetupRouteType.GatewayF5 => GatewaySnapshot is not null && CredentialId is not null && Reference is not null,
                 SetupRouteType.LocalWhisper => LocalStt is not null,
@@ -600,7 +614,7 @@ public sealed record SetupRoute : IContract
             Enabled = RouteType switch
             {
                 null => null,
-                SetupRouteType.OpenAi or SetupRouteType.ChatCompletions => Enabled,
+                SetupRouteType.OpenAi or SetupRouteType.ChatCompletions or SetupRouteType.ElevenLabs => Enabled,
                 _ => false
             },
             ConfigurationRevision = Guid.NewGuid()
@@ -644,6 +658,7 @@ public sealed record SetupRoute : IContract
     {
         null or SetupRouteType.OpenAi => $"openai:{Role}",
         SetupRouteType.ChatCompletions => $"chat-completions:{Origin}",
+        SetupRouteType.ElevenLabs => $"elevenlabs:{Origin}",
         SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 or SetupRouteType.GatewayStt =>
             $"gateway:{RouteType}:{Gateway!.Origin}:{Gateway.HostId}:{Gateway.SpkiFingerprint}:{Gateway.DeviceRole}",
         _ => $"none:{RouteType}"
@@ -685,6 +700,13 @@ public sealed record CredentialScopeSettings : IContract
             ContractRules.Require(Origin == OpenAiSetup.Origin && HostId is null &&
                 SpkiFingerprint is null && DeviceRole is null && DeviceId is null,
                 "The OpenAI credential cleanup scope is invalid.");
+            return;
+        }
+        if (RouteType == SetupRouteType.ElevenLabs)
+        {
+            ContractRules.Require(ProviderAlias == ElevenLabsSetup.Alias && Origin == ElevenLabsSetup.Origin && HostId is null &&
+                SpkiFingerprint is null && DeviceRole is null && DeviceId is null,
+                "The ElevenLabs credential cleanup scope is invalid.");
             return;
         }
         ContractRules.Require(SelfHostSetup.IsGateway(RouteType),
@@ -811,7 +833,7 @@ public sealed record SetupSettings : IContract
                     SetupRouteType.OpenAi => removal.Scope.ProviderAlias == OpenAiSetup.Alias(removal.Role),
                     SetupRouteType.ChatCompletions => removal.Role == SetupRole.Llm,
                     SetupRouteType.GatewayOllama => removal.Role == SetupRole.Llm,
-                    SetupRouteType.GatewayF5 => removal.Role == SetupRole.Tts,
+                    SetupRouteType.GatewayF5 or SetupRouteType.ElevenLabs => removal.Role == SetupRole.Tts,
                     SetupRouteType.GatewayStt => removal.Role == SetupRole.Stt,
                     _ => false
                 }), "The pending credential cleanup scope does not match its role.");
@@ -868,6 +890,7 @@ public sealed record SetupSettings : IContract
                     GatewaySnapshot = null,
                     Reference = null,
                     LocalStt = null,
+                    ClonedVoice = null,
                     Consent = null
                 };
                 return legacy with { Consent = route.Consent is null ? null : legacy.Selection() };
@@ -1081,7 +1104,7 @@ public sealed record SetupSettings : IContract
         var old = settings.Setup!.Routes.SingleOrDefault(item => item.Role == route.Role);
         if (old is not null && settings.Setup.PendingRemovals.Any(item => item.Role == route.Role && SelfHostSetup.IsGateway(item.Scope?.RouteType)))
             ContractRules.Require(old.CredentialScope() == route.CredentialScope(),
-                "Remove this role's detached gateway credential before changing its host, pin or route type.");
+                "Remove this job's old pairing key under Keys from before on its Companion page before changing its computer or route.");
         var updated = settings with
         {
             Setup = settings.Setup! with
@@ -1099,7 +1122,7 @@ public sealed record SetupSettings : IContract
     {
         settings.Validate();
         if (previous?.CredentialId is not { } id ||
-            previous.RouteType is not (null or SetupRouteType.OpenAi or SetupRouteType.ChatCompletions))
+            previous.RouteType is not (null or SetupRouteType.OpenAi or SetupRouteType.ChatCompletions or SetupRouteType.ElevenLabs))
             return settings;
         var setup = settings.Setup!;
         if (setup.Routes.Any(route => route.CredentialId == id) ||
@@ -1113,7 +1136,7 @@ public sealed record SetupSettings : IContract
                 {
                     Role = previous.Role,
                     CredentialId = id,
-                    Scope = previous.RouteType == SetupRouteType.ChatCompletions
+                    Scope = previous.RouteType is SetupRouteType.ChatCompletions or SetupRouteType.ElevenLabs
                         ? CredentialScopeSettings.From(previous)
                         : null
                 }).ToArray()
@@ -1132,6 +1155,12 @@ public sealed record SetupSettings : IContract
                 : item.Scope is { RouteType: SetupRouteType.ChatCompletions } scope && scope.Origin == chatBaseUrl))
             .Reverse().ToArray();
 
+    /// <summary>ElevenLabs keys set aside (listed for removal) when Voice left ElevenLabs, newest first.</summary>
+    public static IReadOnlyList<PendingCredentialRemoval> SetAsideElevenLabsCredentials(AppSettings? settings) =>
+        (settings?.Setup?.PendingRemovals ?? []).Where(item => item.Role == SetupRole.Tts &&
+                item.Scope is { RouteType: SetupRouteType.ElevenLabs } scope && scope.Origin == ElevenLabsSetup.Origin)
+            .Reverse().ToArray();
+
     /// <summary>Uses a key set aside earlier again for the role's route, which must be keyless and at the key's exact
     /// destination: switching back to a provider needs no key typed again. The key leaves the removal list.</summary>
     public static AppSettings ReattachSetAsideCredential(AppSettings settings, PendingCredentialRemoval removal)
@@ -1141,8 +1170,9 @@ public sealed record SetupSettings : IContract
         var setup = settings.Setup!;
         var route = setup.Routes.SingleOrDefault(item => item.Role == removal.Role);
         ContractRules.Require(setup.PendingRemovals.Contains(removal) && route is { CredentialId: null } &&
-            route.RouteType is SetupRouteType.OpenAi or SetupRouteType.ChatCompletions &&
-            SetAsideCredentials(settings, removal.Role, route.RouteType == SetupRouteType.ChatCompletions ? route.Origin : null).Contains(removal),
+            (route.RouteType is SetupRouteType.OpenAi or SetupRouteType.ChatCompletions &&
+                SetAsideCredentials(settings, removal.Role, route.RouteType == SetupRouteType.ChatCompletions ? route.Origin : null).Contains(removal) ||
+             route.RouteType == SetupRouteType.ElevenLabs && SetAsideElevenLabsCredentials(settings).Contains(removal)),
             "Only a key set aside for this job's exact destination can be used again.");
         var updated = settings with
         {
@@ -1154,7 +1184,7 @@ public sealed record SetupSettings : IContract
     public static string Describe(AppSettings? settings)
     {
         if (settings?.Setup is not { } setup)
-            return "Setup not started. Open Setup / resume.";
+            return "Setup not started. Choose Thinking, Voice and Listening on the Companion page.";
         var lines = new List<string>
         {
             $"Setup checkpoint: {setup.Checkpoint}.",
@@ -1177,7 +1207,7 @@ public sealed record SetupSettings : IContract
                 : NeedsCredential(route)
                     ? route.CredentialId is null ? "key missing" : "key saved"
                     : "no key needed";
-            var status = route.RouteType is null or SetupRouteType.OpenAi or SetupRouteType.ChatCompletions ||
+            var status = route.RouteType is null or SetupRouteType.OpenAi or SetupRouteType.ChatCompletions or SetupRouteType.ElevenLabs ||
                 route.RouteType is SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts or SetupRouteType.LocalParakeet
                     ? enabled ? "ready when you use it" : "off"
                     : EvidenceReady(route) && enabled ? "ready when you use it" : "needs setup";
@@ -1222,6 +1252,7 @@ public sealed record SetupSettings : IContract
         SetupRouteType.GatewayOllama => "paired-host model",
         SetupRouteType.GatewayF5 => "paired-host voice",
         SetupRouteType.GatewayStt => "paired-host speech recognition",
+        SetupRouteType.ElevenLabs => "ElevenLabs voice",
         _ => "selected route"
     };
 }

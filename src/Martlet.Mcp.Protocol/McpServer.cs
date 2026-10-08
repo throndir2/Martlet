@@ -560,13 +560,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "(lingering emotes add their {/tag} off tags); with showing (tags the character would show now, as \"glasses\" or " +
             "\"glasses:12\" for 12 minutes) also showingNote, the line the newest message's notes get; " +
             "and the Thinking naming prompt. With voiceTag (a voice's tag such as \"[laugh]\" or \"(sighs)\", or a reply tag such as " +
-            "\"{nod}\" or \"{/glasses}\"), also what it sets off (setsOff: kind, name and whether it holds; with several expressions or motions " +
-            "on one cue, one picked at random) or turns off (turnsOff). " +
+            "\"{nod}\", \"{/glasses}\" or a combo's \"{flustered}\" or \"{/flustered}\"), also what it sets off (setsOff: kind, name and " +
+            "whether it holds; with several expressions or motions on one cue, one picked at random; a combo's parts that are on) or " +
+            "turns off (turnsOff: the lingering emote, or a combo's lingering parts) and the combo it names (combo). " +
+            "Also the owner's combos for the model (combos: n as in CharacterComboTag-<n>, tag, each part's id, kind, name, tag, " +
+            "whether it is on and its mode, use, hint, whether it is on, whether it has a lingering part and whether replies are " +
+            "offered it); with combos (strings such as \"flustered: blush hearts nod | when flattered\", parsed as the Combos " +
+            "section's boxes are) those replace the saved ones, or combosProblem says why they can't be saved. " +
             "With answer (a simulated Thinking reply such as \"1: blush | - | when shy\"), also what the " +
             "production parser makes of it. Reads only; contacts nothing and never returns the model's path.", new
         {
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, engine = new { type = "string" },
-            answer = new { type = "string" }, voiceTag = new { type = "string" }, showing = new { type = "array", items = new { type = "string" } }
+            answer = new { type = "string" }, voiceTag = new { type = "string" }, showing = new { type = "array", items = new { type = "string" } },
+            combos = new { type = "array", items = new { type = "string" } }
         }),
         Tool("character_physical_check", "What Martlet makes of a stroke across the locked character and of moves and zooms " +
             "(Martlet.Avatar.Hosting CharacterStrokes and CharacterPhysicalWords with Martlet.Conversation's TouchLedger), headless, " +
@@ -875,7 +881,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             id = new { type = "string", maxLength = 64 }
         }),
         Tool("character_status", "Read Companion > Personality and Character as saved in a data directory (they save on their own, " +
-            "with no Save button): the personas (name, whether Martlet uses it, response-style weights, speech breaks, instruction " +
+            "with no Save button): the personas (name, whether Martlet uses it, speech breaks, instruction " +
             "length; never the instructions), the character model (built-in character name or the own model's file type, never its " +
             "path; renderer, lip-sync mode, show at startup, the lip-sync host's ID), whether the character's position is locked on " +
             "this PC and where (placement), whether Martlet's voice is muted (voice: Speak Martlet's replies aloud, which the " +
@@ -1438,6 +1444,27 @@ internal sealed class McpServer(DesktopAutomation desktop)
             scenario = new { type = "string", @enum = QuickSoundCheck.Scenarios },
             delayMs = new { type = "integer", @enum = new[] { 500, 700, 1000, 1500 } }
         }),
+        Tool("elevenlabs_check", "Rehearse ElevenLabs as the Voice (the owner's cloned voice with tones) end to end against a local " +
+            "fixture on 127.0.0.1 that follows ElevenLabs' documented protocol (FIXTURE, NOT ElevenLabs, NOT AI: its voice is a quiet " +
+            "tone): Instant Voice Cloning (POST /v1/voices/add with a synthetic WAV; clone.sent shows the form Martlet sent), one " +
+            "segment straight through the Text to Dialogue WebSocket client (segment: its audio and fixture timings), and a whole " +
+            "spoken reply through the production conversation runtime (a fixture Chat Completions endpoint streams reply, by default " +
+            "one with [laughs], [whispers] and [happy], a word at a time; a fixture speaker plays nothing). ok needs the Thinking " +
+            "prompt to list ElevenLabs' own tags (thinkingPrompt), every tag the reply wrote to reach ElevenLabs as written " +
+            "(tags.reachedElevenLabs), the chat text and every caption to show none (tags.chatClean, tags.captionsClean), and each " +
+            "connection to carry model_id, output_format=pcm_24000, the key in the xi-api-key header (never the body), the one cloned " +
+            "voice and close_socket (protocol). scenario: reply (default), model-refused (the WebSocket refuses the model with " +
+            "param model_id, as its API reference describes: the voice fails as ModelUnsupported and segment.detail says to choose " +
+            "Eleven v3 Conversational; the text still completes) or bad-key (a wrong key: cloning and speech fail as Authentication). " +
+            "model is eleven_v4_turbo (default) or eleven_v3_conversational. With dataDirectory, saved reports the saved ElevenLabs " +
+            "choice (route, model, on, confirmed, key saved, cloned voice saved, verification asked, keys from before; never the key, " +
+            "voice ID or voice name). Nothing is sent to ElevenLabs: live is always NOT RUN.", new
+        {
+            scenario = new { type = "string", @enum = ElevenLabsCheck.Scenarios },
+            model = new { type = "string", @enum = Martlet.Core.Settings.ElevenLabsSetup.ModelIds },
+            reply = new { type = "string", maxLength = 1024 },
+            dataDirectory = new { type = "string" }
+        }),
         Tool("live_floor_status", "The live floor (the live conversation turn comes before all background work) from a data directory: " +
             "what the conversation runs on (its Thinking, voice and listening routes, each on this PC, a computer on the home network " +
             "or a cloud provider, with the paired hosts and routes the floor holds while you talk), which Thinking pool members share " +
@@ -1766,6 +1793,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "thinking_pool_status" => await ThinkingPoolCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "quick_sounds_status" => QuickSoundCheck.Status(DataDirectory(arguments)),
                 "quick_sounds_check" => await QuickSoundCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),
+                "elevenlabs_check" => await ElevenLabsCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalString(arguments, "model"),
+                    OptionalString(arguments, "reply"), OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), cancellation),
                 "thinking_pool_check" => await ThinkingPoolCheck.RunAsync(cancellation),
                 "backup_thinking_check" => await BackupThinkingCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),
                 "live_floor_status" => await LiveFloorCheck.StatusAsync(DataDirectory(arguments), cancellation),
@@ -2505,6 +2534,33 @@ internal sealed class McpServer(DesktopAutomation desktop)
             prompts = Martlet.Core.Settings.SettingsJson.Read(File.ReadAllBytes(Path.Combine(directory, "settings.json"))).Prompts;
         var saved = directory is null ? null : Martlet.Avatar.Hosting.CharacterActions.Load(directory, inventory.ModelId);
         var catalog = new Martlet.Avatar.Hosting.CharacterActionCatalog(inventory, Martlet.Avatar.Hosting.CharacterActions.Merge(inventory, saved));
+        // Combos to rehearse ("flustered: blush hearts nod | when flattered"), read as the Combos section's boxes are; they replace
+        // the saved combos when they could be saved.
+        string? combosProblem = null;
+        if (OptionalStrings(arguments, "combos") is { } comboLines)
+        {
+            var written = new List<Martlet.Avatar.Hosting.CharacterCombo>();
+            foreach (var line in comboLines)
+            {
+                var halves = line.Split('|', 2);
+                var colon = halves[0].IndexOf(':');
+                var ids = Martlet.Avatar.Hosting.CharacterActions.ParseParts(colon < 0 ? "" : halves[0][(colon + 1)..], catalog.Settings.Actions,
+                    out var why);
+                if (ids is null)
+                {
+                    combosProblem ??= why;
+                    continue;
+                }
+                written.Add(new()
+                {
+                    Tag = (colon < 0 ? halves[0] : halves[0][..colon]).Trim().Trim('{', '}').Trim().ToLowerInvariant(), Parts = ids,
+                    Use = halves.Length > 1 && halves[1].Trim() is { Length: > 0 } use ? use : null
+                });
+            }
+            var rehearsed = catalog.Settings with { Combos = written.Count == 0 ? null : written };
+            combosProblem ??= Martlet.Avatar.Hosting.CharacterActions.Problem(rehearsed);
+            if (combosProblem is null) catalog = catalog with { Settings = rehearsed };
+        }
         var key = OptionalString(arguments, "engine");
         var engine = key is null or "none" ? null
             : Martlet.Core.Settings.SpeechEngines.ForKey(key) ?? throw new ArgumentException($"Unknown voice engine '{key}'.");
@@ -2559,12 +2615,28 @@ internal sealed class McpServer(DesktopAutomation desktop)
             engine = engine?.Key, actions = Describe(catalog),
             replyPrompt = reply?.Instructions, replyTags = reply?.Tags, showingNote = reply?.Showing,
             namingPrompt = naming is { } ask ? new { instructions = ask.Instructions, list = ask.List } : null,
+            combos = catalog.Combos.Select((c, n) => new
+            {
+                n, tag = c.Tag,
+                parts = c.Parts.Select(id => catalog.Entries.FirstOrDefault(e => e.Source.Id == id) is { Source: { } source } part
+                    ? new
+                    {
+                        id, kind = source.Kind.ToString().ToLowerInvariant(), name = source.Name, tag = part.Action.Tag, enabled = part.Action.Enabled,
+                        mode = part.Action.Mode ?? Martlet.Avatar.Hosting.CharacterActions.DefaultMode(source, part.Action.Tag)
+                    }
+                    : new { id, kind = "missing", name = id, tag = (string?)null, enabled = false, mode = "" }).ToArray(),
+                use = c.Use, hint = catalog.Hint(c), enabled = c.Enabled, lingers = catalog.Lingers(c),
+                offered = reply?.Tags.Contains("{" + c.Tag + "}") == true
+            }).ToArray(),
+            combosProblem,
             voiceTag, setsOff = voiceTag is null ? null
                 : catalog.For(voiceTag).Select(s => new
                 {
                     kind = s.Kind.ToString().ToLowerInvariant(), name = s.Name, holds = voiceTag.StartsWith('{') && catalog.Lingers(s)
                 }).ToArray(),
-            turnsOff = voiceTag is not null && catalog.Off(voiceTag) is { } off ? new { kind = off.Kind.ToString().ToLowerInvariant(), name = off.Name } : null,
+            turnsOff = voiceTag is null ? null : catalog.Off(voiceTag).Select(off => new { kind = off.Kind.ToString().ToLowerInvariant(), name = off.Name })
+                .ToArray(),
+            combo = voiceTag is not null && catalog.Combo(voiceTag) is { } voiceCombo ? voiceCombo.Tag : null,
             parsed
         };
     }
@@ -3428,11 +3500,6 @@ internal sealed class McpServer(DesktopAutomation desktop)
             personas = companion?.Personas.Select(p => new
             {
                 name = p.Name, active = p.Id == companion.ActivePersonaId, instructionCharacters = p.Text.Length,
-                styles = new
-                {
-                    helpful = p.Styles.Helpful, sarcastic = p.Styles.Sarcastic, silly = p.Styles.Silly,
-                    distracted = p.Styles.Distracted, playfulTeasing = p.Styles.PlayfulTeasing
-                },
                 speechBreaks = Breaks(p.SpokenBreaks)
             }).ToArray() ?? []
         };

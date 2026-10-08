@@ -13,12 +13,6 @@ public sealed record PromptDefinition(string Id, string Group, string Title, str
 public static class PromptCatalog
 {
     public const string Persona = "persona";
-    public const string Style = "style";
-    public const string StyleHelpful = "style_helpful";
-    public const string StyleSarcastic = "style_sarcastic";
-    public const string StyleSilly = "style_silly";
-    public const string StyleDistracted = "style_distracted";
-    public const string StylePlayfulTeasing = "style_playful_teasing";
     public const string ReplyLength = "reply_length";
     public const string ShortFirstSentence = "short_first_sentence";
     public const string Listening = "listening";
@@ -195,8 +189,8 @@ public static class PromptCatalog
         "or camera and what plays on their PC. There are three levels:\n" +
         "quiet: speak up only when something is clearly remarkable or they'd want to know; otherwise [{silent}].\n" +
         "normal: say something when it's worth saying; otherwise [{silent}].\n" +
-        "chatty: react more often to what happens, like a friend enjoying it with them, but never to what merely sits on " +
-        "screen, and still [{silent}] when nothing new happened.\n" +
+        "chatty: react more often to what they do and what happens, like a friend enjoying it with them, but never to their " +
+        "setup or what merely sits on screen, and still [{silent}] when nothing new happened.\n" +
         "Levels only change remarks nobody asked for: always answer the user when they talk to you. Martlet's notes say your " +
         "level right now. Change it whenever what's happening or what the user says calls for it: go quiet when they're " +
         "focused, busy, on a call, watching or listening closely, seem tired of your remarks or ask for quiet; go chatty when " +
@@ -292,20 +286,6 @@ public static class PromptCatalog
             "safety constraints, routing, factual accuracy, or available tools.\n\n" +
             "Companion name: {name}\nPersona:\n{persona}",
             ["name", "persona"]),
-        new(Style, ConversationGroup, "Style for this message",
-            "The reply's style while a persona is selected: with the instructions when the persona has one style, otherwise in the " +
-            "notes of the message whenever the picked style changes. {style} is the style picked (the style prompts below).",
-            "Dominant style for this reply: {style}", ["style"]),
-        new(StyleHelpful, ConversationGroup, "Style: helpful", "Fills {style} in the style prompt when the reply's style is helpful.",
-            "helpful. Prioritize a clear, useful, honest answer.", []),
-        new(StyleSarcastic, ConversationGroup, "Style: sarcastic", "Fills {style} when the reply's style is sarcastic.",
-            "sarcastic. Use gentle sarcasm without obscuring facts or the answer.", []),
-        new(StyleSilly, ConversationGroup, "Style: silly", "Fills {style} when the reply's style is silly.",
-            "silly. Be playful while keeping the answer accurate and understandable.", []),
-        new(StyleDistracted, ConversationGroup, "Style: distracted", "Fills {style} when the reply's style is distracted.",
-            "distracted. Sound casually distractible without inventing observations or omitting necessary facts.", []),
-        new(StylePlayfulTeasing, ConversationGroup, "Style: playful teasing", "Fills {style} when the reply's style is playful teasing.",
-            "playful teasing. Keep banter harmless; never harass, deceive, sabotage, or withhold a needed answer.", []),
         new(ReplyLength, ConversationGroup, "Reply length",
             "Closes the instructions of every reply to what you typed or said, after persona and the other instructions.",
             DefaultReplyLengthInstructions, []),
@@ -496,7 +476,7 @@ public static class PromptCatalog
             []),
         new(Notes, ConversationGroup, "Notes with messages",
             "Opens the first notes in the conversation sent. Whatever changes from message to message " +
-            "(new lorebook entries and remembered facts, who is talking, smart home results, a new style) goes with the message, " +
+            "(new lorebook entries and remembered facts, who is talking, smart home results) goes with the message, " +
             "after the conversation so far, and only when it is new, so the start of every request stays the same and the model's " +
             "prompt cache can reuse it. {label} is the notes' marker.",
             "Some user messages end with Martlet's notes between [{label}] and [/{label}]: background and instructions from Martlet, " +
@@ -508,13 +488,19 @@ public static class PromptCatalog
             "Instructions for a look at your screen. The chattiness line follows.",
             "You can see the user's screen: the attached image is what they are looking at right now, which may include the " +
             "taskbar and pop-up notifications. You are hanging out with them like a friend in the room while they play or work.\n" +
-            "Real friends stay quiet most of the time. Reply with exactly [{silent}] unless something is genuinely worth a remark " +
-            "right now: a notable moment, a win or a fail, something funny or surprising, a clear change of scene, a quick tip they " +
-            "would welcome, or a new message, call or reminder they may want to know about.\n" +
-            "React to what the user does and what just happened, never to what merely sits on screen: apps, menus, sidebars, " +
-            "friend or contact lists, server or channel lists, open tabs and other things that are just there are never worth a " +
-            "remark (not \"That's a lot of Discord friends!\" or \"Nice wallpaper!\"). If you can't tie a remark to something " +
-            "that just changed or that they just did, reply [{silent}].\n" +
+            "First make a quick educated guess, to yourself, at what they are doing right now (playing, watching, coding, writing, " +
+            "chatting, reading, shopping...) and what they are trying to do. Use this picture, what you saw at your last looks, " +
+            "what they said lately, what you heard playing on their PC and Martlet's notes on how their screen changed.\n" +
+            "Real friends stay quiet most of the time. Reply with exactly [{silent}] unless something about what they are doing is " +
+            "genuinely worth a remark right now: a notable moment, a win or a fail, progress or a setback, something funny or " +
+            "surprising, a switch to something new, a quick tip they would welcome, or a new message, call or reminder they may " +
+            "want to know about.\n" +
+            "If you speak, talk about that activity like a friend glancing over (\"Ooh, that boss is almost down!\" or \"Nice, the " +
+            "build went green.\"); when you aren't sure, a light guess is fine. Never comment on their computer or setup: how many " +
+            "monitors, windows, apps or tabs, the layout, wallpaper, icons, theme or taskbar, or how busy or complicated it looks " +
+            "(not \"Wow, you have such a complicated setup!\", \"That's a lot of Discord friends!\" or \"Nice wallpaper!\"). " +
+            "Menus, sidebars, contact, server or channel lists and anything else that is just there are never worth a remark. If " +
+            "you can't tie a remark to what they are doing or what just happened, reply [{silent}].\n" +
             "Never describe or narrate the screen, never mention images or screenshots, never repeat or paraphrase something you said recently, " +
             "and never ask them to answer. For a message or notification, say only who or which app it is from, like \"Sam just messaged " +
             "you\"; never read out the message itself or other private details you can see (messages, emails, numbers).\n" +
@@ -538,8 +524,8 @@ public static class PromptCatalog
         new(ChattinessNormal, VisionGroup, "Chattiness: normal", "Closes the glance instructions when vision is normal.",
             "Answer [{silent}] unless it is worth saying.", ["silent"]),
         new(ChattinessChatty, VisionGroup, "Chattiness: chatty", "Closes the glance instructions when vision is chatty.",
-            "You are in a chatty mood: react more readily to what happens, but never to what merely sits on screen, and still " +
-            "answer [{silent}] when nothing new happened.", ["silent"]),
+            "You are in a chatty mood: react more readily to what the user is doing, but never to their setup or what merely sits " +
+            "on screen, and still answer [{silent}] when nothing new happened.", ["silent"]),
         new(ChattinessDecides, VisionGroup, "Chattiness: Martlet decides",
             "Closes the glance instructions, and is added to replies to what this PC plays and to your messages while vision is on " +
             "or Martlet hears this PC, when How often it comments is Martlet decides. It stays the same from message to message. " +
@@ -552,7 +538,7 @@ public static class PromptCatalog
             "Your chattiness right now: {level}.", ["level"]),
         new(GlanceScreen, VisionGroup, "Screen glance message",
             "The message sent with each screenshot. {title} is the active window's title; {remarks} is the line below when Martlet already said something.",
-            "(Screen glance. Active window: \"{title}\".{remarks} Reply [{silent}] or one short remark.)",
+            "(Screen glance. Active window: \"{title}\".{remarks} Reply [{silent}] or one short remark on what they're doing.)",
             ["title", "remarks", "silent"]),
         new(GlanceCamera, VisionGroup, "Camera look message",
             "The message sent with each camera image. {title} is the camera's name; {remarks} is the line below when Martlet already said something.",
@@ -588,8 +574,9 @@ public static class PromptCatalog
             "what the picture shows, never shown or spoken. Martlet keeps them in the conversation (as a [Screen] or [Camera] " +
             "line) instead of the picture, which is never kept. {silent} is the word for staying quiet. Empty it and the " +
             "conversation keeps only where Martlet looked.",
-            "When you get a picture, end your answer (also after [{silent}]) with [seen: a few words on what it shows right " +
-            "now], like [seen: a racing game, final lap, they're in first]: at most 12 plain words, once, at the very end. It is " +
+            "When you get a picture, end your answer (also after [{silent}]) with [seen: a few words on what is going on right " +
+            "now, mainly what the user is doing], like [seen: they're racing, final lap, in first]: at most 12 plain words, once, " +
+            "at the very end. It is " +
             "never shown or spoken; it only helps you remember what you saw. Never put private details in it (messages, emails, " +
             "names in them, numbers).",
             ["silent"]),
@@ -606,8 +593,9 @@ public static class PromptCatalog
             "taken), then the text read on them. The one or two lines it answers go with your next message as a note; " +
             "[{silent}] means nothing changed. A reply never waits for it.",
             "This picture holds {count} small screenshots of the user's screen from the last {seconds} seconds, oldest first: " +
-            "{panels}. In one or two short lines, say what changed over that time, like a note to yourself: \"They switched " +
-            "from VS Code to a boss fight; health dropped to 20%.\" Name apps, games, places and numbers you can see. Never " +
+            "{panels}. In one or two short lines, say what the user did and what changed over that time, like a note to " +
+            "yourself: \"They switched from VS Code to a boss fight; health dropped to 20%.\" Name the apps, games, places and " +
+            "numbers that show what they are doing; skip their setup and what only sits on screen. Never " +
             "copy private details (messages, emails, names in them, account numbers). If nothing worth noting changed, answer " +
             "exactly [{silent}]. Answer with the note only.",
             ["count", "seconds", "panels", "silent"]),
@@ -692,8 +680,10 @@ public static class PromptCatalog
 
     public static PromptDefinition? Find(string id) => ById.GetValueOrDefault(id);
 
-    /// <summary>Prompts an older Martlet had (the Thinking model's character palettes); their saved edits are dropped.</summary>
-    public static bool Retired(string id) => id is "character_theme";
+    /// <summary>Prompts an older Martlet had (the Thinking model's character palettes, and the response styles a reply was
+    /// picked from); their saved edits are dropped.</summary>
+    public static bool Retired(string id) => id is "character_theme" or "style" or "style_helpful" or "style_sarcastic" or
+        "style_silly" or "style_distracted" or "style_playful_teasing";
 
     /// <summary>Prompts that are the message itself, so they can't be emptied.</summary>
     public static bool Required(string id) => id is GlanceScreen or GlanceCamera or GlanceAttention or BackgroundThink or BackgroundDone or ReminderDue or
@@ -716,10 +706,19 @@ public sealed partial record PromptSettings : IContract
     public required IReadOnlyDictionary<string, string> Overrides
     {
         get => overrides;
-        init => overrides = value is not null && value.Keys.Any(PromptCatalog.Retired)
-            ? value.Where(e => !PromptCatalog.Retired(e.Key)).ToDictionary(e => e.Key, e => e.Value, StringComparer.Ordinal)
+        init => overrides = value is not null && (value.Keys.Any(PromptCatalog.Retired) || StyleLines(value))
+            ? value.Where(e => !PromptCatalog.Retired(e.Key)).ToDictionary(e => e.Key,
+                e => e.Key == PromptCatalog.Persona ? WithoutStyleLines(e.Value) : e.Value, StringComparer.Ordinal)
             : value!;
     }
+
+    // A Persona prompt edited in an older Martlet can still have the {style} line it had then ("Dominant style for this reply:
+    // {style}"). There are no response styles now, so those lines are dropped instead of sent as written.
+    private static bool StyleLines(IReadOnlyDictionary<string, string> edits) =>
+        edits.TryGetValue(PromptCatalog.Persona, out var persona) && persona?.Contains("{style}", StringComparison.Ordinal) == true;
+
+    private static string WithoutStyleLines(string text) => text?.Contains("{style}", StringComparison.Ordinal) != true ? text! :
+        string.Join('\n', text.Split('\n').Where(line => !line.Contains("{style}", StringComparison.Ordinal))).TrimEnd();
 
     [JsonIgnore]
     public bool IsDefault => Overrides.Count == 0;

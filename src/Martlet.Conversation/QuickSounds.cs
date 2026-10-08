@@ -227,7 +227,7 @@ public static class QuickSoundLibrary
     public static string Character(Guid? persona) => persona is { } id && id != Guid.Empty ? id.ToString("N") : "none";
 
     /// <summary>The voice a Voice route speaks with, as quick sounds know it: its exact identity (for <see cref="Key"/>), the voice
-    /// in words (no secrets) and whether it is a paid cloud voice (OpenAI's); null for a route Martlet can't make them with. A
+    /// in words (no secrets) and whether it is a paid cloud voice (OpenAI's or ElevenLabs'); null for a route Martlet can't make them with. A
     /// paired host's voice is its engine and model with the applied reference voice and revision, so a new recording makes them
     /// again.</summary>
     public static (string Identity, string Words, bool Paid)? Voice(SetupRoute? tts) => tts switch
@@ -239,6 +239,8 @@ public static class QuickSoundLibrary
                 $"{tts.ModelId} on {gateway.HostId}", false),
         { RouteType: null or SetupRouteType.OpenAi, VoiceId: { Length: > 0 } openAi } =>
             ($"openai|{tts.ModelId}|{openAi}", $"OpenAI {tts.ModelId} ({openAi})", true),
+        { RouteType: SetupRouteType.ElevenLabs, VoiceId: { Length: > 0 } cloned } =>
+            ($"elevenlabs|{tts.ModelId}|{cloned}", $"ElevenLabs {tts.ModelId} (your cloned voice)", true),
         _ => null
     };
 
