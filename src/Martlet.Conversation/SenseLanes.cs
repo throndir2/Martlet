@@ -24,7 +24,9 @@ public sealed record SenseJob
     /// Only the newest picture of the screen is worth describing. Null: never replaced.</summary>
     public string? Key { get; init; }
 
-    /// <summary>Higher goes first among waiting jobs (the next reply's picture before a summary).</summary>
+    /// <summary>Higher goes first among waiting jobs (the next reply's picture before a summary). Below zero marks background work
+    /// (a helper job, such as finding touch zones): it gives way when a job above zero (a reply's picture, your voice) comes for its
+    /// model, and starts again from the beginning when the lane is free. Jobs at zero (summaries) never make it give way.</summary>
     public int Priority { get; init; }
 
     public required string Instructions { get; init; }
@@ -146,52 +148,64 @@ public sealed class SenseLanes
         var mine = lane.Arrive(job.Key);
         using var stale = job.DropWhenStale ? new CancellationTokenSource(job.Timeout, clock) : new CancellationTokenSource();
         using var wait = CancellationTokenSource.CreateLinkedTokenSource(token, stale.Token);
-        if (lane.Enter(job, mine) is { } turn)
+        // A background job (priority below zero) that gave way to a live one waits in line again and starts from the beginning.
+        while (true)
         {
-            Changed?.Invoke();
-            bool started;
-            try { started = await turn.Task.WaitAsync(wait.Token).ConfigureAwait(false); }
-            catch (OperationCanceledException)
+            if (lane.Enter(job, mine) is { } turn)
             {
-                // Given the lane just as the wait ended: it is this job's, and must be passed on.
-                if (!lane.Leave(turn)) Exit(lane);
                 Changed?.Invoke();
-                token.ThrowIfCancellationRequested();
-                return Ended(record, job, new(SenseJobOutcome.Stale, null, name, "its model was busy with another job", TimeSpan.Zero));
+                bool started;
+                try { started = await turn.Task.WaitAsync(wait.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException)
+                {
+                    // Given the lane just as the wait ended: it is this job's, and must be passed on.
+                    if (!lane.Leave(turn)) Exit(lane);
+                    Changed?.Invoke();
+                    token.ThrowIfCancellationRequested();
+                    return Ended(record, job, new(SenseJobOutcome.Stale, null, name, "its model was busy with another job", TimeSpan.Zero));
+                }
+                if (!started) return Ended(record, job, new(SenseJobOutcome.Stale, null, name, "a newer job took its place", TimeSpan.Zero));
             }
-            if (!started) return Ended(record, job, new(SenseJobOutcome.Stale, null, name, "a newer job took its place", TimeSpan.Zero));
+            // The lane is this job's from here; Exit passes it on.
+            SenseJobResult result;
+            try
+            {
+                result = await StartAsync(kind, model, job, lane, mine, record, wait.Token, token).ConfigureAwait(false);
+            }
+            finally { Exit(lane); }
+            if (!ReferenceEquals(result, Yielded)) return Ended(record, job, result);
+            Changed?.Invoke();
         }
-        // The lane is this job's from here; Exit passes it on.
-        SenseJobResult result;
-        try
-        {
-            result = await StartAsync(kind, model, job, lane, mine, record, wait.Token, token).ConfigureAwait(false);
-        }
-        finally { Exit(lane); }
-        return Ended(record, job, result);
     }
 
-    // Waits while the conversation holds the hardware, then runs the job, stopping it when the conversation needs the hardware.
+    // A background job gave way to a live one: it waits in line again (never returned to a caller).
+    private static readonly SenseJobResult Yielded = new(SenseJobOutcome.Stale, null, null, "it gave way to a live job", TimeSpan.Zero);
+
+    // Waits while the conversation holds the hardware, then runs the job, stopping it when the conversation needs the hardware. A
+    // background job also stops (Yielded) when a live job comes for its model.
     private async Task<SenseJobResult> StartAsync(SenseKind kind, DeepThinkingSettings model, SenseJob job, Lane lane, long mine, Record record,
         CancellationToken wait, CancellationToken token)
     {
         var name = model.Describe();
         if (!lane.Newest(job.Key, mine)) return new(SenseJobOutcome.Stale, null, name, "a newer job took its place", TimeSpan.Zero);
+        var yielding = lane.Start(job.Priority);
         if (held?.Invoke(kind) == true)
         {
             Interlocked.Increment(ref record.Holding);
             Changed?.Invoke();
+            using var holding = CancellationTokenSource.CreateLinkedTokenSource(wait, yielding);
             try
             {
                 while (held(kind))
                 {
-                    await Task.Delay(HoldPoll, clock, wait).ConfigureAwait(false);
+                    await Task.Delay(HoldPoll, clock, holding.Token).ConfigureAwait(false);
                     if (!lane.Newest(job.Key, mine)) return new(SenseJobOutcome.Stale, null, name, "a newer job took its place", TimeSpan.Zero);
                 }
             }
             catch (OperationCanceledException)
             {
                 token.ThrowIfCancellationRequested();
+                if (yielding.IsCancellationRequested && !wait.IsCancellationRequested) return Yielded;
                 return new(SenseJobOutcome.Stale, null, name, "the conversation's reply kept its computer busy", TimeSpan.Zero);
             }
             finally
@@ -200,11 +214,12 @@ public sealed class SenseLanes
                 Changed?.Invoke();
             }
         }
+        if (yielding.IsCancellationRequested) return Yielded;
         Changed?.Invoke();
         var began = clock.GetTimestamp();
         using var timer = new CancellationTokenSource(job.Timeout, clock);
         using var preempt = new CancellationTokenSource();
-        using var limit = CancellationTokenSource.CreateLinkedTokenSource(token, timer.Token, preempt.Token);
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(token, timer.Token, preempt.Token, yielding);
         using var done = new CancellationTokenSource();
         var watching = held is null ? Task.CompletedTask : WatchAsync(kind, preempt, done.Token);
         try
@@ -216,6 +231,7 @@ public sealed class SenseLanes
                 { Text: { } text } when !string.IsNullOrWhiteSpace(text) => new(SenseJobOutcome.Succeeded, text.Trim(), name, null, took),
                 { Refused: true } => new(SenseJobOutcome.Refused, null, name, answer.Problem, took),
                 _ when preempt.IsCancellationRequested => Preempted(name, took),
+                _ when yielding.IsCancellationRequested => Yielded,
                 _ => new(SenseJobOutcome.Failed, null, name, answer.Problem ?? "it came back empty", took)
             };
         }
@@ -223,6 +239,7 @@ public sealed class SenseLanes
         {
             var took = clock.GetElapsedTime(began);
             return preempt.IsCancellationRequested ? Preempted(name, took)
+                : yielding.IsCancellationRequested ? Yielded
                 : new(SenseJobOutcome.TimedOut, null, name, "it didn't answer in time", took);
         }
         finally
@@ -307,7 +324,8 @@ public sealed class SenseLanes
         }
     }
 
-    // One model's line: one job at a time, the others waiting by priority, then age.
+    // One model's line: one job at a time, the others waiting by priority, then age. A background job (priority below zero) that
+    // runs gives way when a live job (priority above zero) comes: it is told through the token Start gave it.
     private sealed class Lane
     {
         private readonly object gate = new();
@@ -315,6 +333,7 @@ public sealed class SenseLanes
         private readonly Dictionary<string, long> newest = new(StringComparer.Ordinal);
         private long order;
         private bool busy;
+        private (int Priority, CancellationTokenSource Yield)? running;
 
         // A new job's place in line; with a key, it is now the newest job with that key.
         internal long Arrive(string? key)
@@ -333,10 +352,24 @@ public sealed class SenseLanes
             lock (gate) return key is null || !newest.TryGetValue(key, out var latest) || latest == mine;
         }
 
+        // The job that holds the lane starts: the token fires when it must give way (it is a background job and a live one waits).
+        internal CancellationToken Start(int priority)
+        {
+            var yielding = new CancellationTokenSource();
+            lock (gate)
+            {
+                running = (priority, yielding);
+                if (priority < 0 && waiting.Any(w => w.Priority > 0)) yielding.Cancel();
+            }
+            return yielding.Token;
+        }
+
         // Null: the lane was free and is now the job's. Otherwise the job waits for the task: true when it may start, false when
         // a newer job with its key took its place.
         internal TaskCompletionSource<bool>? Enter(SenseJob job, long mine)
         {
+            CancellationTokenSource? giveWay = null;
+            TaskCompletionSource<bool>? turn = null;
             lock (gate)
             {
                 if (job.Key is { } key)
@@ -345,15 +378,17 @@ public sealed class SenseLanes
                         waiting.Remove(replaced);
                         replaced.Turn.TrySetResult(false);
                     }
-                if (!busy)
+                if (!busy) busy = true;
+                else
                 {
-                    busy = true;
-                    return null;
+                    turn = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    waiting.Add(new(turn, job.Key, job.Priority, mine));
+                    if (job.Priority > 0 && running is { Priority: < 0 } background) giveWay = background.Yield;
                 }
-                var turn = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                waiting.Add(new(turn, job.Key, job.Priority, mine));
-                return turn;
             }
+            // Outside the lock: stopping the background job's request may run its continuations here.
+            giveWay?.Cancel();
+            return turn;
         }
 
         // Leaves the line without starting. False when the lane was given to it meanwhile: then the caller passes it on.
@@ -373,6 +408,7 @@ public sealed class SenseLanes
         {
             lock (gate)
             {
+                running = null;
                 var next = waiting.OrderByDescending(w => w.Priority).ThenBy(w => w.Order).FirstOrDefault();
                 if (next is null)
                 {
