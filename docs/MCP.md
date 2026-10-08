@@ -311,7 +311,9 @@ picture taking the place of a waiting one, priorities, a stale job, refusals,
 failures, a timeout, the kind check, one line for one model used for both
 kinds, and the conversation first (`lanes-hold`: a job waits while a reply
 holds the model's hardware, a running job is stopped, and a job the hold
-outlasts is dropped). In-process; it reads nothing.
+outlasts is dropped; `lanes-yield`: a helper job gives way to a reply's
+picture and starts again, while a summary waits behind it). In-process; it
+reads nothing.
 
 ```powershell
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"sense_models_check"},{"name":"sense_models_status"}]'
