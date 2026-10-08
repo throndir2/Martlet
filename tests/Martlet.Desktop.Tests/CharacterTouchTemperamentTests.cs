@@ -166,7 +166,7 @@ public sealed class CharacterTouchTemperamentTests
             var service = new CharacterTemperamentService(directory);
             var persona = new PersonaProfile
             {
-                Id = Persona, ConfigurationRevision = Guid.NewGuid(), Name = "Mira", Text = "Mira adores head pats.", Styles = ResponseStyleWeights.HelpfulOnly()
+                Id = Persona, ConfigurationRevision = Guid.NewGuid(), Name = "Mira", Text = "Mira adores head pats."
             };
             string? asked = null;
             await service.DecideAsync(persona, (_, instructions, text, _) =>

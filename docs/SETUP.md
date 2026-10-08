@@ -281,7 +281,7 @@ and rechecks the revision before a create-only staged/flush/rename to the
 chosen local destination. It does not copy an unlocked live file, read a vault,
 walk directories or include the opt-in support journal. Route/device IDs and
 configuration are personal; these LOCAL backups are neither encrypted nor
-sanitized diagnostic exports. Version 3 includes named persona text and response-style weights; v1/v2
+sanitized diagnostic exports. Version 3 includes named persona text (response-style weights in older version 3 files load and are ignored); v1/v2
 snapshots contain no persona data. There is currently no persisted F5 voice,
 downloaded model to back up. Memory settings are included, but the separately
 owned fact store and its exports are never included. Secrets, transient text/audio, environment,

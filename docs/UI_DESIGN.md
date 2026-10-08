@@ -436,7 +436,7 @@ window ends it unless Martlet is listening or watching, which only hides it.
        hide, choose and customize, reset). The character window has one
        *Show character*/*Hide character (Esc)* button at the top and saves
        each choice on its own; a showing character switches at once.
-    7. *Personality*: the active persona and its style mix, *Edit
+    7. *Personality*: the active persona, *Edit
        personality*, and *Import a character card*. The Personality window
        makes the persona chosen in its list the one Martlet uses and saves
        every edit on its own (no *Apply*, *Save* or *Reload*).

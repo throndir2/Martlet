@@ -7,7 +7,7 @@
         WindowStartupLocation="CenterOwner" Loaded="Window_Loaded" Closing="Window_Closing"
         AllowDrop="True" PreviewDragOver="Window_PreviewDragOver" PreviewDrop="Window_PreviewDrop"
         AutomationProperties.AutomationId="CompanionWindow"
-        AutomationProperties.Name="Edit companion personas and response styles">
+        AutomationProperties.Name="Edit companion personas">
     <DockPanel>
         <!-- Always in view: whether every change is saved, and Done. There is no Save button; changes save on their own. -->
         <Border DockPanel.Dock="Bottom" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource BorderBrush}" Padding="20,10">
@@ -54,32 +54,6 @@
                         <Button Content="_Export text..." Click="Export_Click" Padding="10,6"
                                 AutomationProperties.AutomationId="CompanionExport"/>
                     </WrapPanel>
-                    <TextBlock Text="Response style" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,10,0,4"/>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="130"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="48"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
-                        </Grid.RowDefinitions>
-                        <Label Grid.Row="0" Target="{Binding ElementName=HelpfulWeight}" Content="_Helpful"/>
-                        <Slider x:Name="HelpfulWeight" Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Weight_Changed" AutomationProperties.AutomationId="CompanionHelpful"/>
-                        <TextBlock x:Name="HelpfulValue" Grid.Row="0" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right"/>
-                        <Label Grid.Row="1" Target="{Binding ElementName=SarcasticWeight}" Content="S_arcastic"/>
-                        <Slider x:Name="SarcasticWeight" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Weight_Changed" AutomationProperties.AutomationId="CompanionSarcastic"/>
-                        <TextBlock x:Name="SarcasticValue" Grid.Row="1" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right"/>
-                        <Label Grid.Row="2" Target="{Binding ElementName=SillyWeight}" Content="Sill_y"/>
-                        <Slider x:Name="SillyWeight" Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Weight_Changed" AutomationProperties.AutomationId="CompanionSilly"/>
-                        <TextBlock x:Name="SillyValue" Grid.Row="2" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right"/>
-                        <Label Grid.Row="3" Target="{Binding ElementName=DistractedWeight}" Content="Dis_tracted"/>
-                        <Slider x:Name="DistractedWeight" Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Weight_Changed" AutomationProperties.AutomationId="CompanionDistracted"/>
-                        <TextBlock x:Name="DistractedValue" Grid.Row="3" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right"/>
-                        <Label Grid.Row="4" Target="{Binding ElementName=TeasingWeight}" Content="Playful tea_sing"/>
-                        <Slider x:Name="TeasingWeight" Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Weight_Changed" AutomationProperties.AutomationId="CompanionTeasing"/>
-                        <TextBlock x:Name="TeasingValue" Grid.Row="4" Grid.Column="2" VerticalAlignment="Center" TextAlignment="Right"/>
-                    </Grid>
                     <TextBlock Text="Where the voice pauses" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,14,0,4"/>
                     <TextBlock TextWrapping="Wrap" Style="{DynamicResource Muted}"
                                Text="Martlet speaks a reply a piece at a time while it's written, so the voice starts sooner. Each piece is said on its own, so a break in the wrong place can sound awkward. Choose which sentence ends this persona's voice may break at; commas, semicolons and dashes never break it."/>

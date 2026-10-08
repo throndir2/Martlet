@@ -140,7 +140,7 @@ model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
    sentence in the speech bubble and subtitles too, without a voice request or
    an output device.
 7. **Companion › Prompts** lists every internal prompt Martlet sends to the
-   Thinking model: the persona wrapper, the style line and each response style,
+   Thinking model: the persona wrapper,
    reply length, always listening, tools, Thinking longer, who is talking,
    lorebook, memory and past conversations introductions, notes with messages, the screen and
    camera glance instructions, messages (including the one sent
@@ -151,7 +151,7 @@ model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
    that joins them, and the smart home notes. Each
    one is editable; a saved edit replaces the built-in text wherever it is used
    (settings `prompts.overrides`, by prompt ID, absent while nothing is
-   edited). Words in braces such as `{name}`, `{persona}`, `{style}` or
+   edited). Words in braces such as `{name}`, `{persona}` or
    `{silent}` are filled in when the prompt is sent, and an emptied prompt
    sends nothing (the glance messages, the Thinking longer task and *Background
    work finished* can't be emptied). Martlet still parses
@@ -164,10 +164,12 @@ model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
 
 STT receives only the selected microphone's completed bounded utterance. LLM
 receives the typed text or that final transcript plus the fixed active persona
-revision, one weighted response style selected only after participation
-accepts the turn, and the reply-length instruction (all as worded in Companion › Prompts). Persona/style and user input share the existing byte/token
+revision and the reply-length instruction (both as worded in Companion › Prompts). Persona and user input share the existing byte/token
 reservation; an over-budget combination is rejected without truncation or a
-provider call. Valid legacy v1/v2 profiles upload no implicit persona/style
+provider call. Martlet has no response styles: the persona text alone sets how
+Martlet talks. Response-style weights and style prompt edits that older
+versions saved still load, are ignored and are not saved again; a Persona
+prompt edit loses its old `{style}` line. Valid legacy v1/v2 profiles upload no implicit persona
 instruction until settings v3 is explicitly
 saved. The conversation so far is supplied from volatile memory: every
 completed exchange of the open talk window, the newest that fit the context
