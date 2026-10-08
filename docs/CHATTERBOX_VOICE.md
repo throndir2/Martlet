@@ -48,7 +48,7 @@ of a computer without an NVIDIA GPU. Its role (`deploy/host/roles/chatterbox-nan
 is `gpu=optional`: `martlet-host` adds the GPU overlay when the host can run GPU
 containers and asks GPU or CPU, and the service (`MARTLET_CHATTERBOX_DEVICE=auto`)
 uses the card it was given, or the CPU. It uses the same image as Turbo
-(`martlet-chatterbox:10`, whose CUDA PyTorch also runs on the CPU) and its own
+(`martlet-chatterbox:11`, whose CUDA PyTorch also runs on the CPU) and its own
 volume, `martlet-chatterbox-nano-models`.
 
 - On a GPU it decodes like Turbo (the CUDA graph and streaming below).
@@ -122,28 +122,64 @@ volume, `martlet-chatterbox-nano-models`.
     a busy CPU gets bigger chunks. When the CPU is too slow for any later
     chunk, the rest of the piece is decoded whole, once.
   - A short piece (expected under 55 tokens) is spoken whole, as before.
-    `/status` reports `streaming` (`on`, `first_tokens`, and the measured
-    `token_ms` and `decoding_scale`). `voice_engine_check` reports the pauses
-    a listener hears (`pauses`, `pauseMs`).
+    `/status` reports `streaming` (`on`, `first_tokens`, `hold_tokens`, and
+    the measured `token_ms` and `decoding_scale`). `voice_engine_check`
+    reports the pauses a listener hears (`pauses`, `pauseMs`).
+  - **Where two decodings meet** (image `martlet-chatterbox:11`). The
+    decoder's attention sees the whole piece, so each chunk's decoding treats
+    the chunk's end as the end of the speech. Its last frames therefore differ
+    most from what a whole decode gives. Every chunk but the last keeps back
+    its last speech tokens' audio until the next decoding makes them again
+    with what follows: up to 8 tokens (`MARTLET_CHATTERBOX_CPU_HOLD_TOKENS`),
+    as many as still keep up without a later first chunk than keeping back
+    the decoder's own 3 tokens of lookahead would need. A sentence up to
+    about 5.7 s keeps back all 8 on a quiet i7-13700K, and longer pieces 5-6.
+    The vocoder's 8 overlap frames then go from the old decoding to the new
+    one (`_join`), so its input doesn't jump where they meet.
 
   Measured with the real Nano on this repository's development PC (i7-13700K,
-  8 threads not pinned, native Windows Python, not the container), each
-  sentence alternating between a streaming service and one that speaks whole
-  pieces, three times, while other programs used 7-92 % of the CPU:
+  8 threads not pinned, native Windows Python, not the container) by the
+  separate benchmark session, with #560's service (the chunk times this one
+  keeps). It timed every frame and repeated a take when other programs kept
+  more than 4 cores busy (2 voices, 3 takes each, after each voice's first
+  reply). Median first audio (slowest in brackets):
 
   | Piece | First audio, streamed | First audio, whole | Pauses, streamed |
   | --- | --- | --- | --- |
-  | Short reply ("Yes, of course.", 1.2-1.6 s) | 1.7-2.4 s | 1.6-2.4 s (the same: spoken whole) | none |
-  | A 5.5 s sentence | 2.0-3.4 s | 4.4-6.3 s | 0.16 s in one of three |
-  | Two sentences in one piece (7 s) | 3.1-4.3 s | 5.3-5.8 s | none |
-  | One 13 s sentence | 2.8-3.4 s | 8.8-11.1 s | 2.7 s in one of three, during a load spike |
+  | 1.1 s of speech | 1.27 s (1.44) | 1.17 s (1.46) | none in 6 |
+  | 3.3-4.1 s sentences | 1.77-2.07 s (2.44) | 2.63-2.85 s (3.40) | none in 18 |
+  | 6.1-6.6 s | 1.76 s (2.11) | 3.82 s (4.92) | none in 6 |
+  | 12.8-13.1 s | 1.86 s (2.59) | 8.34 s (10.31) | 1 in 6, once for 0.34 s |
 
-  Timed in one process with a quieter CPU, the 13 s sentence came in four or
-  five chunks (after 73, then about 70-110 more tokens each), each sent
-  0.02-0.6 s before the audio before it ran out, with first audio after
-  2.2-2.3 s. Streaming makes more decodings, so a streamed piece takes longer
-  in all (0.8-1.3x real time against 0.7-1.2x whole, under the same load), and
-  the next request waits for it.
+  Each voice's first reply started after 1.9-2.1 s. The service kept 3.1-4.1
+  cores busy. Streaming makes more decodings, so a streamed piece takes longer
+  in all: 0.81-0.95x real time, against 0.62-0.75x whole.
+
+  **Sound quality of the joins.** The same benchmark found that #560's
+  streamed takes scored lower UTMOS22 (a predictor of how natural speech
+  sounds, 1-5) than whole takes: 3.68 against 3.88 for takes with 2 or more
+  chunks, and 3.84 against 4.27 for 13 s pieces. Word error rate and voice
+  similarity were the same. To find the cause, this repository's paired test
+  drew the speech tokens once and decoded them whole and in chunks with the
+  same decoder noise. The last chunk is then exactly the whole decode, so every
+  difference comes from the joins (4 voices, 3 texts, 2 seeds; UTMOS22 change
+  against the same piece decoded whole):
+
+  | Stream | Sentence | Medium (6-7.5 s) | Long (13-14 s) | First audio |
+  | --- | --- | --- | --- | --- |
+  | #560: keeps back 3 tokens | −0.11 | −0.31 | −0.37 | as #560 |
+  | Keeps back as many as fit, up to 8, and joins the overlap (this service) | −0.04 | −0.04 | −0.09 | as #560 |
+  | Keeps back 8 at every length | −0.06 | −0.14 | −0.06 | later for pieces over about 7.9 s |
+  | Keeps back 3, with 2 decoder steps | −0.03 overall | | | 0.3-2 s later |
+  | The GPU's schedule (12, 25, 50, 100 tokens), 2 steps | −0.16 | −0.21 | −0.18 | (GPU) |
+
+  The service's own stream makes the same audio as the tested decoding (within
+  one 16-bit step) when its chunk points and noise are fixed. The GPU's
+  schedule loses about as much as #560 did, so Turbo's and Nano's streaming on
+  a graphics card probably sounds worse at its joins too. A longer holdback
+  there would leave its first chunk (12 tokens) almost no audio, so it is
+  unchanged until it can be measured on a GPU. Nobody has compared the joins by
+  ear yet.
 - **Nano against Turbo** (20 paired takes, scored with faster-whisper
   large-v3-turbo, WavLM-base-plus-sv and UTMOS22): UTMOS 3.74 against 3.83,
   speaker similarity 0.941 against 0.936, word error rate 0.003 against 0.001.

@@ -1778,10 +1778,13 @@ Original's sent style in words, else null), `statusBefore` and
 its torch, torchaudio and CUDA versions, `decoderSteps` (the decoder steps
 each decoding takes on Chatterbox Turbo or Nano: 1 on the CPU, 2 on a GPU),
 `streaming` (Turbo and Nano: `on`, whether pieces are spoken as they are made;
-on the CPU also `first_tokens`, the speech tokens before a piece's first chunk
-(55, 0 for whole pieces), and what the service measured to time its chunks:
-`token_ms`, T3's time for a speech token, and `decoding_scale`, decoding times
-against the expected shape; null on a GPU), `cpu`
+`hold_tokens`, the most speech tokens each chunk but the last keeps back for
+the next decoding: 8 on the CPU, which keeps back fewer when a piece's timing
+needs it, and 3 on a GPU; on the CPU also `first_tokens`, the speech tokens
+before a piece's first chunk (55, 0 for whole pieces), and what the service
+measured to time its chunks: `token_ms`, T3's time for a speech token, and
+`decoding_scale`, decoding times against the expected shape; null on a GPU),
+`cpu`
 on the CPU (`threads`, PyTorch's threads, at most 8 and never more than the
 performance cores, and `pinned_cpus`, the CPUs of the performance cores it is
 pinned to on native Linux, empty when not pinned, as always on Docker Desktop; null on a GPU)
