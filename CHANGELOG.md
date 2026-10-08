@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Martlet now knows which app you're using and whether it's full screen, like a game, a video or a slide show, and it talks about what you're doing or watching in it instead of your screen's menus, buttons, layout or setup. Hover over the talk window's vision line to see the app it tells your Thinking model about. Replies also stay quick when you switch windows. ([#600](https://github.com/throndir2/Martlet/pull/600))
 - Martlet now reacts when you move your desktop character around, not only when you touch it: drag it somewhere new or to another monitor and it says something about it a moment later, unless you talk or type first. ([#597](https://github.com/throndir2/Martlet/pull/597))
 - Your character now starts with ready-made combos that show several emotes at once: lovestruck, flustered, overheated, fuming, heartbroken, dozing, starstruck and shocked, and ahegao, which stays off until you turn it on. Change, turn off or remove any of them in Companion › Character › Emotes and motions › Combos; one you remove doesn't come back. A character can now have 24 combos. ([#596](https://github.com/throndir2/Martlet/pull/596))
 
