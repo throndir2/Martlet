@@ -257,7 +257,15 @@ Authored Layout is reported inactive; framing fits the model's canvas
 without stretching. Authored HitAreas are kept for tapping: `hitTest(x, y)`
 (canvas fractions, +y down) returns the HitAreas (by name) and the visible
 drawables (topmost first, at most 8) whose triangles contain the point, as posed
-in the last frame (`lib/touch.ts`); no authored hit-test script ever runs.
+in the last frame (`lib/touch.ts`); no authored hit-test script ever runs. It
+also returns where the touched point was in the rest pose (`rest`, model units,
+and `restCanvas`, canvas fractions as framed now): the point's place in the
+triangle of the topmost drawable that holds it, taken on the same triangle in
+the vertex positions kept when the model loaded (the pose the touch zones
+picture shows). Touch zones compare that point with their boxes, so a tap stays
+on the same spot of the skin however the head turns, nods or tilts. `hair` is
+true when the topmost drawable sits in a part the model names as hair (its ID
+or DisplayInfo name, or a part it sits in, matching `HAIR_PART`).
 
 ## Asset and lifecycle boundaries
 

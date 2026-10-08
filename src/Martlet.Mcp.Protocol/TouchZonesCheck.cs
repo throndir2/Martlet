@@ -155,13 +155,17 @@ internal static class TouchZonesCheck
         {
             var given = JsonSerializer.Deserialize<CharacterTouch>(touch, Web) ?? throw new ArgumentException("touch must be a CharacterTouch object.");
             var found = CharacterTouchZones.Match(settings, given);
+            // The point the boxes compare with: where the touched point was in the rest pose when the touch carries it.
+            var (atX, atY, traced) = CharacterTouchZones.TouchPoint(settings, given);
+            var compared = new { x = Math.Round(atX, 4), y = Math.Round(atY, 4), rest = traced };
             // Every zone the touch landed in (zones can overlap), the matched one first: Martlet hears each one it notices.
             var touched = CharacterTouchZones.Touched(settings, given, found);
-            match = found is null ? new { zone = (string?)null, how = (string?)null, touched = Array.Empty<string>(), coarse = given.CoarseZone,
-                    plays = Array.Empty<string>(), notices = false, noticed = (string?)null }
+            match = found is null ? new { zone = (string?)null, how = (string?)null, traced = false, at = compared, touched = Array.Empty<string>(),
+                    coarse = given.CoarseZone, plays = Array.Empty<string>(), notices = false, noticed = (string?)null }
                 : new
                 {
-                    zone = found.Zone.Id, name = found.Zone.Name, how = found.How, touched = touched.Select(z => z.Id).ToArray(), coarse = given.CoarseZone,
+                    zone = found.Zone.Id, name = found.Zone.Name, how = found.How, traced = found.Traced, at = compared,
+                    touched = touched.Select(z => z.Id).ToArray(), coarse = given.CoarseZone,
                     plays = CharacterTouchZones.React(found.Zone, catalog, temperament, touches).Actions.Select(s => $"{s.Kind}: {s.Name}").ToArray(),
                     reaction = Reaction(CharacterTouchZones.React(found.Zone, catalog, temperament, touches)), repeats = touches,
                     notices = found.Zone.Reaction.Notices, noticing = touched.Where(z => z.Reaction.Notices).Select(z => z.Id).ToArray(),
