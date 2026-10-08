@@ -145,6 +145,11 @@ public partial class MainWindow
 
     private CancellationTokenSource? detectTouchZones;
     private bool showTouchZonesSent;
+    // The zone map's zoom and the picture's point at the middle of its frame (fractions of the picture), for the model they belong
+    // to: drawing the page again (Add zone, each step of Detect zones...) keeps them, and opening it again shows the whole picture.
+    private double touchZonesZoom = 1;
+    private Point touchZonesCenter = new(0.5, 0.5);
+    private string? touchZonesViewModel;
     // The models whose first zones the page placed (or tried to) since Martlet started, so drawing the page again doesn't repeat a
     // try that failed (opening the page again does).
     private readonly HashSet<string> firstTouchZonesTried = new(StringComparer.Ordinal);
@@ -436,25 +441,45 @@ public partial class MainWindow
         intimate.Checked += (_, _) => Edited();
         intimate.Unchecked += (_, _) => Edited();
 
-        // The snapshot with each zone as a colored, labeled box; drag a box to move it, its corner to resize it.
-        var canvas = new SeenCanvas { Margin = new Thickness(0, 8, 0, 8), HorizontalAlignment = HorizontalAlignment.Left, ClipToBounds = true };
+        // The snapshot with each zone as a colored, labeled box; drag a box to move it, its corner to resize it. It shows in a frame
+        // that zooms (ZoomFrame): zoomed in, the picture grows while the boxes' lines, labels and corners keep their size, so a drag
+        // moves a box by smaller steps.
+        var canvas = new SeenCanvas { ClipToBounds = true };
         AutomationProperties.SetAutomationId(canvas, "TouchZonesPicture");
         AutomationProperties.SetName(canvas, "Touch zones on the character's picture");
-        double width = 0, height = 0;
+        ZoomFrame? frame = null;
         if (characterTouchZones.SnapshotPath is { } picture)
         {
             try
             {
                 var bitmap = PictureAt(picture);
                 var scale = Math.Min(TouchZonesPictureHeight / bitmap.PixelHeight, TouchZonesPictureWidth / bitmap.PixelWidth);
-                (width, height) = (bitmap.PixelWidth * scale, bitmap.PixelHeight * scale);
-                canvas.Width = width;
-                canvas.Height = height;
-                var image = new Image { Source = bitmap, Width = width, Height = height, Stretch = Stretch.Fill };
+                // A page opened again, or another model's picture, shows the whole picture.
+                if (openingTab || touchZonesViewModel != modelId) (touchZonesZoom, touchZonesCenter, touchZonesViewModel) = (1, new Point(0.5, 0.5), modelId);
+                var map = new ZoomFrame(canvas, bitmap.PixelWidth * scale, bitmap.PixelHeight * scale, touchZonesZoom, touchZonesCenter)
+                {
+                    Margin = new Thickness(0, 8, 0, 8)
+                };
+                AutomationProperties.SetAutomationId(map, "TouchZonesMap");
+                AutomationProperties.SetName(map, "Zone map");
+                AutomationProperties.SetHelpText(map, TouchZonesZoomHelp);
+                var image = new Image { Width = map.PictureWidth, Height = map.PictureHeight, Stretch = Stretch.Fill };
                 canvas.Children.Add(image);
                 canvas.Background = new SolidColorBrush(Color.FromArgb(0x18, 0x80, 0x80, 0x80));
-                // The whole character as Thinking saw it: the same framing, on its backdrop with the grid (decoded only to show it).
-                if (characterTouchZones.SentWholePicture is { } seenPath)
+                // The whole character as Thinking saw it (the same framing, on its backdrop with the grid) shows instead when asked.
+                // At 1x a picture is decoded at about the size it shows; zoomed in, at its own size, so it stays sharp.
+                var seenPath = characterTouchZones.SentWholePicture;
+                void ShowPicture()
+                {
+                    var path = showTouchZonesSent && seenPath is not null ? seenPath : picture;
+                    try { image.Source = map.Zoom > 1 ? PictureAt(path, decodeHeight: 0) : PictureAt(path); }
+                    catch (Exception error) when (error is IOException or NotSupportedException or UriFormatException or InvalidOperationException)
+                    {
+                        image.Source = bitmap;
+                    }
+                }
+                ShowPicture();
+                if (seenPath is not null)
                 {
                     var view = new CheckBox
                     {
@@ -462,25 +487,24 @@ public partial class MainWindow
                         Margin = new Thickness(0, 8, 0, 0)
                     };
                     AutomationProperties.SetAutomationId(view, "TouchZonesSentView");
-                    void ShowSeen()
-                    {
-                        try { image.Source = PictureAt(seenPath); }
-                        catch (Exception error) when (error is IOException or NotSupportedException or UriFormatException or InvalidOperationException)
-                        {
-                            image.Source = bitmap;
-                        }
-                    }
-                    view.Checked += (_, _) => { showTouchZonesSent = true; ShowSeen(); };
-                    view.Unchecked += (_, _) => { showTouchZonesSent = false; image.Source = bitmap; };
-                    if (showTouchZonesSent) ShowSeen();
+                    view.Checked += (_, _) => { showTouchZonesSent = true; ShowPicture(); };
+                    view.Unchecked += (_, _) => { showTouchZonesSent = false; ShowPicture(); };
                     stack.Add(view);
                 }
+                stack.Add(TouchZonesZoomRow(map, () =>
+                {
+                    image.Width = map.PictureWidth;
+                    image.Height = map.PictureHeight;
+                    ShowPicture();
+                    foreach (var row in rows) row.Place();
+                }));
+                stack.Add(map);
+                frame = map;
             }
-            catch (Exception error) when (error is IOException or NotSupportedException or UriFormatException or InvalidOperationException) { width = height = 0; }
+            catch (Exception error) when (error is IOException or NotSupportedException or UriFormatException or InvalidOperationException) { frame = null; }
         }
-        if (width > 0)
+        if (frame is not null)
         {
-            stack.Add(canvas);
             // The zones' areas over the character as it moves (a tail's swing with it), for this session.
             var onCharacter = new CheckBox
             {
@@ -511,13 +535,15 @@ public partial class MainWindow
             var row = new ZoneRow(this, zone, index++, catalog, reactionItems, settings!, showing, Edited, temperament);
             rows.Add(row);
             AddRow(list, row.View);
-            if (width > 0) row.Draw(canvas, width, height, ZoneColors[(row.Number) % ZoneColors.Length]);
+            if (frame is not null) row.Draw(canvas, frame, ZoneColors[(row.Number) % ZoneColors.Length]);
         }
 
-        // Add a zone Detect zones doesn't look for (or missed): it starts in the middle of the picture; move it into place, or press
-        // Detect again and the Thinking model places it too.
-        var addNote = Note($"Detect zones looks for the {TouchZoneDetection.DefaultParts}. Add any other zone here: it starts in the middle " +
-            "of the picture. Move it into place, or press Detect again and your Thinking model places it too.", new Thickness(0, 16, 0, 0));
+        // Add a zone Detect zones doesn't look for (or missed): it starts in the middle of the picture, or of the part the zoomed-in
+        // map shows; move it into place, or press Detect again and the Thinking model places it too.
+        var addNote = Note($"Detect zones looks for the {TouchZoneDetection.DefaultParts}, and for anything special to this character, such as " +
+            $"{TouchZoneDetection.SpecialExamples}. Add any other zone here: it starts in the middle " +
+            "of the picture (zoomed in, of the part you see). Move it into place, or press Detect again and your Thinking model places it too.",
+            new Thickness(0, 16, 0, 0));
         AutomationProperties.SetAutomationId(addNote, "TouchZonesAddNote");
         AddRow(list, addNote);
         var missing = CharacterTouchZones.Kinds.Where(k => settings?.Zones.Any(z => z.Id == k.Id) != true).ToArray();
@@ -533,11 +559,13 @@ public partial class MainWindow
                 var added = current with
                 {
                     IncludeIntimate = intimate.IsChecked == true,
-                    Zones = [.. rows.Where(r => !r.Deleted).Select(r => r.Read()), new CharacterTouchZone { Id = kind.Id, Box = new(0.4, 0.4, 0.2, 0.2), Added = true }]
+                    Zones = [.. rows.Where(r => !r.Deleted).Select(r => r.Read()),
+                        new CharacterTouchZone { Id = kind.Id, Box = frame is { } map ? AddedZoneBox(map.Zoom, map.Center) : AddedZoneBox(1, default), Added = true }]
                 };
                 SaveAndRender(added);
             }, id: "TouchZonesAdd"));
-            AutomationProperties.SetHelpText(add, "Adds the zone in the middle of the picture. Detect again looks for it too, and keeps it where it is when it can't find it.");
+            AutomationProperties.SetHelpText(add, "Adds the zone in the middle of the picture, or of the part you see when it is zoomed in. Detect again " +
+                "looks for it too, and keeps it where it is when it can't find it.");
             var addRow = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
             addRow.Children.Add(kinds);
             add.Margin = new Thickness(8, 0, 0, 0);
@@ -555,6 +583,49 @@ public partial class MainWindow
             if (why is not null) saveState.Text = "Not saved: " + why;
             else if (openTab == CompanionTab.Touch) RenderTab();
         }
+    }
+
+    private const string TouchZonesZoomHelp = "Zoom in to move and resize the boxes precisely. Ctrl+wheel over the picture zooms where " +
+        "the pointer is. Zoomed in, drag the picture (not a box) or scroll to look around it; Ctrl+drag or a middle-button drag moves it " +
+        "from anywhere.";
+
+    /// <summary>The zone map's zoom: Zoom in, Zoom out and Reset zoom, how far it is zoomed in (TouchZonesZoom: "Zoom 2x") and how to
+    /// zoom and look around with the mouse. <paramref name="zoomed"/> places the picture and its boxes again at each zoom, and the
+    /// page keeps the zoom and the part of the picture shown while it is drawn again.</summary>
+    private StackPanel TouchZonesZoomRow(ZoomFrame map, Action zoomed)
+    {
+        var zoomIn = Compact(PageButton("Zoom in", () => map.ZoomIn(), id: "TouchZonesZoomIn"));
+        var zoomOut = Compact(PageButton("Zoom out", () => map.ZoomOut(), id: "TouchZonesZoomOut"));
+        var reset = Compact(PageButton("Reset zoom", () => map.ZoomTo(1), id: "TouchZonesZoomReset"));
+        AutomationProperties.SetHelpText(reset, "Shows the whole picture again.");
+        var level = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 0, 6) };
+        level.SetResourceReference(StyleProperty, "Muted");
+        AutomationProperties.SetAutomationId(level, "TouchZonesZoom");
+        AutomationProperties.SetLiveSetting(level, AutomationLiveSetting.Polite);
+        void Show()
+        {
+            level.Text = $"Zoom {map.Zoom.ToString("0.#", CultureInfo.CurrentCulture)}x";
+            zoomIn.IsEnabled = map.CanZoomIn;
+            zoomOut.IsEnabled = reset.IsEnabled = map.CanZoomOut;
+        }
+        Show();
+        map.Zoomed += () => { zoomed(); Show(); };
+        map.ViewChanged += () => (touchZonesZoom, touchZonesCenter) = (map.Zoom, map.Center);
+        var buttons = Row(zoomIn, zoomOut, reset);
+        buttons.Children.Add(level);
+        var row = new StackPanel();
+        row.Children.Add(buttons);
+        row.Children.Add(Note(TouchZonesZoomHelp, new Thickness(0)));
+        return row;
+    }
+
+    /// <summary>Where Add zone puts a zone: a fifth of the picture each way in its middle or, zoomed in to <paramref name="zoom"/>, in
+    /// the middle of the part the map shows (<paramref name="center"/>, fractions of the picture) and as large on the screen as at 1x.</summary>
+    internal static TouchZoneBox AddedZoneBox(double zoom, Point center)
+    {
+        if (!(zoom > 1)) return new(0.4, 0.4, 0.2, 0.2);
+        var size = 0.2 / zoom;
+        return new(Math.Clamp(center.X - size / 2, 0, 1 - size), Math.Clamp(center.Y - size / 2, 0, 1 - size), size, size);
     }
 
     private static string TouchZonesStatusText(CharacterTouchZoneSettings? settings) =>
@@ -701,14 +772,15 @@ public partial class MainWindow
             AutomationProperties.SetName(rest, $"Seconds {zone.Name} rests after a touch");
             AutomationProperties.SetAutomationId(rest, $"TouchZoneCooldown-{number}");
             shown = BoxesText(zone.AllAreas.Select(a => a.Box));
-            box = Compact(new TextBox { Text = shown, MinWidth = 120, MaxWidth = 420 });
+            // Wide enough for four numbers with two decimals, as a drag on the zoomed-in picture writes them.
+            box = Compact(new TextBox { Text = shown, MinWidth = 160, MaxWidth = 420 });
             AutomationProperties.SetName(box, $"Box of {zone.Name}: left, top, width, height in percent of the picture, each area after a |");
             AutomationProperties.SetAutomationId(box, $"TouchZoneBox-{number}");
             box.ToolTip = follows
                 ? $"Each area of the model's own {zone.Follows}, where it was in the picture. The zone follows them wherever they move; " +
                   "move one onto another part to place the zone there instead."
                 : "Left, top, width and height, in percent of the picture; several areas are separated by |. Or drag a box on the picture, " +
-                  "or its corner to resize it.";
+                  "or its corner to resize it; zoom the picture in for smaller steps.";
             if (!follows)
             {
                 // An area starts beside the last one; move it into place.
@@ -776,16 +848,19 @@ public partial class MainWindow
             var areas = zone.AllAreas.Count;
             var shape = zone.Follows is { } part ? $"follows the model's own {part} wherever it moves: {parts} in {areas} area{(areas == 1 ? "" : "s")}"
                 : areas > 1 ? $"{areas} areas, {parts}" : parts;
-            return $"{zone.Id}  \u00b7  {shape}" + (zone.Added ? "  \u00b7  added by you" : "") +
+            return $"{zone.Id}  \u00b7  {shape}" + (zone.Added ? "  \u00b7  added by you" : TouchZoneDetection.IsSpecial(zone.Id) ? "  \u00b7  special to this character" : "") +
                 (kind?.Intimate == true && !settings.IncludeIntimate ? "  \u00b7  intimate, off" : "") +
                 (defaults.From == TouchReactionPlan.FromTemperament ? $"  \u00b7  temperament ({defaults.Attitude}): " : "  \u00b7  default: ") +
                 (defaults.Actions.Count == 0 ? "nothing" : string.Join(" + ", defaults.Actions.Select(s => s.Name)));
         }
 
-        private static string BoxText(TouchZoneBox b) => string.Join(", ", new[] { b.X, b.Y, b.Width, b.Height }
-            .Select(v => (v * 100).ToString("0.#", CultureInfo.CurrentCulture)));
+        // A tenth of a percent at 1x; a hundredth once the zoomed-in picture is over a thousand pixels, so a drag's steps stay under a
+        // pixel.
+        private string BoxText(TouchZoneBox b) =>
+            string.Join(", ", new[] { b.X, b.Y, b.Width, b.Height }.Select(v => (v * 100).ToString(
+                frame is { } map && Math.Max(map.PictureWidth, map.PictureHeight) > 1000 ? "0.##" : "0.#", CultureInfo.CurrentCulture)));
 
-        private static string BoxesText(IEnumerable<TouchZoneBox> boxes) => string.Join(" | ", boxes.Select(BoxText));
+        private string BoxesText(IEnumerable<TouchZoneBox> boxes) => string.Join(" | ", boxes.Select(BoxText));
 
         private static TouchZoneBox? ParsedBox(string text)
         {
@@ -850,12 +925,13 @@ public partial class MainWindow
         private readonly List<(Border Rectangle, TextBlock? Label)> drawn = [];
         private Canvas? picture;
         private Color color;
-        private double pictureWidth, pictureHeight;
+        private ZoomFrame? frame;
 
-        /// <summary>Draws the zone's areas on the picture; dragging one moves it, dragging its corner resizes it.</summary>
-        internal void Draw(Canvas canvas, double width, double height, Color color)
+        /// <summary>Draws the zone's areas on the picture in <paramref name="map"/>; dragging one moves it, dragging its corner
+        /// resizes it. Zoomed in, the same drag moves it by smaller steps.</summary>
+        internal void Draw(Canvas canvas, ZoomFrame map, Color color)
         {
-            (picture, pictureWidth, pictureHeight, this.color) = (canvas, width, height, color);
+            (picture, frame, this.color) = (canvas, map, color);
             Place();
         }
 
@@ -904,12 +980,14 @@ public partial class MainWindow
             };
             rectangle.MouseMove += (_, e) =>
             {
-                if (from is not { } origin || ParsedBoxes() is not { } boxes || index >= boxes.Count) return;
+                if (from is not { } origin || frame is not { } map || ParsedBoxes() is not { } boxes || index >= boxes.Count) return;
                 var at = e.GetPosition(picture);
-                double dx = (at.X - origin.X) / pictureWidth, dy = (at.Y - origin.Y) / pictureHeight;
+                double dx = (at.X - origin.X) / map.PictureWidth, dy = (at.Y - origin.Y) / map.PictureHeight;
+                // At least a fiftieth of the picture each way at 1x; zoomed in, as small as that shows on the screen.
+                var least = 0.02 / map.Zoom;
                 boxes[index] = resizing
-                    ? start with { Width = Math.Clamp(start.Width + dx, 0.02, 1 - start.X), Height = Math.Clamp(start.Height + dy, 0.02, 1 - start.Y) }
-                    : start with { X = Math.Clamp(start.X + dx, 0, 1 - start.Width), Y = Math.Clamp(start.Y + dy, 0, 1 - start.Height) };
+                    ? start with { Width = Within(start.Width + dx, least, 1 - start.X), Height = Within(start.Height + dy, least, 1 - start.Y) }
+                    : start with { X = Within(start.X + dx, 0, 1 - start.Width), Y = Within(start.Y + dy, 0, 1 - start.Height) };
                 moved = index;
                 box.Text = BoxesText(boxes);
             };
@@ -922,11 +1000,16 @@ public partial class MainWindow
             return (rectangle, label);
         }
 
-        // Puts each area's box where the field says, adding the boxes of areas added and hiding those taken away.
-        private void Place()
+        // Math.Clamp that a box typed past the picture's edge can't make throw.
+        private static double Within(double value, double least, double most) => Math.Clamp(value, least, Math.Max(least, most));
+
+        /// <summary>Places each area's box on the picture at the frame's zoom, where the field says: it adds the boxes of areas
+        /// added and hides those taken away.</summary>
+        internal void Place()
         {
             ShowAreaButtons();
-            if (picture is null || pictureWidth <= 0 || ParsedBoxes() is not { } boxes) return;
+            if (picture is null || frame is null || ParsedBoxes() is not { } boxes) return;
+            double width = frame.PictureWidth, height = frame.PictureHeight;
             while (drawn.Count < boxes.Count) drawn.Add(AreaBox(drawn.Count));
             for (var i = 0; i < drawn.Count; i++)
             {
@@ -936,13 +1019,13 @@ public partial class MainWindow
                 if (label is not null) label.Visibility = rectangle.Visibility;
                 if (!visible) continue;
                 var b = boxes[i];
-                Canvas.SetLeft(rectangle, b.X * pictureWidth);
-                Canvas.SetTop(rectangle, b.Y * pictureHeight);
-                rectangle.Width = Math.Max(4, b.Width * pictureWidth);
-                rectangle.Height = Math.Max(4, b.Height * pictureHeight);
+                Canvas.SetLeft(rectangle, b.X * width);
+                Canvas.SetTop(rectangle, b.Y * height);
+                rectangle.Width = Math.Max(4, b.Width * width);
+                rectangle.Height = Math.Max(4, b.Height * height);
                 if (label is null) continue;
-                Canvas.SetLeft(label, b.X * pictureWidth + 1);
-                Canvas.SetTop(label, b.Y * pictureHeight + 1);
+                Canvas.SetLeft(label, b.X * width + 1);
+                Canvas.SetTop(label, b.Y * height + 1);
             }
         }
 

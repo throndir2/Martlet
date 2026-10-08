@@ -50,7 +50,9 @@ public static partial class TouchZoneDetection
     /// VRM's humanoid bones) and the body's proportions place the rest: the head's zones around the face the renderer found
     /// (<see cref="ZoneHints.Face"/>, else the model's own named face, else the top of the character's outline) and the body's
     /// below it, measured on the bundled Hiyori and stretched to the character's height (to its skeleton's hips, or to the
-    /// bottom of an outline that reaches down the legs). The hair stops just below the chin. Each box is then fitted to the
+    /// bottom of an outline that reaches down the legs). The hair stops just below the chin. A tail, wings or animal ears the
+    /// model's own part names show are zones too (unless <see cref="ZoneDetectionOptions.MaximumSpecial"/> is 0). Each box is
+    /// then fitted to the
     /// character's pixels, and a box over almost none of the character (or mostly off the picture: a bust shows no legs) is
     /// dropped. Detect zones then has the Thinking model find the zones. Returns the zones (fractions of the snapshot; null when
     /// none could be placed) and one line per source, with no failure and no requests.</summary>
@@ -71,6 +73,15 @@ public static partial class TouchZoneDetection
             if (!sources.TryGetValue(guess.From, out var placed)) sources[guess.From] = placed = [];
             placed.Add(id);
         }
+        // What the model's own part names say is special to it (its tail, wings or animal ears) is a zone too.
+        if (options.MaximumSpecial > 0)
+            foreach (var (id, box, _) in NamedSpecialPlaces(hints, zones))
+            {
+                if (picture.Covers(box) < 0.5 || Overlap(box, picture) is not { } inside) continue;
+                zones[id] = inside.Clamped();
+                if (!sources.TryGetValue(FromNamedParts, out var named)) sources[FromNamedParts] = named = [];
+                named.Add(id);
+            }
         var steps = new List<string> { body.Describe() };
         steps.AddRange(sources.Select(s => $"from {s.Key}: {string.Join(", ", s.Value)}"));
         var notes = Tidy(zones, snapshot, hints is { Bones.Count: > 0 } ? hints.FacesViewer : true);

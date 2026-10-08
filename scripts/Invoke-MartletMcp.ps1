@@ -196,7 +196,7 @@ try {
         $results.Add($outcome)
         if ($outcome.isError -or -not $met) { $failed = $true }
         $pause = if ($null -ne $call.waitMs) { [int]$call.waitMs }
-            elseif ($call.name -in 'ui_click', 'ui_select', 'ui_set_text', 'ui_toggle', 'ui_move') { $WaitMs } else { 0 }
+            elseif ($call.name -in 'ui_click', 'ui_select', 'ui_set_text', 'ui_toggle', 'ui_move', 'ui_scroll') { $WaitMs } else { 0 }
         if ($pause -gt 0) { Start-Sleep -Milliseconds $pause }
     }
 }

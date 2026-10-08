@@ -288,7 +288,10 @@ public sealed class TouchZoneNamedPartsTests
         Assert.Contains("the face from the model's own face", result.Steps[0], StringComparison.Ordinal);
         Assert.Contains(result.Steps, s => s.StartsWith("from the model's own named parts: ", StringComparison.Ordinal));
         var zones = result.Zones!.ToDictionary(z => z.Id, z => z.Box);
-        Assert.Equal(TouchZoneDetection.Defaults.Order(StringComparer.Ordinal), zones.Keys.Order(StringComparer.Ordinal));
+        // The default zones, and her tail: her own part names (尾巴) say she has one.
+        Assert.Equal(TouchZoneDetection.Defaults.Append("tail").Order(StringComparer.Ordinal), zones.Keys.Order(StringComparer.Ordinal));
+        Assert.True(Inside(zones["tail"], Box(-0.09, 0.271, 0, -1.238)), $"{zones["tail"]}");
+        Assert.Contains(result.Steps, s => s.StartsWith("from the model's own named parts: ", StringComparison.Ordinal) && s.EndsWith(", tail", StringComparison.Ordinal));
         // On her own mouth and neck, and her left arm and leg on the picture's right (右臂 and 右腿, whatever their names say).
         Assert.True(Inside(zones["lips"], Box(-0.02, 0.703, 0.017, 0.669)), $"{zones["lips"]}");
         Assert.True(Inside(zones["neck"], Box(-0.083, 0.75, 0.083, 0.592)), $"{zones["neck"]}");

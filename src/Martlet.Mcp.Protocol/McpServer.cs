@@ -146,6 +146,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dx = new { type = "integer", minimum = -DesktopAutomation.MaximumMove, maximum = DesktopAutomation.MaximumMove },
             dy = new { type = "integer", minimum = -DesktopAutomation.MaximumMove, maximum = DesktopAutomation.MaximumMove }
         }, ["id", "dx", "dy"]),
+        Tool("ui_scroll", "Read or scroll a control that scrolls through UI Automation's Scroll pattern, such as Companion > Touch's " +
+            "zone map (TouchZonesMap) when it is zoomed in, or a page. horizontal and vertical (each optional, 0 to 100) are how far " +
+            "along to scroll it each way; without them it only reads. Returns how far along it is each way (-1 when it can't scroll " +
+            "that way) and which part of its content shows (shows: left, right, top and bottom in percent of the content). Scrolling " +
+            "only changes what shows, so it needs no --allow-ui-effects.", new
+        {
+            id = new { type = "string" },
+            horizontal = new { type = "number", minimum = 0, maximum = 100 },
+            vertical = new { type = "number", minimum = 0, maximum = 100 }
+        }, ["id"]),
         Tool("character_touch", "Tap the showing character like a left click that doesn't drag, at x, y (fractions 0 to 1 of the " +
             "character overlay's drawing, +y down; unzoomed, its head is near 0.5, 0.15), and return the renderer's hit test as " +
             "last: n, x, y, hit, zone (head, hair, face, body, arm, hand, leg or foot), hitAreas and drawables (Live2D), bone, node, " +
@@ -725,7 +735,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("character_touch_zones", "Companion > Touch > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones and TouchZoneDetection; " +
             "docs/AVATARS.md \"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate, and the defaults Detect " +
             "zones looks for), the step-by-step vision requests for the model (parts on the whole character, zones on each close-up, " +
-            "checks of the numbered boxes; wanted: the default zones and the ones the owner added, required: the ones it must end with), " +
+            "what is special about the character on the whole character, checks of the numbered boxes; wanted: the default zones and the " +
+            "ones the owner added, required: the ones it must end with, special: at most maximum zones special to the character, each a " +
+            "zone of its own named as the model sees it (an extra such as animal ears or a tail keeps Martlet's ID), and the special zones " +
+            "found before, whose IDs the model is asked to keep), " +
             "what the production parser makes " +
             "of answer (a simulated vision reply about the whole picture: JSON boxes as fractions or named edges, pixels of a width x height " +
             "picture or Qwen-style 0..1000 bbox_2d grounding) bound to probe (a simulated renderer zones probe: {\"drawables\":[{\"id\",\"left\"," +
@@ -744,7 +757,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "\"They poked your groin and your left thigh once.\"). detect runs the production detection on snapshotPath (a PNG of the character, transparent " +
             "around it), composing and encoding every picture it would send (previewDirectory keeps them), with a FIXTURE - NOT AI stand-in " +
             "that answers from answer's zones (guess, a wrong first answer, makes the checks correct it; checks sets the rounds, 0 to 5; " +
-            "failAt makes that request fail, as a model that stopped answering); with includeIntimate on (the default) the intimate zones " +
+            "failAt makes that request fail, as a model that stopped answering; answer's zones may also name things special to the " +
+            "character, such as {\"id\":\"ribbon\",\"name\":\"hair ribbon\",...}, which the stand-in lists when asked what is special; " +
+            "special sets the most special zones, 0 to 10, 6 by default, 0 not asking); with includeIntimate on (the default) the intimate zones " +
             "must be found: asked for again on the whole character, then worked out from the zones around them; it " +
             "reports each request, the steps and how far the found boxes are from answer's. add (zone IDs, comma-separated, such as " +
             "\"hand_left,tail\") adds zones as the owner does with Add zone (added, in the middle of the picture; one the model has is " +
@@ -770,7 +785,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             repeats = new { type = "integer", minimum = 1 }, detect = new { type = "boolean" }, guess = new { type = "string" },
             previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 },
             failAt = new { type = "integer", minimum = 1 }, probePath = new { type = "string" }, add = new { type = "string" },
-            estimate = new { type = "boolean" }
+            estimate = new { type = "boolean" }, special = new { type = "integer", minimum = 0, maximum = 10 }
         }),
         Tool("character_eyes", "Companion > Eyes > Where the eyes are (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
             "with NO vision request: the request the vision model gets (a close-up of the face, 1.6 face widths square, about 768 pixels " +
@@ -1945,6 +1960,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
                 "ui_set_range" => desktop.SetRange(RequiredString(arguments, "id"), RequiredDouble(arguments, "value")),
                 "ui_move" => desktop.Move(RequiredString(arguments, "id"), RequiredInt(arguments, "dx"), RequiredInt(arguments, "dy")),
+                "ui_scroll" => desktop.Scroll(RequiredString(arguments, "id"), OptionalDouble(arguments, "horizontal"), OptionalDouble(arguments, "vertical")),
             "character_touch" => await desktop.TouchCharacterAsync(OptionalDouble(arguments, "x"), OptionalDouble(arguments, "y"),
                 OptionalInt(arguments, "holdMs"), OptionalInt(arguments, "repeat"), OptionalInt(arguments, "gapMs"), Taps(arguments),
                 OptionalInt(arguments, "settleMs")),
@@ -2010,7 +2026,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     cancellation, OptionalString(arguments, "temperament"), OptionalString(arguments, "personaId"), OptionalString(arguments, "personality"),
                     OptionalInt(arguments, "repeats"), OptionalBool(arguments, "detect") ?? false, OptionalString(arguments, "guess"),
                     OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt"),
-                    OptionalString(arguments, "probePath"), OptionalString(arguments, "add"), OptionalBool(arguments, "estimate") ?? false),
+                    OptionalString(arguments, "probePath"), OptionalString(arguments, "add"), OptionalBool(arguments, "estimate") ?? false,
+                    OptionalInt(arguments, "special")),
                 "character_eyes" => await CharacterEyesCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "dataDirectory") is not null,
                     OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"), OptionalString(arguments, "answer"),
                     OptionalString(arguments, "second"), OptionalString(arguments, "snapshotPath"), OptionalString(arguments, "face"),

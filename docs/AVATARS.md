@@ -503,11 +503,13 @@ model it shows. **Detect zones** looks for a short list on every character:
 the hair, the left and right eye, the left and right ear, the nose, the mouth,
 the neck, the left and right breast, each upper arm and forearm, the stomach,
 the left and right hip, the groin, each thigh and calf, and the left and right
-foot. **Add zone** offers every other zone Martlet knows that the model doesn't
+foot. It also adds a zone for anything special to the character that it sees,
+such as animal ears, a tail, wings, horns, a halo, a hat, a hair ribbon or bow,
+glasses, a cape or something it holds (step 7 below). **Add zone** offers every other zone Martlet knows that the model doesn't
 have yet: the top of the head (a head pat), forehead, face, cheeks, chin,
 shoulders, hands, chest, waist, knees, buttocks, inner thighs, and extras such
 as animal ears, a tail or wings. A zone you add starts in the middle of the
-picture: move it into place, or press **Detect again** and the Thinking model
+picture (zoomed in, in the middle of the part you see): move it into place, or press **Detect again** and the Thinking model
 looks for it too. When it can't find a zone you added, the zone stays where it
 was. Detect again drops the other zones it doesn't find, so zones that an
 older Martlet found beyond the short list go away. Intimate zones (the mouth,
@@ -527,6 +529,8 @@ default; turn it off to leave them out. The check box names each of these parts.
   measured on the bundled Hiyori and placed around the face the renderer finds
   (else the top of the character's outline), stretched to the character's
   height. The hair zone stops just below the chin, and a bust gets no legs.
+  A tail, wings or animal ears that the Live2D model's own part names show
+  (such as 尾巴, a tail) get a zone too.
   The zones follow the model's parts and react to clicks at once. The status
   line says they are a first guess; move a box into place, or press **Detect
   zones** and the Thinking model finds them. While it works, each zone it finds
@@ -579,6 +583,22 @@ default; turn it off to leave them out. The check box names each of these parts.
      inner thighs from the thighs, and the mouth, ears and neck from the face (or
      the eyes and nose). A character that shows no lower body gets no hips or
      groin.
+  7. The model sees the whole character once more and says what is special
+     about it: the things on it that someone could touch and that a plain human
+     figure doesn't have, at most six, the most noticeable first. Each one
+     becomes a zone named with the model's own words, such as *Hair bow*,
+     *Halo* or *Witch hat*. Animal ears, a tail, wings, horns and a skirt keep
+     Martlet's own zones for them (*Cat ears* is the animal ears zone with that
+     name). Ordinary body parts are left out (the short list covers them), and
+     so is anything intimate, which only the intimate zones above cover. A
+     tail, wings or animal ears that the Live2D model's own part names show
+     are added even when the model doesn't list them. Then the model checks
+     these boxes on the whole character, as in step 5. On **Detect again**,
+     the model hears the special zones it found before, so it keeps their
+     names. Their rows say *special to this character*. They react as the
+     extras do: by default a tilt and a smile, and in the persona's
+     [touch temperament](#touch-temperament) as the *Extras* category says.
+     When the model doesn't see one again, it goes away, as other zones do.
 
   Between steps the CPU does what it can tell for certain: it fits each box to
   the character's pixels, swaps left and right back when a pair is the wrong way
@@ -615,7 +635,7 @@ default; turn it off to leave them out. The check box names each of these parts.
   and 12 named parts from the model (39 of its 39 parts named in its
   DisplayInfo file ...)*).
 
-  Detection makes about 7 to 13 requests; **Stop** stops it and keeps the zones
+  Detection makes about 8 to 15 requests; **Stop** stops it and keeps the zones
   found until then, and the picture shows the zones as they are found. When a
   request fails (the Thinking model, or the computer it runs on, stops
   answering), finding zones stops at that request and says so. The zones from
@@ -691,8 +711,9 @@ default; turn it off to leave them out. The check box names each of these parts.
      go. The areas' boxes only show where the part was at rest, so a click on
      what is now at that place doesn't count as the zone.
 
-  When the model's own names say it has a tail or wings, the first guess and
-  **Detect zones** place them too, without **Add zone**. The zone's line says,
+  When the model's own names say it has a tail, wings or animal ears, the first
+  guess and **Detect zones** place them too, without **Add zone** (see above).
+  The zone's line says,
   for example, *tail · follows the model's own 尾巴 / 尾巴(2) wherever it
   moves: 21 parts in 6 areas*. To put such a zone on another part, move one of
   its areas there: the zone becomes that one box, and Martlet finds what it
@@ -788,7 +809,14 @@ default; turn it off to leave them out. The check box names each of these parts.
   *Touched, with your message* and *Touched, cutting you off*). While the switch is on, a box beside it takes your
   own words for the touch (optional), sent as a hint. Rename, turn off, move or resize
   (drag the box or its corner on the picture, or type it), delete or add zones;
-  **Try** plays one. Zones are saved per model in `character-touch-zones.json`,
+  **Try** plays one. To place a box precisely, zoom the picture in with
+  **Zoom in** (up to 8x) or Ctrl+mouse wheel over it (which zooms where the
+  pointer is): the picture grows but the boxes' lines, names and corners keep
+  their size, so the same drag moves a box by smaller steps. Zoomed in, the
+  mouse wheel and the scroll bars move around the picture (Shift+wheel goes
+  sideways), and so does a drag on the picture where there is no box; Ctrl+drag
+  or a drag with the middle button moves it from anywhere. **Reset zoom** shows
+  the whole picture again, as does opening the page again. Zones are saved per model in `character-touch-zones.json`,
   with the picture in `character-touch-zones\`.
 - **Touching Martlet while it talks**: a touch Martlet notices stops the reply
   or screen remark it is saying aloud at once, the way talking over it does,
@@ -911,7 +939,7 @@ Under each category's line, *Parts:* names the zones it covers:
 | Shoulders and torso | shoulders, collarbone, stomach, navel, lower back |
 | Arms and hands | upper arms, forearms, hands |
 | Legs and feet | thighs, knees, calves, feet |
-| Extras (animal ears, tail, wings...) | animal ears, tail, horns, wings, glasses or hat, skirt hem, held item |
+| Extras (animal ears, tail, wings...) | animal ears, tail, horns, wings, glasses or hat, skirt hem, held item, and the zones special to the character that Detect zones names (such as a hair bow or a halo) |
 | Intimate parts | mouth, ears, neck, chest and breasts, waist and sides, hips, groin, buttocks, inner thighs |
 
 Give one part its own line under *Parts that react differently from their

@@ -232,7 +232,8 @@ public static partial class CharacterTouchZones
         new(id, label, group, intimate, narration, defaults);
 
     /// <summary>Every zone Martlet knows, in the order the vision model is asked for them. Detect zones looks for
-    /// <see cref="TouchZoneDetection.Defaults"/> and the ones the owner added; Add zone offers the rest. Left and right are the
+    /// <see cref="TouchZoneDetection.Defaults"/>, the ones the owner added and what is special about the character (which can also
+    /// be a zone of its own that isn't here, named as the vision model sees it); Add zone offers the rest. Left and right are the
     /// character's own.</summary>
     public static readonly IReadOnlyList<TouchZoneKind> Kinds =
     [
@@ -308,7 +309,13 @@ public static partial class CharacterTouchZones
         ["left_lower_arm"] = "forearm_left", ["right_lower_arm"] = "forearm_right", ["lower_arm_left"] = "forearm_left",
         ["lower_arm_right"] = "forearm_right", ["left_upper_leg"] = "thigh_left", ["right_upper_leg"] = "thigh_right",
         ["upper_leg_left"] = "thigh_left", ["upper_leg_right"] = "thigh_right", ["left_lower_leg"] = "calf_left",
-        ["right_lower_leg"] = "calf_right", ["lower_leg_left"] = "calf_left", ["lower_leg_right"] = "calf_right"
+        ["right_lower_leg"] = "calf_right", ["lower_leg_left"] = "calf_left", ["lower_leg_right"] = "calf_right",
+        // What a vision model calls the extras a character can have.
+        ["animal_ear"] = "animal_ears", ["cat_ears"] = "animal_ears", ["fox_ears"] = "animal_ears", ["dog_ears"] = "animal_ears",
+        ["wolf_ears"] = "animal_ears", ["bunny_ears"] = "animal_ears", ["rabbit_ears"] = "animal_ears", ["kemonomimi"] = "animal_ears",
+        ["kemomimi"] = "animal_ears", ["nekomimi"] = "animal_ears", ["cat_ear"] = "animal_ears", ["fox_ear"] = "animal_ears",
+        ["dog_ear"] = "animal_ears", ["wolf_ear"] = "animal_ears", ["bunny_ear"] = "animal_ears", ["rabbit_ear"] = "animal_ears",
+        ["tails"] = "tail", ["wing"] = "wings", ["horn"] = "horns"
     };
 
     // A's rough zones, when no found zone matched: the found zones to try, else the first one's default reaction.
@@ -333,18 +340,34 @@ public static partial class CharacterTouchZones
         return slug == "glasses_hat" ? "glasses_or_hat" : null;
     }
 
+    /// <summary>A name as the ID of a zone of its own: lower case, its words (letters and digits in any language) joined with
+    /// underscores, at most 32 characters; null when nothing is left.</summary>
+    public static string? Slug(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var slug = new StringBuilder();
+        foreach (var c in name.Trim().ToLowerInvariant())
+            if (char.IsLetterOrDigit(c)) slug.Append(c);
+            else if (slug.Length > 0 && slug[^1] != '_') slug.Append('_');
+        var text = slug.ToString().Trim('_');
+        if (text.Length > 32) text = text[..32].TrimEnd('_');
+        return text.Length == 0 ? null : text;
+    }
+
     // ---------- the vision model's answer ----------
 
     /// <summary>The zones in a vision model's answer about a whole <paramref name="width"/> by <paramref name="height"/> picture
     /// (the fixture's stand-in answer and MCP's simulated one), with their boxes as fractions of the picture: JSON with boxes as
     /// arrays or named edges, a bare list, boxes keyed by zone, or Qwen-style <c>bbox_2d</c> grounding in pixels or 0..1000; an
-    /// answer cut off part way keeps the zones it finished. Unknown zones and boxes that can't be placed are left out; null when
-    /// nothing could be read. Detection itself asks step by step (<see cref="TouchZoneDetection"/>).</summary>
-    public static IReadOnlyList<CharacterTouchZone>? Parse(string? answer, int width, int height)
+    /// answer cut off part way keeps the zones it finished. Unknown zones (unless <paramref name="special"/>: then a zone special to
+    /// the character keeps its own ID and name, as <see cref="TouchZoneDetection.SpecialId"/> reads it) and boxes that can't be
+    /// placed are left out; null when nothing could be read. Detection itself asks step by step (<see cref="TouchZoneDetection"/>).</summary>
+    public static IReadOnlyList<CharacterTouchZone>? Parse(string? answer, int width, int height, bool special = false)
     {
         if (width <= 0 || height <= 0) return null;
-        var zones = TouchZoneDetection.ReadBoxes(answer, width, height, Normalize).Take(MaximumZones)
-            .Select(z => new CharacterTouchZone { Id = z.Key, Box = z.Value.Clamped(), Enabled = true }).ToArray();
+        var zones = (special ? TouchZoneDetection.ReadAnyZones(answer, width, height)
+                : TouchZoneDetection.ReadBoxes(answer, width, height, Normalize).Select(z => (Id: z.Key, Label: (string?)null, Box: z.Value)))
+            .Take(MaximumZones).Select(z => new CharacterTouchZone { Id = z.Id, Label = z.Label, Box = z.Box.Clamped(), Enabled = true }).ToArray();
         return zones.Length == 0 ? null : zones;
     }
 
@@ -601,7 +624,8 @@ public static partial class CharacterTouchZones
     /// leaves out lie.</summary>
     private static TouchZoneBox Around(TouchZoneBox box) => new(box.X - box.Width / 2, box.Y - box.Height / 2, box.Width * 2, box.Height * 2);
 
-    /// <summary>Newly found zones merged with the saved ones: a zone found again keeps the owner's label, choice, reaction and
+    /// <summary>Newly found zones merged with the saved ones: a zone found again keeps the owner's label (else the name it was
+    /// found with), choice, reaction and
     /// whether the owner added it. A zone the owner added (<see cref="CharacterTouchZone.Added"/>) that wasn't found again stays
     /// where it was; any other zone not found again is dropped, unless <paramref name="keepUnfound"/> (a detection still
     /// running over the first guess: its zones not found yet stay too). <paramref name="whole"/>: the snapshot framed the
@@ -610,7 +634,7 @@ public static partial class CharacterTouchZones
         TouchZoneBox? crop, RendererZoneProbe? probe, DateTimeOffset now, bool whole = false, bool keepUnfound = false)
     {
         var merged = found.Select(zone => saved?.Zones.FirstOrDefault(z => z.Id == zone.Id) is { } old
-            ? zone with { Label = old.Label, Enabled = old.Enabled, Reaction = old.Reaction, Added = old.Added } : zone).ToList();
+            ? zone with { Label = old.Label ?? zone.Label, Enabled = old.Enabled, Reaction = old.Reaction, Added = old.Added } : zone).ToList();
         // Its boxes were fractions of the earlier snapshot: they stay on the same place of the page in the new one.
         TouchZoneBox Rebased(TouchZoneBox box) => saved?.Crop is { } was && crop is { } next && was != next ? box.Within(was).Relative(next).Clamped() : box;
         merged.AddRange(saved?.Zones.Where(z => (z.Added || keepUnfound) && merged.All(m => m.Id != z.Id))
@@ -851,7 +875,8 @@ public static partial class CharacterTouchZones
         if (catalog is null) return [];
         var entries = catalog.Entries.Where(e => e.Action.Enabled).ToArray();
         var plan = new List<CharacterActionSource>();
-        foreach (var slot in Kind(zone.Id)?.Defaults ?? [])
+        // A zone of its own, special to the character (a hair ribbon, a halo), reacts as the extras do.
+        foreach (var slot in Kind(zone.Id)?.Defaults ?? Extra)
             foreach (var word in slot)
             {
                 var hit = entries.Where(e => Named(e, word)).OrderBy(e => e.Source.Kind == CharacterActionKind.Gesture ? 1 : 0)
@@ -1066,7 +1091,7 @@ public static partial class CharacterTouchZones
 }
 
 /// <summary>One picture the vision model was sent while finding zones: its file in the sent folder, the step, what it asked
-/// (Parts, Zones or Check), its size in pixels and bytes, and its media type.</summary>
+/// (Parts, Zones, Special or Check), its size in pixels and bytes, and its media type.</summary>
 public sealed record TouchZoneSentPicture(string File, string Step, string Kind, int Width, int Height, int Bytes, string MediaType);
 
 /// <summary>Where a detection's snapshot sat on the renderer page (fractions of the page) and what the renderer's probe told of the
@@ -1087,6 +1112,7 @@ public sealed record TouchZoneSent(DateTimeOffset At, bool Fixture, int Requests
             .Select(p => p.Step.Replace('_', ' ')).Distinct().ToArray();
         var checks = Pictures.Count(p => p.Kind == nameof(ZoneAskKind.Check));
         var again = Pictures.Any(p => p.Step == TouchZoneDetection.MissingStep);
+        var special = Pictures.Any(p => p.Kind == nameof(ZoneAskKind.Special));
         var parts = closeUps.Length switch
         {
             0 => "",
@@ -1098,6 +1124,7 @@ public sealed record TouchZoneSent(DateTimeOffset At, bool Fixture, int Requests
             $"up to {largest} pixels on the longer side, each on a plain backdrop with a grid of tenths" +
             (parts.Length > 0 ? $": the whole character, then close-ups of the {parts}" : "") +
             (checks > 0 ? $", with its boxes drawn and numbered for {checks} check{(checks == 1 ? "" : "s")}" : "") +
-            (again ? ", and the whole character again for the zones the close-ups missed" : "") + ".";
+            (again ? ", and the whole character again for the zones the close-ups missed" : "") +
+            (special ? again ? " and for anything special to it" : ", and the whole character again for anything special to it" : "") + ".";
     }
 }

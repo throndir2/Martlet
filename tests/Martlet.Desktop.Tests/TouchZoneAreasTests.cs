@@ -217,16 +217,14 @@ public sealed class TouchZoneAreasTests
     }
 
     [Fact]
-    public void DetectZonesLooksForATailHerOwnPartsNameAndRebindingFollowsItAfterTheOwnerMovesIt()
+    public void HerOwnPartsNameATailAndRebindingFollowsItAfterTheOwnerMovesIt()
     {
         var probe = Probe();
         var hints = TouchZoneDetection.Hints(probe, Whole);
 
-        var options = TouchZoneDetection.For(null, hints: hints);
-        Assert.Contains("tail", options.Zones);
-        Assert.Contains("tail", options.Required);
-        Assert.DoesNotContain("tail", TouchZoneDetection.For(null).Zones);
-        Assert.DoesNotContain("tail", TouchZoneDetection.For(null, hints: TouchZoneDetection.Hints(Probe(named: false), Whole)).Zones);
+        // Her part names place a tail, so the first guess and Detect zones add it as special to her; unnamed parts place none.
+        Assert.Equal(["tail"], TouchZoneDetection.Named(hints));
+        Assert.Empty(TouchZoneDetection.Named(TouchZoneDetection.Hints(Probe(named: false), Whole)));
 
         // The owner added a tail in the middle of the picture, then dragged it onto the tip below her boots: saving binds it again.
         var moved = new CharacterTouchZoneSettings
@@ -248,7 +246,7 @@ public sealed class TouchZoneAreasTests
         var hints = TouchZoneDetection.Hints(probe, Whole);
         var picture = Picture();
 
-        var guess = TouchZoneDetection.Estimate(picture, hints, TouchZoneDetection.For(null, hints: hints));
+        var guess = TouchZoneDetection.Estimate(picture, hints, TouchZoneDetection.For(null));
         var settings = CharacterTouchZones.Estimated(null, "jane", guess.Zones!, Whole, probe, DateTimeOffset.Now);
 
         var tail = settings.Zones.Single(z => z.Id == "tail");

@@ -243,7 +243,7 @@ The controls it offers:
   `context_check`, `thinking_steps_check` and more. They read the same disposable
   data directory the desktop uses.
 - **Desktop UI automation** (`ui_connect`, `ui_snapshot`, `ui_click`, `ui_select`,
-  `ui_set_text`, `ui_toggle`, `ui_set_range`, `ui_move`, `ui_tray`): find controls by automation ID,
+  `ui_set_text`, `ui_toggle`, `ui_set_range`, `ui_move`, `ui_scroll`, `ui_tray`): find controls by automation ID,
   read status text, and click passive navigation. Anything that sends, records,
   plays, spends, writes files or handles credentials needs `-AllowUiEffects`
   (`--allow-ui-effects`), which is allowed only with a disposable data directory and

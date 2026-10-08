@@ -256,13 +256,14 @@ public static class CharacterTouchTemperaments
     }
 
     /// <summary>The temperament's entry for a zone kind: the zone's own, else for an intimate kind the intimate category's, else
-    /// its body group's, else null (the built-in default). So a temperament saved before the intimate category covers its
-    /// intimate kinds with their body group, as it did then.</summary>
+    /// its body group's (for a zone of its own, special to the character, the extras'), else null (the built-in default). So a
+    /// temperament saved before the intimate category covers its intimate kinds with their body group, as it did then.</summary>
     public static TouchTemperamentEntry? Entry(CharacterTouchTemperament? temperament, string zoneId)
     {
         if (temperament is null) return null;
         if (temperament.Zones.TryGetValue(zoneId, out var own)) return own;
-        if (CharacterTouchZones.Kind(zoneId) is not { } kind) return null;
+        if (CharacterTouchZones.Kind(zoneId) is not { } kind)
+            return temperament.Groups.TryGetValue(GroupId(TouchZoneGroup.Extras), out var extras) ? extras : null;
         if (kind.Intimate && temperament.Groups.TryGetValue(IntimateId, out var intimate)) return intimate;
         return temperament.Groups.TryGetValue(GroupId(kind.Group), out var group) ? group : null;
     }

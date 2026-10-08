@@ -132,7 +132,7 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
             var crop = new TouchZoneBox(shot.Picture.CropLeft, shot.Picture.CropTop, shot.Picture.CropWidth, shot.Picture.CropHeight);
             var hints = TouchZoneDetection.Hints(shot.Probe, crop);
             var before = Current;
-            var result = await Task.Run(() => TouchZoneDetection.Estimate(snapshot, hints, TouchZoneDetection.For(before, hints: hints)), token);
+            var result = await Task.Run(() => TouchZoneDetection.Estimate(snapshot, hints, TouchZoneDetection.For(before)), token);
             foreach (var step in result.Steps) ErrorLog.Info($"First touch zones: {step}.");
             // Another model loaded, or zones made, while the picture was taken: those stay as they are.
             if (ModelId != id || Current is { Zones.Count: > 0 }) return Detection ?? "";
@@ -167,7 +167,8 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
     /// <see cref="AvatarController.ZoneSnapshotAsync"/>) and finds its zones step by step with the Thinking model (through
     /// <paramref name="ask"/>, one picture each: <see cref="TouchZoneDetection"/>), saving the zones as they are found, bound to
     /// the model's drawables or bones, and keeping every picture sent (<see cref="Sent"/>). It looks for the default zones and the
-    /// ones the owner added (<see cref="TouchZoneDetection.For"/>); a zone the owner added that it can't place stays where it was.
+    /// ones the owner added (<see cref="TouchZoneDetection.For"/>), and asks what is special about the character (animal ears, a
+    /// tail, a hat, a bow...), each a zone named as the model sees it; a zone the owner added that it can't place stays where it was.
     /// Over a first guess (<see cref="EstimateAsync"/>), the first guess's zones it hasn't found yet stay on the picture until it
     /// is done, and then its zones replace them. When a request fails part way, finding
     /// zones stops there: the zones from before (and their picture) come back, or, with none before, the zones found until then
@@ -199,7 +200,8 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
             }
             // The fixture's zones stand in for the vision model: every request is answered from them (FIXTURE - NOT AI).
             var truth = fixture is null ? null
-                : CharacterTouchZones.Parse(File.Exists(fixture) ? await File.ReadAllTextAsync(fixture, token) : null, snapshot.Width, snapshot.Height);
+                : CharacterTouchZones.Parse(File.Exists(fixture) ? await File.ReadAllTextAsync(fixture, token) : null, snapshot.Width, snapshot.Height,
+                    special: true);
             var crop = new TouchZoneBox(shot.Picture.CropLeft, shot.Picture.CropTop, shot.Picture.CropWidth, shot.Picture.CropHeight);
             var hints = TouchZoneDetection.Hints(shot.Probe, crop);
             var before = Current;
@@ -243,9 +245,9 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
                 return await ask($"Finding touch zones ({zoneAsk.Step})", zoneAsk.Instructions, zoneAsk.Text, image, cancel);
             }
 
-            // It looks for the default zones, the ones the owner added and a tail or wings the model's own parts name; with Include
-            // intimate zones on (it is unless the owner turned it off), the intimate ones must be found, and so must the others.
-            var options = TouchZoneDetection.For(before, hints: hints);
+            // It looks for the default zones and the ones the owner added; with Include intimate zones on (it is unless the owner
+            // turned it off), the intimate ones must be found, and so must the ones the owner added.
+            var options = TouchZoneDetection.For(before);
             var result = await Task.Run(() => TouchZoneDetection.RunAsync(snapshot, hints, AskAsync, progress =>
             {
                 latest = progress.Zones;
@@ -284,8 +286,13 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
             var settings = Current!;
             var bound = settings.Zones.Count(z => z.Drawables.Count > 0 || z.Bones.Count > 0);
             var checks = pictures.Count(p => p.Kind == nameof(ZoneAskKind.Check));
-            ErrorLog.Info($"The Thinking model found {result.Zones.Count} touch zones in {requests} requests ({bound} bound to the model's parts{Following(settings)}).");
-            return Report(tag + $"Found {result.Zones.Count} zone{(result.Zones.Count == 1 ? "" : "s")} at {DateTime.Now:t} in {requests} " +
+            // The zones special to the character it found, by the names they show with.
+            var special = settings.Zones.Where(z => !z.Added && TouchZoneDetection.IsSpecial(z.Id) && result.Zones.Any(r => r.Id == z.Id))
+                .Select(z => z.Name.ToLowerInvariant()).ToArray();
+            ErrorLog.Info($"The Thinking model found {result.Zones.Count} touch zones in {requests} requests ({bound} bound to the model's parts" +
+                (special.Length > 0 ? $", {special.Length} special to the character" : "") + $"{Following(settings)}).");
+            return Report(tag + $"Found {result.Zones.Count} zone{(result.Zones.Count == 1 ? "" : "s")}" +
+                (special.Length > 0 ? $" ({special.Length} special to this character: {List(special)})" : "") + $" at {DateTime.Now:t} in {requests} " +
                 $"request{(requests == 1 ? "" : "s")} ({checks} check{(checks == 1 ? "" : "s")} of the boxes); {bound} follow the model's parts as it moves." +
                 FollowingText(settings));
         }
@@ -376,6 +383,10 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
     }
 
     private static string Zones(int count) => count == 1 ? "1 zone" : $"{count} zones";
+
+    // "a", "a and b", "a, b and c".
+    private static string List(IReadOnlyList<string> items) =>
+        items.Count == 1 ? items[0] : string.Join(", ", items.Take(items.Count - 1)) + " and " + items[^1];
 
     /// <summary>A touch on the showing character: the zone it landed in plays its reaction (unless the zone is resting), and
     /// <paramref name="notice"/> gets every zone the touch landed in that Martlet notices (zones can overlap,

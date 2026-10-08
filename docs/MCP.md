@@ -1431,7 +1431,10 @@ character (its `ids`: head, upper_body and lower_body, and a tail, wings or
 held item only when the owner added one), `zones` with each close-up (its
 `regions` and the wanted zones each asks for) and `check` with the numbered
 boxes, each with its `instructions` and an example `text`; `extras`, the
-tail, wings or held item it looks for), `parsed`
+tail, wings or held item it looks for; `special`, what is special about the
+character: the `maximum` zones of its own the model may add (6 by default),
+its `instructions`, an example `text` and `before`, the special zones found
+before with their `id` and `name`, whose IDs the model is asked to keep), `parsed`
 (what the production parser makes of `answer`, a simulated vision reply about
 the whole picture: JSON boxes as fractions or named edges (`left`, `top`,
 `right`, `bottom`), pixels of a `width` × `height` picture, 400 × 800 by
@@ -1457,8 +1460,8 @@ zones* keeps with the pictures it sent, crop and all, or a bare probe), `hints`
 `areas` with its `part`, the character's own `side` for one that comes in pairs
 and its `box` as left, top, right and bottom fractions of the snapshot), the
 close-ups' windows they give (`regions`: head, upper_body and lower_body, or
-null), the `extras` its names place (a tail or wings, which *Detect zones* then
-looks for too), and its swinging parts: `chains` (each `name`, how many
+null), the `extras` its names place (a tail, wings or animal ears, which the
+first guess and *Detect zones* add as zones special to the character), and its swinging parts: `chains` (each `name`, how many
 `drawables`, the body `part` its name says, its `root` and `tip` drawable) and
 `springs` (each `name`, how many `joints` and the `part` its name says)), `saved` (the model's zones in
 `character-touch-zones.json`: how many, how many are `active`, who found them,
@@ -1471,8 +1474,9 @@ is kept and its `snapshotProbe` (how many `chains` and `springs` the probe kept
 beside it has; the desktop binds the zones again with it when the owner moves
 one), what the last detection `sent` (its plain `line`, `requests`,
 `pictures`, `steps` and, from its `probe.json`, the `probe`'s hints as above) and
-each zone's parts, its number of `areas`, what it `follows`, `plays`, whether Martlet `notices` it, whether the owner
-`added` it and the owner's `hint`) and,
+each zone's parts, its number of `areas`, what it `follows`, `plays`, whether
+Martlet `notices` it, whether the owner `added` it, whether it is `special` to
+the character (found as special, not added) and the owner's `hint`) and,
 with `touch` (a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
 it lands with the character framed whole, `restX`, `restY`, `restWholeX` and
 `restWholeY` where the touched point of the character was in its rest pose, now
@@ -1524,7 +1528,16 @@ mouth (`lips`), ears, breasts, hips (`hip_left`, `hip_right`) and groin;
 `TouchZoneDetection.Erogenous` lists every intimate kind) must be found, and
 so must the zones the owner added: the ones the close-ups miss are
 asked for again on the whole character (the `missing` step), then the intimate
-ones are worked out from the zones around them. With a probe whose parts name body parts, the
+ones are worked out from the zones around them. After the close-ups (and the
+`missing` step), the `special` step asks the whole character what is special
+about it (at most `special` zones, 0 to 10, 6 by default; 0 doesn't ask): the
+stand-in lists `answer`'s zones that are special, which are the extras Martlet
+knows (such as `tail`) and zones of its own that `answer` names with an ID and
+a `name` (such as `{"id":"hair_bow","name":"hair bow",...}`). Each becomes a
+zone with that name; ordinary body parts and anything intimate are left out.
+A tail, wings or animal ears the probe's part names place are added too. The
+`special check` rounds then check them on the whole character (the `steps` say
+*special: found hair_bow (Hair bow)*). With a probe whose parts name body parts, the
 close-ups' windows come from them and boxes that clearly miss their named part
 are moved onto it (the `steps` say *took head, upper_body, lower_body from the
 model's own named parts* and *moved neck onto the model's own neck*).
@@ -1534,7 +1547,8 @@ snapshot, `marks`, the message,
 the stand-in's answer and whether it `failed`), the `steps` (what each found,
 swapped, moved, removed, added or worked out), `requestCount`, the `failure` it
 stopped at (null when none), what it `missed`, the `wanted` zones, the `required` zones and those
-still missing (`requiredMissing`), and how far the found boxes are
+still missing (`requiredMissing`), the zones `special` to the character it
+found (each `Id` and `Name`), and how far the found boxes are
 from `answer`'s (`worstEdge`, `meanEdge`).
 With `estimate` (and no `answer` or `detect`), the first guess that the Touch
 zones page places on a model with no zones and no picture
@@ -1625,11 +1639,15 @@ needs `--allow-ui-effects`),
 it follows, for a zone with several areas how many, for a zone that follows the
 model's own part *follows the model's own 尾巴 wherever it moves: 21 parts in 6
 areas*, *added by you* for a zone the owner added, which *Detect again*
-looks for too and keeps where it is when it can't find it, and its default
-reaction), and `TouchZonesAddNote` (which zones *Detect zones* looks for:
+looks for too and keeps where it is when it can't find it, or *special to this
+character* for a zone *Detect zones* found as special to the character, and its
+default reaction), and `TouchZonesAddNote` (which zones *Detect zones* looks for:
 *Detect zones looks for the hair, eyes, ears, nose, mouth, neck, breasts, upper
-arms, forearms, stomach, hips, groin, thighs, calves and feet. Add any other
-zone here...*). `TouchZonesDetect` sends the character's
+arms, forearms, stomach, hips, groin, thighs, calves and feet, and for anything
+special to this character, such as animal ears, a tail, wings, a hat or a bow.
+Add any other zone here...*). When a detection finds zones special to the
+character, `TouchZonesDetection` names them: *Found 27 zones (2 special to this
+character: hair bow and tail) at ...*. `TouchZonesDetect` sends the character's
 pictures to Thinking; it is disabled only while a detection runs, while the
 character is still being read, or when no model can see pictures (never because
 the character is hidden). The picture comes from a second renderer that loads
@@ -1674,6 +1692,23 @@ move; `character_zones` reads them, drawn or not.
 with `{"idPrefix":"TouchZoneRect","layout":true}` each box's `bounds` show
 where it sits on the picture (`TouchZonesPicture`'s `bounds`), one box per
 area of each saved zone.
+The picture sits in the zone map, `TouchZonesMap` (a frame that zooms, for
+moving and resizing boxes precisely). `TouchZonesZoomIn`, `TouchZonesZoomOut`
+and `TouchZonesZoomReset` (*Zoom in*, *Zoom out*, *Reset zoom*) are passive
+clicks: they change only how large the map shows the picture, in steps of 1x,
+1.5x, 2x, 3x, 4x, 6x and 8x, and save nothing. `TouchZonesZoom` reads how far
+it is zoomed in (*Zoom 2x*). Zoomed in, `TouchZonesPicture`'s `bounds` grow
+with the zoom while `TouchZonesMap`'s keep the height they have at 1x (the
+map grows as wide as the picture or the page), each `TouchZoneRect-<n>` (and
+`TouchZoneRect-<n>-<k>`)
+grows with the picture, and `ui_scroll` on `TouchZonesMap` reads and moves the
+part of the picture that shows (`shows`: left, right, top and bottom in percent
+of the picture). The zoom buttons keep the middle of what shows; Ctrl+wheel over
+the picture zooms where the pointer is. The page keeps the zoom and the part
+shown while it draws again (Add zone, each step of Detect zones) and shows the
+whole picture when it opens again or shows another model. A zone added while
+zoomed in starts in the middle of the part shown, as large on the screen as
+one added at 1x (a fifth of the picture each way).
 The Character page lists more than `ui_snapshot`'s 200 controls; read the
 section with `{"idPrefix":"TouchZone"}`. With `"layout":true`, each row's text
 boxes, choices and buttons in Touch zones, Touch temperament and Emotes and
@@ -4413,7 +4448,15 @@ option. By default only passive navigation and
 diagnostics controls can be clicked. `ui_click` with `"focus": true` gives the
 control the keyboard focus first, as a mouse click does (its window comes to
 the front when Windows lets it): use it to check a page that updates while a
-button it just started still has the focus, such as *Detect zones*. The main window is split into pages, and a
+button it just started still has the focus, such as *Detect zones*. `ui_scroll`
+reads or scrolls a control that scrolls, through UI Automation's Scroll
+pattern: a page, or Companion › Touch's zone map (`TouchZonesMap`) when it is
+zoomed in. `horizontal` and `vertical` (0 to 100, each optional) say how far
+along to scroll it; without them it only reads. It returns how far along it is
+each way (-1 when it can't scroll that way) and which part of its content shows
+(`shows`: `left`, `right`, `top` and `bottom` in percent of the content), plus
+its `bounds`. Scrolling changes only what shows, so `ui_scroll` needs no
+`--allow-ui-effects`. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
 `NavDevices`, `NavCompanion`, `NavCreations`, `NavTasks`, `NavDiagnostics` or `NavSettings` first (for example
 `NavCompanion` before `CompanionTab-Listening`). On Settings, click `DiagnosticsSection` to
