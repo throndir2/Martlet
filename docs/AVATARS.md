@@ -133,10 +133,10 @@ what each one is.
   - an expression whose name or tag names a look that stays (glasses, a hat, a
     blush, an angry or sad face, tears, a dark face, an outfit or accessory).
 
-  Martlet's holdable gestures (pout, shy, look_away and drowsy, and the overlay
-  emotes sweat, hearts, gloom and sleepy) also stay on by
-  default. The renderer holds one gesture at a time, so a new held gesture
-  replaces the one before. A gesture that the renderer cannot hold plays once.
+  Martlet's holdable gestures (pout, shy, look_away, drowsy, eyes_up and
+  mouth_open, and the overlay emotes sweat, hearts, gloom and sleepy) also stay
+  on by default. Held gestures layer (see *Layers*). A gesture that the
+  renderer cannot hold plays once.
   Motions and the other gestures are brief by default. The Thinking model's
   naming also gives `stays` or `brief` for each item.
 - **Tags for lingering emotes**: a reply writes `{glasses}` to turn the emote
@@ -147,6 +147,28 @@ what each one is.
   each held expression its own Cubism expression manager, as VTube Studio does.
   Thus the held expressions add to each other and to the passing emote. VRM
   keeps held expressions on while passing ones fade in and out.
+
+  Held gestures layer too, so a reply (or you) can build a face from parts
+  that stay on together, for example the eyes turned up, the mouth open and a
+  blush, with hearts drawn over them. Each holdable gesture moves some parts of
+  the face. A new held gesture lets go only of the held gestures that move a
+  part it moves too, and they ease out as it eases in. Held overlay emotes
+  (sweat, hearts, gloom, sleepy and the blush that Martlet draws) have no parts:
+  they all show together, on top of whatever the model holds. A gesture played
+  once plays on top of the held ones.
+
+  | Held gesture | Parts it moves |
+  | --- | --- |
+  | `pout` | mouth, brows, head |
+  | `shy` | eyes, mouth, head |
+  | `look_away`, `drowsy` | eyes, head |
+  | `blush` (the model's own: Live2D `ParamCheek`, a VRM's blush expression) | cheeks |
+  | `eyes_up` | eyes |
+  | `mouth_open` | mouth |
+
+  The head part includes the body. The tables are `HOLD_PARTS` in
+  `Martlet.Avatar.Live2D`'s `lib/gestures.ts` and `VRM_HOLD_PARTS` in
+  `Martlet.Avatar.Vrm`'s `src/runtime.ts`.
 - **What the reply model knows**: while lingering emotes show, the notes of the
   newest message tell the reply model (Companion › Prompts › *Character emotes
   showing now*). An example: *Your character is showing {glasses} (12 min),
@@ -188,7 +210,11 @@ what each one is.
   - Martlet has no combos of its own: combos are the owner's, for each model.
 - **Renderer protocol**: `RendererAction(Kind, Name, On, Hold)`. With `Hold`,
   an expression, gesture or overlay stays on until the same action comes with
-  `On` set to false.
+  `On` set to false. The reply to a gesture action says which gesture plays
+  once and every one held, the model's gestures first and then the drawn
+  ones: `gesture: {playing, held: [...]}`. Martlet keeps each lingering emote
+  that the renderer still holds and forgets only the ones it let go. When the
+  same model shows again, Martlet turns all of them on again.
 - **Global gestures**: Martlet's own gestures (`CharacterActionInventory.AllGestures`)
   play on any model whose rig has what they move, so replies are offered only
   the ones the shown model can do:
@@ -297,14 +323,31 @@ what each one is.
   | `think` | looks up and to the side | `ParamAngleY` | `head` |
   | `eye_roll` | the eyes roll up and over | `ParamEyeBallX`, `ParamEyeBallY` | `head` |
   | `drowsy` | half-closed eyes, the head slowly nodding off and catching itself | `ParamEyeLOpen`, `ParamEyeROpen` | `head`, `spine` (`blink`) |
+  | `eyes_up` | only the eyes turn up and stay up; the head doesn't move | `ParamEyeBallY` | `leftEye`, `rightEye` |
+  | `mouth_open` | the mouth opens and stays open; the voice still moves it | `ParamMouthOpenY` | `head` (the `oh` mouth expression, or `aa`) |
 
-  `pout`, `shy`, `look_away` and `drowsy` can be **held**: a renderer `action`
-  with `hold: true` eases into the pose and keeps it, gently alive, until an
-  `on: false` action for the same gesture eases it out (`Holdable` in
-  `AllGestures`). Without `hold` they play once. A gesture played while one is
-  held plays on top, the held pose easing back partway and resuming after; a
-  new held gesture crossfades from the last. The renderer's reply to a gesture
-  says which plays once and which is held (`gesture: {playing, held}`).
+  `eyes_up` and `mouth_open` come last in `AllGestures`, after the overlay
+  emotes, so the reply instructions' earlier lines stay the same.
+
+  `pout`, `shy`, `look_away`, `drowsy`, `eyes_up` and `mouth_open` can be
+  **held**: a renderer `action` with `hold: true` eases into the pose and keeps
+  it, gently alive, until an `on: false` action for the same gesture eases it
+  out (`Holdable` in `AllGestures`). Without `hold` they play once for a few
+  seconds. A gesture played while some are held plays on top, the held poses
+  easing back partway and resuming after. A new held gesture crossfades only
+  from the held gestures that move a part it moves too (see *Layers*). The
+  renderer's reply to a gesture says which plays once and every one held
+  (`gesture: {playing, held: [...]}`).
+
+  While `eyes_up` is held, the eyes stay up whatever the look (the mouse, a
+  point or a glance), and the head still follows the look. When it ends, the
+  eyes follow the usual gaze again. Live2D moves `ParamEyeBallY` and takes the
+  look out of the eyeballs. A VRM turns its eye bones up as far as its own
+  look-up range (12° when it has none). While `mouth_open` is held and the
+  voice speaks, the held opening eases back to a third, so lip-sync still moves
+  the mouth. When the voice stops, the mouth opens fully again. Live2D adds to
+  `ParamMouthOpenY`. A VRM uses its `oh` mouth expression, or `aa` when it has
+  no `oh`; a composed (Audio2Face) turn keeps the mouth it drives.
 - **Where it looks**: the head and eyes follow the character's usual gaze (your
   mouse, your mouse only when it's near, straight ahead, or the window you're
   using), chosen on Companion › Character › **Where the character looks** or

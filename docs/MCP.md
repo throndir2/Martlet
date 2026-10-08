@@ -4696,8 +4696,10 @@ couldn't, such as *Thinking isn't set up yet*); `CharacterActionsOffered` the
 tags replies get with the voice chosen now and which follow the voice's cues;
 `CharacterActionsLast` the last one played (*Played the expression "脸红" for
 {blush} at 3:14:05 PM.*, *... for a try ...*, or *The character couldn't play
-...*; for a gesture followed by what the renderer now plays and holds, *Gestures
-now: wink playing, shy held.*; an emote Martlet drew over the face itself, such
+...*; for a gesture followed by what the renderer now plays and every gesture
+and drawing it holds, *Gestures now: wink playing, eyes_up, mouth_open, blush,
+hearts held.* (held gestures layer; see
+[Layers](AVATARS.md#emotes-and-motions)); an emote Martlet drew over the face itself, such
 as the blush glow on a model without a blush of its own, adds *drawn by Martlet
 over the face at 414, 88 (50 pixels wide, tilted 3°, pinned to the face's meshes)* with the face's middle and
 width in the overlay's page pixels, the head's roll (clockwise) and how the face is followed (*pinned to the
@@ -4706,7 +4708,8 @@ Live2D model without face meshes to pin to; a Live2D estimate's roll is a damped
 most 12°; see *Where Martlet draws over the face* and `character_face`), or *(not in view now)* when the face can't be found
 or faces away), also in `logs_tail` `desktop` as *Character expression '脸红'
 played for {blush}.* (*Character gesture 'blush' played for a try, drawn by
-Martlet over the face at ...*); and `CharacterActionsSaveState` *All changes saved.* or *Not saved:
+Martlet over the face at ...*, a gesture's line ending with the same *Gestures
+now: ...*); and `CharacterActionsSaveState` *All changes saved.* or *Not saved:
 <why>*. Row `<n>` (as in `character_actions`) has `CharacterActionName-<n>`
 (its name and kind; a status field), `CharacterActionOn-<n>` (check box),
 `CharacterActionTag-<n>` (an English tag; a tag in another script reads *Not
@@ -4720,10 +4723,12 @@ box has text), `CharacterActionMode-<n>` (the
 (plays it on the showing character, or turns a lingering one on; its label, a
 status field, reads *Turn off* while that lingering emote is on, and clicking it
 then turns it off; disabled while it is hidden). `CharacterActionsHeld` reads
-the lingering emotes on now (*On now: Glasses (12 min), Blushing (just now).
+the lingering emotes on now, all of them, held gestures and drawings included
+(*On now: Glasses (12 min), Blushing (just now).
 Clear emotes on the character's menu turns them off.* or *No lingering emotes
 are on.*); `CharacterActionsLast` then reads *Turned on the expression ...* or
-*Turned off ...*, and `logs_tail` `desktop` *Character expression 'Glasses' held
+*Turned off ...* (for a gesture with the renderer's *Gestures now: ...*, which
+shows the others still held), and `logs_tail` `desktop` *Character expression 'Glasses' held
 for a try.* `CharacterActionsClear` (*Clear emotes*) and the character overlay
 menu's `CharacterClearEmotes` turn every lingering emote off (*Cleared 2
 lingering emotes for Clear emotes ...*).
