@@ -8,6 +8,12 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+- Use the model app you already run on your PC for Thinking: Companion › Thinking › This PC › **A model app you already use** finds LM Studio, llama.cpp, KoboldCpp, Jan, vLLM, Lemonade, GPT4All, Docker Model Runner and other OpenAI-compatible apps, lists their models, tests one and switches to it, with no cloud wording and no key unless the app asks for one. Any other app works by typing the address it shows, such as `localhost:5001`, and Home tells you when the app stops answering. The macOS and Linux app gets **Find model apps**. ([#633](https://github.com/throndir2/Martlet/pull/633))
+
+### Changed
+- Companion › Thinking › This PC › Ollama now says that any Ollama model works, including a Hugging Face GGUF or a model you made yourself. ([#633](https://github.com/throndir2/Martlet/pull/633))
+
 ### Fixed
 - When always listening can't use your microphone, Martlet no longer opens and drops it every 5 seconds. It tries again after 1 second, then waits longer each time (up to 30 seconds), Home says how often it tries, and the log says why the microphone failed. ([#632](https://github.com/throndir2/Martlet/pull/632))
 
