@@ -56,14 +56,14 @@ internal sealed partial class LiveConversationController
         {
             // Every place it can run on is kept free for the conversation: it starts once the conversation pauses.
             ErrorLog.Info($"Web research: {started.Id} waits for the conversation (the live floor keeps its places free while you " +
-                "talk; no time limit once it starts)" +
+                $"talk; {BackgroundJobs.Duration(WebResearch.TimeLimit)} limit once it starts)" +
                 (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
             return new(WebResearch.Started(started, toldUser));
         }
         var chosen = pool.Find(seat.Id)!;
         ErrorLog.Info($"Web research: started {started.Id}, thinking on {(chosen.Settings.Separate ? chosen.Settings.Describe() : thinkingModel)} " +
-            $"(placed on {chosen.Computer}; no time limit, at most {WebResearch.Budget.Searches} searches, {WebResearch.Budget.Pages} pages " +
-            $"and {WebResearch.Budget.Steps} model steps)" +
+            $"(placed on {chosen.Computer}; {BackgroundJobs.Duration(WebResearch.TimeLimit)} limit, " +
+            $"{jobs.StartedWithinHour(WebResearch.KindName)} of {WebResearch.Kind.MaxPerHour} this hour)" +
             (toldUser ? "." : " The reply hadn't told you yet, so it was asked to."));
         return new(WebResearch.Started(started, toldUser));
     }
@@ -134,8 +134,7 @@ internal sealed partial class LiveConversationController
             await watch.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             // Counts only: never the topic, a query, a link or what was read.
             ErrorLog.Info($"Web research: {job.Id} ended on {spot.Computer} after {BackgroundJobs.Duration(job.Elapsed)} ({run.Searches} searches, " +
-                $"{run.Pages} pages read, {run.Failures} unreadable, {run.Bytes / 1024} KiB downloaded, {run.Steps} model steps on {where}, " +
-                $"{run.NotesCharacters} characters of notes).");
+                $"{run.Pages} pages read, {run.Failures} unreadable, {run.Bytes / 1024} KiB downloaded, {run.Steps} model steps on {where}).");
         }
     }
 

@@ -35,20 +35,17 @@ public sealed record ThinkLongerSettings : IContract
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ThinkDelivery? Delivery { get; init; }
     /// <summary>Companion › Deep thinking › Web research: whether Martlet may search the web and read pages in the background
-    /// when the user asks it to look something up (the research tool). On by default, so asking Martlet to look something up
-    /// works at once; the card says what leaves the PC (the search words go to a search engine and the pages' sites see the
-    /// request) and the owner can turn it off there. Thinking longer off turns it off too.</summary>
+    /// when the user asks it to look something up (the research tool). Off until the owner turns it on, since the search words
+    /// go to a search engine and the pages' sites see the request; Thinking longer off turns it off too.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? WebResearch { get; init; }
 
-    public const bool DefaultWebResearch = true;
+    public const bool DefaultWebResearch = false;
 
     [JsonIgnore] public bool IsDefault => Enabled is null && Effort is null && Minutes is null && PerHour is null && Delivery is null &&
         WebResearch is null;
-    /// <summary>Whether the owner lets Martlet research on the web (on unless turned off), whatever Thinking longer is.</summary>
-    [JsonIgnore] public bool WebResearchOn => WebResearch ?? DefaultWebResearch;
-    /// <summary>Whether Martlet may research on the web: the owner didn't turn it off and Thinking longer is on.</summary>
-    [JsonIgnore] public bool Researches => On && WebResearchOn;
+    /// <summary>Whether Martlet may research on the web: the owner turned it on and Thinking longer is on.</summary>
+    [JsonIgnore] public bool Researches => On && (WebResearch ?? DefaultWebResearch);
     [JsonIgnore] public bool On => Enabled ?? DefaultEnabled;
     [JsonIgnore] public ThinkEffort HowHard => Effort ?? DefaultEffort;
     [JsonIgnore] public ThinkDelivery When => Delivery ?? DefaultDelivery;

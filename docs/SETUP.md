@@ -1,13 +1,13 @@
 # Resumable setup, Windows credentials and local audio (V02a/V02b)
 
 **Local configuration backup / restore (V07a)** is available from the main
-window and Setup / resume. It is same-profile recovery only, not portable
+window. It is same-profile recovery only, not portable
 profile import, corrupt-store repair or binary rollback. See the
 [installed recovery walkthrough](TROUBLESHOOTING.md#local-configuration-backup--restore-v07a)
 and the transaction contract below.
 
-[Troubleshooting](TROUBLESHOOTING.md) is available from Setup and Audio setup
-even before configuration succeeds. Opening it is passive; local metadata
+[Troubleshooting](TROUBLESHOOTING.md) is available from the main window and
+Audio setup even before configuration succeeds. Opening it is passive; local metadata
 recording is OFF until explicitly started. Preview/export never reads keys,
 audio or raw settings and does not replace malformed settings.
 
@@ -16,21 +16,19 @@ The separate [V04b real API conversation](CONVERSATION.md) now consumes these
 saved choices for explicitly authorized typed/PTT actions. Unsupported model/
 voice IDs are rejected there without discovery or fallback; its guide lists
 the exact supported IDs and account/device gates still NOT RUN.
-Open **Setup / resume**
-in the existing Desktop. The first tab is **Overview**, which describes using
-OpenAI, OpenRouter, NVIDIA Build or an OpenAI-compatible API. Opening setup and
-ordinary Desktop/Doctor status are read-only: no credential lookup, device
-enumeration, capture, provider discovery or network requests.
+Set up each job on its own Companion page: **Thinking** (conversation model,
+internally the LLM role), **Listening** (speech to text, STT) and **Voice**
+(Speaking: text to voice, TTS). There is no separate Setup window. Opening a
+page and ordinary Desktop/Doctor status are read-only: no credential lookup,
+device enumeration, capture, provider discovery or network requests.
 
-Use the **Jobs** tab to save per-job routes without making an inference
-request. It sets up one job at a time: **Thinking** (conversation
-model, internally the LLM role), **Listening** (speech to text, STT) and
-**Speaking** (text to voice, TTS). Each job shows only its own fields: the
-provider and base URL appear only for Thinking, the voice only for Speaking.
+Saving a job's route makes no inference request. Under *A cloud provider*,
+each page shows only its own fields: the provider and base URL appear only for
+Thinking, the voice only for Speaking.
 Listening and Speaking use the named OpenAI origin `https://api.openai.com`
 (or a paired host from the Devices map). Internal aliases `openai-stt`,
 `openai-llm`, and `openai-tts` are Martlet policy identifiers, not upstream
-model names. The home steps open Setup on the matching job. See
+model names. The home steps open the matching page. See
 [COMPONENTS.md](COMPONENTS.md) for the jobs/placement design.
 
 For Thinking, **Provider** selects one of (the recommended model is prefilled):
@@ -50,8 +48,8 @@ The Chat Completions providers accept any exact model ID (for example
 catalog or discovery. Martlet appends `/chat/completions`. HTTP is allowed only for a
 literal loopback IP (`localhost` is rejected). Keys are bound to the exact base
 URL. Switching the LLM to another destination sets the previous key aside: it
-stays in Windows Credential Manager, listed for explicit removal under Thinking ›
-*Advanced* (**Credentials**), and is never deleted on its own. Keys set aside
+stays in Windows Credential Manager, listed for explicit removal under *Keys
+from before* on the job's Companion page, and is never deleted on its own. Keys set aside
 never block a switch, and switching back to a destination uses its set-aside key
 again (when it is still in Credential Manager), so it need not be pasted twice.
 Each reply is capped at 256
@@ -103,41 +101,38 @@ For each job, review the displayed boundary and apply the route:
 | TTS | Response text to OpenAI; the returned voice is generated, not a human recording. |
 
 Cloud use can cost money. Current price, quota, API-key validity and model
-access are **unknown**, not free or verified. Official
+access are **unknown**, not free or verified. Check OpenAI's official
 [API pricing](https://openai.com/api/pricing/) and
 [data retention policy](https://platform.openai.com/docs/guides/your-data)
-are linked in the UI (copy reviewed 2026-09-13; no rates cached). Opening a link
-requires an explicit browser action. A ChatGPT subscription is not API quota.
+(copy reviewed 2026-09-13; Martlet caches no rates). A ChatGPT subscription is not API quota.
 Screen remains OFF; [memory](MEMORY.md) is ON by default for new and migrated
 profiles and can be turned off in Companion › Memory. No health test, account login,
 provider listing or billable probe is run.
 
-Back/Next and the tabs navigate Overview, Jobs, Credentials and Review.
-**Apply** commits route fields to the working checkpoint; **Save checkpoint**
-or **Save and exit setup** persists it atomically. Unsaved route fields block
-save until applied; changing the selected job discards unapplied fields with
-a visible explanation. **Reload** explicitly discards unsaved edits. The
-keyboard-focusable status remains available at every step. Missing roles,
-consent, key references and audio qualification are explained instead of
-displaying a pretend completed voice setup. Reopening resumes the saved step.
-Saving a legacy Fixture profile upgrades it to Api.
+A page saves a route only when you press its button (*Use OpenAI*, *Use this
+server*, *Use Ollama on this PC* and so on), and a cloud provider also needs its
+consent box ticked. The key is pasted next to the provider and saved in Windows
+Credential Manager. Missing roles, consent, key references and audio
+qualification are explained on the page's *Now* line instead of displaying a
+pretend completed voice setup. Saving a legacy Fixture profile upgrades it to Api.
 
 ### Slow or interrupted setup actions
 
 All settings open/read/flush/replace and native vault work runs off the WPF
-dispatcher through one app-shared `SetupOperationRunner`. The UI snapshots
+dispatcher. The setup windows (Audio setup, Backup and restore and the others)
+share one app-shared `SetupOperationRunner`. The UI snapshots
 configuration, revision, role and masked input before dispatch; the worker owns
 the resulting `SecretLease`, not the lifetime of the observing window.
 
 The UI stops waiting after five seconds and requests cooperative cancellation.
-**Cancel setup action** and **Close setup (stop observing)** remain available.
+A window's Cancel and Close remain available.
 Neither timeout nor Close claims the native operation ended or rolled back:
 already-started work may finish, and pending recovery metadata must be reviewed.
-No overlapping setup action, including one from a reopened setup window, can
+No overlapping setup action, including one from a reopened window, can
 start until the actual worker and cancellation callbacks release. Only then is
 the secret cleared and the worker slot reusable. Reload is required after
 interruption; late results cannot update a closed or retired observation.
-Closing setup discards unsaved UI edits, not an already-started transaction.
+Closing a window discards unsaved UI edits, not an already-started transaction.
 If the app process exits before work returns, its durable pending-reference
 checkpoint remains the restart recovery boundary.
 
@@ -236,8 +231,8 @@ The production Desktop calls `ISetupService` / `SetupService` through the shared
 worker for all these actions. `SetupOperation.Completion` describes actual
 worker release; ending a UI observation does not complete that task.
 
-1. **Store / replace** asks for scope confirmation and validates configuration
-   and input before writing. Under the settings writer lock it saves a durable
+1. **Store / replace** (a key pasted on a job page's cloud card) validates
+   configuration and input before writing. Under the settings writer lock it saves a durable
    pending reference for a fresh UUID, then writes only that vault target.
    The next atomic settings commit attaches the new reference, invalidates
    consent and queues any old reference for explicit removal.
@@ -246,12 +241,14 @@ worker release; ending a UI observation does not complete that task.
    restart. Reload and explicitly remove it; a missing target is a safe
    idempotent cleanup result. Metadata may have been saved even when attaching
    the key fails; the UI reports this and requires reload.
-3. **Read selected key** requires explicit confirmation, reads and disposes
-   the selected key without revealing it. It proves only local vault presence,
-   not provider access. Ordinary diagnostics never invoke it.
-4. **Detach** saves removal of the selected active reference and invalidates
-   consent before any deletion. **Remove selected detached key** is a separate
-   irreversible confirmation. It reloads under the writer lock and refuses a
+3. A key set aside is used again only after a check that it is still in
+   Windows Credential Manager. The check reads and disposes the key without
+   revealing it. It proves only local vault presence, not provider access.
+   Ordinary diagnostics never invoke it.
+4. A key the job stops using is set aside (switching provider, or a restore)
+   and never deleted on its own. **Remove** under *Keys from before* on the
+   job's Companion page is a separate irreversible confirmation. It reloads
+   under the writer lock and refuses a
    stale revision, wrong profile, active reference or unrelated credential.
    It deletes that one detached target before clearing the pending marker.
    Failed delete or post-delete save retains the marker for retry. Restoring an
@@ -362,12 +359,10 @@ authorization; saved setup alone cannot issue a request.
 
 Ordinary regression tests exercise the production settings/transaction service
 and actual Windows wrapper with an injected native boundary, never the real OS
-vault. Actual WPF automation exercises no-key setup, migration, save/exit,
-resume/Back and consent invalidation. Separate Windows tests exercise actual
-`SetupWindow` events on a WPF dispatcher with blocking fake native Read/Write/
-Delete and initial-load/save boundaries: heartbeat, duplicate rejection,
-Cancel/Close, timeout, late-result suppression, retained locks/leases/recovery
-markers and sanitized failures. No real vault is used by these tests.
+vault. The old Setup window's dispatcher tests went with that window;
+`AudioSetupWindow` keeps its own, with blocking fake native boundaries,
+Stop/Close, timeouts, late-result suppression and sanitized failures. No real
+vault is used by these tests.
 Native PInvoke is compiled, **not OS
 roundtrip qualified**. Real Credential Manager write/read/delete, real
 microphone/speaker, live API, clean VM lifecycle, signing, release and novice
@@ -440,7 +435,7 @@ in-flight native call cannot honestly be retracted.
 ### Shared ownership, responsiveness and metadata
 
 `AudioSetupWindow` uses the existing app-shared `SetupOperationRunner`, also
-used by credential setup. `AudioSetupService.Start` offers
+used by the other setup windows. `AudioSetupService.Start` offers
 an action with a snapshotted choice and per-action permission; it returns
 `AudioSetupOperation` with metadata-only status and the original worker handle.
 `Stop()` targets that handle, not sink-wide current playback. Workers never

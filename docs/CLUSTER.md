@@ -369,9 +369,10 @@ to *different* settings made on different computers are all kept.
   computers ends as the later edit everywhere.
 - **Following** a newer setting goes through the same rules as Martlet's own
   pages: a key this PC already has for that provider is used again, a replaced
-  key the owner typed on this PC is set aside for removal in Advanced setup
-  (never orphaned), and a replaced key this PC only had because another
-  computer shared it is removed (`shared-keys.txt` lists those). The owner's
+  key the owner typed on this PC is set aside and listed under *Keys from
+  before* on the job's Companion page (never orphaned), and a replaced key
+  this PC only had because another computer shared it is removed
+  (`shared-keys.txt` lists those). The owner's
   choice is recorded as made on the computer where it was made. A setting
   followed from elsewhere is not counted as a change made here.
 - **A setting this PC can't use yet** (a Windows voice not installed, the

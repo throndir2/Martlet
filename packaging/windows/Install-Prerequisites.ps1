@@ -323,7 +323,7 @@ function Show-Status {
     Write-Host ''
     Write-Host 'Bundled with Martlet (nothing to install): .NET 10 runtime, audio (NAudio/WASAPI, System.Speech),'
     Write-Host '  WebView2 loader, gRPC for Audio2Face, Live2D Cubism Core with the Hiyori character, three-vrm.'
-    Write-Host 'You supply: API keys (OpenAI, OpenRouter, NVIDIA Build) in Setup / resume; your own Live2D/VRM'
+    Write-Host 'You supply: API keys (OpenAI, OpenRouter, NVIDIA Build) on Companion > Thinking, Voice or Listening; your own Live2D/VRM'
     Write-Host '  models in Character settings; an NVIDIA NGC API key when a host adds Audio2Face.'
 }
 
@@ -445,7 +445,7 @@ function Install-Ollama {
     }
     $shown = if ($model) { $model } else { '<the model tag you pull>' }
     Write-Host ''
-    Write-Host 'To use it in Martlet: Setup / resume > Destinations > LLM provider: Custom OpenAI-compatible endpoint,' -ForegroundColor Green
+    Write-Host 'To use it in Martlet: Companion > Thinking > This PC (Use Ollama on this PC), or A cloud provider > Custom OpenAI-compatible server,' -ForegroundColor Green
     Write-Host "  base URL $OllamaEndpoint/v1, model $shown, no API key needed." -ForegroundColor Green
 }
 
