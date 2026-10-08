@@ -62,9 +62,9 @@ public sealed class RecommendedSetupTests
             new ClusterNodeRole { Kind = "chatterbox", Model = "chatterbox-turbo" }], false, "desktop-desk", Now);
 
     private static SetupRequestBuild Build(ClusterPlan? plan = null, WorkSharingSettings? sharing = null, IReadOnlyCollection<string>? optOut = null,
-        Func<string, TimeSpan?>? offlineFor = null) =>
+        Func<string, TimeSpan?>? offlineFor = null, IReadOnlyCollection<string>? providers = null) =>
         RecommendedSetupInputs.Request(RecommendedSetupInputs.Sources(Network(plan), null, "desktop-desk", "desk-host", 400, offlineFor, sharing,
-            ["diva-host", "gpu-box"], optOut, "chatterbox", ["openrouter"], TimeSpan.FromMinutes(15)));
+            ["diva-host", "gpu-box"], optOut, "chatterbox", providers ?? ["openrouter"], TimeSpan.FromMinutes(15)));
 
     [Fact]
     public void Every_computer_gets_the_cluster_plans_id_and_its_kind()
@@ -201,6 +201,81 @@ public sealed class RecommendedSetupTests
         Assert.Equal(["gpu-box hasn't answered for 12 minutes.", "lost-box hasn't reported its hardware yet, so the recommendation leaves it as it is.",
             "LAPTOP runs only the parts inside Martlet (no host service), so nothing changes there."], review.Notes);
         Assert.Equal("abc123", review.Fingerprint);
+    }
+
+    [Fact]
+    public void Computers_away_past_the_grace_get_one_sentence_instead_of_the_same_words_on_every_change()
+    {
+        var build = Build(Plan(), offlineFor: id => id == "gpu-box" ? TimeSpan.FromMinutes(155) : null);
+        var recommendation = Recommendation(build) with
+        {
+            Changes =
+            [
+                new SetupChange(SetupChangeKind.AssignJob, "desk-host", "This PC does Speaking.",
+                    "gpu-box hasn't answered for 155 minutes, so speaking moves. This PC has room.") { Job = ClusterJobs.Speaking },
+                new SetupChange(SetupChangeKind.AssignJob, "desk-host", "This PC does lip-sync.",
+                    "gpu-box hasn't answered for 155 minutes, so lip-sync moves.") { Job = ClusterJobs.Speaking }
+            ],
+            Notes = ["gpu-box hasn't answered for 155 minutes, so Martlet plans without it.", "Downloads wait for a fast connection."]
+        };
+
+        var review = RecommendedSetupReview.From(recommendation, build);
+        Assert.Equal(["This PC has room.", ""], review.Changes.Select(c => c.Why));
+        Assert.Equal("gpu-box hasn't answered for 2 hours, so Martlet plans without it.", review.Offline);
+        Assert.Contains("Downloads wait for a fast connection.", review.Notes);
+        Assert.DoesNotContain(review.Notes, n => n.Contains("hasn't answered", StringComparison.Ordinal));
+        // Within the grace nothing is condensed.
+        Assert.Null(RecommendedSetupReview.From(recommendation, Build(Plan(), offlineFor: _ => TimeSpan.FromMinutes(5))).Offline);
+    }
+
+    [Fact]
+    public void The_offline_sentence_names_every_computer_and_each_time_only_when_they_differ()
+    {
+        Assert.Null(RecommendedSetupReview.OfflineSentence([]));
+        Assert.Equal("MIKU and IMOUTO haven't answered for 2 hours, so Martlet plans without them.",
+            RecommendedSetupReview.OfflineSentence([("MIKU", TimeSpan.FromMinutes(155)), ("IMOUTO", TimeSpan.FromMinutes(150))]));
+        Assert.Equal("MIKU (3 hours), IMOUTO (20 minutes) and DIVA (1 minute) haven't answered, so Martlet plans without them.",
+            RecommendedSetupReview.OfflineSentence([("MIKU", TimeSpan.FromHours(3)), ("IMOUTO", TimeSpan.FromMinutes(20)), ("DIVA", TimeSpan.FromMinutes(1))]));
+    }
+
+    [Fact]
+    public void Nobody_doing_thinking_is_the_cant_reply_problem_and_offers_the_free_key_only_without_a_saved_key()
+    {
+        var build = Build(Plan(), providers: []);
+        var today = NetworkRecommender.Today(build.Request) with { Jobs = [new JobPlan(ClusterJobs.Thinking, "desk-host")] };
+        var target = today with { Jobs = [new JobPlan(ClusterJobs.Thinking, null)] };
+        var recommendation = new NetworkRecommendation(today, target,
+        [
+            new SetupChange(SetupChangeKind.AssignJob, "", "Nobody does thinking.", "No computer can run a Thinking model.") { Job = ClusterJobs.Thinking }
+        ]) { Fingerprint = "nobody", Notes = ["No computer can run a Thinking model, so Martlet can't reply until one is set up."] };
+
+        Assert.True(RecommendedSetupReview.CannotReplyIn(recommendation));
+        var review = RecommendedSetupReview.From(recommendation, build);
+        Assert.True(review.CannotReply);
+        Assert.True(review.OffersFreeKey);
+        Assert.DoesNotContain(review.Notes, n => n.Contains("can't reply until", StringComparison.Ordinal));
+        Assert.Equal(FreeKeyUse.Thinking, FreeKeyPrompt.Use(review.OffersFreeKey, review.CannotReply));
+
+        // A saved key (OpenRouter here): no prompt, and the problem points to Companion › Thinking.
+        Assert.False(RecommendedSetupReview.From(recommendation, Build(Plan())).OffersFreeKey);
+        Assert.EndsWith("Choose where Thinking runs in Companion › Thinking.", FreeKeyPrompt.Problem(offerKey: false), StringComparison.Ordinal);
+        // Thinking online, on a computer or kept as today's "each companion PC itself": Martlet can reply.
+        Assert.False(RecommendedSetupReview.CannotReplyIn(recommendation with { Target = today with { Jobs = [new JobPlan(ClusterJobs.Thinking, null, OptionId: "hosted:nvidia-build")] } }));
+        Assert.False(RecommendedSetupReview.CannotReplyIn(recommendation with { Target = today }));
+        Assert.False(RecommendedSetupReview.CannotReplyIn(recommendation with { Current = target }));
+    }
+
+    [Fact]
+    public void Add_your_key_fills_thinking_only_when_martlet_cant_reply_else_if_thinking_fails()
+    {
+        Assert.Equal(FreeKeyUse.Fallback, FreeKeyPrompt.Use(offerKey: true, cannotReply: false));
+        Assert.Equal(FreeKeyUse.Thinking, FreeKeyPrompt.Use(offerKey: true, cannotReply: true));
+        Assert.Equal(FreeKeyUse.None, FreeKeyPrompt.Use(offerKey: false, cannotReply: true));
+        Assert.True(FreeKeyPrompt.Shows([]));
+        Assert.False(FreeKeyPrompt.Shows(["nvidia-build"]));
+        Assert.True(FreeKeyPrompt.IsFree(Martlet.Core.Settings.ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl));
+        Assert.False(FreeKeyPrompt.IsFree("https://openrouter.ai/api/v1"));
+        Assert.DoesNotContain("graphics card", FreeKeyPrompt.Tip, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -27,10 +27,29 @@
         </Border>
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="24" MaxWidth="900">
+                <!-- A problem (Martlet can't reply) or the free-key tip (no hosted provider has a saved key): FreeKeyPrompt. -->
+                <Border x:Name="Banner" Visibility="Collapsed" CornerRadius="14" Padding="16,12" BorderThickness="1" Margin="0,0,0,16"
+                        Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                        AutomationProperties.AutomationId="RecommendedSetupBanner">
+                    <StackPanel>
+                        <TextBlock x:Name="BannerTitle" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"
+                                   AutomationProperties.AutomationId="RecommendedSetupBannerTitle"/>
+                        <TextBlock x:Name="BannerText" TextWrapping="Wrap" Margin="0,4,0,10"
+                                   AutomationProperties.AutomationId="RecommendedSetupBannerText" AutomationProperties.LiveSetting="Polite"/>
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="FreeKeyAddButton" Content="Add your key" Click="FreeKeyAdd_Click" Padding="14,6" Margin="0,0,8,0"
+                                    AutomationProperties.AutomationId="RecommendedSetupFreeKeyAdd"/>
+                            <Button x:Name="FreeKeyGetButton" Content="Get a free key" Click="FreeKeyGet_Click" Padding="14,6"
+                                    AutomationProperties.AutomationId="RecommendedSetupFreeKeyGet"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
                 <TextBlock x:Name="TitleText" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap"
                            AutomationProperties.AutomationId="RecommendedSetupTitle"/>
                 <TextBlock x:Name="SummaryText" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,6,0,16"
                            AutomationProperties.AutomationId="RecommendedSetupSummary"/>
+                <TextBlock x:Name="OfflineText" TextWrapping="Wrap" Margin="0,-8,0,16" Visibility="Collapsed"
+                           Foreground="{DynamicResource WarningBrush}" AutomationProperties.AutomationId="RecommendedSetupOffline"/>
 
                 <StackPanel x:Name="ChangesSection">
                     <TextBlock Text="What changes" Style="{DynamicResource SectionHeading}"/>
