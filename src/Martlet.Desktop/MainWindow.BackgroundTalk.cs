@@ -132,6 +132,35 @@ public partial class MainWindow
     private const string HostHasNoCompanionText =
         "This PC is a Martlet host, so it doesn't talk, listen, watch or show the character. Use your companion PC, or choose Use as my companion PC in Settings.";
 
+    /// <summary>What was on when this PC last became a Martlet host (the character showing, always listening, watching), so it
+    /// comes back when this PC is your companion PC again; null when Martlet hasn't seen it become a host since it started.</summary>
+    private (bool Character, bool Listening, bool Watching)? companionBeforeHost;
+
+    /// <summary>This PC is your companion PC again (chosen here or asked from another computer): it shows the character and starts
+    /// listening and watching as they were when it became a Martlet host. When Martlet started as a host since, it does what it
+    /// does as it starts on a companion PC: the character if it shows at startup, and Settings' When Martlet starts, show the
+    /// character and start listening.</summary>
+    private async Task ResumeCompanionAsync()
+    {
+        if (closing || Role != DeviceRole.Companion) return;
+        var before = companionBeforeHost;
+        companionBeforeHost = null;
+        if (before is { } again)
+        {
+            if (again.Character && !avatar.IsShowing) await ShowSavedCharacterAsync(onlyIfAutoShow: false);
+            if (closing || Role != DeviceRole.Companion) return;
+            if (again.Listening && Talk.HandsFree && openConversation is not { ListeningStarted: true }) StartListening();
+            if (again.Watching && Talk.Watch && openConversation is not { WatchingStarted: true }) StartWatching();
+            ErrorLog.Info(ResumePhrase(again) is { } on
+                ? $"This PC is your companion PC again, so Martlet brings back what was on before it became a host: {on}."
+                : "This PC is your companion PC again. The character, listening and watching were off before it became a host, so they stay off.");
+            return;
+        }
+        await ShowSavedCharacterAsync(onlyIfAutoShow: true);
+        if (!closing && Role == DeviceRole.Companion && background.StartCompanion) await StartCompanionAsync();
+        else ErrorLog.Info("This PC is your companion PC again. It shows the character if it shows at startup; start listening on Home.");
+    }
+
     /// <summary>This PC just became a Martlet host: it ends the conversation (listening and vision stop with it) and hides the
     /// character. Their saved choices stay as they are, so they come back if this PC is your companion PC again.</summary>
     private async Task StopCompanionForHostAsync()

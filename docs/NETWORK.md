@@ -75,7 +75,9 @@ map showed only itself and its own old choices, and no computer showed the
 other desktops. On any computer, another member's row on the map has **Make it
 a host PC** (or **Make it a companion PC**) to [switch that
 computer](CLUSTER.md#switching-another-computer-between-companion-and-host)
-from here.
+from here; Settings › *What this PC is for* lists the same computers with the
+same button. A host PC with no host service yet says so on its row, because it
+does no work for your other computers until someone at it sets one up.
 
 ## A PC set up as a host
 

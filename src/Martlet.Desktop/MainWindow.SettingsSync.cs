@@ -100,7 +100,7 @@ public partial class MainWindow
             foreach (var key in result.Recorded.Where(k => !SharedPc.IsRoleKey(k)))
                 ErrorLog.Info(SharedPc.IsKey(key)
                     ? $"Shared settings: told your other computers that this PC is a {(Role == DeviceRole.Host ? "host" : "companion")} PC" +
-                      (ThisPcHost() is { } own ? $" and runs {own.HostId}." : ".")
+                      (OwnHostServiceId() is { } own ? $" and runs {own}." : ".")
                     : $"Shared settings: {SharedTitle(key)} changed on this PC; your other computers follow it.");
             if (result.Applied.Count > 0) await AfterSettingsAppliedAsync(result.Applied);
         }
@@ -121,6 +121,9 @@ public partial class MainWindow
                 ShowConfiguring();
                 // Another computer's role (companion or host PC) arrives with the settings and changes how the map draws it.
                 if (DevicesPage.IsVisible && NetworkDevicesSignature() != networkDevicesShown) RenderMap();
+                // An ask made here that the other computer followed is said once; Settings lists what each computer is now.
+                ObserveRoleAsks();
+                if (SettingsPage.IsVisible) RenderOtherRoles();
             }
         }
     }
@@ -207,10 +210,15 @@ public partial class MainWindow
     {
         foreach (var change in applied)
             ErrorLog.Info($"Shared settings: took {SharedTitle(change.Key)} from {change.By} (changed there {change.At.ToLocalTime():g}).");
-        var by = applied.Select(a => a.By).Distinct(StringComparer.Ordinal).ToArray();
-        settingsLastChange = $"{Sentence(string.Join(", ", applied.Select(a => SharedTitle(a.Key))))} now match{(applied.Count == 1 ? "es" : "")} " +
-            $"{(by.Length == 1 && by[0] != ClusterDevice ? by[0] : "your other computers")} ({DateTimeOffset.Now:t}).";
-        ActionText.Text = settingsLastChange;
+        // A switch between companion and host PC asked from another computer says so itself (FollowRoleRequest).
+        var shown = applied.Where(a => !SharedPc.IsRoleKey(a.Key)).ToArray();
+        if (shown.Length > 0)
+        {
+            var by = shown.Select(a => a.By).Distinct(StringComparer.Ordinal).ToArray();
+            settingsLastChange = $"{Sentence(string.Join(", ", shown.Select(a => SharedTitle(a.Key))))} now match{(shown.Length == 1 ? "es" : "")} " +
+                $"{(by.Length == 1 && by[0] != ClusterDevice ? by[0] : "your other computers")} ({DateTimeOffset.Now:t}).";
+            ActionText.Text = settingsLastChange;
+        }
         if (applied.Any(a => a.Key == AppSettingsSections.Lorebooks)) homeLore = null;
         await RefreshHomeAsync();
         // A route taken from another computer is not a choice made here, so who does what doesn't record it as one.
@@ -283,10 +291,11 @@ public partial class MainWindow
     private IEnumerable<ISharedSection> DesktopSections()
     {
         var directory = store!.DataDirectory;
-        // Only this PC writes its own entry, so every computer's Devices map knows what each of the others is.
+        // Only this PC writes its own entry, so every computer's Devices map knows what each of the others is (and whether a host
+        // PC has its host service yet).
         yield return new DelegateSection(SharedPc.Key(ClusterDevice), "This PC's role", _ =>
             Task.FromResult<SharedLocal?>(new(new SharedPc(Role == DeviceRole.Host ? SharedPc.HostRole : SharedPc.CompanionRole,
-                ThisPcHost()?.HostId).Write(), null, false, DateTimeOffset.UtcNow)),
+                OwnHostServiceId()).Write(), null, false, DateTimeOffset.UtcNow)),
             (_, _) => Task.FromResult(SharedApply.Done));
         // Whether this PC is a companion or a host PC: this PC records its own choice, and follows it when another computer
         // asks it to switch (Make it a host PC on that computer's Devices map).
