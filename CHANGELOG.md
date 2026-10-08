@@ -10,9 +10,12 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 - Martlet can see with a separate image model: when you choose one, it describes your screen or camera in words for your Thinking model, so even a Thinking model that only reads text knows what you see. The image model describes the newest picture while you talk or type, a reply takes its description only when it's ready and never waits for it, and looks describe their picture first. The screen summary over time uses it too, and Companion › Vision and the talk window say where your pictures go. ([#635](https://github.com/throndir2/Martlet/pull/635))
+- With an audio model of your own (Companion › Listening › Audio model), Martlet hears how you say things even when your Thinking model reads only text: the audio model listens beside speech-to-text and tells Thinking what the words miss (your tone, a laugh or a sigh, other voices, sounds around you), and it describes the sounds your PC plays too. Your recording never goes to Thinking then, and a reply never waits for the audio model. Never chosen, it hears you only while it runs in Ollama on this PC; anywhere else, tick **Let the audio model hear my voice**. ([#637](https://github.com/throndir2/Martlet/pull/637))
+- Detect zones and Measure the eyes can use the image model you chose for pictures when no Thinking pool member can see, so they work with a Thinking model that reads only text. ([#635](https://github.com/throndir2/Martlet/pull/635))
 - Use the model app you already run on your PC for Thinking: Companion › Thinking › This PC › **A model app you already use** finds LM Studio, llama.cpp, KoboldCpp, Jan, vLLM, Lemonade, GPT4All, Docker Model Runner and other OpenAI-compatible apps, lists their models, tests one and switches to it, with no cloud wording and no key unless the app asks for one. Any other app works by typing the address it shows, such as `localhost:5001`, and Home tells you when the app stops answering. The macOS and Linux app gets **Find model apps**. ([#633](https://github.com/throndir2/Martlet/pull/633))
 
 ### Changed
+- On a host PC, Home now shows **Switch to companion PC** at the top, so turning it back into your companion PC is one click away instead of a small link at the bottom. ([#636](https://github.com/throndir2/Martlet/pull/636))
 - Companion › Thinking › This PC › Ollama now says that any Ollama model works, including a Hugging Face GGUF or a model you made yourself. ([#633](https://github.com/throndir2/Martlet/pull/633))
 
 ### Fixed

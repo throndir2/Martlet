@@ -10,7 +10,11 @@ namespace Martlet.Conversation;
 /// knows what matters). Its content is private: it never goes to logs or status files.</summary>
 public sealed record SenseJob
 {
-    public const int MaximumOutputTokens = 1024;
+    /// <summary>The most a job may write: a helper job (touch zones, the eyes) answers with boxes, as on a Thinking pool member.</summary>
+    public const int MaximumOutputTokens = 4096;
+
+    /// <summary>The longest a job may run.</summary>
+    public static TimeSpan MaximumTimeout { get; } = TimeSpan.FromMinutes(5);
 
     /// <summary>What it is for, in a few words, for the log and the status file ("reply picture", "glance", "your voice",
     /// "PC sounds", "screen summary").</summary>
@@ -49,7 +53,7 @@ public sealed record SenseJob
         ContractRules.Require(Instructions is { Length: > 0 } && Text is { Length: > 0 }, "A sense job needs instructions and text.");
         ContractRules.Require(kind == SenseKind.Image ? Image is not null && Audio is null : Audio is not null && Image is null,
             "An image job carries one picture, an audio job one recording.");
-        ContractRules.Require(Timeout > TimeSpan.Zero && Timeout <= TimeSpan.FromMinutes(2), "A sense job takes at most two minutes.");
+        ContractRules.Require(Timeout > TimeSpan.Zero && Timeout <= MaximumTimeout, "A sense job takes at most five minutes.");
         ContractRules.Require(MaxOutputTokens is > 0 and <= MaximumOutputTokens, $"A sense job writes at most {MaximumOutputTokens} tokens.");
     }
 

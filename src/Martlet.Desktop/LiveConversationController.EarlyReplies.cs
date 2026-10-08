@@ -144,7 +144,8 @@ internal sealed partial class LiveConversationController
         if (smartHome is { ControlEnabled: true, ModelToolsEnabled: false }) return null;
         if (Speaking is not null || singing?.Playing == true) return null;
         var straight = GoesStraight(listening, utterance);
-        var hear = listening.HearsWith(configured);
+        // An audio model of its own takes recordings in Thinking's place: then Thinking gets none (docs/SENSE_MODELS.md).
+        var hear = listening.HearsWith(RecordingStaysOnThisPc(configured)) && ThinkingTakesVoice(configured);
         var voice = plan.Voice;
         LiveConversationOperation operation;
         var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -260,11 +261,13 @@ internal sealed partial class LiveConversationController
 
     // The talk window asks for its reply: a reply started early for the same words, with everything that goes with them the
     // same, is taken as it is (promoted, no second request); otherwise it is let go, and the window's reply starts once the
-    // slot is free. Null when there is none, or it was let go.
+    // slot is free. Null when there is none, or it was let go. The audio model's words about what was said (voiceNotes) never
+    // went with the early request: taken, it marks them late, so they go to the next request once they come.
     private LiveConversationOperation? TryTakeEarly(string? text, bool voice, bool microphone, ListeningOptions? listening, bool spoken,
         HeardVoices? heard, double? confidence, BoundedWaveAudio? recording, SeenScreen? seen, bool pcAudio, string? userWords,
         ReplyTimeline? timeline, PlaybackMode playback, ChattinessChoice? chattiness, IReadOnlyList<SpokenWords>? words,
-        bool hearLocalOnly, bool remote, bool bringUp, AttentionSignal? attention, bool look, bool discordCall)
+        bool hearLocalOnly, bool remote, bool bringUp, AttentionSignal? attention, bool look, bool discordCall,
+        IReadOnlyList<VoiceNote>? voiceNotes = null)
     {
         LiveConversationOperation candidate;
         EarlyReplyState early;
@@ -285,7 +288,9 @@ internal sealed partial class LiveConversationController
                 timeline.Mark("waiting to answer", at);
                 timeline.Early = early.Starts(promoted: true);
             }
+            candidate.VoiceNotes = spoken && voiceNotes is { Count: > 0 } ? voiceNotes : null;
             if (early.TryPromote(new(timeline, heard, words, confidence, at))) return candidate;
+            candidate.VoiceNotes = null;
             why = "it was let go meanwhile";
         }
         if (timeline is not null) timeline.Early = early.Starts(promoted: false);

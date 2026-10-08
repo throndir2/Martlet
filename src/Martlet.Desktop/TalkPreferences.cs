@@ -66,8 +66,12 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
     /// choice (ticked or turned off) always wins; never chosen, it is on only while the recording stays on this PC
     /// (<see cref="HearingModelCatalog.StaysOnThisPc"/>). Hearing that is only on by default is LocalOnly: the conversation checks
     /// again that the recording stays on this PC before it sends one.</summary>
-    internal (bool On, bool LocalOnly) HearVoiceFor(SetupRoute? thinking) => HearVoice is { } chosen ? (chosen, false)
-        : (HearingModelCatalog.StaysOnThisPc(thinking?.RouteType, thinking?.Origin, thinking?.ModelId), true);
+    internal (bool On, bool LocalOnly) HearVoiceFor(SetupRoute? thinking) =>
+        HearVoiceFor(HearingModelCatalog.StaysOnThisPc(thinking?.RouteType, thinking?.Origin, thinking?.ModelId));
+
+    /// <summary>As <see cref="HearVoiceFor(SetupRoute?)"/>, for a recording that goes wherever it goes now (Thinking, or the audio
+    /// model of its own) and stays on this PC there when <paramref name="staysOnThisPc"/>.</summary>
+    internal (bool On, bool LocalOnly) HearVoiceFor(bool staysOnThisPc) => HearVoice is { } chosen ? (chosen, false) : (staysOnThisPc, true);
     // Version 2 made always listening the default; earlier files chose push-to-talk only because it was the old default.
     // Version 3 made barge-in opt-in; earlier files have it on only because it was the old default.
     // Version 4 made HearVoice three-way; earlier files have it off only because that was the old default (never chosen).

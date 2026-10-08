@@ -697,7 +697,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role; and
         // under it, Your other computers: what the list offers (or why it is empty or can't switch them). Each computer's row reads
         // through OtherRole- below; its OtherRoleSwitch- button asks that computer to switch, so it needs --allow-ui-effects.
-        "DeviceRoleSummary", "DeviceRoleText", "OtherRolesStatus",
+        // SwitchToCompanion is the host dashboard's button at the top of Home (its fixed label, "Switch to companion PC");
+        // clicking it saves device-role.txt, so it needs --allow-ui-effects.
+        "DeviceRoleSummary", "DeviceRoleText", "SwitchToCompanion", "OtherRolesStatus",
         // The host dashboard's status under its icon ("Host is running", "Needs Windows restart", "Waiting for Docker Desktop", ...), its
         // steps' heading ("This host is ready" or "Get this host running"), the line under it (how many steps are left and
         // the next one, or "All set", and when Martlet last checked) and the setup runs working now, side by side, each with

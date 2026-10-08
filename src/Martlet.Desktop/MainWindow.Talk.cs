@@ -363,8 +363,9 @@ public partial class MainWindow
                 new Thickness(0, 0, 0, 8)),
             describe, describeStatus,
             Note("Words aren't everything: about every 10 seconds while something plays, Martlet describes the rest of the sound " +
-                "(music and its mood, game or video sounds, laughter, applause, alarms) in one short line for its next reply. A " +
-                "Thinking pool model that can hear gets a short clip; without one, a small sound tagger on this PC's processor names " +
+                "(music and its mood, game or video sounds, laughter, applause, alarms) in one short line for its next reply. The " +
+                "audio model gets a short clip first when it is a model of its own (Listening › Audio model); otherwise a Thinking pool " +
+                "model that can hear does; without either, a small sound tagger on this PC's processor names " +
                 "what it hears. The last few seconds of sound stay in memory only; the line is never saved or remembered, and a " +
                 "reply never waits for it.", new Thickness(0, 0, 0, 8)),
             Note("How chatty Martlet is about it (the same choice as Vision's How often it comments):", new Thickness(0, 0, 0, 4)),
@@ -394,30 +395,36 @@ public partial class MainWindow
             $"Martlet hears only what plays on {output ?? "your speakers"} and stops hearing it while it speaks.", false)
         : ("On. While Martlet listens it also hears what this PC plays, without its own voice.", false);
 
-    // ---------- Listening: let Thinking hear your voice ----------
+    // ---------- Listening: let Thinking (or the audio model) hear your voice ----------
 
-    /// <summary>Companion › Listening: whether a Thinking model that hears also gets the recording of what you said. Your own choice
-    /// always wins; never chosen, it is on only while the recording stays on this PC (Thinking in Ollama on this PC, not a
-    /// cloud model), and anywhere else ticking it is the consent. The text under it says which applies, what
-    /// is sent and where.</summary>
+    /// <summary>Companion › Listening: whether a Thinking model that hears also gets the recording of what you said, or, with an
+    /// audio model of its own (Companion › Listening › Audio model, docs/SENSE_MODELS.md), whether that model hears it and
+    /// describes how you sound for Thinking. Your own choice always wins; never chosen, it is on only while the recording stays on
+    /// this PC where it goes (Ollama on this PC, not a cloud model), and anywhere else ticking it is the consent. The text under it
+    /// says which applies, what is sent and where.</summary>
     private Border HearVoiceCard()
     {
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         var abilities = SavedModelAbilities();
-        var hears = LiveConversationConfiguration.Hearing(thinking, abilities) == HearingSupport.Supported;
-        var on = Talk.HearVoiceFor(thinking).On;
-        var hear = new CheckBox { Content = "Let Thinking hear my voice", IsChecked = on, Margin = new Thickness(0, 0, 0, 6),
-            IsEnabled = on || hears };
+        var audio = Martlet.Conversation.SenseRouting.For(SenseKind.Audio, SenseModels.Load(store?.DataDirectory), thinking, abilities);
+        // An audio model of its own takes recordings in Thinking's place: Thinking never gets one then.
+        var own = audio.Model;
+        var hears = own is not null ? audio.Described : LiveConversationConfiguration.Hearing(thinking, abilities) == HearingSupport.Supported;
+        var on = (own is not null ? Talk.HearVoiceFor(VoiceNotes.StaysOnThisPc(own)) : Talk.HearVoiceFor(thinking)).On;
+        var hear = new CheckBox { Content = own is not null ? "Let the audio model hear my voice" : "Let Thinking hear my voice",
+            IsChecked = on, Margin = new Thickness(0, 0, 0, 6), IsEnabled = on || hears };
         AutomationProperties.SetAutomationId(hear, "TalkHearVoice");
         hear.Checked += (_, _) => { if (Talk.HearVoice != true) SaveTalk(Talk with { HearVoice = true }, render: true); };
         hear.Unchecked += (_, _) => { if (Talk.HearVoice != false) SaveTalk(Talk with { HearVoice = false }, render: true); };
-        var choice = Note(LiveConversationConfiguration.HearVoiceChoice(Talk.HearVoice, thinking), new Thickness(0, 0, 0, 4));
+        var choice = Note(LiveConversationConfiguration.HearVoiceChoice(Talk.HearVoice, thinking, audio), new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(choice, "TalkHearVoiceChoice");
-        var advice = LiveConversationConfiguration.HearingAdvice(thinking, abilities);
+        var advice = LiveConversationConfiguration.HearingAdvice(thinking, abilities, audio);
         var status = hears || !on ? Note(advice, new Thickness(0, 0, 0, 6)) : Warning(advice);
         AutomationProperties.SetAutomationId(status, "TalkHearVoiceStatus");
-        return Card([Heading("Hear how you say it"), hear, choice, status, .. hears && on ? VoicePathControls() : [],
-            .. HearingTestControls(thinking), Note(LiveConversationConfiguration.HearingDisclosure(thinking), new Thickness(0, 0, 0, 0))]);
+        // The straight path and Test hearing are about Thinking hearing you, which an audio model of its own replaces.
+        return Card([Heading("Hear how you say it"), hear, choice, status, .. hears && on && own is null ? VoicePathControls() : [],
+            .. own is null ? HearingTestControls(thinking) : [],
+            Note(LiveConversationConfiguration.HearingDisclosure(thinking, audio), new Thickness(0, 0, 0, 0))]);
     }
 
     /// <summary>Companion › Listening › When Thinking can hear you, shown while Thinking hears your voice: your voice straight to

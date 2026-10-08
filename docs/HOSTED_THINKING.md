@@ -131,6 +131,13 @@ Martlet already handles this; nothing extra is needed:
   and Martlet remembers that it can't hear.
 - A cloud model never gets the recording until the owner ticks **Let Thinking
   hear my voice**; until then the transcript goes.
+- To keep a text-only hosted Thinking model and still have Martlet hear how you
+  say things, choose an **audio model** of its own (Companion › Listening ›
+  Audio model): for example Gemma 4 E2B in Ollama on this PC. It
+  hears your recording beside speech-to-text and gives Thinking a line about
+  your tone and the sounds around you; Thinking keeps getting the transcript,
+  never the recording, and a reply never waits for the audio model ([Image and
+  audio models](SENSE_MODELS.md#recordings-the-audio-model)).
 
 What Martlet knows by name (the hosted APIs here don't publish what a model
 takes, except OpenRouter, whose listing Martlet reads): every Gemini from 1.5

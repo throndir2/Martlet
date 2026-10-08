@@ -267,20 +267,84 @@ capture in the talk window; fixture endpoints stood in.
 
 ## Recordings: the audio model
 
-Owned by the audio pipeline's pull request; this is its design.
+In place since the audio pipeline's pull request. With an audio model of its
+own (`SenseRoute(Audio).Model` is set), Thinking never gets a recording; with
+the default (the text model) nothing below runs and no request changes.
 
 - **Your voice.** When the audio path is Described, your recording never goes
-  to Thinking, and the straight path is off. Speech-to-text makes the words as
-  now, and the reply waits only for them. Beside speech-to-text, the audio
-  model describes how you said it. When its words are ready as the reply's
-  request is built, they go with that request; otherwise they go to the
-  context board for the next one.
+  to Thinking, and the straight path is off (it needs Thinking to hear).
+  Speech-to-text makes the words as before, and the reply waits only for them.
+  As soon as an utterance ends, the audio model gets it beside speech-to-text
+  (a `your voice` job on the audio lane, priority 10, 15 seconds at most):
+  the recording, the fixed instructions *Describing your voice* (Companion ›
+  Prompts) and a short context (your last message and Martlet's last words,
+  without `[PC audio]`, `[Screen]` and `[Camera]` lines). It answers with one
+  summary line of at most 20 words and, when it helps, a line of details, or
+  *none* when nothing stands out.
+- **With the reply, or with the next request.** When its words are ready as
+  the reply's request is built, they go in that request's context notes
+  (*How you sounded*: "How the user sounded saying this message, as the audio
+  model heard it: ..."), and the conversation keeps only a short line after the
+  message, such as `(voice: sighs, sounds tired)`. Otherwise the request goes
+  without them, and once they come they wait on the context board as one
+  consume-once note (source `voice`, fresh for 3 minutes, up to 3 late notes
+  together, "... in what they said before this message ..."), kept as
+  `(voice, earlier: ...)` after the message that carried them. A reply never
+  waits for them. Words that came after the conversation was cleared are
+  dropped.
+- **The fixed instruction.** While the audio path is Described, every reply's
+  instructions have *Your voice, described by the audio model*, the same in
+  every request, so the prompt cache keeps the start of each request. Looks
+  get no new instruction; the note says what it is.
+- **When nothing follows.** What isn't words, another voice, a failed
+  transcription or something the talk window drops cancels the job. When
+  Martlet doesn't answer a message, its words go to the board for the next
+  request. A reply started early takes no words; they go to the next request.
+- **Shared hardware.** When the audio model shares the conversation's computer
+  and graphics card (`SenseSharesConversation`), an utterance's job starts only
+  once its reply's request has started (or no reply follows, at most 30 seconds
+  later); the lane then holds it until the reply's voice is made, so it never
+  runs beside Thinking before the first audio. Its words always go to the next
+  request. A job stopped for a new reply (`Preempted`) goes once more.
 - **Consent.** A recording goes to an audio model under the same rule as *Let
-  Thinking hear my voice*: on without a tick only while the recording stays on
-  this PC (Ollama on this PC, not a cloud model); otherwise only when you tick
-  it.
-- **What this PC plays.** The sound digest uses the audio model first, then a
-  Thinking pool member that hears, then the CPU sound tagger, as now.
+  Thinking hear my voice*: your own choice wins; never chosen, it is on only
+  while the recording stays on this PC (the audio model is Ollama on this PC,
+  not a `:cloud` or `-cloud` model). The check box, its words and the
+  disclosure on Companion › Listening name the audio model then (*Let the
+  audio model hear my voice*; `TalkHearVoice`, `TalkHearVoiceChoice`,
+  `TalkHearVoiceStatus`), and the straight path and *Test hearing* (both about
+  Thinking hearing you) are hidden.
+- **What this PC plays.** The sound digest uses the audio model first (a `PC
+  sounds` job with the same clip and prompt as a pool judge), then a Thinking
+  pool member that hears, then the CPU sound tagger, as before. On a model that
+  shares the conversation's computer, it skips its turn while the live floor
+  isn't idle.
+- **What you see.** The talk window notes under your words whether the reply
+  took the audio model's words (*The audio model described how you sounded (0.6
+  s after you stopped), and the reply took it.*) or that they go with your next
+  message, and `LiveTurnInputs` says *how you sounded*. The desktop log says
+  *Voice path: described by the audio model (...)* and, for late words,
+  *Voice description: ready N ms after you stopped ...* (times only, never the
+  words). MCP `hearing_check`, `sound_digest_check` and `audio_model_check`
+  show it ([MCP](MCP.md#image-and-audio-models)).
+
+## Helper jobs with a picture
+
+Finding a character's touch zones and measuring its eyes send pictures of the
+character (never your screen) to a model that sees. They are [helper
+jobs](MEMORY.md#helper-jobs-on-the-thinking-pool):
+
+1. A free Thinking pool member that sees takes the job first, as before.
+2. Otherwise, while pictures go to an image model of its own, that model takes
+   the job in place of the Thinking model. The job waits behind the image
+   model's other jobs, at the lowest priority. It may write as much and run as
+   long as on a pool member (4,096 tokens; 3 minutes for touch zones, 5 for
+   the eyes).
+3. Otherwise the Thinking model takes it after any reply, as before.
+
+Companion › Touch (`TouchZonesVision`) names the model that takes the
+pictures, and *Detect zones* and *Measure the eyes* stay on while an image
+model of its own takes them, also with a Thinking model that reads only text.
 
 ## Latency rules
 
@@ -418,10 +482,15 @@ is kept in memory only.
 - MCP: `sense_models_status` reads a data folder's choices, routes and the
   desktop's status file. `sense_models_check` rehearses the routing and the
   lines with a simulated runner ([MCP](MCP.md#image-and-audio-models)).
+  `audio_model_check` rehearses the audio path against fixture endpoints on
+  127.0.0.1 with the desktop's own voice notes.
 - Tests: `SenseModelsTests` (Martlet.Core.Tests), `SenseRoutingTests` and
   `SenseLanesTests` (Martlet.Conversation.Tests), and `SenseModelsDesktopTests`
   (Martlet.Desktop.Tests: a fixture endpoint gets the picture, a refused
   picture is remembered, and a job waits for, or stops for, a reply on the
-  same computer).
+  same computer). `AudioModelVoiceTests` (Martlet.Desktop.Tests): no recording
+  goes to Thinking, the reply never waits, ready words go with it and late
+  ones with the next request, the consent rule, shared hardware, the sound
+  digest's judge, the words and the defaults.
 - NOT RUN: a real image or audio model. Each pipeline's pull request says what
   it ran.

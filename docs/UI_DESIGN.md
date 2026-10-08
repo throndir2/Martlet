@@ -295,6 +295,10 @@ no network request.
 When the device role is *host*, Home becomes the dashboard for the Martlet host
 service on this PC:
 
+- **Switch to companion PC** comes first, above the hero, in a card with an
+  accent border: *Want to talk with Martlet on this PC?* and a primary
+  *Switch to companion PC* button that changes the device role (the same as
+  Settings › *What this PC is for* › *Use as my companion PC*).
 - **Hero**: "This PC is a Martlet host", with a status pill and the address
   desktops use (the one the host service publishes, `https://<LAN IP>:9443`).
 - **Five steps** that tick by themselves: the dashboard reads this PC's host
@@ -325,7 +329,6 @@ service on this PC:
 - The steps' heading reads *This host is ready* once Docker Desktop, the host
   service and pairing are done, and the line under it says what is left.
 - **Check again** repeats the read at once and says what it found.
-- *Use this PC as a companion instead* switches the device role.
 
 ### 5. Add a computer (Martlet hosts wizard)
 
