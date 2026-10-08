@@ -453,7 +453,7 @@ class IdleCheckTests(unittest.TestCase):
 
     def engine(self, idle_pass):
         class Fast:
-            decoder_steps = 2
+            decoder_steps, on_cpu, streams = 2, False, True
 
             def idle_pass(self, cancelled):
                 idle_pass(cancelled)
@@ -742,6 +742,191 @@ class FastTurboTests(unittest.TestCase):
         self.assertEqual(gpu.decoder_steps, 2)
         self.assertNotIn("inference", vars(gpu.model.s3gen))
         self.assertEqual(gpu.model.s3gen.inference(n_cfm_timesteps=2), 2)
+
+    def test_the_cpu_streams_unless_turned_off(self):
+        from unittest import mock
+
+        class T3:
+            def inference_turbo(self, *args, **kwargs):
+                return "tokens"
+
+        class S3Gen:
+            def inference(self, **kwargs):
+                return None
+
+        def fast_on(device):
+            class Model:
+                t3, s3gen = T3(), S3Gen()
+
+            model = Model()
+            model.device = device
+            return self.host.FastTurbo(model, graph=False, name="Chatterbox Nano")
+
+        cpu = fast_on("cpu")
+        self.assertTrue(cpu.streams)
+        with mock.patch.object(self.host, "CPU_FIRST_TOKENS", 0):
+            self.assertFalse(cpu.streams)
+        with mock.patch.dict(os.environ, {"MARTLET_CHATTERBOX_STREAM": "0"}):
+            self.assertFalse(cpu.streams)
+        # On a GPU only the CUDA graph streams; without it each piece is spoken whole, as before.
+        self.assertFalse(fast_on("cuda:0").streams)
+
+    @unittest.skipUnless(_have("torch", "transformers", "chatterbox"), "needs PyTorch, transformers and chatterbox-tts")
+    def test_the_cpu_draws_the_speech_tokens_the_library_draws(self):
+        import types
+
+        import torch
+        from chatterbox.models.t3.t3 import T3
+        from transformers import GPT2Config, GPT2Model
+
+        vocabulary, width = 64, 16
+
+        class Hp:
+            start_speech_token, stop_speech_token = 0, vocabulary - 1
+
+        class StandIn(torch.nn.Module):
+            """A tiny T3 (FIXTURE - NOT AI): random GPT-2 layers, speech embedding and head."""
+
+            def __init__(self):
+                super().__init__()
+                self.hp = Hp()
+                self.tfmr = GPT2Model(GPT2Config(n_layer=2, n_head=2, n_embd=width, n_positions=1024, vocab_size=8))
+                self.speech_emb = torch.nn.Embedding(vocabulary, width)
+                self.speech_head = torch.nn.Linear(width, vocabulary)
+
+            def prepare_input_embeds(self, t3_cond, text_tokens, speech_tokens, cfg_weight):
+                text = torch.linspace(-1, 1, text_tokens.shape[1] * width).reshape(1, text_tokens.shape[1], width)
+                return torch.cat([text, self.speech_emb(speech_tokens)], dim=1), None
+
+        torch.manual_seed(0)
+        t3 = StandIn().eval()
+        fast = object.__new__(self.host.FastTurbo)
+        fast.model = types.SimpleNamespace(t3=t3)
+        text = torch.zeros(1, 4, dtype=torch.long)
+        budget = self.host._speech_budget(text)
+        due_at = {58, 90}
+        for never_stops in (False, True):
+            with torch.no_grad():
+                t3.speech_head.bias[vocabulary - 1] = -1e9 if never_stops else 4.0
+            for seed in (1, 2, 3):
+                torch.manual_seed(seed)
+                library = T3.inference_turbo(t3, None, text, max_gen_len=budget)
+                torch.manual_seed(seed)
+                chunks = list(fast._eager_chunks(None, text, None, lambda count: count in due_at))
+                tokens, last = chunks[-1]
+                self.assertTrue(last)
+                # The same tokens, drawn in the same order, as the library's own decoding.
+                self.assertTrue(torch.equal(tokens, library), f"seed {seed}")
+                self.assertEqual(fast.eager_capped, never_stops)
+                if never_stops:
+                    self.assertEqual(tokens.shape[1], budget + 1)
+                else:
+                    self.assertLess(tokens.shape[1], budget + 1)
+                # Each early chunk is the start of the piece, at the counts it was asked for.
+                self.assertEqual([early.shape[1] for early, _ in chunks[:-1]], sorted(c for c in due_at if c < tokens.shape[1]))
+                for early, done in chunks[:-1]:
+                    self.assertFalse(done)
+                    self.assertTrue(torch.equal(early, tokens[:, :early.shape[1]]))
+
+
+class PlaybackTests(unittest.TestCase):
+    """When the CPU decodes the next chunk of a streamed reply (FIXTURE - NOT AI: a stand-in clock and CPU speed)."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(ROOT))
+        import martlet_chatterbox_host as host
+        cls.host = host
+
+    def playback(self, now, token=0.018, scale=1.0):
+        return self.host._Playback(first_tokens=55, clock=lambda: now[0], speed=self.host._CpuSpeed(token, scale))
+
+    def test_a_reply_starts_after_its_first_tokens_then_decodes_only_before_the_audio_runs_out(self):
+        now = [10.0]
+        playback = self.playback(now)
+        playback.begin_piece(expected=140)
+        self.assertEqual(playback.first, 55)
+        # Nothing plays yet: the first chunk waits for 55 tokens and the decoder's 3 of lookahead.
+        self.assertFalse(playback.due(57))
+        self.assertTrue(playback.due(58))
+        # Decoded in 0.83 s (as the shape expects), it sent 2.2 s of audio, which plays until 13.03.
+        now[0] = 10.83
+        playback.decoded_chunk(58, 2.2, 0.83)
+        self.assertAlmostEqual(playback.ends, 13.03)
+        self.assertAlmostEqual(playback.speed.scale, 1.0, places=3)
+        # Fewer than 25 new tokens are never worth a decoding. 110 tokens would take 0.36 + 0.0028 * 110 + 0.0053 * 52 =
+        # 0.94 s; with 0.2 s to spare, they are due once 1.14 s of audio is left.
+        now[0] = 11.5
+        self.assertFalse(playback.due(82))
+        now[0] = 11.85
+        self.assertFalse(playback.due(110))
+        now[0] = 11.9
+        self.assertTrue(playback.due(110))
+        now[0] = 12.85
+        playback.decoded_chunk(110, 2.08, 0.95)
+        self.assertAlmostEqual(playback.ends, 15.11)
+        # T3 drew 28 tokens in 0.4 s since the last decoding: 14.3 ms a token, averaged with what was known.
+        self.assertAlmostEqual(playback.speed.token, (0.018 + 0.4 / 28) / 2)
+        # The audio ran out (the listener hears a pause): the next chunk still needs as many new tokens as pay for their own
+        # drawing and decoding (0.67 s fixed / (40 - 16.1 - 8.1) ms a token = 43), and plays from when it arrives.
+        now[0] = 15.5
+        self.assertFalse(playback.due(152))
+        self.assertTrue(playback.due(153))
+        playback.decoded_chunk(153, 2.08, 1.0)
+        self.assertAlmostEqual(playback.ends, 17.58)
+
+    def test_a_cpu_too_slow_to_keep_up_sends_one_early_chunk_then_the_rest_whole(self):
+        now = [10.0]
+        playback = self.playback(now, token=0.035)
+        playback.begin_piece(expected=140)
+        # T3 at 35 ms a token and 8.1 ms to decode each: no later chunk pays for itself, so the first chunk waits until the
+        # rest of the expected piece can follow in one decoding while it plays.
+        first = playback.first
+        self.assertGreater(first, 55)
+        self.assertLess(first, 140)
+        self.assertFalse(playback.due(first + 2))
+        self.assertTrue(playback.due(first + 3))
+        playback.decoded_chunk(first + 3, first * 0.04, 1.2)
+        # The rest, however long it turns out, is decoded whole, once.
+        for count in range(first + 4, 400):
+            now[0] += 0.035
+            self.assertFalse(playback.due(count))
+
+    def test_a_later_piece_streams_only_when_its_audio_is_needed(self):
+        now = [10.0]
+        playback = self.playback(now)
+        playback.begin_piece(expected=40)
+        playback.decoded_chunk(40, 1.6, 0.6)  # a short first piece, sent whole: it plays until 11.6
+        playback.begin_piece(expected=60)
+        # While it plays, the next piece has no early chunk: only one that its audio needs (its decoding, about 0.53 s, and
+        # 0.2 s before the audio runs out).
+        now[0] = 10.8
+        self.assertFalse(playback.due(25))
+        now[0] = 10.9
+        self.assertTrue(playback.due(25))
+        # Once everything has played, a new piece starts like a reply.
+        playback.begin_piece(expected=140)
+        now[0] = 20.0
+        self.assertFalse(playback.due(57))
+        self.assertTrue(playback.due(58))
+
+    def test_a_long_piece_or_a_slow_cpu_waits_for_a_bigger_first_chunk(self):
+        now = [10.0]
+        playback = self.playback(now)
+        # A 5.6 s sentence keeps up after 55 tokens; a 14 s one needs a bigger first chunk, so that the later chunks, each as
+        # late as playback allows, don't fall behind before its end.
+        playback.begin_piece(expected=140)
+        self.assertEqual(playback.first, 55)
+        playback.begin_piece(expected=350)
+        self.assertGreater(playback.first, 55)
+        self.assertLess(playback.first, 100)
+        # A short piece is spoken whole.
+        playback.begin_piece(expected=30)
+        self.assertFalse(playback.due(40))
+        # T3 at 30 ms a token instead of 18: the same sentence waits longer.
+        slow = self.playback(now, token=0.03)
+        slow.begin_piece(expected=140)
+        self.assertGreater(slow.first, 55)
 
 
 class CpuTests(unittest.TestCase):
