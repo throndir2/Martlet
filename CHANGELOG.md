@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Companion › Touch › Touch zones now shows your character and a first guess at its touch zones as soon as you open it, so clicks on the character react right away. Martlet places the guess from the character's own parts and shape, with no AI and nothing sent. Press **Detect zones** and your Thinking model then finds the zones, replacing the first guess as it goes. ([#621](https://github.com/throndir2/Martlet/pull/621))
 - New in Companion › Check-ins: **Saying the same things** reads what Martlet said in the last hour, and when, and when it keeps saying the same thing again and again, it reminds Martlet in its next reply to say something new. ([#613](https://github.com/throndir2/Martlet/pull/613))
 - Settings › What this PC is for now lists **Your other computers**: each one says whether it is a companion PC or a host PC, with a button to make it a host PC or a companion PC again from where you are. It is the same switch the Devices map has, now easy to find. ([#612](https://github.com/throndir2/Martlet/pull/612))
 
