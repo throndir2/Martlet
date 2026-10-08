@@ -579,10 +579,10 @@ public partial class MainWindow
     private async Task TellCharacterVoiceAsync(bool muted)
     {
         try { await avatar.SetVoiceMutedAsync(muted, lifetime.Token); }
-        catch (Exception error) when (error is IOException or InvalidDataException or InvalidOperationException or TimeoutException or
-            OperationCanceledException or ObjectDisposedException or System.Text.Json.JsonException)
+        catch (Exception error) when (error is OperationCanceledException || RendererFailures.Is(error, lifetime.Token))
         {
-            if (!closing) ErrorLog.Warn("The character's menu couldn't be told whether Martlet's voice is muted.", error);
+            if (!closing && RendererFailures.Is(error, lifetime.Token))
+                RendererFailures.Log("The character's menu couldn't be told whether Martlet's voice is muted", error);
         }
     }
 

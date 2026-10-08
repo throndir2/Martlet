@@ -12,7 +12,9 @@ namespace Martlet.Core.Settings;
 /// <see cref="RunsOn"/> where it runs and how much graphics memory it takes, and <see cref="Features"/> its other needs, as
 /// Companion › Voice shows them.
 /// <see cref="MultipleReferences"/> engines learn a voice from each of several recordings (zero-shot on all of them); the
-/// others hear a voice made from several recordings as one, the recordings joined with a short pause.</summary>
+/// others hear a voice made from several recordings as one, the recordings joined with a short pause. A <see cref="Cloud"/>
+/// voice (ElevenLabs, <see cref="SpeechEngines.CloudVoices"/>) is no host engine: its host role, route and path only name it, and
+/// it runs on its provider's servers with the owner's own key.</summary>
 public sealed record SpeechEngine(
     string Key,
     string Name,
@@ -29,7 +31,8 @@ public sealed record SpeechEngine(
     string Languages = "English",
     bool StreamsWhileGenerating = false,
     bool MultipleReferences = false,
-    EmotionSupport Emotions = EmotionSupport.None)
+    EmotionSupport Emotions = EmotionSupport.None,
+    bool Cloud = false)
 {
     /// <summary>The tags the engine speaks as sounds or tones; replies keep exactly these for it and lose every other tag.</summary>
     public IReadOnlyList<VoiceTag> Tags => TagCatalog ?? [];
@@ -55,6 +58,7 @@ public sealed record SpeechEngine(
     {
         get
         {
+            if (Cloud) return $"Runs on {Name}{(Name.EndsWith('s') ? "'" : "'s")} servers, with your own {Name} account and API key. Nothing runs on your computers.";
             var options = Planning.FootprintCatalog.Default.For(Planning.PlanComponent.Voice)
                 .Where(option => option.IsLocal && option.ModelId == DefaultModel).ToArray();
             var gpu = options.FirstOrDefault(option => option.UsesGpu);
@@ -75,11 +79,12 @@ public sealed record SpeechEngine(
         : MaximumReferenceMilliseconds < 30_000 ? $"Samples up to {MaximumReferenceMilliseconds / 1000} s"
         : null;
 
-    /// <summary>Its other needs and how it runs, a few words each: Docker, the recording lengths it clones, streaming and its
-    /// languages. What it can do is <see cref="Abilities"/>; its graphics card and memory are <see cref="RunsOn"/>.</summary>
+    /// <summary>Its other needs and how it runs, a few words each: Docker (or, for a <see cref="Cloud"/> voice, the cloud), the
+    /// recording lengths it clones, streaming and its languages. What it can do is <see cref="Abilities"/>; its graphics card
+    /// and memory are <see cref="RunsOn"/>.</summary>
     public IReadOnlyList<string> Features =>
     [
-        "Docker",
+        Cloud ? "Cloud, paid" : "Docker",
         .. SampleLimits is { } limits ? [limits] : Array.Empty<string>(),
         .. StreamsWhileGenerating ? ["Streams"] : Array.Empty<string>(),
         .. MultipleReferences ? ["Learns from several samples"] : Array.Empty<string>(),
@@ -217,6 +222,47 @@ public static class SpeechEngines
     private static readonly object Gate = new();
     private static SpeechEngine[] all = [Chatterbox, ChatterboxOriginal, ChatterboxNano, F5, Xtts, GptSovits, Dia];
 
+    /// <summary>ElevenLabs' audio tags as its documentation spells them (elevenlabs.io/docs: "How do audio tags work with
+    /// Eleven v3 and v4?" and the Eleven v4 prompting guide, read 2026-10-07), limited to the ones that suit a conversation:
+    /// human reactions, the delivery directions [whispers] and [shouts], and emotions. Sound effects ([gunshot], [applause]...),
+    /// accents and [sings] are left out. The same tags work with Eleven v3 and v4 (Turbo included). ElevenLabs documents that
+    /// they change the delivery; Martlet has not measured them (there is no ElevenLabs account to test with). Each tag's cue
+    /// is an existing cross-engine cue, so the character's voice emotes follow it: [whispers] is the whispering cue, [shouts]
+    /// dramatic, [excited] happy, [sad] sigh, [annoyed] sarcastic and [curious] surprised. Tags without a fitting cue
+    /// ([snorts], [thoughtful], [mischievously]...) are left out.</summary>
+    public static readonly IReadOnlyList<VoiceTag> ElevenLabsTags =
+    [
+        new("[laughs]", VoiceTagKind.Sound, "a laugh, after something genuinely funny", "laugh"),
+        new("[chuckles]", VoiceTagKind.Sound, "a small amused chuckle", "chuckle"),
+        new("[sighs]", VoiceTagKind.Sound, "a sigh, for relief, tiredness or mild exasperation", "sigh"),
+        new("[clears throat]", VoiceTagKind.Sound, "clearing your throat before saying something", "clear throat"),
+        new("[inhales deeply]", VoiceTagKind.Sound, "a deep breath in, before something big", "inhale"),
+        new("[exhales]", VoiceTagKind.Sound, "a breath out, letting go of tension", "exhale"),
+        new("[whispers]", VoiceTagKind.Emotion, "whispered, for a secret or something hushed", "whispering"),
+        new("[shouts]", VoiceTagKind.Emotion, "shouted, for calling out or big excitement; use it rarely", "dramatic"),
+        new("[happy]", VoiceTagKind.Emotion, "happy and cheerful, for good news or delight"),
+        new("[excited]", VoiceTagKind.Emotion, "excited, for something you can't wait for", "happy"),
+        new("[sad]", VoiceTagKind.Emotion, "sad, for disappointment or a quiet loss", "sigh"),
+        new("[crying]", VoiceTagKind.Emotion, "tearful, as if crying, for something genuinely sad"),
+        new("[angry]", VoiceTagKind.Emotion, "angry, for real annoyance or outrage"),
+        new("[sarcastic]", VoiceTagKind.Emotion, "sarcastic, for dry teasing or an obvious joke"),
+        new("[annoyed]", VoiceTagKind.Emotion, "annoyed, for mild irritation", "sarcastic"),
+        new("[surprised]", VoiceTagKind.Emotion, "surprised, for something unexpected"),
+        new("[curious]", VoiceTagKind.Emotion, "curious, for a question you really want answered", "surprised")
+    ];
+
+    /// <summary>ElevenLabs (elevenlabs.io): a cloud voice, not a host engine (so not in <see cref="All"/>), that clones a voice
+    /// from one of your recordings (Instant Voice Cloning) and performs <see cref="ElevenLabsTags"/> with it in real time over the
+    /// Text to Dialogue WebSocket (<see cref="ElevenLabsSetup"/>). Its emotions are what ElevenLabs documents, not measured.</summary>
+    public static readonly SpeechEngine ElevenLabs = new("elevenlabs", "ElevenLabs", "elevenlabs", "elevenlabs.text-to-dialogue.v1",
+        "/v1/text-to-dialogue/stream-input", ElevenLabsSetup.V4Turbo, "ElevenLabs terms (paid)",
+        "Your cloned voice with tones, in the cloud.", 1_000, 30_000, 0, ElevenLabsTags, "90+ languages",
+        StreamsWhileGenerating: true, Emotions: EmotionSupport.Tags, Cloud: true);
+
+    /// <summary>The cloud voices that have a tag catalog (ElevenLabs). Their tags join every engine's in what replies may write
+    /// and what chat and captions never show (<see cref="VoiceTags.Known"/>).</summary>
+    public static IReadOnlyList<SpeechEngine> CloudVoices { get; } = [ElevenLabs];
+
     /// <summary>Every engine; the first is the default cloning engine (Chatterbox Turbo).</summary>
     public static IReadOnlyList<SpeechEngine> All => Volatile.Read(ref all);
 
@@ -293,4 +339,9 @@ public static class SpeechEngines
 
     /// <summary>The tags the voice with this host model speaks; empty for OpenAI, Windows and engines without a catalog.</summary>
     public static IReadOnlyList<VoiceTag> TagsForModel(string? modelId) => ForModel(modelId)?.Tags ?? [];
+
+    /// <summary>The tags a reply's voice keeps: ElevenLabs' when <paramref name="elevenLabs"/> speaks, otherwise those of the
+    /// host engine with <paramref name="hostModelId"/> (none for OpenAI and Windows).</summary>
+    public static IReadOnlyList<VoiceTag> TagsFor(bool elevenLabs, string? hostModelId) =>
+        elevenLabs ? ElevenLabs.Tags : TagsForModel(hostModelId);
 }

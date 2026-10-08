@@ -89,13 +89,18 @@ public sealed partial class Audio2FaceHostConnection
         var latest = now + route.MaximumDuration - TimeSpan.FromSeconds(1);
         if (deadline > latest) deadline = latest;
         if (deadline <= now) throw new Audio2FaceHostException("job.deadline", "No time is left for the host's reply.");
+        // A saved context size above what the host's gateway loads is capped there.
+        int? contextTokens = sampling?.ContextTokens is { } saved ? Math.Min(saved, GenerationSettings.MaximumHostContextTokens) : null;
         var payload = new Dictionary<string, object>
         {
             ["input"] = ChatText(input),
             ["temperature"] = temperature,
             ["maximum_output_tokens"] = maximumOutputTokens,
-            // The desktop's context bound covers tool schemas the host never gets; the gateway takes at most 32,768.
-            ["maximum_context_tokens"] = Math.Min(maximumContextTokens, GenerationSettings.MaximumHostContextTokens)
+            // The desktop's context bound covers tool schemas the host never gets; the gateway takes at most 32,768. The gateway
+            // refuses a context window larger than this bound (request.invalid), and a Thinking pool job asks the host's Ollama
+            // for its largest window (so it keeps its model loaded) with a smaller budget of its own: the bound covers the window.
+            ["maximum_context_tokens"] = Math.Max(Math.Min(maximumContextTokens, GenerationSettings.MaximumHostContextTokens),
+                contextTokens ?? 0)
         };
         if (!string.IsNullOrEmpty(system)) payload["system"] = ChatText(system);
         if (history.Count > 0)
@@ -112,9 +117,7 @@ public sealed partial class Audio2FaceHostConnection
             if (sampling.RepeatPenalty is { } repeat) payload["repeat_penalty"] = repeat;
             if (sampling.FrequencyPenalty is { } frequency) payload["frequency_penalty"] = frequency;
             if (sampling.PresencePenalty is { } presence) payload["presence_penalty"] = presence;
-            // A saved context size above what the host's gateway loads is capped there.
-            if (sampling.ContextTokens is { } context)
-                payload["context_tokens"] = Math.Min(context, GenerationSettings.MaximumHostContextTokens);
+            if (contextTokens is { } context) payload["context_tokens"] = context;
             // Thinking steps; a host older than it refuses the request (request.invalid).
             if (sampling.Reasoning is { } think) payload["think"] = think;
         }

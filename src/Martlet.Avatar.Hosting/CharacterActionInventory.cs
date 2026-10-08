@@ -18,7 +18,9 @@ public enum CharacterActionKind { Expression, Motion, Gesture }
 /// <see cref="Cue"/> is the voice cue (<see cref="Martlet.Core.Settings.VoiceTag.Cue"/>) it is linked to by default. A
 /// <see cref="VoiceOnly"/> gesture (a voice emote, such as a laugh or a cough) plays when the voice makes its sound or tone and
 /// isn't offered to replies as a tag while it keeps a cue, so replies' instructions don't grow. A <see cref="Holdable"/> gesture
-/// can also be held (a renderer action with <c>hold</c>): eased into and kept, gently alive, until it is ended. An <see cref="Overlay"/>
+/// can also be held (a renderer action with <c>hold</c>): eased into and kept, gently alive, until it is ended. Held gestures
+/// layer: the renderer lets a held gesture go only when a new held one moves a part of the face it moves too (the eyes, the
+/// mouth, the cheeks, the brows or the head), and held overlays all show together on top. An <see cref="Overlay"/>
 /// gesture is a symbol drawn over the face (a sweat drop, hearts) rather than a movement.</summary>
 public sealed record CharacterGesture(string Name, string Tag, string Use, string Does,
     IReadOnlyList<string>? Live2DParameters, IReadOnlyList<string>? VrmBones, string? Cue = null, bool VoiceOnly = false,
@@ -55,8 +57,9 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
 
     /// <summary>Every gesture Martlet has; each model gets those its renderer and rig support (<see cref="GesturesFor"/>).
     /// After the reply gestures come the voice emotes, one for each sound and tone a voice engine makes (except
-    /// <c>surprised</c>, which the surprise gesture follows), then the touch and mood gestures and last the overlay emotes,
-    /// anime symbols drawn over the face (a sweat drop, an anger vein, hearts...).</summary>
+    /// <c>surprised</c>, which the surprise gesture follows), then the touch and mood gestures, then the overlay emotes,
+    /// anime symbols drawn over the face (a sweat drop, an anger vein, hearts...), then the held face parts (the eyes
+    /// turned up, an open mouth), and last the stronger blush levels (<see cref="BlushLevels"/>).</summary>
     public static readonly IReadOnlyList<CharacterGesture> AllGestures =
     [
         new("nod", "nod", "nod, for yes or agreement", "nods the head twice", ["ParamAngleY"], Head),
@@ -133,8 +136,26 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
         Overlay("exclaim", "an exclamation mark, for being startled or suddenly realizing something",
             "an exclamation mark pops up beside the head"),
         Overlay("sleepy", "a floating Zzz, for sleepiness or boredom", "Zzz floats up from the head", holdable: true),
-        Overlay("music", "music notes, for humming or a happy, carefree mood", "music notes float up around the head")
+        Overlay("music", "music notes, for humming or a happy, carefree mood", "music notes float up around the head"),
+        // Held face parts, after the rest so the reply instructions' earlier lines (and prompt caches) stay the same. Each moves
+        // one part of the face, so it stays on with held gestures that move other parts (a blush, a pout's brows).
+        new("eyes_up", "eyes_up", "turn just your eyes up, for daydreaming, exasperation or being dazed",
+            "turns only the eyes up and keeps them there; the head doesn't move", ["ParamEyeBallY"], ["leftEye", "rightEye"], Holdable: true),
+        new("mouth_open", "mouth_open", "keep your mouth open, for awe, shock or being out of breath",
+            "keeps the mouth open; the voice still moves it while it speaks", ["ParamMouthOpenY"], Head, Holdable: true),
+        // Stronger blush levels, last so the reply instructions' earlier lines (and prompt caches) stay the same. Like the blush,
+        // every model gets them (see BlushLevels).
+        new("blush_deep", "blush_deep", "a deep blush, for strong embarrassment", "blushes deeply: redder and wider, with more lines",
+            [], Head, Holdable: true),
+        new("blush_fierce", "blush_fierce", "a fierce flush across the face, for being overwhelmed or flustered",
+            "flushes fiercely: deep red across both cheeks and the nose, densely lined", [], Head, Holdable: true)
     ];
+
+    /// <summary>Martlet's blush levels, faintest first. One shows at a time: a new level lets the one before go. Every model
+    /// gets them: the blush is the model's own (Live2D's ParamCheek, a VRM's blush expression) when it has one, otherwise
+    /// Martlet draws it on the cheeks; a stronger level uses the model's own blush at full strength too, and Martlet draws the
+    /// level over it, so each level looks different on every model.</summary>
+    public static readonly IReadOnlyList<string> BlushLevels = ["blush", "blush_deep", "blush_fierce"];
 
     public static CharacterGesture? Gesture(string id) => AllGestures.FirstOrDefault(g => g.Id == id);
 
@@ -145,13 +166,23 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
 
     private static CharacterActionSource Source(CharacterGesture gesture, AvatarRenderer renderer, IReadOnlySet<string> rig) =>
         new(gesture.Id, CharacterActionKind.Gesture, gesture.Name, gesture.Overlay ? $"Martlet's own gesture: {gesture.Does} (drawn over the character)."
-            : $"Martlet's own gesture: {gesture.Does} (" + (gesture.Name == "blush"
-            // Every model blushes: with its own ParamCheek (Live2D) or blush expression (VRM, offered as its own emote instead),
-            // otherwise Martlet draws a glow on the cheeks over the character.
-            ? renderer == AvatarRenderer.Live2D && rig.Contains(Live2DBlushParameter) ? "moves " + Live2DBlushParameter
-                : "Martlet draws a pink glow on the cheeks, following the " + (renderer == AvatarRenderer.Vrm ? "head bone" : "face")
+            : $"Martlet's own gesture: {gesture.Does} (" + (BlushLevels.Contains(gesture.Name) ? Blush(gesture.Name, renderer, rig)
+            // A VRM opens its mouth with the oh mouth expression (aa without one), which lip-sync shares.
+            : gesture.Name == "mouth_open" && renderer == AvatarRenderer.Vrm ? "sets the oh mouth expression, or aa"
             : "moves " + (renderer == AvatarRenderer.Vrm ? "the " + string.Join(", ", gesture.VrmBones!) + (gesture.VrmBones!.Count == 1 ? " bone" : " bones")
                 : string.Join(", ", gesture.Live2DParameters!))) + ").");
+
+    // How a model shows a blush level: the blush with its own ParamCheek (Live2D) or blush expression (VRM, offered as its own
+    // emote instead), otherwise Martlet draws a glow on the cheeks over the character; a stronger level with the model's own
+    // blush and Martlet's drawing over it.
+    private static string Blush(string level, AvatarRenderer renderer, IReadOnlySet<string> rig)
+    {
+        var own = renderer == AvatarRenderer.Live2D && rig.Contains(Live2DBlushParameter);
+        var follows = "following the " + (renderer == AvatarRenderer.Vrm ? "head bone" : "face");
+        if (level == "blush") return own ? "moves " + Live2DBlushParameter : "Martlet draws a pink glow on the cheeks, " + follows;
+        return (own ? "moves " + Live2DBlushParameter + " and " : "") + "Martlet draws it on the cheeks, " + follows +
+            (renderer == AvatarRenderer.Vrm ? ", over the model's own blush expression when it has one" : "");
+    }
 
     /// <summary>The Live2D parameter a model's own blush moves; models without it get one Martlet draws.</summary>
     private const string Live2DBlushParameter = "ParamCheek";

@@ -175,6 +175,10 @@ public partial class MainWindow
         if (companion || avatar.IsShowing)
             menu.Items.Add(TrayItem("TrayCharacter", avatar.IsShowing ? "Hide the _character" : "Show the _character",
                 () => Character_Click(this, new RoutedEventArgs()), enabled: !blocked && setupService is not null));
+        // Click-through can't be turned off on the character itself, so it is here too (also while the character is hidden).
+        if (companion && (avatar.IsShowing || avatar.ClickThrough))
+            menu.Items.Add(TrayCheck("TrayCharacterClickThrough", "Let clicks pass thro_ugh the character", avatar.ClickThrough,
+                on => SetCharacterClickThroughAsync(on).Forget()));
         if (companion && TrayCharacterProfiles(menu, enabled: !blocked && setupService is not null) is { } profiles)
             menu.Items.Add(profiles);
         menu.Items.Add(new Separator());

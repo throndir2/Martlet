@@ -1,7 +1,7 @@
 import { Live2DAdapter, LocalModelBundle } from "../../Martlet.Avatar.Live2D/lib/index.ts";
 import { VrmAvatarAdapter } from "../../Martlet.Avatar.Vrm/src/index.ts";
-import { activeOverlays, attachOverlay, clearOverlays, hasOverlay, heldOverlays, registerBlush, registerOverlay, renderOverlay,
-  startOverlay, stopOverlay, toCssAnchor } from "./overlay.js";
+import { activeOverlays, attachOverlay, BLUSH_LEVELS, clearOverlays, hasOverlay, heldOverlays, registerBlush, registerOverlay,
+  renderOverlay, startOverlay, stopOverlay, toCssAnchor } from "./overlay.js";
 import { registerManpu } from "./effects/manpu.mjs";
 
 const canvas = document.getElementById("avatar");
@@ -31,28 +31,32 @@ const face = () => {
   return anchor && toCssAnchor(anchor, canvas.clientWidth / Math.max(1, canvas.width), canvas.clientHeight / Math.max(1, canvas.height));
 };
 // One of Martlet's gestures: the model's own when it has it (Live2D's ParamCheek blush, a VRM's blush expression), otherwise
-// one Martlet draws over the face (overlay.js). A held one stays until it is turned off; like the adapters' held gestures,
-// one is held at a time, so holding one lets the one held before go.
+// one Martlet draws over the face (overlay.js). A held one stays until it is turned off. Held gestures layer: the adapter
+// lets a held gesture go only when a new one moves a part of it (eyes, mouth, cheeks, brows, head), and held drawings all
+// show together on top of whatever the model holds. One blush level shows at a time (replaceBlush), and the stronger levels
+// are drawn over the model's own blush too, so each level looks different on every model.
 function actGesture(name, on, hold) {
   if (!on) {
     adapter.endGesture(name);
     stopOverlay(name);
     return { started: true };
   }
-  if (renderer === "Live2D" ? adapter.gesture(name, hold) : adapter.playGesture(name, hold)) {
-    if (hold && adapter.gestureState?.held === name) for (const other of heldOverlays()) stopOverlay(other);
-    return { started: true };
-  }
+  if (BLUSH_LEVELS.includes(name)) replaceBlush(name);
+  if (renderer === "Live2D" ? adapter.gesture(name, hold) : adapter.playGesture(name, hold))
+    return BLUSH_LEVELS.indexOf(name) > 0 ? drawOver(name, hold) : { started: true };
   if (!hasOverlay(name)) return { started: false };
-  if (hold) {
-    const held = adapter.gestureState?.held;
-    if (held) adapter.endGesture(held);
-    for (const other of heldOverlays()) if (other !== name) stopOverlay(other);
-  }
+  return drawOver(name, hold);
+}
+// Starts the overlay `name` over the face; the reply says where the face is and how it is followed.
+function drawOver(name, hold) {
   const anchor = face();
   return { started: startOverlay(name, { hold }), overlay: true,
     face: anchor ? { x: Math.round(anchor.x), y: Math.round(anchor.y), width: Math.round(anchor.width),
       tilt: Math.round(anchor.angle * 180 / Math.PI), ...(anchor.tracking ? { tracking: anchor.tracking } : {}) } : null };
+}
+// A new blush level lets the other levels go, the model's own blush and Martlet's drawing alike.
+function replaceBlush(name) {
+  for (const other of BLUSH_LEVELS) if (other !== name) { adapter.endGesture(other); stopOverlay(other); }
 }
 // Where Martlet draws over the face now, as fractions of the canvas (+y down, like a tap) for Martlet's MCP: how the face is
 // followed, its middle, width and tilt, and at each cheek how much of it shows, how wide it is for its face width and what of
@@ -75,11 +79,10 @@ function faceReading(id) {
     cheekLeft: cheek(anchor.cheekLeft, anchor.cheekLeftFrame), cheekRight: cheek(anchor.cheekRight, anchor.cheekRightFrame),
     overlays, pinned };
 }
-// Which gesture plays once and which is held, a held overlay included.
+// Which gesture plays once and every one held: the model's held gestures, then the held drawings.
 function gestureState() {
-  const state = { ...(adapter.gestureState ?? {}) }, overlay = heldOverlays()[0];
-  if (overlay) state.held = overlay;
-  return state;
+  const { playing, held } = adapter.gestureState ?? {};
+  return { ...(playing ? { playing } : {}), held: [...new Set([...(Array.isArray(held) ? held : []), ...heldOverlays()])] };
 }
 // A picture of the whole character for touch zones, drawn on the canvas and read back in the same task, so it never shows on
 // screen: `width` by `height` pixels in the framing `zoom`, `x`, `y` of a frame `frame` of its width (see setView), in the
@@ -239,8 +242,8 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
       // An emote (expression, held until ended or replaced), a motion (played once) or a gesture (played once, or with
       // `hold` a holdable one kept until ended; drawn over the face when the model can't show it, see actGesture). Ending
       // an expression that isn't the one showing changes nothing. A gesture's reply also says which gesture now plays once
-      // and which is held. A held (lingering) expression stays on, layered with the other held ones and the passing emote,
-      // until it is ended with hold set too.
+      // and every one held (`gesture: {playing, held: [...]}`). A held (lingering) expression stays on, layered with the
+      // other held ones and the passing emote, until it is ended with hold set too.
       const kind = String(data.kind), name = String(data.name), on = data.on !== false, hold = data.hold === true;
       let started = false;
       if (kind === "gesture") { post({ ...actGesture(name, on, hold), gesture: gestureState() }); return; }

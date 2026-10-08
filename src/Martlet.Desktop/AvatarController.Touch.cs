@@ -55,8 +55,10 @@ internal sealed partial class AvatarController
                 foreach (var play in plays)
                     if (await PlayActionAsync(play, $"a tap on the {zone}", null, cueLifetime.Token).ConfigureAwait(false)) return;
             }
-            catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
-                InvalidDataException or TimeoutException or ObjectDisposedException) { }
+            catch (Exception error) when (error is OperationCanceledException || RendererFailures.Is(error, cueLifetime.Token))
+            {
+                if (RendererFailures.Is(error, cueLifetime.Token)) RendererFailures.Log($"The character couldn't react to a tap on the {zone}", error);
+            }
         });
     }
 

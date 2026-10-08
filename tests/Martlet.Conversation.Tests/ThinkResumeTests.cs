@@ -127,4 +127,46 @@ public sealed class ThinkResumeTests
         Assert.Equal(new ThinkResume("First half.", true), resumes[1]);
         Assert.Equal(1, job.Preemptions);
     }
+
+    [Fact]
+    public async Task A_think_whose_computer_stops_answering_goes_on_on_another_place_of_its_pool()
+    {
+        await using var harness = new Harness(textOnly: true);
+        var clock = harness.Clock;
+        using var jobs = new BackgroundJobs(clock);
+        BackgroundPlace diva = new("host:diva", "diva"), ripley = new("host:ripley", "ripley", Rank: 1);
+        var offline = new System.Collections.Concurrent.ConcurrentDictionary<string, bool>();
+        jobs.Places.Reachable = place => !offline.ContainsKey(place.Id);
+        var calls = 0;
+        harness.Llm.Respond = (_, _) =>
+        {
+            // The first request goes to diva, which drops off the network (the desktop marks it offline at once).
+            if (Interlocked.Increment(ref calls) > 1) return Task.FromResult(TextRecordingHandler.Sse(Harness.Trace("Worked out.")));
+            offline[diva.Id] = true;
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.BadRequest));
+        };
+        List<string> placed = [];
+        var start = jobs.Start(ThinkLonger.Kind(new()), "a long task", (job, token) => YieldingThink.RunAsync(jobs, job, (at, resume) =>
+        {
+            lock (placed) placed.Add(at.Name);
+            return new BackgroundThink(harness.Runtime, _ => (Harness.Request(speech: false), harness.Permissions), clock);
+        }, _ => false, token, gone: at => offline.ContainsKey(at.Id)), [diva, ripley], wait: true);
+        var job = start.Job!;
+        await Harness.Until(() => job.Finished, clock);
+        Assert.Equal(BackgroundJobState.Succeeded, job.State);
+        Assert.Equal("Worked out.", job.Result);
+        Assert.Equal(["diva", "ripley"], placed);
+        Assert.Equal("ripley", job.Place?.Name);
+        // Moving because its computer stopped answering is no stop for the conversation.
+        Assert.Equal(0, job.Preemptions);
+
+        // With one place only, the failure is the think's result: there is nowhere else to go on.
+        offline.Clear();
+        Interlocked.Exchange(ref calls, 0);
+        var alone = jobs.Start(ThinkLonger.Kind(new()), "a long task", (job, token) => YieldingThink.RunAsync(jobs, job,
+            (at, resume) => new BackgroundThink(harness.Runtime, _ => (Harness.Request(speech: false), harness.Permissions), clock),
+            _ => false, token, gone: at => offline.ContainsKey(at.Id)), [diva], wait: true).Job!;
+        await Harness.Until(() => alone.Finished, clock);
+        Assert.Equal(BackgroundJobState.Failed, alone.State);
+    }
 }

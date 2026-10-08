@@ -52,6 +52,13 @@ public sealed record CredentialBinding(
                 "OpenAI credential use is limited to the selected origin and role.");
             return;
         }
+        if (RouteType == SetupRouteType.ElevenLabs)
+        {
+            ContractRules.Require(Role == SetupRole.Tts && ProviderAlias == ElevenLabsSetup.Alias && Origin == ElevenLabsSetup.Origin &&
+                HostId is null && SpkiFingerprint is null && DeviceRole is null && DeviceId is null,
+                "ElevenLabs credentials are limited to api.elevenlabs.io and the Voice role.");
+            return;
+        }
         ContractRules.Require(SelfHostSetup.IsGateway(RouteType) &&
             ProviderAlias == SelfHostSetup.Gateway(RouteType).Alias &&
             Role == SelfHostSetup.Gateway(RouteType).Role,
