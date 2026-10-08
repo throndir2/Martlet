@@ -28,7 +28,7 @@ function link(context, Renderer) {
 
 async function page(Renderer, posts) {
   let onMessage, draw;
-  const element = { clientWidth: 500, clientHeight: 500, width: 500, height: 500 };
+  const element = { clientWidth: 500, clientHeight: 500, width: 500, height: 500, toDataURL: () => "data:image/png;base64,AAAA" };
   const context = vm.createContext({
     document: { getElementById: () => element },
     window: { chrome: { webview: {
@@ -45,6 +45,59 @@ async function page(Renderer, posts) {
   await module.evaluate();
   return { send: message => onMessage({ data: message }), draw: now => draw(now) };
 }
+
+test("a still renderer never animates, and its picture is drawn off screen at the size and framing asked before the canvas goes back", async () => {
+  const posts = [];
+  const calls = [];
+  let failing = false;
+  class Renderer {
+    load() { return Promise.resolve({ expressions: [] }); }
+    startIdle() {}
+    resize(width, height) { calls.push(["resize", width, height]); }
+    setView(zoom, x, y, frame) { calls.push(["view", zoom, x, y, frame]); }
+    update(delta) { if (failing) throw new Error("controlled draw failure"); calls.push(["update", delta]); }
+    bonePoints() { return [{ bone: "head", x: 0.512345, y: 0.1 }]; }
+    dispose() {}
+  }
+  const { send, draw } = await page(Renderer, posts);
+  await send({ kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm", still: true } });
+  await send({ kind: "view", data: { zoom: 1, x: 0, y: 0, frame: 0.5 } });
+  calls.length = 0;
+  draw(16);
+  draw(32);
+  assert.deepEqual(calls, [], "the rest pose: no frame is drawn, so nothing moves");
+
+  await send({ kind: "picture", data: { width: 2046, height: 1364, zoom: 0.9, x: 0, y: 0.1, frame: 0.5 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { png: "data:image/png;base64,AAAA", bones: [{ bone: "head", x: 0.5123, y: 0.1 }] });
+  assert.deepEqual(calls, [["resize", 2046, 1364], ["view", 0.9, 0, 0.1, 0.5], ["update", 0], ["resize", 500, 500], ["view", 1, 0, 0, 0.5]],
+    "drawn once at the picture's size and framing, then the canvas is put back without drawing again");
+
+  failing = true;
+  await send({ kind: "picture", data: { width: 2046, height: 1364, zoom: 1, x: 0, y: 0, frame: 0.5 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), {}, "a picture that can't be drawn is only missing");
+  assert.ok(!posts.some(post => post.error), "and it never fails the renderer");
+});
+
+test("a picture taken by a showing character's renderer draws the canvas again at once, so nothing changes on screen", async () => {
+  const posts = [];
+  const calls = [];
+  class Renderer {
+    load() { return Promise.resolve({ expressions: [] }); }
+    startIdle() {}
+    resize(width, height) { calls.push(["resize", width, height]); }
+    setView(zoom, x, y, frame) { calls.push(["view", zoom, x, y, frame]); }
+    update(delta) { calls.push(["update", delta]); }
+    bonePoints() { return []; }
+    dispose() {}
+  }
+  const { send } = await page(Renderer, posts);
+  await send({ kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm" } });
+  await send({ kind: "view", data: { zoom: 2, x: 0.1, y: -0.2, frame: 0.5 } });
+  calls.length = 0;
+  await send({ kind: "picture", data: { width: 2046, height: 1364, zoom: 1, x: 0, y: 0, frame: 0.5 } });
+  assert.equal(posts.at(-1).png, "data:image/png;base64,AAAA");
+  assert.deepEqual(calls.slice(3), [["resize", 500, 500], ["view", 2, 0.1, -0.2, 0.5], ["update", 0]]);
+});
 
 test("a blush the model can't show is drawn over the face, held until turned off", async () => {
   const posts = [];

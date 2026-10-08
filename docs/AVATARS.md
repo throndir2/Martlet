@@ -300,12 +300,20 @@ waist, hips, groin, buttocks and inner thighs) react too while
 **Include intimate zones** is on, which it is by default; turn it off to leave them out.
 
 - **Detect zones** shows the Thinking model pictures of the character (never the
-  model's files); the model must be able to see (Companion › Vision says whether
-  it can and where pictures go). Nothing is sent until you press it, and it is
-  never on the conversation's path. It goes step by step:
-  1. Martlet frames the character whole for a moment (no zoom, no pan), takes
-     its picture at the size it shows (up to 2048 pixels) and puts the view back.
-     So the picture always holds the whole character, even when you zoomed in.
+  model's files); a model must be able to see (Companion › Vision says whether
+  it can and where pictures go). The button is greyed out only when no model
+  that can see pictures is set up (neither the Thinking model nor a Thinking pool
+  member), and the line under it then says what to change. It works the same
+  whether the character shows or is hidden. Nothing is sent until you press it,
+  and it is never on the conversation's path. It goes step by step:
+  1. Martlet loads the character a second time, off screen, in a renderer that
+     is never seen and never animates. So the picture shows the character in its
+     rest pose (no idle motion, eyes open, looking ahead), and the character on
+     your desktop doesn't move. The renderer frames the character whole (no zoom,
+     no pan) on a page the shape of the character's window, draws one frame up
+     to 1364 pixels tall, reads it back and closes. Some Live2D models draw parts
+     past their own frame (legs or a tail below it, say). Martlet then draws the
+     frame again, zoomed out just enough for every part to show.
   2. The CPU puts the character on a plain backdrop that contrasts with it (light
      for a dark character, dark for a light one), because servers paint a
      transparent background as they like. It draws a grid of tenths, numbered

@@ -1,4 +1,5 @@
 using Martlet.Avatar.Hosting;
+using Martlet.Core.Settings;
 
 namespace Martlet.Desktop.Tests;
 
@@ -222,6 +223,145 @@ public sealed class TouchZoneDetectionTests
         Assert.Equal(0.375, y, 6);
         // Panned right by 0.4 of the frame's clip space in a frame half the page wide: the page point moved 0.1 to the right.
         Assert.Equal(0.5, CharacterTouch.Unframed(0.6, 0.5, 1, 0.4, 0, 0.5).X, 6);
+    }
+
+    [Fact]
+    public void AWholePictureZoomsOutOnlyAsFarAsTheCutOffPartsReach()
+    {
+        // The page cuts the legs off at its bottom: a thigh crosses it, a calf below touches the thigh, and a part placed far
+        // below touches nothing.
+        RendererDrawableBox[] drawables =
+        [
+            new("Body", 0.3, 0.05, 0.7, 0.7), new("ThighL", 0.35, 0.6, 0.5, 1.1), new("CalfL", 0.38, 1.05, 0.48, 1.3), new("Far", 0.4, 3, 0.5, 3.2)
+        ];
+        var seen = new TouchZoneBox(0.3, 0.05, 0.4, 0.95);
+
+        Assert.Equal((1d, 0d, 0d), WholeFraming.Fit(seen, PageEdges.None, drawables, 0.5));
+        var (zoom, x, y) = WholeFraming.Fit(seen, PageEdges.Bottom, drawables, 0.5);
+        Assert.Equal(0.96 / 1.25, zoom, 6);
+        // The page in that framing, read with the character framed whole, holds the head to the calf with the margin around it.
+        var page = WholeFraming.Unframed(new TouchZoneBox(0, 0, 1, 1), zoom, x, y, 0.5);
+        Assert.Equal(0.05 - WholeFraming.Margin / zoom, page.Y, 6);
+        Assert.Equal(1.3 + WholeFraming.Margin / zoom, page.Y + page.Height, 6);
+        Assert.Equal(0.5, page.CenterX, 6);
+
+        // A transparent mesh past an edge the character's pixels don't reach (the top) changes nothing, and an edge they reach
+        // with nothing past it needs no zoom.
+        Assert.Equal((zoom, x, y), WholeFraming.Fit(seen, PageEdges.Bottom, [.. drawables, new("Glow", 0.2, -0.5, 0.8, 0.3)], 0.5));
+        Assert.Equal((1d, 0d, 0d), WholeFraming.Fit(seen, PageEdges.Top, drawables, 0.5));
+        // Feet that end at the page's edge fit, and parts far past it that touch nothing on the page don't count.
+        Assert.Equal((1d, 0d, 0d), WholeFraming.Fit(seen, PageEdges.Bottom, [new("Body", 0.3, 0.05, 0.7, 1), new("Far", 0.4, 3, 0.5, 3.2)], 0.5));
+        // A part that runs far past the page from the character zooms out no further than the smallest zoom.
+        Assert.Equal(WholeFraming.MinimumZoom, WholeFraming.Fit(seen, PageEdges.Bottom, [.. drawables, new("Cape", 0.3, 0.9, 0.7, 9)], 0.5).Zoom);
+    }
+
+    [Fact]
+    public void AZoomedOutPicturesCropAndProbeReadAsTheyWouldFramedWhole()
+    {
+        var (zoom, x, y) = (0.75, 0.2, 0.25);
+        // Where a point of the character framed whole shows in that framing: the renderers draw fitted * zoom + (x * frame, y).
+        (double X, double Y) Page(double u, double v) => (((2 * u - 1) * zoom + x * 0.5 + 1) / 2, (1 - ((1 - 2 * v) * zoom + y)) / 2);
+        var (left, top) = Page(0.3, 0.1);
+        var (right, bottom) = Page(0.7, 1.3);
+
+        var probe = WholeFraming.Unframed(new RendererZoneProbe([new("Calf", left, top, right, bottom)], [new("leftFoot", left, bottom)]), zoom, x, y, 0.5);
+        var calf = Assert.Single(probe.Drawables!);
+        Assert.Equal(0.3, calf.Left, 6);
+        Assert.Equal(0.1, calf.Top, 6);
+        Assert.Equal(0.7, calf.Right, 6);
+        Assert.Equal(1.3, calf.Bottom, 6);
+        var foot = Assert.Single(probe.Bones!);
+        Assert.Equal((0.3, 1.3), (Math.Round(foot.X, 6), Math.Round(foot.Y, 6)));
+
+        // The crop reaches past the page's bottom framed whole, and so does a zone found low on the picture.
+        var crop = WholeFraming.Unframed(new TouchZoneBox(left, top, right - left, bottom - top), zoom, x, y, 0.5);
+        Assert.Equal(1.2, crop.Height, 6);
+        Assert.True(new TouchZoneBox(0.4, 0.9, 0.2, 0.1).Within(crop).Y > 1);
+        // Unzoomed nothing moves.
+        var same = WholeFraming.Unframed(new TouchZoneBox(0.1, 0.2, 0.3, 0.4), 1, 0, 0, 0.5);
+        Assert.Equal((0.1, 0.2, 0.3, 0.4), (Math.Round(same.X, 9), Math.Round(same.Y, 9), Math.Round(same.Width, 9), Math.Round(same.Height, 9)));
+    }
+
+    [Fact]
+    public void DetectZonesIsOffOnlyWithoutAModelThatCanSeeAndSaysWhy()
+    {
+        static SetupRoute Thinking(string model) => new()
+        {
+            Role = SetupRole.Llm, ProviderAlias = "openai", Origin = "https://api.openai.com", ModelId = model, ConfigurationRevision = Guid.NewGuid()
+        };
+
+        var none = MainWindow.TouchZonesSight(null, null, null, fixture: false);
+        Assert.False(none.CanSee);
+        Assert.Contains("no model that can see pictures", none.Off, StringComparison.Ordinal);
+        var textOnly = MainWindow.TouchZonesSight(Thinking("llama3.1:8b"), null, null, fixture: false);
+        Assert.False(textOnly.CanSee);
+        Assert.Contains("text-only", textOnly.Off, StringComparison.Ordinal);
+
+        // A model that sees, or one Martlet can't tell about, keeps it on with no note.
+        var seeing = MainWindow.TouchZonesSight(Thinking("gpt-4o"), null, null, fixture: false);
+        Assert.True(seeing.CanSee);
+        Assert.Null(seeing.Off);
+        Assert.True(MainWindow.TouchZonesSight(Thinking("my-own-model"), null, null, fixture: false).CanSee);
+        // A Thinking pool member that sees takes the pictures even when the Thinking model is text-only.
+        var pooled = MainWindow.TouchZonesSight(Thinking("llama3.1:8b"), null, "diva (qwen2.5vl:7b)", fixture: false);
+        Assert.True(pooled.CanSee);
+        Assert.Null(pooled.Off);
+        Assert.StartsWith("diva (qwen2.5vl:7b) in your Thinking pool can see pictures", pooled.Line, StringComparison.Ordinal);
+        Assert.True(MainWindow.TouchZonesSight(null, null, null, fixture: true).CanSee);
+    }
+
+    // A still renderer as the touch zones picture needs it: it records what it was started with and asked, and answers with a
+    // picture (or fails to start).
+    private sealed class StillRenderer(bool failStart = false) : IAvatarRenderer
+    {
+        internal List<RendererMessage> Sent { get; } = [];
+        internal string? Revision { get; private set; }
+        internal bool Disposed { get; private set; }
+        public RendererCapabilities? Capabilities => null;
+        public bool HasExited => Disposed;
+        public Task Exited => Task.CompletedTask;
+        public event Action<string>? Requested { add { } remove { } }
+        public Task StartAsync(AvatarProfile profile, string revision, RendererPlacement? placement, bool voiceMuted, CancellationToken token)
+        {
+            Revision = revision;
+            return failStart ? throw new InvalidOperationException("The character renderer couldn't load this model.") : Task.CompletedTask;
+        }
+        public Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token, TimeSpan? timeout = null)
+        {
+            Sent.Add(RendererProtocol.Message(kind, Guid.Empty, data));
+            return Task.FromResult(RendererProtocol.Message("picture", Guid.Empty,
+                new RendererPicture(Convert.ToBase64String([1, 2, 3]), 1, 3, 0.34, 0.04, 0.28, 1.07, new([new("Hair", 0.4, 0.05, 0.6, 0.3)]), 0.94)));
+        }
+        public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
+    }
+
+    [Fact]
+    public async Task TheTouchZonesPictureComesFromAStillRendererOfItsOwnSoTheCharacterNeedntShow()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var stills = new List<StillRenderer>();
+        var failing = false;
+        await using var avatar = new AvatarController(createRenderer: () => throw new InvalidOperationException("the character must not show"),
+            createStillRenderer: () => { var still = new StillRenderer(failing); stills.Add(still); return still; });
+
+        var shot = await avatar.ZoneSnapshotAsync(scope.Profile(), default);
+        Assert.NotNull(shot);
+        Assert.False(avatar.IsShowing);
+        var used = Assert.Single(stills);
+        Assert.True(used.Disposed, "the still renderer closes once the picture is taken");
+        Assert.Equal((await LocalAvatarFiles.SnapshotAsync(scope.Profile(), default)).Revision, used.Revision);
+        var asked = Assert.Single(used.Sent);
+        Assert.Equal("snapshot", asked.Kind);
+        Assert.True(RendererProtocol.Data<RendererSnapshot>(asked).Whole);
+        Assert.Equal([1, 2, 3], shot.Value.Png);
+        Assert.Equal(("", 0.94, 1.07), (shot.Value.Picture.Png, shot.Value.Picture.Zoom, shot.Value.Picture.CropHeight));
+        Assert.Equal("Hair", Assert.Single(shot.Value.Probe!.Drawables!).Id);
+
+        // One that can't start is closed too, and the picture is only missing.
+        failing = true;
+        Assert.Null(await avatar.ZoneSnapshotAsync(scope.Profile(), default));
+        Assert.True(stills[^1].Disposed);
+        Assert.Empty(stills[^1].Sent);
     }
 
     [Fact]
