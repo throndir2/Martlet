@@ -30,23 +30,27 @@ public sealed class DefaultSetupTests
     {
         var plan = Plan(null);
         Assert.False(plan.ThinkingOnGpu);
-        Assert.Null(plan.Voice);
+        // Windows voices are gone: Chatterbox Nano speaks on the processor.
+        Assert.Equal(SpeechEngines.ChatterboxNano, plan.Voice);
+        Assert.False(plan.VoiceOnGpu);
         Assert.False(plan.ListenOnGpu);
         Assert.False(plan.LipSyncOnGpu);
         Assert.Equal(LocalSpeechSetup.RecommendedParakeetModel(English), plan.ParakeetModel);
-        Assert.Contains("Windows voice", plan.Describe());
+        Assert.Contains("Voice: Chatterbox Nano on the processor", plan.Describe());
+        Assert.DoesNotContain("Windows voice", plan.Describe());
         Assert.Contains("Parakeet on the processor", plan.Describe());
     }
 
     [Fact]
-    public void ASmallCardKeepsThinkingAndFallsBackToTheProcessorForVoiceAndListening()
+    public void ASmallCardKeepsThinkingAndSpeaksWithChatterboxNanoBesideIt()
     {
         var plan = Plan(8);
         Assert.True(plan.ThinkingOnGpu);
-        Assert.Null(plan.Voice);
+        // Chatterbox Turbo has no room beside Thinking; Nano (about 3 GB) does, and the voice comes before Audio2Face.
+        Assert.Equal(SpeechEngines.ChatterboxNano, plan.Voice);
+        Assert.True(plan.VoiceOnGpu);
         Assert.False(plan.ListenOnGpu);
-        // Audio2Face takes about 1.5 GB, so it fits beside Thinking where a voice engine doesn't.
-        Assert.True(plan.LipSyncOnGpu);
+        Assert.False(plan.LipSyncOnGpu);
     }
 
     [Fact]
@@ -66,7 +70,9 @@ public sealed class DefaultSetupTests
     [Fact]
     public void ABusyCardOrAnOldDriverLeavesWorkOnTheProcessor()
     {
-        Assert.Null(Plan(12, usedGb: 9).Voice);
+        var busy = Plan(12, usedGb: 9);
+        Assert.Equal(SpeechEngines.ChatterboxNano, busy.Voice);
+        Assert.False(busy.VoiceOnGpu);
         var oldDriver = Plan(24, driver: "570.10");
         Assert.Equal(SpeechEngines.Default, oldDriver.Voice);
         Assert.False(oldDriver.ListenOnGpu);
@@ -77,7 +83,8 @@ public sealed class DefaultSetupTests
     {
         var plan = DefaultSetup.Plan([], new GpuInfo("NVIDIA GeForce RTX 4090", 24), 16, English, ramGb: 32);
         Assert.True(plan.ThinkingOnGpu);
-        Assert.Null(plan.Voice);
+        Assert.Equal(SpeechEngines.ChatterboxNano, plan.Voice);
+        Assert.False(plan.VoiceOnGpu);
         Assert.False(plan.ListenOnGpu);
         Assert.False(plan.LipSyncOnGpu);
     }
@@ -85,9 +92,11 @@ public sealed class DefaultSetupTests
     [Fact]
     public void ThinkingElsewhereLeavesTheCardToTheVoice()
     {
-        Assert.Null(Plan(8).Voice);
+        Assert.Equal(SpeechEngines.ChatterboxNano, Plan(8).Voice);
         Assert.Equal(SpeechEngines.Default, Plan(8, thinkingGb: 0).Voice);
-        Assert.Null(Plan(8, thinkingGb: 5.1).Voice);
+        var full = Plan(8, thinkingGb: 5.1);
+        Assert.Equal(SpeechEngines.ChatterboxNano, full.Voice);
+        Assert.False(full.VoiceOnGpu);
     }
 
     private static WelcomePlan Recommend(double? totalGb, HostingPreference preference, double ramGb = 32, int threads = 16,
@@ -141,7 +150,8 @@ public sealed class DefaultSetupTests
     public void LipSyncFollowsLoudnessWithoutRoomForAudio2Face()
     {
         Assert.Equal("loudness-lipsync", Recommend(null, HostingPreference.PreferLocal).Placement.Primary(PlanComponent.LipSync)!.Option.Id);
-        Assert.True(Recommend(8, HostingPreference.PreferLocal).Setup.LipSyncOnGpu);
+        // On 8 GB, Chatterbox Nano takes the room beside Thinking: the voice is needed, Audio2Face is not.
+        Assert.False(Recommend(8, HostingPreference.PreferLocal).Setup.LipSyncOnGpu);
         Assert.True(Recommend(24, HostingPreference.PreferLocal).Setup.LipSyncOnGpu);
     }
 

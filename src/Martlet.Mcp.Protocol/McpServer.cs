@@ -413,7 +413,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "Turbo, the default; F5-TTS; XTTS-v2; GPT-SoVITS; Dia: host role, gateway route, model, weights licence, GPU memory, reference " +
             "length bounds, tag catalog, summary, languages, whether it learns from several recordings, the feature chips Companion > " +
             "Voice > Voice engine shows, its rundown (voice cloning, laughs & sighs, emotions: yes, partly or no) and where it runs " +
-            "(GPU with its typical and peak graphics memory, CPU or online); the same rundown for the Windows and OpenAI voices; each " +
+            "(GPU with its typical and peak graphics memory, CPU or online); the same rundown for the OpenAI voice; each " +
             "starter voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
             "(never own voices' names, transcripts or audio). Plays nothing and contacts nothing.", new
         {
