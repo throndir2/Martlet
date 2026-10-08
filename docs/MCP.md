@@ -1030,7 +1030,17 @@ the home PC allows the identity listed under `refused`, then is paired (the
 host exchanged the code with the client secret and checked the ID token) and
 let into the network the same way; a Steam account allowed by its SteamID64
 signs in through the simulated browser with an OpenID 2.0 assertion the host
-confirms with (simulated) Steam; removing the owner account revokes the
+confirms with (simulated) Steam; the home PC allows the same OpenID Connect
+identity as a friend (`access` `friend`, [sharing a host with
+friends](NETWORK.md#sharing-a-host-with-friends)): FRIEND-PC signs in through
+the simulated browser, the host keeps a friend's credential for it and it lists
+the engines, while 15 other routes (network, hardware, who does what,
+settings, memories, voices, speaking voices, characters, creations, Home
+Assistant, API keys, commands, GPU priority, security audit, sign-in settings)
+refuse it with `access.friend` and it never asks to join; a sign-in under
+HOME-PC's ID is refused (`signin.device_taken`) while HOME-PC keeps its
+pairing; stopping sharing revokes FRIEND-PC at once (`auth.revoked`) and records
+no network removal; removing the owner account revokes the
 laptop (`auth.revoked`); the host's security audit holds the sign-in successes
 and failures and no secret. Not covered: the desktop windows, Windows
 Credential Manager, a host reached over the internet, a real browser and a real

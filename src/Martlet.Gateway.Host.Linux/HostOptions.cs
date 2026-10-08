@@ -41,7 +41,9 @@ internal sealed record HostOptions(string Command, string ConfigPath)
           owner-signin-owner     ... --user <name>: set the owner account. Reads the password (12+ characters) from
                                  the first stdin line, prints an authenticator secret and otpauth link, reads a current
                                  authenticator code from the next line, then prints ten one-use recovery codes once
-          owner-signin-allow     ... --provider <id> --subject <subject> [--label <text>]: allow an identity
+          owner-signin-allow     ... --provider <id> --subject <subject> [--label <text>] [--access member|friend]: allow
+                                 an identity. member (the default): its computers join your Martlet network. friend:
+                                 share this host's engines only (never the network, your settings or your logs)
           owner-signin-disallow  ... --provider <id> --subject <subject>: remove it and its computers from the network
                                  (this host revokes them; member desktops remove them from the roster on their next sync)
           owner-invite           ... [--address <name:port>]... [--label <text>]: print a martlet-invite-v1 line (this
@@ -63,6 +65,7 @@ internal sealed record HostOptions(string Command, string ConfigPath)
     internal string? Provider { get; init; }
     internal string? Subject { get; init; }
     internal string? Label { get; init; }
+    internal string? Access { get; init; }
     internal IReadOnlyList<string> Addresses { get; init; } = [];
 
     internal static HostOptions? Parse(string[] args)
@@ -96,6 +99,8 @@ internal sealed record HostOptions(string Command, string ConfigPath)
                 "--subject" when identity && options.Subject is null && DisplayName(value) => options with { Subject = value },
                 "--label" when (identity && command != "owner-signin-disallow" || command == "owner-invite") && options.Label is null &&
                     DisplayName(value) => options with { Label = value },
+                "--access" when command == "owner-signin-allow" && options.Access is null && value is "member" or "friend" =>
+                    options with { Access = value },
                 "--address" when command == "owner-invite" && options.Addresses.Count < Martlet.Core.Network.NetworkInvite.MaximumAddresses &&
                     Martlet.Core.Network.NetworkInvite.NormalizeAddress(value) is { } address => options with { Addresses = [.. options.Addresses, address] },
                 _ => throw new HostInputException()
