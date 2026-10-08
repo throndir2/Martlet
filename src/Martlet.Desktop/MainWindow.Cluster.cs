@@ -316,6 +316,7 @@ public partial class MainWindow
             ErrorLog.Warn($"Host {probe.HostId} {(previous is null ? "didn't answer" : "stopped answering")}: {probe.Text}");
         else if (previous?.Reachable == false && probe.Reachable)
             ErrorLog.Info($"Host {probe.HostId} answers again.");
+        HostPresence.Note(probe.HostId, probe.Reachable);
         if (!probe.Reachable)
         {
             hostChecks[probe.HostId] = new(false, probe.Text, null, release);
@@ -332,7 +333,7 @@ public partial class MainWindow
                 ? previous.Text : HostControl.Describe(offers, probe.Routes)
         };
         NoteSingingHost();
-        NoteDeepThinkingSlots(probe.HostId, next.DeepThinkingSlots);
+        NoteThinkingPoolHost(probe.HostId);
     }
 
     /// <summary>Moves each job whose host missed <see cref="ClusterSync.FailAfter"/> checks, when its failover is on, to

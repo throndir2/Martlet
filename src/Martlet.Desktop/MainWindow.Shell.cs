@@ -1009,7 +1009,11 @@ public partial class MainWindow
 
     private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
         HardwareStore?.Load() ?? [], homeHosts, hostUpdates.Notes, HostUsers(), clusterEnabled ? clusterPlan : null, OtherComputers(),
-        DeepThinkingHosts(), HostOutsideFacts(), OwnHostTrouble());
+        DeepThinkingHosts(), HostOutsideFacts(), OwnHostTrouble(), ThinkingPoolLeft(), PresenceAway());
+
+    /// <summary>The paired computers the owner keeps out of the Thinking pool (unticked), or null.</summary>
+    private IReadOnlyCollection<string>? ThinkingPoolLeft() =>
+        store is not null && ThinkingPoolSettings.Load(store.DataDirectory).LeftByOwner is { Count: > 0 } left ? left : null;
 
     /// <summary>The paired computers whose Deep thinking role this PC thinks with, while Deep thinking is on.</summary>
     private IReadOnlyCollection<string>? DeepThinkingHosts() =>
@@ -1402,6 +1406,9 @@ public partial class MainWindow
         try { results = await Task.WhenAll(hosts.Select(async h => (h.HostId, await HostControl.CheckAsync(h.Pairing, HardwareStore, lifetime.Token)))); }
         catch (OperationCanceledException) { return; }
         foreach (var (id, check) in results) hostChecks[id] = check;
+        // What answered and what didn't counts for the Thinking pool too, also while Keep in sync is off.
+        foreach (var (id, check) in results)
+            if (check.Reachable is { } reachable) HostPresence.Note(id, reachable);
         if (closing) return;
         // A role whose settings changed there (from here or another computer) serves another model now: follow it.
         FollowHostModelsAsync(results.Where(r => r.Check.Reachable == true).Select(r => r.Id).ToArray()).Forget();
@@ -1410,10 +1417,13 @@ public partial class MainWindow
         NoteSingingHost();
         foreach (var host in hosts)
             if (hostChecks.GetValueOrDefault(host.HostId) is { Reachable: true } found) HostFoundCurrent(UpdateKey(host), found.MartletVersion);
-        ActionText.Text = results.Length == 1 ? $"{results[0].Id}: {results[0].Check.Text}"
+        // A computer with a Thinking model joins the Thinking pool by itself, also while Keep in sync is off.
+        var joined = results.Select(r => NoteThinkingPoolHost(r.Id)).OfType<string>().ToArray();
+        ActionText.Text = (results.Length == 1 ? $"{results[0].Id}: {results[0].Check.Text}"
             : $"Checked {results.Length} hosts: {results.Count(r => r.Check.Reachable == true)} reachable, " +
               string.Join(", ", HostRoles.All.Select(role =>
-                  $"{results.Count(r => r.Check.Offers?.ContainsKey(role.Kind) == true)} running {role.Name}")) + ".";
+                  $"{results.Count(r => r.Check.Offers?.ContainsKey(role.Kind) == true)} running {role.Name}")) + ".") +
+            string.Concat(joined.Select(line => " " + line));
         RenderHome();
         if (DevicesPage.IsVisible) RenderMap();
         QueueClusterSync();

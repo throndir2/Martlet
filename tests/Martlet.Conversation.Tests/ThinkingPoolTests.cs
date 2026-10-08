@@ -142,4 +142,88 @@ public sealed class ThinkingPoolTests
         Assert.True(ThinkingJobKinds.Priority(ThinkingJobKind.TouchZones) < ThinkingJobKinds.Priority(ThinkingJobKind.ThinkLonger));
         Assert.True(ThinkingJobKinds.Priority(ThinkingJobKind.TouchZones) > ThinkingJobKinds.Priority(ThinkingJobKind.Memory));
     }
+
+    [Fact]
+    public async Task A_member_whose_computer_is_offline_gets_no_job_and_its_slots_leave_the_pool_until_it_answers()
+    {
+        var places = new BackgroundPlaces();
+        var offline = new HashSet<string>(StringComparer.Ordinal);
+        places.Reachable = place => !offline.Contains(place.Id);
+        BackgroundPlace diva = new("host:diva", "diva") { Slots = 2, Can = ThinkingCapability.Text | ThinkingCapability.Vision },
+            ripley = new("host:ripley", "ripley", Rank: 1);
+        var board = new ThinkingJobBoard(places, () => [diva, ripley], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)));
+        Assert.Equal((3, 3), (board.Status().Slots, board.Status().ConfiguredSlots));
+
+        offline.Add(diva.Id);
+        var status = board.Status();
+        Assert.Equal((1, 1, 3), (status.Slots, status.Free, status.ConfiguredSlots));
+        Assert.Equal([false, true], status.Members.Select(m => m.Online));
+        Assert.Equal("1 slot answers now: long thinking can delay screen and sound summaries until more answer.", status.Guidance[0]);
+        Assert.Contains(status.Guidance, g => g.StartsWith("diva is offline: 1 of 3 slots answer now", StringComparison.Ordinal));
+        Assert.Contains(status.Guidance, g => g.StartsWith("No member that answers now sees pictures", StringComparison.Ordinal));
+        // Text goes to ripley; pictures only diva sees, and diva is offline: callers use their fallback.
+        Assert.Equal("host:ripley", board.Find(ThinkingJobKind.Memory)?.Id);
+        Assert.Equal("ripley", (await board.RunAsync(Job(ThinkingJobKind.Memory), CancellationToken.None)).Member);
+        Assert.False(board.CanRun(ThinkingJobKind.Digest, ThinkingCapability.Text | ThinkingCapability.Vision));
+        Assert.False(board.MayStartNow(ThinkingJobKind.Digest, ThinkingCapability.Text | ThinkingCapability.Vision));
+        var seen = await board.RunAsync(Job(ThinkingJobKind.Digest, ThinkingCapability.Text | ThinkingCapability.Vision), CancellationToken.None);
+        Assert.Equal(ThinkingJobOutcome.NoMember, seen.Outcome);
+        Assert.Equal("every Thinking pool member that can do text and pictures is offline", seen.Problem);
+
+        offline.Add(ripley.Id);
+        Assert.StartsWith("Every Thinking pool computer is offline (diva and ripley)", board.Status().Guidance[0], StringComparison.Ordinal);
+        Assert.Equal(0, board.Status().Slots);
+        Assert.False(board.CanRun(ThinkingJobKind.Memory));
+
+        offline.Clear();
+        Assert.Equal((3, 3), (board.Status().Slots, board.Status().ConfiguredSlots));
+        Assert.Equal("diva", (await board.RunAsync(Job(ThinkingJobKind.Digest, ThinkingCapability.Text | ThinkingCapability.Vision), CancellationToken.None)).Member);
+    }
+
+    [Fact]
+    public async Task A_job_waiting_in_line_goes_to_a_member_that_answers_again()
+    {
+        var places = new BackgroundPlaces();
+        var offline = new HashSet<string>(StringComparer.Ordinal) { "host:diva" };
+        places.Reachable = place => !offline.Contains(place.Id);
+        BackgroundPlace diva = new("host:diva", "diva"), ripley = new("host:ripley", "ripley");
+        var held = places.TryAcquire([ripley], "other-job")!;
+        var board = new ThinkingJobBoard(places, () => [diva, ripley], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)));
+        // ripley is busy and diva is offline: the summary waits in line.
+        var waiting = board.RunAsync(Job(ThinkingJobKind.Digest), CancellationToken.None);
+        await Until(() => places.WaitingKinds.Count == 1);
+        Assert.False(waiting.IsCompleted);
+        // diva answers again (HostPresence.Changed in the desktop): the broker looks again and the summary runs there at once.
+        offline.Clear();
+        places.Reconsider();
+        var result = await waiting.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(("diva", ThinkingJobOutcome.Succeeded), (result.Member, result.Outcome));
+        held.Dispose();
+    }
+
+    [Fact]
+    public async Task A_member_that_stops_answering_during_a_job_passes_it_on_and_never_waits_for_offline_members()
+    {
+        var places = new BackgroundPlaces();
+        var offline = new HashSet<string>(StringComparer.Ordinal);
+        places.Reachable = place => !offline.Contains(place.Id);
+        BackgroundPlace diva = new("host:diva", "diva"), ripley = new("host:ripley", "ripley", Rank: 1), imouto = new("host:imouto", "imouto", Rank: 2);
+        var board = new ThinkingJobBoard(places, () => [diva, ripley, imouto], (m, _, _) =>
+        {
+            // diva and ripley drop off the network while they take the job (the desktop marks them offline at once).
+            if (m.Id == imouto.Id) return Task.FromResult(ThinkingAnswer.Done(m.Name));
+            offline.Add(m.Id);
+            return Task.FromResult(ThinkingAnswer.Failed($"{m.Name} didn't answer"));
+        });
+        var passed = await board.RunAsync(Job(ThinkingJobKind.Memory), CancellationToken.None);
+        Assert.Equal(("imouto", 3), (passed.Member, passed.Attempts));
+
+        // Now imouto fails too, and the members not tried yet are all offline: it ends at once instead of waiting for them.
+        offline.Clear();
+        offline.Add(ripley.Id);
+        offline.Add(imouto.Id);
+        var board2 = new ThinkingJobBoard(places, () => [diva, ripley, imouto], (m, _, _) => Task.FromResult(ThinkingAnswer.Failed($"{m.Name} failed")));
+        var failed = await board2.RunAsync(Job(ThinkingJobKind.Memory), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal((ThinkingJobOutcome.Failed, "diva failed", 1), (failed.Outcome, failed.Problem, failed.Attempts));
+    }
 }

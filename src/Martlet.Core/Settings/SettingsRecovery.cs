@@ -170,11 +170,11 @@ public sealed partial class SettingsStore
             throw new RecoveryException(RecoveryFailure.CleanupCapacity);
         var pending = (current.Setup?.PendingRemovals ?? []).Concat(
             (current.Setup?.Routes ?? []).Where(route => route.CredentialId is not null &&
-                route.RouteType is null or SetupRouteType.OpenAi or SetupRouteType.ChatCompletions)
+                route.RouteType is null or SetupRouteType.OpenAi or SetupRouteType.ChatCompletions or SetupRouteType.ElevenLabs)
             .Select(route => new PendingCredentialRemoval
             {
                 Role = route.Role, CredentialId = route.CredentialId!.Value,
-                Scope = route.RouteType == SetupRouteType.ChatCompletions ? CredentialScopeSettings.From(route) : null
+                Scope = route.RouteType is SetupRouteType.ChatCompletions or SetupRouteType.ElevenLabs ? CredentialScopeSettings.From(route) : null
             }))
             // The Thinking fallback is not restored; its own key is listed for removal like a replaced Thinking key.
             .Concat(current.ThinkingFallback is { CredentialId: { } fallbackKey } fallback
@@ -348,11 +348,12 @@ public sealed partial class SettingsStore
             .Select(RetainedGatewayCredential.From)).ToArray();
         foreach (var route in settings.Setup!.Routes.Where(route =>
             SelfHostSetup.IsGateway(route.RouteType) || route.RouteType is SetupRouteType.LocalWhisper or
-                SetupRouteType.ChatCompletions or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts or SetupRouteType.LocalParakeet))
+                SetupRouteType.ChatCompletions or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts or SetupRouteType.LocalParakeet or
+                SetupRouteType.ElevenLabs))
         {
             if (route.Enabled != false || route.Consent is not null || route.GatewaySnapshot is not null ||
                 route.Reference is not null || route.LocalStt is not null ||
-                route.CredentialId is not null && (route.RouteType == SetupRouteType.ChatCompletions ||
+                route.CredentialId is not null && (route.RouteType is SetupRouteType.ChatCompletions or SetupRouteType.ElevenLabs ||
                     !owned.Contains(RetainedGatewayCredential.From(route))))
                 throw new RecoveryException(RecoveryFailure.Conflict);
         }
