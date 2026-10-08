@@ -263,11 +263,11 @@ public static class SetupExecutor
     }
 
     /// <summary>A job's handover: the computer that does it next (null: none), whether lip-sync is off, and the way it is done
-    /// (the target plan's FootprintCatalog option).</summary>
+    /// (the change's FootprintCatalog option, else the target plan's).</summary>
     private static (string? Host, bool Off, string? Option) Handover(SetupChange change, NetworkRecommendation recommendation)
     {
         var plan = recommendation.Target.Job(change.Job!);
-        var option = plan?.OptionId;
+        var option = change.OptionId ?? plan?.OptionId;
         var host = plan is null ? change.MachineId.Length > 0 ? change.MachineId : null : plan.HostId;
         return (host, plan?.Off == true || host is null && option == LoudnessLipSync, option);
     }

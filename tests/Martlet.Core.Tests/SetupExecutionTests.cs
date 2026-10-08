@@ -279,12 +279,13 @@ public sealed class SetupExecutionTests
     public async Task A_job_no_host_does_next_switches_this_PCs_route_or_says_where_the_owner_chooses_it()
     {
         var targets = new Targets();
-        var target = new NetworkSetup([], [new JobPlan(ClusterJobs.Thinking, null, OptionId: "gemma4:e2b"),
+        // Thinking's option is on the change only (S1's SetupChange.OptionId); the others on the target plan.
+        var target = new NetworkSetup([], [new JobPlan(ClusterJobs.Thinking, null),
             new JobPlan(ClusterJobs.Listening, null, OptionId: "hosted:openai-transcribe"), new JobPlan(ClusterJobs.LipSync, null, OptionId: "loudness-lipsync")]);
         var current = new NetworkSetup([], [new JobPlan(ClusterJobs.Listening, "gpu-box")]);
         SetupChange[] changes =
         [
-            new(SetupChangeKind.AssignJob, "", "Think with Gemma 4 E2B on each companion PC.", "w") { Job = ClusterJobs.Thinking },
+            new(SetupChangeKind.AssignJob, "", "Think with Gemma 4 E2B on each companion PC.", "w") { Job = ClusterJobs.Thinking, OptionId = "gemma4:e2b" },
             new(SetupChangeKind.AssignJob, "", "Listen with OpenAI.", "w") { Job = ClusterJobs.Listening },
             new(SetupChangeKind.AssignJob, "", "Lip-sync by loudness.", "w") { Job = ClusterJobs.LipSync, FromMachineId = "gpu-box" },
             new(SetupChangeKind.RemoveRole, "gpu-box", "Remove Listening from gpu-box.", "w") { RoleKind = "stt" },
