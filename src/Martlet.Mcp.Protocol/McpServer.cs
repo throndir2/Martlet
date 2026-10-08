@@ -498,7 +498,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "simulated desktop using the desktop's paired client. Checks both routes and their models are advertised, Thinking's advertised route saves as the " +
             "desktop's job route (handing Thinking to the host), a think on the Deep thinking route runs " +
             "while a reply streams on Thinking's route (the reply finishes first), each request reaches its own Ollama (the think " +
-            "with Thinking steps on), two thinks run at once on the role's two slots (advertised as the route's maximum_concurrency) " +
+            "with Thinking steps on), a Thinking pool job's request (the role's largest context window above the job's own budget) " +
+            "is accepted, two thinks run at once on the role's two slots (advertised as the route's maximum_concurrency) " +
             "while a reply streams and a third gets job.busy, and that the chat client refuses a mismatched route. Loopback only; writes nothing to disk or " +
             "the credential vault.", new { }),
         Tool("gpu_priority_status", "Read GPU priority (live turn first) on every Martlet host paired in a desktop data directory " +

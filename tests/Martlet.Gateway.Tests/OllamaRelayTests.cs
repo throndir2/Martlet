@@ -162,13 +162,43 @@ public sealed class OllamaRelayTests
         Assert.Equal(0.2, options.GetProperty("frequency_penalty").GetDouble());
         Assert.Equal(-0.5, options.GetProperty("presence_penalty").GetDouble());
 
-        // Out of range: rejected at the gateway before it reaches Ollama.
-        await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        // Out of range (a context window no larger than the reply budget): rejected at the gateway before it reaches Ollama.
+        var invalid = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
         {
             await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30),
-                null, [], "Hello", 0.7, 64, 4_096, null, new() { ContextTokens = 8_192 })) { }
+                null, [], "Hello", 0.7, 4_096, 4_096, null, new() { ContextTokens = 4_096 })) { }
         });
+        Assert.Equal("request.invalid", invalid.Code);
         Assert.Single(ollama.Requests);
+    }
+
+    [Fact]
+    public async Task Thinking_pool_job_loads_the_hosts_largest_context_window_above_its_own_budget()
+    {
+        await using var ollama = await FakeOllama.StartAsync(200,
+            "{\"message\":{\"role\":\"assistant\",\"content\":\"Noted.\"},\"done\":true,\"done_reason\":\"stop\"}");
+        await using var worker = OllamaRelayWorker.DeepThinking(ollama.Endpoint, "gemma4:e2b");
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        var card = host.OpenPairing(GatewayRole.Voice, "desktop-test");
+        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, card.HostId,
+            card.SpkiFingerprint, "desktop-test", card.PairingId, card.Token.Reveal());
+        using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        var route = Assert.Single(await connection.ReadRoutesAsync(), r => r.RouteId == HostRoute.DeepThinkingRouteId);
+        // What a Thinking pool job (remembering, 1,024 output tokens) asked for in 0.54.0: a budget of its input bound plus its
+        // output, and the role's largest window so the model stays loaded. The gateway refused that pair as request.invalid.
+        const int window = Martlet.Core.Settings.GenerationSettings.MaximumHostContextTokens;
+        const int budget = window - 8_192 + 1_024;
+
+        var text = new List<string>();
+        await foreach (var delta in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30),
+            "Pick what to remember.", [], "The user likes tea.", 0.7, 1_024, budget, null,
+            new() { Reasoning = false, ContextTokens = window }))
+            text.Add(delta);
+
+        Assert.Equal(["Noted."], text);
+        var options = Assert.Single(ollama.Requests).RootElement.GetProperty("options");
+        Assert.Equal(window, options.GetProperty("num_ctx").GetInt32());
+        Assert.Equal(1_024, options.GetProperty("num_predict").GetInt32());
     }
 
     [Fact]

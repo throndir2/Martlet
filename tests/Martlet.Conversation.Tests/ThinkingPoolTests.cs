@@ -101,6 +101,73 @@ public sealed class ThinkingPoolTests
     }
 
     [Fact]
+    public async Task A_member_that_refused_a_request_as_invalid_rests_for_such_jobs_until_its_rest_ends()
+    {
+        const ThinkingCapability Sees = ThinkingCapability.Text | ThinkingCapability.Vision;
+        var clock = new RuntimeClock();
+        BackgroundPlace old = new("host:old", "old-host") { Can = Sees };
+        var refuse = true;
+        List<ThinkingJobKind> asked = [];
+        List<ThinkingPoolRest> rested = [];
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [old], (_, job, _) =>
+        {
+            lock (asked) asked.Add(job.Kind);
+            return Task.FromResult(refuse && job.Required.HasFlag(ThinkingCapability.Vision)
+                ? ThinkingAnswer.Rejected("old-host refused the request as invalid (request.invalid)") : ThinkingAnswer.Done("ok"));
+        }, clock);
+        board.Rested += rested.Add;
+
+        var first = await board.RunAsync(Job(ThinkingJobKind.Digest, Sees), CancellationToken.None);
+        Assert.Equal((ThinkingJobOutcome.Failed, "old-host refused the request as invalid (request.invalid)"), (first.Outcome, first.Problem));
+        var rest = Assert.Single(rested);
+        Assert.Equal(("host:old", Sees, clock.GetUtcNow() + ThinkingJobBoard.RefusedRest), (rest.Id, rest.Needs, rest.Until));
+
+        // No more picture jobs go there (callers take their fallback); text jobs still do.
+        Assert.False(board.CanRun(ThinkingJobKind.Digest, Sees));
+        Assert.False(board.MayStartNow(ThinkingJobKind.Digest, Sees));
+        Assert.Null(board.Find(ThinkingJobKind.Digest, Sees));
+        var again = await board.RunAsync(Job(ThinkingJobKind.Digest, Sees), CancellationToken.None);
+        Assert.Equal((ThinkingJobOutcome.NoMember, 0), (again.Outcome, again.Attempts));
+        Assert.Contains("old-host refused such a request as invalid", again.Problem);
+        Assert.True(board.CanRun(ThinkingJobKind.Memory));
+        Assert.True((await board.RunAsync(Job(ThinkingJobKind.Memory), CancellationToken.None)).Succeeded);
+        Assert.Equal([ThinkingJobKind.Digest, ThinkingJobKind.Memory], asked);
+        Assert.Equal(rest, Assert.Single(board.Status().Resting));
+
+        // Once the rest ends (the computer may have been updated), picture jobs go there again.
+        refuse = false;
+        clock.Advance(ThinkingJobBoard.RefusedRest);
+        Assert.Empty(board.Status().Resting);
+        Assert.True(board.CanRun(ThinkingJobKind.Digest, Sees));
+        Assert.True((await board.RunAsync(Job(ThinkingJobKind.Digest, Sees), CancellationToken.None)).Succeeded);
+        Assert.Equal(3, asked.Count);
+    }
+
+    [Fact]
+    public async Task A_text_refusal_rests_the_member_for_every_job_and_the_next_member_takes_them()
+    {
+        BackgroundPlace old = new("host:old", "old-host") { Can = ThinkingCapability.Text | ThinkingCapability.Vision },
+            current = new("host:new", "new-host", Rank: 1) { Can = ThinkingCapability.Text | ThinkingCapability.Vision };
+        var refused = 0;
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [old, current], (m, _, _) =>
+        {
+            if (m.Id != "host:old") return Task.FromResult(ThinkingAnswer.Done(m.Name));
+            Interlocked.Increment(ref refused);
+            return Task.FromResult(ThinkingAnswer.Rejected("old-host refused the request as invalid (request.invalid)"));
+        });
+
+        var first = await board.RunAsync(Job(ThinkingJobKind.Memory), CancellationToken.None);
+        Assert.Equal(("new-host", 2), (first.Member, first.Attempts));
+        // The text job's refusal rests the member for picture jobs too: they need at least text.
+        var picture = await board.RunAsync(Job(ThinkingJobKind.Digest, ThinkingCapability.Text | ThinkingCapability.Vision), CancellationToken.None);
+        var text = await board.RunAsync(Job(ThinkingJobKind.Naming), CancellationToken.None);
+        Assert.Equal(("new-host", 1), (picture.Member, picture.Attempts));
+        Assert.Equal(("new-host", 1), (text.Member, text.Attempts));
+        Assert.Equal(1, refused);
+        Assert.Equal("host:new", board.Find(ThinkingJobKind.Memory)?.Id);
+    }
+
+    [Fact]
     public async Task A_stale_job_is_dropped_when_nobody_frees_up_in_time()
     {
         var places = new BackgroundPlaces();
