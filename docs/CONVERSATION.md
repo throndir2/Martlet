@@ -1967,6 +1967,12 @@ default self-hosted engine, has `[laugh]`, `[chuckle]`, `[sigh]`, `[gasp]`,
 `[whispering]`, `[dramatic]`. Another engine registers its own with one
 `SpeechEngines.Register(new SpeechEngine(..., TagCatalog: [new("(laughs)",
 VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
+[ElevenLabs](ELEVENLABS_VOICE.md#tags), a cloud voice that speaks with a
+voice cloned from yours, has its own catalog (`SpeechEngines.ElevenLabsTags`:
+`[laughs]`, `[sighs]`, `[whispers]`, `[happy]`, `[sad]`...) in
+`SpeechEngines.CloudVoices`. Cloud voices are not host engines, so they are not
+in `SpeechEngines.All`, but their tags work the same way below and are
+stripped from the chat for every voice.
 
 - **Thinking prompt.** When a spoken reply's voice has tags, Companion ›
   Prompts › *Voice sounds and tones* is added to its instructions with exactly
@@ -2032,7 +2038,8 @@ VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
 `voice_tags` in [Martlet MCP](MCP.md) shows all of these for any engine (with
 `characterTags`, the character cues too, plus `acted` and `note`), and
 `spoken_reply_check` with `characterTags` runs them through the production
-runtime.
+runtime. `elevenlabs_check` runs ElevenLabs' tags through the production
+runtime against a local ElevenLabs protocol fixture.
 
 ## Hands-free voice activity and Voice ID
 

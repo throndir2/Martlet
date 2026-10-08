@@ -191,6 +191,7 @@ internal static class NetworkMap
     private static string RouteDetail(SetupRoute route)
     {
         var text = route.RouteType == SetupRouteType.LocalWindowsTts ? WindowsVoices.DisplayName(route.VoiceId)
+            : route.ClonedVoice is { } cloned ? $"Voice {cloned.Name}, cloned"
             : route.VoiceId is { } voice ? $"Voice {voice}"
             : route.Reference is { } reference ? $"Voice {reference.PresetName}"
             // The model is what tells two setups of one provider apart (the cloud model every computer uses, say).
@@ -264,6 +265,7 @@ internal static class NetworkMap
         SetupRouteType.LocalWindowsTts => "Windows voice",
         SetupRouteType.LocalWhisper => "Speech recognition on this PC",
         SetupRouteType.LocalParakeet => "Speech recognition on this PC",
+        SetupRouteType.ElevenLabs => "ElevenLabs",
         _ => "OpenAI"
     };
 

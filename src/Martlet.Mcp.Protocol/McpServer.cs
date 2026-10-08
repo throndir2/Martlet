@@ -1438,6 +1438,27 @@ internal sealed class McpServer(DesktopAutomation desktop)
             scenario = new { type = "string", @enum = QuickSoundCheck.Scenarios },
             delayMs = new { type = "integer", @enum = new[] { 500, 700, 1000, 1500 } }
         }),
+        Tool("elevenlabs_check", "Rehearse ElevenLabs as the Voice (the owner's cloned voice with tones) end to end against a local " +
+            "fixture on 127.0.0.1 that follows ElevenLabs' documented protocol (FIXTURE, NOT ElevenLabs, NOT AI: its voice is a quiet " +
+            "tone): Instant Voice Cloning (POST /v1/voices/add with a synthetic WAV; clone.sent shows the form Martlet sent), one " +
+            "segment straight through the Text to Dialogue WebSocket client (segment: its audio and fixture timings), and a whole " +
+            "spoken reply through the production conversation runtime (a fixture Chat Completions endpoint streams reply, by default " +
+            "one with [laughs], [whispers] and [happy], a word at a time; a fixture speaker plays nothing). ok needs the Thinking " +
+            "prompt to list ElevenLabs' own tags (thinkingPrompt), every tag the reply wrote to reach ElevenLabs as written " +
+            "(tags.reachedElevenLabs), the chat text and every caption to show none (tags.chatClean, tags.captionsClean), and each " +
+            "connection to carry model_id, output_format=pcm_24000, the key in the xi-api-key header (never the body), the one cloned " +
+            "voice and close_socket (protocol). scenario: reply (default), model-refused (the WebSocket refuses the model with " +
+            "param model_id, as its API reference describes: the voice fails as ModelUnsupported and segment.detail says to choose " +
+            "Eleven v3 Conversational; the text still completes) or bad-key (a wrong key: cloning and speech fail as Authentication). " +
+            "model is eleven_v4_turbo (default) or eleven_v3_conversational. With dataDirectory, saved reports the saved ElevenLabs " +
+            "choice (route, model, on, confirmed, key saved, cloned voice saved, verification asked, keys from before; never the key, " +
+            "voice ID or voice name). Nothing is sent to ElevenLabs: live is always NOT RUN.", new
+        {
+            scenario = new { type = "string", @enum = ElevenLabsCheck.Scenarios },
+            model = new { type = "string", @enum = Martlet.Core.Settings.ElevenLabsSetup.ModelIds },
+            reply = new { type = "string", maxLength = 1024 },
+            dataDirectory = new { type = "string" }
+        }),
         Tool("live_floor_status", "The live floor (the live conversation turn comes before all background work) from a data directory: " +
             "what the conversation runs on (its Thinking, voice and listening routes, each on this PC, a computer on the home network " +
             "or a cloud provider, with the paired hosts and routes the floor holds while you talk), which Thinking pool members share " +
@@ -1766,6 +1787,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "thinking_pool_status" => await ThinkingPoolCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "quick_sounds_status" => QuickSoundCheck.Status(DataDirectory(arguments)),
                 "quick_sounds_check" => await QuickSoundCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),
+                "elevenlabs_check" => await ElevenLabsCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalString(arguments, "model"),
+                    OptionalString(arguments, "reply"), OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), cancellation),
                 "thinking_pool_check" => await ThinkingPoolCheck.RunAsync(cancellation),
                 "backup_thinking_check" => await BackupThinkingCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),
                 "live_floor_status" => await LiveFloorCheck.StatusAsync(DataDirectory(arguments), cancellation),
