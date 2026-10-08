@@ -3079,6 +3079,41 @@ and every `WorkSharing*` control on the Devices page: `WorkSharingJob-<job>`,
 `WorkSharingUp/Down-<job>-<host>` and `WorkSharingKeep-<host>` controls, which
 save `work-sharing.json` and so need `--allow-ui-effects`.
 
+`node_presence_status` shows when your other computers go away or come back
+([CLUSTER](CLUSTER.md#when-a-computer-goes-away-or-comes-back); optional
+absolute `dataDirectory`, default the current user's): `awayMinutes` (Settings
+› Your other computers, `node-presence.txt`, 10 by default) and
+`awayMinutesSaved`, the rules (`missingAfterSeconds` 30, `backAfterSeconds`
+30, `backShownForMinutes` 10), `report` (`loaded`, or `none` until the desktop
+writes `node-presence.json`, which it does when it starts and when a
+computer's state changes), `updatedAt`, `companion`, `ownHost` (left out of the
+notices), each paired computer in `hosts` (`state` `Answering`,
+`NotAnswering`, `Missing`, `Away`, `Returning` or `Back`, `since`, `backAt` and
+`awayForMinutes` as of now) and the `notices` Home shows (`id`, `level`,
+`title`, `detail`). Host IDs, computer names and times only.
+
+`node_presence_check` rehearses the production rules (`PresenceWatch`,
+`NodePresenceNotices`, `NodePresenceSettings`, `NodePresenceReport`) on
+scripted timelines: a check every 15 seconds with the desktop's presence rule
+and a 5-second tick, **NOT real hosts**. Each step reports `passed` and the
+events with the second they are dated and the second they were noticed: one
+missed check says nothing; 30 seconds of silence goes missing once (noticed at
+second 45 for a host silent from second 15), with a notice that names the
+failover move, the job that waits, the pools that go on and the one with no
+other computer; still missing after 10 minutes stays away once; 30 seconds of
+answers comes back once, and the back notice clears after 10 minutes or when
+dismissed; back before the away time never stays away; a flapping computer is
+missing, away and back once each; the away time follows the per-PC choice
+(parsing 1 to 240 minutes); the report's round trip; and an unpaired computer
+is forgotten. `ok` is true when every step passed. On the desktop, `ui_snapshot`
+reads Home's `HealthIssue-presence-missing-<hostId>` ("Warning: Working with
+less: gpu-box isn't answering. It hasn't answered for 2 minutes. ...") and
+`HealthIssue-presence-back-<hostId>`, the Devices map's `Node-host:<hostId>`
+("gpu-box, 192.0.2.10. Not answering for 2 min. ..."), and Settings'
+`PresenceAwayMinutes` and `PresenceAwayStatus`. Choosing another time with
+`ui_select` saves `node-presence.txt`, so it needs `--allow-ui-effects`. The
+back notice's Dismiss (`HealthOpen-presence-back-<hostId>-dismiss`) is passive.
+
 `helper_jobs_status` (optional absolute `dataDirectory`, default the current
 user's) reads the desktop's `helper-jobs.json`: for each helper job kind
 (`memory`: remembering and learning names after a reply; `action_naming`:
@@ -5716,7 +5751,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
