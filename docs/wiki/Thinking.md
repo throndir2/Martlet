@@ -26,9 +26,13 @@ Open **Companion › Thinking**.
 
 **Companion › Replies › Thinking steps** is Off by default. **Context size** bounds persona, lore, memory, recent conversation and the reply. Larger context can cost more on paid routes.
 
-## Deep thinking
+## Thinking pool
 
-**Companion › Deep thinking › Thinking longer** lets Martlet start background reasoning on another model or computer and bring the result back later.
+**Companion › Thinking pool** is a shared set of Thinking models for background work: thinking longer, research, screen and sound summaries and other helpers. Each job goes to a free member, so the conversation keeps its own Thinking model at full speed.
+
+Your paired computers with a Thinking model join the pool by themselves when Martlet checks them: a computer's **Thinking pool role** joins with its slots, and a computer's Ollama joins when it doesn't already do this PC's Thinking. You don't need to tick anything when a computer comes online or gets a Thinking model. To keep a computer out, untick **In the Thinking pool** on it; tick it again to add it back. A member that goes offline stays in the pool, and its slots come back when it answers again. Ollama on this PC and cloud providers join only when you add them.
+
+**Thinking longer** lets Martlet start background reasoning on a pool member and bring the result back later.
 
 ## Tools and vision
 

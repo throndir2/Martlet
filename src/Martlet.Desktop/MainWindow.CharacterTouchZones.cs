@@ -143,13 +143,23 @@ public partial class MainWindow
         detectTouchZones = stop;
         try
         {
-            characterTouchZones.Follow(characterActions.For(avatar.InspectedProfile?.ModelPath)?.Inventory.ModelId);
+            // The picture is drawn off screen by a renderer of its own, in the character's rest pose: the character needn't show,
+            // and the one on the desktop never moves.
+            var profile = avatar.IsShowing && avatar.InspectedProfile is { } shown ? shown : (await SavedCharacterAsync()).Shown;
+            characterTouchZones.Follow(characterActions.For(profile.ModelPath)?.Inventory.ModelId);
             // Each step's picture goes to a Thinking pool member that can see, else to the conversation's Thinking model after
             // any reply. MARTLET_TOUCH_ZONES_FIXTURE answers them instead (FIXTURE - NOT AI); see CharacterTouchZoneService.
             var talk = conversation;
-            await characterTouchZones.DetectAsync(avatar,
+            await characterTouchZones.DetectAsync(avatar, profile,
                 (purpose, instructions, text, image, token) => talk.AskHelperAsync(HelperJobKind.TouchZones, purpose, instructions, text, image, token),
                 stop.Token);
+        }
+        catch (Exception error) when (error is IOException or InvalidOperationException or UnauthorizedAccessException or
+            Martlet.Core.Contracts.ContractException or System.Text.Json.JsonException or OperationCanceledException)
+        {
+            if (!closing) characterTouchZones.Report(error is OperationCanceledException
+                ? "Finding zones was stopped. The zones found until then are kept."
+                : $"Martlet couldn't read which character to picture: {error.Message}");
         }
         finally
         {
@@ -158,6 +168,24 @@ public partial class MainWindow
             tabEdited = false;
             if (!closing && openTab == CompanionTab.Character) RenderTab();
         }
+    }
+
+    /// <summary>Whether Detect zones has a model that can see its pictures, the line that says which (<c>TouchZonesVision</c>)
+    /// and, when none can, why the button is off (<c>TouchZonesDetectNote</c>). A Thinking pool member that can see
+    /// (<paramref name="poolMember"/>, its name) takes the pictures first, else the Thinking model (<paramref name="thinking"/>)
+    /// unless it is known to be text-only. With <paramref name="fixture"/> a FIXTURE - NOT AI stand-in answers instead.</summary>
+    internal static (bool CanSee, string Line, string? Off) TouchZonesSight(SetupRoute? thinking, ModelAbilities? abilities, string? poolMember,
+        bool fixture)
+    {
+        if (fixture) return (true, "FIXTURE - NOT AI: a stand-in answers Detect zones from a file, so no picture is sent.", null);
+        var advice = LiveConversationConfiguration.VisionAdvice(thinking, abilities);
+        if (poolMember is not null)
+            return (true, $"{poolMember} in your Thinking pool can see pictures, so it finds the zones first." + (thinking is null ? "" : " " + advice), null);
+        if (thinking is not null && LiveConversationConfiguration.Vision(thinking, abilities) != VisionSupport.Unsupported) return (true, advice, null);
+        return (false, advice, thinking is null
+            ? "Detect zones is off: no model that can see pictures is set up. Set up a vision-capable model in Companion › Thinking or Companion › Thinking pool."
+            : "Detect zones is off: the Thinking model is text-only, and no Thinking pool member can see pictures. " +
+              "Choose a vision-capable model in Companion › Thinking or Companion › Thinking pool.");
     }
 
     private Border CharacterTouchZonesCard()
@@ -172,8 +200,9 @@ public partial class MainWindow
             Heading("Touch zones"),
             Note("Click the character (a click, not a drag) and it reacts to where you touched it: a pat on the head, a poke on " +
                 "the cheek, holding its hand. With its position locked, drag across it to stroke it: each part you cross reacts, " +
-                "and Martlet hears about it, like your moves and zooms. Detect zones shows your Thinking model pictures of the " +
-                "character (never its files) on a plain backdrop with a grid: first the whole character, to find its head, body and " +
+                "and Martlet hears about it, like your moves and zooms. Detect zones draws the character off screen in its rest pose " +
+                "(so it needn't show, and the one on your desktop never moves) and shows your Thinking model pictures of it (never its " +
+                "files) on a plain backdrop with a grid: first the whole character, to find its head, body and " +
                 "legs, then a close-up of each, to mark its zones. Then the model checks its own boxes, drawn and numbered on the " +
                 "close-up, and corrects them until it says they are right. Between steps Martlet fits each box to the character's " +
                 "pixels, puts left and right back the right way round and points out boxes that look wrong. It then ties each zone " +
@@ -185,8 +214,13 @@ public partial class MainWindow
         var status = Note(catalog is null ? "Reading the character..." : TouchZonesStatusText(settings), new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(status, "TouchZonesStatus");
         stack.Add(status);
-        var thinking = conversation?.Configuration;
-        var vision = Note(thinking is null ? "Set up Thinking to detect zones." : thinking.VisionAdvice(), new Thickness(0, 0, 0, 4));
+        // From the saved setup, so it is right before the talk window opens.
+        conversation?.ReadThinkingPoolOnce();
+        var seer = conversation?.ThinkingPool.Find(ThinkingJobKind.TouchZones, ThinkingCapability.Text | ThinkingCapability.Vision);
+        var sight = TouchZonesSight(homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm), SavedModelAbilities(),
+            seer is null ? null : seer.Name + (seer.Model is { Length: > 0 } model ? $" ({model})" : ""),
+            Environment.GetEnvironmentVariable(CharacterTouchZoneService.FixtureVariable) is { Length: > 0 });
+        var vision = Note(sight.Line, new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(vision, "TouchZonesVision");
         stack.Add(vision);
         if (characterTouchZones.Detection is { } detection)
@@ -218,9 +252,11 @@ public partial class MainWindow
         var busy = detectingTouchZones || characterTouchZones.Busy;
         var detect = PageButton(busy ? "Detecting..." : settings is { Zones.Count: > 0 } ? "Detect again" : "Detect zones",
             () => DetectTouchZonesAsync().Forget(), id: "TouchZonesDetect");
-        detect.IsEnabled = !busy && conversation is not null && avatar.IsShowing && catalog is not null &&
-            (thinking?.Vision() != VisionSupport.Unsupported || conversation.Helpers.PoolHas(HelperCapability.Vision));
-        AutomationProperties.SetHelpText(detect, "Shows your Thinking model pictures of the character (never its files), step by step, to find and check where its parts are.");
+        // Only a missing model that can see turns it off (the picture is drawn off screen, so the character needn't show), and
+        // the note says so.
+        detect.IsEnabled = !busy && conversation is not null && catalog is not null && sight.CanSee;
+        AutomationProperties.SetHelpText(detect, "Shows your Thinking model pictures of the character (never its files), step by step, to find and check " +
+            "where its parts are. Martlet draws the character off screen in its rest pose, so it works while the character is hidden.");
         Button? stopDetecting = null;
         if (busy && detectTouchZones is { } running)
         {
@@ -233,6 +269,12 @@ public partial class MainWindow
             AutomationProperties.SetHelpText(stopDetecting, "Stops finding zones. The zones found until then are kept.");
         }
         stack.Add(Row(detect, stopDetecting));
+        if (sight.Off is { } why)
+        {
+            var off = Warning(why);
+            AutomationProperties.SetAutomationId(off, "TouchZonesDetectNote");
+            stack.Add(off);
+        }
         if (characterTouchZones.Sent is { } sent)
         {
             var seen = Note(sent.Describe(), new Thickness(0, 4, 0, 4));

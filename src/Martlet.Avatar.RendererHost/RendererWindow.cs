@@ -19,8 +19,8 @@ namespace Martlet.Avatar.RendererHost;
 internal sealed partial class RendererWindow : Window
 {
     private readonly Stream input, output;
-    // Menu choices Martlet itself carries out (hide, open, talk, settings, lock, mute and unmute, where the eyes go); null when
-    // started without it (tests).
+    // Menu choices Martlet itself carries out (hide, open, talk, settings, lock, mute and unmute, click-through, where the eyes
+    // go); null when started without it (tests).
     private readonly Stream? requests;
     private readonly SemaphoreSlim requesting = new(1, 1);
     private readonly CancellationTokenSource lifetime = new();
@@ -59,16 +59,19 @@ internal sealed partial class RendererWindow : Window
     private bool closed;
     private TaskCompletionSource<JsonElement>? response;
     private Guid activation;
+    // A still renderer draws Martlet's touch zones picture: never on screen, never animated (the model's rest pose).
+    private readonly bool still;
     private readonly RendererFailureLatch failure = new();
     // Why the browser couldn't load the selected model (a bounded Live2D/VRM reason), reported back to Martlet.
     private volatile string? modelRejection;
     private string? userData;
 
-    internal RendererWindow(Stream input, Stream output, Stream? requests = null)
+    internal RendererWindow(Stream input, Stream output, Stream? requests = null, bool still = false)
     {
         this.input = input;
         this.output = output;
         this.requests = requests;
+        this.still = still;
         Resources.MergedDictionaries.Add(new ResourceDictionary
         {
             Source = new Uri("pack://application:,,,/Martlet.Avatar.RendererHost;component/Themes/Controls.xaml")
@@ -89,6 +92,17 @@ internal sealed partial class RendererWindow : Window
         ShowActivated = false;
         WindowStartupLocation = WindowStartupLocation.Manual;
         PlaceOnDesktop();
+        if (still)
+        {
+            // Never seen and never touched: fully transparent (clicks pass through), off every screen and out of the taskbar.
+            Title = "Martlet character picture";
+            Topmost = false;
+            ShowInTaskbar = false;
+            Opacity = 0;
+            IsHitTestVisible = false;
+            Left = SystemParameters.VirtualScreenLeft - Width - 100;
+            Top = SystemParameters.VirtualScreenTop - Height - 100;
+        }
 
         // The main Martlet window also shows, hides and resets the character; the overlay shows only the character and its menu.
         AutomationProperties.SetAutomationId(viewport, "MoveAvatar");
@@ -405,6 +419,8 @@ internal sealed partial class RendererWindow : Window
             SetView(overlayView.Zoom, overlayView.X, overlayView.Y);
         }
         ShowPlacementLock();
+        // The camera view always catches clicks; back on the overlay, click-through applies again.
+        ApplyClickThrough();
         SendView();
     }
 
@@ -524,15 +540,66 @@ internal sealed partial class RendererWindow : Window
         ErrorLog.Info(locked ? "The character's position is locked." : "The character's position is unlocked.");
     }
 
+    // ---------- click-through ----------
+
+    // Clicks pass through the character to the windows under it until Martlet turns this off. The camera view always catches them.
+    private bool clickThrough;
+    private const int ExtendedStyleIndex = -20;
+    private const nint TransparentStyle = 0x20;
+
+    private void UseClickThrough(bool on)
+    {
+        if (clickThrough != on)
+        {
+            clickThrough = on;
+            if (on)
+            {
+                // A menu, drag, pan or stroke under way ends: the mouse no longer reaches the character.
+                if (viewport.ContextMenu is { IsOpen: true } menu) menu.IsOpen = false;
+                if (viewport.IsMouseCaptured) viewport.ReleaseMouseCapture();
+                press = null;
+            }
+            ErrorLog.Info(on ? "Clicks pass through the character." : "The character catches clicks again.");
+        }
+        ApplyClickThrough();
+        ShowPlacementLock();
+    }
+
+    /// <summary>Sets or clears WS_EX_TRANSPARENT on the layered overlay (and on its speech bubble), so the mouse's clicks, wheel
+    /// and right-clicks go to the window under it. Never on the camera view or the still renderer.</summary>
+    private void ApplyClickThrough()
+    {
+        var on = clickThrough && camera is null && !still;
+        SetClickThrough(new System.Windows.Interop.WindowInteropHelper(this).Handle, on);
+        if (speechBubble.Child is { } bubble && PresentationSource.FromVisual(bubble) is System.Windows.Interop.HwndSource popup)
+            SetClickThrough(popup.Handle, on);
+    }
+
+    private static void SetClickThrough(IntPtr window, bool on)
+    {
+        if (window == IntPtr.Zero) return;
+        var style = GetWindowLongPtrW(window, ExtendedStyleIndex);
+        var wanted = on ? style | TransparentStyle : style & ~TransparentStyle;
+        if (wanted != style) SetWindowLongPtrW(window, ExtendedStyleIndex, wanted);
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint GetWindowLongPtrW(IntPtr window, int index);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint SetWindowLongPtrW(IntPtr window, int index, nint value);
+
     private void ShowPlacementLock()
     {
         viewport.PlacementLocked = placementLocked;
         viewport.Cursor = placementLocked && camera is null ? Cursors.Arrow : Cursors.SizeAll;
         AutomationProperties.SetName(viewport, camera is not null
             ? "Martlet camera. Drag to move the character in the view; mouse wheel zooms it in or out; arrow keys nudge it; Home or 0 resets the framing; Shift+drag moves the window; right-click for more options."
+            : clickThrough
+            ? "Character. Clicks pass through it to the windows under it; turn this off in Martlet."
             : placementLocked
-            ? "Character. Position locked; unlock it in Martlet. Mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, mute, settings, zoom and hide options."
-            : "Character. Drag to move; mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, mute, settings, zoom, position, lock and hide options.");
+            ? "Character. Position locked; unlock it in Martlet. Mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, mute, settings, zoom, click-through and hide options."
+            : "Character. Drag to move; mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, mute, settings, zoom, position, lock, click-through and hide options.");
     }
 
     /// <summary>Puts the overlay back where it was saved, at that size, and locks it again when it was locked. On the same
@@ -669,11 +736,11 @@ internal sealed partial class RendererWindow : Window
 
     /// <summary>The character frame's size, position and camera, how far the top of the head sits below its top edge, the
     /// overlay's full width including the room beside the frame, whether its place is locked, where the character's middle
-    /// sits in the view and whether this is the camera view.</summary>
+    /// sits in the view, whether this is the camera view and whether clicks pass through the character now.</summary>
     internal RendererView ViewState() => new(Math.Round(FrameWidth), Math.Round(Height),
         WorkAreaTop() is { } screenTop ? Math.Round(Top - screenTop) : null, Math.Round(viewZoom, 3),
         double.IsFinite(contentTop) ? Math.Round((1 - (contentTop * viewZoom + viewY)) / 2, 4) : null, Math.Round(Width), placementLocked,
-        Math.Round(viewX * FrameFraction / 2, 4), Math.Round(viewY / 2, 4), camera is not null);
+        Math.Round(viewX * FrameFraction / 2, 4), Math.Round(viewY / 2, 4), camera is not null, clickThrough && camera is null);
 
     // The camera is in the frame's clip space; frame tells the renderer how much of its canvas width the frame spans.
     private void SendView() => PostView(viewZoom, viewX, viewY);
@@ -778,6 +845,9 @@ internal sealed partial class RendererWindow : Window
         var home = Item("Reset _position and size", "CharacterResetPosition", "Home", () => ResetToDefault());
         // Locking and unlocking go through Martlet, which saves the place.
         var placeLock = Item("_Lock position", "CharacterLockPosition", null, () => Request(placementLocked ? "unlock" : "lock"));
+        // Click-through goes through Martlet, which saves it. Once on, the mouse can't reach this menu: Martlet turns it off.
+        var passThrough = Item("Let clicks p_ass through", "CharacterClickThrough", null,
+            () => Request(clickThrough ? RendererRequest.ClickThroughOff : RendererRequest.ClickThroughOn));
         var onTop = new MenuItem { Header = "_Keep on top", IsCheckable = true, IsChecked = Topmost };
         AutomationProperties.SetAutomationId(onTop, "CharacterOnTop");
         onTop.Checked += (_, _) => Topmost = true;
@@ -786,7 +856,7 @@ internal sealed partial class RendererWindow : Window
         var hide = Item("_Hide character", "CharacterHide", "Esc", () => Request("hide"));
         var menu = new ContextMenu
         {
-            Items = { talk, mute, open, settings, clearEmotes, eyes, new Separator(), zoomIn, zoomOut, reset, home, placeLock, onTop, new Separator(), hide }
+            Items = { talk, mute, open, settings, clearEmotes, eyes, new Separator(), zoomIn, zoomOut, reset, home, placeLock, passThrough, onTop, new Separator(), hide }
         };
         AutomationProperties.SetAutomationId(menu, "CharacterMenu");
         AutomationProperties.SetName(menu, "Character");
@@ -805,6 +875,9 @@ internal sealed partial class RendererWindow : Window
             placeLock.Header = placementLocked ? "_Unlock position" : "_Lock position";
             placeLock.IsChecked = placementLocked;
             AutomationProperties.SetName(placeLock, placementLocked ? "Unlock position" : "Lock position");
+            passThrough.IsEnabled = CanRequest && camera is null;
+            passThrough.IsChecked = clickThrough;
+            AutomationProperties.SetName(passThrough, clickThrough ? "Stop letting clicks pass through" : "Let clicks pass through");
             onTop.IsChecked = Topmost;
         };
         return menu;
@@ -1055,6 +1128,8 @@ internal sealed partial class RendererWindow : Window
         speechCanvas.Children.Add(speechText);
         speechCanvas.RenderTransform = speechPop;
         speechBubble.Child = speechCanvas;
+        // The bubble is its own window, made again each time it opens: it lets clicks pass through too while that is on.
+        speechBubble.Opened += (_, _) => ApplyClickThrough();
         LocationChanged += (_, _) => PlaceSpeech();
         SizeChanged += (_, _) => PlaceSpeech();
         Closed += (_, _) => speechBubble.IsOpen = false;
@@ -1357,14 +1432,15 @@ internal sealed partial class RendererWindow : Window
             var loaded = await BrowserAsync("load", new { renderer = load.Profile.Renderer.ToString(),
                 modelFile = assets.ModelFile, resourceRevision = assets.Revision,
                 assets = assets.Assets.Select(a => a.Name).ToArray(),
-                extras = load.Profile.Renderer == Martlet.Avatars.AvatarRenderer.Live2D ? LocalAvatarFiles.Extras(assets.Assets, assets.ModelFile) : null });
+                extras = load.Profile.Renderer == Martlet.Avatars.AvatarRenderer.Live2D ? LocalAvatarFiles.Extras(assets.Assets, assets.ModelFile) : null,
+                still });
             await ReplyAsync("capabilities", loaded);
             SendView();
-            StartLookTracking();
+            if (!still) StartLookTracking();
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "gaze" or "where" or "camera" or "snapshot" or "zones"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "click-through" or "voice" or "gaze" or "where" or "camera" or "snapshot" or "zones"))
                     throw new InvalidDataException("Renderer command is invalid.");
                 if (message.Kind == "camera")
                 {
@@ -1407,6 +1483,12 @@ internal sealed partial class RendererWindow : Window
                 {
                     LockPlacement(RendererProtocol.Data<RendererLock>(message).Locked);
                     await ReplyAsync("placement", Placement());
+                    continue;
+                }
+                if (message.Kind == "click-through")
+                {
+                    UseClickThrough(RendererProtocol.Data<RendererClickThrough>(message).On);
+                    await ReplyAsync("ok", new { clickThrough });
                     continue;
                 }
                 if (message.Kind == "voice")
@@ -1471,56 +1553,41 @@ internal sealed partial class RendererWindow : Window
         failure.ThrowIfFailed();
         response = new(TaskCreationOptions.RunContinuationsAsynchronously);
         browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind, data }, RendererProtocol.Json));
-        var result = await response.Task.WaitAsync(TimeSpan.FromSeconds(kind == "load" ? 30 : 2), lifetime.Token);
+        var result = await response.Task.WaitAsync(TimeSpan.FromSeconds(kind switch { "load" => 30, "picture" => 15, _ => 2 }), lifetime.Token);
         failure.ThrowIfFailed();
         if (result.TryGetProperty("error", out _)) throw new InvalidDataException("Browser rejected the selected resource or controls.");
         return result;
     }
 
-    /// <summary>A picture of the character as it shows now: WebView2's capture of the page, cropped to the character's opaque
-    /// pixels (a head-and-shoulders square for a portrait), scaled down and encoded as a PNG small enough for one message. A
-    /// whole picture (touch zones) frames the character whole for the capture (no zoom, no pan) and probes its drawables or
-    /// bones in that framing, then puts the view back.</summary>
+    /// <summary>A picture of the character, cropped to its opaque pixels (a head-and-shoulders square for a portrait), scaled
+    /// down and encoded as a PNG small enough for one message. A portrait or an ordinary picture is WebView2's capture of the page
+    /// as it shows now. A whole picture (touch zones) is drawn by the page itself (<see cref="PictureAsync"/>), never on screen:
+    /// framed whole (no zoom, no pan) on a page of the overlay's shape, and drawn again zoomed out when the model draws past its
+    /// own canvas and the page cuts it off (<see cref="WholeFraming"/>). Its crop and probe are given with the character framed
+    /// whole.</summary>
     private async Task<RendererPicture> SnapshotAsync(RendererSnapshot request)
     {
         failure.ThrowIfFailed();
         var edge = Math.Clamp(request.Edge, RendererSnapshot.MinimumEdge, RendererSnapshot.MaximumEdge);
-        using var captured = new MemoryStream();
         RendererZoneProbe? probe = null;
-        var reframe = request.Whole && (viewZoom != 1 || viewX != 0 || viewY != 0);
-        try
+        // The framing the picture is drawn in, when it is a whole picture.
+        var (zoom, panX, panY) = (1d, 0d, 0d);
+        PageCapture shot;
+        if (request.Whole)
         {
-            if (reframe)
+            (shot, probe) = await PictureAsync(zoom, panX, panY);
+            // Parts drawn past the model's canvas (legs below it, say) are cut off at the page's edge: zoom out until all shows.
+            if (probe?.Drawables is { Length: > 0 } drawables &&
+                WholeFraming.Fit(shot.Seen, shot.Cut, drawables, FrameFraction) is var fit && fit != (1, 0, 0))
             {
-                PostView(1, 0, 0);
-                // A few frames for the page to draw the new framing.
-                await Task.Delay(250, lifetime.Token);
+                (zoom, panX, panY) = fit;
+                (shot, var framed) = await PictureAsync(zoom, panX, panY);
+                probe = framed is null ? probe : WholeFraming.Unframed(framed, zoom, panX, panY, FrameFraction);
             }
-            await browser.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, captured);
-            if (request.Whole) probe = await ProbeAsync();
         }
-        finally
-        {
-            if (reframe) SendView();
-        }
-        captured.Position = 0;
-        var frame = System.Windows.Media.Imaging.BitmapFrame.Create(captured, System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreColorProfile,
-            System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
-        var source = new System.Windows.Media.Imaging.FormatConvertedBitmap(frame, PixelFormats.Bgra32, null, 0);
-        int width = source.PixelWidth, height = source.PixelHeight;
-        var pixels = new byte[width * height * 4];
-        source.CopyPixels(pixels, width * 4, 0);
-        var (left, top, right, bottom) = (width, height, -1, -1);
-        for (var y = 0; y < height; y++)
-            for (var x = 0; x < width; x++)
-                if (pixels[(y * width + x) * 4 + 3] > 24)
-                {
-                    if (x < left) left = x;
-                    if (x > right) right = x;
-                    if (y < top) top = y;
-                    if (y > bottom) bottom = y;
-                }
-        if (right < 0) (left, top, right, bottom) = (0, 0, width - 1, height - 1);
+        else shot = await CaptureAsync();
+        var (source, width, height) = (shot.Source, shot.Width, shot.Height);
+        var (left, top, right, bottom) = (shot.Left, shot.Top, shot.Right, shot.Bottom);
         int boxWidth = right - left + 1, boxHeight = bottom - top + 1;
         Int32Rect crop;
         if (request.Portrait)
@@ -1539,6 +1606,8 @@ internal sealed partial class RendererWindow : Window
             crop = new(x0, y0, Math.Min(width, right + pad + 1) - x0, Math.Min(height, bottom + pad + 1) - y0);
         }
         var cropped = new System.Windows.Media.Imaging.CroppedBitmap(source, crop);
+        var at = new TouchZoneBox((double)crop.X / width, (double)crop.Y / height, (double)crop.Width / width, (double)crop.Height / height);
+        if (zoom != 1 || panX != 0 || panY != 0) at = WholeFraming.Unframed(at, zoom, panX, panY, FrameFraction);
         // The probe travels in the same message as the picture.
         var reserve = probe is null ? 0 : JsonSerializer.SerializeToUtf8Bytes(probe, RendererProtocol.Json).Length;
         foreach (var size in new[] { edge, 1536, 1024, 768, 512, 384, 256, 160 }.Where(size => size <= edge).Distinct())
@@ -1552,25 +1621,78 @@ internal sealed partial class RendererWindow : Window
             // Base64 grows by a third; the reply must stay well inside one renderer message.
             if (png.Length * 4 / 3 < RendererProtocol.MaximumMessageBytes - 4096 - reserve)
                 return new(Convert.ToBase64String(png.GetBuffer(), 0, (int)png.Length), scaled.PixelWidth, scaled.PixelHeight,
-                    (double)crop.X / width, (double)crop.Y / height, (double)crop.Width / width, (double)crop.Height / height, probe);
+                    at.X, at.Y, at.Width, at.Height, probe, Math.Round(zoom, 4));
         }
         throw new InvalidDataException("The character's picture is too large.");
     }
 
-    // Where the model's drawables (Live2D) or humanoid bones (VRM) are now, as fractions of the page; null when the page can't say.
-    private async Task<RendererZoneProbe?> ProbeAsync()
+    // A capture of the page: its pixels, and the box of the character's opaque pixels in them (the whole page when there are none).
+    private sealed record PageCapture(System.Windows.Media.Imaging.BitmapSource Source, int Width, int Height, int Left, int Top, int Right,
+        int Bottom, bool Empty)
     {
+        /// <summary>The character's opaque pixels as a box in fractions of the page.</summary>
+        internal TouchZoneBox Seen => new((double)Left / Width, (double)Top / Height, (double)(Right - Left + 1) / Width, (double)(Bottom - Top + 1) / Height);
+
+        /// <summary>The page edges the character's opaque pixels reach, where the page may cut it off.</summary>
+        internal PageEdges Cut => Empty ? PageEdges.None
+            : (Left <= 1 ? PageEdges.Left : 0) | (Top <= 1 ? PageEdges.Top : 0) | (Right >= Width - 2 ? PageEdges.Right : 0) |
+              (Bottom >= Height - 2 ? PageEdges.Bottom : 0);
+    }
+
+    private async Task<PageCapture> CaptureAsync()
+    {
+        using var captured = new MemoryStream();
+        await browser.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, captured);
+        captured.Position = 0;
+        return Decode(captured);
+    }
+
+    // The overlay's shape (its 3:4 frame with the room beside it), as large as the Live2D canvas allows (2048 pixels).
+    private const int PictureHeight = 1364, PictureWidth = (int)(PictureHeight / FrameFraction * 3 / 4);
+
+    /// <summary>The page draws the character on its canvas, PictureWidth by PictureHeight pixels in the framing
+    /// <paramref name="zoom"/>, <paramref name="x"/>, <paramref name="y"/>, and reads it back in the same step, so it never shows
+    /// on screen (in a still renderer, in the model's rest pose). Also where its drawables or bones are in that picture, as
+    /// fractions of it (null when the page can't say).</summary>
+    private async Task<(PageCapture Shot, RendererZoneProbe? Probe)> PictureAsync(double zoom, double x, double y)
+    {
+        const string Prefix = "data:image/png;base64,";
+        var drawn = await BrowserAsync("picture", new { width = PictureWidth, height = PictureHeight, zoom, x, y, frame = FrameFraction });
+        if (!drawn.TryGetProperty("png", out var png) || png.ValueKind != JsonValueKind.String || png.GetString() is not { } url ||
+            !url.StartsWith(Prefix, StringComparison.Ordinal))
+            throw new InvalidDataException("The page couldn't draw the character's picture.");
+        using var bytes = new MemoryStream(Convert.FromBase64String(url[Prefix.Length..]), writable: false);
+        RendererZoneProbe? probe = null;
         try
         {
-            var result = await BrowserAsync("zones", new { });
-            return result.ValueKind == JsonValueKind.Object && (result.TryGetProperty("drawables", out _) || result.TryGetProperty("bones", out _))
-                ? result.Deserialize<RendererZoneProbe>(RendererProtocol.Json) : null;
+            probe = new(drawn.TryGetProperty("drawables", out var drawables) ? drawables.Deserialize<RendererDrawableBox[]>(RendererProtocol.Json) : null,
+                drawn.TryGetProperty("bones", out var bones) ? bones.Deserialize<RendererBonePoint[]>(RendererProtocol.Json) : null);
         }
-        catch (Exception error) when (error is JsonException or InvalidDataException or TimeoutException)
-        {
-            ErrorLog.Warn($"Couldn't read where the character's parts are: {error.Message}");
-            return null;
-        }
+        catch (JsonException error) { ErrorLog.Warn($"Couldn't read where the character's parts are: {error.Message}"); }
+        return (Decode(bytes), probe);
+    }
+
+    // A picture of the page as Bgra32 pixels, with the box of the character's opaque pixels in it.
+    private static PageCapture Decode(Stream png)
+    {
+        var frame = System.Windows.Media.Imaging.BitmapFrame.Create(png, System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreColorProfile,
+            System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
+        var source = new System.Windows.Media.Imaging.FormatConvertedBitmap(frame, PixelFormats.Bgra32, null, 0);
+        int width = source.PixelWidth, height = source.PixelHeight;
+        var pixels = new byte[width * height * 4];
+        source.CopyPixels(pixels, width * 4, 0);
+        var (left, top, right, bottom) = (width, height, -1, -1);
+        for (var y = 0; y < height; y++)
+            for (var x = 0; x < width; x++)
+                if (pixels[(y * width + x) * 4 + 3] > 24)
+                {
+                    if (x < left) left = x;
+                    if (x > right) right = x;
+                    if (y < top) top = y;
+                    if (y > bottom) bottom = y;
+                }
+        return right < 0 ? new(source, width, height, 0, 0, width - 1, height - 1, Empty: true)
+            : new(source, width, height, left, top, right, bottom, Empty: false);
     }
 
     /// <summary>Where a point of the page (fractions) sits with the character framed whole (no zoom, no pan).</summary>

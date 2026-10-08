@@ -99,7 +99,7 @@ what each one is.
   `character-actions.json`, which is the same on all your computers (the
   `character-actions` [shared setting](CLUSTER.md#one-martlet-on-every-computer)):
   a model the Thinking model named on one computer is named on all of them.
-  **Use the model's own names** goes back to the defaults.
+  **Use the model's own names** goes back to the defaults (your combos stay).
 - **Voice cues**: a voice cue links an emote or motion to a sound or tone the
   voice engine performs, by meaning across engines (`laugh` is Chatterbox
   Turbo's `[laugh]` and Dia's `(laughs)`). When the voice speaks that tag, the
@@ -181,6 +181,33 @@ what each one is.
   settings. **Clear emotes** on the character's right-click menu (or in Emotes
   and motions) turns all of them off. For a lingering row, **Try** turns the
   emote on, and the button then shows **Turn off**.
+- **Combos**: the owner can give one tag of their own to 2 to 6 of a model's
+  emotes, motions and gestures. Emotes and motions › **Combos** has, for each
+  combo, a tag, its parts' tags (such as `blush hearts nod`), *When to use* and
+  an on box. A reply's `{flustered}` sets off each part that is on at once, as
+  the part's own tag would: a lingering part turns on and stays, and a brief
+  part shows a moment. `{/flustered}` turns the combo's lingering parts off. A
+  part that is turned off is skipped. When a combo holds two of Martlet's
+  gestures, the renderer's rules for held gestures apply (see
+  *Global gestures*).
+  - Replies are offered each combo that is on and has a part that is on. The
+    combo lines come after the emotes' lines, so those lines stay the same and
+    prompt caches keep working. An example:
+    `{flustered} - a combination of {blush}, {hearts} and {nod} (stays on until you write {/flustered})`.
+  - The hint is the combo's *When to use*, or what it combines while that box
+    is empty. Only a combo with a lingering part gets the *stays on* note and
+    its off tag. Combos are offered only while their tags fit in the tags a
+    request may carry, next to the emotes' tags. Room always stays for the
+    tags that move the character's eyes, so combos never push them out.
+  - Combos are saved with the model's settings in `character-actions.json`
+    (`combos`: `tag`, `parts` as IDs, `use`, `enabled`), at most 16 for each
+    model. A combo's tag must be a valid tag that no emote and no other combo
+    of the model has. A file without combos reads and writes as before.
+  - **Try** sets a combo off on the showing character. While one of its
+    lingering parts is on, the button shows **Turn off**. **Use the model's own
+    names** keeps the combos. A Martlet that doesn't have a part (an older
+    version without a new gesture) leaves that part out.
+  - Martlet has no combos of its own: combos are the owner's, for each model.
 - **Renderer protocol**: `RendererAction(Kind, Name, On, Hold)`. With `Hold`,
   an expression, gesture or overlay stays on until the same action comes with
   `On` set to false. The reply to a gesture action says which gesture plays
@@ -343,12 +370,20 @@ waist, hips, groin, buttocks and inner thighs) react too while
 **Include intimate zones** is on, which it is by default; turn it off to leave them out.
 
 - **Detect zones** shows the Thinking model pictures of the character (never the
-  model's files); the model must be able to see (Companion › Vision says whether
-  it can and where pictures go). Nothing is sent until you press it, and it is
-  never on the conversation's path. It goes step by step:
-  1. Martlet frames the character whole for a moment (no zoom, no pan), takes
-     its picture at the size it shows (up to 2048 pixels) and puts the view back.
-     So the picture always holds the whole character, even when you zoomed in.
+  model's files); a model must be able to see (Companion › Vision says whether
+  it can and where pictures go). The button is greyed out only when no model
+  that can see pictures is set up (neither the Thinking model nor a Thinking pool
+  member), and the line under it then says what to change. It works the same
+  whether the character shows or is hidden. Nothing is sent until you press it,
+  and it is never on the conversation's path. It goes step by step:
+  1. Martlet loads the character a second time, off screen, in a renderer that
+     is never seen and never animates. So the picture shows the character in its
+     rest pose (no idle motion, eyes open, looking ahead), and the character on
+     your desktop doesn't move. The renderer frames the character whole (no zoom,
+     no pan) on a page the shape of the character's window, draws one frame up
+     to 1364 pixels tall, reads it back and closes. Some Live2D models draw parts
+     past their own frame (legs or a tail below it, say). Martlet then draws the
+     frame again, zoomed out just enough for every part to show.
   2. The CPU puts the character on a plain backdrop that contrasts with it (light
      for a dark character, dark for a light one), because servers paint a
      transparent background as they like. It draws a grid of tenths, numbered
@@ -430,16 +465,23 @@ waist, hips, groin, buttocks and inner thighs) react too while
 
 The personality decides how the character acts when it is touched, and where
 its eyes usually go. Companion › Character › **Touch temperament** shows, for
-the persona in use, how it feels about each part of its body: hates, dislikes,
-neutral, likes, loves or craves. It also shows what each part plays: up to
-three of Martlet's reactions, such as a smile, a blush, hearts, leaning in, a
-pout, a sweat drop, an anger vein, a flinch or looking away, or *(no reaction)*
-for a part the character ignores. *looks at your mouse (s)* turns its eyes to
-your mouse pointer for that many seconds after a touch there (up to 15), as if
-to see who did it. **Eyes usually** is the persona's usual gaze, which
+the persona in use, one table with a line for each part of its body (head and
+face, neck and torso, arms and hands, hips and legs, extras) and for each part
+that reacts differently from its group. **Feels** is how it feels about a
+touch there: hates, dislikes, neutral, likes, loves or craves (*(built-in)*
+leaves a group's parts to their built-in reactions). **Plays** and **Then** are
+what it plays: up to two of Martlet's reactions, such as a smile, a blush,
+hearts, leaning in, a pout, a sweat drop, an anger vein, a flinch or looking
+away; *(default)* plays what the feeling usually plays, and *(nothing)* is for a
+part the character ignores. **Lingers (s)** is how long the first reaction
+stays on, and **Looks at mouse (s)** turns its eyes to your mouse pointer for
+that many seconds after a touch there (up to 15), as if to see who did it. A
+line shows only what applies, so a group at *(built-in)* shows only its
+feeling, and on a narrow window a line's boxes wrap onto a second line beside
+its name. **Eyes usually** is the persona's usual gaze, which
 [Where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks)
 uses while it is set to *As the personality decides*. It decides actions only,
-never words.
+never words. Point at the status line to read the whole temperament in words.
 
 For example, a passive character can look straight ahead, ignore the mouse and
 not react to a head pat, but blush and look at your mouse when you touch it
@@ -454,11 +496,12 @@ somewhere it cares about.
   long the first reaction lingers, how long the eyes `look` at the mouse after
   a touch, and an escalation. Unknown actions are dropped and values are
   clamped. When asking fails, the previous temperament stays.
-- **Re-decide from personality** asks again. Change the eyes, an attitude, a
-  reaction, the linger or look time or the escalation, or give one part its
-  own line, and your choices win: a later personality change does not replace
-  them until you re-decide. **Use built-in reactions** goes back to the zones'
-  defaults.
+- **Re-decide from personality** (**Decide from personality** before anything
+  is decided) asks again. Change the eyes, an attitude, a reaction, the linger
+  or look time or the escalation, or give one part its own line with **Add
+  part** (the ✕ by its name removes it again), and your choices win: a later
+  personality change does not replace them until you re-decide. **Use
+  built-in reactions** goes back to the zones' defaults.
 - Repeated touches escalate: from the third touch in a row of a disliked part
   (each within 30 seconds), it plays the escalation first, such as an anger
   vein; a loved part plays hearts.

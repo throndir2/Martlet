@@ -10,6 +10,8 @@ registerBlush();
 registerManpu(registerOverlay);
 let adapter, renderer, revision, configurationId, active = false, last = 0, failed = false, reportedTop, expression;
 let view = { zoom: 1, x: 0, y: 0 };
+// A still renderer (Martlet's touch zones picture, never on screen) never animates: its pictures show the model's rest pose.
+let still = false;
 const post = value => window.chrome.webview.postMessage(value);
 // Percent-encodes every character but A-Z a-z 0-9 - . _ ~ (like .NET's Uri.EscapeDataString), so the host matches the
 // request to the asset exactly for names such as 简.moc3 or "texture (1).png".
@@ -71,6 +73,33 @@ function gestureState() {
   const { playing, held } = adapter.gestureState ?? {};
   return { ...(playing ? { playing } : {}), held: [...new Set([...(Array.isArray(held) ? held : []), ...heldOverlays()])] };
 }
+// A picture of the whole character for touch zones, drawn on the canvas and read back in the same task, so it never shows on
+// screen: `width` by `height` pixels in the framing `zoom`, `x`, `y` of a frame `frame` of its width (see setView), in the
+// pose the model has now (its rest pose in a still renderer). The PNG (a data URL) and where the drawables (Live2D) or the
+// humanoid bones (VRM) are in it, as fractions of the picture; nothing when it can't be drawn. The canvas then goes back to
+// its own size and framing, drawn again at once, so a showing character never changes.
+function picture({ width, height, zoom, x, y, frame }) {
+  const size = [canvas.width, canvas.height];
+  const resize = (w, h) => { if (renderer === "Vrm") adapter.resize(w, h); else { canvas.width = w; canvas.height = h; } };
+  const round = value => Math.round(value * 10000) / 10000;
+  try {
+    resize(Number(width), Number(height));
+    adapter.setView(Number(zoom), Number(x), Number(y), Number(frame));
+    adapter.update(0);
+    const png = canvas.toDataURL("image/png");
+    return renderer === "Live2D"
+      ? { png, drawables: adapter.drawableBounds().map(d => ({ id: d.id, left: round(d.left), top: round(d.top), right: round(d.right),
+          bottom: round(d.bottom) })) }
+      : { png, bones: adapter.bonePoints().map(b => ({ bone: b.bone, x: round(b.x), y: round(b.y) })) };
+  } catch { return {}; }
+  finally {
+    try {
+      resize(size[0], size[1]);
+      adapter.setView(view.zoom, view.x, view.y, view.frame ?? 1);
+      if (!still) adapter.update(0);
+    } catch { }
+  }
+}
 window.chrome.webview.addEventListener("message", async ({ data: message }) => {
   if (message.kind === "look") {
     // Fire-and-forget cursor follow from the host window; never replies and never fails the renderer.
@@ -120,6 +149,7 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
     const data = message.data;
     if (message.kind === "load") {
       renderer = data.renderer;
+      still = data.still === true;
       if (renderer === "Live2D") {
         await new Promise((resolve, reject) => {
           const script = document.createElement("script");
@@ -177,6 +207,7 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
       }
       post({});
     } else if (message.kind === "stop") { adapter.stop(); post({}); }
+    else if (message.kind === "picture") post(picture(data));
     else if (message.kind === "zones") {
       // Where the model's drawables (Live2D) or humanoid bones (VRM) are now, as fractions of the page, for touch zones.
       const rect = canvas.getBoundingClientRect(), pageWidth = Math.max(1, window.innerWidth), pageHeight = Math.max(1, window.innerHeight);
@@ -224,7 +255,7 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
   }
 });
 function draw(now) {
-  if (active && !failed && adapter) {
+  if (active && !still && !failed && adapter) {
     try {
       const ratio = Math.min(2048 / Math.max(1, canvas.clientWidth, canvas.clientHeight), window.devicePixelRatio || 1);
       const width = Math.min(2048, Math.max(1, Math.round(canvas.clientWidth * ratio)));

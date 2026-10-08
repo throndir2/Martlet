@@ -143,7 +143,8 @@ public partial class MainWindow
             : store is null ? null : JobSavedRoute.Load(store.DataDirectory, job.SavedFile);
     }
 
-    private static bool IsCloud(SetupRoute route) => route.RouteType is null or SetupRouteType.OpenAi or SetupRouteType.ChatCompletions;
+    private static bool IsCloud(SetupRoute route) => route.RouteType is null or SetupRouteType.OpenAi or SetupRouteType.ChatCompletions or
+        SetupRouteType.ElevenLabs;
 
     private static string SavedName(SetupRoute route) => (IsCloud(route) ? "Cloud: " : "") + NetworkMap.ProviderName(route);
 

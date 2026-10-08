@@ -23,6 +23,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
     private readonly GeneratedSpeechObserver observer = new();
     private IAvatarRenderer? renderer;
     private readonly Func<IAvatarRenderer> createRenderer;
+    // Renderers that draw the touch zones picture: never on screen, never animated.
+    private readonly Func<IAvatarRenderer> createStillRenderer;
     private readonly Func<AvatarRemoteHost, IAvatarHostLink?> openHost;
     private IAvatarHostLink? hostLink;
     private AvatarProfile? profile;
@@ -40,14 +42,16 @@ internal sealed partial class AvatarController : IAsyncDisposable
     internal bool IsShowing => renderer is { HasExited: false } && profile is not null;
     internal RendererCapabilities? Capabilities => renderer?.Capabilities;
     internal AvatarProfile? InspectedProfile => profile;
-    /// <summary>A choice from the showing character's menu ("hide", "open", "talk", "settings", "lock", "mute" or "unmute"),
-    /// raised off the UI thread.</summary>
+    /// <summary>A choice from the showing character's menu ("hide", "open", "talk", "settings", "lock", "mute", "unmute" or
+    /// "click-through-on"), raised off the UI thread.</summary>
     internal event Action<string>? Requested;
 
     internal AvatarController(Func<IAvatarRenderer>? createRenderer = null, bool allowControlledClock = false,
-        Func<AvatarRemoteHost, IAvatarHostLink?>? openHost = null, TimeProvider? gazeClock = null)
+        Func<AvatarRemoteHost, IAvatarHostLink?>? openHost = null, TimeProvider? gazeClock = null,
+        Func<IAvatarRenderer>? createStillRenderer = null)
     {
         this.createRenderer = createRenderer ?? (() => new AvatarRendererProcess());
+        this.createStillRenderer = createStillRenderer ?? (() => new AvatarRendererProcess(still: true));
         this.allowControlledClock = allowControlledClock;
         this.openHost = openHost ?? GatewayAvatarHostLink.Open;
         Gaze = new(this, gazeClock);
@@ -127,7 +131,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 {
                     // A look tag (a gaze, or a screen glance's ninth of the picture) turns the eyes; it is never an emote.
                     if (CharacterGaze.IsLookTag(cue.Tag)) _ = LookLaterAsync(line, cue);
-                    else if (catalog?.Off(cue.Tag) is { } off) _ = StopLaterAsync(off, line, cue);
+                    else if (catalog?.Off(cue.Tag) is { Count: > 0 } off) _ = StopLaterAsync(off, line, cue, catalog);
                     else if (catalog?.For(cue.Tag) is { Count: > 0 } sources) _ = ActLaterAsync(sources, line, cue, catalog);
                 }
             }
@@ -156,15 +160,20 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 return;
             }
             // A reply's {tag} turns a lingering emote on until {/tag}; a voice's sound or tone only ever plays it a moment.
-            foreach (var source in sources)
-                await PlayActionAsync(source, cue.Tag, line.Finished, cueLifetime.Token, hold: cue.Tag.StartsWith('{') && catalog.Lingers(source))
-                    .ConfigureAwait(false);
+            if (catalog.Combo(cue.Tag) is { } combo)
+                await PlayComboAsync(combo.Tag, [.. sources.Select(source => (source, catalog.Lingers(source)))], "a reply", line.Finished,
+                    cueLifetime.Token).ConfigureAwait(false);
+            else
+                foreach (var source in sources)
+                    await PlayActionAsync(source, cue.Tag, line.Finished, cueLifetime.Token, hold: cue.Tag.StartsWith('{') && catalog.Lingers(source))
+                        .ConfigureAwait(false);
         }
         catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
             InvalidDataException or TimeoutException or ObjectDisposedException) { }
     }
 
-    private async Task StopLaterAsync(CharacterActionSource source, CharacterCueLine line, CharacterCue cue)
+    private async Task StopLaterAsync(IReadOnlyList<CharacterActionSource> sources, CharacterCueLine line, CharacterCue cue,
+        CharacterActionCatalog catalog)
     {
         try
         {
@@ -173,7 +182,9 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 Dropped(cue);
                 return;
             }
-            await StopActionAsync(source, cue.Tag, cueLifetime.Token).ConfigureAwait(false);
+            if (catalog.Combo(cue.Tag) is { } combo) await StopComboAsync(combo.Tag, sources, "a reply", cueLifetime.Token).ConfigureAwait(false);
+            else
+                foreach (var source in sources) await StopActionAsync(source, cue.Tag, cueLifetime.Token).ConfigureAwait(false);
         }
         catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
             InvalidDataException or TimeoutException or ObjectDisposedException) { }
@@ -502,6 +513,30 @@ internal sealed partial class AvatarController : IAsyncDisposable
         {
             if (renderer is { HasExited: false } current && profile is not null)
                 await current.SendAsync("voice", new RendererVoice(VoiceMuted), token);
+        }
+        finally { changes.Release(); }
+    }
+
+    private int clickThrough;
+
+    /// <summary>Clicks pass through the character to the windows under it (this PC's choice, saved by Martlet). Set it before
+    /// showing; <see cref="SetClickThroughAsync"/> also tells a showing character.</summary>
+    internal bool ClickThrough
+    {
+        get => Volatile.Read(ref clickThrough) != 0;
+        set => Volatile.Write(ref clickThrough, value ? 1 : 0);
+    }
+
+    /// <summary>Lets clicks pass through the character (<paramref name="on"/>) or makes it catch them again, and tells the showing
+    /// character at once. Hidden, the next showing starts with it.</summary>
+    internal async Task SetClickThroughAsync(bool on, CancellationToken token)
+    {
+        await changes.WaitAsync(token);
+        try
+        {
+            ClickThrough = on;
+            if (renderer is { HasExited: false } current && profile is not null)
+                await current.SendAsync("click-through", new RendererClickThrough(on), token);
         }
         finally { changes.Release(); }
     }
@@ -937,6 +972,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
             await next.StartAsync(selected, snapshot.Revision, Placement, VoiceMuted, attempt.Token);
             // A camera view that was open stays open when the character shows again.
             if (Camera is { } view) await next.SendAsync("camera", view, attempt.Token);
+            // Clicks pass through a newly shown character when that is on.
+            if (ClickThrough) await next.SendAsync("click-through", new RendererClickThrough(true), attempt.Token);
             // Lingering emotes come back on the same model; another model forgets them.
             await RestoreHeldAsync(next, selected.ModelPath, attempt.Token);
             // The overlay starts following the mouse; its usual gaze and Eyes menu follow Martlet's.

@@ -146,7 +146,7 @@ public sealed class ConversationTurn
             heldBack = [];
         }
         // The speaking voice's own tags: a spelling it shares with another tag means what it means to the speech segmenter.
-        IReadOnlyList<VoiceTag> voiceTags = request.Speech is null ? [] : SpeechEngines.TagsForModel(request.HostSpeech?.ModelId);
+        IReadOnlyList<VoiceTag> voiceTags = request.KeptVoiceTags;
         // A reply that isn't spoken has no sentence timing: its character tags act as soon as the words arrive (once released).
         shown = new(request.CharacterTags, request.Speech is null && owner.CharacterCues is { } feed
             ? tag => WhenReleased(() => feed.Post([new(tag, TimeSpan.Zero)], Task.CompletedTask, cueClock)) : null,
@@ -499,7 +499,7 @@ public sealed class ConversationTurn
     {
         var segmenter = request.Speech is { } voice
             ? new SpeechSegmenter(voice.Limits.MaxInputBytes, request.TextLimits.MaxTextCharacters, request.SilentReply,
-                tags: SpeechEngines.TagsForModel(request.HostSpeech?.ModelId),
+                tags: request.KeptVoiceTags,
                 characterTags: request.CharacterTags, breaks: request.SpeechBreaks, controlTags: request.ControlTags) : null;
         try
         {

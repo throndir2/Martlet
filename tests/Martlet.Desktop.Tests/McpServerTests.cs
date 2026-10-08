@@ -228,6 +228,30 @@ public sealed class McpServerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task CharacterStatusReadsWhetherClicksPassThroughTheCharacter()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.ClickThrough." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var none = ToolResult((await SendAsync(DataCall("character_status", directory)))[0]).GetProperty("clickThrough");
+            Assert.Equal(("none", false), (none.GetProperty("state").GetString(), none.GetProperty("on").GetBoolean()));
+
+            Assert.True(Martlet.Desktop.CharacterClickThroughStore.Save(directory, true));
+            var on = ToolResult((await SendAsync(DataCall("character_status", directory)))[0]).GetProperty("clickThrough");
+            Assert.Equal(("loaded", true), (on.GetProperty("state").GetString(), on.GetProperty("on").GetBoolean()));
+
+            File.WriteAllText(Path.Combine(directory, Martlet.Desktop.CharacterClickThroughStore.FileName), "not json");
+            var unreadable = ToolResult((await SendAsync(DataCall("character_status", directory)))[0]).GetProperty("clickThrough");
+            Assert.Equal(("unreadable", false), (unreadable.GetProperty("state").GetString(), unreadable.GetProperty("on").GetBoolean()));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task MessagingStatusReadsTelegramWithoutTokenOrChats()
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Messaging." + Guid.NewGuid().ToString("N"));
@@ -320,16 +344,15 @@ public sealed class McpServerTests(ITestOutputHelper output)
             Assert.Throws<InvalidOperationException>(() => DesktopAutomation.WindowForProcess(Environment.ProcessId, mainHandle));
         });
 
-        await Task.Run(() => automation.ClickAsync("NavCompanion"));
-        await Task.Delay(300);
-        await Task.Run(() => automation.ClickAsync("OpenSetup"));
+        // A modal workflow window: Home's setup advisor opens and closes with safe clicks only.
+        await Task.Run(() => automation.ClickAsync("OpenSetupAdvisor"));
         var snapshot = await WaitForWindowCount(automation, 2);
         Assert.Single(snapshot.GetProperty("controls").EnumerateArray(),
-            control => control.GetProperty("id").GetString() == "SetupClose");
-        var setupHandle = await Task.Run(() => (nint)DesktopAutomation.WindowForProcess(pid, mainHandle)
-            .FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "SetupWindow"))
+            control => control.GetProperty("id").GetString() == "AdvisorClose");
+        var advisorHandle = await Task.Run(() => (nint)DesktopAutomation.WindowForProcess(pid, mainHandle)
+            .FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "SetupAdvisorWindow"))
             .Current.NativeWindowHandle);
-        Assert.NotEqual(0, setupHandle);
+        Assert.NotEqual(0, advisorHandle);
 
         Assert.True(ShowWindowAsync(mainHandle, 0));
         await WaitForVisibility(mainHandle, false);
@@ -341,8 +364,8 @@ public sealed class McpServerTests(ITestOutputHelper output)
         });
         Assert.True(ShowWindowAsync(mainHandle, 4));
         await WaitForVisibility(mainHandle, true);
-        await Task.Run(() => automation.ClickAsync("SetupClose"));
-        await WaitForVisibility(setupHandle, false);
+        await Task.Run(() => automation.ClickAsync("AdvisorClose"));
+        await WaitForVisibility(advisorHandle, false);
         await WaitForWindowCount(automation, 1);
 
         process.Kill();

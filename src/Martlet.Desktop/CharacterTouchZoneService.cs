@@ -85,13 +85,14 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         return null;
     }
 
-    /// <summary>Takes a snapshot of the showing character and finds its zones step by step with the Thinking model (through
+    /// <summary>Takes a picture of <paramref name="profile"/>'s character (drawn off screen in its rest pose, so it needn't show:
+    /// <see cref="AvatarController.ZoneSnapshotAsync"/>) and finds its zones step by step with the Thinking model (through
     /// <paramref name="ask"/>, one picture each: <see cref="TouchZoneDetection"/>), saving the zones as they are found, bound to
     /// the model's drawables or bones, and keeping every picture sent (<see cref="Sent"/>). Returns what happened.</summary>
-    internal async Task<string> DetectAsync(AvatarController avatar,
+    internal async Task<string> DetectAsync(AvatarController avatar, AvatarProfile profile,
         Func<string, string, string, BoundedImage?, CancellationToken, Task<(string? Answer, string? Failure)>> ask, CancellationToken token)
     {
-        if (ModelId is not { } id || !avatar.IsShowing) return Report("Show the character first.");
+        if (ModelId is not { } id) return Report("Martlet is still reading the character. Try again in a moment.");
         Volatile.Write(ref busy, true);
         Report("Taking a picture of the character...");
         var fixture = Environment.GetEnvironmentVariable(FixtureVariable) is { Length: > 0 } file ? file : null;
@@ -103,7 +104,7 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         var pictureKept = false;
         try
         {
-            if (await avatar.ZoneSnapshotAsync(token) is not { } shot) return Report("Martlet couldn't take a picture of the character. Try again.");
+            if (await avatar.ZoneSnapshotAsync(profile, token) is not { } shot) return Report("Martlet couldn't take a picture of the character. Try again.");
             ZonePixels snapshot;
             try { snapshot = await Task.Run(() => TouchZoneImages.Decode(shot.Png), token); }
             catch (Exception error) when (error is NotSupportedException or FileFormatException or ArgumentException or InvalidOperationException or IOException)
@@ -118,7 +119,9 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
             var before = Current;
             var folder = dataDirectory is null ? null : CharacterTouchZones.ClearSent(dataDirectory, id);
             IReadOnlyList<CharacterTouchZone>? latest = null, shown = null;
-            ErrorLog.Info($"Finding touch zones: a {snapshot.Width}x{snapshot.Height} picture of the character ({shot.Png.Length / 1024} KB), " +
+            ErrorLog.Info($"Finding touch zones: a {snapshot.Width}x{snapshot.Height} picture of the character in its rest pose, drawn off screen " +
+                $"({shot.Png.Length / 1024} KB), " +
+                (shot.Picture.Zoom < 1 ? FormattableString.Invariant($"zoomed out to {shot.Picture.Zoom:0.##}x to show the parts drawn past the model's own canvas, ") : "") +
                 (hints is null ? "no probe" : $"{hints.Bones.Count} bones and {hints.Areas.Count} named parts from the model") + ".");
 
             async Task<(string? Answer, string? Failure)> AskAsync(ZoneAsk zoneAsk, CancellationToken cancel)
@@ -264,7 +267,8 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         } + (reaction.LookSeconds > 0 ? System.FormattableString.Invariant($", looks at your mouse for {reaction.LookSeconds:0.#} s") : "") +
         (repeats > 1 ? $", touch {repeats} in a row" : "") + (reaction.Escalated ? ": escalated" : "") + ")";
 
-    private string Report(string text)
+    /// <summary>Sets how finding zones goes (<see cref="Detection"/>) and returns it.</summary>
+    internal string Report(string text)
     {
         Volatile.Write(ref detection, text);
         Changed?.Invoke();

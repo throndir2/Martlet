@@ -219,6 +219,9 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
             return HostSpeechSynthesisStream.Binding(voiceHost);
         if (role == SetupRole.Tts && Configuration.WindowsVoiceTarget() is { } windowsVoice)
             return WindowsVoiceSynthesisStream.Binding(windowsVoice);
+        // An ElevenLabs key is bound to api.elevenlabs.io and the chosen model.
+        if (role == SetupRole.Tts && Configuration.ElevenLabsVoiceTarget() is { } cloned)
+            return ElevenLabsSpeechSynthesisStream.Binding(cloned);
         // A Chat Completions key is bound to the exact saved API base URL, never to api.openai.com.
         var origin = route.RouteType == SetupRouteType.ChatCompletions
             ? ChatCompletionsSetup.BaseUri(route.Origin) : OpenAiTranscriptionCatalog.Origin;

@@ -332,7 +332,7 @@ public partial class MainWindow
                 ? previous.Text : HostControl.Describe(offers, probe.Routes)
         };
         NoteSingingHost();
-        NoteDeepThinkingSlots(probe.HostId, next.DeepThinkingSlots);
+        NoteThinkingPoolHost(probe.HostId);
     }
 
     /// <summary>Moves each job whose host missed <see cref="ClusterSync.FailAfter"/> checks, when its failover is on, to

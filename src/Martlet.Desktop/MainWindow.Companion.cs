@@ -280,9 +280,8 @@ public partial class MainWindow
         if (CompanionPage is null) return;
         if (Role == DeviceRole.Host)
         {
-            // A host has no Companion page; its routes are still reachable through full Setup.
-            nextSetupJob = JobRole(tab);
-            Setup_Click(this, new RoutedEventArgs());
+            // A host PC doesn't talk, so it has no Companion page and chooses no jobs.
+            ActionText.Text = HostHasNoCompanionText;
             return;
         }
         companionTab = tab;
@@ -411,9 +410,12 @@ public partial class MainWindow
             }),
             (JobPlace.Computer, "Another of your computers",
                 $"Use another paired computer on your network for {job.Job}."),
-            (JobPlace.Cloud, "A cloud provider", role == SetupRole.Llm
-                ? "Use OpenAI, OpenRouter, NVIDIA Build or another compatible provider. Requests may cost money."
-                : "Use OpenAI with your API key. Requests may cost money.")));
+            (JobPlace.Cloud, "A cloud provider", role switch
+            {
+                SetupRole.Llm => "Use OpenAI, OpenRouter, NVIDIA Build or another compatible provider. Requests may cost money.",
+                SetupRole.Tts => "Use OpenAI's voices, or ElevenLabs with a voice cloned from yours and tones. Requests cost money.",
+                _ => "Use OpenAI with your API key. Requests may cost money."
+            })));
 
         page.Children.Add(place switch
         {
@@ -424,6 +426,9 @@ public partial class MainWindow
             JobPlace.Computer => ComputersCard(job, route, role == SetupRole.Llm ? null : thisPc),
             _ => CloudCard(section, job, route)
         });
+
+        // Speaking in the cloud can also be ElevenLabs: a voice cloned from one of yours, with tones.
+        if (section == CompanionTab.Voice && place == JobPlace.Cloud) page.Children.Add(ElevenLabsCard(route));
 
         // Singing uses the voices of the voice library on a computer with the singing role, wherever Speaking runs.
         if (section == CompanionTab.Voice) page.Children.Add(SingingCard());
@@ -459,19 +464,13 @@ public partial class MainWindow
                     new Thickness(0, 0, 0, 0)),
                 Row(PageButton("Open People", () => OpenCompanion(CompanionTab.People), link: true, id: "OpenPeople"))));
 
-        var advanced = PageButton("Advanced setup", () =>
-        {
-            nextSetupJob = role;
-            Setup_Click(this, new RoutedEventArgs());
-        }, link: true, id: "OpenSetup");
-        advanced.HorizontalAlignment = HorizontalAlignment.Left;
-        advanced.Margin = new Thickness(0, 4, 0, 0);
-        page.Children.Add(advanced);
+        if (OldKeysCard(section, role) is { } oldKeys) page.Children.Add(oldKeys);
     }
 
-    /// <summary>The voice a route speaks with, in words: ", voice Zira (en-US)", or nothing.</summary>
+    /// <summary>The voice a route speaks with, in words: ", voice Zira (en-US)", ", voice Mia (cloned on ElevenLabs)", or nothing.</summary>
     private static string VoiceSuffix(SetupRoute route) =>
         route.Reference is { } reference ? $", voice {reference.PresetName}"
+        : route.ClonedVoice is { } cloned ? $", voice {cloned.Name} (cloned on ElevenLabs)"
         : route.VoiceId is { } voice ? $", voice {(route.RouteType == SetupRouteType.LocalWindowsTts ? WindowsVoices.DisplayName(voice) : voice)}"
         : "";
 
@@ -1299,7 +1298,7 @@ public partial class MainWindow
     }
 
     /// <summary>Saves a job's route chosen on its Companion tab: the route, then its key (which resets consent), then the user's
-    /// confirmed choice. A key the route no longer uses is set aside (listed for removal in Advanced setup), and a key set aside
+    /// confirmed choice. A key the route no longer uses is set aside (listed under Keys from before), and a key set aside
     /// earlier for the chosen destination is used again, so switching providers never waits on old keys. With
     /// <paramref name="missingKey"/>, a route that ends without a key is refused with that message. Returns whether it saved.
     /// A change still saving goes first (<see cref="ChangeTurns"/>); installs, runs and replies in progress don't hold it up.</summary>
@@ -1321,11 +1320,12 @@ public partial class MainWindow
             var updated = select(settings);
             var chosen = updated.Setup!.Routes.Single(r => r.Role == role);
             var reused = false;
-            if (key is null && chosen is { CredentialId: null, RouteType: SetupRouteType.OpenAi or SetupRouteType.ChatCompletions })
+            if (key is null && chosen is { CredentialId: null, RouteType: SetupRouteType.OpenAi or SetupRouteType.ChatCompletions or SetupRouteType.ElevenLabs })
             {
                 var service = setupService;
-                foreach (var setAside in SetupSettings.SetAsideCredentials(updated, role,
-                             chosen.RouteType == SetupRouteType.ChatCompletions ? chosen.Origin : null))
+                foreach (var setAside in chosen.RouteType == SetupRouteType.ElevenLabs
+                             ? SetupSettings.SetAsideElevenLabsCredentials(updated)
+                             : SetupSettings.SetAsideCredentials(updated, role, chosen.RouteType == SetupRouteType.ChatCompletions ? chosen.Origin : null))
                 {
                     // Only a key still in Windows Credential Manager is used again; it is read on a worker and never shown.
                     var candidate = SetupSettings.ReattachSetAsideCredential(updated, setAside);
@@ -1418,12 +1418,21 @@ public partial class MainWindow
                 showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null,
                 // Unlocking is only here and on Home, never on the character itself.
                 showing || locked ? PageButton(locked ? "Unlock position" : "Lock position",
-                    () => SetCharacterLockAsync(!avatar.PlacementLocked).Forget(), id: "SetupCharacterLock") : null));
+                    () => SetCharacterLockAsync(!avatar.PlacementLocked).Forget(), id: "SetupCharacterLock") : null,
+                // The same goes for click-through: the mouse can't reach the character to turn it off.
+                showing || avatar.ClickThrough ? PageButton(avatar.ClickThrough ? "Turn off click-through" : "Turn on click-through",
+                    () => SetCharacterClickThroughAsync(!avatar.ClickThrough).Forget(), id: "SetupCharacterClickThrough") : null));
         if (modelCard.Child is Panel modelPanel)
         {
             var placementNote = characterPlacementNote = Note(CharacterPlacementText(), new Thickness(0, 4, 0, 0));
             AutomationProperties.SetAutomationId(placementNote, "SetupCharacterPlacement");
             modelPanel.Children.Add(placementNote);
+            var clickThroughNote = Note(avatar.ClickThrough
+                ? "Click-through is on: clicks pass through the character to the windows under it, so you can't drag, zoom or right-click it. Turn it off here, on Home or from Martlet's icon in the notification area."
+                : "Click-through is off: the character catches clicks. Turn it on here or from the character's right-click menu to let clicks pass through it, for example while you play a game.",
+                new Thickness(0, 4, 0, 0));
+            AutomationProperties.SetAutomationId(clickThroughNote, "SetupCharacterClickThroughNote");
+            modelPanel.Children.Add(clickThroughNote);
         }
         // What the showing model drives: textures (and any downscaling), blinking, mouth, motions and physics.
         if (showing && avatar.Capabilities is { } loaded && modelCard.Child is Panel modelStack)

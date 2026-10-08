@@ -73,9 +73,7 @@ public sealed class SupportIntegrationTests
     });
 
     [Theory]
-    [InlineData("OpenSetup", "SetupTroubleshooting", false)]
     [InlineData("OpenAudioSetup", "AudioTroubleshooting", false)]
-    [InlineData("OpenSetup", "SetupTroubleshooting", true)]
     [InlineData("OpenAudioSetup", "AudioTroubleshooting", true)]
     public Task MainSupportCanBePresentedInsideEachShownModalWorkflow(string workflowButton, string supportButton, bool blocked) => OnDispatcher(async () =>
     {
@@ -90,7 +88,7 @@ public sealed class SupportIntegrationTests
         var observed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
-            // Setup and Audio setup open from Companion's Thinking and Listening tabs; each waits for the same idle state as Start talking.
+            // Audio setup opens from Companion's Listening tab and waits for the same idle state as Start talking.
             await Until(() => Field<Button>(main, "ConversationButton").IsEnabled);
             ButtonById(main, "OpenTroubleshooting").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             original = main.OwnedWindows.OfType<TroubleshootingWindow>().Single();
@@ -107,7 +105,7 @@ public sealed class SupportIntegrationTests
             {
                 try
                 {
-                    modal = main.OwnedWindows.Cast<Window>().Single(w => w is SetupWindow or AudioSetupWindow or LiveConversationWindow);
+                    modal = main.OwnedWindows.Cast<Window>().Single(w => w is AudioSetupWindow or LiveConversationWindow);
                     Assert.True(modal.IsVisible);
                     ButtonById(modal, supportButton).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     var current = modal.OwnedWindows.OfType<TroubleshootingWindow>().SingleOrDefault() ??
