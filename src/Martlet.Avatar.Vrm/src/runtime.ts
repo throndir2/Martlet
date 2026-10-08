@@ -534,6 +534,20 @@ export class VrmRuntime {
     });
   }
 
+  /** The model's spring-bone chains (a tail, hair, a skirt), each its joints' nodes from the root to the tip, for touch zones.
+   *  The importer makes a joint of each node and the next one in a chain, so a node that is no joint's child starts a chain,
+   *  which goes on through each joint's child. */
+  get springNodes(): readonly (readonly THREE.Object3D[])[] {
+    const joints = [...this.model?.springBoneManager?.joints ?? []];
+    const byBone = new Map(joints.map(joint => [joint.bone, joint] as const));
+    const children = new Set(joints.flatMap(joint => joint.child ? [joint.child] : []));
+    return joints.filter(joint => !children.has(joint.bone)).map(root => {
+      const chain = [root.bone];
+      for (let joint = byBone.get(root.bone); joint?.child && !chain.includes(joint.child); joint = byBone.get(joint.child)) chain.push(joint.child);
+      return Object.freeze(chain);
+    });
+  }
+
   /** Relaxed arms and hands, breathing, a slow sway, blinking, cursor-follow and loudness lip-sync while no mapped A2F turn is
    *  active. Its first pose (looking ahead, before any time passes) is the rest pose: the touch zones picture shows it, and
    *  touches are traced back to it (see hitTestRay). */

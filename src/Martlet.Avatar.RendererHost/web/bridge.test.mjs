@@ -668,3 +668,68 @@ test("the touch zones Martlet gives are read where their parts are now: a tail's
   assert.deepEqual(await read(3), { id: 3, found: false, renderer: "Live2D", draw: false, areas: [] });
   assert.ok(!posts.some(post => post.error), "zones never fail the renderer");
 });
+
+test("a VRM picture tells its spring-bone chains, root first, in every picture; a failure only leaves them out", async () => {
+  const posts = [];
+  let failing = false;
+  class Renderer {
+    load() { return Promise.resolve({ expressions: [] }); }
+    startIdle() {}
+    resize() {}
+    setView() {}
+    update() {}
+    bonePoints() { return [{ bone: "hips", x: 0.5, y: 0.5 }]; }
+    springChains() {
+      if (failing) throw new Error("controlled spring failure");
+      return [{ name: "J_Sec_Tail_01", joints: [{ bone: "J_Sec_Tail_01", x: 0.512345, y: 0.52 }, { bone: "J_Sec_Tail_02", x: 0.5, y: 0.6 }] }];
+    }
+    dispose() {}
+  }
+  const { send } = await page(Renderer, posts);
+  await send({ kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm", still: true } });
+  await send({ kind: "picture", data: { width: 2046, height: 1364, zoom: 1, x: 0, y: 0, frame: 0.5, chains: true } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1).springs)),
+    [{ name: "J_Sec_Tail_01", joints: [{ bone: "J_Sec_Tail_01", x: 0.5123, y: 0.52 }, { bone: "J_Sec_Tail_02", x: 0.5, y: 0.6 }] }]);
+  await send({ kind: "picture", data: { width: 2046, height: 1364, zoom: 0.9, x: 0, y: 0.1, frame: 0.5, chains: false } });
+  assert.equal(posts.at(-1).springs.length, 1, "they cost nothing, so a zoomed-out picture has them in its own framing too");
+  failing = true;
+  await send({ kind: "picture", data: { width: 2046, height: 1364, zoom: 1, x: 0, y: 0, frame: 0.5, chains: true } });
+  assert.equal(posts.at(-1).springs, undefined);
+  assert.equal(posts.at(-1).bones.length, 1, "the picture and its bones still come");
+  assert.ok(!posts.some(post => post.error), "and it never fails the renderer");
+});
+
+test("a VRM tail's area is the box around its spring-bone joints where they are now, so it lies the way the tail swung", async () => {
+  const posts = [];
+  let swung = false;
+  class Renderer {
+    load() { return Promise.resolve({ expressions: [] }); }
+    startIdle() {}
+    resize() {}
+    setView() {}
+    update() {}
+    bonePoints() { return [{ bone: "hips", x: 0.5, y: 0.5 }]; }
+    nodePoints() {
+      return [{ node: "J_Sec_Tail_01", x: 0.46, y: 0.6 }, { node: "J_Sec_Tail_02", x: swung ? 0.66 : 0.46, y: swung ? 0.6 : 0.8 },
+        { node: "J_Sec_Tail_03", x: swung ? 0.76 : 0.46, y: swung ? 0.62 : 0.9 }];
+    }
+    dispose() {}
+  }
+  const { send } = await page(Renderer, posts);
+  await send({ kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm" } });
+  await send({ kind: "view", data: { zoom: 1, x: 0, y: 0, frame: 1 } });
+  const area = (index, nodes, left, top, right, bottom) =>
+    ({ zone: "tail", name: "Tail", area: index, color: "#E94F64", drawables: [], bones: [], nodes, left, top, right, bottom });
+  await send({ kind: "zoneview", data: { draw: true, areas: [area(0, ["J_Sec_Tail_01", "J_Sec_Tail_02"], 0.45, 0.585, 0.47, 0.815),
+    area(1, ["J_Sec_Tail_03"], 0.45, 0.885, 0.47, 0.915)] } });
+  const read = async id => { await send({ kind: "zonesRead", data: { id } }); return JSON.parse(JSON.stringify(posts.at(-1).zonesReading)); };
+  const rest = await read(1);
+  // As wide on each side of its joints as its box is at its narrowest; one joint alone keeps its box's size around it.
+  assert.deepEqual(rest.areas[0], { zone: "tail", area: 0, from: "nodes", left: 0.45, top: 0.59, right: 0.47, bottom: 0.81 });
+  assert.deepEqual(rest.areas[1], { zone: "tail", area: 1, from: "bones", left: 0.45, top: 0.885, right: 0.47, bottom: 0.915 });
+  swung = true;
+  const moved = await read(2);
+  assert.deepEqual(moved.areas[0], { zone: "tail", area: 0, from: "nodes", left: 0.45, top: 0.59, right: 0.67, bottom: 0.61 });
+  assert.deepEqual(moved.areas[1], { zone: "tail", area: 1, from: "bones", left: 0.75, top: 0.605, right: 0.77, bottom: 0.635 });
+  assert.ok(!posts.some(post => post.error), "zones never fail the renderer");
+});

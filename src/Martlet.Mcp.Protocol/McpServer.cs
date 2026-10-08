@@ -261,7 +261,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "1) gapMs apart (0 to 5000, default 250), as each frame is drawn: the zones Martlet last gave the renderer (the saved " +
             "zones in use of the model it shows; Companion > Touch > Touch zones > Show the zones on the character draws them over " +
             "it). An area that follows Live2D drawables (a tail's, which swings) is the box around them where they are drawn now " +
-            "(from: drawables); one that follows VRM bones or joints keeps its size around where they are now (bones); any other " +
+            "(from: drawables); one that follows two or more of a VRM's spring-bone joints (a tail's) is the box around them where they " +
+            "are now (nodes); one that follows VRM bones, or one joint, keeps its size around where they are now (bones); any other " +
             "stays at its box, moved by the view's zoom and pan (box). last has n, found, renderer, draw and areas (each zone, " +
             "area (0 for its first), from, left, top, right, bottom: fractions of the character overlay's drawing, +y down). " +
             "summary gives per area what placed it, its last box and how far its middle moved (x, y). Reading changes nothing, " +

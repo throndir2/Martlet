@@ -1,8 +1,9 @@
 // Martlet's touch zones on the showing character (Companion › Touch › Touch zones › Show the zones on the character): each area
 // Martlet gave ("zoneview") where its parts are now. An area that follows Live2D drawables is the box around them as they are
-// drawn now (a tail's area swings with the tail); one that follows VRM bones or nodes keeps its size around where they are now;
-// any other stays where its box is with the character framed whole, moved by the view's zoom and pan. They are drawn on a canvas
-// of their own over the character, which never takes a click, and read for Martlet's MCP (character_zones) drawn or not.
+// drawn now (a tail's area swings with the tail); one that follows a VRM's spring-bone joints is the box around them where they
+// are now, as wide on each side as its box is at its narrowest; one that follows VRM bones keeps its size around where they are
+// now; any other stays where its box is with the character framed whole, moved by the view's zoom and pan. They are drawn on a
+// canvas of their own over the character, which never takes a click, and read for Martlet's MCP (character_zones) drawn or not.
 
 let zones = { draw: false, areas: [] };
 let canvas, context, painted = false;
@@ -32,7 +33,7 @@ export const zoneAreas = () => zones.areas.length;
 /**
  * Where each area is now, as fractions of the page (+y down): `drawables()` gives each Live2D drawable's bounds now by ID,
  * `points()` each VRM bone's and node's place now by name (both fractions of the page, asked for only when an area needs them)
- * and `frame` the view's {zoom, x, y, frame}. Each box says what placed it (`from`: "drawables", "bones" or "box").
+ * and `frame` the view's {zoom, x, y, frame}. Each box says what placed it (`from`: "drawables", "nodes", "bones" or "box").
  */
 export function zoneBoxes({ drawables, points, frame }) {
   let bounds, places;
@@ -52,10 +53,17 @@ export function zoneBoxes({ drawables, points, frame }) {
     const [left, top] = framed(area.left, area.top), [right, bottom] = framed(area.right, area.bottom);
     if (area.bones.length + area.nodes.length > 0) {
       places ??= points?.() ?? new Map();
+      const halfWidth = (right - left) / 2, halfHeight = (bottom - top) / 2;
+      // Joints along a bone (a tail's): the box around them now, so a segment that swung sideways lies sideways.
+      const joints = area.nodes.map(name => places.get(name)).filter(Boolean);
+      if (joints.length > 1) {
+        const reach = Math.min(halfWidth, halfHeight);
+        return { ...at, from: "nodes", left: Math.min(...joints.map(p => p.x)) - reach, top: Math.min(...joints.map(p => p.y)) - reach,
+          right: Math.max(...joints.map(p => p.x)) + reach, bottom: Math.max(...joints.map(p => p.y)) + reach };
+      }
       const found = [...area.nodes, ...area.bones].map(name => places.get(name)).filter(Boolean);
       if (found.length > 0) {
         const x = found.reduce((sum, p) => sum + p.x, 0) / found.length, y = found.reduce((sum, p) => sum + p.y, 0) / found.length;
-        const halfWidth = (right - left) / 2, halfHeight = (bottom - top) / 2;
         return { ...at, from: "bones", left: x - halfWidth, top: y - halfHeight, right: x + halfWidth, bottom: y + halfHeight };
       }
     }

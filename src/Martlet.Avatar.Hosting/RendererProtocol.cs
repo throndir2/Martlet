@@ -265,20 +265,27 @@ public sealed record RendererZoneView(bool Draw, RendererZoneArea[] Areas)
     [JsonIgnore] public bool IsValid => Areas is { Length: <= MaximumAreas } && Areas.All(a => a is { IsValid: true });
 
     /// <summary>The view of <paramref name="settings"/>' zones in use (their areas in <paramref name="colors"/>, one per zone in
-    /// turn), drawn when <paramref name="draw"/>; no areas without zones or a snapshot framed whole.</summary>
+    /// turn), drawn when <paramref name="draw"/>; no areas without zones or a snapshot framed whole. An area that follows a VRM's
+    /// spring-bone joints also names the next area's first joint, where its last joint's bone ends, so the page can draw the
+    /// box around its bones as they swing.</summary>
     public static RendererZoneView Of(CharacterTouchZoneSettings? settings, bool draw, IReadOnlyList<string> colors)
     {
         if (settings is not { Whole: true, Crop: { } crop } || colors.Count == 0) return new(draw, []);
         var areas = new List<RendererZoneArea>();
         foreach (var (zone, number) in settings.Zones.Select((z, i) => (z, i)).Where(z => settings.Active(z.z)))
-            foreach (var (area, index) in zone.AllAreas.Select((a, i) => (a, i)))
+        {
+            var all = zone.AllAreas;
+            foreach (var (area, index) in all.Select((a, i) => (a, i)))
             {
                 var page = area.Box.Within(crop);
+                var next = area is { FromModel: true, Nodes.Count: > 0 } && index + 1 < all.Count && all[index + 1] is { FromModel: true, Nodes: [var end, ..] }
+                    ? end : null;
+                string[] nodes = next is null ? [.. area.Nodes.Take(256)] : [.. area.Nodes.Take(255), next];
                 areas.Add(new(zone.Id, zone.Name.Length <= 64 ? zone.Name : zone.Name[..64], index, colors[number % colors.Count],
-                    [.. area.Drawables.Take(256)], [.. area.Bones.Take(256)], [.. area.Nodes.Take(256)],
-                    page.X, page.Y, page.X + page.Width, page.Y + page.Height));
+                    [.. area.Drawables.Take(256)], [.. area.Bones.Take(256)], nodes, page.X, page.Y, page.X + page.Width, page.Y + page.Height));
                 if (areas.Count >= MaximumAreas) return new(draw, [.. areas]);
             }
+        }
         return new(draw, [.. areas]);
     }
 }

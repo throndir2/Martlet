@@ -1562,9 +1562,10 @@ it lands with the character framed whole, `restX`, `restY`, `restWholeX` and
 `restWholeY` where the touched point of the character was in its rest pose, now
 and framed whole, as the renderer traces it on the touched mesh, and `hair`
 whether the topmost drawable is hair), `match`: the zone it lands
-in, `how` (`drawable`, `node`, `bone`, `hair`, `box` or `coarse`; a drawable a zone
-follows by the model's own part, such as a tail's, is that zone's first, and reads
-`drawable`; a VRM spring-bone joint (`node`) an area follows reads `node`; with a VRM `bone`, the
+in, `how` (`drawable`, `node`, `bone`, `hair`, `box` or `coarse`; a VRM spring-bone
+joint or a drawable a zone follows by the model's own part, such as a tail's, is
+that zone's first, before hair (cat ears hang from the head as hair does), and
+reads `node` or `drawable`, with `traced` false; with a VRM `bone`, the
 smallest zone on the part of the body that bone moves whose box holds the
 point wins, and reads `bone` when it holds that bone, else `box`; a zone whose
 box holds the point inside the box of a zone that owns the touched drawable,
@@ -5496,7 +5497,10 @@ saved zones in use of the model it shows. *Show the zones on the character*
 (`TouchZonesShowOnCharacter`) draws the same areas over the character. An area
 that follows Live2D drawables (a tail's, which swings) is the box around those
 drawables where they are drawn now (`from`: `drawables`). An area that follows
-VRM bones or joints keeps its size and moves with them (`bones`). Any other
+two or more of a VRM's spring-bone joints (a tail's) is the box around those
+joints where they are now, as wide on each side as its box is at its narrowest
+(`nodes`), so a tail segment that swung sideways lies sideways. An area that
+follows VRM bones, or one joint, keeps its size and moves with them (`bones`). Any other
 area stays at its box, moved only by the view's zoom and pan (`box`). `last`
 has `n`, `found`, `renderer`, `draw` (whether the areas are drawn on the
 character) and `areas`: each has `zone`, `area` (0 for the zone's first),
