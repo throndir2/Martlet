@@ -93,7 +93,9 @@ public static partial class NetworkRecommender
         {
             foreach (var node in nodes.Where(n => n.Presence == Presence.Here))
                 foreach (var role in node.Pending.Where(r => Extra(r.Kind) && r.Leave is null).ToList())
-                    if (!Keep(node, role, Kept, out _))
+                    if (KindComponent(role.Kind) is { } component && IsOff(component))
+                        role.Leave = (SetupChangeBenefit.Improvement, $"You turned {ComponentRanking.Name(component).ToLowerInvariant()} off.");
+                    else if (!Keep(node, role, Kept, out _))
                         role.Leave = (SetupChangeBenefit.Required,
                             $"{Label(role.Option, role.Kind)} is optional: {CardText(node, role.Card)} has no room left for it beside " +
                             "the jobs Martlet needs to talk, which come first.");
@@ -107,6 +109,13 @@ public static partial class NetworkRecommender
         private void DeepThinking()
         {
             if (!Wants(PlanComponent.DeepThinking)) return;
+            if (IsOff(PlanComponent.DeepThinking))
+            {
+                foreach (var node in nodes.Where(n => n.Presence == Presence.Here))
+                    foreach (var role in node.Pending.Where(r => r.Kind == DeepThinkingRole))
+                        role.Leave = (SetupChangeBenefit.Improvement, "You turned Deep thinking off.");
+                return;
+            }
             foreach (var node in nodes.Where(n => n.Presence == Presence.Here && (!n.Companion || singlePc)))
                 foreach (var role in node.Pending.Where(r => r.Kind == DeepThinkingRole && r.Leave is null).ToList())
                     KeepDeep(node, role);

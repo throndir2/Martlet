@@ -18,8 +18,8 @@ public static partial class NetworkRecommender
         /// <summary>The voice engine Speaking uses in the plan: <see cref="engine"/>, or Chatterbox Nano while no computer has
         /// room for it.</summary>
         private string? voice;
-        /// <summary>One companion PC alone (computers that aren't answering don't count): it may use its own card as the
-        /// placement engine does.</summary>
+        /// <summary>One companion PC alone (computers that aren't answering don't count). Its card still takes only Thinking
+        /// and the voice (the priority list's companion rule); it may run those itself without a host.</summary>
         private readonly bool singlePc;
         private readonly int companions;
         private readonly Dictionary<string, Decision> decisions = new(StringComparer.Ordinal);
@@ -85,7 +85,7 @@ public static partial class NetworkRecommender
             return new(Current, target, changes)
             {
                 Fingerprint = FingerprintOf(target), Notes = notes.Distinct(StringComparer.Ordinal).ToArray(), Offline = offline.ToArray(),
-                CannotReplyNote = stays ? null : cannotReply, CannotSpeakNote = cannotSpeak
+                CannotReplyNote = stays ? null : cannotReply, CannotSpeakNote = cannotSpeak, Components = Components(target)
             };
         }
 
@@ -203,6 +203,25 @@ public static partial class NetworkRecommender
 
         private bool Wants(PlanComponent component) => request.Wanted is null || request.Wanted.Contains(component);
 
+        /// <summary>The owner turned this part off (<see cref="NetworkSetupRequest.Off"/>): its roles go and it is planned off.</summary>
+        private bool IsOff(PlanComponent component) => ComponentRanking.CanBeOff(component) && (request.Off ?? []).Contains(component);
+
+        /// <summary>The part a host role kind does, or null for a kind the recommender doesn't know.</summary>
+        private PlanComponent? KindComponent(string kind) => kind switch
+        {
+            ThinkingRole => PlanComponent.Thinking,
+            DeepThinkingRole => PlanComponent.DeepThinking,
+            ListeningRole => PlanComponent.Listening,
+            LipSyncRole => PlanComponent.LipSync,
+            SingingRole => PlanComponent.Singing,
+            PicturesRole => PlanComponent.Pictures,
+            _ => IsVoice(kind) ? PlanComponent.Voice : null
+        };
+
+        /// <summary>The priority list's rule for companion PCs (<see cref="ComponentRanking.UsesCompanionCard"/>): only Thinking
+        /// and the voice take a companion PC's graphics card; everything else runs there on the processor, or is off.</summary>
+        private bool CompanionCard(string kind) => KindComponent(kind) is { } component && ComponentRanking.UsesCompanionCard(component);
+
         /// <summary>Whether the recommender places roles of <paramref name="kind"/> (the part they do is wanted).</summary>
         private bool Managed(string kind) => kind switch
         {
@@ -316,16 +335,18 @@ public static partial class NetworkRecommender
         }
 
         /// <summary>The hard rules: room on the card, in memory, on the processor and the disk; one role of a kind and one voice
-        /// engine per computer; one language model and one voice per card; a host role's processor variant only where it has
-        /// no card for it (it uses the card by default).</summary>
+        /// engine per computer; one language model and one voice per card; a companion PC's card only for Thinking and the
+        /// voice; a host role's processor variant only where no card has room for it (it uses the card by default).</summary>
         private bool Valid(Node node, int? card, ComponentOption option, Query query)
         {
             if (!option.RunsOn(node.Spec.Platform)) return false;
             if (!query.Native && (node.Roles.Any(r => !r.Native && r.Kind == query.Kind) ||
                 IsVoice(query.Kind) && node.Roles.Any(r => !r.Native && IsVoice(r.Kind))))
                 return false;
+            var cardAllowed = !node.Companion || CompanionCard(query.Kind);
             if (card is { } c)
             {
+                if (!cardAllowed) return false;
                 var onCard = node.Roles.Where(r => r.Card == c).ToList();
                 var reserved = node.Pending.Where(r => r.Card == c && !(r.Kind == query.Kind && r.Native == query.Native) && Reserved(node, r, query)).ToList();
                 if (node.Free(c) - reserved.Sum(r => r.Gb) + Epsilon < option.GpuGb) return false;
@@ -334,7 +355,8 @@ public static partial class NetworkRecommender
                 if (IsVoice(query.Kind) && onCard.Any(r => IsVoice(r.Kind))) return false;
             }
             else if (option.UsesGpu) return false;
-            else if (!query.Native && catalog.Options.Any(o => o.IsLocal && o.HostRoleKind == query.Kind && o.UsesGpu && node.Cards(o).Any()))
+            else if (!query.Native && cardAllowed && catalog.Options.Any(o => o.IsLocal && o.HostRoleKind == query.Kind && o.UsesGpu &&
+                node.Cards(o).Any(other => node.Free(other) + Epsilon >= o.GpuGb)))
                 return false;
             var ram = option.Peak.RamGb + (card is { } u && node.Spec.Gpus[u].UnifiedMemory ? option.GpuGb : 0);
             var reservedRam = node.Pending.Where(r => !(r.Kind == query.Kind && r.Native == query.Native) && Reserved(node, r, query))

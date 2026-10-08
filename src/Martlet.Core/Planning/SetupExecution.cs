@@ -413,6 +413,9 @@ public static class SetupExecutor
         if (change.Kind != SetupChangeKind.RemoveRole)
             foreach (var choice in needs.Choices.Where(c => c.When is null && selectors.Contains(c.Variable)))
                 arguments.TryAdd("choice." + choice.Variable, choice.Default);
+        if (change.OnProcessor && change.Kind is SetupChangeKind.AddRole or SetupChangeKind.ChangeModel && needs.GpuOrCpu &&
+            Holds(needs.GpuWhen, arguments))
+            arguments["choice.accelerator"] = "cpu";
         if (change.Kind is SetupChangeKind.AddRole or SetupChangeKind.MoveToGpu or SetupChangeKind.ChangeModel && change.GpuIndex is { } index)
         {
             var (card, problem) = Card(specs, index, needs.Gpus);

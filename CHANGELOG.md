@@ -8,6 +8,14 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+
+- Recommended setup lists every part of Martlet in priority order: what it needs, what's optional, where each part runs, and **Off** with the reason. Tick **Off** on an optional part (advanced lip-sync, Deep thinking, singing, pictures) to plan without it. ([#651](https://github.com/throndir2/Martlet/pull/651))
+
+### Changed
+
+- On a companion PC, Recommended setup uses the graphics card for Thinking first, then the voice (Chatterbox Turbo if it fits, otherwise Chatterbox Nano). Everything else runs on the processor or is off, so a PC left alone with no API key gets a local Thinking model first. Reconfigure follows the same priority: it frees the card first and sets up Thinking before anything else. ([#651](https://github.com/throndir2/Martlet/pull/651))
+
 ## [0.60.1] - 2026-10-08
 
 ### Fixed

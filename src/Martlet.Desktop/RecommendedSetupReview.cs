@@ -13,6 +13,18 @@ internal sealed record ReviewComputer(string Id, string Name, string Kind, strin
 /// <summary>One change in the review, in the recommender's words, with how much it matters.</summary>
 internal sealed record ReviewChange(string Summary, string Why, string Benefit, string Computer, bool NeedsSomeoneThere);
 
+/// <summary>One part of Martlet in the review's priority list: its place in the list, whether a conversation needs it
+/// ("Needed") or it is optional and can be off, where it runs in the recommended setup or that it is off, and why.
+/// <see cref="OwnerOff"/>: the owner turned it off here.</summary>
+internal sealed record ReviewPart(PlanComponent Component, int Rank, string Name, string Need, bool On, string Where, string Why,
+    bool CanBeOff, bool OwnerOff)
+{
+    internal string Key => Component.ToString();
+
+    /// <summary>"1. Thinking (needed): Gemma 4 E2B in Ollama on This PC's NVIDIA GeForce RTX 4070."</summary>
+    internal string Text => $"{Rank}. {Name} ({Need.ToLowerInvariant()}): {Where.TrimEnd('.')}.";
+}
+
 /// <summary>Home's Recommended setup review, in words: the computers (companion PCs kept light), who does each job and the
 /// Thinking pool, every change with why, notes, downloads and the changes someone has to make at a computer.
 /// <see cref="CannotReply"/>: in the recommended setup nobody does Thinking, so Martlet can't reply (shown as a problem at the
@@ -24,6 +36,9 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
     string? Offline = null)
 {
     internal const string OptimalTitle = "Your computers already use the recommended setup.";
+
+    /// <summary>Every part of Martlet in priority order: where it runs, or that it is off.</summary>
+    public IReadOnlyList<ReviewPart> Parts { get; init; } = [];
 
     /// <summary>The review of <paramref name="recommendation"/> for the computers in <paramref name="build"/>. Pure.</summary>
     internal static RecommendedSetupReview From(NetworkRecommendation recommendation, SetupRequestBuild build, FootprintCatalog? catalog = null)
@@ -41,10 +56,10 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
         var gone = recommendation.Offline.OrderBy(o => ids.IndexOf(o.Id)).ToArray();
         var cannotReply = recommendation.CannotReply;
 
+        // In the order Reconfigure makes them: the priority list's setup order (Thinking first).
         var changes = recommendation.Changes
-            .Select((change, index) => (change, index)).OrderBy(c => c.change.Benefit).ThenBy(c => c.index)
-            .Select(c => new ReviewChange(c.change.Summary, c.change.Detail, BenefitWord(c.change.Benefit), Name(c.change.MachineId),
-                c.change.NeedsSomeoneThere))
+            .Select(change => new ReviewChange(change.Summary, change.Detail, BenefitWord(change.Benefit), Name(change.MachineId),
+                change.NeedsSomeoneThere))
             .ToArray();
 
         var computers = new List<ReviewComputer>();
@@ -62,10 +77,13 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
             var load = Load(bars, "Recommended load");
             if (recommendation.Current.Machine(id)?.Usage is { } now && Load(Bars(machine.Specs, now, catalog), "today") is { Length: > 0 } before)
                 load = load.Length == 0 ? char.ToUpperInvariant(before[0]) + before[1..] : $"{load} ({before})";
+            var companion = machine.Kind == NetworkMachineKind.Companion;
+            var todayText = Runs(today, machine, companion ? recommendation.Current.Jobs : [], catalog);
+            var plannedText = Runs(planned, machine, companion ? recommendation.Target.Jobs : [], catalog);
             computers.Add(new ReviewComputer(id, Name(id), kind,
-                "Today: " + Roles(today, machine),
+                "Today: " + todayText,
                 "Recommended: " + (!machine.Online ? "left out while it isn't answering"
-                    : Same(today, planned) ? "no change" : Roles(planned, machine)),
+                    : todayText == plannedText ? "no change" : plannedText),
                 load.Length == 0 ? "" : load + ".", bars, recommendation.Changes.Any(c => c.MachineId == id)));
         }
 
@@ -106,7 +124,25 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
               "and each graphics card runs at most one language model. Nothing changes until you choose Reconfigure.";
         return new(recommendation.AlreadyOptimal ? OptimalTitle : "A better setup is ready for your computers", summary, computers, jobs,
             changes, notes, downloadText, manual, recommendation.AlreadyOptimal, recommendation.Fingerprint, cannotReply,
-            FreeKeyPrompt.Shows(request.ConfiguredProviders), OfflineSentence(gone.Select(o => (Name(o.Id), o.For)).ToArray()));
+            FreeKeyPrompt.Shows(request.ConfiguredProviders), OfflineSentence(gone.Select(o => (Name(o.Id), o.For)).ToArray()))
+        {
+            Parts = [.. recommendation.Components.Select(c => new ReviewPart(c.Component, c.Rank, c.Name, c.CanBeOff ? "Optional" : "Needed",
+                c.On, c.Where, c.Why, c.CanBeOff, c.OwnerOff))]
+        };
+    }
+
+    /// <summary>A computer's host roles and, on a companion PC, the jobs it does itself (Thinking in Ollama, Parakeet in Martlet):
+    /// "Chatterbox Turbo; on the PC itself: Thinking (Gemma 4 E2B in Ollama), Listening (Parakeet on the processor)".</summary>
+    internal static string Runs(IReadOnlyList<HostedRolePlacement> roles, NetworkMachine machine, IReadOnlyList<JobPlan> jobs, FootprintCatalog catalog)
+    {
+        var itself = jobs.Where(j => j.HostId is null && !j.Off && ClusterJobs.All.Contains(j.Job))
+            .Select(j => (Job: j.Job, Option: j.OptionId is { } id ? catalog.Find(id) : null))
+            .Where(j => j.Option is { IsLocal: true })
+            .Select(j => $"{ClusterSync.Title(j.Job)} ({j.Option!.DisplayName}{(j.Job == ClusterJobs.Thinking && !j.Option.RunsInApp ? " in Ollama" : "")})")
+            .ToList();
+        var hostRoles = Roles(roles, machine);
+        if (itself.Count == 0) return hostRoles;
+        return (machine.HasHostService && roles.Count > 0 ? hostRoles + "; " : "") + "on the PC itself: " + string.Join(", ", itself);
     }
 
     /// <summary>"MIKU and IMOUTO haven't answered for 2 hours, so Martlet plans without them.", or null when every computer
@@ -152,9 +188,6 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
             return text;
         }));
     }
-
-    private static bool Same(IReadOnlyList<HostedRolePlacement> a, IReadOnlyList<HostedRolePlacement> b) =>
-        a.OrderBy(r => r.Kind, StringComparer.Ordinal).SequenceEqual(b.OrderBy(r => r.Kind, StringComparer.Ordinal));
 
     private static string Who(JobPlan job, Func<string?, string> name, FootprintCatalog catalog) =>
         job.Off ? "nobody (the character moves its mouth with the voice's loudness)"

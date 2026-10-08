@@ -29,8 +29,10 @@ namespace Martlet.Core.Planning;
 /// keep only the room those leave, and new roles nothing needs never push them out.</item>
 /// <item>Companion PCs stay light (they often run games): no host roles there while a host can take the work. Only what no
 /// host can run and Martlet needs (Thinking without a hosted provider, the owner's voice engine) goes to the companion PC with
-/// the most free hardware. A network of one companion PC alone (computers that aren't answering don't count) uses its card as
-/// <see cref="PlacementEngine"/> does.</item>
+/// the most free hardware, and a companion PC's graphics card only ever takes Thinking and the voice
+/// (<see cref="ComponentRanking.UsesCompanionCard"/>); everything else runs there on the processor or is off. A network of one
+/// companion PC alone (computers that aren't answering don't count) does those itself: Thinking on its card first, then the
+/// voice engine if it fits (else Chatterbox Nano), listening in the app and lip-sync by the voice's loudness.</item>
 /// <item>Never add conversation latency (AGENTS.md): a live job never moves to an option with a later first word
 /// (<see cref="ComponentOption.FirstWordMs"/>) or to a busier card than today's, unless its computer stays away or its card
 /// is too full. New jobs get the fastest options (a small model that hears on an idle card; docs/RECOMMENDED_SETUPS.md).</item>
@@ -45,7 +47,11 @@ namespace Martlet.Core.Planning;
 /// <item>Stability: what runs stays where it runs unless the gain matters; tidy-ups are Minor; today's setup equal to the
 /// recommended one gives no changes. Ties break by computer id. <see cref="NetworkRecommendation.Fingerprint"/> hashes the
 /// sorted target.</item>
-/// <item>Make before break: changes add roles first, then assign jobs and pools, then remove old roles.</item>
+/// <item>Off is a state: the owner can turn off the parts <see cref="ComponentRanking.CanBeOff"/> allows
+/// (<see cref="NetworkSetupRequest.Off"/>), and their roles go. <see cref="NetworkRecommendation.Components"/> lists every
+/// part in priority order with where it runs or that it is off.</item>
+/// <item>Setup order: the changes follow the priority list, Thinking first (make before break within each job); see
+/// <c>SetupOrder</c>.</item>
 /// </list>
 /// </summary>
 public static partial class NetworkRecommender

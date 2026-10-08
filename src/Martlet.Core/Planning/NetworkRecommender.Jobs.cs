@@ -225,6 +225,16 @@ public static partial class NetworkRecommender
             if (Settled(job)) return;
             var today = TodayJob(job);
             var host = NodeOf(today?.HostId);
+            if (IsOff(PlanComponent.LipSync))
+            {
+                const string turnedOff = "You turned advanced lip-sync off.";
+                foreach (var node in nodes.Where(n => n.Presence == Presence.Here))
+                    foreach (var role in node.Pending.Where(r => r.Kind == LipSyncRole && !r.Native))
+                        role.Leave = (SetupChangeBenefit.Improvement, turnedOff);
+                Decide(job, null, "loudness-lipsync", $"{turnedOff} The character's face follows the voice's loudness.",
+                    today is { Off: true } ? SetupChangeBenefit.Minor : SetupChangeBenefit.Improvement, off: true);
+                return;
+            }
             if (today is { Off: true })
             {
                 Decide(job, null, today.OptionId, "The character's face follows the voice's loudness, as you chose.", off: true);
@@ -271,8 +281,12 @@ public static partial class NetworkRecommender
                 Decide(job, slot.Node.Id, slot.Option.Id, why, forced.Benefit);
                 return;
             }
+            var reason = !singlePc ? "No host has room for advanced lip-sync"
+                : nodes.Any(n => n.Presence == Presence.Here && n.Companion && n.Spec.HasNvidia)
+                    ? "This PC's graphics card is kept for Thinking and the voice"
+                    : "Advanced lip-sync needs an NVIDIA graphics card, and this PC has none";
             Decide(job, null, "loudness-lipsync",
-                $"{forced.Why} {(singlePc ? "This PC has no room left" : "No other host has room")} for advanced lip-sync, so the character's face follows the voice's loudness.",
+                $"{forced.Why} {reason}, so the character's face follows the voice's loudness.",
                 forced.Benefit, off: true);
         }
     }

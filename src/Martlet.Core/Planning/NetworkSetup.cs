@@ -86,6 +86,10 @@ public sealed record NetworkSetupRequest(IReadOnlyList<NetworkMachine> Machines)
     /// <summary>Hosts the owner left out of the Thinking pool (ThinkingPoolSettings.LeftByOwner): the recommender never plans
     /// a Deep thinking role for the pool there.</summary>
     public IReadOnlyCollection<string> ThinkingPoolOptOut { get; init; } = [];
+    /// <summary>The parts the owner turned off (<see cref="ComponentRanking.CanBeOff"/>: lip-sync means advanced lip-sync, so
+    /// the face follows the voice's loudness; Deep thinking, singing and pictures). The recommender removes their roles and
+    /// plans without them. Unlike <see cref="Wanted"/>, which leaves a part it doesn't plan as it is.</summary>
+    public IReadOnlyCollection<PlanComponent> Off { get; init; } = [];
 }
 
 /// <summary>AddRole / RemoveRole: install or remove a host role on a computer's host service. ChangeModel: the same role
@@ -116,6 +120,9 @@ public sealed record SetupChange(SetupChangeKind Kind, string MachineId, string 
     public string? FromModel { get; init; }
     /// <summary>AddRole, MoveToGpu: the card to pin the role to (an index into that computer's MachineSpecs.Gpus).</summary>
     public int? GpuIndex { get; init; }
+    /// <summary>AddRole, ChangeModel: the role runs on the processor although the computer has a graphics card (its card has no
+    /// room for it), so the host installs its processor variant (choice.accelerator=cpu).</summary>
+    public bool OnProcessor { get; init; }
     /// <summary>AssignJob, JoinPool, LeavePool: the ClusterJobs name (null for the Thinking pool).</summary>
     public string? Job { get; init; }
     /// <summary>AssignJob: the computer that does the job now (null: no host).</summary>
@@ -140,6 +147,17 @@ public sealed record SetupChange(SetupChangeKind Kind, string MachineId, string 
 /// answered (zero when not known). <see cref="Note"/> is its sentence in <see cref="NetworkRecommendation.Notes"/>.</summary>
 public sealed record OfflineComputer(string Id, TimeSpan For, string Note);
 
+/// <summary>One part of Martlet in the recommended setup, in the priority list's order (<see cref="ComponentRanking"/>).
+/// <see cref="On"/> false: the part is off (<see cref="Where"/> says what that means). <see cref="Where"/> is where it runs
+/// ("Gemma 4 E2B in Ollama on This PC's NVIDIA GeForce RTX 4070"), <see cref="Why"/> the reason. <see cref="CanBeOff"/>: the
+/// owner can turn it off; <see cref="OwnerOff"/>: they did.</summary>
+public sealed record ComponentStatus(PlanComponent Component, int Rank, ComponentNecessity Necessity, bool On, string Where, string Why)
+{
+    public bool CanBeOff => ComponentRanking.CanBeOff(Component);
+    public bool OwnerOff { get; init; }
+    public string Name => ComponentRanking.Name(Component);
+}
+
 /// <summary>The recommended setup for all the owner's computers and the changes that get there from today's.
 /// <see cref="Fingerprint"/> is the same for the same recommended setup, so a suggestion the owner declined isn't asked
 /// about again until something changes.</summary>
@@ -150,6 +168,8 @@ public sealed record NetworkRecommendation(NetworkSetup Current, NetworkSetup Ta
     public IReadOnlyList<string> Notes { get; init; } = [];
     /// <summary>The computers the recommendation plans without (they aren't answering), in the order of their ids.</summary>
     public IReadOnlyList<OfflineComputer> Offline { get; init; } = [];
+    /// <summary>Every part of Martlet in priority order, with where it runs in the recommended setup or that it is off.</summary>
+    public IReadOnlyList<ComponentStatus> Components { get; init; } = [];
     /// <summary>The note in <see cref="Notes"/> that says Martlet can't reply ("No computer has room for a Thinking model, and
     /// no free API key is saved. ..."), or null when it can.</summary>
     public string? CannotReplyNote { get; init; }

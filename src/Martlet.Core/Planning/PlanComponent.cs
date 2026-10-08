@@ -1,7 +1,7 @@
 namespace Martlet.Core.Planning;
 
 /// <summary>A job Martlet needs done somewhere in the user's network or by a hosted provider. The order of the values is
-/// the default priority (<see cref="ComponentRanking"/>); see docs/RECOMMENDATIONS.md.</summary>
+/// the default priority (<see cref="ComponentRanking"/>); see docs/RECOMMENDED_SETUPS.md#the-priority-list.</summary>
 public enum PlanComponent { Thinking, Voice, Listening, Character, LipSync, DeepThinking, Singing, Pictures }
 
 /// <summary>Required: Martlet cannot converse without it, so it always gets at least a baseline (hosted counts).
@@ -10,8 +10,9 @@ public enum ComponentNecessity { Required, Core, Optional }
 
 public sealed record ComponentInfo(PlanComponent Component, int Rank, ComponentNecessity Necessity, string Name, string Why);
 
-/// <summary>The priority ranking of components: the single source of truth the placement engine, the setup advisor, the
-/// wizard and the Devices view use. Rank 1 is the most important.</summary>
+/// <summary>The priority list: the order of Martlet's components, the single source of truth the placement engine, the
+/// network recommender (Home's Recommended setup and the order Reconfigure sets things up in), the setup advisor, the wizard
+/// and the Devices view use. Rank 1 is the most important. docs/RECOMMENDED_SETUPS.md#the-priority-list explains it.</summary>
 public static class ComponentRanking
 {
     public static IReadOnlyList<ComponentInfo> All { get; } =
@@ -35,6 +36,25 @@ public static class ComponentRanking
     public static ComponentInfo Of(PlanComponent component) => All.First(info => info.Component == component);
 
     public static string Name(PlanComponent component) => Of(component).Name;
+
+    /// <summary>The parts the owner can turn off: advanced lip-sync (the character's face then follows the voice's loudness)
+    /// and the optional extras. Thinking, the voice, listening and the character are what a conversation needs.</summary>
+    public static bool CanBeOff(PlanComponent component) =>
+        component is PlanComponent.LipSync or PlanComponent.DeepThinking or PlanComponent.Singing or PlanComponent.Pictures;
+
+    /// <summary>What a part being off means, in words.</summary>
+    public static string OffMeans(PlanComponent component) => component switch
+    {
+        PlanComponent.LipSync => "the character's face follows the voice's loudness",
+        PlanComponent.DeepThinking => "Martlet doesn't think things over in the background",
+        PlanComponent.Singing => "Martlet doesn't sing",
+        PlanComponent.Pictures => "Martlet doesn't draw pictures",
+        _ => "it doesn't run"
+    };
+
+    /// <summary>The parts that may use a companion PC's graphics card: Thinking, then the voice. A companion PC often runs
+    /// games, so everything else runs there on the processor, or is off.</summary>
+    public static bool UsesCompanionCard(PlanComponent component) => component is PlanComponent.Thinking or PlanComponent.Voice;
 
     /// <summary>The order the engine hands out local resources for <paramref name="preference"/>. Voice first because only
     /// it cannot be offloaded for free; Thinking's local model comes after advanced lip-sync when a hosted endpoint can cover

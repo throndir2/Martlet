@@ -67,12 +67,6 @@ internal static class NetworkRecommendationCheck
     private static bool WithinCapacity(NetworkRecommendation recommendation) =>
         recommendation.Target.Machines.Where(m => m.Usage is not null).All(m => m.Usage!.Gpus.All(g => g.Vram.Used <= g.Vram.Capacity + 1e-6));
 
-    private static int Index(NetworkRecommendation recommendation, Func<SetupChange, bool> match, bool last = false)
-    {
-        var changes = recommendation.Changes.ToList();
-        return last ? changes.FindLastIndex(c => match(c)) : changes.FindIndex(c => match(c));
-    }
-
     internal static object Run()
     {
         List<object> steps = [];
@@ -175,15 +169,29 @@ internal static class NetworkRecommendationCheck
             Preference = HostingPreference.PreferLocal
         };
         var stranded = NetworkRecommender.Recommend(Stranded(12));
-        Step("5", "Needed jobs first: a companion PC whose hosts are gone thinks on its own card; the voice and lip-sync join it; Singing (optional) yields",
+        Step("5, 6", "Needed jobs first: a companion PC whose hosts are gone thinks on its own card first, then the voice joins it; " +
+            "lip-sync follows the voice's loudness (only Thinking and the voice use a companion PC's card); Singing (optional) yields and goes first",
             stranded.Target.Job(ClusterJobs.Thinking) is { HostId: null, OptionId: "gemma4:e2b" } &&
-            stranded.Target.Job(ClusterJobs.Speaking)?.HostId == "desk-1" && stranded.Target.Job(ClusterJobs.LipSync)?.HostId == "desk-1" &&
+            stranded.Target.Job(ClusterJobs.Speaking)?.HostId == "desk-1" && stranded.Target.Job(ClusterJobs.LipSync)?.Off == true &&
+            stranded.Target.Machine("desk-1")?.Roles.Any(r => r.Kind is "audio2face" or "singing" or "stt") == false &&
             stranded.Changes.Any(c => c.Kind == SetupChangeKind.RemoveRole && c.RoleKind == "singing" && c.Benefit == SetupChangeBenefit.Required) &&
+            stranded.Changes.FirstOrDefault()?.RoleKind == "singing" && stranded.Changes.ElementAtOrDefault(1)?.Job == ClusterJobs.Thinking &&
             WithinCapacity(stranded), Report(stranded));
         var keyed = NetworkRecommender.Recommend(Stranded(8) with { Preference = HostingPreference.Balanced, ConfiguredProviders = ["nvidia-build"] });
-        Step("5, 8", "A saved free provider key: on a smaller card Thinking uses the free hosted model, so the voice and lip-sync get the card",
+        Step("5, 8", "A saved free provider key: on a smaller card Thinking uses the free hosted model, so the voice gets the card",
             keyed.Target.Job(ClusterJobs.Thinking)?.OptionId == "hosted:nvidia-build" && keyed.Target.Job(ClusterJobs.Speaking)?.HostId == "desk-1" &&
-            keyed.Target.Job(ClusterJobs.LipSync)?.HostId == "desk-1" && WithinCapacity(keyed), Report(keyed));
+            keyed.Target.Job(ClusterJobs.LipSync)?.Off == true && WithinCapacity(keyed), Report(keyed));
+
+        // The priority list: every part in order, Off for the optional ones the owner turned off.
+        var turnedOff = NetworkRecommender.Recommend(Stranded(12) with { Off = [PlanComponent.Singing, PlanComponent.DeepThinking, PlanComponent.LipSync] });
+        var parts = turnedOff.Components;
+        Step("13", "Every part in priority order; the parts the owner turned off are Off and their roles go",
+            parts.Select(p => p.Component).SequenceEqual(ComponentRanking.All.Select(i => i.Component)) &&
+            parts.Where(p => p.OwnerOff).Select(p => p.Component).Order().SequenceEqual(new[] { PlanComponent.LipSync, PlanComponent.DeepThinking, PlanComponent.Singing }.Order()) &&
+            parts.Where(p => p.OwnerOff).All(p => !p.On && p.Where.StartsWith("Off:", StringComparison.Ordinal)) &&
+            parts.Single(p => p.Component == PlanComponent.Thinking).On &&
+            turnedOff.Changes.Single(c => c.RoleKind == "singing").Why.StartsWith("You turned", StringComparison.Ordinal),
+            parts.Select(p => $"{p.Rank}. {p.Name}{(p.CanBeOff ? " (optional)" : "")}: {p.Where}"));
 
         // Rule 6: heavy roles on a companion PC move to a host.
         var heavy = Network(Companion("desk-1", true, Nvidia(12, "RTX 4070")) with
@@ -203,11 +211,17 @@ internal static class NetworkRecommendationCheck
             relieved.Target.Machine("desk-1")?.Roles.Count == 0 && relieved.Target.Job(ClusterJobs.Thinking)?.HostId == "gpu-box" &&
             relieved.Changes.Where(c => c.MachineId == "desk-1").All(c => c.Kind == SetupChangeKind.RemoveRole && c.Benefit == SetupChangeBenefit.Improvement),
             Report(relieved));
-        var firstRemove = Index(relieved, c => c.Kind == SetupChangeKind.RemoveRole);
-        Step("12", "Make before break: the host's roles are added, then the jobs move, then the companion PC's roles are removed",
-            firstRemove > 0 && Index(relieved, c => c.Kind == SetupChangeKind.AddRole, last: true) < Index(relieved, c => c.Kind == SetupChangeKind.AssignJob) &&
-            Index(relieved, c => c.Kind is SetupChangeKind.AssignJob or SetupChangeKind.JoinPool, last: true) < firstRemove,
-            relieved.Changes.Select(c => $"{c.Kind} {c.MachineId}"));
+        Step("12", "Setup order: job by job, Thinking first; each job makes before it breaks (its host role, its move, then the companion PC's role)",
+            relieved.Changes.FirstOrDefault() is { Kind: SetupChangeKind.AddRole, RoleKind: "ollama" } &&
+            ClusterJobs.All.All(job =>
+            {
+                var mine = relieved.Changes.Select((c, i) => (c, i)).Where(x => x.c.Job == job || x.c.RoleKind == (job == ClusterJobs.Thinking ? "ollama" : job == ClusterJobs.Speaking ? "chatterbox" : "-")).ToList();
+                var add = mine.Where(x => x.c.Kind == SetupChangeKind.AddRole).Select(x => x.i).DefaultIfEmpty(-1).Max();
+                var assign = mine.Where(x => x.c.Kind == SetupChangeKind.AssignJob).Select(x => x.i).DefaultIfEmpty(-1).Max();
+                var remove = mine.Where(x => x.c.Kind == SetupChangeKind.RemoveRole).Select(x => x.i).DefaultIfEmpty(int.MaxValue).Min();
+                return add <= assign && Math.Max(add, assign) < remove;
+            }),
+            relieved.Changes.Select(c => $"{c.Kind} {c.MachineId} {c.RoleKind ?? c.Job}"));
 
         // Rule 7: Thinking on the companion PC's own card stays when the only host has no graphics card.
         var slow = NetworkRecommender.Recommend(Network(Companion("desk-1", false, Nvidia(12, "RTX 4070")), Host("cpu-box")) with

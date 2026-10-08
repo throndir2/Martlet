@@ -13,7 +13,9 @@ namespace Martlet.Desktop;
 internal sealed record DeclinedSetup(string Fingerprint, DateTimeOffset At);
 
 /// <summary>The recommended setups declined on this PC (recommended-setup.json in the data folder; never shared): an automatic
-/// check doesn't ask about the same recommended setup again until something changes it. The newest <see cref="Kept"/> are kept.</summary>
+/// check doesn't ask about the same recommended setup again until something changes it. The newest <see cref="Kept"/> are kept.
+/// <see cref="Off"/> holds the parts the owner turned off in the review (<see cref="ComponentRanking.CanBeOff"/>), by name;
+/// the recommendation removes them and plans without them.</summary>
 internal sealed record RecommendedSetupMemory
 {
     internal const string FileName = "recommended-setup.json";
@@ -21,6 +23,19 @@ internal sealed record RecommendedSetupMemory
     private const int MaxFileBytes = 64 * 1024;
 
     public IReadOnlyList<DeclinedSetup> Declined { get; init; } = [];
+
+    public IReadOnlyList<string> Off { get; init; } = [];
+
+    /// <summary>The parts turned off, as the planner takes them.</summary>
+    internal IReadOnlyCollection<PlanComponent> OffParts =>
+        [.. Off.Select(name => Enum.TryParse<PlanComponent>(name, out var part) ? part : (PlanComponent?)null)
+            .OfType<PlanComponent>().Where(ComponentRanking.CanBeOff).Distinct()];
+
+    /// <summary>The same memory with <paramref name="part"/> turned off or back on; a part that can't be off is ignored.</summary>
+    internal RecommendedSetupMemory WithOff(PlanComponent part, bool off) => !ComponentRanking.CanBeOff(part) ? this : this with
+    {
+        Off = [.. OffParts.Where(p => p != part).Concat(off ? [part] : []).Order().Select(p => p.ToString())]
+    };
 
     internal bool WasDeclined(string? fingerprint) =>
         fingerprint is { Length: > 0 } && Declined.Any(d => string.Equals(d.Fingerprint, fingerprint, StringComparison.Ordinal));
@@ -40,7 +55,8 @@ internal sealed record RecommendedSetupMemory
             var loaded = JsonSerializer.Deserialize<RecommendedSetupMemory>(File.ReadAllText(path));
             return loaded is null ? new() : loaded with
             {
-                Declined = [.. (loaded.Declined ?? []).Where(d => d is { Fingerprint.Length: > 0 and <= 256 }).Take(Kept)]
+                Declined = [.. (loaded.Declined ?? []).Where(d => d is { Fingerprint.Length: > 0 and <= 256 }).Take(Kept)],
+                Off = [.. (loaded.Off ?? []).Where(n => n is { Length: > 0 and <= 32 }).Distinct(StringComparer.Ordinal).Take(8)]
             };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or NotSupportedException)
