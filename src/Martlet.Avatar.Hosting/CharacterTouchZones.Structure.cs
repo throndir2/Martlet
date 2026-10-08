@@ -21,11 +21,12 @@ public static partial class CharacterTouchZones
     private static int FollowOrder(string id) => Appendages.ToList().IndexOf(id) is >= 0 and var at ? at : id == "hair" ? Appendages.Count : int.MaxValue;
 
     /// <summary>The zone following the model's own part for it, or null when it follows nothing. A tail, wings or animal ears
-    /// follow the model's own parts named for them (by its DisplayInfo file or its physics) that their boxes hold some of or lie
-    /// near, and an unnamed swinging part their boxes hold some of (the smallest one holding each; a tail or wings never one rooted
-    /// in the head, animal ears only one rooted above the eyes): all of it, in areas from its root to its tip, and nothing else.
-    /// Hair keeps its boxes and also follows, in areas of their own, the swinging hair its boxes don't hold (a ponytail). A part
-    /// another zone follows (<paramref name="model"/>'s taken parts) isn't followed again.</summary>
+    /// follow the model's own parts named for them (by its DisplayInfo file, its physics or its spring bones) that their boxes
+    /// hold some of or lie near, and an unnamed swinging part their boxes hold some of (the smallest one holding each; a tail or
+    /// wings never one rooted in the head, animal ears only one rooted above the eyes): all of it, in areas from its root to its
+    /// tip, and nothing else. Hair keeps its boxes and also follows, in areas of their own, the swinging hair its boxes don't hold
+    /// (a ponytail). A box holds a Live2D drawable it bound, and a VRM spring-bone joint whose bone (from it to the next joint)
+    /// crosses it. A part another zone follows (<paramref name="model"/>'s taken parts) isn't followed again.</summary>
     private static CharacterTouchZone? Follow(CharacterTouchZone zone, IReadOnlyList<CharacterTouchZoneArea> boxes, TouchZoneBox? crop, ModelStructure model)
     {
         if (!FollowWords.TryGetValue(zone.Id, out var word) || model.Groups.Count == 0) return null;
@@ -33,11 +34,14 @@ public static partial class CharacterTouchZones
         TouchZoneBox Page(TouchZoneBox box) => crop is null ? box : box.Within(crop);
         // What the zone holds: what its boxes hold, and what it followed before.
         var boxed = boxes.SelectMany(a => a.Drawables).ToHashSet(StringComparer.Ordinal);
-        var held = boxed.Concat(zone.AllAreas.Where(a => a.FromModel).SelectMany(a => a.Drawables)).ToHashSet(StringComparer.Ordinal);
+        var pages = boxes.Select(a => Page(a.Box)).ToArray();
+        var before = zone.AllAreas.Where(a => a.FromModel).SelectMany(a => a.Drawables.Concat(a.Nodes)).ToHashSet(StringComparer.Ordinal);
+        bool Boxed(ModelGroup group, RendererDrawableBox piece) => group.Joints ? model.Crosses(piece.Id, pages) : boxed.Contains(piece.Id);
+        bool Held(ModelGroup group, RendererDrawableBox piece) => Boxed(group, piece) || before.Contains(piece.Id);
         var places = (boxes.Count > 0 ? boxes.Select(a => a.Box) : zone.AllAreas.Select(a => a.Box)).Select(b => Grown(Page(b), 0.1)).ToArray();
-        bool Holds(ModelGroup group) => group.Drawables.Any(d => held.Contains(d.Id));
+        bool Holds(ModelGroup group) => group.Drawables.Any(d => Held(group, d));
         // Hair follows only swinging hair its boxes hold less than half of (a ponytail), so the hair they hold stays theirs.
-        bool Outside(ModelGroup group) => group.Drawables.Count(d => boxed.Contains(d.Id)) * 2 < group.Drawables.Count;
+        bool Outside(ModelGroup group) => group.Drawables.Count(d => Boxed(group, d)) * 2 < group.Drawables.Count;
         var taken = model.Groups.Where(g => !model.Taken.Contains(g.Key) && g.Part == word && (appendage || g.Swings && Outside(g)) &&
             (Holds(g) || places.Any(p => p.Overlaps(g.Rest)))).ToList();
         if (appendage)
@@ -47,7 +51,7 @@ public static partial class CharacterTouchZones
             var unnamed = model.Groups.Where(g => !model.Taken.Contains(g.Key) && g.Part is null && g.Swings && model.RootFits(g, word)).ToArray();
             foreach (var group in unnamed.Where(Holds).OrderBy(g => g.Drawables.Count))
             {
-                if (group.Drawables.All(d => !held.Contains(d.Id) || covered.Contains(d.Id))) continue;
+                if (group.Drawables.All(d => !Held(group, d) || covered.Contains(d.Id))) continue;
                 taken.Add(group);
                 covered.UnionWith(group.Drawables.Select(d => d.Id));
             }
@@ -66,7 +70,7 @@ public static partial class CharacterTouchZones
             var members = group.Drawables.Where(d => seen.Add(d.Id)).ToList();
             var room = MaximumAreas - areas.Count;
             if (members.Count == 0 || room <= 0) continue;
-            areas.AddRange(Segments(members, crop, room));
+            areas.AddRange(Segments(members, crop, room, group.Joints));
             followed.Add(group);
         }
         if (followed.Count == 0) return null;
@@ -84,9 +88,9 @@ public static partial class CharacterTouchZones
             whole.Drawables.Take(extra).All(d => !ids.Contains(d.Id));
     }
 
-    // A part's drawables, root first, as areas from its root to its tip: about AreaLength of the page's height each, at most
-    // `room`, each with a share of the drawables in order.
-    private static IEnumerable<CharacterTouchZoneArea> Segments(IReadOnlyList<RendererDrawableBox> members, TouchZoneBox? crop, int room)
+    // A part's drawables (or a VRM's spring-bone joints, with `joints`), root first, as areas from its root to its tip: about
+    // AreaLength of the page's height each, at most `room`, each with a share of them in order.
+    private static IEnumerable<CharacterTouchZoneArea> Segments(IReadOnlyList<RendererDrawableBox> members, TouchZoneBox? crop, int room, bool joints)
     {
         var rest = Union(members);
         var length = Math.Max(rest.Height, rest.Width * PageAspect);
@@ -95,9 +99,10 @@ public static partial class CharacterTouchZones
         {
             var chunk = members.Skip(k * members.Count / count).Take((k + 1) * members.Count / count - k * members.Count / count).ToArray();
             var box = Union(chunk);
+            string[] ids = [.. chunk.Select(d => d.Id)];
             yield return new()
             {
-                Box = (crop is null ? box : box.Relative(crop)).Clamped(), Drawables = [.. chunk.Select(d => d.Id)], FromModel = true
+                Box = (crop is null ? box : box.Relative(crop)).Clamped(), Drawables = joints ? [] : ids, Nodes = joints ? ids : [], FromModel = true
             };
         }
     }
@@ -115,19 +120,28 @@ public static partial class CharacterTouchZones
     private static bool Overlaps(this TouchZoneBox a, TouchZoneBox b) =>
         a.X < b.X + b.Width && b.X < a.X + a.Width && a.Y < b.Y + b.Height && b.Y < a.Y + a.Height;
 
-    /// <summary>A group of the model's own drawables a zone can follow: the body part its names say (null when they say none),
-    /// its name, its drawables root first (fractions of the page), where they are at rest, and whether its physics swings it.</summary>
-    private sealed record ModelGroup(string Key, string? Part, string Name, IReadOnlyList<RendererDrawableBox> Drawables, TouchZoneBox Rest, bool Swings);
+    /// <summary>A group of the model's own pieces a zone can follow: the body part its names say (null when they say none), its
+    /// name, its pieces root first (fractions of the page), where they are at rest, whether it swings on its own, and whether its
+    /// pieces are a VRM's spring-bone joints (each the bone from a joint to the next; else Live2D drawables).</summary>
+    private sealed record ModelGroup(string Key, string? Part, string Name, IReadOnlyList<RendererDrawableBox> Drawables, TouchZoneBox Rest, bool Swings,
+        bool Joints = false);
 
-    /// <summary>What the probe tells of the model's own parts a zone can follow: its swinging parts (<see cref="RendererChain"/>)
-    /// and the parts its DisplayInfo file names a tail, wings, animal ears or hair that nothing swings (one group per part, in
-    /// order along it), with where the face is, and the groups zones already follow.</summary>
+    /// <summary>How far a VRM spring-bone joint's piece reaches on each side of its bone, as a share of the page's height (the
+    /// width of a tail's areas on the picture; a touch matches the joint, never its box).</summary>
+    private const double JointReach = 0.015;
+
+    /// <summary>What the probe tells of the model's own parts a zone can follow: its swinging parts (a Live2D model's
+    /// <see cref="RendererChain"/>, a VRM's <see cref="RendererSpring"/>) and the parts its DisplayInfo file names a tail, wings,
+    /// animal ears or hair that nothing swings (one group per part, in order along it), with where the face is, and the groups
+    /// zones already follow.</summary>
     private sealed class ModelStructure
     {
         internal List<ModelGroup> Groups { get; } = [];
         internal HashSet<string> Taken { get; } = new(StringComparer.Ordinal);
         // Where the eyes and the chin are on the page (fractions of its height), when the probe has the face.
         private double? eyes, chin;
+        // Each VRM spring-bone joint's bone: from the joint to the next one (just the joint for a chain's tip), on the page.
+        private readonly Dictionary<string, (string Bone, double FromX, double FromY, double ToX, double ToY)> bones = new(StringComparer.Ordinal);
 
         internal static ModelStructure Read(RendererZoneProbe probe, TouchZoneBox? crop)
         {
@@ -136,7 +150,8 @@ public static partial class CharacterTouchZones
             foreach (var d in probe.Drawables ?? [])
                 if (d is { Id.Length: > 0 } && d.Right > d.Left && d.Bottom > d.Top && double.IsFinite(d.Left) && double.IsFinite(d.Top) &&
                     double.IsFinite(d.Right) && double.IsFinite(d.Bottom)) drawables.TryAdd(d.Id, d);
-            if (drawables.Count == 0) return structure;
+            var springs = (probe.Springs ?? []).Where(s => s is { IsValid: true }).Take(RendererSpring.MaximumSprings).ToArray();
+            if (drawables.Count == 0 && springs.Length == 0) return structure;
             var frame = crop ?? new(0, 0, 1, 1);
             var hints = TouchZoneDetection.Hints(probe, frame);
             if (hints?.Face is { } face)
@@ -145,6 +160,27 @@ public static partial class CharacterTouchZones
                 // The chin is about 0.42 face widths below the eye line (the first guess's proportions), in the page's heights.
                 structure.chin = structure.eyes + 0.42 * face.Width * frame.Width * PageAspect;
             }
+            // A VRM's spring-bone chains (a tail, hair, a skirt): each joint with its bone, root first, named by its root joint's
+            // name (else by what most of its joints' names say). A joint in an earlier chain isn't repeated.
+            var numbered = 0;
+            foreach (var spring in springs)
+            {
+                numbered++;
+                var joints = spring.Joints.Where(j => !structure.bones.ContainsKey(j.Bone)).DistinctBy(j => j.Bone, StringComparer.Ordinal).ToArray();
+                if (joints.Length == 0) continue;
+                var members = new RendererDrawableBox[joints.Length];
+                for (var i = 0; i < joints.Length; i++)
+                {
+                    var (from, to) = (joints[i], joints[Math.Min(i + 1, joints.Length - 1)]);
+                    structure.bones[from.Bone] = (from.Bone, from.X, from.Y, to.X, to.Y);
+                    double across = JointReach / PageAspect, down = JointReach;
+                    members[i] = new(from.Bone, Math.Min(from.X, to.X) - across, Math.Min(from.Y, to.Y) - down, Math.Max(from.X, to.X) + across,
+                        Math.Max(from.Y, to.Y) + down);
+                }
+                var part = TouchZoneDetection.PartName(spring.Name).Part ?? MostNamed(joints);
+                structure.Groups.Add(new($"spring:{numbered}", part, spring.Name ?? "", members, Union(members), true, Joints: true));
+            }
+            if (drawables.Count == 0) return structure;
             var named = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
             foreach (var piece in hints?.Pieces ?? [])
                 if (piece.Id is { } id) named.TryAdd(id, piece.Parts);
@@ -179,6 +215,16 @@ public static partial class CharacterTouchZones
             members.Select(m => named.TryGetValue(m.Id, out var parts) && parts.Count > 0 ? parts[0] : null).OfType<string>()
                 .GroupBy(p => p, StringComparer.Ordinal).OrderByDescending(g => g.Count()).FirstOrDefault() is { } most &&
             most.Count() * 2 >= members.Count ? most.Key : null;
+
+        // The body part most of a spring-bone chain's joints' names say, when at least half say one.
+        private static string? MostNamed(IReadOnlyList<RendererBonePoint> joints) =>
+            joints.Select(j => TouchZoneDetection.PartName(j.Bone).Part).OfType<string>().GroupBy(p => p, StringComparer.Ordinal)
+                .OrderByDescending(g => g.Count()).FirstOrDefault() is { } most && most.Count() * 2 >= joints.Count ? most.Key : null;
+
+        /// <summary>Whether a VRM spring-bone joint's bone (from it to the next joint) crosses one of <paramref name="pages"/>
+        /// (fractions of the page).</summary>
+        internal bool Crosses(string joint, IReadOnlyList<TouchZoneBox> pages) =>
+            bones.TryGetValue(joint, out var bone) && pages.Any(page => CharacterTouchZones.Crosses(bone, page));
 
         /// <summary>Whether an unnamed swinging part can be <paramref name="word"/>'s: a tail or wings are never rooted in the head
         /// (above the chin), animal ears only above the eyes. Without the face, any.</summary>

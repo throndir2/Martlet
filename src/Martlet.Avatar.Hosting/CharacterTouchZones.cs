@@ -110,8 +110,8 @@ public sealed record CharacterTouchZone
     /// <summary>The zone's areas when it has several (or one whose parts come from the model itself); null for a zone that is
     /// only its box.</summary>
     public IReadOnlyList<CharacterTouchZoneArea>? Areas { get; init; }
-    /// <summary>What of the model the zone's areas follow, by its own names (such as 尾巴, or the physics settings that swing
-    /// it), when they come from the model itself; null otherwise.</summary>
+    /// <summary>What of the model the zone's areas follow, by its own names (such as 尾巴, the physics settings that swing it, or
+    /// the root joint of a VRM's spring-bone chain), when they come from the model itself; null otherwise.</summary>
     public string? Follows { get; init; }
 
     [JsonIgnore] public string Name => Label ?? CharacterTouchZones.Kind(Id)?.Label ?? Id;
@@ -194,7 +194,7 @@ public sealed record RendererZoneProbe(RendererDrawableBox[]? Drawables = null, 
 /// <summary>Which zone a touch landed in and how it was found ("drawable", "node", "bone", "hair", "box" or "coarse"), whether
 /// its boxes were compared with where the touched point was in the rest pose (<see cref="CharacterTouch.RestX"/>, traced on the
 /// touched mesh), so the match follows the model as it moves (not for a part that swings on its own, such as a tail, found by its
-/// drawable wherever it swung), and for a zone with several areas, which of them (its index in
+/// drawable or spring-bone joint wherever it swung), and for a zone with several areas, which of them (its index in
 /// <see cref="CharacterTouchZone.AllAreas"/>).</summary>
 public sealed record TouchZoneMatch(CharacterTouchZone Zone, string How, bool Traced = false, int? Area = null);
 
@@ -729,16 +729,17 @@ public static partial class CharacterTouchZones
         return [match.Zone, .. under.Where(z => !all.Any(other => other.Id != z.Id && Inside(Page(other), Page(z))))];
     }
 
-    /// <summary>The zone a touch landed in: first a touched drawable a zone follows by the model's own parts (a tail's, wherever it
-    /// swung: <see cref="CharacterTouchZone.Follows"/>); else the topmost touched drawable that belongs to a zone in use, or,
+    /// <summary>The zone a touch landed in: first a touched VRM spring-bone joint or Live2D drawable a zone follows by the model's
+    /// own parts (a tail's, wherever it swung: <see cref="CharacterTouchZone.Follows"/>; not traced to the rest pose, where the
+    /// part hung somewhere else); else the topmost touched drawable that belongs to a zone in use, or,
     /// unless the touch is on hair (<see cref="CharacterTouch.Hair"/>), a drawable under it that a smaller zone inside one of its
     /// zones has (an overlay such as a blush drawn over an eye's lower half is the eye; the bangs over an eye are hair). Of that
     /// drawable's zones, the smallest whose box holds the point, else the nearest; a zone whose box lies mostly inside another of
     /// them also wins when the point lies by its box (<see cref="Around"/>: an eye's lash just above a tight eye box); a zone in
     /// use whose box holds the point and lies mostly inside the drawable's smallest zone counts too when none of its own
     /// drawables are under the touch, as a finer part of it (a cheek, or the skin by the nose, on the face's skin that the hair's
-    /// box takes in; on hair, only a zone with no drawables of its own, such as a forehead under the bangs). Then hair, then a
-    /// touched VRM spring-bone joint an area follows (a tail's), then for a touched VRM bone the smallest zone in use on that
+    /// box takes in; on hair, only a zone with no drawables of its own, such as a forehead under the bangs). Then hair, then for a
+    /// touched VRM bone the smallest zone in use on that
     /// part of the body (<see cref="OnPart"/>) whose box holds the point (a bone moves a whole part, such as the head, and its
     /// zones are found in a picture in the same pose), else the zone on that part that holds the bone, nearest the point (the
     /// part has moved since); without a bone, the smallest box in use that holds the point; then the touch's rough zone (a found
@@ -761,12 +762,18 @@ public static partial class CharacterTouchZones
             return list.Where(Holds).OrderBy(z => z.Box.Area).FirstOrDefault() ??
                 list.OrderBy(z => Page(z).Distance(x, y)).ThenBy(z => z.Box.Area).First();
         }
+        TouchZoneMatch Followed(CharacterTouchZone zone, string how, string piece) => new(zone, how, false, AreaOf(zone, crop, x, y, piece));
+        // A VRM spring-bone joint a zone follows by the model's own parts (a tail's or animal ears', wherever they swung) is that
+        // zone's alone, before hair: animal ears hang from the head as hair does. Its rest point is where it hung in the rest
+        // pose, so the match is not traced.
+        if (touch.Node is { } joint && active.FirstOrDefault(z => z.Areas?.Any(a => a.FromModel && a.Nodes.Contains(joint, StringComparer.Ordinal)) == true) is { } swings)
+            return Followed(swings, "node", joint);
         foreach (var drawable in touch.Drawables)
         {
             // A drawable a zone follows by the model's own parts (a tail's, wherever it swung) is that zone's alone. Its rest
             // point is where it hung in the rest pose (often behind the body), so the match is not traced.
             if (active.FirstOrDefault(z => z.Areas?.Any(a => a.FromModel && a.Drawables.Contains(drawable, StringComparer.Ordinal)) == true) is { } follows)
-                return new(follows, "drawable", false, AreaOf(follows, crop, x, y, drawable));
+                return Followed(follows, "drawable", drawable);
             var owners = active.Where(z => z.Drawables.Contains(drawable, StringComparer.Ordinal)).ToArray();
             if (owners.Length == 0) continue;
             var piece = drawable;
@@ -793,8 +800,6 @@ public static partial class CharacterTouchZones
             return Found(best, best.Drawables.Contains(piece, StringComparer.Ordinal) ? "drawable" : "box", piece);
         }
         if (touch.Hair && active.FirstOrDefault(z => z.Id == "hair") is { } hair) return Found(hair, "hair");
-        if (touch.Node is { } node && active.Where(z => z.AllAreas.Any(a => a.Nodes.Contains(node, StringComparer.Ordinal))).ToArray() is { Length: > 0 } swung)
-            return Found(Best(swung), "node", node);
         if (touch.Bone is { } bone)
         {
             var part = active.Where(z => OnPart(z.Id, bone)).ToArray();

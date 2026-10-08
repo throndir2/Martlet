@@ -132,7 +132,7 @@ function mouthReading(id) {
     open: round(mouth.open), ...(typeof mouth.blocked === "number" ? { blocked: round(mouth.blocked) } : {}) };
 }
 // Where each area of the touch zones is now (see zones.js), as fractions of the page: Live2D drawables as they are drawn now,
-// VRM bones (and nodes, when the renderer can place them) where they are now, and the view's zoom and pan.
+// VRM bones and spring-bone joints (by their nodes' names) where they are now, and the view's zoom and pan.
 function zonePlaces() {
   return zoneBoxes({
     drawables: () => renderer === "Live2D" ? new Map(adapter.drawableBounds().map(d => [d.id, d])) : new Map(),
@@ -180,7 +180,8 @@ function poseReading(id) {
 // pose the model has now (its rest pose in a still renderer). The PNG (a data URL), where the drawables (Live2D, each with the
 // ID of its part) or the humanoid bones (VRM) are in it, with a Live2D model's own parts (their names from its DisplayInfo file,
 // and their parents; none when they can't be read), with `chains` its parts that swing on their own (a tail, a ponytail: the
-// drawables each physics setting moves, root first, and where they can reach; see the adapter's swingingChains), and where
+// drawables each physics setting moves, root first, and where they can reach; see the adapter's swingingChains) or a VRM's
+// `springs` (its spring-bone chains: each joint's node and place, root first; see the adapter's springChains), and where
 // the face anchor puts the face (`face`: its middle, its width as a fraction of the picture's width and its roll; Martlet's
 // eye measurement crops around it), as fractions of the picture; nothing when it can't be drawn. The canvas then goes back to
 // its own size and framing, drawn again at once, so a showing character never changes.
@@ -199,6 +200,14 @@ function picture({ width, height, zoom, x, y, frame, chains: measure }) {
       return swinging.length > 0 ? { chains: swinging } : {};
     } catch { return {}; }
   };
+  // A VRM's spring-bone chains cost nothing to read, so every picture has them in its own framing; a failure only leaves them out.
+  const springs = () => {
+    try {
+      const chains = (adapter.springChains?.() ?? []).map(s => ({ ...(s.name ? { name: s.name } : {}),
+        joints: s.joints.map(j => ({ bone: j.bone, x: round(j.x), y: round(j.y) })) }));
+      return chains.length > 0 ? { springs: chains } : {};
+    } catch { return {}; }
+  };
   try {
     resize(Number(width), Number(height));
     adapter.setView(Number(zoom), Number(x), Number(y), Number(frame));
@@ -214,7 +223,7 @@ function picture({ width, height, zoom, x, y, frame, chains: measure }) {
     return renderer === "Live2D"
       ? { png, drawables: adapter.drawableBounds().map(d => ({ id: d.id, left: round(d.left), top: round(d.top), right: round(d.right),
           bottom: round(d.bottom), ...(d.part ? { part: d.part } : {}) })), parts: parts(), ...chains(), ...(face ? { face } : {}) }
-      : { png, bones: adapter.bonePoints().map(b => ({ bone: b.bone, x: round(b.x), y: round(b.y) })), ...(face ? { face } : {}) };
+      : { png, bones: adapter.bonePoints().map(b => ({ bone: b.bone, x: round(b.x), y: round(b.y) })), ...springs(), ...(face ? { face } : {}) };
   } catch { return {}; }
   finally {
     try {
