@@ -20,7 +20,9 @@ public sealed record RendererCapabilities(string ModelId, RendererParameter[] Pa
 /// ended or replaced), a <c>motion</c> group (played once) or a Martlet <c>gesture</c> (<see cref="CharacterGesture"/>). With
 /// <paramref name="Hold"/> it lingers: a held expression stays on, layered with other held ones, until it is ended
 /// (<c>On=false</c>), and a held gesture or overlay stays until ended too, instead of playing once; another emote doesn't replace
-/// it. The reply says whether the model started it.</summary>
+/// it. Held gestures layer as well: a new held gesture lets go only of the held ones that move a part of the face it moves too
+/// (the eyes, the mouth, the cheeks, the brows or the head), and held overlays all show together. The reply says whether the
+/// model started it; a gesture's reply also says which gesture plays once and every one held (<c>gesture: {playing, held: [...]}</c>).</summary>
 public sealed record RendererAction(string Kind, string Name, bool On = true, bool Hold = false)
 {
     public static IReadOnlyList<string> Kinds { get; } = ["expression", "motion", "gesture"];

@@ -32,9 +32,14 @@ gestures the model has the humanoid bones for (`gestures`: `nod`, `shake`,
 `inhale`, `exhale`, `mumble`, `hum`, `sneeze`, `whistle`, `happy`, `sarcastic`,
 `angry`, `fear`, `crying`, `whispering`, `dramatic`, then `wink`, `pout`, `shy`,
 `giggle`, `flinch`, `lean_in`, `look_away`, `think`, `eye_roll`, `drowsy`, which
-also use the model's preset expressions when it has them) on the idle pose.
-`playGesture(name, true)` holds `pout`, `shy`, `look_away` or `drowsy` until
-`endGesture(name)`; `gestureState` says which plays once and which is held. VRM files
+also use the model's preset expressions when it has them, then the held face
+parts `eyes_up` (the eye bones) and `mouth_open` (the `oh` or `aa` mouth
+expression)) on the idle pose. `playGesture(name, true)` holds `pout`, `shy`,
+`look_away`, `drowsy`, `eyes_up`, `mouth_open` or the model's own `blush` until
+`endGesture(name)`. Held gestures layer: holding one lets go only of the held
+ones that move a part it moves too (`VRM_HOLD_PARTS`: eyes, mouth, cheeks,
+brows, head). `gestureState` says which plays once and every one held (`held`
+is a list). A held open mouth eases back while lip-sync moves the mouth. VRM files
 carry no motions.
 
 `dev` bundles all JavaScript locally to ignored `public/app.js`, then serves only

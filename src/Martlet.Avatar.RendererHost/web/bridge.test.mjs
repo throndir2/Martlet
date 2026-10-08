@@ -66,17 +66,17 @@ test("a blush the model can't show is drawn over the face, held until turned off
   await send({ kind: "action", data: { kind: "gesture", name: "nod" } });
   assert.equal(posts.at(-1).started, true);
   await send({ kind: "action", data: { kind: "gesture", name: "blush", hold: true } });
-  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { started: true, overlay: true, face: { x: 250, y: 100, width: 80, tilt: 0 }, gesture: { playing: "nod", held: "blush" } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { started: true, overlay: true, face: { x: 250, y: 100, width: 80, tilt: 0 }, gesture: { playing: "nod", held: ["blush"] } });
   assert.deepEqual(played.at(-1), ["blush", true], "the model's own blush is tried first");
   await send({ kind: "action", data: { kind: "gesture", name: "blush", on: false, hold: true } });
   assert.equal(posts.at(-1).started, true);
-  assert.equal(posts.at(-1).gesture.held, undefined, "turned off, the drawn blush is no longer held");
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1).gesture.held)), [], "turned off, the drawn blush is no longer held");
   assert.deepEqual(played.at(-1), ["release", "blush"]);
   await send({ kind: "action", data: { kind: "gesture", name: "sparkle_nonexistent" } });
   assert.equal(posts.at(-1).started, false);
 });
 
-test("Martlet's overlay emotes play on any model, a held one reported as the held gesture", async () => {
+test("Martlet's overlay emotes play on any model, held ones reported with the held gestures", async () => {
   const posts = [];
   class Renderer {
     load() { return Promise.resolve({ expressions: [] }); }
@@ -86,7 +86,7 @@ test("Martlet's overlay emotes play on any model, a held one reported as the hel
     dispose() {}
     playGesture() { return false; }
     endGesture() {}
-    get gestureState() { return {}; }
+    get gestureState() { return { held: [] }; }
     faceAnchor() { return { x: 250, y: 100, width: 80, angle: 0, cheekLeft: { x: 230, y: 115 }, cheekRight: { x: 270, y: 115 },
       eyeLeft: { x: 234, y: 100 }, eyeRight: { x: 266, y: 100 }, mouth: { x: 250, y: 130 }, top: { x: 250, y: 50 } }; }
   }
@@ -97,12 +97,47 @@ test("Martlet's overlay emotes play on any model, a held one reported as the hel
     assert.equal(posts.at(-1).started, true, name);
     assert.equal(posts.at(-1).overlay, true, name);
   }
+  const held = () => JSON.parse(JSON.stringify(posts.at(-1).gesture.held));
   await send({ kind: "action", data: { kind: "gesture", name: "gloom", hold: true } });
-  assert.equal(posts.at(-1).gesture.held, "gloom");
+  assert.deepEqual(held(), ["gloom"]);
   await send({ kind: "action", data: { kind: "gesture", name: "sleepy", hold: true } });
-  assert.equal(posts.at(-1).gesture.held, "sleepy", "holding another lets the one held before go");
+  assert.deepEqual(held(), ["gloom", "sleepy"], "held drawings layer: holding another keeps the one held before");
+  await send({ kind: "action", data: { kind: "gesture", name: "gloom" } });
+  assert.deepEqual(held(), ["gloom", "sleepy"], "played once while held, a drawing stays held");
   await send({ kind: "action", data: { kind: "gesture", name: "sleepy", on: false, hold: true } });
-  assert.equal(posts.at(-1).gesture.held, undefined);
+  assert.deepEqual(held(), ["gloom"], "turning one off leaves the other on");
+  await send({ kind: "action", data: { kind: "gesture", name: "gloom", on: false, hold: true } });
+  assert.deepEqual(held(), []);
+});
+
+test("held drawings show on top of every gesture the model holds, and the reply names them all", async () => {
+  const posts = [];
+  const held = new Set();
+  class Renderer {
+    load() { return Promise.resolve({ expressions: [] }); }
+    resize() {}
+    update() {}
+    setView() {}
+    dispose() {}
+    // The model holds its own gestures (layered by the adapter) and has no blush of its own, so the page draws it.
+    playGesture(name, hold) { if (!["eyes_up", "mouth_open", "wink"].includes(name)) return false; if (hold) held.add(name); return true; }
+    endGesture(name) { held.delete(name); }
+    get gestureState() { return { held: [...held] }; }
+    faceAnchor() { return { x: 250, y: 100, width: 80, angle: 0, cheekLeft: { x: 230, y: 115 }, cheekRight: { x: 270, y: 115 } }; }
+  }
+  const { send } = await page(Renderer, posts);
+  await send({ kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm" } });
+  for (const name of ["eyes_up", "mouth_open", "blush", "hearts"]) await send({ kind: "action", data: { kind: "gesture", name, hold: true } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1).gesture)), { held: ["eyes_up", "mouth_open", "blush", "hearts"] },
+    "the model's held gestures, then the held drawings");
+  await send({ kind: "action", data: { kind: "gesture", name: "wink" } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1).gesture.held)), ["eyes_up", "mouth_open", "blush", "hearts"],
+    "a gesture played once lets none of them go");
+  await send({ kind: "action", data: { kind: "gesture", name: "mouth_open", on: false, hold: true } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1).gesture.held)), ["eyes_up", "blush", "hearts"]);
+  await send({ kind: "face", data: { id: 3 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))).faceReading.overlays, ["blush", "hearts"], "both drawings show");
+  assert.ok(!posts.some(post => post.error));
 });
 
 test("the face Martlet draws over is read unprompted for MCP: how it is followed, where and what is under each cheek", async () => {
