@@ -616,8 +616,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "speaking-voices.json and recordings) and two simulated desktops with real F5 voice stores in a temporary folder, using the " +
             "desktop's paired client and Martlet.F5's reconcile engine. Checks the starter voices, sharing the list and recordings, " +
             "speaking by recording SHA-256 alone, the one-time fallback that sends a recording a host lacks, a new desktop taking every " +
-            "voice from a host, the shared choice, removal everywhere (host and desktop copies deleted), stale copies, a host restart and " +
-            "upload checks. Loopback only; the temporary folder is deleted and the credential vault is not touched.", new { }),
+            "voice from a host, the shared choice, removal everywhere (host and desktop copies deleted), stale copies, retired starter " +
+            "voices leaving an older list, a host restart and upload checks. Loopback only; the temporary folder is deleted and the " +
+            "credential vault is not touched.", new { }),
         Tool("character_models", "Read the shared character models from a data directory (character-models.json and the copies in " +
             "character-models, docs/CLUSTER.md \"The shared character models\"): live characters and tombstones, total size, and for " +
             "each character its key (first 16 hex digits of its ID, as in CharacterModelState-<key>), renderer, files, pieces, size, " +
@@ -3282,11 +3283,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 return new { key = voice.Key, name = voice.Name, valid = false, problem = error.Failure.ToString() };
             }
         }).ToArray();
+        // A starter voice's key, a retired recording's key (retired-sample, retired-librivox-annie-anime...) or "own".
         static string Kind(string sha256) => Martlet.F5.F5BundledVoices.ForAudio(sha256)?.Key ??
-            (Martlet.F5.F5BundledVoices.IsRetiredSample(sha256) ? "retired-sample" : "own");
-        // A voice's ID is its reference revision, so a starter voice's ID is known even after only its tombstone remains.
-        var starterIds = Martlet.F5.F5BundledVoices.All.ToDictionary(
-            voice => Martlet.Core.Voices.SpeakingVoiceLibrary.ReferenceId(voice.AudioSha256, voice.Transcript), voice => voice.Key);
+            Martlet.F5.F5BundledVoices.RetiredForAudio(sha256)?.Key ?? "own";
+        static bool Retired(string kind) => Martlet.F5.F5BundledVoices.Retired.Any(voice => voice.Key == kind);
+        // A voice's ID is its reference revision, so a starter voice's ID is known even after only its tombstone remains, and so
+        // is a former starter voice's.
+        var starterIds = Martlet.F5.F5BundledVoices.All.Select(voice => (voice.Key, voice.AudioSha256, voice.Transcript))
+            .Concat(Martlet.F5.F5BundledVoices.Retired.Where(voice => voice.Transcript is not null)
+                .Select(voice => (voice.Key, voice.AudioSha256, Transcript: voice.Transcript!)))
+            .ToDictionary(voice => Martlet.Core.Voices.SpeakingVoiceLibrary.ReferenceId(voice.AudioSha256, voice.Transcript), voice => voice.Key);
         string KindOfId(string id) => starterIds.GetValueOrDefault(id) ?? "own";
         // The shared list (speaking-voices.json, the file Martlet.Desktop's F5Voices keeps; absent until a voice is first used,
         // changed or shared). Own voices are counted, never named.
@@ -3302,7 +3308,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 library = new
                 {
                     state = "loaded", voices = live.Count, revision = shared.Revision,
-                    starters = live.Select(v => KindOfId(v.Id)).Where(kind => kind != "own").ToArray(),
+                    starters = live.Select(v => KindOfId(v.Id)).Where(kind => kind != "own" && !Retired(kind)).ToArray(),
+                    // Former starter voices still listed (an older Martlet's list, until this desktop next brings its voices in step).
+                    retired = live.Select(v => KindOfId(v.Id)).Where(Retired).ToArray(),
                     own = live.Count(v => KindOfId(v.Id) == "own"),
                     removed = shared.Voices.Count(v => v.Removed),
                     removedStarters = shared.Voices.Where(v => v.Removed).Select(v => KindOfId(v.Id)).Where(kind => kind != "own").ToArray(),
@@ -3341,8 +3349,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 list = new
                 {
                     state = "loaded", voices = latest.Length,
-                    starters = latest.Where(p => p.Kind is not ("own" or "retired-sample")).Select(p => p.Kind).Distinct().ToArray(),
-                    own = latest.Count(p => p.Kind == "own"), retiredSample = latest.Any(p => p.Kind == "retired-sample"),
+                    starters = latest.Where(p => p.Kind != "own" && !Retired(p.Kind)).Select(p => p.Kind).Distinct().ToArray(),
+                    own = latest.Count(p => p.Kind == "own"),
+                    retired = latest.Where(p => Retired(p.Kind)).Select(p => p.Kind).Distinct().ToArray(),
                     applied = latest.Where(p => p.Id == inspection.AppliedPresetId).Select(p => p.Kind).FirstOrDefault()
                 };
             }
@@ -3406,7 +3415,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         return new
         {
             @default = fallback.Key, defaultName = fallback.Name, defaultFemale = fallback.Female, defaultCute = fallback.Cute,
-            cute = Martlet.F5.F5BundledVoices.All.Where(voice => voice.Cute).Select(voice => voice.Key).ToArray(), starters, library, list, speaking,
+            cute = Martlet.F5.F5BundledVoices.All.Where(voice => voice.Cute).Select(voice => voice.Key).ToArray(), starters,
+            retired = Martlet.F5.F5BundledVoices.Retired.Select(voice => new { key = voice.Key, name = voice.Name }).ToArray(), library, list, speaking,
             engines, otherVoices, chosenEngine = Martlet.Core.Settings.SpeechEngines.ForKey(chosen)?.Key ?? Martlet.Core.Settings.SpeechEngines.Default.Key,
             // Chatterbox Original's General and Expressive style as Companion › Voice saved it (Resemble's suggestions until then).
             chatterboxStyle = ChatterboxStyleReport(directory)

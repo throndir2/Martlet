@@ -529,14 +529,16 @@ device qualification or learned VAD evidence.
 Martlet's voice engines copy a voice from a short recording; nothing is
 trained. There are no built-in voices: **Companion > Voice > Voices** lists your
 voices, with **Play**, **Use** and **Remove** on each. A new list starts with
-seven starter voices. The four **cute voices** come first: two LibriVox readers
-voicing Anne of Green Gables' excitable young heroine, each as read and lifted
-to a high, anime-like pitch; Martlet starts with *Annie (cute anime girl)*. Then
+five starter voices. The two **cute voices** come first: two LibriVox readers
+voicing Anne of Green Gables' excitable young heroine, as read; Martlet starts
+with *Annie (cute, chatty)*. Then
 come LJ Speech (a female narrator) and two CMU ARCTIC speakers (US female and US
 male). All are free to use and share: the cute voices and LJ Speech are public
 domain (CC0 or public domain) and CMU ARCTIC is free for any use. Their sources
 and notices are in `notices\F5-Voices-NOTICES.txt`. Remove any you don't want;
-they don't come back. **Add a voice...**
+they don't come back. The pitch-raised "anime" voices of earlier versions are
+gone: Martlet removes them from your list, and if Martlet spoke with one it now
+speaks with your chosen or first voice. **Add a voice...**
 takes a recording of 1 to 30 seconds (5 to 12 seconds of clear speech works
 best) in almost any audio format, such as MP3, M4A/AAC, WAV, FLAC, WMA, AIFF,
 OGG/Opus (voice messages, for example) or the sound of an MP4, MOV or MKV video,

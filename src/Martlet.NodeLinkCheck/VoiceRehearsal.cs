@@ -151,6 +151,25 @@ internal static class VoiceRehearsal
                 return (merged.Library.Find(starterId)?.Removed == true && !merged.Present.Contains(starter.AudioSha256),
                     $"after merging the stale copy the voice is {(merged.Library.Find(starterId)?.Removed == true ? "still removed" : "back")}");
             });
+            await Run("A list from an older Martlet still has the retired \"anime\" voices: A's reconcile removes them without waiting for their recordings, lab-voice-1 follows and an older copy can't bring them back", async () =>
+            {
+                var anime = F5BundledVoices.Retired.Where(r => r.Transcript is not null).ToArray();
+                string Id(F5RetiredVoice voice) => SpeakingVoiceLibrary.ReferenceId(voice.AudioSha256, voice.Transcript!);
+                bool Gone(SpeakingVoiceLibrary library) => anime.All(r => library.Find(Id(r))?.Removed == true);
+                // What an older Martlet wrote for them: starter entries at revision 1 by "martlet".
+                var older = a.Library.Seed(anime.Select(r => (r.Name, r.Transcript!, r.AudioSha256, 7_000, (string?)null)));
+                await a.MergeAsync(h1, token, older);
+                a.Library = SpeakingVoiceLibrary.Merge(a.Library, (await a.ReadAsync(h1, token)).Library);
+                var listed = anime.Count(r => a.Library.Find(Id(r)) is { Removed: false });
+                var result = await a.ReconcileAsync(null, token);
+                var on1 = await a.MergeAsync(h1, token);
+                var stale = await a.MergeAsync(h1, token, older);
+                return (anime.Length == 2 && listed == anime.Length && Gone(a.Library) && result.Waiting == 0 && Gone(on1.Library) &&
+                        Gone(stale.Library),
+                    $"listed before: {listed} of {anime.Length}; after A's reconcile: {(Gone(a.Library) ? "removed" : "still listed")}, " +
+                    $"waiting: {result.Waiting}; lab-voice-1: {(Gone(on1.Library) ? "removed" : "still listed")}; after the older copy: " +
+                    $"{(Gone(stale.Library) ? "still removed" : "back")}");
+            });
             await Run("Speaking with a removed voice falls back to sending the recording, which the host does not keep", async () =>
             {
                 var reply = await a.SpeakAsync(h1, starterId, token, starter.ReadAudio(), starter.Transcript);

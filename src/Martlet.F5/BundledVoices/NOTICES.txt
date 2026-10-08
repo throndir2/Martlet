@@ -1,20 +1,18 @@
 Martlet starter voices - sources and notices
 ============================================
 
-Martlet starts every voice list with seven short reference recordings
+Martlet starts every voice list with five short reference recordings
 (src/Martlet.F5/BundledVoices) that its voice engines can copy a voice from. Once in the
 list they are ordinary voices: the owner can remove them like any other. Each is public
 domain (or dedicated to it under CC0) or covered by the CMU ARCTIC licence below, which
 allows any use, including commercial use and redistribution. They were cut from the
 upstream recordings named here by scripts/Build-F5BundledVoices.py.
 
-Modifications (all seven clips): the spoken passage was cut out at its silences (the
+Modifications (all five clips): the spoken passage was cut out at its silences (the
 two CMU ARCTIC sentences joined by 0.3 s of silence), DC offset and rumble below 50 Hz were
 removed, the level was set to -20 dBFS speech RMS (peaks at most -1 dBFS), 10 ms fades
 were applied at each cut, LibriVox MP3s were decoded and resampled to 24 kHz, and each
-clip was written as mono 16-bit PCM WAV. The two anime voices were also changed with
-Praat's PSOLA "Change gender" (pitch median raised 1.33x, pitch range widened 1.15x,
-formants raised 1.12x, duration kept). The words and voices are otherwise unchanged.
+clip was written as mono 16-bit PCM WAV. The words and voices are otherwise unchanged.
 
 These licences cover the recordings. Speech Martlet generates in these voices is not
 said or endorsed by the original speakers.
@@ -26,27 +24,21 @@ Cute voices (public domain)
 Both readers voice Anne Shirley, an excitable, talkative girl, in Chapter II ("Matthew
 Cuthbert is Surprised") of Anne of Green Gables (1908) by Lucy Maud Montgomery.
 
-librivox-woollybee-anime.wav ("Bee (cute anime girl)", pitch and formants raised)
-  LibriVox recording of Anne of Green Gables (version 6), read by WoollyBee
-  (https://archive.org/details/anneofgreengables_sp_librivox, dedicated to the public
-  domain, CC0 1.0), anneofgreengables_02_montgomery.mp3
-  (SHA-256 39e640f3ca7a59bdfa5c528c4af63bc4233e62e85dc791d3cbdba28a7ef1b145), 852.50-860.80 s.
-  Transcript: "You do get so attached to things like that, don't you? Is there a brook
-  anywhere near Green Gables? I forgot to ask Mrs. Spencer that."
-
-librivox-woollybee.wav ("Bee (cute, bubbly)")
-  The same recording and file, 413.30-423.72 s.
-  Transcript: "It isn't heavy. I've got all my worldly goods in it, but it isn't heavy.
-  And if it isn't carried in just a certain way the handle pulls out, so I'd better keep
-  it because I know the exact knack of it."
-
-librivox-annie-anime.wav ("Annie (cute anime girl)", pitch and formants raised)
 librivox-annie.wav ("Annie (cute, chatty)")
   LibriVox recording of Anne of Green Gables (version 4), read by Annie Coleman Rothenberg
   (https://archive.org/details/anne_gables_0808, public domain), agg_02_montgomery.mp3
   (SHA-256 4ef534ec93aa850571defca7c5d1dda245a0c3df210a3b43a32c9e24377f544d), 795.30-802.65 s.
   Transcript: "But am I talking too much? People are always telling me I do. Would you
   rather I didn't talk? If you say so, I'll stop."
+
+librivox-woollybee.wav ("Bee (cute, bubbly)")
+  LibriVox recording of Anne of Green Gables (version 6), read by WoollyBee
+  (https://archive.org/details/anneofgreengables_sp_librivox, dedicated to the public
+  domain, CC0 1.0), anneofgreengables_02_montgomery.mp3
+  (SHA-256 39e640f3ca7a59bdfa5c528c4af63bc4233e62e85dc791d3cbdba28a7ef1b145), 413.30-423.72 s.
+  Transcript: "It isn't heavy. I've got all my worldly goods in it, but it isn't heavy.
+  And if it isn't carried in just a certain way the handle pulls out, so I'd better keep
+  it because I know the exact knack of it."
 
 
 Public domain recordings
