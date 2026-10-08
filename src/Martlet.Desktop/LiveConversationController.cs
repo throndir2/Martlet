@@ -252,6 +252,9 @@ internal sealed class LiveConversationOperation
     internal int BoardNotes { get; set; }
     /// <summary>The kept lines of the context board notes this reply's request carried (ContextNote.Kept), or null.</summary>
     internal string? BoardKept { get; set; }
+    /// <summary>How many things Martlet said lately went in this request's notes (What you said lately; SaidLately): only what
+    /// Martlet says on its own carries them.</summary>
+    internal int SaidLately { get; set; }
     /// <summary><paramref name="text"/> (a message as the conversation keeps it) with <see cref="BoardKept"/> as its last line.</summary>
     internal string? WithBoardKept(string? text) => text is null || BoardKept is null ? text : text + "\n" + BoardKept;
     internal ListeningOptions? Listening { get; init; }
@@ -488,8 +491,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private readonly SmartHome? smartHome;
     private readonly McpToolService? tools;
     private readonly TaskCompletionSource quarantine = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    // What Martlet said while watching the screen (last 30 minutes), so it does not repeat itself. In memory only.
-    private readonly Queue<(long At, string Text)> remarks = new();
+    // What Martlet said lately (replies, remarks, reactions; never a [pass]), each with when, so what it says on its own can check
+    // whether something is worth saying again (SaidLately). In memory only, forgotten with the conversation.
+    private readonly SaidLately saidLately = new();
     // Remembering runs after a reply on its own text-only runtime, one exchange at a time, so it never delays the next turn.
     private readonly Func<IProviderCredentialSource, TimeProvider, ConversationRuntime>? runtimeFactory;
     private readonly ConversationCredentialSource captureCredentials;
@@ -1505,26 +1509,40 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private void ClearContextLocked()
     {
         context.Clear();
-        remarks.Clear();
+        saidLately.Clear();
         lastCache = null;
         conversationId = Guid.NewGuid();
     }
 
-    /// <summary>The user's Refresh context: forget the kept exchanges and screen remarks; nothing else stops.</summary>
+    /// <summary>The user's Refresh context: forget the kept exchanges and what Martlet said lately; nothing else stops.</summary>
     internal bool ForgetContext()
     {
         // A reply started early was built with what is forgotten now: it goes, and the reply starts again from the fresh context.
         LetGoEarly("the context was refreshed");
         lock (gate)
         {
-            if (context.Count == 0 && remarks.Count == 0) return false;
+            if (context.Count == 0 && saidLately.Count == 0) return false;
             memory?.Invalidate();
             ClearContextLocked();
             return true;
         }
     }
 
-    internal static TimeSpan RemarkMemory => TimeSpan.FromMinutes(30);
+    /// <summary>What Martlet said in the last hour (the newest <see cref="SaidLately.MaximumSayings"/>), oldest first, each with
+    /// when, for a check-in. In memory only.</summary>
+    internal IReadOnlyList<Saying> RecentSayings(DateTimeOffset now)
+    {
+        lock (gate) return saidLately.Recent(now);
+    }
+
+    // What a request Martlet makes on its own says in its notes about what it said lately (null: nothing, or the prompt is
+    // emptied), and how many things that is.
+    private (string? Note, int Count) SaidLatelyLocked(PromptSettings? prompts)
+    {
+        var now = clock.GetLocalNow();
+        var recent = saidLately.Recent(now);
+        return SaidLately.Note(prompts, recent, now, LiveConversationConfiguration.SilentReply) is { } note ? (note, recent.Count) : (null, 0);
+    }
 
     /// <summary>One unprompted screen glance: the image, the window title, the program in front (<paramref name="app"/>, and
     /// whether it is <paramref name="fullScreen"/>) and recent context go to the Thinking model,
@@ -1578,13 +1596,12 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private string CommentaryPromptLocked(string windowTitle, bool camera = false, PromptSettings? prompts = null,
         AttentionSignal? attention = null, SeenScreen? looked = null)
     {
-        while (remarks.TryPeek(out var oldest) && clock.GetElapsedTime(oldest.At) >= RemarkMemory) remarks.Dequeue();
         var title = new string(windowTitle.Where(c => !char.IsControl(c) && c != '"').Take(80).ToArray()).Trim();
-        var said = remarks.Count == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.GlanceRemarks,
-            ("remarks", string.Join(" | ", remarks.Select(r => $"\"{r.Text}\""))));
+        // What Martlet said lately goes in the look's notes (What you said lately); a glance prompt an older Martlet saved with
+        // {remarks} gets nothing there.
         return PromptSettings.Fill(prompts, attention is not null ? PromptCatalog.GlanceAttention
                 : camera ? PromptCatalog.GlanceCamera : PromptCatalog.GlanceScreen,
-            ("title", title.Length > 0 ? title : "unknown"), ("remarks", said is null ? "" : " " + said),
+            ("title", title.Length > 0 ? title : "unknown"), ("remarks", ""),
             ("app", ActiveApp.Describe(ActiveApp.Clean(looked?.App), looked?.FullScreen == true)),
             ("what", attention?.Describe() ?? ""), ("silent", LiveConversationConfiguration.SilentReply))!;
     }
@@ -1628,6 +1645,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 var history = context.Snapshot(sent: true);
                 var level = ChattinessTags.Level(chattiness, decided);
                 board = BoardFor(configured, operation.Authorization.Voice);
+                // What Martlet said lately goes last in the look's notes, sent with this request only (never kept), so it can
+                // tell whether a remark is worth saying again.
+                var (lately, latelyCount) = SaidLatelyLocked(configured.Prompts);
                 var request = configured.Request(new(GlanceMessage(prompt, read)), operation.Authorization.Voice, history, null, lore,
                     out var usedHistory, out _, out var usedLore, image,
                     Join(LiveConversationConfiguration.Moment(configured.Prompts), configured.AdultInstructions,
@@ -1636,7 +1656,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     gaze: look ? CharacterGaze.Prompt(configured.Prompts, LiveConversationConfiguration.SilentReply) : null,
                     chattiness: decides ? configured.ChattinessNote(level) : null,
                     controlTags: LiveConversationConfiguration.ControlTags(decides, picture: true, configured.Prompts),
-                    board: board.Text);
+                    board: Join(board.Text, lately));
+                operation.SaidLately = latelyCount;
                 operation.LookOffered = request.CharacterTags.Any(CharacterGaze.IsTag);
                 // Exchanges a look had to leave out are never sent again, so later requests start the same way.
                 context.LetGoBefore(context.Start + (history.Count - usedHistory) / 2);
@@ -1653,7 +1674,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             operation.BoardNotes = board.Notes.Count;
             operation.BoardKept = board.KeptText;
             // Nothing else waited (that would have made it a reply that takes the look along): the look alone.
-            operation.Inputs = MomentTurn.Describe(false, 0, true, operation.Attention?.Plain, 0, contextNotes: operation.BoardNotes);
+            operation.Inputs = MomentTurn.Describe(false, 0, true, operation.Attention?.Plain, 0, contextNotes: operation.BoardNotes,
+                said: operation.SaidLately);
             ErrorLog.Info($"Turn took: {operation.Inputs} (a look).");
             var terminal = await turn.Completion.ConfigureAwait(false);
             NoteFallback(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, terminal);
@@ -1679,11 +1701,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         ErrorLog.Info($"Vision: the conversation keeps a {(camera ? "camera look" : "screen glance")} " +
                             $"({(passed ? "passed" : "remark")}, {(seen is null ? "no description" : "described")}" +
                             $"{(replaced ? ", in place of the passed look before it" : "")}).");
-                        if (!passed)
-                        {
-                            remarks.Enqueue((clock.GetTimestamp(), remark.Length > 200 ? remark[..200] : remark));
-                            while (remarks.Count > 4) remarks.Dequeue();
-                        }
+                        if (!passed) saidLately.Add(clock.GetLocalNow(), remark);
                     }
                 }
             }
@@ -2060,6 +2078,13 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 var adult = operation.DiscordCall ? null : configured.AdultInstructions;
                 // Backup Thinking: once this reply's Thinking request is slow to start, a pool member may answer it instead.
                 var backup = BackupFor(operation);
+                // What Martlet says on its own (a report, a due reminder, a remark on what this PC played) gets what it said lately
+                // last in its notes, sent with this request only. A reply to the user's words or touches never does, so its
+                // request, and the time to its first words, stay as they were.
+                var trigger = own is not null || straight ? MomentTrigger.User : operation.Touch ? MomentTrigger.Touch
+                    : operation.Report ? MomentTrigger.Report : MomentTrigger.PcAudio;
+                var (lately, latelyCount) = SaidLately.Carries(trigger) ? SaidLatelyLocked(prompts) : (null, 0);
+                operation.SaidLately = latelyCount;
                 ConversationRequest Ask(SeenScreen? picture, string? recalled, out int keptHistory, out int keptFacts, out int keptEntries) =>
                     operation.Authorization.Configuration.Request(
                         input!, operation.Authorization.Voice, sentHistory, memoryResult, lore,
@@ -2086,7 +2111,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         // The program in front and the window's title change as the user switches windows: they go with the
                         // picture in the notes that are sent but not kept, never in the instructions, and only when the
                         // conversation's latest [Screen] line doesn't already say them.
-                        board: Join(board.Text, picture?.Active(prompts, sentHistory)), backup: backup);
+                        board: Join(board.Text, picture?.Active(prompts, sentHistory), lately), backup: backup);
                 ConversationRequest request;
                 int usedHistory, usedMemory, usedLore;
                 var picture = seen;
@@ -2152,7 +2177,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             operation.Inputs = MomentTurn.Describe(own is not null || straight,
                 operation.PcAudio ? input!.UserText.Split('\n').Count(line => line.StartsWith(LiveConversationConfiguration.PcAudioMarker, StringComparison.Ordinal)) : 0,
                 operation.ScreenSent, operation.ScreenSent ? operation.Attention?.Plain : null, operation.Delivery?.Jobs.Count ?? 0, operation.Report,
-                operation.Touches?.Touches ?? 0, operation.BoardNotes);
+                operation.Touches?.Touches ?? 0, operation.BoardNotes, operation.SaidLately);
             if (operation.Touches is { } carriedTouches)
             {
                 ErrorLog.Info($"Touches: {carriedTouches.Count} went to Thinking " +
@@ -2264,6 +2289,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                                     operation.OriginSpeaker ?? (operation.Heard?.Speaker?.Voice is { Named: true } namedVoice ? namedVoice.DisplayName : null),
                                     operation.Origin);
                         }
+                        // What Martlet said, with when, for what it says on its own next (a [pass] isn't noted).
+                        saidLately.Add(clock.GetLocalNow(), kept);
                         // The finished background work this reply carried is in the conversation now.
                         if (operation.Delivery is { } delivered)
                         {

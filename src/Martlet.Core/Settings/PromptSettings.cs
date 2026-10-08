@@ -19,6 +19,7 @@ public static class PromptCatalog
     public const string PcAudio = "pc_audio";
     public const string DiscordCall = "discord_call";
     public const string Moment = "moment";
+    public const string SaidLately = "said_lately";
     public const string MomentAttention = "moment_attention";
     public const string Tools = "tools";
     public const string VoiceTags = "voice_tags";
@@ -36,7 +37,6 @@ public static class PromptCatalog
     public const string Notes = "notes";
     public const string GlanceScreen = "glance_screen";
     public const string GlanceCamera = "glance_camera";
-    public const string GlanceRemarks = "glance_remarks";
     public const string GlanceAttention = "glance_attention";
     public const string GlanceLook = "glance_look";
     public const string CommentaryScreen = "commentary_screen";
@@ -86,6 +86,7 @@ public static class PromptCatalog
     public const string CheckInGaze = "check_in_gaze";
     public const string CheckInPromises = "check_in_promises";
     public const string CheckInCharacter = "check_in_character";
+    public const string CheckInRepeats = "check_in_repeats";
     public const string CheckInCustom = "check_in_custom";
     public const string CheckInNote = "check_in_note";
     public const string CheckInDue = "check_in_due";
@@ -133,6 +134,12 @@ public static class PromptCatalog
         "when the message holds none of their words and nothing in it is worth saying anything about, reply with exactly " +
         "[{silent}].";
 
+    public const string DefaultSaidLatelyInstructions =
+        "What you said lately, oldest first (it is {time} now):\n{said}\nBefore you speak, check what you're about to say " +
+        "against these lines. Don't say anything again that you already said, not even in other words (the same remark, joke, " +
+        "compliment, question or opener), unless something changed or enough time has passed that it is worth saying again; " +
+        "then say it differently. If nothing new is worth saying and nothing asks you to speak, reply [{silent}].";
+
     public const string DefaultBackgroundDoneNotesInstructions =
         "Background work you started has finished:\n{results}\nAnswer what the user just said first; then, when it fits, bring this " +
         "up in the same reply, in character, without mentioning notes, background jobs or tools. If a result needs the user's " +
@@ -178,6 +185,14 @@ public static class PromptCatalog
         "starting the same way again and again, getting long, or talking about notes, tools or being an AI. If they did, write " +
         "one line to {name} that starts with REMIND: and says how to talk from now on, like: REMIND: Stay playful and teasing; " +
         "your last replies all started with \"Ooh\" and got long.\nIf they are fine, write only: OK";
+
+    public const string DefaultCheckInRepeatsInstructions =
+        "{name}, the user's desktop companion, said these things lately, oldest first, each with when:\n{said}\n\nIt is {time}. " +
+        "Check whether {name} keeps saying the same things: the same remark, joke, compliment, question, opener or topic again " +
+        "and again, or something it said not long ago while nothing new happened that made it worth saying again. If it does, " +
+        "write one line to {name} that starts with REMIND: and says what it keeps repeating and what to do instead, like: " +
+        "REMIND: You said the boss fight looked intense three times in 10 minutes; don't bring it up again unless something " +
+        "changes, and talk about something new.\nIf it doesn't, write only: OK";
 
     public const string DefaultCheckInCustomInstructions = "{task}\n\n{facts}\n\nIt is {time}. If nothing needs doing now, write only: OK\n{answer}";
 
@@ -424,6 +439,14 @@ public static class PromptCatalog
             "the same): one message may bring several things at once, and Martlet answers them together. {silent} is the word the " +
             "model answers to stay quiet.",
             DefaultMomentInstructions, ["silent"]),
+        new(SaidLately, ConversationGroup, "What you said lately",
+            "Goes in the notes of what Martlet says on its own while nobody waits for its answer: every screen glance and camera " +
+            "look, its remarks on what this PC plays and the replies that bring up finished work, a due reminder or a check-in. " +
+            "{said} lists what it said in the last hour (replies to you too, the newest 10, oldest first), each with when it said " +
+            "it (\"10:05 PM (12 min ago)\"); {time} is the time now and {silent} the word the model answers to stay quiet. The " +
+            "notes go with that one request and are never kept in the conversation, so prompt caches keep working. Replies to " +
+            "what you say, type or do never carry it, so their first words never wait for it. Empty it to send nothing.",
+            DefaultSaidLatelyInstructions, ["said", "time", "silent"]),
         new(MomentAttention, VisionGroup, "Something wants your attention, with a reply",
             "Goes in the notes of a reply that takes the look Martlet was about to take at something that wants your attention " +
             "(a notification popped up or a taskbar button flashes while it watches your whole screen). {what} says which.",
@@ -647,27 +670,24 @@ public static class PromptCatalog
             "Your chattiness right now: {level}.", ["level"]),
         new(GlanceScreen, VisionGroup, "Screen glance message",
             "The message sent with each screenshot. {app} is the program in front by name (such as Google Chrome), with " +
-            "(full screen) when its window fills its monitor, a borderless one too; {title} is the active window's title; " +
-            "{remarks} is the line below when Martlet already said something.",
-            "(Screen glance. Active app: {app}. Active window: \"{title}\".{remarks} Reply [{silent}] or one short remark on what " +
+            "(full screen) when its window fills its monitor, a borderless one too; {title} is the active window's title. What " +
+            "Martlet said lately goes in its notes (What you said lately).",
+            "(Screen glance. Active app: {app}. Active window: \"{title}\". Reply [{silent}] or one short remark on what " +
             "they're doing.)",
-            ["app", "title", "remarks", "silent"]),
+            ["app", "title", "silent"]),
         new(GlanceCamera, VisionGroup, "Camera look message",
-            "The message sent with each camera image. {title} is the camera's name; {remarks} is the line below when Martlet already said something.",
-            "(Camera glance. Camera: \"{title}\".{remarks} Reply [{silent}] or one short remark.)",
-            ["title", "remarks", "silent"]),
-        new(GlanceRemarks, VisionGroup, "Earlier remarks",
-            "Fills {remarks} in a glance message with what Martlet said while watching, oldest first.",
-            "What you already said while watching, oldest first: {remarks}.", ["remarks"]),
+            "The message sent with each camera image. {title} is the camera's name. What Martlet said lately goes in its notes " +
+            "(What you said lately).",
+            "(Camera glance. Camera: \"{title}\". Reply [{silent}] or one short remark.)",
+            ["title", "silent"]),
         new(GlanceAttention, VisionGroup, "Notification glance message",
             "The message sent with the screenshot Martlet takes right away when a notification pops up or a taskbar button flashes " +
             "while it watches your whole screen. {what} says which; {app} is the program in front (as in the Screen glance " +
-            "message); {title} is the active window's title; {remarks} is the Earlier remarks line when Martlet already said " +
-            "something.",
-            "(Screen glance: {what}. Active app: {app}. Active window: \"{title}\".{remarks} If it is a message, call or reminder " +
+            "message); {title} is the active window's title. What Martlet said lately goes in its notes (What you said lately).",
+            "(Screen glance: {what}. Active app: {app}. Active window: \"{title}\". If it is a message, call or reminder " +
             "they would want to know about, give a quick heads-up: who or which app it is from, never the message itself. " +
             "Otherwise reply [{silent}].)",
-            ["what", "app", "title", "remarks", "silent"]),
+            ["what", "app", "title", "silent"]),
         new(GlanceLook, VisionGroup, "Where the character looks",
             "Added to screen glances while Companion › Vision › Glances at your screen is Martlet decides and the character " +
             "shows, so the Thinking model can turn the character's eyes to a part of the picture. {tags} lists the nine look tags, " +
@@ -789,6 +809,11 @@ public static class PromptCatalog
             "Asks whether the character's last replies drifted from its personality. A REMIND: line goes in the notes of the next " +
             "message; OK changes nothing. {persona} is the active personality and {replies} the last replies, oldest first.",
             DefaultCheckInCharacterInstructions, ["name", "persona", "replies"]),
+        new(CheckInRepeats, CheckInGroup, "Check-in: saying the same things",
+            "Asks whether the character keeps saying the same things. A REMIND: line goes in the notes of the next message; OK " +
+            "changes nothing. {said} lists what it said in the last hour (the newest 10, oldest first), each with when it said it " +
+            "(\"10:05 PM (12 min ago)\"), and {time} is the day and time.",
+            DefaultCheckInRepeatsInstructions, ["name", "said", "time"]),
         new(CheckInCustom, CheckInGroup, "Check-in: your own",
             "Wraps each of your own check-ins. {task} is what you wrote for it, {facts} what you chose it gets to know, {time} the " +
             "day and time, and {answer} the line that asks for REMIND: (a reminder for the next reply) or SAY: (Martlet brings it up).",
@@ -847,10 +872,10 @@ public static class PromptCatalog
 
     public static PromptDefinition? Find(string id) => ById.GetValueOrDefault(id);
 
-    /// <summary>Prompts an older Martlet had (the Thinking model's character palettes, and the response styles a reply was
-    /// picked from); their saved edits are dropped.</summary>
+    /// <summary>Prompts an older Martlet had (the Thinking model's character palettes, the response styles a reply was
+    /// picked from, and the glances' Earlier remarks, which What you said lately replaced); their saved edits are dropped.</summary>
     public static bool Retired(string id) => id is "character_theme" or "style" or "style_helpful" or "style_sarcastic" or
-        "style_silly" or "style_distracted" or "style_playful_teasing";
+        "style_silly" or "style_distracted" or "style_playful_teasing" or "glance_remarks";
 
     /// <summary>Prompts that are the message itself, so they can't be emptied.</summary>
     public static bool Required(string id) => id is GlanceScreen or GlanceCamera or GlanceAttention or BackgroundThink or BackgroundDone or ReminderDue or

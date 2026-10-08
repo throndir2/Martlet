@@ -288,8 +288,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // how many facts Martlet remembers, on how many hosts they are the same, when checked and how many were taken from or
         // forgotten on other computers (never a fact). MemoryFactStatus (the Memory window): how many facts it remembers, how
         // many belong to people Martlet knows by voice or to forgotten voices, how many the Show choice lists, and what the
-        // last action did (never a fact or a name).
-        "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus", "MemoryFactStatus",
+        // last action did (never a fact or a name). MemoryStatus (the Memory window's bottom line): whether memory is on, saving
+        // or why it can't be (fixed text, never a fact or a folder).
+        "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus", "MemoryFactStatus", "MemoryStatus",
         // Companion › Memory › Conversation history: whether Martlet keeps a record and may search it, and what the record holds
         // (conversations, exchanges, since when, per app); the history window's status line (counts, or what a search found) and
         // its line on changes waiting for Telegram and Discord (counts, apps and the last problem). Never what was said: the

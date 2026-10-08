@@ -9,11 +9,16 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- New in Companion › Check-ins: **Saying the same things** reads what Martlet said in the last hour, and when, and when it keeps saying the same thing again and again, it reminds Martlet in its next reply to say something new. ([#613](https://github.com/throndir2/Martlet/pull/613))
 - Settings › What this PC is for now lists **Your other computers**: each one says whether it is a companion PC or a host PC, with a button to make it a host PC or a companion PC again from where you are. It is the same switch the Devices map has, now easy to find. ([#612](https://github.com/throndir2/Martlet/pull/612))
 
 ### Changed
+- Martlet repeats itself less. Before it speaks up on its own about your screen, what your PC plays, a due reminder or finished work, it now looks at what it said in the last hour, and when, and says something again only when it's worth it. Edit how in Companion › Prompts › **What you said lately**; replies to what you say, type or touch never wait for it. ([#613](https://github.com/throndir2/Martlet/pull/613))
 - When you make a host PC your companion PC again, from that PC or from another one, Martlet there brings the character back and starts listening and watching again as it was before it became a host, instead of waiting for Martlet to restart. ([#612](https://github.com/throndir2/Martlet/pull/612))
 - When you switch another computer between companion and host PC, the computer you are at now tells you when it has switched. A host PC that has no host service yet now says so, instead of looking like it works for your other computers. ([#612](https://github.com/throndir2/Martlet/pull/612))
+
+### Fixed
+- **Manage memory** now shows what Martlet remembers the moment it opens, even while Martlet is answering you, and it keeps up on its own: facts Martlet remembers, changes or forgets while it's open show up right away, with no need to press **Refresh**. ([#614](https://github.com/throndir2/Martlet/pull/614))
 
 ## [0.57.0] - 2026-10-07
 
