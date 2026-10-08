@@ -28,7 +28,7 @@ Each release's section here is also its notes on GitHub.
 - Companion › Thinking › This PC › Ollama now says that any Ollama model works, including a Hugging Face GGUF or a model you made yourself. ([#633](https://github.com/throndir2/Martlet/pull/633))
 
 ### Fixed
-- Recommended setup now names the right listening model when it removes one (for example Whisper large-v3 turbo, not Whisper small), and when nothing can think it says that no free API key is saved. ([#646](https://github.com/throndir2/Martlet/pull/646))
+- Recommended setup now names the right listening model when it removes one (for example Whisper large-v3 turbo, not Whisper small), and when nothing can think it says that no free API key is saved. ([#647](https://github.com/throndir2/Martlet/pull/647))
 - Test hearing no longer decides that a model can't hear when the server only says it doesn't have a model whose name mentions audio. ([#644](https://github.com/throndir2/Martlet/pull/644))
 - Recommended setup now gives Thinking, the voice, listening and lip-sync your graphics card before optional extras such as Singing. A PC whose other computers are gone now gets its own Thinking model instead of keeping Singing, and with a free provider key saved, Thinking uses the free model when the card has no room for a local one. ([#638](https://github.com/throndir2/Martlet/pull/638))
 - The welcome tour's suggested setup now names the right Companion page for each part's backup, instead of always saying Companion › Thinking. ([#639](https://github.com/throndir2/Martlet/pull/639))
