@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.57.0] - 2026-10-07
+
 ### Added
 - Touch Martlet while it's talking and it stops to react, like when you talk over it, then decides whether to pick up where it left off. Choose which touches do this in Companion › Touch › Touch zones › **When you touch Martlet while it talks**: any touch, only intimate ones, or none. ([#610](https://github.com/throndir2/Martlet/pull/610))
 - New in Companion › Replies: **Adult content (18+)**, off by default. Turned on, an adult character can flirt, be sexual and react to your touches explicitly, always in its own personality, and it takes repeated touches on an intimate part as deliberate. It never does anything sexual with a character under 18, and never in a Discord call. ([#610](https://github.com/throndir2/Martlet/pull/610))
