@@ -119,6 +119,22 @@ public sealed class ScreenDigestTests
         Assert.Null(ScreenDigestPrompt.Message(emptied, picked, now));
     }
 
+    [Fact]
+    public void ThePanelsNameTheProgramInFrontAndAnotherProgramIsAlwaysKept()
+    {
+        var at = new DateTimeOffset(2026, 10, 7, 9, 0, 0, TimeSpan.Zero);
+        var ring = new ScreenDigestRing(new ScreenDigestTiming { PanelEdge = 32 });
+        Func<byte[]?> pixels = () => Solid(64, 36, 1, 2, 3);
+        Assert.True(ring.Observe(64, 36, "Home", 1.0, at, null, pixels, "Steam"));
+        // The same picture and title with another program in front (here the same one gone full screen) is kept; again, not.
+        Assert.True(ring.Observe(64, 36, "Home", 0.001, at.AddSeconds(3), null, pixels, "Steam, full screen"));
+        Assert.False(ring.Observe(64, 36, "Home", 0.001, at.AddSeconds(6), null, pixels, "Steam, full screen"));
+
+        var message = ScreenDigestPrompt.Message(null, ring.Frames, at.AddSeconds(6))!;
+        Assert.Contains("left 6 s ago (Steam, window \"Home\"), right 3 s ago (Steam, full screen, window \"Home\")", message);
+        Assert.Contains("skip the UI, their setup", message);
+    }
+
     [Theory]
     [InlineData("[pass]", null)]
     [InlineData("  ", null)]

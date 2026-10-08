@@ -845,7 +845,8 @@ internal sealed class LiveConversationConfiguration
             (whole ? "When a notification pops up or a taskbar button flashes, it looks right away (within the same limit) and sends " +
                 "that window's title with the screenshot. " : "") +
             withMessages +
-            "Screenshots include the window title, persona, matching lorebooks and recent conversation. " +
+            "Screenshots include the window title, the name of the program in front and whether it is full screen, persona, " +
+            "matching lorebooks and recent conversation. " +
             "Martlet greys out its own windows, password managers and private windows, and skips minimized windows and protected video. " +
             "Screenshots are never saved or added to Memory. " +
             "Provider requests may use quota or cost money. " + WhenItWatches;

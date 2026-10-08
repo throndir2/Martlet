@@ -706,7 +706,7 @@ public partial class LiveConversationWindow : ThemedWindow
         SeenScreen? seen = null;
         if (frame is not null && controller.Configuration?.Vision() is not (null or VisionSupport.Unsupported))
         {
-            try { seen = new(frame.Encode(), watchSource.Kind == WatchKind.Url ? "" : frame.Title, watchSource); }
+            try { seen = Seen(frame); }
             catch (Exception error) when (error is ContractException or InvalidOperationException or NotSupportedException or
                 System.Runtime.InteropServices.ExternalException) { }
         }
@@ -2458,7 +2458,7 @@ public partial class LiveConversationWindow : ThemedWindow
         if (controller.Configuration?.Vision() is null or VisionSupport.Unsupported) return null;
         try
         {
-            return new(frame.Encode(), watchSource.Kind == WatchKind.Url ? "" : frame.Title, watchSource);
+            return Seen(frame);
         }
         catch (Exception error) when (error is ContractException or InvalidOperationException or NotSupportedException or
             System.Runtime.InteropServices.ExternalException)
@@ -2466,6 +2466,11 @@ public partial class LiveConversationWindow : ThemedWindow
             return null;
         }
     }
+
+    // A picture to send with a reply: an address's host is not useful to the model; a camera's or window's name is, and for the
+    // screen so are the program in front and whether it fills its monitor.
+    private SeenScreen Seen(ScreenFrame frame) =>
+        new(frame.Encode(), watchSource.Kind == WatchKind.Url ? "" : frame.Title, watchSource, frame.App, frame.FullScreen);
 
     /// <summary>The vision line under the status, kept short: what Martlet watches, then only a look in progress, why it is
     /// holding off (you seem away, its break, a busy provider, something that wants your attention once you're done talking)
@@ -2484,11 +2489,14 @@ public partial class LiveConversationWindow : ThemedWindow
         return state is null ? sight : $"{sight} {state}";
     }
 
-    /// <summary>The vision line's tooltip: how many monitors the whole screen spans, how the last look went and what wanted
-    /// your attention but wasn't looked at. Empty while not watching; never window titles.</summary>
+    /// <summary>The vision line's tooltip: how many monitors the whole screen spans, the program in front (and whether it is full
+    /// screen) as the Thinking model is told it, how the last look went and what wanted your attention but wasn't looked at.
+    /// Empty while not watching; never window titles.</summary>
     private string VisionDetail() => !watching ? "" : string.Join(" ", new[]
     {
         monitors > 1 ? $"Your whole screen is {monitors} monitors." : null,
+        watchSource.IsScreen && latestFrame is { } frame && (frame.App.Length > 0 || frame.FullScreen)
+            ? $"Active app: {ActiveApp.Describe(frame.App, frame.FullScreen)}." : null,
         lookNote,
         attentionNote,
         readNote
@@ -2583,7 +2591,8 @@ public partial class LiveConversationWindow : ThemedWindow
             DropLatest();
             latestFrame = frame;
             latestAt = clock.GetTimestamp();
-            digest.Observe(frame.Width, frame.Height, frame.Title, frame.Change, ReadText(), frame.CopyPixels);
+            digest.Observe(frame.Width, frame.Height, frame.Title, frame.Change, ReadText(), frame.CopyPixels,
+                ActiveApp.Label(frame.App, frame.FullScreen));
             if (source.IsScreen) ReadScreen(frame);
             // With each new screenshot of your screen Martlet may decide to look at something on it instead of your mouse.
             if (source.IsScreen) Gaze?.Observe(frame);
@@ -2678,10 +2687,10 @@ public partial class LiveConversationWindow : ThemedWindow
         try
         {
             var image = frame.Encode();
-            // An address's host is not useful to the model; a camera's or window's name is.
+            // An address's host is not useful to the model; a camera's or window's name is, and so is the program in front.
             commentary = controller.StartCommentary(image, watchSource.Kind == WatchKind.Url ? "" : frame.Title, SavedChoice,
                 Voice, screenApproved: true, watchSource, attention: about, look: watchSource.IsScreen && Gaze?.Offer(frame) == true,
-                screenText: ReadText());
+                screenText: ReadText(), app: frame.App, fullScreen: frame.FullScreen);
             if (about is not null) pacer?.NoteAttention();
             waitNote = null;
             return true;
