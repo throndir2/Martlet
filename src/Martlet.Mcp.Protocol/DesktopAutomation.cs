@@ -37,6 +37,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Character › Touch zones' Stop only stops finding zones; it sends nothing (the zones found until then were
         // already saved).
         "TouchZonesStop",
+        // Companion › Character › Emotes and motions › Combos: Add a combo only adds an empty row. Nothing saves until the row has
+        // a tag and parts, and typing them needs --allow-ui-effects.
+        "CharacterCombosAdd",
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
         // Companion › Pictures' Check only asks the saved place whether it can draw now (a cloud provider: only whether a key is
@@ -366,6 +369,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // the character shows, so they need --allow-ui-effects.
         "CharacterActionsStatus", "CharacterActionsNaming", "CharacterActionsOffered", "CharacterActionsLast", "CharacterActionsSaveState",
         "CharacterActionsHeld",
+        // Emotes and motions › Combos: how many combos the model has and the combo tags replies get ("2 combos. Replies can use 1:
+        // {flustered}." or "No combos yet."). Each combo's title (CharacterComboName-<n>: "{flustered}  ·  combo", or "New combo"),
+        // what it sets off (CharacterComboState-<n>: "Turns on "hearts" until {/flustered}; plays "blush" and "nod" once.", or why
+        // its parts can't be read), the grey hint in its empty When to use box (CharacterComboHint-<n>: "a combination of {blush},
+        // {hearts} and {nod}") and its Try button's label (CharacterComboTry-<n>: "Try", or "Turn off" while one of its lingering
+        // parts is on); all four read through SafeValuePrefixes. Typing a combo's tag, parts or When to use, its on box and Remove
+        // save, and Try and Turn off change what the character shows, so they need --allow-ui-effects.
+        "CharacterCombosStatus",
         // Companion › Character › Touch zones: how many zones the shown model has, how many are in use and who found them, whether
         // the Thinking model can see (and where pictures go), how Detect zones went (each step while it runs), what the last
         // detection sent (how many pictures, how large, what they showed), which zone the last touch landed in and what it
@@ -481,6 +492,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort",
         "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingLocalShare", "DeepThinkingSameStatus",
         "DeepThinkingKeyStatus", "DeepThinkingPoolStatus", "LiveTasks", "LiveJobs", "LiveSong",
+        // Companion › Thinking pool › One of your computers: the rule that computers with a Thinking model join by themselves,
+        // and which computers you keep out (computer names only).
+        "DeepThinkingAutoJoin",
         // Companion › Thinking pool › Pool members: the member count and usable slots, the guidance ("1 slot: long thinking can
         // delay screen and sound summaries; add a second slot for the full experience."), the likely-slowdown warnings (a member
         // beside the conversation's Thinking model or the voice), the live floor's line (which members start no new pool work
@@ -686,7 +700,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// click; never the text it copies).</summary>
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
-    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
+    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default
@@ -721,8 +735,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // reads the role's settings there and opens its dialog, so it needs --allow-ui-effects). Thinking's, Listening's and
         // Lip-sync's computers have the same button for the role they run ("SetupChangeHost-thinking-diva" reads "Change model:
         // conversation model on diva (now gemma4-e4b)").
-        // Each paired computer's Join the Thinking pool box ("DeepThinkingPool-diva" reads "Join the Thinking pool on diva" and
-        // whether it is ticked; ticking it saves thinking-pool.json, so it needs --allow-ui-effects). Each pool member's line
+        // Each paired computer's In the Thinking pool box ("DeepThinkingPool-diva" reads "diva in the Thinking pool" and whether
+        // it is ticked: a computer with a Thinking model joins by itself; unticking takes it out and keeps it out, ticking adds it
+        // again; both save thinking-pool.json, so they need --allow-ui-effects). Its line (DeepThinkingHost-diva) says when a
+        // member is offline now or a computer is kept out. Each pool member's line
         // ("ThinkingPoolMember-0" reads "diva's Thinking pool (qwen3-8b): 2 slots; text only."), its slot choice
         // (ThinkingPoolSlots-0) and its Remove button (ThinkingPoolRemove-0); both save thinking-pool.json, so they need
         // --allow-ui-effects. Its May answer for the conversation box ("ThinkingPoolAnswers-0" reads "diva's Thinking pool

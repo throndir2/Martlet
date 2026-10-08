@@ -202,22 +202,32 @@ background work ([The Thinking pool](CONVERSATION.md#the-thinking-pool)).
 `thinking_pool_status` (`dataDirectory`) reads `thinking-pool.json` (or what
 Martlet would make from the older `deep-thinking.json`, without writing it):
 each member with its slots, whether it sees pictures or hears recordings and
-whether it can run; *Use the conversation model when the pool is empty*; the
+whether it can run; the computers the owner keeps out (`leftByOwner`, host IDs
+only: they never join by themselves); *Use the conversation model when the pool is empty*; the
 usable slots and whether one stays free for fast jobs; each job kind's
 priority, whether it is fast and whether a member can run it (`canRun`);
 guidance and likely-slowdown warnings; and the desktop's
-`thinking-pool-status.json` (running and waiting jobs by kind, the live floor's
+`thinking-pool-status.json` (`leftByOwner`, running and waiting jobs by kind, the live floor's
 level, the jobs waiting for the conversation and the ones it stopped this turn
 and in all, never a job's text). `thinking_pool_check` rehearses the production job board with simulated
 members (NOT models): no member, capabilities, the fast slot, priorities, retry
-on another member, a stale job dropped and the migration. On the desktop the
+on another member, a stale job dropped and the migration. Its `auto-join` steps
+run the production rule (`ThinkingPoolAutoJoin`) on sample hosts: a host with
+the Thinking pool role joins with its slots, an Ollama-only host joins unless it
+does this PC's Thinking, a member on Ollama moves to the role, and a computer
+kept out, one Sharing work never uses, a full pool and a host PC are skipped. On the desktop the
 card reads through `ThinkingPoolSummary`, `ThinkingPoolGuidance`,
 `ThinkingPoolWarnings`, `ThinkingPoolLiveFloor` (which members start no new
 pool work while you talk with Martlet because they share the conversation's
-computer) and `ThinkingPoolMember-<n>`; the
+computer) and `ThinkingPoolMember-<n>` (it says *Offline now* for a member whose
+computer doesn't answer); *One of your computers* reads through
+`DeepThinkingAutoJoin` (computers with a Thinking model join by themselves, and
+which ones are kept out) and `DeepThinkingHost-<host>` (*In the pool, offline
+now*, *Kept out of the pool*, or what joins at its next check). The
 `ThinkingPoolUseConversationModel` box, `ThinkingPoolSlots-<n>`,
-`ThinkingPoolRemove-<n>` and `DeepThinkingPool-<host>` (*Join the Thinking
-pool*) save `thinking-pool.json`, so they need `--allow-ui-effects`.
+`ThinkingPoolRemove-<n>` and `DeepThinkingPool-<host>` (*In the Thinking
+pool*: unticking keeps the computer out, ticking adds it again) save
+`thinking-pool.json`, so they need `--allow-ui-effects`.
 
 ```powershell
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"thinking_pool_check"},{"name":"thinking_pool_status"}]'
@@ -1269,7 +1279,15 @@ would show now (`["glasses", "blush:12"]`, minutes after the colon),
 showing {blush} (12 min), ...*); it never goes in the instructions. With `voiceTag`, a voice's tag such as `[laugh]` or
 `(sighs)` or a reply tag such as `{nod}` or `{/blush}`, `setsOff` lists what it sets off
 (`kind`, `name` and `holds`, whether it lingers, such as the `laugh` voice emote; one expression and one
-motion picked at random when several share a cue) and `turnsOff` the lingering emote an off tag turns off. With `answer`, a simulated Thinking reply such as
+motion picked at random when several share a cue; for a combo's tag such as `{flustered}`, each of its parts that is on)
+and `turnsOff` lists what an off tag turns off (the lingering emote, or a combo's lingering parts); `combo` is the combo
+the tag names, or null. `combos` lists the owner's [combos](AVATARS.md#emotes-and-motions) for the model: each one's `n`
+as in `CharacterComboTag-<n>`, `tag`, `parts` (each part's `id`, `kind`, `name`, `tag`, `enabled` and `mode`; `kind`
+is `missing` for a part the model doesn't have), `use`, `hint` (what replies get next to the tag), `enabled`, `lingers`
+(a part that is on lingers, so `{/tag}` is offered too) and `offered`. With `combos`, strings such as
+`flustered: blush hearts nod | when flattered` read the way the Combos section's boxes are read, those combos replace
+the saved ones; when they can't be saved, `combosProblem` says why (such as *no emote has the tag 'wave'.*) and the
+saved ones stay. With `answer`, a simulated Thinking reply such as
 `1: blush | - | stays | when shy` (the mode may be left out), `parsed` shows what the production parser makes of
 it (`read`, `problem`, `actions`, `prompt`). Model-authored names only, never
 the model's path; it reads and contacts nothing else.
@@ -3071,10 +3089,10 @@ check. With `live: true` it also asks Ollama on this PC (the saved local Thinkin
 model, or `model`) two made-up turns with the saved persona: `live.turns`
 (`outcome`, `reply`, `ms`). Loopback only; reads no credentials.
 
-The Companion › Deep thinking page's `DeepThinkingPoolStatus` says how many
+The Companion › Thinking pool page's `DeepThinkingPoolStatus` says how many
 places think at once, and each paired computer's `DeepThinkingPool-<host>` box
-(*Think on diva too*, ticked or not) reads; ticking it saves
-`deep-thinking.json`, so it needs `--allow-ui-effects`.
+(*diva in the Thinking pool*, ticked or not) reads; changing it saves
+`thinking-pool.json`, so it needs `--allow-ui-effects`.
 
 `reminders_status` shows Martlet's [reminders](CONVERSATION.md#reminders)
 from a data directory's `shared-settings.json` (optional absolute
@@ -4642,10 +4660,35 @@ are on.*); `CharacterActionsLast` then reads *Turned on the expression ...* or
 *Turned off ...*, and `logs_tail` `desktop` *Character expression 'Glasses' held
 for a try.* `CharacterActionsClear` (*Clear emotes*) and the character overlay
 menu's `CharacterClearEmotes` turn every lingering emote off (*Cleared 2
-lingering emotes for Clear emotes ...*). Editing a row
-saves `character-actions.json`, `CharacterActionsDetect` (*Name them with
+lingering emotes for Clear emotes ...*).
+
+The card ends with **Combos**. `CharacterCombosStatus` reads how many combos
+the model has and which tags replies get (*1 combo. Replies can use 1:
+{flustered}.* or *No combos yet.*). `CharacterCombosAdd` (*Add a combo*,
+passive) adds an empty row; nothing is saved until the row has a tag and parts.
+Row `<n>` (as in `character_actions`' `combos`) has `CharacterComboOn-<n>`
+(check box), `CharacterComboName-<n>` (*{flustered} · combo*, or *New combo*;
+a status field), `CharacterComboState-<n>` (a status field: what it sets off,
+such as *Turns on "hearts" until {/flustered}; plays "blush" and "nod" once.*,
+or why its parts can't be read, such as *No emote has the tag 'wave'.*),
+`CharacterComboTag-<n>`, `CharacterComboParts-<n>` (the parts' tags, such as
+`blush hearts nod`), `CharacterComboUse-<n>` (the When to use box),
+`CharacterComboHint-<n>` (the grey hint in that box while it is empty, such as
+*a combination of {blush}, {hearts} and {nod}*), `CharacterComboTry-<n>` (its
+label, a status field, reads *Turn off* while one of its lingering parts is
+on) and `CharacterComboRemove-<n>`. A part's tag that names no emote reads
+*Not saved: no emote has the tag 'wave'.* in `CharacterActionsSaveState`. After
+Try, `CharacterActionsLast` reads *Combo {flustered} for a try at 6:22:47 PM:
+turned on "hearts"; played "blush" and "nod".* (*Combo {/flustered} for a try
+...: turned off "hearts".* after Turn off, and *for a reply* when a reply's tag
+set it off), and `logs_tail` `desktop` has a line for each part and *Character
+combo {flustered} for a try: 1 turned on, 0 kept on, 2 played, 0 failed.* Typing
+in a combo's boxes, its check box and Remove save, and Try and Turn off change
+the overlay, so they need `--allow-ui-effects`.
+
+Editing an emote's row saves `character-actions.json`, `CharacterActionsDetect` (*Name them with
 Thinking*) sends the model's emote and motion names and details to the Thinking
-model, `CharacterActionsReset` goes back to the model's own names, and Try,
+model, `CharacterActionsReset` goes back to the model's own names (the combos stay), and Try,
 Turn off and Clear emotes change the overlay, so all of them need `--allow-ui-effects`. The first time a model
 shows with a Thinking model set up, Martlet names its emotes once on its own.
 `character_actions` reads the same settings headlessly.
@@ -5101,7 +5144,10 @@ each paired computer's
 `DeepThinkingHost-<host ID>` (*diva: Its Deep thinking role runs qwen3-8b.*,
 *diva: Ollama runs gemma4:27b. Add the Deep thinking role ...*, *Thinks here
 (...)*, *Its Ollama (...) does Thinking for the conversation. Add the Deep
-thinking role there ...*) and, when Deep thinking there would share one
+thinking role there ...*; on Companion › Thinking pool also *In the pool,
+offline now: its 2 slots come back when it answers again.*, *... Kept out of
+the pool, because you unticked it. Tick In the Thinking pool to add it again.*
+and *... It joins the pool by itself at its next check.*) and, when Deep thinking there would share one
 graphics card with the computer's Thinking model,
 `DeepThinkingShare-<host ID>` (*diva: diva already runs a Thinking model
 (gemma4:e4b) on its only graphics card. ... We recommend one graphics card for
