@@ -8,6 +8,9 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Fixed
+- Touch zones stay on the right part of your character while it moves: a tap on its cheek, eye or mouth lands on that zone even while its head follows your mouse, nods or tilts. The whites of the eyes, the lashes and a wide blush now count as their eye or cheek instead of the hair, and a blush near an ear no longer counts as the ear. ([#624](https://github.com/throndir2/Martlet/pull/624))
+
 ## [0.58.0] - 2026-10-08
 
 ### Added
