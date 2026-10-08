@@ -221,6 +221,8 @@ public partial class MainWindow
             if (fix == CoverageFix.OpenDevices && compact) continue;
             var label = CoverageFixLabel(job, fix);
             var button = new Button { Content = label, Margin = new Thickness(0, 0, 8, 4), Padding = new Thickness(12, 6, 12, 6) };
+            // This PC's host service's repair is greyed out while a run already does it (starting Docker Desktop, for example).
+            if (fix == CoverageFix.RepairHostService && OwnHostRepair() is { Enabled: false }) button.IsEnabled = false;
             AutomationProperties.SetAutomationId(button, $"CoverageFix-{job.Job}-{fix}");
             var current = job;
             button.Click += (_, _) => RunCoverageFix(current, fix);

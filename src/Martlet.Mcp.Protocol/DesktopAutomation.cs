@@ -777,6 +777,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Ana by voice"). Never a token.
         "DiscordFriend-",
         "HostChoice",
+        // Home's fixes for this PC's own host service ("HealthFix-host-service-repair-0" reads "Start Docker Desktop: This PC's
+        // host service isn't working", or "Starting Docker Desktop...: ..." and is disabled while a run starts it). Fixed text
+        // only; clicking one starts or sets up software, so it needs --allow-ui-effects.
+        "HealthFix-host-service-",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "OtherRole-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
         "SmartHomeDevice-", "SmartHomeUpdate-", "DiscordRule-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-", "DeviceFilter-",
         // The selected device's resource bars ("DeviceResource-vram" reads "Graphics memory: 14 of 32 GB planned (44%), 15 GB

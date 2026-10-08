@@ -4630,7 +4630,14 @@ twice. While runs work, `HostRunsNow` (returned) lists them with their status
 lines (*2 runs working side by side: Start Docker Desktop: Waiting for Docker
 Desktop to start... · Check this PC's host: Waiting: ...*), `StepDetail-docker`
 says which run is installing or starting Docker Desktop (*"Start Docker Desktop"
-is starting Docker Desktop. You don't have to wait: ...*), and, while a host
+is starting Docker Desktop. You don't have to wait: ...*), and `Step-docker-0`
+says what that run does (*Installing Docker Desktop...*, *Starting Docker
+Desktop...* or *Getting Windows ready...*) and is disabled (`enabled: false`)
+until it ends. This includes the hidden *Start this host's roles* run of a PC
+that just became a host PC. When no run works on Docker Desktop any more, the
+dashboard reads the host service again at once (the desktop log says *No run
+works on Docker Desktop any more; reading this PC's host service again now.*),
+so the step ticks or offers its button again. While a host
 service Martlet hasn't seen set up waits for Docker Desktop, `StepDetail-service`
 offers `Step-service-0` *Set up host service* already (its run waits for Docker
 Desktop and continues). The dashboard keeps reading the host service every 30
@@ -4639,7 +4646,17 @@ one to click: `ui_click` `{"id":"HostRunCancel","window":"Martlet - Start Docker
 Desktop"}`. To exercise it without the real engine, launch the desktop with
 `DOCKER_HOST` pointing at a missing pipe and Docker Desktop already running:
 *Start Docker Desktop* (`Step-docker-0`) then waits for an engine that never
-answers, and `HostStatusConsole` (*Show host status*) waits for it.
+answers, and `HostStatusConsole` (*Show host status*) waits for it. To exercise
+a start without touching Docker Desktop or Windows at all, also set
+`MARTLET_SIMULATE_DOCKER_START` to a number of seconds (1-600) before launching
+the desktop (FIXTURE, `SimulatedDockerStart.cs`): every Docker Desktop start
+then waits that long, shared by the runs that need it as a real start is, and
+stops as a start that failed; the host-runs log says *FIXTURE
+(MARTLET_SIMULATE_DOCKER_START)*. With `this-pc-host-roles.txt` (one role per
+line, such as `ollama`) in the data directory, a desktop made a host PC (for
+example with `role_lab ask host`) starts Docker Desktop by itself, so
+`Step-docker-0` reads *Starting Docker Desktop...* and is disabled until the
+fixture ends.
 Devices' `AddComputer` (and Settings' `OpenHosts`, and on a new PC Home's
 `HomeConnectComputers` or the `HealthOpen-thinking-setup-network` fix) opens the *Add a computer*
 wizard (`HostsWindow`, titled *Martlet - add a computer*; the click may return
@@ -4742,8 +4759,15 @@ conversation replies or hears you): `HealthCheck-hostservice` shows its stage
 *Host is running*), and while it isn't ready `HealthIssue-host-service` says
 why and which of this PC's jobs stop (they no longer show as `job-<job>`
 items), with the host dashboard's next step as `HealthFix-host-service-repair-0`
-(Install or Start Docker Desktop, Set up or Start host service), then
-`HealthFix-host-service-check` and `HealthOpen-host-service-show`. On Devices,
+(Install or Start Docker Desktop, Set up or Start host service; its label is
+returned, such as *Start Docker Desktop: This PC's host service isn't working*),
+then `HealthFix-host-service-check` and `HealthOpen-host-service-show`. While a
+run installs or starts Docker Desktop, `HealthFix-host-service-repair-0` reads
+*Starting Docker Desktop...* (or *Installing Docker Desktop...*) and is
+disabled, the hero (when this item is the top problem) offers *Check again*
+instead, and on Devices the
+`CoverageFix-<job>-RepairHostService` buttons are disabled with the same label
+until that run ends. On Devices,
 `Node-this-pc` and `SelectedDeviceHealth` read *Host service not working* (or
 *not answering*), and coverage names it *This PC's host service*, never by its
 host ID. To see it, pair a disposable data directory's `hosts.json` with
