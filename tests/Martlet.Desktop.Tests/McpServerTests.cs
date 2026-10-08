@@ -22,6 +22,7 @@ public sealed class McpServerTests(ITestOutputHelper output)
         Assert.Equal("2025-06-18", messages[0].GetProperty("result").GetProperty("protocolVersion").GetString());
         var tools = messages[1].GetProperty("result").GetProperty("tools").EnumerateArray().ToArray();
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "ui_click");
+        Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "ui_scroll");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_touch");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_pose");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_mouth");
