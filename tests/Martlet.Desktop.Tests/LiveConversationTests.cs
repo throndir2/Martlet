@@ -3334,7 +3334,7 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal LiveFixture(ControlledDevice? output = null, VoiceIdentity? voiceIdentity = null,
         IPcAudioSourceFactory? pcAudio = null, bool voices = false, bool history = false, bool tools = false, bool echo = false,
         ILocalTranscriber? localListener = null, IEndOfTurnJudge? turnJudge = null, IWindowsVoiceClient? windowsVoice = null,
-        Func<SetupRoute, string?>? listeningStandIn = null, Func<TimeProvider, PcActivityMonitor>? pcActivity = null)
+        Func<SetupRoute, string?>? listeningStandIn = null, Func<TimeProvider, PcActivityMonitor>? pcActivity = null, bool data = false)
     {
         Store = new(DirectoryPath);
         Memory = new(Store, Clock);
@@ -3356,7 +3356,9 @@ internal sealed class LiveFixture : IAsyncDisposable
             // Echo reduction over the fixture microphone, with speakers whose loopback stays quiet and a canceller that keeps
             // the microphone as it is.
             echoReducer: echo ? new EchoReducer(Capture, new QuietSpeakers(), () => new KeptMicrophone(), Clock) : null,
-            localListener: localListener, turnJudge: turnJudge, listeningStandIn: listeningStandIn, pcActivity: pcActivity?.Invoke(Clock));
+            localListener: localListener, turnJudge: turnJudge, listeningStandIn: listeningStandIn, pcActivity: pcActivity?.Invoke(Clock),
+            // With data, the controller keeps what it finds out (model-abilities.json) and its status files in the fixture's folder.
+            dataDirectory: data ? DirectoryPath : null);
         Events.LockedChanged += Controller.SetSessionLocked;
         Llm.Inspect = Tts.Inspect = request =>
         {
@@ -3368,10 +3370,10 @@ internal sealed class LiveFixture : IAsyncDisposable
         bool legacy = false, VoiceIdentity? voiceIdentity = null, IPcAudioSourceFactory? pcAudio = null, bool voices = false,
         bool history = false, bool tools = false, bool echo = false, ILocalTranscriber? localListener = null,
         IEndOfTurnJudge? turnJudge = null, IWindowsVoiceClient? windowsVoice = null, Func<SetupRoute, string?>? listeningStandIn = null,
-        Func<TimeProvider, PcActivityMonitor>? pcActivity = null)
+        Func<TimeProvider, PcActivityMonitor>? pcActivity = null, bool data = false)
     {
         var fixture = new LiveFixture(output, voiceIdentity, pcAudio, voices, history, tools, echo, localListener, turnJudge,
-            windowsVoice, listeningStandIn, pcActivity);
+            windowsVoice, listeningStandIn, pcActivity, data);
         var settings = SetupSettings.Begin(null);
         settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api },
             Audio = AudioSettings.Create() };

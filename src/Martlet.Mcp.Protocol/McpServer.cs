@@ -1711,6 +1711,26 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "rule counts only computers that answer, every computer offline lets the conversation model stand in) and answering " +
             "again (its slots come back and a job waiting in line starts there), while the think_longer tool text stays " +
             "byte-identical. In-process; reads nothing.", new { }),
+        Tool("sense_models_status", "Companion > Vision > Image model and Companion > Listening > Audio model from a data directory " +
+            "(docs/SENSE_MODELS.md): sense-models.json (this PC's choice: the same model as the text model, the same model as the other " +
+            "kind, or a model of its own: Ollama on this PC, an OpenAI-compatible endpoint or a paired computer's model; never a key), " +
+            "the Thinking model and whether it sees and hears, and for pictures and recordings where they go now (Thinking: in the " +
+            "text model's own request; Described: the model of its own puts them into words for Thinking; None: nowhere) and why, " +
+            "with what the chosen model is known to do (model-abilities.json, with where that came from). With the desktop's " +
+            "sense-models-status.json: each lane's recent jobs (purposes, outcomes and times; never what was sent or said) and " +
+            "whether the model shares the conversation's computer. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("sense_models_check", "Rehearse the image and audio models' production routing (SenseRouting) over the combinations " +
+            "of text, image and audio models with fixture model names (the defaults with an omni or a text-only Thinking model, an " +
+            "image model only, separate image and audio models, the audio model the same as an image model that can't hear, one " +
+            "model for both, same-as both ways, a model of its own that is exactly Thinking's, a paired computer, what Martlet found " +
+            "out winning over names), the sense-models.json round trip, and the production lanes (SenseLanes) with a simulated " +
+            "runner, NOT models: no model of its own answers at once, one job at a time, a newer picture replacing the one " +
+            "waiting, priorities, a stale job dropped, refusals, failures, timeouts, the kind check, one lane for one model used " +
+            "for both kinds, and the conversation first (a job waits while a reply holds the model's hardware, a running job is " +
+            "stopped when a reply starts, a job the hold outlasts is dropped). In-process; reads nothing.", new { }),
         Tool("backup_thinking_check", "Rehearse Backup Thinking (Companion > Thinking pool, a hedged request: when the " +
             "conversation's Thinking model has no first words after the delay, the same request also goes to a pool member that " +
             "may answer for the conversation, and whichever starts first gives the reply) with the production race in " +
@@ -2167,6 +2187,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "elevenlabs_check" => await ElevenLabsCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalString(arguments, "model"),
                     OptionalString(arguments, "reply"), OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), cancellation),
                 "thinking_pool_check" => await ThinkingPoolCheck.RunAsync(cancellation),
+                "sense_models_status" => await SenseModelsCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "sense_models_check" => await SenseModelsCheck.RunAsync(cancellation),
                 "backup_thinking_check" => await BackupThinkingCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),
                 "live_floor_status" => await LiveFloorCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),
