@@ -223,6 +223,37 @@ pool*) save `thinking-pool.json`, so they need `--allow-ui-effects`.
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"thinking_pool_check"},{"name":"thinking_pool_status"}]'
 ```
 
+**Backup Thinking** ([a hedged request](CONVERSATION.md#backup-thinking-a-hedged-request),
+off by default): when the reply's Thinking model has no first words after the
+wait, the same request also goes to a member that may answer for the
+conversation, and the first to start gives the reply. `thinking_pool_status`
+shows each member's `answersForConversation` and `paid` (a cloud provider), a
+`backup` part (on, `delayMs` or automatic, the automatic wait's limits and
+`wouldAsk`: the member the production choice picks now for a reply that is
+taken, and why), and in the desktop's file `backup` (the wait used, the
+automatic wait, recent replies, its 95th percentile, the last results and
+counts; never what was said). `backup_thinking_check` (`scenario`, `delayMs`
+one of 500-3000, 900 by default) rehearses the production race in
+`ConversationTurn`, `ConversationRuntime.OpenTextAsync` and the member choice
+(`ThinkingBackupMembers`) with two fixture Chat Completions endpoints on
+127.0.0.1 (canned words, NOT AI), which note when the client stopped their
+stream. Scenarios: `backup-wins`, `conversation-wins`, `late-conversation`
+(the member asked, then stopped), `conversation-fails`, `no-member`, `held`
+(only a paid cloud member: asked once the reply is taken), `let-go` (a reply
+started early and let go stops its member's stream too) and `members` (the
+rules). Each turn reports its outcome, the member, when it was asked, the
+first words, each endpoint's requests and whether its stream was stopped, and
+the reply latency line. On the desktop the card reads through
+`ThinkingPoolBackup` (the box), `ThinkingPoolBackupDelay` (the wait),
+`ThinkingPoolBackupStatus` (who may answer and the wait now) and each member's
+`ThinkingPoolAnswers-<n>` (*May answer for the conversation*); the box, the
+wait and each member's box save `thinking-pool.json`, so they need
+`--allow-ui-effects`.
+
+```powershell
+.\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"backup_thinking_check"}]'
+```
+
 ### Live floor (the live turn first)
 
 The live floor puts the live conversation turn before all background work
@@ -2669,9 +2700,13 @@ times, M cancelled*) and `newest` (each reply's
 `interrupted`, `restarted`, `pausedForYouMs`, `resumed`, `startedEarlyMs`,
 `earlyStarts`, `earlyCancelled`, `liveFloor` (what the live floor held and stopped for
 that turn, from *Live floor: held 2 pool jobs, stopped 1 (think longer).*, else null), `quickSoundMs`
-(when a quick sound played, from *Quick sound at 712 ms.*, else null), `legacy`), and `quickSounds`
+(when a quick sound played, from *Quick sound at 712 ms.*, else null), `backup`, `backupMember`,
+`backupAskedMs` and `backupWonMs` (Backup Thinking: `won`, `lost`, `no answer` or `no member`, from
+*Backup Thinking won at 1104 ms (diva (qwen3-8b), asked at 912 ms).* and the like, else null),
+`legacy`), `quickSounds`
 (replies that played a quick sound in Martlet's own voice: `replies`, `atMs` and their `firstAudio`
-statistics). It only reads the log: no audio, network or provider
+statistics) and `backupThinking` (replies that asked Backup Thinking: `replies`, `won`, `lost`,
+`noAnswer`, `noMember`, and `askedAtMs`, `wonAtMs` and `firstAudioWon` statistics). It only reads the log: no audio, network or provider
 request.
 
 `quick_sounds_status` reads Companion › Voice › *Quick sounds while Martlet

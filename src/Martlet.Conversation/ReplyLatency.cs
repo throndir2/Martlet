@@ -88,7 +88,9 @@ public sealed class ReplyTimeline
 /// started early (<see cref="EarlyStarts"/>) adds, just before the live floor's part, <c>Started early at 262 ms, promoted.</c> (or how many starts the turn let
 /// go: <c>Started early 2 times, 2 cancelled.</c>), and its own steps show among the end of the turn's, in the order they
 /// happened. A reply that played a quick sound ahead of its own voice says when, from the same moment as the total:
-/// <c>Quick sound at 712 ms.</c>
+/// <c>Quick sound at 712 ms.</c> A reply whose Thinking model was slow to start and asked Backup Thinking says when and which
+/// stream had words first: <c>Backup Thinking won at 1104 ms (diva (qwen3-8b), asked at 912 ms).</c> or <c>Backup Thinking asked at
+/// 912 ms (diva (qwen3-8b)); the conversation's model won.</c>
 /// MCP's latency_report reads these lines; the models are the desktop's list of model IDs.</summary>
 public static class ReplyLatency
 {
@@ -199,6 +201,20 @@ public static class ReplyLatency
         // from the same moment as the line's total.
         if (timings.QuickSoundAfter is { } quick)
             text.Append(CultureInfo.InvariantCulture, $" Quick sound at {Milliseconds(Math.Max(0, At(quick) - origin), clock)} ms.");
+        // Backup Thinking (IThinkingBackup): a pool member was asked the same once the reply's Thinking model was slow to start;
+        // which one had words first, counted from the same moment as the total.
+        if (reply.Backup is { AskedAfter: { } askedAfter } backup)
+        {
+            var askedAt = Milliseconds(Math.Max(0, At(askedAfter) - origin), clock);
+            text.Append(backup.Outcome switch
+            {
+                ThinkingBackupOutcome.Won when backup.FirstWordsAfter is { } won =>
+                    $" Backup Thinking won at {Milliseconds(Math.Max(0, At(won) - origin), clock)} ms ({backup.Member}, asked at {askedAt} ms).",
+                ThinkingBackupOutcome.Lost => $" Backup Thinking asked at {askedAt} ms ({backup.Member}); the conversation's model won.",
+                _ => $" Backup Thinking asked at {askedAt} ms ({backup.Member}); it gave no answer."
+            });
+        }
+        else if (reply.Backup is { Outcome: ThinkingBackupOutcome.NoMember }) text.Append(" Backup Thinking: no member could take it.");
         if (reply.FellBack) text.Append(" Answered by the Thinking fallback.");
         // Replies started early in this turn: the one this reply is (how far into the wait it started), and those let go. Next to
         // what the live floor did, which a reply started early holds from its start.

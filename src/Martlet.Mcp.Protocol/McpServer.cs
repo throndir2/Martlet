@@ -1385,7 +1385,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "and whether one is kept free for fast jobs (judges and summaries); each job kind's priority, whether it is fast and " +
             "whether a member can run it (the cheap CanRun answer); guidance (such as 1 slot: long thinking can delay screen and " +
             "sound summaries); warnings about likely slowdowns (a member beside the conversation's Thinking model or the voice); " +
-            "and the desktop's thinking-pool-status.json (running and waiting jobs by kind, never a job's text). Read-only.", new
+            "Backup Thinking's choices (on or off, the delay or automatic, each member's May answer for the conversation and whether " +
+            "it is a paid cloud provider) and the member it would ask now for a reply that is taken; " +
+            "and the desktop's thinking-pool-status.json (running and waiting jobs by kind, never a job's text; Backup Thinking's " +
+            "automatic delay, recent replies and how it ended lately). Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -1395,6 +1398,24 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "slot, one slot where waiting jobs run highest priority first (barge-in judge, digest, research), a busy member passed " +
             "over for the next, a stale judge dropped, and deep-thinking.json read once into thinking-pool.json. In-process; " +
             "reads nothing.", new { }),
+        Tool("backup_thinking_check", "Rehearse Backup Thinking (Companion > Thinking pool, a hedged request: when the " +
+            "conversation's Thinking model has no first words after the delay, the same request also goes to a pool member that " +
+            "may answer for the conversation, and whichever starts first gives the reply) with the production race in " +
+            "ConversationTurn, ConversationRuntime.OpenTextAsync and the production member choice (ThinkingBackupMembers) on " +
+            "fixture turns: two fixture Chat Completions endpoints on 127.0.0.1 answer after set waits (canned words, NOT AI) and " +
+            "note when the client stopped their stream. Scenarios: backup-wins (the conversation's model is slow: the member is " +
+            "asked at the delay and answers, the conversation's stream is stopped, the latency line says Backup Thinking won), " +
+            "conversation-wins (fast: no member asked), late-conversation (the conversation's model starts after the member was " +
+            "asked: the member is stopped), conversation-fails (it fails after the member was asked: the member answers), " +
+            "no-member (none may answer), held (a reply started early with only a paid cloud member: asked only once the reply is " +
+            "taken), let-go (a reply started early and let go: its member's stream stops with it) and members (the rules: off, no " +
+            "member ticked, a cloud member never unless ticked, a member on the conversation's computer passed over, tools only on " +
+            "an endpoint). scenario runs one; delayMs is one of 500, 700, 900, 1200, 1500, 2000, 3000 (900 by default). Loopback " +
+            "only; plays nothing.", new
+        {
+            scenario = new { type = "string", @enum = BackupThinkingCheck.Scenarios },
+            delayMs = new { type = "integer", @enum = new[] { 500, 700, 900, 1200, 1500, 2000, 3000 } }
+        }),
         Tool("quick_sounds_status", "Companion > Voice > Quick sounds while Martlet thinks, from a data directory: the choice (on or " +
             "off, off by default, and the delay, from talk-preferences.json), the voice replies speak with (in words, whether it is " +
             "a paid cloud voice, and its key per voice and character), whether its quick sounds are made (each clip's words and " +
@@ -1746,6 +1767,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "quick_sounds_status" => QuickSoundCheck.Status(DataDirectory(arguments)),
                 "quick_sounds_check" => await QuickSoundCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),
                 "thinking_pool_check" => await ThinkingPoolCheck.RunAsync(cancellation),
+                "backup_thinking_check" => await BackupThinkingCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),
                 "live_floor_status" => await LiveFloorCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),
                 "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),

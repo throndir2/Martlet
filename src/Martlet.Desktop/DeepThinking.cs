@@ -109,6 +109,22 @@ internal sealed class DeepThinkTarget
         };
         return new(input, Model, limits, ThinkLonger.TurnLimits(time), chat: Chat, host: Host, generation: generation);
     }
+
+    /// <summary>Backup Thinking's request (<see cref="IThinkingBackup"/>): the reply's own <paramref name="input"/>, generation
+    /// settings, output budget and times, sent to this member as live work, so a paired computer never puts it behind
+    /// background work. A paired computer's Ollama loads its largest context, as for every pool job, so it keeps its model
+    /// loaded.</summary>
+    internal ConversationRequest Backup(BoundedTextInput input, ConversationRequest reply)
+    {
+        var limits = reply.TextLimits with
+        {
+            MaxInputBytes = Input.MaxInputBytes, MaxHistoryMessages = Input.MaxHistoryMessages, MaxInputTokens = Input.MaxInputTokens,
+            MaxContextTokens = Input.MaxInputTokens + reply.TextLimits.MaxOutputTokens
+        };
+        var generation = Host is not null ? (reply.Generation ?? new()) with { ContextTokens = HostContextTokens } : reply.Generation;
+        return new(input, Model, limits, reply.Limits, chat: Chat, host: Host is { } host ? host with { Background = false } : null,
+            generation: generation);
+    }
 }
 
 /// <summary>The one-use permission for a background think's requests to its own destination (Companion › Deep thinking): exactly

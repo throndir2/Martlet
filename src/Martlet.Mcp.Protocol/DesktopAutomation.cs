@@ -477,6 +477,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // conversation model when the pool is empty box (ticking it saves thinking-pool.json, so it needs --allow-ui-effects).
         // Each member's line reads through ThinkingPoolMember- below.
         "ThinkingPoolSummary", "ThinkingPoolGuidance", "ThinkingPoolWarnings", "ThinkingPoolLiveFloor", "ThinkingPoolUseConversationModel",
+        // Companion › Thinking pool › Backup Thinking (off by default): its box, how long a reply waits for its first words
+        // before a member that may answer for the conversation is asked too (automatic or a fixed time) and its line (which
+        // members may answer, and the wait now; member names only). The box and the wait save thinking-pool.json, so they need
+        // --allow-ui-effects. Each member's May answer for the conversation box reads through ThinkingPoolAnswers- below.
+        "ThinkingPoolBackup", "ThinkingPoolBackupDelay", "ThinkingPoolBackupStatus",
         // Companion › Deep thinking › Web research (off by default): whether Martlet may search the web when asked and why it
         // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
         // needs --allow-ui-effects.
@@ -706,11 +711,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // whether it is ticked; ticking it saves thinking-pool.json, so it needs --allow-ui-effects). Each pool member's line
         // ("ThinkingPoolMember-0" reads "diva's Thinking pool (qwen3-8b): 2 slots; text only."), its slot choice
         // (ThinkingPoolSlots-0) and its Remove button (ThinkingPoolRemove-0); both save thinking-pool.json, so they need
-        // --allow-ui-effects.
+        // --allow-ui-effects. Its May answer for the conversation box ("ThinkingPoolAnswers-0" reads "diva's Thinking pool
+        // (qwen3-8b) may answer for the conversation" and whether it is ticked; ticking it saves thinking-pool.json, so it needs
+        // --allow-ui-effects).
         // Each paired computer's shared-card warning, when Deep thinking there shares one graphics card with its Thinking model
         // ("DeepThinkingShare-diva" reads "diva: diva already runs a Thinking model (gemma4:e4b) on its only graphics card. ...").
         "DeepThinkingHost-", "DeepThinkingShare-", "DeepThinkingAddRole-", "DeepThinkingChangeModel-", "DeepThinkingPool-", "SetupChangeHost-",
-        "ThinkingPoolMember-", "ThinkingPoolSlots-",
+        "ThinkingPoolMember-", "ThinkingPoolSlots-", "ThinkingPoolAnswers-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...").
         "AppearanceColor-", "AppearancePreview-",

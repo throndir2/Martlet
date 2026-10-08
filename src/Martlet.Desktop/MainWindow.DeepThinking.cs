@@ -64,6 +64,7 @@ public partial class MainWindow
         page.Children.Add(Card(Heading("Now"), now, why));
 
         page.Children.Add(PoolMembersCard(poolSettings, poolPlan, routes, on));
+        page.Children.Add(BackupThinkingCard(poolSettings));
         page.Children.Add(ThinkLongerCard(homeSettings?.Generation?.ThinkLonger, route, plan));
         page.Children.Add(WebResearchCard(ThinkLongerSettings.Of(homeSettings?.Generation), route, plan));
 
@@ -141,6 +142,28 @@ public partial class MainWindow
             AutomationProperties.SetName(line, $"{member.Describe()}: {detail}");
             AutomationProperties.SetAutomationId(line, $"ThinkingPoolMember-{i}");
             text.Children.Add(line);
+            // Backup Thinking may send a slow reply's request here too (off for each member by default; a cloud one costs money).
+            var answerKey = member.Key;
+            var paid = ThinkingBackupMembers.Paid(member);
+            var answers = new CheckBox
+            {
+                IsChecked = pool.Answers(answerKey), Margin = new Thickness(0, 4, 0, 0),
+                Content = new TextBlock
+                {
+                    Text = "May answer for the conversation" + (paid ? " (a paid cloud provider: each backup request may cost money)" : ""),
+                    TextWrapping = TextWrapping.Wrap
+                },
+                ToolTip = "With Backup Thinking on, a reply that is slow to start sends the same request here too, and the first to " +
+                    "start gives the reply. Choose a member with the same model as the conversation, or a similar one."
+            };
+            AutomationProperties.SetAutomationId(answers, $"ThinkingPoolAnswers-{i}");
+            AutomationProperties.SetName(answers, $"{member.Describe()} may answer for the conversation");
+            void Answer(bool allow) => SavePoolAsync(p => p.WithAnswers(answerKey, allow), allow
+                ? $"{member.Describe()} may answer for the conversation when a reply is slow to start."
+                : $"{member.Describe()} no longer answers for the conversation.").Forget();
+            answers.Checked += (_, _) => Answer(true);
+            answers.Unchecked += (_, _) => Answer(false);
+            text.Children.Add(answers);
             var slots = new ComboBox { Width = 110, ItemsSource = Enumerable.Range(1, DeepThinkingSettings.MaxPlaces).Select(n => $"{n} slot{(n == 1 ? "" : "s")}").ToArray(),
                 SelectedIndex = member.ThinksAtOnce - 1, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
             AutomationProperties.SetAutomationId(slots, $"ThinkingPoolSlots-{i}");
@@ -198,6 +221,58 @@ public partial class MainWindow
         stack.Add(fallback);
         if (!on) stack.Add(Note("Thinking longer is off, so the pool isn't used for thinking longer or research.", new Thickness(0, 4, 0, 0)));
         return Card([.. stack]);
+    }
+
+    /// <summary>Backup Thinking (off by default): when a reply's Thinking model has no words after a short wait, the same request
+    /// also goes to a member that may answer for the conversation, and the first to start gives the reply.</summary>
+    private Border BackupThinkingCard(ThinkingPoolSettings pool)
+    {
+        var on = new CheckBox
+        {
+            IsChecked = pool.BackupThinking, Margin = new Thickness(0, 0, 0, 8),
+            Content = new TextBlock { Text = "Ask a pool member too when a reply is slow to start", TextWrapping = TextWrapping.Wrap }
+        };
+        AutomationProperties.SetAutomationId(on, "ThinkingPoolBackup");
+        AutomationProperties.SetName(on, "Backup Thinking: ask a pool member too when a reply is slow to start");
+        void TurnOn(bool value) => SavePoolAsync(p => p with { BackupThinking = value }, value
+            ? "Backup Thinking is on: a slow reply also asks a member that may answer for the conversation."
+            : "Backup Thinking is off.").Forget();
+        on.Checked += (_, _) => TurnOn(true);
+        on.Unchecked += (_, _) => TurnOn(false);
+        var choices = ThinkingPoolSettings.BackupDelayChoices;
+        var delay = new ComboBox
+        {
+            Width = 260, HorizontalAlignment = HorizontalAlignment.Left,
+            ItemsSource = new[] { "Automatic (from recent replies)" }.Concat(choices.Select(ms => (ms / 1000.0).ToString("0.0#", System.Globalization.CultureInfo.InvariantCulture) + " s")).ToArray(),
+            SelectedIndex = pool.BackupDelayMs is { } chosen ? Math.Max(0, IndexOf(choices, chosen) + 1) : 0
+        };
+        AutomationProperties.SetAutomationId(delay, "ThinkingPoolBackupDelay");
+        AutomationProperties.SetName(delay, "How long a reply waits for its first words before a member is asked too");
+        delay.SelectionChanged += (_, _) =>
+        {
+            int? value = delay.SelectedIndex <= 0 ? null : choices[delay.SelectedIndex - 1];
+            SavePoolAsync(p => p with { BackupDelayMs = value }, value is null
+                ? "Backup Thinking waits an automatic time, from how fast recent replies began."
+                : $"Backup Thinking waits {value} ms for the first words.").Forget();
+        };
+        var answering = pool.Members.Where(m => pool.Answers(m.Key)).Select(m => m.Describe()).ToArray();
+        var words = conversation?.FirstWords;
+        var status = Note(LiveConversationController.BackupLine(pool, answering, words is { Count: > 0 } ? words.Delay : null, words?.Count ?? 0),
+            new Thickness(0, 8, 0, 0));
+        AutomationProperties.SetAutomationId(status, "ThinkingPoolBackupStatus");
+        return Card(Heading("Backup Thinking"),
+            Note("Off by default. When the conversation's Thinking model has no words after a short wait, the same request also goes " +
+                "to a member you allowed (May answer for the conversation, above). Whichever starts first gives the reply, and the " +
+                "other stops at once, so a slow or busy model doesn't keep you waiting. Choose members with the same model as the " +
+                "conversation, or a similar one. A paid cloud member is asked only when you tick it, and only for a reply already " +
+                "taken.", new Thickness(0, 0, 0, 8)),
+            on, TerminalRow("Wait for first words", delay), status);
+
+        static int IndexOf(IReadOnlyList<int> list, int value)
+        {
+            for (var i = 0; i < list.Count; i++) if (list[i] == value) return i;
+            return -1;
+        }
     }
 
     /// <summary>Companion › Thinking pool's live floor line (MCP reads it as ThinkingPoolLiveFloor): which members wait while you

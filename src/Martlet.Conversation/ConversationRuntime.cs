@@ -127,6 +127,29 @@ public sealed class ConversationRuntime : IAsyncDisposable
         return pcm.ToArray();
     }
 
+    /// <summary>Opens one Thinking text stream for <paramref name="request"/> (its input, model, limits and generation settings)
+    /// under <paramref name="authorization"/>'s one-use permission for exactly that request, with <paramref name="ids"/> and
+    /// <paramref name="epoch"/> on its events, for a caller that reads and checks the stream itself: another reply's Backup
+    /// Thinking (<see cref="IThinkingBackup"/>). <paramref name="cancellationToken"/> stops the stream too. Nothing is sent until
+    /// the stream is read. Throws when the request isn't authorized.</summary>
+    public async Task<ITextGenerationStream> OpenTextAsync(ConversationRequest request, IConversationAuthorizationSource authorization,
+        CorrelationIds ids, long epoch, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(authorization);
+        ArgumentNullException.ThrowIfNull(ids);
+        var input = request.Input;
+        var deadline = Clock.GetUtcNow() + request.TextLimits.MaxRequestTime;
+        var context = new ProviderRequestContext { Ids = ids, Epoch = epoch, Deadline = deadline };
+        var budget = new OperationBudget(ids, epoch, ProviderRole.Llm, 1, input.Utf8Bytes, input.InputTokenReservation,
+            request.TextLimits.MaxOutputTokens, 0);
+        var permission = await authorization.AuthorizeTextAsync(new(context, input, request.Model, request.TextLimits, budget),
+            cancellationToken).ConfigureAwait(false);
+        if (permission?.Authorization is not { } consent) throw new InvalidOperationException("The Thinking request wasn't authorized.");
+        return StreamText(context with { Deadline = consent.ExpiresAt < deadline ? consent.ExpiresAt : deadline }, request, input, consent,
+            cancellationToken);
+    }
+
     // One passive adapter per exact destination; the turn's authorization still binds base URL, model and key.
     // Input is the request's input or a continuation of it after tool calls.
     internal ITextGenerationStream StreamText(ProviderRequestContext context, ConversationRequest request,
