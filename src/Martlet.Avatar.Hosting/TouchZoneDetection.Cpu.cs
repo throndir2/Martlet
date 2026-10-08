@@ -125,7 +125,10 @@ public static partial class TouchZoneDetection
                 ($"thigh_{side}", At($"{side}UpperLeg", $"{side}LowerLeg")), ($"knee_{side}", At($"{side}LowerLeg")),
                 ($"calf_{side}", At($"{side}LowerLeg", $"{side}Foot")), ($"foot_{side}", At($"{side}Foot", $"{side}Toes") ?? At($"{side}Foot"))
             ]);
-        found.AddRange([("neck", At("neck", "head")), ("chest", At("upperChest") ?? At("chest")), ("stomach", At("spine")), ("hips", At("hips"))]);
+        // The chest and spine bones' joints sit low on what they move: without an upper chest the chest is between its joint and
+        // the neck, and the stomach is between the spine's joint and the next bone up.
+        found.AddRange([("neck", At("neck", "head")), ("chest", At("upperChest") ?? At("chest", "neck") ?? At("chest")),
+            ("stomach", At("spine", "chest") ?? At("spine", "upperChest") ?? At("spine", "neck") ?? At("spine")), ("hips", At("hips"))]);
         foreach (var (id, point) in found)
             if (point is { } at) yield return (id, at);
     }

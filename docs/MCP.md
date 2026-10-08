@@ -1355,7 +1355,9 @@ is kept, what the last detection `sent` (its plain `line`, `requests`,
 each zone's parts, `plays`, whether Martlet `notices` it and the owner's `hint`) and,
 with `touch` (a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
 it lands with the character framed whole), `match`: the zone it lands
-in, `how` (`drawable`, `bone`, `hair`, `box` or `coarse`), its rough `coarse`
+in, `how` (`drawable`, `bone`, `hair`, `box` or `coarse`; with a VRM `bone`, the
+smallest zone on the part of the body that bone moves whose box holds the
+point wins, and reads `bone` when it holds that bone, else `box`), its rough `coarse`
 zone, what it `plays`, whether Martlet `notices` it, the line the Thinking model would get for that one touch (`noticed`, such as *They patted the top of your head once.*; a press of 600 ms or more in `heldMilliseconds` is a hold) and how long it `rests`.
 With `detect`, the production detection (`TouchZoneDetection`) runs on
 `snapshotPath` (a PNG of the character, transparent around it, as the renderer
@@ -1468,6 +1470,10 @@ is the zone chosen to add; it offers every zone the model doesn't have yet) and 
 `TouchZoneNotices-` (*Martlet notices*; its checked state reads in `ui_snapshot`), `TouchZoneNarration-` (the owner's optional hint; it shows only while *Martlet notices* is on), `TouchZoneCooldown-`, `TouchZoneBox-`,
 `TouchZoneDelete-` and its box on the picture (`TouchZoneRect-<n>`, inside
 `TouchZonesPicture`) save, so they all (except Stop) need `--allow-ui-effects`.
+`ui_snapshot` lists the picture and each zone's box on it as custom controls;
+with `{"idPrefix":"TouchZoneRect","layout":true}` each box's `bounds` show
+where it sits on the picture (`TouchZonesPicture`'s `bounds`), one box per
+saved zone.
 The Character page lists more than `ui_snapshot`'s 200 controls; read the
 section with `{"idPrefix":"TouchZone"}`. With `"layout":true`, each row's text
 boxes, choices and buttons in Touch zones, Touch temperament and Emotes and
@@ -4764,6 +4770,9 @@ HitAreas there and the visible drawables under it (topmost first, at most 8),
 VRM the humanoid bone of the mesh skinned most to the hit triangle (or its
 nearest humanoid ancestor), the actual node, whether that node is hair (a
 spring-bone or hair-named joint under the head), the mesh and the material.
+The VRM hit test measures the skinned meshes in the pose they have now, so a
+sleeve or glove that the idle pose moved away from the T-pose is hit where it
+shows.
 Martlet then reacts locally, without asking any model: the model's own tap
 motion when it has one (a group named like `TapHead`, `Tap@Head`, `TapBody`
 or `Tap`), else a head tilt (or nod) for the head, hair and face and a
