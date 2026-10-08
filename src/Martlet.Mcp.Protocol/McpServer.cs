@@ -227,6 +227,20 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             outputPath = new { type = "string" }
         }),
+        Tool("character_pose", "Read what the showing character's idle body does, samples times (1 to 60, default 1) gapMs apart (0 to " +
+            "5000, default 250), as each frame is drawn. A VRM rests in a relaxed pose (arms hanging close to the body, elbows " +
+            "softly bent, fingers curled) and breathes. Each reading (poses) has n, found (false for a Live2D model, whose own " +
+            "breathing isn't read), renderer, idle, breathing (phase 0 to 1 of one breath; inhale, how full the chest is, 0 to 1; " +
+            "perMinute), arms (left and right: fromDown, the upper arm's angle from straight down, and elbow, its bend, in degrees " +
+            "measured on the posed bones), curl (left and right: the middle finger's curl in degrees, 0 straight), sway (the " +
+            "spine's slow sideways lean, degrees) and bones (head, neck, shoulders, upper arms, hands and upper legs: x, y as " +
+            "fractions of the character overlay's drawing, +y down). summary gives whether it idled, the inhale, perMinute, arm, " +
+            "curl and sway ranges (least, most) and how far each bone moved (x, y). Reading changes nothing, so it needs no " +
+            "--allow-ui-effects.", new
+        {
+            samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumPoseSamples },
+            gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
+        }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
             "[x, y, width, height] in physical screen pixels) and whether Martlet still runs. \"open\" and \"menu\" send the icon " +
@@ -1780,6 +1794,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_stroke" => await desktop.StrokeCharacterAsync(StrokePoints(arguments), OptionalInt(arguments, "stepMs") ?? 40),
                 "character_face" => await desktop.FaceCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "character_picture" => await desktop.PictureCharacterAsync(OptionalString(arguments, "outputPath")),
+                "character_pose" => await desktop.PoseCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "turn_judge_check" => await TurnJudgeCheck.RunAsync(arguments, MartletDirectory(arguments), cancellation),

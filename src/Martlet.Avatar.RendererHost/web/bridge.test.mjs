@@ -354,6 +354,34 @@ test("the face Martlet draws over is read unprompted for MCP: how it is followed
   assert.ok(!posts.some(post => post.error));
 });
 
+test("a pose reading says how a VRM's idle body breathes and hangs its arms, and never fails the renderer", async () => {
+  const posts = [];
+  let throws = false;
+  const idle = { idle: true, breathing: { phase: 0.2, inhale: 0.5, perMinute: 14.3 }, arms: { left: { fromDown: 15.2, elbow: 17.2 } },
+    curl: { left: 60.2 }, sway: 0.3 };
+  class Renderer {
+    load() { return Promise.resolve({ expressions: [] }); }
+    startIdle() {}
+    resize() {}
+    update() {}
+    setView() {}
+    dispose() {}
+    get idleReading() { if (throws) throw new Error("controlled reading failure"); return idle; }
+    bonePoints() { return [{ bone: "leftHand", x: 0.612345, y: 0.5 }, { bone: "leftIndexProximal", x: 0.62, y: 0.52 }]; }
+  }
+  const { send } = await page(Renderer, posts);
+  await send({ kind: "pose", data: { id: 1 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { poseReading: { id: 1, found: false } }, "nothing before a model shows");
+  await send({ kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm" } });
+  await send({ kind: "pose", data: { id: 2 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { poseReading: { id: 2, found: true, renderer: "Vrm", ...idle,
+    bones: { leftHand: { x: 0.6123, y: 0.5 } } } }, "the idle reading with the shoulders, hands and hips placed; no finger bones");
+  throws = true;
+  await send({ kind: "pose", data: { id: 3 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { poseReading: { id: 3, found: false } }, "a failed reading is only not found");
+  assert.ok(!posts.some(post => post.error));
+});
+
 test("the eyes measured by vision reach the adapter, and the page answers where the eyes come from without ever failing", async () => {
   const posts = [], hints = [];
   let from = "estimate", refusing = false;

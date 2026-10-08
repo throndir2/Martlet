@@ -1328,6 +1328,76 @@ internal sealed class DesktopAutomation(bool allowEffects)
         };
     }
 
+    internal const int MaximumPoseSamples = 60;
+
+    /// <summary>Reads what the showing character's idle body does (a VRM's breath, arm hang, finger curl and sway)
+    /// <paramref name="samples"/> times, <paramref name="gapMs"/> apart, through MoveAvatar's UI Automation value ("pose"). It
+    /// changes nothing, so it needs no --allow-ui-effects. Returns each reading and a summary: how full the breath got, the
+    /// breaths a minute, how the arms hang and the fingers curl, the sway and how far the head, shoulders and hands moved.</summary>
+    internal async Task<object> PoseCharacterAsync(int? samples, int? gapMs)
+    {
+        var count = samples ?? 1;
+        if (count is < 1 or > MaximumPoseSamples) throw new ArgumentException($"samples is 1 to {MaximumPoseSamples}.");
+        if (gapMs is < 0 or > 5000) throw new ArgumentException("gapMs is 0 to 5000.");
+        var element = Find("MoveAvatar");
+        if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            throw new InvalidOperationException("The character overlay can't be read through UI Automation.");
+        var value = (ValuePattern)pattern;
+        if (value.Current.IsReadOnly) throw new InvalidOperationException("The character's pose can't be read until it has loaded.");
+        static System.Text.Json.JsonElement? Pose(string text) => string.IsNullOrEmpty(text) ? null :
+            System.Text.Json.JsonDocument.Parse(text).RootElement is { ValueKind: System.Text.Json.JsonValueKind.Object } root &&
+            root.TryGetProperty("pose", out var pose) ? pose.Clone() : null;
+        var poses = new List<System.Text.Json.JsonElement>();
+        for (var i = 0; i < count; i++)
+        {
+            if (i > 0) await Task.Delay(gapMs ?? 250);
+            var before = Pose(value.Current.Value)?.GetRawText();
+            value.SetValue("pose");
+            var waited = Stopwatch.StartNew();
+            System.Text.Json.JsonElement? after;
+            while ((after = Pose(value.Current.Value))?.GetRawText() == before && waited.Elapsed < TimeSpan.FromSeconds(3)) await Task.Delay(20);
+            if (after is { } read && read.GetRawText() != before) poses.Add(read);
+        }
+        return new { samples = count, read = poses.Count, poses, summary = PoseSummary(poses),
+            note = poses.Count == 0 ? "The renderer didn't answer within 3 seconds." : null };
+    }
+
+    // How the readings went together: whether the body idled, the least and most of the breath (inhale, 0 to 1), the breaths a
+    // minute, each arm's angle from straight down and elbow bend, each hand's finger curl and the sway (degrees), and how far
+    // each placed bone moved across the readings (fractions of the drawing).
+    internal static object PoseSummary(IReadOnlyList<System.Text.Json.JsonElement> poses)
+    {
+        static System.Text.Json.JsonElement? At(System.Text.Json.JsonElement owner, string[] path)
+        {
+            foreach (var key in path)
+            {
+                if (owner.ValueKind != System.Text.Json.JsonValueKind.Object || !owner.TryGetProperty(key, out var next)) return null;
+                owner = next;
+            }
+            return owner;
+        }
+        static double[] Numbers(IEnumerable<System.Text.Json.JsonElement> items, params string[] path) =>
+            [.. items.Select(item => At(item, path)).Where(value => value is { ValueKind: System.Text.Json.JsonValueKind.Number })
+                .Select(value => value!.Value.GetDouble())];
+        static object? Range(double[] values) => values.Length == 0 ? null : new { least = values.Min(), most = values.Max() };
+        static double Spread(double[] values) => values.Length == 0 ? 0 : Math.Round(values.Max() - values.Min(), 4);
+        var found = poses.Where(pose => At(pose, ["found"]) is { ValueKind: System.Text.Json.JsonValueKind.True }).ToArray();
+        object Arm(string side) => new { fromDown = Range(Numbers(found, "arms", side, "fromDown")), elbow = Range(Numbers(found, "arms", side, "elbow")) };
+        var bones = found.Select(pose => At(pose, ["bones"])).Where(value => value is { ValueKind: System.Text.Json.JsonValueKind.Object })
+            .SelectMany(value => value!.Value.EnumerateObject().Select(property => property.Name)).Distinct().ToArray();
+        return new
+        {
+            found = found.Length,
+            idle = found.Length > 0 && found.All(pose => At(pose, ["idle"]) is { ValueKind: System.Text.Json.JsonValueKind.True }),
+            inhale = Range(Numbers(found, "breathing", "inhale")),
+            perMinute = Range(Numbers(found, "breathing", "perMinute")),
+            arms = new { left = Arm("left"), right = Arm("right") },
+            curl = new { left = Range(Numbers(found, "curl", "left")), right = Range(Numbers(found, "curl", "right")) },
+            sway = Range(Numbers(found, "sway")),
+            moved = bones.ToDictionary(name => name, name => new { x = Spread(Numbers(found, "bones", name, "x")), y = Spread(Numbers(found, "bones", name, "y")) })
+        };
+    }
+
     /// <summary>Moves a movable control (the character overlay's MoveAvatar, like dragging the character) by dx, dy screen
     /// pixels through UI Automation's Transform pattern, then reports where it was and is. Refused while it can't move, as
     /// when the character's position is locked in Martlet.</summary>

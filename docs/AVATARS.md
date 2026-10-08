@@ -125,6 +125,20 @@ what each one is.
   sentence ends (at most 12 seconds) unless another replaces it; motions and
   gestures play once. VRM has no motions of its own (VRMA isn't supported), so
   it uses its expressions and the gestures.
+- **VRM idle pose and breathing**: a VRM model is made in a T-pose (arms
+  straight out, flat open hands). While it shows, Martlet stands it in a
+  relaxed pose on every model: the arms hang about 15 degrees out from the
+  body and a little forward, the elbows bend softly, the wrists turn toward
+  the thighs, and the fingers and thumbs curl in, a little more toward the
+  little finger. It breathes about 14 times a minute (a quicker breath in, a
+  slower breath out and a short rest, a little faster or slower over time,
+  and shallower while the voice speaks): the shoulders rise, the chest opens
+  a little and the head stays level. The spine also sways slowly from side
+  to side, less than a degree. A wave, shrug or arms-open gesture opens the
+  hands it moves. The first frame (the rest pose in Martlet's touch-zone
+  picture) is breathed out with no sway. Martlet's MCP `character_pose` reads
+  it. Authored VRMA clips (the official `@pixiv/three-vrm-animation` loader)
+  are not played yet.
 - **Lingering emotes**: an emote can stay on, like a VTuber's toggle hotkey.
   Its **Stays on** box in Emotes and motions sets this. In
   `character-actions.json` the mode is `lingering`; an unticked box is `brief`.
@@ -736,7 +750,7 @@ paid/cloud service.
 | VRM | Humanoid model, expressions, look-at and spring-bone capabilities depend on the actual model/version. Basic `aa`, `ih`, `ou`, `ee`, `oh`, blink/emotion expressions are all optional. Detailed ARKit shapes/custom expressions must be authored and mapped. |
 | Audio2Face | Preferred speech-to-face source. First lane: explicitly user-provisioned, already-running literal-loopback Audio2Face-3D NIM v2 service and official bidirectional `ProcessAudioStream` gRPC contract (v2 reuses `nvidia_ace` v1.2). Not a native SDK bridge or bundled NIM installation. |
 | Amplitude | **Implemented** loudness lip-sync: mouth opening from the RMS of outgoing generated PCM in 20 ms windows, presented on the playback device clock. Less articulation than phonemes/visemes; drives the model's `LipSync` group (Live2D) or `aa` expression (VRM). Local only; the Automatic mode's fallback and the explicit `Loudness` mode. |
-| Procedural/clip motion | Live2D: authored idle motions, eye blink, breathing, physics, pose and cursor look-at through the official Framework. VRM: relaxed arms, breathing, blink, head look-at and spring bones. Not inferred from Audio2Face availability. |
+| Procedural/clip motion | Live2D: authored idle motions, eye blink, breathing, physics, pose and cursor look-at through the official Framework. VRM: a relaxed standing pose (*VRM idle pose and breathing* in [Emotes and motions](#emotes-and-motions)), breathing, a slow sway, blink, head look-at and spring bones. Not inferred from Audio2Face availability. |
 
 Primary-source constraints are recorded in [Research S42-S47](RESEARCH.md#s42);
 [Architecture](ARCHITECTURE.md#avatar-boundaries-accepted-direction-2026-09-23)

@@ -4896,6 +4896,29 @@ when given. It changes nothing on the character, so it needs no
 `--allow-ui-effects`. `MoveAvatar`'s value then shows the last picture as
 `picture`.
 
+**The character's idle body**: while it shows, a VRM stands in a relaxed pose
+(arms hanging close to the body, elbows softly bent, fingers and thumbs
+curled), breathes and sways slowly; see *VRM idle pose and breathing* in
+[Emotes and motions](AVATARS.md#emotes-and-motions). `character_pose` reads
+it through UI Automation (`MoveAvatar`'s value `"pose"`), `samples` times (1
+to 60) `gapMs` apart (default 250). It changes nothing, so it needs no
+`--allow-ui-effects`. Each reading in `poses` has `n`, `found` (false before a
+model shows and for a Live2D model, whose own breathing isn't read),
+`renderer`, `idle`, `breathing` (`phase`, 0 to 1 of one breath; `inhale`, how
+full the chest is, 0 to 1; `perMinute`), `arms` (`left` and `right`:
+`fromDown`, the upper arm's angle from straight down, and `elbow`, its bend,
+in degrees measured on the posed bones), `curl` (`left` and `right`: the
+middle finger's curl in degrees, 0 straight as in the T-pose), `sway` (the
+spine's sideways lean, degrees) and `bones` (`head`, `neck`, the shoulders,
+upper arms, hands and upper legs: `x`, `y` as fractions of the overlay's
+drawing, +y down). `summary` gives `found`, whether it stayed `idle`, the
+`inhale`, `perMinute`, `arms`, `curl` and `sway` ranges (`least`, `most`) and
+how far each bone `moved` (`x`, `y`). Over 20 readings 250 ms apart, a VRM
+breathes in from 0 to about 1 at 13 to 16 breaths a minute, with its arms 15
+to 18 degrees from straight down, its elbows bent about 16 degrees and its
+fingers curled about 60 degrees. `MoveAvatar`'s value in `ui_snapshot` shows
+the last reading as `pose`.
+
 **Moves, zooms and other changes Martlet hears about**: the overlay notes each
 drag, arrow-key nudge, `ui_move`, zoom (wheel, menu, keys or Martlet's zoom
 buttons), reset zoom, pan of a zoomed view and Reset position, and once it has

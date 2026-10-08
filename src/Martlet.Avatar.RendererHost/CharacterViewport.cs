@@ -9,7 +9,8 @@ namespace Martlet.Avatar.RendererHost;
 /// The character's drag surface. Besides right-click (and the Menu key or Shift+F10), assistive technology and Martlet's MCP
 /// open its menu through UI Automation's expand/collapse, move the character through its transform (like a drag), which
 /// is refused while its place is locked, tap it through its value ("x,y"), which then reads the last tap's hit test, read
-/// where Martlet draws over its face ("face") and take a picture of it as it shows ("picture").
+/// where Martlet draws over its face ("face"), take a picture of it as it shows ("picture") and read what its idle body does
+/// ("pose").
 /// </summary>
 internal sealed class CharacterViewport : Grid
 {
@@ -53,16 +54,25 @@ internal sealed class CharacterViewport : Grid
     /// Read as the "picture" field of this surface's value.</summary>
     internal string LastPicture { get; set; } = "";
 
-    /// <summary>The value UI Automation reads: the last tap's hit test with the last stroke, physical change, face reading and
-    /// picture added.</summary>
+    /// <summary>Asks the page what the idle body does now; its answer arrives as <see cref="LastPose"/>.</summary>
+    internal Action? ReadPose { get; set; }
+
+    /// <summary>The last reading of the idle body as JSON (see CharacterPoseReading), or empty. Read as the "pose" field of this
+    /// surface's value.</summary>
+    internal string LastPose { get; set; } = "";
+
+    /// <summary>The value UI Automation reads: the last tap's hit test with the last stroke, physical change, face reading,
+    /// picture and pose reading added.</summary>
     internal string Reading()
     {
-        if (LastStroke.Length == 0 && LastPhysical.Length == 0 && LastFace.Length == 0 && LastPicture.Length == 0) return LastTouch;
+        if (LastStroke.Length == 0 && LastPhysical.Length == 0 && LastFace.Length == 0 && LastPicture.Length == 0 &&
+            LastPose.Length == 0) return LastTouch;
         var node = (LastTouch.Length > 0 ? System.Text.Json.Nodes.JsonNode.Parse(LastTouch) as System.Text.Json.Nodes.JsonObject : null) ?? [];
         if (LastStroke.Length > 0) node["stroke"] = System.Text.Json.Nodes.JsonNode.Parse(LastStroke);
         if (LastPhysical.Length > 0) node["physical"] = System.Text.Json.Nodes.JsonNode.Parse(LastPhysical);
         if (LastFace.Length > 0) node["face"] = System.Text.Json.Nodes.JsonNode.Parse(LastFace);
         if (LastPicture.Length > 0) node["picture"] = System.Text.Json.Nodes.JsonNode.Parse(LastPicture);
+        if (LastPose.Length > 0) node["pose"] = System.Text.Json.Nodes.JsonNode.Parse(LastPose);
         return node.ToJsonString();
     }
 
@@ -79,10 +89,10 @@ internal sealed class CharacterViewport : Grid
             _ => base.GetPattern(patternInterface)
         };
 
-        // Value: reads the last tap (with the last stroke, move or zoom, face reading and picture); setting "x,y" (invariant
-        // fractions of the surface) taps the character there, "stroke:ms;x,y;x,y;..." strokes the locked character along those
-        // points, "face" reads where Martlet draws over the face now and "picture" takes a picture of the character as it shows
-        // now (both change nothing).
+        // Value: reads the last tap (with the last stroke, move or zoom, face reading, picture and pose reading); setting "x,y"
+        // (invariant fractions of the surface) taps the character there, "stroke:ms;x,y;x,y;..." strokes the locked character
+        // along those points, "face" reads where Martlet draws over the face now, "picture" takes a picture of the character as
+        // it shows now and "pose" reads what its idle body does now (they change nothing).
         public string Value => owner.Reading();
         public bool IsReadOnly => owner.TouchAt is null;
 
@@ -97,6 +107,11 @@ internal sealed class CharacterViewport : Grid
             if (value == "picture")
             {
                 (owner.TakePicture ?? throw new InvalidOperationException("The character's picture can't be taken yet."))();
+                return;
+            }
+            if (value == "pose")
+            {
+                (owner.ReadPose ?? throw new InvalidOperationException("The character's pose can't be read yet."))();
                 return;
             }
             if (value?.StartsWith("stroke:", StringComparison.Ordinal) == true)

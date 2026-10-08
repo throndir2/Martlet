@@ -105,6 +105,20 @@ function gestureState() {
   const { playing, held } = adapter.gestureState ?? {};
   return { ...(playing ? { playing } : {}), held: [...new Set([...(Array.isArray(held) ? held : []), ...heldOverlays()])] };
 }
+// The bones a pose reading places on the canvas.
+const POSE_BONES = new Set(["head", "neck", "leftShoulder", "rightShoulder", "leftUpperArm", "rightUpperArm", "leftHand", "rightHand",
+  "leftUpperLeg", "rightUpperLeg"]);
+// What a VRM's idle body does now, for Martlet's MCP (character_pose): its breath, each arm's hang and elbow bend, how far the
+// fingers curl and the sway (the runtime's idleReading), and where its head, shoulders, hands and hips are, as fractions of the
+// canvas (+y down). A Live2D model's own breathing isn't read.
+function poseReading(id) {
+  const idle = renderer === "Vrm" ? adapter?.idleReading : undefined;
+  if (!idle) return { id, found: false, renderer: renderer ?? null };
+  const round = value => Math.round(value * 10000) / 10000;
+  const bones = Object.fromEntries(adapter.bonePoints().filter(b => POSE_BONES.has(b.bone))
+    .map(b => [b.bone, { x: round(b.x), y: round(b.y) }]));
+  return { id, found: true, renderer, ...idle, bones };
+}
 // A picture of the whole character for touch zones, drawn on the canvas and read back in the same task, so it never shows on
 // screen: `width` by `height` pixels in the framing `zoom`, `x`, `y` of a frame `frame` of its width (see setView), in the
 // pose the model has now (its rest pose in a still renderer). The PNG (a data URL), where the drawables (Live2D, each with the
@@ -185,6 +199,15 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
     let reading = { id, found: false };
     try { if (active && !failed) reading = faceReading(id); } catch { }
     post({ faceReading: reading });
+    return;
+  }
+  if (message.kind === "pose") {
+    // What the idle body does now (see poseReading), answered unprompted with {poseReading}, never as a command reply; a
+    // reading that fails is only "not found" and never fails the renderer.
+    const { id } = message.data;
+    let reading = { id, found: false };
+    try { if (active && !failed) reading = poseReading(id); } catch { }
+    post({ poseReading: reading });
     return;
   }
   if (message.kind === "eyes") {

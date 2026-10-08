@@ -123,6 +123,46 @@ export function drowse(t: number): number {
   return p < 0.8 ? smoothstep(p / 0.8) : 1 - smoothstep((p - 0.8) / 0.1);
 }
 
+/** Seconds one calm breath takes at rest (about 14 breaths a minute); it changes a little over time. */
+export const BREATH_SECONDS = 4.2;
+
+/** How full the chest is (0 breathed out, 1 breathed in) at `phase` (one breath for each unit): a quicker breath in (38% of
+ *  the breath), a slower breath out (50%) and a short rest before the next one. */
+export function breathing(phase: number): number {
+  const p = phase - Math.floor(phase);
+  return p < 0.38 ? smoothstep(p / 0.38) : p < 0.88 ? 1 - smoothstep((p - 0.38) / 0.5) : 0;
+}
+
+/** How the left arm hangs at rest (the right one mirrors it), as XYZ Euler angles in radians on the normalized humanoid
+ *  bones. They turn from the VRM T-pose, where the arm, hand and four fingers point along +X with the palm down and the
+ *  thumb points 45 degrees forward: the arm hangs about 15 degrees out from the body and a little forward, the elbow
+ *  softly bent, the wrist turned a little toward the thigh. */
+export const VRM_RELAXED_ARM = Object.freeze({ upperArm: [-0.08, 0, -1.3], lowerArm: [0, -0.3, 0], hand: [0, 0, -0.12] } as const);
+
+/** How the left hand's fingers rest (the right ones mirror them), as XYZ Euler angles in radians: each finger curls in a
+ *  little more than the one before it toward the little finger, and the thumb lies in, toward the index finger. */
+export const VRM_RELAXED_FINGERS: readonly (readonly [string, number, number, number])[] = Object.freeze([
+  ["ThumbMetacarpal", 0.3, 0.15, -0.3], ["ThumbProximal", 0, 0.3, 0], ["ThumbDistal", 0, 0.25, 0],
+  ["IndexProximal", 0, 0, -0.25], ["IndexIntermediate", 0, 0, -0.35], ["IndexDistal", 0, 0, -0.25],
+  ["MiddleProximal", 0, 0, -0.3], ["MiddleIntermediate", 0, 0, -0.45], ["MiddleDistal", 0, 0, -0.3],
+  ["RingProximal", 0, 0, -0.35], ["RingIntermediate", 0, 0, -0.5], ["RingDistal", 0, 0, -0.3],
+  ["LittleProximal", 0, 0, -0.4], ["LittleIntermediate", 0, 0, -0.55], ["LittleDistal", 0, 0, -0.3],
+] as const);
+
+/** What the idle body does now (see `VrmRuntime.idleReading`). */
+export interface VrmIdleReading {
+  readonly idle: boolean;
+  /** How far into the breath (0 to 1), how full the chest is (0 to 1) and the breaths a minute now. */
+  readonly breathing: { readonly phase: number; readonly inhale: number; readonly perMinute: number };
+  /** Each arm's angle from straight down and its elbow's bend, in degrees, measured on the posed bones. */
+  readonly arms: { readonly left?: VrmArmReading; readonly right?: VrmArmReading };
+  /** How far each hand's middle finger curls, in degrees (0 is straight, as in the T-pose). */
+  readonly curl: { readonly left?: number; readonly right?: number };
+  /** The spine's slow sideways lean now, in degrees. */
+  readonly sway: number;
+}
+export interface VrmArmReading { readonly fromDown: number; readonly elbow: number }
+
 /** A holdable gesture's pose at weight `w`, kept alive by `t` (pout huffs, shy peeks back, look_away glances back, drowsy
  *  nods off and catches itself, raised eyes drift, an open mouth breathes), so a held pose never looks frozen. */
 function moodPose(pose: GesturePose, name: HoldableGesture, t: number, w: number): void {
@@ -424,6 +464,9 @@ export class VrmRuntime {
   private readonly gazeTarget = new THREE.Object3D();
   private idle = false;
   private idleTime = 0;
+  private breathPhase = 0;
+  private inhale = 0;
+  private sway = 0;
   private speech = 0;
   private speechTarget = 0;
   private speechAge = Number.POSITIVE_INFINITY;
@@ -464,7 +507,8 @@ export class VrmRuntime {
     });
   }
 
-  /** Relaxed arms, breathing, blinking, cursor-follow and loudness lip-sync while no mapped A2F turn is active. */
+  /** Relaxed arms and hands, breathing, a slow sway, blinking, cursor-follow and loudness lip-sync while no mapped A2F turn is
+   *  active. */
   startIdle(): void { this.loaded(); this.idle = true; }
 
   setLipSync(level: number): void {
@@ -677,10 +721,14 @@ export class VrmRuntime {
 
   private animateIdle(model: VRM, deltaSeconds: number): void {
     this.idleTime += deltaSeconds;
+    // One breath every BREATH_SECONDS, a little faster or slower as time goes on, and shallower while the voice speaks.
+    this.breathPhase += deltaSeconds / this.breathSeconds();
+    this.inhale = breathing(this.breathPhase) * (1 - 0.4 * this.talk);
+    this.sway = 0.012 * Math.sin(2 * Math.PI * this.idleTime / 7.3);
     const follow = Math.min(1, deltaSeconds * 5);
     this.look = { x: this.look.x + (this.lookTarget.x - this.look.x) * follow, y: this.look.y + (this.lookTarget.y - this.look.y) * follow };
-    const bone = (name: Parameters<VRM["humanoid"]["getNormalizedBoneNode"]>[0]) => model.humanoid.getNormalizedBoneNode(name);
-    const breath = Math.sin(this.idleTime * Math.PI * 2 / 4);
+    const bone = (name: BoneName) => model.humanoid.getNormalizedBoneNode(name);
+    const inhale = this.inhale;
     const gesture = this.advanceGesture(deltaSeconds);
     const w = gesture?.weight ?? 0;
     const lerp = (from: number, to: number, amount: number) => from + (to - from) * amount;
@@ -688,17 +736,36 @@ export class VrmRuntime {
     const pose = this.advanceHeld(deltaSeconds, 0.6 * w);
     if (gesture) addPose(pose, gesturePose(gesture.name, gesture.t, w));
     this.face = pose.face;
-    const open = pose.open, shoulders = 0.2 * shrug + 0.12 * pose.shoulders;
+    const open = pose.open;
+    // A breath lifts the shoulders; the arms go up with them but keep hanging, swinging out only a little.
+    const shoulders = 0.2 * shrug + 0.12 * pose.shoulders + 0.07 * inhale;
     const waving = wave > 0 ? 0.35 * Math.sin(2 * Math.PI * gesture!.t / 0.5) : 0;
-    bone("leftUpperArm")?.rotation.set(0, 0, lerp(lerp(-1.2 + breath * 0.02, -0.95, shrug), -0.15, open));
-    bone("rightUpperArm")?.rotation.set(0, 0, lerp(lerp(lerp(1.2 - breath * 0.02, 0.95, shrug), -0.25, wave), 0.15, open));
-    bone("leftLowerArm")?.rotation.set(0, lerp(lerp(-0.15, -1.1, shrug), 0, open), 0);
-    bone("rightLowerArm")?.rotation.set(0, lerp(lerp(lerp(0.15, 1.1, shrug), 0, wave), 0, open), lerp(0, -1.4 + waving, wave));
+    // The arms and hands rest relaxed; a shrug, a wave (the right one) or arms opened out straighten them and open the hand.
+    const relaxLeft = (1 - shrug) * (1 - open), relaxRight = relaxLeft * (1 - wave);
+    const [forward, , hang] = VRM_RELAXED_ARM.upperArm, elbow = VRM_RELAXED_ARM.lowerArm[1], wrist = VRM_RELAXED_ARM.hand[2];
+    // Each arm swings out 0.015 radians at a full breath: against its shoulder's lift, or by itself on a model without one.
+    const downLeft = -hang + (bone("leftShoulder") ? 0.055 : -0.015) * inhale;
+    const downRight = -hang + (bone("rightShoulder") ? 0.055 : -0.015) * inhale;
+    bone("leftUpperArm")?.rotation.set(forward * relaxLeft, 0, lerp(lerp(-downLeft, -0.95, shrug), -0.15, open));
+    bone("rightUpperArm")?.rotation.set(forward * relaxRight, 0, lerp(lerp(lerp(downRight, 0.95, shrug), -0.25, wave), 0.15, open));
+    bone("leftLowerArm")?.rotation.set(0, lerp(lerp(elbow, -1.1, shrug), 0, open), 0);
+    bone("rightLowerArm")?.rotation.set(0, lerp(lerp(lerp(-elbow, 1.1, shrug), 0, wave), 0, open), lerp(0, -1.4 + waving, wave));
+    bone("leftHand")?.rotation.set(0, 0, wrist * relaxLeft);
+    bone("rightHand")?.rotation.set(0, 0, -wrist * relaxRight);
+    for (const [part, x, y, z] of VRM_RELAXED_FINGERS) {
+      bone(`left${part}` as BoneName)?.rotation.set(x * relaxLeft, y * relaxLeft, z * relaxLeft);
+      bone(`right${part}` as BoneName)?.rotation.set(x * relaxRight, -y * relaxRight, -z * relaxRight);
+    }
     bone("leftShoulder")?.rotation.set(0, 0, shoulders);
     bone("rightShoulder")?.rotation.set(0, 0, -shoulders);
-    bone("chest")?.rotation.set(breath * 0.015, 0, 0);
+    // Breathing in opens the chest a little (only a little: leaning back would sink the head in a front view); the neck takes
+    // most of it back, so the head stays level.
+    const chest = bone("chest"), upperChest = bone("upperChest");
+    chest?.rotation.set(-0.01 * inhale, 0, 0);
+    upperChest?.rotation.set(-0.008 * inhale, 0, 0);
+    const opened = ((chest ? 0.01 : 0) + (upperChest ? 0.008 : 0)) * inhale;
     const side = gesture?.name === "sway" ? w * Math.sin(2 * Math.PI * gesture.t / 1.2) : 0;
-    bone("spine")?.rotation.set((gesture?.name === "bow" ? 0.35 * w : 0) + pose.spineX, pose.spineY, 0.08 * side + pose.spineZ);
+    bone("spine")?.rotation.set((gesture?.name === "bow" ? 0.35 * w : 0) + pose.spineX, pose.spineY, 0.08 * side + pose.spineZ + this.sway);
     const hips = bone("hips");
     if (hips && this.hipsRest !== undefined)
       hips.position.y = this.hipsRest + (gesture?.name === "bounce" ? 0.035 * w * Math.abs(Math.sin(2 * Math.PI * gesture.t / 0.6)) : 0);
@@ -710,7 +777,7 @@ export class VrmRuntime {
       gx += pose.gx; gy += pose.gy;
       const tilt = (gesture?.name === "tilt" ? 0.3 * w : 0) + (gesture?.name === "shrug" ? 0.12 * w : 0) - 0.06 * side + pose.tilt;
       const x = this.look.x + gx, y = this.look.y + gy;
-      bone("neck")?.rotation.set(-y * 0.15, x * 0.2, Math.sin(this.idleTime * 0.7) * 0.02);
+      bone("neck")?.rotation.set(-y * 0.15 + 0.7 * opened, x * 0.2, Math.sin(this.idleTime * 0.7) * 0.02 - 0.6 * this.sway);
       bone("head")?.rotation.set(-y * 0.2, x * 0.3, tilt);
     }
     // Only a held eyes gesture (eyes_up) turns the eyes while idle; the head keeps following the look.
@@ -738,6 +805,42 @@ export class VrmRuntime {
       expressions.setValue("blink", phase < 0.5 ? phase * 2 : Math.max(0, 2 - phase * 2));
       if (phase >= 1) { this.blinkTime = -1; this.nextBlink = 2 + Math.random() * 4; }
     }
+  }
+
+  /** Seconds the breath takes now: BREATH_SECONDS, up to 10% faster or slower over a cycle of about 27 seconds. */
+  private breathSeconds(): number { return BREATH_SECONDS * (1 + 0.1 * Math.sin(this.idleTime * 0.23)); }
+
+  /** What the idle body does now, for Martlet's MCP (see VrmIdleReading): the breath, each arm's hang and elbow bend measured
+   *  on the posed bones, how far the middle fingers curl and the sway. Undefined before a model loads. */
+  get idleReading(): VrmIdleReading | undefined {
+    const model = this.model;
+    if (!model) return undefined;
+    model.scene.updateWorldMatrix(true, true);
+    const at = (name: BoneName) => model.humanoid.getRawBoneNode(name)?.getWorldPosition(new THREE.Vector3());
+    const degrees = (radians: number) => Math.round(radians * 1800 / Math.PI) / 10;
+    const round = (value: number) => Math.round(value * 1000) / 1000;
+    const arm = (side: "left" | "right"): VrmArmReading | undefined => {
+      const shoulder = at(`${side}UpperArm`), elbow = at(`${side}LowerArm`), wrist = at(`${side}Hand`);
+      if (!shoulder || !elbow || !wrist) return undefined;
+      const upper = elbow.clone().sub(shoulder), lower = wrist.clone().sub(elbow);
+      if (upper.lengthSq() < 1e-12 || lower.lengthSq() < 1e-12) return undefined;
+      return { fromDown: degrees(upper.angleTo(new THREE.Vector3(0, -1, 0))), elbow: degrees(upper.angleTo(lower)) };
+    };
+    const curl = (side: "left" | "right"): number | undefined => {
+      const nodes = ["MiddleProximal", "MiddleIntermediate", "MiddleDistal"]
+        .map(part => model.humanoid.getNormalizedBoneNode(`${side}${part}` as BoneName));
+      return nodes.every(node => node)
+        ? degrees(nodes.reduce((sum, node) => sum + 2 * Math.acos(Math.min(1, Math.abs(node!.quaternion.w))), 0)) : undefined;
+    };
+    const left = arm("left"), right = arm("right"), curlLeft = curl("left"), curlRight = curl("right");
+    return Object.freeze({
+      idle: this.idle,
+      breathing: { phase: round(this.breathPhase - Math.floor(this.breathPhase)), inhale: round(this.inhale),
+        perMinute: Math.round(600 / this.breathSeconds()) / 10 },
+      arms: { ...(left ? { left } : {}), ...(right ? { right } : {}) },
+      curl: { ...(curlLeft !== undefined ? { left: curlLeft } : {}), ...(curlRight !== undefined ? { right: curlRight } : {}) },
+      sway: degrees(this.sway),
+    });
   }
 
   async load(buffer: ArrayBuffer): Promise<VrmCapabilities> {

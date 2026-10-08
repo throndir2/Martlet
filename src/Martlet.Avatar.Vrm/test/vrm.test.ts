@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { cheekFrame, inspectVrm, LIMITS, loadLocalVrm, VRM_BLUSH_LEVELS, VRM_GESTURES, VRM_HOLD_PARTS, VrmRuntime, type PlaybackIdentity,
-  type Selection } from "../src/index.js";
+import { breathing, BREATH_SECONDS, cheekFrame, inspectVrm, LIMITS, loadLocalVrm, VRM_BLUSH_LEVELS, VRM_GESTURES, VRM_HOLD_PARTS,
+  VrmRuntime, type PlaybackIdentity, type Selection } from "../src/index.js";
 import { encodeGlb, fixture, fixtureDocument } from "./fixture.js";
 
 const identity: PlaybackIdentity = {
@@ -322,6 +322,110 @@ test("Martlet's gestures play on the humanoid bones and return to idle", async (
   assert.equal(runtime.playGesture("bow"), true);
   for (let i = 0; i < 20; i++) runtime.update(0.05);
   assert.ok(bone("spine").rotation.x > 0.3, "the spine bends forward");
+});
+
+/** The fixture with a chest, neck, shoulders and index, middle and thumb bones, so the idle pose has them to move. */
+function relaxedFixture(): ArrayBuffer {
+  const { document, bin } = fixtureDocument();
+  const nodes = document.nodes as { name: string; translation?: readonly number[]; children?: number[] }[];
+  const bones = document.extensions.VRMC_vrm.humanoid.humanBones as Record<string, { node: number }>;
+  const add = (name: string, parent: number, translation: readonly number[]) => {
+    nodes.push({ name, translation, children: [] });
+    nodes[parent]!.children!.push(nodes.length - 1);
+    bones[name] = { node: nodes.length - 1 };
+    return nodes.length - 1;
+  };
+  const move = (child: number, from: number, to: number, translation: readonly number[]) => {
+    nodes[from]!.children = nodes[from]!.children!.filter(c => c !== child);
+    nodes[to]!.children!.push(child);
+    nodes[child]!.translation = translation;
+  };
+  const spine = bones.spine!.node;
+  const chest = add("chest", spine, [0, 0.1, 0]);
+  const neck = add("neck", chest, [0, 0.15, 0]);
+  move(bones.head!.node, spine, neck, [0, 0.15, 0]);
+  for (const [side, sign] of [["left", 1], ["right", -1]] as const) {
+    const shoulder = add(`${side}Shoulder`, chest, [0.05 * sign, 0.15, 0]);
+    move(bones[`${side}UpperArm`]!.node, spine, shoulder, [0.15 * sign, 0.05, 0]);
+    for (const finger of [["IndexProximal", "IndexIntermediate", "IndexDistal"], ["MiddleProximal", "MiddleIntermediate", "MiddleDistal"],
+      ["ThumbMetacarpal", "ThumbProximal", "ThumbDistal"]]) {
+      let parent = bones[`${side}Hand`]!.node;
+      for (const part of finger) parent = add(`${side}${part}`, parent, [0.03 * sign, 0, 0]);
+    }
+  }
+  return encodeGlb(document, bin);
+}
+
+test("a breath goes in quickly, out more slowly, and rests before the next", () => {
+  assert.equal(breathing(0), 0);
+  assert.equal(breathing(0.38), 1);
+  assert.ok(breathing(0.2) > 0.4 && breathing(0.2) < 0.6, "half in, halfway through breathing in");
+  assert.ok(breathing(0.5) > breathing(0.7) && breathing(0.7) > breathing(0.85), "breathing out");
+  assert.equal(breathing(0.9), 0, "resting");
+  assert.equal(breathing(2.38), 1, "every breath the same");
+  assert.ok(60 / BREATH_SECONDS > 12 && 60 / BREATH_SECONDS < 16, "a calm 12 to 16 breaths a minute");
+});
+
+test("the idle pose hangs the arms relaxed, curls the fingers and breathes", async () => {
+  const runtime = new VrmRuntime(); await runtime.load(relaxedFixture()); runtime.startIdle();
+  const vrm = (runtime as unknown as { model: { humanoid: { getNormalizedBoneNode(name: string): THREE.Object3D } } }).model;
+  const bone = (name: string) => vrm.humanoid.getNormalizedBoneNode(name);
+  runtime.update(0);
+  // The first frame is the rest pose a still picture shows: breathed out, no sway.
+  const rest = runtime.idleReading!;
+  assert.deepEqual([rest.idle, rest.breathing.inhale, rest.sway], [true, 0, 0]);
+  for (const side of ["left", "right"] as const) {
+    const arm = rest.arms[side]!;
+    assert.ok(arm.fromDown > 10 && arm.fromDown < 20, `the ${side} arm hangs close to the body, not out in an A-pose: ${arm.fromDown}`);
+    assert.ok(arm.elbow > 10 && arm.elbow < 25, `the ${side} elbow bends softly: ${arm.elbow}`);
+    assert.ok(rest.curl[side]! > 45, `the ${side} fingers curl: ${rest.curl[side]}`);
+  }
+  assert.ok(bone("leftUpperArm").rotation.x < 0 && bone("rightUpperArm").rotation.x < 0, "both arms hang a little forward");
+  assert.ok(bone("leftIndexProximal").rotation.z < 0 && bone("rightIndexProximal").rotation.z > 0, "the fingers curl toward each palm");
+  assert.ok(bone("leftThumbProximal").rotation.y > 0 && bone("rightThumbProximal").rotation.y < 0, "the thumbs lie in, mirrored");
+  assert.ok(bone("leftHand").rotation.z < 0 && bone("rightHand").rotation.z > 0, "the wrists turn toward the thighs");
+
+  // Through a few breaths: breathing in lifts the shoulders and opens the chest; the arms keep hanging.
+  let fullest = { inhale: 0, shoulder: 0, chest: 0, arm: 0 }, sways = new Set<number>(), perMinute = 0;
+  for (let i = 0; i < 100; i++) {
+    runtime.update(0.1);
+    const reading = runtime.idleReading!;
+    sways.add(reading.sway);
+    perMinute = reading.breathing.perMinute;
+    if (reading.breathing.inhale > fullest.inhale)
+      fullest = { inhale: reading.breathing.inhale, shoulder: bone("leftShoulder").rotation.z, chest: bone("chest").rotation.x,
+        arm: reading.arms.left!.fromDown };
+  }
+  assert.ok(fullest.inhale > 0.95, `breathes in fully: ${fullest.inhale}`);
+  assert.ok(fullest.shoulder > 0.06 && bone("rightShoulder").rotation.z <= 0, `the shoulders rise: ${fullest.shoulder}`);
+  assert.ok(fullest.chest < -0.005, "the chest opens");
+  assert.ok(Math.abs(fullest.arm - rest.arms.left!.fromDown) < 3, `the arm still hangs: ${fullest.arm}`);
+  assert.ok(perMinute > 12 && perMinute < 17, `about 14 breaths a minute: ${perMinute}`);
+  assert.ok(sways.size > 5 && Math.max(...sways) < 1 && Math.min(...sways) > -1, "a slow sway of less than a degree");
+  assert.ok(Math.abs(bone("spine").rotation.x) < 1e-12, "breathing leaves the spine's bend to gestures");
+
+  // A wave opens the right hand only; the left one stays relaxed.
+  assert.equal(runtime.playGesture("wave"), true);
+  for (let i = 0; i < 20; i++) runtime.update(0.05);
+  assert.ok(Math.abs(bone("rightIndexProximal").rotation.z) < 0.01, "the waving hand is open");
+  assert.ok(bone("leftIndexProximal").rotation.z < -0.2, "the other hand stays relaxed");
+  for (let i = 0; i < 40; i++) runtime.update(0.05);
+  assert.ok(bone("rightIndexProximal").rotation.z > 0.2, "and the waving hand relaxes again");
+  runtime.dispose();
+
+  // Without shoulder bones a breath still swings the arms out a little, never in.
+  const plain = new VrmRuntime(); await plain.load(fixture()); plain.startIdle();
+  plain.update(0);
+  const hanging = plain.idleReading!.arms.left!.fromDown;
+  let full = { inhale: 0, fromDown: hanging };
+  for (let i = 0; i < 60; i++) {
+    plain.update(0.1);
+    const reading = plain.idleReading!;
+    if (reading.breathing.inhale > full.inhale) full = { inhale: reading.breathing.inhale, fromDown: reading.arms.left!.fromDown };
+  }
+  assert.ok(full.inhale > 0.95 && full.fromDown > hanging && full.fromDown < hanging + 2,
+    `the arm swings out a little at a full breath: ${hanging} to ${full.fromDown}`);
+  plain.dispose();
 });
 
 test("blush shows an authored cheek expression, held until released, and the face is found from the eye bones", async () => {
