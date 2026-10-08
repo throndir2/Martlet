@@ -19,8 +19,8 @@ namespace Martlet.Avatar.RendererHost;
 internal sealed partial class RendererWindow : Window
 {
     private readonly Stream input, output;
-    // Menu choices Martlet itself carries out (hide, open, talk, settings, lock, mute and unmute, where the eyes go); null when
-    // started without it (tests).
+    // Menu choices Martlet itself carries out (hide, open, talk, settings, lock, mute and unmute, click-through, where the eyes
+    // go); null when started without it (tests).
     private readonly Stream? requests;
     private readonly SemaphoreSlim requesting = new(1, 1);
     private readonly CancellationTokenSource lifetime = new();
@@ -419,6 +419,8 @@ internal sealed partial class RendererWindow : Window
             SetView(overlayView.Zoom, overlayView.X, overlayView.Y);
         }
         ShowPlacementLock();
+        // The camera view always catches clicks; back on the overlay, click-through applies again.
+        ApplyClickThrough();
         SendView();
     }
 
@@ -538,15 +540,66 @@ internal sealed partial class RendererWindow : Window
         ErrorLog.Info(locked ? "The character's position is locked." : "The character's position is unlocked.");
     }
 
+    // ---------- click-through ----------
+
+    // Clicks pass through the character to the windows under it until Martlet turns this off. The camera view always catches them.
+    private bool clickThrough;
+    private const int ExtendedStyleIndex = -20;
+    private const nint TransparentStyle = 0x20;
+
+    private void UseClickThrough(bool on)
+    {
+        if (clickThrough != on)
+        {
+            clickThrough = on;
+            if (on)
+            {
+                // A menu, drag, pan or stroke under way ends: the mouse no longer reaches the character.
+                if (viewport.ContextMenu is { IsOpen: true } menu) menu.IsOpen = false;
+                if (viewport.IsMouseCaptured) viewport.ReleaseMouseCapture();
+                press = null;
+            }
+            ErrorLog.Info(on ? "Clicks pass through the character." : "The character catches clicks again.");
+        }
+        ApplyClickThrough();
+        ShowPlacementLock();
+    }
+
+    /// <summary>Sets or clears WS_EX_TRANSPARENT on the layered overlay (and on its speech bubble), so the mouse's clicks, wheel
+    /// and right-clicks go to the window under it. Never on the camera view or the still renderer.</summary>
+    private void ApplyClickThrough()
+    {
+        var on = clickThrough && camera is null && !still;
+        SetClickThrough(new System.Windows.Interop.WindowInteropHelper(this).Handle, on);
+        if (speechBubble.Child is { } bubble && PresentationSource.FromVisual(bubble) is System.Windows.Interop.HwndSource popup)
+            SetClickThrough(popup.Handle, on);
+    }
+
+    private static void SetClickThrough(IntPtr window, bool on)
+    {
+        if (window == IntPtr.Zero) return;
+        var style = GetWindowLongPtrW(window, ExtendedStyleIndex);
+        var wanted = on ? style | TransparentStyle : style & ~TransparentStyle;
+        if (wanted != style) SetWindowLongPtrW(window, ExtendedStyleIndex, wanted);
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint GetWindowLongPtrW(IntPtr window, int index);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint SetWindowLongPtrW(IntPtr window, int index, nint value);
+
     private void ShowPlacementLock()
     {
         viewport.PlacementLocked = placementLocked;
         viewport.Cursor = placementLocked && camera is null ? Cursors.Arrow : Cursors.SizeAll;
         AutomationProperties.SetName(viewport, camera is not null
             ? "Martlet camera. Drag to move the character in the view; mouse wheel zooms it in or out; arrow keys nudge it; Home or 0 resets the framing; Shift+drag moves the window; right-click for more options."
+            : clickThrough
+            ? "Character. Clicks pass through it to the windows under it; turn this off in Martlet."
             : placementLocked
-            ? "Character. Position locked; unlock it in Martlet. Mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, mute, settings, zoom and hide options."
-            : "Character. Drag to move; mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, mute, settings, zoom, position, lock and hide options.");
+            ? "Character. Position locked; unlock it in Martlet. Mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, mute, settings, zoom, click-through and hide options."
+            : "Character. Drag to move; mouse wheel zooms; Ctrl+drag or middle-drag pans when zoomed in; right-click for talk, mute, settings, zoom, position, lock, click-through and hide options.");
     }
 
     /// <summary>Puts the overlay back where it was saved, at that size, and locks it again when it was locked. On the same
@@ -683,11 +736,11 @@ internal sealed partial class RendererWindow : Window
 
     /// <summary>The character frame's size, position and camera, how far the top of the head sits below its top edge, the
     /// overlay's full width including the room beside the frame, whether its place is locked, where the character's middle
-    /// sits in the view and whether this is the camera view.</summary>
+    /// sits in the view, whether this is the camera view and whether clicks pass through the character now.</summary>
     internal RendererView ViewState() => new(Math.Round(FrameWidth), Math.Round(Height),
         WorkAreaTop() is { } screenTop ? Math.Round(Top - screenTop) : null, Math.Round(viewZoom, 3),
         double.IsFinite(contentTop) ? Math.Round((1 - (contentTop * viewZoom + viewY)) / 2, 4) : null, Math.Round(Width), placementLocked,
-        Math.Round(viewX * FrameFraction / 2, 4), Math.Round(viewY / 2, 4), camera is not null);
+        Math.Round(viewX * FrameFraction / 2, 4), Math.Round(viewY / 2, 4), camera is not null, clickThrough && camera is null);
 
     // The camera is in the frame's clip space; frame tells the renderer how much of its canvas width the frame spans.
     private void SendView() => PostView(viewZoom, viewX, viewY);
@@ -792,6 +845,9 @@ internal sealed partial class RendererWindow : Window
         var home = Item("Reset _position and size", "CharacterResetPosition", "Home", () => ResetToDefault());
         // Locking and unlocking go through Martlet, which saves the place.
         var placeLock = Item("_Lock position", "CharacterLockPosition", null, () => Request(placementLocked ? "unlock" : "lock"));
+        // Click-through goes through Martlet, which saves it. Once on, the mouse can't reach this menu: Martlet turns it off.
+        var passThrough = Item("Let clicks p_ass through", "CharacterClickThrough", null,
+            () => Request(clickThrough ? RendererRequest.ClickThroughOff : RendererRequest.ClickThroughOn));
         var onTop = new MenuItem { Header = "_Keep on top", IsCheckable = true, IsChecked = Topmost };
         AutomationProperties.SetAutomationId(onTop, "CharacterOnTop");
         onTop.Checked += (_, _) => Topmost = true;
@@ -800,7 +856,7 @@ internal sealed partial class RendererWindow : Window
         var hide = Item("_Hide character", "CharacterHide", "Esc", () => Request("hide"));
         var menu = new ContextMenu
         {
-            Items = { talk, mute, open, settings, clearEmotes, eyes, new Separator(), zoomIn, zoomOut, reset, home, placeLock, onTop, new Separator(), hide }
+            Items = { talk, mute, open, settings, clearEmotes, eyes, new Separator(), zoomIn, zoomOut, reset, home, placeLock, passThrough, onTop, new Separator(), hide }
         };
         AutomationProperties.SetAutomationId(menu, "CharacterMenu");
         AutomationProperties.SetName(menu, "Character");
@@ -819,6 +875,9 @@ internal sealed partial class RendererWindow : Window
             placeLock.Header = placementLocked ? "_Unlock position" : "_Lock position";
             placeLock.IsChecked = placementLocked;
             AutomationProperties.SetName(placeLock, placementLocked ? "Unlock position" : "Lock position");
+            passThrough.IsEnabled = CanRequest && camera is null;
+            passThrough.IsChecked = clickThrough;
+            AutomationProperties.SetName(passThrough, clickThrough ? "Stop letting clicks pass through" : "Let clicks pass through");
             onTop.IsChecked = Topmost;
         };
         return menu;
@@ -1069,6 +1128,8 @@ internal sealed partial class RendererWindow : Window
         speechCanvas.Children.Add(speechText);
         speechCanvas.RenderTransform = speechPop;
         speechBubble.Child = speechCanvas;
+        // The bubble is its own window, made again each time it opens: it lets clicks pass through too while that is on.
+        speechBubble.Opened += (_, _) => ApplyClickThrough();
         LocationChanged += (_, _) => PlaceSpeech();
         SizeChanged += (_, _) => PlaceSpeech();
         Closed += (_, _) => speechBubble.IsOpen = false;
@@ -1379,7 +1440,7 @@ internal sealed partial class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "gaze" or "where" or "camera" or "snapshot" or "zones"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "click-through" or "voice" or "gaze" or "where" or "camera" or "snapshot" or "zones"))
                     throw new InvalidDataException("Renderer command is invalid.");
                 if (message.Kind == "camera")
                 {
@@ -1422,6 +1483,12 @@ internal sealed partial class RendererWindow : Window
                 {
                     LockPlacement(RendererProtocol.Data<RendererLock>(message).Locked);
                     await ReplyAsync("placement", Placement());
+                    continue;
+                }
+                if (message.Kind == "click-through")
+                {
+                    UseClickThrough(RendererProtocol.Data<RendererClickThrough>(message).On);
+                    await ReplyAsync("ok", new { clickThrough });
                     continue;
                 }
                 if (message.Kind == "voice")

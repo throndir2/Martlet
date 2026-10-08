@@ -42,8 +42,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
     internal bool IsShowing => renderer is { HasExited: false } && profile is not null;
     internal RendererCapabilities? Capabilities => renderer?.Capabilities;
     internal AvatarProfile? InspectedProfile => profile;
-    /// <summary>A choice from the showing character's menu ("hide", "open", "talk", "settings", "lock", "mute" or "unmute"),
-    /// raised off the UI thread.</summary>
+    /// <summary>A choice from the showing character's menu ("hide", "open", "talk", "settings", "lock", "mute", "unmute" or
+    /// "click-through-on"), raised off the UI thread.</summary>
     internal event Action<string>? Requested;
 
     internal AvatarController(Func<IAvatarRenderer>? createRenderer = null, bool allowControlledClock = false,
@@ -497,6 +497,30 @@ internal sealed partial class AvatarController : IAsyncDisposable
         finally { changes.Release(); }
     }
 
+    private int clickThrough;
+
+    /// <summary>Clicks pass through the character to the windows under it (this PC's choice, saved by Martlet). Set it before
+    /// showing; <see cref="SetClickThroughAsync"/> also tells a showing character.</summary>
+    internal bool ClickThrough
+    {
+        get => Volatile.Read(ref clickThrough) != 0;
+        set => Volatile.Write(ref clickThrough, value ? 1 : 0);
+    }
+
+    /// <summary>Lets clicks pass through the character (<paramref name="on"/>) or makes it catch them again, and tells the showing
+    /// character at once. Hidden, the next showing starts with it.</summary>
+    internal async Task SetClickThroughAsync(bool on, CancellationToken token)
+    {
+        await changes.WaitAsync(token);
+        try
+        {
+            ClickThrough = on;
+            if (renderer is { HasExited: false } current && profile is not null)
+                await current.SendAsync("click-through", new RendererClickThrough(on), token);
+        }
+        finally { changes.Release(); }
+    }
+
     /// <summary>
     /// Locks the showing character where it is, or unlocks it (also while it is hidden, keeping where it was). Returns where the
     /// character now is (null when hidden with no saved place). Locking needs the character showing: its place is wherever it is now.
@@ -928,6 +952,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
             await next.StartAsync(selected, snapshot.Revision, Placement, VoiceMuted, attempt.Token);
             // A camera view that was open stays open when the character shows again.
             if (Camera is { } view) await next.SendAsync("camera", view, attempt.Token);
+            // Clicks pass through a newly shown character when that is on.
+            if (ClickThrough) await next.SendAsync("click-through", new RendererClickThrough(true), attempt.Token);
             // Lingering emotes come back on the same model; another model forgets them.
             await RestoreHeldAsync(next, selected.ModelPath, attempt.Token);
             // The overlay starts following the mouse; its usual gaze and Eyes menu follow Martlet's.
