@@ -397,6 +397,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
         "TouchZonesDetectNote",
+        // Companion › Character › Touch zones › Eyes: where the shown model's eyes come from (the model's own meshes or eye bones,
+        // the vision measurement and when it was taken, or an estimate), how measuring went (each step while it runs, or why it
+        // failed) and, only when no model can see pictures, why Measure the eyes is off. Fixed text, times and counts only.
+        // Measure the eyes (CharacterEyesMeasure) sends a close-up of the character's face to Thinking and Forget the measurement
+        // (CharacterEyesForget) deletes it, so they need --allow-ui-effects; CharacterEyesPicture (the close-up with its boxes)
+        // isn't a value.
+        "CharacterEyesStatus", "CharacterEyesProgress", "CharacterEyesNote",
         // Companion › Character › Touch temperament: who decided the active persona's temperament (built-in, the Thinking model,
         // FIXTURE - NOT AI or the owner) or which custom temperament or built-in reactions it uses instead; its help text is the
         // whole temperament in words: "head loves, torso hates, ..., intimate loves", its eyes and the parts whose touch turns them to

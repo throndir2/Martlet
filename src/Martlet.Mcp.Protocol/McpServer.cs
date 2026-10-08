@@ -657,6 +657,26 @@ internal sealed class McpServer(DesktopAutomation desktop)
             previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 },
             failAt = new { type = "integer", minimum = 1 }
         }),
+        Tool("character_eyes", "Companion > Character > Touch zones > Eyes (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
+            "with NO vision request: the request the vision model gets (a close-up of the face, 1.6 face widths square, about 768 pixels " +
+            "with a grid; its instructions, message, the check message and the message after an unreadable answer), what the production " +
+            "parser, checks and conversion make of answer (a simulated vision reply about the close-up: {\"left\":{\"iris\":{\"left\",\"top\"," +
+            "\"right\",\"bottom\"},\"eye\":{...}},\"right\":{...}} as fractions, pixels or 0..1000, or flat keys such as left_iris) and, when it " +
+            "fails, of second (the answer to the check with its boxes drawn and numbered, or to the question again): the steps, the four " +
+            "boxes, the problems Martlet's checks found and the renderer's eye hint (each eye's iris {x,y,r} and opening {x,y,rx,ry} in " +
+            "face widths from the face's middle, roll removed). Without snapshotPath the close-up is exactly 1.6 face widths around an " +
+            "upright face; with snapshotPath (a PNG of the character, transparent around it) and face (\"x,y,width[,rollDegrees]\", the " +
+            "face's middle and width as fractions of the snapshot) the production close-up is composed and encoded as the desktop sends " +
+            "it (previewDirectory keeps the pictures). save writes the measurement (with the pictures and the picture of its boxes) for " +
+            "the model (modelPath, modelId or the model dataDirectory's avatar.json shows) into an explicit, disposable dataDirectory, as " +
+            "Measure the eyes would (marked FIXTURE - NOT AI); forget removes it. eyesFrom (mesh, bones, vision or estimate: what the " +
+            "renderer says the eyes use) shows the status line the section shows. Contacts nothing; never returns the model's path.", new
+        {
+            dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, modelId = new { type = "string" },
+            answer = new { type = "string" }, second = new { type = "string" }, snapshotPath = new { type = "string" }, face = new { type = "string" },
+            previewDirectory = new { type = "string" }, save = new { type = "boolean" }, forget = new { type = "boolean" },
+            eyesFrom = new { type = "string", @enum = new[] { "mesh", "bones", "vision", "estimate" } }
+        }),
         Tool("character_gaze", "Where the character looks (Companion > Character > Where the character looks, the overlay's Eyes " +
             "menu and Companion > Vision > Glances at your screen; docs/SCREEN_COMMENTARY.md \"Where the character looks\"): usual " +
             "is the usual gaze saved in a data directory's talk-preferences.json (GazeUsual: personality, mouse, near, ahead or " +
@@ -1808,6 +1828,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     cancellation, OptionalString(arguments, "temperament"), OptionalString(arguments, "personaId"), OptionalString(arguments, "personality"),
                     OptionalInt(arguments, "repeats"), OptionalBool(arguments, "detect") ?? false, OptionalString(arguments, "guess"),
                     OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt")),
+                "character_eyes" => await CharacterEyesCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "dataDirectory") is not null,
+                    OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"), OptionalString(arguments, "answer"),
+                    OptionalString(arguments, "second"), OptionalString(arguments, "snapshotPath"), OptionalString(arguments, "face"),
+                    OptionalString(arguments, "previewDirectory"), OptionalBool(arguments, "save") ?? false, OptionalBool(arguments, "forget") ?? false,
+                    OptionalString(arguments, "eyesFrom"), cancellation),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),

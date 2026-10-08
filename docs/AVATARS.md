@@ -526,6 +526,48 @@ Martlet knows that the model doesn't have yet, the breasts and the groin too.
   your face*. These go with your next message; only touches and strokes can
   start a reply of their own.
 
+### Eyes
+
+Some overlay emotes are drawn over the eyes (heart eyes, star eyes, the dizzy
+swirls). They should cover only the iris and never go outside the eye, so the
+renderer must know where each eye is. A model's own data says so when it can:
+a Live2D model's iris meshes, or a VRM's eye bones and meshes. For a model
+without that data, the Thinking model measures the eyes once with its vision.
+Companion › Character › Touch zones › **Eyes** says where the shown model's
+eyes come from: *From the model's own meshes.*, *From the model's own eye
+bones and meshes.*, *Measured with vision at 3:12 PM.* or *Estimated: ...*.
+
+- **Measure the eyes** draws the character off screen in its rest pose, in the
+  same still renderer as **Detect zones** (no idle motion, so no blink: the
+  eyes are open and look straight ahead, and no emote shows). The renderer
+  also says where its face anchor puts the face in that picture. Martlet cuts a
+  square about 1.6 face widths wide around the face, enlarges it to about 768
+  pixels on a plain backdrop with a grid of tenths, and asks the Thinking model
+  for two boxes per eye, as the viewer sees them: the iris (the colored part
+  with the pupil) and the eye's opening (the white and the iris between the
+  eyelids). The picture goes to a free Thinking pool member that can see, else
+  to the Thinking model after any reply, as a low-priority
+  [helper job](MEMORY.md#helper-jobs-on-the-thinking-pool). It is never on a
+  reply's path, and nothing is sent until a model that can see is set up.
+- Martlet then checks the boxes: both eyes are there, each iris lies mostly
+  inside its eye, the sizes fit the face, the eyes are open, apart and level.
+  It puts left and right back the right way round by where the eyes are. When
+  the first answer can't be read or fails a check, Martlet asks once more: with
+  the four boxes drawn and numbered on the close-up and the problems listed, or
+  with the question again. Two failed answers save nothing.
+- The boxes become the eye hint: each iris's middle and radius, and each
+  opening's middle, half width and half height, in face widths from the face
+  anchor's middle (x toward the viewer's right, y down, with the face's roll
+  taken out). It is saved per model in `character-eyes.json`, with the pictures
+  sent and the close-up with its boxes in `character-eyes\<model>\` (shown
+  under the buttons). The renderer gets it after each model load and after each
+  measurement, and replies with what the eyes use. The model's own data always
+  comes first.
+- Martlet measures a model on its own, once each time it starts, when the
+  renderer says its eyes are only estimated and a model that can see is set up.
+  **Forget the measurement** deletes the measurement and its pictures; Martlet
+  then doesn't measure that model on its own until it starts again.
+
 ### Touch temperament
 
 The personality decides how the character acts when it is touched, and where
