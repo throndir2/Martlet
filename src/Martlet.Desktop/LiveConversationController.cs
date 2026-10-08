@@ -899,8 +899,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         jobs = new(this.clock);
         StartLiveFloor();
         StartPresence();
-        // The image and audio models this PC uses (docs/SENSE_MODELS.md), before anything can send them work.
+        // The image and audio models this PC uses (docs/SENSE_MODELS.md), before anything can send them work, and what models were
+        // found to hear and see, which routes them before a talk window loads the settings.
         senseModels = SenseModels.Load(dataDirectory);
+        poolAbilities = dataDirectory is null ? null : ModelAbilities.Load(dataDirectory);
         helperPool = new ThinkingPoolHelpers(() => ThinkingPool);
         helpers = new(() => Volatile.Read(ref helperPool), () => Replying || ReplySpeaking(), dataDirectory) { Floor = floor };
         songCredentials = new(() => Volatile.Read(ref songAuthorization));
@@ -911,6 +913,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         jobs.Changed += WriteJobsStatus;
         jobs.Changed += WritePoolStatus;
         WriteJobsStatus();
+        // sense-models-status.json from the start, before a talk window loads the settings (it says so).
+        QueueSenseStatus();
     }
 
     /// <summary>Saves what Martlet found out about a Thinking model (model-abilities.json) and lets the running conversation use
@@ -924,13 +928,21 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             ErrorLog.Warn("Martlet couldn't save what it found out about the Thinking model (model-abilities.json).");
             return;
         }
-        Configuration?.UseAbilities(abilities);
+        UseAbilities(abilities);
     }
 
     /// <summary>Reads model-abilities.json again, after Martlet found out more or another computer shared it.</summary>
     internal void ReloadAbilities()
     {
-        if (dataDirectory is not null) Configuration?.UseAbilities(ModelAbilities.Load(dataDirectory));
+        if (dataDirectory is not null) UseAbilities(ModelAbilities.Load(dataDirectory));
+    }
+
+    // The conversation, the Thinking pool's members and the image and audio models' routes (also before a talk window loads the
+    // settings) follow what was found out at once.
+    private void UseAbilities(ModelAbilities abilities)
+    {
+        Volatile.Write(ref poolAbilities, abilities);
+        Configuration?.UseAbilities(abilities);
     }
 
     /// <summary>Whether the Thinking pool (or the conversation model while it is empty) can run a think, for <paramref name="configured"/>'s
