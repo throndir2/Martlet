@@ -703,7 +703,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "(Martlet.Avatar.Hosting CharacterStrokes and CharacterPhysicalWords with Martlet.Conversation's TouchLedger), headless, " +
             "with no desktop and no model request. stroke is a JSON CharacterStroke {\"id\",\"phase\":\"end\",\"aspect\",\"samples\":" +
             "[{\"x\",\"y\",\"ms\",\"touch\":CharacterTouch or null}]} summarized against the touch zones saved for modelId in dataDirectory " +
-            "(or the rough zones before any were found): zones crossed, main zone, ms, length, speed, pace (slow, steady or quick), " +
+            "(or the rough zones before any were found): zones crossed (where zones overlap, each one it was on), main zone, ms, length, speed, pace (slow, steady or quick), " +
             "passes, dx and dy (where it ended from where it began, page heights), sideways and way (down, up or null), and words: how " +
             "the ledger says its whole path (where, such as \"down from your chest over your stomach to your thighs\", label, pace, " +
             "times). changes is a JSON array of RendererPhysical {\"kind\":\"moved|home|zoomed|zoom_reset|panned\",\"dx\",\"dy\"," +
@@ -730,7 +730,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("character_touch_zones", "Companion > Touch > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones and TouchZoneDetection; " +
             "docs/AVATARS.md \"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate, and the defaults Detect " +
             "zones looks for), the step-by-step vision requests for the model (parts on the whole character, zones on each close-up, " +
-            "checks of the numbered boxes; wanted: the default zones and the ones the owner added, required: the ones it must end with), " +
+            "what is special about the character on the whole character, checks of the numbered boxes; wanted: the default zones and the " +
+            "ones the owner added, required: the ones it must end with, special: at most maximum zones special to the character, each a " +
+            "zone of its own named as the model sees it (an extra such as animal ears or a tail keeps Martlet's ID), and the special zones " +
+            "found before, whose IDs the model is asked to keep), " +
             "what the production parser makes " +
             "of answer (a simulated vision reply about the whole picture: JSON boxes as fractions or named edges, pixels of a width x height " +
             "picture or Qwen-style 0..1000 bbox_2d grounding) bound to probe (a simulated renderer zones probe: {\"drawables\":[{\"id\",\"left\"," +
@@ -742,11 +745,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "character-touch-zones.json with what its last detection sent, and with touch (a CharacterTouch: {\"x\",\"y\",\"hitAreas\"," +
             "\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\",\"wholeX\",\"wholeY\",\"restX\",\"restY\",\"restWholeX\"," +
             "\"restWholeY\"}; rest* is where the touched point was in the rest pose, which the boxes compare with when given) the zone " +
-            "it lands in, how it was found, whether it was traced to the rest pose (traced), the point compared (at), what it " +
-            "plays and what it tells the character. detect runs the production detection on snapshotPath (a PNG of the character, transparent " +
+            "it lands in, how it was found, whether it was traced to the rest pose (traced), the point compared (at), touched (every " +
+            "zone it lands in, that one first: where zones overlap, each other zone in use whose box holds the point, on the same " +
+            "part of the body as the touch, leaving out a zone whose box frames a smaller one there), what it plays (the matched " +
+            "zone's reaction), noticing (the touched zones Martlet notices) and noticed (the line Martlet hears for them all, such as " +
+            "\"They poked your groin and your left thigh once.\"). detect runs the production detection on snapshotPath (a PNG of the character, transparent " +
             "around it), composing and encoding every picture it would send (previewDirectory keeps them), with a FIXTURE - NOT AI stand-in " +
             "that answers from answer's zones (guess, a wrong first answer, makes the checks correct it; checks sets the rounds, 0 to 5; " +
-            "failAt makes that request fail, as a model that stopped answering); with includeIntimate on (the default) the intimate zones " +
+            "failAt makes that request fail, as a model that stopped answering; answer's zones may also name things special to the " +
+            "character, such as {\"id\":\"ribbon\",\"name\":\"hair ribbon\",...}, which the stand-in lists when asked what is special; " +
+            "special sets the most special zones, 0 to 10, 6 by default, 0 not asking); with includeIntimate on (the default) the intimate zones " +
             "must be found: asked for again on the whole character, then worked out from the zones around them; it " +
             "reports each request, the steps and how far the found boxes are from answer's. add (zone IDs, comma-separated, such as " +
             "\"hand_left,tail\") adds zones as the owner does with Add zone (added, in the middle of the picture; one the model has is " +
@@ -772,7 +780,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             repeats = new { type = "integer", minimum = 1 }, detect = new { type = "boolean" }, guess = new { type = "string" },
             previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 },
             failAt = new { type = "integer", minimum = 1 }, probePath = new { type = "string" }, add = new { type = "string" },
-            estimate = new { type = "boolean" }
+            estimate = new { type = "boolean" }, special = new { type = "integer", minimum = 0, maximum = 10 }
         }),
         Tool("character_eyes", "Companion > Eyes > Where the eyes are (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
             "with NO vision request: the request the vision model gets (a close-up of the face, 1.6 face widths square, about 768 pixels " +
@@ -2011,7 +2019,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     cancellation, OptionalString(arguments, "temperament"), OptionalString(arguments, "personaId"), OptionalString(arguments, "personality"),
                     OptionalInt(arguments, "repeats"), OptionalBool(arguments, "detect") ?? false, OptionalString(arguments, "guess"),
                     OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt"),
-                    OptionalString(arguments, "probePath"), OptionalString(arguments, "add"), OptionalBool(arguments, "estimate") ?? false),
+                    OptionalString(arguments, "probePath"), OptionalString(arguments, "add"), OptionalBool(arguments, "estimate") ?? false,
+                    OptionalInt(arguments, "special")),
                 "character_eyes" => await CharacterEyesCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "dataDirectory") is not null,
                     OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"), OptionalString(arguments, "answer"),
                     OptionalString(arguments, "second"), OptionalString(arguments, "snapshotPath"), OptionalString(arguments, "face"),

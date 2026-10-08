@@ -413,9 +413,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // the Thinking model can see (and where pictures go), how Detect zones went (each step while it runs), what the last
         // detection sent (how many pictures, how large, what they showed), which zone the last touch landed in and what it
         // played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows, "added by you" for a zone
-        // the owner added, which Detect again looks for too, and its default reaction).
+        // the owner added, which Detect again looks for too, or "special to this character" for one Detect zones found as special to
+        // it, and its default reaction).
         // TouchZonesDetectNote says why Detect zones is off (no model that can see pictures), and TouchZonesAddNote which zones
-        // Detect zones looks for (fixed text).
+        // Detect zones looks for, and that it also looks for anything special to the character (fixed text).
         // Detect zones sends the character's pictures to Thinking, Try plays on the character, Open the pictures opens Explorer,
         // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",

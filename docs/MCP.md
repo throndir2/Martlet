@@ -1511,7 +1511,10 @@ character (its `ids`: head, upper_body and lower_body, and a tail, wings or
 held item only when the owner added one), `zones` with each close-up (its
 `regions` and the wanted zones each asks for) and `check` with the numbered
 boxes, each with its `instructions` and an example `text`; `extras`, the
-tail, wings or held item it looks for), `parsed`
+tail, wings or held item it looks for; `special`, what is special about the
+character: the `maximum` zones of its own the model may add (6 by default),
+its `instructions`, an example `text` and `before`, the special zones found
+before with their `id` and `name`, whose IDs the model is asked to keep), `parsed`
 (what the production parser makes of `answer`, a simulated vision reply about
 the whole picture: JSON boxes as fractions or named edges (`left`, `top`,
 `right`, `bottom`), pixels of a `width` × `height` picture, 400 × 800 by
@@ -1539,7 +1542,8 @@ whether a snapshot
 is kept, what the last detection `sent` (its plain `line`, `requests`,
 `pictures`, `steps` and, from its `probe.json`, the `probe`'s hints as above) and
 each zone's parts, `plays`, whether Martlet `notices` it, whether the owner
-`added` it and the owner's `hint`) and,
+`added` it, whether it is `special` to the character (found as special, not
+added) and the owner's `hint`) and,
 with `touch` (a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
 it lands with the character framed whole, `restX`, `restY`, `restWholeX` and
 `restWholeY` where the touched point of the character was in its rest pose, now
@@ -1553,8 +1557,16 @@ with none of its own drawables under the touch, wins as its finer part and reads
 without `hair`, a drawable lower in `drawables` that a smaller zone inside the
 top drawable's zones owns wins, as an overlay over that part), `traced`
 (whether the boxes were compared with the rest point), `at` (the point they were
-compared with: `x`, `y` and `rest`, true when it is the rest point), its rough `coarse`
-zone, what it `plays`, whether Martlet `notices` it, the line the Thinking model would get for that one touch (`noticed`, such as *They patted the top of your head once.*; a press of 600 ms or more in `heldMilliseconds` is a hold) and how long it `rests`.
+compared with: `x`, `y` and `rest`, true when it is the rest point), `touched`
+(every zone the touch lands in, the matched one first: where zones overlap, each
+other zone in use whose box holds that point, on the same part of the body as
+the touch, the hit VRM bone's part, else the matched zone's; a zone whose box
+frames a smaller touched zone is left out), its rough `coarse`
+zone, what it `plays` (the matched zone's reaction), whether Martlet `notices` it,
+`noticing` (the touched zones Martlet notices), the line the Thinking model would
+get for that one touch on all of them (`noticed`, such as *They patted the top of
+your head once.* or *They poked your groin and your left thigh once.*; a press of
+600 ms or more in `heldMilliseconds` is a hold) and how long it `rests`.
 With `detect`, the production detection (`TouchZoneDetection`) runs on
 `snapshotPath` (a PNG of the character, transparent around it, as the renderer
 takes it): it composes and encodes every picture it would send (the whole
@@ -1578,7 +1590,16 @@ mouth (`lips`), ears, breasts, hips (`hip_left`, `hip_right`) and groin;
 `TouchZoneDetection.Erogenous` lists every intimate kind) must be found, and
 so must the zones the owner added: the ones the close-ups miss are
 asked for again on the whole character (the `missing` step), then the intimate
-ones are worked out from the zones around them. With a probe whose parts name body parts, the
+ones are worked out from the zones around them. After the close-ups (and the
+`missing` step), the `special` step asks the whole character what is special
+about it (at most `special` zones, 0 to 10, 6 by default; 0 doesn't ask): the
+stand-in lists `answer`'s zones that are special, which are the extras Martlet
+knows (such as `tail`) and zones of its own that `answer` names with an ID and
+a `name` (such as `{"id":"hair_bow","name":"hair bow",...}`). Each becomes a
+zone with that name; ordinary body parts and anything intimate are left out.
+A tail, wings or animal ears the probe's part names place are added too. The
+`special check` rounds then check them on the whole character (the `steps` say
+*special: found hair_bow (Hair bow)*). With a probe whose parts name body parts, the
 close-ups' windows come from them and boxes that clearly miss their named part
 are moved onto it (the `steps` say *took head, upper_body, lower_body from the
 model's own named parts* and *moved neck onto the model's own neck*).
@@ -1588,7 +1609,8 @@ snapshot, `marks`, the message,
 the stand-in's answer and whether it `failed`), the `steps` (what each found,
 swapped, moved, removed, added or worked out), `requestCount`, the `failure` it
 stopped at (null when none), what it `missed`, the `wanted` zones, the `required` zones and those
-still missing (`requiredMissing`), and how far the found boxes are
+still missing (`requiredMissing`), the zones `special` to the character it
+found (each `Id` and `Name`), and how far the found boxes are
 from `answer`'s (`worstEdge`, `meanEdge`).
 With `estimate` (and no `answer` or `detect`), the first guess that the Touch
 zones page places on a model with no zones and no picture
@@ -1659,8 +1681,10 @@ pictures, how large and what they showed, such as *..., and the whole character
 again for the zones the close-ups missed*, or *FIXTURE - NOT AI answered
 these.*), `TouchZonesLast` (the zone the last click landed in,
 how it was found (*box, traced to the rest pose* when the renderer traced the
-touched point back to the rest pose the zones were found in) and what it played or that it was resting, and whether Martlet
-noticed it), `TouchZonesNoticed` (what Martlet noticed that waits for a reply,
+touched point back to the rest pose the zones were found in), the other zones it
+landed in where zones overlap (*Groin (box), with Left thigh, at ...*), what it
+played or that it was resting, and which of the zones Martlet
+noticed: *it*, *them* or their names), `TouchZonesNoticed` (what Martlet noticed that waits for a reply,
 the plain touch line, *Martlet stopped talking for it.* when a touch stopped
 Martlet talking, and when a touch-only reply starts, or that it waits for
 your next message because you started talking or typing or Martlet can't reply
@@ -1675,11 +1699,15 @@ reads in `ui_snapshot`; choosing one saves `talk-preferences.json`, so it
 needs `--allow-ui-effects`),
 `TouchZonesSaveState` and each zone's `TouchZoneState-<n>` (its ID, the parts
 it follows, *added by you* for a zone the owner added, which *Detect again*
-looks for too and keeps where it is when it can't find it, and its default
-reaction), and `TouchZonesAddNote` (which zones *Detect zones* looks for:
+looks for too and keeps where it is when it can't find it, or *special to this
+character* for a zone *Detect zones* found as special to the character, and its
+default reaction), and `TouchZonesAddNote` (which zones *Detect zones* looks for:
 *Detect zones looks for the hair, eyes, ears, nose, mouth, neck, breasts, upper
-arms, forearms, stomach, hips, groin, thighs, calves and feet. Add any other
-zone here...*). `TouchZonesDetect` sends the character's
+arms, forearms, stomach, hips, groin, thighs, calves and feet, and for anything
+special to this character, such as animal ears, a tail, wings, a hat or a bow.
+Add any other zone here...*). When a detection finds zones special to the
+character, `TouchZonesDetection` names them: *Found 27 zones (2 special to this
+character: hair bow and tail) at ...*. `TouchZonesDetect` sends the character's
 pictures to Thinking; it is disabled only while a detection runs, while the
 character is still being read, or when no model can see pictures (never because
 the character is hidden). The picture comes from a second renderer that loads
@@ -5296,10 +5324,12 @@ the character. The overlay samples the path every 40 ms (at most 400
 samples), hit-tests the samples in batches with one `touches` message to the
 renderer page, and sends them to Martlet as `stroke` messages on the request
 pipe (`move` batches while the stroke goes on, then `end`). Martlet matches
-each sample to a touch zone: each zone the stroke enters plays its reaction
+each sample to a touch zone, and to every other zone it lands in where zones
+overlap (`CharacterTouchZones.Touched`): each zone the stroke enters as the
+matched zone plays its reaction
 (unless it is resting), and the first zone's first emote or gesture is held
 until the stroke ends. At the end Martlet summarizes the stroke (zones crossed
-in order, pace `slow`, `steady` or `quick`, passes back and forth, seconds,
+in order, each overlapping zone a sample was on included, pace `slow`, `steady` or `quick`, passes back and forth, seconds,
 where it ended from where it began and its main direction)
 and, for the crossed zones with *Martlet notices* on (like a tap there),
 records it in the touch ledger once for each pass (at most 8) with its whole
@@ -5490,7 +5520,7 @@ desktop and no model request: `stroke` (a JSON `CharacterStroke` with its
 hit-tested samples) is summarized against the touch zones saved for `modelId`
 (or the rough zones before any were found), `changes` (a JSON array of
 `RendererPhysical`) are worded, and both go into a touch ledger. It returns the
-stroke's zones, pace, passes, `dx` and `dy` (where it ended from where it
+stroke's zones (where zones overlap, each zone a sample was on), pace, passes, `dx` and `dy` (where it ended from where it
 began, page heights), `sideways`, `way` (`down`, `up` or null) and `words`
 (`where`, `label`, `pace`, `times` and `hint`: how the ledger says its whole
 path), each change's ledger kind, words and `startsTurn` (true for touches,

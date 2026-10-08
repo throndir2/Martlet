@@ -391,6 +391,116 @@ public sealed class TouchZoneDetectionTests
     }
 
     [Fact]
+    public void WhatIsSpecialToACharacterIsReadAsZonesOfItsOwnButNeverBodyPartsOrAnythingIntimate()
+    {
+        const string answer = "{\"special\":[" +
+            "{\"id\":\"ears\",\"name\":\"cat ears\",\"left\":0.30,\"top\":0.02,\"right\":0.62,\"bottom\":0.12}," +
+            "{\"id\":\"tail\",\"name\":\"tail\",\"left\":0.6,\"top\":0.5,\"right\":0.8,\"bottom\":0.7}," +
+            "{\"id\":\"left_hand\",\"name\":\"left hand\",\"left\":0.7,\"top\":0.5,\"right\":0.75,\"bottom\":0.55}," +
+            "{\"id\":\"hair\",\"name\":\"long pink hair\",\"left\":0.3,\"top\":0,\"right\":0.7,\"bottom\":0.4}," +
+            "{\"id\":\"lace_bra\",\"name\":\"lace top\",\"left\":0.4,\"top\":0.3,\"right\":0.6,\"bottom\":0.35}," +
+            "{\"id\":\"hat\",\"name\":\"witch hat\",\"left\":0.3,\"top\":0,\"right\":0.7,\"bottom\":0.06}," +
+            "{\"name\":\"Hair ribbon\",\"left\":0.55,\"top\":0.05,\"right\":0.6,\"bottom\":0.08}," +
+            "{\"id\":\"halo\",\"name\":\"halo\",\"left\":0.4,\"top\":0,\"right\":0.6,\"bottom\":0.02}," +
+            "{\"id\":\"wing\",\"left\":0.1,\"top\":0.2,\"right\":0.3,\"bottom\":0.5}," +
+            "{\"id\":\"sword\",\"name\":\"sword\",\"left\":0.8,\"top\":0.3,\"right\":0.9,\"bottom\":0.8}," +
+            "{\"id\":\"scarf\",\"name\":\"scarf\",\"left\":0.4,\"top\":0.2,\"right\":0.6,\"bottom\":0.25}]}";
+
+        var special = TouchZoneDetection.ReadSpecial(answer, 800, 800, ["halo"], 6);
+
+        // Body parts, anything intimate and a zone already placed are left out; at most six, the first ones. Animal ears, a tail and
+        // wings keep Martlet's own zones; the rest are zones of their own, with the names the model gave them.
+        Assert.Equal(["animal_ears", "tail", "hat", "hair_ribbon", "wings", "sword"], special.Select(s => s.Id));
+        Assert.Equal(["Cat ears", null, "Witch hat", "Hair ribbon", null, "Sword"], special.Select(s => s.Label));
+        Assert.Equal(0.3, special[0].Box.X, 3);
+        Assert.All(special, s => Assert.True(TouchZoneDetection.IsSpecial(s.Id), s.Id));
+        Assert.Equal("wings", TouchZoneDetection.SpecialId("Wing"));
+        Assert.Equal("skirt_hem", TouchZoneDetection.SpecialId("skirt"));
+        Assert.Equal("held_item", TouchZoneDetection.SpecialId("held item"));
+        Assert.Equal("glasses", TouchZoneDetection.SpecialId("Glasses"));
+        Assert.Equal("ponytail", TouchZoneDetection.SpecialId("ponytail"));
+        Assert.Null(TouchZoneDetection.SpecialId("hair"));
+        Assert.Null(TouchZoneDetection.SpecialId("right thigh"));
+        Assert.Null(TouchZoneDetection.SpecialId("cheeks"));
+        Assert.Null(TouchZoneDetection.SpecialId("panties"));
+        Assert.False(TouchZoneDetection.IsSpecial("nose"));
+        Assert.Empty(TouchZoneDetection.ReadSpecial("{\"special\":[]}", 800, 800, [], 6));
+    }
+
+    [Fact]
+    public async Task DetectZonesAlsoAddsAZoneForWhateverIsSpecialToTheCharacter()
+    {
+        // The character has a bow in its hair and a tail; the owner added neither.
+        CharacterTouchZone[] truth =
+        [
+            .. Truth, new() { Id = "hair_bow", Label = "Hair bow", Box = new(0.55, 0.04, 0.08, 0.04) },
+            new() { Id = "tail", Box = new(0.3, 0.45, 0.05, 0.15) }
+        ];
+        var asks = new List<ZoneAsk>();
+        var result = await TouchZoneDetection.RunAsync(Character(), null, (ask, _) =>
+        {
+            asks.Add(ask);
+            return Task.FromResult<(string?, string?)>((TouchZoneDetection.Oracle(ask, truth), null));
+        }, null, CancellationToken.None, TouchZoneDetection.For(null));
+
+        Assert.Null(result.Failure);
+        // The parts step doesn't ask for a tail: after the close-ups, the whole character is asked what is special about it.
+        Assert.DoesNotContain("tail", asks[0].Ids);
+        var special = Assert.Single(asks, a => a.Kind == ZoneAskKind.Special);
+        Assert.Equal((TouchZoneDetection.SpecialStep, new TouchZoneBox(0, 0, 1, 1)), (special.Step, special.Region));
+        Assert.Contains("List at most 6", special.Instructions, StringComparison.Ordinal);
+        Assert.Equal(TouchZoneDetection.MissingStep, asks[asks.IndexOf(special) - 1].Step);
+        var zones = result.Zones!.ToDictionary(z => z.Id);
+        Assert.Equal(("Hair bow", null), (zones["hair_bow"].Label, zones["tail"].Label));
+        Assert.True(TouchZoneDetection.Moved(zones["hair_bow"].Box, truth[^2].Box) <= 0.03, $"{zones["hair_bow"].Box}");
+        Assert.Contains(result.Steps, s => s.StartsWith("special: found ", StringComparison.Ordinal) && s.Contains("hair_bow (Hair bow)", StringComparison.Ordinal));
+        // Then they are checked on the whole character, by their names.
+        var check = Assert.Single(asks, a => a.Step == $"{TouchZoneDetection.SpecialStep} check 1");
+        Assert.Contains("= hair_bow - hair bow", check.Text, StringComparison.Ordinal);
+        Assert.Contains("= tail - a tail", check.Text, StringComparison.Ordinal);
+
+        // Detect again tells the model what it found before, so that it keeps their IDs; with none to add, it isn't asked.
+        var saved = CharacterTouchZones.Detected(null, "m", result.Zones!, new(0, 0, 1, 1), null, DateTimeOffset.Now, whole: true);
+        Assert.Null(CharacterTouchZones.Problem(saved));
+        var again = TouchZoneDetection.For(saved);
+        Assert.Equal([("tail", "Tail"), ("hair_bow", "Hair bow")], again.SpecialBefore);
+        Assert.Contains("same id when you see it again):\ntail - tail\nhair_bow - hair bow", TouchZoneDetection.SpecialText(null, again.SpecialBefore),
+            StringComparison.Ordinal);
+        var off = new List<ZoneAsk>();
+        var none = await TouchZoneDetection.RunAsync(Character(), null, (ask, _) =>
+        {
+            off.Add(ask);
+            return Task.FromResult<(string?, string?)>((TouchZoneDetection.Oracle(ask, truth), null));
+        }, null, CancellationToken.None, again with { MaximumSpecial = 0 });
+        Assert.DoesNotContain(off, a => a.Kind == ZoneAskKind.Special);
+        Assert.DoesNotContain(none.Zones!, z => z.Id is "hair_bow" or "tail");
+    }
+
+    [Fact]
+    public async Task McpDetectsWhatIsSpecialToTheCharacterFromTheStandInsZones()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-touch-").FullName;
+        try
+        {
+            var snapshot = Path.Combine(directory, "snapshot.png");
+            await File.WriteAllBytesAsync(snapshot, Png(Character()));
+            const string answer = "{\"zones\":[{\"id\":\"hair\",\"left\":0.35,\"top\":0.05,\"right\":0.65,\"bottom\":0.11}," +
+                "{\"id\":\"hair_bow\",\"name\":\"hair bow\",\"left\":0.55,\"top\":0.04,\"right\":0.63,\"bottom\":0.08}]}";
+
+            var result = System.Text.Json.JsonSerializer.SerializeToElement(await Martlet.Mcp.TouchZonesCheck.RunAsync(directory, true, null, "model-1",
+                answer, null, null, null, null, null, true, null, snapshot, CancellationToken.None, detect: true, checks: 1));
+
+            Assert.Equal(TouchZoneDetection.DefaultSpecial, result.GetProperty("request").GetProperty("special").GetProperty("maximum").GetInt32());
+            var found = Assert.Single(result.GetProperty("detection").GetProperty("special").EnumerateArray());
+            Assert.Equal(("hair_bow", "Hair bow"), (found.GetProperty("Id").GetString(), found.GetProperty("Name").GetString()));
+            Assert.Equal("Hair bow", CharacterTouchZones.Load(directory, "model-1")!.Zones.Single(z => z.Id == "hair_bow").Name);
+            var each = result.GetProperty("saved").GetProperty("each").EnumerateArray().Single(z => z.GetProperty("Id").GetString() == "hair_bow");
+            Assert.True(each.GetProperty("special").GetBoolean());
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public void HintsComeFromTheSkeletonAndNamedParts()
     {
         var probe = new RendererZoneProbe(
@@ -689,6 +799,14 @@ public sealed class TouchZoneDetectionTests
             .Describe();
         Assert.Contains("close-ups of the head and upper body,", again, StringComparison.Ordinal);
         Assert.EndsWith(", and the whole character again for the zones the close-ups missed.", again, StringComparison.Ordinal);
+        // So is asking what is special about the character.
+        TouchZoneSentPicture special = new("06-special.png", TouchZoneDetection.SpecialStep, nameof(ZoneAskKind.Special), 402, 1024, 180_000, "image/png");
+        Assert.EndsWith(", and the whole character again for anything special to it.", (sent with { Pictures = [.. sent.Pictures, special] }).Describe(),
+            StringComparison.Ordinal);
+        Assert.EndsWith(", and the whole character again for the zones the close-ups missed and for anything special to it.", (sent with
+        {
+            Pictures = [.. sent.Pictures, new("05-missing.png", TouchZoneDetection.MissingStep, "Zones", 402, 1024, 180_000, "image/png"), special]
+        }).Describe(), StringComparison.Ordinal);
     }
 
     // ---------- the first guess, with no vision model ----------
@@ -860,6 +978,28 @@ public sealed class TouchZoneDetectionTests
         Assert.Contains(service.Current!.Zones, z => z.Id == "nose");
         Assert.DoesNotContain(service.Current.Zones, z => z.Id == "foot_left");
         Assert.Equal(CharacterTouchZoneSettings.ByVision, service.Current.DetectedBy);
+    }
+
+    [Fact]
+    public async Task DetectZonesSaysWhichZonesAreSpecialToTheCharacter()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var data = Path.Combine(scope.DirectoryPath, "data");
+        var png = Png(Character());
+        await using var avatar = new AvatarController(createRenderer: () => throw new InvalidOperationException("the character must not show"),
+            createStillRenderer: () => new StillRenderer(png: png));
+        var service = new CharacterTouchZoneService(data);
+        service.Follow("model-1");
+        // The Thinking model sees a hair bow when asked what is special about the character, and nothing else anywhere.
+        var line = await service.DetectAsync(avatar, scope.Profile(), (_, instructions, _, _, _) => Task.FromResult<(string?, string?)>(
+            instructions == TouchZoneDetection.SpecialInstructions(TouchZoneDetection.DefaultSpecial)
+                ? ("{\"special\":[{\"id\":\"hair_bow\",\"name\":\"hair bow\",\"left\":0.55,\"top\":0.04,\"right\":0.63,\"bottom\":0.08}]}", null)
+                : ("{\"zones\":[]}", null)), CancellationToken.None);
+
+        Assert.StartsWith("Found ", line, StringComparison.Ordinal);
+        Assert.Contains(" (1 special to this character: hair bow) at ", line, StringComparison.Ordinal);
+        Assert.Equal("Hair bow", service.Current!.Zones.Single(z => z.Id == "hair_bow").Name);
+        Assert.EndsWith("and for anything special to it.", service.Sent!.Describe(), StringComparison.Ordinal);
     }
 
     [Fact]

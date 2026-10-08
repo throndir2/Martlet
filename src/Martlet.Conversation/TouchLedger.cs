@@ -15,8 +15,9 @@ public enum TouchInterrupts { Any, Intimate, Never }
 
 /// <summary>One thing the user did to the character, at <paramref name="At"/> (a monotonic time). <paramref name="Zone"/> is
 /// where, as the character hears it ("the top of your head", "your left cheek", or a stroke's whole path), and
-/// <paramref name="Zones"/> the places it touched one by one (each zone a stroke crossed; joined into the place when
-/// <paramref name="Zone"/> is null), which count toward how often each place is touched; <paramref name="Label"/> a short name
+/// <paramref name="Zones"/> the places it touched one by one (each zone a stroke crossed, or each zone a touch landed in where
+/// zones overlap; joined into the place when <paramref name="Zone"/> is null), which count toward how often each place is
+/// touched; <paramref name="Label"/> a short name
 /// for the conversation's history ("top of head"); <paramref name="Detail"/> more about it ("to another monitor", "in");
 /// <paramref name="Hint"/> the owner's own words for a zone's touch (Companion › Touch › Touch zones);
 /// <paramref name="Intimate"/> whether it touched an intimate zone; <paramref name="Feeling"/> how the persona feels about being

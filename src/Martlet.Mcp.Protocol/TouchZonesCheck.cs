@@ -10,7 +10,8 @@ namespace Martlet.Mcp;
 
 /// <summary>character_touch_zones: Companion › Touch › Touch zones as Martlet.Avatar.Hosting's CharacterTouchZones runs them,
 /// with NO vision request: the zone list (and the defaults Detect zones looks for) and the step-by-step vision requests for the
-/// model (the default zones and the ones the owner added: add adds zones as Add zone does), what the production parser makes of a simulated
+/// model (the default zones and the ones the owner added: add adds zones as Add zone does; and what is special about the
+/// character, each a zone of its own), what the production parser makes of a simulated
 /// vision answer (fractions, pixels or 0..1000 grounding) and how it binds to a simulated drawables/bones probe, the zones saved
 /// for the model in a data directory, and which zone a simulated touch lands in with what it plays (from the model's emotes and
 /// gestures) and tells the character. With detect, the production detection (TouchZoneDetection) runs on a real snapshot PNG,
@@ -25,7 +26,7 @@ internal static class TouchZonesCheck
         int? width, int? height, string? crop, string? probe, string? touch, bool save, bool? includeIntimate, string? snapshotPath,
         CancellationToken cancellation, string? temperamentAnswer = null, string? personaId = null, string? personality = null, int? repeats = null,
         bool detect = false, string? guess = null, string? previewDirectory = null, int? checks = null, int? failAt = null, string? probePath = null,
-        string? add = null, bool estimate = false)
+        string? add = null, bool estimate = false, int? special = null)
     {
         CharacterActionCatalog? catalog = null;
         string? problem = null;
@@ -88,7 +89,10 @@ internal static class TouchZonesCheck
             };
         }
         // How Detect zones goes for this model: the zones it looks for and the ones it must end with.
-        var asks = TouchZoneDetection.For(saved, includeIntimate) with { Checks = Math.Clamp(checks ?? 2, 0, 5) };
+        var asks = TouchZoneDetection.For(saved, includeIntimate) with
+        {
+            Checks = Math.Clamp(checks ?? 2, 0, 5), MaximumSpecial = Math.Clamp(special ?? TouchZoneDetection.DefaultSpecial, 0, 10)
+        };
         CharacterTouchZoneSettings? detected = parsed is null ? null : CharacterTouchZones.Detected(saved, id, parsed, cropBox, probed, DateTimeOffset.Now);
         object? detection = null;
         (TouchZoneSent Sent, List<(string File, byte[] Bytes)> Pictures)? sent = null;
@@ -96,7 +100,8 @@ internal static class TouchZonesCheck
         {
             if (snapshotPath is null) throw new ArgumentException("detect needs snapshotPath: a PNG of the character, transparent around it.");
             var snapshot = TouchZoneImages.Decode(await File.ReadAllBytesAsync(snapshotPath, cancellation));
-            var truth = CharacterTouchZones.Parse(answer, snapshot.Width, snapshot.Height) ??
+            // The stand-in's zones can name things special to the character, each with its own ID and name.
+            var truth = CharacterTouchZones.Parse(answer, snapshot.Width, snapshot.Height, special: true) ??
                 throw new ArgumentException("detect needs answer: the zones a perfect vision model would find, as JSON about the whole snapshot.");
             var first = guess is null ? null : CharacterTouchZones.Parse(guess, snapshot.Width, snapshot.Height);
             (detection, var found, sent) = await DetectAsync(snapshot, truth, first, hints, previewDirectory, asks, failAt, cancellation);
@@ -158,13 +163,18 @@ internal static class TouchZonesCheck
             // The point the boxes compare with: where the touched point was in the rest pose when the touch carries it.
             var (atX, atY, traced) = CharacterTouchZones.TouchPoint(settings, given);
             var compared = new { x = Math.Round(atX, 4), y = Math.Round(atY, 4), rest = traced };
-            match = found is null ? new { zone = (string?)null, how = (string?)null, traced = false, at = compared, coarse = given.CoarseZone, plays = Array.Empty<string>(), notices = false, noticed = (string?)null }
+            // Every zone the touch landed in (zones can overlap), the matched one first: Martlet hears each one it notices.
+            var touched = CharacterTouchZones.Touched(settings, given, found);
+            match = found is null ? new { zone = (string?)null, how = (string?)null, traced = false, at = compared, touched = Array.Empty<string>(),
+                    coarse = given.CoarseZone, plays = Array.Empty<string>(), notices = false, noticed = (string?)null }
                 : new
                 {
-                    zone = found.Zone.Id, name = found.Zone.Name, how = found.How, traced = found.Traced, at = compared, coarse = given.CoarseZone,
+                    zone = found.Zone.Id, name = found.Zone.Name, how = found.How, traced = found.Traced, at = compared,
+                    touched = touched.Select(z => z.Id).ToArray(), coarse = given.CoarseZone,
                     plays = CharacterTouchZones.React(found.Zone, catalog, temperament, touches).Actions.Select(s => $"{s.Kind}: {s.Name}").ToArray(),
                     reaction = Reaction(CharacterTouchZones.React(found.Zone, catalog, temperament, touches)), repeats = touches,
-                    notices = found.Zone.Reaction.Notices, noticed = Noticed(found.Zone, given), rests = found.Zone.Reaction.CooldownSeconds
+                    notices = found.Zone.Reaction.Notices, noticing = touched.Where(z => z.Reaction.Notices).Select(z => z.Id).ToArray(),
+                    noticed = Noticed(touched, given, temperament), rests = found.Zone.Reaction.CooldownSeconds
                 };
         }
         return new
@@ -200,7 +210,14 @@ internal static class TouchZonesCheck
                     }, null, new(0, 0, 1, 1))
                 },
                 check = new { instructions = TouchZoneDetection.CheckInstructions },
-                extras = TouchZoneDetection.Extras.Where(z => asks.Zones.Contains(z) || asks.Required.Contains(z)).ToArray()
+                extras = TouchZoneDetection.Extras.Where(z => asks.Zones.Contains(z) || asks.Required.Contains(z)).ToArray(),
+                // What is special about the character: at most maximum zones of its own, keeping the IDs of the ones found before.
+                special = new
+                {
+                    maximum = asks.MaximumSpecial, instructions = TouchZoneDetection.SpecialInstructions(asks.MaximumSpecial),
+                    text = TouchZoneDetection.SpecialText(null, asks.SpecialBefore),
+                    before = asks.SpecialBefore.Select(b => new { id = b.Id, name = b.Name }).ToArray()
+                }
             },
             parsed = answer is null ? null : parsed?.Select(Describe).ToArray() ?? [],
             hints = DescribeHints(hints),
@@ -222,7 +239,8 @@ internal static class TouchZonesCheck
                     } : null,
                 each = settings.Zones.Select(z => new
                 {
-                    z.Id, z.Name, z.Enabled, active = settings.Active(z), z.Added, drawables = z.Drawables.Count, z.Bones,
+                    z.Id, z.Name, z.Enabled, active = settings.Active(z), z.Added, special = !z.Added && TouchZoneDetection.IsSpecial(z.Id),
+                    drawables = z.Drawables.Count, z.Bones,
                     plays = CharacterTouchZones.React(z, catalog, temperament, 1) is var r && r.From == TouchReactionPlan.FromOwner
                         ? string.Join(" + ", r.Actions.Select(s => s.Name)) : r.From + ": " + string.Join(" + ", r.Actions.Select(s => s.Name)),
                     notices = z.Reaction.Notices, hint = CharacterTouchZones.Narration(z)
@@ -326,6 +344,7 @@ internal static class TouchZonesCheck
             snapshot = new { snapshot.Width, snapshot.Height }, requestCount = result.Requests, failure = result.Failure, result.Steps, asked,
             found = found.Count, given = truth.Count, missed = truth.Where(t => found.All(z => z.Id != t.Id)).Select(t => t.Id).ToArray(),
             wanted = options.Zones, required, requiredMissing = required.Where(id => found.All(z => z.Id != id)).ToArray(),
+            special = found.Where(z => TouchZoneDetection.IsSpecial(z.Id)).Select(z => new { z.Id, z.Name }).ToArray(),
             worstEdge = errors.Length == 0 ? (double?)null : Math.Round(errors.Max(), 4),
             meanEdge = errors.Length == 0 ? (double?)null : Math.Round(errors.Average(), 4),
             zones = found.Select(Describe).ToArray()
@@ -343,14 +362,17 @@ internal static class TouchZonesCheck
     private static object Reaction(TouchReactionPlan plan) =>
         new { from = plan.From, attitude = plan.Attitude, escalated = plan.Escalated, linger = plan.LingerSeconds, look = plan.LookSeconds };
 
-    // What the Thinking model hears about this one touch when Martlet notices the zone (the ledger's line), or null.
-    private static string? Noticed(CharacterTouchZone zone, CharacterTouch touch)
+    // What the Thinking model hears about this one touch on the zones it landed in that Martlet notices (the ledger's line, as the
+    // desktop records it), or null.
+    private static string? Noticed(IReadOnlyList<CharacterTouchZone> touched, CharacterTouch touch, CharacterTouchTemperament? temperament)
     {
-        if (!zone.Reaction.Notices) return null;
+        var heard = touched.Where(z => z.Reaction.Notices).ToArray();
+        if (CharacterPhysicalWords.Touch(heard) is not { } words) return null;
         var ledger = new Martlet.Conversation.TouchLedger();
-        ledger.Record(new(touch.Held ? Martlet.Conversation.PhysicalKind.Hold : CharacterTouchZones.Pats(zone) ? Martlet.Conversation.PhysicalKind.Pat
-            : Martlet.Conversation.PhysicalKind.Tap, TimeSpan.Zero, CharacterTouchZones.Part(zone), zone.Name.ToLowerInvariant(),
-            Hint: CharacterTouchZones.Narration(zone)));
+        ledger.Record(new(touch.Held ? Martlet.Conversation.PhysicalKind.Hold : words.Pat ? Martlet.Conversation.PhysicalKind.Pat
+            : Martlet.Conversation.PhysicalKind.Tap, TimeSpan.Zero, words.Where, words.Label, Hint: words.Hint,
+            Zones: [.. heard.Select(CharacterTouchZones.Part)], Intimate: heard.Any(z => CharacterTouchZones.Kind(z.Id)?.Intimate == true),
+            Feeling: CharacterTouchTemperaments.Feeling(temperament, heard)));
         return ledger.Drain(TimeSpan.Zero)?.Line;
     }
 

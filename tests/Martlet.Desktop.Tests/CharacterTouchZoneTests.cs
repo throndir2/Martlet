@@ -180,6 +180,112 @@ public sealed class CharacterTouchZoneTests
         Assert.False(CharacterTouchZones.OnPart("cheek_left", "leftHand"));
     }
 
+    // Zones that overlap: the groin and the left thigh where they meet, the nose and the left cheek, the hair's box around the
+    // face, and the left hand held in front of the thigh.
+    private static CharacterTouchZoneSettings Overlapping() => new()
+    {
+        ModelId = "model-1", Crop = new(0, 0, 1, 1),
+        Zones =
+        [
+            new() { Id = "hair", Box = new(0.3, 0.02, 0.4, 0.3) },
+            new() { Id = "eye_left", Box = new(0.52, 0.15, 0.06, 0.04) },
+            new() { Id = "nose", Box = new(0.48, 0.18, 0.04, 0.06) },
+            new() { Id = "cheek_left", Box = new(0.5, 0.2, 0.08, 0.06) },
+            new() { Id = "groin", Box = new(0.44, 0.55, 0.12, 0.08) },
+            new() { Id = "thigh_left", Box = new(0.5, 0.58, 0.12, 0.2) },
+            new() { Id = "hand_left", Box = new(0.56, 0.64, 0.06, 0.06), Drawables = ["HandL"], Bones = ["leftHand"] }
+        ]
+    };
+
+    private static string[] Ids(IReadOnlyList<CharacterTouchZone> zones) => [.. zones.Select(z => z.Id)];
+
+    private static string[] On(CharacterTouchZoneSettings settings, CharacterTouch touch) =>
+        Ids(CharacterTouchZones.Touched(settings, touch, CharacterTouchZones.Match(settings, touch)));
+
+    [Fact]
+    public void ATouchWhereZonesOverlapIsOnEachOfThem()
+    {
+        var settings = Overlapping();
+
+        // Where the groin meets the left thigh: the groin (the smaller box) is matched and plays, and the thigh is touched too.
+        Assert.Equal(("groin", "box"), Of(CharacterTouchZones.Match(settings, Touch(0.53, 0.6))));
+        Assert.Equal(["groin", "thigh_left"], On(settings, Touch(0.53, 0.6)));
+        Assert.Equal(["groin", "thigh_left"], On(settings, Touch(0.53, 0.6, bone: "hips")));
+        Assert.Equal(["thigh_left"], On(settings, Touch(0.52, 0.72)));
+        // The nose and the left cheek overlap: both. The hair's box holds the point too, but it frames them, so it says less.
+        Assert.Equal(["nose", "cheek_left"], On(settings, Touch(0.51, 0.22)));
+        Assert.Equal(["eye_left"], On(settings, Touch(0.55, 0.17)));
+        Assert.Equal(["hair"], On(settings, Touch(0.35, 0.05)));
+        // A hand in front of the thigh touches the hand, on a Live2D drawable and a VRM bone alike.
+        Assert.Equal(["hand_left"], On(settings, Touch(0.58, 0.66, ["HandL", "LegL"])));
+        Assert.Equal(["hand_left"], On(settings, Touch(0.58, 0.66, bone: "leftHand")));
+        // Zones that aren't in use aren't touched: intimate ones without Include intimate zones, ones turned off.
+        Assert.Equal(["thigh_left"], On(settings with { IncludeIntimate = false }, Touch(0.53, 0.6)));
+        Assert.Equal(["groin"], On(settings with { Zones = [.. settings.Zones.Select(z => z.Id == "thigh_left" ? z with { Enabled = false } : z)] },
+            Touch(0.53, 0.6)));
+        // Zones found with the character framed whole compare with that framing, and a touch traced to the rest pose with where
+        // its point was at rest, as Match does.
+        Assert.Equal(["groin", "thigh_left"], On(settings with { Whole = true }, Touch(0.9, 0.1) with { WholeX = 0.53, WholeY = 0.6 }));
+        Assert.Equal(["groin", "thigh_left"], On(settings, Touch(0.9, 0.1) with { RestX = 0.53, RestY = 0.6 }));
+        // A touch matched only by its rough zone is on that zone alone, and no match touches nothing.
+        Assert.Equal(["foot_right"], On(settings, Touch(0.9, 0.95, ["ArtMesh_Foot"])));
+        Assert.Empty(CharacterTouchZones.Touched(settings, Touch(0.5, 0.5), null));
+    }
+
+    [Fact]
+    public async Task MartletHearsEveryZoneATouchLandsInAndTheMatchedOnePlays()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-touch-").FullName;
+        try
+        {
+            var settings = Overlapping();
+            await CharacterTouchZones.SaveAsync(directory, settings with
+            {
+                Zones = [.. settings.Zones.Select(z => z.Id == "nose" ? z with { Reaction = z.Reaction with { Notices = false } } : z)]
+            }, DateTimeOffset.Now);
+            var service = new CharacterTouchZoneService(directory);
+            service.Follow("model-1");
+            var heard = new List<string[]>();
+            var played = new List<string>();
+            TouchReactionPlan Plan(CharacterTouchZone zone, int repeats)
+            {
+                played.Add(zone.Id);
+                return new([]);
+            }
+
+            Assert.Equal("groin", service.React(Touch(0.53, 0.6), Plan, (_, _, _) => Task.CompletedTask, zones => heard.Add(Ids(zones)))?.Zone.Id);
+            Assert.Equal(["groin", "thigh_left"], Assert.Single(heard));
+            Assert.Equal(["groin"], played);
+            Assert.StartsWith("Groin (box), with Left thigh, at ", service.LastMatch);
+            Assert.EndsWith(", and Martlet noticed them.", service.LastMatch);
+
+            // Martlet hears only the zones it notices: here not the nose, which still plays its reaction.
+            service.React(Touch(0.51, 0.22), Plan, (_, _, _) => Task.CompletedTask, zones => heard.Add(Ids(zones)));
+            Assert.Equal(["cheek_left"], heard[^1]);
+            Assert.Equal(["groin", "nose"], played);
+            Assert.EndsWith(", and Martlet noticed Left cheek.", service.LastMatch);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public async Task TheMcpCheckSaysEveryZoneATouchLandsInAndWhatMartletHears()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-touch-").FullName;
+        try
+        {
+            const string answer = "{\"zones\":[{\"id\":\"groin\",\"box\":[0.44,0.55,0.56,0.63]},{\"id\":\"thigh_left\",\"box\":[0.5,0.58,0.62,0.78]}]}";
+            var result = System.Text.Json.JsonSerializer.SerializeToElement(await Martlet.Mcp.TouchZonesCheck.RunAsync(directory, true, null, "model-1",
+                answer, 400, 800, null, null, "{\"x\":0.53,\"y\":0.6,\"hitAreas\":[],\"drawables\":[]}", false, null, null, CancellationToken.None));
+            var match = result.GetProperty("match");
+            Assert.Equal("groin", match.GetProperty("zone").GetString());
+            Assert.Equal(["groin", "thigh_left"], match.GetProperty("touched").EnumerateArray().Select(e => e.GetString()));
+            Assert.Equal(["groin", "thigh_left"], match.GetProperty("noticing").EnumerateArray().Select(e => e.GetString()));
+            Assert.Equal("They poked your groin and your left thigh once.", match.GetProperty("noticed").GetString());
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
     // A Live2D face found at rest, framed whole on the page: the hair's box takes in the whole head, so the face's skin, the
     // bangs, the nose and the eye lie mostly inside it; the cheek holds no drawable of its own.
     private static readonly CharacterTouchZoneSettings RestFace = new()
@@ -482,6 +588,25 @@ public sealed class CharacterTouchZoneTests
             Assert.Equal([true, false], CharacterTouchZones.Load(directory, "chosen")!.Zones.Select(z => z.Reaction.Notices));
         }
         finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public void AZoneSpecialToTheCharacterReactsAsAnExtraAndKeepsTheNameItWasFoundWith()
+    {
+        var bow = new CharacterTouchZone { Id = "hair_bow", Label = "Hair bow", Box = new(0.5, 0.05, 0.1, 0.05) };
+        // It plays what an extra plays by default, the character hears its name, and Include intimate zones doesn't touch it.
+        Assert.Equal(["tilt", "smile"], CharacterTouchZones.Plan(bow, Catalog()).Select(s => s.Name));
+        Assert.Equal("your hair bow", CharacterTouchZones.Part(bow));
+        Assert.True(new CharacterTouchZoneSettings { ModelId = "m", IncludeIntimate = false, Zones = [bow] }.Active(bow));
+
+        // Found again, it keeps the owner's name for it, else the name it was found with: a tail called a fox tail is named so.
+        var saved = CharacterTouchZones.Detected(null, "m", [bow, new() { Id = "tail", Label = "Fox tail", Box = new(0.3, 0.5, 0.1, 0.2) }], null, null,
+            DateTimeOffset.Now);
+        Assert.Equal(["Fox tail", "Hair bow"], saved.Zones.Select(z => z.Name));
+        var renamed = saved with { Zones = [saved.Zones[0], saved.Zones[1] with { Label = "Ribbon" }] };
+        var again = CharacterTouchZones.Detected(renamed, "m", [bow with { Label = "Bow" }], null, null, DateTimeOffset.Now);
+        Assert.Equal("Ribbon", Assert.Single(again.Zones).Name);
+        Assert.Null(CharacterTouchZones.Problem(again));
     }
 
     [Fact]

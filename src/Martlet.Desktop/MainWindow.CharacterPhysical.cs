@@ -41,13 +41,14 @@ public partial class MainWindow
         characterTouchZones.Follow(catalog?.Inventory.ModelId ?? characterTouchZones.ModelId);
         var settings = characterTouchZones.Current;
         var temperament = characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId);
-        string? ZoneOf(CharacterTouch touch)
+        // Every zone a sample is on (zones can overlap); the matched one comes first and starts the reactions.
+        IReadOnlyList<string> ZonesOf(CharacterTouch touch)
         {
-            if (CharacterTouchZones.Match(settings, touch) is not { } match) return null;
-            lock (strokeZones) strokeZones[match.Zone.Id] = match.Zone;
-            return match.Zone.Id;
+            var touched = CharacterTouchZones.Touched(settings, touch, CharacterTouchZones.Match(settings, touch));
+            lock (strokeZones) foreach (var zone in touched) strokeZones[zone.Id] = zone;
+            return [.. touched.Select(z => z.Id)];
         }
-        var (entered, ended) = strokes.Add(batch, ZoneOf);
+        var (entered, ended) = strokes.Add(batch, ZonesOf);
         foreach (var (touch, _) in entered)
         {
             // Each zone the stroke reaches plays its reaction (unless it is resting); the first one's emote stays on while
@@ -88,9 +89,9 @@ public partial class MainWindow
         catch (Exception error) when (error is OperationCanceledException || RendererFailures.Is(error, lifetime.Token)) { }
     }
 
-    /// <summary>A stroke ended: Martlet notices it on the crossed zones that have Martlet notices on (like a tap there), one
-    /// ledger entry for each pass (at most 8), with its whole path: "They slowly stroked down from your chest over your stomach
-    /// to your thighs once", "They slowly stroked your hair 4 times".</summary>
+    /// <summary>A stroke ended: Martlet notices it on the crossed zones (where zones overlap, every one it was on) that have Martlet
+    /// notices on (like a tap there), one ledger entry for each pass (at most 8), with its whole path: "They slowly stroked down
+    /// from your chest over your stomach to your thighs once", "They slowly stroked your hair 4 times".</summary>
     private void StrokeEnded(StrokeSummary summary, IReadOnlyList<CharacterTouchZone> crossed)
     {
         if (closing) return;

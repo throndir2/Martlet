@@ -144,7 +144,8 @@ public static class CharacterTouchZones
     public const string SnapshotFolder = "character-touch-zones";
     public const int MaximumModels = 32, MaximumZones = 64, MaximumBytes = 4 * 1024 * 1024, MaximumActions = 3;
     public const int MaximumNarrationLength = 160, MaximumLabelLength = 40;
-    // A drawable belongs to a zone when this much of its bounds lies inside the zone's box.
+    // A drawable belongs to a zone when this much of its bounds lies inside the zone's box; a zone frames a smaller one when this
+    // much of the smaller box lies inside its own.
     public const double MostlyInside = 0.6;
     /// <summary>Every intimate zone kind in plain words, left and right together (Include intimate zones and the touch
     /// temperament's Intimate parts name them so).</summary>
@@ -166,7 +167,8 @@ public static class CharacterTouchZones
         new(id, label, group, intimate, narration, defaults);
 
     /// <summary>Every zone Martlet knows, in the order the vision model is asked for them. Detect zones looks for
-    /// <see cref="TouchZoneDetection.Defaults"/> and the ones the owner added; Add zone offers the rest. Left and right are the
+    /// <see cref="TouchZoneDetection.Defaults"/>, the ones the owner added and what is special about the character (which can also
+    /// be a zone of its own that isn't here, named as the vision model sees it); Add zone offers the rest. Left and right are the
     /// character's own.</summary>
     public static readonly IReadOnlyList<TouchZoneKind> Kinds =
     [
@@ -242,7 +244,13 @@ public static class CharacterTouchZones
         ["left_lower_arm"] = "forearm_left", ["right_lower_arm"] = "forearm_right", ["lower_arm_left"] = "forearm_left",
         ["lower_arm_right"] = "forearm_right", ["left_upper_leg"] = "thigh_left", ["right_upper_leg"] = "thigh_right",
         ["upper_leg_left"] = "thigh_left", ["upper_leg_right"] = "thigh_right", ["left_lower_leg"] = "calf_left",
-        ["right_lower_leg"] = "calf_right", ["lower_leg_left"] = "calf_left", ["lower_leg_right"] = "calf_right"
+        ["right_lower_leg"] = "calf_right", ["lower_leg_left"] = "calf_left", ["lower_leg_right"] = "calf_right",
+        // What a vision model calls the extras a character can have.
+        ["animal_ear"] = "animal_ears", ["cat_ears"] = "animal_ears", ["fox_ears"] = "animal_ears", ["dog_ears"] = "animal_ears",
+        ["wolf_ears"] = "animal_ears", ["bunny_ears"] = "animal_ears", ["rabbit_ears"] = "animal_ears", ["kemonomimi"] = "animal_ears",
+        ["kemomimi"] = "animal_ears", ["nekomimi"] = "animal_ears", ["cat_ear"] = "animal_ears", ["fox_ear"] = "animal_ears",
+        ["dog_ear"] = "animal_ears", ["wolf_ear"] = "animal_ears", ["bunny_ear"] = "animal_ears", ["rabbit_ear"] = "animal_ears",
+        ["tails"] = "tail", ["wing"] = "wings", ["horn"] = "horns"
     };
 
     // A's rough zones, when no found zone matched: the found zones to try, else the first one's default reaction.
@@ -267,18 +275,34 @@ public static class CharacterTouchZones
         return slug == "glasses_hat" ? "glasses_or_hat" : null;
     }
 
+    /// <summary>A name as the ID of a zone of its own: lower case, its words (letters and digits in any language) joined with
+    /// underscores, at most 32 characters; null when nothing is left.</summary>
+    public static string? Slug(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var slug = new StringBuilder();
+        foreach (var c in name.Trim().ToLowerInvariant())
+            if (char.IsLetterOrDigit(c)) slug.Append(c);
+            else if (slug.Length > 0 && slug[^1] != '_') slug.Append('_');
+        var text = slug.ToString().Trim('_');
+        if (text.Length > 32) text = text[..32].TrimEnd('_');
+        return text.Length == 0 ? null : text;
+    }
+
     // ---------- the vision model's answer ----------
 
     /// <summary>The zones in a vision model's answer about a whole <paramref name="width"/> by <paramref name="height"/> picture
     /// (the fixture's stand-in answer and MCP's simulated one), with their boxes as fractions of the picture: JSON with boxes as
     /// arrays or named edges, a bare list, boxes keyed by zone, or Qwen-style <c>bbox_2d</c> grounding in pixels or 0..1000; an
-    /// answer cut off part way keeps the zones it finished. Unknown zones and boxes that can't be placed are left out; null when
-    /// nothing could be read. Detection itself asks step by step (<see cref="TouchZoneDetection"/>).</summary>
-    public static IReadOnlyList<CharacterTouchZone>? Parse(string? answer, int width, int height)
+    /// answer cut off part way keeps the zones it finished. Unknown zones (unless <paramref name="special"/>: then a zone special to
+    /// the character keeps its own ID and name, as <see cref="TouchZoneDetection.SpecialId"/> reads it) and boxes that can't be
+    /// placed are left out; null when nothing could be read. Detection itself asks step by step (<see cref="TouchZoneDetection"/>).</summary>
+    public static IReadOnlyList<CharacterTouchZone>? Parse(string? answer, int width, int height, bool special = false)
     {
         if (width <= 0 || height <= 0) return null;
-        var zones = TouchZoneDetection.ReadBoxes(answer, width, height, Normalize).Take(MaximumZones)
-            .Select(z => new CharacterTouchZone { Id = z.Key, Box = z.Value.Clamped(), Enabled = true }).ToArray();
+        var zones = (special ? TouchZoneDetection.ReadAnyZones(answer, width, height)
+                : TouchZoneDetection.ReadBoxes(answer, width, height, Normalize).Select(z => (Id: z.Key, Label: (string?)null, Box: z.Value)))
+            .Take(MaximumZones).Select(z => new CharacterTouchZone { Id = z.Id, Label = z.Label, Box = z.Box.Clamped(), Enabled = true }).ToArray();
         return zones.Length == 0 ? null : zones;
     }
 
@@ -487,7 +511,8 @@ public static class CharacterTouchZones
     /// leaves out lie.</summary>
     private static TouchZoneBox Around(TouchZoneBox box) => new(box.X - box.Width / 2, box.Y - box.Height / 2, box.Width * 2, box.Height * 2);
 
-    /// <summary>Newly found zones merged with the saved ones: a zone found again keeps the owner's label, choice, reaction and
+    /// <summary>Newly found zones merged with the saved ones: a zone found again keeps the owner's label (else the name it was
+    /// found with), choice, reaction and
     /// whether the owner added it. A zone the owner added (<see cref="CharacterTouchZone.Added"/>) that wasn't found again stays
     /// where it was; any other zone not found again is dropped, unless <paramref name="keepUnfound"/> (a detection still
     /// running over the first guess: its zones not found yet stay too). <paramref name="whole"/>: the snapshot framed the
@@ -496,7 +521,7 @@ public static class CharacterTouchZones
         TouchZoneBox? crop, RendererZoneProbe? probe, DateTimeOffset now, bool whole = false, bool keepUnfound = false)
     {
         var merged = found.Select(zone => saved?.Zones.FirstOrDefault(z => z.Id == zone.Id) is { } old
-            ? zone with { Label = old.Label, Enabled = old.Enabled, Reaction = old.Reaction, Added = old.Added } : zone).ToList();
+            ? zone with { Label = old.Label ?? zone.Label, Enabled = old.Enabled, Reaction = old.Reaction, Added = old.Added } : zone).ToList();
         // Its box was a fraction of the earlier snapshot: it stays on the same place of the page in the new one.
         TouchZoneBox Rebased(TouchZoneBox box) => saved?.Crop is { } was && crop is { } next && was != next ? box.Within(was).Relative(next).Clamped() : box;
         var kept = saved?.Zones.Where(z => (z.Added || keepUnfound) && merged.All(m => m.Id != z.Id)).Select(z => z with { Box = Rebased(z.Box) }).ToArray() ?? [];
@@ -536,24 +561,49 @@ public static class CharacterTouchZones
     /// doesn't know lies on every part.</summary>
     public static bool OnPart(string zoneId, string bone)
     {
-        string[]? parts = zoneId switch
-        {
-            "neck" => ["body", "head", "face"],
-            "shoulder_left" or "shoulder_right" => ["body", "arm"],
-            "animal_ears" or "horns" or "glasses_or_hat" => HeadParts,
-            "tail" or "wings" or "skirt_hem" => ["body", "leg"],
-            "held_item" => ArmParts,
-            _ => Kind(zoneId)?.Group switch
-            {
-                TouchZoneGroup.Head => HeadParts, TouchZoneGroup.Torso => TorsoParts, TouchZoneGroup.Arms => ArmParts,
-                TouchZoneGroup.LowerBody => LowerBodyParts, _ => null
-            }
-        };
-        if (parts is not null && CharacterTouch.BoneZone(bone) is { } part && !parts.Contains(part, StringComparer.Ordinal)) return false;
+        if (Parts(zoneId) is { } parts && CharacterTouch.BoneZone(bone) is { } part && !parts.Contains(part, StringComparer.Ordinal)) return false;
         // Left and right are the character's own, in zone IDs and VRM bone names alike.
         var side = zoneId.EndsWith("_left", StringComparison.Ordinal) ? "left" : zoneId.EndsWith("_right", StringComparison.Ordinal) ? "right" : null;
         return side is null || !(bone.StartsWith("left", StringComparison.Ordinal) || bone.StartsWith("right", StringComparison.Ordinal)) ||
             bone.StartsWith(side, StringComparison.Ordinal);
+    }
+
+    // The rough parts of the body (CharacterTouch.BoneZone of a VRM bone) a zone lies on; null for every part (a zone Martlet
+    // doesn't know).
+    private static string[]? Parts(string zoneId) => zoneId switch
+    {
+        "neck" => ["body", "head", "face"],
+        "shoulder_left" or "shoulder_right" => ["body", "arm"],
+        "animal_ears" or "horns" or "glasses_or_hat" => HeadParts,
+        "tail" or "wings" or "skirt_hem" => ["body", "leg"],
+        "held_item" => ArmParts,
+        _ => Kind(zoneId)?.Group switch
+        {
+            TouchZoneGroup.Head => HeadParts, TouchZoneGroup.Torso => TorsoParts, TouchZoneGroup.Arms => ArmParts,
+            TouchZoneGroup.LowerBody => LowerBodyParts, _ => null
+        }
+    };
+
+    /// <summary>Every zone a touch landed in, the matched one (<paramref name="match"/>) first. Zones can overlap, and a touch
+    /// where they do is on each of them: every other zone in use whose box holds the point <see cref="Match"/> compares
+    /// (<see cref="TouchPoint"/>), smallest first, that lies on the same part of the body as the touch (a VRM touch's bone,
+    /// <see cref="OnPart"/>, else the matched zone's part): a hand held in front of the hips or raised to the face touches the
+    /// hand, not what is behind it. A zone whose box frames a smaller touched zone's (holds most of it, <see cref="Inside"/>:
+    /// the hair's box around an eye, a chest's around a breast) is left out, as the finer zone says where the touch landed. A
+    /// touch matched only by its rough zone is on that zone alone; none without a match.</summary>
+    public static IReadOnlyList<CharacterTouchZone> Touched(CharacterTouchZoneSettings? settings, CharacterTouch touch, TouchZoneMatch? match)
+    {
+        if (match is null) return [];
+        if (settings is null || match.How == "coarse") return [match.Zone];
+        TouchZoneBox Page(CharacterTouchZone zone) => settings.Crop is { } crop ? zone.Box.Within(crop) : zone.Box;
+        var (x, y, _) = TouchPoint(settings, touch);
+        var matched = Parts(match.Zone.Id);
+        bool SamePart(string zoneId) => touch.Bone is { } bone ? OnPart(zoneId, bone)
+            : matched is null || Parts(zoneId) is not { } parts || parts.Intersect(matched, StringComparer.Ordinal).Any();
+        var under = settings.Zones.Where(z => settings.Active(z) && z.Id != match.Zone.Id && Page(z).Contains(x, y) && SamePart(z.Id))
+            .OrderBy(z => z.Box.Area).ToArray();
+        CharacterTouchZone[] all = [match.Zone, .. under];
+        return [match.Zone, .. under.Where(z => !all.Any(other => other.Id != z.Id && Inside(Page(other), Page(z))))];
     }
 
     /// <summary>The zone a touch landed in: the topmost touched drawable that belongs to a zone in use, or, unless the touch is
@@ -673,7 +723,8 @@ public static class CharacterTouchZones
         if (catalog is null) return [];
         var entries = catalog.Entries.Where(e => e.Action.Enabled).ToArray();
         var plan = new List<CharacterActionSource>();
-        foreach (var slot in Kind(zone.Id)?.Defaults ?? [])
+        // A zone of its own, special to the character (a hair ribbon, a halo), reacts as the extras do.
+        foreach (var slot in Kind(zone.Id)?.Defaults ?? Extra)
             foreach (var word in slot)
             {
                 var hit = entries.Where(e => Named(e, word)).OrderBy(e => e.Source.Kind == CharacterActionKind.Gesture ? 1 : 0)
@@ -861,7 +912,7 @@ public static class CharacterTouchZones
 }
 
 /// <summary>One picture the vision model was sent while finding zones: its file in the sent folder, the step, what it asked
-/// (Parts, Zones or Check), its size in pixels and bytes, and its media type.</summary>
+/// (Parts, Zones, Special or Check), its size in pixels and bytes, and its media type.</summary>
 public sealed record TouchZoneSentPicture(string File, string Step, string Kind, int Width, int Height, int Bytes, string MediaType);
 
 /// <summary>Where a detection's snapshot sat on the renderer page (fractions of the page) and what the renderer's probe told of the
@@ -882,6 +933,7 @@ public sealed record TouchZoneSent(DateTimeOffset At, bool Fixture, int Requests
             .Select(p => p.Step.Replace('_', ' ')).Distinct().ToArray();
         var checks = Pictures.Count(p => p.Kind == nameof(ZoneAskKind.Check));
         var again = Pictures.Any(p => p.Step == TouchZoneDetection.MissingStep);
+        var special = Pictures.Any(p => p.Kind == nameof(ZoneAskKind.Special));
         var parts = closeUps.Length switch
         {
             0 => "",
@@ -893,6 +945,7 @@ public sealed record TouchZoneSent(DateTimeOffset At, bool Fixture, int Requests
             $"up to {largest} pixels on the longer side, each on a plain backdrop with a grid of tenths" +
             (parts.Length > 0 ? $": the whole character, then close-ups of the {parts}" : "") +
             (checks > 0 ? $", with its boxes drawn and numbered for {checks} check{(checks == 1 ? "" : "s")}" : "") +
-            (again ? ", and the whole character again for the zones the close-ups missed" : "") + ".";
+            (again ? ", and the whole character again for the zones the close-ups missed" : "") +
+            (special ? again ? " and for anything special to it" : ", and the whole character again for anything special to it" : "") + ".";
     }
 }
