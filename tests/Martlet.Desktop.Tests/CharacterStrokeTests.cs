@@ -268,6 +268,50 @@ public sealed class CharacterStrokeTests
     }
 
     [Fact]
+    public void A_stroke_across_overlapping_zones_crosses_each_of_them()
+    {
+        // Each sample is on the zones its drawables name here, the matched one first.
+        static IReadOnlyList<string> On(CharacterTouch touch) => touch.Drawables;
+        static StrokeSample At(double x, int ms, params string[] zones) => new(x, 0.2, ms, new(x, 0.2, [], zones, null, null, false, null, null));
+        StrokeSample[] path = [At(0.40, 0, "stomach"), At(0.42, 40, "groin", "thigh_left"), At(0.44, 80, "groin", "thigh_left"), At(0.46, 120, "thigh_left")];
+        var summary = CharacterStrokes.Summarize(path, 1, On);
+        Assert.Equal(["stomach", "groin", "thigh_left"], summary.Zones);
+        Assert.Equal("thigh_left", summary.Main);
+
+        // The matched zone starts each reaction at once; the stroke's end has every zone it was on.
+        var tracker = new CharacterStrokeTracker();
+        var (entered, _) = tracker.Add(new CharacterStroke(1, "move", 1, path[..3]), On);
+        Assert.Equal(["stomach", "groin"], entered.Select(e => e.Zone));
+        var (more, ended) = tracker.Add(new CharacterStroke(1, "end", 1, path[3..]), On);
+        Assert.Equal(["thigh_left"], more.Select(e => e.Zone));
+        Assert.Equal(["stomach", "groin", "thigh_left"], ended!.Distinct);
+    }
+
+    [Fact]
+    public void A_touch_on_overlapping_zones_names_each_of_them()
+    {
+        var words = CharacterPhysicalWords.Touch([Place("groin"), Place("thigh_left")])!;
+        Assert.Equal(("your groin and your left thigh", "groin + left thigh", (string?)null, false), (words.Where, words.Label, words.Hint, words.Pat));
+        // One zone is said as before, and both sides of a kind together.
+        var head = CharacterPhysicalWords.Touch([Place("top_of_head")])!;
+        Assert.Equal(("the top of your head", "top of head", true), (head.Where, head.Label, head.Pat));
+        Assert.Equal("your breasts", CharacterPhysicalWords.Touch([Place("breast_left"), Place("breast_right")])!.Where);
+        // The owner's own words go with it, and the first zone says whether a quick tap is a pat.
+        var hair = Place("hair") with { Reaction = new() { Narration = "*ruffles your hair*" } };
+        var pat = CharacterPhysicalWords.Touch([hair, Place("forehead")])!;
+        Assert.Equal(("your hair and your forehead", "*ruffles your hair*", true), (pat.Where, pat.Hint, pat.Pat));
+        Assert.Null(CharacterPhysicalWords.Touch([]));
+
+        // The conversation hears it as one touch on all of them.
+        var ledger = new Martlet.Conversation.TouchLedger();
+        ledger.Record(new(Martlet.Conversation.PhysicalKind.Tap, TimeSpan.FromSeconds(1), words.Where, words.Label,
+            Zones: ["your groin", "your left thigh"], Intimate: true));
+        var burst = ledger.Drain(TimeSpan.FromSeconds(1))!;
+        Assert.Equal("They poked your groin and your left thigh once.", burst.Line);
+        Assert.Equal("(touch: groin + left thigh poke)", burst.HistoryLine);
+    }
+
+    [Fact]
     public async Task The_avatar_passes_on_strokes_and_changes_only_while_the_character_shows()
     {
         using var scope = new AvatarHostingTests.Scope();

@@ -142,7 +142,8 @@ public static class CharacterTouchZones
     public const string SnapshotFolder = "character-touch-zones";
     public const int MaximumModels = 32, MaximumZones = 64, MaximumBytes = 4 * 1024 * 1024, MaximumActions = 3;
     public const int MaximumNarrationLength = 160, MaximumLabelLength = 40;
-    // A drawable belongs to a zone when this much of its bounds lies inside the zone's box.
+    // A drawable belongs to a zone when this much of its bounds lies inside the zone's box; a zone frames a smaller one when this
+    // much of the smaller box lies inside its own.
     public const double MostlyInside = 0.6;
     /// <summary>Every intimate zone kind in plain words, left and right together (Include intimate zones and the touch
     /// temperament's Intimate parts name them so).</summary>
@@ -428,25 +429,54 @@ public static class CharacterTouchZones
     /// doesn't know lies on every part.</summary>
     public static bool OnPart(string zoneId, string bone)
     {
-        string[]? parts = zoneId switch
-        {
-            "neck" => ["body", "head", "face"],
-            "shoulder_left" or "shoulder_right" => ["body", "arm"],
-            "animal_ears" or "horns" or "glasses_or_hat" => HeadParts,
-            "tail" or "wings" or "skirt_hem" => ["body", "leg"],
-            "held_item" => ArmParts,
-            _ => Kind(zoneId)?.Group switch
-            {
-                TouchZoneGroup.Head => HeadParts, TouchZoneGroup.Torso => TorsoParts, TouchZoneGroup.Arms => ArmParts,
-                TouchZoneGroup.LowerBody => LowerBodyParts, _ => null
-            }
-        };
-        if (parts is not null && CharacterTouch.BoneZone(bone) is { } part && !parts.Contains(part, StringComparer.Ordinal)) return false;
+        if (Parts(zoneId) is { } parts && CharacterTouch.BoneZone(bone) is { } part && !parts.Contains(part, StringComparer.Ordinal)) return false;
         // Left and right are the character's own, in zone IDs and VRM bone names alike.
         var side = zoneId.EndsWith("_left", StringComparison.Ordinal) ? "left" : zoneId.EndsWith("_right", StringComparison.Ordinal) ? "right" : null;
         return side is null || !(bone.StartsWith("left", StringComparison.Ordinal) || bone.StartsWith("right", StringComparison.Ordinal)) ||
             bone.StartsWith(side, StringComparison.Ordinal);
     }
+
+    // The rough parts of the body (CharacterTouch.BoneZone of a VRM bone) a zone lies on; null for every part (a zone Martlet
+    // doesn't know).
+    private static string[]? Parts(string zoneId) => zoneId switch
+    {
+        "neck" => ["body", "head", "face"],
+        "shoulder_left" or "shoulder_right" => ["body", "arm"],
+        "animal_ears" or "horns" or "glasses_or_hat" => HeadParts,
+        "tail" or "wings" or "skirt_hem" => ["body", "leg"],
+        "held_item" => ArmParts,
+        _ => Kind(zoneId)?.Group switch
+        {
+            TouchZoneGroup.Head => HeadParts, TouchZoneGroup.Torso => TorsoParts, TouchZoneGroup.Arms => ArmParts,
+            TouchZoneGroup.LowerBody => LowerBodyParts, _ => null
+        }
+    };
+
+    /// <summary>Every zone a touch landed in, the matched one (<paramref name="match"/>) first. Zones can overlap, and a touch
+    /// where they do is on each of them: every other zone in use whose box holds the point <see cref="Match"/> compares,
+    /// smallest first, that lies on the same part of the body as the touch (a VRM touch's bone, <see cref="OnPart"/>, else the
+    /// matched zone's part): a hand held in front of the hips or raised to the face touches the hand, not what is behind it. A
+    /// zone whose box frames a smaller touched zone's (holds most of it, <see cref="MostlyInside"/>: the hair's box around an
+    /// eye, a chest's around a breast) is left out, as the finer zone says where the touch landed. A touch matched only by its
+    /// rough zone is on that zone alone; none without a match.</summary>
+    public static IReadOnlyList<CharacterTouchZone> Touched(CharacterTouchZoneSettings? settings, CharacterTouch touch, TouchZoneMatch? match)
+    {
+        if (match is null) return [];
+        if (settings is null || match.How == "coarse") return [match.Zone];
+        TouchZoneBox Page(CharacterTouchZone zone) => settings.Crop is { } crop ? zone.Box.Within(crop) : zone.Box;
+        // The point Match compares: where the touch lands with the character framed whole when the zones were found so.
+        var (x, y) = settings.Whole && touch is { WholeX: { } wholeX, WholeY: { } wholeY } ? (wholeX, wholeY) : (touch.X, touch.Y);
+        var matched = Parts(match.Zone.Id);
+        bool SamePart(string zoneId) => touch.Bone is { } bone ? OnPart(zoneId, bone)
+            : matched is null || Parts(zoneId) is not { } parts || parts.Intersect(matched, StringComparer.Ordinal).Any();
+        var under = settings.Zones.Where(z => settings.Active(z) && z.Id != match.Zone.Id && Page(z).Contains(x, y) && SamePart(z.Id))
+            .OrderBy(z => z.Box.Area).ToArray();
+        CharacterTouchZone[] all = [match.Zone, .. under];
+        return [match.Zone, .. under.Where(z => !all.Any(other => other.Id != z.Id && Frames(Page(z), Page(other))))];
+    }
+
+    /// <summary>Whether <paramref name="outer"/> frames <paramref name="inner"/>: it is bigger and holds most of it.</summary>
+    private static bool Frames(TouchZoneBox outer, TouchZoneBox inner) => inner.Area < outer.Area && outer.Covers(inner) >= MostlyInside;
 
     /// <summary>The zone a touch landed in: the topmost touched drawable that belongs to a zone in use (with several, the
     /// smallest whose box holds the point, else the nearest), hair, then for a touched VRM bone the smallest zone in use on that
