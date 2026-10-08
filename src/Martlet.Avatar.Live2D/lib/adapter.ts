@@ -9,7 +9,7 @@ import { BLUSH_PARAMETERS, type Gesture, GesturePlayer, type GestureState, isBlu
 import { CHAIN_LIMITS, findSwingingChains, type SwingingChain } from "./chains.js";
 import { Capabilities, ChannelMapping, inspectParameters, MappingPlan, Parameter } from "./mapping.js";
 import { checkRuntime, type Animator, type AnimatorAssets, CubismMoc, CubismModel, CubismRenderer, SdkModules } from "./sdk.js";
-import { hitTestModel, type Live2DHit } from "./touch.js";
+import { HAIR_PART, hitTestModel, type Live2DHit } from "./touch.js";
 
 export interface RenderIdentity {
   readonly sessionId: string;
@@ -221,6 +221,11 @@ export class Live2DAdapter {
   #eyeBlinkIds: readonly string[] = [];
   #lipSyncIds: readonly string[] = [];
   #partNames: ReadonlyMap<string, string> = new Map();
+  /** Every drawable's vertex positions in the rest pose (as the model loads, which the touch zones picture shows), so a touch
+   *  can be traced back to where it was then (see hitTest). */
+  #rest: readonly Float32Array[] = [];
+  /** The drawables that sit in a part the model names as hair (see HAIR_PART), for touches. */
+  #hair: ReadonlySet<number> = new Set();
 
   constructor(canvas: HTMLCanvasElement, options: {
     sdk?: SdkModules;
@@ -361,6 +366,20 @@ export class Live2DAdapter {
       (x, y) => [(x * scale / aspect + view.x * view.frame + 1) / 2, (1 - (y * scale + view.y)) / 2], () => this.#services.now() > until);
   }
 
+  /** The drawables that sit in a part the model names as hair (its ID or DisplayInfo name, or a part it sits in), such as
+   *  Hiyori's side locks (前髪右, in 横髪 PartHairSide); none when the SDK can't say. */
+  #hairDrawables(model: CubismModel): ReadonlySet<number> {
+    const hair = new Set<number>();
+    const ids = this.#partIds(model), parents = model.getPartParentPartIndices?.();
+    if (!model.getDrawableParentPartIndex || ids.length === 0) return hair;
+    const named = ids.map(id => HAIR_PART.test(id) || HAIR_PART.test(this.#partNames.get(id) ?? ""));
+    for (let i = 0; i < model.getDrawableCount(); i++)
+      for (let part = model.getDrawableParentPartIndex(i), depth = 0; part >= 0 && part < ids.length && depth < 64;
+        part = parents?.[part] ?? -1, depth++)
+        if (named[part]) { hair.add(i); break; }
+    return hair;
+  }
+
   playMotion(group: string): boolean {
     this.#ready();
     return this.#resources?.animator?.playMotion(group) ?? false;
@@ -381,11 +400,14 @@ export class Live2DAdapter {
   get gestures(): readonly Gesture[] { return this.animated ? supportedGestures(this.#parameters.map(p => p.id)) : []; }
 
   /**
-  /**
    * What of the character is at a point of the canvas (`x`, `y` fractions 0..1, origin top-left, +y down) as last drawn:
-   * the authored hit areas there and the visible drawables, topmost first. Undefined when the point misses the model.
+   * the authored hit areas there and the visible drawables, topmost first, and whether the topmost is hair (`hair`: the
+   * model names a part it sits in as hair). `restCanvas` is where the touched point of the character was in the rest pose
+   * (the pose the touch zones picture shows), traced on the touched drawable's own triangles and drawn in the canvas's
+   * framing now (fractions, like `x` and `y`): the same spot of the skin however the head turns, tilts or nods, or an idle
+   * motion moves the body. Undefined when the point misses the model.
    */
-  hitTest(x: number, y: number): Live2DHit | undefined {
+  hitTest(x: number, y: number): (Live2DHit & { readonly restCanvas?: { readonly x: number; readonly y: number } }) | undefined {
     this.#ready();
     finite(x, "touch x");
     finite(y, "touch y");
@@ -395,7 +417,10 @@ export class Live2DAdapter {
     const aspect = this.#canvas.width / this.#canvas.height;
     const modelX = (2 * x - 1 - view.x * view.frame) * aspect / scale;
     const modelY = (1 - 2 * y - view.y) / scale;
-    return hitTestModel(model, this.#bundle?.description.hitAreas ?? [], modelX, modelY);
+    const hit = hitTestModel(model, this.#bundle?.description.hitAreas ?? [], modelX, modelY, i => this.#rest[i], i => this.#hair.has(i));
+    if (!hit?.rest) return hit;
+    const restCanvas = { x: (hit.rest.x * scale / aspect + view.x * view.frame + 1) / 2, y: (1 - (hit.rest.y * scale + view.y)) / 2 };
+    return [restCanvas.x, restCanvas.y].every(Number.isFinite) ? Object.freeze({ ...hit, restCanvas: Object.freeze(restCanvas) }) : hit;
   }
 
   /** Starts one of Martlet's gestures (see `gestures`), replacing one already playing, or with `hold` keeps a holdable one
@@ -667,6 +692,8 @@ export class Live2DAdapter {
       this.#neutral();
       this.update(0);
       this.#modelTop = visibleTop(model);
+      this.#rest = Array.from({ length: model.getDrawableCount() }, (_, i) => Float32Array.from(model.getDrawableVertices(i)));
+      this.#hair = this.#hairDrawables(model);
       this.#faceSource = this.#findFace(model, bundle);
       const rest = this.#restFace(model);
       const started = this.#services.now();
@@ -1220,6 +1247,8 @@ export class Live2DAdapter {
     this.#eyeBlinkIds = [];
     this.#lipSyncIds = [];
     this.#partNames = new Map();
+    this.#rest = [];
+    this.#hair = new Set();
     if (!resources) return;
     const errors: unknown[] = [];
     const release = (action: () => void) => {

@@ -137,3 +137,30 @@ test("the bundled Hiyori's face is pinned to her skin, so Martlet's blush moves 
       });
     }
   });
+
+test("a tap on the bundled Hiyori is traced to where it was at rest, so touch zones follow her as she turns, nods or tips her head",
+  { skip: !present && "the Live2D SDK isn't downloaded" }, async t => {
+    const { adapter, set, canvas } = await hiyori(t);
+    const rest = adapter.faceAnchor();
+    const pixels = (a, b) => Math.hypot((a.x - b.x) * canvas.width, (a.y - b.y) * canvas.height);
+    const fraction = point => ({ x: point.x / canvas.width, y: point.y / canvas.height });
+    let moved = 0, worst = 0;
+    for (const pose of [{ ParamAngleY: -30 }, { ParamAngleY: 30 }, { ParamAngleX: 30 }, { ParamAngleX: -30 }, { ParamAngleZ: 30 },
+      { ParamAngleZ: -30 }]) {
+      set({ ParamAngleX: 0, ParamAngleY: 0, ParamAngleZ: 0, ...pose });
+      // Where each point of her face is now (the face follows her skin, see the test above): a tap there.
+      const now = adapter.faceAnchor();
+      for (const key of ["cheekLeft", "cheekRight", "mouth", "eyeLeft", "eyeRight"]) {
+        const tap = fraction(now[key]), was = fraction(rest[key]);
+        const hit = adapter.hitTest(tap.x, tap.y);
+        assert.ok(hit?.restCanvas, `${JSON.stringify(pose)} ${key}: a tap there is traced`);
+        const off = pixels(hit.restCanvas, was);
+        moved = Math.max(moved, pixels(tap, was));
+        worst = Math.max(worst, off);
+        assert.ok(off < 0.05 * rest.width, `${JSON.stringify(pose)} ${key}: traced ${off.toFixed(1)} px from where it was at rest ` +
+          `(face ${rest.width.toFixed(0)} px wide, on ${hit.rest.drawable})`);
+      }
+    }
+    t.diagnostic(`taps moved up to ${moved.toFixed(1)} px from their place at rest; traced back to within ${worst.toFixed(1)} px`);
+    assert.ok(moved > 0.08 * rest.width, "the poses move her face enough that a box drawn at rest would miss");
+  });

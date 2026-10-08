@@ -191,9 +191,11 @@ public sealed record RendererSpring(string? Name, RendererBonePoint[] Joints)
 public sealed record RendererZoneProbe(RendererDrawableBox[]? Drawables = null, RendererBonePoint[]? Bones = null, RendererFace? Face = null,
     RendererModelPart[]? Parts = null, RendererChain[]? Chains = null, RendererSpring[]? Springs = null);
 
-/// <summary>Which zone a touch landed in and how it was found ("drawable", "node", "bone", "hair", "box" or "coarse"), and for a
-/// zone with several areas, which of them (its index in <see cref="CharacterTouchZone.AllAreas"/>).</summary>
-public sealed record TouchZoneMatch(CharacterTouchZone Zone, string How, int? Area = null);
+/// <summary>Which zone a touch landed in and how it was found ("drawable", "node", "bone", "hair", "box" or "coarse"), whether
+/// its boxes were compared with where the touched point was in the rest pose (<see cref="CharacterTouch.RestX"/>, traced on the
+/// touched mesh), so the match follows the model as it moves, and for a zone with several areas, which of them (its index in
+/// <see cref="CharacterTouchZone.AllAreas"/>).</summary>
+public sealed record TouchZoneMatch(CharacterTouchZone Zone, string How, bool Traced = false, int? Area = null);
 
 /// <summary>Touch zones: the body zones Martlet knows, the vision model's request and how its answer is read, binding zones to a
 /// model's drawables or bones, matching a touch to a zone, the reaction it plays, and the per-model settings kept in
@@ -206,7 +208,8 @@ public static partial class CharacterTouchZones
     /// <summary>At most this many areas make up one zone.</summary>
     public const int MaximumAreas = 8;
     public const int MaximumNarrationLength = 160, MaximumLabelLength = 40;
-    // A drawable belongs to a zone when this much of its bounds lies inside the zone's box.
+    // A drawable belongs to a zone when this much of its bounds lies inside the zone's box; a zone frames a smaller one when this
+    // much of the smaller box lies inside its own.
     public const double MostlyInside = 0.6;
     /// <summary>Every intimate zone kind in plain words, left and right together (Include intimate zones and the touch
     /// temperament's Intimate parts name them so).</summary>
@@ -417,24 +420,32 @@ public static partial class CharacterTouchZones
     /// a drawable whose bounds are mostly (<see cref="MostlyInside"/>) inside an area's box; a bone of the zone's own part of the
     /// body (<see cref="OnPart"/>) whose joint is inside the box or whose part (from its joint to the next bone's) crosses it, else
     /// those whose part crosses the box grown by half its size, else the one whose part passes nearest (a cheek: the head; a
-    /// breast: the chest; the groin: the hips). A tail, wings or animal ears then follow the model's own part for them (one it
-    /// names so, or one its physics swings that the box holds some of), all of it even where it hides behind the body at rest,
-    /// in areas along it; hair also follows the swinging hair its box doesn't hold (a ponytail). A drawable a zone follows so
-    /// belongs to that zone only (<see cref="Follow"/>). <paramref name="crop"/> is where the snapshot sat on the page (null:
-    /// the boxes are already fractions of the page).</summary>
+    /// breast: the chest; the groin: the hips). A Live2D area also takes the pieces of its own feature that its box leaves out
+    /// (<see cref="Pieces"/>). A tail, wings or animal ears then follow the model's own part for them (one it names so, or one
+    /// its physics swings that the box holds some of), all of it even where it hides behind the body at rest, in areas along
+    /// it; hair also follows the swinging hair its box doesn't hold (a ponytail). A drawable a zone follows so belongs to that
+    /// zone only (<see cref="Follow"/>). <paramref name="crop"/> is where the snapshot sat on the page (null: the boxes are
+    /// already fractions of the page).</summary>
     public static IReadOnlyList<CharacterTouchZone> Bind(IReadOnlyList<CharacterTouchZone> zones, TouchZoneBox? crop, RendererZoneProbe? probe)
     {
         if (probe is null) return zones;
         var joints = (probe.Bones ?? []).Where(b => double.IsFinite(b.X) && double.IsFinite(b.Y) && !string.IsNullOrEmpty(b.Bone)).ToArray();
         var parts = BoneParts(joints);
         var model = ModelStructure.Read(probe, crop);
+        // Each area bound by its box, then given the pieces of its feature its box leaves out, shared out among all the areas.
+        var boxed = zones.Select(zone => zone.AllAreas.Where(a => !a.FromModel).Select(a => BindArea(zone.Id, a, crop, probe, joints, parts)).ToList()).ToArray();
+        var flat = boxed.SelectMany((areas, i) => areas.Select(a => new CharacterTouchZone { Id = zones[i].Id, Box = a.Box, Drawables = a.Drawables, Bones = a.Bones }))
+            .ToArray();
+        var pieces = Pieces(flat, crop, probe);
+        var at = 0;
+        foreach (var areas in boxed)
+            for (var k = 0; k < areas.Count; k++) areas[k] = areas[k] with { Drawables = pieces[at++].Drawables };
         var bound = new CharacterTouchZone[zones.Count];
         // Zones that follow the model's own parts go first, so a tail takes its parts before another zone's box does.
         foreach (var i in Enumerable.Range(0, zones.Count).OrderBy(i => FollowOrder(zones[i].Id)))
         {
             var zone = zones[i];
-            var boxes = zone.AllAreas.Where(a => !a.FromModel).Select(a => BindArea(zone.Id, a, crop, probe, joints, parts)).ToList();
-            bound[i] = Follow(zone, boxes, crop, model) ?? Compose(zone, boxes.Count > 0 ? boxes
+            bound[i] = Follow(zone, boxed[i], crop, model) ?? Compose(zone, boxed[i].Count > 0 ? boxed[i]
                 : [BindArea(zone.Id, new() { Box = zone.Box }, crop, probe, joints, parts)], null);
         }
         // A drawable a zone follows by the model's own parts belongs to that zone only: other zones' boxes let it go.
@@ -484,6 +495,111 @@ public static partial class CharacterTouchZones
         };
     }
 
+    /// <summary>The zones with the pieces of their own feature that lie by their box (Live2D). A vision box drawn tight around a
+    /// feature leaves some of its drawables out (an eye's white and lashes, a blush wider than the cheek), and a bigger zone that
+    /// frames it (the hair, around the whole face) would then get them alone. The model's own parts group a feature's pieces, so
+    /// a drawable that no smaller zone has yet is also linked to a zone of the feature its own part (or the nearest part it sits
+    /// in that is linked to any zone, through the drawables mostly inside a box) belongs to. A part belongs to one feature (one
+    /// zone, or a left and a right one) when nearly all of its linked drawables' area (<see cref="OneFeature"/>) lies in that
+    /// feature's zones, a zone whose box holds another of them not counting: a stray lash tip in a cheek's box doesn't stop an
+    /// eye's part lending its lashes, but the whole head with its eyes and mouth lends nothing. A part the model names (its
+    /// DisplayInfo name or ID, or a part it sits in: <see cref="TouchZoneDetection.PartName"/>) lends only to zones of what it
+    /// names (<see cref="BodyPartZones"/>): 頬, the cheeks, never to an ear whose box takes in a piece of the cheek. The
+    /// drawable's middle must lie in
+    /// the zone's box grown by half its size (<see cref="Around"/>) and it must be at most four times the box's size; with both
+    /// sides, the nearer one takes it. It never removes a link.</summary>
+    private static IReadOnlyList<CharacterTouchZone> Pieces(IReadOnlyList<CharacterTouchZone> zones, TouchZoneBox? crop, RendererZoneProbe probe)
+    {
+        var drawables = (probe.Drawables ?? []).Where(d => d.Right > d.Left && d.Bottom > d.Top && !string.IsNullOrEmpty(d.Part))
+            .DistinctBy(d => d.Id, StringComparer.Ordinal).ToArray();
+        if (drawables.Length == 0 || zones.Count == 0) return zones;
+        var parents = new Dictionary<string, string>(StringComparer.Ordinal);
+        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var part in probe.Parts ?? [])
+        {
+            if (string.IsNullOrEmpty(part.Id)) continue;
+            if (!string.IsNullOrEmpty(part.Parent)) parents.TryAdd(part.Id, part.Parent);
+            if (!string.IsNullOrEmpty(part.Name)) names.TryAdd(part.Id, part.Name);
+        }
+        // A part, then the parts it sits in.
+        IEnumerable<string> Lineage(string part)
+        {
+            string? at = part;
+            for (var depth = 0; at is not null && depth < 64; depth++, at = parents.GetValueOrDefault(at)) yield return at;
+        }
+        // The body part the model's own names say a drawable's part (or the nearest part it sits in that says one) is: by its
+        // DisplayInfo name, else its ID (目 or PartEye: the eyes).
+        string? Says(string part) => Lineage(part).Select(p => TouchZoneDetection.PartName(names.GetValueOrDefault(p)).Part ??
+            TouchZoneDetection.PartName(p).Part).FirstOrDefault(said => said is not null);
+        static TouchZoneBox Bounds(RendererDrawableBox d) => new(d.Left, d.Top, d.Right - d.Left, d.Bottom - d.Top);
+        var pages = zones.Select(zone => crop is null ? zone.Box : zone.Box.Within(crop)).ToArray();
+        var owners = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+        for (var i = 0; i < zones.Count; i++)
+            foreach (var id in zones[i].Drawables)
+            {
+                if (!owners.TryGetValue(id, out var list)) owners[id] = list = [];
+                list.Add(i);
+            }
+        // How much drawable area links each part to each zone, through its own drawables and those of the parts inside it.
+        var linked = new Dictionary<string, Dictionary<int, double>>(StringComparer.Ordinal);
+        foreach (var d in drawables)
+            if (owners.TryGetValue(d.Id, out var of))
+                foreach (var part in Lineage(d.Part!))
+                {
+                    if (!linked.TryGetValue(part, out var weights)) linked[part] = weights = [];
+                    foreach (var i in of) weights[i] = weights.GetValueOrDefault(i) + Bounds(d).Area;
+                }
+        var added = zones.Select(_ => new List<string>()).ToArray();
+        foreach (var d in drawables)
+        {
+            if (Lineage(d.Part!).FirstOrDefault(linked.ContainsKey) is not { } part) continue;
+            var weights = linked[part];
+            var finest = weights.Keys.Where(i => !weights.Keys.Any(j => j != i && Inside(pages[j], pages[i]))).ToArray();
+            if (owners.TryGetValue(d.Id, out var of) && of.Any(finest.Contains)) continue;
+            var total = finest.Sum(i => weights[i]);
+            var feature = finest.GroupBy(i => Feature(zones[i].Id), StringComparer.Ordinal).MaxBy(g => g.Sum(i => weights[i]));
+            if (feature is null || !(total > 0) || feature.Sum(i => weights[i]) < OneFeature * total) continue;
+            // A part the model names lends only to zones of what it names: the cheek's blush never goes to an ear whose box
+            // takes in a piece of the cheek.
+            if (Says(d.Part!) is { } said && !(BodyPartZones.TryGetValue(said, out var kinds) && kinds.Contains(feature.Key, StringComparer.Ordinal))) continue;
+            var box = Bounds(d);
+            var near = feature.Where(i => box.Area <= 4 * pages[i].Area && Around(pages[i]).Contains(box.CenterX, box.CenterY))
+                .OrderBy(i => pages[i].Distance(box.CenterX, box.CenterY)).ThenBy(i => pages[i].Area).Select(i => (int?)i).FirstOrDefault();
+            if (near is { } at) added[at].Add(d.Id);
+        }
+        return zones.Select((zone, i) => added[i].Count == 0 ? zone
+            : zone with { Drawables = [.. zone.Drawables.Concat(added[i]).Distinct(StringComparer.Ordinal).Take(256)] }).ToArray();
+    }
+
+    /// <summary>The share of a part's linked drawable area one feature must hold for the part to lend it its other pieces.</summary>
+    private const double OneFeature = 0.9;
+
+    /// <summary>The zones (without their side) each body part a model's own part names can say (<see cref="TouchZoneDetection.PartName"/>)
+    /// may lend its pieces to.</summary>
+    private static readonly Dictionary<string, string[]> BodyPartZones = new(StringComparer.Ordinal)
+    {
+        ["hair"] = ["hair", "top_of_head"], ["animal_ears"] = ["animal_ears"], ["ears"] = ["ear"],
+        ["head"] = ["top_of_head", "hair", "forehead", "face"], ["face"] = ["face", "forehead", "cheek", "chin"], ["eyes"] = ["eye"],
+        ["nose"] = ["nose"], ["mouth"] = ["lips"], ["cheeks"] = ["cheek"], ["neck"] = ["neck", "collarbone"],
+        ["chest"] = ["chest", "breast", "collarbone"], ["waist"] = ["waist", "stomach", "navel", "lower_back"],
+        ["torso"] = ["chest", "breast", "collarbone", "stomach", "navel", "waist", "lower_back", "shoulder"],
+        ["arms"] = ["upper_arm", "forearm", "shoulder"], ["hands"] = ["hand", "held_item"],
+        ["lower_body"] = ["hips", "hip", "groin", "buttocks", "thigh", "inner_thigh", "skirt_hem"], ["hips"] = ["hips", "hip", "groin", "buttocks"],
+        ["legs"] = ["thigh", "inner_thigh", "knee", "calf"], ["feet"] = ["foot"], ["tail"] = ["tail"], ["wings"] = ["wings"], ["skirt"] = ["skirt_hem"]
+    };
+
+    /// <summary>A zone's feature without its side ("eye" for eye_left and eye_right).</summary>
+    private static string Feature(string id) => id.EndsWith("_left", StringComparison.Ordinal) ? id[..^5]
+        : id.EndsWith("_right", StringComparison.Ordinal) ? id[..^6] : id;
+
+    /// <summary>Whether <paramref name="inner"/> is a smaller box mostly inside <paramref name="outer"/> (an eye's box in the
+    /// hair's, which frames the face).</summary>
+    private static bool Inside(TouchZoneBox inner, TouchZoneBox outer) => inner.Area < outer.Area && outer.Covers(inner) >= MostlyInside;
+
+    /// <summary>A zone's box grown by half its size on each side: around it, where the pieces of its feature that a tight box
+    /// leaves out lie.</summary>
+    private static TouchZoneBox Around(TouchZoneBox box) => new(box.X - box.Width / 2, box.Y - box.Height / 2, box.Width * 2, box.Height * 2);
+
     /// <summary>Newly found zones merged with the saved ones: a zone found again keeps the owner's label, choice, reaction and
     /// whether the owner added it. A zone the owner added (<see cref="CharacterTouchZone.Added"/>) that wasn't found again stays
     /// where it was; any other zone not found again is dropped, unless <paramref name="keepUnfound"/> (a detection still
@@ -498,10 +614,12 @@ public static partial class CharacterTouchZones
         TouchZoneBox Rebased(TouchZoneBox box) => saved?.Crop is { } was && crop is { } next && was != next ? box.Within(was).Relative(next).Clamped() : box;
         merged.AddRange(saved?.Zones.Where(z => (z.Added || keepUnfound) && merged.All(m => m.Id != z.Id))
             .Select(z => z with { Box = Rebased(z.Box), Areas = z.Areas?.Select(a => a with { Box = Rebased(a.Box) }).ToArray() }) ?? []);
+        // Bound together, so each zone's pieces are shared out among all of them (see Pieces), and a part a zone follows is its own.
+        var bound = Bind(merged, crop, probe);
         return new()
         {
             ModelId = modelId, DetectedBy = CharacterTouchZoneSettings.ByVision, DetectedAt = now.ToUniversalTime(), UpdatedAt = now.ToUniversalTime(),
-            IncludeIntimate = saved?.IncludeIntimate ?? true, Crop = crop, Whole = whole, Zones = [.. Bind(merged, crop, probe).OrderBy(z => Order(z.Id))]
+            IncludeIntimate = saved?.IncludeIntimate ?? true, Crop = crop, Whole = whole, Zones = [.. bound.OrderBy(z => Order(z.Id))]
         };
     }
 
@@ -539,61 +657,126 @@ public static partial class CharacterTouchZones
     /// doesn't know lies on every part.</summary>
     public static bool OnPart(string zoneId, string bone)
     {
-        string[]? parts = zoneId switch
-        {
-            "neck" => ["body", "head", "face"],
-            "shoulder_left" or "shoulder_right" => ["body", "arm"],
-            "animal_ears" or "horns" or "glasses_or_hat" => HeadParts,
-            "tail" or "wings" or "skirt_hem" => ["body", "leg"],
-            "held_item" => ArmParts,
-            _ => Kind(zoneId)?.Group switch
-            {
-                TouchZoneGroup.Head => HeadParts, TouchZoneGroup.Torso => TorsoParts, TouchZoneGroup.Arms => ArmParts,
-                TouchZoneGroup.LowerBody => LowerBodyParts, _ => null
-            }
-        };
-        if (parts is not null && CharacterTouch.BoneZone(bone) is { } part && !parts.Contains(part, StringComparer.Ordinal)) return false;
+        if (Parts(zoneId) is { } parts && CharacterTouch.BoneZone(bone) is { } part && !parts.Contains(part, StringComparer.Ordinal)) return false;
         // Left and right are the character's own, in zone IDs and VRM bone names alike.
         var side = zoneId.EndsWith("_left", StringComparison.Ordinal) ? "left" : zoneId.EndsWith("_right", StringComparison.Ordinal) ? "right" : null;
         return side is null || !(bone.StartsWith("left", StringComparison.Ordinal) || bone.StartsWith("right", StringComparison.Ordinal)) ||
             bone.StartsWith(side, StringComparison.Ordinal);
     }
 
-    /// <summary>The zone a touch landed in: the topmost touched drawable that belongs to a zone in use (an area that follows the
-    /// model's own parts, such as a tail, wherever it moved; with several, the smallest area whose box holds the point, else the
-    /// nearest), hair, a touched VRM spring-bone joint an area follows, then for a touched VRM bone the smallest area of a zone in
-    /// use on that part of the body (<see cref="OnPart"/>) whose box holds the point (a bone moves a whole part, such as the head,
-    /// and its zones are found in a picture in the same pose), else the area on that part that holds the bone, nearest the point
-    /// (the part has moved since); without a bone, the smallest area box in use that holds the point; then the touch's rough zone
-    /// (a found zone of that kind, else that kind's default zone). An area that follows the model's own parts moves away from its
-    /// box, so its box never holds a touch. Null when nothing fits (a touch only on zones that aren't in use).</summary>
+    // The rough parts of the body (CharacterTouch.BoneZone of a VRM bone) a zone lies on; null for every part (a zone Martlet
+    // doesn't know).
+    private static string[]? Parts(string zoneId) => zoneId switch
+    {
+        "neck" => ["body", "head", "face"],
+        "shoulder_left" or "shoulder_right" => ["body", "arm"],
+        "animal_ears" or "horns" or "glasses_or_hat" => HeadParts,
+        "tail" or "wings" or "skirt_hem" => ["body", "leg"],
+        "held_item" => ArmParts,
+        _ => Kind(zoneId)?.Group switch
+        {
+            TouchZoneGroup.Head => HeadParts, TouchZoneGroup.Torso => TorsoParts, TouchZoneGroup.Arms => ArmParts,
+            TouchZoneGroup.LowerBody => LowerBodyParts, _ => null
+        }
+    };
+
+    /// <summary>Every zone a touch landed in, the matched one (<paramref name="match"/>) first. Zones can overlap, and a touch
+    /// where they do is on each of them: every other zone in use with a box that holds the point <see cref="Match"/> compares
+    /// (<see cref="TouchPoint"/>; any of its areas, <see cref="CharacterTouchZone.Holds"/>), smallest first, that lies on the same
+    /// part of the body as the touch (a VRM touch's bone, <see cref="OnPart"/>, else the matched zone's part): a hand held in
+    /// front of the hips or raised to the face touches the hand, not what is behind it. A zone whose box frames a smaller touched
+    /// zone's (holds most of it, <see cref="Inside"/>: the hair's box around an eye, a chest's around a breast) is left out, as
+    /// the finer zone says where the touch landed. A touch matched only by its rough zone is on that zone alone; none without a
+    /// match.</summary>
+    public static IReadOnlyList<CharacterTouchZone> Touched(CharacterTouchZoneSettings? settings, CharacterTouch touch, TouchZoneMatch? match)
+    {
+        if (match is null) return [];
+        if (settings is null || match.How == "coarse") return [match.Zone];
+        TouchZoneBox Page(CharacterTouchZone zone) => settings.Crop is { } crop ? zone.Box.Within(crop) : zone.Box;
+        var (x, y, _) = TouchPoint(settings, touch);
+        var matched = Parts(match.Zone.Id);
+        bool SamePart(string zoneId) => touch.Bone is { } bone ? OnPart(zoneId, bone)
+            : matched is null || Parts(zoneId) is not { } parts || parts.Intersect(matched, StringComparer.Ordinal).Any();
+        var under = settings.Zones.Where(z => settings.Active(z) && z.Id != match.Zone.Id && z.Holds(settings.Crop, x, y) && SamePart(z.Id))
+            .OrderBy(z => z.Box.Area).ToArray();
+        CharacterTouchZone[] all = [match.Zone, .. under];
+        return [match.Zone, .. under.Where(z => !all.Any(other => other.Id != z.Id && Inside(Page(other), Page(z))))];
+    }
+
+    /// <summary>The zone a touch landed in: first a touched drawable a zone follows by the model's own parts (a tail's, wherever it
+    /// swung: <see cref="CharacterTouchZone.Follows"/>); else the topmost touched drawable that belongs to a zone in use, or,
+    /// unless the touch is on hair (<see cref="CharacterTouch.Hair"/>), a drawable under it that a smaller zone inside one of its
+    /// zones has (an overlay such as a blush drawn over an eye's lower half is the eye; the bangs over an eye are hair). Of that
+    /// drawable's zones, the smallest whose box holds the point, else the nearest; a zone whose box lies mostly inside another of
+    /// them also wins when the point lies by its box (<see cref="Around"/>: an eye's lash just above a tight eye box); a zone in
+    /// use whose box holds the point and lies mostly inside the drawable's smallest zone counts too when none of its own
+    /// drawables are under the touch, as a finer part of it (a cheek, or the skin by the nose, on the face's skin that the hair's
+    /// box takes in; on hair, only a zone with no drawables of its own, such as a forehead under the bangs). Then hair, then a
+    /// touched VRM spring-bone joint an area follows (a tail's), then for a touched VRM bone the smallest zone in use on that
+    /// part of the body (<see cref="OnPart"/>) whose box holds the point (a bone moves a whole part, such as the head, and its
+    /// zones are found in a picture in the same pose), else the zone on that part that holds the bone, nearest the point (the
+    /// part has moved since); without a bone, the smallest box in use that holds the point; then the touch's rough zone (a found
+    /// zone of that kind, else that kind's default zone). A zone's box holds the point when one of its areas' boxes does
+    /// (<see cref="CharacterTouchZone.Holds"/>; an area that follows the model's own parts only by its parts). The point is where
+    /// the touched point of the character was in the rest pose the zones were found in (<see cref="TouchPoint"/>), so a touch
+    /// lands on the same zone however the model moves. For a zone with several areas the match says which. Null when nothing
+    /// fits (a touch only on zones that aren't in use).</summary>
     public static TouchZoneMatch? Match(CharacterTouchZoneSettings? settings, CharacterTouch touch)
     {
         var active = settings?.Zones.Where(settings.Active).ToArray() ?? [];
-        TouchZoneBox Page(TouchZoneBox box) => settings?.Crop is { } crop ? box.Within(crop) : box;
-        // Zones found with the character framed whole compare with where the touch lands in that framing.
-        var (x, y) = settings is { Whole: true } && touch is { WholeX: { } wholeX, WholeY: { } wholeY } ? (wholeX, wholeY) : (touch.X, touch.Y);
-        static IEnumerable<ZoneArea> Areas(IEnumerable<CharacterTouchZone> zones) => zones.SelectMany(z => z.AllAreas.Select((a, i) => new ZoneArea(z, i, a)));
-        ZoneArea? Under(IEnumerable<ZoneArea> areas) =>
-            areas.Where(t => !t.Area.FromModel && Page(t.Area.Box).Contains(x, y)).OrderBy(t => t.Area.Box.Area).Cast<ZoneArea?>().FirstOrDefault();
-        ZoneArea Best(IReadOnlyList<ZoneArea> owners) => owners.FirstOrDefault(t => t.Area.FromModel) is { Zone: not null } follows ? follows
-            : Under(owners) ?? owners.OrderBy(t => Page(t.Area.Box).Distance(x, y)).ThenBy(t => t.Area.Box.Area).First();
+        var crop = settings?.Crop;
+        TouchZoneBox Page(CharacterTouchZone zone) => crop is { } c ? zone.Box.Within(c) : zone.Box;
+        var (x, y, traced) = TouchPoint(settings, touch);
+        bool Holds(CharacterTouchZone zone) => zone.Holds(crop, x, y);
+        TouchZoneMatch Found(CharacterTouchZone zone, string how, string? piece = null) => new(zone, how, traced, AreaOf(zone, crop, x, y, piece));
+        CharacterTouchZone Best(IEnumerable<CharacterTouchZone> zones)
+        {
+            var list = zones.ToArray();
+            return list.Where(Holds).OrderBy(z => z.Box.Area).FirstOrDefault() ??
+                list.OrderBy(z => Page(z).Distance(x, y)).ThenBy(z => z.Box.Area).First();
+        }
         foreach (var drawable in touch.Drawables)
         {
-            var owners = Areas(active).Where(t => t.Area.Drawables.Contains(drawable, StringComparer.Ordinal)).ToArray();
-            if (owners.Length > 0) return Best(owners).Match("drawable");
+            // A drawable a zone follows by the model's own parts (a tail's, wherever it swung) is that zone's alone.
+            if (active.FirstOrDefault(z => z.Areas?.Any(a => a.FromModel && a.Drawables.Contains(drawable, StringComparer.Ordinal)) == true) is { } follows)
+                return Found(follows, "drawable", drawable);
+            var owners = active.Where(z => z.Drawables.Contains(drawable, StringComparer.Ordinal)).ToArray();
+            if (owners.Length == 0) continue;
+            var piece = drawable;
+            // Through an overlay that only bigger zones have (the top of a blush drawn over an eye's lower half, the face's
+            // shading), the piece under it of a smaller zone inside one of them is what was touched. Hair drawn over a
+            // feature stays hair (the bangs over an eye).
+            if (!touch.Hair)
+                foreach (var under in touch.Drawables.SkipWhile(d => d != drawable).Skip(1))
+                {
+                    var holders = active.Where(z => z.Drawables.Contains(under, StringComparer.Ordinal)).ToArray();
+                    if (!holders.Any(z => !owners.Contains(z) && owners.Any(owner => Inside(Page(z), Page(owner))))) continue;
+                    (piece, owners) = (under, holders);
+                    break;
+                }
+            // A finer zone inside the piece's most specific owner: one whose box holds the point while none of its own pieces
+            // is under the touch (a cheek on the face's skin, which the hair's box takes in) and, when the touch is on hair, one
+            // with no pieces of its own (a forehead under the bangs; a lock in front of an ear stays hair), or an owner whose
+            // box lies by the point (an eye's lash just above its tight box).
+            var specific = owners.MinBy(z => z.Box.Area)!;
+            var finer = active.Where(z => z.Bones.Count == 0 && !z.Drawables.Any(own => touch.Drawables.Contains(own, StringComparer.Ordinal)) &&
+                (!touch.Hair || z.Drawables.Count == 0) && Holds(z) && Inside(Page(z), Page(specific))).ToArray();
+            var by = owners.Where(z => Around(Page(z)).Contains(x, y) && owners.Any(owner => Inside(Page(z), Page(owner))));
+            var best = owners.Concat(finer).Where(Holds).Concat(by).OrderBy(z => z.Box.Area).FirstOrDefault() ?? Best(owners);
+            return Found(best, best.Drawables.Contains(piece, StringComparer.Ordinal) ? "drawable" : "box", piece);
         }
-        if (touch.Hair && active.FirstOrDefault(z => z.Id == "hair") is { } hair) return new(hair, "hair");
-        if (touch.Node is { } node && Areas(active).Where(t => t.Area.Nodes.Contains(node, StringComparer.Ordinal)).ToArray() is { Length: > 0 } swung)
-            return Best(swung).Match("node");
+        if (touch.Hair && active.FirstOrDefault(z => z.Id == "hair") is { } hair) return Found(hair, "hair");
+        if (touch.Node is { } node && active.Where(z => z.AllAreas.Any(a => a.Nodes.Contains(node, StringComparer.Ordinal))).ToArray() is { Length: > 0 } swung)
+            return Found(Best(swung), "node", node);
         if (touch.Bone is { } bone)
         {
-            var part = Areas(active.Where(z => OnPart(z.Id, bone))).ToArray();
-            if (Under(part) is { } under) return under.Match(under.Area.Bones.Contains(bone, StringComparer.Ordinal) ? "bone" : "box");
-            var owners = part.Where(t => t.Area.Bones.Contains(bone, StringComparer.Ordinal)).ToArray();
-            if (owners.Length > 0) return Best(owners).Match("bone");
+            var part = active.Where(z => OnPart(z.Id, bone)).ToArray();
+            if (part.Where(Holds).OrderBy(z => z.Box.Area).FirstOrDefault() is { } under)
+                return Found(under, under.Bones.Contains(bone, StringComparer.Ordinal) ? "bone" : "box");
+            var owners = part.Where(z => z.Bones.Contains(bone, StringComparer.Ordinal)).ToArray();
+            if (owners.Length > 0) return Found(Best(owners), "bone");
         }
-        else if (Under(Areas(active)) is { } boxed) return boxed.Match("box");
+        else if (active.Where(Holds).OrderBy(z => z.Box.Area).FirstOrDefault() is { } boxed) return Found(boxed, "box");
         if (!Coarse.TryGetValue(touch.CoarseZone, out var candidates)) return null;
         foreach (var id in candidates)
             if (active.FirstOrDefault(z => z.Id == id) is { } found) return new(found, "coarse");
@@ -603,11 +786,29 @@ public static partial class CharacterTouchZones
         return new(new() { Id = fallback, Box = new(0, 0, 1, 1) }, "coarse");
     }
 
-    // An area of a zone and where it comes among the zone's areas.
-    private readonly record struct ZoneArea(CharacterTouchZone Zone, int Index, CharacterTouchZoneArea Area)
+    // Which of a zone's areas a touch landed in, for a zone with several: the one that holds the touched drawable or joint
+    // (`piece`), else the smallest whose box holds the point (not one that follows the model's own parts); null for a zone with one.
+    private static int? AreaOf(CharacterTouchZone zone, TouchZoneBox? crop, double x, double y, string? piece)
     {
-        public TouchZoneMatch Match(string how) => new(Zone, how, Zone.AllAreas.Count > 1 ? Index : null);
+        var areas = zone.AllAreas;
+        if (areas.Count <= 1) return null;
+        if (piece is not null)
+            for (var i = 0; i < areas.Count; i++)
+                if (areas[i].Drawables.Contains(piece, StringComparer.Ordinal) || areas[i].Nodes.Contains(piece, StringComparer.Ordinal)) return i;
+        return Enumerable.Range(0, areas.Count).Where(i => !areas[i].FromModel && (crop is null ? areas[i].Box : areas[i].Box.Within(crop)).Contains(x, y))
+            .OrderBy(i => areas[i].Box.Area).Cast<int?>().FirstOrDefault();
     }
+
+    /// <summary>The point of the page a touch's zone boxes compare with, and whether it is traced to the rest pose: where the
+    /// touched point of the character was in its rest pose (the pose the zones' picture shows, traced on the touched mesh, so
+    /// it stays on the same spot of the skin however the head turns to the mouse, nods or tilts, or an idle motion moves the
+    /// body), else where the touch landed. Zones found with the character framed whole compare with that framing
+    /// (<see cref="CharacterTouch.RestWholeX"/>, else <see cref="CharacterTouch.WholeX"/>).</summary>
+    public static (double X, double Y, bool Traced) TouchPoint(CharacterTouchZoneSettings? settings, CharacterTouch touch) =>
+        settings is { Whole: true }
+            ? touch is { RestWholeX: { } restX, RestWholeY: { } restY } ? (restX, restY, true)
+                : touch is { WholeX: { } wholeX, WholeY: { } wholeY } ? (wholeX, wholeY, false) : (touch.X, touch.Y, false)
+            : touch is { RestX: { } pageX, RestY: { } pageY } ? (pageX, pageY, true) : (touch.X, touch.Y, false);
 
     // ---------- reactions ----------
 

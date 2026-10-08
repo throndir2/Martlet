@@ -58,6 +58,14 @@ public sealed class CharacterTouchTests
         Assert.False((touch with { HeldMilliseconds = 599 }).Held);
         Assert.False((touch with { HeldMilliseconds = -1 }).IsValid);
         Assert.False((touch with { HeldMilliseconds = CharacterTouch.MaximumHeldMilliseconds + 1 }).IsValid);
+        // Where the touched point was in the rest pose crosses too; one far off the page is invalid.
+        var traced = RendererProtocol.Data<CharacterTouch>(RendererProtocol.Message("touch", Guid.NewGuid(),
+            touch with { RestX = 0.3, RestY = 0.12, RestWholeX = -0.2, RestWholeY = 0.1 }));
+        Assert.Equal((0.3, 0.12, -0.2, 0.1), (traced.RestX, traced.RestY, traced.RestWholeX, traced.RestWholeY));
+        Assert.True(traced.IsValid);
+        Assert.Null(read.RestX);
+        Assert.False((traced with { RestWholeX = CharacterTouch.MaximumFar + 1 }).IsValid);
+        Assert.False((traced with { RestY = double.NaN }).IsValid);
     }
 
     [Theory]

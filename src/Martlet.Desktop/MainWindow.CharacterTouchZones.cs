@@ -63,12 +63,16 @@ public partial class MainWindow
         var catalog = characterActions.For(avatar.InspectedProfile?.ModelPath);
         characterTouchZones.Follow(catalog?.Inventory.ModelId ?? characterTouchZones.ModelId);
         var temperament = characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId);
+        // Where zones overlap the touch is on each of them: Martlet hears every one it notices, in one line.
         characterTouchZones.React(touch, (zone, repeats) => TouchPlan(zone, catalog, temperament, repeats), PlayTouchAsync,
-            zone => Dispatcher.InvokeAsync(() =>
-                NoticePhysical(touch.Held ? PhysicalKind.Hold : CharacterTouchZones.Pats(zone) ? PhysicalKind.Pat : PhysicalKind.Tap,
-                    CharacterTouchZones.Part(zone), zone.Name.ToLowerInvariant(), hint: CharacterTouchZones.Narration(zone),
-                    intimate: CharacterTouchZones.Kind(zone.Id)?.Intimate == true,
-                    feeling: CharacterTouchTemperaments.Feeling(temperament, [zone]))),
+            zones => Dispatcher.InvokeAsync(() =>
+            {
+                if (CharacterPhysicalWords.Touch(zones) is not { } words) return;
+                NoticePhysical(touch.Held ? PhysicalKind.Hold : words.Pat ? PhysicalKind.Pat : PhysicalKind.Tap, words.Where, words.Label,
+                    hint: words.Hint, zones: [.. zones.Select(CharacterTouchZones.Part)],
+                    intimate: zones.Any(z => CharacterTouchZones.Kind(z.Id)?.Intimate == true),
+                    feeling: CharacterTouchTemperaments.Feeling(temperament, zones));
+            }),
             look: avatar.Gaze.Attend);
         return true;
     }

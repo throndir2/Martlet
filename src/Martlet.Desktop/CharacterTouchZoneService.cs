@@ -378,14 +378,16 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
     private static string Zones(int count) => count == 1 ? "1 zone" : $"{count} zones";
 
     /// <summary>A touch on the showing character: the zone it landed in plays its reaction (unless the zone is resting), and
-    /// when Martlet notices that zone, <paramref name="notice"/> gets it (resting or not: every touch adds up). When the
+    /// <paramref name="notice"/> gets every zone the touch landed in that Martlet notices (zones can overlap,
+    /// <see cref="CharacterTouchZones.Touched"/>; the matched zone first), resting or not: every touch adds up. When the
     /// reaction says so, <paramref name="look"/> turns the eyes to the mouse pointer for that many seconds. Returns the match,
     /// or null.</summary>
     internal TouchZoneMatch? React(CharacterTouch touch, Func<CharacterTouchZone, int, TouchReactionPlan> planFor,
-        Func<CharacterActionSource, string, double, Task> play, Action<CharacterTouchZone> notice, string kind = "touch",
+        Func<CharacterActionSource, string, double, Task> play, Action<IReadOnlyList<CharacterTouchZone>> notice, string kind = "touch",
         Action<double, string>? look = null)
     {
-        var match = CharacterTouchZones.Match(Current, touch);
+        var settings = Current;
+        var match = CharacterTouchZones.Match(settings, touch);
         var when = DateTime.Now.ToString("T", System.Globalization.CultureInfo.CurrentCulture);
         var what = kind == "stroke" ? "A stroke" : "A touch";
         if (match is null)
@@ -395,15 +397,20 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
             return null;
         }
         var zone = match.Zone;
-        var noticed = zone.Reaction.Notices;
-        if (noticed) notice(zone);
+        var how = Describe(match);
+        var touched = CharacterTouchZones.Touched(settings, touch, match);
+        var heard = touched.Where(z => z.Reaction.Notices).ToArray();
+        if (heard.Length > 0) notice(heard);
+        // "Groin (box), with Left thigh, at ...": the other zones it landed in, where zones overlap.
+        var with = touched.Count > 1 ? ", with " + Names(touched.Skip(1).Select(z => z.Name)) + "," : "";
+        var noticed = heard.Length == 0 ? null : heard.Length < touched.Count ? Names(heard.Select(z => z.Name)) : touched.Count == 1 ? "it" : "them";
         var now = Environment.TickCount64;
         lock (rested)
         {
             if (rested.TryGetValue(zone.Id, out var until) && now < until)
             {
-                Volatile.Write(ref lastMatch, $"{zone.Name} ({match.How}{AreaText(match)}) at {when}: resting, so nothing played" +
-                    (noticed ? ", but Martlet noticed it." : "."));
+                Volatile.Write(ref lastMatch, $"{zone.Name} ({how}){with} at {when}: resting, so nothing played" +
+                    (noticed is null ? "." : $", but Martlet noticed {noticed}."));
                 Changed?.Invoke();
                 return match;
             }
@@ -414,13 +421,26 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         var plan = reaction.Actions;
         for (var i = 0; i < plan.Count; i++) play(plan[i], $"a {kind} on {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
         if (reaction.LookSeconds > 0) look?.Invoke(reaction.LookSeconds, $"a {kind} on {zone.Name.ToLowerInvariant()}");
-        Volatile.Write(ref lastMatch, (kind == "stroke" ? "Stroke: " : "") + $"{zone.Name} ({match.How}{AreaText(match)}) at {when}: " +
+        Volatile.Write(ref lastMatch, (kind == "stroke" ? "Stroke: " : "") + $"{zone.Name} ({how}){with} at {when}: " +
             (plan.Count == 0 ? "nothing to play" : "played " + string.Join(", ", plan.Select(s => s.Name))) + Describe(reaction, repeats) +
-            (noticed ? ", and Martlet noticed it." : "."));
-        ErrorLog.Info($"{(kind == "stroke" ? "Stroke" : "Touch")} on {zone.Id} ({match.How}{AreaText(match)}{(touch.Held ? ", held" : "")}): {plan.Count} played from {reaction.From}{(reaction.Escalated ? " (escalated)" : "")}" +
-            $"{(noticed ? ", Martlet noticed it" : "")}.");
+            (noticed is null ? "." : $", and Martlet noticed {noticed}."));
+        ErrorLog.Info($"{(kind == "stroke" ? "Stroke" : "Touch")} on {string.Join(" + ", touched.Select(z => z.Id))} ({how}{(touch.Held ? ", held" : "")}): " +
+            $"{plan.Count} played from {reaction.From} for {zone.Id}{(reaction.Escalated ? " (escalated)" : "")}" +
+            $"{(heard.Length > 0 ? ", Martlet noticed " + string.Join(" + ", heard.Select(z => z.Id)) : "")}.");
         Changed?.Invoke();
         return match;
+    }
+
+    /// <summary>How a touch found its zone, for the last-touch line and the log: "box", or "box, traced to the rest pose" when
+    /// the boxes were compared with where the touched point was in the rest pose the zones were found in, and for a zone with
+    /// several areas which one ("drawable, area 3 of 6").</summary>
+    internal static string Describe(TouchZoneMatch match) => (match.Traced ? match.How + ", traced to the rest pose" : match.How) + AreaText(match);
+
+    // "Left thigh", "Left thigh and Hips", "Left thigh, Hips and Groin".
+    private static string Names(IEnumerable<string> names)
+    {
+        var list = names.ToArray();
+        return list.Length == 1 ? list[0] : string.Join(", ", list[..^1]) + " and " + list[^1];
     }
 
     private readonly Dictionary<string, (int Count, long Last)> streaks = new(StringComparer.Ordinal);
