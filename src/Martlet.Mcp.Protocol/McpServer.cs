@@ -878,7 +878,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "with no Save button): the personas (name, whether Martlet uses it, speech breaks, instruction " +
             "length; never the instructions), the character model (built-in character name or the own model's file type, never its " +
             "path; renderer, lip-sync mode, show at startup, the lip-sync host's ID), whether the character's position is locked on " +
-            "this PC and where (placement), whether Martlet's voice is muted (voice: Speak Martlet's replies aloud, which the " +
+            "this PC and where (placement), whether clicks pass through the character on this PC (clickThrough), whether Martlet's " +
+            "voice is muted (voice: Speak Martlet's replies aloud, which the " +
             "character's Mute voice / Unmute voice menu item changes) and the lorebooks (counts only). Read-only.", new
         {
             dataDirectory = new { type = "string" }
@@ -3472,7 +3473,30 @@ internal sealed class McpServer(DesktopAutomation desktop)
             on = lore.Library.Books.Count(book => book.Activation != Martlet.Core.Lorebooks.LorebookActivation.Off),
             entries = lore.Library.Books.Sum(book => book.Entries.Count)
         };
-        return new { personality, character, placement = CharacterPlacement(directory), voice = CharacterVoice(directory), lorebooks };
+        return new { personality, character, placement = CharacterPlacement(directory), clickThrough = CharacterClickThrough(directory),
+            voice = CharacterVoice(directory), lorebooks };
+    }
+
+    /// <summary>character-click-through.json in a data directory (Martlet.Desktop's CharacterClickThroughStore): whether clicks
+    /// pass through the character on this PC. No file means it catches clicks.</summary>
+    private static object CharacterClickThrough(string directory)
+    {
+        var path = Path.Combine(directory, "character-click-through.json");
+        if (!File.Exists(path)) return new { state = "none", on = false };
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return new { state = "unreadable", on = false, problem = "NotAnObject" };
+            return new
+            {
+                state = "loaded",
+                on = document.RootElement.TryGetProperty("ClickThrough", out var on) && on.ValueKind == JsonValueKind.True
+            };
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return new { state = "unreadable", on = false, problem = error.GetType().Name };
+        }
     }
 
     /// <summary>Whether Martlet's voice is muted and how loud it is, from talk-preferences.json in a data directory

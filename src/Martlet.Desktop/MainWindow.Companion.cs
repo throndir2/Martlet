@@ -1410,12 +1410,21 @@ public partial class MainWindow
                 showing ? PageButton("Reset zoom", () => ResetCharacterZoomAsync().Forget(), id: "SetupCharacterResetZoom") : null,
                 // Unlocking is only here and on Home, never on the character itself.
                 showing || locked ? PageButton(locked ? "Unlock position" : "Lock position",
-                    () => SetCharacterLockAsync(!avatar.PlacementLocked).Forget(), id: "SetupCharacterLock") : null));
+                    () => SetCharacterLockAsync(!avatar.PlacementLocked).Forget(), id: "SetupCharacterLock") : null,
+                // The same goes for click-through: the mouse can't reach the character to turn it off.
+                showing || avatar.ClickThrough ? PageButton(avatar.ClickThrough ? "Turn off click-through" : "Turn on click-through",
+                    () => SetCharacterClickThroughAsync(!avatar.ClickThrough).Forget(), id: "SetupCharacterClickThrough") : null));
         if (modelCard.Child is Panel modelPanel)
         {
             var placementNote = characterPlacementNote = Note(CharacterPlacementText(), new Thickness(0, 4, 0, 0));
             AutomationProperties.SetAutomationId(placementNote, "SetupCharacterPlacement");
             modelPanel.Children.Add(placementNote);
+            var clickThroughNote = Note(avatar.ClickThrough
+                ? "Click-through is on: clicks pass through the character to the windows under it, so you can't drag, zoom or right-click it. Turn it off here, on Home or from Martlet's icon in the notification area."
+                : "Click-through is off: the character catches clicks. Turn it on here or from the character's right-click menu to let clicks pass through it, for example while you play a game.",
+                new Thickness(0, 4, 0, 0));
+            AutomationProperties.SetAutomationId(clickThroughNote, "SetupCharacterClickThroughNote");
+            modelPanel.Children.Add(clickThroughNote);
         }
         // What the showing model drives: textures (and any downscaling), blinking, mouth, motions and physics.
         if (showing && avatar.Capabilities is { } loaded && modelCard.Child is Panel modelStack)

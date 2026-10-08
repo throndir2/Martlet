@@ -2200,7 +2200,10 @@ instructions), `character` (from `avatar.json`: `model` `built-in` with
 saved (the character shows at its default spot), or `loaded` with `locked`,
 `left`, `top`, `width` and `height` in device-independent pixels, and
 `screen` (the monitor's device name, such as `\\.\DISPLAY2`), `screenLeft` and
-`screenTop` (its spot on that monitor's work area); see the character overlay below), `voice`
+`screenTop` (its spot on that monitor's work area); see the character overlay below), `clickThrough`
+(from `character-click-through.json`, this PC only: `state` `none`, `loaded`
+or `unreadable` and `on`, whether clicks pass through the character; see the
+character overlay below), `voice`
 (from `talk-preferences.json`: `state` `none`, `loaded` or `unreadable`,
 `speakReplies`, Companion › Voice's *Speak Martlet's replies aloud*, on unless
 saved off, `muted`, its opposite, which the overlay menu's *Mute voice* and
@@ -3571,7 +3574,9 @@ alignment can be checked: in the talk window, the empty box's hint
 text typed into `LiveInput`.
 `windowStates` lists each window's `name`, automation `id`, `enabled`, and
 whether its frame is `resizable`, `minimizable` and `maximizable`, whether it is
-`minimized` and whether it is the `foreground` window (has the focus); with
+`minimized`, whether it is the `foreground` window (has the focus) and whether
+it is `clickThrough` (the mouse passes through it to the window under it,
+`WS_EX_TRANSPARENT`: the character overlay while click-through is on); with
 `layout` it adds the window's `bounds` and its monitor's `workArea` (the screen
 minus the taskbar), both in physical screen pixels. Every Martlet window opens
 within that work area at any display scale: no larger than it (minimum sizes
@@ -4227,7 +4232,8 @@ choosing one goes through Martlet (*The character's menu chose
 Character › Where the character looks (`character_gaze` `usual`), so they need
 `--allow-ui-effects`;
 then `CharacterZoomIn`, `CharacterZoomOut`, `CharacterResetZoom` (disabled at
-the default zoom), `CharacterResetPosition`, `CharacterLockPosition`, the checkable `CharacterOnTop`
+the default zoom), `CharacterResetPosition`, `CharacterLockPosition`,
+`CharacterClickThrough` (*Let clicks pass through*; see below), the checkable `CharacterOnTop`
 (*Keep on top*, on by default; its `checkedState` is the current choice for
 this showing) and `CharacterHide` (*Hide character*; Esc on the overlay does
 the same), which need `--allow-ui-effects`. Talk, Mute, Open, Settings and Hide are
@@ -4434,6 +4440,37 @@ its locked place again after Hide/Show or a Martlet restart (at its default
 spot, still locked, if that place is no longer on a screen); the desktop log
 records *Character position locked at ...* and *Character position unlocked.*,
 and `avatar-renderer` *The character's position is locked.*
+
+**Letting clicks pass through the character**: the overlay menu's
+`CharacterClickThrough` (*Let clicks pass through*, carried out by Martlet:
+*The character's menu chose 'click-through-on'.*), Home's
+`ToggleCharacterClickThrough` (*Turn on click-through*, shown while the
+character shows or click-through is on), Companion › Character's
+`SetupCharacterClickThrough` (*Turn on click-through*) and the notification-area
+menu's checkable `TrayCharacterClickThrough` (*Let clicks pass through the
+character*, listed while the character shows or click-through is on) turn it
+on; all need `--allow-ui-effects` because they save
+`character-click-through.json` on this PC (`character_status`'s
+`clickThrough`; never shared, and Reset position leaves it alone). On, the
+overlay window (and its speech bubble) gets `WS_EX_TRANSPARENT`, so every
+click, the wheel and right-click go to the window under it: `ui_snapshot`'s
+`windowStates` reads `clickThrough` true for *Martlet character overlay*, and
+the character can't be dragged, zoomed, tapped, stroked or right-clicked with
+the mouse (its eyes still follow the mouse, and it still talks and moves).
+The mouse can't reach the character's menu then, so it is turned off in
+Martlet: `ToggleCharacterClickThrough` and `SetupCharacterClickThrough` read
+*Turn off click-through* (also while the character is hidden),
+`TrayCharacterClickThrough`'s `checkedState` is `On`, and clicking any of them
+turns it off (opened through UI Automation, the overlay menu's
+`CharacterClickThrough` reads *Stop letting clicks pass through* and does the
+same). `SetupCharacterClickThroughNote` says whether it is on, and
+`SetupCharacterView` ends with *Clicks pass through.* when the overlay reports
+it. A newly shown character starts click-through when it is on (after a
+Hide/Show or a restart). The camera view always catches clicks and applies
+click-through again when it closes. The desktop log records *Click-through
+turned on: clicks pass through the character.* (or *... turned off ...*) and
+`avatar-renderer` *Clicks pass through the character.* or *The character
+catches clicks again.*
 
 **Remembering where the character is**: whenever the character is dragged,
 nudged, resized, zoomed or sent home (`ui_move` included), the overlay asks
@@ -5349,6 +5386,8 @@ it, so it needs `--allow-ui-effects`. While the menu is open `ui_snapshot` lists
 talk window open*), `TrayOpen`, `TrayTalk` (*Talk to Martlet*, or *Show the
 talk window* while it is open), and while the talk window is open `TrayPause` or
 `TrayResume` and `TrayEndTalk`, then `TrayCharacter`, the checkable
+`TrayCharacterClickThrough` (while the character shows or click-through is on;
+see the character overlay above), the checkable
 `TrayCloseToTray` and `TrayStartWithWindows` (their `checkedState` is the
 current choice) and `TrayExit`. The menu, like text boxes' Cut/Copy/Paste
 menus, is drawn in Martlet's palette (Themes\Controls.xaml), with no light icon
@@ -5374,7 +5413,7 @@ working without the other. `TrayOpen`, `TrayTalk` (like
 `OpenLiveConversation`), `TrayPause` (it only stops work), `TrayStopListening`,
 `TrayStopWatching` (they only stop listening or watching) and `TrayEndTalk`
 (like `CloseLive`) are passive clicks; `TrayStartListening`, `TrayStartWatching`,
-`TrayResume`, `TrayCharacter`, the two
+`TrayResume`, `TrayCharacter`, `TrayCharacterClickThrough`, the two
 choices and `TrayExit` need `--allow-ui-effects`. The menu's status line reads
 *Martlet is listening and watching* when both run. While another Martlet dialog
 (Setup, Companion...) is open, `TrayTalk` and `TrayCharacter` are disabled and
