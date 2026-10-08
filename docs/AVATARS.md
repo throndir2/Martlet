@@ -239,8 +239,9 @@ what each one is.
   and swirls of heart_eyes, star_eyes and dizzy sit on each iris, sized to fit
   inside it, and are clipped to the eye's visible opening, so they never go
   outside the eye and the eyelid cuts them as it closes. They use the iris and
-  the eye opening the renderer finds; without them, they are iris-sized at the
-  eye points and clipped to an eye-sized ellipse:
+  the eye opening the renderer finds, and nothing shows on an eye it reports as
+  closed or hidden; without them, they are iris-sized at the eye points and
+  clipped to an eye-sized ellipse:
 
   | Overlay emote (tag) | What it draws | When to use |
   | --- | --- | --- |

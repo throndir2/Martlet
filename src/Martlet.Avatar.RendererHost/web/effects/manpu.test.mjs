@@ -206,6 +206,26 @@ test("without them, eye emotes are iris-sized at the eye points and clipped to a
   }
 });
 
+test("an eye whose opening is empty is closed or hidden, so nothing draws on it", () => {
+  const open = withEyes(face(200));
+  for (const name of ["heart_eyes", "star_eyes", "dizzy"])
+    for (const closed of [{ points: [], triangles: [] }, { points: [open.eyeRight, open.irisRight] }]) {
+      const ctx = recorder();
+      drawManpu(name, ctx, { ...open, eyeRightShape: closed }, 1.2, 1);
+      assert.equal(ctx.calls.filter(c => c.name === "clip").length, 1, `${name}: only the open eye clips`);
+      assert.ok(drawn(ctx).filter(below(open)).every(c => !near(c.origin, open.irisRight, 0.1 * open.width)), `${name} skips the closed eye`);
+      assert.ok(drawn(ctx).some(c => near(c.origin, open.irisLeft, 1e-6)), `${name} stays on the open eye`);
+    }
+});
+
+test("a full eye mesh clips with every one of its 1,024 triangles", () => {
+  const anchor = withEyes(face(200)), { points } = anchor.eyeRightShape;
+  const triangles = Array.from({ length: 1024 }, (_, i) => [0, 1 + i % 12, 1 + (i + 1) % 12]).flat();
+  const ctx = recorder();
+  drawManpu("heart_eyes", ctx, { ...anchor, eyeRightShape: { points, triangles } }, 1.2, 1);
+  assert.equal(ctx.calls.filter(c => c.name === "clip")[1].path.length, 3 * 1024);
+});
+
 test("the ellipsis's dots appear one by one and the light bulb lights up", () => {
   const strokes = (name, t) => { const ctx = recorder(); drawManpu(name, ctx, face(), t, 1); return ctx.calls.filter(c => c.name === "stroke").length; };
   assert.deepEqual([0.2, 0.55, 0.95, 2, 2.6 + 0.2].map(t => strokes("ellipsis", t)), [1, 2, 3, 3, 1], "and again while held");

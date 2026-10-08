@@ -315,41 +315,53 @@ function irisOf(anchor, side, eye) {
   return { ...localPoint(anchor, iris), rx: clamp(iris.rx / scale, 2, 30), ry: clamp(iris.ry / scale, 2, 30) };
 }
 
-// Clips to the eye's visible opening: the anchor's `eyeLeftShape`/`eyeRightShape` (a closed outline, or with `triangles` the
-// union of a mesh's triangles), else an eye-sized ellipse around `centre`, so a symbol on the eye never spills over it.
+// The most triangles an adapter sends for one eye's opening.
+const MAXIMUM_EYE_TRIANGLES = 1024;
+
+// Clips to the eye's visible opening and says whether any of it shows, so a symbol on the eye never spills over it. The
+// anchor's `eyeLeftShape`/`eyeRightShape` is a closed outline, or with `triangles` the union of a mesh's triangles (in any
+// winding); one with fewer than 3 usable points is a closed or hidden eye, where nothing shows. Without the field, an
+// eye-sized ellipse around `centre`.
 function clipToEye(ctx, anchor, side, centre) {
   const shape = anchor[side ? "eyeRightShape" : "eyeLeftShape"];
-  const points = Array.isArray(shape?.points)
-    ? shape.points.map(p => Number.isFinite(p?.x) && Number.isFinite(p?.y) ? localPoint(anchor, p) : undefined) : [];
-  let shaped = false;
   ctx.beginPath();
-  if (Array.isArray(shape?.triangles) && points.length >= 3) {
-    for (let i = 0; i + 2 < Math.min(shape.triangles.length, 3000); i += 3) {
+  if (!shape || typeof shape !== "object") {
+    ctx.ellipse(centre.x, centre.y, 13, 9, 0, 0, TAU);
+    ctx.clip("nonzero");
+    return true;
+  }
+  const points = (Array.isArray(shape.points) ? shape.points : [])
+    .map(p => Number.isFinite(p?.x) && Number.isFinite(p?.y) ? localPoint(anchor, p) : undefined);
+  let shown = false;
+  if (Array.isArray(shape.triangles) && shape.triangles.length > 0) {
+    for (let i = 0; i + 2 < Math.min(shape.triangles.length, 3 * MAXIMUM_EYE_TRIANGLES); i += 3) {
       const [a, b, c] = [0, 1, 2].map(k => points[shape.triangles[i + k]]);
       if (!a || !b || !c) continue;
       // Each one wound the same way, so overlapping triangles add up under the nonzero rule.
       const [p, q] = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) >= 0 ? [b, c] : [c, b];
       ctx.moveTo(a.x, a.y); ctx.lineTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.closePath();
-      shaped = true;
+      shown = true;
     }
-  } else if (points.length >= 3 && points.every(Boolean)) {
-    points.forEach((p, i) => { if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); });
-    ctx.closePath();
-    shaped = true;
+  } else {
+    const outline = points.filter(Boolean);
+    if (outline.length >= 3) {
+      outline.forEach((p, i) => { if (i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y); });
+      ctx.closePath();
+      shown = true;
+    }
   }
-  if (!shaped) ctx.ellipse(centre.x, centre.y, 13, 9, 0, 0, TAU);
-  ctx.clip("nonzero");
+  if (shown) ctx.clip("nonzero");
+  return shown;
 }
 
 // Draws `draw(iris, side)` on each eye's iris, clipped to that eye's opening (glows and glints too, and cut by the eyelid
-// where it covers the iris); nothing without both eye points.
+// where it covers the iris); nothing on a closed or hidden eye, and nothing without both eye points.
 function onEyes(ctx, anchor, draw) {
   if (!anchor.eyeLeft || !anchor.eyeRight) return;
   [anchor.eyeLeft, anchor.eyeRight].forEach((point, side) => {
     const iris = irisOf(anchor, side, localPoint(anchor, point));
     ctx.save();
-    clipToEye(ctx, anchor, side, iris);
-    draw(iris, side);
+    if (clipToEye(ctx, anchor, side, iris)) draw(iris, side);
     ctx.restore();
   });
 }
