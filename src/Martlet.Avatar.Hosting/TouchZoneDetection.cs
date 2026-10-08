@@ -48,13 +48,16 @@ public sealed record ZoneHints(IReadOnlyList<ZoneHintPoint> Bones, IReadOnlyList
 }
 
 /// <summary>How a detection goes: the longer side of each picture sent, how far a close-up may zoom in, how many check rounds
-/// each part gets and the zones it must end with (asked for again on the whole character when the close-ups missed them, then
-/// worked out from the zones around them; with Include intimate zones on, <see cref="TouchZoneDetection.Erogenous"/>).</summary>
+/// each part gets, the zones it looks for (<see cref="TouchZoneDetection.Defaults"/> unless told otherwise; Detect zones adds
+/// the ones the owner added: <see cref="TouchZoneDetection.For"/>) and the zones it must end with (looked for too, asked for
+/// again on the whole character when the close-ups missed them, then worked out from the zones around them where Martlet
+/// can: the intimate ones, with Include intimate zones on).</summary>
 public sealed record ZoneDetectionOptions
 {
     public int Edge { get; init; } = 1024;
     public double MaximumZoom { get; init; } = 4;
     public int Checks { get; init; } = 2;
+    public IReadOnlyList<string> Zones { get; init; } = TouchZoneDetection.Defaults;
     public IReadOnlyList<string> Required { get; init; } = [];
 }
 
@@ -69,9 +72,10 @@ public sealed record ZoneDetectionResult(IReadOnlyList<CharacterTouchZone>? Zone
 /// <summary>A part of the character a close-up shows, and the zones found in it.</summary>
 public sealed record ZoneRegion(string Id, string What, IReadOnlyList<string> Zones);
 
-/// <summary>Finding touch zones with a vision model, step by step, with the CPU doing what it can tell for certain. One picture of
-/// the whole character with a grid finds the head, upper body and lower body (and a tail, wings or a held item); a close-up of
-/// each part finds its zones; then the model checks each part's boxes, drawn and numbered on the close-up, and corrects them,
+/// <summary>Finding touch zones with a vision model, step by step, with the CPU doing what it can tell for certain. It looks for
+/// <see cref="Defaults"/> and the zones the owner added. One picture of the whole character with a grid finds the head, upper
+/// body and lower body (and a tail, wings or a held item the owner added); a close-up of each part finds its zones; then the
+/// model checks each part's boxes, drawn and numbered on the close-up, and corrects them,
 /// for a few rounds or until it says they are right. Between steps the CPU shrinks each box to the character's pixels, swaps
 /// left and right back when a pair is the wrong way round, and lists problems for the next check: a box over the background,
 /// a chin above a nose, a box that misses where the model's own skeleton puts the part.</summary>
@@ -84,29 +88,60 @@ public static partial class TouchZoneDetection
     /// <summary>A box with less than this share of the character's pixels covers the background.</summary>
     public const double EmptyShare = 0.04;
 
+    /// <summary>Every zone a close-up of each part can find. A detection asks each close-up only for the zones it looks for
+    /// (<see cref="ZoneDetectionOptions.Zones"/>) and skips a part with none.</summary>
     public static IReadOnlyList<ZoneRegion> Regions { get; } =
     [
         new("head", "the character's head",
-            ["top_of_head", "hair", "forehead", "face", "cheek_left", "cheek_right", "nose", "lips", "chin", "ear_left", "ear_right",
-             "animal_ears", "horns", "glasses_or_hat"]),
+            ["top_of_head", "hair", "forehead", "face", "eye_left", "eye_right", "cheek_left", "cheek_right", "nose", "lips", "chin",
+             "ear_left", "ear_right", "animal_ears", "horns", "glasses_or_hat"]),
         new("upper_body", "the character's upper body and arms",
             ["neck", "shoulder_left", "shoulder_right", "collarbone", "chest", "breast_left", "breast_right", "stomach", "navel", "waist",
              "lower_back", "upper_arm_left", "upper_arm_right", "forearm_left", "forearm_right", "hand_left", "hand_right"]),
         new("lower_body", "the character's lower body and legs",
-            ["hips", "groin", "buttocks", "thigh_left", "thigh_right", "inner_thigh_left", "inner_thigh_right", "knee_left", "knee_right",
-             "calf_left", "calf_right", "foot_left", "foot_right", "skirt_hem"])
+            ["hips", "hip_left", "hip_right", "groin", "buttocks", "thigh_left", "thigh_right", "inner_thigh_left", "inner_thigh_right",
+             "knee_left", "knee_right", "calf_left", "calf_right", "foot_left", "foot_right", "skirt_hem"])
     ];
 
     /// <summary>Zones found on the whole character with the parts: they can be anywhere.</summary>
     public static IReadOnlyList<string> Extras { get; } = ["tail", "wings", "held_item"];
 
-    /// <summary>The intimate (erogenous) zones a detection always ends with while Include intimate zones is on: asked for again on
-    /// the whole character when the close-ups missed them (or a model left them out), else worked out from the zones around them.</summary>
-    public static IReadOnlyList<string> Erogenous { get; } =
+    /// <summary>The zones Detect zones looks for on every character: the hair, eyes, ears, nose, mouth, neck, breasts, upper arms,
+    /// forearms, stomach, hips, groin, thighs, calves and feet. The owner adds any other zone Martlet knows (Add zone), and
+    /// Detect again then looks for it too (<see cref="For"/>). Left and right are the character's own.</summary>
+    public static IReadOnlyList<string> Defaults { get; } =
     [
-        "neck", "lips", "ear_left", "ear_right", "chest", "breast_left", "breast_right", "waist", "hips", "groin", "buttocks",
-        "inner_thigh_left", "inner_thigh_right"
+        "hair", "eye_left", "eye_right", "ear_left", "ear_right", "nose", "lips", "neck", "breast_left", "breast_right",
+        "upper_arm_left", "upper_arm_right", "forearm_left", "forearm_right", "stomach", "hip_left", "hip_right", "groin",
+        "thigh_left", "thigh_right", "calf_left", "calf_right", "foot_left", "foot_right"
     ];
+
+    /// <summary><see cref="Defaults"/> in plain words, left and right together.</summary>
+    public const string DefaultParts = "hair, eyes, ears, nose, mouth, neck, breasts, upper arms, forearms, stomach, hips, groin, thighs, calves and feet";
+
+    /// <summary>Every zone a detection can look for: each part's close-up zones and the extras found with the parts.</summary>
+    public static IReadOnlyList<string> Findable { get; } = [.. Regions.SelectMany(r => r.Zones), .. Extras];
+
+    /// <summary>Every intimate (erogenous) zone kind. With Include intimate zones on, a detection must end with the ones it looks
+    /// for: asked for again on the whole character when the close-ups missed them (or a model left them out), else worked out
+    /// from the zones around them.</summary>
+    public static IReadOnlyList<string> Erogenous { get; } = [.. CharacterTouchZones.Kinds.Where(k => k.Intimate).Select(k => k.Id)];
+
+    /// <summary>How Detect zones (and Detect again) goes for the model of <paramref name="saved"/>: it looks for
+    /// <see cref="Defaults"/> and every zone the owner added (<see cref="CharacterTouchZone.Added"/>), and must end with the zones
+    /// the owner added and, with Include intimate zones on (<paramref name="includeIntimate"/>, else the saved choice, on by
+    /// default), the intimate ones it looks for.</summary>
+    public static ZoneDetectionOptions For(CharacterTouchZoneSettings? saved, bool? includeIntimate = null)
+    {
+        var added = saved?.Zones.Where(z => z.Added).Select(z => z.Id).Distinct(StringComparer.Ordinal).ToArray() ?? [];
+        var zones = Defaults.Concat(added).Distinct(StringComparer.Ordinal).ToArray();
+        var intimate = includeIntimate ?? saved?.IncludeIntimate ?? true;
+        return new()
+        {
+            Zones = zones,
+            Required = [.. zones.Where(id => added.Contains(id, StringComparer.Ordinal) || intimate && CharacterTouchZones.Kind(id)?.Intimate == true)]
+        };
+    }
 
     /// <summary>The step that asks again, on the whole character, for zones that must be found and the close-ups missed.</summary>
     public const string MissingStep = "missing";
@@ -121,12 +156,11 @@ public static partial class TouchZoneDetection
         ("held_item", "something it holds, if it holds anything")
     ];
 
-    public static IReadOnlyList<string> PartIds { get; } = [.. Parts.Select(p => p.Id)];
-
     private static readonly Dictionary<string, string> Where = new(StringComparer.Ordinal)
     {
         ["top_of_head"] = "the top of the head, where a head pat lands", ["hair"] = "all of the hair",
-        ["forehead"] = "the forehead, between the bangs or hairline and the eyebrows", ["face"] = "the face with the eyes",
+        ["forehead"] = "the forehead, between the bangs or hairline and the eyebrows", ["face"] = "the whole face",
+        ["eye_left"] = "the character's left eye", ["eye_right"] = "the character's right eye",
         ["cheek_left"] = "the character's left cheek", ["cheek_right"] = "the character's right cheek", ["nose"] = "the nose",
         ["lips"] = "the mouth and lips", ["chin"] = "the chin", ["ear_left"] = "the character's left ear (a human ear)",
         ["ear_right"] = "the character's right ear (a human ear)", ["animal_ears"] = "animal ears on the head", ["horns"] = "horns",
@@ -140,6 +174,7 @@ public static partial class TouchZoneDetection
         ["forearm_left"] = "the character's left forearm, from the elbow to the wrist",
         ["forearm_right"] = "the character's right forearm, from the elbow to the wrist",
         ["hand_left"] = "the character's left hand", ["hand_right"] = "the character's right hand", ["hips"] = "the hips",
+        ["hip_left"] = "the character's left hip, the left side of the hips", ["hip_right"] = "the character's right hip, the right side of the hips",
         ["groin"] = "the groin, where the legs meet", ["buttocks"] = "the buttocks, if they show",
         ["thigh_left"] = "the character's left thigh, from the hip to the knee", ["thigh_right"] = "the character's right thigh, from the hip to the knee",
         ["inner_thigh_left"] = "the inner side of the character's left thigh", ["inner_thigh_right"] = "the inner side of the character's right thigh",
@@ -194,9 +229,22 @@ public static partial class TouchZoneDetection
         "body (such as the buttocks of a character that faces you) where it would be. " + Format + " Answer with JSON only, no other text, " +
         "in this form:\n{\"zones\":[{\"id\":\"hips\",\"left\":0.36,\"top\":0.47,\"right\":0.64,\"bottom\":0.55}]}";
 
-    /// <summary>The message that goes with the whole character's picture.</summary>
-    public static string PartsText(ZoneHints? hints) =>
-        "Parts (id - what):\n" + string.Join("\n", Parts.Select(p => $"{p.Id} - {p.What}")) + HintsText(hints, new(0, 0, 1, 1));
+    /// <summary>The message that goes with the whole character's picture: its head, upper body and lower body, and the
+    /// <paramref name="extras"/> the detection looks for (a tail, wings or a held item the owner added).</summary>
+    public static string PartsText(ZoneHints? hints, IEnumerable<string>? extras = null)
+    {
+        var wanted = extras?.ToHashSet(StringComparer.Ordinal) ?? [];
+        return "Parts (id - what):\n" + string.Join("\n", Parts.Where(p => !Extras.Contains(p.Id) || wanted.Contains(p.Id)).Select(p => $"{p.Id} - {p.What}")) +
+            HintsText(hints, new(0, 0, 1, 1));
+    }
+
+    /// <summary>The parts the whole character's picture asks for: its head, upper body and lower body, and the
+    /// <paramref name="extras"/> the detection looks for.</summary>
+    public static IReadOnlyList<string> PartsFor(IEnumerable<string> extras)
+    {
+        var wanted = extras.ToHashSet(StringComparer.Ordinal);
+        return [.. Parts.Select(p => p.Id).Where(id => !Extras.Contains(id) || wanted.Contains(id))];
+    }
 
     /// <summary>The message that goes with a close-up of <paramref name="region"/> (<paramref name="crop"/>, fractions of the snapshot).</summary>
     public static string ZonesText(ZoneRegion region, ZoneHints? hints, TouchZoneBox crop) =>

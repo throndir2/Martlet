@@ -398,12 +398,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Character › Touch zones: how many zones the shown model has, how many are in use and who found them, whether
         // the Thinking model can see (and where pictures go), how Detect zones went (each step while it runs), what the last
         // detection sent (how many pictures, how large, what they showed), which zone the last touch landed in and what it
-        // played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows and default reaction).
-        // TouchZonesDetectNote says why Detect zones is off (no model that can see pictures).
+        // played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows, "added by you" for a zone
+        // the owner added, which Detect again looks for too, and its default reaction).
+        // TouchZonesDetectNote says why Detect zones is off (no model that can see pictures), and TouchZonesAddNote which zones
+        // Detect zones looks for (fixed text).
         // Detect zones sends the character's pictures to Thinking, Try plays on the character, Open the pictures opens Explorer,
         // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
-        "TouchZonesDetectNote",
+        "TouchZonesDetectNote", "TouchZonesAddNote",
         // Companion › Character › Touch zones › Eyes: where the shown model's eyes come from (the model's own meshes or eye bones,
         // the vision measurement and when it was taken, or an estimate), how measuring went (each step while it runs, or why it
         // failed) and, only when no model can see pictures, why Measure the eyes is off. Fixed text, times and counts only.
@@ -418,7 +420,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // something to say). Each line's attitude (TouchTemperamentAttitude-<category or zone ID>, below) is an attitude word, its
         // TouchTemperamentReaction-/TouchTemperamentReaction2- the reactions, its TouchTemperamentLinger- and
         // TouchTemperamentLook-<category or zone ID> the seconds the first reaction stays on and the eyes then look at your mouse,
-        // TouchTemperamentParts-<category ID> the parts the category covers ("Parts: lips, left ear, ..."), TouchTemperamentAfter the
+        // TouchTemperamentParts-<category ID> the parts the category covers ("Parts: mouth, left ear, ..."), TouchTemperamentAfter the
         // touches in a row before it escalates and TouchTemperamentGaze where the eyes usually go. TouchTemperamentUse is the
         // temperament the persona uses (Decided from its personality, Built-in reactions or a custom temperament's name),
         // TouchTemperamentName and TouchTemperamentNewName the custom temperament's name and the name typed for a new one,
