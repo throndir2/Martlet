@@ -44,7 +44,7 @@ ANNE_V4 = ("librivox/agg_02_montgomery.mp3", "4ef534ec93aa850571defca7c5d1dda245
 
 # key: [(relative source path, SHA-256, start s, end s or None for the whole file)], output sample rate
 VOICES = {
-    # The cute voices come first; the first is F5's default.
+    # The order here is only the build order; src/Martlet.F5/F5BundledVoices.cs sets the list order and the default (Jenny).
     # Annie Coleman Rothenberg as Anne Shirley (Chapter II): "But am I talking too much? People are always telling me I do.
     # Would you rather I didn't talk? If you say so, I'll stop."
     "librivox-annie": ([(*ANNE_V4, 795.30, 802.65)], 24_000),

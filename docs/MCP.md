@@ -579,9 +579,9 @@ as `starters` (key, name, `female`, `cute`, description, licence, transcript,
 SHA-256, sample rate and duration; each clip is checked against its SHA-256 and the
 reference store's audio, name and transcript rules, `valid` or the failure; a new
 voice list starts with them, after which they are ordinary voices), the
-`default` key, `defaultName`, `defaultFemale` and `defaultCute` (both always true;
-the default is the first cute voice, `librivox-annie`), `cute`, the
-keys of the cute voices listed first, and `retired`, the recordings Martlet no
+`default` key, `defaultName`, `defaultFemale` (true) and `defaultCute` (false;
+the default is the first starter voice, `jenny-dioco`), `cute`, the
+keys of the two cute voices (`librivox-annie` and `librivox-woollybee`), and `retired`, the recordings Martlet no
 longer ships (`key` and `name`: `retired-sample`, the F5-TTS example clip, and
 `retired-librivox-annie-anime` and `retired-librivox-woollybee-anime`, the
 former "anime" voices). From a data
@@ -5682,8 +5682,8 @@ voice comes from a cloud provider). There are no built-in voices and no groups:
 one list, in the order voices joined it (a new list starts with the starter
 voices). `F5VoicesStatus` reads how many voices there are and which is chosen or in
 use (a starter voice's name, "one of your recordings", or "a voice no longer in
-the list"), for example "6 voices. None chosen yet; Martlet starts with Annie
-(cute, chatty)." `F5VoicesShared` reads whether the list is shared with the
+the list"), for example "6 voices. None chosen yet; Martlet starts with Jenny
+(Dioco)." `F5VoicesShared` reads whether the list is shared with the
 paired Martlet computers ("Voices shared with 2 of 2 computers at 7:15 PM.",
 voices still copying to this PC, hosts to update, or "No other Martlet computers
 are paired yet, so your voices stay on this PC."). Each voice whose recording is a
