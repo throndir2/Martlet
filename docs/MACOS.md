@@ -85,7 +85,7 @@ mechanism; **Partial** = planned with a stated limit; **No** = not planned.
 | Thinking: Apple Private Cloud Compute | - | No (needs the paid program, see below) | No | `PrivateCloudComputeLanguageModel` (macOS 27, entitlement) | - |
 | Thinking/listening/speaking/lip-sync on paired hosts | Yes | Yes | - | Gateway client | MA07 |
 | Speaking: OpenAI | Yes | Yes | - | Streaming PCM | MA04 |
-| Speaking: on-device voices | Windows voices | **Yes: Apple voices and Personal Voice** | **Yes: new generic speech route (IO04)** | `AVSpeechSynthesizer.write(_:toBufferCallback:)` | MA03, MA04 |
+| Speaking: on-device voices | None: Windows voices were removed | **Yes: Apple voices and Personal Voice** | **Yes: new generic speech route (IO04)** | `AVSpeechSynthesizer.write(_:toBufferCallback:)` | MA03, MA04 |
 | Speaking: F5 voice cloning | Paired NVIDIA host | Yes: on this Mac (MLX) or a paired host | **Yes on Apple silicon: existing F5 route via MLX** | [f5-tts-swift](https://github.com/lucasnewman/f5-tts-swift) | MA03 |
 | Voice ID | Yes | Yes (port of the GE2E encoder, shared with IO09) | - | Accelerate | MA07 |
 | Persona, participation policy | Yes | Yes (shared with IO05) | - | Swift port | MA04 |

@@ -8,6 +8,8 @@ namespace Martlet.Core.Settings;
 
 public enum SetupRole { Stt, Llm, Tts }
 public enum SetupStep { Choice, Destinations, Credentials, Review }
+/// <summary>How a job is done. <see cref="LocalWindowsTts"/> (a Windows voice) is retired: files that have it still load, and
+/// the route is dropped when settings are read (<see cref="AppSettings.DropWindowsVoice"/>).</summary>
 public enum SetupRouteType { OpenAi, GatewayOllama, GatewayF5, LocalWhisper, ChatCompletions, LocalWindowsStt, LocalWindowsTts, GatewayStt, LocalParakeet, ElevenLabs }
 public enum GatewayCancellationMode { DiscardOnly, RequestAbort, CooperativeComputeCancel }
 
@@ -1247,7 +1249,6 @@ public sealed record SetupSettings : IContract
         null or SetupRouteType.OpenAi => "OpenAI",
         SetupRouteType.ChatCompletions => "custom chat endpoint",
         SetupRouteType.LocalWindowsStt => "Windows speech recognition",
-        SetupRouteType.LocalWindowsTts => "Windows voice",
         SetupRouteType.LocalWhisper or SetupRouteType.LocalParakeet => "local speech recognition",
         SetupRouteType.GatewayOllama => "paired-host model",
         SetupRouteType.GatewayF5 => "paired-host voice",

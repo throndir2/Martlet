@@ -232,8 +232,6 @@ public static class QuickSoundLibrary
     /// again.</summary>
     public static (string Identity, string Words, bool Paid)? Voice(SetupRoute? tts) => tts switch
     {
-        { RouteType: SetupRouteType.LocalWindowsTts, VoiceId: { Length: > 0 } windows } =>
-            ($"windows|{windows}", $"the Windows voice {windows}", false),
         { RouteType: SetupRouteType.GatewayF5, Gateway: { } gateway, Reference: { } reference } =>
             ($"host|{gateway.HostId}|{tts.GatewaySnapshot?.RouteId}|{tts.ModelId}|{reference.PresetId:N}|{reference.ReferenceRevision}",
                 $"{tts.ModelId} on {gateway.HostId}", false),

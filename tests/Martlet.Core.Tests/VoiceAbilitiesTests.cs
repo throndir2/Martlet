@@ -10,7 +10,7 @@ public sealed class VoiceAbilitiesTests
     [Fact]
     public void Every_voice_has_the_three_items_in_order()
     {
-        var all = SpeechEngines.All.Select(engine => engine.Abilities).Append(VoiceAbilities.WindowsVoice).Append(VoiceAbilities.OpenAiVoice);
+        var all = SpeechEngines.All.Select(engine => engine.Abilities).Append(VoiceAbilities.OpenAiVoice);
         foreach (var abilities in all)
             Assert.Equal(["Voice cloning", "Laughs & sighs", "Emotions"], abilities.Items.Select(item => item.Name));
     }
@@ -39,13 +39,11 @@ public sealed class VoiceAbilitiesTests
     }
 
     [Fact]
-    public void Windows_and_openai_voices_have_none()
+    public void The_openai_voice_has_none()
     {
-        foreach (var abilities in new[] { VoiceAbilities.WindowsVoice, VoiceAbilities.OpenAiVoice })
-        {
-            Assert.Equal("Voice cloning: no. Laughs & sighs: no. Emotions: no.", abilities.Describe());
-            Assert.All(abilities.Items, item => Assert.Empty(abilities.TagsFor(item, SpeechEngines.Chatterbox.Tags)));
-        }
+        var abilities = VoiceAbilities.OpenAiVoice;
+        Assert.Equal("Voice cloning: no. Laughs & sighs: no. Emotions: no.", abilities.Describe());
+        Assert.All(abilities.Items, item => Assert.Empty(abilities.TagsFor(item, SpeechEngines.Chatterbox.Tags)));
     }
 
     [Fact]
@@ -60,8 +58,7 @@ public sealed class VoiceAbilitiesTests
     {
         Assert.Equal("Runs on an NVIDIA GPU: about 3.7 GB of graphics memory, up to 4.2 GB (6 GB+ card).", SpeechEngines.Chatterbox.RunsOn);
         Assert.Equal("Runs on an NVIDIA GPU: about 4.4 GB of graphics memory, up to 9.8 GB (8 GB+ card).", SpeechEngines.Dia.RunsOn);
-        Assert.Equal("Runs on the CPU: no graphics card needed.",
-            FootprintCatalog.Default.Find(FootprintCatalog.WindowsVoiceId)!.WhereItRuns);
+        Assert.Equal("Runs on the CPU: no graphics card needed.", FootprintCatalog.Default.Find("chatterbox-nano-cpu")!.WhereItRuns);
         Assert.Equal("Runs online: nothing runs on your computers.",
             FootprintCatalog.Default.Find(FootprintCatalog.OpenAiVoiceId)!.WhereItRuns);
         // The line's smallest card is the one the engine row checks this PC against; Nano also runs without one.

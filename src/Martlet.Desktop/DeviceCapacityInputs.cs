@@ -91,7 +91,6 @@ internal static class DeviceCapacityInputs
             {
                 (SetupRole.Stt, SetupRouteType.LocalParakeet) => catalog.For(plan).FirstOrDefault(o => o.IsLocal && o.RunsInApp),
                 (SetupRole.Stt, SetupRouteType.LocalWindowsStt) => null,
-                (SetupRole.Tts, SetupRouteType.LocalWindowsTts) => catalog.For(plan).FirstOrDefault(o => o.IsLocal && o.RunsInApp),
                 (SetupRole.Llm, _) => Find(catalog, plan, route?.ModelId ?? offers?.GetValueOrDefault(HostRoles.Ollama), HostRoles.Ollama),
                 (SetupRole.Stt, _) => Find(catalog, plan, route?.ModelId ?? offers?.GetValueOrDefault(HostRoles.Stt), HostRoles.Stt),
                 _ => offers?.Keys.FirstOrDefault(HostRoles.Speaks) is { } engine

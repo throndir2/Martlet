@@ -6,8 +6,9 @@ namespace Martlet.Desktop;
 
 /// <summary>Set it all up for me (the welcome wizard's Use these suggestions, Home's first step and the Listening and Voice notices): on a PC that isn't
 /// in a Martlet network, one confirmation sets up Thinking, Listening and Voice the way <see cref="DefaultSetup"/> plans them for
-/// this PC's hardware. The quick parts come first (Ollama with the smallest model that hears, Parakeet and a Windows voice), so
-/// Martlet talks within minutes; a voice engine and Whisper on the graphics card follow when they fit, and switch over when ready.</summary>
+/// this PC's hardware. The quick parts come first (Ollama with the smallest model that hears, and Parakeet), so Martlet can
+/// listen and think within minutes; the voice engine (on the graphics card, else Chatterbox Nano on the processor) and Whisper
+/// on the graphics card follow, and Martlet speaks once the voice is ready.</summary>
 public partial class MainWindow
 {
     private bool settingUpDefaults;
@@ -83,15 +84,15 @@ public partial class MainWindow
             // Quick parts first, so Martlet can talk within minutes.
             if (thinking && !await SetUpDefaultThinkingAsync(plan.Thinking.Id))
                 ErrorLog.Warn("The default setup couldn't set up Thinking; it carries on with the voice and listening.");
-            if (voice && !closing) await UseWindowsVoiceAsync(null);
             if (listening && !closing)
             {
                 if (parakeetModel is null || parakeet is null || SherpaComponents.RuntimeDirectory() is null)
                     ActionText.Text = "Parakeet isn't available in this Martlet. Choose how it listens in Companion › Listening.";
                 else await UseParakeetAsync(parakeetModel, confirmed: true);
             }
-            // Then what runs on the graphics card, voice first: each switches over once it's ready.
+            // Then the voice (on the graphics card, or Chatterbox Nano on the processor) and Whisper on the card.
             if (voice && plan.Voice is { } engine && !closing) await UseVoiceEngineAsync(engine, null, confirmed: true);
+            else if (voice) ErrorLog.Warn("The default setup found no room for a voice on this PC: " + DefaultSetupPlan.NoVoice);
             var speaking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
             if (listening && plan.ListenOnGpu && !closing && speaking?.RouteType == SetupRouteType.GatewayF5 && ThisPcHost() is not null)
                 await UseListeningHereAsync(gpu: true, confirmed: true);
@@ -125,8 +126,11 @@ public partial class MainWindow
         string Job(SetupRole role, string name) => routes.FirstOrDefault(r => r.Role == role) is { } route
             ? $"{name}: {PlaceName(route)}" : $"{name}: not set up";
         var ready = routes.Any(r => r.Role == SetupRole.Llm);
+        var mute = routes.All(r => r.Role != SetupRole.Tts) && pendingJobHosts.GetValueOrDefault(SetupRole.Tts) is null;
         return string.Join(" · ", Job(SetupRole.Llm, "Thinking"), Job(SetupRole.Stt, "Listening"), Job(SetupRole.Tts, "Voice")) +
-            (ready ? ". Press Start listening or Start talking, and Show character." : ". Set up Thinking in Companion to start talking.");
+            (!ready ? ". Set up Thinking in Companion to start talking."
+                : mute ? ". Martlet can't speak yet: set up a voice in Companion › Voice. Chatterbox Nano runs on an NVIDIA card or on the processor."
+                : ". Press Start listening or Start talking, and Show character.");
     }
 
 }

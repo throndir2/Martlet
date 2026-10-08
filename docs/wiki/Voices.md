@@ -1,6 +1,6 @@
 # Voices
 
-Martlet can speak through Windows voices, OpenAI voices, ElevenLabs or self-hosted voice engines. Custom voices live in **Companion › Voice**.
+Martlet can speak through self-hosted voice engines, OpenAI voices or ElevenLabs. Custom voices live in **Companion › Voice**.
 
 ![Companion Voice](https://raw.githubusercontent.com/throndir2/Martlet/main/docs/images/companion-voice.png)
 
@@ -17,7 +17,7 @@ Open **Companion › Voice › Voices** to add recordings, transcripts and right
 | **XTTS-v2** | Streaming cloned voice; model license is non-commercial. |
 | **GPT-SoVITS** | Good for anime-style voices from a 3-10 second reference. |
 | **Dia** | English, nonverbal cues such as laughs/sighs/coughs; not streaming. |
-| **Windows voices** | Local installed voices. |
+| **Chatterbox Nano** | Small cloning engine on an NVIDIA card (4 GB+) or on the processor; Martlet's voice when no computer has room for your engine. |
 | **OpenAI TTS** | Cloud generated voices; text goes to OpenAI and may cost money. |
 | **ElevenLabs** | Cloud voice cloned from one of your saved voices, with tones such as whispers, happy or sad; uses your own ElevenLabs key and costs money. Set up under **Companion › Voice › A cloud provider**. |
 

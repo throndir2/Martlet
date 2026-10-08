@@ -86,7 +86,7 @@ never to a cloud provider).
 | --- | --- | --- | --- | --- |
 | Speech-to-text (STT) | OpenAI transcription | Windows offline recognizer; whisper.cpp `base.en` (~150 MB, ~0.4 GB RAM) | Whisper large-v3-turbo class, ~2-4 GB VRAM | Most privacy-sensitive: raw microphone audio. CPU is enough for short push-to-talk turns. |
 | Conversation LLM | Any OpenAI-compatible Chat Completions endpoint: **OpenRouter**, any chat model on **NVIDIA Build**, OpenAI, or another HTTPS provider | Not recommended (slow) | Ollama/llama.cpp: 7-9B Q4 ~5-7 GB, 12-14B Q4 ~9-11 GB, 24-32B Q4 ~16-22 GB, plus ~1-2 GB context | Largest VRAM consumer and the easiest role to offload. Hosted models are usually larger and smarter than what fits locally. |
-| Text-to-speech (TTS) | OpenAI (fixed voices) | Windows installed voices (robotic, free) | One Voice Studio engine (Chatterbox Turbo ~6 GB, the default, which can also laugh and sigh; F5 ~6 GB, XTTS-v2 ~4 GB, GPT-SoVITS ~4 GB or Dia ~8 GB (English only, can laugh, sigh and cough); Qwen3-TTS planned), ~2-6 GB | A custom or cloned voice requires self-hosted GPU TTS. Keep one engine resident. XTTS-v2 streams while it generates, so replies start sooner; F5 often sounds closer to the recording. The F5 and XTTS-v2 models are non-commercial only; Chatterbox and GPT-SoVITS are MIT; Dia is Apache-2.0. |
+| Text-to-speech (TTS) | OpenAI (fixed voices) | Chatterbox Nano on the processor (free, about 8 threads, needs Docker) | One Voice Studio engine (Chatterbox Turbo ~6 GB, the default, which can also laugh and sigh; F5 ~6 GB, XTTS-v2 ~4 GB, GPT-SoVITS ~4 GB or Dia ~8 GB (English only, can laugh, sigh and cough); Qwen3-TTS planned), ~2-6 GB | A custom or cloned voice requires self-hosted GPU TTS. Keep one engine resident. XTTS-v2 streams while it generates, so replies start sooner; F5 often sounds closer to the recording. The F5 and XTTS-v2 models are non-commercial only; Chatterbox and GPT-SoVITS are MIT; Dia is Apache-2.0. |
 | Lip-sync analysis | None supported | Loudness lip-sync (built in) | NVIDIA Audio2Face-3D on a Martlet host (open-source engine, no key; or NVIDIA's NIM with an NGC key), NVIDIA RTX 20+ only, 4 GB+ | Automatic mode uses local Audio2Face, then a paired host, then loudness. |
 | Screen understanding (future) | Vision-capable models on OpenRouter, NVIDIA Build or OpenAI | Tesseract OCR | Pinned unquantized LLaVA-NeXT 7B, ~16 GB+ | Bursty and heavy; keep it off the live voice GPU when possible. |
 | Memory embeddings/reranking (future) | Possible | Small models run on CPU | Optional | Current memory is lexical and fully local. |
@@ -228,7 +228,7 @@ flowchart LR
   model time.
 - **For the fastest responses**, run a local LLM on PC 2 as well, sized with
   the fastest-responses table above. Then no stage crosses the internet. If
-  PC 2's GPU is small, give it the LLM alone and use API speech or Windows voices.
+  PC 2's GPU is small, give it the LLM alone and use API speech or Chatterbox Nano on the processor.
   The Chat Completions route accepts plain HTTP only on loopback, so a LAN LLM
   needs HTTPS or the planned Martlet host LLM role.
 
@@ -308,7 +308,7 @@ host or a hosted vision model. Rules that still apply:
 | Live2D/VRM avatar and loudness lip-sync | **Working** on this PC |
 | Audio2Face on this PC or a paired Martlet host | **Working path**; Docker method verified with a stand-in role, **not yet run on a real GPU** |
 | Local memory, personas | **Working**, local only |
-| Windows offline STT and Windows voices TTS | Libraries and setup exist; **not yet dispatched** |
+| Windows offline STT | Library and setup exist; **not yet dispatched** (Windows voices were removed) |
 | Host LLM (Ollama), F5 TTS, STT, vision | Worker/adapter foundations; **no host role or gateway relay yet** |
 | whisper.cpp local STT, VAD/barge-in, Voice Studio synthesis/training | Disabled candidates or preparation only |
 
@@ -386,7 +386,12 @@ The planner uses these rules, in this order of importance:
 8. **Your choices stay.** The planner keeps a hosted Thinking provider that you
    chose (unless you keep everything local), your voice engine, loudness
    lip-sync and your hosting preference. It changes where things run, not
-   what runs. With no saved provider key, Home plans everything on your
+   what runs. The voice is the one exception: when no computer has room for
+   your voice engine, Chatterbox Nano speaks on a card, or else on the
+   processor (about 8 free threads, in the host service, which needs Docker).
+   A hosted voice speaks only when you saved its key. When nothing can speak,
+   a note says so and how to set up the host service. Your engine comes back
+   when a computer has room for it again. With no saved provider key, Home plans everything on your
    computers. With a saved key (for example a free NVIDIA Build key), the
    voice, listening and lip-sync get the cards first. Thinking then uses that
    hosted model only when no card has room for a local one, so the card goes

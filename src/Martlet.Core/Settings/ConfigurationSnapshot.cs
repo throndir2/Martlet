@@ -209,7 +209,6 @@ public sealed class ConfigurationRestorePlan
             null or SetupRouteType.OpenAi => "OpenAI",
             SetupRouteType.ChatCompletions => "custom chat endpoint",
             SetupRouteType.LocalWindowsStt => "Windows speech recognition",
-            SetupRouteType.LocalWindowsTts => "Windows voice",
             SetupRouteType.LocalWhisper or SetupRouteType.LocalParakeet => "local speech recognition",
             SetupRouteType.GatewayOllama => "paired-host model",
             SetupRouteType.GatewayF5 => "paired-host voice",

@@ -29,8 +29,8 @@ public sealed class GuardrailTests
     [Theory]
     [InlineData("linux-x64", "windows-speech", "Windows speech runs only on Windows")]
     [InlineData("macos-arm64", "windows-speech", "Windows speech runs only on Windows")]
-    [InlineData("linux-nvidia", "windows-voices", "Windows voices exist only on Windows")]
-    [InlineData("macos-x64", "windows-voices", "Windows voices exist only on Windows")]
+    [InlineData("linux-nvidia", "apple-voices", "Apple voices runs only on Apple devices")]
+    [InlineData("linux-x64", "f5-mlx", "MLX runs only on Apple silicon")]
     [InlineData("macos-arm64", "audio2face", "NVIDIA")]
     [InlineData("macos-arm64", "f5", "NVIDIA")]
     [InlineData("macos-x64", "mlx-llm", "Intel processor")]
@@ -101,12 +101,13 @@ public sealed class GuardrailTests
         {
             var store = new CompanionSettingsStore(folder);
             var guardrails = For("linux-x64");
+            // Windows voices are gone from Martlet: a saved choice from an older Martlet is refused like any unknown engine.
             store.Save(new CompanionSettings { Thinking = "chat-completions", Speaking = "windows-voices", CharacterName = "Wren" });
             var (settings, refusals) = store.Load(guardrails);
             Assert.Equal("chat-completions", settings.Thinking);
             Assert.Equal("Wren", settings.CharacterName);
             Assert.Equal("openai-tts", settings.Speaking);
-            Assert.Contains("Windows voices exist only on Windows", Assert.Single(refusals), StringComparison.Ordinal);
+            Assert.Contains("windows-voices", Assert.Single(refusals), StringComparison.Ordinal);
             Assert.DoesNotContain("api-key", File.ReadAllText(store.FilePath), StringComparison.OrdinalIgnoreCase);
         }
         finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }

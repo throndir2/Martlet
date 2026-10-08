@@ -40,7 +40,6 @@ public sealed class PlatformCatalogTests
             foreach (var engine in new[] { "openai-llm", "chat-completions", "openai-stt", "openai-tts", "loudness-lipsync", "character-overlay" })
                 Assert.Equal(PlatformVerdict.Yes, PlatformCatalog.Check(engine, PlatformSide.Companion, device).Verdict);
             Assert.Equal(PlatformVerdict.No, PlatformCatalog.Check("windows-speech", PlatformSide.Companion, device).Verdict);
-            Assert.Equal(PlatformVerdict.No, PlatformCatalog.Check("windows-voices", PlatformSide.Companion, device).Verdict);
             Assert.Equal(PlatformVerdict.NotYet, PlatformCatalog.Check("hands-free", PlatformSide.Companion, device).Verdict);
         }
         Assert.Contains("NVIDIA", PlatformCatalog.Check("audio2face", PlatformSide.Companion, intelMac).Reason, StringComparison.Ordinal);

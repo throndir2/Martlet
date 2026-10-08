@@ -257,6 +257,26 @@ internal static class NetworkRecommendationCheck
             reversed.Changes.Select(c => c.Summary).SequenceEqual(plan.Changes.Select(c => c.Summary)),
             new { plan.Fingerprint, applied = again.Fingerprint, reversed = reversed.Fingerprint, leftOver = again.Changes.Select(c => c.Summary) });
 
+        // The voice fallback: the owner's engine, else Chatterbox Nano on a card, else Nano on the processor, else a hosted
+        // voice with a saved key, else a note that Martlet can't speak yet. There are no Windows voices.
+        NetworkSetupRequest Lone(bool hostService, params MachineGpu[] gpus) =>
+            Network(Companion("desk-1", hostService, gpus)) with { Wanted = [PlanComponent.Voice] };
+        string? Option(NetworkRecommendation r) => r.Target.Job(ClusterJobs.Speaking)?.OptionId;
+        var smallCard = NetworkRecommender.Recommend(Lone(true, Nvidia(4, "GTX 1650")));
+        Step("voice", "Fallback 1: a 4 GB card has no room for Chatterbox Turbo, so Chatterbox Nano speaks on that card",
+            Option(smallCard) == FootprintCatalog.FallbackVoiceKind && smallCard.Notes.Any(n => n.Contains("Chatterbox Nano", StringComparison.Ordinal)),
+            Report(smallCard));
+        var processor = NetworkRecommender.Recommend(Lone(true));
+        Step("voice", "Fallback 2: no graphics card, so Chatterbox Nano speaks on the processor (about 8 threads)",
+            Option(processor) == "chatterbox-nano-cpu" && processor.Target.Job(ClusterJobs.Speaking)?.HostId == "desk-1", Report(processor));
+        var hostedVoice = NetworkRecommender.Recommend(Lone(false) with { ConfiguredProviders = ["openai"] });
+        Step("voice", "Fallback 3: no computer can run a voice engine, so the hosted voice with your saved key speaks",
+            Option(hostedVoice) == FootprintCatalog.OpenAiVoiceId, Report(hostedVoice));
+        var mute = NetworkRecommender.Recommend(Lone(false));
+        Step("voice", "Fallback 4: nothing can speak, so a note says how to set up the host service for Chatterbox Nano (never silent)",
+            Option(mute) is null && mute.Notes.Any(n => n.StartsWith("Martlet can't speak yet", StringComparison.Ordinal) &&
+                n.Contains("host service", StringComparison.Ordinal)), Report(mute));
+
         return new { ok, fixture = "built-in fixture networks (NOT real computers)", steps };
     }
 }

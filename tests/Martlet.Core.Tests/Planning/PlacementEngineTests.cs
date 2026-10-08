@@ -54,11 +54,11 @@ public sealed class PlacementEngineTests
     }
 
     [Fact]
-    public void CpuOnlyPcUsesWindowsVoicesAndHostedThinkingWithAProcessorFallback()
+    public void CpuOnlyPcUsesChatterboxNanoOnTheProcessorAndHostedThinkingWithAProcessorFallback()
     {
         var plan = Plan(HostingPreference.Balanced, Pc(32, 16));
 
-        Assert.Equal("windows-speech", plan.Primary(PlanComponent.Voice)!.Option.Id);
+        Assert.Equal("chatterbox-nano-cpu", plan.Primary(PlanComponent.Voice)!.Option.Id);
         Assert.False(plan.Primary(PlanComponent.Thinking)!.Option.IsLocal);
         Assert.Equal("gemma4:e2b-cpu", plan.Fallback(PlanComponent.Thinking)!.Option.Id);
         Assert.Contains(plan.Dropped, d => d.Component == PlanComponent.Singing && d.Reason == DropReason.NeedsNvidia);

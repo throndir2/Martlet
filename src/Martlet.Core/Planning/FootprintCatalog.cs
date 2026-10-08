@@ -16,8 +16,13 @@ public sealed partial class FootprintCatalog
 
     public static FootprintCatalog Default { get; } = new(SeedOptions());
 
-    /// <summary>The options for the two ways to speak that aren't voice engines: a Windows voice and OpenAI's voice.</summary>
-    public const string WindowsVoiceId = "windows-speech", OpenAiVoiceId = "hosted:openai-tts";
+    /// <summary>The option for the way to speak that isn't a voice engine: OpenAI's voice (it needs a saved key).</summary>
+    public const string OpenAiVoiceId = "hosted:openai-tts";
+
+    /// <summary>The voice engine Martlet falls back to when no computer has room for the owner's engine: Chatterbox Nano, on a
+    /// graphics card with 4 GB or more, else on the processor (about 8 threads). It is a host role, so it needs the Martlet
+    /// host service in Docker.</summary>
+    public const string FallbackVoiceKind = "chatterbox-nano";
 
     public IReadOnlyList<ComponentOption> Options => options;
 

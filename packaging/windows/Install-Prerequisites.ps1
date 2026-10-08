@@ -303,7 +303,7 @@ function Get-PrerequisiteState([string]$Id) {
 $Descriptions = @{
     WebView2 = 'Microsoft Edge WebView2 Runtime|Desktop character (Live2D/VRM overlay)'
     Microphone = 'Microphone access for desktop apps|Push-to-talk and audio tests'
-    WindowsSpeech = "Windows speech for $Culture|Offline speech recognition and Windows voices"
+    WindowsSpeech = "Windows speech for $Culture|Offline speech recognition and the hearing test's voice"
     Ollama = 'Ollama local LLM server|LLM on this PC instead of an API (optional)'
     NvidiaDriver = 'NVIDIA GPU driver|Local GPU roles: LLM, Audio2Face, voice (optional)'
     DockerDesktop = 'WSL 2 + Docker Desktop|Martlet hosts > This PC: Audio2Face and other GPU roles (optional)'

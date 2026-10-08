@@ -2384,7 +2384,7 @@ stripped from the chat for every voice.
   markdown, links, code or other bracketed text) lets the speaking engine's
   tags through, case-insensitively, in the engine's own spelling, even when a
   tag arrives split across stream deltas. Any other registered engine's tag is
-  dropped without silencing its sentence, so OpenAI, Windows voices, F5 and
+  dropped without silencing its sentence, so OpenAI, F5 and
   XTTS never read "[laugh]" aloud.
 - **Other spellings.** Models sometimes write a tag they were given in other
   brackets or as a stage direction. Those spellings count as the tag itself

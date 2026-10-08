@@ -803,8 +803,8 @@ Companion › Voice shows) and `abilities`, the rundown Companion › Voice show
 Laughs & sighs: yes. Emotions: whispering only." for Chatterbox Turbo, whose
 tones other than `[whispering]` don't change the voice and whose `[whispering]`
 the model itself whispers only now and then). `otherVoices` gives the
-same `abilities` and `runsOn` for the `windows` (CPU) and `openai` (online)
-voices, neither of which clones, laughs or shows emotions. Each starter
+same `abilities` and `runsOn` for the `openai` (online) voice, which doesn't
+clone, laugh or show emotions (Windows voices were removed). Each starter
 voice adds `engines` (the engines that can clone it) and `language` (`en` or
 `ja`, read from its transcript), `chosenEngine` is the engine chosen on this
 desktop (`speaking-engine.txt`, default `chatterbox`) and `chatterboxStyle` is
@@ -1016,7 +1016,7 @@ offline edits of different settings on both (both kept) and of the same
 setting (the later edit wins); a host that was down while a change was made,
 restarted with its saved copy and got the change on the next sync; a stale copy
 that can't undo newer changes; a newer Martlet's setting passed through; a
-Windows voice a new computer lacks (it waits, records nothing, then follows); a
+Parakeet model a new computer lacks (it waits, records nothing, then follows); a
 new computer taking everything without its defaults overriding anything; the
 Thinking fallback with its own key, turned off again (the key removed); lorebooks;
 no key in any desktop file while the hosts' private copy holds them and every
@@ -3992,7 +3992,11 @@ only a processor host (it stays: no added latency); hosted Thinking that the
 owner chose (it stays, unless everything is kept local); a host left out of
 the Thinking pool; the voice host away 4 and 25 minutes (no change, then
 Speaking moves as Required); and the applied recommendation (no changes and the
-same fingerprint in any order). `ok` is true when every step passed.
+same fingerprint in any order). Four `voice` steps check the fallback when no
+computer has room for the owner's voice engine: Chatterbox Nano on a 4 GB card;
+Chatterbox Nano on the processor (about 8 threads) with no card; the hosted
+voice with a saved key when no computer can run an engine; otherwise a note
+that says how to set up the host service. `ok` is true when every step passed.
 
 `node_presence_status` shows when your other computers go away or come back
 ([CLUSTER](CLUSTER.md#when-a-computer-goes-away-or-comes-back); optional
@@ -5581,7 +5585,7 @@ reads the saved level (1 without a file).
 `VoiceQuickSounds` check box (off by default), `VoiceQuickSoundsDelay` (*After
 0.5 s*, *After 0.7 s (recommended)*, *After 1 s* or *After 1.5 s*),
 `VoiceQuickSoundsStatus` (*Off.*, *On. Making the quick sounds with ...*, *On:
-4 quick sounds in the Windows voice ...*, *On, but OpenAI ... is a paid cloud
+4 quick sounds in chatterbox-nano on gpu-pc ...*, *On, but OpenAI ... is a paid cloud
 voice: press Make quick sounds now ...*, why they couldn't be made, or *On, but
 Martlet has no voice to make them with yet ...*) and `VoiceQuickSoundsMake`
 (*Make quick sounds now*, shown once they are on and a voice is set up). All
@@ -6301,25 +6305,25 @@ and `voice_recording_check` runs the same conversion on a file.
 Above the voices, the Voice engine card lists every way Martlet can speak on the
 shown computer as one row each, keyed by engine (`chatterbox`,
 `chatterbox-original`, `chatterbox-nano`, `f5`, `xtts`,
-`gpt-sovits`, `dia`, and `windows` for a Windows voice under This PC):
+`gpt-sovits` and `dia`; when none can run on the shown computer, `VoiceEngineNone`
+says so):
 `VoiceEngine-<key>` reads its name and badge ("Chatterbox Turbo · recommended",
-"Windows voice · in use"), `VoiceEngineAbilities-<key>` the rundown of what it
+"Chatterbox Nano · in use"), `VoiceEngineAbilities-<key>` the rundown of what it
 can do ("Voice cloning: yes. Laughs & sighs: yes. Emotions: whispering only.";
 shown as ✓ yes, ◐ partly and ✕ no, the same as `abilities.summary` in
 `f5_voices`), `VoiceEngineRunsOn-<key>` where it runs and how much graphics
 memory it takes ("Runs on an NVIDIA GPU: about 3.7 GB of graphics memory, up to
-4.2 GB (6 GB+ card).", "Runs on the CPU: no graphics card needed." for a Windows
-voice; `runsOn.text` in `f5_voices`; the cloud provider card shows
+4.2 GB (6 GB+ card).", "Runs on an NVIDIA GPU: about 2.6 GB of graphics memory, up to 3.1 GB (4 GB+
+card); without one, on the CPU." for Chatterbox Nano; `runsOn.text` in `f5_voices`; the cloud provider card shows
 `VoiceEngineAbilities-openai` and `VoiceEngineRunsOn-openai`, "Runs online:
 nothing runs on your computers.", when Speaking uses OpenAI),
 `VoiceEngineFeatures-<key>` its other needs as chips ("Docker, 5 s+ samples,
-English" for Chatterbox Turbo, "No Docker or download, Built-in Windows voices"
-for a Windows voice;
+English" for Chatterbox Turbo;
 the same list as `features` in `f5_voices`), `VoiceEngineState-<key>` (shown only
 when the button doesn't already say it) where it stands ("Speaking on this PC.",
 "Ready on gpu-pc.", "Setting up on gpu-pc...", or why it can't run there), and
 `VoiceEngineUse-<key>` its one button ("Set up and use Dia", "Use XTTS-v2", "In
-use Windows voice"; disabled with the reason as help text when the computer can't
+use Chatterbox Nano"; disabled with the reason as help text when the computer can't
 run it). Under *Another of your computers*, the computer pills
 `SpeakingHost-<host ID>` ("gpu-pc · speaking", "laptop · not reachable") only
 choose which computer the rows set up, so clicking one is passive;
@@ -7125,7 +7129,7 @@ never what plays, always listening goes on while Martlet speaks (a clip due
 during a reply is heard then and answered after it). The desktop log says so at start (*Simulated
 microphone ... FIXTURE*) and as each clip plays. With a disposable data
 directory whose Thinking is Ollama on this PC, Listening Parakeet and Voice a
-Windows voice, `ui_click` `HomeListen` (with `--allow-ui-effects`) runs whole
+host voice (for example Chatterbox Nano in this PC's host service), `ui_click` `HomeListen` (with `--allow-ui-effects`) runs whole
 spoken turns; `latency_report`, `logs_tail`, `hearing_check`'s `lastTurn` and
 `conversation_history_status` show what happened.
 

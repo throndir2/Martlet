@@ -30,7 +30,7 @@ internal static class SettingsRehearsal
     private const string RotatedKey = "sk-or-v1-lab-desktop-a-rotated-fedcba987654";
     private const string NvidiaKey = "nvapi-lab-desktop-b-0123456789";
     private const string FallbackKey = "sk-lab-fallback-key-0123456789";
-    private const string Zira = "TTS_MS_EN-US_ZIRA_11.0";
+    private const string Parakeet = LocalSpeechSetup.ParakeetV2EnglishModelId;
 
     internal static async Task<(bool Ok, object Report)> RunAsync(CancellationToken token)
     {
@@ -233,23 +233,23 @@ internal static class SettingsRehearsal
                     kept is null ? "lost" : "kept by B and passed on to lab-settings-1");
             });
 
-            await Run("A Windows voice for Speaking: B uses it; new computer C doesn't have it, waits without recording a change, then follows once it is installed", async () =>
+            await Run("A Parakeet model for Listening: B uses it; new computer C doesn't have it, waits without recording a change, then follows once it is downloaded", async () =>
             {
-                await a.ChooseAsync(SetupRole.Tts, s => WindowsSpeechSetup.SelectTts(s, Zira), null);
+                await a.ChooseAsync(SetupRole.Stt, s => LocalSpeechSetup.SelectParakeet(s, Parakeet), null);
                 await a.SyncAsync(hosts, token);
                 await b.SyncAsync(hosts, token);
-                var bVoice = (await b.SettingsAsync()).Setup!.Routes.SingleOrDefault(r => r.Role == SetupRole.Tts)?.VoiceId;
-                c.Available = (_, route, _) => Task.FromResult(route.Type == SharedRoute.WindowsTts ? "The Windows voice Zira isn't installed on this PC." : null);
+                var bModel = (await b.SettingsAsync()).Setup!.Routes.SingleOrDefault(r => r.Role == SetupRole.Stt)?.ModelId;
+                c.Available = (_, route, _) => Task.FromResult(route.Type == SharedRoute.Parakeet ? "The Parakeet model isn't downloaded on this PC." : null);
                 var first = await c.SyncAsync(hosts, token);
-                var waiting = first.Waiting.GetValueOrDefault(AppSettingsSections.Speaking);
+                var waiting = first.Waiting.GetValueOrDefault(AppSettingsSections.Listening);
                 var second = await c.SyncAsync(hosts, token);
-                var speakingBy = second.Document.Find(AppSettingsSections.Speaking)?.UpdatedBy;
+                var listeningBy = second.Document.Find(AppSettingsSections.Listening)?.UpdatedBy;
                 c.Available = (_, _, _) => Task.FromResult<string?>(null);
                 var third = await c.SyncAsync(hosts, token);
-                var cVoice = (await c.SettingsAsync()).Setup!.Routes.SingleOrDefault(r => r.Role == SetupRole.Tts)?.VoiceId;
-                return (bVoice == Zira && waiting is not null && !second.Recorded.Contains(AppSettingsSections.Speaking) && speakingBy == "lab-desktop-a" &&
-                        third.Applied.Any(x => x.Key == AppSettingsSections.Speaking) && cVoice == Zira,
-                    $"B: {bVoice}; C waited (\"{waiting}\"), recorded nothing for it, then took {cVoice}");
+                var cModel = (await c.SettingsAsync()).Setup!.Routes.SingleOrDefault(r => r.Role == SetupRole.Stt)?.ModelId;
+                return (bModel == Parakeet && waiting is not null && !second.Recorded.Contains(AppSettingsSections.Listening) && listeningBy == "lab-desktop-a" &&
+                        third.Applied.Any(x => x.Key == AppSettingsSections.Listening) && cModel == Parakeet,
+                    $"B: {bModel}; C waited (\"{waiting}\"), recorded nothing for it, then took {cModel}");
             });
 
             await Run("New computer C took everything else on its first sync: OpenRouter with the key, the personality, replies, prompts and memory off; its defaults overrode nothing", async () =>

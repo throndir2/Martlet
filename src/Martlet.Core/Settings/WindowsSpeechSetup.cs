@@ -6,6 +6,7 @@ namespace Martlet.Core.Settings;
 public static class WindowsSpeechSetup
 {
     public const string SttAlias = "windows-recognition";
+    /// <summary>The retired Windows voice route's alias and model: kept so older settings files still validate.</summary>
     public const string TtsAlias = "windows-speech";
     public const string TtsModelId = "windows-installed";
 
@@ -24,25 +25,17 @@ public static class WindowsSpeechSetup
         }
     }
 
-    public static AppSettings SelectStt(AppSettings settings, string recognizerId) =>
-        Select(settings, SetupRole.Stt, recognizerId, null);
-
-    public static AppSettings SelectTts(AppSettings settings, string voiceId) =>
-        Select(settings, SetupRole.Tts, TtsModelId, voiceId);
-
-    private static AppSettings Select(AppSettings settings, SetupRole role, string modelId, string? voiceId)
+    public static AppSettings SelectStt(AppSettings settings, string recognizerId)
     {
         settings.Validate();
         ContractRules.Require(settings.Setup is not null, "Open setup before selecting installed Windows speech.");
-        var type = role == SetupRole.Stt ? SetupRouteType.LocalWindowsStt : SetupRouteType.LocalWindowsTts;
-        var old = settings.Setup?.Routes.SingleOrDefault(route => route.Role == role);
-        if (old?.RouteType == type && old.ModelId == modelId && old.VoiceId == voiceId)
+        var old = settings.Setup?.Routes.SingleOrDefault(route => route.Role == SetupRole.Stt);
+        if (old?.RouteType == SetupRouteType.LocalWindowsStt && old.ModelId == recognizerId && old.VoiceId is null)
             return settings;
         return SetupSettings.ReplaceRoute(settings, new()
         {
-            RouteSchemaVersion = 1, RouteType = type, Enabled = true, Role = role,
-            ProviderAlias = role == SetupRole.Stt ? SttAlias : TtsAlias,
-            Origin = SelfHostSetup.LocalOrigin, ModelId = modelId, VoiceId = voiceId,
+            RouteSchemaVersion = 1, RouteType = SetupRouteType.LocalWindowsStt, Enabled = true, Role = SetupRole.Stt,
+            ProviderAlias = SttAlias, Origin = SelfHostSetup.LocalOrigin, ModelId = recognizerId,
             ConfigurationRevision = Guid.NewGuid()
         });
     }

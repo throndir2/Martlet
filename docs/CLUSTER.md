@@ -15,7 +15,7 @@ What differs from one computer to the next is only what belongs to that
 computer itself: its microphone, speakers and cameras, its screens (where the
 character and its speech bubble sit), whether it is a companion or a host PC,
 how it starts, what it installed (Ollama models, Parakeet, a whisper package,
-Windows voices, MCP servers, the terminal it may use) and its own security
+MCP servers, the terminal it may use) and its own security
 choices. See
 [What stays with each computer](#what-stays-with-each-computer).
 
@@ -179,8 +179,8 @@ talking to its own Ollama directly, so its replies never take the extra hop.
   switches to it as soon as it can: pair diva-host with this PC first.*),
   not Martlet's default *This PC*.
 - Listening and Speaking on *This PC* can already run through the computer's
-  own host service, and then the plan names it the same way. A Windows voice,
-  Parakeet or whisper inside Martlet runs on each companion PC.
+  own host service, and then the plan names it the same way. Parakeet or
+  whisper inside Martlet runs on each companion PC.
 
 ## Sharing work between your computers
 
@@ -418,7 +418,7 @@ These describe the computer itself, so they never travel:
 | Companion PC or host PC, the host service on it, *When Martlet starts* and closing choices, Start with Windows | What this computer is for and how it starts (another of your computers can still [switch it](#switching-another-computer-between-companion-and-host)) |
 | Paired hosts, SSH keys, *Let my other computers find this PC*, *Let my other paired computers update Martlet here* | How this computer reaches others, and who may reach it |
 | Where memory is stored | A folder on this PC (the memories travel) |
-| Installed engines and models: Ollama models, Parakeet, a whisper package, Windows voices, MCP servers (`mcp.json`) and their secrets | Programs on this PC; a shared route that needs one this PC lacks waits and says why |
+| Installed engines and models: Ollama models, Parakeet, a whisper package, MCP servers (`mcp.json`) and their secrets | Programs on this PC; a shared route that needs one this PC lacks waits and says why |
 | The terminal Martlet may use while you talk (`terminal.json`: on or off, shell, start folder, time limit, asking first) | It runs commands as you on this PC, so it is allowed at that PC |
 | Context limits Martlet found for local models (`model-limits.json`) | Measured on this PC |
 
@@ -445,7 +445,7 @@ to *different* settings made on different computers are all kept.
   (`shared-keys.txt` lists those). The owner's
   choice is recorded as made on the computer where it was made. A setting
   followed from elsewhere is not counted as a change made here.
-- **A setting this PC can't use yet** (a Windows voice not installed, the
+- **A setting this PC can't use yet** (the
   Parakeet model not downloaded, Ollama without the model, a character file not at the same
   path, a job a paired host does now, Home Assistant not connected here yet,
   emotes and motions while the Thinking model names them here) keeps its
@@ -488,7 +488,7 @@ not encrypted end to end between desktops yet.
 gateways, three simulated desktops with real settings files and the real sync
 engine and sections, covering the owner's case in both orders, model and key
 changes, offline edits on both sides, a host that missed a change and
-restarted, a stale copy, a newer Martlet's setting, a Windows voice a new
+restarted, a stale copy, a newer Martlet's setting, a Parakeet model a new
 computer lacks, a new computer, the fallback and its key, lorebooks, no keys in
 desktop files and an unsigned request refused. The desktop window's own sync
 (status, the character, how you talk, speech bubbles and theme; and, on a
@@ -987,7 +987,7 @@ remove roles). It uses only the paths that already exist:
 | Add a role, change its model, move it to a graphics card | `host.add-role` with `choice.<VAR>` answers through Martlet on that computer; this PC's own host engine; or the SSH runner without questions, as automatic host updates use it. The model selects its choice and its variant (`choice.STT_ENGINE=parakeet` for a Parakeet model). A choice that selects a variant is always sent, with its default when the change names none, so the host installs the variant whose terms the review showed. An installed role keeps what it runs with now. `choice.gpu` is the UUID of the card from the describe output, found by the card's exact name (then a name that contains the other, then its place among the NVIDIA cards). |
 | Remove a role | `host.remove-role`, or `martlet-host remove` on this PC or over SSH |
 | Hand a job to a computer | The shared cluster plan, as *Use for ...* on the Devices map does, with failover on. Without a host, each companion PC uses its own choice again. |
-| Hand a job to no host | The way of doing it that the recommendation names (`JobPlan.OptionId`). Martlet switches this PC with the Companion page's own path when it can: a model in this PC's Ollama (*Use Ollama on this PC*), Parakeet, a Windows voice, or loudness lip-sync. That path also records in the shared plan that no host does the job, and your other companion PCs follow the shared route when they can. A hosted provider is switched only when this PC already uses it; otherwise the review says where you choose it (for example *Choose OpenAI for thinking in Companion › Thinking*), and Martlet never reports that change as made. |
+| Hand a job to no host | The way of doing it that the recommendation names (`JobPlan.OptionId`). Martlet switches this PC with the Companion page's own path when it can: a model in this PC's Ollama (*Use Ollama on this PC*), Parakeet or loudness lip-sync. That path also records in the shared plan that no host does the job, and your other companion PCs follow the shared route when they can. A hosted provider is switched only when this PC already uses it; otherwise the review says where you choose it (for example *Choose OpenAI for thinking in Companion › Thinking*), and Martlet never reports that change as made. |
 | Share speaking or listening | Devices › Sharing work (`work-sharing.json`, the `work-sharing` shared setting): the computer is no longer in the job's *never* list, and sharing is on. Leaving puts it on that list. |
 | Join or leave the Thinking pool | Nothing to do. A computer joins the Thinking pool by itself on its next check when it runs the deep-thinking role. Martlet never writes `thinking-pool.json` for this. |
 

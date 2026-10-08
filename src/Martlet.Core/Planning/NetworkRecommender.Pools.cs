@@ -13,7 +13,7 @@ public static partial class NetworkRecommender
         {
             poolsDone.Add(job);
             if (!decisions.TryGetValue(job, out var decision) || decision.Frozen) return;
-            var kind = job == ClusterJobs.Speaking ? engine : ListeningRole;
+            var kind = job == ClusterJobs.Speaking ? voice : ListeningRole;
             var primary = NodeOf(decision.HostId);
             if (kind is null || primary is null || !primary.Roles.Any(r => r.Kind == kind && r.Purpose == job)) return;
             var purpose = job == ClusterJobs.Speaking ? SpeakingPool : ListeningPool;
@@ -190,7 +190,7 @@ public static partial class NetworkRecommender
                     role.Leave ??= role.Moved ?? (node.Companion && !singlePc
                         ? (SetupChangeBenefit.Improvement, $"Nothing needs it on {node.Name}, a companion PC, so games get its graphics card back.")
                         : !Useful(role)
-                            ? (SetupChangeBenefit.Minor, $"Every computer speaks with {EngineName}, so {Label(role.Option, role.Kind)} isn't used.")
+                            ? (SetupChangeBenefit.Minor, $"Every computer speaks with {Label(EngineOptions().FirstOrDefault(), voice ?? "")}, so {Label(role.Option, role.Kind)} isn't used.")
                             : (SetupChangeBenefit.Minor, role.Gb > 0
                                 ? $"Nothing uses it; removing it frees about {Gb(role.Gb)} GB on {CardText(node, role.Card)}."
                                 : "Nothing uses it."));

@@ -19,7 +19,9 @@ public sealed class SetupAdvisorTests
         Assert.Equal("Loudness lip-sync", Role(advice, "Lip-sync").Choice);
         Assert.DoesNotContain(advice.Roles, r => r.Where == "Online");
         Assert.Contains(AdvisorInstall.Ollama, advice.ThisPcInstalls);
-        Assert.DoesNotContain(AdvisorNextStep.Hosts, advice.NextSteps);
+        // Chatterbox Nano on the processor runs in the Martlet host service on this PC.
+        Assert.Contains(AdvisorInstall.DockerDesktop, advice.ThisPcInstalls);
+        Assert.Contains(AdvisorNextStep.Hosts, advice.NextSteps);
     }
 
     [Fact]
@@ -29,6 +31,10 @@ public sealed class SetupAdvisorTests
         Assert.Equal("This PC (GPU)", Role(small, "Thinking").Where);
         Assert.Equal(AdvisorAvailability.Available, Role(small, "Thinking").Availability);
         Assert.Equal("This PC (CPU)", Role(small, "Voice").Where);
+        Assert.Contains("Chatterbox Nano on the processor", Role(small, "Voice").Choice, StringComparison.Ordinal);
+        Assert.DoesNotContain(small.Roles, r => r.Choice.Contains("Windows", StringComparison.Ordinal));
+        Assert.Contains(AdvisorInstall.DockerDesktop, small.ThisPcInstalls);
+        Assert.Contains(AdvisorNextStep.Hosts, small.NextSteps);
         Assert.Equal("Loudness lip-sync", Role(small, "Lip-sync").Choice);
         Assert.DoesNotContain(small.Roles, r => r.Where == "Online");
         Assert.Contains("Nothing leaves your computers.", small.Notes);
@@ -139,7 +145,7 @@ public sealed class SetupAdvisorTests
         var advice = SetupAdvisor.Recommend(new() { CustomVoice = true });
 
         Assert.Equal("This PC (CPU)", Role(advice, "Voice").Where);
-        Assert.Contains(advice.Notes, n => n.StartsWith("A custom voice needs a free NVIDIA GPU", StringComparison.Ordinal));
+        Assert.Contains(advice.Notes, n => n.StartsWith("Chatterbox Nano copies your voice on the processor too", StringComparison.Ordinal));
     }
 
     [Fact]

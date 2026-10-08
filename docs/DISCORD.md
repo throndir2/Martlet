@@ -271,8 +271,9 @@ microphone or speakers for Discord.
   speaker being the only person in the call with Martlet (one-to-one, such as the owner alone with it). The voice chat mode
   (`VoiceChat`, default Sometimes) and `DiscordChatRules` decide whether the turn goes to the reply engine; in Sometimes the
   engine may stay quiet on unaddressed turns, so a group call gets occasional comments. Each call keeps its last 12 lines.
-- **Speaking:** the reply is cut at sentence ends into segments of up to 400 characters, spoken by a paired host's voice or a
-  Windows voice (Its voice when it is one of those; Windows' recommended voice when Its voice is a cloud voice), upsampled
+- **Speaking:** the reply is cut at sentence ends into segments of up to 400 characters, spoken by the voice engine of Its voice on this PC's host
+  service or a paired host (Chatterbox Nano runs on a processor too; with a cloud voice or no voice, Discord voice says so
+  instead of speaking), upsampled
   to 48 kHz stereo, encoded to 20 ms Opus frames (Concentus, 64 kb/s) and written to NetCord's voice stream, which paces them
   at real time, with the Speaking flag on and five silence frames after.
 - **Barge-in:** when someone else talks over Martlet with at least 0.4 s of voice, it stops speaking at once; what they said
