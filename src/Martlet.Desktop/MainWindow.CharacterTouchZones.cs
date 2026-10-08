@@ -38,6 +38,8 @@ public partial class MainWindow
         characterActions.Changed += () => characterTouchZones.Follow(characterActions.Current?.Inventory.ModelId);
         characterTouchZones.Changed += () => Dispatcher.InvokeAsync(() =>
         {
+            // The showing character keeps the zones as they are now (sent only when they change).
+            SendTouchZoneView();
             if (touchZonesLast is not null) touchZonesLast.Text = characterTouchZones.LastMatch ?? TouchZonesIdle();
             if (touchZonesNoticed is not null) touchZonesNoticed.Text = characterTouchZones.Noticed ?? TouchZonesNoticedIdle;
             if (touchZonesNoticedLast is not null) touchZonesNoticedLast.Text = characterTouchZones.NoticedLast ?? "";
@@ -47,8 +49,28 @@ public partial class MainWindow
                 RenderTab();
         });
         avatar.TouchRouter = OnCharacterTouched;
+        // A character that shows (again) gets the zones of its model, so Show the zones on the character and Martlet's MCP find
+        // them as it moves.
+        avatar.UseZoneView(TouchZoneViewFor);
         WireCharacterTemperament();
         WireCharacterEyes();
+    }
+
+    // Touch zones › Show the zones on the character, for this session.
+    private bool showZonesOnCharacter;
+
+    /// <summary>The touch zones the showing character gets when its model is <paramref name="modelPath"/>: the zones in use of the
+    /// model the Touch zones page follows, each in its row's color, drawn when Show the zones on the character is on; null for
+    /// another model.</summary>
+    private RendererZoneView? TouchZoneViewFor(string? modelPath) =>
+        characterActions.For(modelPath)?.Inventory.ModelId is { } id && id == characterTouchZones.ModelId
+            ? RendererZoneView.Of(characterTouchZones.Current, showZonesOnCharacter, [.. ZoneColors.Select(c => $"#{c.R:X2}{c.G:X2}{c.B:X2}")]) : null;
+
+    // Gives the showing character its zones as they are now (the avatar sends them only when they changed).
+    private void SendTouchZoneView()
+    {
+        if (closing || !avatar.IsShowing) return;
+        avatar.SendZoneViewAsync(TouchZoneViewFor(avatar.InspectedProfile?.ModelPath) ?? new(false, []), lifetime.Token).Forget();
     }
 
     private string? renderedZonesModel;
@@ -456,7 +478,21 @@ public partial class MainWindow
             }
             catch (Exception error) when (error is IOException or NotSupportedException or UriFormatException or InvalidOperationException) { width = height = 0; }
         }
-        if (width > 0) stack.Add(canvas);
+        if (width > 0)
+        {
+            stack.Add(canvas);
+            // The zones' areas over the character as it moves (a tail's swing with it), for this session.
+            var onCharacter = new CheckBox
+            {
+                Content = "Show the zones on the character", IsChecked = showZonesOnCharacter, Margin = new Thickness(0, 0, 0, 8)
+            };
+            AutomationProperties.SetAutomationId(onCharacter, "TouchZonesShowOnCharacter");
+            AutomationProperties.SetHelpText(onCharacter, "Draws each area of the zones in use over your character as it moves, in its zone's color. " +
+                "An area that follows the model's own parts, such as a tail's, moves with them. Only until Martlet closes.");
+            onCharacter.Checked += (_, _) => { showZonesOnCharacter = true; SendTouchZoneView(); };
+            onCharacter.Unchecked += (_, _) => { showZonesOnCharacter = false; SendTouchZoneView(); };
+            stack.Add(onCharacter);
+        }
 
         var reactionItems = new List<(string Id, string Label)>();
         foreach (var (source, action) in catalog.Entries.Where(e => e.Action.Enabled))

@@ -189,13 +189,15 @@ function picture({ width, height, zoom, x, y, frame, chains: measure }) {
   const resize = (w, h) => { if (renderer === "Vrm") adapter.resize(w, h); else { canvas.width = w; canvas.height = h; } };
   const round = value => Math.round(value * 10000) / 10000;
   const parts = () => { try { return adapter.modelParts?.() ?? []; } catch { return []; } };
-  // Measured only when asked (once per picture of the character); a model whose physics can't be measured swings nothing.
+  // Measured only when asked (once per picture of the character); a model whose physics can't be measured swings nothing, and
+  // a model with no swinging parts says nothing of them.
   const chains = () => {
-    if (measure === false) return [];
+    if (measure === false) return {};
     try {
-      return (adapter.swingingChains?.() ?? []).map(c => ({ ...(c.name ? { name: c.name } : {}), drawables: [...c.drawables],
+      const swinging = (adapter.swingingChains?.() ?? []).map(c => ({ ...(c.name ? { name: c.name } : {}), drawables: [...c.drawables],
         left: round(c.left), top: round(c.top), right: round(c.right), bottom: round(c.bottom) }));
-    } catch { return []; }
+      return swinging.length > 0 ? { chains: swinging } : {};
+    } catch { return {}; }
   };
   try {
     resize(Number(width), Number(height));
@@ -211,7 +213,7 @@ function picture({ width, height, zoom, x, y, frame, chains: measure }) {
     } catch { face = undefined; }
     return renderer === "Live2D"
       ? { png, drawables: adapter.drawableBounds().map(d => ({ id: d.id, left: round(d.left), top: round(d.top), right: round(d.right),
-          bottom: round(d.bottom), ...(d.part ? { part: d.part } : {}) })), parts: parts(), chains: chains(), ...(face ? { face } : {}) }
+          bottom: round(d.bottom), ...(d.part ? { part: d.part } : {}) })), parts: parts(), ...chains(), ...(face ? { face } : {}) }
       : { png, bones: adapter.bonePoints().map(b => ({ bone: b.bone, x: round(b.x), y: round(b.y) })), ...(face ? { face } : {}) };
   } catch { return {}; }
   finally {

@@ -1413,6 +1413,73 @@ internal sealed class DesktopAutomation(bool allowEffects)
 
     internal const int MaximumPoseSamples = 60;
 
+    internal const int MaximumZoneSamples = 60;
+
+    /// <summary>Reads where each area of the showing character's touch zones is now (as Martlet last gave them; Touch zones › Show
+    /// the zones on the character draws them) <paramref name="samples"/> times, <paramref name="gapMs"/> apart, through
+    /// MoveAvatar's UI Automation value ("zones"). It changes nothing, so it needs no --allow-ui-effects. Returns each reading
+    /// (fractions of the overlay's drawing, +y down) and a summary per area: what placed it and how far its middle moved.</summary>
+    internal async Task<object> ZonesCharacterAsync(int? samples, int? gapMs)
+    {
+        var count = samples ?? 1;
+        if (count is < 1 or > MaximumZoneSamples) throw new ArgumentException($"samples is 1 to {MaximumZoneSamples}.");
+        if (gapMs is < 0 or > 5000) throw new ArgumentException("gapMs is 0 to 5000.");
+        var element = Find("MoveAvatar");
+        if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            throw new InvalidOperationException("The character overlay can't be read through UI Automation.");
+        var value = (ValuePattern)pattern;
+        if (value.Current.IsReadOnly) throw new InvalidOperationException("The character's touch zones can't be read until it has loaded.");
+        static System.Text.Json.JsonElement? Zones(string text) => string.IsNullOrEmpty(text) ? null :
+            System.Text.Json.JsonDocument.Parse(text).RootElement is { ValueKind: System.Text.Json.JsonValueKind.Object } root &&
+            root.TryGetProperty("zones", out var zones) ? zones.Clone() : null;
+        var readings = new List<System.Text.Json.JsonElement>();
+        for (var i = 0; i < count; i++)
+        {
+            if (i > 0) await Task.Delay(gapMs ?? 250);
+            var before = Zones(value.Current.Value)?.GetRawText();
+            value.SetValue("zones");
+            var waited = Stopwatch.StartNew();
+            System.Text.Json.JsonElement? after;
+            while ((after = Zones(value.Current.Value))?.GetRawText() == before && waited.Elapsed < TimeSpan.FromSeconds(3)) await Task.Delay(20);
+            if (after is { } read && read.GetRawText() != before) readings.Add(read);
+        }
+        return new { samples = count, read = readings.Count, last = readings.LastOrDefault(), summary = ZonesSummary(readings),
+            note = readings.Count == 0 ? "The renderer didn't answer within 3 seconds." : null };
+    }
+
+    // How the readings went together, per area (its zone and place among the zone's areas): what placed it, its last box and how
+    // far its middle moved across the readings (fractions of the drawing).
+    internal static object[] ZonesSummary(IReadOnlyList<System.Text.Json.JsonElement> readings)
+    {
+        var areas = new Dictionary<(string Zone, int Area), List<(string From, double Left, double Top, double Right, double Bottom)>>();
+        foreach (var reading in readings)
+        {
+            if (reading.ValueKind != System.Text.Json.JsonValueKind.Object || !reading.TryGetProperty("areas", out var list) ||
+                list.ValueKind != System.Text.Json.JsonValueKind.Array) continue;
+            foreach (var area in list.EnumerateArray())
+            {
+                if (area.ValueKind != System.Text.Json.JsonValueKind.Object || !area.TryGetProperty("zone", out var zone) ||
+                    !area.TryGetProperty("area", out var index) || !index.TryGetInt32(out var at)) continue;
+                double Number(string name) => area.TryGetProperty(name, out var number) && number.ValueKind == System.Text.Json.JsonValueKind.Number
+                    ? number.GetDouble() : double.NaN;
+                var key = (zone.GetString() ?? "", at);
+                if (!areas.TryGetValue(key, out var seen)) areas[key] = seen = [];
+                seen.Add((area.TryGetProperty("from", out var from) ? from.GetString() ?? "" : "", Number("left"), Number("top"), Number("right"), Number("bottom")));
+            }
+        }
+        static double Spread(IEnumerable<double> values)
+        {
+            var finite = values.Where(double.IsFinite).ToArray();
+            return finite.Length == 0 ? 0 : Math.Round(finite.Max() - finite.Min(), 4);
+        }
+        return [.. areas.OrderBy(a => a.Key.Zone, StringComparer.Ordinal).ThenBy(a => a.Key.Area).Select(a => (object)new
+        {
+            zone = a.Key.Zone, area = a.Key.Area, from = a.Value.Select(v => v.From).Distinct().ToArray(),
+            box = new[] { a.Value[^1].Left, a.Value[^1].Top, a.Value[^1].Right, a.Value[^1].Bottom },
+            moved = new { x = Spread(a.Value.Select(v => (v.Left + v.Right) / 2)), y = Spread(a.Value.Select(v => (v.Top + v.Bottom) / 2)) }
+        })];
+    }
+
     /// <summary>Reads what the showing character's idle body does (a VRM's breath, arm hang, finger curl and sway)
     /// <paramref name="samples"/> times, <paramref name="gapMs"/> apart, through MoveAvatar's UI Automation value ("pose"). It
     /// changes nothing, so it needs no --allow-ui-effects. Returns each reading and a summary: how full the breath got, the

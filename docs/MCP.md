@@ -1441,31 +1441,46 @@ bound to `probe`, a simulated renderer zones probe of Live2D `drawables` (each
 with the `part` it belongs to) and VRM `bones` in page fractions, and a Live2D
 model's own `parts` (`id`, its DisplayInfo `name`, such as 头 or 右腿, and its
 `parent`); a zone also takes the drawables of its own feature's part that lie
-by its box, such as an eye's white and lashes outside a tight eye box), with `crop`, `"left,top,width,height"` where
+by its box, such as an eye's white and lashes outside a tight eye box; a
+probe's `chains` (a Live2D model's swinging parts: each `name`, the physics
+settings' names, its `drawables` from root to tip and its reach `left`, `top`,
+`right`, `bottom` in page fractions) and `springs` (a VRM's spring-bone chains:
+`name` and `joints`, each `bone` (its node's name), `x` and `y`) let a tail,
+wings or animal ears follow all of their part, and the hair a ponytail; each
+zone then has `follows` (the part's own names) and `areas` (each `box` as edges,
+its `drawables`, `bones` and `nodes`, and `fromModel`, true for an area that
+follows the model's own part)), with `crop`, `"left,top,width,height"` where
 the snapshot sat on the page; `probePath` reads the `probe.json` that *Detect
 zones* keeps with the pictures it sent, crop and all, or a bare probe), `hints`
 (what the probe tells: how many parts the model has (`modelParts`) and names
 (`namedModelParts`), the body parts its names place (`namedParts`; each of
 `areas` with its `part`, the character's own `side` for one that comes in pairs
-and its `box` as left, top, right and bottom fractions of the snapshot) and the
+and its `box` as left, top, right and bottom fractions of the snapshot), the
 close-ups' windows they give (`regions`: head, upper_body and lower_body, or
-null), `saved` (the model's zones in
+null), the `extras` its names place (a tail or wings, which *Detect zones* then
+looks for too), and its swinging parts: `chains` (each `name`, how many
+`drawables`, the body `part` its name says, its `root` and `tip` drawable) and
+`springs` (each `name`, how many `joints` and the `part` its name says)), `saved` (the model's zones in
 `character-touch-zones.json`: how many, how many are `active`, who found them,
 whether they were found with the character framed `whole`, the `crop` (where
 the picture sat on the page with the character framed whole, as `left`, `top`,
 `width` and `height` fractions; a `top` plus `height` above 1 means the picture
 zoomed out to show parts the model draws past its own canvas, such as legs),
 whether a snapshot
-is kept, what the last detection `sent` (its plain `line`, `requests`,
+is kept and its `snapshotProbe` (how many `chains` and `springs` the probe kept
+beside it has; the desktop binds the zones again with it when the owner moves
+one), what the last detection `sent` (its plain `line`, `requests`,
 `pictures`, `steps` and, from its `probe.json`, the `probe`'s hints as above) and
-each zone's parts, `plays`, whether Martlet `notices` it, whether the owner
+each zone's parts, its number of `areas`, what it `follows`, `plays`, whether Martlet `notices` it, whether the owner
 `added` it and the owner's `hint`) and,
 with `touch` (a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
 it lands with the character framed whole, `restX`, `restY`, `restWholeX` and
 `restWholeY` where the touched point of the character was in its rest pose, now
 and framed whole, as the renderer traces it on the touched mesh, and `hair`
 whether the topmost drawable is hair), `match`: the zone it lands
-in, `how` (`drawable`, `bone`, `hair`, `box` or `coarse`; with a VRM `bone`, the
+in, `how` (`drawable`, `node`, `bone`, `hair`, `box` or `coarse`; a drawable a zone
+follows by the model's own part, such as a tail's, is that zone's first, and reads
+`drawable`; a VRM spring-bone joint (`node`) an area follows reads `node`; with a VRM `bone`, the
 smallest zone on the part of the body that bone moves whose box holds the
 point wins, and reads `bone` when it holds that bone, else `box`; a zone whose
 box holds the point inside the box of a zone that owns the touched drawable,
@@ -1473,9 +1488,12 @@ with none of its own drawables under the touch, wins as its finer part and reads
 without `hair`, a drawable lower in `drawables` that a smaller zone inside the
 top drawable's zones owns wins, as an overlay over that part), `traced`
 (whether the boxes were compared with the rest point), `at` (the point they were
-compared with: `x`, `y` and `rest`, true when it is the rest point), `touched`
+compared with: `x`, `y` and `rest`, true when it is the rest point), `area` and
+`areas` (for a zone with several areas, which one the touch landed in, from 0, and
+how many it has; `area` is null for a zone with one), `follows` (what of the model
+the zone follows, or null), `touched`
 (every zone the touch lands in, the matched one first: where zones overlap, each
-other zone in use whose box holds that point, on the same part of the body as
+other zone in use with an area whose box holds that point, on the same part of the body as
 the touch, the hit VRM bone's part, else the matched zone's; a zone whose box
 frames a smaller touched zone is left out), its rough `coarse`
 zone, what it `plays` (the matched zone's reaction), whether Martlet `notices` it,
@@ -1604,7 +1622,9 @@ zoom, pan, lock, hide or show as Martlet's touch ledger heard it),
 reads in `ui_snapshot`; choosing one saves `talk-preferences.json`, so it
 needs `--allow-ui-effects`),
 `TouchZonesSaveState` and each zone's `TouchZoneState-<n>` (its ID, the parts
-it follows, *added by you* for a zone the owner added, which *Detect again*
+it follows, for a zone with several areas how many, for a zone that follows the
+model's own part *follows the model's own 尾巴 wherever it moves: 21 parts in 6
+areas*, *added by you* for a zone the owner added, which *Detect again*
 looks for too and keeps where it is when it can't find it, and its default
 reaction), and `TouchZonesAddNote` (which zones *Detect zones* looks for:
 *Detect zones looks for the hair, eyes, ears, nose, mouth, neck, breasts, upper
@@ -1633,13 +1653,27 @@ the breasts and the groin too), `TouchZonesAdd`/`TouchZonesAddKind` (its value
 is the zone chosen to add; it offers every zone the model doesn't have yet, and
 the zone it adds is marked *added by you*) and each zone's
 `TouchZoneOn-`, `TouchZoneName-`, `TouchZoneReaction-`, `TouchZoneReaction2-`,
-`TouchZoneNotices-` (*Martlet notices*; its checked state reads in `ui_snapshot`), `TouchZoneNarration-` (the owner's optional hint; it shows only while *Martlet notices* is on), `TouchZoneCooldown-`, `TouchZoneBox-`,
-`TouchZoneDelete-` and its box on the picture (`TouchZoneRect-<n>`, inside
+`TouchZoneNotices-` (*Martlet notices*; its checked state reads in `ui_snapshot`), `TouchZoneNarration-` (the owner's optional hint; it shows only while *Martlet notices* is on), `TouchZoneCooldown-`, `TouchZoneBox-`
+(its value is each area's box, left, top, width and height in percent, the areas
+separated by `|`; for a zone that follows the model's own part, setting a
+different box places the zone there as one box again),
+`TouchZoneAddArea-` (*Add area*: a box beside the zone's last one; shown while
+the zone has fewer than 8 areas and doesn't follow the model's own part),
+`TouchZoneRemoveArea-` (*Remove area*: takes the last area away; shown while the
+zone has more than one),
+`TouchZoneDelete-` and its areas on the picture (`TouchZoneRect-<n>` for the
+first, `TouchZoneRect-<n>-<k>` for area k from 2, inside
 `TouchZonesPicture`) save, so they all (except Stop) need `--allow-ui-effects`.
-`ui_snapshot` lists the picture and each zone's box on it as custom controls;
+Saving binds the zones to the model again with the probe kept beside the
+picture, so a box moved onto a tail gets that tail's areas, and the page then
+shows them. `TouchZonesShowOnCharacter` (*Show the zones on the character*, a
+check box for this session only; `ui_toggle`, like every check box, needs
+`--allow-ui-effects`) draws the zones' areas over the showing character as they
+move; `character_zones` reads them, drawn or not.
+`ui_snapshot` lists the picture and each area's box on it as custom controls;
 with `{"idPrefix":"TouchZoneRect","layout":true}` each box's `bounds` show
 where it sits on the picture (`TouchZonesPicture`'s `bounds`), one box per
-saved zone.
+area of each saved zone.
 The Character page lists more than `ui_snapshot`'s 200 controls; read the
 section with `{"idPrefix":"TouchZone"}`. With `"layout":true`, each row's text
 boxes, choices and buttons in Touch zones, Touch temperament and Emotes and

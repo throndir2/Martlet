@@ -597,3 +597,74 @@ test("a tap is hit-tested and answered unprompted; a failing hit test is a miss,
   assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1).touches.hits.map(hit => hit.rest))), [{ x: 0.2623, y: 0.08 }, null, null]);
   assert.ok(!posts.some(post => post.error));
 });
+
+test("a Live2D picture tells the parts that swing on their own, root first; only when asked, and a failure only leaves them out", async () => {
+  const posts = [];
+  let measured = 0, failing = false;
+  class Renderer {
+    load() { return Promise.resolve({ parameters: [] }); }
+    get modelSummary() { return undefined; }
+    setView() {}
+    update() {}
+    drawableBounds() { return [{ id: "ArtMesh210", left: 0.5, top: 0.4, right: 0.55, bottom: 0.45, part: "ArtMesh209_Skinning" }]; }
+    modelParts() { return []; }
+    swingingChains() {
+      measured++;
+      if (failing) throw new Error("controlled physics failure");
+      return [{ name: "尾巴 / 尾巴(2)", drawables: ["ArtMesh210", "ArtMesh211", "ArtMesh162"], left: 0.212345, top: 0.3, right: 0.9, bottom: 1.2 }];
+    }
+    dispose() {}
+  }
+  const { send } = await page(Renderer, posts);
+  await send({ kind: "load", data: { renderer: "Live2D", resourceRevision: "a".repeat(64), modelFile: "简.model3.json",
+    assets: ["core.js", "sdk.js", "简.model3.json"], still: true } });
+  await send({ kind: "picture", data: { width: 2046, height: 1364, zoom: 1, x: 0, y: 0, frame: 0.5, chains: true } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1).chains)),
+    [{ name: "尾巴 / 尾巴(2)", drawables: ["ArtMesh210", "ArtMesh211", "ArtMesh162"], left: 0.2123, top: 0.3, right: 0.9, bottom: 1.2 }]);
+  await send({ kind: "picture", data: { width: 2046, height: 1364, zoom: 0.9, x: 0, y: 0.1, frame: 0.5, chains: false } });
+  assert.equal(posts.at(-1).chains, undefined, "the zoomed-out picture doesn't measure them again");
+  assert.equal(measured, 1);
+  failing = true;
+  await send({ kind: "picture", data: { width: 2046, height: 1364, zoom: 1, x: 0, y: 0, frame: 0.5, chains: true } });
+  assert.equal(posts.at(-1).chains, undefined);
+  assert.equal(posts.at(-1).drawables.length, 1, "the picture and its drawables still come");
+  assert.ok(!posts.some(post => post.error), "and it never fails the renderer");
+});
+
+test("the touch zones Martlet gives are read where their parts are now: a tail's area swings with its drawables", async () => {
+  const posts = [];
+  let swung = false;
+  class Renderer {
+    load() { return Promise.resolve({ parameters: [] }); }
+    get modelSummary() { return undefined; }
+    setView() {}
+    update() {}
+    drawableBounds() {
+      return [{ id: "ArtMesh224", left: swung ? 0.2 : 0.48, top: swung ? 0.3 : 0.7, right: swung ? 0.26 : 0.5, bottom: swung ? 0.36 : 0.76 }];
+    }
+    dispose() {}
+  }
+  const { send } = await page(Renderer, posts);
+  await send({ kind: "load", data: { renderer: "Live2D", resourceRevision: "a".repeat(64), modelFile: "简.model3.json",
+    assets: ["core.js", "sdk.js", "简.model3.json"] } });
+  await send({ kind: "view", data: { zoom: 2, x: 0, y: 0, frame: 1 } });
+  const area = (zone, index, drawables, left, top, right, bottom) =>
+    ({ zone, name: zone, area: index, color: "#E94F64", drawables, bones: [], nodes: [], left, top, right, bottom });
+  await send({ kind: "zoneview", data: { draw: true, areas: [area("tail", 3, ["ArtMesh224"], 0.47, 0.69, 0.51, 0.77),
+    area("nose", 0, [], 0.45, 0.2, 0.55, 0.3), { zone: "bad" }] } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { shown: 2 }, "an area it can't use is left out");
+  const read = async id => { await send({ kind: "zonesRead", data: { id } }); return JSON.parse(JSON.stringify(posts.at(-1).zonesReading)); };
+  const rest = await read(1);
+  assert.equal(rest.found, true);
+  assert.equal(rest.draw, true);
+  assert.deepEqual(rest.areas[0], { zone: "tail", area: 3, from: "drawables", left: 0.48, top: 0.7, right: 0.5, bottom: 0.76 });
+  // An area that follows nothing stays at its box with the character framed whole, moved by the view's zoom.
+  assert.deepEqual(rest.areas[1], { zone: "nose", area: 0, from: "box", left: 0.4, top: -0.1, right: 0.6, bottom: 0.1 });
+  swung = true;
+  const moved = await read(2);
+  assert.deepEqual(moved.areas[0], { zone: "tail", area: 3, from: "drawables", left: 0.2, top: 0.3, right: 0.26, bottom: 0.36 });
+  await send({ kind: "zoneview", data: null });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { shown: 0 });
+  assert.deepEqual(await read(3), { id: 3, found: false, renderer: "Live2D", draw: false, areas: [] });
+  assert.ok(!posts.some(post => post.error), "zones never fail the renderer");
+});
