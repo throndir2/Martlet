@@ -3224,7 +3224,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         job.Report(BackgroundJobState.Running, "Checking the singing computer");
         var availability = await setup.Maker.GetAvailabilityAsync(token).ConfigureAwait(false);
         if (!availability.Available) return BackgroundJobOutcome.Failed(availability.Reason ?? "singing isn't available right now");
-        // VevoSing chosen where only SoulX-Singer is set up (Companion > Voice > Singing offers Add VevoSing there): sing with SoulX.
+        // VevoSing chosen where only SoulX-Singer is set up (Companion > Singing offers Add VevoSing there): sing with SoulX.
         var voiceMatch = setup.VoiceMatch;
         if (!availability.VoiceMatches.Contains(voiceMatch))
         {

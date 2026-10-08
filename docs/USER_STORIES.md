@@ -126,8 +126,9 @@ These are acceptance criteria for every screen.
 ```text
 ┌──────────┬──────────────────────────────────────────────────────────┐
 │ Home     │  Needs attention (fixes), Health tiles, Start talking    │
-│ Companion│  How it works: Thinking · Voice · Listening · Vision ·   │
-│          │    Lip-sync                                              │
+│ Companion│  How it works: Thinking · Listening · Voice · Lip-sync   │
+│          │  Optional extras: Thinking pool · Singing · Pictures ·   │
+│          │    Vision · Reading                                      │
 │          │  Who it is: Personality · Lorebook · Memory              │
 │          │  How it looks: Character · Speech bubbles · Emotes and   │
 │          │    motions · Eyes · Touch                                │
@@ -142,8 +143,11 @@ These are acceptance criteria for every screen.
   first) and **Health** tiles (one per part, each a link to its page). It
   replaced the four *Now lines* and the *Fix* card; see
   [UI design](UI_DESIGN.md#2-home-main-pc).
-- **Companion**: a side list of pages in four groups. *How it works* holds
-  the job pages (each asks where the job runs); *Who it is* holds the
+- **Companion**: a side list of pages in five groups. *How it works* holds
+  the job pages Martlet needs, in priority order (Thinking, then Listening,
+  Voice and Lip-sync; each asks where the job runs); *Optional extras* holds
+  the jobs Martlet works without (Thinking pool, Singing, Pictures, Vision and
+  Reading); *Who it is* holds the
   personality and what it knows; *How it looks* holds the desktop character
   (its model, speech bubbles, emotes and motions, eyes and touch, each on a
   small page of its own so it opens at once); *What it does* holds how it answers and

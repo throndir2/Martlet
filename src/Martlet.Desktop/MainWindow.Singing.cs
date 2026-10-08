@@ -12,7 +12,7 @@ using Martlet.Core.Singing;
 namespace Martlet.Desktop;
 
 /// <summary>
-/// Companion › Voice › Singing: Martlet writes a song from lyrics and a style and sings it with the voice it speaks with,
+/// Companion › Singing (an optional extra): Martlet writes a song from lyrics and a style and sings it with the voice it speaks with,
 /// on the <c>singing</c> host role (ACE-Step 1.5 writes the music, SoulX-Singer-SVC or VevoSing matches the singing to the
 /// voice). Like a Voice engine row: chips, one button that sets the role up on the shown computer (this PC, or one picked
 /// under Another of your computers) after a confirmation naming the downloads, licences and terms, and where it stands
@@ -183,7 +183,7 @@ public partial class MainWindow
         {
             SaveChoices();
             // Choosing VevoSing where it isn't set up offers Add VevoSing there at once.
-            Dispatcher.BeginInvoke(() => { if (!closing && openTab == CompanionTab.Voice) RenderTab(); });
+            Dispatcher.BeginInvoke(() => { if (!closing && openTab == CompanionTab.Singing) RenderTab(); });
         };
         stack.Add(Labeled("Quality", quality));
         stack.Add(Labeled("Voice match", match));
@@ -218,7 +218,7 @@ public partial class MainWindow
         }
         finally { singingReads.Remove(host.HostId); }
         singingServices[host.HostId] = read;
-        if (!closing && openTab == CompanionTab.Voice && !CompanionContent.IsKeyboardFocusWithin) RenderTab();
+        if (!closing && openTab == CompanionTab.Singing && !CompanionContent.IsKeyboardFocusWithin) RenderTab();
     }
 
     /// <summary>Remembers in singing.json which computer runs Singing after a check of the paired computers (kept while that

@@ -1876,7 +1876,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("network_recommendation_check", "Rehearse Home's Recommended setup for all your computers with the production network " +
             "recommender (NetworkRecommender) on built-in fixture networks, NOT real computers: two companion PCs and two hosts with " +
             "nothing set up, a host with two NVIDIA cards, a Windows host whose voice shares its card, a crowded network, Deep " +
-            "thinking beside the voice, heavy roles on a companion PC, Thinking with only a processor host, hosted Thinking the owner " +
+            "thinking beside the voice, a companion PC with Singing whose hosts are gone (no key, then a saved free key), heavy " +
+            "roles on a companion PC, Thinking with only a processor host, hosted Thinking the owner " +
             "chose, a host left out of the Thinking pool, the voice host away 4 and 25 minutes, and the applied recommendation. Each " +
             "step names its rule (1-12), passed and the change list, target roles, jobs, pools and notes. In-process; reads nothing.", new { }),
         Tool("node_presence_status", "When your other computers go away or come back, from a data directory: the per-PC away time " +

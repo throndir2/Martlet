@@ -30,13 +30,13 @@
                 <StackPanel x:Name="GoalStep">
                     <TextBlock Text="1. What matters most to you?" Style="{DynamicResource SectionHeading}"/>
                     <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10"
-                        Text="The conversation model is the biggest choice: hosted models are usually smarter, while local models keep your words on your computers."/>
+                        Text="The conversation model is the biggest choice. Martlet runs it on your own computers for free, with no account; an online model can be smarter but needs a sign-up and may cost money."/>
                     <RadioButton x:Name="BalancedGoal" GroupName="Goal" Margin="0,4,0,10" AutomationProperties.AutomationId="GoalBalanced"
                                  AutomationProperties.Name="Balanced, recommended">
                         <StackPanel>
                             <TextBlock Text="Balanced (recommended)" FontWeight="SemiBold"/>
                             <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"
-                                Text="Use a hosted model for good replies and keep your GPU free for voice and animation."/>
+                                Text="Run Thinking free on your own graphics card, or the processor if there is none. No account or sign-up needed."/>
                         </StackPanel>
                     </RadioButton>
                     <RadioButton x:Name="SmartestGoal" GroupName="Goal" Margin="0,4,0,10" AutomationProperties.AutomationId="GoalSmartest"
@@ -44,7 +44,7 @@
                         <StackPanel>
                             <TextBlock Text="Smartest answers" FontWeight="SemiBold"/>
                             <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"
-                                Text="Use a larger hosted model for the best replies. Costs may apply."/>
+                                Text="Use a larger online model for the best replies. Needs an account with the provider, and costs may apply."/>
                         </StackPanel>
                     </RadioButton>
                     <RadioButton x:Name="FastestGoal" GroupName="Goal" Margin="0,4,0,10" AutomationProperties.AutomationId="GoalFastest"

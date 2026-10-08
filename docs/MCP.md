@@ -3858,7 +3858,12 @@ second companion PC; no Thinking pool change); make before break; a host with
 two NVIDIA cards (Thinking and Deep thinking pinned to cards of their own); a
 Windows host whose voice shares its card (the voice moves to a card of its
 own); a crowded network (no card over its capacity); Deep thinking beside the
-voice (it moves to the card no live job uses); heavy roles on a companion PC
+voice (it moves to the card no live job uses); a companion PC that runs
+Singing and a Listening pool place while both hosts are gone for 155 minutes
+(needed jobs first: with no provider key, Thinking runs on its own card, the
+voice and lip-sync join it, and Singing goes as Required because it is
+optional; with a saved free key on an 8 GB card, Thinking uses the free hosted
+model and the voice and lip-sync get the card); heavy roles on a companion PC
 (they move to the host, Improvement); Thinking on a companion PC's card with
 only a processor host (it stays: no added latency); hosted Thinking that the
 owner chose (it stays, unless everything is kept local); a host left out of
@@ -5316,6 +5321,15 @@ filter pills, list items), a combo box in the status fields reads as its
 chosen option, and a check box in the status fields reads as its label (its
 `checkedState` says whether it is ticked).
 
+Companion's side list starts with *How it works*, the jobs Martlet needs in
+priority order: `CompanionTab-Thinking`, `CompanionTab-Listening`,
+`CompanionTab-Voice` and `CompanionTab-LipSync`. *Optional extras* follows with
+the jobs Martlet works without, each with an intro that starts with
+"Optional.": `CompanionTab-DeepThinking` (Thinking pool),
+`CompanionTab-Singing`, `CompanionTab-Pictures`, `CompanionTab-Vision` and
+`CompanionTab-Reading`. Every page shows its group as `CompanionGroupTitle`
+("HOW IT WORKS", "OPTIONAL EXTRAS", ...) and its intro as `CompanionIntro`.
+
 The desktop character has its own group in Companion's side list, *How it
 looks*: `CompanionTab-Character` (the character model, showing and hiding it,
 its position, zoom and your characters), `CompanionTab-SpeechBubbles`,
@@ -6203,7 +6217,8 @@ Thinking in Ollama on this PC), so its voice can fall behind
 voice engine there, or says one would share the card before one is set up.
 `f5_voices` returns the chosen engine as `chosenEngine`.
 
-Below the voice engine, the Singing card ([Singing](SINGING.md)) reads like a
+Companion › Singing (`CompanionTab-Singing`, under *Optional extras*) holds the
+Singing card ([Singing](SINGING.md)), which reads like a
 voice engine row: `SingingEngine` ("Singing" or "Singing · ready"),
 `SingingFeatures` its chips ("NVIDIA GPU 6 GB+, shared, Docker, Sings in your cloned
 voice, With backing music, A few minutes per song, ACE-Step MIT · SoulX-Singer

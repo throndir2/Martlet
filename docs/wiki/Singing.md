@@ -16,7 +16,7 @@ Songs are made ahead of time, not in real time.
 
 ## Setup
 
-Open **Companion › Voice › Singing**. The card shows the selected computer, setup status, GPU suitability, **Set up**, **Quality** and **Voice match**. Setup uses the normal host role flow and downloads pinned model files only after you choose it and accept terms.
+Open **Companion › Singing** (under *Optional extras*). The card shows the selected computer, setup status, GPU suitability, **Set up**, **Quality** and **Voice match**. Setup uses the normal host role flow and downloads pinned model files only after you choose it and accept terms.
 
 ## Hardware
 

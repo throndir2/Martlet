@@ -48,7 +48,7 @@ own gateway with the Jane Doe voice from the shared voice list; seconds):
 The music model loads with int8 weights there (the card never has 11 GB free beside the other roles). The VM is too short of
 memory to keep the models between songs, so the worker usually ends after each song and the next one loads again (about
 25 s plus 18-21 s for the voice match). When the card had room for the music model to stay (the other roles were holding
-4.4 GB rather than 7 GB), the next song took 60 s. Setting the role up there through Companion › Voice › Singing took
+4.4 GB rather than 7 GB), the next song took 60 s. Setting the role up there through Companion › Singing took
 25 minutes for the first attempt, which stopped at Whisper base (fixed since: the image left a root-owned folder in the
 models volume), then 9 minutes to finish (it rebuilt the image and checked the files already downloaded). Add VevoSing
 there took 14 minutes, including about 4 minutes rebuilding the image. Downloads ran at about 15 MB/s. The models volume
@@ -194,7 +194,7 @@ No path or URL is ever accepted. Host configuration kind: `singing`.
 
 ## Desktop
 
-**Companion > Voice > Singing** (below the voice engine) works like a voice engine row: chips (NVIDIA GPU 6 GB+ shared,
+**Companion > Singing** (an optional extra, on its own page) works like a voice engine row: chips (NVIDIA GPU 6 GB+ shared,
 Docker, sings in your cloned voice, with backing music, a few minutes per song, the licences), where it stands on the
 shown computer (not set up, setting up, ready with the voice matches set up there, failed with the reason, or why that
 computer can't sing), and one **Set up** button for this PC or the computer picked in its pills, after a confirmation

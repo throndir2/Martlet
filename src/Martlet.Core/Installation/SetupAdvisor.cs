@@ -114,8 +114,11 @@ public static class SetupAdvisor
             return target;
         }
 
+        // Only Smartest answers sends the conversation to an online provider. Every other goal keeps Thinking on your own
+        // computers, so a working Martlet needs no account or sign-up: the largest free GPU first, else the processor.
+        var localLlm = goal != AdvisorGoal.Smartest;
         // Voice engines, GPU Whisper and Audio2Face need NVIDIA; the conversation model runs on any vendor.
-        var nvidiaWork = answers.SpokenReplies && (answers.CustomVoice || answers.Character || goal is AdvisorGoal.Private or AdvisorGoal.Fastest)
+        var nvidiaWork = answers.SpokenReplies && (answers.CustomVoice || answers.Character || localLlm)
             || answers.VoiceInput && goal == AdvisorGoal.Private;
         // The conversation model gets the largest free GPU (a dedicated host on a tie). When NVIDIA-only parts are
         // wanted, it avoids taking the only NVIDIA GPU if another GPU can hold it.
@@ -127,11 +130,11 @@ public static class SetupAdvisor
             return candidates.FirstOrDefault(c => candidates.Any(o => o != c && o.Nvidia)) ?? candidates.FirstOrDefault();
         }
 
-        // 1. Conversation model: the goal decides whether it is local.
+        // 1. Conversation model first: it is the one part Martlet needs. The goal decides whether it is local.
         Machine? llmMachine = null;
         var llmVram = 0;
         var llmOnCpu = false;
-        if (goal is AdvisorGoal.Fastest or AdvisorGoal.Private)
+        if (localLlm)
         {
             llmMachine = PickLlmMachine();
             llmVram = llmMachine?.Vram ?? 0;
@@ -145,13 +148,14 @@ public static class SetupAdvisor
                 }
                 else llmOnCpu = true;
             }
+            // Balanced falls back to a small model on the processor: slower, but free and with no account.
+            else if (llmMachine is null && goal == AdvisorGoal.Balanced) llmOnCpu = true;
             if (llmMachine is not null) llmMachine.HasLlm = true;
         }
 
         // 2. Voice and speech recognition placement (GPU work only where it helps the goal). Fastest replies keep a cloned,
         // expressive voice on an NVIDIA GPU: Chatterbox Turbo streams its first audio in about 0.4 s.
-        var wantGpuVoice = answers.SpokenReplies &&
-            (answers.CustomVoice || goal is AdvisorGoal.Private or AdvisorGoal.Fastest);
+        var wantGpuVoice = answers.SpokenReplies && (answers.CustomVoice || localLlm);
         var wantHostWhisper = answers.VoiceInput && goal == AdvisorGoal.Private && hosts.Any(h => h.Idle && h.Nvidia);
         Machine? voiceMachine = null, whisperMachine = null;
         // Keep voice and Whisper together on one free host when it has room; otherwise split them.
@@ -174,6 +178,9 @@ public static class SetupAdvisor
                 goal == AdvisorGoal.Fastest
                     ? "A small local model starts replies soonest (Gemma 4 E2B: about 0.15 s to its first sentence) and hears your voice. " +
                       "Bigger models are smarter but slower."
+                    : goal == AdvisorGoal.Balanced
+                    ? "It runs free on your own graphics card, with no account or sign-up, and your conversation stays on your computers. " +
+                      "Thinking gets the card first; the voice and lip-sync use the room that is left."
                     : "Your conversation stays on your computers. Local models are usually less capable than large online ones.",
                 onPc ? AdvisorAvailability.Available : AdvisorAvailability.Planned,
                 onPc
@@ -187,10 +194,16 @@ public static class SetupAdvisor
         else if (llmOnCpu)
         {
             pc.Runs.Add("Thinking model (small, CPU)");
+            var gpuForGames = answers.GamesOnThisPc && answers.ThisPcGpu != AdvisorGpu.None;
             roles.Add(new("Thinking model", "A small local model", "This PC (CPU)", LlmWhat,
-                "Keeps everything local, but replies will be slow without a GPU.", AdvisorAvailability.Available,
+                goal == AdvisorGoal.Balanced
+                    ? (gpuForGames ? "Your GPU is kept for games, so" : "No GPU is free, so") +
+                      " a small model runs on the processor. It is free and needs no account, but replies are slower."
+                    : "Keeps everything local, but replies will be slow without a GPU.", AdvisorAvailability.Available,
                 null, Local, LocalLlmHow));
-            notes.Add("Without a GPU, a fully private setup is slow. A GPU on this PC or another computer makes local replies practical.");
+            notes.Add(goal == AdvisorGoal.Balanced
+                ? "For quicker replies, run Thinking on a GPU (on this PC or another computer), or choose Smartest answers to use an online model."
+                : "Without a GPU, a fully private setup is slow. A GPU on this PC or another computer makes local replies practical.");
         }
         else
         {
@@ -261,7 +274,7 @@ public static class SetupAdvisor
                         : $"Add {voiceMachine.Name} in Devices, then choose {Settings.SpeechEngines.Default.Name} for it in Companion > Voice > Voice engine.") +
                     (answers.CustomVoice ? " Add voice recordings and transcripts in Companion > Voice > Voices." : "")));
             }
-            else if (goal is AdvisorGoal.Fastest or AdvisorGoal.Private)
+            else if (localLlm)
             {
                 pc.Runs.Add("Voice (Windows voices)");
                 windowsSpeech = true;
@@ -344,6 +357,7 @@ public static class SetupAdvisor
                 "Check the exact GPU later for a better fit.");
         if (answers.GamesOnThisPc)
             notes.Add(pc.HasLlm ? "Only the local model shares this PC's GPU with your games."
+                : llmOnCpu ? "Your games keep this PC's GPU. Martlet uses only the processor here."
                 : "Your games keep this PC's GPU. Martlet only runs the app, audio and character here.");
         var interim = roles.Any(r => r.Availability != AdvisorAvailability.Available);
         notes.Add(online.Count == 0
@@ -375,7 +389,8 @@ public static class SetupAdvisor
             AdvisorGoal.Smartest => "The largest online model for the best answers. Local hardware goes to voice and face.",
             AdvisorGoal.Fastest => "A small thinking model that answers quickly, your cloned voice streaming on the GPU and speech recognized on the processor.",
             AdvisorGoal.Private => "Everything runs on your own computers.",
-            _ => "Smart online answers, with your GPU spent where it helps most: voice and face."
+            _ => "Thinking runs free on your own computers, on a GPU first or the processor when none is free, with no account " +
+                "or sign-up. The voice and lip-sync use the room that is left."
         };
         return new(title, summary, roles.ToArray(), machines.ToArray(), notes.ToArray(), steps.ToArray()) { ThisPcInstalls = installs.ToArray() };
     }
