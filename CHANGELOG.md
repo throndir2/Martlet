@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 - A new starter voice, **Jenny (Dioco)**: Jenny is a professional Irish voice-over artist who recorded her voice for speech synthesis, so it sounds clean and natural. It joins your voice list on all your computers once; pick it with **Use** in Companion › Voice › Voices, or remove it like any other voice. ([#619](https://github.com/throndir2/Martlet/pull/619))
+- Share a host with a friend: on a Linux host, `martlet-host owner-signin-allow ... --access friend` lets a friend sign in with their own account and use only that host's thinking, listening, speaking, lip-sync and reading, never your network, settings or anything else of yours. Your own requests always come first. ([#618](https://github.com/throndir2/Martlet/pull/618))
 - New in Companion › Check-ins: **Saying the same things** reads what Martlet said in the last hour, and when, and when it keeps saying the same thing again and again, it reminds Martlet in its next reply to say something new. ([#613](https://github.com/throndir2/Martlet/pull/613))
 - Settings › What this PC is for now lists **Your other computers**: each one says whether it is a companion PC or a host PC, with a button to make it a host PC or a companion PC again from where you are. It is the same switch the Devices map has, now easy to find. ([#612](https://github.com/throndir2/Martlet/pull/612))
 
@@ -21,6 +22,7 @@ Each release's section here is also its notes on GitHub.
 - When you switch another computer between companion and host PC, the computer you are at now tells you when it has switched. A host PC that has no host service yet now says so, instead of looking like it works for your other computers. ([#612](https://github.com/throndir2/Martlet/pull/612))
 
 ### Fixed
+- A computer that signs in to one of your hosts from outside home can no longer take over the pairing of another of your computers there, or act as it. Your hosts also now let each signed-in computer do only what its sign-in allows. ([#618](https://github.com/throndir2/Martlet/pull/618))
 - While Martlet starts Docker Desktop on a host PC, for example right after you make a companion PC a host PC, the host dashboard's Docker Desktop button is now greyed out and says **Starting Docker Desktop...** instead of offering to start it again. The step ticks as soon as Docker Desktop runs. ([#615](https://github.com/throndir2/Martlet/pull/615))
 - **Manage memory** now shows what Martlet remembers the moment it opens, even while Martlet is answering you, and it keeps up on its own: facts Martlet remembers, changes or forgets while it's open show up right away, with no need to press **Refresh**. ([#614](https://github.com/throndir2/Martlet/pull/614))
 

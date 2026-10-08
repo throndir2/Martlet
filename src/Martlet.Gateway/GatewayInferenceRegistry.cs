@@ -68,13 +68,20 @@ public sealed partial class GatewayInferenceRouteRegistry
     }
 
     internal GatewayInferenceRouteCapability[] CapabilitiesFor(
-        GatewayRole role) =>
+        GatewayRole role, bool friend = false) =>
         byId.Values
-            .Where(registration => registration.Route.RequiredRole == role)
+            .Where(registration => registration.Route.RequiredRole == role && (!friend || FriendsMayUse(registration.Route)))
             .OrderBy(registration => registration.Route.RouteId, StringComparer.Ordinal)
             .Select(registration => GatewayInferenceRouteCapability.From(
                 registration.Route))
             .ToArray();
+
+    /// <summary>The engines a friend may use: those whose every operation serves only the request that asks. Pictures and
+    /// singing keep queues, histories, results and models of the whole host, so they stay the owner's, as does any kind not
+    /// listed here.</summary>
+    internal static bool FriendsMayUse(GatewayInferenceRoute route) => route.Kind is GatewayInferenceKind.OllamaChat or
+        GatewayInferenceKind.F5Synthesis or GatewayInferenceKind.Audio2Face or GatewayInferenceKind.Transcription or
+        GatewayInferenceKind.Ocr or GatewayInferenceKind.PerceptionOcr or GatewayInferenceKind.PerceptionVlm;
 
     internal bool TryGetByPath(
         string path,
@@ -99,13 +106,42 @@ public sealed partial class GatewayInferenceRouteRegistry
     internal GatewayInferenceJob Begin(
         GatewayPrincipal principal,
         GatewayInferenceRequest request)
-        => principal.WithAuthority(() => BeginAuthorized(principal, request));
+        => principal.WithAuthority(() => BeginAuthorized(principal, request, out _)) ??
+            throw new GatewayProtocolException("job.busy");
 
-    private GatewayInferenceJob BeginAuthorized(
-        GatewayPrincipal principal, GatewayInferenceRequest request)
+    /// <summary>How long the owner's request waits for the slot of a friend's job it stopped on the same worker before it is
+    /// turned away (job.busy) like any busy route; a stopped job usually frees it within one token or prompt batch.</summary>
+    internal static readonly TimeSpan SlotWait = TimeSpan.FromSeconds(3);
+
+    /// <summary>Like <see cref="Begin"/>, except that the owner's request on a worker whose every slot runs a friend's job stops
+    /// that job and waits (at most <see cref="SlotWait"/> and the request's deadline) for its slot.</summary>
+    internal async ValueTask<GatewayInferenceJob> BeginAsync(
+        GatewayPrincipal principal,
+        GatewayInferenceRequest request,
+        CancellationToken cancellationToken)
+    {
+        var start = clock.GetUtcNow();
+        var until = start + SlotWait < request.DeadlineUtc ? start + SlotWait : request.DeadlineUtc;
+        while (true)
+        {
+            Task? freed = null;
+            var job = principal.WithAuthority(() => BeginAuthorized(principal, request, out freed));
+            if (job is not null) return job;
+            var remaining = until - clock.GetUtcNow();
+            if (remaining <= TimeSpan.Zero) throw new GatewayProtocolException("job.busy");
+            try { await freed!.WaitAsync(remaining, clock, cancellationToken).ConfigureAwait(false); }
+            catch (TimeoutException) { throw new GatewayProtocolException("job.busy"); }
+        }
+    }
+
+    // Admits the request, or returns null with `freed` set when it stopped lower-ranked jobs holding every slot of its worker
+    // and must wait for one of them to finish.
+    private GatewayInferenceJob? BeginAuthorized(
+        GatewayPrincipal principal, GatewayInferenceRequest request, out Task? freed)
     {
         ArgumentNullException.ThrowIfNull(principal);
         ArgumentNullException.ThrowIfNull(request);
+        freed = null;
         if (!byId.TryGetValue(request.Route.RouteId, out var registration) ||
             !ReferenceEquals(registration.Route, request.Route))
             throw new GatewayProtocolException("request.invalid");
@@ -116,6 +152,7 @@ public sealed partial class GatewayInferenceRouteRegistry
         string? refused;
         string? by = null;
         List<GatewayInferenceJob> preempted = [];
+        var rank = Rank(principal, registration.Route);
         lock (gate)
         {
             GatewayRules.Require(!closed, "worker.unavailable");
@@ -125,45 +162,64 @@ public sealed partial class GatewayInferenceRouteRegistry
                 admittedRequests.Remove(expired);
             if (registration.Admission.Quarantined)
                 throw new GatewayProtocolException("worker.quarantined");
-            // Live turn first: a pool request is turned away while a live request or a hold keeps one of its graphics cards.
-            refused = registration.Route.Lane == GatewayLane.Pool
-                ? RefuseLocked(registration.Route, principal, now) : null;
+            // Live turn first, then the owner first: work is turned away while work of a higher rank or a hold keeps one of its
+            // graphics cards.
+            refused = RefuseLocked(registration.Route, principal, now);
             if (refused is null)
             {
-                if (registration.Admission.Active >= registration.Route.MaximumConcurrency ||
-                    activeJobs.ContainsKey(request.RequestId))
+                if (activeJobs.ContainsKey(request.RequestId))
                     throw new GatewayProtocolException("job.busy");
-                GatewayRules.Require(!admittedRequests.ContainsKey(request.RequestId), "job.replay");
-                GatewayRules.Require(admittedRequests.Count < 1024, "job.busy");
-                GatewayRules.Require(ReferenceEquals(registration.Worker.Route, registration.Route),
-                    "worker.identity");
-                admittedRequests.Add(request.RequestId, request.DeadlineUtc);
-                registration.Admission.Active++;
-                if (activeJobs.Count == 0)
-                    idle = new(TaskCreationOptions.RunContinuationsAsynchronously);
-                job = new GatewayInferenceJob(
-                    this,
-                    registration,
-                    principal,
-                    request,
-                    clock);
-                activeJobs.Add(request.RequestId, job);
-                // A live request holds its graphics cards: pool work running on them stops at once. Nothing else running,
-                // nothing to stop (the common case costs nothing).
-                if (registration.Route.Lane == GatewayLane.Live && activeJobs.Count > 1)
+                // A slot the owner's request is waiting for isn't given to a friend.
+                if (rank == 0 && registration.Admission.ReservedUntil > now)
+                    throw new GatewayProtocolException("job.busy", OwnerDetail);
+                if (registration.Admission.Active >= registration.Route.MaximumConcurrency)
                 {
+                    // The owner's request takes a friend's slot on this same worker: that job stops and this request waits.
+                    var lower = activeJobs.Values
+                        .Where(running => ReferenceEquals(running.Registration, registration) && Rank(running) < rank).ToArray();
+                    if (lower.Length == 0)
+                        throw new GatewayProtocolException("job.busy");
                     by = $"a {GatewayGpus.RouteName(registration.Route)} request from {principal.Caller}";
-                    preempted = PreemptLocked(registration.Route.Gpus, by, now);
+                    preempted = MarkPreemptedLocked(lower, by, now);
+                    registration.Admission.ReservedUntil = now + SlotWait;
+                    freed = registration.Admission.Freed.Task;
+                }
+                else
+                {
+                    GatewayRules.Require(!admittedRequests.ContainsKey(request.RequestId), "job.replay");
+                    GatewayRules.Require(admittedRequests.Count < 1024, "job.busy");
+                    GatewayRules.Require(ReferenceEquals(registration.Worker.Route, registration.Route),
+                        "worker.identity");
+                    admittedRequests.Add(request.RequestId, request.DeadlineUtc);
+                    registration.Admission.Active++;
+                    if (rank > 0)
+                        registration.Admission.ReservedUntil = default;
+                    if (activeJobs.Count == 0)
+                        idle = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    job = new GatewayInferenceJob(
+                        this,
+                        registration,
+                        principal,
+                        request,
+                        clock);
+                    activeJobs.Add(request.RequestId, job);
+                    // A request stops lower-ranked work running on its graphics cards: a live request the pool's and friends',
+                    // the owner's pool request friends'. Nothing else running, nothing to stop (the common case costs nothing).
+                    if (rank > 0 && activeJobs.Count > 1)
+                    {
+                        by = $"a {GatewayGpus.RouteName(registration.Route)} request from {principal.Caller}";
+                        preempted = PreemptLocked(registration.Route.Gpus, by, now, rank);
+                    }
                 }
             }
         }
         if (refused is not null)
         {
             Report(refused, "priority.refused");
-            throw new GatewayProtocolException("job.busy", PriorityDetail);
+            throw new GatewayProtocolException("job.busy", rank == 0 ? OwnerDetail : PriorityDetail);
         }
         if (by is not null) Stop(preempted, by);
-        return job!;
+        return job;
     }
 
     internal async ValueTask<GatewayInferenceCancellationReceipt> CancelAsync(
@@ -202,16 +258,21 @@ public sealed partial class GatewayInferenceRouteRegistry
 
     private void Finish(GatewayInferenceJob job, bool healthy)
     {
+        TaskCompletionSource freed;
         lock (gate)
         {
             if (!activeJobs.Remove(job.Request.RequestId))
                 return;
-            job.Registration.Admission.Active--;
+            var admission = job.Registration.Admission;
+            admission.Active--;
             if (!healthy)
-                job.Registration.Admission.Quarantined = true;
+                admission.Quarantined = true;
             if (activeJobs.Count == 0)
                 idle.TrySetResult();
+            freed = admission.Freed;
+            admission.Freed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
+        freed.TrySetResult();
     }
 
     private void Quarantine(GatewayInferenceJob job)
@@ -254,6 +315,11 @@ public sealed partial class GatewayInferenceRouteRegistry
         /// <summary>Jobs running on the worker now, at most its route's <see cref="GatewayInferenceRoute.MaximumConcurrency"/>.</summary>
         internal int Active;
         internal bool Quarantined;
+        /// <summary>Completes (and is replaced) each time a job of this worker finishes: the owner's request that stopped a
+        /// friend's job here waits on it for the slot.</summary>
+        internal TaskCompletionSource Freed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        /// <summary>Until when a slot here is kept for an owner's request waiting on <see cref="Freed"/>: friends are turned away.</summary>
+        internal DateTimeOffset ReservedUntil;
     }
 
     internal sealed record RouteRegistration(

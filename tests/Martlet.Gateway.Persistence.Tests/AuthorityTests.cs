@@ -29,6 +29,33 @@ public sealed class AuthorityTests : NativeTest
         next.Clean();
     }
 
+    [Fact]
+    public void A_friends_access_survives_restart_and_stores_without_friends_stay_as_they_were()
+    {
+        var clock = new Clock();
+        IssuedDeviceCredential owner, friend;
+        using (var host = new NativeAuthority(Store, clock, create: true))
+        {
+            owner = host.Issue("home-pc");
+            friend = host.Credentials.Issue("friend-pc", "Friend", [GatewayRole.Voice], CancellationToken.None, GatewayAccess.Friend);
+            Assert.Equal(GatewayAccess.Friend, friend.Access);
+            var clear = WindowsProtection.Unprotect(StoreFormat.Unwrap(File.ReadAllBytes(Path.Combine(Store, "authority.bin"))));
+            var json = System.Text.Encoding.UTF8.GetString(clear);
+            // Only the friend's credential carries its access; the owner's is written exactly as before.
+            Assert.Equal(1, System.Text.RegularExpressions.Regex.Count(json, "\"Access\":\"friend\""));
+            Assert.DoesNotContain("\"Access\":null", json, StringComparison.Ordinal);
+            host.Clean();
+        }
+        clock.Advance(TimeSpan.FromMinutes(5));
+        using var next = new NativeAuthority(Store, clock, boot: Guid.NewGuid());
+        Assert.Equal(GatewayAccess.Friend, Assert.Single(next.Credentials.ListRegistrations(), r => r.DeviceId == "friend-pc").Access);
+        Assert.Equal(GatewayAccess.Full, Assert.Single(next.Credentials.ListRegistrations(), r => r.DeviceId == "home-pc").Access);
+        Assert.Equal(GatewayAccess.Friend, next.Credentials.Authenticate(next.Signed(friend)).Access);
+        Assert.Equal(GatewayAccess.Full, next.Credentials.Authenticate(next.Signed(owner)).Access);
+        Assert.Equal(GatewayAccess.Friend, Assert.Single(next.Credentials.PairedDevices(), d => d.DeviceId == "friend-pc").Access);
+        next.Clean();
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
