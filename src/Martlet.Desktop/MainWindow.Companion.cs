@@ -504,6 +504,7 @@ public partial class MainWindow
             AutomationProperties.SetAutomationId(line, "SetupJobNetwork-" + section);
             now.Children.Add(line);
         }
+        if (section == CompanionTab.Listening && StandInLine(route) is { } standIn) now.Children.Add(standIn);
         if (problem is not null)
         {
             var warning = new TextBlock { Text = $"Needs attention: {problem.Problem} {problem.Effect}", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };

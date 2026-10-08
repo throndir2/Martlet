@@ -154,6 +154,35 @@ public sealed class ParakeetModelsTests : IDisposable
     }
 
     [Fact]
+    public void Mcp_reports_which_parakeet_stands_in_when_listening_elsewhere_fails()
+    {
+        var openAi = SetupSettings.SelectRoute(SetupSettings.Begin(null), SetupRole.Stt, "gpt-transcribe", null).Setup!.Routes
+            .Single(r => r.Role == SetupRole.Stt);
+        JsonElement StandIn(SetupRoute? route, string language = "en-US") =>
+            JsonSerializer.SerializeToElement(ParakeetCheck.StandIn(route, Speech, CultureInfo.GetCultureInfo(language)));
+        static string? Reason(JsonElement standIn) => standIn.GetProperty("reason").GetString();
+
+        Assert.Equal("Listening isn't set up", Reason(StandIn(null)));
+        Assert.Equal("parakeet-tdt-110m-en isn't downloaded in speechDirectory", Reason(StandIn(openAi)));
+        Assert.Equal("no Parakeet model hears Windows' display language (ja-JP)", Reason(StandIn(openAi, "ja-JP")));
+        Install(ParakeetModels.V3);
+        var host = StandIn(openAi with { RouteType = SetupRouteType.GatewayStt });
+        Assert.Equal(ParakeetModels.V3Id, host.GetProperty("model").GetString());
+        Assert.Equal("Parakeet TDT 0.6B v3 (25 European languages)", host.GetProperty("name").GetString());
+        Assert.Equal(JsonValueKind.Null, host.GetProperty("reason").ValueKind);
+        Assert.Equal(ParakeetModels.V3Id, StandIn(openAi, "de-DE").GetProperty("model").GetString());
+        var local = LocalSpeechSetup.SelectParakeet(SetupSettings.Begin(null), ParakeetModels.V3Id).Setup!.Routes.Single(r => r.Role == SetupRole.Stt);
+        Assert.Equal("Listening already runs on this PC", Reason(StandIn(local)));
+
+        // voices_status carries it for the data directory's Listening route, for Windows' display language.
+        File.WriteAllBytes(Path.Combine(data.FullName, "settings.json"), Martlet.Core.Contracts.ContractJson.Write(
+            SetupSettings.SelectRoute(SetupSettings.Begin(null), SetupRole.Stt, "gpt-transcribe", null)));
+        var status = JsonSerializer.SerializeToElement(ParakeetCheck.Status(data.FullName, Speech));
+        Assert.Equal("OpenAi", status.GetProperty("listening").GetProperty("route").GetString());
+        Assert.Equal(StandIn(openAi, CultureInfo.CurrentUICulture.Name).GetRawText(), status.GetProperty("standIn").GetRawText());
+    }
+
+    [Fact]
     public void Another_computers_model_waits_until_it_is_downloaded_here()
     {
         Assert.Null(MainWindow.SharedParakeetWaiting(ParakeetModels.V2EnglishId, _ => true));
