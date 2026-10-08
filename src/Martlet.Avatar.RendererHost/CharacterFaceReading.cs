@@ -6,8 +6,9 @@ namespace Martlet.Avatar.RendererHost;
 /// <summary>
 /// The page's reading of where Martlet draws over the face (Martlet's MCP character_face reads it): how the face is followed
 /// (mesh, bones or estimate), its middle, width and tilt, and at each cheek how much shows, how wide it is for the face's width
-/// and what of the character is there; with the overlays showing and, for Live2D, how many mesh vertices the face is pinned
-/// to. Positions are fractions of the character's surface (+y down), like a tap. Kept bounded and typed for UI Automation.
+/// and what of the character is there; the eyes, mouth and top of the head the overlay emotes sit on; with the overlays showing
+/// and, for Live2D, how many mesh vertices the face is pinned to. Positions are fractions of the character's surface (+y down),
+/// like a tap. Kept bounded and typed for UI Automation.
 /// </summary>
 internal static class CharacterFaceReading
 {
@@ -24,6 +25,11 @@ internal static class CharacterFaceReading
             if (Number(answer, key) is { } value) reading[key] = value;
         foreach (var key in new[] { "cheekLeft", "cheekRight" })
             if (answer.TryGetProperty(key, out var cheek) && cheek.ValueKind == JsonValueKind.Object) reading[key] = Cheek(cheek);
+        // The eyes, mouth and top of the head the overlay emotes sit on.
+        foreach (var key in new[] { "eyeLeft", "eyeRight", "mouth", "top" })
+            if (answer.TryGetProperty(key, out var point) && point.ValueKind == JsonValueKind.Object &&
+                Number(point, "x") is { } x && Number(point, "y") is { } y)
+                reading[key] = new JsonObject { ["x"] = x, ["y"] = y };
         reading["overlays"] = Names(answer, "overlays", MaximumOverlays);
         if (answer.TryGetProperty("pinned", out var pinned) && pinned.ValueKind == JsonValueKind.Object)
             reading["pinned"] = new JsonObject { ["carriers"] = Count(pinned, "carriers"), ["milliseconds"] = Count(pinned, "milliseconds") };

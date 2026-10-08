@@ -155,9 +155,14 @@
                                         </Button>
                                     </WrapPanel>
                                     <WrapPanel Margin="0,4,0,0">
-                                        <Button x:Name="AdvisorButton" Style="{DynamicResource LinkButton}" Content="Get a setup recommendation"
-                                                Click="Advisor_Click" AutomationProperties.AutomationId="OpenSetupAdvisor"
-                                                AutomationProperties.Name="Get a setup recommendation"/>
+                                        <!-- The best use of all your computers, reviewed before anything changes (MainWindow.RecommendedSetup.cs) -->
+                                        <Button x:Name="RecommendedSetupButton" Content="Reco_mmended setup" Click="RecommendedSetup_Click"
+                                                Padding="16,8" Margin="0,0,16,8" VerticalAlignment="Center"
+                                                ToolTip="Work out the best use of all your computers and review the changes before anything changes"
+                                                AutomationProperties.AutomationId="HomeRecommendedSetup" AutomationProperties.Name="Recommended setup"/>
+                                        <Button x:Name="AdvisorButton" Style="{DynamicResource LinkButton}" Content="Plan a setup from scratch"
+                                                Click="Advisor_Click" AutomationProperties.AutomationId="OpenSetupAdvisor" VerticalAlignment="Center"
+                                                Margin="0,0,0,8" AutomationProperties.Name="Plan a setup from scratch"/>
                                     </WrapPanel>
                                 </StackPanel>
                                 <Viewbox Grid.Column="1" Width="190" Height="190" Margin="20,0,0,0" IsHitTestVisible="False" Focusable="False"

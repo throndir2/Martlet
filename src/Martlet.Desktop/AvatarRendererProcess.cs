@@ -36,15 +36,20 @@ internal interface IAvatarRenderer : IAsyncDisposable
 
 internal sealed class AvatarRendererProcess : IAvatarRenderer
 {
+    // The exit code of a renderer Martlet ended because its messages broke.
+    private const uint EndedExitCode = 1;
     private readonly AnonymousPipeServerStream commands = new(PipeDirection.Out, HandleInheritability.Inheritable);
     private readonly AnonymousPipeServerStream replies = new(PipeDirection.In, HandleInheritability.Inheritable);
     // Unprompted menu choices from the overlay, kept apart from command replies so they never interleave.
     private readonly AnonymousPipeServerStream requests = new(PipeDirection.In, HandleInheritability.Inheritable);
-    private readonly SemaphoreSlim exchange = new(1, 1);
     private readonly CancellationTokenSource lifetime = new();
     // A still renderer (--still) draws the touch zones picture: never on screen, never animated.
     private readonly bool still;
     private Process? process;
+    private Task processExit = Task.CompletedTask;
+    private RendererChannel? channel;
+    // Why Martlet ended the renderer itself (its messages broke), or null.
+    private volatile Exception? endedFor;
     private SafeFileHandle? job;
     private bool disposed;
     private Task? disposal;
@@ -53,11 +58,12 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
     internal AvatarRendererProcess(bool still = false) => this.still = still;
     internal Guid Activation { get; } = Guid.NewGuid();
     public RendererCapabilities? Capabilities { get; private set; }
+    /// <summary>True once the renderer is stopped, has ended or its messages broke (it is then ended).</summary>
     public bool HasExited
     {
         get
         {
-            if (disposed || process is null) return true;
+            if (disposed || process is null || channel is { IsBroken: true }) return true;
             try { return process.HasExited; }
             catch (InvalidOperationException) { return true; }
         }
@@ -100,16 +106,17 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
         if (!SetInformationJobObject(job, 9, ref limits, Marshal.SizeOf<JobLimits>()))
             throw new Win32Exception(Marshal.GetLastWin32Error());
         process = Process.Start(info) ?? throw new IOException("The character renderer didn't start.");
-        Exited = process.WaitForExitAsync();
         var started = process;
-        _ = Exited.ContinueWith(_ =>
-        {
-            if (disposed) ErrorLog.Info("Avatar renderer stopped by Martlet.");
-            else ErrorLog.Error($"Avatar renderer exited unexpectedly with code {SafeExitCode(started)}. See avatar-renderer.log.");
-        }, TaskScheduler.Default);
+        var connected = channel = new RendererChannel(commands, replies, Activation);
+        processExit = process.WaitForExitAsync();
+        // Broken messages stop the character at once, as if the renderer had exited; the renderer is then ended.
+        Exited = Task.WhenAny(processExit, connected.Broken);
+        _ = processExit.ContinueWith(_ => LogExit(started, connected), TaskScheduler.Default);
         commands.DisposeLocalCopyOfClientHandle();
         replies.DisposeLocalCopyOfClientHandle();
         requests.DisposeLocalCopyOfClientHandle();
+        connected.Start();
+        _ = connected.Broken.ContinueWith(broken => EndBrokenAsync(broken.Result), TaskScheduler.Default).Unwrap();
         if (!AssignProcessToJobObject(job, process.Handle))
             throw new Win32Exception(Marshal.GetLastWin32Error());
         // No browser is initialized until this handshake; the child is already job-owned.
@@ -207,36 +214,87 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
                 if (!disposed) Requested?.Invoke(action);
             }
         }
-        catch (Exception error) when (error is IOException or ObjectDisposedException or InvalidDataException or JsonException) { }
+        catch (Exception error) when (error is InvalidDataException or JsonException)
+        {
+            if (!disposed) ErrorLog.Warn("The character renderer sent an unreadable request; its menu no longer reaches Martlet.", error);
+        }
+        catch (Exception error) when (error is IOException or ObjectDisposedException) { }
     }
 
     public async Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token,
         TimeSpan? timeout = null)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
+        var connected = channel ?? throw new IOException("The character renderer isn't running.");
         using var request = CancellationTokenSource.CreateLinkedTokenSource(token, lifetime.Token);
         request.CancelAfter(timeout ?? TimeSpan.FromSeconds(2));
-        await exchange.WaitAsync(request.Token);
-        try
-        {
-            await RendererProtocol.WriteAsync(commands, RendererProtocol.Message(kind, Activation, data), request.Token);
-            var response = await RendererProtocol.ReadAsync(replies, request.Token);
-            if (response.Activation == Activation && response.Kind == "error" && response.Data.ValueKind == JsonValueKind.Object &&
-                response.Data.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String &&
-                code.GetString() == "avatar.model_rejected" && response.Data.TryGetProperty("message", out var reason) &&
-                reason.ValueKind == JsonValueKind.String && reason.GetString() is { Length: > 0 and <= 400 } rejected)
-                throw new InvalidOperationException(rejected);
-            if (response.Activation != Activation || response.Kind == "error")
-                throw new InvalidDataException("The character renderer couldn't apply those controls.");
-            return response;
-        }
-        finally { exchange.Release(); }
+        // The timeout and the caller's token stop only this wait; the command and its reply always cross the pipes whole.
+        var response = await connected.SendAsync(RendererProtocol.Message(kind, Activation, data), request.Token);
+        if (response.Activation == Activation && response.Kind == "error" && response.Data.ValueKind == JsonValueKind.Object &&
+            response.Data.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String &&
+            code.GetString() == "avatar.model_rejected" && response.Data.TryGetProperty("message", out var reason) &&
+            reason.ValueKind == JsonValueKind.String && reason.GetString() is { Length: > 0 and <= 400 } rejected)
+            throw new InvalidOperationException(rejected);
+        if (response.Activation != Activation || response.Kind == "error")
+            throw new InvalidDataException("The character renderer couldn't apply those controls.");
+        return response;
     }
 
-    private static string SafeExitCode(Process process)
+    /// <summary>The renderer's messages broke (<see cref="RendererChannel.Broken"/>): end it, so it can't keep drawing a
+    /// character Martlet no longer controls. A renderer that stopped by itself gets a moment to close first.</summary>
+    private async Task EndBrokenAsync(Exception reason)
     {
-        try { return $"0x{process.ExitCode:X8}"; }
-        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException) { return "unknown"; }
+        if (disposed) return;
+        if (reason is RendererStoppedException &&
+            (await Task.WhenAny(processExit, Task.Delay(TimeSpan.FromSeconds(5))) == processExit || disposed))
+            return;
+        endedFor = reason;
+        ErrorLog.Warn(reason is RendererStoppedException
+            ? $"The character renderer stopped answering but didn't close ({reason.Message}), so Martlet ended it."
+            : $"Martlet ended the character renderer because it stopped answering properly: {reason.Message}", reason);
+        try { if (job is { IsInvalid: false, IsClosed: false } owned) TerminateJobObject(owned, EndedExitCode); }
+        catch (ObjectDisposedException) { }
+        try { if (process is { HasExited: false } running) running.Kill(entireProcessTree: true); }
+        catch (Exception error) when (error is InvalidOperationException or Win32Exception or NotSupportedException) { }
+    }
+
+    private void LogExit(Process started, RendererChannel connected)
+    {
+        var (level, message) = ExitNote(disposed, endedFor, connected.Broken.IsCompleted ? connected.Broken.Result : null,
+            SafeExitCode(started));
+        switch (level)
+        {
+            case "INFO": ErrorLog.Info(message); break;
+            case "WARN": ErrorLog.Warn(message); break;
+            default: ErrorLog.Error(message); break;
+        }
+    }
+
+    /// <summary>
+    /// What the desktop log says when the renderer process ends: ended by Martlet because it stopped answering properly
+    /// (already explained when that happened); closed by itself, first after an "error" reply or when it closed its pipe
+    /// (code 0: its window was closed or it stopped after an error, which avatar-renderer.log explains; any other code is a
+    /// crash), even when Martlet stopped it a moment later; stopped by Martlet (Hide, another model, exiting); or else, by
+    /// its code, closed by itself or an unexpected error.
+    /// </summary>
+    internal static (string Level, string Message) ExitNote(bool stoppedByMartlet, Exception? endedFor, Exception? brokenFor,
+        int? exitCode)
+    {
+        var code = exitCode is { } value ? $"0x{value:X8}" : "unknown";
+        const string Closed = "its window was closed or it stopped after an error. See avatar-renderer.log for why.";
+        if (endedFor is not null) return ("INFO", $"Avatar renderer ended by Martlet (code {code}) because it stopped answering properly.");
+        if (brokenFor is RendererStoppedException { ErrorCode: { } error })
+            return ("WARN", $"Avatar renderer closed itself after an error ({error}). See avatar-renderer.log for why.");
+        if (brokenFor is RendererStoppedException && exitCode == 0) return ("WARN", $"Avatar renderer closed itself (code {code}): {Closed}");
+        if (stoppedByMartlet && brokenFor is not RendererStoppedException) return ("INFO", "Avatar renderer stopped by Martlet.");
+        if (exitCode == 0) return ("WARN", $"Avatar renderer closed itself (code {code}): {Closed}");
+        return ("ERROR", $"Avatar renderer exited unexpectedly with code {code}. See avatar-renderer.log.");
+    }
+
+    private static int? SafeExitCode(Process process)
+    {
+        try { return process.ExitCode; }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException) { return null; }
     }
 
     /// <summary>Ends the renderer and its descendants. A failed attempt is not final: the next call tries again.</summary>
@@ -253,8 +311,7 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
     {
         disposed = true;
         if (!lifetime.IsCancellationRequested) await lifetime.CancelAsync();
-        commands.Dispose();
-        replies.Dispose();
+        channel?.Break(new ObjectDisposedException(nameof(AvatarRendererProcess), "The character renderer was stopped."));
         if (job is { IsInvalid: false, IsClosed: false })
         {
             if (!TerminateJobObject(job, 0)) throw new Win32Exception(Marshal.GetLastWin32Error());
@@ -277,7 +334,10 @@ internal sealed class AvatarRendererProcess : IAvatarRenderer
             running.Dispose();
             process = null;
         }
-        // Only now: the relay's read is synchronous on this pipe and returns once the renderer (its writer) has ended.
+        // Only now: the reply reader and the request relay read these pipes synchronously, and their reads return once the
+        // renderer (the writer) has ended. A command still going out ends with the renderer too.
+        commands.Dispose();
+        replies.Dispose();
         requests.Dispose();
         await DeleteCacheAsync(Path.Combine(Path.GetTempPath(), "Martlet.Avatar", Activation.ToString("N")));
         lifetime.Dispose();

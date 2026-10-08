@@ -29,6 +29,10 @@ public sealed record NetworkMachine(MachineSpecs Specs, NetworkMachineKind Kind)
     public bool Manageable { get; init; } = true;
     /// <summary>The host roles its host service runs now.</summary>
     public IReadOnlyList<HostedRolePlacement> Roles { get; init; } = [];
+    /// <summary>Its host roles run on Windows (Martlet.Core.Installation.SharedGpu.OnWindows: this PC's Docker Desktop, or a
+    /// host whose report names Windows or a WSL 2 kernel), where the graphics card's memory pages into main memory instead of
+    /// failing. Null: <see cref="MachineSpecs.Platform"/> says.</summary>
+    public bool? OnWindows { get; init; }
 }
 
 /// <summary>Who does one shared job (a ClusterJobs name: thinking, listening, speaking or lip-sync).
@@ -81,6 +85,9 @@ public sealed record NetworkSetupRequest(IReadOnlyList<NetworkMachine> Machines)
     /// <summary>A computer that has not answered for less than this is planned as if it were back (it may only be slow to
     /// answer); one that stays away longer is planned without, and its jobs move.</summary>
     public TimeSpan OfflineGrace { get; init; } = TimeSpan.FromMinutes(10);
+    /// <summary>Hosts the owner left out of the Thinking pool (ThinkingPoolSettings.LeftByOwner): the recommender never plans
+    /// a Deep thinking role for the pool there.</summary>
+    public IReadOnlyCollection<string> ThinkingPoolOptOut { get; init; } = [];
 }
 
 /// <summary>AddRole / RemoveRole: install or remove a host role on a computer's host service. ChangeModel: the same role
@@ -95,9 +102,14 @@ public enum SetupChangeKind { AddRole, RemoveRole, ChangeModel, MoveToGpu, Assig
 public enum SetupChangeBenefit { Required, Improvement, Minor }
 
 /// <summary>One step from today's setup to the recommended one, on <see cref="MachineId"/>. <see cref="Summary"/> is one
-/// plain sentence for the review ("Install Chatterbox Turbo on gpu-box's RTX 4090."), <see cref="Why"/> the reason.</summary>
+/// plain sentence for the review ("Install Chatterbox Turbo on gpu-box's RTX 4090."), <see cref="Why"/> the reason.
+/// AssignJob: <see cref="MachineId"/> is the computer that does the job next, or "" when no host does it next (a hosted
+/// provider, or each companion PC itself; <see cref="OptionId"/> says which). The Thinking pool has no JoinPool or LeavePool
+/// changes: a host joins it by itself once it runs a Deep thinking role (AddRole "deep-thinking").</summary>
 public sealed record SetupChange(SetupChangeKind Kind, string MachineId, string Summary, string Why)
 {
+    /// <summary>AssignJob: the FootprintCatalog option that does the job next (as <see cref="JobPlan.OptionId"/>).</summary>
+    public string? OptionId { get; init; }
     public SetupChangeBenefit Benefit { get; init; } = SetupChangeBenefit.Improvement;
     /// <summary>AddRole, RemoveRole, ChangeModel, MoveToGpu: the host role kind.</summary>
     public string? RoleKind { get; init; }

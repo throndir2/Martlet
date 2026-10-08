@@ -1,0 +1,85 @@
+<local:ThemedWindow x:Class="Martlet.Desktop.RecommendedSetupWindow"
+        xmlns:local="clr-namespace:Martlet.Desktop"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{DynamicResource AppWindowStyle}"
+        Title="Martlet - Recommended setup" Width="860" Height="760" MinWidth="520" MinHeight="420"
+        WindowStartupLocation="CenterOwner" Closing="Window_Closing"
+        AutomationProperties.AutomationId="RecommendedSetupWindow">
+    <!-- Home's Recommended setup (MainWindow.RecommendedSetup.cs): the review of what changes on your computers. Nothing changes
+         until Reconfigure. -->
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Padding="24,10" Background="{DynamicResource SoftBrush}">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="CancelButton" Content="_Not now" IsCancel="True" Click="Cancel_Click" Padding="14,8" Margin="0,0,8,0"
+                            AutomationProperties.AutomationId="RecommendedSetupCancel" AutomationProperties.Name="Not now"/>
+                    <Button x:Name="ApplyButton" Content="_Reconfigure" Click="Apply_Click" Padding="14,8" IsEnabled="False"
+                            Style="{DynamicResource PrimaryButton}" AutomationProperties.AutomationId="RecommendedSetupApply"
+                            AutomationProperties.Name="Reconfigure"/>
+                    <Button x:Name="CloseButton" Content="_Close" Click="Close_Click" Padding="14,8" Visibility="Collapsed"
+                            AutomationProperties.AutomationId="RecommendedSetupClose" AutomationProperties.Name="Close"/>
+                </StackPanel>
+                <TextBlock x:Name="StatusText" VerticalAlignment="Center" TextWrapping="Wrap" Margin="0,0,16,0"
+                           Foreground="{DynamicResource MutedBrush}" AutomationProperties.LiveSetting="Polite"
+                           AutomationProperties.AutomationId="RecommendedSetupStatus"/>
+            </DockPanel>
+        </Border>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="24" MaxWidth="900">
+                <TextBlock x:Name="TitleText" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap"
+                           AutomationProperties.AutomationId="RecommendedSetupTitle"/>
+                <TextBlock x:Name="SummaryText" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,6,0,16"
+                           AutomationProperties.AutomationId="RecommendedSetupSummary"/>
+
+                <StackPanel x:Name="ChangesSection">
+                    <TextBlock Text="What changes" Style="{DynamicResource SectionHeading}"/>
+                    <StackPanel x:Name="ChangesPanel" Margin="0,0,0,16" AutomationProperties.Name="What changes"
+                                AutomationProperties.AutomationId="RecommendedSetupChanges"/>
+                </StackPanel>
+
+                <TextBlock Text="Your computers" Style="{DynamicResource SectionHeading}"/>
+                <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,10"
+                           Text="Each bar is how full the recommended setup makes that computer, from Martlet's estimates."/>
+                <StackPanel x:Name="ComputersPanel" Margin="0,0,0,16" AutomationProperties.Name="Your computers"
+                            AutomationProperties.AutomationId="RecommendedSetupComputers"/>
+
+                <TextBlock Text="Who does each job" Style="{DynamicResource SectionHeading}"/>
+                <StackPanel x:Name="JobsPanel" Margin="0,0,0,16" AutomationProperties.Name="Who does each job"
+                            AutomationProperties.AutomationId="RecommendedSetupJobs"/>
+
+                <StackPanel x:Name="ManualSection" Visibility="Collapsed">
+                    <TextBlock Text="Needs someone at the computer" Style="{DynamicResource SectionHeading}"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"
+                               Text="Martlet can't change these computers from here. Make these changes at each one, or connect it on the Devices page."/>
+                    <StackPanel x:Name="ManualPanel" Margin="0,0,0,16" AutomationProperties.Name="Needs someone at the computer"/>
+                </StackPanel>
+
+                <TextBlock x:Name="DownloadsText" TextWrapping="Wrap" Margin="0,0,0,16" Visibility="Collapsed"
+                           AutomationProperties.AutomationId="RecommendedSetupDownloads"/>
+
+                <StackPanel x:Name="PreflightSection" Visibility="Collapsed">
+                    <TextBlock Text="Before it starts" Style="{DynamicResource SectionHeading}"/>
+                    <StackPanel x:Name="PreflightPanel" Margin="0,0,0,8" AutomationProperties.Name="Before it starts"
+                                AutomationProperties.AutomationId="RecommendedSetupPreflight"/>
+                    <StackPanel x:Name="TermsSection" Visibility="Collapsed">
+                        <TextBlock Text="Reconfigure accepts these terms" FontWeight="SemiBold" Margin="0,4,0,4"/>
+                        <StackPanel x:Name="TermsPanel" Margin="0,0,0,8" AutomationProperties.Name="Terms you accept"/>
+                    </StackPanel>
+                    <StackPanel x:Name="SecretsSection" Visibility="Collapsed">
+                        <TextBlock Text="Keys it needs" FontWeight="SemiBold" Margin="0,4,0,4"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,6"
+                                   Text="Type each key the change needs. A change whose key you leave empty is skipped, and its computer shows it needs attention."/>
+                        <StackPanel x:Name="SecretsPanel" Margin="0,0,0,8" AutomationProperties.Name="Keys it needs"/>
+                    </StackPanel>
+                    <Border Height="8"/>
+                </StackPanel>
+
+                <StackPanel x:Name="NotesSection" Visibility="Collapsed">
+                    <TextBlock Text="Good to know" Style="{DynamicResource SectionHeading}"/>
+                    <StackPanel x:Name="NotesPanel" AutomationProperties.Name="Good to know"/>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</local:ThemedWindow>

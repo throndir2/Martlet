@@ -262,17 +262,34 @@ public static class RendererProtocol
     public static T Data<T>(RendererMessage message) =>
         message.Data.Deserialize<T>(Json) ?? throw new InvalidDataException("Renderer payload is missing.");
 
-    public static async Task WriteAsync(Stream pipe, RendererMessage message, CancellationToken token)
+    /// <summary>One whole message as it goes on the pipe: its length (4 bytes, little-endian) and then its JSON.</summary>
+    /// <exception cref="InvalidDataException">The message exceeds <see cref="MaximumMessageBytes"/>.</exception>
+    public static byte[] Frame(RendererMessage message)
     {
         var bytes = JsonSerializer.SerializeToUtf8Bytes(message, Json);
         if (bytes.Length > MaximumMessageBytes) throw new InvalidDataException("Renderer message exceeds its limit.");
-        byte[] header = new byte[4];
-        BinaryPrimitives.WriteInt32LittleEndian(header, bytes.Length);
-        await pipe.WriteAsync(header, token);
-        await pipe.WriteAsync(bytes, token);
+        var frame = new byte[4 + bytes.Length];
+        BinaryPrimitives.WriteInt32LittleEndian(frame, bytes.Length);
+        bytes.CopyTo(frame, 4);
+        return frame;
+    }
+
+    /// <summary>
+    /// Writes one message in one write. On an anonymous pipe a cancelled write can stop part way and leave the reader out of
+    /// step for good, so give a pipe only a token that is cancelled when the pipe is no longer used, or write through
+    /// <see cref="RendererPipeWriter"/>.
+    /// </summary>
+    public static async Task WriteAsync(Stream pipe, RendererMessage message, CancellationToken token)
+    {
+        var frame = Frame(message);
+        await pipe.WriteAsync(frame, token);
         await pipe.FlushAsync(token);
     }
 
+    /// <summary>
+    /// Reads one whole message. On an anonymous pipe a cancelled read can stop part way and leave the rest of the message in
+    /// the pipe, so give a pipe only a token that is cancelled when the pipe is no longer used.
+    /// </summary>
     public static async Task<RendererMessage> ReadAsync(Stream pipe, CancellationToken token)
     {
         byte[] header = new byte[4];

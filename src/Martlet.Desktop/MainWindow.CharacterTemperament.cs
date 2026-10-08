@@ -12,15 +12,21 @@ namespace Martlet.Desktop;
 
 /// <summary>Companion › Character › Touch temperament: how the active persona's character acts (never what it says) when each
 /// part of it is touched: how much it likes it (hates to craves) and which emotes, gestures and face symbols play, in one table
-/// with a line per group and per part that reacts differently. The Thinking model decides it from the personality in the
-/// background after the personality is saved (Re-decide from personality asks again); the owner's edits here win and stay until
-/// they re-decide. A zone's own pick under Touch zones still wins over the temperament.</summary>
+/// with a line per category (each names the parts it covers; intimate parts have their own) and per part that reacts
+/// differently. The Thinking model decides the persona's own temperament from the personality in the background after the
+/// personality is saved (Re-decide from personality asks again); the owner's edits here win and stay until they re-decide. The
+/// owner can make named custom temperaments and choose, per persona, its own, the built-in reactions or a custom one; editing a
+/// custom one changes it for each persona that uses it. A zone's own pick under Touch zones still wins over the temperament.</summary>
 public partial class MainWindow
 {
     private const string NotDecided = "(not decided: follow your mouse)";
+    // The intimate category's choice when the temperament doesn't cover it: each intimate part reacts as its body group's line.
+    private const string AsBodyAround = "(as the body)";
     private readonly CharacterTemperamentService characterTemperaments;
     private TextBlock? temperamentDecision;
     private bool decidingTemperament;
+    // What the last Uses, Create, Rename or Delete did (or why not), for the next card's line under them.
+    private string? temperamentUseNote;
 
     private void WireCharacterTemperament()
     {
@@ -57,13 +63,40 @@ public partial class MainWindow
     {
         if (decidingTemperament || homeSettings?.Companion?.ActivePersona is not { } persona) return;
         decidingTemperament = true;
-        try { await characterTemperaments.DecideAsync(persona, AskThinkingForTemperamentAsync, lifetime.Token); }
+        try { await characterTemperaments.DecideAsync(persona, AskThinkingForTemperamentAsync, lifetime.Token, use: true); }
         finally
         {
             decidingTemperament = false;
             tabEdited = false;
             if (!closing && openTab == CompanionTab.Character) RenderTab();
         }
+    }
+
+    /// <summary>Who decided the persona's own temperament, or what it uses instead (after "For Mira: ").</summary>
+    private static string TemperamentStatusText(TouchTemperamentSet saved, Guid personaId)
+    {
+        if (saved.UsesBuiltIn(personaId)) return "built-in reactions, as you chose.";
+        if (saved.CustomOf(personaId) is { } custom) return $"your custom temperament \"{custom.Name}\".";
+        var own = saved.Own(personaId);
+        return own?.Source switch
+        {
+            CharacterTouchTemperament.ByOwner => "your own choices.",
+            CharacterTouchTemperament.ByFixture => "FIXTURE - NOT AI: read from " + CharacterTemperamentService.FixtureVariable + ".",
+            CharacterTouchTemperament.ByThinking => "decided by the Thinking model from the personality" +
+                (own.DecidedAt is { } at ? $" on {at.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}." : "."),
+            _ => "built-in reactions (not decided yet)."
+        };
+    }
+
+    /// <summary>The personas' names in Personality's order ("Mira and Aki"); a persona that isn't on this PC counts as another
+    /// persona.</summary>
+    private string PersonaNames(IReadOnlyList<Guid> ids)
+    {
+        var personas = homeSettings?.Companion?.Personas ?? [];
+        var names = personas.Where(p => ids.Contains(p.Id)).Select(p => p.Name).ToList();
+        var others = ids.Count(id => personas.All(p => p.Id != id));
+        if (others > 0) names.Add(others == 1 ? "another persona" : $"{others} other personas");
+        return names.Count switch { 0 => "no persona", 1 => names[0], _ => string.Join(", ", names.Take(names.Count - 1)) + " and " + names[^1] };
     }
 
     private Border CharacterTemperamentCard()
@@ -73,37 +106,32 @@ public partial class MainWindow
         {
             Heading("Touch temperament"),
             Note("How the character reacts when you touch each part of it, and where its eyes usually go. When you save a " +
-                "personality, your Thinking model decides this from it in the background. Your own changes stay until you re-decide.",
-                new Thickness(0, 0, 0, 12))
+                "personality, your Thinking model decides this from it in the background. Your own changes stay until you re-decide. " +
+                "Make a custom temperament to use the same one for several personas.", new Thickness(0, 0, 0, 12))
         };
         var temperament = characterTemperaments.For(persona?.Id);
-        // Who decided it, with the whole temperament in words as its tooltip (and help text, for UI Automation).
+        // Who decided it, or what the persona uses instead, with the whole temperament in words as its tooltip (and help text, for
+        // UI Automation).
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(status, "TouchTemperamentStatus");
-        void ShowStatus(CharacterTouchTemperament? shown)
+        void ShowStatus()
         {
             if (persona is null)
             {
                 status.Text = "No persona is in use.";
                 return;
             }
+            var shown = characterTemperaments.For(persona.Id);
             status.Inlines.Clear();
             status.Inlines.Add(new Run("For "));
             status.Inlines.Add(new Run(persona.Name) { FontWeight = FontWeights.SemiBold });
-            status.Inlines.Add(new Run(": " + (shown?.Source switch
-            {
-                CharacterTouchTemperament.ByOwner => "your own choices.",
-                CharacterTouchTemperament.ByFixture => "FIXTURE - NOT AI: read from " + CharacterTemperamentService.FixtureVariable + ".",
-                CharacterTouchTemperament.ByThinking => "decided by the Thinking model from the personality" +
-                    (shown.DecidedAt is { } at ? $" on {at.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}." : "."),
-                _ => "built-in reactions (not decided yet)."
-            })));
+            status.Inlines.Add(new Run(": " + TemperamentStatusText(characterTemperaments.Saved, persona.Id)));
             var summary = CharacterTouchTemperaments.Summary(shown) +
                 (shown is null ? "" : $"; repeated touches escalate after {shown.Escalation.After}.");
             status.ToolTip = summary;
             AutomationProperties.SetHelpText(status, summary);
         }
-        ShowStatus(temperament);
+        ShowStatus();
         stack.Add(status);
         temperamentDecision = Note("", new Thickness(0, 2, 0, 0));
         AutomationProperties.SetAutomationId(temperamentDecision, "TouchTemperamentDecision");
@@ -120,40 +148,159 @@ public partial class MainWindow
         var decide = PageButton("Re-decide from personality", () => DecideTemperamentAsync().Forget(), id: "TouchTemperamentDecide");
         decide.IsEnabled = canDecide;
         const string decideHelp = "Sends the persona's personality text to your Thinking model, which decides how the character reacts to " +
-            "touch: actions only, never words. It never asks while Martlet replies.";
+            "touch: actions only, never words. It never asks while Martlet replies. The persona then uses what it decides.";
         AutomationProperties.SetHelpText(decide, decideHelp);
         decide.ToolTip = decideHelp;
         ToolTipService.SetShowOnDisabled(decide, true);
-        var reset = PageButton("Use built-in reactions", async () =>
+        void ShowActions()
         {
-            if (persona is null) return;
-            var why = await characterTemperaments.ResetAsync(persona.Id, lifetime.Token);
-            tabEdited = false;
-            if (why is not null) ShowStatusLine(saveState, "Not saved: " + why);
-            else if (openTab == CompanionTab.Character) RenderTab();
-        }, id: "TouchTemperamentReset");
-        reset.ToolTip = "Forgets this persona's touch temperament, so every part plays its built-in reaction again.";
-        void ShowActions(CharacterTouchTemperament? shown)
-        {
-            var label = busy ? "Deciding..." : shown is null ? "Decide from personality" : "Re-decide from personality";
+            var own = persona is null ? null : characterTemperaments.Own(persona.Id);
+            var label = busy ? "Deciding..." : own is null ? "Decide from personality" : "Re-decide from personality";
             decide.Content = label;
             AutomationProperties.SetName(decide, label);
-            // Nothing decided yet: deciding is the next step.
-            if (canDecide && shown is null) decide.SetResourceReference(StyleProperty, "PrimaryButton");
+            // Nothing decided yet, and nothing else chosen: deciding is the next step.
+            if (canDecide && own is null && persona is not null && !characterTemperaments.Saved.Uses.ContainsKey(persona.Id))
+                decide.SetResourceReference(StyleProperty, "PrimaryButton");
             else decide.ClearValue(StyleProperty);
-            reset.IsEnabled = !busy && shown is not null;
         }
-        ShowActions(temperament);
-        var actions = Row(decide, reset);
+        ShowActions();
+        var actions = Row(decide);
         actions.Margin = new Thickness(0, 10, 0, 0);
-        stack.Add(actions);
         if (persona is null)
         {
+            stack.Add(actions);
             stack.Add(saveState);
             return Card([.. stack]);
         }
 
-        // One table: where the eyes usually go, then a line per group and per part with its own reaction, in aligned columns.
+        // Edits in the table save after a short pause; changing what the persona uses saves them first.
+        AutoSave? autoSave = null;
+        async Task SavePendingAsync()
+        {
+            if (autoSave is { Pending: true } waiting) await waiting.SaveNowAsync();
+        }
+        // What a Uses, Create, Rename or Delete did, or why not.
+        var useState = Note("", new Thickness(0, 4, 0, 0));
+        AutomationProperties.SetAutomationId(useState, "TouchTemperamentUseState");
+        AutomationProperties.SetLiveSetting(useState, AutomationLiveSetting.Polite);
+        ShowStatusLine(useState, temperamentUseNote);
+        temperamentUseNote = null;
+        void AfterChange(string? why, string done)
+        {
+            tabEdited = false;
+            if (why is not null)
+            {
+                ShowStatusLine(useState, "Not saved: " + why);
+                useState.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+                return;
+            }
+            temperamentUseNote = done;
+            if (!closing && openTab == CompanionTab.Character) RenderTab();
+        }
+        // A line of the Uses rows: a label in the table's name column, then its controls.
+        DockPanel UseLine(string text, Control target, params FrameworkElement[] controls)
+        {
+            var label = new Label
+            {
+                Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap }, Target = target, Padding = new Thickness(0),
+                Width = TemperamentTable.Part, Margin = new Thickness(0, 3, TemperamentTable.Gap, 3), VerticalAlignment = VerticalAlignment.Center
+            };
+            DockPanel.SetDock(label, Dock.Left);
+            var panel = new WrapPanel { VerticalAlignment = VerticalAlignment.Center };
+            foreach (var control in controls)
+            {
+                control.Margin = new Thickness(0, 3, TemperamentTable.Gap, 3);
+                panel.Children.Add(control);
+            }
+            var line = new DockPanel { Margin = new Thickness(0, 2, 0, 0) };
+            line.Children.Add(label);
+            line.Children.Add(panel);
+            return line;
+        }
+
+        // What the persona uses: its own temperament, the built-in reactions or one of the custom temperaments.
+        var saved = characterTemperaments.Saved;
+        var custom = saved.CustomOf(persona.Id);
+        var builtIn = saved.UsesBuiltIn(persona.Id);
+        var customs = saved.Custom.OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
+        var choices = new[] { CharacterTouchTemperaments.OwnLabel, CharacterTouchTemperaments.BuiltInLabel }.Concat(customs.Select(c => c.Name)).ToArray();
+        var use = Compact(new ComboBox
+        {
+            ItemsSource = choices, ItemTemplate = TemperamentRow.OneLine, Width = 300, HorizontalAlignment = HorizontalAlignment.Left,
+            SelectedIndex = builtIn ? 1 : custom is null ? 0 : 2 + Array.FindIndex(customs, c => c.Id == custom.Id)
+        });
+        AutomationProperties.SetName(use, $"The touch temperament {persona.Name} uses");
+        AutomationProperties.SetAutomationId(use, "TouchTemperamentUse");
+        use.ToolTip = $"{CharacterTouchTemperaments.OwnLabel}: {persona.Name}'s own, which your Thinking model decides. " +
+            $"{CharacterTouchTemperaments.BuiltInLabel}: each part's built-in reaction. Or one of your custom temperaments.";
+        use.SelectionChanged += async (_, _) =>
+        {
+            var index = use.SelectedIndex;
+            if (index < 0) return;
+            await SavePendingAsync();
+            var why = await characterTemperaments.ChooseAsync(persona.Id,
+                index switch { 0 => null, 1 => CharacterTouchTemperaments.BuiltIn, _ => customs[index - 2].Id.ToString() }, lifetime.Token);
+            AfterChange(why, $"{persona.Name} uses \"{choices[index]}\" now.");
+        };
+        stack.Add(UseLine("Uses", use, use));
+
+        // The custom temperament the persona uses: its name, Rename, Delete and who else uses it.
+        if (custom is not null)
+        {
+            var name = Compact(new TextBox { Text = custom.Name, Width = 240, MaxLength = CharacterTouchTemperaments.MaximumNameLength });
+            AutomationProperties.SetName(name, "The custom temperament's name");
+            AutomationProperties.SetAutomationId(name, "TouchTemperamentName");
+            name.TextChanged += (_, _) => tabEdited = true;
+            var rename = Compact(PageButton("Rename", async () =>
+            {
+                await SavePendingAsync();
+                var why = await characterTemperaments.RenameCustomAsync(custom.Id, name.Text, lifetime.Token);
+                AfterChange(why, $"Renamed \"{custom.Name}\" to \"{name.Text.Trim()}\".");
+            }, id: "TouchTemperamentRename"));
+            var users = saved.UsedBy(custom.Id);
+            var delete = Compact(PageButton("Delete", async () =>
+            {
+                autoSave?.Cancel();
+                var why = await characterTemperaments.DeleteCustomAsync(custom.Id, lifetime.Token);
+                AfterChange(why, $"Deleted the custom temperament \"{custom.Name}\". {PersonaNames(users)} " +
+                    (users.Count == 1 ? "uses its" : "use their") + " own temperament again.");
+            }, id: "TouchTemperamentDelete"));
+            delete.ToolTip = "Deletes this custom temperament. Each persona that used it uses its own temperament again.";
+            AutomationProperties.SetHelpText(delete, (string)delete.ToolTip);
+            stack.Add(UseLine("Custom temperament", name, name, rename, delete));
+            var usedBy = Note($"Used by {PersonaNames(users)}. Changing it below changes it for every persona that uses it.", new Thickness(0, 2, 0, 0));
+            AutomationProperties.SetAutomationId(usedBy, "TouchTemperamentCustomUsers");
+            stack.Add(usedBy);
+        }
+        stack.Add(actions);
+
+        // A new custom temperament starts as a copy of what the persona uses now, and the persona then uses it.
+        var newName = Compact(new TextBox { Width = 240, MaxLength = CharacterTouchTemperaments.MaximumNameLength });
+        AutomationProperties.SetName(newName, "Name for a new custom temperament");
+        AutomationProperties.SetAutomationId(newName, "TouchTemperamentNewName");
+        newName.TextChanged += (_, _) => tabEdited = true;
+        var copied = builtIn ? "the built-in reactions" : custom is not null ? $"\"{custom.Name}\"" : $"{persona.Name}'s own temperament";
+        var create = Compact(PageButton("Create", async () =>
+        {
+            await SavePendingAsync();
+            var made = newName.Text.Trim();
+            var why = await characterTemperaments.CreateCustomAsync(persona.Id, made, lifetime.Token);
+            AfterChange(why, $"Made the custom temperament \"{made}\", a copy of {copied}. {persona.Name} uses it now.");
+        }, id: "TouchTemperamentNew"));
+        AutomationProperties.SetName(create, "Create a custom temperament");
+        create.ToolTip = $"Makes a custom temperament with this name: a copy of what {persona.Name} uses now. {persona.Name} then uses it, " +
+            "and you can choose it for other personas too.";
+        AutomationProperties.SetHelpText(create, (string)create.ToolTip);
+        stack.Add(UseLine("New custom temperament", newName, newName, create));
+        stack.Add(useState);
+        if (builtIn)
+        {
+            stack.Add(Note("Every part plays its own built-in reaction, and the eyes follow your mouse. To change how it reacts, choose " +
+                "another temperament under Uses, or make a custom one: it starts with the built-in reactions.", new Thickness(0, 12, 0, 0)));
+            stack.Add(saveState);
+            return Card([.. stack]);
+        }
+        // One table: where the eyes usually go, then a line per category and per part with its own reaction, in aligned columns.
         var table = new TemperamentTable();
 
         var rows = new List<TemperamentRow>();
@@ -180,34 +327,40 @@ public partial class MainWindow
         });
         AutomationProperties.SetName(gaze, "Where the character's eyes usually go");
         AutomationProperties.SetAutomationId(gaze, "TouchTemperamentGaze");
-        var autoSave = new AutoSave(async () =>
+        autoSave = new AutoSave(async () =>
         {
             if (homeSettings?.Companion?.ActivePersonaId != persona.Id) return true;
-            var current = characterTemperaments.For(persona.Id);
+            var now = characterTemperaments.Saved;
+            // What the persona uses changed after this card was drawn: these lines belong to the temperament it used then.
+            if (now.UsesBuiltIn(persona.Id) || now.CustomOf(persona.Id)?.Id != custom?.Id) return true;
+            var current = now.For(persona.Id);
             var escalation = current?.Escalation ?? new TouchEscalation();
-            var next = new CharacterTouchTemperament
+            var eyes = gaze.SelectedIndex > 0 ? CharacterGaze.Modes[gaze.SelectedIndex - 1].Mode : (GazeMode?)null;
+            var groups = rows.Where(r => r.IsGroup && !r.Removed).Select(r => (r.Id, Entry: r.Read())).Where(r => r.Entry is not null)
+                .ToDictionary(r => r.Id, r => r.Entry!);
+            var zones = rows.Where(r => !r.IsGroup && !r.Removed).Select(r => (r.Id, Entry: r.Read())).Where(r => r.Entry is not null)
+                .ToDictionary(r => r.Id, r => r.Entry!);
+            var escalated = escalation with
             {
-                PersonaId = persona.Id, Source = CharacterTouchTemperament.ByOwner,
-                PersonalityDigest = current?.PersonalityDigest ?? CharacterTouchTemperaments.Digest(persona.Text), DecidedAt = current?.DecidedAt,
-                Gaze = gaze.SelectedIndex > 0 ? CharacterGaze.Modes[gaze.SelectedIndex - 1].Mode : null,
-                Groups = rows.Where(r => r.IsGroup && !r.Removed).Select(r => (r.Id, Entry: r.Read())).Where(r => r.Entry is not null)
-                    .ToDictionary(r => r.Id, r => r.Entry!),
-                Zones = rows.Where(r => !r.IsGroup && !r.Removed).Select(r => (r.Id, Entry: r.Read())).Where(r => r.Entry is not null)
-                    .ToDictionary(r => r.Id, r => r.Entry!),
-                Escalation = escalation with
-                {
-                    After = int.TryParse(after.Text, NumberStyles.Integer, CultureInfo.CurrentCulture, out var n)
-                        ? Math.Clamp(n, CharacterTouchTemperaments.MinimumAfter, CharacterTouchTemperaments.MaximumAfter) : escalation.After
-                }
+                After = int.TryParse(after.Text, NumberStyles.Integer, CultureInfo.CurrentCulture, out var n)
+                    ? Math.Clamp(n, CharacterTouchTemperaments.MinimumAfter, CharacterTouchTemperaments.MaximumAfter) : escalation.After
             };
-            var why = await characterTemperaments.SaveAsync(next, lifetime.Token);
+            // A custom temperament changes for every persona that uses it; otherwise the persona's own becomes the owner's.
+            var why = now.CustomOf(persona.Id) is { } editing
+                ? await characterTemperaments.SaveCustomAsync(editing with { Gaze = eyes, Groups = groups, Zones = zones, Escalation = escalated }, lifetime.Token)
+                : await characterTemperaments.SaveAsync(new CharacterTouchTemperament
+                {
+                    PersonaId = persona.Id, Source = CharacterTouchTemperament.ByOwner,
+                    PersonalityDigest = current?.PersonalityDigest ?? CharacterTouchTemperaments.Digest(persona.Text), DecidedAt = current?.DecidedAt,
+                    Gaze = eyes, Groups = groups, Zones = zones, Escalation = escalated
+                }, lifetime.Token);
             ShowStatusLine(saveState, why is null ? "All changes saved." : "Not saved: " + why);
             saveState.SetResourceReference(TextBlock.ForegroundProperty, why is null ? "MutedBrush" : "WarningBrush");
             if (why is null)
             {
                 tabEdited = false;
-                ShowStatus(characterTemperaments.For(persona.Id));
-                ShowActions(characterTemperaments.For(persona.Id));
+                ShowStatus();
+                ShowActions();
             }
             return true;
         });
@@ -216,9 +369,8 @@ public partial class MainWindow
             tabEdited = true;
             ShowReactionHeads();
             ShowStatusLine(saveState, "Saving...");
-            autoSave.Changed();
-        }
-        after.TextChanged += (_, _) => Edited();
+            autoSave?.Changed();
+        }        after.TextChanged += (_, _) => Edited();
         gaze.SelectionChanged += (_, _) => Edited();
 
         gaze.Margin = new Thickness(0, 3, 0, 3);
@@ -227,7 +379,7 @@ public partial class MainWindow
         string?[] headHelp =
         [
             null, "How the character feels about a touch there: hates, dislikes, neutral, likes, loves or craves. (built-in) leaves a " +
-                "group's parts to their built-in reactions.",
+                "category's parts to their built-in reactions; (as the body) lets intimate parts react as the category of the body around them.",
             "What plays first. (default) plays what the feeling usually plays; (nothing) plays nothing at all.",
             "A second reaction, after the first.",
             $"How many seconds the first reaction stays on (0: it plays once), up to {CharacterTouchTemperaments.MaximumLinger:0}.",
@@ -249,11 +401,23 @@ public partial class MainWindow
         rule.SetResourceReference(Border.BackgroundProperty, "BorderBrush");
         table.View.Children.Add(rule);
 
+        // A line per category, each with the parts it covers under it: every zone kind is in exactly one.
         foreach (var (_, id, label) in CharacterTouchTemperaments.GroupIds)
-            rows.Add(new TemperamentRow(table, id, label, true, temperament?.Groups.GetValueOrDefault(id), Edited));
+        {
+            var intimate = id == CharacterTouchTemperaments.IntimateId;
+            rows.Add(new TemperamentRow(table, id, label, true, temperament?.Groups.GetValueOrDefault(id), Edited, intimate ? AsBodyAround : null,
+                intimate ? $"{AsBodyAround} lets each intimate part react as the category of the body around it: the lips and ears as Head " +
+                    "and face; the neck, chest, breasts and waist as Shoulders and torso; the hips, groin, buttocks and inner thighs as Legs " +
+                    "and feet." : null));
+            var parts = Note("Parts: " + string.Join(", ", CharacterTouchTemperaments.KindsIn(id).Select(k => k.Label.ToLowerInvariant())) + ".",
+                new Thickness(0, 0, 0, 6));
+            parts.FontSize = 12;
+            AutomationProperties.SetAutomationId(parts, $"TouchTemperamentParts-{id}");
+            table.View.Children.Add(parts);
+        }
         table.View.Children.Add(new TextBlock
         {
-            Text = "Parts that react differently from their group", FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap,
+            Text = "Parts that react differently from their category", FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 16, 0, 2)
         });
         foreach (var (id, entry) in (temperament?.Zones ?? new Dictionary<string, TouchTemperamentEntry>()).OrderBy(z => z.Key, StringComparer.Ordinal))
@@ -275,7 +439,7 @@ public partial class MainWindow
                     CharacterTouchTemperaments.Entry(characterTemperaments.For(persona.Id), kind.Id) ?? new TouchTemperamentEntry(), Edited));
                 Edited();
             }, id: "TouchTemperamentAdd"));
-            AutomationProperties.SetHelpText(add, "Gives the chosen part its own line, which wins over its group.");
+            AutomationProperties.SetHelpText(add, "Gives the chosen part its own line, which wins over its category.");
             var addPanel = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
             addPanel.Children.Add(kinds);
             add.Margin = new Thickness(8, 0, 0, 0);
@@ -299,7 +463,7 @@ public partial class MainWindow
             new Thickness(0, 10, 0, 0)));
         stack.Add(saveState);
         var card = Card([.. stack]);
-        card.Unloaded += (_, _) => { if (autoSave.Pending) autoSave.SaveNowAsync().Forget(); };
+        card.Unloaded += (_, _) => { if (autoSave is { Pending: true } waiting) waiting.SaveNowAsync().Forget(); };
         return card;
     }
 
@@ -315,7 +479,8 @@ public partial class MainWindow
     /// cells wrap under each other, all at the same places, to the right of the names, instead of being cut off.</summary>
     internal sealed class TemperamentTable
     {
-        private const double Part = 130, Number = 60, Gap = 8;
+        internal const double Part = 130, Gap = 8;
+        private const double Number = 60;
         private static readonly (double Weight, double Least, double Most)[] Choices = [(1.1, 96, 170), (1.2, 104, 200), (1.2, 104, 200)];
         private readonly List<FrameworkElement>[] columns = [[], [], [], [], []];
         private readonly double[] widths = [96, 104, 104, Number, Number];
@@ -381,7 +546,10 @@ public partial class MainWindow
         /// <summary>A choice shown on one line, cut short with an ellipsis when its box is narrow.</summary>
         internal static readonly DataTemplate OneLine = OneLineTemplate();
 
-        internal TemperamentRow(TemperamentTable table, string id, string label, bool isGroup, TouchTemperamentEntry? entry, Action edited)
+        /// <summary>A line; a category's first feeling choice leaves it uncovered, and <paramref name="unset"/> names what that does (the
+        /// built-in reactions unless said otherwise), with <paramref name="unsetHelp"/> as its tooltip.</summary>
+        internal TemperamentRow(TemperamentTable table, string id, string label, bool isGroup, TouchTemperamentEntry? entry, Action edited,
+            string? unset = null, string? unsetHelp = null)
         {
             Id = id;
             IsGroup = isGroup;
@@ -408,7 +576,7 @@ public partial class MainWindow
                 // Quiet until pointed at: the button's hover ring shows it.
                 remove.Background = remove.BorderBrush = Brushes.Transparent;
                 remove.SetResourceReference(ForegroundProperty, "MutedBrush");
-                remove.ToolTip = $"Remove {label}'s own line, so it reacts like its group";
+                remove.ToolTip = $"Remove {label}'s own line, so it reacts like its category";
                 AutomationProperties.SetName(remove, $"Remove {label}");
                 var dock = new DockPanel();
                 DockPanel.SetDock(remove, Dock.Right);
@@ -416,7 +584,12 @@ public partial class MainWindow
                 dock.Children.Add(name);
                 part = dock;
             }
-            attitude = Combo((isGroup ? new[] { BuiltIn } : []).Concat(CharacterTouchTemperaments.AttitudeWords).ToArray());
+            attitude = Combo((isGroup ? new[] { unset ?? BuiltIn } : []).Concat(CharacterTouchTemperaments.AttitudeWords).ToArray());
+            if (unsetHelp is not null)
+            {
+                attitude.ToolTip = unsetHelp;
+                AutomationProperties.SetHelpText(attitude, unsetHelp);
+            }
             var offset = isGroup ? 1 : 0;
             attitude.SelectedIndex = entry is null ? 0 : entry.Attitude - CharacterTouchTemperaments.MinimumAttitude + offset;
             AutomationProperties.SetName(attitude, $"How the character feels about a touch on: {label}");

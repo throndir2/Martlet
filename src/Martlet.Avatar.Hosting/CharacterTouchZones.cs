@@ -128,6 +128,9 @@ public static class CharacterTouchZones
     public const int MaximumNarrationLength = 160, MaximumLabelLength = 40;
     // A drawable belongs to a zone when this much of its bounds lies inside the zone's box.
     public const double MostlyInside = 0.6;
+    /// <summary>Every intimate zone kind in plain words, left and right together (Include intimate zones and the touch
+    /// temperament's Intimate parts name them so).</summary>
+    public const string IntimateParts = "lips, ears, neck, chest and breasts, waist and sides, hips, groin, buttocks and inner thighs";
 
     private static readonly string[][] HeadPat = [["lean_in", "tilt"], ["smile", "happy"]];
     private static readonly string[][] Face = [["tilt", "nod"], ["smile", "happy"]];
