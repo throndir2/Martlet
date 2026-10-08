@@ -3329,10 +3329,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         return operation;
     }
 
-    /// <summary>Starts a short reply Martlet gives on its own because the user touched the desktop character and said nothing
-    /// (the talk window decides when: <see cref="Martlet.Conversation.TouchDebounce"/>). Its message is Martlet's note with the
-    /// touches (Companion › Prompts › Touched); it starts like the reply before it (same instructions and tools), takes nothing
-    /// else, and the conversation keeps only the short touch line. Null when nothing that starts a reply waits.</summary>
+    /// <summary>Starts a short reply Martlet gives on its own because the user touched, stroked or moved the desktop character and
+    /// said nothing (the talk window decides when: <see cref="Martlet.Conversation.TouchDebounce"/>). Its message is Martlet's note
+    /// with the touches (Companion › Prompts › Touched), which asks for words out loud; it starts like the reply before it (same
+    /// instructions and tools), takes nothing else, and the conversation keeps only the short touch line. Null when nothing that
+    /// starts a reply waits.</summary>
     internal LiveConversationOperation? StartTouch(bool voice)
     {
         var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -3348,7 +3349,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 if (selected.Unavailable(voice, false) is not null) throw new LiveActionException("conversation.configuration_unsupported");
                 if (touches.Peek(TouchNow) is not { StartsTurn: true }) return null;
                 burst = touches.Drain(TouchNow)!;
-                var input = new BoundedTextInput(PromptSettings.Fill(selected.Prompts, PromptCatalog.Touched, ("touches", burst.Line)) ?? burst.Line);
+                var input = new BoundedTextInput(PromptSettings.Fill(selected.Prompts, PromptCatalog.Touched, ("touches", burst.Line),
+                    ("silent", LiveConversationConfiguration.SilentReply)) ?? burst.Line);
                 long acceptedRevision = revision = checked(revision + 1);
                 var authorization = new ConversationAuthorization(selected, voice, false, clock,
                     () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, CancellationToken.None);

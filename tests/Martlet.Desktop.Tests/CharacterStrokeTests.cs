@@ -192,6 +192,81 @@ public sealed class CharacterStrokeTests
         Assert.Equal(("quickly", 1), CharacterPhysicalWords.Stroke(summary with { Pace = "quick", Passes = 1 }));
     }
 
+    private static CharacterTouchZone Place(string id, string? label = null) => new() { Id = id, Label = label, Box = new(0, 0, 1, 1) };
+
+    [Fact]
+    public void A_stroke_down_the_body_says_its_whole_path_and_which_way_it_went()
+    {
+        // One slow pass from the chest down between the thighs to the left knee: every zone, in order, with left and right
+        // crossed one after the other said together.
+        var down = new StrokeSummary(["chest", "stomach", "groin", "inner_thigh_left", "inner_thigh_right", "knee_left"], "stomach", 3000, 0.7,
+            0.23, "slow", 1, 70, 75, Dx: 0.02, Dy: 0.7);
+        Assert.Equal("down", down.Way);
+        var words = CharacterPhysicalWords.Stroke(down,
+            [Place("chest"), Place("stomach"), Place("groin"), Place("inner_thigh_left"), Place("inner_thigh_right"), Place("knee_left")])!;
+        Assert.Equal("down from your chest over your stomach, your groin and your inner thighs to your left knee", words.Where);
+        Assert.Equal("chest → stomach → groin → inner thighs → left knee", words.Label);
+        Assert.Equal(("slowly", 1), (words.Pace, words.Times));
+        Assert.Null(words.Hint);
+
+        // The conversation hears it as one plain line and keeps a short one.
+        var ledger = new Martlet.Conversation.TouchLedger();
+        for (var i = 0; i < words.Times; i++)
+            ledger.Record(new(Martlet.Conversation.PhysicalKind.Stroke, TimeSpan.FromSeconds(1), words.Where, words.Label, words.Pace, words.Hint));
+        var burst = ledger.Drain(TimeSpan.FromSeconds(1))!;
+        Assert.Equal("They slowly stroked down from your chest over your stomach, your groin and your inner thighs to your left knee once.", burst.Line);
+        Assert.Equal("(touch: chest → stomach → groin → inner thighs → left knee stroke)", burst.HistoryLine);
+
+        // Back up the other way, and across: a left and a right zone apart on the path stay apart.
+        Assert.Equal("up from your stomach to your chest", CharacterPhysicalWords.Stroke(down with { Dy = -0.3 }, [Place("stomach"), Place("chest")])!.Where);
+        var across = down with { Dx = 0.4, Dy = 0.05, Sideways = true };
+        Assert.Null(across.Way);
+        Assert.Equal("from your left shoulder over your neck to your right shoulder",
+            CharacterPhysicalWords.Stroke(across, [Place("shoulder_left"), Place("neck"), Place("shoulder_right")])!.Where);
+        // A zone the owner renamed keeps its name and is never paired.
+        Assert.Equal("from your left thigh to your good leg",
+            CharacterPhysicalWords.Stroke(across, [Place("thigh_left"), Place("thigh_right", "Good leg")])!.Where);
+    }
+
+    [Fact]
+    public void A_stroke_back_and_forth_says_where_and_one_zone_keeps_the_owners_words()
+    {
+        var rub = new StrokeSummary(["chest", "stomach", "chest", "stomach"], "chest", 1200, 0.8, 0.66, "steady", 4, 30, 30, Dy: 0.01);
+        var words = CharacterPhysicalWords.Stroke(rub, [Place("chest"), Place("stomach")])!;
+        Assert.Equal("up and down over your chest and your stomach", words.Where);
+        Assert.Equal(4, words.Times);
+        Assert.Equal("back and forth over your left cheek, your nose and your right cheek",
+            CharacterPhysicalWords.Stroke(rub with { Sideways = true }, [Place("cheek_left"), Place("nose"), Place("cheek_right")])!.Where);
+        // Both sides one after the other are one place.
+        Assert.Equal("your breasts", CharacterPhysicalWords.Stroke(rub with { Sideways = true }, [Place("breast_left"), Place("breast_right")])!.Where);
+
+        var hair = Place("hair") with { Reaction = new() { Narration = "*ruffles your hair*" } };
+        var one = CharacterPhysicalWords.Stroke(rub with { Pace = "slow" }, [hair])!;
+        Assert.Equal(("your hair", "hair", "slowly", 4, "*ruffles your hair*"), (one.Where, one.Label, one.Pace, one.Times, one.Hint));
+        Assert.Null(CharacterPhysicalWords.Stroke(rub, []));
+
+        // A long wander names the first places and the last.
+        var many = new[] { "forehead", "nose", "chin", "neck", "collarbone", "chest", "stomach", "navel", "groin", "tail" }.Select(id => Place(id)).ToArray();
+        var wander = CharacterPhysicalWords.Stroke(rub with { Passes = 1, Dy = 0.9 }, many)!;
+        Assert.Equal(CharacterPhysicalWords.MaximumStrokePlaces, wander.Label.Split(" → ").Length);
+        Assert.StartsWith("down from your forehead over your nose", wander.Where, StringComparison.Ordinal);
+        Assert.EndsWith("your stomach to your tail", wander.Where, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_summarized_stroke_knows_where_it_ended_and_its_main_direction()
+    {
+        // Straight down the page, aspect 2: x counts double.
+        var path = new[] { new StrokeSample(0.50, 0.20, 0, Hit("chest")), new StrokeSample(0.51, 0.40, 300, Hit("stomach")),
+            new StrokeSample(0.52, 0.60, 600, Hit("groin")) };
+        var summary = CharacterStrokes.Summarize(path, 2, Zone);
+        Assert.Equal(0.04, summary.Dx, 4);
+        Assert.Equal(0.4, summary.Dy, 4);
+        Assert.False(summary.Sideways);
+        Assert.Equal("down", summary.Way);
+        Assert.Equal(["chest", "stomach", "groin"], summary.Zones);
+    }
+
     [Fact]
     public async Task The_avatar_passes_on_strokes_and_changes_only_while_the_character_shows()
     {

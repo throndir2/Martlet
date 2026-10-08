@@ -51,8 +51,8 @@ public sealed class TouchTurnTests
         await fixture.Finish(first);
         var plain = Instructions(fixture.Llm.Body);
 
-        // What the user does to the window only goes with the next reply.
-        fixture.Controller.Touches.Record(new(PhysicalKind.Moved, fixture.Controller.TouchNow, Detail: "to another monitor"));
+        // Zooming the view only goes with the next reply.
+        fixture.Controller.Touches.Record(new(PhysicalKind.Zoomed, fixture.Controller.TouchNow, Detail: "in on your face"));
         Assert.Null(fixture.Controller.StartTouch(voice: false));
 
         fixture.Controller.Touches.Record(new(PhysicalKind.Tap, fixture.Controller.TouchNow, "your left cheek", "left cheek"));
@@ -64,8 +64,10 @@ public sealed class TouchTurnTests
         Assert.Equal("runtime.Completed", touched!.Status.Code);
         Assert.True(touched.Touch);
         var message = LastUser(fixture.Llm.Body);
-        Assert.Contains("They moved you to another monitor, then poked your left cheek twice.", message, StringComparison.Ordinal);
+        Assert.Contains("They zoomed in on your face, then poked your left cheek twice.", message, StringComparison.Ordinal);
         Assert.Contains("touched you, their desktop character", message, StringComparison.Ordinal);
+        // It asks for words out loud, never only an emote or the silent reply.
+        Assert.Contains("always say something, never only an emote, a sound or [pass]", message, StringComparison.Ordinal);
         Assert.Equal(plain, Instructions(fixture.Llm.Body));
         Assert.Equal("2 touches", touched.Inputs);
 
@@ -79,10 +81,34 @@ public sealed class TouchTurnTests
     }
 
     [Fact]
+    public async Task MovingTheCharacterAroundStartsAShortReplyToo()
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Answer("Sure.");
+        var first = fixture.Start("Hello.");
+        await fixture.Finish(first);
+
+        fixture.Controller.Touches.Record(new(PhysicalKind.Moved, fixture.Controller.TouchNow, Detail: "to their other monitor"));
+        fixture.Answer("Whoa, where are we going?");
+        var moved = fixture.Controller.StartTouch(voice: false);
+        Assert.NotNull(moved);
+        await fixture.Finish(moved);
+        Assert.Equal("runtime.Completed", moved!.Status.Code);
+        Assert.True(moved.Touch);
+        var message = LastUser(fixture.Llm.Body);
+        Assert.Contains("or moved you around, without saying anything.) They moved you to their other monitor. React to it out loud",
+            message, StringComparison.Ordinal);
+        Assert.Equal("1 touch", moved.Inputs);
+        Assert.Null(fixture.Controller.Touches.Peek(fixture.Controller.TouchNow));
+    }
+
+    [Fact]
     public void TheTouchedPromptsAreEditableAndNameTheirPlaceholder()
     {
         Assert.Contains("{touches}", PromptCatalog.All.Single(p => p.Id == PromptCatalog.Touched).Default, StringComparison.Ordinal);
         Assert.Contains("{touches}", PromptCatalog.All.Single(p => p.Id == PromptCatalog.TouchedNotes).Default, StringComparison.Ordinal);
+        Assert.Equal(["touches", "silent"], PromptCatalog.All.Single(p => p.Id == PromptCatalog.Touched).Placeholders);
+        Assert.Contains("{silent}", PromptCatalog.All.Single(p => p.Id == PromptCatalog.Touched).Default, StringComparison.Ordinal);
         Assert.Equal("Last reply took 2 touches.", LiveConversationWindow.TurnInputsLine(false, false,
             MomentTurn.Describe(false, 0, false, null, 0, touches: 2), false));
     }

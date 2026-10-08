@@ -7,8 +7,8 @@ namespace Martlet.Desktop;
 
 /// <summary>What the user does to the character with the mouse beyond a tap: strokes across a locked character (each zone it
 /// crosses reacts at once, the first zone's emote held until the stroke ends) and moving, zooming, panning, locking, hiding
-/// and showing it. Each goes into the conversation's touch ledger (<see cref="NoticePhysical"/>), so Martlet knows: strokes
-/// like taps can start a touch-only turn, the rest wait for the next turn.</summary>
+/// and showing it. Each goes into the conversation's touch ledger (<see cref="NoticePhysical"/>), so Martlet knows: strokes and
+/// moves, like taps, can start a short reply of their own, the rest wait for the next reply.</summary>
 public partial class MainWindow
 {
     private readonly CharacterStrokeTracker strokes = new();
@@ -89,27 +89,21 @@ public partial class MainWindow
     }
 
     /// <summary>A stroke ended: Martlet notices it on the crossed zones that have Martlet notices on (like a tap there), one
-    /// ledger entry for each pass (at most 8), so "They slowly stroked your hair 4 times".</summary>
+    /// ledger entry for each pass (at most 8), with its whole path: "They slowly stroked down from your chest over your stomach
+    /// to your thighs once", "They slowly stroked your hair 4 times".</summary>
     private void StrokeEnded(StrokeSummary summary, IReadOnlyList<CharacterTouchZone> crossed)
     {
         if (closing) return;
-        var parts = crossed.Take(3).ToArray();
-        var labels = parts.Select(z => z.Name.ToLowerInvariant()).ToArray();
-        var noticed = parts.Where(z => z.Reaction.Notices).ToArray();
-        var (pace, times) = CharacterPhysicalWords.Stroke(summary);
-        for (var i = 0; i < times && noticed.Length > 0; i++)
-            if (noticed.Length == 1)
-                NoticePhysical(PhysicalKind.Stroke, CharacterTouchZones.Part(noticed[0]), noticed[0].Name.ToLowerInvariant(), pace,
-                    CharacterTouchZones.Narration(noticed[0]));
-            else NoticePhysical(PhysicalKind.Stroke, null, string.Join(", ", noticed.Select(z => z.Name.ToLowerInvariant())), pace,
-                zones: [.. noticed.Select(CharacterTouchZones.Part)]);
+        var labels = crossed.Select(z => z.Name.ToLowerInvariant()).ToArray();
+        var words = CharacterPhysicalWords.Stroke(summary, [.. crossed.Where(z => z.Reaction.Notices)]);
+        for (var i = 0; words is not null && i < words.Times; i++)
+            NoticePhysical(PhysicalKind.Stroke, words.Where, words.Label, words.Pace, words.Hint);
         var when = DateTime.Now.ToString("T", System.Globalization.CultureInfo.CurrentCulture);
         var text = $"Last stroke at {when}: " + (labels.Length == 0 ? "the character" : string.Join(" → ", labels)) +
             $", {summary.Pace}, {summary.Passes} pass{(summary.Passes == 1 ? "" : "es")}, {summary.Ms / 1000.0:0.0} s, " +
             $"{summary.Hits} of {summary.Samples} samples on the character" +
-            (noticed.Length == 0 ? "; no zone it crossed has Martlet notices on." : $"; Martlet noticed it: they {PhysicalKinds.Phrase(PhysicalKind.Stroke,
-                noticed.Length == 1 ? CharacterTouchZones.Part(noticed[0]) : string.Join(" and ", noticed.Select(CharacterTouchZones.Part)), pace)}" +
-                (times > 1 ? $" {times} times." : "."));
+            (words is null ? "; no zone it crossed has Martlet notices on." : $"; Martlet noticed it: they {PhysicalKinds.Phrase(PhysicalKind.Stroke,
+                words.Where, words.Pace)}" + (words.Times > 1 ? $" {words.Times} times." : "."));
         ShowPhysicalLast(text);
         ErrorLog.Info($"The character was stroked: {string.Join(", ", summary.Zones)} ({summary.Pace}, {summary.Passes} passes, " +
             $"{summary.Ms} ms, length {summary.Length:0.###}, speed {summary.Speed:0.###}).");

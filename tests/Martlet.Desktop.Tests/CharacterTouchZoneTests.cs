@@ -229,9 +229,50 @@ public sealed class CharacterTouchZoneTests
         // The zone's built-in line is no hint; only the owner's own words go with a noticed touch.
         Assert.Null(CharacterTouchZones.Narration(chosen));
         Assert.Equal("*boops you*", CharacterTouchZones.Narration(chosen with { Reaction = chosen.Reaction with { Narration = "*boops you*" } }));
-        Assert.Null(CharacterTouchZones.Narration(chosen with { Reaction = new() { Narration = "*boops you*" } }));
+        Assert.Null(CharacterTouchZones.Narration(chosen with { Reaction = new() { Narration = "*boops you*", Notices = false } }));
         Assert.Empty(CharacterTouchZones.Plan(chosen with { Reaction = new() { Actions = [] } }, catalog));
         Assert.Null(CharacterTouchZones.Narration(chosen with { Reaction = new() }));
+    }
+
+    [Fact]
+    public async Task MartletNoticesEveryZoneByDefaultAndOlderZonesNobodyTurnedItOnForGetItOnce()
+    {
+        // A new zone, a found zone and the rough zone used before any were found: all noticed.
+        Assert.True(new CharacterTouchReaction().Notices);
+        Assert.True(CharacterTouchZones.Detected(null, "m", [new() { Id = "chest", Box = new(0.3, 0.3, 0.3, 0.1) }], null, null, DateTimeOffset.Now)
+            .Zones[0].Reaction.Notices);
+        var rough = CharacterTouchZones.Match(null, new(0.5, 0.5, [], [], null, null, false, null, null))!;
+        Assert.Equal(("stomach", "coarse"), (rough.Zone.Id, rough.How));
+        Assert.True(rough.Zone.Reaction.Notices);
+
+        var directory = Directory.CreateTempSubdirectory("martlet-touch-").FullName;
+        try
+        {
+            // Saved when it was off by default: a model nobody turned it on for gets it on everywhere; one where the owner turned
+            // it on for some zones keeps its choices.
+            File.WriteAllText(CharacterTouchZones.Path(directory), """
+                { "version": 1, "models": [
+                  { "model_id": "untouched", "updated_at": "2026-01-01T00:00:00+00:00", "zones": [
+                    { "id": "chest", "box": { "x": 0.3, "y": 0.3, "width": 0.3, "height": 0.1 }, "reaction": { "notices": false } },
+                    { "id": "groin", "box": { "x": 0.4, "y": 0.5, "width": 0.2, "height": 0.1 }, "reaction": { "notices": false } } ] },
+                  { "model_id": "chosen", "updated_at": "2026-01-01T00:00:00+00:00", "zones": [
+                    { "id": "hair", "box": { "x": 0.4, "y": 0, "width": 0.2, "height": 0.1 }, "reaction": { "notices": true } },
+                    { "id": "groin", "box": { "x": 0.4, "y": 0.5, "width": 0.2, "height": 0.1 }, "reaction": { "notices": false } } ] } ] }
+                """);
+            Assert.All(CharacterTouchZones.Load(directory, "untouched")!.Zones, z => Assert.True(z.Reaction.Notices));
+            Assert.Equal([true, false], CharacterTouchZones.Load(directory, "chosen")!.Zones.Select(z => z.Reaction.Notices));
+
+            // Saving writes the new version: turning a zone off now stays off.
+            var untouched = CharacterTouchZones.Load(directory, "untouched")!;
+            await CharacterTouchZones.SaveAsync(directory, untouched with
+            {
+                Zones = [untouched.Zones[0], untouched.Zones[1] with { Reaction = untouched.Zones[1].Reaction with { Notices = false } }]
+            }, DateTimeOffset.Now);
+            Assert.Contains("\"version\": 2", File.ReadAllText(CharacterTouchZones.Path(directory)), StringComparison.Ordinal);
+            Assert.Equal([true, false], CharacterTouchZones.Load(directory, "untouched")!.Zones.Select(z => z.Reaction.Notices));
+            Assert.Equal([true, false], CharacterTouchZones.Load(directory, "chosen")!.Zones.Select(z => z.Reaction.Notices));
+        }
+        finally { Directory.Delete(directory, true); }
     }
 
     [Fact]

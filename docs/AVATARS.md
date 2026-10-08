@@ -577,15 +577,21 @@ Martlet knows that the model doesn't have yet, the breasts and the groin too.
 - Each zone plays its emotes and gestures (by default the model's own where it
   has them: a head pat leans in or tilts and smiles, a cheek blushes, an
   intimate zone blushes and flinches) and rests a few seconds before reacting
-  again. With **Martlet notices** on, Martlet also adds up your touches on that
+  again. **Martlet notices** is on for every zone by default (zones saved
+  before it was, where you never turned it on for any zone, get it on once;
+  turn it off for a zone to keep its touches between you and the character).
+  Martlet then adds up your touches on that
   zone (a quick tap on the top of the head or the hair is a pat, elsewhere a
   poke, and a press of about 0.6 seconds or more a hold) into one plain line,
   such as *They patted the top of your head 3 times over 2 seconds, then poked
   your left cheek once.* The local reaction still plays at once. When you talk
-  or type, the line goes with your message (after your words). When you say
+  or type, the line goes with your message (after your words), and Martlet
+  answers you first, then reacts to the touch too. When you say
   nothing, Martlet starts a short reply of its own about 1.2 seconds after your
   last touch (at most 3 seconds after the first, at most once every 4 seconds);
-  starting to talk or type first cancels it, and while Martlet is replying the
+  its prompt asks for a sentence or two out loud, never only an emote or
+  silence, and for a reaction that builds when you keep going. Starting to talk
+  or type first cancels it, and while Martlet is replying the
   touches wait for the next turn. The conversation keeps a short line such as
   *(touch: top of head pat x3)*, the talk window shows a touch-only reply as a
   note, and the two prompts are on Companion › Prompts (*Touched* and
@@ -598,14 +604,19 @@ Martlet knows that the model doesn't have yet, the breasts and the groin too.
   it can't move it, so it strokes the character. Each zone the stroke crosses
   plays its reaction at once (unless it is resting), and the first zone's emote
   stays on until you let go. On zones with **Martlet notices** on, Martlet
-  hears how it went: *They slowly stroked
-  your hair 4 times*. Unlocked, a drag still moves the character, and Ctrl+drag
-  still pans a zoomed view.
+  hears how it went, with every zone it crossed in order: *They slowly stroked
+  your hair 4 times*, or across several zones its path and which way it went,
+  *They slowly stroked down from your chest over your stomach to your thighs
+  once*. A left and a right zone crossed one after the other are said together
+  (*your thighs*), and a stroke that turned back goes *up and down over* (or,
+  sideways, *back and forth over*) the zones. Martlet writes this line itself
+  from the stroke, so it costs no extra model request and adds no wait. Unlocked,
+  a drag still moves the character, and Ctrl+drag still pans a zoomed view.
 - **Moves and zooms**: Martlet also hears when you move the character (and how
   far, or to another monitor), send it home, zoom in or out (and on what part),
   pan, reset the zoom, lock or unlock it, or hide or show it: *They zoomed in on
-  your face*. These go with your next message; only touches and strokes can
-  start a reply of their own.
+  your face*. Moving it around starts a short reply of its own, like a touch;
+  the rest go with your next message.
 
 ### Eyes
 

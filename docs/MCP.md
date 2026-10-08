@@ -4798,11 +4798,16 @@ test of the one before. With Companion › Character › Touch zones showing,
 (`TouchZonesLast`). Without `x`, `y` or `taps` it only reads the last tap, as
 does `MoveAvatar`'s `value` in `ui_snapshot`.
 
-**Touches reach the Thinking model** for zones with *Martlet notices* on: a
+**Touches reach the Thinking model** for zones with *Martlet notices* on (on
+by default; a `character-touch-zones.json` of version 1 where no zone of a model
+had it on loads with it on for all of that model's zones, and saves as version
+2): a
 reply to what you say or type carries the touch line in its notes (the desktop
 log's *Touches: 3 went to Thinking in the notes of your message.*), and touches
 on their own start a short reply of their own (*... as a short reply of their
 own.*; the talk window's `LiveTurnInputs` reads *Last reply took 2 touches.*).
+Its message (Companion › Prompts › *Touched*) asks for a sentence or two out
+loud, never only an emote, a sound or `[pass]`.
 Without a Thinking setup `TouchZonesNoticed` says the touches wait for your next
 message.
 
@@ -4815,10 +4820,16 @@ pipe (`move` batches while the stroke goes on, then `end`). Martlet matches
 each sample to a touch zone: each zone the stroke enters plays its reaction
 (unless it is resting), and the first zone's first emote or gesture is held
 until the stroke ends. At the end Martlet summarizes the stroke (zones crossed
-in order, pace `slow`, `steady` or `quick`, passes back and forth, seconds)
+in order, pace `slow`, `steady` or `quick`, passes back and forth, seconds,
+where it ended from where it began and its main direction)
 and, for the crossed zones with *Martlet notices* on (like a tap there),
-records it in the touch ledger once for each pass (at most 8), so the next
-reply hears *They slowly stroked your hair 4 times*; a stroke, like a tap, can
+records it in the touch ledger once for each pass (at most 8) with its whole
+path (`CharacterPhysicalWords.Stroke`: every zone in the order first crossed,
+at most 8 named, a left and a right zone crossed one after the other said
+together), so the next reply hears *They slowly stroked your hair 4 times* or
+*They slowly stroked down from your chest over your stomach to your thighs
+once* (*up and down over* or *back and forth over* the zones when it turned
+back); a stroke, like a tap, can
 start a touch-only reply. Ctrl+drag or middle-drag still pans a zoomed view,
 and an unlocked drag still moves the character. `character_stroke` strokes it
 through UI Automation (`MoveAvatar`'s value, `"stroke:ms;x,y;x,y;..."`) along
@@ -4931,8 +4942,9 @@ monitors before and after, the character's size before and after, and the
 renderer page's hit test of what a zoom closed in on or a pan centers on).
 Martlet records it in the touch ledger with Locked, Unlocked, Hidden and Shown
 (from its own buttons and the overlay menu): *They moved you to their other
-monitor*, *They zoomed in on your face*. These never start a reply on their
-own; they go with the next one. `MoveAvatar`'s value carries the last one as
+monitor*, *They zoomed in on your face*. A move (`moved` or `home`) starts a
+short reply of its own like a touch (`TouchZonesNoticed` says when); the
+others never do and go with the next one. `MoveAvatar`'s value carries the last one as
 `physical` (`kind`, `dx`, `dy`, `from`, `to`, `zoomFrom`, `zoomTo`, `focus`),
 and `CharacterPhysicalLast` shows the ledger's words. The camera view's own
 framing is not reported.
@@ -4942,9 +4954,14 @@ desktop and no model request: `stroke` (a JSON `CharacterStroke` with its
 hit-tested samples) is summarized against the touch zones saved for `modelId`
 (or the rough zones before any were found), `changes` (a JSON array of
 `RendererPhysical`) are worded, and both go into a touch ledger. It returns the
-stroke's zones, pace and passes, each change's ledger kind and words, the plain
+stroke's zones, pace, passes, `dx` and `dy` (where it ended from where it
+began, page heights), `sideways`, `way` (`down`, `up` or null) and `words`
+(`where`, `label`, `pace`, `times` and `hint`: how the ledger says its whole
+path), each change's ledger kind, words and `startsTurn` (true for touches,
+strokes and moves), the plain
 `line` the next reply would carry, the `history` line and `startsTurn`.
-`noticeAll` (default true) treats every zone as having *Martlet notices* on.
+`noticeAll` (default true) treats every zone as having *Martlet notices* on;
+false uses the zones' own setting.
 
 **Locking the character's position**: Home's `ToggleCharacterLock`
 (*Lock character position*, shown while the character shows or is locked),
