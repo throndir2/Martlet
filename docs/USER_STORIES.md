@@ -567,7 +567,8 @@ Now: Qwen 3 8B on This PC · ● Working
 Where it runs
 [ This PC  Current ]  [ Another of my computers ]  [ A cloud provider ]
 
-(expanded options for the selected card)
+(expanded options for the selected card; This PC first asks which app runs
+the model: ( ) Ollama (recommended)  ( ) A model app you already use)
 
 Advanced ▸  temperature, context length, custom endpoint, stored keys
 ```
@@ -577,6 +578,44 @@ The sub-stories C2–C4 cover each card.
 - **Today**: 8 paths. The legacy Setup window, which *How it thinks* and
   *Advanced setup* opened (tabs Choice › Jobs › Credentials › Review), is
   removed; keys set aside are listed under *Keys from before* on each job tab.
+
+#### C0. Every way to choose a Thinking model
+
+*As any user, I want one clear place for every kind of model: the one Martlet
+recommends, one I run myself on this PC, one on another of my computers and
+one in the cloud.*
+
+Most local model apps (LM Studio, llama.cpp, KoboldCpp, Jan, vLLM, Lemonade,
+GPT4All, Docker Model Runner and others) serve the same OpenAI-compatible
+Chat Completions API on a port of this PC. So Martlet treats them as one
+kind of choice: *a model app on this PC*. Only Ollama gets its own flow,
+because Martlet installs it, downloads models into it and loads them. The
+full list of apps, ports and limits is in [Local model apps](LOCAL_MODEL_APPS.md).
+
+| Kind of model | Who it is for | Where | Story | Today |
+| --- | --- | --- | --- | --- |
+| Recommended local model | Alex: a GPU and no setup knowledge | This PC › Ollama | C2 | Works |
+| Any other Ollama model, including my own | Jordan: a model from ollama.com, Hugging Face or `ollama create` | This PC › Ollama › model box | C2b | Works |
+| A model app I already run here | Jordan: LM Studio, llama.cpp and similar | This PC › A model app you already use | C2a | Works |
+| A model app at another address here | Jordan: an app on a port Martlet doesn't know | This PC › A model app you already use › Another address | C2a | Works |
+| A model on another of my computers | Alex: a gaming PC with a big GPU | Another of your computers | C3 | Works (Ollama on a Martlet host) |
+| A named cloud provider | Sam: no GPU | A cloud provider | C4 | Works |
+| Any other HTTPS endpoint | Jordan: Groq, Together, a remote vLLM with TLS | A cloud provider › Custom | C4 | Works |
+| A second model if Thinking fails | Any user | Thinking › If Thinking fails | C6 | Works |
+| A model for long or background thinking | Jordan | Deep thinking, Thinking pool | - | Works (Ollama, endpoint or computer) |
+| Quick switch in a conversation | Jordan | Thinking chip ▾ | C5 | Not yet |
+| First run with a model app already running | Jordan | Welcome wizard › *Run things on this PC* | - | Not yet: the wizard plans Ollama; This PC then offers the app |
+
+Rules for every kind:
+
+- A local choice never needs a key, unless the app asks for one.
+- Martlet tests a model the way a reply uses it before the owner relies on
+  it, and says what to change when the test fails.
+- An app on this PC is never called a cloud provider, and its wording never
+  says that requests may cost money.
+- A model app on another computer goes through Martlet's host service (C3),
+  or through its HTTPS address (C4). Martlet doesn't send cleartext HTTP to
+  other computers.
 
 #### C2. Think on this PC
 
@@ -603,7 +642,69 @@ The sub-stories C2–C4 cover each card.
 - **Done when**: no console; the user never sees *Install Ollama*, *Download
   model*, *Check Ollama*, *Use Ollama on this PC* as separate buttons.
 - **Today**: four separate buttons, a console window, then returning to the
-  page to click *Use Ollama on this PC*.
+  page to click *Use Ollama on this PC*. Since the model app choice (C2a),
+  This PC first asks which app runs the model: *Ollama (recommended)* or *A
+  model app you already use*. It opens on the app in use. With nothing in
+  use, it opens on Ollama, unless Ollama isn't installed and another model
+  app answers here.
+
+#### C2a. Use a model app I already run on this PC
+
+*As Jordan, I already run models in LM Studio (or llama.cpp, KoboldCpp, Jan,
+vLLM and others) on my GPU. I want Martlet to think with them without
+installing Ollama.*
+
+- **Start**: Thinking tab › **This PC**.
+- **Flow**:
+  1. Martlet looks for model apps on this PC's loopback ports when the page
+     opens (about 1.5 s). The *Model app* choice says what it found: *Found
+     here: LM Studio*.
+  2. Choose **A model app you already use**. The card lists each app found
+     with its address and model count: *LM Studio · http://127.0.0.1:1234/v1 ·
+     3 models*. The first app and its first model are selected.
+  3. For an app Martlet didn't find, choose *Another address on this PC* and
+     type what the app shows (`localhost:5001`, `8080` or
+     `http://127.0.0.1:8080/v1`), then **Find models**.
+  4. **Test model** sends one short streamed request with one tool, like a
+     reply. The result says how fast the first words came, how much context
+     the model takes and whether the app takes tools.
+  5. **Use LM Studio** checks that the app answers and lists the model, then
+     switches Thinking. The previous choice keeps working until then.
+- **Clicks**: 2 (the app choice, Use) when the app runs; 3 with a test.
+- **Edge cases**:
+  - The app isn't running: *No other model app answers on this PC* with the
+    app's own start steps (LM Studio: *Developer › Start server*).
+  - The app asks for a key (vLLM `--api-key`, LM Studio authentication): the
+    list says *asks for a key*; the key field takes it, and Martlet keeps it
+    in Windows Credential Manager.
+  - The app refuses tools (llama.cpp without `--jinja`): the test passes with
+    a warning and the fix; replies continue without tools.
+  - The model isn't listed: one default-No question (some apps load models
+    on demand).
+  - The app stops later: Home shows *LM Studio isn't ready on this PC* with
+    *Check again* and *Change thinking*.
+  - An address on another computer is refused with the two ways that work:
+    a Martlet host (C3) or its HTTPS address (C4).
+- **Done when**: no cloud wording, no consent box about costs, no typed base
+  URL for an app Martlet can find, and the *Now* line names the app (*LM
+  Studio on this PC: qwen/qwen3-8b*).
+- **Today**: works on Windows. The macOS and Linux companion has *Find model
+  apps*, which fills in the first app found and its model.
+
+#### C2b. Use any Ollama model, including my own
+
+*As Jordan, I want a model that isn't in Martlet's suggestions: another
+library model, a GGUF from Hugging Face, or one I made with `ollama create`.*
+
+- **Start**: Thinking tab › **This PC** › **Ollama**.
+- **Flow**: type the name in the model box (`qwen3:14b`,
+  `hf.co/<user>/<repo>:Q4_K_M` or `my-model`), or pick one Ollama already has
+  from *Suggestions* (marked *(downloaded)*). **Use Ollama on this PC**
+  downloads it if needed, loads it and switches.
+- **Clicks**: 1 plus typing.
+- **Done when**: the card says that any Ollama model works and how to name
+  one.
+- **Today**: works.
 
 #### C3. Think on another of my computers
 
@@ -647,7 +748,8 @@ The sub-stories C2–C4 cover each card.
   already on file. Changing just the model on the current provider: 1.
 - **Edge cases**: invalid key → inline under the field *OpenRouter rejected
   this key* with *Get a key ↗*; no credit → *Your OpenRouter account has no
-  credit*; custom endpoint shows URL and model ID fields.
+  credit*; custom endpoint shows URL and model ID fields and takes an HTTPS
+  address (an app on this PC belongs under This PC, C2a).
 - **Done when**: no separate Credentials step; the key is entered next to
   the provider that uses it.
 - **Today**: cloud card *Use OpenRouter* (named for the chosen provider; it
