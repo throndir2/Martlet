@@ -77,10 +77,46 @@ public partial class MainWindow
         return key;
     }
 
-    private static string ContextServerName(SetupRoute route) =>
-        ChatCompletionsEndpointCatalog.Named(route.Origin)?.Name ??
-        (Uri.TryCreate(route.Origin, UriKind.Absolute, out var uri) && ModelContextProbe.IsLoopback(uri) ? "the server on this PC"
-            : Uri.TryCreate(route.Origin, UriKind.Absolute, out var other) ? other.Host : "the server");
+    private static string ContextServerName(SetupRoute route) => ServerName(route.Origin);
+
+    /// <summary>A server's name for sentences: a named provider ("OpenRouter"), "the server on this PC", or its host name.</summary>
+    private static string ServerName(string origin) =>
+        ChatCompletionsEndpointCatalog.Named(origin)?.Name ??
+        (Uri.TryCreate(origin, UriKind.Absolute, out var uri) && ModelContextProbe.IsLoopback(uri) ? "the server on this PC"
+            : Uri.TryCreate(origin, UriKind.Absolute, out var other) ? other.Host : "the server");
+
+    /// <summary>After an image or audio model of its own is chosen (MainWindow.SenseModels.cs): asks its server quietly what the
+    /// model takes, as for Thinking: Ollama on this PC through its API, without loading the model, and another server through its
+    /// model list, with the key the model uses. What it says is kept in model-abilities.json (and its context in
+    /// model-limits.json). A paired computer's model is known by its name, Test vision and a refused picture.</summary>
+    private async Task CheckChosenModelAsync(DeepThinkingSettings own, SetupRoute? thinking)
+    {
+        if (own is not { Place: DeepThinkingPlace.Endpoint, Origin: { } origin, ModelId: { } model } || closing) return;
+        try
+        {
+            ModelContextReport report;
+            if (ContextBudget.IsLocalOllama(SetupRouteType.ChatCompletions, origin))
+            {
+                using var client = ModelContextProbe.CreateClient(loopback: true);
+                report = await ModelContextProbe.OllamaAsync(client, LocalOllamaOrigin, model, load: false, lifetime.Token);
+            }
+            else
+            {
+                var key = await Task.Run(() => OwnKey(own, thinking), lifetime.Token);
+                using var client = ModelContextProbe.CreateClient(OnThisPc(origin));
+                report = await ModelContextProbe.ChatCompletionsAsync(client, origin, model, key, ServerName(origin), lifetime.Token);
+            }
+            ErrorLog.Info($"Checked {own.Describe()}: {report.Summary}" +
+                (report.AbilitySource is { } said ? $" Hears: {report.Hears?.ToString() ?? "not said"}, sees: {report.Sees?.ToString() ?? "not said"} ({said})." : ""));
+            if (report.Reached) RecordModelLimit(origin, model, report);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (error is InvalidOperationException or Martlet.Core.Contracts.ContractException)
+        {
+            ErrorLog.Info($"Couldn't ask about {own.Describe()}: {error.Message}");
+        }
+        if (!closing && openTab is CompanionTab.Vision or CompanionTab.Listening && !tabEdited) RenderTab();
+    }
 
     /// <summary>Companion › Replies' Check model limit: asks, says what it found and shows the context line again.</summary>
     private async Task CheckContextFromRepliesAsync()

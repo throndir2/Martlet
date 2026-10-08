@@ -63,7 +63,7 @@ public static class ModelHearingTest
             }
             if (code is 401 or 403)
                 return new(null, $"{serverName} refused the test (error {code}); check the API key.", true, null, took);
-            if (code is 400 or 404 or 415 or 422 or 500 or 501 && RefusesAudio(text))
+            if (code is 400 or 404 or 415 or 422 or 500 or 501 && RefusesAudio(WithoutModel(text, modelId)))
                 return new(false, $"{serverName} refused the recording for {modelId} (error {code}{Detail(text)}), so it can't hear.", true, null, took);
             if (code == 404)
                 return new(null, $"{serverName} doesn't have {modelId} (error 404).", true, null, took);
@@ -122,7 +122,9 @@ public static class ModelHearingTest
         return buffer.ToArray();
     }
 
-    private static async Task<string> ReadAsync(HttpResponseMessage response, CancellationToken token)
+    // Shared with ModelVisionTest: the answer's body (at most 256 KiB), its reply text, the server's error message, the letters
+    // of a reply and a one-line reply of at most 80 characters.
+    internal static async Task<string> ReadAsync(HttpResponseMessage response, CancellationToken token)
     {
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
         var chunk = new byte[16_384];
@@ -161,7 +163,18 @@ public static class ModelHearingTest
             lower.Contains("multimodal", StringComparison.Ordinal);
     }
 
-    private static string Detail(string text)
+    // An error's text without the model's name (its full ID, the part after the last slash and the part before a tag), so a model
+    // named for audio or vision that the server doesn't have ("model 'llama3.2-vision' not found") doesn't read as a refused
+    // recording or picture. Shared with ModelVisionTest.
+    internal static string WithoutModel(string text, string modelId)
+    {
+        var last = modelId[(modelId.LastIndexOf('/') + 1)..];
+        foreach (var name in new[] { modelId, last, last.Split(':')[0] }.Where(n => n.Length > 0).Distinct().OrderByDescending(n => n.Length))
+            text = text.Replace(name, "", StringComparison.OrdinalIgnoreCase);
+        return text;
+    }
+
+    internal static string Detail(string text)
     {
         string? message = null;
         try
@@ -176,9 +189,9 @@ public static class ModelHearingTest
         return message is { Length: > 0 } ? ": " + Shorten(message) : "";
     }
 
-    private static string Letters(string text) => new([.. text.Where(char.IsLetter).Select(char.ToLowerInvariant)]);
+    internal static string Letters(string text) => new([.. text.Where(char.IsLetter).Select(char.ToLowerInvariant)]);
 
-    private static string Shorten(string text)
+    internal static string Shorten(string text)
     {
         var one = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         return one.Length <= 80 ? one : one[..79] + "…";

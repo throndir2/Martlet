@@ -1158,22 +1158,39 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             martletDirectory = new { type = "string" }
         }),
-        Tool("model_ability_check", "What Thinking models were found to hear (recorded audio) and see (pictures): model-abilities.json in " +
+        Tool("model_ability_check", "What models were found to hear (recorded audio) and see (pictures): model-abilities.json in " +
             "a data directory, also shared with the owner's other computers as the model-abilities setting. Then rehearses the production " +
             "detection (ModelContextProbe) against fixture servers on 127.0.0.1 shaped like OpenRouter's model list " +
-            "(architecture.input_modalities), llama.cpp (/props modalities) and Ollama (/api/show capabilities), Companion > Listening > " +
-            "Test hearing (ModelHearingTest) against a fixture Chat Completions endpoint that answers the test word only when the request " +
-            "carries the recording (it is told the word: NOT AI), a model that ignores audio, one that refuses it and a wrong key; the " +
+            "(architecture.input_modalities), llama.cpp (/props modalities) and Ollama (/api/show capabilities), Test hearing " +
+            "(ModelHearingTest) and Test vision (ModelVisionTest, with the desktop's own picture of one word drawn on this PC) against a " +
+            "fixture Chat Completions endpoint that answers the test word only when the request carries the recording or the picture (it " +
+            "is told the word: NOT AI), a model that ignores audio or pictures, one that refuses them and a wrong key; the " +
             "hearing and vision decisions replies use (decisions) and the shared value's round trip (shared). With baseUrl (an http:// " +
             "server on this PC only, for example Ollama's http://127.0.0.1:11434/v1 or a llama.cpp server) and modelId it also asks that " +
-            "real server what the model takes (real.metadata), and with test=true sends it the real Test hearing request: one word said " +
-            "by Windows speech (never microphone audio, nothing played). Nothing leaves this PC; reads no credentials; saves nothing.", new
+            "real server what the model takes (real.metadata); test=true sends it the real Test hearing request (one word said by Windows " +
+            "speech, never microphone audio, nothing played) and testVision=true the real Test vision request (one word drawn on this PC, " +
+            "never the screen). Nothing leaves this PC; reads no credentials; saves nothing.", new
         {
             dataDirectory = new { type = "string" },
             baseUrl = new { type = "string", maxLength = 256 },
             modelId = new { type = "string", maxLength = 128 },
-            test = new { type = "boolean" }
+            test = new { type = "boolean" },
+            testVision = new { type = "boolean" }
         }),
+        Tool("model_lab", "A live OpenAI-compatible fixture endpoint on 127.0.0.1 for the desktop on a disposable data directory, so " +
+            "Companion > Vision > Image model, Companion > Listening > Audio model and Thinking can choose and test models without a real " +
+            "provider (NOT AI). action \"start\" (returns baseUrl, such as http://127.0.0.1:52341/v1, to type as a custom server's API base " +
+            "URL), \"status\" or \"stop\" (it also ends with this server). /v1/models lists lab/sees (text and pictures), lab/hears (text and " +
+            "recordings), lab/omni (all three) and lab/text (text only) with their input modalities, as OpenRouter lists them. Chat " +
+            "completions refuse a picture or a recording a lab model doesn't take (error 400), read Test vision's word by comparing the " +
+            "picture with this PC's own drawings of the test words, read Test hearing's word with Windows speech recognition limited to " +
+            "the test words (when this PC has an English recognizer), and answer anything else with fixed text (streamed when asked). " +
+            "status lists the requests by model, the kinds of parts they carried and what the lab answered, never their content. No key " +
+            "is needed or read. port (1024-65535) fixes the port for a scripted desktop run; left out, a free one is taken.", new
+        {
+            action = new { type = "string", @enum = new[] { "start", "status", "stop" } },
+            port = new { type = "integer", minimum = 1024, maximum = 65535 }
+        }, ["action"]),
         Tool("local_model_servers", "Companion > Thinking > This PC > A model app you already use, headless: the model apps Martlet looks " +
             "for on this PC by default address (Ollama 11434, LM Studio 1234, llama.cpp 8080, KoboldCpp 5001, Jan 1337, vLLM 8000, Lemonade " +
             "13305 and 8000/api, SGLang 30000, text-generation-webui or TabbyAPI 5000, GPT4All 4891, Docker Model Runner 12434/engines, " +
@@ -2167,7 +2184,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalBool(arguments, "live") ?? false, OptionalString(arguments, "model"), cancellation),
                 "discord_voice_check" => await DiscordVoiceCheck.RunAsync(OptionalString(arguments, "martletDirectory") is null ? null : MartletDirectory(arguments), cancellation),
                 "model_ability_check" => await ModelAbilityCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "baseUrl"),
-                    OptionalString(arguments, "modelId"), OptionalBool(arguments, "test") ?? false, cancellation),
+                    OptionalString(arguments, "modelId"), OptionalBool(arguments, "test") ?? false, OptionalBool(arguments, "testVision") ?? false,
+                    cancellation),
+                "model_lab" => await ModelLab.RunAsync(RequiredString(arguments, "action"), OptionalInt(arguments, "port"), cancellation),
                 "local_model_servers" => await LocalModelServersCheck.RunAsync(OptionalString(arguments, "address"),
                     OptionalString(arguments, "model"), OptionalBool(arguments, "test") ?? false, OptionalBool(arguments, "fixture") ?? false,
                     cancellation),
