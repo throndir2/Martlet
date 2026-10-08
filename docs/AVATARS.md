@@ -134,9 +134,10 @@ what each one is.
     blush, an angry or sad face, tears, a dark face, an outfit or accessory).
 
   Martlet's holdable gestures (pout, shy, look_away, drowsy, eyes_up and
-  mouth_open, the overlay emotes sweat, hearts, gloom and sleepy, and the blush
-  levels blush_deep and blush_fierce) also stay on by default. Held gestures
-  layer (see *Layers*); every blush level is the cheeks, so a new level
+  mouth_open, the overlay emotes sweat, hearts, gloom, sleepy, heart_eyes,
+  star_eyes, tongue_out, drool, steam and dizzy, and the blush levels
+  blush_deep and blush_fierce) also stay on by default. Held gestures layer
+  (see *Layers*); every blush level is the cheeks, so a new level
   replaces the one before. A gesture that the renderer cannot hold plays once.
   Motions and the other gestures are brief by default. The Thinking model's
   naming also gives `stays` or `brief` for each item.
@@ -295,10 +296,19 @@ what each one is.
   the overlay layer (`web/effects/manpu.mjs` in `Martlet.Avatar.RendererHost`),
   so every Live2D model gets them and every VRM with a `head` bone. They follow
   the face (its position, size, zoom and head tilt), pop in with a little bounce
-  and fade out after 2 to 4 seconds; sweat, hearts, gloom and sleepy linger
-  (keep going until `{/tag}`) by default.
+  and fade out after 2 to 4 seconds; sweat, hearts, gloom, sleepy, heart_eyes,
+  star_eyes, tongue_out, drool, steam and dizzy linger (keep going until
+  `{/tag}`) by default.
   Their colours are fixed and outlined, so they read on any desktop. The tag is
-  the name; a model's own emote with the same tag replaces it:
+  the name; a model's own emote with the same tag replaces it (a model's
+  `爱心眼` expression becomes its own `heart_eyes`). Tears fall from the eye
+  points, and tongue_out and drool hang from the mouth point. The hearts, stars
+  and swirls of heart_eyes, star_eyes and dizzy sit on each iris, sized to fit
+  inside it, and are clipped to the eye's visible opening, so they never go
+  outside the eye and the eyelid cuts them as it closes. They use the iris and
+  the eye opening the renderer finds, and nothing shows on an eye it reports as
+  closed or hidden; without them, they are iris-sized at the eye points and
+  clipped to an eye-sized ellipse:
 
   | Overlay emote (tag) | What it draws | When to use |
   | --- | --- | --- |
@@ -312,6 +322,14 @@ what each one is.
   | `exclaim` | an exclamation mark popping up | startled, realizing |
   | `sleepy` | a floating Zzz | sleepy, bored |
   | `music` | music notes floating up | humming, happy |
+  | `heart_eyes` | pink hearts pulsing in the eyes | smitten, adoring |
+  | `star_eyes` | twinkling stars in the eyes | starstruck, thrilled |
+  | `tongue_out` | a little tongue poking out below the mouth | a playful tease |
+  | `drool` | a drop of drool running from a corner of the mouth | craving something tasty, dozing off |
+  | `steam` | puffs of steam blowing out from the head | fuming, overheated |
+  | `dizzy` | swirls spinning in the eyes, little stars circling the head | dizzy, dazed |
+  | `idea` | a light bulb lighting up above the head | a sudden idea |
+  | `ellipsis` | three dots appearing one by one beside the head | speechless, an awkward silence |
 
   A voice emote plays when the voice speaks its tag (Chatterbox Turbo's
   `[laugh]`, Dia's `(laughs)`), alongside any of the model's own emotes on the

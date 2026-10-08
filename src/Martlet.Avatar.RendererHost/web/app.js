@@ -60,7 +60,8 @@ function replaceBlush(name) {
 }
 // Where Martlet draws over the face now, as fractions of the canvas (+y down, like a tap) for Martlet's MCP: how the face is
 // followed, its middle, width and tilt, and at each cheek how much of it shows, how wide it is for its face width and what of
-// the character is there (the page's own hit test), with the overlays showing.
+// the character is there (the page's own hit test), the eye and mouth points and the top of the head the overlay emotes are
+// drawn from, with the overlays showing.
 function faceReading(id) {
   const anchor = face(), overlays = activeOverlays();
   const width = Math.max(1, canvas.clientWidth), height = Math.max(1, canvas.clientHeight);
@@ -74,10 +75,11 @@ function faceReading(id) {
       across: frame ? round(Math.hypot(frame.right.x, frame.right.y) / anchor.width) : null, hit: !!hit,
       drawables: hit?.drawables?.slice(0, 3) ?? [], bone: hit?.bone ?? null, mesh: hit?.mesh ?? null };
   };
+  const at = point => point ? { x: round(point.x / width), y: round(point.y / height) } : null;
   return { id, found: true, tracking: anchor.tracking ?? "estimate", x: round(anchor.x / width), y: round(anchor.y / height),
     width: round(anchor.width / width), tilt: Math.round(anchor.angle * 1800 / Math.PI) / 10,
     cheekLeft: cheek(anchor.cheekLeft, anchor.cheekLeftFrame), cheekRight: cheek(anchor.cheekRight, anchor.cheekRightFrame),
-    overlays, pinned };
+    eyeLeft: at(anchor.eyeLeft), eyeRight: at(anchor.eyeRight), mouth: at(anchor.mouth), top: at(anchor.top), overlays, pinned };
 }
 // Which gesture plays once and every one held: the model's held gestures, then the held drawings.
 function gestureState() {

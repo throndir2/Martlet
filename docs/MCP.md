@@ -4758,7 +4758,10 @@ has `n`, `found`, `tracking` (`mesh`, `bones` or `estimate`), `x`, `y` and
 `width` (fractions of the overlay's drawing, +y down), `tilt` (degrees,
 clockwise), `cheekLeft` and `cheekRight` (`x`, `y`, `visible` from 0 to 1,
 `across`, the cheek's width against the face's width, and the hit test there:
-`hit`, `drawables`, `bone`, `mesh`), `overlays` (the overlays showing, such as
+`hit`, `drawables`, `bone`, `mesh`), `eyeLeft`, `eyeRight`, `mouth` and `top`
+(`x`, `y`: the eye and mouth points the overlay emotes such as `tears` or
+`tongue_out` are drawn from, and the top of the head; left out when the
+renderer has none), `overlays` (the overlays showing, such as
 `["blush_deep"]`; one fading out is listed until it is gone) and
 `pinned` (Live2D: `carriers`, how many mesh vertices the face rides on, and
 `milliseconds`, how long finding them took at load). `summary` gives the
