@@ -5,24 +5,28 @@ using System.Text;
 using System.Text.Json;
 using Martlet.Core.Audio;
 using Martlet.Core.Settings;
+using Martlet.Mcp.Shared;
 using Martlet.Providers;
 
 namespace Martlet.Mcp;
 
-/// <summary>model_ability_check: what Thinking models were found to hear and see (model-abilities.json in a data directory, the
+/// <summary>model_ability_check: what models were found to hear and see (model-abilities.json in a data directory, the
 /// <c>model-abilities</c> shared setting), then the production detection rehearsed against fixture servers on 127.0.0.1 shaped
 /// like OpenRouter's model list (<c>architecture.input_modalities</c>), llama.cpp (<c>/props</c> modalities) and Ollama
-/// (<c>/api/show</c> capabilities), Companion › Listening › Test hearing (<see cref="ModelHearingTest"/>) against a fixture Chat
-/// Completions endpoint that "hears" only when the request carries the recording (it is told the word; NOT AI), the hearing and
-/// vision decisions replies use (<see cref="HearingModelCatalog.ForRoute"/>, <see cref="VisionModelCatalog.ForRoute"/>) and the
-/// shared value's round trip. With <c>baseUrl</c> (a server on this PC only, for example Ollama's
-/// http://127.0.0.1:11434/v1) and <c>modelId</c> it also asks that real server, and with <c>test</c> runs Test hearing against
-/// it with a word said by Windows speech. Nothing leaves this PC; no credentials are read; nothing is saved.</summary>
+/// (<c>/api/show</c> capabilities), Test hearing (<see cref="ModelHearingTest"/>) and Test vision (<see cref="ModelVisionTest"/>,
+/// with the desktop's own picture of a word) against a fixture Chat Completions endpoint that "hears" or "sees" only when the
+/// request carries the recording or the picture (it is told the word; NOT AI), the hearing and vision decisions replies use
+/// (<see cref="HearingModelCatalog.ForRoute"/>, <see cref="VisionModelCatalog.ForRoute"/>) and the shared value's round trip.
+/// With <c>baseUrl</c> (a server on this PC only, for example Ollama's http://127.0.0.1:11434/v1) and <c>modelId</c> it also
+/// asks that real server; with <c>test</c> it runs Test hearing against it with a word said by Windows speech, and with
+/// <c>testVision</c> Test vision with a word drawn on this PC. Nothing leaves this PC; no credentials are read; nothing is
+/// saved.</summary>
 internal static class ModelAbilityCheck
 {
     private const string FixtureWord = "pineapple";
 
-    internal static async Task<object> RunAsync(string dataDirectory, string? baseUrl, string? modelId, bool test, CancellationToken cancellation)
+    internal static async Task<object> RunAsync(string dataDirectory, string? baseUrl, string? modelId, bool test, bool testVision,
+        CancellationToken cancellation)
     {
         Uri? real = null;
         if (baseUrl is not null)
@@ -43,7 +47,7 @@ internal static class ModelAbilityCheck
             fixture = await FixtureAsync(cancellation),
             decisions = Decisions(),
             shared = Shared(),
-            real = real is null ? null : await RealAsync(real.AbsoluteUri.TrimEnd('/'), modelId!, test, cancellation)
+            real = real is null ? null : await RealAsync(real.AbsoluteUri.TrimEnd('/'), modelId!, test, testVision, cancellation)
         };
     }
 
@@ -103,19 +107,23 @@ internal static class ModelAbilityCheck
         };
     }
 
-    // ---------- fixtures ----------
+    // ---------- fixtures (model_lab uses them too) ----------
 
-    private sealed record Request(string Method, string Path, byte[] Body);
+    internal sealed record Request(string Method, string Path, byte[] Body);
 
-    private sealed class Fixture : IAsyncDisposable
+    /// <summary>A one-request-per-connection HTTP server on 127.0.0.1 that answers with <c>answer</c>: JSON, or a streamed
+    /// (server-sent events) answer when the body starts with <c>data:</c>.</summary>
+    internal sealed class Fixture : IAsyncDisposable
     {
-        private readonly TcpListener listener = new(IPAddress.Loopback, 0);
+        private readonly TcpListener listener;
         private readonly CancellationTokenSource stop = new();
         private readonly Task serving;
         internal readonly List<Request> Requests = [];
 
-        internal Fixture(Func<Request, (int Status, string Body)> answer)
+        /// <param name="port">The port on 127.0.0.1; 0 (the default) takes a free one.</param>
+        internal Fixture(Func<Request, (int Status, string Body)> answer, int port = 0)
         {
+            listener = new(IPAddress.Loopback, port);
             listener.Start();
             serving = ServeAsync(answer);
         }
@@ -138,7 +146,8 @@ internal static class ModelAbilityCheck
                         lock (Requests) Requests.Add(request);
                         var (status, body) = answer(request);
                         var payload = Encoding.UTF8.GetBytes(body);
-                        var head = Encoding.ASCII.GetBytes($"HTTP/1.1 {status} {(status == 200 ? "OK" : "Error")}\r\nContent-Type: application/json\r\n" +
+                        var type = body.StartsWith("data:", StringComparison.Ordinal) ? "text/event-stream" : "application/json";
+                        var head = Encoding.ASCII.GetBytes($"HTTP/1.1 {status} {(status == 200 ? "OK" : "Error")}\r\nContent-Type: {type}\r\n" +
                             $"Content-Length: {payload.Length}\r\nConnection: close\r\n\r\n");
                         await stream.WriteAsync(head, stop.Token);
                         await stream.WriteAsync(payload, stop.Token);
@@ -214,12 +223,16 @@ internal static class ModelAbilityCheck
             using var document = JsonDocument.Parse(r.Body);
             var model = document.RootElement.GetProperty("model").GetString();
             var heard = Encoding.UTF8.GetString(r.Body).Contains("\"input_audio\"", StringComparison.Ordinal);
+            var saw = Encoding.UTF8.GetString(r.Body).Contains("\"image_url\"", StringComparison.Ordinal);
             string Reply(string text) => "{\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(text) + "}}]}";
             return model switch
             {
                 "hears" => (200, Reply(heard ? "Pineapple." : "I didn't get a recording.")),
                 "drops-audio" => (200, Reply("Sorry, I can't listen to recordings, only read text.")),
                 "refuses-audio" => (400, "{\"error\":{\"message\":\"This model does not support audio input.\",\"type\":\"invalid_request_error\"}}"),
+                "sees" => (200, Reply(saw ? "Pineapple." : "I didn't get a picture.")),
+                "drops-image" => (200, Reply("Sorry, I can only read text.")),
+                "refuses-image" => (400, "{\"error\":{\"message\":\"This model does not support image input.\",\"type\":\"invalid_request_error\"}}"),
                 "wrong-key" => (401, "{\"error\":{\"message\":\"Invalid API key.\"}}"),
                 _ => (404, "{\"error\":{\"message\":\"model not found\"}}")
             };
@@ -252,8 +265,23 @@ internal static class ModelAbilityCheck
         var drops = await Test("drops-audio");
         var refuses = await Test("refuses-audio");
         var key = await Test("wrong-key");
-        Request? sent;
-        lock (chat.Requests) sent = chat.Requests.FirstOrDefault();
+        // Test vision with the desktop's own picture of the word (drawn on the STA thread, as the desktop draws it).
+        var picture = await WpfThread.RunAsync(() => VisionTestPicture.Render(FixtureWord));
+        async Task<object> See(string model)
+        {
+            var report = await ModelVisionTest.RunAsync(client, chat.Origin + "/v1", model, null, picture, FixtureWord, "the fixture", cancellation);
+            return new { report.Sees, report.Reached, report.Summary };
+        }
+        var sees = await See("sees");
+        var dropsImage = await See("drops-image");
+        var refusesImage = await See("refuses-image");
+        var keyVision = await See("wrong-key");
+        Request? sent, shown;
+        lock (chat.Requests)
+        {
+            sent = chat.Requests.FirstOrDefault();
+            shown = chat.Requests.FirstOrDefault(r => Encoding.UTF8.GetString(r.Body).Contains("\"image_url\"", StringComparison.Ordinal));
+        }
         object? request = null;
         if (sent is not null)
         {
@@ -272,6 +300,36 @@ internal static class ModelAbilityCheck
                 wordInRequestText = Encoding.UTF8.GetString(sent.Body).Contains(FixtureWord, StringComparison.OrdinalIgnoreCase)
             };
         }
+        object? visionRequest = null;
+        if (shown is not null)
+        {
+            using var body = JsonDocument.Parse(shown.Body);
+            var content = body.RootElement.GetProperty("messages")[0].GetProperty("content");
+            var parts = content.EnumerateArray().Select(p => p.GetProperty("type").GetString()).ToArray();
+            var url = content.EnumerateArray().FirstOrDefault(p => p.GetProperty("type").GetString() == "image_url") is { ValueKind: JsonValueKind.Object } part
+                ? part.GetProperty("image_url").GetProperty("url").GetString() ?? "" : "";
+            const string prefix = "data:image/png;base64,";
+            var png = url.StartsWith(prefix, StringComparison.Ordinal) ? Convert.FromBase64String(url[prefix.Length..]) : [];
+            visionRequest = new
+            {
+                parts,
+                pngDataUrl = png.Length > 8 && png.AsSpan(0, 8).SequenceEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }),
+                samePicture = png.AsSpan().SequenceEqual(picture.Content.Span),
+                stream = body.RootElement.GetProperty("stream").GetBoolean(),
+                thinkingStepsOff = body.RootElement.TryGetProperty("chat_template_kwargs", out var kwargs) &&
+                    kwargs.GetProperty("enable_thinking").ValueKind == JsonValueKind.False,
+                wordInRequestText = Encoding.UTF8.GetString(shown.Body).Contains(FixtureWord, StringComparison.OrdinalIgnoreCase)
+            };
+        }
+        var pixels = TouchZoneImages.Decode(picture.Content.ToArray());
+        var dark = 0;
+        for (var i = 0; i < pixels.Bgra.Length; i += 4) if (pixels.Bgra[i] < 128) dark++;
+        var drawn = new
+        {
+            picture.Width, picture.Height, bytes = picture.ByteCount, picture.MimeType,
+            // The word's letters cover part of the white picture: neither blank nor filled.
+            darkShare = Math.Round(dark / (double)(pixels.Width * pixels.Height), 3)
+        };
         string Json(object value) => JsonSerializer.Serialize(value);
         var ok = Json(omni).Contains("\"Hears\":true,\"Sees\":true", StringComparison.Ordinal) &&
             Json(sight).Contains("\"Hears\":false,\"Sees\":true", StringComparison.Ordinal) &&
@@ -282,18 +340,25 @@ internal static class ModelAbilityCheck
             Json(hears).Contains("\"Hears\":true", StringComparison.Ordinal) && Json(drops).Contains("\"Hears\":false", StringComparison.Ordinal) &&
             Json(refuses).Contains("\"Hears\":false", StringComparison.Ordinal) && Json(key).Contains("\"Hears\":null", StringComparison.Ordinal) &&
             Json(request ?? "").Contains("\"wavValid\":true", StringComparison.Ordinal) &&
-            Json(request ?? "").Contains("\"wordInRequestText\":false", StringComparison.Ordinal);
+            Json(request ?? "").Contains("\"wordInRequestText\":false", StringComparison.Ordinal) &&
+            Json(sees).Contains("\"Sees\":true", StringComparison.Ordinal) && Json(dropsImage).Contains("\"Sees\":false", StringComparison.Ordinal) &&
+            Json(refusesImage).Contains("\"Sees\":false", StringComparison.Ordinal) && Json(keyVision).Contains("\"Sees\":null", StringComparison.Ordinal) &&
+            Json(visionRequest ?? "").Contains("\"pngDataUrl\":true,\"samePicture\":true,\"stream\":false,\"thinkingStepsOff\":true,\"wordInRequestText\":false",
+                StringComparison.Ordinal) &&
+            drawn is { Width: VisionTestPicture.Width, Height: VisionTestPicture.Height, darkShare: > 0.01 and < 0.5 };
         return new
         {
             ok, note = "FIXTURE servers on 127.0.0.1, NOT the real services and NOT AI: the chat fixture is told the test word.",
             openRouterOmni = omni, openRouterSight = sight, openRouterUnlisted = unlisted, llamaCpp, ollamaGemma4E2b = gemma, ollamaQwen3 = qwen,
-            testHears = hears, testDropsAudio = drops, testRefusesAudio = refuses, testWrongKey = key, testRequest = request
+            testHears = hears, testDropsAudio = drops, testRefusesAudio = refuses, testWrongKey = key, testRequest = request,
+            testSees = sees, testDropsImage = dropsImage, testRefusesImage = refusesImage, testWrongKeyVision = keyVision, visionRequest,
+            picture = drawn
         };
     }
 
     // ---------- a real server on this PC ----------
 
-    private static async Task<object> RealAsync(string baseUrl, string modelId, bool test, CancellationToken cancellation)
+    private static async Task<object> RealAsync(string baseUrl, string modelId, bool test, bool testVision, CancellationToken cancellation)
     {
         using var client = ModelContextProbe.CreateClient(loopback: true);
         var started = System.Diagnostics.Stopwatch.StartNew();
@@ -307,16 +372,26 @@ internal static class ModelAbilityCheck
             var result = await ModelHearingTest.RunAsync(client, baseUrl, modelId, null, clip, word, "the server on this PC", cancellation);
             hearing = new { word, clipSeconds = Math.Round(clip.Duration.TotalSeconds, 2), result.Hears, result.Reply, result.Milliseconds, result.Summary };
         }
+        object? vision = null;
+        if (testVision)
+        {
+            var word = ModelVisionTest.Words[Random.Shared.Next(ModelVisionTest.Words.Count)];
+            var picture = await WpfThread.RunAsync(() => VisionTestPicture.Render(word));
+            var result = await ModelVisionTest.RunAsync(client, baseUrl, modelId, null, picture, word, "the server on this PC", cancellation);
+            vision = new { word, pictureBytes = picture.ByteCount, result.Sees, result.Reply, result.Milliseconds, result.Summary };
+        }
+        var found = report.Hears is null && report.Sees is null ? null : new ModelAbilities().With(new()
+        {
+            Origin = baseUrl, ModelId = modelId, Hears = report.Hears, Sees = report.Sees, Source = report.AbilitySource ?? "metadata",
+            CheckedAt = DateTimeOffset.UtcNow
+        });
         return new
         {
             baseUrl, modelId, metadata = new { report.Reached, report.ContextTokens, report.Hears, report.Sees, report.AbilitySource, report.Summary, ms = metadataMs },
-            routeHearing = HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, baseUrl, modelId,
-                report.Hears is null && report.Sees is null ? null : new ModelAbilities().With(new()
-                {
-                    Origin = baseUrl, ModelId = modelId, Hears = report.Hears, Sees = report.Sees, Source = report.AbilitySource ?? "metadata",
-                    CheckedAt = DateTimeOffset.UtcNow
-                })).ToString(),
-            hearingTest = hearing
+            routeHearing = HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, baseUrl, modelId, found).ToString(),
+            routeVision = VisionModelCatalog.ForRoute(baseUrl, modelId, found).ToString(),
+            hearingTest = hearing,
+            visionTest = vision
         };
     }
 

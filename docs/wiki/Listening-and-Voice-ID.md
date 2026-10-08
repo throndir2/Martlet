@@ -22,6 +22,12 @@ Listening starts only when you press **Start listening** or use push-to-talk. La
 
 If Listening uses another of your computers or OpenAI and it can't hear you (the computer is off, its service stopped, the key was removed), a Parakeet model downloaded on this PC hears you instead, on the processor. Nothing is sent anywhere. For the next minute Martlet goes straight to Parakeet, then tries your choice again. The **Now** card on Companion › Listening says which model stands in, or offers to download one without changing Listening.
 
+## Audio model
+
+Speech-to-text writes down what you say. Martlet can also hear *how* you say it, and what this PC plays. By default, the Thinking model hears the recordings itself, if it can (Gemma 4 E2B does). To pair a text-only Thinking model with one that hears, choose an **Audio model** on **Companion › Listening**: Ollama on this PC, a cloud provider or server, or the same model as your image model. It describes each recording in words, and Thinking still writes every reply. A reply never waits for the audio model.
+
+The card says what hears the recordings now, what the model is known to do and what is sent where. **Test hearing** sends the model one word said by a Windows voice (never your voice) and checks that it hears it. More detail: [Image and audio models](https://github.com/throndir2/Martlet/blob/main/docs/SENSE_MODELS.md).
+
 ## People
 
 Open **Companion › People**. Voice recognition is on by default and bundled. You can name voices and give each as many other names as they go by (up to 40), hear the last few clips of a voice you haven't named yet, mark **This is me**, merge voices, inspect memories for that person, forget one voice or forget all voices.

@@ -638,6 +638,7 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(adviceText, "VisionStatus");
         now.Add(adviceText);
         page.Children.Add(Card([.. now]));
+        page.Children.Add(SenseModelCards(SenseKind.Image));
 
         var looks = new List<UIElement> { Heading("What Martlet looks at") };
         foreach (var (kind, title, detail) in new[]

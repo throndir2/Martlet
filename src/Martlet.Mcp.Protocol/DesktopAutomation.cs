@@ -162,11 +162,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // apps answer (GET of their model lists), and Find models only asks the address typed there (on this PC only) for its
         // models. Neither saves, sends a prompt or starts anything.
         "LocalServersScan", "LocalServerFind",
+        // Companion › Thinking's Image model and Audio model links (beside ThinkingSenses) only open Vision or Listening.
+        "ThinkingOpenImageModel", "ThinkingOpenAudioModel",
         "DiscordCallCheck"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
-    /// "Where it runs" options ("Place-Voice-Computer") only show that place's choices, which their own buttons commit, and
+    /// "Where it runs" options ("Place-Voice-Computer") and the Image model and Audio model choices on Vision and Listening
+    /// ("Place-ImageModel-ThisPc", "Place-AudioModel-OtherSense") only show that place's choices, which their own buttons commit, and
     /// Voice engine's computer pills ("SpeakingHost-gpu-pc") and Singing's ("SingingHost-this-pc") only show that computer's engines. Home's
     /// Health tiles ("HealthCheck-thinking") and its passive fixes ("HealthOpen-voice-setup-open-voice", "HealthOpen-crash-dismiss")
     /// only open the page where something changes, or hide the item. Diagnostics' filters ("LogLevel-errors", "LogSource-all",
@@ -353,6 +356,26 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // found (the model's one-word answer, never anything said). Clicking TalkHearVoiceTest sends the Thinking model a test
         // recording (a provider request), so it needs --allow-ui-effects and a model on this PC.
         "TalkHearVoiceTestStatus",
+        // Companion › Vision › Image model and Companion › Listening › Audio model (MainWindow.SenseModels.cs): the choice in words
+        // (ImageModelNow: "Use the same model as the text model (Thinking: gemma4:e2b)." or "A model of its own: Ollama on this PC
+        // (qwen2.5vl:7b), chosen on 10/8/2026."), where pictures or recordings go now and why (ImageModelRoute: the routing's
+        // words), what the model that takes them is known to do and where that came from (ImageModelKnown), what is sent to a
+        // model of its own and where (ImageModelSent), and what Test vision or Test hearing does or last found (ImageModelTestStatus;
+        // the model's one-word answer). Under Ollama on this PC: the model picked (ImageModelLocalModel), what Ollama has and what
+        // each model takes (ImageModelLocalStatus), what the picked one is known to do (ImageModelLocalKnown) and whether it fits
+        // beside Thinking's on the graphics card (ImageModelLocalFit). Under A cloud provider or server: the provider picked
+        // (ImageModelProvider) and what the key box will do (ImageModelKeyStatus; never the key, base URL or model ID typed). Under
+        // One of your computers: ImageModelHosts when none is paired, and each computer's line in SafeValuePrefixes. The same with
+        // AudioModel. The Place-ImageModel-<choice> options only show a panel; ImageModelUseThinking, ImageModelUseOther,
+        // ImageModelUseLocal, ImageModelSaveCloud (with ImageModelConsent) and ImageModelUseHost-<host> save sense-models.json,
+        // ImageModelPullModel downloads a model, ImageModelCheckOllama and ImageModelCheckHosts ask Ollama or the paired computers,
+        // and ImageModelTest sends a test request, so they need --allow-ui-effects. Companion › Thinking's line on where pictures
+        // and recordings go (ThinkingSenses).
+        "ImageModelNow", "ImageModelRoute", "ImageModelKnown", "ImageModelSent", "ImageModelTestStatus", "ImageModelLocalModel",
+        "ImageModelLocalStatus", "ImageModelLocalKnown", "ImageModelLocalFit", "ImageModelProvider", "ImageModelKeyStatus", "ImageModelHosts",
+        "AudioModelNow", "AudioModelRoute", "AudioModelKnown", "AudioModelSent", "AudioModelTestStatus", "AudioModelLocalModel",
+        "AudioModelLocalStatus", "AudioModelLocalKnown", "AudioModelLocalFit", "AudioModelProvider", "AudioModelKeyStatus",
+        "ThinkingSenses",
         // Companion › Listening › When Thinking can hear you (shown while Thinking hears your voice): which way your voice goes
         // (straight, or transcribed first) and what that means. Fixed text. TalkVoicePathStraight and TalkVoicePathTranscribeFirst
         // are radio buttons (ui_snapshot's selected); choosing one saves talk-preferences.json, so it needs --allow-ui-effects.
@@ -869,6 +892,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Each paired computer's shared-card warning, when Deep thinking there shares one graphics card with its Thinking model
         // ("DeepThinkingShare-diva" reads "diva: diva already runs a Thinking model (gemma4:e4b) on its only graphics card. ...").
         "DeepThinkingHost-", "DeepThinkingShare-", "DeepThinkingAddRole-", "DeepThinkingChangeModel-", "DeepThinkingPool-", "SetupChangeHost-",
+        // Companion › Vision › Image model › One of your computers: each paired computer's line ("ImageModelHost-diva" reads "Its
+        // Thinking pool role runs qwen2.5vl:7b: it sees pictures.") and its Use for pictures button's name ("ImageModelUseHost-diva"
+        // reads "Use diva for pictures"; clicking it checks diva and saves sense-models.json, so it needs --allow-ui-effects).
+        "ImageModelHost-", "ImageModelUseHost-",
         "ThinkingPoolMember-", "ThinkingPoolSlots-", "ThinkingPoolAnswers-",
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...").
@@ -1149,7 +1176,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         if (!allowEffects) throw new InvalidOperationException("Text entry requires --allow-ui-effects.");
         if (text.Length > 4096) throw new ArgumentException("Text exceeds 4096 characters.");
         var element = Find(id);
-        if (!element.Current.IsEnabled || element.Current.ControlType != ControlType.Edit ||
+        // A text box, or a combo box you can type in (Companion › Vision › Image model's ImageModelLocalModel).
+        if (!element.Current.IsEnabled || element.Current.ControlType != ControlType.Edit && element.Current.ControlType != ControlType.ComboBox ||
             !element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) ||
             ((ValuePattern)pattern).Current.IsReadOnly)
             throw new InvalidOperationException($"Control '{id}' is not an enabled editable text field.");

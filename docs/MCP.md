@@ -385,6 +385,74 @@ disposable one), `saved` says where recordings go with its `sense-models.json`:
 recording is a synthesized clip, never a microphone; nothing leaves loopback and
 no credentials are read.
 
+**The Image model and Audio model cards.** Companion › Vision's Image model
+card and Companion › Listening's Audio model card read as status (ui_snapshot
+with `idPrefix` `ImageModel` or `AudioModel`). `ImageModelNow` is the choice
+(*Use the same model as the text model (Thinking: gemma4:e2b).*, *Use the same
+model as the audio model, now the text model.*, *A model of its own: Ollama on
+this PC (qwen2.5vl:7b), chosen on 10/8/2026.*). `ImageModelRoute` is where
+pictures go and why (the routing's words). `ImageModelKnown` is what the model
+that takes them is known to do: *lab/sees sees pictures, as Martlet found out
+(last check on 10/8/2026: a test request).*, *By its name, qwen3.5:4b sees
+pictures. Test vision makes sure.*, or that Martlet doesn't know yet.
+`ImageModelSent` (a model of its own only) is what is sent and where: pictures
+stay on this PC with Ollama, go to an app on this PC that may pass them on, go
+to a provider's host where requests may cost money, or go to a paired computer
+through its pinned connection. `ImageModelTestStatus` says what Test vision
+sends or what it last found (the model's one-word answer and the time). The
+`Place-ImageModel-<choice>` options (`Thinking`, `OtherSense`, `ThisPc`,
+`Cloud`, `Computer`) are passive: they only show their panel. Under *Ollama on
+this PC*, `ImageModelLocalModel` (a combo box you can type in; `ui_set_text`
+works on it) is the model picked, `ImageModelLocalStatus` what Ollama has and
+what each model takes, `ImageModelLocalKnown` what the picked one is known to
+do and `ImageModelLocalFit` whether it fits beside Thinking's on the graphics
+card. Under *A cloud provider or server*, `ImageModelProvider` is the provider
+and `ImageModelKeyStatus` what the key box will do (never the key, base URL or
+model ID typed: `ImageModelBaseUrl`, `ImageModelModelId` and `ImageModelKey`
+aren't read). Under *One of your computers*, `ImageModelHost-<host>` is each
+paired computer's offer (or `ImageModelHosts` when none is paired). The same
+IDs exist with `AudioModel` (no computers). These save `sense-models.json`, ask
+a server or send a test request, so they need `--allow-ui-effects`:
+`ImageModelUseThinking`, `ImageModelUseOther`, `ImageModelUseLocal`,
+`ImageModelPullModel`, `ImageModelCheckOllama`, `ImageModelSaveCloud` (with
+`ImageModelConsent`), `ImageModelUseHost-<host>`, `ImageModelCheckHosts`,
+`ImageModelTest` and the `AudioModel` ones. Companion › Thinking's
+`ThinkingSenses` says where pictures and recordings go; its
+`ThinkingOpenImageModel` and `ThinkingOpenAudioModel` links are passive.
+
+`model_lab` (`action`: `start`, `status` or `stop`; optional `port`
+1024-65535 for a scripted run) keeps an OpenAI-compatible fixture endpoint on
+127.0.0.1 running for the desktop, so these cards (and Thinking) can choose and
+test models with no real provider (NOT AI). `start` returns `baseUrl` (type it
+as a *Custom OpenAI-compatible server*'s base URL, or as Thinking's *Another
+address on this PC*). `/v1/models` lists `lab/sees` (text and pictures),
+`lab/hears` (text and recordings), `lab/omni` (all three) and `lab/text` (text
+only) with their input modalities, as OpenRouter lists them. Chat completions
+refuse a picture or a recording that a lab model doesn't take (error 400),
+read Test vision's word by comparing the picture with this PC's own drawings
+of the test words, read Test hearing's word with Windows speech recognition
+limited to the test words (when this PC has an English recognizer), and answer
+anything else with fixed text, streamed when asked. `status` lists the recent
+requests by model, the kinds of parts they carried and what the lab answered,
+never their content. It ends with the MCP server.
+
+```powershell
+# Choose lab/sees as the image model in a disposable desktop and test it.
+.\scripts\Invoke-MartletMcp.ps1 -Desktop -AllowUiEffects -Calls '[
+  {"name":"model_lab","arguments":{"action":"start","port":52817}},
+  {"name":"ui_click","arguments":{"id":"TourSkip"}},
+  {"name":"ui_click","arguments":{"id":"NavCompanion"}},
+  {"name":"ui_click","arguments":{"id":"CompanionTab-Vision"}},
+  {"name":"ui_click","arguments":{"id":"Place-ImageModel-Cloud"}},
+  {"name":"ui_select","arguments":{"id":"ImageModelProvider","item":"Custom OpenAI-compatible server"}},
+  {"name":"ui_set_text","arguments":{"id":"ImageModelBaseUrl","text":"http://127.0.0.1:52817/v1"}},
+  {"name":"ui_set_text","arguments":{"id":"ImageModelModelId","text":"lab/sees"}},
+  {"name":"ui_toggle","arguments":{"id":"ImageModelConsent"}},
+  {"name":"ui_click","arguments":{"id":"ImageModelSaveCloud"}},
+  {"name":"ui_click","arguments":{"id":"ImageModelTest"}},
+  {"name":"ui_snapshot","arguments":{"idPrefix":"ImageModel"},"until":"read the test word"}]'
+```
+
 ### Live floor (the live turn first)
 
 The live floor puts the live conversation turn before all background work
@@ -3029,7 +3097,7 @@ transcripts and no recordings, the refusal to be answered from the words and the
 quick check to be right on every fixture.
 Nothing leaves this PC and no credentials are read.
 
-`model_ability_check` shows what Thinking models were found to hear (recorded
+`model_ability_check` shows what models were found to hear (recorded
 audio) and see (pictures), and rehearses how Martlet finds out (optional
 absolute `dataDirectory`, default the current user's). `saved` lists
 `model-abilities.json` (`file` `none` or `loaded`, `count`, and per model
@@ -3048,7 +3116,14 @@ word: NOT AI): `testHears` true, `testDropsAudio` (answers something else) and
 `testRefusesAudio` (error 400 about audio) false, `testWrongKey` (401) null;
 `testRequest` checks the request: `text` and `input_audio` parts, a valid WAV,
 not streamed, Thinking steps off and the word only in the recording
-(`wordInRequestText` false). `decisions` are the hearing and vision decisions
+(`wordInRequestText` false). Test vision (`ModelVisionTest`) runs the same way
+with the desktop's own picture of the word (`VisionTestPicture`, drawn on an
+STA thread): `testSees` true, `testDropsImage` and `testRefusesImage` false,
+`testWrongKeyVision` null; `visionRequest` checks `text` and `image_url`
+parts, a PNG data URL that is the drawn picture (`samePicture`), not streamed,
+Thinking steps off and the word only in the picture; `picture` is the drawing
+(640 x 240 PNG, its bytes and `darkShare`, the part the letters cover).
+`decisions` are the hearing and vision decisions
 replies use (Gemma 4 E2B in Ollama on this PC hears by name, Gemma 4 12B only
 once Ollama says so, OpenRouter's grok-4.3 doesn't when its list says so, a
 host's Ollama and OpenAI's Responses route never, a retired model never), and
@@ -3056,15 +3131,21 @@ host's Ollama and OpenAI's Responses route never, a retired model never), and
 that says only what a model sees doesn't erase a test's answer,
 `newerRefused`). Each has `ok`. With `baseUrl` (an `http://` server on this PC
 only, for example `http://127.0.0.1:11434/v1` or a llama.cpp server) and
-`modelId`, `real.metadata` asks that real server what the model takes, and
-`test: true` also sends it the real Test hearing request (`real.hearingTest`:
-the `word`, `Hears`, `Reply` and `Milliseconds`), a word said by an English
-Windows voice; nothing leaves this PC, no credentials are read and nothing is
-saved. On Companion › Listening, `TalkHearVoiceTestStatus` reads what Test
-hearing does (and whether it stays on this PC) or the last result (the model's
-one-word answer and how long it took). The `TalkHearVoiceTest` button sends the
-Thinking model a test recording (a provider request; a cloud model asks first,
-with `ConfirmationYes`/`ConfirmationNo`), so it needs `--allow-ui-effects`.
+`modelId`, `real.metadata` asks that real server what the model takes
+(`routeHearing` and `routeVision` are the decisions it gives), `test: true`
+also sends it the real Test hearing request (`real.hearingTest`: the `word`,
+`Hears`, `Reply` and `Milliseconds`), a word said by an English Windows voice,
+and `testVision: true` the real Test vision request (`real.visionTest`: the
+`word`, `Sees`, `Reply` and `Milliseconds`), a word drawn on this PC; nothing
+leaves this PC, no credentials are read and nothing is saved. On Companion ›
+Listening, `TalkHearVoiceTestStatus` reads what Test hearing does (and whether
+it stays on this PC) or the last result (the model's one-word answer and how
+long it took). The `TalkHearVoiceTest` button sends the Thinking model a test
+recording (a provider request; a cloud model asks first, with
+`ConfirmationYes`/`ConfirmationNo`), so it needs `--allow-ui-effects`. The
+Image model and Audio model cards' `ImageModelTest` and `AudioModelTest` do the
+same for the model that takes pictures and for an audio model of its own
+([Image and audio models](#image-and-audio-models)).
 
 `local_model_servers` is Companion › Thinking › This PC › *A model app you
 already use* without the window ([Local model apps](LOCAL_MODEL_APPS.md)).
