@@ -1,27 +1,35 @@
 /** Martlet's own gestures, played on any Live2D model that has the standard Cubism parameters they move: look offsets
  *  (x right, y up) added to the head direction and additive offsets to standard parameters. After the reply gestures come
  *  the voice emotes, played when the voice makes their sound or tone (laugh, sigh, gasp...), then the touch and mood
- *  gestures (wink, pout, shy...), then the held face parts (eyes_up, mouth_open). */
+ *  gestures (wink, pout, shy...), then the held face parts (eyes_up, mouth_open) and last the stronger blush levels (see
+ *  BLUSH_LEVELS). */
 export const GESTURES = Object.freeze(["nod", "shake", "tilt", "bow", "sway", "smile", "blush", "surprise",
   "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat", "groan", "sniff", "shush", "inhale", "exhale", "mumble", "hum",
   "sneeze", "whistle", "happy", "sarcastic", "angry", "fear", "crying", "whispering", "dramatic",
   "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy",
-  "eyes_up", "mouth_open"] as const);
+  "eyes_up", "mouth_open", "blush_deep", "blush_fierce"] as const);
 export type Gesture = typeof GESTURES[number];
 
 /** The gestures that can be held (a renderer action with `hold: true`): eased into and kept, gently alive, until ended. */
-export const HOLDABLE_GESTURES = Object.freeze(["pout", "shy", "look_away", "drowsy", "blush", "eyes_up", "mouth_open"] as const);
+export const HOLDABLE_GESTURES = Object.freeze(["pout", "shy", "look_away", "drowsy", "blush", "eyes_up", "mouth_open",
+  "blush_deep", "blush_fierce"] as const);
 export type HoldableGesture = typeof HOLDABLE_GESTURES[number];
 export const isHoldable = (name: string): name is HoldableGesture => (HOLDABLE_GESTURES as readonly string[]).includes(name);
+
+/** Martlet's blush levels, faintest first. Each moves the model's own blush (ParamCheek) fully; the renderer page draws the
+ *  stronger ones over it, and draws every level on a model without ParamCheek. */
+export const BLUSH_LEVELS = Object.freeze(["blush", "blush_deep", "blush_fierce"] as const);
+export const isBlush = (name: string): boolean => (BLUSH_LEVELS as readonly string[]).includes(name);
 
 /** A part of the face or body a held gesture moves. */
 export type GesturePart = "eyes" | "mouth" | "cheeks" | "brows" | "head";
 
 /** The parts each holdable gesture moves (the head part includes the body). Held gestures layer: holding one lets go only
- *  of the held gestures that move a part it moves too, so the eyes turned up, an open mouth and a blush stay on together. */
+ *  of the held gestures that move a part it moves too, so the eyes turned up, an open mouth and a blush stay on together.
+ *  Every blush level is the cheeks, so a new level replaces the one before. */
 export const HOLD_PARTS: Readonly<Record<HoldableGesture, readonly GesturePart[]>> = Object.freeze({
   pout: ["mouth", "brows", "head"], shy: ["eyes", "mouth", "head"], look_away: ["eyes", "head"], drowsy: ["eyes", "head"],
-  blush: ["cheeks"], eyes_up: ["eyes"], mouth_open: ["mouth"],
+  blush: ["cheeks"], eyes_up: ["eyes"], mouth_open: ["mouth"], blush_deep: ["cheeks"], blush_fierce: ["cheeks"],
 });
 
 /** Whether the held gestures `a` and `b` move a part in common, so holding one lets the other go. */
@@ -45,7 +53,7 @@ export const GESTURE_REQUIREMENTS: Readonly<Record<Gesture, readonly string[]>> 
   sway: ["ParamBodyAngleZ"],
   smile: ["ParamEyeLSmile", "ParamEyeRSmile"],
   // Every model blushes: with ParamCheek when it has it, otherwise Martlet draws a glow on the cheeks (the renderer page's
-  // overlay; see BLUSH_PARAMETERS).
+  // overlay; see BLUSH_PARAMETERS). So do the stronger blush levels.
   blush: [],
   surprise: ["ParamBrowLY", "ParamBrowRY"],
   laugh: angleY, chuckle: angleY, sigh: angleY, gasp: angleY, cough: angleY, clear_throat: angleY, groan: angleZ, sniff: angleY,
@@ -55,7 +63,7 @@ export const GESTURE_REQUIREMENTS: Readonly<Record<Gesture, readonly string[]>> 
   wink: ["ParamEyeLOpen"], pout: ["ParamMouthForm"], shy: ["ParamAngleX", "ParamAngleY"], giggle: angleY, flinch: angleY,
   lean_in: angleZ, look_away: angleX, think: angleY, eye_roll: ["ParamEyeBallX", "ParamEyeBallY"],
   drowsy: ["ParamEyeLOpen", "ParamEyeROpen"],
-  eyes_up: ["ParamEyeBallY"], mouth_open: ["ParamMouthOpenY"],
+  eyes_up: ["ParamEyeBallY"], mouth_open: ["ParamMouthOpenY"], blush_deep: [], blush_fierce: [],
 });
 
 const DURATION: Readonly<Record<Gesture, number>> = Object.freeze({
@@ -64,7 +72,7 @@ const DURATION: Readonly<Record<Gesture, number>> = Object.freeze({
   exhale: 1.8, mumble: 2, hum: 2.6, sneeze: 1.6, whistle: 2, happy: 2.4, sarcastic: 1.8, angry: 2.4, fear: 2, crying: 3,
   whispering: 2.2, dramatic: 2.4,
   wink: 1.1, pout: 2.6, shy: 3.5, giggle: 1.6, flinch: 1.4, lean_in: 2.8, look_away: 2.4, think: 2.8, eye_roll: 1.8, drowsy: 4.5,
-  eyes_up: 3, mouth_open: 2.6,
+  eyes_up: 3, mouth_open: 2.6, blush_deep: 4, blush_fierce: 4,
 });
 
 export function isGesture(name: string): name is Gesture {
@@ -126,7 +134,7 @@ export function gestureFrame(name: Gesture, seconds: number): GestureFrame | und
       const amount = envelope(t, total, 0.4);
       return { look: { x: 0, y: 0 }, parameters: { ParamEyeLSmile: amount, ParamEyeRSmile: amount, ParamMouthForm: amount } };
     }
-    case "blush":
+    case "blush": case "blush_deep": case "blush_fierce":
       return { look: { x: 0, y: 0 }, parameters: { ParamCheek: envelope(t, total, 0.6) } };
     case "surprise": {
       const amount = envelope(t, total, 0.15);
@@ -307,7 +315,7 @@ function moodFrame(name: HoldableGesture, t: number, a: number): GestureFrame {
       const glance = Math.max(0, wave(t - 2, 6)) ** 6;
       return { look: { x: (0.65 - 0.3 * glance) * a, y: 0.05 * a }, parameters: { ParamEyeBallX: (0.6 - 0.4 * glance) * a, ParamAngleZ: -4 * a } };
     }
-    case "blush": return { look: { x: 0, y: 0 }, parameters: { ParamCheek: a } };
+    case "blush": case "blush_deep": case "blush_fierce": return { look: { x: 0, y: 0 }, parameters: { ParamCheek: a } };
     case "drowsy": {
       const droop = drowse(t);
       return { look: { x: 0, y: -(0.25 + 0.3 * droop) * a }, parameters: {

@@ -1163,7 +1163,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
 
     internal const int MaximumFaceSamples = 60;
 
-    /// <summary>Reads where Martlet draws over the showing character's face (the blush glow and overlay emotes)
+    /// <summary>Reads where Martlet draws over the showing character's face (the blush levels and overlay emotes)
     /// <paramref name="samples"/> times, <paramref name="gapMs"/> apart, through MoveAvatar's UI Automation value ("face"). It
     /// changes nothing, so it needs no --allow-ui-effects. Returns each reading (fractions of the overlay's drawing, +y down)
     /// and a summary: how the face is followed, how far it moved, turned and tilted, and what of the character is under each

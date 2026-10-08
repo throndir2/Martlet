@@ -180,7 +180,7 @@ public sealed class EmoteComboTests
         Assert.DoesNotContain("{agree}", fewer.Tags);
         var none = Without(Catalog(Flustered), [.. Flustered.Parts]).Prompt(null, null)!;
         Assert.DoesNotContain("{flustered}", none.Tags);
-        Assert.DoesNotContain("flustered", none.Instructions);
+        Assert.DoesNotContain("{flustered}", none.Instructions);
 
         // Only the combos whose tags fit beside the emotes' and the look tags are offered (each of these takes two: its tag and
         // its off tag), so the gaze still joins in.

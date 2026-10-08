@@ -184,7 +184,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             points = new { type = "array", items = new { type = "array", items = new { type = "number", minimum = 0, maximum = 1 }, minItems = 2, maxItems = 2 } },
             stepMs = new { type = "integer", minimum = 10, maximum = 2000 }
         }),
-        Tool("character_face", "Read where Martlet draws over the showing character's face (its own blush glow and overlay emotes " +
+        Tool("character_face", "Read where Martlet draws over the showing character's face (its blush levels blush, blush_deep and blush_fierce, and overlay emotes " +
             "such as hearts or a sweat drop), samples times (1 to 60, default 1) gapMs apart (0 to 5000, default 250), as each frame " +
             "is drawn. Each reading (faces) has n, found, tracking (mesh: pinned to the Live2D model's own face meshes; bones: a " +
             "VRM's head bone; estimate: a Live2D model's head angles, when no face meshes were found), x, y and width (fractions of " +
@@ -551,8 +551,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "them (Martlet.Avatar.Hosting, docs/AVATARS.md \"Emotes and motions\"): modelPath (a .model3.json or .vrm on this PC) or the " +
             "model dataDirectory's avatar.json shows. Returns the renderer, the model's key, how many files the renderer reads (a VTube " +
             "Studio model's .vtube.json and loose .exp3/.motion3 files included) and what came from VTube Studio's settings, then each " +
-            "expression, motion group and Martlet gesture the model's rig supports (nod, shake, tilt, bow, sway; blush on every model, drawn by Martlet " +
-            "as a glow on the cheeks when the model has no ParamCheek or blush expression; Live2D smile, surprise; VRM wave, shrug, bounce; " +
+            "expression, motion group and Martlet gesture the model's rig supports (nod, shake, tilt, bow, sway; the blush levels on every model, " +
+            "faintest first: blush, blush_deep and blush_fierce, one showing at a time; the blush is the model's own ParamCheek or blush expression, " +
+            "or a glow Martlet draws on the cheeks when it has neither, and Martlet draws the stronger levels over the model's own blush; " +
+            "Live2D smile, surprise; VRM wave, shrug, bounce; " +
             "and the voice emotes linked to every voice sound and tone: laugh, chuckle, sigh, gasp, cough, clear_throat, groan, sniff, shush, inhale, exhale, " +
             "mumble, hum, sneeze, whistle, happy, sarcastic, angry, fear, crying, whispering, dramatic; and the overlay emotes drawn over the face of any " +
             "Live2D model or VRM with a head: sweat, anger, hearts, sparkles, tears, gloom, question, exclaim, sleepy, music; then the held face parts " +
@@ -560,7 +562,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "gestures that move other parts of the face) with what it changes, its tag, voice cue, when to use it (use: the owner's or the Thinking model's text, null when empty; hint: what the reply prompt says, which is Martlet's own hint while use is null), whether " +
             "it is on, its mode (brief, or lingering: stays on after {tag} until {/tag}; modeSaved false when it is the default, " +
             "vtsToggle when a VTube Studio ToggleExpression hotkey turns it on) and whether replies are offered it for engine (a voice engine key; \"none\" or absent: a voice without tags); the " +
-            "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; the reply prompt and tags " +
+            "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; " +
+            "blushLevels (the model's blush levels, faintest first: level, n, id, kind, name, tag, mode and offered); the reply prompt and tags " +
             "(lingering emotes add their {/tag} off tags); with showing (tags the character would show now, as \"glasses\" or " +
             "\"glasses:12\" for 12 minutes) also showingNote, the line the newest message's notes get; " +
             "and the Thinking naming prompt. With voiceTag (a voice's tag such as \"[laugh]\" or \"(sighs)\", or a reply tag such as " +
@@ -2651,6 +2654,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }
         var extras = vrm ? null : Martlet.Avatar.Hosting.LocalAvatarFiles.Extras(assets, Path.GetFileName(path));
         var voiceTag = OptionalString(arguments, "voiceTag");
+        // Each blush level the model has, faintest first: Martlet's gesture, or for the blush the model's own emote tagged blush
+        // when it replaces the gesture.
+        var offeredNow = catalog.Offered(engine).Select(e => e.Source.Id).ToHashSet(StringComparer.Ordinal);
+        var rows = catalog.Entries.Select((e, n) => (e.Source, e.Action, N: n)).ToArray();
+        var blushLevels = Martlet.Avatar.Hosting.CharacterActionInventory.BlushLevels.Select((level, i) =>
+        {
+            var row = rows.FirstOrDefault(r => r.Source.Id == "gesture:" + level);
+            if (row.Source is null) row = rows.FirstOrDefault(r => string.Equals(r.Action.Tag, level, StringComparison.OrdinalIgnoreCase));
+            return row.Source is null ? null : new
+            {
+                level = i + 1, n = row.N, id = row.Source.Id, kind = row.Source.Kind.ToString().ToLowerInvariant(), name = row.Source.Name,
+                tag = row.Action.Tag, mode = row.Action.Mode ?? Martlet.Avatar.Hosting.CharacterActions.DefaultMode(row.Source, row.Action.Tag),
+                offered = offeredNow.Contains(row.Source.Id)
+            };
+        }).Where(level => level is not null).ToArray();
         return new
         {
             renderer = avatarRenderer.ToString(), key = inventory.ModelId[..16], files = assets.Count,
@@ -2662,7 +2680,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 expressions = extras.Expressions.Select(e => new { e.Name, e.File }), motions = extras.Motions.Select(m => new { m.Group, m.File })
             },
             saved = saved is not null, detectedBy = catalog.Settings.DetectedBy, detectedAt = catalog.Settings.DetectedAt,
-            engine = engine?.Key, actions = Describe(catalog),
+            engine = engine?.Key, actions = Describe(catalog), blushLevels,
             replyPrompt = reply?.Instructions, replyTags = reply?.Tags, showingNote = reply?.Showing,
             namingPrompt = naming is { } ask ? new { instructions = ask.Instructions, list = ask.List } : null,
             combos = catalog.Combos.Select((c, n) => new

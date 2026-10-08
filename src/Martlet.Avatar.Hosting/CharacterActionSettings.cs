@@ -243,7 +243,7 @@ public static partial class CharacterActions
     /// <summary>The mode an emote or motion gets until someone chooses: an expression a VTube Studio toggle hotkey turns on and
     /// off, or whose name or tag names a look that stays (glasses, a hat, a blush, an angry or sad face, tears, a dark face, an
     /// outfit or accessory), lingers, and so does a Martlet gesture the renderer can hold (<see cref="CharacterGesture.Holdable"/>:
-    /// a pout, shyness, looking away, drowsiness); everything else (motions, other gestures) is brief.</summary>
+    /// a pout, shyness, looking away, drowsiness, a deep blush or a fierce flush); everything else (motions, other gestures) is brief.</summary>
     public static string DefaultMode(CharacterActionSource source, string? tag)
     {
         if (source.Kind == CharacterActionKind.Gesture)
