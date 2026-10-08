@@ -66,9 +66,10 @@ another host** choice.
   model names, flags and stamps only. JSON, snake case, schema 1, at most
   16 KiB, 8 jobs and 32 hosts; unknown fields and newer schemas are rejected.- **Background work across computers** is the speaking computer's own choice,
   not a job in the plan. Companion › Thinking pool may think on several paired
-  computers at once (each one's Thinking pool role, ticked *Join the Thinking pool*,
-  plus the place chosen first: `Pool` in that PC's `deep-thinking.json`, never
-  shared). The computer you talk to keeps answering; each background think goes
+  computers at once (each one with a Thinking model joins by itself: its
+  Thinking pool role, or its Ollama when that doesn't do this PC's Thinking;
+  unticking *In the Thinking pool* keeps one out; `thinking-pool.json` on that
+  PC, never shared). The computer you talk to keeps answering; each background think goes
   to a free one of those computers, the one sharing least with the conversation
   first (one doing none of its jobs before one that also speaks, before the
   computer doing Thinking), so with four computers one speaks and three think

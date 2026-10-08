@@ -634,6 +634,8 @@ public partial class MainWindow
                 var check = await HostControl.CheckAsync(host.Pairing, HardwareStore, lifetime.Token);
                 hostChecks[host.HostId] = check;
                 if (check.Reachable != true) { unreachable++; return; }
+                // A computer with a Thinking model joins the Thinking pool by itself, also while Keep in sync is off.
+                NoteThinkingPoolHost(host.HostId);
                 if (!AppVersions.IsOlder(check.MartletVersion, Version))
                 {
                     current++;
