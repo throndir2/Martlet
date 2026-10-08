@@ -2950,7 +2950,7 @@ it wrote. See [helper jobs](MEMORY.md#helper-jobs-on-the-thinking-pool).
 `thinkLonger` (`enabled`, on by default and turned off by *Where it thinks* ›
 *Off*; `effort` *Medium* or *High*; `timeLimit` and `hourlyLimit` *none*;
 `delivery` *WhenFree* or *NextMessage*; `chosen`; `webResearch`, Companion ›
-Deep thinking › *Web research*, off by default, and `researches`, whether it
+Deep thinking › *Web research*, on by default, and `researches`, whether it
 applies with Thinking longer), `thinking` (the Thinking
 route's `routeType`, `model`, `supportsTools`, `toolsRejected` from
 `tools-unsupported.json`, `offered` (only where Deep thinking can run),
@@ -3150,31 +3150,41 @@ Completions adapter) and report creation (`ResearchReports`), against fixtures
 on 127.0.0.1 (NOT AI): a DuckDuckGo-like search page (an ad, results behind
 redirect links), web pages (one with scripts and navigation, a PDF, one
 redirecting to 192.168.1.1, one only a later step asks for) and a model with
-canned answers. `settings`: off by default, on only with Thinking longer on,
-saved lean. `guard`: which addresses count as public (`WebAccess.IsPublic`: no
+canned answers. `settings`: on by default, off when turned off or with Thinking
+longer off, saved lean (only off is saved). `guard`: which addresses count as public (`WebAccess.IsPublic`: no
 loopback, private, shared, link-local, cloud metadata, ULA, multicast or mapped
 private addresses). `flow`: a reply says it'll look into it and calls
 `research`; the tool returns before the reply ends (`toolReturnedMs`,
 `replyMs`) and the job is still running when the reply completes
 (`researchStillRunning`); the job (`research-1`, `Succeeded`, `offer` true,
-`Researching`, 12 minutes, 4 an hour) made 2 searches (`searchQueries`: the
+`Researching`, `timeLimit` and `perHour` *none*, `atOnce` 1) made 2 searches (`searchQueries`: the
 topic, then the model's), read 3 pages and found 2 unreadable (the PDF, and the
 redirect to a private address, never followed: `privateRedirectFollowed`) in 2
 model steps, each a background message under 16 KiB carrying the numbered
-sources (`steps`); the `note` the conversation gets marks it to offer first and
+sources (`steps`); the first step starts with no notes, and the second carries
+the notes the first one wrote and only the pages read since as new pages
+(`notesCarried`, `steps[].carriesNotes`, `run.notesCharacters`); the `note` the conversation gets marks it to offer first and
 says to call `perform_creation` with the report's id; the report is kept as a
 `report` creation in a temporary Creations library (`creation`) and showing it
 writes a page with its source links (`page.links`) and no scripts (`shown`).
 `tool` and `prompt` are exactly what replies get. `limits`: a second research is
 refused as `busy` (and what the model is told) while a think runs beside it,
-Cancel ends it as `Canceled`, the fifth in an hour is refused (`hourly_limit`),
+Cancel ends it as `Canceled`, ten in a row all start once the one before is done
+(`noHourlyLimit`: there is no hourly limit),
 and a failed first search fails the job (`failedSearch`). `limits.placement`:
 on Deep thinking's places, a think holding the only place keeps research from
 starting (the message names it); research is a long job, so with one other
 place free it is refused too, because the pool's last free slot stays free for
 quick jobs (`lastFreeSlot`, where a screen summary takes it at once), and with
 two other places free it runs on the one sharing least with the conversation
-(`researchOn`). Each part has an `ok`.
+(`researchOn`). `budget`: the production budget (`WebResearch.Budget`: 30
+searches, 60 pages, 40 model steps, 25 MB, 3 pages a step, 5,000 characters of
+notes, no time limit or hourly limit, one at a time) run against an in-memory web
+and a fixture model that takes notes and searches again until no more pages can
+be read: on this PC it read all 60 pages in 20 model steps and 20 searches, its
+largest step was 11,701 bytes (`largestTaskBytes`, at most `maxTaskBytes`
+13,000), its notes stayed within 5,000 characters and the report lists all 60
+sources (`reportSources`). Each part has an `ok`.
 No real web search or model is used; reads no credentials; the temporary folder
 is deleted.
 
@@ -4990,9 +5000,10 @@ there is no choice for either;
 `ui_select` on them saves the reply settings, so it needs
 `--allow-ui-effects`); *Web research*'s `WebResearchStatus` (*Off. Martlet
 never searches the web or reads web pages.*, *Off, because Deep thinking is
-off. ...*, *On. When you ask, Martlet looks it up (up to 12 minutes, at most 4 an
-hour), then offers the report.* or *On, but Martlet can't look things up yet:
-...*), its fixed `WebResearchDisclosure` and the `WebResearchOn` check box
+off. ...*, *On. When you ask, Martlet researches it in the background (up to 30
+searches and 60 pages, no time limit), then offers the report.* or *On, but
+Martlet can't look things up yet: ...*), its fixed `WebResearchDisclosure` (what
+leaves this PC and the budget) and the `WebResearchOn` check box, on by default
 (`checkedState`; `ui_toggle` saves the reply settings, so it needs
 `--allow-ui-effects`); *Where it thinks* with the passive options
 `DeepPlace-Off`, `DeepPlace-Same`, `DeepPlace-Computer`, `DeepPlace-ThisPc` and

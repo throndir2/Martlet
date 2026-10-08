@@ -482,7 +482,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // members may answer, and the wait now; member names only). The box and the wait save thinking-pool.json, so they need
         // --allow-ui-effects. Each member's May answer for the conversation box reads through ThinkingPoolAnswers- below.
         "ThinkingPoolBackup", "ThinkingPoolBackupDelay", "ThinkingPoolBackupStatus",
-        // Companion › Deep thinking › Web research (off by default): whether Martlet may search the web when asked and why it
+        // Companion › Deep thinking › Web research (on by default): whether Martlet may search the web when asked and why it
         // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
         // needs --allow-ui-effects.
         "WebResearchStatus", "WebResearchDisclosure",

@@ -996,16 +996,20 @@ conversation](#singing-in-conversation); for a research report,
 
 *"Martlet, can you look up which toys cats like best?"* Martlet says in
 character that it'll look into it, calls `research` in the same reply and keeps
-talking; a few minutes later it brings up what it found (*"...oh, and I found out
+talking; when it's done (a few minutes to an hour, depending on the topic and the
+model) it brings up what it found (*"...oh, and I found out
 about those cat toys. Wanna see the report?"*) and shows the report on a yes.
 
-**Consent, off by default.** Searching sends the search words to a third party,
-so it is a switch of its own on Companion › Thinking pool › *Web research*
+**On by default, with its own switch.** Searching sends the search words to a
+third party, so it is a switch of its own on Companion › Thinking pool › *Web research*
 (`WebResearchOn`, saved with the reply settings as `ThinkLonger.WebResearch`,
-so all your computers share it, like Deep thinking's Off). Its disclosure
+so all your computers share it, like Deep thinking's Off). It is on by default,
+so asking Martlet to look something up works at once; turning it off saves
+`WebResearch: false`. Its disclosure
 (`WebResearchDisclosure`) says what leaves the PC: the search words go to
 DuckDuckGo, each page read sees the PC's internet address, and what the pages
-say goes to where Deep thinking thinks with the recent conversation. Deep
+say goes to where Deep thinking thinks with the recent conversation. It also
+gives the budget and says a paid provider may charge for the thinking. Deep
 thinking off (Thinking longer off) turns it off too; its status line
 (`WebResearchStatus`) says when Martlet can't use it yet (no Thinking that does
 function calling, nowhere for Deep thinking to think).
@@ -1019,8 +1023,8 @@ requests are exactly as before. The prompt has Martlet use it only when the user
 asks to look something up, search for it or research it, and tell them first.
 The call returns at once (`WebResearch.Started`).
 
-**The job** (`research`: one at a time beside a think or a song, 4 an hour, 12
-minutes, `Offer`, *Researching*) runs off the reply path on the thread pool,
+**The job** (`research`: one at a time beside a think or a song, no hourly limit
+and no time limit, `Offer`, *Researching*) runs off the reply path on the thread pool,
 placed like a think on one of Deep thinking's places (`jobs.Start` with
 `ThinkLonger.Places(pool)`: the free place sharing least with the conversation,
 held for the whole job with that place's own runtime and authorization; when
@@ -1030,18 +1034,30 @@ every place is busy it is refused and the model is told what holds them):
    it fits beside Thinking's and stops if Thinking's gets pushed off the card, as
    a think does.
 2. `WebResearchRun` searches for the topic and reads the top 3 results, then asks
-   the model up to 4 times, each a fresh, bounded background request continuing
+   the model up to 40 times, each a fresh, bounded background request continuing
    the reply's request exactly like a think (`PrepareThink`, Thinking steps on,
    its own runtime and authorization; *Thinking input (Web research)* in the
    log), with the task from Companion › Prompts › *Web research: each step*: what
-   to research, the latest results and the pages read so far as numbered
-   excerpts (at most 13,000 bytes in all, so it fits a paired computer's 16 KiB).
+   to research, the model's notes so far, the searches so far, the latest results
+   not read yet and the pages read since the last step as numbered excerpts (at
+   most 13,000 bytes in all, so it fits a paired computer's 16 KiB; the new pages'
+   excerpts shrink first, then the notes).
    The model answers in text, so it also works where Deep thinking takes no
-   tools: `SEARCH: <query>` (another search, then its 2 best unread results),
-   `READ: <link>` (up to 3), or the report (`TITLE`, `SUMMARY`, `REPORT`). The
-   last step always asks for the report.
-3. Caps: 3 searches, 8 pages, 3 MB downloaded, 400 KB and 15 seconds a request,
-   20,000 characters of text kept a page.
+   tools: first `NOTES:` (all its notes, rewritten with what the new pages add,
+   each fact with its page number; at most 5,000 characters are kept), then
+   `SEARCH: <query>` (another search, then its best unread results), `READ: <link>`
+   (up to 3), or the report (`TITLE`, `SUMMARY`, `REPORT`). A step reads at most
+   3 new pages. The notes carry what was read from step to step, so a long job
+   never needs more than one message. Notes much shorter than the old ones are
+   added to them, and a step without notes adds each new page's title and first
+   words. When a step finds nothing new (a repeated search, links that can't be
+   read, no more pages left in the budget) the next step is the last, and the
+   last step always asks for the report. A model that fails twice in a row ends
+   the job; when it took notes, they are kept as the report.
+3. Budget, about what a careful person reads to research something thoroughly
+   (`WebResearch.Budget`): 30 searches, 60 pages, 40 model steps and 25 MB
+   downloaded; 400 KB and 15 seconds a request, 20,000 characters of text kept a
+   page. Once no more pages can be read, the task says so and asks for the report.
 4. The report gets its sources listed by Martlet itself (the pages read, as
    numbered links) and is kept as a `report` creation (see
    [CREATIONS](CREATIONS.md)), which the Creations page shows and every paired
@@ -1052,9 +1068,9 @@ The job's result is the title, the summary and how to show it
 up to be offered first. On a yes, `perform_creation` writes the report as a
 plain web page in `research-reports` in the data folder and opens it in the
 browser. The talk window's task list shows it as *Research* with its step (*Searching the
-web*, *Reading pages (2 of at most 8)*, *Thinking it over*, *Writing the
+web*, *Reading pages (2 of at most 60)*, *Thinking it over*, *Writing the
 report*); the desktop log notes each start, step failure and end with counts only
-(`Web research:` searches, pages, bytes, model steps), never the topic, a query,
+(`Web research:` searches, pages, bytes, model steps, characters of notes), never the topic, a query,
 a link or what was read.
 
 **The web client** (`WebAccess`, Martlet's own; no key or account): DuckDuckGo's

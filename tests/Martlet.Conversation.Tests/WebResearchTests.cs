@@ -60,11 +60,30 @@ public sealed class WebResearchTests
         Assert.Equal("cat toys safety", more.Search);
         Assert.Equal(["https://a.example/1", "https://b.example/2"], more.Read);
         Assert.Null(more.Report);
+        Assert.Null(more.Notes);
         var done = WebResearch.ParseStep("**TITLE:** Cat toys\nSUMMARY: Wands win.\nREPORT:\n## Findings\nWands [1].");
         Assert.Equal("Cat toys", done.Title);
         Assert.Equal("Wands win.", done.Summary);
         Assert.Equal("## Findings\nWands [1].", done.Report);
         Assert.Equal("Just an answer.", WebResearch.ParseStep("Just an answer.").Report);
+    }
+
+    [Fact]
+    public void NotesRunUntilTheNextFieldInCapitals()
+    {
+        var step = WebResearch.ParseStep("**NOTES:**\n- Wands mimic prey [1]\n- Title: The Cat Book is a guide [2]\n\n- search: lasers too [3]\n" +
+            "SEARCH: laser toys\nREAD: https://a.example/1");
+        Assert.Equal("- Wands mimic prey [1]\n- Title: The Cat Book is a guide [2]\n\n- search: lasers too [3]", step.Notes);
+        Assert.Equal("laser toys", step.Search);
+        Assert.Equal(["https://a.example/1"], step.Read);
+        Assert.Null(step.Report);
+        var report = WebResearch.ParseStep("NOTES:\n- A [1]\nTITLE: T\nSUMMARY: S.\nREPORT:\nBody [1].");
+        Assert.Equal("- A [1]", report.Notes);
+        Assert.Equal("Body [1].", report.Report);
+        var onlyNotes = WebResearch.ParseStep("NOTES:\n- A [1]");
+        Assert.Equal("- A [1]", onlyNotes.Notes);
+        Assert.Null(onlyNotes.Report);
+        Assert.Null(onlyNotes.Search);
     }
 
     [Fact]
@@ -78,13 +97,25 @@ public sealed class WebResearchTests
     }
 
     [Fact]
-    public void WebResearchIsOffByDefaultAndNeedsThinkingLonger()
+    public void WebResearchIsOnByDefaultAndNeedsThinkingLonger()
     {
-        Assert.False(new ThinkLongerSettings().Researches);
-        Assert.True(new ThinkLongerSettings { WebResearch = true }.Researches);
-        Assert.False(new ThinkLongerSettings { WebResearch = true, Enabled = false }.Researches);
-        Assert.Null(ThinkLongerSettings.Normalize(new ThinkLongerSettings { WebResearch = false }));
-        Assert.True(ThinkLongerSettings.Normalize(new ThinkLongerSettings { WebResearch = true })!.WebResearch);
+        Assert.True(new ThinkLongerSettings().Researches);
+        Assert.False(new ThinkLongerSettings { WebResearch = false }.Researches);
+        Assert.False(new ThinkLongerSettings { Enabled = false }.Researches);
+        Assert.Null(ThinkLongerSettings.Normalize(new ThinkLongerSettings { WebResearch = true }));
+        Assert.False(ThinkLongerSettings.Normalize(new ThinkLongerSettings { WebResearch = false })!.WebResearch);
+    }
+
+    [Fact]
+    public void AJobResearchesLikeACarefulPersonWithNoTimeOrHourlyLimit()
+    {
+        Assert.Equal(1, WebResearch.Kind.MaxActive);
+        Assert.Null(WebResearch.Kind.MaxPerHour);
+        Assert.Null(WebResearch.Kind.TimeLimit);
+        Assert.Equal(60, WebResearch.Budget.Pages);
+        Assert.Equal(30, WebResearch.Budget.Searches);
+        Assert.Equal(40, WebResearch.Budget.Steps);
+        WebResearch.Kind.Validate();
     }
 
     [Fact]
@@ -106,7 +137,7 @@ public sealed class WebResearchTests
         Assert.Equal(["topic words", "second query"], web.Queries);
         Assert.Equal(2, run.Searches);
         Assert.Equal(2, run.Steps);
-        // The first search's top 3 (one blocked), then 2 untried results of the second search, then the page asked for.
+        // The first search's top 3 (one blocked), then the page asked for, then 2 untried results of the second search.
         Assert.Equal(1, run.Failures);
         Assert.Equal(5, run.Pages);
         Assert.Contains("https://pages.example/extra", web.Fetched);
@@ -116,19 +147,102 @@ public sealed class WebResearchTests
     }
 
     [Fact]
-    public async Task TheLastStepAlwaysAsksForTheReportAndEachTaskStaysUnderItsBound()
+    public async Task NotesCarryOverAndOnlyPagesReadSinceAreNew()
+    {
+        var web = new FakeWeb();
+        var tasks = new List<string>();
+        var answers = new Queue<string>(["NOTES:\n- Fact from a [1]\n- Fact from c [2]\nSEARCH: second query", "TITLE: T\nSUMMARY: S.\nREPORT:\nSo [1] [3]."]);
+        var (outcome, run, _) = await RunAsync(web, task =>
+        {
+            tasks.Add(task);
+            return BackgroundJobOutcome.Done(answers.Dequeue());
+        });
+        Assert.NotNull(outcome.Report);
+        Assert.Contains("Your notes so far:\nNone yet.", tasks[0], StringComparison.Ordinal);
+        Assert.Contains("[2] Page c <https://pages.example/c>", tasks[0], StringComparison.Ordinal);
+        Assert.Contains("Your notes so far:\n- Fact from a [1]\n- Fact from c [2]", tasks[1], StringComparison.Ordinal);
+        Assert.DoesNotContain("[1] Page a <", tasks[1], StringComparison.Ordinal);
+        Assert.DoesNotContain("[2] Page c <", tasks[1], StringComparison.Ordinal);
+        Assert.Contains("[3] Page 1-0 <https://pages.example/1-0>", tasks[1], StringComparison.Ordinal);
+        Assert.Contains("[5] Page 1-2 <https://pages.example/1-2>", tasks[1], StringComparison.Ordinal);
+        Assert.Contains("- Result 1-3 <https://pages.example/1-3>", tasks[1], StringComparison.Ordinal);
+        Assert.Contains("Searches so far (2 of at most 30): topic words | second query", tasks[1], StringComparison.Ordinal);
+        Assert.Equal("- Fact from a [1]\n- Fact from c [2]".Length, run.NotesCharacters);
+    }
+
+    [Fact]
+    public async Task NotesMuchShorterThanBeforeAreAddedToThemAndAPageNotNotedIsKept()
+    {
+        var web = new FakeWeb();
+        var tasks = new List<string>();
+        var earlier = string.Join('\n', Enumerable.Range(1, 30).Select(i => $"- Earlier fact number {i} from the first pages [1]"));
+        var answers = new Queue<string>([$"NOTES:\n{earlier}\nSEARCH: second query", "NOTES:\n- New fact [3]\nSEARCH: third query",
+            "SEARCH: fourth query", "REPORT:\nDone."]);
+        var (outcome, _, _) = await RunAsync(web, task =>
+        {
+            tasks.Add(task);
+            return BackgroundJobOutcome.Done(answers.Dequeue());
+        });
+        Assert.NotNull(outcome.Report);
+        Assert.Contains("- Earlier fact number 30 from the first pages [1]\n- New fact [3]", tasks[2], StringComparison.Ordinal);
+        // The third step wrote no notes: the pages it saw go into them as their title and first words.
+        Assert.Contains("- New fact [3]\n- [6] Page 2-0: Readable text of the page", tasks[3], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AModelThatStopsWorkingKeepsItsNotesAsTheReport()
+    {
+        var calls = 0;
+        var (outcome, run, job) = await RunAsync(new FakeWeb(), _ => ++calls == 1
+            ? BackgroundJobOutcome.Done("NOTES:\n- Fact from a [1]\nSEARCH: second query")
+            : BackgroundJobOutcome.Failed("the Thinking model couldn't do it right now"));
+        Assert.Equal(BackgroundJobState.Succeeded, job.State);
+        Assert.Equal(3, run.Steps);
+        var report = outcome.Report!;
+        Assert.Contains("- Fact from a [1]", report.Markdown, StringComparison.Ordinal);
+        Assert.Contains("couldn't be written", report.Markdown, StringComparison.Ordinal);
+        Assert.Equal("Only the notes from 5 pages: the full report couldn't be written.", report.Summary);
+        Assert.Contains("5. [Page 1-2](https://pages.example/1-2)", report.Markdown, StringComparison.Ordinal);
+        // Without notes a model that stops working fails the job, as before.
+        (outcome, _, job) = await RunAsync(new FakeWeb(), _ => BackgroundJobOutcome.Failed("the Thinking model couldn't do it right now"));
+        Assert.Equal(BackgroundJobState.Failed, job.State);
+        Assert.Equal("the Thinking model couldn't do it right now", outcome.Problem);
+    }
+
+    [Fact]
+    public async Task AJobCanReadItsWholeBudgetAndEachTaskStaysUnderItsBound()
     {
         var web = new FakeWeb { Text = new string('猫', 20_000) };
         var tasks = new List<string>();
         var (outcome, run, _) = await RunAsync(web, task =>
         {
             tasks.Add(task);
+            return BackgroundJobOutcome.Done(task.Contains("This is the last step", StringComparison.Ordinal) ? "REPORT:\nDone." : $"SEARCH: again {tasks.Count}");
+        });
+        Assert.NotNull(outcome.Report);
+        Assert.Equal(WebResearch.Budget.Pages, run.Pages);
+        Assert.Equal(WebResearch.Budget.Pages, outcome.Report!.Sources.Count);
+        Assert.True(run.Searches <= WebResearch.Budget.Searches);
+        Assert.True(run.Steps <= WebResearch.Budget.Steps);
+        Assert.True(run.NotesCharacters <= WebResearch.Budget.NotesCharacters);
+        // Once no more pages can be read, the model is told to write the report, and the next step is the last.
+        Assert.Contains("no more can be read", tasks[^2], StringComparison.Ordinal);
+        Assert.Contains("This is the last step", tasks[^1], StringComparison.Ordinal);
+        Assert.All(tasks, task => Assert.True(Encoding.UTF8.GetByteCount(task) <= WebResearch.MaxTaskBytes));
+    }
+
+    [Fact]
+    public async Task ARepeatedSearchFindsNothingNewSoTheNextStepIsTheLast()
+    {
+        var tasks = new List<string>();
+        var (outcome, run, _) = await RunAsync(new FakeWeb(), task =>
+        {
+            tasks.Add(task);
             return BackgroundJobOutcome.Done(task.Contains("This is the last step", StringComparison.Ordinal) ? "REPORT:\nDone." : "SEARCH: again");
         });
         Assert.NotNull(outcome.Report);
-        Assert.Equal(4, run.Steps);
-        Assert.True(run.Searches <= 3);
-        Assert.All(tasks, task => Assert.True(Encoding.UTF8.GetByteCount(task) <= WebResearch.MaxTaskBytes));
+        Assert.Equal(3, run.Steps);
+        Assert.Equal(2, run.Searches);
     }
 
     [Fact]

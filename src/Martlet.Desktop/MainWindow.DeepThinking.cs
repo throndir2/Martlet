@@ -417,14 +417,14 @@ public partial class MainWindow
 
     // ---------- Web research (saved with the reply settings) ----------
 
-    /// <summary>Whether Martlet may look things up on the web when asked (off by default: the search words go to DuckDuckGo and
-    /// the pages' sites see this PC's internet address). It saves at once, with the reply settings, so your computers share it;
-    /// Deep thinking off turns it off too.</summary>
+    /// <summary>Whether Martlet may look things up on the web when asked (on by default; the card says what leaves this PC: the
+    /// search words go to DuckDuckGo and the pages' sites see this PC's internet address). It saves at once, with the reply
+    /// settings, so your computers share it; Deep thinking off turns it off too.</summary>
     private Border WebResearchCard(ThinkLongerSettings settings, SetupRoute? route, DeepThinkingPlan plan)
     {
         var allow = new CheckBox
         {
-            IsChecked = settings.WebResearch == true, IsEnabled = settings.On, Margin = new Thickness(0, 8, 0, 6),
+            IsChecked = settings.WebResearchOn, IsEnabled = settings.On, Margin = new Thickness(0, 8, 0, 6),
             Content = new TextBlock { Text = "Let Martlet search the web and read pages when I ask it to look something up", TextWrapping = TextWrapping.Wrap }
         };
         AutomationProperties.SetAutomationId(allow, "WebResearchOn");
@@ -437,10 +437,13 @@ public partial class MainWindow
         status.SetResourceReference(TextBlock.ForegroundProperty, problem ? "WarningBrush" : "MutedBrush");
         allow.Checked += (_, _) => SetWebResearchAsync(true).Forget();
         allow.Unchecked += (_, _) => SetWebResearchAsync(false).Forget();
+        var budget = WebResearch.Budget;
         var disclosure = Note("What leaves this PC: your search words go to DuckDuckGo, and each page Martlet reads sees this PC's " +
             "internet address. What the pages say goes to the Thinking pool member that works on it, with the recent conversation. Martlet only " +
-            "connects to public websites (never your own network), reads at most 8 pages, takes at most 12 minutes and starts at " +
-            "most 4 an hour. The report and its sources are kept in Creations; Martlet offers to show it in your browser.",
+            $"connects to public websites (never your own network). It researches the way a careful person would: up to {budget.Searches} " +
+            $"searches and {budget.Pages} pages each time you ask, taking notes as it reads, with no time limit, one thing at a time. " +
+            "Cancel in the talk window stops it, and a paid provider may charge for its thinking. The report and its sources are kept " +
+            "in Creations; Martlet offers to show it in your browser.",
             new Thickness(0, 4, 0, 0));
         AutomationProperties.SetAutomationId(disclosure, "WebResearchDisclosure");
         return Card(Heading("Web research"),
@@ -452,7 +455,7 @@ public partial class MainWindow
     private (string Text, bool Problem) WebResearchStatus(ThinkLongerSettings settings, SetupRoute? route, DeepThinkingPlan plan)
     {
         if (!settings.On) return ("Off, because thinking longer is off. Add a pool member below to use web research.", false);
-        if (settings.WebResearch != true) return ("Off. Martlet never searches the web or reads web pages.", false);
+        if (!settings.WebResearchOn) return ("Off. Martlet never searches the web or reads web pages.", false);
         var (thinking, problem) = ThinkLongerStatus(settings, route, plan);
         if (problem)
         {
@@ -460,8 +463,8 @@ public partial class MainWindow
                 : thinking.StartsWith("On. ", StringComparison.Ordinal) ? thinking[4..] : thinking;
             return ("On, but Martlet can't look things up yet: " + char.ToLowerInvariant(why[0]) + why[1..], true);
         }
-        return ($"On. When you ask, Martlet looks it up (up to {BackgroundJobs.Duration(WebResearch.TimeLimit)}, at most " +
-            $"{WebResearch.Kind.MaxPerHour} an hour), then offers the report.", false);
+        return ($"On. When you ask, Martlet researches it in the background (up to {WebResearch.Budget.Searches} searches and " +
+            $"{WebResearch.Budget.Pages} pages, no time limit), then offers the report.", false);
     }
 
     /// <summary>Saves whether Martlet may research on the web into the newest reply settings (your computers share it).</summary>

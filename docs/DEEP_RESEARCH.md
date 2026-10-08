@@ -32,7 +32,9 @@ a new subsystem.
   (queries, URLs to read, notes) instead of native function calls, so the same
   loop runs on every Deep thinking location, including a model with no tool
   support.
-- A background job runs at most 30 minutes (`BackgroundJobKind`).
+- A background job kind's time limit is at most 30 minutes (`BackgroundJobKind`),
+  or none. Research has none, like a think: its budget of searches, pages and
+  steps ends it, and Cancel stops it.
 - [Never add conversation latency](../AGENTS.md#never-add-conversation-latency):
   the reply only gains one tool definition that is always offered in the same
   place while research is on, so the request start and prompt cache stay the
@@ -95,6 +97,12 @@ may run 2-4 sub-researchers in parallel, one per sub-question, each with its own
 notes, when Deep thinking answers several requests at once (a cloud provider).
 Anthropic reports this works far better but costs about 15 times the tokens of a
 chat, so it stays opt-in.
+
+The first slice uses one budget, about what a careful person reads to research
+something thoroughly (`WebResearch.Budget`): up to 30 searches, 60 pages and 40
+model steps, one job at a time, with no time limit and no hourly limit. Each step
+carries the model's own notes (at most 5,000 characters) instead of every page,
+so the job fits one message however long it runs.
 
 ## Search backends
 
@@ -161,8 +169,9 @@ Every fetch goes through one fetcher in the desktop process:
 
 ## Privacy and consent
 
-- Web research is **off by default**. Turning it on says what leaves the PC:
-  search queries, written by the model from the conversation, go to every
+- Web research is **on by default**, so asking Martlet to look something up
+  works at once. Its card says what leaves the PC, and the owner can turn it off
+  there: search queries, written by the model from the conversation, go to every
   enabled backend, and fetched sites see the request.
 - The model is told to keep personal details (names, addresses, health,
   anything from memory) out of queries unless the user asked for exactly that.
@@ -186,10 +195,10 @@ The same change that adds research adds:
 
 ## Delivery order
 
-1. **R0: first slice** (in progress in the *Web research background job*
-   session): `research` job kind and the `research(topic, what_to_find)` tool,
-   the loop on Deep thinking, the safe fetcher, a built-in search, the `report`
-   creation kind, the WebResearch switch and `research_check`.
+1. **R0: first slice** (done): `research` job kind and the
+   `research(topic, what_to_find)` tool, the loop on Deep thinking with notes
+   carried from step to step, the safe fetcher, a built-in search, the `report`
+   creation kind, the WebResearch switch (on by default) and `research_check`.
 2. **R1: backends**: `IWebSearchProvider` with SearXNG (URL or host role),
    Ollama web search, Tavily, Brave and Exa; fan-out with rank fusion; Doctor
    probes.

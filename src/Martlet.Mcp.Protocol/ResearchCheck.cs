@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
 using Martlet.Core.Creations;
@@ -16,10 +17,11 @@ namespace Martlet.Mcp;
 /// <summary>research_check: rehearses web research end to end with Martlet's own parts: the research tool's texts and job kind
 /// (<see cref="WebResearch"/>), the background-job scheduler (<see cref="BackgroundJobs"/>), the web client
 /// (<see cref="WebAccess"/>: the DuckDuckGo results parser, the page reader and its public-address guard), the research loop
-/// (<see cref="WebResearchRun"/>) with each step a background think (<see cref="BackgroundThink"/>) through the conversation
-/// runtime and Chat Completions adapter, the report creation and its page (<see cref="ResearchReports"/>), against fixtures on
-/// 127.0.0.1: a search page, web pages and a model with canned answers (NOT AI). Nothing leaves loopback; no credentials are
-/// read; the report is kept in a temporary data folder that is deleted afterwards.</summary>
+/// (<see cref="WebResearchRun"/>, its notes and its budget) with each step a background think (<see cref="BackgroundThink"/>)
+/// through the conversation runtime and Chat Completions adapter, the report creation and its page (<see cref="ResearchReports"/>), against
+/// fixtures on 127.0.0.1: a search page, web pages and a model with canned answers (NOT AI), and an in-memory web for the
+/// budget. Nothing leaves loopback; no credentials are read; the report is kept in a temporary data folder that is deleted
+/// afterwards.</summary>
 internal static class ResearchCheck
 {
     private const string Model = "fixture-model";
@@ -29,6 +31,7 @@ internal static class ResearchCheck
     private const string Topic = "best toys for cats";
     private const string Find = "which toys most cats like and why";
     private const string Summary = "Most cats love wand toys and crinkle balls because they imitate prey (FIXTURE - NOT AI).";
+    private const string FixtureNote = "Wand toys let cats stalk and pounce like prey; most play daily [1] (FIXTURE NOTE - NOT AI)";
 
     internal static async Task<object> RunAsync(CancellationToken cancellation)
     {
@@ -41,14 +44,15 @@ internal static class ResearchCheck
             var guard = Guard();
             var flow = await FlowAsync(fixture, directory, cancellation);
             var limits = await LimitsAsync(cancellation);
+            var budget = await BudgetAsync(cancellation);
             return new
             {
-                ok = settings.Ok && guard.Ok && flow.Ok && limits.Ok,
+                ok = settings.Ok && guard.Ok && flow.Ok && limits.Ok && budget.Ok,
                 endpoint = fixture.BaseUrl,
                 note = "Fixture search page, web pages and model on 127.0.0.1 with canned answers (NOT AI); the tool texts, job kind, " +
                     "scheduler, web client, research loop, runtime, adapter and report creation are Martlet's own. No real web search " +
                     "or model was used.",
-                settings = settings.Report, guard = guard.Report, flow = flow.Report, limits = limits.Report
+                settings = settings.Report, guard = guard.Report, flow = flow.Report, limits = limits.Report, budget = budget.Report
             };
         }
         finally
@@ -57,16 +61,16 @@ internal static class ResearchCheck
         }
     }
 
-    // Off by default; on only with Thinking longer on; saved lean.
+    // On by default; off when the owner turns it off or Thinking longer is off; saved lean (only off is saved).
     private static (bool Ok, object Report) Settings()
     {
         var byDefault = new ThinkLongerSettings();
-        var on = new ThinkLongerSettings { WebResearch = true };
-        var deepOff = new ThinkLongerSettings { WebResearch = true, Enabled = false };
-        var saved = JsonSerializer.Serialize(ThinkLongerSettings.Normalize(on));
-        var ok = !byDefault.Researches && on.Researches && !deepOff.Researches && ThinkLongerSettings.Normalize(on with { WebResearch = false }) is null &&
-            saved.Contains("true", StringComparison.Ordinal);
-        return (ok, new { ok, byDefault = byDefault.Researches, turnedOn = on.Researches, deepThinkingOff = deepOff.Researches, saved });
+        var off = new ThinkLongerSettings { WebResearch = false };
+        var deepOff = new ThinkLongerSettings { Enabled = false };
+        var saved = JsonSerializer.Serialize(ThinkLongerSettings.Normalize(off));
+        var ok = byDefault.Researches && byDefault.WebResearchOn && !off.Researches && !deepOff.Researches &&
+            ThinkLongerSettings.Normalize(off with { WebResearch = true }) is null && saved.Contains("false", StringComparison.Ordinal);
+        return (ok, new { ok, byDefault = byDefault.Researches, turnedOff = off.Researches, deepThinkingOff = deepOff.Researches, saved });
     }
 
     // Only public internet addresses are reachable (redirects included).
@@ -139,6 +143,7 @@ internal static class ResearchCheck
         // The steps the model got, the note the conversation gets and the report shown on a yes.
         var steps = fixture.Bodies("step").Select(Last).ToArray();
         var firstStep = steps.FirstOrDefault() ?? "";
+        var secondStep = steps.ElementAtOrDefault(1) ?? "";
         var results = job is null ? "" : BackgroundJobs.Results([job]);
         var library = CreationStore.View(directory);
         var creation = key is null ? null : library.Live.FirstOrDefault(c => c.Key == key);
@@ -151,11 +156,17 @@ internal static class ResearchCheck
             if (opened is not null && File.Exists(opened)) html = await File.ReadAllTextAsync(opened, cancellation);
         }
         var searches = fixture.Queries;
+        // The second step carries the notes the first one wrote, and only the pages read since then as new pages.
+        var notesCarried = secondStep.Contains(FixtureNote, StringComparison.Ordinal) &&
+            !secondStep.Contains("[1] Wand toys - Cat Care <", StringComparison.Ordinal) &&
+            secondStep.Contains("[2] Laser pointers, carefully <", StringComparison.Ordinal) && secondStep.Contains("[3] Crinkle balls <", StringComparison.Ordinal);
         var ok = replied.State == ConversationState.Completed && toolReturnedMs >= 0 && toolReturnedMs < replyMs && runningWhenReplyEnded &&
-            job?.State == BackgroundJobState.Succeeded && job.Kind.Offer && run is { Searches: 2, Steps: 2 } && run.Pages >= 3 &&
+            job?.State == BackgroundJobState.Succeeded && job.Kind.Offer && job.Kind.TimeLimit is null && job.Kind.MaxPerHour is null &&
+            run is { Searches: 2, Steps: 2 } && run.Pages >= 3 &&
             run.Failures >= 2 && searches.Count == 2 && searches[0] == Topic &&
             steps.Length == 2 && firstStep.Contains("A background task from Martlet", StringComparison.Ordinal) &&
             firstStep.Contains(Find, StringComparison.Ordinal) && firstStep.Contains("Wand toys", StringComparison.Ordinal) &&
+            firstStep.Contains("Your notes so far:\nNone yet.", StringComparison.Ordinal) && notesCarried &&
             !firstStep.Contains("trackingScript", StringComparison.Ordinal) && !firstStep.Contains("Sponsored", StringComparison.Ordinal) &&
             steps.All(s => Encoding.UTF8.GetByteCount(s) < BoundedTextInput.HardMaxUtf8Bytes) &&
             results.Contains("go-ahead", StringComparison.Ordinal) && results.Contains("perform_creation", StringComparison.Ordinal) &&
@@ -170,15 +181,21 @@ internal static class ResearchCheck
             job = job is null ? null : new
             {
                 id = job.Id, kind = job.Kind.Name, state = job.State.ToString(), offer = job.Kind.Offer, doing = job.Kind.Doing,
-                timeLimit = job.Kind.TimeLimit is { } limit ? BackgroundJobs.Duration(limit) : "none", perHour = job.Kind.MaxPerHour, elapsedMs = (long)job.Elapsed.TotalMilliseconds,
-                problem = job.Problem
+                timeLimit = job.Kind.TimeLimit is { } limit ? BackgroundJobs.Duration(limit) : "none",
+                perHour = job.Kind.MaxPerHour?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none", atOnce = job.Kind.MaxActive,
+                elapsedMs = (long)job.Elapsed.TotalMilliseconds, problem = job.Problem
             },
-            run = run is null ? null : new { searches = run.Searches, pagesRead = run.Pages, unreadable = run.Failures, bytes = run.Bytes, modelSteps = run.Steps },
+            run = run is null ? null : new
+            {
+                searches = run.Searches, pagesRead = run.Pages, unreadable = run.Failures, bytes = run.Bytes, modelSteps = run.Steps,
+                notesCharacters = run.NotesCharacters
+            },
             searchQueries = searches,
             pagesFetched = fixture.Paths.Where(p => p.StartsWith("/page/", StringComparison.Ordinal)).ToArray(),
             privateRedirectFollowed = fixture.Fetched("/page/5") > 0,
             steps = steps.Select(s => new { bytes = Encoding.UTF8.GetByteCount(s), hasSources = s.Contains("[1]", StringComparison.Ordinal),
-                last = s.Contains("This is the last step", StringComparison.Ordinal) }),
+                carriesNotes = s.Contains(FixtureNote, StringComparison.Ordinal), last = s.Contains("This is the last step", StringComparison.Ordinal) }),
+            notesCarried,
             note = results,
             creation = creation is null ? null : new { key = creation.Key, kind = creation.Kind, title = creation.Title, textCharacters = creation.Text?.Length, bytes = creation.Bytes },
             shown = shown?.Text, page = new { written = opened is not null, characters = html.Length, links = CountOf(html, "<a href=") },
@@ -187,7 +204,7 @@ internal static class ResearchCheck
         });
     }
 
-    // One research at a time (a think may run beside it), the hourly limit, Cancel and a failed first search.
+    // One research at a time (a think may run beside it), no hourly limit, Cancel and a failed first search.
     private static async Task<(bool Ok, object Report)> LimitsAsync(CancellationToken cancellation)
     {
         using var jobs = new BackgroundJobs();
@@ -201,10 +218,15 @@ internal static class ResearchCheck
         gate.TrySetResult(BackgroundJobOutcome.Done("done"));
         waited.Restart();
         while (jobs.Active.Count > 0 && waited.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(10, cancellation);
+        // No hourly limit: ten in a row each start once the one before is done.
         using var hourly = new BackgroundJobs();
-        var refusals = Enumerable.Range(0, (WebResearch.Kind.MaxPerHour ?? 0) + 1)
-            .Select(_ => hourly.Start(WebResearch.Kind, "x", (_, _) => Task.FromResult(BackgroundJobOutcome.Done("x"))))
-            .Select(start => { Thread.Sleep(30); return start.Refusal; }).ToArray();
+        var refusals = new List<string?>();
+        for (var i = 0; i < 10; i++)
+        {
+            refusals.Add(hourly.Start(WebResearch.Kind, "x", (_, _) => Task.FromResult(BackgroundJobOutcome.Done("x"))).Refusal);
+            waited.Restart();
+            while (hourly.Active.Count > 0 && waited.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(5, cancellation);
+        }
         // Placed on Deep thinking's places (ThinkLonger.Places): a think holding the only place keeps research from starting
         // (the message names it). Research is a long job, so it never takes the pool's last free slot while the pool has two
         // or more slots: with one other place free it is refused too (the message says why) and a quick job (a screen summary)
@@ -231,7 +253,7 @@ internal static class ResearchCheck
         waited.Restart();
         while (!failing.Finished && waited.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(10, cancellation);
         var ok = first.Started && second.Refusal == "busy" && think.Started && canceled is not null && first.Job!.State == BackgroundJobState.Canceled &&
-            refusals[^1] == "hourly_limit" && refusals[..^1].All(r => r is null) &&
+            refusals.All(r => r is null) &&
             failing.State == BackgroundJobState.Failed && failing.Problem?.Contains("web search", StringComparison.Ordinal) == true &&
             holder.Job?.Place?.Name == "diva" && blocked.Refusal == "busy" && blocked.Message?.Contains("diva", StringComparison.Ordinal) == true &&
             lastSlot.Refusal == "busy" && lastSlot.Message?.Contains("The last free slot stays free for quick jobs.", StringComparison.Ordinal) == true &&
@@ -239,7 +261,8 @@ internal static class ResearchCheck
         return (ok, new
         {
             ok, secondRefused = second.Refusal, secondTold = second.Started ? null : WebResearch.Refused(second), thinkBeside = think.Started,
-            canceled = first.Job?.State.ToString(), hourly = refusals, failedSearch = failing.Problem,
+            canceled = first.Job?.State.ToString(), noHourlyLimit = new { started = refusals.Count(r => r is null), of = refusals.Count },
+            failedSearch = failing.Problem,
             placement = new
             {
                 thinkOn = holder.Job?.Place?.Name, researchRefused = blocked.Refusal, refusedBecause = blocked.Message,
@@ -247,6 +270,83 @@ internal static class ResearchCheck
                 researchOn = researchPlace
             }
         });
+    }
+
+    // The production budget, about what a careful person reads to research something thoroughly: an in-memory web with endless
+    // results and a fixture model (NOT AI) that adds a note for each new page and searches again until no more pages can be
+    // read, then writes the report. Every step's task stays within one message, the notes within their bound, and the report
+    // lists every page read.
+    private static async Task<(bool Ok, object Report)> BudgetAsync(CancellationToken cancellation)
+    {
+        var budget = WebResearch.Budget;
+        var web = new EndlessWeb();
+        var tasks = new List<string>();
+        var notes = new StringBuilder();
+        WebResearchRun? run = null;
+        ResearchOutcome? outcome = null;
+        using var jobs = new BackgroundJobs();
+        var job = jobs.Start(WebResearch.Kind, "budget", async (job, token) =>
+        {
+            run = new WebResearchRun(web, web, (task, _) =>
+            {
+                lock (tasks) tasks.Add(task);
+                if (task.Contains("This is the last step", StringComparison.Ordinal) || task.Contains("no more can be read", StringComparison.Ordinal))
+                    return Task.FromResult(BackgroundJobOutcome.Done(
+                        "TITLE: Budget check\nSUMMARY: It read every page it could (FIXTURE - NOT AI).\nREPORT:\nEverything it read [1]."));
+                foreach (Match page in NewPage.Matches(task))
+                    notes.Append("- Page ").Append(page.Groups[1].Value).Append(" says what the fixture pages say about the topic, in a line ")
+                        .Append("long enough to fill the notes [").Append(page.Groups[1].Value).Append("] (FIXTURE NOTE - NOT AI)\n");
+                return Task.FromResult(BackgroundJobOutcome.Done($"NOTES:\n{notes}SEARCH: fixture query {tasks.Count}"));
+            }, null);
+            outcome = await run.RunAsync(job, new("fixture topic", "everything about it"), token);
+            return outcome.Report is null ? BackgroundJobOutcome.Failed(outcome.Problem ?? "no report") : BackgroundJobOutcome.Done("report");
+        }).Job!;
+        var waited = Stopwatch.StartNew();
+        while (!job.Finished && waited.Elapsed < TimeSpan.FromSeconds(30)) await Task.Delay(10, cancellation);
+        var largest = tasks.Count == 0 ? 0 : tasks.Max(task => Encoding.UTF8.GetByteCount(task));
+        var ok = job.State == BackgroundJobState.Succeeded && outcome?.Report is { } report && report.Sources.Count == budget.Pages &&
+            run is { } done && done.Pages == budget.Pages && done.Searches <= budget.Searches && done.Steps <= budget.Steps &&
+            done.NotesCharacters <= budget.NotesCharacters && largest <= WebResearch.MaxTaskBytes &&
+            WebResearch.Kind is { MaxActive: 1, MaxPerHour: null, TimeLimit: null };
+        return (ok, new
+        {
+            ok,
+            budget = new
+            {
+                searches = budget.Searches, pages = budget.Pages, modelSteps = budget.Steps, megabytes = budget.Bytes / 1_000_000,
+                pagesFirstRead = budget.PagesFirstRead, pagesPerStep = budget.PagesPerStep, notesCharacters = budget.NotesCharacters,
+                timeLimit = "none", perHour = "none", atOnce = WebResearch.Kind.MaxActive
+            },
+            run = run is null ? null : new
+            {
+                searches = run.Searches, pagesRead = run.Pages, modelSteps = run.Steps, bytes = run.Bytes, notesCharacters = run.NotesCharacters
+            },
+            reportSources = outcome?.Report?.Sources.Count, largestTaskBytes = largest, maxTaskBytes = WebResearch.MaxTaskBytes,
+            problem = outcome?.Problem
+        });
+    }
+
+    private static readonly Regex NewPage = new(@"^\[(\d+)\] ", RegexOptions.Multiline | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+
+    /// <summary>An in-memory web (NOT the internet): every search finds 8 new results, and every page has about 5,000 characters
+    /// of text.</summary>
+    private sealed class EndlessWeb : IWebSearch, IWebFetch
+    {
+        private int searches;
+
+        public Task<IReadOnlyList<WebSearchResult>> SearchAsync(string query, CancellationToken cancellationToken)
+        {
+            var round = Interlocked.Increment(ref searches);
+            IReadOnlyList<WebSearchResult> found = [.. Enumerable.Range(0, 8).Select(i =>
+                new WebSearchResult($"Fixture result {round}-{i}", $"https://fixture.example/{round}/{i}", "A fixture snippet (NOT AI)."))];
+            return Task.FromResult(found);
+        }
+
+        public Task<WebPage> FetchAsync(Uri url, CancellationToken cancellationToken)
+        {
+            var text = string.Join('\n', Enumerable.Range(0, 60).Select(i => $"Line {i} of the fixture page {url.AbsolutePath}, about the topic (NOT AI)."));
+            return Task.FromResult(new WebPage(url.AbsoluteUri, "Fixture page " + url.AbsolutePath, text, text.Length));
+        }
     }
 
     private static int CountOf(string text, string part)
@@ -413,9 +513,9 @@ internal static class ResearchCheck
                     break;
                 default:
                     var answer = last.Contains("step 1 of", StringComparison.Ordinal)
-                        ? $"SEARCH: laser pointer cats safe\nREAD: {BaseUrl}/page/6"
+                        ? $"NOTES:\n- {FixtureNote}\nSEARCH: laser pointer cats safe\nREAD: {BaseUrl}/page/6"
                         : "TITLE: Toys cats like best\nSUMMARY: " + Summary + "\nREPORT:\nMost cats prefer toys that move like prey: wand toys [1] " +
-                          "and crinkle balls [2]. Laser pointers are fine if the game ends on a toy they can catch [3].";
+                          "and crinkle balls [3]. Laser pointers are fine if the game ends on a toy they can catch [2].";
                     await ChunkAsync(stream, "{\"role\":\"assistant\",\"content\":" + JsonSerializer.Serialize(answer) + "}");
                     await FinishAsync(stream, "stop");
                     break;
