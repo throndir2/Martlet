@@ -209,6 +209,42 @@ public sealed class SenseLanesTests
     }
 
     [Fact]
+    public async Task A_background_job_gives_way_to_a_live_job_and_starts_again_but_not_for_a_summary()
+    {
+        var clock = new RuntimeClock();
+        var ran = new List<string>();
+        var helperRuns = 0;
+        var summaryGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var lanes = new SenseLanes(Described, async (_, _, job, token) =>
+        {
+            lock (ran) ran.Add(job.Purpose);
+            if (job.Purpose == "touch zones" && Interlocked.Increment(ref helperRuns) == 1) await Task.Delay(Timeout.Infinite, token);
+            if (job.Purpose == "slow helper") await summaryGate.Task.WaitAsync(token);
+            return SenseAnswer.Done(job.Purpose + " done");
+        }, clock);
+
+        // A helper job runs; a reply's picture comes: the helper stops, the picture goes first, then the helper starts again.
+        var helper = lanes.RunAsync(SenseKind.Image, Look("touch zones", priority: -10) with { DropWhenStale = false }, CancellationToken.None);
+        await Until(clock, () => ran.Count == 1);
+        var picture = lanes.RunAsync(SenseKind.Image, Look("reply picture", key: "picture", priority: 10), CancellationToken.None);
+        Assert.Equal("reply picture done", (await Done(clock, picture)).Text);
+        Assert.Equal("touch zones done", (await Done(clock, helper)).Text);
+        Assert.Equal(["touch zones", "reply picture", "touch zones"], ran);
+
+        // A summary (priority 0) waits behind a helper instead.
+        var slow = lanes.RunAsync(SenseKind.Image, Look("slow helper", priority: -10) with { DropWhenStale = false }, CancellationToken.None);
+        await Until(clock, () => ran.Count == 4);
+        var summary = lanes.RunAsync(SenseKind.Image, Look("summary", key: "screen-summary"), CancellationToken.None);
+        await Until(clock, () => lanes.Status()[0].Waiting == 1);
+        Assert.Equal(4, ran.Count);
+        summaryGate.SetResult();
+        Assert.True((await Done(clock, slow)).Succeeded);
+        Assert.True((await Done(clock, summary)).Succeeded);
+        Assert.Equal(["touch zones", "reply picture", "touch zones", "slow helper", "summary"], ran);
+        Assert.Equal((false, 0), (lanes.Status()[0].Busy, lanes.Status()[0].Waiting));
+    }
+
+    [Fact]
     public async Task The_conversation_comes_first_a_job_waits_while_a_reply_holds_the_hardware_and_a_running_one_is_stopped()
     {
         var clock = new RuntimeClock();

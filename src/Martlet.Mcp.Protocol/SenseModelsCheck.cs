@@ -307,6 +307,34 @@ internal static class SenseModelsCheck
                 $"held {heldThen}, then {ranAfter.Outcome}; a running job when a reply started: {stopped.Outcome}; a job the hold outlasted: " +
                 $"{outlasted.Outcome} ({outlasted.Problem})");
         }
+        // 18. A background job (a helper, priority below zero) gives way to a reply's picture and starts again after it; a summary
+        //     (priority 0) waits behind it instead.
+        {
+            var ran = new List<string>();
+            var helperRuns = 0;
+            var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var lanes = new SenseLanes(_ => route, async (_, _, job, token) =>
+            {
+                lock (ran) ran.Add(job.Purpose);
+                if (job.Purpose == "touch_zones" && Interlocked.Increment(ref helperRuns) == 1) await Task.Delay(Timeout.Infinite, token);
+                if (job.Purpose == "eyes") await gate.Task.WaitAsync(token);
+                return SenseAnswer.Done(job.Purpose + " done");
+            });
+            var helper = lanes.RunAsync(SenseKind.Image, Job("touch_zones", priority: -10) with { DropWhenStale = false }, cancellation);
+            await WaitAsync(() => ran.Count == 1, cancellation);
+            var reply = await lanes.RunAsync(SenseKind.Image, Job("reply picture", key: "picture", priority: 10), cancellation);
+            var helped = await helper;
+            var measuring = lanes.RunAsync(SenseKind.Image, Job("eyes", priority: -10) with { DropWhenStale = false }, cancellation);
+            await WaitAsync(() => ran.Count == 4, cancellation);
+            var summary = lanes.RunAsync(SenseKind.Image, Job("summary", key: "screen-summary"), cancellation);
+            await WaitAsync(() => lanes.Status()[0].Waiting == 1, cancellation);
+            var waited = ran.Count == 4;
+            gate.SetResult();
+            var both = await Task.WhenAll(measuring, summary);
+            Check("lanes-yield", reply.Succeeded && helped.Succeeded && waited && both.All(r => r.Succeeded) &&
+                string.Join(", ", ran) == "touch_zones, reply picture, touch_zones, eyes, summary",
+                $"ran {string.Join(", ", ran)}; the summary waited behind the eyes: {waited}");
+        }
 
         return new
         {

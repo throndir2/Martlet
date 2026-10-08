@@ -337,9 +337,11 @@ jobs](MEMORY.md#helper-jobs-on-the-thinking-pool):
 1. A free Thinking pool member that sees takes the job first, as before.
 2. Otherwise, while pictures go to an image model of its own, that model takes
    the job in place of the Thinking model. The job waits behind the image
-   model's other jobs, at the lowest priority. It may write as much and run as
-   long as on a pool member (4,096 tokens; 3 minutes for touch zones, 5 for
-   the eyes).
+   model's other jobs, at the lowest priority. When a reply's picture or your
+   voice comes for the same model, the job gives way: it stops, and it starts
+   again from the beginning when the model is free. A screen summary doesn't
+   make it give way. It may write as much and run as long as on a pool member
+   (4,096 tokens; 3 minutes for touch zones, 5 for the eyes).
 3. Otherwise the Thinking model takes it after any reply, as before.
 
 Companion › Touch (`TouchZonesVision`) names the model that takes the
@@ -357,7 +359,9 @@ The time from the end of your speech to Martlet's first word must never grow
    when the picture changes, a recording as soon as you stop speaking.
 3. Each model runs one job at a time (`SenseLanes`). When both kinds use the
    same model, they share one line. A newer picture takes the place of an
-   older one that waits.
+   older one that waits. A background job (priority below zero, such as a
+   helper job) gives way to a job for the conversation (priority above zero)
+   and starts again after it.
 4. The conversation comes first. A model that shares the conversation's
    computer and graphics card starts no job while a reply runs, until the
    reply's voice is all made: its Thinking request and its voice may need the
