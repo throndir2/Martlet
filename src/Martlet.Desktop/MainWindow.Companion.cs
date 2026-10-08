@@ -272,6 +272,7 @@ public partial class MainWindow
     private string PlaceName(SetupRoute route)
     {
         if (IsLocalOllama(route)) return "Ollama on this PC";
+        if (IsLocalServer(route)) return Capitalized($"{LocalServerName(route.Origin)} on this PC");
         if (route.RouteType == SetupRouteType.LocalWindowsTts) return "Windows voice on this PC";
         if (route.RouteType == SetupRouteType.LocalParakeet) return "Speech recognition on this PC";
         if (SelfHostSetup.IsGateway(route.RouteType) && route.Gateway is { } gateway)
@@ -451,10 +452,11 @@ public partial class MainWindow
 
     // ---------- job pages ----------
 
-    /// <summary>Routes that run on this PC without Martlet's host service: Ollama for thinking, installed Windows speech and
-    /// native whisper.cpp.</summary>
+    /// <summary>Routes that run on this PC without Martlet's host service: Ollama or another model app on this PC for thinking,
+    /// installed Windows speech and native whisper.cpp.</summary>
     private static bool RunsHereWithoutHost(SetupRoute route) =>
-        IsLocalOllama(route) || route.RouteType is SetupRouteType.LocalWindowsTts or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWhisper or
+        IsLocalOllama(route) || IsLocalServer(route) ||
+        route.RouteType is SetupRouteType.LocalWindowsTts or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWhisper or
             SetupRouteType.LocalParakeet;
 
     private void RenderJobTab(Panel page, CompanionTab section)
@@ -477,7 +479,8 @@ public partial class MainWindow
         page.Children.Add(WhereItRunsCard(section, section.ToString(), "Where it runs", null, route is null ? null : current, place,
             (JobPlace.ThisPc, "This PC (recommended)", role switch
             {
-                SetupRole.Llm => "Run a local model here. Conversations stay on this PC, with no API key or per-request cost.",
+                SetupRole.Llm => "Run a local model here with Ollama or a model app you already use, such as LM Studio or llama.cpp. " +
+                    "Conversations stay on this PC, with no per-request cost.",
                 SetupRole.Tts => "Run a voice engine here, or use a Windows voice. Audio stays on this PC.",
                 _ => "Turn your speech into text on this PC. Your voice stays here."
             }),
@@ -490,15 +493,23 @@ public partial class MainWindow
                 _ => "Use OpenAI with your API key. Requests may cost money."
             })));
 
-        page.Children.Add(place switch
+        if (place == JobPlace.ThisPc && role == SetupRole.Llm)
         {
-            JobPlace.ThisPc when role == SetupRole.Llm => LocalThinkingCard(route),
-            JobPlace.ThisPc when role == SetupRole.Tts => VoiceEnginesCard(route, thisPc, onThisPc: true),
-            JobPlace.Computer when role == SetupRole.Tts => VoiceEnginesCard(route, thisPc, onThisPc: false),
-            JobPlace.ThisPc => LocalListeningCard(route, thisPc),
-            JobPlace.Computer => ComputersCard(job, route, role == SetupRole.Llm ? null : thisPc),
-            _ => CloudCard(section, job, route)
-        });
+            // Which model apps answer here decides what This PC offers, so look once without being asked (loopback only).
+            if (localServers is null && !lookingForLocalServers) LookForLocalServersAsync(quiet: true).Forget();
+            var app = localApp ?? DefaultLocalApp(route, !Prerequisites.IsMissing(Prerequisites.Ollama), OtherLocalServers().Count);
+            page.Children.Add(LocalAppCard(route, app));
+            page.Children.Add(app == LocalApp.Ollama ? LocalThinkingCard(route) : LocalServerCard(route));
+        }
+        else
+            page.Children.Add(place switch
+            {
+                JobPlace.ThisPc when role == SetupRole.Tts => VoiceEnginesCard(route, thisPc, onThisPc: true),
+                JobPlace.Computer when role == SetupRole.Tts => VoiceEnginesCard(route, thisPc, onThisPc: false),
+                JobPlace.ThisPc => LocalListeningCard(route, thisPc),
+                JobPlace.Computer => ComputersCard(job, route, role == SetupRole.Llm ? null : thisPc),
+                _ => CloudCard(section, job, route)
+            });
 
         // Speaking in the cloud can also be ElevenLabs: a voice cloned from one of yours, with tones.
         if (section == CompanionTab.Voice && place == JobPlace.Cloud) page.Children.Add(ElevenLabsCard(route));
@@ -715,11 +726,17 @@ public partial class MainWindow
             "Each leaves room on the graphics card for a game and Martlet's character.", new Thickness(0, 6, 0, 0));
         AutomationProperties.SetAutomationId(suggestion, "SetupLocalRecommendation");
 
+        var own = Note("Any Ollama model works: type a name from ollama.com/library, a Hugging Face GGUF as hf.co/<user>/<repo>:<quant>, " +
+            "or a model you made with ollama create. Download model gets it; models already downloaded are in the suggestions.",
+            new Thickness(0, 4, 0, 0));
+        AutomationProperties.SetAutomationId(own, "SetupLocalOwnModels");
+
         return Card(Heading("Ollama on this PC"),
             Note("Ollama runs a local conversation model. Your messages stay on this PC, with no API key or per-request cost.", new Thickness(0, 0, 0, 8)),
             status,
             new Label { Content = "Ollama _model", Target = model, Padding = new Thickness(0, 4, 0, 4) },
             model,
+            own,
             new Label { Content = "_Suggestions", Target = picks, Padding = new Thickness(0, 8, 0, 4) },
             picks,
             suggestion,
@@ -1167,7 +1184,7 @@ public partial class MainWindow
     {
         var role = job.Role;
         var cloudRoute = route is not null && (route.RouteType is null or SetupRouteType.OpenAi ||
-            route.RouteType == SetupRouteType.ChatCompletions && !IsLocalOllama(route)) ? route : null;
+            route.RouteType == SetupRouteType.ChatCompletions && !IsLocalOllama(route) && !IsLocalServer(route)) ? route : null;
         IReadOnlyList<CloudProvider> providers = role == SetupRole.Llm ? ThinkingProviders : [OpenAiCloud];
         var provider = new ComboBox { ItemsSource = providers, MinHeight = 30, MaxWidth = 420, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left };
         AutomationProperties.SetName(provider, "Provider");
@@ -1265,7 +1282,8 @@ public partial class MainWindow
                 : p.BaseUrl == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl ? $"Recommended: {p.DefaultModel}. Any exact OpenRouter model ID works."
                 : p.BaseUrl == ChatCompletionsEndpointCatalog.NvidiaBuildBaseUrl ? $"Recommended: {p.DefaultModel}. Keys start with nvapi-."
                 : ChatCompletionsEndpointCatalog.Named(p.BaseUrl)?.Guidance is { } guidance ? guidance
-                : "Use an HTTPS URL, or a local http://127.0.0.1 address. Enter the exact model ID.");
+                : "Use the server's HTTPS base URL and enter the exact model ID. For a model app on this PC (LM Studio, llama.cpp and " +
+                    "others), choose This PC › A model app you already use.");
             consentText.Text = $"I choose {p.Name} for {job.Job}. {job.Sent} will be sent there, and requests may cost money. " +
                 OpenAiSetup.Boundary(role);
             consent.IsChecked = SameAsSaved(p) && cloudRoute!.Consent is not null && keepModel;

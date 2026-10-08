@@ -52,7 +52,10 @@ client and `Audio` (which also targets plain `net10.0`). So:
   window is in front, or the global key once DX02/DX03 provide it: F8 on Linux,
   Control+Alt+T on a Mac, where F8 is a media key). Thinking through OpenAI or any
   Chat Completions server, with one-click presets for Ollama (11434), LM Studio
-  (1234) and Docker Model Runner (12434) on this computer; OpenAI listening and
+  (1234) and Docker Model Runner (12434) on this computer, and *Find model apps*,
+  which looks for every model app Martlet knows on this computer
+  ([Local model apps](LOCAL_MODEL_APPS.md)) and fills in the first one with a
+  model; OpenAI listening and
   speaking. Cloud routes need the "send to the cloud provider" consent and a key;
   servers on this computer need neither.
 - **Audio:** SoundFlow over miniaudio (MIT): PipeWire/PulseAudio/ALSA on Linux,
@@ -186,7 +189,7 @@ appends Linux/macOS install text and their SHA-256 lines to the release notes.
 | --- | --- | --- |
 | DX01 | `Martlet.Companion` Avalonia app: settings, typed and push-to-talk conversation with cloud and loopback Chat Completions, OpenAI listening/speaking, cross-platform audio, character window with the web bundles, catalog guardrails, platform-service interfaces, MCP reachability | `src/Martlet.Companion`, catalog companion rows |
 | DX02 | Linux integration: overlay (X11/XWayland, layer-shell), hotkey (X11 + portal), Secret Service, tray, autostart, screen capture (X11 + portal). **Built** ([status](#dx02-status-linux-integration-2026-10-06)) | `src/Martlet.Platform.Linux` |
-| DX03 | macOS integration: floating panel behaviors, Carbon hotkey, Keychain, menu bar, ScreenCaptureKit, Apple silicon/Intel detection, loopback Ollama/LM Studio detection | `src/Martlet.Platform.MacOS` |
+| DX03 | macOS integration: floating panel behaviors, Carbon hotkey, Keychain, menu bar, ScreenCaptureKit, Apple silicon/Intel detection, loopback model app detection (shared, `src/Martlet.Providers`) | `src/Martlet.Platform.MacOS` |
 | DX04 | Mac host: .NET gateway on macOS (launchd, macOS custody backend, native Ollama/whisper Metal relays, machine report), plus arm64 host images so Docker on a Mac works CPU-only. **Built** ([The Mac host](MACOS.md#the-mac-host-dx04)): `osx-arm64`/`osx-x64` publish and the arm64 host image build; runtime on a Mac NOT RUN (no Mac) | gateway, persistence, host setup, `deploy/` |
 | DX05 | Linux and macOS installers in the release build | `packaging/linux`, `packaging/macos`, `windows-release.yml` |
 
@@ -232,7 +235,7 @@ every native behavior below is NOT RUN** until someone runs it on a real Mac.
 | Service | How | NOT RUN on a Mac: what to check |
 | --- | --- | --- |
 | Platform probe (`MacPlatformProbe`) | sysctl `hw.optional.arm64` (Apple silicon, also under Rosetta), `sysctl.proc_translated` (Rosetta), `hw.memsize` (unified memory), `kern.osproductversion`, CPU brand and model. Intel Macs report no usable GPU (local models CPU-only, no MLX or Apple Intelligence); `Warnings()` says so, flags the Intel build under Rosetta and macOS below 14, and notes Audio2Face/F5 need a paired NVIDIA host | Values on an M-series Mac, an Intel Mac and the x64 build under Rosetta |
-| Loopback model servers (`LocalModelServers`) | Asks `127.0.0.1` only: Ollama `:11434/api/tags`, LM Studio `:1234/v1/models`, Docker Model Runner `:12434/engines/v1/models`; returns each running one's Chat Completions base URL and models (Metal on Apple silicon, CPU on Intel) | Detection with each server running (portable code, unit tested with a fake server) |
+| Loopback model apps (`Martlet.Providers` `LocalModelServers`, shared with Windows; Settings › Thinking › *Find model apps*) | Asks `127.0.0.1` only: Ollama `:11434/api/tags`, LM Studio `:1234`, Docker Model Runner `:12434/engines/v1` and the other apps in [Local model apps](LOCAL_MODEL_APPS.md) (`/models`); returns each running one's Chat Completions base URL and models (Metal on Apple silicon, CPU on Intel) | Detection with each server running (portable code, unit tested with a fake server and checked on Windows against a real Ollama on port 8080) |
 | Push-to-talk (`MacPushToTalkHotkey`) | Carbon `RegisterEventHotKey` key down/up, no Accessibility or Input Monitoring permission; requires Command or Control (bare F-keys allowed, with fn on Mac keyboards); suggests Control+Option+T | Hold to talk inside a full-screen game; a combination another app owns reports "already used" |
 | Character overlay (`MacCharacterOverlay`) | From the NSWindow handle: floating level, collectionBehavior canJoinAllSpaces, stationary, ignoresCycle and fullScreenAuxiliary, transparent and shadowless, a runtime subclass that can never become key or main (non-activating without replacing Avalonia's window), click-through toggled 20 times a second by hit-testing the character regions (kept during a drag) | The character over a full-screen game on another Space for 10 minutes, never taking focus; clicks pass through except on the character |
 | Watch my screen (`MacScreenCapture`) | One look = macOS's own `screencapture -x -t jpg -D 1` resized by `sips`; `CGPreflightScreenCaptureAccess` gates every look and `CGRequestScreenCaptureAccess` runs only from the user's Start watching. The permission text explains System Settings, the restart and macOS 15's periodic re-confirmation. A ScreenCaptureKit helper (window choice, exclusions) is a later step | Prompt, restart, a look while a game is in front |

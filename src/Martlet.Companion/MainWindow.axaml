@@ -40,7 +40,9 @@
             <Button Name="PresetOllama" AutomationProperties.AutomationId="PresetOllama" Content="Ollama on this computer" />
             <Button Name="PresetLmStudio" AutomationProperties.AutomationId="PresetLmStudio" Content="LM Studio" />
             <Button Name="PresetDockerModelRunner" AutomationProperties.AutomationId="PresetDockerModelRunner" Content="Docker Model Runner" />
+            <Button Name="FindLocalModels" AutomationProperties.AutomationId="FindLocalModels" Content="Find model apps" />
           </StackPanel>
+          <TextBlock Name="LocalModelsFound" AutomationProperties.AutomationId="LocalModelsFound" TextWrapping="Wrap" Opacity="0.8" />
           <TextBox Name="ChatModel" AutomationProperties.AutomationId="ChatModel" PlaceholderText="Model, for example llama3.2" />
           <TextBox Name="ChatKey" AutomationProperties.AutomationId="ChatKey" PasswordChar="•" PlaceholderText="API key for this server (leave empty for one on this computer)" />
           <TextBlock Name="ThinkingWarnings" AutomationProperties.AutomationId="ThinkingWarnings" TextWrapping="Wrap" Foreground="DarkOrange" />

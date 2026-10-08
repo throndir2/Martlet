@@ -304,7 +304,7 @@ internal static class NetworkMap
     {
         SetupRouteType.ChatCompletions => ChatCompletionsEndpointCatalog.Named(route.Origin)?.Name ??
             (Uri.TryCreate(route.Origin, UriKind.Absolute, out var endpoint)
-                ? IsLoopback(endpoint.Host) ? "A local server on this PC" : endpoint.Host
+                ? IsLoopback(endpoint.Host) ? Martlet.Providers.LocalModelServers.AppAt(route.Origin)?.Name ?? "A model app on this PC" : endpoint.Host
                 : "Your endpoint"),
         SetupRouteType.GatewayOllama => "Your Martlet host",
         SetupRouteType.GatewayF5 => "Your Martlet host",

@@ -62,6 +62,7 @@ public sealed partial class MainWindow : Window
         PresetOllama.Click += (_, _) => Preset("http://127.0.0.1:11434/v1");
         PresetLmStudio.Click += (_, _) => Preset("http://127.0.0.1:1234/v1");
         PresetDockerModelRunner.Click += (_, _) => Preset("http://127.0.0.1:12434/engines/v1");
+        FindLocalModels.Click += async (_, _) => await FindLocalModelsAsync();
         KeyDown += (_, e) => { if (Matches(e)) { e.Handled = true; StartTalking(); } };
         KeyUp += async (_, e) => { if (Matches(e)) { e.Handled = true; await StopTalkingAsync(); } };
         platform.Hotkey.Pressed += (_, _) => Dispatcher.UIThread.Post(StartTalking);
@@ -192,7 +193,7 @@ public sealed partial class MainWindow : Window
         var engine = Selected(Thinking, settings.Thinking);
         var chat = engine == "chat-completions";
         ChatBaseUrl.IsVisible = ChatModel.IsVisible = ChatKey.IsVisible = PresetOllama.IsVisible =
-            PresetLmStudio.IsVisible = PresetDockerModelRunner.IsVisible = chat;
+            PresetLmStudio.IsVisible = PresetDockerModelRunner.IsVisible = FindLocalModels.IsVisible = LocalModelsFound.IsVisible = chat;
         OpenAiModel.IsVisible = engine == "openai-llm";
         ThinkingWarnings.Text = string.Join("\n", guardrails.ThinkingWarnings(engine, ChatBaseUrl.Text));
     }
@@ -201,6 +202,25 @@ public sealed partial class MainWindow : Window
     {
         ChatBaseUrl.Text = url;
         Select(Thinking, "chat-completions");
+    }
+
+    /// <summary>Find model apps: asks this computer's loopback ports which model apps answer (Ollama, LM Studio, llama.cpp,
+    /// Docker Model Runner and others) and fills in the first with a model. Nothing leaves this computer; nothing is saved.</summary>
+    private async Task FindLocalModelsAsync()
+    {
+        FindLocalModels.IsEnabled = false;
+        LocalModelsFound.Text = "Looking for model apps on this computer...";
+        try
+        {
+            var found = await LocalModelServers.DetectAsync();
+            LocalModelsFound.Text = LocalModelChoice.Describe(found);
+            if (LocalModelChoice.Pick(found, ChatModel.Text) is { } pick)
+            {
+                Preset(pick.BaseUrl);
+                if (pick.Model is not null) ChatModel.Text = pick.Model;
+            }
+        }
+        finally { FindLocalModels.IsEnabled = true; }
     }
 
     private async Task BrowseCharacterAsync()

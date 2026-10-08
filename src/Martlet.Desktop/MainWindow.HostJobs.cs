@@ -187,8 +187,10 @@ public partial class MainWindow
             : store is null ? null : JobSavedRoute.Load(store.DataDirectory, job.SavedFile);
     }
 
-    private static bool IsCloud(SetupRoute route) => route.RouteType is null or SetupRouteType.OpenAi or SetupRouteType.ChatCompletions or
-        SetupRouteType.ElevenLabs;
+    /// <summary>A route that sends the job to a provider off this PC; Ollama or another model app on this PC isn't one.</summary>
+    private static bool IsCloud(SetupRoute route) =>
+        route.RouteType is null or SetupRouteType.OpenAi or SetupRouteType.ElevenLabs ||
+        route.RouteType == SetupRouteType.ChatCompletions && !Martlet.Providers.LocalModelServers.IsOnThisComputer(route.Origin);
 
     private static string SavedName(SetupRoute route) => (IsCloud(route) ? "Cloud: " : "") + NetworkMap.ProviderName(route);
 

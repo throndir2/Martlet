@@ -7,8 +7,8 @@ namespace Martlet.Platform.MacOS;
 /// <see cref="OperatingSystem.IsMacOS"/> is true. Creating them does no native work beyond cheap reads, so the headless
 /// <c>--status</c> run is safe; windows, hot keys and the menu bar item touch AppKit only once the app uses them.
 /// Also here, outside the shared contracts: <see cref="MacListeningActivity"/> (no App Nap or idle sleep while
-/// listening), <see cref="LocalModelServers"/> (loopback Ollama / LM Studio / Docker Model Runner) and
-/// <see cref="MacPlatformProbe.Warnings"/>.</summary>
+/// listening) and <see cref="MacPlatformProbe.Warnings"/>. Finding model apps on this Mac (Ollama, LM Studio, Docker Model
+/// Runner and others) is shared with every platform: Martlet.Providers' LocalModelServers.</summary>
 [SupportedOSPlatform("macos")]
 public static class MacPlatform
 {

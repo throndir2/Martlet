@@ -2530,6 +2530,17 @@ the data folder.
   (for example *Only respond to my voice* is on but Voice ID isn't set up), the
   button says *Can't listen* with why and Martlet keeps trying, so it listens
   again as soon as that is fixed.
+- When the microphone fails (missing, busy, blocked by Windows privacy settings,
+  changed or lost while it records), always listening opens it again after
+  1 s, then 5, 10, 20 and 30 s while the failures go on in a row; an utterance
+  that ends normally resets the wait. Home's listening indicator says why and
+  how often Martlet tries (*… Martlet keeps trying every 10 s.*). The desktop
+  log has one *Always listening: the microphone failed …* line for each
+  failure: the error code, whether the microphone gave sound first, Windows'
+  default or a chosen microphone, echo reduction, and the wait. After five
+  failures in a row it logs only a changed error and every tenth failure. When
+  the microphone works again, the log says *… works again after N failures in
+  a row*. Hearing what this PC plays uses the same waits.
 
 **Voice ID** (Companion › Listening › **Set up Voice ID**) recognizes the enrolled user locally:
 
