@@ -19,7 +19,9 @@ internal sealed partial class AvatarController
         foreach (var (source, hold) in parts)
         {
             var was = hold && Held.Holds(source.Id);
-            outcomes.Add((source, hold, was, await PlayActionAsync(source, "{" + tag + "}", finished, token, hold).ConfigureAwait(false)));
+            // A part the owner tries stays theirs ("a try"), so check-ins leave it on; a reply's part goes on by its tag.
+            var why = reason == "a try" ? reason : "{" + tag + "}";
+            outcomes.Add((source, hold, was, await PlayActionAsync(source, why, finished, token, hold).ConfigureAwait(false)));
         }
         // Read after all of them: a held gesture a later part replaced only showed a moment.
         bool Shows((CharacterActionSource Source, bool Hold, bool Was, bool Started) o) => o.Hold && Held.Holds(o.Source.Id);

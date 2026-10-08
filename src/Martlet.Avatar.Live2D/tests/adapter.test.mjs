@@ -392,3 +392,56 @@ test("each drawable names its part, and modelParts gives the model's own parts w
   assert.equal(adapter.drawableBounds()[0].part, "Part31");
   assert.deepEqual(adapter.modelParts(), [{ id: "Part", name: "立绘" }, { id: "Part31", name: "右腿", parent: "Part" }, { id: "Part37" }]);
 });
+
+// Stands in for the official Framework animator in the order it runs: the saved pose, then the expressions (here one that opens
+// the mouth wide), then the host's overrides, then lip-sync added at 0.8 (as the Cubism samples do).
+function animated(env) {
+  let opened = 0;
+  env.model.getParameterValueByIndex = i => env.values[i];
+  env.sdk.createAnimator = (model, assets) => {
+    const mouth = env.parameters.findIndex(([id]) => assets.lipSyncIds.includes(id));
+    return {
+      motionGroups: [], expressions: ["shout"],
+      update(_seconds, input) {
+        model.setParameterValueByIndex(mouth, env.parameters[mouth][3] + opened);
+        input.overrides();
+        if (input.lipSync > 0) model.setParameterValueByIndex(mouth, env.values[mouth] + input.lipSync * 0.8);
+      },
+      playMotion: () => false,
+      setExpression: name => { opened = name ? 5 : 0; return true; },
+      release() {},
+    };
+  };
+}
+
+test("emotes that set the mouth give it to the voice while it speaks, and get it back a second after it stops", async t => {
+  const env = environment();
+  animated(env);
+  const adapter = create(env);
+  t.after(() => adapter.dispose());
+  await adapter.load(bundle());
+  const run = (frames, level) => {
+    for (let i = 0; i < frames; i++) {
+      if (level !== undefined) adapter.setLipSync(level);
+      adapter.update(0.05);
+    }
+    return adapter.mouthReading;
+  };
+  assert.equal(adapter.setExpression("shout"), true);
+  let mouth = run(10);
+  assert.deepEqual([mouth.parameter, mouth.speaking, mouth.voice, mouth.emote, mouth.open], ["CustomMouth", false, 0, 1, 1],
+    "quiet, the emote holds the mouth wide open");
+  mouth = run(20, 0);
+  assert.ok(mouth.speaking && mouth.voice > 0.99 && mouth.open < 0.01 && mouth.emote === 1,
+    `the voice has the mouth, closed between its sounds, while the emote stays on: ${JSON.stringify(mouth)}`);
+  mouth = run(6, 1);
+  assert.ok(mouth.level > 0.99 && Math.abs(mouth.open - 0.8 * mouth.level / 5) < 0.01,
+    `the voice opens it just as it would without the emote: ${JSON.stringify(mouth)}`);
+  mouth = run(18);
+  assert.ok(mouth.speaking && mouth.voice > 0.99 && mouth.open < 0.01, `a pause in the speech keeps it: ${JSON.stringify(mouth)}`);
+  mouth = run(24);
+  assert.ok(!mouth.speaking && mouth.voice < 0.01 && mouth.open > 0.99, `then the emote's open mouth comes back: ${JSON.stringify(mouth)}`);
+  assert.equal(adapter.setExpression(null), true);
+  mouth = run(2);
+  assert.deepEqual([mouth.emote, mouth.open], [0, 0], "and closes when the emote ends");
+});

@@ -121,9 +121,10 @@ public static class SpeechEngines
     /// (huggingface.co/ResembleAI/chatterbox-turbo at 749d1c1a46eb10492095d68fbcf55691ccf137cd), which defines 19. Resemble's
     /// documentation (the model card, the README and the official Turbo apps' EVENT_TAGS) names the nine non-word sounds; the
     /// other ten are the tokenizer's style tokens, the tones of voice. Turbo has no exaggeration or CFG setting (its loader
-    /// turns emotion_adv off and generate() ignores both), and measured, its tones don't change the voice: only [whispering]
-    /// does, because Martlet's service whispers those sentences itself (docs/CHATTERBOX_VOICE.md). The tones stay as cues for
-    /// the character. [advertisement] and [narration] (reading genres, not conversation) are left out.</summary>
+    /// turns emotion_adv off and generate() ignores both), and measured, its tones don't change the voice, apart from
+    /// [whispering], which the model itself whispers only now and then; Martlet adds no whisper of its own
+    /// (docs/CHATTERBOX_VOICE.md). The tones stay as cues for the character. [advertisement] and [narration] (reading genres,
+    /// not conversation) are left out.</summary>
     public static readonly IReadOnlyList<VoiceTag> ChatterboxTurboTags =
     [
         new("[laugh]", VoiceTagKind.Sound, "a laugh, after something genuinely funny"),
@@ -150,13 +151,13 @@ public static class SpeechEngines
         "Natural and quick.", 5_001, 30_000, 6, ChatterboxTurboTags, Emotions: EmotionSupport.WhisperOnly);
 
     /// <summary>The original Chatterbox's tags. The model has no sound or tone tokens (a [laugh] would be read out), so replies
-    /// keep only these two, which its service turns into how a sentence is said: [expressive] speaks it with the Expressive
-    /// exaggeration and CFG weight instead of the General ones (<see cref="ChatterboxStyle"/>), and [whispering] whispers it.</summary>
+    /// keep only [expressive], which its service turns into how a sentence is said: it speaks the sentence with the Expressive
+    /// exaggeration and CFG weight instead of the General ones (<see cref="ChatterboxStyle"/>). The model can't whisper and
+    /// Martlet adds no whisper of its own, so [whispering] is not offered.</summary>
     public static readonly IReadOnlyList<VoiceTag> ChatterboxOriginalTags =
     [
         new("[expressive]", VoiceTagKind.Emotion,
-            "expressive and animated, for excitement, delight, drama or strong feeling; leave it out for calm, even speech"),
-        new("[whispering]", VoiceTagKind.Emotion, "whispered, for a secret or something hushed")
+            "expressive and animated, for excitement, delight, drama or strong feeling; leave it out for calm, even speech")
     ];
 
     /// <summary>The original 500M Chatterbox (huggingface.co/ResembleAI/chatterbox, English): no laughs or sighs, but each

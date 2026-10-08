@@ -1145,6 +1145,102 @@ public sealed class LiveConversationTests
     }
 
     [Fact]
+    public async Task LooksAndPicturesNameTheAppInFrontWithoutChangingTheInstructions()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var image = new BoundedImage([0xFF, 0xD8, 0xFF, .. new byte[32]], ImageMediaType.Jpeg, 4, 4);
+        var whole = new WatchSource(WatchKind.ActiveScreen);
+        static string[] Users(JsonDocument body) => [.. body.RootElement.GetProperty("input").EnumerateArray()
+            .Where(item => item.GetProperty("role").GetString() == "user")
+            .Select(item => item.GetProperty("content") is { ValueKind: JsonValueKind.String } text ? text.GetString()!
+                : item.GetProperty("content").EnumerateArray().Single(part => part.GetProperty("type").GetString() == "input_text")
+                    .GetProperty("text").GetString()!)];
+
+        // A look's message names the program in front and says it is full screen; the conversation keeps that with the look.
+        fixture.Answer("[pass] [seen: a boss fight]");
+        var look = fixture.Controller.StartCommentary(image, "ELDEN RING", ChattinessChoice.Normal, voice: false, screenApproved: true,
+            source: whole, app: "ELDEN RING", fullScreen: true);
+        await fixture.Finish(look);
+        using (var body = JsonDocument.Parse(fixture.Llm.Body))
+            Assert.StartsWith("(Screen glance. Active app: ELDEN RING (full screen). Active window: \"ELDEN RING\".",
+                ResponsesCurrentUserText(body));
+
+        // Messages with pictures of different windows: the instructions stay the same (so the prompt cache keeps them), and the
+        // program in front and the window's title go after the words, in notes the conversation doesn't keep.
+        fixture.Answer("Cute! [seen: a cat video]");
+        await fixture.Finish(fixture.Controller.Start("What's this?", voice: false, microphone: false, approved: true,
+            seen: new SeenScreen(image, "Cat video - YouTube - Google Chrome", whole, "Google Chrome", FullScreen: true)));
+        string instructions;
+        using (var body = JsonDocument.Parse(fixture.Llm.Body))
+        {
+            instructions = body.RootElement.GetProperty("instructions").GetString()!;
+            Assert.Contains("it shows the user's whole screen: every monitor, with the taskbar and any pop-up notifications right now",
+                instructions);
+            Assert.DoesNotContain("Google Chrome", instructions);
+            Assert.DoesNotContain("YouTube", instructions);
+            var users = Users(body);
+            Assert.Equal("[Screen] You looked at the user's whole screen (active window \"ELDEN RING\" in ELDEN RING, full screen): " +
+                "a boss fight.", users[0]);
+            Assert.StartsWith("What's this?", users[^1]);
+            Assert.Contains("Active app in the picture: Google Chrome (full screen). Active window: \"Cat video - YouTube - Google Chrome\".",
+                users[^1]);
+        }
+
+        fixture.Answer("Busy day. [seen: code]");
+        await fixture.Finish(fixture.Controller.Start("And now?", voice: false, microphone: false, approved: true,
+            seen: new SeenScreen(image, "Program.cs - Code", whole, "Visual Studio Code")));
+        using (var body = JsonDocument.Parse(fixture.Llm.Body))
+        {
+            Assert.Equal(instructions, body.RootElement.GetProperty("instructions").GetString());
+            var users = Users(body);
+            Assert.Contains("Active app in the picture: Visual Studio Code. Active window: \"Program.cs - Code\".", users[^1]);
+            // The earlier message keeps where its picture was from, with the app, and not the note that went with it.
+            Assert.StartsWith("What's this?", users[^2]);
+            Assert.EndsWith("\n[Screen] With this message you saw the user's whole screen (active window \"Cat video - YouTube - " +
+                "Google Chrome\" in Google Chrome, full screen): a cat video.", users[^2]);
+            Assert.DoesNotContain("Active app in the picture", users[^2]);
+        }
+
+        // The same window again: the conversation's latest [Screen] line already says it, so nothing is added.
+        fixture.Answer("Still coding. [seen: code]");
+        await fixture.Finish(fixture.Controller.Start("Still here?", voice: false, microphone: false, approved: true,
+            seen: new SeenScreen(image, "Program.cs - Code", whole, "Visual Studio Code")));
+        using (var body = JsonDocument.Parse(fixture.Llm.Body))
+        {
+            Assert.Equal(instructions, body.RootElement.GetProperty("instructions").GetString());
+            var current = Users(body)[^1];
+            Assert.StartsWith("Still here?", current);
+            Assert.DoesNotContain("Active app in the picture", current);
+        }
+    }
+
+    [Fact]
+    public void ThePictureOnlyNamesTheAppWhenTheConversationsLatestScreenLineDoesNot()
+    {
+        var image = new BoundedImage([0xFF, 0xD8, 0xFF, .. new byte[32]], ImageMediaType.Jpeg, 4, 4);
+        var whole = new WatchSource(WatchKind.ActiveScreen);
+        var game = new SeenScreen(image, "ELDEN RING", whole, "ELDEN RING", FullScreen: true);
+        static TextHistoryMessage User(string text) => new(TextHistoryRole.User, text);
+        var expected = "Active app in the picture: ELDEN RING (full screen). Active window: \"ELDEN RING\".";
+        Assert.Equal(expected, game.Active(null));
+        Assert.Equal(expected, game.Active(null, []));
+        // The latest look or message saw the same window of the same program, full screen too: nothing to add.
+        Assert.Null(game.Active(null, [User(game.HistoryLine("a boss fight")), new(TextHistoryRole.Assistant, "[pass]")]));
+        Assert.Null(game.Active(null, [User("Nice?\n" + game.HistoryLine("a boss fight", message: true) + "\n(touch: a pat)")]));
+        Assert.Null(game.Active(null, [User(game.HistoryLine(null, why: "a notification popped up"))]));
+        // Another window, the same one no longer full screen, or an older line followed by a newer one about something else.
+        Assert.Equal(expected, game.Active(null, [User(new SeenScreen(image, "Steam", whole, "Steam").HistoryLine("a store page"))]));
+        Assert.Equal(expected, game.Active(null, [User(new SeenScreen(image, "ELDEN RING", whole, "ELDEN RING").HistoryLine("a menu"))]));
+        Assert.Equal(expected, game.Active(null,
+            [User(game.HistoryLine("a boss fight")), User(new SeenScreen(image, "Discord", whole, "Discord").HistoryLine("a chat"))]));
+        // A camera, nothing known, or the prompt emptied: no note.
+        Assert.Null(new SeenScreen(image, "Desk cam", new WatchSource(WatchKind.Camera, "camera-1", "Desk cam")).Active(null));
+        Assert.Null(new SeenScreen(image, "", whole).Active(null));
+        var emptied = new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.SeenApp] = "" } };
+        Assert.Null(game.Active(emptied));
+    }
+
+    [Fact]
     public async Task ThinkingOnTheHomeNetworkGetsLocalTimingAndCloudKeepsItsOwn()
     {
         await using var fixture = await LiveFixture.Create();
@@ -2134,10 +2230,13 @@ public sealed class LiveConversationTests
             await fixture.Advance(() => glancer.Captures > 0);
             await Ticks(fixture);
             var line = Control<TextBlock>(window, "VisionStatusText");
-            // No "First look soon.", "You're talking; not interrupting." or last look in the line; those are its tooltip.
+            // No "First look soon.", "You're talking; not interrupting." or last look in the line; those are its tooltip, which
+            // starts with the program in front, never the window's title.
             Assert.True(line.Text is "Watching your active window." or "Watching your active window. Taking a look…", line.Text);
             var help = System.Windows.Automation.AutomationProperties.GetHelpText(line);
-            Assert.True(help.Length == 0 || help.StartsWith("Last look ", StringComparison.Ordinal), help);
+            Assert.StartsWith($"Active app: {FrameGlancer.App} (full screen).", help);
+            Assert.True(help == $"Active app: {FrameGlancer.App} (full screen)." ||
+                help.StartsWith($"Active app: {FrameGlancer.App} (full screen). Last look ", StringComparison.Ordinal), help);
             Assert.DoesNotContain(FrameGlancer.Title, line.Text + help);
         }
         finally { window.End(); }
@@ -2167,16 +2266,17 @@ public sealed class LiveConversationTests
         public void Release() { }
     }
 
-    /// <summary>A window in front that always shows a tiny picture with a private title.</summary>
+    /// <summary>A full-screen window in front that always shows a tiny picture with a private title.</summary>
     private sealed class FrameGlancer : IScreenGlancer
     {
         internal const string Title = "Private window title";
+        internal const string App = "Fixture Player";
         private int captures;
         internal int Captures => Volatile.Read(ref captures);
         public GlanceResult Capture(ScreenScope scope)
         {
             Interlocked.Increment(ref captures);
-            return new(new ScreenFrame(new byte[2 * 2 * 4], 2, 2, Title, 0.5), GlanceSkip.None);
+            return new(new ScreenFrame(new byte[2 * 2 * 4], 2, 2, Title, 0.5, app: App, fullScreen: true), GlanceSkip.None);
         }
         public TimeSpan UserIdle => TimeSpan.Zero;
         public void Release() { }
@@ -2474,6 +2574,44 @@ public sealed class LiveConversationTests
             Assert.Equal(0, fixture.Llm.Calls);
             Assert.Equal(1, fixture.Capture.Opens);
             Assert.Empty(window.Messages);
+        }
+        finally { window.Close(); }
+    });
+
+    // A bubble is as wide as its words, never stretched to a longer caption or note under it (the tone and emotes, "Martlet saw
+    // your whole screen."). Martlet's bubbles keep to the left, yours to the right, and a long reply still wraps within the row.
+    [Fact]
+    public Task BubblesFitTheirWords() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            window.Width = 720;
+            window.Messages.Add(new ChatMessage(ChatRole.Martlet, "Oh, you too, my love!", "Martlet · 10:32 PM")
+                { Note = "Tone: happy. Emotes: smile, hearts." });
+            window.Messages.Add(new ChatMessage(ChatRole.User, "Soon to", "You (spoken) · 10:32 PM")
+                { Note = "Martlet saw your whole screen." });
+            window.Messages.Add(new ChatMessage(ChatRole.User, "Hi", "You · 10:33 PM"));
+            window.Messages.Add(new ChatMessage(ChatRole.Martlet,
+                string.Join(' ', Enumerable.Repeat("This reply is long enough to wrap.", 12)), "Martlet · 10:33 PM"));
+            var bodies = Bodies(window);
+            Assert.Equal(4, bodies.Length);
+            foreach (var body in bodies[..3])
+            {
+                var bubble = Ancestor<Border>(body, "Bubble");
+                var row = Ancestor<StackPanel>(body, "Row");
+                var blank = body.ActualWidth - body.GetRectFromCharacterIndex(body.Text.Length - 1, trailingEdge: true).Right;
+                Assert.True(blank < 4, $"\"{body.Text}\": {blank:0.#} px blank after the words in a {bubble.ActualWidth:0.#} px bubble.");
+                var left = bubble.TranslatePoint(new Point(0, 0), row).X;
+                if (body.DataContext is ChatMessage { IsUser: true })
+                    Assert.Equal(row.ActualWidth, left + bubble.ActualWidth, 1);
+                else Assert.Equal(0, left, 1);
+            }
+            var wrapped = bodies[3];
+            Assert.True(wrapped.LineCount > 1);
+            Assert.InRange(Ancestor<Border>(wrapped, "Bubble").ActualWidth, 400, 580);
         }
         finally { window.Close(); }
     });
@@ -2889,6 +3027,30 @@ public sealed class LiveConversationTests
     });
 
     [Fact]
+    public Task WhatACheckInBringsUpComesUpOnItsOwnInItsOwnWords() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Answer("Hey, how about a quick stretch?");
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            var job = window.BringUp("Breaks", "Suggest a short stretch break, it has been hours.")!;
+            Assert.True(job.Kind.Notice);
+            Assert.Equal(CheckIns.SayKindName, job.Kind.Name);
+            await Until(() => job.Delivery == BackgroundDeliveryState.Delivered);
+            Assert.Equal(1, fixture.Llm.Calls);
+            var body = Encoding.UTF8.GetString(fixture.Llm.Body);
+            Assert.Contains("your own check-in came up with something to bring up", body);
+            Assert.Contains("Suggest a short stretch break, it has been hours.", body);
+            Assert.DoesNotContain("a reminder they asked you for is due now", body);
+            Click(window, "TasksChip");
+            await Until(() => Find<TextBlock>(window, "LiveJobState-" + job.Id)?.Text == "Martlet brought it up.");
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
     public void TheTaskChipCountsRunningReadyAndDoneTasks()
     {
         Assert.Equal("2 running", LiveConversationWindow.TasksChipLine(2, 0, 3));
@@ -2921,18 +3083,30 @@ public sealed class LiveConversationTests
 
     private static T Control<T>(Window window, string name) => Assert.IsType<T>(window.FindName(name));
     // The automation IDs of the talk window's bubbles, in order.
-    private static string[] BubbleIds(Window window)
+    private static string[] BubbleIds(Window window) =>
+        [.. Bodies(window).Select(System.Windows.Automation.AutomationProperties.GetAutomationId)];
+
+    // The words of the talk window's bubbles, in order.
+    private static TextBox[] Bodies(Window window)
     {
         window.UpdateLayout();
-        var found = new List<string>();
+        var found = new List<TextBox>();
         void Walk(DependencyObject node)
         {
-            if (node is TextBox { Name: "Body" } body) found.Add(System.Windows.Automation.AutomationProperties.GetAutomationId(body));
+            if (node is TextBox { Name: "Body" } body) found.Add(body);
             for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(node); i++)
                 Walk(System.Windows.Media.VisualTreeHelper.GetChild(node, i));
         }
         Walk(Control<ItemsControl>(window, "History"));
         return [.. found];
+    }
+
+    // The nearest element above node in the visual tree with this name.
+    private static T Ancestor<T>(DependencyObject node, string name) where T : FrameworkElement
+    {
+        var parent = System.Windows.Media.VisualTreeHelper.GetParent(node);
+        while (parent is not null && (parent as T)?.Name != name) parent = System.Windows.Media.VisualTreeHelper.GetParent(parent);
+        return Assert.IsType<T>(parent);
     }
     private static string Text(Window window, string name) => name == "ResultText"
         ? Control<TextBlock>(window, name).Text : Control<TextBox>(window, name).Text;

@@ -85,32 +85,50 @@ internal sealed record ListeningOptions(bool HandsFree, VoiceActivitySettings Ac
 
 /// <summary>The newest picture of what vision watches (taken at most a few seconds earlier), sent along with what the user
 /// types or says while vision is on, so the reply sees what they see. <paramref name="Title"/> is the active window's title or
-/// the camera's name (empty for an address).</summary>
-internal sealed record SeenScreen(BoundedImage Image, string Title, WatchSource Source)
+/// the camera's name (empty for an address); <paramref name="App"/> is the program in front, by name, and
+/// <paramref name="FullScreen"/> says its window fills its monitor (<see cref="ActiveApp"/>; a screen only).</summary>
+internal sealed record SeenScreen(BoundedImage Image, string Title, WatchSource Source, string App = "", bool FullScreen = false)
 {
-    /// <summary>What the picture shows, for the Screen with your message prompt.</summary>
+    /// <summary>What the picture shows, for the Screen with your message prompt. It goes in the instructions, so it never
+    /// names the window or the program: those change as the user switches windows and go in the notes (<see cref="Active"/>).</summary>
     internal string Describe()
     {
         var title = CleanTitle;
         return Source.Kind switch
         {
-            WatchKind.ActiveWindow => title.Length > 0 ? $"the user's active window (\"{title}\")" : "the user's active window",
-            WatchKind.ActiveScreen => "the user's whole screen: every monitor, with the taskbar and any pop-up notifications" +
-                (title.Length > 0 ? $" (active window: \"{title}\")" : ""),
+            WatchKind.ActiveWindow => "the user's active window",
+            WatchKind.ActiveScreen => "the user's whole screen: every monitor, with the taskbar and any pop-up notifications",
             WatchKind.Camera => title.Length > 0 ? $"what the user's camera \"{title}\" sees" : "what the user's camera sees",
             _ => "what the user's phone or network camera sees"
         };
     }
 
-    /// <summary>Where the picture was taken, as the conversation keeps it (<see cref="VisionHistory"/>): the source and the
-    /// window's title or the camera's name.</summary>
+    /// <summary>The Active app with your message note for a picture of the screen: the program in front, whether it is full
+    /// screen and the window's title. It goes in the notes that are sent but not kept, after the user's words, so the start of
+    /// the request stays the same. Null for a camera, when none of them is known, when the prompt is emptied, or when the
+    /// latest [Screen] line of the <paramref name="conversation"/> already says the same (nothing changed since, so the
+    /// request grows by nothing).</summary>
+    internal string? Active(PromptSettings? prompts, IEnumerable<TextHistoryMessage>? conversation = null)
+    {
+        var app = ActiveApp.Clean(App);
+        var title = CleanTitle;
+        if (!Source.IsScreen || app.Length == 0 && title.Length == 0 && !FullScreen) return null;
+        if (conversation?.LastOrDefault(m => m.Role == TextHistoryRole.User && VisionHistory.Has(m.Text)) is { } last &&
+            VisionHistory.LastSaw(last.Text, camera: false, Where()))
+            return null;
+        return PromptSettings.Fill(prompts, PromptCatalog.SeenApp, ("app", ActiveApp.Describe(app, FullScreen)),
+            ("title", title.Length > 0 ? title : "unknown"));
+    }
+
+    /// <summary>Where the picture was taken, as the conversation keeps it (<see cref="VisionHistory"/>): the source, the
+    /// window's title (or the camera's name) and the program in front.</summary>
     internal string Where()
     {
         var title = CleanTitle;
         return Source.Kind switch
         {
-            WatchKind.ActiveWindow => title.Length > 0 ? $"the user's active window \"{title}\"" : "the user's active window",
-            WatchKind.ActiveScreen => "the user's whole screen" + (title.Length > 0 ? $" (active window \"{title}\")" : ""),
+            WatchKind.ActiveWindow or WatchKind.ActiveScreen => VisionHistory.Screen(Source.Kind == WatchKind.ActiveScreen, title,
+                ActiveApp.Label(ActiveApp.Clean(App), FullScreen)),
             WatchKind.Camera => title.Length > 0 ? $"the user's camera \"{title}\"" : "the user's camera",
             _ => "the user's phone or network camera"
         };
@@ -1504,14 +1522,15 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     internal static TimeSpan RemarkMemory => TimeSpan.FromMinutes(30);
 
-    /// <summary>One unprompted screen glance: the image, the window title and recent context go to the Thinking model,
+    /// <summary>One unprompted screen glance: the image, the window title, the program in front (<paramref name="app"/>, and
+    /// whether it is <paramref name="fullScreen"/>) and recent context go to the Thinking model,
     /// which either answers [pass] (silence) or one short remark that is spoken like any reply. It bypasses the
     /// participation policy (that decides whether to answer the user); the caller's pacer decides when to look. With
     /// <paramref name="look"/> (Martlet decides where the character looks) the model may also start its answer with a look tag
     /// that turns the character's eyes to part of the picture.</summary>
     internal LiveConversationOperation StartCommentary(BoundedImage image, string windowTitle, ChattinessChoice chattiness, bool voice,
         bool screenApproved, WatchSource? source = null, CancellationToken caller = default, AttentionSignal? attention = null,
-        bool look = false, string? screenText = null)
+        bool look = false, string? screenText = null, string? app = null, bool fullScreen = false)
     {
         ArgumentNullException.ThrowIfNull(image);
         if (!screenApproved) throw new LiveActionException("conversation.permission_required");
@@ -1531,9 +1550,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             operation = new(authorization, caller) { Commentary = true, Attention = attention };
             active = operation;
             var camera = source is { IsScreen: false };
-            var prompt = CommentaryPromptLocked(windowTitle, camera, selected.Prompts, attention);
+            var looked = new SeenScreen(image, windowTitle, source ?? new(WatchKind.ActiveWindow), camera ? "" : app ?? "", !camera && fullScreen);
+            var prompt = CommentaryPromptLocked(windowTitle, camera, selected.Prompts, attention, looked);
             var read = camera ? null : ReadOnScreen(selected.Prompts, screenText);
-            var looked = new SeenScreen(image, windowTitle, source ?? new(WatchKind.ActiveWindow));
             var worker = operations.TryStart(async token =>
             {
                 await published.Task.ConfigureAwait(false);
@@ -1553,7 +1572,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     }
 
     private string CommentaryPromptLocked(string windowTitle, bool camera = false, PromptSettings? prompts = null,
-        AttentionSignal? attention = null)
+        AttentionSignal? attention = null, SeenScreen? looked = null)
     {
         while (remarks.TryPeek(out var oldest) && clock.GetElapsedTime(oldest.At) >= RemarkMemory) remarks.Dequeue();
         var title = new string(windowTitle.Where(c => !char.IsControl(c) && c != '"').Take(80).ToArray()).Trim();
@@ -1562,6 +1581,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         return PromptSettings.Fill(prompts, attention is not null ? PromptCatalog.GlanceAttention
                 : camera ? PromptCatalog.GlanceCamera : PromptCatalog.GlanceScreen,
             ("title", title.Length > 0 ? title : "unknown"), ("remarks", said is null ? "" : " " + said),
+            ("app", ActiveApp.Describe(ActiveApp.Clean(looked?.App), looked?.FullScreen == true)),
             ("what", attention?.Describe() ?? ""), ("silent", LiveConversationConfiguration.SilentReply))!;
     }
 
@@ -2056,7 +2076,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         chattiness: decides ? operation.Authorization.Configuration.ChattinessNote(decided) : null,
                         controlTags: LiveConversationConfiguration.ControlTags(decides, picture is not null, prompts),
                         spokenWords: straight ? token => SpokenWords.TranscriptAsync(operation.StraightWords!, token) : null,
-                        board: board.Text, backup: backup);
+                        // The program in front and the window's title change as the user switches windows: they go with the
+                        // picture in the notes that are sent but not kept, never in the instructions, and only when the
+                        // conversation's latest [Screen] line doesn't already say them.
+                        board: Join(board.Text, picture?.Active(prompts, sentHistory)), backup: backup);
                 ConversationRequest request;
                 int usedHistory, usedMemory, usedLore;
                 var picture = seen;
@@ -2614,6 +2637,28 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var start = jobs.Start(Reminders.Kind, label.Length > 80 ? label[..80] + "…" : label,
             (_, _) => Task.FromResult(BackgroundJobOutcome.Done(text)));
         return start.Job;
+    }
+
+    /// <summary>Brings what a check-in said to bring up into this conversation, like a due reminder (<see cref="CheckIns.SayKind"/>,
+    /// with the Check-in: brought up prompts). Null when the conversation is closing or too many wait.</summary>
+    internal BackgroundJob? BringUp(string label, string text)
+    {
+        var start = jobs.Start(CheckIns.SayKind, label.Length > 80 ? label[..80] + "…" : label,
+            (_, _) => Task.FromResult(BackgroundJobOutcome.Done(text)));
+        return start.Job;
+    }
+
+    /// <summary>The newest <paramref name="count"/> exchanges of this conversation (oldest first: what the user said and the reply)
+    /// and how many it has had in all, a count that only grows, for a check-in. In memory only.</summary>
+    internal (IReadOnlyList<CheckInExchange> Exchanges, long Total) RecentExchanges(int count)
+    {
+        lock (gate)
+        {
+            var messages = context.Snapshot();
+            var exchanges = new List<CheckInExchange>();
+            for (var i = 0; i + 1 < messages.Count; i += 2) exchanges.Add(new(messages[i].Text, messages[i + 1].Text));
+            return ([.. exchanges.Skip(Math.Max(0, exchanges.Count - count))], context.Start + context.Count);
+        }
     }
 
     /// <summary>manage_memories: the model finds, adds, corrects, reassigns or forgets facts when the user asks. Changes are noted
@@ -3373,10 +3418,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         return operation;
     }
 
-    /// <summary>Starts a short reply Martlet gives on its own because the user touched the desktop character and said nothing
-    /// (the talk window decides when: <see cref="Martlet.Conversation.TouchDebounce"/>). Its message is Martlet's note with the
-    /// touches (Companion › Prompts › Touched); it starts like the reply before it (same instructions and tools), takes nothing
-    /// else, and the conversation keeps only the short touch line. Null when nothing that starts a reply waits.</summary>
+    /// <summary>Starts a short reply Martlet gives on its own because the user touched, stroked or moved the desktop character and
+    /// said nothing (the talk window decides when: <see cref="Martlet.Conversation.TouchDebounce"/>). Its message is Martlet's note
+    /// with the touches (Companion › Prompts › Touched), which asks for words out loud; it starts like the reply before it (same
+    /// instructions and tools), takes nothing else, and the conversation keeps only the short touch line. Null when nothing that
+    /// starts a reply waits.</summary>
     internal LiveConversationOperation? StartTouch(bool voice)
     {
         var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -3392,7 +3438,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 if (selected.Unavailable(voice, false) is not null) throw new LiveActionException("conversation.configuration_unsupported");
                 if (touches.Peek(TouchNow) is not { StartsTurn: true }) return null;
                 burst = touches.Drain(TouchNow)!;
-                var input = new BoundedTextInput(PromptSettings.Fill(selected.Prompts, PromptCatalog.Touched, ("touches", burst.Line)) ?? burst.Line);
+                var input = new BoundedTextInput(PromptSettings.Fill(selected.Prompts, PromptCatalog.Touched, ("touches", burst.Line),
+                    ("silent", LiveConversationConfiguration.SilentReply)) ?? burst.Line);
                 long acceptedRevision = revision = checked(revision + 1);
                 var authorization = new ConversationAuthorization(selected, voice, false, clock,
                     () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, CancellationToken.None);

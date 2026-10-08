@@ -186,6 +186,26 @@ what each one is.
   The head part includes the body. The tables are `HOLD_PARTS` in
   `Martlet.Avatar.Live2D`'s `lib/gestures.ts` and `VRM_HOLD_PARTS` in
   `Martlet.Avatar.Vrm`'s `src/runtime.ts`.
+- **The voice has the mouth**: while Martlet speaks, its voice moves the
+  character's mouth, whatever the emotes showing do to the mouth. An emote that
+  sets the mouth gives way to the voice, so the lips follow the words. Examples
+  are `mouth_open`, a combo such as `{starstruck}` or `{ahegao}`, and a model's
+  own expression that opens the mouth or holds it in a shape. The rest of the
+  emote (the eyes, brows, cheeks and drawings) stays on.
+  - The voice keeps the mouth through the pauses between words and sentences.
+    About a second after its last sound, the emote's mouth comes back: an open
+    mouth opens again. The voice takes the mouth again at its next sound.
+  - Live2D: each frame, what idle motions, expressions and gestures put on the
+    lip-sync parameters and `ParamMouthOpenY` eases back to the model's rest
+    while the voice speaks. Lip-sync then moves them alone.
+  - VRM: a held open mouth gives way completely. The emotes showing also don't
+    block or blend the mouth expressions while the voice speaks. VRoid
+    emotions often set this (`overrideMouth: block`), which held the mouth
+    still. Each expression gets the model's own setting back afterwards. One
+    VRM expression can't be split into its mouth and the rest, so an emotion
+    whose own shape opens the mouth keeps that shape under the voice's mouth.
+  - Audio2Face frames count as the voice. Martlet's MCP `character_mouth`
+    reads who moves the mouth.
 - **What the reply model knows**: while lingering emotes show, the notes of the
   newest message tell the reply model (Companion › Prompts › *Character emotes
   showing now*). An example: *Your character is showing {glasses} (12 min),
@@ -299,12 +319,20 @@ what each one is.
   while it faces away). Live2D models have no face landmarks, so the face is
   first found at rest (an authored head or face hit area, meshes whose IDs name
   the face or cheeks, or else an estimate from the shape of the top of the
-  model). Then it is pinned to the face's own mesh vertices: when the model
-  loads, Martlet moves the head angles (`ParamAngleX`/`Y`/`Z`) to find the
-  vertices that turn with the head, and moves the other parameters to drop the
-  ones that change shape on their own (hair physics, eyelids, eyes, mouth,
-  brows). A model without those angles, or without enough such vertices, uses
-  the earlier estimate moved with `ParamAngleX`/`Y`/`Z`. Each blush level lies on its
+  model). Then it is pinned to the face's own mesh vertices. A Live2D face is
+  drawn in layers that move apart as the head nods and turns (the back hair,
+  the skin, the eyes, nose and mouth over it), so Martlet pins the face to its
+  skin: the drawable drawn highest that holds the face's middle and both
+  cheeks. The drawings then stay on the face as she looks down at the mouse,
+  also on models whose physics turns the head (head angles that only feed
+  parameters such as `ParamFaceAngleX`). A model without such a drawable is
+  pinned to the vertices that turn with the head instead: when the model
+  loads, Martlet moves the head angles (`ParamAngleX`/`Y`/`Z`) to find them,
+  and moves the other parameters to drop the ones that change shape on their
+  own (hair physics, eyelids, eyes, mouth, brows). A model with neither uses
+  the earlier estimate moved with `ParamAngleX`/`Y`/`Z` (a positive
+  `ParamAngleZ` tips the head's top toward the viewer's right, as on Hiyori).
+  Each blush level lies on its
   cheek's surface, so a turned head shows the near cheek's blush wider and the
   far one narrower (with fewer of a stronger level's lines), fading out as that
   cheek turns away; the fierce flush's band over the nose fades toward that
@@ -411,7 +439,7 @@ what each one is.
   | `eye_roll` | the eyes roll up and over | `ParamEyeBallX`, `ParamEyeBallY` | `head` |
   | `drowsy` | half-closed eyes, the head slowly nodding off and catching itself | `ParamEyeLOpen`, `ParamEyeROpen` | `head`, `spine` (`blink`) |
   | `eyes_up` | only the eyes turn up and stay up; the head doesn't move | `ParamEyeBallY` | `leftEye`, `rightEye` |
-  | `mouth_open` | the mouth opens and stays open; the voice still moves it | `ParamMouthOpenY` | `head` (the `oh` mouth expression, or `aa`) |
+  | `mouth_open` | the mouth opens and stays open; while Martlet speaks, the voice moves it | `ParamMouthOpenY` | `head` (the `oh` mouth expression, or `aa`) |
 
   `eyes_up` and `mouth_open` come last in `AllGestures`, after the overlay
   emotes, so the reply instructions' earlier lines stay the same.
@@ -431,10 +459,12 @@ what each one is.
   eyes follow the usual gaze again. Live2D moves `ParamEyeBallY` and takes the
   look out of the eyeballs. A VRM turns its eye bones up as far as its own
   look-up range (12° when it has none). While `mouth_open` is held and the
-  voice speaks, the held opening eases back to a third, so lip-sync still moves
-  the mouth. When the voice stops, the mouth opens fully again. Live2D adds to
-  `ParamMouthOpenY`. A VRM uses its `oh` mouth expression, or `aa` when it has
-  no `oh`; a composed (Audio2Face) turn keeps the mouth it drives.
+  voice speaks, the voice has the mouth (see *The voice has the mouth* above):
+  the held opening gives way completely, so lip-sync opens and closes the
+  mouth. About a second after the voice stops, the mouth opens fully again.
+  Live2D adds to `ParamMouthOpenY`. A VRM uses its `oh` mouth expression, or
+  `aa` when it has no `oh`; a composed (Audio2Face) turn keeps the mouth it
+  drives.
 - **Where it looks**: the head and eyes follow the character's usual gaze (your
   mouse, your mouse only when it's near, straight ahead, or the window you're
   using), chosen on Companion › Character › **Where the character looks** or
@@ -577,15 +607,21 @@ Martlet knows that the model doesn't have yet, the breasts and the groin too.
 - Each zone plays its emotes and gestures (by default the model's own where it
   has them: a head pat leans in or tilts and smiles, a cheek blushes, an
   intimate zone blushes and flinches) and rests a few seconds before reacting
-  again. With **Martlet notices** on, Martlet also adds up your touches on that
+  again. **Martlet notices** is on for every zone by default (zones saved
+  before it was, where you never turned it on for any zone, get it on once;
+  turn it off for a zone to keep its touches between you and the character).
+  Martlet then adds up your touches on that
   zone (a quick tap on the top of the head or the hair is a pat, elsewhere a
   poke, and a press of about 0.6 seconds or more a hold) into one plain line,
   such as *They patted the top of your head 3 times over 2 seconds, then poked
   your left cheek once.* The local reaction still plays at once. When you talk
-  or type, the line goes with your message (after your words). When you say
+  or type, the line goes with your message (after your words), and Martlet
+  answers you first, then reacts to the touch too. When you say
   nothing, Martlet starts a short reply of its own about 1.2 seconds after your
   last touch (at most 3 seconds after the first, at most once every 4 seconds);
-  starting to talk or type first cancels it, and while Martlet is replying the
+  its prompt asks for a sentence or two out loud, never only an emote or
+  silence, and for a reaction that builds when you keep going. Starting to talk
+  or type first cancels it, and while Martlet is replying the
   touches wait for the next turn. The conversation keeps a short line such as
   *(touch: top of head pat x3)*, the talk window shows a touch-only reply as a
   note, and the two prompts are on Companion › Prompts (*Touched* and
@@ -598,14 +634,19 @@ Martlet knows that the model doesn't have yet, the breasts and the groin too.
   it can't move it, so it strokes the character. Each zone the stroke crosses
   plays its reaction at once (unless it is resting), and the first zone's emote
   stays on until you let go. On zones with **Martlet notices** on, Martlet
-  hears how it went: *They slowly stroked
-  your hair 4 times*. Unlocked, a drag still moves the character, and Ctrl+drag
-  still pans a zoomed view.
+  hears how it went, with every zone it crossed in order: *They slowly stroked
+  your hair 4 times*, or across several zones its path and which way it went,
+  *They slowly stroked down from your chest over your stomach to your thighs
+  once*. A left and a right zone crossed one after the other are said together
+  (*your thighs*), and a stroke that turned back goes *up and down over* (or,
+  sideways, *back and forth over*) the zones. Martlet writes this line itself
+  from the stroke, so it costs no extra model request and adds no wait. Unlocked,
+  a drag still moves the character, and Ctrl+drag still pans a zoomed view.
 - **Moves and zooms**: Martlet also hears when you move the character (and how
   far, or to another monitor), send it home, zoom in or out (and on what part),
   pan, reset the zoom, lock or unlock it, or hide or show it: *They zoomed in on
-  your face*. These go with your next message; only touches and strokes can
-  start a reply of their own.
+  your face*. Moving it around starts a short reply of its own, like a touch;
+  the rest go with your next message.
 
 ### Eyes
 

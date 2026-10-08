@@ -53,21 +53,36 @@ gestures layer: holding one lets go only of the held ones that move a part it
 moves too (`HOLD_PARTS`: eyes, mouth, cheeks, brows, head; every blush level is
 the cheeks). A gesture played
 meanwhile plays on top, and `gestureState` says which plays once and every one
-held (`held` is a list). A held `eyes_up` keeps the look out of the eyeballs,
-and a held open mouth eases back while lip-sync moves the mouth. Every blush
+held (`held` is a list). A held `eyes_up` keeps the look out of the eyeballs.
+While the voice speaks (`setLipSync` or a composed frame, until
+`VOICE_HOLD_SECONDS`, 1 s, after the last), it has the mouth: each frame, after
+motions, expressions and gestures and before lip-sync, what they put on the
+lip-sync parameters and `ParamMouthOpenY` eases back to the model's rest, so an
+emote that sets the mouth (a held open mouth, an expression that opens it) never
+holds it still. Once the voice is done, the emote's mouth comes back.
+`mouthReading` says how much the voice has the mouth and how far the emotes and
+the mouth open it. Every blush
 level (`BLUSH_LEVELS`) moves `ParamCheek` fully; without it `gesture` returns
 false and the renderer page draws the level over the face instead.
 
 `faceAnchor()` says where the face is now, for Martlet's drawings over it
 (`lib/face.ts`). At load the adapter finds the face at rest, then pins its
-eyes, cheeks, mouth and top to nearby mesh vertices that ride the head
+eyes, cheeks, mouth and top to nearby mesh vertices. A Live2D face is drawn in
+layers that move apart as the head turns (the back hair, the skin, the eyes,
+nose and mouth over it), so it first looks for the face's skin (`faceSkin`):
+of the drawables that show, the one drawn highest whose triangles hold the
+face's middle and both cheeks, and no more than three face widths across or
+high. The face is pinned to every vertex of the skin, which needs no parameter
+probe and follows a head that the model's physics turns. Without such a
+drawable, it pins the face to the vertices that ride the head
 rigidly: it moves each of `ParamAngleX`/`Y`/`Z` to find the vertices that turn
 with the head, then every other parameter to its maximum and minimum to drop
 those that deform on their own, and puts every parameter back
-(`faceTracking` reports how many vertices and how long it took). Each frame
+(`faceTracking` reports how many vertices, the skin drawable's ID as `skin`
+when they are its vertices, and how long finding them took). Each frame
 the pinned points follow those vertices as Core deformed them (moving least
 squares), with each cheek's surface (`cheekLeftFrame`, `cheekRightFrame`), and
-`tracking` is `"mesh"`. Without enough such vertices, `tracking` is
+`tracking` is `"mesh"`. Without either, `tracking` is
 `"estimate"`: the face moved with the head angles, as before.
 
 `faceAnchor()` also gives each eye's iris and its visible opening, for drawings

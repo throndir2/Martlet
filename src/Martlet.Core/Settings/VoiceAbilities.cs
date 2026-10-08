@@ -6,8 +6,9 @@ public enum EmotionSupport
     /// <summary>It can't: the reply never changes its tone (a cloned voice keeps the tone of its recording).</summary>
     None,
 
-    /// <summary>Only whispering, which Martlet's voice service makes itself. Chatterbox Turbo reads its other tones
-    /// ([happy], [angry]...) but measurably doesn't perform them; they only cue the character.</summary>
+    /// <summary>Only whispering, which the voice model does itself, and only now and then: Martlet adds no whisper of its own.
+    /// Chatterbox Turbo reads its other tones ([happy], [angry]...) but measurably doesn't perform them; they only cue the
+    /// character.</summary>
     WhisperOnly,
 
     /// <summary>Calm or expressive for each sentence (the original Chatterbox's exaggeration and CFG weight, chosen by the reply
@@ -56,7 +57,7 @@ public sealed record VoiceAbilities(bool Cloning, bool Sounds, EmotionSupport Em
         {
             EmotionSupport.Tags => new("Emotions", AbilityLevel.Yes, null, "Speaks angrily, sadly, happily and so on where the reply asks."),
             EmotionSupport.WhisperOnly => new("Emotions", AbilityLevel.Partly, "whispering only",
-                "Whispers where the reply asks (Martlet makes the whisper). Tones such as angry or sad don't change the voice; they only move the character."),
+                "The voice model itself whispers where the reply asks, but only now and then. Tones such as angry or sad don't change the voice; they only move the character."),
             EmotionSupport.Intensity => new("Emotions", AbilityLevel.Partly, "calm or expressive",
                 "The reply makes each sentence calm or expressive, but can't pick an emotion such as angry or sad."),
             _ => new("Emotions", AbilityLevel.No, null,
@@ -70,8 +71,8 @@ public sealed record VoiceAbilities(bool Cloning, bool Sounds, EmotionSupport Em
 
     /// <summary>The tags of an engine's catalog that do what <paramref name="item"/> says: its sounds for laughs &amp; sighs,
     /// and for emotions the tones that change the voice (all of them with <see cref="EmotionSupport.Tags"/> or
-    /// <see cref="EmotionSupport.Intensity"/>, otherwise only [whispering], which the service makes). Tones a voice only reads
-    /// (Chatterbox Turbo's [angry]...) are not listed.</summary>
+    /// <see cref="EmotionSupport.Intensity"/>, otherwise only [whispering], which the model itself performs now and then). Tones
+    /// a voice only reads (Chatterbox Turbo's [angry]...) are not listed.</summary>
     public IReadOnlyList<VoiceTag> TagsFor(VoiceAbility item, IReadOnlyList<VoiceTag> tags) => item.Level == AbilityLevel.No ? [] : item.Name switch
     {
         "Laughs & sighs" => [.. tags.Where(tag => tag.Kind == VoiceTagKind.Sound)],

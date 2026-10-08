@@ -206,7 +206,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "of its height; null when unknown) and eyeLeftShape and eyeRightShape (the eye's visible opening now: points, " +
             "triangles (null for an outline), its box left, top, right, bottom, and irisInside, whether the iris's middle is in " +
             "it; 0 points when the eye is closed or hidden), the overlays showing and pinned (Live2D: carriers, the mesh vertices " +
-            "the face rides on, milliseconds, how long finding them took at load, and eyeMilliseconds, how long finding the eyes' " +
+            "the face rides on; skin, the ID of the face's skin drawable when they are its vertices (the highest-drawn drawable " +
+            "that holds the face's middle and both cheeks at rest), else null for the vertices that ride the head; " +
+            "milliseconds, how long finding them took at load, and eyeMilliseconds, how long finding the eyes' " +
             "meshes took). summary says which tracking was used, how far the face moved (x, y, width, tilt), per cheek the share " +
             "of readings over the character, what it was mostly over and for what share, the least it showed and its across " +
             "range, eyesFrom (the sources seen) and per eye (eyeLeft, eyeRight) the share of readings with an iris, how far the " +
@@ -239,6 +241,25 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "--allow-ui-effects.", new
         {
             samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumPoseSamples },
+            gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
+        }),
+        Tool("character_mouth", "Read who moves the showing character's mouth, Martlet's voice or its emotes, samples times (1 to 60, " +
+            "default 1) gapMs apart (0 to 5000, default 250), as each frame is drawn. While the voice speaks, until a second after " +
+            "its last sound, it has the mouth: what the emotes put on the mouth (a held mouth_open, an expression that opens it, a " +
+            "VRM emotion whose overrideMouth blocks lip-sync) gives way, and comes back once the voice is done. With levels (1 to " +
+            $"{DesktopAutomation.MaximumVoiceLevels} loudness levels from 0 to 1, one every stepMs: 10 to 1000, default 50; needs " +
+            "--allow-ui-effects) the mouth first moves as Martlet's loudness lip-sync moves it, without a sound, and the readings " +
+            "start at once. Each reading (mouths) has n, found (false before a model shows), renderer, parameter (Live2D: the " +
+            "parameter read, ParamMouthOpenY when the model has it), voice (0 to 1: how much the voice has the mouth), speaking " +
+            "(the voice moved it within the last second), level (the voice's loudness on it), emote (how far the emotes open the " +
+            "mouth before the voice takes it; a VRM: its held open mouth), open (how far it is open now, 0 at rest to 1) and, for " +
+            "a VRM, blocked (how much the expressions showing block its mouth expressions). summary gives the share of readings " +
+            "speaking, the voice, level, emote, open and blocked ranges (least, most) and the last reading. Reading alone changes " +
+            "nothing, so it needs no --allow-ui-effects.", new
+        {
+            levels = new { type = "array", items = new { type = "number", minimum = 0, maximum = 1 }, minItems = 1, maxItems = DesktopAutomation.MaximumVoiceLevels },
+            stepMs = new { type = "integer", minimum = 10, maximum = 1000 },
+            samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumMouthSamples },
             gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
         }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
@@ -628,12 +649,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "(Martlet.Avatar.Hosting CharacterStrokes and CharacterPhysicalWords with Martlet.Conversation's TouchLedger), headless, " +
             "with no desktop and no model request. stroke is a JSON CharacterStroke {\"id\",\"phase\":\"end\",\"aspect\",\"samples\":" +
             "[{\"x\",\"y\",\"ms\",\"touch\":CharacterTouch or null}]} summarized against the touch zones saved for modelId in dataDirectory " +
-            "(or the rough zones before any were found): zones crossed, main zone, ms, length, speed, pace (slow, steady or quick) and " +
-            "passes. changes is a JSON array of RendererPhysical {\"kind\":\"moved|home|zoomed|zoom_reset|panned\",\"dx\",\"dy\"," +
+            "(or the rough zones before any were found): zones crossed, main zone, ms, length, speed, pace (slow, steady or quick), " +
+            "passes, dx and dy (where it ended from where it began, page heights), sideways and way (down, up or null), and words: how " +
+            "the ledger says its whole path (where, such as \"down from your chest over your stomach to your thighs\", label, pace, " +
+            "times). changes is a JSON array of RendererPhysical {\"kind\":\"moved|home|zoomed|zoom_reset|panned\",\"dx\",\"dy\"," +
             "\"screenWidth\",\"fromScreen\",\"toScreen\",\"zoomFrom\",\"zoomTo\",\"focus\"}. Returns each change's ledger kind and words, " +
             "the plain line the next reply would carry (\"They slowly stroked your hair 4 times, then moved you to their other " +
-            "monitor.\"), the history line and whether it would start a reply on its own. noticeAll (default true) treats every zone as " +
-            "having Martlet notices on; false uses the zones' own setting.", new
+            "monitor.\"), the history line and whether it would start a reply on its own (touches, strokes and moves do). noticeAll " +
+            "(default true) treats every zone as having Martlet notices on; false uses the zones' own setting.", new
         {
             dataDirectory = new { type = "string" }, modelId = new { type = "string" }, stroke = new { type = "string" },
             changes = new { type = "string" }, noticeAll = new { type = "boolean" }
@@ -826,10 +849,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "gpt-sovits 50082, dia 50084) through the production " +
             "path: the engine's own gateway relay inside a real gateway on 127.0.0.1 (pinned TLS, pairing) and the desktop's paired " +
             "client, with a starter voice as the reference (nothing played or recorded). Returns the service's /status before and " +
-            "after (state, error, model, device, runtime versions such as torch and CUDA, Chatterbox's whispered parts, Chatterbox " +
+            "after (state, error, model, device, runtime versions such as torch and CUDA, Chatterbox " +
             "Original's style), the audio length, time to " +
             "first audio, total time, real-time factor, peak and RMS level, how much of it is voiced (voicedShare: near 0 for a " +
-            "whisper, so text starting with [whispering] shows Chatterbox whispering), or the failure code and message. For " +
+            "whisper, so text starting with [whispering] shows whether the Chatterbox model itself whispered; Martlet adds no " +
+            "whisper of its own), or the failure code and message. For " +
             "chatterbox-original it sends the General and Expressive style saved in dataDirectory (chatterbox-style.json, as " +
             "Companion › Voice saves it), else Resemble's suggestions, and returns it as style. Loopback only; runs " +
             "Martlet.NodeLinkCheck.", new
@@ -1343,6 +1367,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             reply = new { type = "string", maxLength = 1024 }
         }),
+        Tool("active_app_check", "The program in front and whether it is full screen, as Martlet's screen glances tell the " +
+            "Thinking model (docs/SCREEN_COMMENTARY.md), read with the desktop's production ActiveApp: inFront (the window in " +
+            "front now: found, app, fullScreen, told (the words a look sends) and readMs (how long reading it took, first and " +
+            "again); never its title), sample (the name explorer.exe " +
+            "gets), rules (the full-screen rule on FIXTURE windows: borderless, maximized with and without a title bar, smaller " +
+            "than its monitor, on a second monitor) and prompts (Companion > Prompts > Screen glance message and Active app " +
+            "with your message as a data directory's settings.json fills them for a FIXTURE full-screen game, and the [Screen] " +
+            "line the conversation keeps). Reads no credentials and contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("screen_digest_check", "The screen summary over time (docs/SCREEN_COMMENTARY.md), run once with the desktop's " +
             "production ScreenDigester on FIXTURE frames (made-up pictures of a code editor, then a game with low health; no " +
             "screen capture) and a FIXTURE thinker and context board (no model, nothing sent). Returns the setting (Companion > " +
@@ -1430,6 +1465,24 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "canceling one, who says a due reminder (both offer, the PC used most recently takes it, the other stays quiet), the " +
             "conversation's wording through BackgroundJobs (on its own as soon as Martlet is free, or in the notes of the next " +
             "message), a PC alone taking it at once and one far too late let go. No model, network or credentials.", new { }),
+        Tool("check_ins_status", "Martlet's check-ins (Companion › Check-ins; docs/CONVERSATION.md#check-ins: short questions the " +
+            "Thinking pool answers every few minutes, such as whether lingering emotes still fit), from a data directory: " +
+            "check-ins.json (each check-in on or off, how often it runs, what it does with its answer, the owner's own with their " +
+            "task and facts), check-ins-status.json written by the desktop on a companion PC (the pool member that can take them, " +
+            "why each waits, the one running, runs and actions since Martlet started and each last run's time, member, duration and " +
+            "result in a few words; never what was said, answered or reminded) and the fixed rules (pace, minimum age, quiet and idle " +
+            "waits, the job kind's priority and live floor rule). Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("check_ins_check", "Rehearse check-ins end to end with the production code, FIXTURE facts and canned answers (NOT AI): " +
+            "the check-in job kind's rules, check-ins.json saved and read back (and a bad pace refused), when each built-in check-in " +
+            "waits or runs (too young, hidden character, interval, you talking, nobody at the PC, nothing new, Check now), the " +
+            "message each sends, their runs on a production Thinking pool job board with a fixture member, reading answers (OFF " +
+            "tags, KEEP, USUAL, REMIND:, SAY:, OK, a <think> block, chatter), and what Martlet does: a reply's lingering emote off " +
+            "on a production HeldEmotes (never the owner's try), a reminder on a production context board that goes with exactly " +
+            "one request, and something to bring up worded as the check-in's own beside a due reminder. No model, network or " +
+            "credentials.", new { }),
         Tool("setup_run_status", "Applying the recommended setup to all your computers and the Configuring state (docs/CLUSTER.md), " +
             "from a data directory: every computer's published run (shared-settings.json, setup-run.<device>: who started it and when, " +
             "whether it is active, its summary, each computer's state Pending/Configuring/Done/Failed/NeedsAttention with its step " +
@@ -1810,6 +1863,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_face" => await desktop.FaceCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "character_picture" => await desktop.PictureCharacterAsync(OptionalString(arguments, "outputPath")),
                 "character_pose" => await desktop.PoseCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
+                "character_mouth" => await desktop.MouthCharacterAsync(MouthLevels(arguments), OptionalInt(arguments, "stepMs"),
+                    OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "turn_judge_check" => await TurnJudgeCheck.RunAsync(arguments, MartletDirectory(arguments), cancellation),
@@ -1931,6 +1986,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "discord_text_check" => await DiscordTextCheck.RunAsync(DataDirectory(arguments), arguments, cancellation),
                 "chattiness_status" => await ChattinessCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "vision_history_check" => await VisionHistoryCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
+                "active_app_check" => await ActiveAppCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "screen_digest_check" => await ScreenDigestCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "context_board" => await ContextBoardCheck.RunAsync(OptionalString(arguments, "source"), OptionalString(arguments, "text"),
@@ -1947,6 +2003,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalBool(arguments, "live") ?? false, cancellation),
                 "reminders_status" => await RemindersCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "reminders_check" => await RemindersCheck.RunAsync(cancellation),
+                "check_ins_status" => await CheckInsCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "check_ins_check" => await CheckInsCheck.RunAsync(cancellation),
                 "setup_run_status" => await SetupRunCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "setup_run_check" => await SetupRunCheck.RunAsync(cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
@@ -3949,6 +4007,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
         return [.. value.EnumerateArray().Select(point =>
             point.ValueKind == JsonValueKind.Array && point.GetArrayLength() == 2 && point[0].TryGetDouble(out var x) && point[1].TryGetDouble(out var y)
                 ? (x, y) : throw new ArgumentException("Each point must be [x, y]."))];
+    }
+
+    /// <summary>character_mouth's loudness levels, [0.2, 0.8, ...], or null when none were given.</summary>
+    private static double[]? MouthLevels(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty("levels", out var value) || value.ValueKind == JsonValueKind.Null)
+            return null;
+        if (value.ValueKind != JsonValueKind.Array) throw new ArgumentException("'levels' must be an array of numbers from 0 to 1.");
+        return [.. value.EnumerateArray().Take(DesktopAutomation.MaximumVoiceLevels + 1).Select(level =>
+            level.ValueKind == JsonValueKind.Number && level.TryGetDouble(out var number)
+                ? number : throw new ArgumentException("Each level must be a number from 0 to 1."))];
     }
 
     private static double? OptionalDouble(JsonElement element, string property)

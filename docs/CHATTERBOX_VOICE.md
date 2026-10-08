@@ -5,8 +5,8 @@ Martlet's **default** self-hosted voice engine is Chatterbox Turbo, next to
 Companion > Voice > Voice engine). Chatterbox Turbo (Resemble AI) copies a voice
 from the same reference recordings (Companion > Voice > Voices) and, unlike the
 others, speaks **tags**: non-word sounds such as `[laugh]` and `[sigh]` written
-inline in the reply, and `[whispering]`, which Martlet turns into a real whisper
-(see [Tags](#tags)). Two other Chatterbox models are separate engines with their
+inline in the reply, and the tone `[whispering]`, which the model itself
+whispers now and then (see [Tags](#tags)). Two other Chatterbox models are separate engines with their
 own host roles: [Chatterbox Nano](#chatterbox-nano) and
 [Chatterbox Original](#chatterbox-original-general-and-expressive). Most of this
 page is about Turbo; the same service runs all three.
@@ -48,7 +48,7 @@ of a computer without an NVIDIA GPU. Its role (`deploy/host/roles/chatterbox-nan
 is `gpu=optional`: `martlet-host` adds the GPU overlay when the host can run GPU
 containers and asks GPU or CPU, and the service (`MARTLET_CHATTERBOX_DEVICE=auto`)
 uses the card it was given, or the CPU. It uses the same image as Turbo
-(`martlet-chatterbox:11`, whose CUDA PyTorch also runs on the CPU) and its own
+(`martlet-chatterbox:12`, whose CUDA PyTorch also runs on the CPU) and its own
 volume, `martlet-chatterbox-nano-models`.
 
 - On a GPU it decodes like Turbo (the CUDA graph and streaming below).
@@ -238,10 +238,12 @@ Martlet gives it two ways of speaking, with Resemble's suggestions as defaults:
 **General** (exaggeration 0.5, CFG weight 0.5) for every sentence, and
 **Expressive** (0.7 and 0.3, Resemble's tip for expressive or dramatic speech)
 for a sentence the reply starts with `[expressive]`. The Thinking prompt
-(Companion › Prompts › *Voice sounds and tones*) offers `[expressive]` and
-`[whispering]` as its tones, so the model decides sentence by sentence when to
-sound animated; the service whispers `[whispering]` sentences as it does for
-Turbo. A reply that writes `[excited]`, `(excitedly)` or `[animated]` gets
+(Companion › Prompts › *Voice sounds and tones*) offers `[expressive]` as its
+only tone, so the model decides sentence by sentence when to sound animated. It
+offers no `[whispering]`: the original model can't whisper, and Martlet adds no
+whisper of its own. A `[whispering]` that still arrives (from an older desktop)
+is left out of what the model reads, and the sentence is said as usual. A reply
+that writes `[excited]`, `(excitedly)` or `[animated]` gets
 `[expressive]` (`VoiceTags.Synonyms`). Other engines never read the tag.
 
 The owner sets all four values in **Companion › Voice › Chatterbox Original
@@ -477,7 +479,8 @@ for Chatterbox (`SpeechEngines.ChatterboxTurboTags` in Martlet.Core) passes 17:
 Chatterbox. Turbo's loader turns the exaggeration input (`emotion_adv`) off, its
 decoding has no CFG step, and `generate` logs that it ignores both. So these
 style tokens are its only emotion control, and the measurements below show that
-only `[whispering]` changes the voice (because Martlet makes the whisper).
+only `[whispering]` changes the voice, and only now and then (the model makes
+the whisper; Martlet adds none).
 Companion › Voice says so in Chatterbox Turbo's rundown
 (`VoiceEngineAbilities-chatterbox`: voice cloning yes, laughs & sighs yes,
 emotions whispering only). For tones such as angry or sad with a cloned voice,
@@ -528,50 +531,28 @@ on average.
   (for example "angry" 0.37 with `[angry]`, 0.43 without; "sad" 0.00 with
   `[crying]`).
 
-Two ways to make the model itself whisper did not work. The vocoder (HiFT, the
-part that makes the waveform) takes the pitch from the mel spectrogram. When we
-set its pitch input to 0, not one sample changed. When we conditioned the model
-on a whispered copy of the reference recording, three of four voices stayed
-11-30% voiced.
+Two ways to make the model whisper more often did not work. The vocoder
+(HiFT, the part that makes the waveform) takes the pitch from the mel
+spectrogram. When we set its pitch input to 0, not one sample changed. When we
+conditioned the model on a whispered copy of the reference recording, three of
+four voices stayed 11-30% voiced.
 
 The other tones stay in the catalog because the character's emotes and motions
 follow them as cues. The Chatterbox voice does not perform them. When a reply
 writes another form of a tag (`[whisper]`, `*whispers*`, `{hushed}`), Martlet
 uses the catalog's tag (`VoiceTags.Synonyms`) and does not silence the sentence.
 
-**Whispering.** The service makes the whisper itself (image
-`martlet-chatterbox:7`). It whispers each sentence that starts with
-`[whispering]`, from the tag to the next `.`, `!` or `?` (or the end of the
-piece). Other sentences in the same piece keep the normal voice. Turbo makes
-the sentence as usual, with the tag, and `Whisperer` then changes it:
+**Whispering.** Only the model whispers. The service sends each piece to
+Turbo or Nano whole, with `[whispering]` where the reply wrote it, and sends
+the audio the model makes without changes. So a `[whispering]` sentence is
+whispered only when the model itself whispers it, which the measurements above
+show happens now and then. The character still leans in for the tone.
 
-1. It cuts the speech into 25 ms frames.
-2. For each frame, it finds the spectral envelope (the shape of the mouth) with
-   linear prediction of order 26 at 24 kHz.
-3. It shapes white noise with this envelope, in place of the buzz of the voice.
-   This is what breath does in a mouth that whispers.
-4. It removes everything below 300 Hz, where a whisper has no sound.
-5. It sets each frame to the level of the original frame minus 6 dB
-   (`MARTLET_CHATTERBOX_WHISPER_DB`).
-6. It joins the frames with sine windows, so the noise level stays smooth.
-
-The whisper is made before the Perth watermark, so every whisper has the
-watermark. It works on streamed chunks as they arrive and on whole pieces. It
-keeps back at most 40 ms of audio, so the first audio does not come later. It
-uses about 12 ms of CPU for each second of speech.
-
-We measured it through the service on four starter voices (*Annie*,
-*arctic-bdl*, *lj-speech*, *woollybee*), with two sentences and two takes each:
-
-- 1-15% of a whispered sentence was voiced. The pitch tracker calls some breath
-  voiced. Plain sentences were 71-86% voiced.
-- Whispered sentences were 6.4-8.9 LUFS quieter than plain sentences.
-- The local Parakeet speech-to-text understood plain and whispered sentences
-  equally well (word error rate 0-1.6%).
-
-`/status` reports `whisper`: `level_db`, and `parts` (the number of whispered
-parts since the service started). The log line for each reply gives the number
-of whispered parts.
+Images `martlet-chatterbox:7` to `:11` made a whisper themselves. An effect
+(`Whisperer`) put noise shaped like the voice in place of the voice, from
+`[whispering]` to the end of its sentence, for Turbo, Nano and the original
+model. It sounded artificial, even creepy, so image `:12` removes it. `/status`
+no longer reports `whisper`, and `MARTLET_CHATTERBOX_WHISPER_DB` has no effect.
 
 The Thinking prompt (Companion › Prompts › *Voice sounds and tones*) lists both
 groups, each under a line saying where its tags go: a sound inline where it
@@ -598,10 +579,11 @@ tagged reply through a real paired gateway. `provision --fixture` (with
 **FIXTURE - NOT AI** tone generator for that plumbing check.
 `voice_engine_check` (MCP) speaks a sentence with a running service through
 the production relay, a real loopback gateway and the desktop's client. It
-reports the service's state, error, torch/CUDA versions, idle check
-(`idleCheck`) and whispering (`whisper`). It also reports how much of the
-returned audio is voiced (`voicedShare`). A plain sentence gives about 0.6-0.9.
-A sentence that starts with `[whispering]` gives nearly 0.
+reports the service's state, error, torch/CUDA versions and idle check
+(`idleCheck`). It also reports how much of the returned audio is voiced
+(`voicedShare`). A plain sentence gives about 0.6-0.9 and a whisper nearly 0, so
+a sentence that starts with `[whispering]` shows if the model itself whispered
+it.
 
 Verified on a GeForce RTX 5080 (compute capability 12.0) under Docker Desktop:
 the image builds, `provision` verifies the pinned files, `warm` loads the
@@ -620,10 +602,11 @@ above, `voice_engine_check` (4.2 s of audible speech for a quoted sentence with
 worker's unit tests in the image (a broken context restarts the service, the
 idle check, the token budget, quotation marks).
 
-We checked the whispering of image `:7` on the RTX 5080 under Docker Desktop.
-We used the `:6` image with the new service mounted, next to the running `:6`
-service. The checks were the measurements above, the worker's unit tests in
-the image, and `voice_engine_check` through the production relay:
+We checked the whisper effect of image `:7` (removed in `:12`) on the RTX
+5080 under Docker Desktop. We used the `:6` image with the new service mounted,
+next to the running `:6` service. The checks were the effect's measurements,
+the worker's unit tests in the image, and `voice_engine_check` through the
+production relay:
 
 - A plain sentence: `voicedShare` 0.63, -25.3 dBFS.
 - The same sentence with `[whispering]`: `voicedShare` 0.02, -33 dBFS, first
@@ -631,9 +614,9 @@ the image, and `voice_engine_check` through the production relay:
 - The same sentence with `[whispering]` on the old `:6` service: `voicedShare`
   0.69, -27.7 dBFS (no whisper).
 
-**NOT RUN:** voice likeness and how the tags and the whisper sound (nobody
-listened; the whisper was measured and transcribed only, and streamed
-speech was compared with whole-piece decodes by measurement only), a real
+**NOT RUN:** voice likeness and how the tags sound (nobody listened; the
+owner later heard the whisper effect, found it creepy, and `:12` removed it;
+streamed speech was compared with whole-piece decodes by measurement only), a real
 sticky CUDA error inside the running service (unit tests cover the restart
 path; on the RTX 4070 the probe reported a real device-side assert as broken
 and Docker restarted a container exiting with code 75), and Linux hosts for the

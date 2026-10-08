@@ -416,6 +416,39 @@ each call (`Martlet > reminders: set`), never the text; the desktop log notes
 each offer, take and reminder said by id only (`Reminders:`). See
 [Reminders](CONVERSATION.md#reminders).
 
+### Check-ins
+
+[Check-ins](CONVERSATION.md#check-ins) aren't a tool the model calls: every few
+minutes a Thinking pool member answers one short question for Martlet (do the
+lingering emotes still fit, does the gaze a reply chose still fit, did the
+character keep its promises, did it stay in character, and the owner's own),
+and Martlet acts on the answer. Nothing changes in the conversation's tools or
+instructions. A reminder for the next reply goes in the notes of that one
+message only (context board source `check-in-<id>`), and the desktop log notes
+each run with words and counts only (`Check-ins:`).
+
+Companion › Check-ins reads through `ui_value`: `CheckInsNow` (how many are on
+and the member that takes them first, or why they can't run), `CheckInsLast`
+(the last check-in that ran, when, on which member and what came of it, never
+what was said or answered) and, for each check-in, `CheckInStatus-<id>` (why it
+waits, its last run, runs and actions since Martlet started), `CheckInOn-<id>`
+and `CheckInEvery-<id>`; for the owner's own, also `CheckInOutcome-<id>` and
+`CheckInFact-<id>-<fact>`. `CheckInsOpenPool`, `CheckInsOpenPrompts` and
+`CheckInPrompt-<id>` only open a page. The boxes and choices, the name and task
+boxes, *Add a check-in* (`CheckInAdd`) and *Remove* (`CheckInRemove-<id>`) save
+`check-ins.json`, and *Check now* (`CheckInRun-<id>`) sends the check to a
+Thinking pool member, which may be a paid provider, so they need
+`--allow-ui-effects`.
+
+Setting `MARTLET_CHECK_INS_FIXTURE` to a text file before launching the desktop
+makes every check-in read its answer from that file instead of asking the
+Thinking pool (FIXTURE - NOT AI; read again before each run, and check-ins run
+then without a pool member). `CheckInsNow` and each run's member say *FIXTURE -
+NOT AI*, and `check-ins-status.json` says `pool.fixture`. A file with a
+`REMIND:` line and a `SAY:` line answers both kinds of the owner's own
+check-ins, so *Check now* shows the whole flow on a disposable data directory:
+a reminder waiting for the next reply, or something Martlet brings up.
+
 ## Local MCP control (Windows)
 
 `Martlet.Mcp` is a local stdio Model Context Protocol server. It does not listen
@@ -592,7 +625,8 @@ Companion › Voice shows) and `abilities`, the rundown Companion › Voice show
 `Emotions`, each with `level` `Yes`, `Partly` or `No`, a `note` when partly, its
 `help` sentence and the `tags` that do it) and `summary` ("Voice cloning: yes.
 Laughs & sighs: yes. Emotions: whispering only." for Chatterbox Turbo, whose
-tones other than `[whispering]` don't change the voice). `otherVoices` gives the
+tones other than `[whispering]` don't change the voice and whose `[whispering]`
+the model itself whispers only now and then). `otherVoices` gives the
 same `abilities` and `runsOn` for the `windows` (CPU) and `openai` (online)
 voices, neither of which clones, laughs or shows emotions. Each starter
 voice adds `engines` (the engines that can clone it) and `language` (`en` or
@@ -2016,8 +2050,7 @@ on the CPU (`threads`, PyTorch's threads, at most 8 and never more than the
 performance cores, and `pinned_cpus`, the CPUs of the performance cores it is
 pinned to on native Linux, empty when not pinned, as always on Docker Desktop; null on a GPU)
 and `idleCheck` (`checks`, `every_seconds`, `fastest_ms`, `last_ms` of its
-[idle check](CHATTERBOX_VOICE.md#how-it-runs)), `whisper` (`level_db` and
-the `parts` it has [whispered](CHATTERBOX_VOICE.md#tags)) and, for Chatterbox
+[idle check](CHATTERBOX_VOICE.md#how-it-runs)) and, for Chatterbox
 Original, `style` (`default`, `expressive_parts` and `last`, the style the last
 reply asked for, so the owner's values can be checked at the service), or why
 it could not be read), `seconds` of 24 kHz audio, `firstAudioMs`,
@@ -2028,7 +2061,8 @@ audio arrives after everything before it has played, and all pauses together;
 `voicedShare` (the share of the loud 40 ms frames that have a pitch between 70
 and 400 Hz, from `Martlet.Core.Audio.Voicing`; about 0.6-0.9 for ordinary
 speech and nearly 0 for a whisper, so a `text` that starts with `[whispering]`
-shows if Chatterbox whispers), and `failure`
+shows if the Chatterbox model itself whispered; Martlet adds no
+[whisper of its own](CHATTERBOX_VOICE.md#tags)), and `failure`
 and `problem` (the client's error code and message, for example
 `worker.unavailable` when nothing answers or the model could not load). A
 loading model can take minutes, so the tool allows six; pass
@@ -2789,6 +2823,29 @@ conversation's looks show in `logs_tail` `contains` `Vision:` as *Vision: the
 conversation keeps a screen glance (passed, described, in place of the passed
 look before it).* It reads no credentials and contacts nothing.
 
+`active_app_check` reads the [program in
+front](SCREEN_COMMENTARY.md#the-program-in-front) the way Martlet's screen
+glances do, with the desktop's production `ActiveApp`: `inFront` is the window
+in front right now (`found`, `app`, its name such as *Visual Studio Code*,
+`fullScreen`, `told`, the words a look sends, such as *Google Chrome (full
+screen)*, and `readMs`, how long reading it took the `first` time and `again`
+with the name already known, as each capture every 3 seconds reads it; never
+the window's title), `sample` is the name `explorer.exe` gets
+(*Windows Explorer*), and `rules` is the full-screen rule on FIXTURE windows
+(`window`, `maximized`, `titleBar`, `fullScreen`): a borderless full-screen
+game or video and a maximized borderless window fill their monitor, a
+maximized window with a title bar never does (also over a taskbar that hides
+itself), a window smaller than its monitor doesn't, and a borderless window
+filling the second monitor does. `prompts` shows, for a FIXTURE full-screen
+game, Companion › Prompts › *Screen glance message* (`glance`) and *Active app
+with your message* (`withMessage`) as the data directory's settings.json fills
+them (`state` `none`, `loaded` or `unreadable`; optional absolute
+`dataDirectory`, a disposable one through `scripts\Invoke-MartletMcp.ps1`), and
+the `[Screen]` line the conversation keeps (`kept`). In a running
+conversation, the talk window's `LiveVisionStatus` `help` shows it as *Active
+app: Google Chrome (full screen).* It reads no credentials and contacts
+nothing.
+
 `screen_digest_check` runs the [screen summary over
 time](SCREEN_COMMENTARY.md#martlet-knows-what-changed-over-time) once with the
 desktop's production `ScreenDigester` on **FIXTURE** frames (made-up pictures of
@@ -3515,6 +3572,38 @@ once and settled everywhere, a PC alone taking it at once and one far too late
 let go. `passed` and each step's `passed` and `detail`. No model, network or
 credentials.
 
+`check_ins_status` shows Martlet's [check-ins](CONVERSATION.md#check-ins) from a
+data directory (optional absolute `dataDirectory`): `settings` from
+`check-ins.json` (`state` *none*, *loaded* or *unreadable*, and each check-in's
+`id`, `name`, `custom`, `on`, `everyMinutes`, `outcome` *EmotesOff*,
+*GazeUsual*, *Note* or *Say*, built-in `prompt`, the owner's `task` and
+`facts`, and what it `does`), `desktop` from `check-ins-status.json` (written by
+the desktop on a companion PC: `role`, the check-in `running`, `pool` with
+`canRun` and the `member` and `model` that take them first, and for each
+check-in `waiting`, `nextAt`, `runs`, `acted` and `last` with `at`, `result`,
+`acted`, `member` and `ms`; never what was said, answered or reminded) and the
+fixed `rules` (the 15-second look, the 3-minute minimum, the 10-second settle,
+the 10-minute idle wait, the pace choices and `keptPace`, the job kind
+`check-in` at the `Helper` priority, not fast, stopped while the floor is Live).
+Read-only.
+
+`check_ins_check` rehearses check-ins with the production code (`CheckIns`,
+`CheckInSettings`, `ThinkingJobBoard`, `HeldEmotes`, `ContextBoard`,
+`BackgroundJobs`), FIXTURE facts and canned answers (NOT AI): the job kind's
+rules; `check-ins.json` saved and read back, with a bad pace refused; when each
+built-in check-in waits or runs (a young emote, a hidden character, the pace,
+three times the pace after an answer that kept everything, you talking, nobody
+at the PC, a young gaze, nothing new, no personality, and *Check now* on one
+that is off); the message each one sends, run on a
+production job board with a fixture member; the answers read (`OFF {blush}`
+after a `<think>` block, `**USUAL**` after thinking, a `REMIND:` bullet, `OK`,
+`SAY:`) and odd answers that change nothing (`KEEP`, a tag it wasn't asked
+about, chatter, `REMIND: nothing`); and what Martlet does: a reply's emote off
+on a production `HeldEmotes` while the owner's try stays, a reminder on a
+production context board that goes with one request only, and a check-in's
+`SAY:` worded in its own words beside a due reminder. `passed` and each step's
+`passed` and `detail`. No model, network or credentials.
+
 `think_longer_check` rehearses Thinking longer with the production scheduler
 (`BackgroundJobs`), think runner (`BackgroundThink`), tool texts and request
 layout (`ThinkLonger`), conversation runtime and Chat Completions adapter
@@ -4038,7 +4127,9 @@ screen `bounds` (`[x, y, width, height]` in pixels) and, for text controls, the
 `textBounds` of their first line of text (geometry only, never the text), so
 alignment can be checked: in the talk window, the empty box's hint
 `LivePlaceholder` must have the same `bounds` position as the `textBounds` of
-text typed into `LiveInput`.
+text typed into `LiveInput`. Each message bubble (`LiveMessage-*`) is only as
+wide as its words: for a one-line message, `bounds` is about 4 pixels wider
+than `textBounds` (room for the caret), even under a longer caption or note.
 `windowStates` lists each window's `name`, automation `id`, `enabled`, and
 whether its frame is `resizable`, `minimizable` and `maximizable`, whether it is
 `minimized`, whether it is the `foreground` window (has the focus) and whether
@@ -4828,11 +4919,16 @@ test of the one before. With Companion › Character › Touch zones showing,
 (`TouchZonesLast`). Without `x`, `y` or `taps` it only reads the last tap, as
 does `MoveAvatar`'s `value` in `ui_snapshot`.
 
-**Touches reach the Thinking model** for zones with *Martlet notices* on: a
+**Touches reach the Thinking model** for zones with *Martlet notices* on (on
+by default; a `character-touch-zones.json` of version 1 where no zone of a model
+had it on loads with it on for all of that model's zones, and saves as version
+2): a
 reply to what you say or type carries the touch line in its notes (the desktop
 log's *Touches: 3 went to Thinking in the notes of your message.*), and touches
 on their own start a short reply of their own (*... as a short reply of their
 own.*; the talk window's `LiveTurnInputs` reads *Last reply took 2 touches.*).
+Its message (Companion › Prompts › *Touched*) asks for a sentence or two out
+loud, never only an emote, a sound or `[pass]`.
 Without a Thinking setup `TouchZonesNoticed` says the touches wait for your next
 message.
 
@@ -4845,10 +4941,16 @@ pipe (`move` batches while the stroke goes on, then `end`). Martlet matches
 each sample to a touch zone: each zone the stroke enters plays its reaction
 (unless it is resting), and the first zone's first emote or gesture is held
 until the stroke ends. At the end Martlet summarizes the stroke (zones crossed
-in order, pace `slow`, `steady` or `quick`, passes back and forth, seconds)
+in order, pace `slow`, `steady` or `quick`, passes back and forth, seconds,
+where it ended from where it began and its main direction)
 and, for the crossed zones with *Martlet notices* on (like a tap there),
-records it in the touch ledger once for each pass (at most 8), so the next
-reply hears *They slowly stroked your hair 4 times*; a stroke, like a tap, can
+records it in the touch ledger once for each pass (at most 8) with its whole
+path (`CharacterPhysicalWords.Stroke`: every zone in the order first crossed,
+at most 8 named, a left and a right zone crossed one after the other said
+together), so the next reply hears *They slowly stroked your hair 4 times* or
+*They slowly stroked down from your chest over your stomach to your thighs
+once* (*up and down over* or *back and forth over* the zones when it turned
+back); a stroke, like a tap, can
 start a touch-only reply. Ctrl+drag or middle-drag still pans a zoomed view,
 and an unlocked drag still moves the character. `character_stroke` strokes it
 through UI Automation (`MoveAvatar`'s value, `"stroke:ms;x,y;x,y;..."`) along
@@ -4864,14 +4966,22 @@ summary.
 without a blush of its own, and `blush_deep` and `blush_fierce` on every model,
 over its own blush) and the overlay emotes are drawn around the face each time
 the renderer page draws a frame. A Live2D model's face is pinned to its own
-face meshes. When the model loads, the page moves each head angle
-(`ParamAngleX`, `ParamAngleY`, `ParamAngleZ`) to find the mesh vertices that
-turn with the head. Then it moves every other parameter to its limits, to drop
-the vertices that change shape on their own (hair physics, eyelids, eyes,
-mouth, brows), and puts every parameter back. In each frame the eyes, cheeks,
+face meshes. Live2D draws a face in layers that move apart as the head nods and
+turns (the back hair, the skin, the eyes, nose and mouth over it), so when the
+model loads, the page first looks for the face's skin: of the drawables that
+show, the one drawn highest whose triangles hold the face's middle and both
+cheeks (one more than three face widths across or high is not skin). The face
+is then pinned to every vertex of the skin, so the blush stays on the cheeks,
+also on a model whose physics turns its head (head angles that only feed
+parameters such as `ParamFaceAngleX`). A model without such a drawable is
+pinned to the vertices that turn with the head instead: the page moves each
+head angle (`ParamAngleX`, `ParamAngleY`, `ParamAngleZ`) to find them, then
+moves every other parameter to its limits, to drop the vertices that change
+shape on their own (hair physics, eyelids, eyes, mouth, brows), and puts every
+parameter back. In each frame the eyes, cheeks,
 mouth and top of the head move with those vertices, so they follow idle
 motions, body sway, breathing, the mouse, a look at a point and gestures as
-the model draws them. A model without the standard angle parameters uses the
+the model draws them. A model with neither uses the
 earlier estimate from its head angles. A VRM's face follows its posed head
 bone. Each blush lies on its cheek's surface: a turned head shows the near
 cheek wider and the far cheek narrower, and the far cheek fades out as it
@@ -4889,6 +4999,8 @@ renderer has none; an eye with a known iris has its point at the eye's
 middle), `overlays` (the overlays showing, such as
 `["blush_deep"]`; one fading out is listed until it is gone) and
 `pinned` (Live2D: `carriers`, how many mesh vertices the face rides on,
+`skin`, the ID of the face's skin drawable when they are its vertices, or
+`null` when they are the vertices that turn with the head,
 `milliseconds`, how long finding them took at load, and `eyeMilliseconds`, how
 long finding the eyes' meshes took). The eyes for drawings over them come with
 each reading: `eyesFrom` (`mesh`: a Live2D model's iris and eye-white meshes;
@@ -4952,6 +5064,36 @@ to 18 degrees from straight down, its elbows bent about 16 degrees and its
 fingers curled about 60 degrees. `MoveAvatar`'s value in `ui_snapshot` shows
 the last reading as `pose`.
 
+**Who moves the character's mouth**: while Martlet speaks, its voice has the
+character's mouth, and an emote's mouth comes back about a second after the
+voice stops (see *The voice has the mouth* in
+[Emotes and motions](AVATARS.md#emotes-and-motions)). `character_mouth` reads
+it through UI Automation (`MoveAvatar`'s value `"mouth"`), `samples` times (1
+to 60) `gapMs` apart (default 250). Each reading in `mouths` has `n`, `found`
+(false before a model shows), `renderer`, `parameter` (Live2D: the parameter
+read, `ParamMouthOpenY` when the model has it), `voice` (0 to 1: how much the
+voice has the mouth), `speaking` (the voice moved the mouth within the last
+second), `level` (the voice's loudness on it), `emote` (how far the emotes
+open the mouth before the voice takes it; a VRM: its held open mouth), `open`
+(how far the mouth is open now, 0 at rest to 1) and, for a VRM, `blocked` (how
+much the expressions showing block its mouth expressions). `summary` gives
+`found`, the share of readings `speaking`, the `voice`, `level`, `emote`,
+`open` and `blocked` ranges (`least`, `most`) and the `last` reading. Reading
+changes nothing, so it needs no `--allow-ui-effects`.
+
+With `levels` (1 to 400 loudness levels from 0 to 1), the mouth first moves as
+Martlet's loudness lip-sync moves it, one level every `stepMs` (10 to 1000,
+default 50), without a sound (`MoveAvatar`'s value `"voice:ms;level;..."`).
+The readings start at once. This changes the character, so it needs
+`--allow-ui-effects`. For example:
+
+1. Hold `mouth_open` with its `CharacterActionTry-<n>` button.
+2. Send 20 levels with 40 samples 100 ms apart.
+3. Check that `open` follows the levels while `speaking`, stays near 0 in a
+   pause, and goes back to `emote` about a second after the last level.
+
+`MoveAvatar`'s value in `ui_snapshot` shows the last reading as `mouth`.
+
 **Moves, zooms and other changes Martlet hears about**: the overlay notes each
 drag, arrow-key nudge, `ui_move`, zoom (wheel, menu, keys or Martlet's zoom
 buttons), reset zoom, pan of a zoomed view and Reset position, and once it has
@@ -4961,8 +5103,9 @@ monitors before and after, the character's size before and after, and the
 renderer page's hit test of what a zoom closed in on or a pan centers on).
 Martlet records it in the touch ledger with Locked, Unlocked, Hidden and Shown
 (from its own buttons and the overlay menu): *They moved you to their other
-monitor*, *They zoomed in on your face*. These never start a reply on their
-own; they go with the next one. `MoveAvatar`'s value carries the last one as
+monitor*, *They zoomed in on your face*. A move (`moved` or `home`) starts a
+short reply of its own like a touch (`TouchZonesNoticed` says when); the
+others never do and go with the next one. `MoveAvatar`'s value carries the last one as
 `physical` (`kind`, `dx`, `dy`, `from`, `to`, `zoomFrom`, `zoomTo`, `focus`),
 and `CharacterPhysicalLast` shows the ledger's words. The camera view's own
 framing is not reported.
@@ -4972,9 +5115,14 @@ desktop and no model request: `stroke` (a JSON `CharacterStroke` with its
 hit-tested samples) is summarized against the touch zones saved for `modelId`
 (or the rough zones before any were found), `changes` (a JSON array of
 `RendererPhysical`) are worded, and both go into a touch ledger. It returns the
-stroke's zones, pace and passes, each change's ledger kind and words, the plain
+stroke's zones, pace, passes, `dx` and `dy` (where it ended from where it
+began, page heights), `sideways`, `way` (`down`, `up` or null) and `words`
+(`where`, `label`, `pace`, `times` and `hint`: how the ledger says its whole
+path), each change's ledger kind, words and `startsTurn` (true for touches,
+strokes and moves), the plain
 `line` the next reply would carry, the `history` line and `startsTurn`.
-`noticeAll` (default true) treats every zone as having *Martlet notices* on.
+`noticeAll` (default true) treats every zone as having *Martlet notices* on;
+false uses the zones' own setting.
 
 **Locking the character's position**: Home's `ToggleCharacterLock`
 (*Lock character position*, shown while the character shows or is locked),
@@ -5614,7 +5762,9 @@ screen.* or *Watching the window behind Martlet.*, then only a look in progress
 *Taking a break from looking.*, *The provider is busy; waiting before the next
 look.*, *Martlet noticed a notification and looks once you're done talking.*)
 or a look that failed; its `help` (the tooltip) says how many monitors the
-whole screen spans (*Your whole screen is 2 monitors.*), how the last look went
+whole screen spans (*Your whole screen is 2 monitors.*), the program in front
+as the Thinking model is told it (*Active app: Google Chrome (full screen).*),
+how the last look went
 (*Last look 10:17 PM (a flashing taskbar button): nothing to say.*) and what
 wanted your attention but wasn't looked at (*Noticed a notification at 10:17 PM
 but didn't look: you seem away.*); whether a message went with the picture is
@@ -6203,7 +6353,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

@@ -66,8 +66,8 @@ function faceReading(id) {
   const anchor = face(), overlays = activeOverlays();
   const width = Math.max(1, canvas.clientWidth), height = Math.max(1, canvas.clientHeight);
   const round = value => Math.round(value * 10000) / 10000;
-  const pinned = adapter?.faceTracking ? { carriers: adapter.faceTracking.carriers, milliseconds: adapter.faceTracking.milliseconds,
-    eyeMilliseconds: adapter.faceTracking.eyeMilliseconds ?? 0 } : null;
+  const pinned = adapter?.faceTracking ? { carriers: adapter.faceTracking.carriers, skin: adapter.faceTracking.skin ?? null,
+    milliseconds: adapter.faceTracking.milliseconds, eyeMilliseconds: adapter.faceTracking.eyeMilliseconds ?? 0 } : null;
   if (!anchor) return { id, found: false, overlays, pinned };
   const cheek = (point, frame) => {
     let hit;
@@ -108,6 +108,33 @@ function gestureState() {
 // The bones a pose reading places on the canvas.
 const POSE_BONES = new Set(["head", "neck", "leftShoulder", "rightShoulder", "leftUpperArm", "rightUpperArm", "leftHand", "rightHand",
   "leftUpperLeg", "rightUpperLeg"]);
+// Who moves the mouth now, for Martlet's MCP (character_mouth; the adapters' mouthReading): how much the voice has it (voice,
+// 0 to 1), whether it moved it within the last second (speaking), its loudness (level), how far the emotes open the mouth
+// before the voice takes it (emote), how far it is open now (open), the Live2D parameter read and how much a VRM's expressions
+// showing block the voice's mouth (blocked).
+function mouthReading(id) {
+  const mouth = adapter?.mouthReading;
+  if (!mouth) return { id, found: false, renderer: renderer ?? null };
+  const round = value => Math.round(value * 10000) / 10000;
+  return { id, found: true, renderer, ...(typeof mouth.parameter === "string" ? { parameter: mouth.parameter } : {}),
+    voice: round(mouth.voice), speaking: mouth.speaking === true, level: round(mouth.level), emote: round(mouth.emote),
+    open: round(mouth.open), ...(typeof mouth.blocked === "number" ? { blocked: round(mouth.blocked) } : {}) };
+}
+// Loudness levels MCP's character_mouth plays on the mouth the way Martlet's voice moves it, without a sound: each with when it
+// is due after the first (ms), applied as frames are drawn (see playVoice).
+let voiceLevels = [], voiceStart;
+// Applies the levels due by `now` (the frame clock, ms); a level the adapter refuses ends them.
+function playVoice(now) {
+  if (!voiceLevels.length) return;
+  voiceStart ??= now;
+  while (voiceLevels.length && voiceLevels[0].at <= now - voiceStart) {
+    const { level } = voiceLevels.shift();
+    try {
+      if (!(level >= 0 && level <= 1)) throw new Error("Invalid mouth level.");
+      adapter.setLipSync(level);
+    } catch { voiceLevels = []; }
+  }
+}
 // What a VRM's idle body does now, for Martlet's MCP (character_pose): its breath, each arm's hang and elbow bend, how far the
 // fingers curl and the sway (the runtime's idleReading), and where its head, shoulders, hands and hips are, as fractions of the
 // canvas (+y down). A Live2D model's own breathing isn't read.
@@ -208,6 +235,24 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
     let reading = { id, found: false };
     try { if (active && !failed) reading = poseReading(id); } catch { }
     post({ poseReading: reading });
+    return;
+  }
+  if (message.kind === "mouthState") {
+    // Who moves the mouth now (see mouthReading), answered unprompted with {mouthReading}, never as a command reply; a reading
+    // that fails is only "not found" and never fails the renderer.
+    const { id } = message.data;
+    let reading = { id, found: false };
+    try { if (active && !failed) reading = mouthReading(id); } catch { }
+    post({ mouthReading: reading });
+    return;
+  }
+  if (message.kind === "voiceLevels") {
+    // Fire-and-forget, never a command reply: levels (0 to 1, at most 400) that move the mouth as Martlet's voice does, one
+    // every stepMs (10 to 1000) from the next frame, replacing any still to come.
+    const { levels, stepMs } = message.data ?? {};
+    const step = Math.max(10, Math.min(1000, Number(stepMs) || 50));
+    voiceLevels = (Array.isArray(levels) ? levels.slice(0, 400) : []).map((level, i) => ({ level: Number(level), at: i * step }));
+    voiceStart = undefined;
     return;
   }
   if (message.kind === "eyes") {
@@ -332,6 +377,7 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
 });
 function draw(now) {
   if (active && !still && !failed && adapter) {
+    playVoice(now);
     try {
       const ratio = Math.min(2048 / Math.max(1, canvas.clientWidth, canvas.clientHeight), window.devicePixelRatio || 1);
       const width = Math.min(2048, Math.max(1, Math.round(canvas.clientWidth * ratio)));

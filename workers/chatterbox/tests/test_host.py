@@ -1,5 +1,4 @@
 import base64
-import contextlib
 import hashlib
 import http.client
 import json
@@ -301,144 +300,25 @@ class EngineFailureTests(unittest.TestCase):
         self.assertEqual([e["chunk_index"] for e in events if e["kind"] == "chunk_completed"], [0, 1])
         self.assertEqual(events[-1]["kind"], "completed")
 
-    def test_a_sentence_starting_with_whispering_is_whispered(self):
-        host = self.host
-        whispering = []
+    def test_a_whispering_tag_reaches_the_model_as_written_and_its_audio_is_sent_unchanged(self):
         spoken = []
-
-        @contextlib.contextmanager
-        def whisper(model):
-            whispering.append(model)
-            try:
-                yield
-            finally:
-                whispering.pop()
+        made = [b"\x01\x00\xff\x7f" * 240, b"\x02\x00\x00\x80" * 240]
 
         def generate(model, text, path):
-            spoken.append((text, bool(whispering)))
-            return b"\x01\x00" * 480
+            spoken.append(text)
+            return made[len(spoken) - 1]
 
-        saved = host._whispering
-        host._whispering = whisper
-        try:
-            engine, events = self.run_job(generate, chunks=[
-                {"index": 0, "chunk_id": "a", "text": "Okay. [whispering] It's a secret. Got it?"},
-                {"index": 1, "chunk_id": "b", "text": "[whispering] Ha [laugh] keep it down."}])
-        finally:
-            host._whispering = saved
-        # Only the sentence the tag starts is whispered, in order, into the same piece; Turbo still reads the tag.
-        self.assertEqual(spoken, [("Okay.", False), ("[whispering] It's a secret.", True), ("Got it?", False),
-                                  ("[whispering] Ha [laugh] keep it down.", True)])
+        engine, events = self.run_job(generate, chunks=[
+            {"index": 0, "chunk_id": "a", "text": "Okay. [whispering] It's a secret. Got it?"},
+            {"index": 1, "chunk_id": "b", "text": "[whispering] Ha [laugh] keep it down."}])
+        # A whisper is the model's own: each piece goes to it whole with its tags, and what it makes is sent as it is, with no
+        # whisper effect of the service's own.
+        self.assertEqual(spoken, ["Okay. [whispering] It's a secret. Got it?", "[whispering] Ha [laugh] keep it down."])
         frames = [e["frame"] for e in events if e["kind"] == "audio_frame"]
-        self.assertEqual([f["chunk_index"] for f in frames], [0, 0, 0, 1])
-        self.assertEqual([f["sample_offset"] for f in frames], [0, 480, 960, 1440])
-        self.assertEqual([e["chunk_index"] for e in events if e["kind"] == "chunk_completed"], [0, 1])
+        self.assertEqual([f["chunk_index"] for f in frames], [0, 1])
+        self.assertEqual([base64.b64decode(f["data_base64"]) for f in frames], made)
         self.assertEqual(events[-1]["kind"], "completed")
-        self.assertEqual(engine.status()["whisper"], {"level_db": host.WHISPER_DB, "parts": 2})
-
-
-class WhisperTests(unittest.TestCase):
-    """[whispering]: which words are whispered, and the whisper itself (FIXTURE - NOT AI: synthetic signals)."""
-
-    @classmethod
-    def setUpClass(cls):
-        sys.path.insert(0, str(ROOT))
-        import martlet_chatterbox_host as host
-        cls.host = host
-
-    def test_from_the_tag_to_the_end_of_its_sentence(self):
-        parts = self.host._whisper_parts
-        self.assertEqual(parts("Hello there."), [("Hello there.", False)])
-        self.assertEqual(parts("[whispering] Keep it a secret."), [("[whispering] Keep it a secret.", True)])
-        self.assertEqual(parts("Okay. [whispering] It's a secret! Got it?"),
-                         [("Okay.", False), ("[whispering] It's a secret!", True), ("Got it?", False)])
-        # Whispered sentences in a row stay one part; the tag is matched whatever its case.
-        self.assertEqual(parts("[whispering] One. [Whispering] Two. Three."),
-                         [("[whispering] One. [Whispering] Two.", True), ("Three.", False)])
-        self.assertEqual(parts("Shh [whispering] quiet now"), [("Shh", False), ("[whispering] quiet now", True)])
-        self.assertEqual(parts("I said, [whispering] \u201cdon't.\u201d Fine."),
-                         [("I said,", False), ("[whispering] \u201cdon't.\u201d", True), ("Fine.", False)])
-        # A tag with nothing after it in its sentence whispers nothing; a sound after it is whispered.
-        self.assertEqual(parts("Hello [whispering]"), [("Hello [whispering]", False)])
-        self.assertEqual(parts("Hi. [whispering]. Bye."), [("Hi. [whispering]. Bye.", False)])
-        self.assertEqual(parts("[whispering] [laugh]. Hi."), [("[whispering] [laugh].", True), ("Hi.", False)])
-
-    def _voice(self, seconds=1.0, rate=24_000):
-        import numpy as np
-
-        # FIXTURE - NOT a voice: a 150 Hz buzz with falling harmonics, its loudness rising and falling like syllables.
-        t = np.arange(int(rate * seconds)) / rate
-        buzz = sum(np.sin(2 * np.pi * 150 * k * t) / k for k in range(1, 30))
-        return (0.1 * buzz * (0.6 + 0.4 * np.sin(2 * np.pi * 4 * t))).astype(np.float32)
-
-    @staticmethod
-    def _periodicity(samples, lag=160):
-        import numpy as np
-
-        a, b = samples[:-lag], samples[lag:]
-        return float(np.dot(a, b) / np.sqrt(np.dot(a, a) * np.dot(b, b)))
-
-    @unittest.skipUnless(_have("numpy", "scipy"), "needs NumPy and SciPy")
-    def test_a_voice_becomes_breath_at_a_lower_level(self):
-        import numpy as np
-
-        voice = self._voice()
-        whisper = self.host.whispered(voice)
-        self.assertEqual(whisper.shape, voice.shape)
-        self.assertEqual(whisper.dtype, np.float32)
-        # The buzz repeats every 160 samples (150 Hz); the whisper doesn't.
-        self.assertGreater(self._periodicity(voice), 0.9)
-        self.assertLess(abs(self._periodicity(whisper)), 0.3)
-        level = 20 * np.log10(np.sqrt(np.mean(whisper ** 2)) / np.sqrt(np.mean(voice ** 2)))
-        self.assertLess(level, -3)
-        self.assertGreater(level, -20)
-
-    @unittest.skipUnless(_have("numpy", "scipy"), "needs NumPy and SciPy")
-    def test_streamed_audio_is_whispered_the_same_whatever_the_chunks(self):
-        import numpy as np
-
-        voice = np.concatenate([np.zeros(2_000, dtype=np.float32), self._voice(0.8)])
-        whole = self.host.whispered(voice)
-        whisperer = self.host.Whisperer()
-        out, start = [], 0
-        for size in (7, 1_000, 299, 4_800, 3, 12_000):
-            out.append(whisperer.feed(voice[start:start + size]))
-            start += size
-        out.append(whisperer.feed(voice[start:]))
-        out.append(whisperer.finish())
-        streamed = np.concatenate(out)
-        self.assertEqual(streamed.shape, voice.shape)
-        np.testing.assert_allclose(streamed, whole, atol=1e-6)
-        # Silence stays silent, and nothing is held back beyond the last 40 ms until the end.
-        self.assertEqual(float(np.max(np.abs(whole[:1_400]))), 0.0)
-        self.assertGreaterEqual(sum(part.size for part in out[:-1]), voice.size - 960)
-
-    @unittest.skipUnless(_have("numpy", "scipy"), "needs NumPy and SciPy")
-    def test_generate_whispers_before_the_watermark(self):
-        import numpy as np
-
-        marked = []
-
-        class Watermarker:
-            def apply_watermark(self, wav, sample_rate):
-                marked.append((np.asarray(wav).copy(), sample_rate))
-                return wav
-
-        class Model:
-            sr = 24_000
-            watermarker = Watermarker()
-
-        model, voice = Model(), self._voice(0.5)
-        with self.host._whispering(model):
-            model.watermarker.apply_watermark(voice, sample_rate=24_000)
-        model.watermarker.apply_watermark(voice, sample_rate=24_000)
-        (whisper, rate), (plain, _) = marked
-        # Inside, the watermark goes on the whisper (so it survives); afterwards the watermarker is its own again.
-        self.assertEqual(rate, 24_000)
-        self.assertEqual(whisper.shape, voice.shape)
-        self.assertLess(abs(self._periodicity(whisper)), 0.3)
-        np.testing.assert_array_equal(plain, voice)
-        self.assertNotIn("apply_watermark", vars(model.watermarker))
+        self.assertNotIn("whisper", engine.status())
 
 
 class IdleCheckTests(unittest.TestCase):
@@ -1082,13 +962,14 @@ class ModelTests(unittest.TestCase):
     def test_each_sentence_gets_its_style_and_the_original_model_never_reads_the_tags(self):
         parts = self.host._original_parts
         self.assertEqual(parts("Okay. [expressive] That's amazing! Calm again."),
-                         [("Okay.", False, False), ("That's amazing!", True, False), ("Calm again.", False, False)])
+                         [("Okay.", False), ("That's amazing!", True), ("Calm again.", False)])
+        # The model can't whisper and the service adds no whisper: a [whispering] an older desktop sends is only left out.
         self.assertEqual(parts("[Whispering] It's a secret. [expressive] [whispering] Wow, really?"),
-                         [("It's a secret.", False, True), ("Wow, really?", True, True)])
+                         [("It's a secret.", False), ("Wow, really?", True)])
         # Neighbouring sentences in one style stay one part; a tag with nothing after it styles nothing.
-        self.assertEqual(parts("[expressive] Yes! [expressive] Yes! [expressive]"), [("Yes! Yes!", True, False)])
-        self.assertEqual(parts("Well, [expressive] look at that. Hm."), [("Well,", False, False), ("look at that.", True, False),
-                                                                           ("Hm.", False, False)])
+        self.assertEqual(parts("[expressive] Yes! [expressive] Yes! [expressive]"), [("Yes! Yes!", True)])
+        self.assertEqual(parts("Well, [expressive] look at that. Hm."), [("Well,", False), ("look at that.", True),
+                                                                           ("Hm.", False)])
 
     def test_style_defaults_to_resembles_tips_and_must_stay_in_range(self):
         host = self.host
@@ -1114,8 +995,8 @@ class ModelTests(unittest.TestCase):
             def use_reference(self, audio):
                 return False
 
-            def speak(self, text, exaggeration, cfg_weight, whisper=False):
-                spoken.append((text, exaggeration, cfg_weight, whisper))
+            def speak(self, text, exaggeration, cfg_weight):
+                spoken.append((text, exaggeration, cfg_weight))
                 return b"\x01\x00" * 480
 
         engine = host.EngineHost()
@@ -1130,11 +1011,12 @@ class ModelTests(unittest.TestCase):
         events = []
         while (event := job.queue.get(timeout=1)) is not None:
             events.append(event)
-        self.assertEqual(spoken, [("Hi.", 0.45, 0.5, False), ("We won!", 0.9, 0.25, False), ("Don't tell.", 0.45, 0.5, True)])
+        # The [whispering] sentence is said in the general style, without the tag: nothing whispers it.
+        self.assertEqual(spoken, [("Hi.", 0.45, 0.5), ("We won!", 0.9, 0.25), ("Don't tell.", 0.45, 0.5)])
         self.assertEqual([f["frame"]["chunk_index"] for f in events if f["kind"] == "audio_frame"], [0, 0, 1])
         self.assertEqual(events[-1]["kind"], "completed")
         self.assertEqual(engine.state, "ready")
-        self.assertEqual((engine.expressive_parts, engine.whispered_parts), (1, 1))
+        self.assertEqual(engine.expressive_parts, 1)
         self.assertEqual(engine.last_style, host.VoiceStyle((0.45, 0.5), (0.9, 0.25)))
 
 

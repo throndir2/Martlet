@@ -63,7 +63,7 @@ async function hiyori(t) {
     for (const [id, value] of Object.entries(values)) P.values[P.ids.indexOf(id)] = value;
     env.model.update();
   };
-  return { adapter, set };
+  return { adapter, set, canvas: env.canvas };
 }
 
 // Whether `point` is inside the union of a shape's triangles.
@@ -109,4 +109,31 @@ test("the bundled Hiyori's eyes come from her own meshes: irises inside the eye 
       assert.ok(height(closed[`eye${side}Shape`]) < 0.3 * height(rest[`eye${side}Shape`]), `${side} eye white closes on a blink`);
     assert.ok(Math.hypot(closed.eyeLeft.x - rest.eyeLeft.x, closed.eyeLeft.y - rest.eyeLeft.y) < 0.01 * rest.width,
       "the eye's middle stays put while it blinks");
+  });
+
+test("the bundled Hiyori's face is pinned to her skin, so Martlet's blush moves with her own as she looks down or tips her head",
+  { skip: !present && "the Live2D SDK isn't downloaded" }, async t => {
+    const { adapter, set, canvas } = await hiyori(t);
+    const tracking = adapter.faceTracking;
+    assert.ok(typeof tracking.skin === "string" && tracking.carriers > 0, JSON.stringify(tracking));
+    t.diagnostic(`face pinned to ${tracking.skin}'s ${tracking.carriers} vertices in ${tracking.milliseconds} ms`);
+    // Her own blush (ParamCheek): a drawable on each cheek, the viewer's left one first.
+    const shown = () => new Map(adapter.drawableBounds().map(b => [b.id, b]));
+    const without = shown();
+    set({ ParamCheek: 1 });
+    const blush = () => [...shown().values()].filter(b => !without.has(b.id))
+      .map(b => ({ x: (b.left + b.right) / 2 * canvas.width, y: (b.top + b.bottom) / 2 * canvas.height })).sort((a, b) => a.x - b.x);
+    const rest = adapter.faceAnchor(), restBlush = blush();
+    assert.equal(rest.tracking, "mesh");
+    assert.equal(restBlush.length, 2);
+    for (const pose of [{ ParamAngleY: -30 }, { ParamAngleY: 30 }, { ParamAngleZ: 30 }, { ParamAngleZ: -30 }]) {
+      set({ ParamAngleX: 0, ParamAngleY: 0, ParamAngleZ: 0, ...pose });
+      const now = adapter.faceAnchor(), nowBlush = blush();
+      ["cheekLeft", "cheekRight"].forEach((key, side) => {
+        const drawn = { x: now[key].x - rest[key].x, y: now[key].y - rest[key].y };
+        const own = { x: nowBlush[side].x - restBlush[side].x, y: nowBlush[side].y - restBlush[side].y };
+        assert.ok(Math.hypot(drawn.x - own.x, drawn.y - own.y) < 0.02 * rest.width,
+          `${JSON.stringify(pose)} ${key} moved ${JSON.stringify(drawn)}, her blush ${JSON.stringify(own)}`);
+      });
+    }
   });

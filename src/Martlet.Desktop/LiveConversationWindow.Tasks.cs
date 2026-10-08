@@ -211,12 +211,18 @@ public partial class LiveConversationWindow
     {
         var took = BackgroundJobs.Clockface(job.Elapsed);
         if (job.Kind.Notice)
-            return job.Delivery switch
+            return job.Kind.Name == Reminders.KindName ? job.Delivery switch
             {
                 BackgroundDeliveryState.Pending => "Due now. Martlet brings it up as soon as it's free.",
                 BackgroundDeliveryState.Reserved => "Martlet is reminding you.",
                 BackgroundDeliveryState.Delivered => "Martlet reminded you.",
                 _ => "The conversation ended before Martlet reminded you."
+            } : job.Delivery switch
+            {
+                BackgroundDeliveryState.Pending => "Martlet brings it up as soon as it's free.",
+                BackgroundDeliveryState.Reserved => "Martlet is bringing it up.",
+                BackgroundDeliveryState.Delivered => "Martlet brought it up.",
+                _ => "The conversation ended before Martlet brought it up."
             };
         return job.State switch
         {
@@ -274,6 +280,7 @@ public partial class LiveConversationWindow
         "image" => "\uEB9F",
         "research" => "\uE721",
         "reminder" => "\uE823",
+        CheckIns.SayKindName => "\uE73E",
         _ => "\uE713"
     };
 }

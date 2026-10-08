@@ -181,17 +181,17 @@ test("raised eyes stay up whatever the look, and the look comes back when they a
     "without hold the eyes go up for a few seconds");
 });
 
-test("a held open mouth eases back while the voice speaks, so lip-sync still moves it", () => {
+test("a held open mouth stays open and breathes; the adapter gives the mouth to the voice while it speaks", () => {
   const player = new GesturePlayer();
   player.play("mouth_open", true);
-  let frame;
+  let frame, least = 1, most = 0;
   for (let i = 0; i < 40; i++) frame = player.advance(0.05);
-  const open = frame.parameters.ParamMouthOpenY;
-  assert.ok(open > 0.5, `open while quiet: ${open}`);
-  for (let i = 0; i < 20; i++) frame = player.advance(0.05, undefined, true);
-  assert.ok(frame.parameters.ParamMouthOpenY < 0.25, `eased back while speaking: ${frame.parameters.ParamMouthOpenY}`);
-  for (let i = 0; i < 20; i++) frame = player.advance(0.05);
-  assert.ok(frame.parameters.ParamMouthOpenY > 0.5, "open again when the voice stops");
+  for (let i = 0; i < 60; i++) {
+    frame = player.advance(0.05);
+    least = Math.min(least, frame.parameters.ParamMouthOpenY);
+    most = Math.max(most, frame.parameters.ParamMouthOpenY);
+  }
+  assert.ok(least > 0.5 && most < 0.7 && most - least > 0.05, `open, gently alive: ${least} to ${most}`);
   assert.ok(gestureFrame("mouth_open", 1.3).parameters.ParamMouthOpenY > 0.5 && gestureFrame("mouth_open", 2.6) === undefined,
     "without hold the mouth opens for a few seconds");
 });

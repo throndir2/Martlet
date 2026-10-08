@@ -44,6 +44,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "CharacterCombosAdd",
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
+        // Companion › Check-ins: Open Thinking pool and Edit their prompts only open those pages (so does each check-in's Edit
+        // its prompt, CheckInPrompt-<id>). Each check-in's On box, Every and Its answer choices, the fact boxes, the name and
+        // task boxes, Add a check-in and Remove save check-ins.json, and Check now (CheckInRun-<id>) sends the check to a
+        // Thinking pool member, which may be a paid provider, so they need --allow-ui-effects.
+        "CheckInsOpenPool", "CheckInsOpenPrompts",
         // Companion › Pictures' Check only asks the saved place whether it can draw now (a cloud provider: only whether a key is
         // there); Connect only reads the typed ComfyUI's status and models. Neither saves or draws. Draw a test picture, Set up
         // and the Draw with/Turn off buttons need --allow-ui-effects.
@@ -168,6 +173,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Deep thinking's "Where it thinks" options ("DeepPlace-Computer", "DeepPlace-Off") only show that place's
         // card; its own Use and Turn off buttons commit (and need --allow-ui-effects).
         "DeepPlace-",
+        // Companion › Check-ins: a check-in's Edit its prompt ("CheckInPrompt-emotes") only opens Prompts.
+        "CheckInPrompt-",
         // Companion › Pictures' "Where it draws" options ("PicturesPlace-Host", "PicturesPlace-ComfyUi") and its computer pills
         // ("PicturesHost-this-pc") only show that place's card; its own buttons commit.
         "PicturesPlace-", "PicturesHost-",
@@ -539,6 +546,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
         // needs --allow-ui-effects.
         "WebResearchStatus", "WebResearchDisclosure",
+        // Companion › Check-ins: how many check-ins are on and the Thinking pool member that takes them first, or why they can't
+        // run ("CheckInsNow"), and the last check-in that ran, when, on which member and what came of it in a few words
+        // ("CheckInsLast"; never what was said or answered). Each check-in's line reads through CheckInStatus- below.
+        "CheckInsNow", "CheckInsLast",
         // Companion › Prompts: how many internal prompts are edited or emptied, and the estimated tokens of all prompts together
         // as typed (counts only, never the prompt text).
         "PromptsNow", "PromptsTokens",
@@ -770,6 +781,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The talk window's task list: each background task's status ("LiveJobState-think-1" reads "Checking it fits beside
         // Thinking." or "Done after 1:02. Martlet brought it up."; never what the task is about or what it found).
         "LiveJobState-",
+        // Companion › Check-ins: each check-in's line ("CheckInStatus-emotes" reads "Waits: next in 3 min. Last at 10:31 PM on
+        // diva (qwen3:8b): turned off {blush}. 2 runs since Martlet started, 1 acted on."), its On box and Every choice
+        // ("CheckInOn-emotes", "CheckInEvery-emotes"), and for the owner's own its Its answer choice and fact boxes
+        // ("CheckInOutcome-c1", "CheckInFact-c1-Conversation"). Changing any of them saves check-ins.json, so it needs
+        // --allow-ui-effects; the name and task boxes (the owner's own words) aren't read here.
+        "CheckInStatus-", "CheckInOn-", "CheckInEvery-", "CheckInOutcome-", "CheckInFact-",
         // Companion › Deep thinking: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs gemma4:27b.")
         // and, for one without the Deep thinking role, its Add button's name ("DeepThinkingAddRole-diva" reads "Add Deep thinking
         // on diva"; clicking it installs the role, so it needs --allow-ui-effects); for one with it, its Change model button's
@@ -1395,6 +1412,75 @@ internal sealed class DesktopAutomation(bool allowEffects)
             curl = new { left = Range(Numbers(found, "curl", "left")), right = Range(Numbers(found, "curl", "right")) },
             sway = Range(Numbers(found, "sway")),
             moved = bones.ToDictionary(name => name, name => new { x = Spread(Numbers(found, "bones", name, "x")), y = Spread(Numbers(found, "bones", name, "y")) })
+        };
+    }
+
+    internal const int MaximumMouthSamples = 60;
+    internal const int MaximumVoiceLevels = 400;
+
+    /// <summary>Reads who moves the showing character's mouth, the voice or its emotes, <paramref name="samples"/> times,
+    /// <paramref name="gapMs"/> apart, through MoveAvatar's UI Automation value ("mouth"). With <paramref name="levels"/> (0 to
+    /// 1, one every <paramref name="stepMs"/>; needs --allow-ui-effects) the mouth first moves as Martlet's loudness lip-sync moves
+    /// it, without a sound ("voice:ms;level;..."), and the readings start at once. Returns each reading and a summary.</summary>
+    internal async Task<object> MouthCharacterAsync(double[]? levels, int? stepMs, int? samples, int? gapMs)
+    {
+        var count = samples ?? 1;
+        if (count is < 1 or > MaximumMouthSamples) throw new ArgumentException($"samples is 1 to {MaximumMouthSamples}.");
+        if (gapMs is < 0 or > 5000) throw new ArgumentException("gapMs is 0 to 5000.");
+        var step = stepMs ?? 50;
+        if (levels is not null)
+        {
+            if (!allowEffects) throw new InvalidOperationException("Moving the character's mouth requires --allow-ui-effects.");
+            if (levels.Length is < 1 or > MaximumVoiceLevels) throw new ArgumentException($"Give 1 to {MaximumVoiceLevels} levels.");
+            if (levels.Any(level => level is not (>= 0 and <= 1))) throw new ArgumentException("Each level is a number from 0 to 1.");
+            if (step is < 10 or > 1000) throw new ArgumentException("stepMs is 10 to 1000.");
+        }
+        var element = Find("MoveAvatar");
+        if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            throw new InvalidOperationException("The character overlay can't be read through UI Automation.");
+        var value = (ValuePattern)pattern;
+        if (value.Current.IsReadOnly) throw new InvalidOperationException("The character's mouth can't be read until it has loaded.");
+        static System.Text.Json.JsonElement? Mouth(string text) => string.IsNullOrEmpty(text) ? null :
+            System.Text.Json.JsonDocument.Parse(text).RootElement is { ValueKind: System.Text.Json.JsonValueKind.Object } root &&
+            root.TryGetProperty("mouth", out var mouth) ? mouth.Clone() : null;
+        if (levels is not null)
+            value.SetValue("voice:" + string.Join(";", new[] { step.ToString(System.Globalization.CultureInfo.InvariantCulture) }
+                .Concat(levels.Select(level => level.ToString("R", System.Globalization.CultureInfo.InvariantCulture)))));
+        var mouths = new List<System.Text.Json.JsonElement>();
+        for (var i = 0; i < count; i++)
+        {
+            if (i > 0) await Task.Delay(gapMs ?? 250);
+            var before = Mouth(value.Current.Value)?.GetRawText();
+            value.SetValue("mouth");
+            var waited = Stopwatch.StartNew();
+            System.Text.Json.JsonElement? after;
+            while ((after = Mouth(value.Current.Value))?.GetRawText() == before && waited.Elapsed < TimeSpan.FromSeconds(3)) await Task.Delay(20);
+            if (after is { } read && read.GetRawText() != before) mouths.Add(read);
+        }
+        return new { played = levels?.Length ?? 0, stepMs = levels is null ? (int?)null : step, samples = count, read = mouths.Count, mouths,
+            summary = MouthSummary(mouths), note = mouths.Count == 0 ? "The renderer didn't answer within 3 seconds." : null };
+    }
+
+    // How the readings went together: how many found the mouth, the share in which the voice had it (speaking), the least and
+    // most of how much the voice had it, its loudness, the emotes' opening, the mouth's opening and a VRM's block, and the last
+    // reading (where the mouth ended up).
+    internal static object MouthSummary(IReadOnlyList<System.Text.Json.JsonElement> mouths)
+    {
+        static bool Is(System.Text.Json.JsonElement owner, string key, System.Text.Json.JsonValueKind kind) =>
+            owner.ValueKind == System.Text.Json.JsonValueKind.Object && owner.TryGetProperty(key, out var value) && value.ValueKind == kind;
+        static object? Range(IEnumerable<System.Text.Json.JsonElement> items, string key)
+        {
+            double[] values = [.. items.Where(item => Is(item, key, System.Text.Json.JsonValueKind.Number)).Select(item => item.GetProperty(key).GetDouble())];
+            return values.Length == 0 ? null : new { least = values.Min(), most = values.Max() };
+        }
+        var found = mouths.Where(mouth => Is(mouth, "found", System.Text.Json.JsonValueKind.True)).ToArray();
+        return new
+        {
+            found = found.Length,
+            speaking = found.Length == 0 ? 0 : Math.Round((double)found.Count(mouth => Is(mouth, "speaking", System.Text.Json.JsonValueKind.True)) / found.Length, 2),
+            voice = Range(found, "voice"), level = Range(found, "level"), emote = Range(found, "emote"), open = Range(found, "open"),
+            blocked = Range(found, "blocked"),
+            last = found.Length == 0 ? (System.Text.Json.JsonElement?)null : found[^1]
         };
     }
 

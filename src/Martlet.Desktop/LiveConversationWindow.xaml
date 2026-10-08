@@ -191,8 +191,9 @@
                         <DataTemplate>
                             <StackPanel x:Name="Row" HorizontalAlignment="Left" MaxWidth="580" Margin="0,0,56,14">
                                 <TextBlock x:Name="Caption" Text="{Binding Caption}" Style="{DynamicResource Muted}" FontSize="11" Margin="6,0,6,3"/>
+                                <!-- As wide as its words: a longer caption or note doesn't stretch it. -->
                                 <Border x:Name="Bubble" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}"
-                                        BorderThickness="1" CornerRadius="16" Padding="13,8">
+                                        BorderThickness="1" CornerRadius="16" Padding="13,8" HorizontalAlignment="Left">
                                     <!-- Its automation ID says whose message it is (LiveMessage-You, -Martlet, -Note, -PcAudio), never its words. -->
                                     <TextBox x:Name="Body" Text="{Binding Text, Mode=OneWay}" IsReadOnly="True" IsTabStop="False" TextWrapping="Wrap" FontSize="14"
                                              Foreground="{DynamicResource TextBrush}" Background="Transparent" BorderThickness="0" Padding="0" MinHeight="0"
@@ -220,6 +221,7 @@
                                     <Setter TargetName="Row" Property="Margin" Value="56,0,0,14"/>
                                     <Setter TargetName="Caption" Property="HorizontalAlignment" Value="Right"/>
                                     <Setter TargetName="NoteText" Property="HorizontalAlignment" Value="Right"/>
+                                    <Setter TargetName="Bubble" Property="HorizontalAlignment" Value="Right"/>
                                     <Setter TargetName="Bubble" Property="Background" Value="{DynamicResource AccentBrush}"/>
                                     <Setter TargetName="Bubble" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
                                     <Setter TargetName="Body" Property="Foreground" Value="{DynamicResource OnAccentBrush}"/>
@@ -229,6 +231,7 @@
                                     <Setter TargetName="Row" Property="HorizontalAlignment" Value="Center"/>
                                     <Setter TargetName="Row" Property="Margin" Value="24,0,24,14"/>
                                     <Setter TargetName="Caption" Property="Visibility" Value="Collapsed"/>
+                                    <Setter TargetName="Bubble" Property="HorizontalAlignment" Value="Center"/>
                                     <Setter TargetName="Bubble" Property="Background" Value="Transparent"/>
                                     <Setter TargetName="Bubble" Property="BorderThickness" Value="0"/>
                                     <Setter TargetName="Body" Property="Foreground" Value="{DynamicResource MutedBrush}"/>

@@ -24,11 +24,47 @@ public sealed class McpServerTests(ITestOutputHelper output)
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "ui_click");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_touch");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_pose");
+        Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "character_mouth");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "deep_thinking_role_selftest");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "gpu_priority_selftest");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "gpu_priority_status");
         Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "reading_check");
+        Assert.Contains(tools, tool => tool.GetProperty("name").GetString() == "active_app_check");
         Assert.DoesNotContain(tools, tool => tool.GetProperty("name").GetString() == "fixture");
+    }
+
+    [Fact]
+    public async Task ActiveAppCheckNamesTheProgramInFrontAndRehearsesWhatALookTellsTheModel()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.ActiveApp." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var message = JsonSerializer.Serialize(new
+            {
+                jsonrpc = "2.0", id = 1, method = "tools/call",
+                @params = new { name = "active_app_check", arguments = new { dataDirectory = directory } }
+            });
+            var result = ToolResult((await SendAsync(message))[0]);
+            // The window in front is read, never its title.
+            Assert.False(result.GetProperty("inFront").TryGetProperty("title", out _));
+            Assert.False(string.IsNullOrWhiteSpace(result.GetProperty("sample").GetProperty("app").GetString()));
+            var rules = result.GetProperty("rules").EnumerateArray()
+                .ToDictionary(rule => rule.GetProperty("window").GetString()!, rule => rule.GetProperty("fullScreen").GetBoolean());
+            Assert.True(rules["borderless full-screen game or video"]);
+            Assert.True(rules["borderless window filling the second monitor"]);
+            Assert.False(rules["maximized window over a taskbar that hides itself"]);
+            Assert.False(rules["window smaller than its monitor"]);
+            var prompts = result.GetProperty("prompts");
+            Assert.Equal("none", prompts.GetProperty("state").GetString());
+            Assert.StartsWith("(Screen glance. Active app: ELDEN RING (full screen). Active window: \"ELDEN RING\".",
+                prompts.GetProperty("glance").GetString());
+            Assert.Equal("Active app in the picture: ELDEN RING (full screen). Active window: \"ELDEN RING\".",
+                prompts.GetProperty("withMessage").GetString());
+            Assert.Equal("[Screen] You looked at the user's whole screen (active window \"ELDEN RING\" in ELDEN RING, full screen): " +
+                "a boss fight, low health.", prompts.GetProperty("kept").GetString());
+        }
+        finally { Directory.Delete(directory, recursive: true); }
     }
 
     [Fact]

@@ -9,8 +9,8 @@ namespace Martlet.Avatar.RendererHost;
 /// The character's drag surface. Besides right-click (and the Menu key or Shift+F10), assistive technology and Martlet's MCP
 /// open its menu through UI Automation's expand/collapse, move the character through its transform (like a drag), which
 /// is refused while its place is locked, tap it through its value ("x,y"), which then reads the last tap's hit test, read
-/// where Martlet draws over its face ("face"), take a picture of it as it shows ("picture") and read what its idle body does
-/// ("pose").
+/// where Martlet draws over its face ("face"), take a picture of it as it shows ("picture"), read what its idle body does
+/// ("pose") and who moves its mouth ("mouth"), and move its mouth as Martlet's voice does ("voice:ms;level;...").
 /// </summary>
 internal sealed class CharacterViewport : Grid
 {
@@ -61,19 +61,52 @@ internal sealed class CharacterViewport : Grid
     /// surface's value.</summary>
     internal string LastPose { get; set; } = "";
 
+    /// <summary>Asks the page who moves the mouth now (the voice or the emotes); its answer arrives as <see cref="LastMouth"/>.</summary>
+    internal Action? ReadMouth { get; set; }
+
+    /// <summary>The last reading of the mouth as JSON (see CharacterMouthReading), or empty. Read as the "mouth" field of this
+    /// surface's value.</summary>
+    internal string LastMouth { get; set; } = "";
+
+    /// <summary>Moves the mouth with loudness levels (0 to 1), one every so many milliseconds, as Martlet's voice does, without
+    /// a sound.</summary>
+    internal Action<IReadOnlyList<double>, int>? PlayVoice { get; set; }
+
+    /// <summary>The most levels one "voice:" value plays (20 seconds at 50 ms).</summary>
+    internal const int MaximumVoiceLevels = 400;
+
     /// <summary>The value UI Automation reads: the last tap's hit test with the last stroke, physical change, face reading,
-    /// picture and pose reading added.</summary>
+    /// picture, pose reading and mouth reading added.</summary>
     internal string Reading()
     {
         if (LastStroke.Length == 0 && LastPhysical.Length == 0 && LastFace.Length == 0 && LastPicture.Length == 0 &&
-            LastPose.Length == 0) return LastTouch;
+            LastPose.Length == 0 && LastMouth.Length == 0) return LastTouch;
         var node = (LastTouch.Length > 0 ? System.Text.Json.Nodes.JsonNode.Parse(LastTouch) as System.Text.Json.Nodes.JsonObject : null) ?? [];
         if (LastStroke.Length > 0) node["stroke"] = System.Text.Json.Nodes.JsonNode.Parse(LastStroke);
         if (LastPhysical.Length > 0) node["physical"] = System.Text.Json.Nodes.JsonNode.Parse(LastPhysical);
         if (LastFace.Length > 0) node["face"] = System.Text.Json.Nodes.JsonNode.Parse(LastFace);
         if (LastPicture.Length > 0) node["picture"] = System.Text.Json.Nodes.JsonNode.Parse(LastPicture);
         if (LastPose.Length > 0) node["pose"] = System.Text.Json.Nodes.JsonNode.Parse(LastPose);
+        if (LastMouth.Length > 0) node["mouth"] = System.Text.Json.Nodes.JsonNode.Parse(LastMouth);
         return node.ToJsonString();
+    }
+
+    /// <summary>Parses a "voice:ms;level;level;..." value: 10 to 1000 ms a step and 1 to <see cref="MaximumVoiceLevels"/> levels
+    /// from 0 to 1 (invariant numbers).</summary>
+    internal static (IReadOnlyList<double> Levels, int StepMs) VoiceLevels(string value)
+    {
+        var steps = value["voice:".Length..].Split(';', StringSplitOptions.RemoveEmptyEntries);
+        if (steps.Length < 2 || steps.Length > MaximumVoiceLevels + 1 || !int.TryParse(steps[0], System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out var ms) || ms is < 10 or > 1000)
+            throw Invalid();
+        var levels = new List<double>();
+        foreach (var step in steps.Skip(1))
+            levels.Add(double.TryParse(step, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture,
+                out var level) && level is >= 0 and <= 1 ? level : throw Invalid());
+        return (levels, ms);
+
+        static ArgumentException Invalid() => new(
+            $"Move the mouth with \"voice:ms;level;level;...\": 10 to 1000 ms a step and 1 to {MaximumVoiceLevels} levels from 0 to 1.", nameof(value));
     }
 
     protected override AutomationPeer OnCreateAutomationPeer() => new Peer(this);
@@ -89,10 +122,11 @@ internal sealed class CharacterViewport : Grid
             _ => base.GetPattern(patternInterface)
         };
 
-        // Value: reads the last tap (with the last stroke, move or zoom, face reading, picture and pose reading); setting "x,y"
-        // (invariant fractions of the surface) taps the character there, "stroke:ms;x,y;x,y;..." strokes the locked character
-        // along those points, "face" reads where Martlet draws over the face now, "picture" takes a picture of the character as
-        // it shows now and "pose" reads what its idle body does now (they change nothing).
+        // Value: reads the last tap (with the last stroke, move or zoom, face reading, picture, pose reading and mouth reading);
+        // setting "x,y" (invariant fractions of the surface) taps the character there, "stroke:ms;x,y;x,y;..." strokes the
+        // locked character along those points, "voice:ms;level;..." moves its mouth as Martlet's voice does (without a sound),
+        // "face" reads where Martlet draws over the face now, "picture" takes a picture of the character as it shows now, "pose"
+        // reads what its idle body does now and "mouth" who moves its mouth now (they change nothing).
         public string Value => owner.Reading();
         public bool IsReadOnly => owner.TouchAt is null;
 
@@ -112,6 +146,18 @@ internal sealed class CharacterViewport : Grid
             if (value == "pose")
             {
                 (owner.ReadPose ?? throw new InvalidOperationException("The character's pose can't be read yet."))();
+                return;
+            }
+            if (value == "mouth")
+            {
+                (owner.ReadMouth ?? throw new InvalidOperationException("The character's mouth can't be read yet."))();
+                return;
+            }
+            if (value?.StartsWith("voice:", StringComparison.Ordinal) == true)
+            {
+                if (owner.PlayVoice is not { } play) throw new InvalidOperationException("The character's mouth can't be moved yet.");
+                var (levels, stepMs) = VoiceLevels(value);
+                play(levels, stepMs);
                 return;
             }
             if (value?.StartsWith("stroke:", StringComparison.Ordinal) == true)

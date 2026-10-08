@@ -86,25 +86,46 @@ public sealed class PromptSettingsTests
     public void ScreenGlancesReactToWhatTheUserDoesNotToTheirSetup()
     {
         var look = PromptSettings.Fill(null, PromptCatalog.CommentaryScreen, ("silent", "pass"))!;
-        // The model first guesses the user's activity from the picture and what it saw, heard and was told lately...
+        // The model focuses on what the user actively does or watches in the app in front, all of it when that is full screen...
+        Assert.Contains("Focus only on what the user is actively doing or watching", look);
+        Assert.Contains("the active app that Martlet's message names", look);
+        Assert.Contains("When that app is full screen, they are immersed in it", look);
+        Assert.Contains("Everything else in the picture is background", look);
+        // ...first guesses that activity from the picture and what it saw, heard and was told lately...
         Assert.Contains("educated guess", look);
         Assert.Contains("what they are doing right now", look);
-        foreach (var clue in new[] { "this picture", "your last looks", "what they said lately", "playing on their PC" })
+        foreach (var clue in new[] { "this picture", "the active app", "your last looks", "what they said lately", "playing on their PC" })
             Assert.Contains(clue, look);
-        // ...then remarks on that activity, never on the computer, its layout or how busy it looks.
+        // ...then remarks on that activity, never on the UI, the computer, its layout or how busy it looks.
         Assert.Contains("talk about that activity", look);
-        Assert.Contains("Never comment on their computer or setup", look);
+        Assert.Contains("Never comment on the UI, their computer or their setup", look);
+        Assert.Contains("the app's own buttons, menus, toolbars, sidebars, tabs, panels, settings, icons or theme", look);
         Assert.Contains("\"Wow, you have such a complicated setup!\"", look);
         Assert.Contains("can't tie a remark to what they are doing or what just happened, reply [pass]", look);
         Assert.DoesNotContain("{", look);
 
-        // The look's message, the kept [seen: ...] words, chatty moods and the screen summary all point the same way.
-        Assert.EndsWith("Reply [pass] or one short remark on what they're doing.)", PromptSettings.Fill(null, PromptCatalog.GlanceScreen,
-            ("title", "Boss fight"), ("remarks", ""), ("silent", "pass")));
-        Assert.Contains("mainly what the user is doing", PromptSettings.Fill(null, PromptCatalog.SeenTag, ("silent", "pass")));
-        Assert.Contains("never to their setup", PromptSettings.Fill(null, PromptCatalog.ChattinessChatty, ("silent", "pass")));
-        Assert.Contains("never to their setup", PromptCatalog.DefaultChattinessDecidesInstructions);
+        // The look's message names the app in front, and whether it is full screen, beside the window's title.
+        Assert.Equal("(Screen glance. Active app: Steam (full screen). Active window: \"Boss fight\". Reply [pass] or one short " +
+            "remark on what they're doing.)", PromptSettings.Fill(null, PromptCatalog.GlanceScreen,
+            ("app", "Steam (full screen)"), ("title", "Boss fight"), ("remarks", ""), ("silent", "pass")));
+        Assert.Contains("Active app: Discord. Active window: \"Sam - Chat\".", PromptSettings.Fill(null, PromptCatalog.GlanceAttention,
+            ("what", "a notification popped up"), ("app", "Discord"), ("title", "Sam - Chat"), ("remarks", ""), ("silent", "pass")));
+        // A message with a picture is told the same in its notes, and its instructions point the same way.
+        Assert.Equal("Active app in the picture: Google Chrome (full screen). Active window: \"YouTube\".",
+            PromptSettings.Fill(null, PromptCatalog.SeenApp, ("app", "Google Chrome (full screen)"), ("title", "YouTube")));
+        Assert.Equal(PromptCatalog.VisionGroup, PromptCatalog.Find(PromptCatalog.SeenApp)!.Group);
+        Assert.False(PromptCatalog.Required(PromptCatalog.SeenApp));
+        var withMessage = PromptSettings.Fill(null, PromptCatalog.SeenWithMessage, ("source", "the user's whole screen"))!;
+        Assert.Contains("The active app is the one Martlet's notes name, or, without such a note, the one in the latest [Screen] line",
+            withMessage);
+        Assert.Contains("never about the UI or their setup unless they ask", withMessage);
+
+        // The kept [seen: ...] words, chatty moods and the screen summary all point the same way.
+        Assert.Contains("mainly what the user is doing or watching, not the UI or their setup",
+            PromptSettings.Fill(null, PromptCatalog.SeenTag, ("silent", "pass")));
+        Assert.Contains("never to the UI, their setup", PromptSettings.Fill(null, PromptCatalog.ChattinessChatty, ("silent", "pass")));
+        Assert.Contains("never to the UI, their setup", PromptCatalog.DefaultChattinessDecidesInstructions);
         Assert.Contains("what the user did and what changed", PromptCatalog.Default(PromptCatalog.ScreenDigest));
-        Assert.Contains("skip their setup", PromptCatalog.Default(PromptCatalog.ScreenDigest));
+        Assert.Contains("skip the UI, their setup", PromptCatalog.Default(PromptCatalog.ScreenDigest));
     }
 }

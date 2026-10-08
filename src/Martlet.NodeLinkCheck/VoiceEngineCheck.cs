@@ -132,7 +132,7 @@ internal static class VoiceEngineCheck
             peakDbfs = Level(peak),
             rmsDbfs = Level(rms),
             audible,
-            // Near 0 for a whisper (Chatterbox's [whispering] sentences), about 0.6-0.9 for ordinary speech.
+            // Near 0 for a whisper, about 0.6-0.9 for ordinary speech: whether the voice model itself whispered a [whispering] sentence.
             voicedShare = Voicing.VoicedShare(CollectionsMarshal.AsSpan(pcm), SampleRate),
             failure,
             problem,
@@ -177,9 +177,6 @@ internal static class VoiceEngineCheck
             // Chatterbox's idle check (checks, every_seconds, fastest_ms, last_ms): how long running the model briefly took
             // while nobody spoke; a slow one means the card was busy or Windows had moved the model out of graphics memory.
             object? idleCheck = root.TryGetProperty("idle_check", out var idle) && idle.ValueKind == JsonValueKind.Object ? idle.Clone() : null;
-            // Chatterbox's whisper (level_db, parts): how many sentences it has whispered since it started.
-            object? whisper = root.TryGetProperty("whisper", out var whispered) && whispered.ValueKind == JsonValueKind.Object
-                ? whispered.Clone() : null;
             // Chatterbox Original's default style and how many sentences it has said expressively.
             object? style = root.TryGetProperty("style", out var styled) && styled.ValueKind == JsonValueKind.Object ? styled.Clone() : null;
             // Chatterbox on the CPU (threads, pinned_cpus): PyTorch's threads and the performance cores' CPUs it is pinned to.
@@ -205,7 +202,6 @@ internal static class VoiceEngineCheck
                 cpu,
                 runtime,
                 idleCheck,
-                whisper,
                 style
             };
         }

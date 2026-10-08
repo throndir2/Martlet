@@ -3,8 +3,8 @@ import { boundedInteger, Diagnostic, finite, Live2DError, requireCondition } fro
 import { type EyeFields, eyeFrame, type EyeHint, type EyesFrom, eyeShape, hintEye, hintMiddle, irisBox, meshEyes, type MeshEye,
   pinEye, readEyeHint } from "./eyes.js";
 import { type Carrier, type CheekFrame, type Face, faceFeatures, type FaceFeatures, faceFromBox, faceFromHint, faceFromLayout,
-  type FaceHint, faceSource, type FaceSource, bounds, HEAD_ANGLES, headRoll, type Pin, pinFace, type PinnedFace, type Point,
-  POSE_PARAMETERS, trackFace, turnFace } from "./face.js";
+  type FaceHint, faceSkin, faceSource, type FaceSource, bounds, HEAD_ANGLES, headRoll, type Pin, pinFace, type PinnedFace,
+  type Point, POSE_PARAMETERS, skinCarriers, trackFace, turnFace } from "./face.js";
 import { BLUSH_PARAMETERS, type Gesture, GesturePlayer, type GestureState, isBlush, isGesture, supportedGestures } from "./gestures.js";
 import { Capabilities, ChannelMapping, inspectParameters, MappingPlan, Parameter } from "./mapping.js";
 import { checkRuntime, type Animator, type AnimatorAssets, CubismMoc, CubismModel, CubismRenderer, SdkModules } from "./sdk.js";
@@ -58,6 +58,30 @@ export interface ModelSummary {
   readonly physics: boolean;
   readonly animated: boolean;
 }
+
+/** How long the voice keeps the character's mouth after its last sound, in seconds, so the pauses between its words and
+ *  sentences don't give the mouth back to the emotes. */
+export const VOICE_HOLD_SECONDS = 1;
+
+/** Who moves the mouth now (Live2DAdapter.mouthReading). Each opening is 0 at the model's rest and 1 fully open. */
+export interface MouthReading {
+  /** The parameter read: ParamMouthOpenY when the model has it, otherwise its first lip-sync parameter. */
+  readonly parameter: string;
+  /** 0 to 1: how much the voice has the mouth now; it eases in when the voice starts and out after VOICE_HOLD_SECONDS. */
+  readonly voice: number;
+  /** The voice (or a composed frame) moved the mouth within the last VOICE_HOLD_SECONDS. */
+  readonly speaking: boolean;
+  /** The voice's loudness on the mouth now (0 to 1). */
+  readonly level: number;
+  /** How far the emotes (expressions, gestures such as mouth_open, motions) open the mouth before the voice takes it. */
+  readonly emote: number;
+  /** How far the mouth is open now. */
+  readonly open: number;
+}
+
+// How far a mouth parameter's value opens the mouth: 0 at the model's rest, 1 at its maximum.
+const opening = (parameter: Parameter, value: number): number =>
+  parameter.maximum > parameter.neutral ? Math.max(0, Math.min(1, (value - parameter.neutral) / (parameter.maximum - parameter.neutral))) : 0;
 
 export const browserServices: BrowserServices = {
   decodeTexture(bytes, signal, size) {
@@ -171,6 +195,14 @@ export class Live2DAdapter {
   #lipSyncTarget = 0;
   #lipSync = 0;
   #lipSyncAge = Number.POSITIVE_INFINITY;
+  // Seconds since the voice (a lip-sync level or a composed frame) last moved the mouth, whether it has the mouth now and how
+  // much (0 to 1, eased), the mouth parameters it takes (ParamMouthOpenY first) and the last mouth reading's openings.
+  #voiceAge = Number.POSITIVE_INFINITY;
+  #speaking = false;
+  #talk = 0;
+  #mouth: readonly Parameter[] = [];
+  #mouthEmote = 0;
+  #mouthOpen = 0;
   #lookTarget = { x: 0, y: 0 };
   #look = { x: 0, y: 0 };
   #gestures = new GesturePlayer();
@@ -179,6 +211,8 @@ export class Live2DAdapter {
   #faceSource: FaceSource | undefined;
   #faceHint: Face | undefined;
   #carriers: readonly Carrier[] = [];
+  /** The ID of the drawable the face is pinned to when it is the face's skin (see faceSkin). */
+  #skin: string | undefined;
   #pinned: PinnedFace | undefined;
   #hintPinned: PinnedFace | undefined;
   #faceProbeMilliseconds = 0;
@@ -217,12 +251,23 @@ export class Live2DAdapter {
     });
   }
 
-  /** Speech loudness 0..1; decays to closed when not refreshed for 300ms. */
+  /** Speech loudness 0..1; decays to closed when not refreshed for 300ms. While the voice speaks (until VOICE_HOLD_SECONDS
+   *  after its last level), it has the mouth: what the emotes put on the mouth eases out, and comes back after. */
   setLipSync(level: number): void {
     this.#ready();
     finite(level, "lip-sync level");
     this.#lipSyncTarget = Math.max(0, Math.min(1, level));
     this.#lipSyncAge = 0;
+    this.#voiceAge = 0;
+  }
+
+  /** Who moves the mouth now, for Martlet's MCP (character_mouth); undefined while the model isn't animated or has no mouth
+   *  parameter. */
+  get mouthReading(): MouthReading | undefined {
+    const [mouth] = this.#mouth;
+    if (!this.animated || !mouth) return undefined;
+    return Object.freeze({ parameter: mouth.id, voice: this.#talk, speaking: this.#speaking, level: this.#lipSync,
+      emote: this.#mouthEmote, open: this.#mouthOpen });
   }
 
   /** Normalized -1..1 look direction (x right, y up). */
@@ -369,11 +414,13 @@ export class Live2DAdapter {
     this.#hintPinned = this.#faceHint ? pinFace(this.#faceHint, now) : undefined;
   }
 
-  /** How many mesh vertices the face is pinned to (0: it follows the head's angles instead), how long finding them took when
-   *  the model loaded, and how long finding the eyes' meshes took then. */
-  get faceTracking(): { readonly carriers: number; readonly milliseconds: number; readonly eyeMilliseconds: number } {
-    return { carriers: this.#carriers.length, milliseconds: Math.round(this.#faceProbeMilliseconds),
-      eyeMilliseconds: Math.round(this.#eyes.milliseconds) };
+  /** How many mesh vertices the face is pinned to (0: it follows the head's angles instead), the ID of the drawable they
+   *  belong to when they are the face's skin (`skin`, see faceSkin; absent when they are the vertices that ride the head),
+   *  how long finding them took when the model loaded, and how long finding the eyes' meshes took then. */
+  get faceTracking(): { readonly carriers: number; readonly skin?: string; readonly milliseconds: number;
+    readonly eyeMilliseconds: number } {
+    return { carriers: this.#carriers.length, ...(this.#skin !== undefined ? { skin: this.#skin } : {}),
+      milliseconds: Math.round(this.#faceProbeMilliseconds), eyeMilliseconds: Math.round(this.#eyes.milliseconds) };
   }
 
   /**
@@ -405,8 +452,9 @@ export class Live2DAdapter {
   /**
    * Where the face is now, in the canvas's drawing-buffer pixels (y down), for drawings over it: its middle, width, roll
    * (radians, clockwise), the cheeks, eyes and mouth (left and right as the viewer sees them) and the top of the head.
-   * Pinned to the model's meshes (`tracking` "mesh", with each cheek's surface: one face width across and down it), so it
-   * follows whatever moves the head; otherwise estimated from the head's angles ("estimate"). Each eye with an iris (from the
+   * Pinned to the model's meshes (`tracking` "mesh", with each cheek's surface: one face width across and down it): to the
+   * face's skin when one drawable holds it (see `faceTracking`), else to the vertices that ride the head, so it follows
+   * whatever moves the head; otherwise estimated from the head's angles ("estimate"). Each eye with an iris (from the
    * model's meshes or the eye hint, see `eyesFrom`) adds its iris (`irisLeft`, `irisRight`: middle and radii across and down
    * the face) and its opening (`eyeLeftShape`, `eyeRightShape`), and puts `eyeLeft`/`eyeRight` at the eye's middle.
    * Undefined before a model shows.
@@ -605,9 +653,14 @@ export class Live2DAdapter {
       this.#faceSource = this.#findFace(model, bundle);
       const rest = this.#restFace(model);
       const started = this.#services.now();
-      this.#carriers = rest ? this.#findCarriers(model, rest) : [];
+      // Pinned to the face's skin when a drawable holds the face, else to the vertices that ride the head.
+      const skin = rest ? this.#findSkin(model, rest) : undefined, onSkin = rest && skin ? pinFace(rest, skin.carriers) : undefined;
+      if (skin && onSkin) [this.#carriers, this.#skin, this.#pinned] = [skin.carriers, skin.id, onSkin];
+      else {
+        this.#carriers = rest ? this.#findCarriers(model, rest) : [];
+        this.#pinned = rest ? pinFace(rest, this.#carriers) : undefined;
+      }
       this.#faceProbeMilliseconds = this.#services.now() - started;
-      this.#pinned = rest ? pinFace(rest, this.#carriers) : undefined;
       this.#eyes = rest ? this.#findEyesSafely(model, rest) : NO_EYES;
       return this.#plan.capabilities;
     } catch (error) {
@@ -667,6 +720,7 @@ export class Live2DAdapter {
     this.#sequence = frame.sequence;
     this.#age = 0;
     this.#hasFrame = true;
+    this.#voiceAge = 0;
     return {
       accepted: true,
       diagnostics: result.unmappedChannels.map(channel => ({
@@ -699,6 +753,7 @@ export class Live2DAdapter {
     this.#sequence = frame.sequence;
     this.#age = 0;
     this.#hasFrame = true;
+    this.#voiceAge = 0;
     return { accepted: true, diagnostics: [] };
   }
 
@@ -721,15 +776,22 @@ export class Live2DAdapter {
     const apply = () => { for (const write of writes) model.setParameterValueByIndex(write.index, write.value, 1); };
     if (animator) {
       this.#lipSyncAge += deltaSeconds;
+      this.#voiceAge += deltaSeconds;
       const target = this.#lipSyncAge > 0.3 ? 0 : this.#lipSyncTarget;
       this.#lipSync += (target - this.#lipSync) * Math.min(1, deltaSeconds * (target > this.#lipSync ? 30 : 14));
+      this.#speaking = this.#hasFrame || this.#voiceAge <= VOICE_HOLD_SECONDS;
+      // The voice takes the mouth quickly, so its first sound shows, and gives it back gently.
+      this.#talk += ((this.#speaking ? 1 : 0) - this.#talk) * Math.min(1, deltaSeconds * (this.#speaking ? 10 : 5));
       const follow = Math.min(1, deltaSeconds * 5);
       this.#look = { x: this.#look.x + (this.#lookTarget.x - this.#look.x) * follow,
         y: this.#look.y + (this.#lookTarget.y - this.#look.y) * follow };
-      // A gesture holding the eyes keeps the look out of them; a held open mouth eases back while lip-sync moves it.
-      const gesture = this.#gestures.advance(deltaSeconds, this.#look, this.#hasFrame || this.#lipSyncAge <= 0.3);
+      // A gesture holding the eyes keeps the look out of them.
+      const gesture = this.#gestures.advance(deltaSeconds, this.#look);
       animator.update(deltaSeconds, { lookX: this.#look.x + (gesture?.look.x ?? 0), lookY: this.#look.y + (gesture?.look.y ?? 0),
-        lipSync: this.#hasFrame ? 0 : this.#lipSync, overrides: apply, ...(gesture ? { gesture: gesture.parameters } : {}) });
+        lipSync: this.#hasFrame ? 0 : this.#lipSync, overrides: () => { this.#giveMouth(model); apply(); },
+        ...(gesture ? { gesture: gesture.parameters } : {}) });
+      const [mouth] = this.#mouth, value = mouth && model.getParameterValueByIndex?.(mouth.index);
+      if (mouth && value !== undefined) this.#mouthOpen = opening(mouth, value);
     } else {
       // No SDK motion/expression/physics writer runs after these composed parameter writes.
       apply();
@@ -817,6 +879,19 @@ export class Live2DAdapter {
     this.#age = 0;
   }
 
+  /** Runs after idle motions, expressions, held expressions and gestures wrote their frame, before lip-sync: while the voice
+   *  has the mouth (`#talk`), what they put on the mouth parameters eases back to the model's rest, so emotes that set the
+   *  mouth (an open mouth, a shout) never hold it still while the character talks; lip-sync then moves it alone. As the voice
+   *  lets go, their mouth comes back. Notes how far the emotes open the mouth for the mouth reading. */
+  #giveMouth(model: CubismModel): void {
+    if (!model.getParameterValueByIndex) return;
+    for (const [i, parameter] of this.#mouth.entries()) {
+      const value = model.getParameterValueByIndex(parameter.index);
+      if (i === 0) this.#mouthEmote = opening(parameter, value);
+      if (this.#talk > 0.001) model.setParameterValueByIndex(parameter.index, value + (parameter.neutral - value) * this.#talk, 1);
+    }
+  }
+
   #animatorAssets(bundle: LocalModelBundle): AnimatorAssets {
     const description = bundle.description;
     const buffer = (name: string): ArrayBuffer => bundle.read(name).buffer;
@@ -830,6 +905,9 @@ export class Live2DAdapter {
     if (lipSync.length === 0) lipSync = declared(["ParamMouthOpenY"]);
     this.#eyeBlinkIds = Object.freeze(eyeBlink);
     this.#lipSyncIds = Object.freeze(lipSync);
+    // The voice takes the mouth's opening: the lip-sync parameters and ParamMouthOpenY (which mouth_open opens).
+    this.#mouth = Object.freeze(this.#parameters.filter(p => p.id === "ParamMouthOpenY" || lipSync.includes(p.id))
+      .sort((a, b) => Number(b.id === "ParamMouthOpenY") - Number(a.id === "ParamMouthOpenY")));
     return {
       parameterIds: this.#parameters.map(p => p.id),
       motions: Object.fromEntries(Object.entries(description.motions).map(([group, entries]) => [group,
@@ -897,6 +975,24 @@ export class Live2DAdapter {
     if (source.kind === "fixed") return source.face;
     const box = bounds(source.drawables.map(i => model.getDrawableVertices(i)));
     return box && faceFromBox(source.kind, box);
+  }
+
+  /**
+   * The face's skin around `face` (see faceSkin): its ID and every vertex of it as carriers, which the face then follows as
+   * Core deforms the skin, whatever moves the head (its angles, or parameters that physics drives from them). Undefined when
+   * no drawable holds the face.
+   */
+  #findSkin(model: CubismModel, face: Face): { id: string; carriers: Carrier[] } | undefined {
+    const orders = model.getDrawableRenderOrders();
+    const skin = faceSkin(face, {
+      count: model.getDrawableCount(),
+      shown: i => model.getDrawableDynamicFlagIsVisible(i) && model.getDrawableOpacity(i) >= 0.05,
+      vertices: i => model.getDrawableVertices(i),
+      indices: i => model.getDrawableVertexIndices(i),
+      order: i => orders[i] ?? i,
+    });
+    return skin === undefined ? undefined
+      : { id: model.getDrawableId(skin).getString().s, carriers: skinCarriers(skin, model.getDrawableVertices(skin)) };
   }
 
   /**
@@ -1086,6 +1182,12 @@ export class Live2DAdapter {
     this.#lipSyncTarget = 0;
     this.#lipSync = 0;
     this.#lipSyncAge = Number.POSITIVE_INFINITY;
+    this.#voiceAge = Number.POSITIVE_INFINITY;
+    this.#speaking = false;
+    this.#talk = 0;
+    this.#mouth = [];
+    this.#mouthEmote = 0;
+    this.#mouthOpen = 0;
     this.#lookTarget = { x: 0, y: 0 };
     this.#look = { x: 0, y: 0 };
     this.#gestures.clear();
@@ -1093,6 +1195,7 @@ export class Live2DAdapter {
     this.#faceSource = undefined;
     this.#faceHint = undefined;
     this.#carriers = [];
+    this.#skin = undefined;
     this.#pinned = undefined;
     this.#hintPinned = undefined;
     this.#faceProbeMilliseconds = 0;

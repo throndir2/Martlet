@@ -26,7 +26,8 @@ public sealed record TouchBurst(IReadOnlyList<TouchEntry> Entries)
     public string HistoryLine => TouchWording.HistoryLine(Entries);
     /// <summary>How many things the user did (each tap counts).</summary>
     public int Count => Entries.Sum(e => e.Count);
-    /// <summary>How many of them were touches (<see cref="PhysicalKinds.StartsTurn"/>), not things done to the window.</summary>
+    /// <summary>How many of them may start a reply on their own (<see cref="PhysicalKinds.StartsTurn"/>: touches and moves of the
+    /// character), not other things done to its window.</summary>
     public int Touches => Entries.Where(e => PhysicalKinds.StartsTurn(e.Kind)).Sum(e => e.Count);
     /// <summary>Whether any of it may start a touch-only reply on its own (<see cref="PhysicalKinds.StartsTurn"/>).</summary>
     public bool StartsTurn => Entries.Any(e => PhysicalKinds.StartsTurn(e.Kind));
@@ -35,9 +36,13 @@ public sealed record TouchBurst(IReadOnlyList<TouchEntry> Entries)
 /// <summary>What each kind of thing does in the conversation and how it is said.</summary>
 public static class PhysicalKinds
 {
-    /// <summary>Whether this kind may start a touch-only reply on its own. Touches do; what the user does to the window (moving or
-    /// zooming it...) only goes with the next reply.</summary>
-    public static bool StartsTurn(PhysicalKind kind) => kind is PhysicalKind.Tap or PhysicalKind.Pat or PhysicalKind.Hold or PhysicalKind.Stroke;
+    /// <summary>Whether this kind is a touch on the character itself: a poke, a pat, a hold or a stroke.</summary>
+    public static bool IsTouch(PhysicalKind kind) => kind is PhysicalKind.Tap or PhysicalKind.Pat or PhysicalKind.Hold or PhysicalKind.Stroke;
+
+    /// <summary>Whether this kind may start a touch-only reply on its own. Touches do, and so does moving the character around
+    /// (a drag, or to another monitor); the rest of what the user does to the window (zooming, panning, resizing, locking,
+    /// hiding or showing it) only goes with the next reply.</summary>
+    public static bool StartsTurn(PhysicalKind kind) => IsTouch(kind) || kind == PhysicalKind.Moved;
 
     /// <summary>What they did, past tense, as the character hears it ("patted the top of your head").</summary>
     public static string Phrase(PhysicalKind kind, string? zone, string? detail)
@@ -91,7 +96,7 @@ public static class TouchWording
     {
         var zone = entry.Zone ?? (entry.Label is { Length: > 0 } label ? "your " + label : null);
         var text = PhysicalKinds.Phrase(entry.Kind, zone, entry.Detail);
-        var touch = PhysicalKinds.StartsTurn(entry.Kind);
+        var touch = PhysicalKinds.IsTouch(entry.Kind);
         if (entry.Count == 1) text += touch ? " once" : "";
         else text += entry.Count == 2 ? " twice" : $" {entry.Count} times";
         var span = entry.Last - entry.First;
