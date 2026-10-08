@@ -214,4 +214,49 @@ public sealed class SenseModelsDesktopTests
         Assert.Equal(SensePath.None, route.Path);
         Assert.Equal(false, fixture.Controller.Configuration!.Abilities.Find(EyesUrl, "qwen2.5vl:7b")!.Sees);
     }
+
+    [Fact]
+    public async Task A_helper_job_with_a_picture_goes_to_the_image_model_when_no_pool_member_sees()
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Controller.SenseModels = WithEyes;
+        var jobs = new List<SenseJob>();
+        fixture.Controller.SenseRunner = (kind, model, job, _) =>
+        {
+            Assert.Equal((SenseKind.Image, Eyes.Key), (kind, model.Key));
+            lock (jobs) jobs.Add(job);
+            return Task.FromResult(SenseAnswer.Done("LEFT 0.31 0.42 0.05; RIGHT 0.62 0.42 0.05"));
+        };
+        var picture = new BoundedImage([0xFF, 0xD8, 0xFF, .. new byte[32]], ImageMediaType.Jpeg, 4, 4);
+
+        var asked = fixture.Controller.AskHelperAsync(HelperJobKind.Eyes, "Measuring the eyes", "Find both eyes.", "The close-up.", picture,
+            CancellationToken.None);
+        await fixture.Advance(() => asked.IsCompleted);
+        Assert.Equal(("LEFT 0.31 0.42 0.05; RIGHT 0.62 0.42 0.05", (string?)null), await asked);
+        var job = Assert.Single(jobs);
+        Assert.Equal(("eyes", LiveConversationController.HelperPriority, "Find both eyes.", "The close-up."),
+            (job.Purpose, job.Priority, job.Instructions, job.Text));
+        Assert.Same(picture, job.Image);
+        Assert.Equal((SenseJob.MaximumOutputTokens, false, (bool?)null), (job.MaxOutputTokens, job.DropWhenStale, job.Reasoning));
+        // Thinking got nothing; a helper job without a picture still goes to it.
+        Assert.Equal(0, fixture.Llm.Calls);
+        var named = fixture.Controller.AskHelperAsync(HelperJobKind.ActionNaming, "Naming emotes", "Name them.", "wave, nod", null, CancellationToken.None);
+        await fixture.Advance(() => named.IsCompleted);
+        Assert.NotNull((await named).Answer);
+        Assert.Equal(1, fixture.Llm.Calls);
+        Assert.Single(jobs);
+    }
+
+    [Fact]
+    public async Task Without_an_image_model_a_helper_job_with_a_picture_goes_to_thinking_as_before()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var picture = new BoundedImage([0xFF, 0xD8, 0xFF, .. new byte[32]], ImageMediaType.Jpeg, 4, 4);
+        var asked = fixture.Controller.AskHelperAsync(HelperJobKind.Eyes, "Measuring the eyes", "Find both eyes.", "The close-up.", picture,
+            CancellationToken.None);
+        await fixture.Advance(() => asked.IsCompleted);
+        Assert.NotNull((await asked).Answer);
+        Assert.Equal(1, fixture.Llm.Calls);
+        Assert.Equal(0, fixture.Controller.Senses.Status()[0].Runs);
+    }
 }

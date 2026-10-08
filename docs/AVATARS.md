@@ -644,9 +644,10 @@ default; turn it off to leave them out. The check box names each of these parts.
   request is a [helper job](MEMORY.md#helper-jobs-on-the-thinking-pool) that
   needs vision: a free Thinking pool member that can see takes it first (and
   **Detect zones** works with such a member even when the Thinking model can't
-  see). Without one, the conversation's Thinking model gets it after any reply
-  finishes speaking. Local vision models such as Qwen2.5-VL on Ollama work, as
-  do cloud ones.
+  see). Without one, an image model of its own gets it while pictures go to it
+  (Companion › Vision, [Image and audio models](SENSE_MODELS.md#helper-jobs-with-a-picture)),
+  else the conversation's Thinking model after any reply finishes speaking.
+  Local vision models such as Qwen2.5-VL on Ollama work, as do cloud ones.
 - To see what Thinking saw, turn on **Show the picture Thinking saw**: the
   picture of the zones then shows the whole character on its backdrop with the
   grid. **Open the pictures** opens the folder with every picture the last
@@ -893,7 +894,9 @@ bones and meshes.*, *Measured with vision at 3:12 PM.* or *Estimated: ...*.
   for two boxes per eye, as the viewer sees them: the iris (the colored part
   with the pupil) and the eye's opening (the white and the iris between the
   eyelids). The picture goes to a free Thinking pool member that can see, else
-  to the Thinking model after any reply, as a low-priority
+  to the image model of its own while pictures go to it ([Image and audio
+  models](SENSE_MODELS.md#helper-jobs-with-a-picture)), else to the Thinking
+  model after any reply, as a low-priority
   [helper job](MEMORY.md#helper-jobs-on-the-thinking-pool). It is never on a
   reply's path, and nothing is sent until a model that can see is set up.
 - Martlet then checks the boxes: both eyes are there, each iris lies mostly

@@ -647,6 +647,29 @@ public sealed class TouchZoneDetectionTests
         Assert.True(MainWindow.TouchZonesSight(null, null, null, fixture: true).CanSee);
     }
 
+    [Fact]
+    public void DetectZonesUsesTheImageModelWhilePicturesGoToIt()
+    {
+        static SetupRoute Thinking(string model) => new()
+        {
+            Role = SetupRole.Llm, ProviderAlias = "openai", Origin = "https://api.openai.com", ModelId = model, ConfigurationRevision = Guid.NewGuid()
+        };
+
+        // A text-only Thinking model with an image model of its own (Companion › Vision): the image model finds the zones.
+        var eyes = MainWindow.TouchZonesSight(Thinking("llama3.1:8b"), null, null, fixture: false, imageModel: "Ollama on this PC (qwen2.5vl:7b)");
+        Assert.True(eyes.CanSee);
+        Assert.Null(eyes.Off);
+        Assert.Equal("Your image model, Ollama on this PC (qwen2.5vl:7b) (Companion › Vision), finds the zones: pictures go to it, not to the " +
+            "Thinking model.", eyes.Line);
+        // A Thinking pool member that sees still goes first.
+        var pooled = MainWindow.TouchZonesSight(Thinking("gpt-4o"), null, "diva (qwen2.5vl:7b)", fixture: false, imageModel: "Ollama on this PC (qwen2.5vl:7b)");
+        Assert.Equal("diva (qwen2.5vl:7b) in your Thinking pool can see pictures, so it finds the zones first. Otherwise your image model, " +
+            "Ollama on this PC (qwen2.5vl:7b), does.", pooled.Line);
+        // Without an image model of its own, nothing changes.
+        Assert.Equal(MainWindow.TouchZonesSight(Thinking("gpt-4o"), null, null, fixture: false).Line,
+            MainWindow.TouchZonesSight(Thinking("gpt-4o"), null, null, fixture: false, imageModel: null).Line);
+    }
+
     // A still renderer as the touch zones picture needs it: it records what it was started with and asked, and answers with a
     // picture (png, or three bytes that aren't one; or fails to start).
     private sealed class StillRenderer(bool failStart = false, byte[]? png = null) : IAvatarRenderer

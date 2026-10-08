@@ -200,7 +200,12 @@ public sealed class SenseLanesTests
         await Assert.ThrowsAsync<ContractException>(() => lanes.RunAsync(SenseKind.Audio, Look("a picture"), CancellationToken.None));
         await Assert.ThrowsAsync<ContractException>(() => lanes.RunAsync(SenseKind.Image, Listen("a recording"), CancellationToken.None));
         await Assert.ThrowsAsync<ContractException>(() =>
-            lanes.RunAsync(SenseKind.Image, Look("too long") with { Timeout = TimeSpan.FromMinutes(3) }, CancellationToken.None));
+            lanes.RunAsync(SenseKind.Image, Look("too long") with { Timeout = TimeSpan.FromMinutes(6) }, CancellationToken.None));
+        await Assert.ThrowsAsync<ContractException>(() =>
+            lanes.RunAsync(SenseKind.Image, Look("too much") with { MaxOutputTokens = SenseJob.MaximumOutputTokens + 1 }, CancellationToken.None));
+        // A helper job (touch zones, the eyes) may write as much as on a Thinking pool member, for as long.
+        Assert.True((await lanes.RunAsync(SenseKind.Image, Look("touch zones") with { MaxOutputTokens = 4096, Timeout = TimeSpan.FromMinutes(3) },
+            CancellationToken.None)).Succeeded);
     }
 
     [Fact]
