@@ -4395,6 +4395,21 @@ readings with no opening). Sample several times to see the irises follow the
 gaze and the openings close on a blink. `MoveAvatar`'s value in `ui_snapshot`
 shows the last reading as `face`.
 
+`character_picture` takes a picture of the showing character as it shows now
+(`MoveAvatar`'s value `"picture"`). It is the renderer's own capture of the
+overlay's page, so Martlet's drawings over the face are in it, such as the
+blush glow and overlay emotes like heart eyes. It is cropped to the character
+with a little room. Zoom the character first (`SetupCharacterZoomIn`) to see
+small parts such as the eyes larger. It returns `taken`, `picture` and `saved`.
+`picture` has `n`, `path` (the renderer's PNG file in the temp folder, replaced
+each time), `width` and `height` in pixels, and `left`, `top`, `cropWidth` and
+`cropHeight`: where it sits on the overlay's drawing, as fractions like
+`character_face`'s positions. When the picture can't be taken, `picture` has
+`error`. `saved` is the copy at `outputPath` (a full path to a `.png` file)
+when given. It changes nothing on the character, so it needs no
+`--allow-ui-effects`. `MoveAvatar`'s value then shows the last picture as
+`picture`.
+
 **Moves, zooms and other changes Martlet hears about**: the overlay notes each
 drag, arrow-key nudge, `ui_move`, zoom (wheel, menu, keys or Martlet's zoom
 buttons), reset zoom, pan of a zoomed view and Reset position, and once it has

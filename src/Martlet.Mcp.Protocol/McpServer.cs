@@ -207,6 +207,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumFaceSamples },
             gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
         }),
+        Tool("character_picture", "Take a picture of the showing character as it shows now: the renderer's own capture of the " +
+            "overlay's page (WebView2), so Martlet's drawings over the face (its blush glow and overlay emotes such as heart eyes) " +
+            "are in it, cropped to the character with a little room. Zoom the character first (SetupCharacterZoomIn) to see small " +
+            "parts such as the eyes larger. Returns taken, picture (n, path: the renderer's PNG file in the temp folder, replaced " +
+            "each time; width and height in pixels; left, top, cropWidth and cropHeight: where it sits on the overlay's drawing, " +
+            "as fractions like character_face's positions; or error) and saved, the copy at outputPath (a full path to a .png " +
+            "file) when given. Taking it changes nothing on the character, so it needs no --allow-ui-effects.", new
+        {
+            outputPath = new { type = "string" }
+        }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
             "[x, y, width, height] in physical screen pixels) and whether Martlet still runs. \"open\" and \"menu\" send the icon " +
@@ -1639,6 +1649,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 OptionalInt(arguments, "settleMs")),
                 "character_stroke" => await desktop.StrokeCharacterAsync(StrokePoints(arguments), OptionalInt(arguments, "stepMs") ?? 40),
                 "character_face" => await desktop.FaceCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
+                "character_picture" => await desktop.PictureCharacterAsync(OptionalString(arguments, "outputPath")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "turn_judge_check" => await TurnJudgeCheck.RunAsync(arguments, MartletDirectory(arguments), cancellation),

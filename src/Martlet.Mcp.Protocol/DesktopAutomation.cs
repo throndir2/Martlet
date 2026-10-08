@@ -1108,6 +1108,42 @@ internal sealed class DesktopAutomation(bool allowEffects)
 
     internal const int MaximumFaceSamples = 60;
 
+    /// <summary>Takes a picture of the showing character as it shows now through MoveAvatar's UI Automation value ("picture"):
+    /// the renderer's own capture of the overlay's page, so Martlet's drawings over the face (the blush glow, overlay emotes
+    /// such as heart eyes) are in it, cropped to the character. It changes nothing on the character, so it needs no
+    /// --allow-ui-effects. The renderer writes the PNG to its file in the temp folder; with <paramref name="outputPath"/> (a full
+    /// path to a .png file) it is copied there. Returns the picture's reading: the file, its size and the crop of the overlay's
+    /// page it shows (fractions, like character_face's positions).</summary>
+    internal async Task<object> PictureCharacterAsync(string? outputPath)
+    {
+        if (outputPath is not null && (!System.IO.Path.IsPathFullyQualified(outputPath) ||
+            !outputPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase)))
+            throw new ArgumentException("outputPath is a full path to a .png file.");
+        var element = Find("MoveAvatar");
+        if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            throw new InvalidOperationException("The character overlay can't be read through UI Automation.");
+        var value = (ValuePattern)pattern;
+        if (value.Current.IsReadOnly) throw new InvalidOperationException("The character's picture can't be taken until it has loaded.");
+        static System.Text.Json.JsonElement? Picture(string text) => string.IsNullOrEmpty(text) ? null :
+            System.Text.Json.JsonDocument.Parse(text).RootElement is { ValueKind: System.Text.Json.JsonValueKind.Object } root &&
+            root.TryGetProperty("picture", out var picture) ? picture.Clone() : null;
+        var before = Picture(value.Current.Value)?.GetRawText();
+        value.SetValue("picture");
+        var waited = Stopwatch.StartNew();
+        System.Text.Json.JsonElement? after;
+        while ((after = Picture(value.Current.Value))?.GetRawText() == before && waited.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(50);
+        if (after is not { } read || read.GetRawText() == before)
+            return new { taken = false, note = "The renderer didn't take the picture within 10 seconds." };
+        var taken = !read.TryGetProperty("error", out _);
+        string? saved = null;
+        if (taken && outputPath is not null && read.TryGetProperty("path", out var path) && path.GetString() is { } file && System.IO.File.Exists(file))
+        {
+            System.IO.File.Copy(file, outputPath, overwrite: true);
+            saved = outputPath;
+        }
+        return new { taken, picture = read, saved };
+    }
+
     /// <summary>Reads where Martlet draws over the showing character's face (the blush glow and overlay emotes)
     /// <paramref name="samples"/> times, <paramref name="gapMs"/> apart, through MoveAvatar's UI Automation value ("face"). It
     /// changes nothing, so it needs no --allow-ui-effects. Returns each reading (fractions of the overlay's drawing, +y down)

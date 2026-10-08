@@ -131,6 +131,7 @@ internal sealed partial class RendererWindow : Window
         viewport.MouseLeftButtonUp += (_, e) => EndStroke(e.GetPosition(viewport), Environment.TickCount64);
         viewport.StrokeAlong = StrokeAlong;
         viewport.ReadFace = ReadFace;
+        viewport.TakePicture = TakePicture;
         viewport.LostMouseCapture += (_, _) =>
         {
             if (stroke is { } lost && !strokeReleasing) EndStroke(lost.Last, Environment.TickCount64);
@@ -981,6 +982,38 @@ internal sealed partial class RendererWindow : Window
             id.ValueKind != JsonValueKind.Number || !id.TryGetInt32(out var number) || number != pending) return;
         facePending = null;
         viewport.LastFace = CharacterFaceReading.From(answer, number);
+    }
+
+    private int pictureId;
+
+    /// <summary>Takes a picture of the character as it shows now for Martlet's MCP character_picture, through UI Automation:
+    /// WebView2's capture of the page, so Martlet's drawings over the face are in it, cropped to the character. The PNG goes
+    /// to this renderer's file in the temp folder (replaced each time) and its reading to the viewport's LastPicture. A picture
+    /// that can't be taken is only reported; it changes nothing on the character and never fails the renderer.</summary>
+    private async void TakePicture()
+    {
+        if (browser.CoreWebView2 is null || failure.Failed || closed) return;
+        var id = ++pictureId;
+        try
+        {
+            var picture = await SnapshotAsync(new RendererSnapshot(Portrait: false, Edge: RendererSnapshot.MaximumEdge));
+            var folder = Path.Combine(Path.GetTempPath(), "Martlet.CharacterPictures");
+            Directory.CreateDirectory(folder);
+            var file = Path.Combine(folder, $"overlay-{Environment.ProcessId}.png");
+            await File.WriteAllBytesAsync(file, Convert.FromBase64String(picture.Png));
+            viewport.LastPicture = JsonSerializer.Serialize(new
+            {
+                n = id, path = file, width = picture.Width, height = picture.Height, left = Math.Round(picture.CropLeft, 4),
+                top = Math.Round(picture.CropTop, 4), cropWidth = Math.Round(picture.CropWidth, 4), cropHeight = Math.Round(picture.CropHeight, 4)
+            }, RendererProtocol.Json);
+        }
+        catch (Exception error) when (error is IOException or NotSupportedException or ArgumentException or InvalidDataException or
+            FileFormatException or InvalidOperationException or UnauthorizedAccessException or FormatException or
+            System.Runtime.InteropServices.COMException)
+        {
+            ErrorLog.Warn($"Couldn't take a picture of the character for Martlet's MCP: {error.Message}");
+            viewport.LastPicture = JsonSerializer.Serialize(new { n = id, error = "The picture couldn't be taken." }, RendererProtocol.Json);
+        }
     }
 
     /// <summary>The page's hit test for the last tap: remembered for UI Automation and, when it found the character, sent to

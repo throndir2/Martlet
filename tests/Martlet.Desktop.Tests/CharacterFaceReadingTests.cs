@@ -83,6 +83,11 @@ public sealed class CharacterFaceReadingTests
                 var reading = Json(viewport.Reading());
                 Assert.True(reading.GetProperty("hit").GetBoolean());
                 Assert.Equal(2, reading.GetProperty("face").GetProperty("n").GetInt32());
+                viewport.LastPicture = """{"n":3,"path":"C:\\Temp\\overlay-1.png","width":420,"height":560}""";
+                var pictured = Json(viewport.Reading());
+                Assert.Equal(3, pictured.GetProperty("picture").GetProperty("n").GetInt32());
+                Assert.Equal(2, pictured.GetProperty("face").GetProperty("n").GetInt32());
+                Assert.Equal(3, Json(new CharacterViewport { LastPicture = """{"n":3}""" }.Reading()).GetProperty("picture").GetProperty("n").GetInt32());
             }
             catch (Exception error) { failure = error; }
         });
@@ -90,6 +95,14 @@ public sealed class CharacterFaceReadingTests
         thread.Start();
         thread.Join();
         if (failure is not null) throw failure;
+    }
+
+    [Fact]
+    public async Task APictureIsSavedOnlyToAFullPngPath()
+    {
+        var automation = new DesktopAutomation(false);
+        await Assert.ThrowsAsync<ArgumentException>(() => automation.PictureCharacterAsync("face.png"));
+        await Assert.ThrowsAsync<ArgumentException>(() => automation.PictureCharacterAsync(Path.Combine(Path.GetTempPath(), "face.txt")));
     }
 
     [Fact]
