@@ -114,14 +114,21 @@ export class VrmAvatarAdapter extends VrmRuntime {
   }
 
   /** What of the posed character is at a point of the canvas (`x`, `y` fractions 0..1, origin top-left, +y down), through
-   *  the camera with its view zoom and pan; undefined when nothing is there. */
-  hitTest(x: number, y: number): VrmHit | undefined {
+   *  the camera with its view zoom and pan; undefined when nothing is there. `restCanvas` is where the hit point of the
+   *  character was in the rest pose (see VrmRuntime.startIdle), drawn through the camera now (fractions, like `x` and `y`):
+   *  the same spot of the skin however the head turns to the mouse or the arms move. */
+  hitTest(x: number, y: number): (VrmHit & { readonly restCanvas?: Point }) | undefined {
     requireValid(!this.closed, "Renderer is disposed.");
     finite(x, -1, 2, "touch x"); finite(y, -1, 2, "touch y");
     this.camera.updateMatrixWorld();
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(new THREE.Vector2(2 * x - 1, 1 - 2 * y), this.camera);
-    return this.hitTestRay(raycaster);
+    const hit = this.hitTestRay(raycaster);
+    const scene = this.scene;
+    if (!hit?.rest || !scene) return hit;
+    const at = scene.localToWorld(new THREE.Vector3(hit.rest.x, hit.rest.y, hit.rest.z)).project(this.camera);
+    return Number.isFinite(at.x) && Number.isFinite(at.y)
+      ? Object.freeze({ ...hit, restCanvas: Object.freeze({ x: (at.x + 1) / 2, y: (1 - at.y) / 2 }) }) : hit;
   }
 
   /** Where each humanoid bone is now, as fractions of the canvas (origin top-left, +y down), for touch zones. */

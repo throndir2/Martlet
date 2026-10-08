@@ -105,6 +105,15 @@ function gestureState() {
   const { playing, held } = adapter.gestureState ?? {};
   return { ...(playing ? { playing } : {}), held: [...new Set([...(Array.isArray(held) ? held : []), ...heldOverlays()])] };
 }
+// Where a hit's point of the character was in its rest pose (the pose the touch zones picture shows), traced on the touched
+// mesh and drawn in the canvas's framing now (fractions, +y down, like the tap): the adapters' `restCanvas`. Touch zones
+// compare it with their boxes, so a tap lands on the same zone however the head turns or the body moves. Null when the
+// adapter can't say.
+function restOf(hit) {
+  const at = hit?.restCanvas;
+  if (!at || !Number.isFinite(at.x) || !Number.isFinite(at.y)) return null;
+  return { x: Math.round(at.x * 10000) / 10000, y: Math.round(at.y * 10000) / 10000 };
+}
 // The bones a pose reading places on the canvas.
 const POSE_BONES = new Set(["head", "neck", "leftShoulder", "rightShoulder", "leftUpperArm", "rightUpperArm", "leftHand", "rightHand",
   "leftUpperLeg", "rightUpperLeg"]);
@@ -198,12 +207,12 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
   if (message.kind === "touch") {
     // A tap on the character at x, y (fractions 0..1 of the canvas, +y down). Answered unprompted with {touch}, never as a
     // command reply, and a failed hit test is only a miss: Live2D reports hitAreas and drawables, VRM bone, node, hair,
-    // mesh and material.
+    // mesh and material, and both `rest` (see restOf).
     const { id, x, y } = message.data;
     let hit;
     try { if (active && !failed) hit = adapter?.hitTest?.(Number(x), Number(y)); } catch { hit = undefined; }
     post({ touch: { id, hit: !!hit, hitAreas: hit?.hitAreas ?? [], drawables: hit?.drawables ?? [], bone: hit?.bone ?? null,
-      node: hit?.node ?? null, hair: hit?.hair === true, mesh: hit?.mesh ?? null, material: hit?.material ?? null } });
+      node: hit?.node ?? null, hair: hit?.hair === true, mesh: hit?.mesh ?? null, material: hit?.material ?? null, rest: restOf(hit) } });
     return;
   }
   if (message.kind === "touches") {
@@ -214,7 +223,7 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
       let hit;
       try { if (active && !failed) hit = adapter?.hitTest?.(Number(x), Number(y)); } catch { hit = undefined; }
       return { hit: !!hit, hitAreas: hit?.hitAreas ?? [], drawables: hit?.drawables ?? [], bone: hit?.bone ?? null,
-        node: hit?.node ?? null, hair: hit?.hair === true, mesh: hit?.mesh ?? null, material: hit?.material ?? null };
+        node: hit?.node ?? null, hair: hit?.hair === true, mesh: hit?.mesh ?? null, material: hit?.material ?? null, rest: restOf(hit) };
     });
     post({ touches: { id, hits } });
     return;

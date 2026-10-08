@@ -180,6 +180,187 @@ public sealed class CharacterTouchZoneTests
         Assert.False(CharacterTouchZones.OnPart("cheek_left", "leftHand"));
     }
 
+    // A Live2D face found at rest, framed whole on the page: the hair's box takes in the whole head, so the face's skin, the
+    // bangs, the nose and the eye lie mostly inside it; the cheek holds no drawable of its own.
+    private static readonly CharacterTouchZoneSettings RestFace = new()
+    {
+        ModelId = "model-1", Crop = new(0, 0, 1, 1), Whole = true,
+        Zones =
+        [
+            new() { Id = "hair", Box = new(0.3, 0.05, 0.4, 0.35), Drawables = ["FaceSkin", "Bangs", "Nose", "EyeL"] },
+            new() { Id = "eye_left", Box = new(0.52, 0.2, 0.06, 0.04), Drawables = ["EyeL"] },
+            new() { Id = "nose", Box = new(0.48, 0.25, 0.04, 0.04), Drawables = ["Nose"] },
+            new() { Id = "cheek_left", Box = new(0.53, 0.27, 0.07, 0.06) }
+        ]
+    };
+
+    // A touch drawn now at x, y whose point of the character was at restX, restY in the rest pose (framed whole and now alike).
+    private static CharacterTouch Traced(double x, double y, double restX, double restY, params string[] drawables) =>
+        new(x, y, [], drawables, null, null, false, null, null, 0, x, y, restX, restY, restX, restY);
+
+    [Fact]
+    public void ATouchIsMatchedWhereItsPointWasInTheRestPoseSoZonesFollowATurnedHead()
+    {
+        // The head turned to the mouse: the left cheek is drawn where the nose's box was at rest. Traced back on the face's skin,
+        // the touch lands on the cheek, a finer part of the hair's box, which owns the skin.
+        var cheek = CharacterTouchZones.Match(RestFace, Traced(0.5, 0.27, 0.56, 0.3, "FaceSkin"))!;
+        Assert.Equal(("cheek_left", "box"), Of(cheek));
+        Assert.True(cheek.Traced);
+        // Not traced (a renderer that can't say): the point drawn now lies in the nose's box, so the nose takes the cheek's touch.
+        var untraced = CharacterTouchZones.Match(RestFace,
+            Traced(0.5, 0.27, 0.56, 0.3, "FaceSkin") with { RestX = null, RestY = null, RestWholeX = null, RestWholeY = null })!;
+        Assert.Equal(("nose", "box"), Of(untraced));
+        Assert.False(untraced.Traced);
+        // The nose and an eye keep their own drawables wherever they are drawn; bangs over the eye are hair.
+        Assert.Equal(("nose", "drawable"), Of(CharacterTouchZones.Match(RestFace, Traced(0.45, 0.26, 0.5, 0.27, "Nose", "FaceSkin"))));
+        Assert.Equal(("eye_left", "drawable"), Of(CharacterTouchZones.Match(RestFace, Traced(0.5, 0.21, 0.55, 0.22, "EyeL", "FaceSkin"))));
+        Assert.Equal(("hair", "drawable"), Of(CharacterTouchZones.Match(RestFace, Traced(0.5, 0.21, 0.55, 0.22, "Bangs", "EyeL", "FaceSkin"))));
+        // The skin by the nose, inside its box but off its own drawable, is the nose too.
+        Assert.Equal(("nose", "box"), Of(CharacterTouchZones.Match(RestFace, Traced(0.45, 0.28, 0.49, 0.28, "FaceSkin"))));
+        // Skin where no finer zone lies stays with the zone that owns it.
+        Assert.Equal(("hair", "drawable"), Of(CharacterTouchZones.Match(RestFace, Traced(0.4, 0.3, 0.4, 0.3, "FaceSkin"))));
+    }
+
+    [Fact]
+    public void HairDrawnOverAZoneWithPiecesOfItsOwnStaysHairButOverABoxOnlyZoneItIsThatZone()
+    {
+        // A side lock (the model names its part as hair) hangs over the nose's box, off the nose itself: the nose has a piece of
+        // its own, so the touch is on hair. The same spot on bare skin is the nose.
+        var overNose = Traced(0.45, 0.28, 0.49, 0.28, "SideLock", "FaceSkin");
+        Assert.Equal(("hair", "drawable"), Of(CharacterTouchZones.Match(RestFace, overNose with { Hair = true })));
+        Assert.Equal(("nose", "box"), Of(CharacterTouchZones.Match(RestFace, overNose)));
+        // Over a zone with no pieces of its own (the cheek here, like a forehead under the bangs), the zone's box decides.
+        Assert.Equal(("cheek_left", "box"), Of(CharacterTouchZones.Match(RestFace, Traced(0.5, 0.27, 0.56, 0.3, "SideLock", "FaceSkin") with { Hair = true })));
+        Assert.Equal("hair", (overNose with { Hair = true }).CoarseZone);
+    }
+
+    // Hiyori's face at rest (page fractions, from her zones probe): tight vision boxes for an eye, a cheek and the mouth inside
+    // the hair's box, which frames the face. Her own parts group each feature's pieces: 目 (the eye's lashes) holds 目玉 (the
+    // eyeball's white and iris), 頬 the cheeks' blush, 口 the mouth.
+    private static readonly CharacterTouchZone[] FaceBoxes =
+    [
+        new() { Id = "hair", Box = new(0.44, 0.03, 0.13, 0.21) },
+        new() { Id = "eye_right", Box = new(0.475, 0.17, 0.018, 0.024) },
+        new() { Id = "eye_left", Box = new(0.507, 0.17, 0.018, 0.024) },
+        new() { Id = "cheek_right", Box = new(0.465, 0.1925, 0.024, 0.024) },
+        new() { Id = "cheek_left", Box = new(0.511, 0.1925, 0.024, 0.024) },
+        new() { Id = "lips", Box = new(0.49, 0.219, 0.02, 0.012) }
+    ];
+
+    private static RendererZoneProbe FaceProbe(string eyeBall = "PartEyeBall", string eye = "PartEye", string mouth = "PartMouth") => new(
+    [
+        new("IrisR", 0.4821, 0.1786, 0.4876, 0.1863, eyeBall), new("IrisL", 0.5110, 0.1728, 0.5162, 0.1818, eyeBall),
+        new("EyeWhiteR", 0.4714, 0.1624, 0.4882, 0.1951, eyeBall), new("EyeWhiteL", 0.5102, 0.1715, 0.5197, 0.1817, eyeBall),
+        new("LashR", 0.4762, 0.1571, 0.4900, 0.1646, eye), new("LashTipL", 0.5251, 0.1915, 0.5272, 0.1945, eye),
+        new("Face", 0.4575, 0.0980, 0.5425, 0.2424, "PartFace"), new("Bangs", 0.45, 0.06, 0.55, 0.17, "PartHairFront"),
+        new("BlushR", 0.4571, 0.1828, 0.4974, 0.2200, "PartCheek"), new("CheekR", 0.4674, 0.1956, 0.4830, 0.2097, "PartCheek"),
+        new("MouthTop", 0.4946, 0.2124, 0.5055, 0.2222, mouth), new("MouthLow", 0.4958, 0.2190, 0.5041, 0.2271, mouth)
+    ], Parts: [new("PartEye", "目"), new("PartEyeBall", "目玉", "PartEye"), new("PartFace", "顔"), new("PartHairFront", "前髪"),
+        new("PartCheek", "頬"), new("PartMouth", "口"), new("PartHead", "頭")]);
+
+    [Fact]
+    public void AZoneTakesThePiecesOfItsOwnFeatureThatItsTightBoxLeavesOutFromTheModelsOwnParts()
+    {
+        var bound = CharacterTouchZones.Bind(FaceBoxes, null, FaceProbe()).ToDictionary(z => z.Id, z => z.Drawables.Order(StringComparer.Ordinal).ToArray());
+
+        // The eye's white and its lash lie just outside the tight box: the eyeball and the eye they are part of lend them to the
+        // nearer eye, though a stray tip of the other eye's lash lies in a cheek's box (it stays the cheek's). The blush wider
+        // than the cheek goes to the cheek, and the mouth's top to the mouth.
+        Assert.Equal(["EyeWhiteR", "IrisR", "LashR"], bound["eye_right"]);
+        Assert.Equal(["EyeWhiteL", "IrisL"], bound["eye_left"]);
+        Assert.Equal(["LashTipL"], bound["cheek_left"]);
+        Assert.Equal(["BlushR", "CheekR"], bound["cheek_right"]);
+        Assert.Equal(["MouthLow", "MouthTop"], bound["lips"]);
+        // The hair keeps what lies in its box; the face's skin and the bangs lend themselves to no smaller zone.
+        Assert.Equal(["Bangs", "BlushR", "CheekR", "EyeWhiteL", "EyeWhiteR", "Face", "IrisL", "IrisR", "LashR", "LashTipL", "MouthLow", "MouthTop"],
+            bound["hair"]);
+
+        // A part that holds more than one feature (the eyes and the mouth together) lends nothing.
+        var mixed = CharacterTouchZones.Bind(FaceBoxes, null, FaceProbe("PartHead", "PartHead", "PartHead")).ToDictionary(z => z.Id, z => z.Drawables);
+        Assert.Equal(["IrisR"], mixed["eye_right"]);
+        Assert.Equal(["MouthLow"], mixed["lips"]);
+        // Without the model's parts nothing is lent either.
+        var plain = FaceProbe() with { Drawables = [.. FaceProbe().Drawables!.Select(d => d with { Part = null })] };
+        Assert.Equal(["IrisR"], CharacterTouchZones.Bind(FaceBoxes, null, plain).Single(z => z.Id == "eye_right").Drawables);
+    }
+
+    [Fact]
+    public void ATouchOnAPieceOfAFeatureLandsOnItsZoneAndHairDrawnOverItStaysHair()
+    {
+        var settings = new CharacterTouchZoneSettings { ModelId = "model-1", Zones = CharacterTouchZones.Bind(FaceBoxes, null, FaceProbe()) };
+        CharacterTouch On(double restX, double restY, params string[] drawables) =>
+            new(0.5, 0.5, [], drawables, null, null, false, null, null, 0, null, null, restX, restY);
+
+        // Her lash, traced to just above the tight eye box (she was looking down at the mouse), is the eye.
+        Assert.Equal(("eye_right", "drawable"), Of(CharacterTouchZones.Match(settings, On(0.483, 0.161, "LashR", "EyeWhiteR", "Face"))));
+        // The edge of the wide blush, outside the cheek's box, is the cheek.
+        Assert.Equal(("cheek_right", "drawable"), Of(CharacterTouchZones.Match(settings, On(0.462, 0.19, "BlushR", "Face"))));
+        // Bangs drawn over the eye are hair, and so is the face's skin beside the eye, outside every smaller box.
+        Assert.Equal(("hair", "drawable"), Of(CharacterTouchZones.Match(settings, On(0.48, 0.175, "Bangs", "LashR", "EyeWhiteR", "Face"))));
+        Assert.Equal(("hair", "drawable"), Of(CharacterTouchZones.Match(settings, On(0.46, 0.15, "Face"))));
+        // Far from the eye, its piece no longer pulls the touch to it: the bigger box that holds the point wins.
+        Assert.Equal(("hair", "drawable"), Of(CharacterTouchZones.Match(settings, On(0.45, 0.12, "LashR", "Face"))));
+    }
+
+    [Fact]
+    public void AVrmTouchOnATurnedHeadIsMatchedWhereItWasAtRest()
+    {
+        var settings = new CharacterTouchZoneSettings
+        {
+            ModelId = "model-1", Crop = new(0, 0, 1, 1), Whole = true,
+            Zones =
+            [
+                new() { Id = "face", Box = new(0.45, 0.18, 0.1, 0.1), Bones = ["head"] },
+                new() { Id = "cheek_left", Box = new(0.51, 0.22, 0.03, 0.03), Bones = ["head"] },
+                new() { Id = "nose", Box = new(0.49, 0.22, 0.02, 0.02), Bones = ["head"] }
+            ]
+        };
+        // The head turned to the mouse: the left cheek is drawn where the nose was at rest.
+        CharacterTouch Tap(double? restX, double? restY) =>
+            new(0.5, 0.23, [], [], "head", "J_Head", false, "Face", "Skin", 0, 0.5, 0.23, restX, restY, restX, restY);
+        var traced = CharacterTouchZones.Match(settings, Tap(0.52, 0.235))!;
+        Assert.Equal(("cheek_left", "bone"), Of(traced));
+        Assert.True(traced.Traced);
+        Assert.Equal(("nose", "bone"), Of(CharacterTouchZones.Match(settings, Tap(null, null))));
+    }
+
+    [Fact]
+    public void ZoneBoxesCompareWithTheRestPointInTheirOwnFramingElseWhereTheTouchLanded()
+    {
+        var touch = new CharacterTouch(0.5, 0.5, [], [], null, null, false, null, null, 0, 0.4, 0.45, 0.52, 0.48, 0.42, 0.43);
+        var whole = new CharacterTouchZoneSettings { ModelId = "m", Whole = true };
+        Assert.Equal((0.42, 0.43, true), CharacterTouchZones.TouchPoint(whole, touch));
+        Assert.Equal((0.52, 0.48, true), CharacterTouchZones.TouchPoint(whole with { Whole = false }, touch));
+        var untraced = touch with { RestX = null, RestY = null, RestWholeX = null, RestWholeY = null };
+        Assert.Equal((0.4, 0.45, false), CharacterTouchZones.TouchPoint(whole, untraced));
+        Assert.Equal((0.5, 0.5, false), CharacterTouchZones.TouchPoint(whole with { Whole = false }, untraced));
+        Assert.Equal((0.5, 0.5, false), CharacterTouchZones.TouchPoint(whole, untraced with { WholeX = null, WholeY = null }));
+        Assert.Equal((0.5, 0.5, false), CharacterTouchZones.TouchPoint(null, touch with { RestX = null }));
+    }
+
+    [Fact]
+    public async Task TheMcpCheckSaysWhetherATouchWasTracedToTheRestPose()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-touch-").FullName;
+        try
+        {
+            const string answer = "{\"zones\":[{\"id\":\"breast_left\",\"box\":[0.55,0.3,0.65,0.38]},{\"id\":\"groin\",\"box\":[0.45,0.55,0.55,0.62]}]}";
+            async Task<System.Text.Json.JsonElement> MatchAsync(string touch) => System.Text.Json.JsonSerializer.SerializeToElement(
+                await Martlet.Mcp.TouchZonesCheck.RunAsync(directory, true, null, "model-1", answer, 400, 800, null, null, touch, false, null, null,
+                    CancellationToken.None)).GetProperty("match");
+
+            // Drawn on the groin now, but traced to the breast where that point was at rest.
+            var traced = await MatchAsync("{\"x\":0.5,\"y\":0.58,\"restX\":0.6,\"restY\":0.34,\"hitAreas\":[],\"drawables\":[]}");
+            Assert.Equal(("breast_left", "box", true), (traced.GetProperty("zone").GetString(), traced.GetProperty("how").GetString(),
+                traced.GetProperty("traced").GetBoolean()));
+            var at = traced.GetProperty("at");
+            Assert.Equal((0.6, 0.34, true), (at.GetProperty("x").GetDouble(), at.GetProperty("y").GetDouble(), at.GetProperty("rest").GetBoolean()));
+            var drawn = await MatchAsync("{\"x\":0.5,\"y\":0.58,\"hitAreas\":[],\"drawables\":[]}");
+            Assert.Equal(("groin", false), (drawn.GetProperty("zone").GetString(), drawn.GetProperty("traced").GetBoolean()));
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
     [Fact]
     public void ZonesSavedWithTellTheCharacterLoadWithMartletNotices()
     {
