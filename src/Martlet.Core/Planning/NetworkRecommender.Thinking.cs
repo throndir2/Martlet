@@ -149,14 +149,17 @@ public static partial class NetworkRecommender
             Decide(job, slot.Node.Id, slot.Option.Id, why, benefit);
         }
 
-        /// <summary>Rule 3 for what the steps placed new as well: on a Windows card with the voice, the other live jobs move to
-        /// a card as fast elsewhere, then the voice does, so applying a recommendation never leads to another.</summary>
+        /// <summary>Rule 3 for what the steps placed new as well: on a Windows card with a voice (Speaking's, or a pool voice
+        /// that runs there today), the other live jobs move to a card as fast elsewhere, then Speaking's voice does, so applying
+        /// a recommendation never leads to another.</summary>
         private void Separate()
         {
             foreach (var node in nodes.Where(n => n.Presence == Presence.Here && n.OnWindows))
-                foreach (var voice in node.Roles.Where(r => IsVoice(r.Kind) && r.Card is not null && !r.Fixed && r.Purpose == ClusterJobs.Speaking).ToList())
+                foreach (var card in Enumerable.Range(0, node.Spec.Gpus.Count))
                 {
-                    foreach (var role in node.Roles.Where(r => r != voice && r.Card == voice.Card && !r.Native && !r.Fixed && r.Option is not null &&
+                    if (!node.Roles.Any(r => r.Card == card && IsVoice(r.Kind)) && !node.Pending.Any(r => r.Card == card && IsVoice(r.Kind) && Useful(r)))
+                        continue;
+                    foreach (var role in node.Roles.Where(r => r.Card == card && !IsVoice(r.Kind) && !r.Native && !r.Fixed && r.Option is not null &&
                         r.Purpose is ClusterJobs.Thinking or ClusterJobs.Listening or ClusterJobs.LipSync).ToList())
                         Isolate(role.Purpose, role, node, role.Option!, role.Purpose switch
                         {
@@ -164,7 +167,9 @@ public static partial class NetworkRecommender
                             ClusterJobs.Listening => SameModel(role.Option, ListeningRole),
                             _ => FaceOptions()
                         });
-                    if (node.Roles.Contains(voice) && voice.Option is { } option) Isolate(ClusterJobs.Speaking, voice, node, option, EngineOptions());
+                    if (node.Roles.FirstOrDefault(r => r.Card == card && IsVoice(r.Kind) && !r.Fixed && r.Purpose == ClusterJobs.Speaking) is
+                        { Option: { } option } voice)
+                        Isolate(ClusterJobs.Speaking, voice, node, option, EngineOptions());
                 }
         }
 
@@ -180,7 +185,8 @@ public static partial class NetworkRecommender
             {
                 // Rule 8: the provider the owner chose stays, unless they keep everything on their computers (and only as fast).
                 if (request.Preference == HostingPreference.PreferLocal &&
-                    ThinkHere(now, SetupChangeBenefit.Improvement, "You keep everything on your computers.", now.FirstWordMs, strict: false))
+                    (ThinkHere(now, SetupChangeBenefit.Improvement, "You keep everything on your computers.", now.FirstWordMs, strict: !singlePc) ||
+                     ThinkHere(now, SetupChangeBenefit.Improvement, "You keep everything on your computers.", now.FirstWordMs, strict: false)))
                     return;
                 Decide(job, null, now.Id, $"{now.DisplayName}, as you chose{FirstWord(now)}.");
                 if (request.Preference == HostingPreference.PreferLocal)

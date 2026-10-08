@@ -56,6 +56,7 @@ public static partial class NetworkRecommender
                     case PlanStep.ThinkingPrimary: Thinking(); break;
                     case PlanStep.ListeningUpgrade: ListeningUpgrade(); break;
                 }
+                if (step != PlanStep.Voice) RetryVoice();
             }
             NewLipSync();
             Separate();

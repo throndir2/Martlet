@@ -14,6 +14,22 @@ public static partial class NetworkRecommender
 
         private string EngineName => Label(EngineOptions().FirstOrDefault(), engine ?? "");
 
+        /// <summary>Speaking fell back to a Windows voice for lack of room (benefit, reason, preferred computer).</summary>
+        private (SetupChangeBenefit Benefit, string Reason, string? Prefer)? starvedVoice;
+
+        private string StarvedNote => $"No computer has room for {EngineName}: Martlet speaks with a Windows voice until one does.";
+
+        /// <summary>Rule 11: the voice engine tries again once a later step frees the room that today's roles held (Thinking
+        /// moved to a host, listening off a companion PC), so applying the recommendation never leads to another.</summary>
+        private void RetryVoice()
+        {
+            if (starvedVoice is not { } starved) return;
+            starvedVoice = null;
+            notes.Remove(StarvedNote);
+            decisions.Remove(ClusterJobs.Speaking);
+            ChooseVoice(starved.Benefit, starved.Reason, starved.Prefer);
+        }
+
         private void Speaking()
         {
             const string job = ClusterJobs.Speaking;
@@ -55,7 +71,8 @@ public static partial class NetworkRecommender
             {
                 Decide(job, null, catalog.Find(FootprintCatalog.WindowsVoiceId)?.Id,
                     $"{reason} No computer has room for {EngineName}, so Martlet speaks with a Windows voice until one does.", benefit);
-                notes.Add($"No computer has room for {EngineName}: Martlet speaks with a Windows voice until one does.");
+                starvedVoice = (benefit, reason, prefer);
+                notes.Add(StarvedNote);
                 return;
             }
             var why = $"{reason} {Plain(slot.Option)} on {CardText(slot)}{FirstWord(slot.Option)}" +

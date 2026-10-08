@@ -306,6 +306,57 @@ public sealed class NetworkRecommenderTests
     }
 
     [Fact]
+    public void TheVoiceGetsTheRoomThinkingFreesWhenItMoves()
+    {
+        // Thinking in c1's own Ollama fills its 8 GB card with the voice; once Thinking moves to the AMD host, the voice
+        // (which needs NVIDIA) takes c1's card in the same recommendation, not in a second one.
+        var request = Network(Companion("c1", true, Nvidia(8, "RTX 4060")), Host("amd-box", new MachineGpu("RX 7600", GpuVendor.Amd, 8))) with
+        {
+            CurrentJobs =
+            [
+                new JobPlan(ClusterJobs.Thinking, null, OptionId: "gemma4:e2b"),
+                new JobPlan(ClusterJobs.Speaking, null, OptionId: FootprintCatalog.WindowsVoiceId)
+            ],
+            Wanted = [PlanComponent.Thinking, PlanComponent.Voice]
+        };
+
+        var first = NetworkRecommender.Recommend(request);
+
+        Assert.Equal("amd-box", first.Target.Job(ClusterJobs.Thinking)!.HostId);
+        Assert.Equal("c1", first.Target.Job(ClusterJobs.Speaking)!.HostId);
+        Assert.DoesNotContain(first.Notes, n => n.Contains("No computer has room", StringComparison.Ordinal));
+        Assert.True(NetworkRecommender.Recommend(Apply(request, first)).AlreadyOptimal);
+    }
+
+    [Fact]
+    public void LocalThinkingStaysOffAWindowsCardWithAPoolVoice()
+    {
+        var request = Network(Companion("c0"), Companion("c2"),
+            Host("h2", Nvidia(8)) with { Roles = [Role("chatterbox", "chatterbox-turbo")] },
+            WindowsHost("h4", Nvidia(24, "RTX 4090"), Nvidia(12, "RTX 3060")) with
+            {
+                Roles = [Role("chatterbox", "chatterbox-turbo", 0), Role("deep-thinking", "gemma4:e4b", 1)]
+            }) with
+        {
+            Preference = HostingPreference.PreferLocal,
+            ConfiguredProviders = ["openai"],
+            CurrentJobs =
+            [
+                new JobPlan(ClusterJobs.Thinking, null, OptionId: "hosted:openai"),
+                new JobPlan(ClusterJobs.Speaking, "h2", OptionId: "chatterbox-turbo") { Pool = ["h4"] }
+            ],
+            Wanted = [PlanComponent.Thinking, PlanComponent.Voice, PlanComponent.DeepThinking]
+        };
+
+        var first = NetworkRecommender.Recommend(request);
+        var second = NetworkRecommender.Recommend(Apply(request, first));
+
+        var h4 = RolesOf(first, "h4");
+        Assert.NotEqual(h4.Single(r => r.Kind == "chatterbox").GpuIndex, h4.FirstOrDefault(r => r.Kind == "ollama")?.GpuIndex);
+        Assert.True(second.AlreadyOptimal, string.Join("\n", second.Changes.Select(c => c.Summary)));
+    }
+
+    [Fact]
     public void AComputerAwayWithinTheGracePeriodIsPlannedAsIfItWereBack()
     {
         var request = Network(Companion("c1"), Host("h1", Nvidia(12)) with
