@@ -735,13 +735,8 @@ public partial class MainWindow : ThemedWindow
         }
         try
         {
-            var loaded = await setupService.LoadAsync(lifetime.Token);
-            AvatarProfile? saved = null;
-            if (loaded.Settings is { } settings)
-                saved = (await new AvatarProfileStore(store.DataDirectory).LoadAsync(settings.Profile.Id, lifetime.Token)).Profile;
+            var (saved, profile) = await SavedCharacterAsync();
             if (onlyIfAutoShow && saved?.AutoShow != true) return;
-            // Without a completed Setup profile the bundled character still shows; its choices are simply not saved.
-            var profile = saved ?? AvatarProfile.BuiltIn(loaded.Settings?.Profile.Id ?? Guid.NewGuid());
             await avatar.ShowAsync(profile with { ResourceRevision = null }, lifetime.Token);
             characterCleanupProblem = null;
             ActionText.Text = avatar.Status;
@@ -755,6 +750,18 @@ public partial class MainWindow : ThemedWindow
             ActionText.Text = $"Couldn't show the character: {error.Message}";
         }
         finally { UpdateCharacterButton(); }
+    }
+
+    /// <summary>The saved character profile (null when none is saved) and the character Martlet shows for it: that profile, or
+    /// the bundled default when there is none.</summary>
+    private async Task<(AvatarProfile? Saved, AvatarProfile Shown)> SavedCharacterAsync()
+    {
+        var loaded = await setupService!.LoadAsync(lifetime.Token);
+        AvatarProfile? saved = null;
+        if (loaded.Settings is { } settings)
+            saved = (await new AvatarProfileStore(store!.DataDirectory).LoadAsync(settings.Profile.Id, lifetime.Token)).Profile;
+        // Without a completed Setup profile the bundled character still shows; its choices are simply not saved.
+        return (saved, saved ?? AvatarProfile.BuiltIn(loaded.Settings?.Profile.Id ?? Guid.NewGuid()));
     }
     private void OpenAvatar(Window owner)
     {

@@ -17,6 +17,8 @@ Each release's section here is also its notes on GitHub.
 - Companion › Character's **Touch zones**, **Touch temperament** and **Emotes and motions** lists are tidier and take much less room: their boxes, choices and buttons are slimmer and line up, each label sits beside what it names, and a zone's box for your own words shows only while **Martlet notices** is on. Text boxes all over Martlet are slimmer too, as tall as the choices beside them. ([#565](https://github.com/throndir2/Martlet/pull/565))
 
 ### Fixed
+- **Detect zones** (and **Detect again**) now works while your character is hidden, and it never moves the character on your desktop: Martlet draws the character off screen in its rest pose for the picture, larger than before. The button is greyed out only when no model that can see pictures is set up, and a note under it says what to change. ([#566](https://github.com/throndir2/Martlet/pull/566))
+- The touch zones picture now always shows your character's whole body, even a model whose legs or tail reach past its own frame. ([#566](https://github.com/throndir2/Martlet/pull/566))
 - **Show character** no longer says *Couldn't show the character: A task was canceled.* when the Martlet host you picked for lip-sync doesn't answer. The character shows as before, Martlet tells you the host isn't ready, and the mouth follows Martlet's voice until the host answers again. ([#561](https://github.com/throndir2/Martlet/pull/561))
 
 ### Removed

@@ -49,10 +49,20 @@ internal sealed partial class LiveConversationController
     /// <summary>The Thinking pool: post background model jobs here (<see cref="ThinkingPool.RunAsync"/>).</summary>
     internal ThinkingPool ThinkingPool => pool ??= new(new ThinkingJobBoard(jobs.Places, PoolMembers, RunPoolJobAsync, clock));
 
+    private int poolRead;
+
+    /// <summary>Reads the Thinking pool unless it was read already: the talk window reads it when it opens, and a Companion page
+    /// (Touch zones) can ask what the pool can do before that.</summary>
+    internal void ReadThinkingPoolOnce()
+    {
+        if (Volatile.Read(ref poolRead) == 0) ReloadThinkingPool();
+    }
+
     /// <summary>Reads the Thinking pool (thinking-pool.json, made from deep-thinking.json once) again, after Companion › Thinking
     /// pool saved it: the next reply offers think_longer only where the pool (or the conversation model) can run it.</summary>
     internal void ReloadThinkingPool()
     {
+        Volatile.Write(ref poolRead, 1);
         Volatile.Write(ref thinkingPool, ThinkingPoolSettings.Load(dataDirectory));
         Volatile.Write(ref poolAbilities, dataDirectory is null ? null : ModelAbilities.Load(dataDirectory));
         WritePoolStatus();
