@@ -8,6 +8,9 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+- Where touch zones overlap, such as where the groin meets a thigh, a touch or stroke there now counts on each of them, and Martlet hears them all: *They poked your groin and your left thigh once.* The best-matching zone still plays its reaction, and a hand held in front of the body still counts only as the hand. ([#626](https://github.com/throndir2/Martlet/pull/626))
+
 ### Fixed
 - Touch zones stay on the right part of your character while it moves: a tap on its cheek, eye or mouth lands on that zone even while its head follows your mouse, nods or tilts. The whites of the eyes, the lashes and a wide blush now count as their eye or cheek instead of the hair, and a blush near an ear no longer counts as the ear. ([#624](https://github.com/throndir2/Martlet/pull/624))
 
