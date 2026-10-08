@@ -37,8 +37,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // tasks chip (LiveTasks) and the task list's close button (LiveTasksClose) only open and close the list.
         "LiveStop", "LiveRefreshContext", "LiveSongStop", "LiveTasks", "LiveTasksClose",
         // Companion › Touch › Touch zones' Stop only stops finding zones; it sends nothing (the zones found until then were
-        // already saved).
-        "TouchZonesStop",
+        // already saved). Zoom in, Zoom out and Reset zoom only change how large the zone map shows the picture (TouchZonesZoom
+        // says how far); they save nothing.
+        "TouchZonesStop", "TouchZonesZoomIn", "TouchZonesZoomOut", "TouchZonesZoomReset",
         // Companion › Emotes and motions › Combos: Add a combo only adds an empty row. Nothing saves until the row has
         // a tag and parts, and typing them needs --allow-ui-effects.
         "CharacterCombosAdd",
@@ -416,11 +417,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // the owner added, which Detect again looks for too, or "special to this character" for one Detect zones found as special to
         // it, and its default reaction).
         // TouchZonesDetectNote says why Detect zones is off (no model that can see pictures), and TouchZonesAddNote which zones
-        // Detect zones looks for, and that it also looks for anything special to the character (fixed text).
+        // Detect zones looks for, and that it also looks for anything special to the character (fixed text). TouchZonesZoom says how
+        // far the zone map is zoomed in ("Zoom 2x").
         // Detect zones sends the character's pictures to Thinking, Try plays on the character, Open the pictures opens Explorer,
         // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
-        "TouchZonesDetectNote", "TouchZonesAddNote",
+        "TouchZonesDetectNote", "TouchZonesAddNote", "TouchZonesZoom",
         // Companion › Eyes › Where the eyes are: where the shown model's eyes come from (the model's own meshes or eye bones,
         // the vision measurement and when it was taken, or an estimate), how measuring went (each step while it runs, or why it
         // failed) and, only when no model can see pictures, why Measure the eyes is off. Fixed text, times and counts only.
@@ -1590,6 +1592,52 @@ internal sealed class DesktopAutomation(bool allowEffects)
         transform.Move(before.X + dx, before.Y + dy);
         Thread.Sleep(200);
         return new { moved = id, from = Box(before), to = Box(element.Current.BoundingRectangle) };
+    }
+
+    /// <summary>Reads or scrolls a control that scrolls (Companion › Touch's zone map, TouchZonesMap, or a page) through UI
+    /// Automation's Scroll pattern: <paramref name="horizontal"/> and <paramref name="vertical"/> (0 to 100, each optional) are how
+    /// far along to scroll it each way. Returns how far along it is each way (-1 when it can't scroll that way) and which part of
+    /// its content shows, in percent of the content. Scrolling changes only what shows, so it needs no --allow-ui-effects.</summary>
+    internal object Scroll(string id, double? horizontal, double? vertical)
+    {
+        if (horizontal is { } x && !(x is >= 0 and <= 100)) throw new ArgumentException("horizontal takes 0 through 100.");
+        if (vertical is { } y && !(y is >= 0 and <= 100)) throw new ArgumentException("vertical takes 0 through 100.");
+        var element = Find(id);
+        if (!element.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern))
+            throw new InvalidOperationException($"Control '{id}' doesn't scroll.");
+        var scroll = (ScrollPattern)pattern;
+        if (horizontal is not null && !scroll.Current.HorizontallyScrollable)
+            throw new InvalidOperationException($"Control '{id}' can't scroll sideways now: all of its content shows across.");
+        if (vertical is not null && !scroll.Current.VerticallyScrollable)
+            throw new InvalidOperationException($"Control '{id}' can't scroll up or down now: all of its content shows down.");
+        if (horizontal is not null || vertical is not null)
+        {
+            scroll.SetScrollPercent(horizontal ?? ScrollPattern.NoScroll, vertical ?? ScrollPattern.NoScroll);
+            Thread.Sleep(200);
+        }
+        var now = scroll.Current;
+        return new
+        {
+            control = id,
+            horizontal = Math.Round(now.HorizontalScrollPercent, 1),
+            vertical = Math.Round(now.VerticalScrollPercent, 1),
+            shows = new
+            {
+                left = Shown(now.HorizontalScrollPercent, now.HorizontalViewSize).Start,
+                right = Shown(now.HorizontalScrollPercent, now.HorizontalViewSize).End,
+                top = Shown(now.VerticalScrollPercent, now.VerticalViewSize).Start,
+                bottom = Shown(now.VerticalScrollPercent, now.VerticalViewSize).End
+            },
+            bounds = Box(element.Current.BoundingRectangle)
+        };
+
+        // The part of the content that shows one way: all of it when it can't scroll that way.
+        static (double Start, double End) Shown(double percent, double view)
+        {
+            if (percent < 0 || !(view is > 0 and < 100)) return (0, 100);
+            var start = percent / 100 * (100 - view);
+            return (Math.Round(start, 1), Math.Round(start + view, 1));
+        }
     }
 
     /// <summary>The control with automation ID <paramref name="id"/>, in the window titled <paramref name="window"/> when given

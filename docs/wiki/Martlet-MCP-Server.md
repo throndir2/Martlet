@@ -23,7 +23,7 @@ Each call is `{"name":"tool","arguments":{}}` with optional `waitMs` and `until`
 
 - Doctor: `doctor_status`, `doctor_list`, `doctor_run`.
 - Status/checks: voices, cluster, network, logs, API keys, smart home, messaging, Discord, terminal, prompts, memory, character, latency, creations, pictures, singing and more.
-- UI: `ui_connect`, `ui_snapshot`, `ui_click`, `ui_select`, `ui_set_text`, `ui_toggle`, `ui_set_range`, `ui_move`, `ui_tray`.
+- UI: `ui_connect`, `ui_snapshot`, `ui_click`, `ui_select`, `ui_set_text`, `ui_toggle`, `ui_set_range`, `ui_move`, `ui_scroll`, `ui_tray`.
 
 ## Extending
 

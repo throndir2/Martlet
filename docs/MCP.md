@@ -1738,6 +1738,22 @@ the zone it adds is marked *added by you*) and each zone's
 with `{"idPrefix":"TouchZoneRect","layout":true}` each box's `bounds` show
 where it sits on the picture (`TouchZonesPicture`'s `bounds`), one box per
 saved zone.
+The picture sits in the zone map, `TouchZonesMap` (a frame that zooms, for
+moving and resizing boxes precisely). `TouchZonesZoomIn`, `TouchZonesZoomOut`
+and `TouchZonesZoomReset` (*Zoom in*, *Zoom out*, *Reset zoom*) are passive
+clicks: they change only how large the map shows the picture, in steps of 1x,
+1.5x, 2x, 3x, 4x, 6x and 8x, and save nothing. `TouchZonesZoom` reads how far
+it is zoomed in (*Zoom 2x*). Zoomed in, `TouchZonesPicture`'s `bounds` grow
+with the zoom while `TouchZonesMap`'s keep the height they have at 1x (the
+map grows as wide as the picture or the page), each `TouchZoneRect-<n>`
+grows with the picture, and `ui_scroll` on `TouchZonesMap` reads and moves the
+part of the picture that shows (`shows`: left, right, top and bottom in percent
+of the picture). The zoom buttons keep the middle of what shows; Ctrl+wheel over
+the picture zooms where the pointer is. The page keeps the zoom and the part
+shown while it draws again (Add zone, each step of Detect zones) and shows the
+whole picture when it opens again or shows another model. A zone added while
+zoomed in starts in the middle of the part shown, as large on the screen as
+one added at 1x (a fifth of the picture each way).
 The Character page lists more than `ui_snapshot`'s 200 controls; read the
 section with `{"idPrefix":"TouchZone"}`. With `"layout":true`, each row's text
 boxes, choices and buttons in Touch zones, Touch temperament and Emotes and
@@ -4477,7 +4493,15 @@ option. By default only passive navigation and
 diagnostics controls can be clicked. `ui_click` with `"focus": true` gives the
 control the keyboard focus first, as a mouse click does (its window comes to
 the front when Windows lets it): use it to check a page that updates while a
-button it just started still has the focus, such as *Detect zones*. The main window is split into pages, and a
+button it just started still has the focus, such as *Detect zones*. `ui_scroll`
+reads or scrolls a control that scrolls, through UI Automation's Scroll
+pattern: a page, or Companion › Touch's zone map (`TouchZonesMap`) when it is
+zoomed in. `horizontal` and `vertical` (0 to 100, each optional) say how far
+along to scroll it; without them it only reads. It returns how far along it is
+each way (-1 when it can't scroll that way) and which part of its content shows
+(`shows`: `left`, `right`, `top` and `bottom` in percent of the content), plus
+its `bounds`. Scrolling changes only what shows, so `ui_scroll` needs no
+`--allow-ui-effects`. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
 `NavDevices`, `NavCompanion`, `NavCreations`, `NavTasks`, `NavDiagnostics` or `NavSettings` first (for example
 `NavCompanion` before `CompanionTab-Listening`). On Settings, click `DiagnosticsSection` to

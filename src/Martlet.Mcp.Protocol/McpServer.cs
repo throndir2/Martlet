@@ -146,6 +146,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dx = new { type = "integer", minimum = -DesktopAutomation.MaximumMove, maximum = DesktopAutomation.MaximumMove },
             dy = new { type = "integer", minimum = -DesktopAutomation.MaximumMove, maximum = DesktopAutomation.MaximumMove }
         }, ["id", "dx", "dy"]),
+        Tool("ui_scroll", "Read or scroll a control that scrolls through UI Automation's Scroll pattern, such as Companion > Touch's " +
+            "zone map (TouchZonesMap) when it is zoomed in, or a page. horizontal and vertical (each optional, 0 to 100) are how far " +
+            "along to scroll it each way; without them it only reads. Returns how far along it is each way (-1 when it can't scroll " +
+            "that way) and which part of its content shows (shows: left, right, top and bottom in percent of the content). Scrolling " +
+            "only changes what shows, so it needs no --allow-ui-effects.", new
+        {
+            id = new { type = "string" },
+            horizontal = new { type = "number", minimum = 0, maximum = 100 },
+            vertical = new { type = "number", minimum = 0, maximum = 100 }
+        }, ["id"]),
         Tool("character_touch", "Tap the showing character like a left click that doesn't drag, at x, y (fractions 0 to 1 of the " +
             "character overlay's drawing, +y down; unzoomed, its head is near 0.5, 0.15), and return the renderer's hit test as " +
             "last: n, x, y, hit, zone (head, hair, face, body, arm, hand, leg or foot), hitAreas and drawables (Live2D), bone, node, " +
@@ -1955,6 +1965,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "ui_toggle" => desktop.Toggle(RequiredString(arguments, "id")),
                 "ui_set_range" => desktop.SetRange(RequiredString(arguments, "id"), RequiredDouble(arguments, "value")),
                 "ui_move" => desktop.Move(RequiredString(arguments, "id"), RequiredInt(arguments, "dx"), RequiredInt(arguments, "dy")),
+                "ui_scroll" => desktop.Scroll(RequiredString(arguments, "id"), OptionalDouble(arguments, "horizontal"), OptionalDouble(arguments, "vertical")),
             "character_touch" => await desktop.TouchCharacterAsync(OptionalDouble(arguments, "x"), OptionalDouble(arguments, "y"),
                 OptionalInt(arguments, "holdMs"), OptionalInt(arguments, "repeat"), OptionalInt(arguments, "gapMs"), Taps(arguments),
                 OptionalInt(arguments, "settleMs")),
