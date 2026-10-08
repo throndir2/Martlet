@@ -63,4 +63,35 @@ public sealed class SignInCommandTests
         Assert.Throws<HostInputException>(() => HostOptions.Parse(Args("owner-invite", "--address", "user@host:22")));
         Assert.Throws<HostInputException>(() => HostOptions.Parse(Args("owner-signin-owner")));
     }
+
+    [Fact]
+    public async Task Owner_shares_the_host_with_a_friend_and_stops_sharing_from_the_host()
+    {
+        using var platform = new FixturePlatform();
+        platform.Terminal = new() { Interactive = false };
+        using (var init = new StringWriter()) Assert.Equal(0, await platform.Run("owner-init", init));
+
+        using (var share = new StringWriter())
+        {
+            Assert.Equal(0, await HostApplication.RunAsync(Args("owner-signin-allow", "--provider", "discord", "--subject", "4242", "--label", "Ana",
+                "--access", "friend"), share, default, platform));
+            Assert.Contains("as a friend: their computers may use this host's engines", share.ToString());
+        }
+        using (var status = new StringWriter())
+        {
+            Assert.Equal(0, await platform.Run("owner-signin-status", status));
+            Assert.Contains("\"Subject\":\"4242\",\"Label\":\"Ana\",\"Access\":\"friend\"", status.ToString());
+        }
+        Assert.Contains("\"access\": \"friend\"", Encoding.UTF8.GetString(platform.Fs.Parent.Children["signin.json"].Bytes));
+        using (var stop = new StringWriter())
+        {
+            Assert.Equal(0, await HostApplication.RunAsync(Args("owner-signin-disallow", "--provider", "discord", "--subject", "4242"), stop, default, platform));
+            Assert.Contains("Stopped sharing", stop.ToString());
+            Assert.DoesNotContain("from the network", stop.ToString());
+        }
+
+        Assert.Equal("member", HostOptions.Parse(Args("owner-signin-allow", "--provider", "p", "--subject", "s", "--access", "member"))!.Access);
+        Assert.Throws<HostInputException>(() => HostOptions.Parse(Args("owner-signin-allow", "--provider", "p", "--subject", "s", "--access", "owner")));
+        Assert.Throws<HostInputException>(() => HostOptions.Parse(Args("owner-signin-disallow", "--provider", "p", "--subject", "s", "--access", "friend")));
+    }
 }

@@ -100,9 +100,14 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
 
     private int RevokeLocked(IReadOnlyList<GatewaySignInEnrollment> stale)
     {
-        var revoked = stale.Sum(e => credentials.RevokeDevice(e.DeviceId, CancellationToken.None));
+        // A friend's sign-in revokes exactly the credential it issued; the owner's computers lose every pairing of the device,
+        // as before (a member desktop may have paired again by its network key since).
+        var revoked = stale.Sum(e => e is { Access: not null, CredentialId: { } id }
+            ? credentials.RevokeCredential(id) ? 1 : 0
+            : credentials.RevokeDevice(e.DeviceId, CancellationToken.None));
         foreach (var enrollment in stale)
-            log(LogLevels.Info, $"Revoked {enrollment.DeviceId}: it paired by signing in as {enrollment.Label ?? enrollment.Subject} ({enrollment.Provider}), which is no longer allowed.");
+            log(LogLevels.Info, $"Revoked {enrollment.DeviceId}: it paired by signing in as {enrollment.Label ?? enrollment.Subject} ({enrollment.Provider})" +
+                (enrollment.Access is null ? ", which is no longer allowed." : " as a friend, which is no longer allowed."));
         return revoked;
     }
 
@@ -192,21 +197,51 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
                 if (refused.Count > MaximumRefused) refused.RemoveAt(refused.Count - 1);
                 throw new GatewayProtocolException("signin.not_allowed");
             }
+            var access = current.AccessOf(who.Provider, who.Subject);
+            RequireDeviceFreeLocked(current, deviceId, who);
             credentials.RevokeDevice(deviceId, cancellationToken);
             var issued = credentials.Issue(deviceId, Martlet.Core.Network.NetworkRoster.CleanName(displayName, deviceId), [GatewayRole.Voice],
-                cancellationToken);
+                cancellationToken, access == GatewaySignInDocument.FriendAccess ? GatewayAccess.Friend : GatewayAccess.Full);
             var next = current.Clone();
             next.Enrolled.RemoveAll(e => e.DeviceId == deviceId);
-            next.Enrolled.Add(new() { DeviceId = deviceId, Provider = who.Provider, Subject = who.Subject, Label = who.Label, EnrolledAt = clock.GetUtcNow() });
+            next.Enrolled.Add(new()
+            {
+                DeviceId = deviceId, Provider = who.Provider, Subject = who.Subject, Label = who.Label, EnrolledAt = clock.GetUtcNow(),
+                Access = access, CredentialId = issued.CredentialId
+            });
             if (next.Enrolled.Count > MaximumEnrolled) next.Enrolled.RemoveRange(0, next.Enrolled.Count - MaximumEnrolled);
             try { SaveLocked(next); }
             catch (Exception error) when (error is not GatewayProtocolException)
             {
+                if (access is not null)
+                {
+                    // Unrecorded, the friend's credential would never pass the friend check: take it back and say so.
+                    credentials.RevokeCredential(issued.CredentialId);
+                    throw new GatewayProtocolException("signin.unavailable");
+                }
                 log(LogLevels.Warn, "Could not save signin.json; the computer that signed in is paired, but a member desktop will ask for an Allow to let it into the network.");
             }
-            log(LogLevels.Info, $"{deviceId} paired by signing in as {Display(who)}.");
+            log(LogLevels.Info, access is null
+                ? $"{deviceId} paired by signing in as {Display(who)}."
+                : $"{deviceId} paired by signing in as {Display(who)}, a friend: it may use this host's engines and nothing else.");
             return (issued, who);
         }
+    }
+
+    /// <summary>Who decides that a device ID belongs to an active member desktop of this host's network (those pair by their
+    /// network key and never sign in). Set by the gateway.</summary>
+    internal Func<string, bool>? IsMember { get; set; }
+
+    // A sign-in may only replace this device's own earlier sign-in by the same identity: never a member desktop of the network,
+    // a pairing made another way (a code, a card, a network key) or another identity's computer. So nobody signs in under
+    // another computer's ID, to act as it or to revoke its pairing here.
+    private void RequireDeviceFreeLocked(GatewaySignInDocument current, string deviceId, GatewaySignInIdentity who)
+    {
+        GatewayRules.Require(IsMember?.Invoke(deviceId) != true, "signin.device_taken");
+        var enrolled = current.Enrolled.LastOrDefault(e => e.DeviceId == deviceId);
+        var same = enrolled is not null && enrolled.Provider == who.Provider && enrolled.Subject == who.Subject;
+        foreach (var live in credentials.ListRegistrations().Where(r => r.DeviceId == deviceId && !r.Revoked))
+            GatewayRules.Require(same && (enrolled!.CredentialId is null || enrolled.CredentialId == live.CredentialId), "signin.device_taken");
     }
 
     /// <summary>Checks the owner account: account name (any case), password and a current authenticator code that wasn't used
@@ -243,9 +278,9 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
         return new(OwnerProvider, owner.User, owner.User);
     }
 
-    /// <summary>The identity that enrolled <paramref name="deviceId"/> by signing in, while that device is still paired here
-    /// and the identity is still allowed; null otherwise. A member desktop lets such a device into the network without a
-    /// check number.</summary>
+    /// <summary>The identity that enrolled <paramref name="deviceId"/> by signing in as one of the owner's computers, while that
+    /// device is still paired here and the identity is still allowed so; null otherwise (a friend's computer never is). A member
+    /// desktop lets such a device into the network without a check number.</summary>
     internal (GatewaySignInIdentity Identity, DateTimeOffset At)? Attestation(string deviceId)
     {
         lock (gate)
@@ -253,10 +288,35 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
             if (storage is null) return null;
             var current = document;
             var enrolled = current.Enrolled.LastOrDefault(e => e.DeviceId == deviceId);
-            if (enrolled is null || !credentials.PairedDevices().Any(d => d.DeviceId == deviceId)) return null;
-            var allowed = enrolled.Provider == OwnerProvider ? current.Owner?.User == enrolled.Subject
-                : current.Allowed.Any(a => a.Provider == enrolled.Provider && a.Subject == enrolled.Subject);
+            if (enrolled is null || enrolled.Access is not null || !credentials.PairedDevices().Any(d => d.DeviceId == deviceId)) return null;
+            var allowed = current.Allows(enrolled.Provider, enrolled.Subject) && current.AccessOf(enrolled.Provider, enrolled.Subject) is null;
             return allowed ? (new(enrolled.Provider, enrolled.Subject, enrolled.Label), enrolled.EnrolledAt) : null;
+        }
+    }
+
+    /// <summary>How often a friend's requests read signin.json again, so a friend removed with martlet-host loses access within
+    /// this time even while nobody signs in (a change from a member desktop applies at once).</summary>
+    internal static readonly TimeSpan FriendRecheck = TimeSpan.FromSeconds(5);
+    private DateTimeOffset friendsCheckedAt = DateTimeOffset.MinValue;
+
+    /// <summary>Whether the friend's credential <paramref name="credentialId"/> is still allowed here: its sign-in is recorded and
+    /// the identity is still allowed as a friend. False whenever sign-in isn't attached or readable, so a friend never gets in
+    /// without it.</summary>
+    internal bool FriendAllowed(string credentialId)
+    {
+        lock (gate)
+        {
+            if (storage is null) return false;
+            var now = clock.GetUtcNow();
+            if (now - friendsCheckedAt >= FriendRecheck || now < friendsCheckedAt)
+            {
+                document = LoadLocked();
+                friendsCheckedAt = now;
+            }
+            var enrolled = document.Enrolled.LastOrDefault(e => e.CredentialId == credentialId);
+            return enrolled is { Access: GatewaySignInDocument.FriendAccess } &&
+                document.Allows(enrolled.Provider, enrolled.Subject) &&
+                document.AccessOf(enrolled.Provider, enrolled.Subject) == GatewaySignInDocument.FriendAccess;
         }
     }
 
@@ -405,10 +465,15 @@ internal static class GatewaySignInSettings
             {
                 GatewayRules.Require(change.Provider is { Length: > 0 and <= 32 } && change.Provider != GatewaySignInService.OwnerProvider &&
                     change.Subject is { Length: > 0 and <= 256 } && change.Subject.All(c => !char.IsControl(c)) &&
-                    (change.Label is null || change.Label.Length <= 128 && change.Label.All(c => !char.IsControl(c))), "request.invalid");
+                    (change.Label is null || change.Label.Length <= 128 && change.Label.All(c => !char.IsControl(c))) &&
+                    change.Access is null or "member" or GatewaySignInDocument.FriendAccess, "request.invalid");
                 next.Allowed.RemoveAll(a => a.Provider == change.Provider && a.Subject == change.Subject);
                 GatewayRules.Require(next.Allowed.Count < MaximumAllowed, "request.invalid");
-                next.Allowed.Add(new() { Provider = change.Provider!, Subject = change.Subject!, Label = change.Label, AddedAt = now });
+                next.Allowed.Add(new()
+                {
+                    Provider = change.Provider!, Subject = change.Subject!, Label = change.Label, AddedAt = now,
+                    Access = change.Access == GatewaySignInDocument.FriendAccess ? GatewaySignInDocument.FriendAccess : null
+                });
                 return null;
             }
             case "disallow":
@@ -452,6 +517,9 @@ internal sealed record GatewaySignInChange
     public string? Subject { get; init; }
     public string? Label { get; init; }
     public string? Id { get; init; }
+    /// <summary>For <c>allow</c>: "member" (or absent) lets the identity's computers join the network as the owner's own;
+    /// "friend" shares only this host's engines with them.</summary>
+    public string? Access { get; init; }
     [JsonPropertyName("provider_config")]
     public GatewaySignInProviderConfig? ProviderConfig { get; init; }
 }
@@ -505,6 +573,9 @@ internal sealed record GatewayAllowedSignIn
     public required string Subject { get; init; }
     public string? Label { get; init; }
     public DateTimeOffset AddedAt { get; init; }
+    /// <summary>Null: the owner's own computers (they join the network). <see cref="GatewaySignInDocument.FriendAccess"/>: a friend
+    /// the owner shares this host with (this host's engines only, never the network).</summary>
+    public string? Access { get; init; }
 }
 
 internal sealed record GatewaySignInEnrollment
@@ -516,6 +587,10 @@ internal sealed record GatewaySignInEnrollment
     public DateTimeOffset EnrolledAt { get; init; }
     /// <summary>The network key the device asked to join with through this host (null until it asks).</summary>
     public string? Key { get; init; }
+    /// <summary>The access the identity had when it signed in (null or "friend"); a change of access sweeps the enrollment.</summary>
+    public string? Access { get; init; }
+    /// <summary>The credential the sign-in issued (null for enrollments older than this field).</summary>
+    public string? CredentialId { get; init; }
 }
 
 /// <summary>A computer that joined (or may join) the network through a sign-in that is no longer allowed. Member desktops
@@ -574,19 +649,31 @@ internal sealed class GatewaySignInDocument
 
     internal GatewaySignInDocument Clone() => Parse(Write());
 
+    /// <summary>The access value of an identity allowed as a friend.</summary>
+    internal const string FriendAccess = "friend";
+
     /// <summary>Whether <paramref name="provider"/>/<paramref name="subject"/> may sign in: the owner account's own name, or an
     /// identity on the allow list.</summary>
     internal bool Allows(string provider, string subject) => provider == GatewaySignInService.OwnerProvider
         ? Owner?.User == subject
         : Allowed.Any(a => a.Provider == provider && a.Subject == subject);
 
-    /// <summary>Drops (and returns) the enrollments of identities that may no longer sign in; their computers lose access here
-    /// and are recorded in <see cref="Removed"/> so member desktops remove them from the network too.</summary>
+    /// <summary>What an allowed identity gets: null for the owner's computers (the owner account always), "friend" for a friend.</summary>
+    internal string? AccessOf(string provider, string subject) => provider == GatewaySignInService.OwnerProvider
+        ? null
+        : Allowed.LastOrDefault(a => a.Provider == provider && a.Subject == subject)?.Access;
+
+    // An enrollment stays while its identity may still sign in with the access it signed in with.
+    private bool Current(GatewaySignInEnrollment e) => Allows(e.Provider, e.Subject) && AccessOf(e.Provider, e.Subject) == e.Access;
+
+    /// <summary>Drops (and returns) the enrollments of identities that may no longer sign in, or no longer with the access they
+    /// signed in with; their computers lose access here. The owner's computers among them are recorded in <see cref="Removed"/>
+    /// so member desktops remove them from the network too (a friend's computer never joined it).</summary>
     internal IReadOnlyList<GatewaySignInEnrollment> Sweep(DateTimeOffset now)
     {
-        var stale = Enrolled.Where(e => !Allows(e.Provider, e.Subject)).ToArray();
-        Enrolled.RemoveAll(e => !Allows(e.Provider, e.Subject));
-        foreach (var enrollment in stale)
+        var stale = Enrolled.Where(e => !Current(e)).ToArray();
+        Enrolled.RemoveAll(e => !Current(e));
+        foreach (var enrollment in stale.Where(e => e.Access is null))
         {
             Removed.RemoveAll(r => r.DeviceId == enrollment.DeviceId);
             Removed.Add(new()
@@ -600,5 +687,5 @@ internal sealed class GatewaySignInDocument
     }
 
     /// <summary>The enrollments a change would sweep, without changing anything (for martlet-host status and previews).</summary>
-    internal IReadOnlyList<GatewaySignInEnrollment> WouldSweep() => Enrolled.Where(e => !Allows(e.Provider, e.Subject)).ToArray();
+    internal IReadOnlyList<GatewaySignInEnrollment> WouldSweep() => Enrolled.Where(e => !Current(e)).ToArray();
 }

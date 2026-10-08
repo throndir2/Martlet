@@ -20,15 +20,21 @@ internal interface IGatewayPrincipalAuthority
     T WithAuthority<T>(GatewayPrincipal principal, Func<T> operation);
 }
 
-/// <summary>Which callers an endpoint admits besides paired devices (which always may): none, any API key, or a key with
-/// one of the listed scopes. <see cref="RoleScope"/> asks for the scope named by the request's role.</summary>
-internal sealed record GatewayApiAccess(string[]? Scopes, bool RoleScope = false)
+/// <summary>Which callers an endpoint admits besides the owner's paired devices (which always may): none, any API key, or a
+/// key with one of the listed scopes. <see cref="RoleScope"/> asks for the scope named by the request's role. A friend's device
+/// (<see cref="GatewayAccess.Friend"/>) gets in only where <see cref="Friends"/> says so: the host's engines and what a caller
+/// needs to use them.</summary>
+internal sealed record GatewayApiAccess(string[]? Scopes, bool RoleScope = false, bool Friends = false)
 {
     internal static readonly GatewayApiAccess AnyKey = new([]);
+    internal static readonly GatewayApiAccess AnyKeyOrFriend = new([], Friends: true);
     internal static readonly GatewayApiAccess Read = new([ApiKeyScopes.Read]);
+    internal static readonly GatewayApiAccess ReadOrFriend = new([ApiKeyScopes.Read], Friends: true);
     internal static readonly GatewayApiAccess Manage = new([ApiKeyScopes.Manage]);
     internal static readonly GatewayApiAccess ReadOrManage = new([ApiKeyScopes.Read, ApiKeyScopes.Manage]);
     internal static readonly GatewayApiAccess Role = new([], RoleScope: true);
+    /// <summary>The engine routes (inference and its cancel): an API key with the role's scope, or a friend.</summary>
+    internal static readonly GatewayApiAccess Engine = new([], RoleScope: true, Friends: true);
 }
 
 /// <summary>This host's copy of the API keys of the owner's Martlet network (docs/API.md). Paired desktops read it and
@@ -151,12 +157,13 @@ internal sealed partial class GatewayHttpApplication
 
     internal GatewayApiKeyStore ApiKeys { get; }
 
-    /// <summary>A paired device (signed request) or, when <paramref name="access"/> admits it, an API key.</summary>
+    /// <summary>A paired device (signed request; a friend's only where <paramref name="access"/> admits friends) or, when
+    /// <paramref name="access"/> admits it, an API key.</summary>
     private GatewayPrincipal Authorize(HttpRequest request, GatewayApiAccess access, GatewayRole? role = null) =>
-        GatewayApiKeyStore.IsBearer(request) ? ApiKeys.Authenticate(request, access, role) : authenticator.Authenticate(request);
+        GatewayApiKeyStore.IsBearer(request) ? ApiKeys.Authenticate(request, access, role) : authenticator.Authenticate(request, access.Friends);
 
     private GatewayPrincipal Authorize(HttpRequest request, ReadOnlySpan<byte> bodyHash, GatewayApiAccess access, GatewayRole? role = null) =>
-        GatewayApiKeyStore.IsBearer(request) ? ApiKeys.Authenticate(request, access, role) : authenticator.Authenticate(request, bodyHash);
+        GatewayApiKeyStore.IsBearer(request) ? ApiKeys.Authenticate(request, access, role) : authenticator.Authenticate(request, bodyHash, access.Friends);
 
     /// <summary>GET returns this host's copy of the network's API keys (verifiers, never secrets) and when each was last
     /// used here; POST merges a desktop's copy into it and returns the merged result. Paired devices only: an API key can

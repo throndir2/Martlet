@@ -380,35 +380,48 @@ with HTTP basic client authentication and reads `/users/@me`, and checks a
 Steam OpenID 2.0 assertion against the attempt's `return_to` and with Steam's
 `check_authentication`, `GatewaySignInDiscordSteam.cs`) answers
 `201` like pairing (`credential_id`, `credential_secret`, `roles` `["voice"]`,
-`lifetime` `paired`) plus `signed_in` (`provider`, `subject`, `label`), after
-revoking any older credential of that device ID. Failures: `signin.unavailable` (404),
+`lifetime` `paired`) plus `signed_in` (`provider`, `subject`, `label`) and
+`access` (`member`, or `friend` for an identity allowed as a friend: a
+[friend's credential](#friend-access)). A sign-in never takes another
+computer's device ID: `signin.device_taken` (409) when the ID belongs to an
+active member desktop of the host's network (it pairs by its network key and
+never signs in) or has a live credential that this identity's earlier sign-in
+didn't issue (a pairing made another way, or another identity's computer);
+otherwise it replaces that earlier sign-in's credential. Failures: `signin.unavailable` (404),
 `signin.invalid` (401), `signin.not_allowed` (403), `signin.expired` (400),
-`signin.provider` (502); each sign-in outcome is recorded with the request
+`signin.device_taken` (409), `signin.provider` (502); each sign-in outcome is recorded with the request
 guard under route class `signin` and the claimed or verified account as
 subject, and `TryAdmit` adds the per-account lockout. The member-only
 `GET`/`POST /martlet/v1/signin/settings` (signed; `signin.denied` for a
 non-member while the host is bound) read and change the owner account
 (`owner`: `user`, `password` of 12+ characters, `totp_secret` Base32, `code`
 proving the app took it; returns `recovery_codes` once), `recovery-codes`,
-`remove-owner`, `allow`/`disallow` (`provider`, `subject`, `label`),
+`remove-owner`, `allow`/`disallow` (`provider`, `subject`, `label`; `allow`
+also takes `access`: `member`, the default, for the owner's own computers, or
+`friend`; allowing an identity again replaces its entry),
 `provider` (`provider_config`: `id`, `kind` `oidc`|`discord`|`steam`, `name`,
 `issuer`, `client_id`, `client_secret`, `scopes`, `redirect_port` for a
 provider that only takes registered redirects; an omitted secret keeps the
 saved one) and `remove-provider`; the answer never contains a secret
-(`has_client_secret` only); it also carries `usable` and `blocked_reason`
+(`has_client_secret` only), lists `access` for each `allowed` identity and
+`enrolled` computer, and also carries `usable` and `blocked_reason`
 (`GatewaySignInSettings.BlockedReason`, `GatewayServer.SignInBlockedReason`:
-null when an owner account or a provider with an allowed identity exists,
+null when an owner account or a provider with an allowed identity (a friend
+counts) exists,
 otherwise `signin.not_set_up` or `signin.no_allowed_identity`) and
 `removed_from_network` (computers whose sign-in was removed and that member
 desktops still have to remove from the roster). Storage is `IGatewaySignInStorage`
 (`GatewayServer.AttachSignInStorage`, `DurableGatewayHost.AttachSignIn`); with
 none attached nobody can sign in. Enrollments whose identity is no longer
-allowed are dropped and their device credentials revoked whenever the settings
-are read. A join request from an enrolled device carries `sign_in` in the
-network document. The host remembers the network key an enrolled device
+allowed, or no longer with the access it signed in with, are dropped and their
+credentials revoked whenever the settings are read (a friend's exactly the
+credential its sign-in issued, the owner's computers every credential of the
+device). A join request from a computer enrolled as one of the owner's carries
+`sign_in` in the network document (a friend's never). The host remembers the network key an enrolled device
 asks to join with (`/network/join`); when its sign-in is removed the network
 document lists it for member desktops (`sign_in_removals`: `device_id`, `key`,
-`provider`, `subject`, `label`, `at`), which remove it from the roster, and the
+`provider`, `subject`, `label`, `at`; never a friend's computer, which never
+joined), which remove it from the roster, and the
 host forgets the record once the roster shows it removed.
 
 ## Signed request and replay contract
@@ -463,6 +476,32 @@ nonce: TLS with the pinned host key protects them in transit.
 | `manage` | `POST commands`, `POST commands/{id}/cancel`, `GET commands[/{id}]` |
 | never | pairing, `network*`, `voices`, `POST cluster`, `POST logs`, `commands/agent`, `commands/{id}/report`, `api-keys`, `settings`, `memories`, `creations` |
 
+### Friend access
+
+A credential issued to an identity the owner allowed as a friend
+([sharing a host with friends](../../docs/NETWORK.md#sharing-a-host-with-friends))
+has `GatewayAccess.Friend`. It is stored with the credential
+(`StoredGatewayCredential.Access`, written only for a friend's, so a store
+without friends is unchanged) and fixed for the credential's life; rotation
+keeps it. Deny by default: `GatewayRequestAuthenticator` refuses a friend's
+signed request with `access.friend` (403) unless the route admits friends
+(`GatewayApiAccess.Friends`), and with `auth.revoked` (401) unless sign-in still
+records that credential for an identity allowed as a friend
+(`GatewaySignInService.FriendAllowed`; `signin.json` is read again at most every
+5 seconds, so a friend removed with `martlet-host` loses access within that time;
+never without sign-in).
+
+| Friends may use | Everything else answers `access.friend` before anything is read |
+| --- | --- |
+| `GET version` (with `access` `friend`), `GET capabilities`, `GET status`, the inference routes of their role, `POST inference/cancel` (their own requests) | pairing, `network*`, `machine`, `cluster`, `voices`, `speaking-voices`, `character-models`, `creations`, `home-assistant`, `settings`, `memories`, `api-keys`, `commands`, `logs`, `priority`, `security/audit`, `signin/settings` |
+
+`access.friend` refusals don't count toward lockout. A friend's speaking
+requests never reach the owner's shared speaking voices: a voice named only by
+its SHA-256 answers `reference.missing` (the friend sends its own recording) and
+nothing a friend sends is kept. The network document marks a friend's paired
+computer (`devices[].access` `friend`), and a friend never gets a join
+attestation. The owner's requests come first ([owner first](#gpu-priority-live-turn-first)).
+
 ## Implemented HTTPS surface
 
 | Operation | Authentication | Bounded result |
@@ -471,11 +510,11 @@ nonce: TLS with the pinned host key protects them in transit.
 | `POST /martlet/v1/pair` | Locally opened one-use proof | One scoped credential; 8 KiB strict JSON with required fields, duplicate/unknown rejection |
 | `POST /martlet/v1/pair/code` | Proof of a locally opened short code ([short typed codes](#short-typed-codes)) | One scoped credential plus `host_proof`; same 8 KiB strict JSON rules |
 | `POST /martlet/v1/pair/member` | Signature by an active member desktop's network key ([member pairing](#martlet-network-member-pairing)) | One `voice` credential (older credentials of that device revoked); same 8 KiB strict JSON rules |
-| `GET /martlet/v1/network` | Signed scoped device request, any role | Host ID, `martlet_version` (the Martlet release this host runs, so every computer that syncs the network learns of an update here; desktops older than it ignore it), `state` (`unbound`, `bound`, `removed`), the accepted `roster` (or null), `devices` (the computers paired with this host, at most 16, most recently active first: `device_id`, `display_name`, `paired_at` and `last_seen`, when it last made a signed request since the gateway started, absent before that) and, for an active member desktop, pending `joins` (`device_id`, `display_name`, `key`, `check_number`, `requested_at`). Nonsecret; desktops older than `devices` ignore it |
+| `GET /martlet/v1/network` | Signed scoped device request, any role | Host ID, `martlet_version` (the Martlet release this host runs, so every computer that syncs the network learns of an update here; desktops older than it ignore it), `state` (`unbound`, `bound`, `removed`), the accepted `roster` (or null), `devices` (the computers paired with this host, at most 16, most recently active first: `device_id`, `display_name`, `paired_at` and `last_seen`, when it last made a signed request since the gateway started, absent before that, and `access` `friend` for a [friend's computer](#friend-access)) and, for an active member desktop, pending `joins` (`device_id`, `display_name`, `key`, `check_number`, `requested_at`). Nonsecret; desktops older than `devices` ignore it |
 | `POST /martlet/v1/network` | Signed device body, any role | Strict schema-1 roster JSON, at most 40 KiB, accepted entry by entry (binding an unbound host); returns the same document as GET and saves `network.json` when a storage is attached |
 | `POST /martlet/v1/network/join` | Signed device body, any role | `display_name` and `key` (ECDSA P-256 SPKI); returns `state` (`pending` or `member`), `network_id` and `check_number` |
 | `POST /martlet/v1/network/deny` | Signed body of an active member desktop | `device_id`; returns `denied` |
-| `GET /martlet/v1/version` | Signed scoped device request, or any API key | Protocol `2.0`, gateway `0.2.0`, host ID, `martlet_version`, authorized role and explicit `credential_lifetime` (`paired` or retiring old key with deadline); for an API key also `api_key` (`id`, `name`, `scopes`, `expires_at`) |
+| `GET /martlet/v1/version` | Signed scoped device request (a friend's too), or any API key | Protocol `2.0`, gateway `0.2.0`, host ID, `martlet_version`, authorized role and explicit `credential_lifetime` (`paired` or retiring old key with deadline); for an API key also `api_key` (`id`, `name`, `scopes`, `expires_at`); for a friend's device `access` `friend` |
 | `GET /martlet/v1/capabilities` | Signed scoped device request | Registry `martlet.gateway.inference-routes` `1.0`, at most 8 fixed routes and 16 status workers, filtered by role. Each route also says where it runs and its lane ([GPU priority](#gpu-priority-live-turn-first)): `gpus` (string array of GPU UUIDs, CUDA indexes or `cpu`; empty means unknown, which counts as the whole host) and `lane` (`pool` for Deep thinking's route, `live` for every other). Hosts older than GPU priority send neither |
 | `GET /martlet/v1/status` | Signed scoped device request | Two-second cooperative cancellation for status reads for only that role |
 | `GET /martlet/v1/machine` | Signed scoped device request, any role | Host ID, the gateway's Martlet release `martlet_version` (so desktops can offer to update older hosts), plus the host-reported `machine` (method `docker`/`native`/`app`, optional `platform`, `os_version`, `architecture` and `features` ([platform fields](../../docs/PLATFORMS.md#machine-report-platform-fields)), OS, kernel, CPU, threads, memory, container runtime, `nvidia_containers`, driver `cuda` version, at most 16 GPUs with vendor/memory/driver and, for NVIDIA, power limit/default and persistence mode) or no `machine` when none was collected. Informational and unauthenticated by the host itself; grants no authority |
@@ -516,7 +555,9 @@ Non-streaming responses are snake-case JSON and at most 64 KiB. Inference uses
 bounded pull-driven NDJSON. Authenticated operations
 require an exact route with no query. Unknown methods/routes do not redirect.
 Unpaired clients cannot read version, capabilities, status, worker IDs, model
-metadata or failure details.
+metadata or failure details. A [friend's device](#friend-access) is admitted
+only by version, capabilities, status, the inference routes of its role and
+cancel; every other signed operation above answers it `access.friend`.
 
 `IGatewayWorker` exposes only validated capability metadata and a bounded
 status method. There is no worker URL, raw HTTP client, model-management API,
@@ -646,6 +687,17 @@ same RTX 4070 ([sharing the graphics card](../../docs/CHATTERBOX_VOICE.md#sharin
   HTTP 409. The Ollama relay aborts its loopback request, and Ollama/llama.cpp
   stop within one token or one 512-token prompt batch. Holds never touch live
   requests.
+- **Owner first.** A [friend's](#friend-access) request ranks below all of the
+  owner's work, whatever its route's lane: any request of the owner (live or
+  pool) or a hold stops a friend's request on a card it shares
+  (`job.preempted`), and while the owner's work or a hold keeps one of its cards
+  a friend's request is turned away with `job.busy` and `detail` `owner`. When
+  every slot of the worker an owner's request needs runs a friend's request, that
+  request stops and the owner's waits for its slot (at most 3 seconds and its
+  deadline, `GatewayInferenceRouteRegistry.SlotWait`); meanwhile the slot isn't
+  given to another friend. A friend's request never holds a card: `priority`
+  counts it with the `pool` work. So sharing a host never adds time to the
+  owner's own replies, beyond stopping a friend's request on the same worker.
 - **Status.** `GET /martlet/v1/priority` shows the GPU map, each card's hold
   state, the holds, the last preemptions and refusals and placement warnings.
   At start the gateway logs the GPU map, and a warning for each pool route that
@@ -663,7 +715,8 @@ it once and leaves that host alone for ten minutes, and the live turn goes on.
 
 Every application error contains only protocol version, stable code, authored
 summary, exact remedy, an optional one-word `detail` (`live` on a pool-lane
-`job.busy` refused for a live turn, `holds` when the host already keeps 32
+`job.busy` refused for a live turn, `owner` on a friend's `job.busy` refused
+for the owner's work, `holds` when the host already keeps 32
 holds) and a random trace ID. It never includes a supplied
 token, credential, signature, URL, request body, worker exception or stack.
 The required `IGatewayAuditSink` receives only trace ID, stable code and HTTP
@@ -697,10 +750,12 @@ operator actions are:
 | `outside.paused` | The host has outside addresses (or allows typed codes outside) but sign-in has no usable method: connect from home, set up sign-in, or remove the addresses ([sign-in comes first](../../docs/NETWORK.md#reaching-your-network-from-outside-home)) |
 | `request.timeout` | Send the whole pairing or sign-in body at once (10 seconds) |
 | `auth.role` | Use a separately approved least-privilege role |
+| `access.friend` | The host is shared with this device for its engines only; use version, capabilities, status and the inference routes ([friend access](#friend-access)) |
+| `signin.device_taken` | Sign in from the computer's own ID; a member desktop pairs by its network key, and a pairing made another way is removed by the owner first |
 | `action.denied` | Obtain the exact provider/action permission; permanent pairing is not approval |
 | `job.replay` | Use a new explicitly permitted action and request ID; a new nonce alone cannot duplicate a batch |
-| `job.busy` | The route's worker runs as many jobs as it can; with `detail` `live`, a live turn holds the graphics card of this pool-lane request: run it on another computer or after the live turn |
-| `job.preempted` | A live turn took the graphics card and stopped this pool-lane job: run it again on another computer or after the live turn |
+| `job.busy` | The route's worker runs as many jobs as it can; with `detail` `live`, a live turn holds the graphics card of this pool-lane request: run it on another computer or after the live turn; with `detail` `owner`, the host's owner is using it: a friend runs it elsewhere or later |
+| `job.preempted` | A live turn (or, for a friend's job, the owner's work) took the graphics card and stopped this job: run it again on another computer or later |
 | `worker.*` | Keep only the named private worker unavailable and repair its local adapter/status |
 | `gateway.redirect_rejected` | Use the exact paired origin; never follow another destination |
 | `gateway.connection_failed`, `gateway.deadline` | Verify readiness/address/pin or the private path; never bypass TLS validation or retry indefinitely |

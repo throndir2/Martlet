@@ -127,8 +127,9 @@ public sealed class GpuPriorityTests
         internal Task<HttpResponseMessage> PostAsync(string path, string json) =>
             Host.Client.SendAsync(Host.SignedPost(path, GatewayRole.Voice, Signer, Encoding.UTF8.GetBytes(json))).AsTask();
 
-        /// <summary>Starts a chat request on <paramref name="route"/> with a raw signed request; the response streams.</summary>
-        internal Task<HttpResponseMessage> ChatAsync(JsonElement route, string input = "Think it over.")
+        /// <summary>Starts a chat request on <paramref name="route"/> with a raw signed request (the owner's desktop, or
+        /// <paramref name="signer"/>); the response streams.</summary>
+        internal Task<HttpResponseMessage> ChatAsync(JsonElement route, string input = "Think it over.", GatewayRequestSigner? signer = null)
         {
             string Text(string name) => route.GetProperty(name).GetString()!;
             var body = JsonSerializer.SerializeToUtf8Bytes(new Dictionary<string, object>
@@ -145,7 +146,7 @@ public sealed class GpuPriorityTests
                     ["input"] = input, ["temperature"] = 0.7, ["maximum_output_tokens"] = 256, ["maximum_context_tokens"] = 8_192
                 }
             });
-            return Host.Client.SendAsync(Host.SignedPost(Text("path"), GatewayRole.Voice, Signer, body)).AsTask();
+            return Host.Client.SendAsync(Host.SignedPost(Text("path"), GatewayRole.Voice, signer ?? Signer, body)).AsTask();
         }
 
         /// <summary>Streams the desktop's reply on Thinking's route to the end.</summary>
@@ -584,6 +585,84 @@ public sealed class GpuPriorityTests
         Assert.Equal(HttpStatusCode.OK, think.StatusCode);
         using var stream = new StreamReader(await think.Content.ReadAsStreamAsync());
         using (await UntilAsync(stream, "completed")) { }
+    }
+
+    [Fact]
+    public async Task The_owners_reply_stops_a_friends_request_on_the_same_worker_and_takes_its_slot()
+    {
+        await using var lab = await Lab.StartAsync([CardA], [CardB], holdConversation: true);
+        var owner = await FriendAccessTests.SetUpSignInAsync(lab.Host, lab.Signer);
+        var friend = await FriendAccessTests.FriendAsync(lab.Host, owner);
+        using var theirs = await lab.ChatAsync(lab.Thinking, "Tell me a story.", friend);
+        Assert.Equal(HttpStatusCode.OK, theirs.StatusCode);
+        using var stream = new StreamReader(await theirs.Content.ReadAsStreamAsync());
+        using (await UntilAsync(stream, "text_delta")) { }
+        // A friend's request never holds a card: it counts with the work any of the owner's requests stops.
+        using (var priority = await lab.GetJsonAsync("/martlet/v1/priority"))
+        {
+            Assert.False(Gpu(priority, CardA).GetProperty("held").GetBoolean());
+            Assert.Equal(1, Gpu(priority, CardA).GetProperty("pool").GetInt32());
+        }
+
+        // The owner's reply needs the worker's only slot: the friend's request ends with job.preempted, its Ollama request is
+        // dropped, and the reply runs in that slot.
+        var reply = lab.ReplyAsync();
+        using (var failed = await UntilAsync(stream, "failed"))
+            Assert.Equal("job.preempted", failed.RootElement.GetProperty("code").GetString());
+        await lab.Conversation.Aborted.Task.WaitAsync(Wait);
+        lab.Conversation.Release();
+        Assert.Equal("Sure, here you go.", await reply.WaitAsync(Wait));
+        using var after = await lab.GetJsonAsync("/martlet/v1/priority");
+        var last = Assert.Single(after.RootElement.GetProperty("last_preemptions").EnumerateArray());
+        Assert.Equal(Martlet.Core.Settings.SelfHostSetup.OllamaRouteId, last.GetProperty("route_id").GetString());
+        Assert.Contains("Thinking request from desktop-test", last.GetProperty("by").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_friends_request_is_turned_away_while_the_owner_uses_its_card()
+    {
+        await using var lab = await Lab.StartAsync([CardA], [CardA], holdConversation: true);
+        var owner = await FriendAccessTests.SetUpSignInAsync(lab.Host, lab.Signer);
+        var friend = await FriendAccessTests.FriendAsync(lab.Host, owner);
+        lab.Deep.Release();
+        var reply = lab.ReplyAsync();
+        using (await WaitForAsync(lab, root => Gpu(root, CardA).GetProperty("live").GetInt32() == 1)) { }
+
+        // On the card the owner's reply uses, a friend gets job.busy "owner" on any route, and nothing reaches Ollama.
+        foreach (var route in new[] { lab.DeepThinking, lab.Thinking })
+        {
+            using var refused = await lab.ChatAsync(route, "Me too?", friend);
+            using var failure = await FailureAsync(refused, HttpStatusCode.TooManyRequests);
+            Assert.Equal("job.busy", failure.RootElement.GetProperty("code").GetString());
+            Assert.Equal("owner", failure.RootElement.GetProperty("detail").GetString());
+        }
+        Assert.Equal(0, lab.Deep.Requests);
+
+        // Once the owner's reply ended, the friend's think runs.
+        lab.Conversation.Release();
+        Assert.Equal("Sure, here you go.", await reply.WaitAsync(Wait));
+        using var admitted = await lab.ChatAsync(lab.DeepThinking, "Now?", friend);
+        Assert.Equal(HttpStatusCode.OK, admitted.StatusCode);
+        using var stream = new StreamReader(await admitted.Content.ReadAsStreamAsync());
+        using (await UntilAsync(stream, "completed")) { }
+    }
+
+    [Fact]
+    public async Task The_owners_pool_work_stops_a_friends_live_request_on_its_card()
+    {
+        await using var lab = await Lab.StartAsync([CardA], [CardA], holdConversation: true);
+        var owner = await FriendAccessTests.SetUpSignInAsync(lab.Host, lab.Signer);
+        var friend = await FriendAccessTests.FriendAsync(lab.Host, owner);
+        using var theirs = await lab.ChatAsync(lab.Thinking, "Tell me a story.", friend);
+        Assert.Equal(HttpStatusCode.OK, theirs.StatusCode);
+        using var stream = new StreamReader(await theirs.Content.ReadAsStreamAsync());
+        using (await UntilAsync(stream, "text_delta")) { }
+
+        lab.Deep.Release();
+        await RunThinkAsync(lab);
+        using (var failed = await UntilAsync(stream, "failed"))
+            Assert.Equal("job.preempted", failed.RootElement.GetProperty("code").GetString());
+        await lab.Conversation.Aborted.Task.WaitAsync(Wait);
     }
 
     private static async Task<JsonDocument> WaitForAsync(Lab lab, Func<JsonDocument, bool> condition)

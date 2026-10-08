@@ -215,9 +215,13 @@ internal sealed partial class GatewayHttpApplication
                 throw new GatewayProtocolException("request.invalid");
             EnsureEmptyRequest(context.Request);
             // Any API key may ask who it is and what this host offers (it needs that to call a route); status and hardware
-            // need read access.
-            var principal = Authorize(context.Request, rawTarget is "/martlet/v1/version" or "/martlet/v1/capabilities"
-                ? GatewayApiAccess.AnyKey : GatewayApiAccess.Read);
+            // need read access. A friend may ask the same, and status, to use the engines; never the hardware.
+            var principal = Authorize(context.Request, rawTarget switch
+            {
+                "/martlet/v1/version" or "/martlet/v1/capabilities" => GatewayApiAccess.AnyKeyOrFriend,
+                "/martlet/v1/status" => GatewayApiAccess.ReadOrFriend,
+                _ => GatewayApiAccess.Read
+            });
             if (rawTarget == "/martlet/v1/machine")
             {
                 await WriteJsonAsync(context, 200, new MachineDocument
@@ -243,7 +247,8 @@ internal sealed partial class GatewayHttpApplication
                     ApiKey = principal.Key is { } key ? new ApiKeyIdentity
                     {
                         Id = key.Id, Name = key.Name, Scopes = key.Scopes, ExpiresAt = key.ExpiresAt
-                    } : null
+                    } : null,
+                    Access = principal.Access == GatewayAccess.Friend ? "friend" : null
                 }).ConfigureAwait(false);
                 return;
             }
@@ -496,6 +501,9 @@ internal sealed partial class GatewayHttpApplication
         public string? MartletVersion { get; init; }
         /// <summary>The API key that asked (never its secret); absent for a paired device.</summary>
         public ApiKeyIdentity? ApiKey { get; init; }
+        /// <summary>"friend" for a friend's device, which reaches only this host's engines; absent for the owner's computers
+        /// and API keys.</summary>
+        public string? Access { get; init; }
     }
 
     private sealed record ApiKeyIdentity

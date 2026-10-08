@@ -20,31 +20,34 @@ internal sealed partial class GatewayHttpApplication
             context.RequestAborted).ConfigureAwait(false);
         GatewayInferenceRequest request;
         GatewayPrincipal principal;
+        bool friend;
         try
         {
             var bodyHash = crypto.Sha256(bytes);
-            principal = Authorize(context.Request, bodyHash, GatewayApiAccess.Role, route.RequiredRole);
+            principal = Authorize(context.Request, bodyHash, GatewayApiAccess.Engine, route.RequiredRole);
             GatewayRules.Require(principal.Role == route.RequiredRole, "auth.role");
+            // A friend never reaches the owner's speaking voices: it carries its own recording with each request.
+            friend = principal.Access == GatewayAccess.Friend;
             request = GatewayInferenceJson.ParseRequest(
                 bytes,
                 route,
                 clock.GetUtcNow(),
-                SpeakingVoices.Audio,
-                SpeakingVoices.Voice);
+                friend ? static _ => null : SpeakingVoices.Audio,
+                friend ? static _ => null : SpeakingVoices.Voice);
         }
         finally
         {
             CryptographicOperations.ZeroMemory(bytes);
         }
         // A recording sent with the request is kept for a voice of the shared list, so the next request can name it.
-        if (request.Payload is GatewayF5SynthesisPayload speech)
+        if (!friend && request.Payload is GatewayF5SynthesisPayload speech)
             SpeakingVoices.Remember(speech.ReferenceAudioSha256, speech.ReferenceAudio.Span);
-        if (request.Payload is GatewaySongPayload { Start: { } song } songPayload)
+        if (!friend && request.Payload is GatewaySongPayload { Start: { } song } songPayload)
             SpeakingVoices.Remember(song.ReferenceAudioSha256, songPayload.ReferenceAudio.Span);
         GatewayInferenceRouteRegistry.GatewayInferenceJob job;
         try
         {
-            job = inference.Begin(principal, request);
+            job = await inference.BeginAsync(principal, request, context.RequestAborted).ConfigureAwait(false);
         }
         catch
         {
@@ -103,7 +106,7 @@ internal sealed partial class GatewayHttpApplication
         try
         {
             var bodyHash = crypto.Sha256(bytes);
-            principal = Authorize(context.Request, bodyHash, GatewayApiAccess.Role);
+            principal = Authorize(context.Request, bodyHash, GatewayApiAccess.Engine);
             request = GatewayInferenceJson.ParseCancellation(bytes);
         }
         finally
