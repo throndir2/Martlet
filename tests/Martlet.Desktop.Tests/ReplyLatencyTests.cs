@@ -43,6 +43,22 @@ public sealed class ReplyLatencyTests
     }
 
     [Fact]
+    public async Task A_turn_parakeet_heard_because_listening_failed_names_it_in_the_line()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var configured = fixture.Controller.Configuration!;
+        Assert.EndsWith(", voice gpt-4o-mini-tts-2025-12-15, speech-to-text gpt-transcribe", configured.LatencyModels(spokenInput: true));
+        var models = configured.LatencyModels(spokenInput: true, standIn: "parakeet-tdt-110m-en");
+        Assert.EndsWith(", speech-to-text parakeet-tdt-110m-en on this PC, standing in for gpt-transcribe", models);
+        // The timeline carries it from the utterance to the reply that answers it, and latency_report reads the line back.
+        var clock = TimeProvider.System;
+        var timeline = new ReplyTimeline(clock, ReplyTimeline.YouStopped) { StandIn = "parakeet-tdt-110m-en" };
+        Assert.Equal("parakeet-tdt-110m-en", timeline.Copy().StandIn);
+        var line = ReplyLatency.Describe(null, clock.GetTimestamp(), clock, Reply(new()), models)!;
+        Assert.Equal(models, LatencyReport.Parse(DateTimeOffset.Now, line)!.Models);
+    }
+
+    [Fact]
     public void A_reply_started_early_is_said_in_the_line_and_read_back_by_latency_report()
     {
         var clock = TimeProvider.System;

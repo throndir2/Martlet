@@ -502,6 +502,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The job's line about your Martlet network: the host your computers use for it and why this PC hasn't switched yet,
         // or that your other computers use this PC for it (host IDs and reasons only).
         "SetupJobNetwork-Thinking", "SetupJobNetwork-Voice", "SetupJobNetwork-Listening",
+        // Companion › Listening's line on what hears you when Listening's own choice (a paired host or OpenAI) can't: the
+        // Parakeet model on this PC's processor, or the one to download (host IDs and model names only). Its
+        // SetupListenStandInDownload button downloads that model, so it needs --allow-ui-effects.
+        "SetupJobStandIn-Listening",
         "SetupCloudKeyStatus-Thinking", "SetupCloudKeyStatus-Voice", "SetupCloudKeyStatus-Listening",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
         "LogSummary", "LogShareStatus", "LogDetail",

@@ -18,6 +18,10 @@ Listening starts only when you press **Start listening** or use push-to-talk. La
 | Parakeet TDT 0.6B v2 | More accurate English, better in noise. |
 | Parakeet TDT 0.6B v3 | 25 languages; default for non-English display languages. |
 
+### When another computer or OpenAI can't hear you
+
+If Listening uses another of your computers or OpenAI and it can't hear you (the computer is off, its service stopped, the key was removed), a Parakeet model downloaded on this PC hears you instead, on the processor. Nothing is sent anywhere. For the next minute Martlet goes straight to Parakeet, then tries your choice again. The **Now** card on Companion › Listening says which model stands in, or offers to download one without changing Listening.
+
 ## People
 
 Open **Companion › People**. Voice recognition is on by default and bundled. You can name voices and give each as many other names as they go by (up to 40), hear the last few clips of a voice you haven't named yet, mark **This is me**, merge voices, inspect memories for that person, forget one voice or forget all voices.

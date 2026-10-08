@@ -26,6 +26,32 @@ public static class LocalSpeechSetup
     public static string RecommendedParakeetModel(CultureInfo displayLanguage) =>
         displayLanguage.TwoLetterISOLanguageName == "en" ? Parakeet110mEnglishModelId : ParakeetV3ModelId;
 
+    /// <summary>The 25 languages Parakeet TDT 0.6B v3 hears (ISO 639-1 codes, from NVIDIA's model card).</summary>
+    public static IReadOnlySet<string> ParakeetV3Languages { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "bg", "cs", "da", "de", "el", "en", "es", "et", "fi", "fr", "hr", "hu", "it", "lt", "lv", "mt", "nl", "pl", "pt", "ro",
+        "ru", "sk", "sl", "sv", "uk"
+    };
+
+    /// <summary>The Parakeet model that hears an utterance on this PC's processor when Listening's own route (a paired host or
+    /// OpenAI) fails, so the turn goes on and nothing is sent anywhere: the model already loaded (<paramref name="loaded"/>)
+    /// when it fits, else for an English display language the fastest one downloaded (110M, then v2, then v3), otherwise v3
+    /// when it hears that language. Null when Listening isn't one of those routes (Parakeet on this PC is already the
+    /// processor) or no downloaded model fits. <paramref name="installed"/> says whether a model is downloaded here.</summary>
+    public static string? ListeningStandIn(SetupRoute? listening, Func<string, bool> installed, CultureInfo displayLanguage,
+        string? loaded = null)
+    {
+        ArgumentNullException.ThrowIfNull(installed);
+        ArgumentNullException.ThrowIfNull(displayLanguage);
+        if (listening is not { Role: SetupRole.Stt } || listening.RouteType is not (null or SetupRouteType.OpenAi or SetupRouteType.GatewayStt))
+            return null;
+        var language = displayLanguage.TwoLetterISOLanguageName;
+        string[] fits = language == "en" ? [Parakeet110mEnglishModelId, ParakeetV2EnglishModelId, ParakeetV3ModelId]
+            : ParakeetV3Languages.Contains(language) ? [ParakeetV3ModelId] : [];
+        if (loaded is not null && fits.Contains(loaded, StringComparer.Ordinal) && installed(loaded)) return loaded;
+        return fits.FirstOrDefault(installed);
+    }
+
     /// <summary>Listening with the Parakeet model <paramref name="modelId"/> on this PC's processor (its files are downloaded
     /// separately). Unchanged when Listening already uses that model.</summary>
     public static AppSettings SelectParakeet(AppSettings settings, string modelId)
