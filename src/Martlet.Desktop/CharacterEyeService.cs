@@ -4,7 +4,7 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>The eyes of the character this PC shows (Companion › Character › Touch zones › Eyes): measured once per model with
+/// <summary>The eyes of the character this PC shows (Companion › Eyes › Where the eyes are): measured once per model with
 /// the Thinking model's vision in a close-up of the face (<see cref="CharacterEyes"/>), saved per model in character-eyes.json
 /// with the pictures sent, and given to the renderer as its eye hint, so that drawings over the eyes fit the iris on models
 /// whose own data doesn't say where the eyes are.</summary>

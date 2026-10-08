@@ -39,7 +39,7 @@ internal sealed partial class AvatarController
     /// (or a gasp or nod) elsewhere. Local only: it sends nothing to a model and never waits on a reply.</summary>
     private void ReactToTouch(CharacterTouch touch)
     {
-        // Companion › Character › Touch zones routes the tap to the zone it landed in and plays that zone's reaction instead.
+        // Companion › Touch › Touch zones routes the tap to the zone it landed in and plays that zone's reaction instead.
         if (TouchRouter?.Invoke(touch) == true) return;
         var zone = touch.CoarseZone;
         var headward = zone is "head" or "hair" or "face";

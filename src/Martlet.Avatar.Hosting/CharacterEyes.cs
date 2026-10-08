@@ -90,7 +90,7 @@ public sealed record EyeMeasurementResult(EyeBoxes? Boxes, RendererEyes? Hint, s
 /// media type.</summary>
 public sealed record EyeSentPicture(string File, string Step, int Width, int Height, int Bytes, string MediaType);
 
-/// <summary>One model's eyes as vision measured them (Companion › Character › Touch zones › Eyes), kept in character-eyes.json:
+/// <summary>One model's eyes as vision measured them (Companion › Eyes › Where the eyes are), kept in character-eyes.json:
 /// the hint the renderer gets (<see cref="Left"/> and <see cref="Right"/>, in face widths), who measured them (vision, or a
 /// FIXTURE - NOT AI stand-in), when, in how many requests, the boxes the answer gave (fractions of the close-up) and the
 /// pictures sent (in character-eyes\&lt;model&gt;\).</summary>
@@ -508,7 +508,7 @@ public static class CharacterEyes
             (at.Date == now.ToLocalTime().Date ? " at " + at.ToString("t", CultureInfo.CurrentCulture) : " on " + at.ToString("g", CultureInfo.CurrentCulture));
     }
 
-    /// <summary>Where the shown model's eyes come from, in words (Companion › Character › Touch zones › Eyes):
+    /// <summary>Where the shown model's eyes come from, in words (Companion › Eyes › Where the eyes are):
     /// <paramref name="eyesFrom"/> is the renderer's last answer (null while the character is hidden or before it answered) and
     /// <paramref name="saved"/> the model's measurement.</summary>
     public static string Status(string? eyesFrom, CharacterEyeMeasurement? saved, bool showing, DateTimeOffset now)

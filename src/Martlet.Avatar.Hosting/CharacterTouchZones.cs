@@ -94,7 +94,7 @@ public sealed record CharacterTouchZone
     [JsonIgnore] public string Name => Label ?? CharacterTouchZones.Kind(Id)?.Label ?? Id;
 }
 
-/// <summary>One model's touch zones (Companion › Character › Touch zones). <see cref="Crop"/> is where the snapshot the zones were
+/// <summary>One model's touch zones (Companion › Touch › Touch zones). <see cref="Crop"/> is where the snapshot the zones were
 /// found in sat on the renderer page (fractions of the page), so a zone's box can be compared with a touch.</summary>
 public sealed record CharacterTouchZoneSettings
 {

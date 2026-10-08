@@ -152,7 +152,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "hair, mesh and material (VRM). Martlet then plays its tap reaction (the desktop log records 'The character was " +
             "tapped on the ...'). holdMs presses that long (600 or more is a hold, up to 10000), repeat taps the same point up to " +
             "20 times gapMs apart (default 150), and taps ([{x, y, holdMs}], up to 20) taps a sequence of points instead. With " +
-            "Companion > Character > Touch zones showing, noticed reads what Martlet noticed after settleMs: waiting (the touch " +
+            "Companion > Touch > Touch zones showing, noticed reads what Martlet noticed after settleMs: waiting (the touch " +
             "line that waits for a reply and when a touch reply starts), last (which reply took the last touches and what " +
             "Thinking was told) and zone (TouchZonesLast). Tapping requires --allow-ui-effects; without x, y or taps it only " +
             "reads the last tap.", new
@@ -184,7 +184,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "down; unzoomed, its hair is near 0.5, 0.1 and its face near 0.5, 0.2), one point every stepMs milliseconds (10 to " +
             "2000, default 40). Martlet hit-tests the path, plays each crossed zone's reaction (the first zone's emote held until " +
             "the stroke ends) and records the stroke in the touch ledger. Returns the overlay's stroke record as last.stroke (n, " +
-            "samples, hits, ms, coarse zones crossed); Companion > Character > Touch zones' CharacterPhysicalLast reads Martlet's " +
+            "samples, hits, ms, coarse zones crossed); Companion > Touch > Touch zones' CharacterPhysicalLast reads Martlet's " +
             "summary (zones, pace, passes). last.physical is the last settled move, zoom or pan (kind, dx, dy, from and to monitors, " +
             "zoomFrom, zoomTo, focus). Requires --allow-ui-effects; without points it only reads the last stroke.", new
         {
@@ -622,7 +622,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
-        Tool("character_actions", "Read a character model's emotes and motions as Companion > Character > Emotes and motions uses " +
+        Tool("character_actions", "Read a character model's emotes and motions as Companion > Emotes and motions uses " +
             "them (Martlet.Avatar.Hosting, docs/AVATARS.md \"Emotes and motions\"): modelPath (a .model3.json or .vrm on this PC) or the " +
             "model dataDirectory's avatar.json shows. Returns the renderer, the model's key, how many files the renderer reads (a VTube " +
             "Studio model's .vtube.json and loose .exp3/.motion3 files included) and what came from VTube Studio's settings, then each " +
@@ -676,7 +676,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" }, modelId = new { type = "string" }, stroke = new { type = "string" },
             changes = new { type = "string" }, noticeAll = new { type = "boolean" }
         }),
-        Tool("character_touch_zones", "Companion > Character > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones and TouchZoneDetection; " +
+        Tool("character_touch_zones", "Companion > Touch > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones and TouchZoneDetection; " +
             "docs/AVATARS.md \"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate, and the defaults Detect " +
             "zones looks for), the step-by-step vision requests for the model (parts on the whole character, zones on each close-up, " +
             "checks of the numbered boxes; wanted: the default zones and the ones the owner added, required: the ones it must end with), " +
@@ -717,7 +717,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 },
             failAt = new { type = "integer", minimum = 1 }, probePath = new { type = "string" }, add = new { type = "string" }
         }),
-        Tool("character_eyes", "Companion > Character > Touch zones > Eyes (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
+        Tool("character_eyes", "Companion > Eyes > Where the eyes are (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
             "with NO vision request: the request the vision model gets (a close-up of the face, 1.6 face widths square, about 768 pixels " +
             "with a grid; its instructions, message, the check message and the message after an unreadable answer), what the production " +
             "parser, checks and conversion make of answer (a simulated vision reply about the close-up: {\"left\":{\"iris\":{\"left\",\"top\"," +
@@ -737,7 +737,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             previewDirectory = new { type = "string" }, save = new { type = "boolean" }, forget = new { type = "boolean" },
             eyesFrom = new { type = "string", @enum = new[] { "mesh", "bones", "vision", "estimate" } }
         }),
-        Tool("character_gaze", "Where the character looks (Companion > Character > Where the character looks, the overlay's Eyes " +
+        Tool("character_gaze", "Where the character looks (Companion > Eyes > Where the character looks, the overlay's Eyes " +
             "menu and Companion > Vision > Glances at your screen; docs/SCREEN_COMMENTARY.md \"Where the character looks\"): usual " +
             "is the usual gaze saved in a data directory's talk-preferences.json (GazeUsual: personality, mouse, near, ahead or " +
             "window; GazeFree: whether the character may change it in replies), the gaze of the touch temperament the persona uses in " +
@@ -2748,7 +2748,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         };
     }
 
-    /// <summary>character_actions: a character model's emotes and motions as Companion › Character › Emotes and motions uses
+    /// <summary>character_actions: a character model's emotes and motions as Companion › Emotes and motions uses
     /// them (Martlet.Avatar.Hosting's inventory, saved settings and prompts), optionally with a simulated Thinking answer parsed
     /// by the production naming parser. Model-authored names and model-relative file names only; never the model's path.</summary>
     private static async Task<object> CharacterActionsCheckAsync(JsonElement arguments, CancellationToken cancellation)

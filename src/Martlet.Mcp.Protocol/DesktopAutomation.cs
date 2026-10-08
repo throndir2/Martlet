@@ -36,10 +36,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // nothing. Stop singing only ends the song playing (musically). Nothing in the talk window plays a song. Its background
         // tasks chip (LiveTasks) and the task list's close button (LiveTasksClose) only open and close the list.
         "LiveStop", "LiveRefreshContext", "LiveSongStop", "LiveTasks", "LiveTasksClose",
-        // Companion › Character › Touch zones' Stop only stops finding zones; it sends nothing (the zones found until then were
+        // Companion › Touch › Touch zones' Stop only stops finding zones; it sends nothing (the zones found until then were
         // already saved).
         "TouchZonesStop",
-        // Companion › Character › Emotes and motions › Combos: Add a combo only adds an empty row. Nothing saves until the row has
+        // Companion › Emotes and motions › Combos: Add a combo only adds an empty row. Nothing saves until the row has
         // a tag and parts, and typing them needs --allow-ui-effects.
         "CharacterCombosAdd",
         // Companion › Replies' Open Deep thinking only opens that page.
@@ -375,7 +375,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
         // couldn't add a model (never the typed name or file path).
         "CharacterModelsStatus", "CharacterModelsShared", "CharacterModelAddProblem",
-        // Companion › Character › Emotes and motions: how many the shown model has and who named them, the Thinking model's
+        // Companion › Emotes and motions: how many the shown model has and who named them, the Thinking model's
         // naming progress, the tags offered to replies and what follows the voice's cues, the last one played (model-authored
         // names only) and whether edits saved. Each row's name and kind (CharacterActionName-<n>, a model-authored name), and
         // its Try button's label (CharacterActionTry-<n>: "Try", or "Turn off" while that lingering emote is on). The grey hint in
@@ -395,7 +395,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // parts is on); all four read through SafeValuePrefixes. Typing a combo's tag, parts or When to use, its on box and Remove
         // save, and Try and Turn off change what the character shows, so they need --allow-ui-effects.
         "CharacterCombosStatus",
-        // Companion › Character › Touch zones: how many zones the shown model has, how many are in use and who found them, whether
+        // Companion › Touch › Touch zones: how many zones the shown model has, how many are in use and who found them, whether
         // the Thinking model can see (and where pictures go), how Detect zones went (each step while it runs), what the last
         // detection sent (how many pictures, how large, what they showed), which zone the last touch landed in and what it
         // played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows, "added by you" for a zone
@@ -406,14 +406,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
         "TouchZonesDetectNote", "TouchZonesAddNote",
-        // Companion › Character › Touch zones › Eyes: where the shown model's eyes come from (the model's own meshes or eye bones,
+        // Companion › Eyes › Where the eyes are: where the shown model's eyes come from (the model's own meshes or eye bones,
         // the vision measurement and when it was taken, or an estimate), how measuring went (each step while it runs, or why it
         // failed) and, only when no model can see pictures, why Measure the eyes is off. Fixed text, times and counts only.
         // Measure the eyes (CharacterEyesMeasure) sends a close-up of the character's face to Thinking and Forget the measurement
         // (CharacterEyesForget) deletes it, so they need --allow-ui-effects; CharacterEyesPicture (the close-up with its boxes)
         // isn't a value.
         "CharacterEyesStatus", "CharacterEyesProgress", "CharacterEyesNote",
-        // Companion › Character › Touch temperament: who decided the active persona's temperament (built-in, the Thinking model,
+        // Companion › Touch › Touch temperament: who decided the active persona's temperament (built-in, the Thinking model,
         // FIXTURE - NOT AI or the owner) or which custom temperament or built-in reactions it uses instead; its help text is the
         // whole temperament in words: "head loves, torso hates, ..., intimate loves", its eyes and the parts whose touch turns them to
         // your mouse), how deciding went and whether edits saved or what a Uses, Create, Rename or Delete did (each only while it has
@@ -433,7 +433,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Touch zones' Include intimate zones check box (its label names every intimate part; checkedState says whether it is on)
         // and the zone chosen to add (TouchZonesAddKind).
         "TouchZonesIntimate", "TouchZonesAddKind",
-        // Companion › Character › Where the character looks: what the eyes do now and why (your choice, the personality's or
+        // Companion › Eyes › Where the character looks: what the eyes do now and why (your choice, the personality's or
         // the character's own in a reply; a touch's look at your mouse; whether it may change where it looks). Its
         // CharacterGaze-<choice> radio buttons (selected) and CharacterGazeFree check box (checkedState) save
         // talk-preferences.json, so they need --allow-ui-effects.
@@ -1124,7 +1124,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// drawing, +y down; needs --allow-ui-effects) through MoveAvatar's UI Automation value, like a click there held for
     /// <paramref name="holdMs"/> (600 or more: a hold), <paramref name="repeat"/> times <paramref name="gapMs"/> apart, or each
     /// of <paramref name="taps"/> (x, y, holdMs) in turn, waiting for the renderer's hit test after each; without a point it only
-    /// reads the last tap. Returns the last tap as the overlay reports it and, when Companion › Character › Touch zones shows,
+    /// reads the last tap. Returns the last tap as the overlay reports it and, when Companion › Touch › Touch zones shows,
     /// what Martlet noticed (TouchZonesNoticed, TouchZonesNoticedLast) after <paramref name="settleMs"/>.</summary>
     internal async Task<object> TouchCharacterAsync(double? x, double? y, int? holdMs = null, int? repeat = null, int? gapMs = null,
         IReadOnlyList<(double X, double Y, int HoldMs)>? taps = null, int? settleMs = null)
@@ -1168,7 +1168,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
 
     internal const int MaximumTaps = 20;
 
-    // What Martlet noticed, when Companion › Character › Touch zones shows (null otherwise).
+    // What Martlet noticed, when Companion › Touch › Touch zones shows (null otherwise).
     private object? Noticed()
     {
         string? Text(string id)

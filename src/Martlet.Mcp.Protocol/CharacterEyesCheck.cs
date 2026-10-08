@@ -8,7 +8,7 @@ using Martlet.Providers;
 
 namespace Martlet.Mcp;
 
-/// <summary>character_eyes: Companion › Character › Touch zones › Eyes as Martlet.Avatar.Hosting's CharacterEyes measures them,
+/// <summary>character_eyes: Companion › Eyes › Where the eyes are as Martlet.Avatar.Hosting's CharacterEyes measures them,
 /// with NO vision request: the request the vision model gets, what the production parser, checks and conversion make of a
 /// simulated vision answer about the close-up (and of a second answer when the first fails, as the measurement asks once
 /// more), and the eye hint the renderer gets. With snapshotPath and face, the production close-up is composed from a real

@@ -782,7 +782,7 @@ public partial class MainWindow
     private Border GazeCard(TalkPreferences prefs)
     {
         var mouse = Choice("VisionGaze", "Keep its usual gaze",
-            "The character's eyes do what Companion › Character › Where the character looks says: by default, they follow your mouse.",
+            "The character's eyes do what Companion › Eyes › Where the character looks says: by default, they follow your mouse.",
             !prefs.DecideGaze, "VisionGaze-Mouse");
         var decide = Choice("VisionGaze", "Martlet decides",
             "With each new screenshot of your screen, the character keeps its usual gaze or glances at something interesting on " +

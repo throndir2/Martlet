@@ -90,7 +90,7 @@ public enum GazeVerdict
 public sealed record GazeDecision(GazeVerdict Verdict, GazeSpot? Spot = null);
 
 /// <summary>
-/// Where the desktop character looks. Its usual gaze (<see cref="GazeMode"/>: Companion › Character › Where the character looks,
+/// Where the desktop character looks. Its usual gaze (<see cref="GazeMode"/>: Companion › Eyes › Where the character looks,
 /// the overlay's Eyes menu, or the persona's temperament) is what the eyes do when nothing else draws them; a reply may change
 /// it with a mode tag (<c>{look ahead}</c>) while the character may change where it looks. While Martlet watches the screen and
 /// decides (Companion › Vision › Glances at your screen), the eyes also glance at something that just changed in one place on

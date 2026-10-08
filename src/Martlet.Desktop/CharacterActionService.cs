@@ -6,7 +6,7 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
-/// <summary>The emotes and motions of the character this PC shows (Companion › Character › Emotes and motions): read from
+/// <summary>The emotes and motions of the character this PC shows (Companion › Emotes and motions): read from
 /// the model's files, with the owner's settings for that model, named by the Thinking model once per new model (and again on
 /// request), and saved per model in character-actions.json.</summary>
 internal sealed class CharacterActionService(string? dataDirectory)

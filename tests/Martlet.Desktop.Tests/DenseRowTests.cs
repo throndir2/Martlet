@@ -6,9 +6,9 @@ using Martlet.Desktop;
 
 namespace Martlet.Desktop.Tests;
 
-/// <summary>The dense editor rows of Companion › Character (touch zones, touch temperament, emotes): compact controls that line up,
-/// text boxes with their padding once, the panel that lets a row's last box fill the rest of its line, and the touch temperament's
-/// table, whose columns line up and wrap under the names on a narrow window.</summary>
+/// <summary>The dense editor rows of Companion › Emotes and motions and Companion › Touch (touch zones, touch temperament):
+/// compact controls that line up, text boxes with their padding once, the panel that lets a row's last box fill the rest of its
+/// line, and the touch temperament's table, whose columns line up and wrap under the names on a narrow window.</summary>
 public sealed class DenseRowTests
 {
     [Fact]

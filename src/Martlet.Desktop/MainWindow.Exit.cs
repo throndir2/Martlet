@@ -152,6 +152,7 @@ public partial class MainWindow
     {
         closing = true;
         exiting = true;
+        rowBatches.Stop();
         ErrorLog.Info("Martlet is exiting.");
         BeginClosingPresentation();
         // What the owner agreed to interrupt (or Windows ending the session) stops now.

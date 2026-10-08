@@ -3,14 +3,13 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
 using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Character › Touch zones › Eyes: where the shown model's eyes come from (its own meshes or eye bones, a
+/// <summary>Companion › Eyes › Where the eyes are: where the shown model's eyes come from (its own meshes or eye bones, a
 /// vision measurement or an estimate), Measure the eyes and Forget the measurement. The measurement is a low-priority vision
 /// helper job, never on a reply's path: it runs on its own once per model when the renderer says the eyes are only estimated
 /// and a model that can see is set up, and on request. Its hint goes to the renderer after each model load.</summary>
@@ -43,7 +42,7 @@ public partial class MainWindow
             eyesProgress.Visibility = characterEyes.Progress is null ? Visibility.Collapsed : Visibility.Visible;
         }
         FollowCharacterEyes();
-        if (openTab == CompanionTab.Character && !CompanionContent.IsKeyboardFocusWithin && !tabEdited &&
+        if (openTab == CompanionTab.Eyes && !CompanionContent.IsKeyboardFocusWithin && !tabEdited &&
             renderedEyes != (characterEyes.ModelId, characterEyes.Current, measuringEyes || characterEyes.Busy)) RenderTab();
     }
 
@@ -125,7 +124,7 @@ public partial class MainWindow
                 FollowCharacterEyes();
                 // After the owner's own request the page shows the result at once, as Detect zones does; a measurement Martlet
                 // took on its own waits until no one types on the page.
-                if (openTab == CompanionTab.Character && (!automatically || !CompanionContent.IsKeyboardFocusWithin && !tabEdited)) RenderTab();
+                if (openTab == CompanionTab.Eyes && (!automatically || !CompanionContent.IsKeyboardFocusWithin && !tabEdited)) RenderTab();
             }
         }
     }
@@ -135,23 +134,25 @@ public partial class MainWindow
         await characterEyes.ForgetAsync(lifetime.Token);
         if (closing) return;
         FollowCharacterEyes();
-        if (openTab == CompanionTab.Character) RenderTab();
+        if (openTab == CompanionTab.Eyes) RenderTab();
     }
 
-    /// <summary>The Eyes rows of the Touch zones card: where the eyes come from, how measuring went, Measure the eyes and Forget
+    /// <summary>Companion › Eyes › Where the eyes are: where the eyes come from, how measuring went, Measure the eyes and Forget
     /// the measurement, and the close-up Thinking saw with its boxes.</summary>
-    private void AddCharacterEyes(List<UIElement> stack, CharacterActionCatalog? catalog)
+    private Border CharacterEyesCard()
     {
+        var catalog = characterActions.Current;
         var busy = measuringEyes || characterEyes.Busy;
         renderedEyes = (characterEyes.ModelId, characterEyes.Current, busy);
-        var title = new TextBlock { Text = "Eyes", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 14, 0, 4) };
-        AutomationProperties.SetHeadingLevel(title, AutomationHeadingLevel.Level3);
-        stack.Add(title);
-        stack.Add(Note("Some emotes are drawn over the eyes (heart eyes, star eyes, dizzy swirls). They cover only the iris when Martlet " +
-            "knows where the eyes are: from the model's own data when it has it, otherwise measured once by your Thinking model in a " +
-            "close-up of the face, drawn off screen in the rest pose (so it works while the character is hidden). When the eyes are " +
-            "only estimated and a model that can see is set up, Martlet measures them on its own, in the background and never " +
-            "while it replies.", new Thickness(0, 0, 0, 4)));
+        var stack = new List<UIElement>
+        {
+            Heading("Where the eyes are"),
+            Note("Some emotes are drawn over the eyes (heart eyes, star eyes, dizzy swirls). They cover only the iris when Martlet " +
+                "knows where the eyes are: from the model's own data when it has it, otherwise measured once by your Thinking model in a " +
+                "close-up of the face, drawn off screen in the rest pose (so it works while the character is hidden). When the eyes are " +
+                "only estimated and a model that can see is set up, Martlet measures them on its own, in the background and never " +
+                "while it replies.", new Thickness(0, 0, 0, 4))
+        };
         eyesStatus = Note(EyesStatusText(), new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(eyesStatus, "CharacterEyesStatus");
         AutomationProperties.SetLiveSetting(eyesStatus, AutomationLiveSetting.Polite);
@@ -182,14 +183,7 @@ public partial class MainWindow
         {
             try
             {
-                var bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
-                bitmap.DecodePixelWidth = 480;
-                bitmap.UriSource = new Uri(path);
-                bitmap.EndInit();
-                bitmap.Freeze();
+                var bitmap = PictureAt(path, decodeHeight: 0, decodeWidth: 480);
                 var picture = new Image { Source = bitmap, Width = 240, Height = 240 * bitmap.PixelHeight / Math.Max(1, bitmap.PixelWidth),
                     Stretch = Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4, 0, 4) };
                 AutomationProperties.SetAutomationId(picture, "CharacterEyesPicture");
@@ -198,5 +192,6 @@ public partial class MainWindow
             }
             catch (Exception error) when (error is IOException or NotSupportedException or UriFormatException or InvalidOperationException) { }
         }
+        return Card([.. stack]);
     }
 }

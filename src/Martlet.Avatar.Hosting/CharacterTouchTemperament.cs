@@ -55,7 +55,7 @@ public sealed record CharacterTouchTemperament
     [JsonIgnore] public CustomTouchTemperament? Custom { get; init; }
 }
 
-/// <summary>A touch temperament the owner made and named (Companion › Character › Touch temperament), which any persona can use
+/// <summary>A touch temperament the owner made and named (Companion › Touch › Touch temperament), which any persona can use
 /// instead of its own (<see cref="TouchTemperamentSet.Uses"/>). Editing it changes it for every persona that uses it. It never
 /// goes to the Thinking model.</summary>
 public sealed record CustomTouchTemperament
@@ -176,7 +176,7 @@ public static class CharacterTouchTemperaments
     /// <summary>What <see cref="TouchTemperamentSet.Uses"/> holds for a persona that uses the built-in reactions.</summary>
     public const string BuiltIn = "built_in";
     public const int MaximumCustom = 32, MaximumNameLength = 40, MaximumUses = 64;
-    /// <summary>The choices besides the custom temperaments, as Companion › Character › Touch temperament names them. A custom
+    /// <summary>The choices besides the custom temperaments, as Companion › Touch › Touch temperament names them. A custom
     /// temperament can't take these names.</summary>
     public const string OwnLabel = "Decided from its personality", BuiltInLabel = "Built-in reactions";
 
