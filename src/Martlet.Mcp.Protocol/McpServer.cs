@@ -1174,6 +1174,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
             modelId = new { type = "string", maxLength = 128 },
             test = new { type = "boolean" }
         }),
+        Tool("local_model_servers", "Companion > Thinking > This PC > A model app you already use, headless: the model apps Martlet looks " +
+            "for on this PC by default address (Ollama 11434, LM Studio 1234, llama.cpp 8080, KoboldCpp 5001, Jan 1337, vLLM 8000, Lemonade " +
+            "13305 and 8000/api, SGLang 30000, text-generation-webui or TabbyAPI 5000, GPT4All 4891, Docker Model Runner 12434/engines, " +
+            "LiteLLM 4000; apps), which answer now on 127.0.0.1 with their models, models Martlet can't use, whether they ask for a key and " +
+            "how to start each (found: the production LocalModelServers.DetectAsync, about 1.5 s). address (what the owner would type, " +
+            "such as localhost:1234, 8080 or http://127.0.0.1:5001/v1) shows the canonical base URL Thinking takes, or why it is refused " +
+            "(an address off this PC), and what that server says. test=true sends the production Test model request (a short streamed " +
+            "reply with one tool offered, asked again without it when the app refuses tools) to model at address, or to the first " +
+            "found app other than Ollama; it runs the real model on this PC. fixture=true rehearses the same code against fixture " +
+            "servers on 127.0.0.1 (NOT AI): llama.cpp without --jinja (refuses tools; the test must retry without them and warn) and " +
+            "an app that asks for a key. Loopback only; never a key; saves nothing.", new
+        {
+            address = new { type = "string", maxLength = 256 },
+            model = new { type = "string", maxLength = 128 },
+            test = new { type = "boolean" },
+            fixture = new { type = "boolean" }
+        }),
         Tool("spoken_reply_check", "Rehearse a spoken reply whose voice fails partway, end to end with the production conversation " +
             "runtime (Chat Completions adapter, Martlet host voice stream, playback sink): a fixture endpoint on 127.0.0.1 streams a " +
             "canned four-sentence reply (NOT AI) a sentence at a time, like OpenRouter; a fixture host voice (a quiet tone, NOT AI) " +
@@ -2098,6 +2115,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "discord_voice_check" => await DiscordVoiceCheck.RunAsync(OptionalString(arguments, "martletDirectory") is null ? null : MartletDirectory(arguments), cancellation),
                 "model_ability_check" => await ModelAbilityCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "baseUrl"),
                     OptionalString(arguments, "modelId"), OptionalBool(arguments, "test") ?? false, cancellation),
+                "local_model_servers" => await LocalModelServersCheck.RunAsync(OptionalString(arguments, "address"),
+                    OptionalString(arguments, "model"), OptionalBool(arguments, "test") ?? false, OptionalBool(arguments, "fixture") ?? false,
+                    cancellation),
                 "spoken_reply_check" => await SpokenReplyCheck.RunAsync(OptionalString(arguments, "voiceFailure"),
                     OptionalInt(arguments, "failAt"), cancellation, OptionalInt(arguments, "reasoningMs"),
                     OptionalInt(arguments, "voiceDelayMs"), OptionalString(arguments, "reply"),

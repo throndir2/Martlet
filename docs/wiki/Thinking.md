@@ -10,13 +10,17 @@ Open **Companion › Thinking**.
 
 | Place | Notes |
 | --- | --- |
-| **This PC** | Usually Ollama or another local OpenAI-compatible loopback server. Private/no per-request cost, but needs local compute. |
+| **This PC** | **Ollama** (Martlet installs it and downloads a model that fits; any Ollama model works, including your own) or **a model app you already use**: LM Studio, llama.cpp, KoboldCpp, Jan, vLLM, Lemonade, GPT4All, Docker Model Runner or any OpenAI-compatible server on this PC. Martlet finds them, lists their models and tests one. Private/no per-request cost, but needs local compute. See [Local model apps](https://github.com/throndir2/Martlet/blob/main/docs/LOCAL_MODEL_APPS.md). |
 | **Another computer** | Use a paired host with a stronger GPU or loaded model. |
-| **Cloud provider** | OpenAI, OpenRouter, NVIDIA Build or custom OpenAI-compatible endpoint. May cost money and sends text/images to that provider. |
+| **Cloud provider** | OpenAI, OpenRouter, NVIDIA Build or custom OpenAI-compatible HTTPS endpoint. May cost money and sends text/images to that provider. |
 
 ## Local Ollama
 
 **Test model** starts Ollama if installed, checks the model is downloaded, loads it and asks a short streamed reply. If a model loads slowly, the talk window shows that status.
+
+## Your own model app
+
+Start the app's local server (LM Studio: Developer › Start server), then choose **This PC › A model app you already use**. Pick the app and model, **Test model**, then **Use**. For an app on another port, choose **Another address on this PC** and type what the app shows, such as `localhost:5001`.
 
 ## Fallback
 

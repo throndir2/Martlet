@@ -576,6 +576,23 @@ public sealed class McpServerTests(ITestOutputHelper output)
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowVisible(nint window);
 
+    [Fact]
+    public async Task LocalModelServersRehearsesFindingTestingAndKeysAgainstLoopbackFixtures()
+    {
+        var result = ToolResult((await SendAsync(
+            """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"local_model_servers","arguments":{"fixture":true,"address":"192.168.1.20:1234"}}}"""))[0]);
+        var fixture = result.GetProperty("fixture");
+        output.WriteLine(fixture.ToString());
+        Assert.True(fixture.GetProperty("ok").GetBoolean());
+        Assert.True(fixture.GetProperty("llamaCpp").GetProperty("test").GetProperty("ToolsRejected").GetBoolean());
+        Assert.Equal("NeedsKey", fixture.GetProperty("keyed").GetProperty("withoutKey").GetProperty("kind").GetString());
+        // An address off this PC is refused before anything is asked.
+        var address = result.GetProperty("address");
+        Assert.Equal(JsonValueKind.Null, address.GetProperty("baseUrl").ValueKind);
+        Assert.Contains("isn't this computer", address.GetProperty("problem").GetString(), StringComparison.Ordinal);
+        Assert.Contains(result.GetProperty("apps").EnumerateArray(), app => app.GetProperty("Id").GetString() == "lm-studio");
+    }
+
     private static JsonElement ToolResult(JsonElement message)
     {
         var text = message.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString()!;

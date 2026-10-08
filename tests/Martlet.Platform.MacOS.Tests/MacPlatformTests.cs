@@ -1,6 +1,4 @@
-using System.Net;
 using System.Runtime.InteropServices;
-using System.Text;
 using Martlet.Companion.Platform;
 using Martlet.Core.Platforms;
 
@@ -248,44 +246,6 @@ public sealed class MacPlatformProbeTests
     public void WarnsBelowSonoma() =>
         Assert.Contains(MacPlatformProbe.Warnings(MacPlatformProbe.FromFacts(new() { ProductVersion = "13.6", Arm64Hardware = true }, Portable)),
             w => w.Contains("Sonoma", StringComparison.Ordinal));
-}
-
-public sealed class LocalModelServersTests
-{
-    [Fact]
-    public void ParsesOllamaAndOpenAiModelLists()
-    {
-        Assert.Equal(["gemma4:e4b", "qwen3-vl:8b"],
-            LocalModelServers.ParseModels("""{"models":[{"name":"gemma4:e4b"},{"name":"qwen3-vl:8b"}]}""", ollamaTags: true));
-        Assert.Equal(["ai/smollm2"], LocalModelServers.ParseModels("""{"object":"list","data":[{"id":"ai/smollm2"}]}""", ollamaTags: false));
-        Assert.Null(LocalModelServers.ParseModels("<html>not a model server</html>", ollamaTags: false));
-        Assert.Null(LocalModelServers.ParseModels("""{"error":"nope"}""", ollamaTags: true));
-    }
-
-    [Fact]
-    public async Task DetectsOnlyServersThatAnswer()
-    {
-        var handler = new FakeHandler(request => request.RequestUri!.Port switch
-        {
-            11434 => Json("""{"models":[{"name":"gemma4:e4b"}]}"""),
-            1234 => new HttpResponseMessage(HttpStatusCode.NotFound),
-            _ => throw new HttpRequestException("connection refused")
-        });
-        var servers = await LocalModelServers.DetectAsync(handler, cancellationToken: CancellationToken.None);
-        var ollama = Assert.Single(servers);
-        Assert.Equal("ollama", ollama.Id);
-        Assert.Equal("http://127.0.0.1:11434/v1", ollama.ChatCompletionsBaseUrl);
-        Assert.Equal(["gemma4:e4b"], ollama.Models);
-        Assert.All(LocalModelServers.Candidates, c => Assert.True(IPAddress.IsLoopback(IPAddress.Parse(c.ModelsUrl.Host))));
-    }
-
-    private static HttpResponseMessage Json(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
-
-    private sealed class FakeHandler(Func<HttpRequestMessage, HttpResponseMessage> reply) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(reply(request));
-    }
 }
 
 public sealed class MacTrayTextTests

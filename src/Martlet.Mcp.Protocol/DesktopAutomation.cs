@@ -158,6 +158,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Discord › Martlet in your Discord calls › Check this PC only reads: it lists the playback devices' names,
         // looks for Discord's process and sets up a process loopback and closes it unstarted (nothing is recorded or played).
         // The mode's checkboxes, choices and Open camera view change things, so they need --allow-ui-effects.
+        // Companion › Thinking › This PC › A model app you already use: Look again only asks this PC's loopback ports which model
+        // apps answer (GET of their model lists), and Find models only asks the address typed there (on this PC only) for its
+        // models. Neither saves, sends a prompt or starts anything.
+        "LocalServersScan", "LocalServerFind",
         "DiscordCallCheck"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
@@ -183,6 +187,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Deep thinking's "Where it thinks" options ("DeepPlace-Computer", "DeepPlace-Off") only show that place's
         // card; its own Use and Turn off buttons commit (and need --allow-ui-effects).
         "DeepPlace-",
+        // Companion › Thinking › This PC's "Model app" options ("LocalApp-Ollama", "LocalApp-Other") only show that app's card;
+        // its own Use button commits (and needs --allow-ui-effects).
+        "LocalApp-",
         // Companion › Check-ins: a check-in's Edit its prompt ("CheckInPrompt-emotes") only opens Prompts.
         "CheckInPrompt-",
         // Companion › Pictures' "Where it draws" options ("PicturesPlace-Host", "PicturesPlace-ComfyUi") and its computer pills
@@ -354,6 +361,18 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // whether it hears your voice or gets the transcript, and whether it's the fastest or the smartest that fits; choosing
         // one with ui_select only fills SetupLocalModel, the model name, so it needs --allow-ui-effects but saves nothing).
         "SetupLocalModelPicks", "SetupLocalModel",
+        // Companion › Thinking › This PC › Ollama: what any Ollama model means (a library name, a Hugging Face GGUF, your own).
+        "SetupLocalOwnModels",
+        // Companion › Thinking › This PC › A model app you already use: what looking on this PC's loopback ports found (each app's
+        // name, base URL and model count, or that one asks for a key), the app picked (LocalServerPick: "LM Studio ·
+        // http://127.0.0.1:1234/v1 · 3 models" or "Another address on this PC"), the model in the box and what the app lists
+        // (LocalServerModels), what the key box will do (never the key), how to start the picked app's server and where messages
+        // go (LocalServerHint), and the last Test model result. Choosing LocalServerPick or LocalServerModel with ui_select only
+        // fills the fields and saves nothing, but needs --allow-ui-effects; LocalServerTest sends the model a short loopback
+        // request and LocalServerUse switches Thinking, so they need it too. Martlet.Companion's Find model apps result
+        // (LocalModelsFound; its FindLocalModels button fills the unsaved Thinking fields, so it needs --allow-ui-effects).
+        "LocalServersStatus", "LocalServerPick", "LocalServerModel", "LocalServerModels", "LocalServerKeyStatus", "LocalServerHint",
+        "LocalServerTestResult", "LocalModelsFound",
         // The setup advisor: which step it shows and its plan's summary (the goal's one-line explanation).
         "AdvisorStep", "AdvisorSummary",
         // Companion › Voice › Voices: whether the voice list is shared with the paired Martlet computers, with how many and when,

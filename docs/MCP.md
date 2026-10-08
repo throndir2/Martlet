@@ -2951,6 +2951,53 @@ one-word answer and how long it took). The `TalkHearVoiceTest` button sends the
 Thinking model a test recording (a provider request; a cloud model asks first,
 with `ConfirmationYes`/`ConfirmationNo`), so it needs `--allow-ui-effects`.
 
+`local_model_servers` is Companion › Thinking › This PC › *A model app you
+already use* without the window ([Local model apps](LOCAL_MODEL_APPS.md)).
+`apps` lists the apps Martlet looks for, each with `Id`, `Name`, `BaseUrl`
+(its default address on 127.0.0.1), `OwnedBy` (set when other apps share the
+port) and `HowToStart`. `found` is the production `LocalModelServers.DetectAsync`
+on this PC's loopback ports now (about 1.5 s): each answering app's `Id`
+(`port-8080` when its model list doesn't say which app it is), `Name`,
+`baseUrl`, `Models`, `Unusable` (names Martlet can't send), `NeedsKey` and
+`HowToStart`. `address` takes what the owner would type (`localhost:1234`,
+`8080`, `http://127.0.0.1:5001/v1`) and returns the canonical `baseUrl` with
+the app's `name` and `answer` (`kind` `Models`, `NeedsKey`, `NotAModelServer`
+or `NoAnswer`, with `Models`, `OwnedBy` and `Problem`), or `problem` for an
+address that isn't on this PC. `test: true` sends the production Test model
+request to `model` at `address` (or to the first found app other than Ollama):
+streamed, the default reply length and Thinking steps, one tool offered and
+asked again without it when the app refuses tools. It returns `passed`,
+`Summary`, `Warning`, `ToolsRejected`, `firstWordsMs`, `totalMs` and the run
+window's `output`, or `error`. It runs the real model on this PC. `fixture:
+true` rehearses the same code against fixture servers on 127.0.0.1 (canned
+words, NOT AI): llama.cpp without `--jinja` (`llamaCpp`: its model list says
+`llamacpp`, the request with a tool is refused, the test asks again without it
+and warns) and an app that asks for a key (`keyed`: `NeedsKey` without the key,
+its models with it), plus an address off this PC (`offComputer`, refused).
+`fixture.ok` needs all of them. Loopback only; never a key; saves nothing.
+
+On the Thinking page, `LocalApp-Ollama` and `LocalApp-Other` (*Model app*:
+*Ollama (recommended)* and *A model app you already use*) only show that
+app's card. `LocalServersStatus` reads what looking found (*Found on this PC:
+LM Studio at http://127.0.0.1:1234/v1 (3 models).*, or *No other model app
+answers on this PC...*) and the model Thinking uses there. `LocalServerPick`
+reads the app picked (*LM Studio · http://127.0.0.1:1234/v1 · 3 models* or
+*Another address on this PC*), `LocalServerModel` the model,
+`LocalServerModels` what the app lists, `LocalServerKeyStatus` what the key box
+will do (never the key), `LocalServerHint` how to start an app typed by address
+and where messages go, and `LocalServerTestResult` the last Test model result.
+`LocalServersScan` (*Look again*) and `LocalServerFind` (*Find models* for the
+typed address) only ask this PC's loopback, so they are safe clicks.
+`LocalServerTest` (a real request to the model) and `LocalServerUse` (switches
+Thinking; a model the app doesn't list first asks `LocalServerModelQuestion`)
+need `--allow-ui-effects`. `SetupLocalOwnModels` (This PC › Ollama) says that
+any Ollama model works. When the app Thinking uses stops answering, Home shows
+*<app> isn't ready on this PC* (`HealthIssue-local-model-app`, and `StageText`
+when it is the top problem). On
+Martlet.Companion, `LocalModelsFound` reads what *Find model apps*
+(`FindLocalModels`, which fills the unsaved Thinking fields, so it needs
+`--allow-ui-effects`) found.
+
 `spoken_reply_check` rehearses a spoken reply whose voice fails partway, end to
 end with the production conversation runtime (`ConversationRuntime`, the Chat
 Completions adapter, the Martlet host voice stream and the playback sink). A
