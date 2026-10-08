@@ -118,6 +118,14 @@ public sealed class TouchZoneAreasTests
         var swung = CharacterTouchZones.Match(settings, Touch(X(-0.22), Y(0.48), "ArtMesh224"))!;
         Assert.Equal(("tail", "drawable"), (swung.Zone.Id, swung.How));
         Assert.Equal(tail.AllAreas.ToList().FindIndex(a => a.Drawables.Contains("ArtMesh224")), swung.Area);
+        // The renderer traces the touched point to the rest pose: for the tail, where it hung behind her right thigh. The touch
+        // is on the tail where it swung to, not on the thigh too.
+        var traced = Touch(X(-0.22), Y(0.48), "ArtMesh216") with { WholeX = X(-0.22), WholeY = Y(0.48), RestWholeX = X(-0.041), RestWholeY = Y(-0.198) };
+        Assert.True(settings.Zones.Single(z => z.Id == "thigh_right").Holds(Whole, X(-0.041), Y(-0.198)));
+        var onTail = CharacterTouchZones.Match(settings, traced)!;
+        Assert.Equal(("tail", false), (onTail.Zone.Id, onTail.Traced));
+        Assert.Equal(["tail"], CharacterTouchZones.Touched(settings, traced, onTail).Select(z => z.Id));
+        Assert.Equal((X(-0.22), Y(0.48), false), CharacterTouchZones.TouchPoint(settings, traced, onTail));
         // Where it hung, behind her right leg, a touch on the leg is the leg's, not the tail's old box.
         Assert.Equal("thigh_right", CharacterTouchZones.Match(settings, Touch(X(-0.04), Y(-0.1), "LegL0"))!.Zone.Id);
         Assert.False(tail.Holds(Whole, X(-0.04), Y(-0.1)));

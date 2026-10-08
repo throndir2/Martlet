@@ -193,7 +193,8 @@ public sealed record RendererZoneProbe(RendererDrawableBox[]? Drawables = null, 
 
 /// <summary>Which zone a touch landed in and how it was found ("drawable", "node", "bone", "hair", "box" or "coarse"), whether
 /// its boxes were compared with where the touched point was in the rest pose (<see cref="CharacterTouch.RestX"/>, traced on the
-/// touched mesh), so the match follows the model as it moves, and for a zone with several areas, which of them (its index in
+/// touched mesh), so the match follows the model as it moves (not for a part that swings on its own, such as a tail, found by its
+/// drawable wherever it swung), and for a zone with several areas, which of them (its index in
 /// <see cref="CharacterTouchZone.AllAreas"/>).</summary>
 public sealed record TouchZoneMatch(CharacterTouchZone Zone, string How, bool Traced = false, int? Area = null);
 
@@ -682,7 +683,8 @@ public static partial class CharacterTouchZones
 
     /// <summary>Every zone a touch landed in, the matched one (<paramref name="match"/>) first. Zones can overlap, and a touch
     /// where they do is on each of them: every other zone in use with a box that holds the point <see cref="Match"/> compares
-    /// (<see cref="TouchPoint"/>; any of its areas, <see cref="CharacterTouchZone.Holds"/>), smallest first, that lies on the same
+    /// (<see cref="TouchPoint"/>, for a tail that swung, where it is now; any of its areas, <see cref="CharacterTouchZone.Holds"/>),
+    /// smallest first, that lies on the same
     /// part of the body as the touch (a VRM touch's bone, <see cref="OnPart"/>, else the matched zone's part): a hand held in
     /// front of the hips or raised to the face touches the hand, not what is behind it. A zone whose box frames a smaller touched
     /// zone's (holds most of it, <see cref="Inside"/>: the hair's box around an eye, a chest's around a breast) is left out, as
@@ -693,7 +695,7 @@ public static partial class CharacterTouchZones
         if (match is null) return [];
         if (settings is null || match.How == "coarse") return [match.Zone];
         TouchZoneBox Page(CharacterTouchZone zone) => settings.Crop is { } crop ? zone.Box.Within(crop) : zone.Box;
-        var (x, y, _) = TouchPoint(settings, touch);
+        var (x, y, _) = TouchPoint(settings, touch, match);
         var matched = Parts(match.Zone.Id);
         bool SamePart(string zoneId) => touch.Bone is { } bone ? OnPart(zoneId, bone)
             : matched is null || Parts(zoneId) is not { } parts || parts.Intersect(matched, StringComparer.Ordinal).Any();
@@ -737,9 +739,10 @@ public static partial class CharacterTouchZones
         }
         foreach (var drawable in touch.Drawables)
         {
-            // A drawable a zone follows by the model's own parts (a tail's, wherever it swung) is that zone's alone.
+            // A drawable a zone follows by the model's own parts (a tail's, wherever it swung) is that zone's alone. Its rest
+            // point is where it hung in the rest pose (often behind the body), so the match is not traced.
             if (active.FirstOrDefault(z => z.Areas?.Any(a => a.FromModel && a.Drawables.Contains(drawable, StringComparer.Ordinal)) == true) is { } follows)
-                return Found(follows, "drawable", drawable);
+                return new(follows, "drawable", false, AreaOf(follows, crop, x, y, drawable));
             var owners = active.Where(z => z.Drawables.Contains(drawable, StringComparer.Ordinal)).ToArray();
             if (owners.Length == 0) continue;
             var piece = drawable;
@@ -802,10 +805,14 @@ public static partial class CharacterTouchZones
     /// <summary>The point of the page a touch's zone boxes compare with, and whether it is traced to the rest pose: where the
     /// touched point of the character was in its rest pose (the pose the zones' picture shows, traced on the touched mesh, so
     /// it stays on the same spot of the skin however the head turns to the mouse, nods or tilts, or an idle motion moves the
-    /// body), else where the touch landed. Zones found with the character framed whole compare with that framing
-    /// (<see cref="CharacterTouch.RestWholeX"/>, else <see cref="CharacterTouch.WholeX"/>).</summary>
-    public static (double X, double Y, bool Traced) TouchPoint(CharacterTouchZoneSettings? settings, CharacterTouch touch) =>
-        settings is { Whole: true }
+    /// body), else where the touch landed. For a <paramref name="match"/> that is not traced (a touch on a part that swings on
+    /// its own, such as a tail, which hung somewhere else in the rest pose; not a rough one), where the touch landed. Zones found
+    /// with the character framed whole compare with that framing (<see cref="CharacterTouch.RestWholeX"/>, else
+    /// <see cref="CharacterTouch.WholeX"/>).</summary>
+    public static (double X, double Y, bool Traced) TouchPoint(CharacterTouchZoneSettings? settings, CharacterTouch touch, TouchZoneMatch? match = null) =>
+        match is { Traced: false, How: not "coarse" }
+            ? settings is { Whole: true } && touch is { WholeX: { } landedX, WholeY: { } landedY } ? (landedX, landedY, false) : (touch.X, touch.Y, false)
+        : settings is { Whole: true }
             ? touch is { RestWholeX: { } restX, RestWholeY: { } restY } ? (restX, restY, true)
                 : touch is { WholeX: { } wholeX, WholeY: { } wholeY } ? (wholeX, wholeY, false) : (touch.X, touch.Y, false)
             : touch is { RestX: { } pageX, RestY: { } pageY } ? (pageX, pageY, true) : (touch.X, touch.Y, false);

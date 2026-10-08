@@ -5365,6 +5365,25 @@ when given. It changes nothing on the character, so it needs no
 `--allow-ui-effects`. `MoveAvatar`'s value then shows the last picture as
 `picture`.
 
+**Where the touch zones are now**: `character_zones` reads where each area of
+the showing character's touch zones is, as each frame is drawn (`MoveAvatar`'s
+value `"zones"`), `samples` times (1 to 60, default 1) `gapMs` apart (0 to
+5000, default 250). The zones are the ones Martlet last gave the renderer: the
+saved zones in use of the model it shows. *Show the zones on the character*
+(`TouchZonesShowOnCharacter`) draws the same areas over the character. An area
+that follows Live2D drawables (a tail's, which swings) is the box around those
+drawables where they are drawn now (`from`: `drawables`). An area that follows
+VRM bones or joints keeps its size and moves with them (`bones`). Any other
+area stays at its box, moved only by the view's zoom and pan (`box`). `last`
+has `n`, `found`, `renderer`, `draw` (whether the areas are drawn on the
+character) and `areas`: each has `zone`, `area` (0 for the zone's first),
+`from`, and `left`, `top`, `right` and `bottom` (fractions of the overlay's
+drawing, +y down). `summary` gives, for each area, what placed it, its last box
+and how far its middle moved (`x`, `y`). Sample several times while the idle
+motion plays to see a tail's areas move with it. Reading changes nothing, so it
+needs no `--allow-ui-effects`. `MoveAvatar`'s value in `ui_snapshot` shows the
+last reading as `zones`.
+
 **The character's idle body**: while it shows, a VRM stands in a relaxed pose
 (arms hanging close to the body, elbows softly bent, fingers and thumbs
 curled), breathes and sways slowly; see *VRM idle pose and breathing* in

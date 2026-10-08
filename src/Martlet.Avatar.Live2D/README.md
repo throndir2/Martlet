@@ -267,6 +267,22 @@ on the same spot of the skin however the head turns, nods or tilts. `hair` is
 true when the topmost drawable sits in a part the model names as hair (its ID
 or DisplayInfo name, or a part it sits in, matching `HAIR_PART`).
 
+`swingingChains()` finds the parts of the model that swing on their own, such
+as a tail, a ponytail or wings, so a touch zone can follow all of such a part
+(`lib/chains.ts`). For each physics setting in the model's physics3.json, it
+puts the parameters that the setting drives at their maximum and finds the
+visible drawables that move. Those drawables are that setting's part, root
+first (the one that moved least) and tip last. It skips a setting that only
+feeds other settings, and a setting that moves more than 40% of the visible
+drawables (that is the whole body). Settings with names that start with the
+same word and swing mostly the same drawables become one chain, such as
+`尾巴 / 尾巴(2)`. Each chain has its `name` (the setting names, when the file
+gives them), `drawables` and its reach (`left`, `top`, `right`, `bottom`, canvas
+fractions as framed now: where it is at rest and swung both ways). Every
+parameter is put back, so the pose does not change. `CHAIN_LIMITS` stops the
+search after 4 seconds and limits the count to 48 chains of 256 drawables. The
+renderer page sends the chains with the touch zones picture's probe.
+
 ## Asset and lifecycle boundaries
 
 - No model URLs, filesystem resolver, CDN, archive import, script plugins or

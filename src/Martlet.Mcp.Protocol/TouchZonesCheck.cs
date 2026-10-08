@@ -161,7 +161,7 @@ internal static class TouchZonesCheck
             var given = JsonSerializer.Deserialize<CharacterTouch>(touch, Web) ?? throw new ArgumentException("touch must be a CharacterTouch object.");
             var found = CharacterTouchZones.Match(settings, given);
             // The point the boxes compare with: where the touched point was in the rest pose when the touch carries it.
-            var (atX, atY, traced) = CharacterTouchZones.TouchPoint(settings, given);
+            var (atX, atY, traced) = CharacterTouchZones.TouchPoint(settings, given, found);
             var compared = new { x = Math.Round(atX, 4), y = Math.Round(atY, 4), rest = traced };
             // Every zone the touch landed in (zones can overlap), the matched one first: Martlet hears each one it notices.
             var touched = CharacterTouchZones.Touched(settings, given, found);

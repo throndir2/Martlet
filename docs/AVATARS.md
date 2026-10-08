@@ -752,7 +752,11 @@ default; turn it off to leave them out. The check box names each of these parts.
   hair's box around an eye) is left out, because the smaller zone tells better
   where the click landed. A stroke across zones that overlap crosses each of
   them, and Martlet hears them all on the stroke's path. The last-touch line
-  names the other zones: *Groin (box), with Left thigh, at ...*.
+  names the other zones: *Groin (box), with Left thigh, at ...*. A click on a
+  part that swings on its own, such as a tail, is compared with the other
+  zones' boxes where the part is now, not where it hung at rest. So a click on
+  the tail where it swung beside the waist doesn't also touch the calf that
+  hid the tail at rest.
 - Each zone plays its emotes and gestures (by default the model's own where it
   has them: a head pat leans in or tilts and smiles, a cheek blushes, an
   intimate zone blushes and flinches) and rests a few seconds before reacting
