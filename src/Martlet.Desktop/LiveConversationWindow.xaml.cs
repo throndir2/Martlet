@@ -2038,7 +2038,8 @@ public partial class LiveConversationWindow : ThemedWindow
                     : notice is not null && (!Available || !MicrophoneUsable) ? (notice, true) : ("Not listening", false);
             if (loading is not null || loadPending || !ready && notice is null) return ("Getting ready to listen…", false);
             if (locked) return ("Windows is locked. Martlet listens again when you unlock it.", false);
-            if (listening && micProblem is not null) return ($"{micProblem} Martlet keeps trying.", true);
+            if (listening && micProblem is not null)
+                return (listener?.Retry is { } wait ? $"{micProblem} Martlet keeps trying every {wait.TotalSeconds:0} s." : $"{micProblem} Martlet keeps trying.", true);
             if (listenProblem is not null) return ($"{listenProblem} Martlet keeps trying.", true);
             if (!listening) return (ListeningProblem(), true);
             if (listener is { Hearing: true }) return ("Hearing you…", false);

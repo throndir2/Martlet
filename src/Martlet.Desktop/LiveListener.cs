@@ -27,7 +27,7 @@ internal sealed class LiveListener(ListeningOptions options, Voiceprint? voicepr
     private readonly ConcurrentQueue<HeardSpeech> results = new();
     private LiveConversationOperation? utterance;
     private int transcribing, held;
-    private long revision;
+    private long revision, retryTicks;
     private string? ended;
 
     internal ListeningOptions Options { get; } = options;
@@ -58,6 +58,13 @@ internal sealed class LiveListener(ListeningOptions options, Voiceprint? voicepr
     internal bool MicrophoneWorks => Utterance?.Capture?.Snapshot is { State: CaptureState.Capturing, CanonicalSamples: > 0 };
     /// <summary>Why listening ended by itself (setup changed or can't be used), or null while it runs or after Stop.</summary>
     internal string? Ended { get => Volatile.Read(ref ended); set => Volatile.Write(ref ended, value); }
+    /// <summary>After the microphone failed: how long listening waits before it opens it again (longer with each failure in a
+    /// row, <see cref="LiveConversationController.MicrophoneRetry"/>). Null while it works.</summary>
+    internal TimeSpan? Retry
+    {
+        get => Interlocked.Read(ref retryTicks) is var ticks and > 0 ? TimeSpan.FromTicks(ticks) : null;
+        set => Interlocked.Exchange(ref retryTicks, value?.Ticks ?? 0);
+    }
     internal string Status => Held ? "listen.held" : Utterance?.Status.Code ?? "listen.starting";
 
     internal void Post(HeardSpeech speech)

@@ -6259,7 +6259,10 @@ needs `--allow-ui-effects`) and `HomeListeningStatus` (the listening
 indicator: *Not listening*, *Getting ready to listen…*, *Listening. Just start
 talking.*, *Hearing you…*, *Martlet is replying…*, *Martlet is speaking…*,
 *Paused…* or why it can't listen, such as *Set up Thinking in Companion, then
-come back to talk.*), Home's `HomeWatch` (*Start watching* / *Stop watching*,
+come back to talk.*, or, when the microphone fails, why and how often Martlet
+tries it again, such as *Martlet can't open the microphone. Check that it is
+connected and enabled. Martlet keeps trying every 10 s.*; `logs_tail` with
+`contains` *Always listening* shows each failure's error code), Home's `HomeWatch` (*Start watching* / *Stop watching*,
 shown while vision is on in Companion; it runs the conversation hidden and
 starts screen or camera capture, so it needs `--allow-ui-effects`; Stop watching
 only stops it) and `HomeWatchingStatus` (the watching indicator: *Not

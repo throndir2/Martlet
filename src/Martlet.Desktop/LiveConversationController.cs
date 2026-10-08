@@ -1230,11 +1230,18 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     }
 
     internal static TimeSpan SpeechTail => TimeSpan.FromMilliseconds(300);
-    internal static TimeSpan MicrophoneRetry => TimeSpan.FromSeconds(5);
+
+    /// <summary>How long always listening waits before it opens the microphone (or this PC's sound) again after this many
+    /// failures in a row: soon after the first (a device that was busy or changing a moment ago often works at once), then
+    /// longer, so a microphone that keeps failing isn't opened and dropped every few seconds.</summary>
+    internal static TimeSpan MicrophoneRetry(int failures) =>
+        TimeSpan.FromSeconds(failures switch { <= 1 => 1, 2 => 5, 3 => 10, 4 => 20, _ => 30 });
 
     private async Task<SetupWorkResult> ListenLoopAsync(LiveListener listening, CancellationToken token)
     {
         var pending = Task.CompletedTask;
+        var failures = 0;
+        ErrorCode? lastFailure = null;
         try
         {
             while (true)
@@ -1272,12 +1279,24 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     utterance.Hearing = false;
                     utterance.TalkingOver = false;
                     var status = utterance.Status;
+                    TimeSpan? wait = null;
+                    if (status.AudioFailure is { } failure)
+                    {
+                        wait = MicrophoneRetry(++failures);
+                        listening.Retry = wait;
+                        // Every failure for a while, then each change and every tenth, so a broken microphone can't flood the log.
+                        if (failures <= 5 || failure != lastFailure || failures % 10 == 0)
+                            LogMicrophoneFailure(listening, utterance, failure, failures, wait.Value);
+                        lastFailure = failure;
+                    }
+                    else if (utterance.Capture?.Snapshot is { CanonicalSamples: > 0 }) Recovered();
                     if (status.Code is not ("mic.no_speech" or "listen.held"))
                         listening.Post(Result(utterance));
-                    if (status.AudioFailure is not null)
-                        await Task.Delay(MicrophoneRetry, clock, token).ConfigureAwait(false);
+                    if (wait is { } delay)
+                        await Task.Delay(delay, clock, token).ConfigureAwait(false);
                     continue;
                 }
+                Recovered();
                 listening.BeginTranscribing();
                 utterance.SpeechEndedAt = clock.GetTimestamp();
                 utterance.Hearing = false;
@@ -1310,6 +1329,33 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             await pending.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             if (!listening.Pc) await wordsTail.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
+
+        // The microphone delivered sound and ended without failing: the failures in a row are over.
+        void Recovered()
+        {
+            if (failures == 0) return;
+            ErrorLog.Info($"Always listening: {(listening.Pc ? "hearing this PC's sound" : "the microphone")} works again after " +
+                $"{failures} failure{(failures == 1 ? "" : "s")} in a row.");
+            failures = 0;
+            lastFailure = null;
+            listening.Retry = null;
+        }
+    }
+
+    // Why always listening lost the microphone, for the log (a user's log is the only place that shows it): the error, whether
+    // the microphone gave any sound first, which microphone and whether echo reduction wrapped it, and the wait before the next
+    // try. Never a device name or anything heard.
+    private void LogMicrophoneFailure(LiveListener listening, LiveConversationOperation utterance, ErrorCode failure, int failures,
+        TimeSpan wait)
+    {
+        var samples = utterance.Capture?.Snapshot.CanonicalSamples ?? 0;
+        var when = samples > 0 ? $"after {samples / 16000.0:0.0} s of sound" : "before any sound";
+        var details = listening.Pc ? failure.ToString()
+            : $"{failure}, " + (utterance.Authorization.Configuration.Audio?.Input.EndpointId is null
+                ? "Windows' default microphone" : "the microphone chosen in Companion")
+            + (listening.Options.ReduceEcho && echoReducer is not null ? ", echo reduction on" : "");
+        ErrorLog.Warn($"Always listening: {(listening.Pc ? "hearing this PC's sound" : "the microphone")} failed {when} ({details}); " +
+            $"Martlet opens it again in {wait.TotalSeconds:0} s ({failures} failure{(failures == 1 ? "" : "s")} in a row).");
     }
 
     // One utterance: its own authorization (revoked with listening), recorded with the listener's options.

@@ -8,6 +8,9 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Fixed
+- When always listening can't use your microphone, Martlet no longer opens and drops it every 5 seconds. It tries again after 1 second, then waits longer each time (up to 30 seconds), Home says how often it tries, and the log says why the microphone failed. ([#632](https://github.com/throndir2/Martlet/pull/632))
+
 ## [0.59.0] - 2026-10-08
 
 ### Added
