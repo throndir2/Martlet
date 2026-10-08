@@ -6840,8 +6840,10 @@ instead (the character's *Show at startup* and Parakeet's warm-up are skipped
 too). Choosing `UseAsHost` (Settings › *What this PC is for*; it saves
 `device-role.txt`, so it needs `--allow-ui-effects`) ends a running
 conversation and hides the character, logging *This PC became a Martlet host,
-so Martlet ended the conversation...*. `UseAsCompanion` on a host PC (or
-another computer's ask that it be a companion PC again) brings back at once what
+so Martlet ended the conversation...*. `UseAsCompanion` on a host PC (the
+host dashboard's `SwitchToCompanion` at the top of Home does the same; its label
+reads *Switch to companion PC*), or
+another computer's ask that it be a companion PC again, brings back at once what
 was on when it became a host: the character, always listening and watching
 (*This PC is your companion PC again, so Martlet brings back what was on before
 it became a host: showing the character.*); after Martlet started as a host it
