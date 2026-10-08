@@ -16,6 +16,7 @@ Each release's section here is also its notes on GitHub.
 - Settings › What this PC is for now lists **Your other computers**: each one says whether it is a companion PC or a host PC, with a button to make it a host PC or a companion PC again from where you are. It is the same switch the Devices map has, now easy to find. ([#612](https://github.com/throndir2/Martlet/pull/612))
 
 ### Changed
+- **Jenny (Dioco)** is now the voice Martlet starts with. If Martlet spoke with the old default, *Annie (cute anime girl)*, it now speaks with Jenny on all your computers; a voice you chose yourself stays. ([#622](https://github.com/throndir2/Martlet/pull/622))
 - **Reconfigure** in the recommended setup now runs as a background task. The review closes and a window shows each computer's progress and what its installs print. Hide it and find it again in **Background tasks**, or cancel the changes not made yet. ([#616](https://github.com/throndir2/Martlet/pull/616))
 - More long jobs now show in **Background tasks**, with their progress and output, and you can cancel them there: downloading a Martlet update, Parakeet or cloudflared, updating your hosts, keeping this PC's host service on Martlet's version, and the installs and updates your other computers ask this PC to make. ([#616](https://github.com/throndir2/Martlet/pull/616))
 - Martlet repeats itself less. Before it speaks up on its own about your screen, what your PC plays, a due reminder or finished work, it now looks at what it said in the last hour, and when, and says something again only when it's worth it. Edit how in Companion › Prompts › **What you said lately**; replies to what you say, type or touch never wait for it. ([#613](https://github.com/throndir2/Martlet/pull/613))
@@ -28,7 +29,7 @@ Each release's section here is also its notes on GitHub.
 - **Manage memory** now shows what Martlet remembers the moment it opens, even while Martlet is answering you, and it keeps up on its own: facts Martlet remembers, changes or forgets while it's open show up right away, with no need to press **Refresh**. ([#614](https://github.com/throndir2/Martlet/pull/614))
 
 ### Removed
-- The two "cute anime girl" voices are gone, because their raised pitch sounded artificial. Martlet now starts with **Annie (cute, chatty)**, and if Martlet spoke with an anime voice it switches to your chosen or first voice on all your computers. ([#617](https://github.com/throndir2/Martlet/pull/617))
+- The two "cute anime girl" voices are gone, because their raised pitch sounded artificial. If Martlet spoke with one, it switches to the voice you chose, or else to Jenny (Dioco), on all your computers. ([#617](https://github.com/throndir2/Martlet/pull/617))
 
 ## [0.57.0] - 2026-10-07
 
