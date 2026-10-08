@@ -24,7 +24,7 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
     private readonly DateTimeOffset acceptedAt;
     private readonly Dictionary<ProviderRole, int> credentialTickets = [];
     private readonly HashSet<Guid> requests = [];
-    private int revoked, textRequests, sttRequests, speechRequests, speechBytes, fallbackTickets;
+    private int revoked, textRequests, sttRequests, speechRequests, speechBytes, fallbackTickets, standIns;
     private long speechSamples;
     private BoundedTextInput? exactInput;
     private int maxTextRequests = 1;
@@ -133,6 +133,23 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
         }
         return new(Binding(SetupRole.Stt), context.Ids, context.Epoch, LiveConversationConfiguration.TranscriptionLimits,
             Min(context.Deadline, Deadline(TimeSpan.FromSeconds(30))), true, true);
+    }
+
+    /// <summary>The permission for Parakeet <paramref name="modelId"/> on this PC to hear the utterance when Listening's own route
+    /// (a paired host or OpenAI) failed it, or in the route's place while the route failed moments ago: nothing is sent anywhere
+    /// and nothing costs money. Once per action, after at most the route's own request, and never when Listening already runs on
+    /// this PC.</summary>
+    internal AudioUploadAuthorization AuthorizeStandIn(ProviderRequestContext context, string modelId)
+    {
+        Check();
+        lock (gate)
+        {
+            if (!Microphone || sttRequests > 1 || standIns != 0 || Configuration.LocalStt())
+                throw new LiveActionException("conversation.audio_not_authorized");
+            standIns++;
+        }
+        return new(LocalTranscriptionAdapter.Binding(modelId), context.Ids, context.Epoch, LiveConversationConfiguration.TranscriptionLimits,
+            Min(context.Deadline, Deadline(TimeSpan.FromSeconds(30))), true, false);
     }
 
     public async ValueTask<AuthorizedTextOperation?> AuthorizeTextAsync(TextAuthorizationAction action, CancellationToken token)
