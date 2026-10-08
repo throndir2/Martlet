@@ -217,7 +217,8 @@ character-colored themes.
 3. **Start talking, start listening and show the character.** Say hi! 👋
 
 Prefer something else, like a cloud provider or another of your computers?
-Change any of it in **Companion**, or click **Get a setup recommendation**.
+Change any of it in **Companion**, click **Recommended setup** to make the best
+use of all your computers, or click **Plan a setup from scratch**.
 
 > [!NOTE]
 > Martlet runs on Windows 10 (version 2004 or later) and Windows 11, 64-bit,

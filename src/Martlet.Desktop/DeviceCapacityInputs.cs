@@ -149,7 +149,7 @@ internal static class DeviceCapacityInputs
 
     /// <summary>"Thinking (Gemma 4 E2B)": the component and the option running it; just the option when its name says the
     /// component already ("Advanced lip-sync (Audio2Face-3D)").</summary>
-    private static string Named(ComponentOption option)
+    internal static string Named(ComponentOption option)
     {
         var name = ComponentRanking.Name(option.Component);
         return option.DisplayName.Contains(name, StringComparison.OrdinalIgnoreCase) ? option.DisplayName : $"{name} ({option.DisplayName})";

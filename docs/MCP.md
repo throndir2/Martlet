@@ -1377,15 +1377,24 @@ as their picture and `includeIntimate` setting the switch, so the section can
 be checked with `-Desktop`. With `temperament` (a simulated Thinking answer
 for [Touch temperament](AVATARS.md#touch-temperament), such as
 `{"groups":{"head":{"attitude":2,"reactions":["hearts","blush"]}}}`) or
-`personaId` (the temperament saved for that persona in the `dataDirectory`'s
-`character-temperaments.json`), `match` plays what the temperament decides
+`personaId` (the temperament that persona uses in the `dataDirectory`'s
+`character-temperaments.json`: its own, the built-in reactions or a custom
+one), `match` plays what the temperament decides
 when the zone has no pick of its own, and its `reaction` tells `from`
 (`owner`, `temperament` or `default`), the `attitude` word, whether it
 `escalated` (with `repeats`, the touches in a row) and how long it `linger`s.
 `temperament` in the result shows the request Thinking gets (with
-`personality`, its text), the `vocabulary` and `attitudes` allowed, whether the
-answer was `read`, and what is `used` (who decided it, a `summary`, each group
-and zone and the escalation). Never the model's path; it contacts nothing.
+`personality`, its text), the `vocabulary` and `attitudes` allowed, the six
+`categories` (each `Id`, `Label` and the zone kinds it covers, `parts`; every
+zone kind is in exactly one, and `intimate` holds the intimate ones), whether the
+answer was `read`, and what is `used` (who decided it, or `custom` with
+`custom` naming the custom temperament, a `summary`, each category and zone
+and the escalation). `personas` lists each persona of `settings.json` (and any
+other the file names): its `personaId`, `name`, whether it is `active`, what it
+`uses` (`own`, `built-in` or `custom`), the `custom` temperament's name and its
+`own` temperament's source and summary. `custom` lists the custom temperaments:
+`Id`, `Name`, `summary`, `groups`, `zones` and the personas that use it
+(`usedBy`). Never the model's path; it contacts nothing.
 
 The section's status fields are `TouchZonesStatus` (how many zones, how many in
 use and who found them, or that none are found yet), `TouchZonesVision`
@@ -1434,7 +1443,9 @@ stops it and keeps the zones found until then, `TouchZonesSentView` (*Show the
 picture Thinking saw*, a check box) shows the whole character as Thinking saw
 it under the boxes, `TouchZonesSentOpen` opens the folder of pictures in
 Explorer, `TouchZoneTry-<n>` plays on the character, and
-`TouchZonesIntimate`, `TouchZonesAdd`/`TouchZonesAddKind` and each zone's
+`TouchZonesIntimate` (its value is its label, which names every intimate part,
+the breasts and the groin too), `TouchZonesAdd`/`TouchZonesAddKind` (its value
+is the zone chosen to add; it offers every zone the model doesn't have yet) and each zone's
 `TouchZoneOn-`, `TouchZoneName-`, `TouchZoneReaction-`, `TouchZoneReaction2-`,
 `TouchZoneNotices-` (*Martlet notices*; its checked state reads in `ui_snapshot`), `TouchZoneNarration-` (the owner's optional hint; it shows only while *Martlet notices* is on), `TouchZoneCooldown-`, `TouchZoneBox-`,
 `TouchZoneDelete-` and its box on the picture (`TouchZoneRect-<n>`, inside
@@ -1458,37 +1469,60 @@ from before (FIXTURE - NOT AI in `TouchZonesDetection`).
 
 Touch temperament (below Touch zones) reads through `TouchTemperamentStatus`
 (for which persona and who decided it: built-in reactions, the Thinking model,
-`FIXTURE - NOT AI` or your own choices; its `help` is the whole temperament in
-words: the attitude per group and zone, such as *head loves, torso neutral (no
-reaction), ...*, the eyes (*eyes: look straight ahead*), the parts whose touch
-turns them to your mouse and after how many touches it escalates),
+`FIXTURE - NOT AI` or your own choices; or what it uses instead: *built-in
+reactions, as you chose* or *your custom temperament "Shy cat"*; its `help` is
+the whole temperament in words: the attitude per category and zone, such as
+*head loves, torso neutral (no reaction), ..., intimate hates*, or *intimate as
+body groups* for a temperament without an intimate line, the eyes (*eyes: look
+straight ahead*), the parts whose touch turns them to your mouse and after how
+many touches it escalates),
 `TouchTemperamentDecision` (how deciding went, or that a personality change
 left your own choices in place; shown until you change something yourself),
-`TouchTemperamentSaveState` (both only while they have something to say),
+`TouchTemperamentSaveState` (whether table edits saved),
+`TouchTemperamentUseState` (what the last *Uses*, *Create*, *Rename* or
+*Delete* did, or why not, such as *Not saved: "Built-in reactions" is already
+a choice...*; these three only while they have something to say),
+`TouchTemperamentUse` (*Uses*: *Decided from its personality*, *Built-in
+reactions* or a custom temperament's name), `TouchTemperamentNewName` (the
+name typed for a new custom temperament), `TouchTemperamentName` and
+`TouchTemperamentCustomUsers` (shown while the persona uses a custom
+temperament: its name and *Used by Mira and Aki...*),
 `TouchTemperamentGaze` (*Eyes usually*: a gaze's label or *(not decided:
 follow your mouse)*), `TouchTemperamentAfter` (touches in a row before it
-escalates) and each table line's `TouchTemperamentAttitude-<group or zone
-ID>` (an attitude word or *(built-in)*), `TouchTemperamentReaction-` (*(default)*,
-the feeling's usual reactions, *(nothing)* or a reaction such as *look away*),
-`TouchTemperamentReaction2-` (*(nothing)* or a reaction),
-`TouchTemperamentLinger-` and `TouchTemperamentLook-<group or zone ID>` (the
-seconds the first reaction stays on and the eyes look at your mouse after a
-touch there). A line shows only the controls that apply: a group at
+escalates), each table line's `TouchTemperamentAttitude-<category or zone
+ID>` (an attitude word, *(built-in)*, or for `intimate` *(as the body)*),
+`TouchTemperamentReaction-` (*(default)*, the feeling's usual reactions,
+*(nothing)* or a reaction such as *look away*), `TouchTemperamentReaction2-`
+(*(nothing)* or a reaction), `TouchTemperamentLinger-` and
+`TouchTemperamentLook-<category or zone ID>` (the seconds the first reaction
+stays on and the eyes look at your mouse after a touch there), each category's
+`TouchTemperamentParts-<category ID>` (*Parts:* and the zones it covers; the six
+categories are `head`, `torso`, `arms`, `lower_body`, `extras` and
+`intimate`, and `TouchTemperamentParts-intimate` names the breasts and the
+groin) and `TouchTemperamentAddKind` (the part chosen to give its own line;
+it offers every zone). A line shows only the controls that apply: a category at
 *(built-in)* shows only its attitude, `TouchTemperamentReaction2-` shows after
 a chosen first reaction and `TouchTemperamentLinger-` not after *(nothing)*,
 so the others are not in `ui_snapshot` until then.
 `TouchZonesLast` and `TouchZoneState-<n>` also name the attitude, whether the
 reaction came from the temperament and how long it looks at your mouse.
 `TouchTemperamentDecide` (*Decide from personality* before anything is
-decided, then *Re-decide from personality*) sends the personality to Thinking,
-and `TouchTemperamentReset`, `TouchTemperamentGaze`, `TouchTemperamentAttitude-`,
+decided, then *Re-decide from personality*) sends the personality to Thinking
+(and the persona then uses its own decided temperament),
+and `TouchTemperamentUse`, `TouchTemperamentNewName`, `TouchTemperamentNew`
+(*Create*: a custom temperament copied from what the persona uses now, which
+it then uses), `TouchTemperamentName`, `TouchTemperamentRename`,
+`TouchTemperamentDelete` (the personas that used it use their own again),
+`TouchTemperamentGaze`, `TouchTemperamentAttitude-`,
 `TouchTemperamentReaction-`, `TouchTemperamentReaction2-`,
 `TouchTemperamentLinger-`, `TouchTemperamentLook-`, `TouchTemperamentAfter`, `TouchTemperamentAddKind`,
 `TouchTemperamentAdd` and `TouchTemperamentRemove-<zone ID>` (the small ✕ by a
 part's name) save, so they all need
-`--allow-ui-effects`. `character_touch_zones` shows the temperament's `gaze`,
-each entry's `look` and the matched touch's `reaction.look`. Setting `MARTLET_TOUCH_TEMPERAMENT_FIXTURE` to a text
-file before launching the desktop makes deciding read that file (read again
+`--allow-ui-effects`. While the persona uses a custom temperament, the table
+edits that custom temperament for every persona that uses it; with *Built-in
+reactions* the table is hidden. `character_touch_zones` shows the temperament's `gaze`,
+each entry's `look`, the matched touch's `reaction.look`, the categories, the
+custom temperaments and which persona uses which. Setting `MARTLET_TOUCH_TEMPERAMENT_FIXTURE` to a textfile before launching the desktop makes deciding read that file (read again
 each time) as the Thinking model's answer (FIXTURE - NOT AI, shown in
 `TouchTemperamentStatus` and `TouchTemperamentDecision`, and saved with the
 source `fixture`). Saving a changed personality (`OpenCompanion`,
@@ -1500,8 +1534,9 @@ path with no model.
 (Companion › Character › Where the character looks and the overlay's Eyes
 menu): `choice` (`personality`, the default, `mouse`, `near`, `ahead` or
 `window`; `GazeUsual`), `free` (whether replies may change it; `GazeFree`),
-`personality` (the gaze in `character-temperaments.json` for the active
-persona of `settings.json`, or `personaId`), `personaId`, `gaze` (the gaze
+`personality` (the gaze of the temperament that the active persona of
+`settings.json`, or `personaId`, uses in `character-temperaments.json`: its own
+or a custom one), `personaId`, `gaze` (the gaze
 that applies) and `from` (`owner`, `personality` or `default`), `prompt`
 (what every reply is told: `instructions`, with the data directory's edited
 prompts, and `tags`; null when the character may not change it or *Where you
@@ -3111,6 +3146,63 @@ and every `WorkSharing*` control on the Devices page: `WorkSharingJob-<job>`,
 `WorkSharingUp/Down-<job>-<host>` and `WorkSharingKeep-<host>` controls, which
 save `work-sharing.json` and so need `--allow-ui-effects`.
 
+`recommended_setup_status` shows Home's **Recommended setup** without the
+desktop. It builds the network recommender's request with the desktop's own
+builder (`RecommendedSetupInputs`) and runs the production recommender
+(`NetworkRecommender`). Give an absolute `dataDirectory` (default the current
+user's; the script gives a disposable one) to plan from that directory's
+`hosts.json`, `host-hardware.json`, `cluster.json`, `settings.json`,
+`work-sharing.json`, `thinking-pool.json` and `speaking-engine.txt`. A data
+directory has no live host checks: every host counts as online, and its roles
+are the shared plan's record. This PC's hardware is its own host service's
+report (the desktop reads this PC live). Give `fixture: "network"` to plan the
+built-in four-computer network instead (**NOT real computers**): this PC, a
+companion PC with an RTX 4080 that runs Thinking, Speaking and Listening on its
+own host service; `gpu-box`, a Linux host PC with an RTX 4090 and nothing
+installed; `DIVA`, a companion PC whose host service runs Deep thinking; and
+`old-box`, a host without a hardware report. The result has:
+
+- `source` and `computers`: each computer's `id` (the cluster plan's host ID,
+  else the device ID), `name`, `kind` (`Companion` or `Host`), `thisPc`,
+  `hasHostService`, `manageable`, `online`, `planned` (false: left as it is),
+  `hardware` and `roles` (`kind=model`).
+- `notes`: why a computer is left as it is.
+- `today`: each job's `host`, `off`, `option` and `pool` (the other computers
+  that take its requests when the one in charge is busy, in Sharing work
+  order), `thinkingPool`, `thinkingPoolOptOut`, `voiceEngine`, `preference` and
+  `offlineGraceMinutes`.
+- `recommendation`: `alreadyOptimal`, `worthAsking`, `fingerprint`, the
+  `changes` (`kind`, `computer`, `summary`, `why`, `benefit`, `roleKind`,
+  `model`, `job`, `needsSomeoneThere`, `downloadGb`), each computer's
+  recommended `roles`, `why` and `load` (percent of graphics memory, memory and
+  processor), the `jobs`, the `thinkingPool` and `notes`.
+- `companionInUseAsks`: what a companion PC someone uses would do after an
+  automatic check (`Ask`, `Wait` or `Nothing`, and why), with `declinedHere`
+  (this setup is in the directory's `recommended-setup.json`).
+
+It is read-only, contacts nothing and reads no keys. On the desktop, Home's
+`HomeRecommendedSetup` is in `SafeClicks`. In a Martlet network it opens the
+review window (`RecommendedSetupWindow`). On a PC alone, it opens Set it all up
+for me's question (`DefaultSetupQuestion`). In the review, `ui_snapshot` reads
+every `RecommendedSetup*` text: `RecommendedSetupTitle`,
+`RecommendedSetupSummary`, `RecommendedSetupChange-<n>` (its name is the
+benefit, the summary and why), `RecommendedSetupComputer-<n>`,
+`RecommendedSetupComputerKind-<n>`, `RecommendedSetupToday-<n>`,
+`RecommendedSetupTarget-<n>`, `RecommendedSetupLoad-<n>`,
+`RecommendedSetupBar-<n>-<vram|ram|cpu>`, `RecommendedSetupJob-<n>`,
+`RecommendedSetupManual-<n>`, `RecommendedSetupDownloads`,
+`RecommendedSetupPreflight-<n>`, `RecommendedSetupTerms-<n>`,
+`RecommendedSetupSecret-<n>` (the label only; the key box `SetupSecretInput-<n>`
+is never read), `RecommendedSetupNote-<n>` and `RecommendedSetupStatus` (the
+preflight state, the progress while it reconfigures and the outcome).
+`RecommendedSetupClose` only closes the window. `RecommendedSetupApply`
+(Reconfigure: it changes every computer) and `RecommendedSetupCancel` (Not now:
+it saves `recommended-setup.json`) need `--allow-ui-effects`. When an automatic
+check finds a better setup, Home shows `HealthIssue-recommended-setup`. Its
+Review (`HealthOpen-recommended-setup-review`) opens the review, and its Not now
+(`HealthFix-recommended-setup-decline`) saves `recommended-setup.json`, so it
+needs `--allow-ui-effects`.
+
 `network_recommendation_check` runs the production network recommender
 (`NetworkRecommender`, Home's
 [recommended setup for all your computers](RECOMMENDED_SETUPS.md#recommended-setup-for-all-your-computers))
@@ -4436,8 +4528,9 @@ and `HealthOpen-crash-diagnostics` open this page.
 
 `ui_snapshot` reports `selected` (true or false) for controls that are chosen
 rather than ticked (navigation, Companion's side list, radio buttons and
-filter pills, list items), and a combo box in the status fields reads as its
-chosen option.
+filter pills, list items), a combo box in the status fields reads as its
+chosen option, and a check box in the status fields reads as its label (its
+`checkedState` says whether it is ticked).
 
 For the desktop character, open `CompanionTab-Character`; with
 `--allow-ui-effects`, `SetupCharacterToggle` shows or hides it and
@@ -5917,7 +6010,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

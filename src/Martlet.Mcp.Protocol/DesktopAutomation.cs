@@ -57,9 +57,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // new PC (HomeConnectComputers).
         "AddComputer", "OpenHosts", "SelectedDeviceAdd", "NodeAction-AddComputer", "HomeConnectComputers", "HostsStepConnect",
         "HostsStepRoles", "HostsBack", "HostsNext", "HostsClose", "HostsEnterCode", "HostAddressSection", "DeviceIdSection",
-        // The setup advisor (Home's Get a setup recommendation): opening it, moving between its steps, picking a goal and
+        // The setup advisor (Home's Plan a setup from scratch): opening it, moving between its steps, picking a goal and
         // closing it only change what it shows (the answers stay in memory); its plan's Install on this PC buttons do the work.
         "OpenSetupAdvisor", "AdvisorBack", "AdvisorNext", "AdvisorClose", "GoalBalanced", "GoalSmartest", "GoalFastest", "GoalPrivate",
+        // Home's Recommended setup: in a Martlet network it opens the review of the recommended setup (worked out on this PC from
+        // what it already knows; nothing is contacted or changed), and on a PC alone it opens Set it all up for me's question.
+        // The review's Close only closes it. Reconfigure (RecommendedSetupApply) changes every computer, Not now
+        // (RecommendedSetupCancel) saves recommended-setup.json, and Set it up installs, so they need --allow-ui-effects.
+        "HomeRecommendedSetup", "RecommendedSetupClose",
         // The notification-area menu (ui_tray "menu"): Open Martlet only shows the window, Talk to Martlet opens the talk window
         // like OpenLiveConversation, Pause Martlet only stops work, Stop listening and Stop watching only stop listening or
         // watching, and End the conversation closes the talk window like CloseLive. Start listening, Start watching, Resume
@@ -393,15 +398,25 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
         "TouchZonesDetectNote",
         // Companion › Character › Touch temperament: who decided the active persona's temperament (built-in, the Thinking model,
-        // FIXTURE - NOT AI or the owner; its help text is the whole temperament in words: "head loves, torso hates, ...", its eyes
-        // and the parts whose touch turns them to your mouse), how deciding went and whether edits saved (both only while they
-        // have something to say). Each line's attitude (TouchTemperamentAttitude-<group or zone ID>, below) is an attitude word,
-        // its TouchTemperamentReaction-/TouchTemperamentReaction2- the reactions, its TouchTemperamentLinger- and
-        // TouchTemperamentLook-<group or zone ID> the seconds the first reaction stays on and the eyes then look at your mouse,
-        // TouchTemperamentAfter the touches in a row before it escalates and TouchTemperamentGaze where the eyes usually go.
-        // Decide (later Re-decide) from personality sends the personality to Thinking, and the rest save, so they need
-        // --allow-ui-effects.
+        // FIXTURE - NOT AI or the owner) or which custom temperament or built-in reactions it uses instead; its help text is the
+        // whole temperament in words: "head loves, torso hates, ..., intimate loves", its eyes and the parts whose touch turns them to
+        // your mouse), how deciding went and whether edits saved or what a Uses, Create, Rename or Delete did (each only while it has
+        // something to say). Each line's attitude (TouchTemperamentAttitude-<category or zone ID>, below) is an attitude word, its
+        // TouchTemperamentReaction-/TouchTemperamentReaction2- the reactions, its TouchTemperamentLinger- and
+        // TouchTemperamentLook-<category or zone ID> the seconds the first reaction stays on and the eyes then look at your mouse,
+        // TouchTemperamentParts-<category ID> the parts the category covers ("Parts: lips, left ear, ..."), TouchTemperamentAfter the
+        // touches in a row before it escalates and TouchTemperamentGaze where the eyes usually go. TouchTemperamentUse is the
+        // temperament the persona uses (Decided from its personality, Built-in reactions or a custom temperament's name),
+        // TouchTemperamentName and TouchTemperamentNewName the custom temperament's name and the name typed for a new one,
+        // TouchTemperamentCustomUsers the personas that use the custom temperament, and TouchTemperamentAddKind the part chosen to
+        // give its own line. Decide (later Re-decide) from personality sends the personality to Thinking, and the rest save, so
+        // they need --allow-ui-effects.
         "TouchTemperamentStatus", "TouchTemperamentDecision", "TouchTemperamentSaveState", "TouchTemperamentGaze", "TouchTemperamentAfter",
+        "TouchTemperamentUse", "TouchTemperamentUseState", "TouchTemperamentName", "TouchTemperamentNewName", "TouchTemperamentCustomUsers",
+        "TouchTemperamentAddKind",
+        // Touch zones' Include intimate zones check box (its label names every intimate part; checkedState says whether it is on)
+        // and the zone chosen to add (TouchZonesAddKind).
+        "TouchZonesIntimate", "TouchZonesAddKind",
         // Companion › Character › Where the character looks: what the eyes do now and why (your choice, the personality's or
         // the character's own in a reply; a touch's look at your mouse; whether it may change where it looks). Its
         // CharacterGaze-<choice> radio buttons (selected) and CharacterGazeFree check box (checkedState) save
@@ -551,6 +566,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ElevenLabsSave uploads a recording and saves the route, so it needs --allow-ui-effects (and spends money on ElevenLabs).
         "ElevenLabsStatus", "ElevenLabsKeyStatus", "ElevenLabsModel",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
+        // Home's Recommended setup button (its label).
+        "HomeRecommendedSetup",
         "LogSummary", "LogShareStatus", "LogDetail",
         "HostStatus", "PairedHost", "PairCodeHelp", "DockerState", "RolesSummaryText", "HostRunPairAddress", "NetworkStatus",
         // A run window's pairing panel: the note on how long the code works (fixed text) and its Copy code button's label
@@ -718,7 +735,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// click; never the text it copies).</summary>
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
-    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
+    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchTemperamentParts-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default
@@ -797,7 +814,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("SetupOldKey-Thinking-0" reads "Your OpenRouter key" or "The pairing key for diva-host"; never the key) and its
         // Remove button's name ("SetupOldKeyRemove-Thinking-0" reads "Remove your OpenRouter key"). Remove deletes the key from
         // Windows Credential Manager after OldKeyRemoveQuestion, so clicking it needs --allow-ui-effects.
-        "SetupOldKey"];
+        "SetupOldKey",
+        // Home's Recommended setup review: its title and summary, each change ("RecommendedSetupChange-0" reads "Improvement:
+        // Install Chatterbox Turbo on gpu-box's RTX 4090. ..."), each computer's name and kind, today's and the recommended roles
+        // and load ("RecommendedSetupComputer-0", "RecommendedSetupToday-0", "RecommendedSetupTarget-0", "RecommendedSetupLoad-0",
+        // "RecommendedSetupBar-0-vram"), who does each job ("RecommendedSetupJob-0"), the notes, downloads, what needs someone at a
+        // computer, what Reconfigure needs first ("RecommendedSetupPreflight-0", "RecommendedSetupSecret-0": the label only, never
+        // what is typed) and the status line with its progress and outcome. Computer names, host IDs, model names and fixed text.
+        "RecommendedSetup"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>
@@ -869,7 +893,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
                         ? ((RangeValuePattern)range).Current.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
                     : element.Current.ControlType == ControlType.Text || element.Current.ControlType == ControlType.Button ||
                         element.Current.ControlType == ControlType.ListItem || element.Current.ControlType == ControlType.MenuItem ||
-                        element.Current.ControlType == ControlType.RadioButton
+                        element.Current.ControlType == ControlType.RadioButton || element.Current.ControlType == ControlType.CheckBox
                         ? element.Current.Name
                     // A combo box without a value pattern reads as its selected option.
                     : element.TryGetCurrentPattern(SelectionPattern.Pattern, out var choice)

@@ -64,7 +64,7 @@ public partial class MainWindow
     /// <summary>A bar split into one segment per job (its share of the total): solid for what the job usually holds, lighter
     /// for what it grows by while it works hardest. The rest is free, and a thin mark shows what the device reports in use now.
     /// A bar the jobs overfill turns the warning color; on a tight bar only the growth does.</summary>
-    private static FrameworkElement BarVisual(CapacityBar bar)
+    internal static FrameworkElement BarVisual(CapacityBar bar)
     {
         var track = new Grid { Height = 10, Margin = new Thickness(0, 4, 0, 10), ToolTip = bar.Text };
         AutomationProperties.SetName(track, bar.Text);

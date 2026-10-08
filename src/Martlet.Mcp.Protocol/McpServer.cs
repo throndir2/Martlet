@@ -623,9 +623,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "snapshotPath as their picture, and with detect the pictures sent; includeIntimate sets Include intimate zones) into an explicit, " +
             "disposable dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
             "{\"attitude\":2,\"reactions\":[\"hearts\",\"blush\"],\"linger\":3}},\"zones\":{...},\"escalation\":{\"after\":3,...}}) or " +
-            "personaId (the temperament saved in the dataDirectory's character-temperaments.json) decides what the touch plays when the " +
-            "zone has no pick of its own, with repeats (touches in a row, for escalation); personality shows the request Thinking gets. " +
-            "Contacts nothing; never returns the model's path.", new
+            "personaId (the temperament that persona uses in the dataDirectory's character-temperaments.json: its own, the built-in " +
+            "reactions or a custom one) decides what the touch plays when the zone has no pick of its own, with repeats (touches in a " +
+            "row, for escalation); personality shows the request Thinking gets. The result's temperament also lists the categories with " +
+            "the zone kinds each covers (intimate holds every intimate kind), the custom temperaments and which temperament each persona " +
+            "uses. Contacts nothing; never returns the model's path.", new
         {
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, modelId = new { type = "string" },
             answer = new { type = "string" }, width = new { type = "integer" }, height = new { type = "integer" },
@@ -639,8 +641,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("character_gaze", "Where the character looks (Companion > Character > Where the character looks, the overlay's Eyes " +
             "menu and Companion > Vision > Glances at your screen; docs/SCREEN_COMMENTARY.md \"Where the character looks\"): usual " +
             "is the usual gaze saved in a data directory's talk-preferences.json (GazeUsual: personality, mouse, near, ahead or " +
-            "window; GazeFree: whether the character may change it in replies), the persona's gaze from character-temperaments.json " +
-            "(the active persona, or personaId), the gaze that applies and who set it, what every reply is told about it and the " +
+            "window; GazeFree: whether the character may change it in replies), the gaze of the touch temperament the persona uses in " +
+            "character-temperaments.json (its own or a custom one; the active persona, or personaId), the gaze that applies and who set it, what every reply is told about it and the " +
             "note while its own choice holds the eyes. aim rehearses the production CharacterGaze.Aim the overlay runs for each " +
             "gaze (a mouse far from and near the character, a window, a touch's look at the mouse, a glance). saved is the glances " +
             "choice (DecideGaze: usual gaze unless Martlet decides), then a rehearsal of the production decision " +
@@ -1546,6 +1548,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "first, four segments at once spread over both, a computer kept for one companion PC or unticked for a job left out, " +
             "an unanswering computer skipped, Deep thinking leaving out a kept computer, and the shared setting's round trip. " +
             "In-process; reads nothing.", new { }),
+        Tool("recommended_setup_status", "Home's Recommended setup without the desktop: builds the network recommender's request with " +
+            "the desktop's own builder from a data directory (hosts.json, host-hardware.json, cluster.json, settings.json, " +
+            "work-sharing.json, thinking-pool.json, speaking-engine.txt; every host counts as online, roles are the shared plan's " +
+            "record) or, with fixture \"network\", from a built-in four-computer network (NOT real computers), runs the production " +
+            "recommender (NetworkRecommender) and lists the computers (kind, planned or left as they are, manageable), today's jobs " +
+            "and Thinking pool, the recommended changes (summary, why, benefit, downloads, someone needed at the computer), each " +
+            "computer's recommended roles and load, and whether a companion PC in use would ask (declined setups in " +
+            "recommended-setup.json count). Read-only; contacts nothing and reads no keys.", new
+        {
+            dataDirectory = new { type = "string" },
+            fixture = new { type = "string", @enum = new[] { "network" } }
+        }),
         Tool("network_recommendation_check", "Rehearse Home's Recommended setup for all your computers with the production network " +
             "recommender (NetworkRecommender) on built-in fixture networks, NOT real computers: two companion PCs and two hosts with " +
             "nothing set up, a host with two NVIDIA cards, a Windows host whose voice shares its card, a crowded network, Deep " +
@@ -1869,6 +1883,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),
                 "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),
                 "work_sharing_check" => await WorkSharingCheck.RunAsync(cancellation),
+                "recommended_setup_status" => OptionalString(arguments, "fixture") is { } setupFixture
+                    ? await RecommendedSetupStatus.RunAsync(null, setupFixture, cancellation)
+                    : await RecommendedSetupStatus.RunAsync(DataDirectory(arguments), null, cancellation),
                 "network_recommendation_check" => NetworkRecommendationCheck.Run(),
                 "node_presence_status" => NodePresenceCheck.Status(DataDirectory(arguments)),
                 "node_presence_check" => NodePresenceCheck.Run(),

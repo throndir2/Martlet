@@ -289,6 +289,12 @@ ready). Candidates are ranked by fewest other jobs, then most GPU memory
 hosts pick the same one. The move is stamped with `moved_from` and shared; the
 row says where it came from.
 
+Failover moves one job for a short time. To plan where every job and host role
+should run, use Home's **Recommended setup**. It suggests changes for all your
+computers, and Reconfigure applies them. When a computer comes back or stays
+away, a companion PC checks again and asks on Home when a better setup is ready.
+See [Recommended setups](RECOMMENDED_SETUPS.md).
+
 ## When a computer goes away or comes back
 
 Device sync's check of every paired host (every 15 seconds while *Keep Martlet

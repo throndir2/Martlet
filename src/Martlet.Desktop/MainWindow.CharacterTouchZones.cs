@@ -294,7 +294,7 @@ public partial class MainWindow
         var modelId = catalog.Inventory.ModelId;
         var intimate = new CheckBox
         {
-            Content = "Include intimate zones (lips, neck, ears, chest, waist, hips and below)", IsChecked = settings?.IncludeIntimate != false,
+            Content = $"Include intimate zones ({CharacterTouchZones.IntimateParts})", IsChecked = settings?.IncludeIntimate != false,
             Margin = new Thickness(0, 4, 0, 4)
         };
         AutomationProperties.SetAutomationId(intimate, "TouchZonesIntimate");
