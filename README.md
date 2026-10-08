@@ -50,13 +50,13 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.57.0
+## 🆕 What's new in 0.58.0
 
-- 🔔 **Check-ins**: every few minutes your Thinking pool checks on Martlet. It turns off emotes that no longer fit and reminds Martlet of promises it didn't keep. Add your own check-ins too, such as a reminder to take a break.
-- 🎧 **Knows where sounds come from**: while Martlet hears what your PC plays, it knows if a line came from a video, a game, music or your voice chat, and doesn't answer it as if you'd said it.
-- 👆 **Touches that interrupt**: touch Martlet while it talks and it stops to react, then decides whether to go on. A touch now always gets a sound or words out loud.
-- 🏷️ **Your character's own name**: the talk window calls your character by its personality's name instead of "Martlet".
-- ⚡ **A faster Character page**: Companion › Character opens at once, with its settings split into small pages under **How it looks**, and **Detect zones** finds fewer, clearer touch zones.
+- 🎙️ **Jenny, a new natural voice**: Martlet now starts with Jenny (Dioco), a clean, natural voice from a professional Irish voice-over artist. The two "cute anime girl" voices are gone.
+- 👆 **Touch zones right away**: open Companion › Touch › Touch zones and your character shows at once with a first guess at its touch zones, so touches work right away. **Detect zones** then finds the zones with your Thinking model.
+- 🔁 **Repeats itself less**: before Martlet speaks up on its own, it looks at what it said in the last hour and says something again only when it's worth it.
+- 👤 **Profiles remember more**: each character profile now remembers, on each computer, where your character stands, how big it is, where it looks and which touches stop it while it talks.
+- 🤝 **Share a host with a friend**: a friend can sign in to your Linux host with their own account and use only its AI, never your settings or anything else of yours. Your own requests come first.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 

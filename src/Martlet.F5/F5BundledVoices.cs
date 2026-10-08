@@ -2,10 +2,10 @@ using System.Security.Cryptography;
 
 namespace Martlet.F5;
 
-/// <summary>A starter voice: a short recording Martlet adds to a new voice list, public domain (or CC0) or under CMU ARCTIC's
-/// free-for-any-use terms, with its exact transcript. Once added it is an ordinary voice the owner can remove like any
-/// other. Sources, modifications and notices are in BundledVoices\NOTICES.txt; scripts\Build-F5BundledVoices.py rebuilds
-/// the clips.</summary>
+/// <summary>A starter voice: a short recording Martlet adds to a new voice list, public domain (or CC0), under CMU ARCTIC's
+/// free-for-any-use terms or under the Jenny TTS dataset's (free for any use, the voice credited as "Jenny (Dioco)"), with its
+/// exact transcript. Once added it is an ordinary voice the owner can remove like any other. Sources, modifications and
+/// notices are in BundledVoices\NOTICES.txt; scripts\Build-F5BundledVoices.py rebuilds the clips.</summary>
 public sealed class F5BundledVoice
 {
     private readonly Lazy<byte[]> audio;
@@ -33,7 +33,7 @@ public sealed class F5BundledVoice
     /// <summary>Whether the speaker is a woman, so F5 copying the clip sounds feminine.</summary>
     public bool Female { get; }
 
-    /// <summary>Whether this is one of the cute voices Martlet adds first and starts with.</summary>
+    /// <summary>Whether this is one of the two cute, chatty voices (Annie and Bee).</summary>
     public bool Cute { get; }
 
     public string Description { get; }
@@ -74,9 +74,11 @@ public sealed class F5BundledVoice
 /// which was never in a shared voice list) gives a former starter voice's ID in a shared voice list.</summary>
 public sealed record F5RetiredVoice(string Key, string Name, string AudioSha256, string? Transcript);
 
-/// <summary>The five starter voices Martlet adds to a new voice list (<see cref="Martlet.Core.Voices.SpeakingVoiceLibrary"/>):
-/// the two cute voices first, then a female narrator and a US female and a US male voice. The first is the voice Martlet
-/// starts speaking with. Nothing marks them afterwards: they are shared, chosen and removed like any voice.</summary>
+/// <summary>The six starter voices Martlet adds to a new voice list (<see cref="Martlet.Core.Voices.SpeakingVoiceLibrary"/>):
+/// Jenny (an Irish voice-over artist recorded for speech synthesis) first, then the two cute voices, a female narrator and a
+/// US female and a US male voice. The first is the voice Martlet starts speaking with. A starter voice added in an update
+/// joins an existing list once (<see cref="F5SharedVoices.WithStarters"/>). Nothing marks them afterwards: they are shared,
+/// chosen and removed like any voice.</summary>
 public static class F5BundledVoices
 {
     private const string Arctic = "CMU ARCTIC speech database, Carnegie Mellon University";
@@ -86,8 +88,15 @@ public static class F5BundledVoices
     private const string AnnieAnne =
         "But am I talking too much? People are always telling me I do. Would you rather I didn't talk? If you say so, I'll stop.";
 
+    // A starter voice's place sets when it joined the list (Seed), so the first one is the voice a new list speaks with.
     public static IReadOnlyList<F5BundledVoice> All { get; } =
     [
+        // The Jenny TTS dataset's terms: the voice must be referred to as "Jenny", where practical as "Jenny (Dioco)".
+        new("jenny-dioco", "Jenny (Dioco)", true, false,
+            "Jenny, an Irish voice-over artist, as Meg in Little Women, recorded for speech synthesis (Jenny TTS dataset by Dioco). Free to use.",
+            "Jenny TTS dataset licence: free for any use, the voice credited as Jenny (Dioco)",
+            "Well, I am happy, and I won't fret, but it does seem as if the more one gets the more one wants, doesn't it?",
+            "de9c565485e471336cf73513af4ed2657afa7dfdd3624514d0984b820c4a802c"),
         new("librivox-annie", "Annie (cute, chatty)", true, true,
             "Annie Coleman Rothenberg's chatty Anne of Green Gables for LibriVox, as read. Public domain.", "Public domain", AnnieAnne,
             "d6726dc5b0b57825fe603d03159c4a41f11288842e4364f68d312446202e8a88"),
@@ -118,9 +127,10 @@ public static class F5BundledVoices
             "You do get so attached to things like that, don't you? Is there a brook anywhere near Green Gables? I forgot to ask Mrs. Spencer that.")
     ];
 
-    /// <summary>The voice Martlet speaks with until the owner chooses another: the first cute, female voice (Annie, cute and
-    /// chatty).</summary>
-    public static F5BundledVoice Default { get; } = All.First(voice => voice is { Cute: true, Female: true });
+    /// <summary>The voice Martlet speaks with until the owner chooses another: the first starter voice, Jenny (Dioco). A list
+    /// from an earlier release gets Jenny as its first voice too, so a computer that spoke with a retired "anime" voice moves
+    /// to her.</summary>
+    public static F5BundledVoice Default { get; } = All[0];
 
     public static F5BundledVoice? Find(string key) => All.FirstOrDefault(voice => voice.Key == key);
 

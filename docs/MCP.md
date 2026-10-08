@@ -579,9 +579,9 @@ as `starters` (key, name, `female`, `cute`, description, licence, transcript,
 SHA-256, sample rate and duration; each clip is checked against its SHA-256 and the
 reference store's audio, name and transcript rules, `valid` or the failure; a new
 voice list starts with them, after which they are ordinary voices), the
-`default` key, `defaultName`, `defaultFemale` and `defaultCute` (both always true;
-the default is the first cute voice, `librivox-annie`), `cute`, the
-keys of the cute voices listed first, and `retired`, the recordings Martlet no
+`default` key, `defaultName`, `defaultFemale` (true) and `defaultCute` (false;
+the default is the first starter voice, `jenny-dioco`), `cute`, the
+keys of the two cute voices (`librivox-annie` and `librivox-woollybee`), and `retired`, the recordings Martlet no
 longer ships (`key` and `name`: `retired-sample`, the F5-TTS example clip, and
 `retired-librivox-annie-anime` and `retired-librivox-woollybee-anime`, the
 former "anime" voices). From a data
@@ -1320,7 +1320,9 @@ reaches the other; removing a starter voice deletes its recording on both hosts
 and the other desktop's copy; a stale copy can't bring it back; a list from an
 older Martlet that still lists the retired "anime" voices loses them in the
 next reconcile without waiting for their recordings, the host follows and a
-stale copy can't bring them back; speaking with a
+stale copy can't bring them back; a list from before a new starter voice
+(Jenny) gets it in the next reconcile, once, with its recording from Martlet,
+while a starter the owner removed stays removed; speaking with a
 removed voice sends the recording, which the host doesn't keep; a host restart
 keeps the list and recordings; a wrong SHA-256, a recording no voice has and a
 listed recording that isn't a WAV are refused; reading a missing recording
@@ -1396,8 +1398,16 @@ speaking route keeps or the shared voice list chose; null when none does),
 `model-file-outside-list`), `voiceChosen`, and per profile its `key` (the first 8
 hex digits of its ID, as in `CharacterProfileState-<key>`), `personaSaved`,
 `personaActive`, `look` (`keep`, `builtin`, `ready`, `copying` or `missing`),
-`voice` (`keep`, `listed` or `missing`) and `inUse`. Names are never returned.
-Read-only; it contacts nothing.
+`voice` (`keep`, `listed` or `missing`) and `inUse`. It also reads what each
+profile keeps on this PC (`character-profiles-local.json`, never shared):
+`hereState` (`none`, `loaded` or `unreadable`), `hereInUse` (the key of the
+profile whose choices this PC uses now: the one switched to here or followed
+after a switch on another computer), and per profile `here` (null when it keeps
+nothing here yet) with `place` (`locked`, `left`, `top`, `width`, `height` in
+device-independent pixels and `screen`, or null), `gaze` (`personality`,
+`mouse`, `near`, `ahead` or `window`), `gazeFree` and `touchInterrupts` (`any`,
+`intimate` or `never`). Names are never returned. Read-only; it contacts
+nothing.
 
 `creations_status` reads [Martlet's creations](CREATIONS.md) from a data
 directory (optional absolute `dataDirectory`; the script gives a disposable one):
@@ -1510,7 +1520,8 @@ keeps the zones it finished), `detected` (those zones
 bound to `probe`, a simulated renderer zones probe of Live2D `drawables` (each
 with the `part` it belongs to) and VRM `bones` in page fractions, and a Live2D
 model's own `parts` (`id`, its DisplayInfo `name`, such as 头 or 右腿, and its
-`parent`), with `crop`, `"left,top,width,height"` where
+`parent`); a zone also takes the drawables of its own feature's part that lie
+by its box, such as an eye's white and lashes outside a tight eye box), with `crop`, `"left,top,width,height"` where
 the snapshot sat on the page; `probePath` reads the `probe.json` that *Detect
 zones* keeps with the pictures it sent, crop and all, or a bare probe), `hints`
 (what the probe tells: how many parts the model has (`modelParts`) and names
@@ -1530,10 +1541,19 @@ is kept, what the last detection `sent` (its plain `line`, `requests`,
 each zone's parts, `plays`, whether Martlet `notices` it, whether the owner
 `added` it and the owner's `hint`) and,
 with `touch` (a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
-it lands with the character framed whole), `match`: the zone it lands
+it lands with the character framed whole, `restX`, `restY`, `restWholeX` and
+`restWholeY` where the touched point of the character was in its rest pose, now
+and framed whole, as the renderer traces it on the touched mesh, and `hair`
+whether the topmost drawable is hair), `match`: the zone it lands
 in, `how` (`drawable`, `bone`, `hair`, `box` or `coarse`; with a VRM `bone`, the
 smallest zone on the part of the body that bone moves whose box holds the
-point wins, and reads `bone` when it holds that bone, else `box`), its rough `coarse`
+point wins, and reads `bone` when it holds that bone, else `box`; a zone whose
+box holds the point inside the box of a zone that owns the touched drawable,
+with none of its own drawables under the touch, wins as its finer part and reads `box`;
+without `hair`, a drawable lower in `drawables` that a smaller zone inside the
+top drawable's zones owns wins, as an overlay over that part), `traced`
+(whether the boxes were compared with the rest point), `at` (the point they were
+compared with: `x`, `y` and `rest`, true when it is the rest point), its rough `coarse`
 zone, what it `plays`, whether Martlet `notices` it, the line the Thinking model would get for that one touch (`noticed`, such as *They patted the top of your head once.*; a press of 600 ms or more in `heldMilliseconds` is a hold) and how long it `rests`.
 With `detect`, the production detection (`TouchZoneDetection`) runs on
 `snapshotPath` (a PNG of the character, transparent around it, as the renderer
@@ -1570,6 +1590,17 @@ swapped, moved, removed, added or worked out), `requestCount`, the `failure` it
 stopped at (null when none), what it `missed`, the `wanted` zones, the `required` zones and those
 still missing (`requiredMissing`), and how far the found boxes are
 from `answer`'s (`worstEdge`, `meanEdge`).
+With `estimate` (and no `answer` or `detect`), the first guess that the Touch
+zones page places on a model with no zones and no picture
+(`TouchZoneDetection.Estimate`) runs on `snapshotPath`, with the probe's hints
+(`probe` or `probePath`: its face, named parts and skeleton). No vision request
+is made. `estimate` then reports the `face` the probe gave, the `steps` (where
+the face came from, how far the body was stretched and which zones each source
+placed: *from the model's own named parts: ...*, *from the model's skeleton:
+...*, *from the body's proportions: ...*), the `count`, the `wanted` zones and
+the ones it couldn't place (`missing`), and the `zones`; `detected` shows them
+bound to the probe, and `save` writes them as the page does (marked
+`estimate`, with `snapshotPath` as their picture).
 The model is `modelPath`, `modelId` or the one the `dataDirectory`'s
 `avatar.json` shows. `save` (an explicit, disposable `dataDirectory` only)
 writes the parsed zones (with `detect`, the detected ones and every picture the
@@ -1598,27 +1629,37 @@ other the file names): its `personaId`, `name`, whether it is `active`, what it
 (`usedBy`). Never the model's path; it contacts nothing.
 
 The section's status fields (on Companion › Touch, `CompanionTab-Touch`) are `TouchZonesStatus` (how many zones, how many in
-use and who found them, or that none are found yet), `TouchZonesVision`
+use and who found them: the Thinking model, you, or *A first guess Martlet placed from the character's own parts and shape,
+with no AI...*; or that none are found yet), `TouchZonesVision`
 (which model sees the pictures: a Thinking pool member that can see, else
 whether the Thinking model can see and where pictures go; read from the saved
 setup, so it is right before the talk window opens), `TouchZonesDetectNote`
 (shown only when `TouchZonesDetect` is off because no model can see pictures:
 *Detect zones is off: no model that can see pictures is set up...* or *...the
 Thinking model is text-only...*), `TouchZonesDetection`
-(how *Detect zones* went, and each step while it runs: *Step 2: finding the
+(the first guess on a model with no zones and no picture: *Drawing the
+character to place its first zones (no AI, nothing is sent)...* as soon as the
+page opens, then *First zones: Martlet placed 24 zones at ... with no AI and
+nothing sent...*, with `TouchZonesPicture` and one `TouchZoneRect-<n>` per zone,
+no click and no `--allow-ui-effects` needed; a first guess that couldn't be
+placed is tried again when the page opens again. Then
+how *Detect zones* went, and each step while it runs: *Step 2: finding the
 zones of the character's head in a close-up...*, *Checking the zones of ...,
 round 1 of 2...*, *Step 5: asking again for 3 zones the close-ups missed, on
 the whole character...*; it shows *Taking a picture of the character...* at
 once, even when the click left the keyboard focus on `TouchZonesDetect`. When a
 request fails it reads *Finding zones stopped at request 4: couldn't ask the
 Thinking model (ResponseTruncated). Your 38 zones from before are kept. Try
-again when it answers.*: the zones from before and their picture stay, or, with
+again when it answers.*: the zones from before and their picture stay (over a
+first guess: *The 24 zones of the first guess are kept.*), or, with
 none before, *The 5 zones found until then are kept. Press Detect again to find
-the rest.*), `TouchZonesSent` (what the last detection sent: how many
+the rest.*; while it runs over a first guess, the zones it has found replace
+their first guesses on the picture and the others stay until it is done), `TouchZonesSent` (what the last detection sent: how many
 pictures, how large and what they showed, such as *..., and the whole character
 again for the zones the close-ups missed*, or *FIXTURE - NOT AI answered
 these.*), `TouchZonesLast` (the zone the last click landed in,
-how it was found and what it played or that it was resting, and whether Martlet
+how it was found (*box, traced to the rest pose* when the renderer traced the
+touched point back to the rest pose the zones were found in) and what it played or that it was resting, and whether Martlet
 noticed it), `TouchZonesNoticed` (what Martlet noticed that waits for a reply,
 the plain touch line, *Martlet stopped talking for it.* when a touch stopped
 Martlet talking, and when a touch-only reply starts, or that it waits for
@@ -5181,7 +5222,9 @@ it. **Locking the character's position**: Home's `ToggleCharacterLock`
 it (it comes up within Windows' drag distance, within 0.7 seconds; also when
 its position is locked, while zoomed in with Ctrl and in the camera view) is a
 tap. The renderer page hit-tests the point: Live2D reports the model3.json
-HitAreas there and the visible drawables under it (topmost first, at most 8),
+HitAreas there and the visible drawables under it (topmost first, at most 8)
+and whether the topmost is hair (it sits in a part the model names as hair,
+by its ID or DisplayInfo name, such as `PartHairSide` or 前髪),
 VRM the humanoid bone of the mesh skinned most to the hit triangle (or its
 nearest humanoid ancestor), the actual node, whether that node is hair (a
 spring-bone or hair-named joint under the head), the mesh and the material.
@@ -5200,7 +5243,13 @@ which needs `--allow-ui-effects`, waits for the hit test and returns it as
 `last`: `n` (the tap's number), `x`, `y`, `hit`, `zone` (`head`, `hair`,
 `face`, `body`, `arm`, `hand`, `leg` or `foot`; null on a miss), `hitAreas`,
 `drawables`, `bone`, `node`, `hair`, `mesh` and `material` (model-authored
-names only, never paths) and `held` (how long the press lasted, in ms). `holdMs` presses
+names only, never paths), `held` (how long the press lasted, in ms) and `rest`
+(`{x, y}`, fractions like `x` and `y`: where the touched point of the character
+was in its rest pose, the pose the touch zones picture shows, traced on the
+touched mesh and drawn as the overlay frames it now; null when the renderer
+can't trace it). At rest `rest` equals `x`, `y`; while the head follows the mouse
+or a motion moves the character, it stays on the spot of the skin that was
+touched, and the touch zones compare it with their boxes. `holdMs` presses
 that long (`"x,y,ms"` as `MoveAvatar`'s value; 600 or more is a hold), `repeat`
 taps the same point up to 20 times `gapMs` apart, and `taps`
 (`[{x, y, holdMs}]`, up to 20) taps a sequence of points, each after the hit
@@ -5556,7 +5605,8 @@ MARTLET_SIMULATE_RENDERER_FAILURE).*), and the desktop log says so each time
 the character shows (*FIXTURE: the character renderer fails its ... commands*).
 The renderer still starts, draws and closes normally. Commands include `where`
 (saving its place after `ui_move`), `lock` (`ToggleCharacterLock`), `zoom`
-(`ResetCharacterZoom`), `home` (`ResetCharacterPosition`), `mouth` (the
+(`ResetCharacterZoom`), `home` (`ResetCharacterPosition`), `place` (a character
+profile's place when you switch profiles), `mouth` (the
 loudness mouth), `reset` and `apply` (Audio2Face frames), `gaze`, `action`
 (emotes and motions), `say` (speech bubbles), `theme` and `camera`.
 
@@ -5630,7 +5680,23 @@ in use ("2 profiles. One of them is in use." or "None matches what Martlet uses
 now."). Each row's `CharacterProfileState-<key>` (the first 8 hex digits of the
 profile's ID) reads "In use.", "Ready." or why a part can't switch here ("Its
 look is still copying to this PC. Using it switches the rest.", "Its voice is no
-longer in your voices."), never a name. Its controls are
+longer in your voices."), never a name. Each row's `CharacterProfileHere-<key>`
+reads what the profile keeps on this PC ("On this PC: its own spot and size (360
+× 480, locked) · Eyes: Watch the window you're using, replies can't change it ·
+While it talks: only intimate touches stop it." or "On this PC: nothing yet.
+..."). While a profile is in use, moving, resizing, locking or resetting the
+character, choosing where it looks (`CharacterGaze-<choice>`,
+`CharacterGazeFree` or the overlay's Eyes menu) and choosing which touches stop
+it (`TouchInterrupt-<choice>`) are kept for that profile on this PC. Using a
+profile first keeps the one in use, then puts back the new one's choices: the
+showing character moves to its place without counting as a move of yours
+(renderer command `place`; `avatar-renderer` logs *The character moved to where
+its profile left it on DISPLAY1.*) and the desktop log records *Switched to a
+character profile (<key>); on this PC: place 360 × 480 locked on DISPLAY1, gaze
+window (fixed), touches while talking intimate.* A switch made on another
+computer, also while Martlet was closed, is followed after the shared settings
+arrive (*Following the character profile switched to last (<key>); ...*). A
+profile that keeps nothing here yet takes on what this PC uses. Its controls are
 `CharacterProfileUse-<key>` (disabled while in use), `CharacterProfileEdit-<key>`
 (passive: opens the form) and `CharacterProfileRemove-<key>` (asks with
 `ConfirmationYes`/`ConfirmationNo`). `CharacterProfileNew` (passive) opens the
@@ -5760,8 +5826,8 @@ voice comes from a cloud provider). There are no built-in voices and no groups:
 one list, in the order voices joined it (a new list starts with the starter
 voices). `F5VoicesStatus` reads how many voices there are and which is chosen or in
 use (a starter voice's name, "one of your recordings", or "a voice no longer in
-the list"), for example "5 voices. None chosen yet; Martlet starts with Annie
-(cute, chatty)." `F5VoicesShared` reads whether the list is shared with the
+the list"), for example "6 voices. None chosen yet; Martlet starts with Jenny
+(Dioco)." `F5VoicesShared` reads whether the list is shared with the
 paired Martlet computers ("Voices shared with 2 of 2 computers at 7:15 PM.",
 voices still copying to this PC, hosts to update, or "No other Martlet computers
 are paired yet, so your voices stay on this PC."). Each voice whose recording is a

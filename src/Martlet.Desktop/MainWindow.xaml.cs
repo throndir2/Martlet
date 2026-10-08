@@ -652,6 +652,7 @@ public partial class MainWindow : ThemedWindow
             if (CharacterPlacementStore.Save(store?.DataDirectory, place))
                 ErrorLog.Info($"Character position saved at {place.Left:0}, {place.Top:0} ({place.Width:0} × {place.Height:0})" +
                     (place.Screen is { } screen ? $" on {CharacterScreen(screen)}." : "."));
+            RememberProfileHere();
             UpdateCharacterButton();
             if (characterPlacementNote is { } note) note.Text = CharacterPlacementText();
         }
@@ -677,6 +678,7 @@ public partial class MainWindow : ThemedWindow
             var place = await avatar.LockPlacementAsync(locked, lifetime.Token);
             var saved = CharacterPlacementStore.Save(store?.DataDirectory, place);
             if (closing) return;
+            RememberProfileHere();
             NoticeCharacterChange(locked ? global::Martlet.Conversation.PhysicalKind.Locked : global::Martlet.Conversation.PhysicalKind.Unlocked);
             ErrorLog.Info(locked && place is { } at
                 ? $"Character position locked at {at.Left:0}, {at.Top:0} ({at.Width:0} × {at.Height:0})" +
@@ -765,6 +767,7 @@ public partial class MainWindow : ThemedWindow
             var place = await avatar.ResetPositionAsync(lifetime.Token);
             var saved = CharacterPlacementStore.Save(store?.DataDirectory, place);
             if (closing) return;
+            RememberProfileHere();
             ErrorLog.Info(place is { } at
                 ? $"Character position reset to {at.Left:0}, {at.Top:0}" + (at.Screen is { } screen ? $" on {CharacterScreen(screen)}." : ".")
                 : "Character position reset; it shows at its default spot next time.");

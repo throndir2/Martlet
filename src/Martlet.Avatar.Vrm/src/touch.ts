@@ -11,6 +11,62 @@ export interface VrmHit {
   readonly material: string | undefined;
   /** The hit point in the model's own space (its scene root). */
   readonly point: { readonly x: number; readonly y: number; readonly z: number };
+  /** Where the hit point was in the rest pose (see restPoint), in the same space as `point`; absent without the rest pose. */
+  readonly rest?: { readonly x: number; readonly y: number; readonly z: number };
+}
+
+/** Each node's world matrix in the rest pose (the pose the touch zones picture shows), by node. */
+export type RestPose = ReadonlyMap<THREE.Object3D, THREE.Matrix4>;
+
+/** Every node's world matrix under `root` as it is posed now, to trace hits back to later (see restPoint). */
+export function capturePose(root: THREE.Object3D): Map<THREE.Object3D, THREE.Matrix4> {
+  root.updateWorldMatrix(true, true);
+  const pose = new Map<THREE.Object3D, THREE.Matrix4>();
+  root.traverse(node => { pose.set(node, node.matrixWorld.clone()); });
+  return pose;
+}
+
+/**
+ * Where a hit point of the posed model was in the rest pose `rest` (world space): the hit triangle's corners skinned with
+ * the bones' world matrices at rest (without morph targets, which the rest pose doesn't show), weighted as the point lies in
+ * the triangle; for a mesh that isn't skinned, the point carried back with the mesh. So it is the same spot of the skin
+ * however the head turns to the mouse, nods or tilts, or the arms move. Undefined when the hit has no triangle or a node it
+ * needs has no rest matrix.
+ */
+export function restPoint(hit: THREE.Intersection, rest: RestPose): THREE.Vector3 | undefined {
+  const mesh = hit.object as THREE.Mesh;
+  const skinned = mesh as THREE.SkinnedMesh;
+  const geometry = mesh.geometry as THREE.BufferGeometry | undefined;
+  const position = geometry?.getAttribute("position");
+  const indices = geometry?.getAttribute("skinIndex"), weights = geometry?.getAttribute("skinWeight");
+  if (!(skinned.isSkinnedMesh && skinned.skeleton && indices && weights)) {
+    const at = rest.get(mesh);
+    return at ? hit.point.clone().applyMatrix4(mesh.matrixWorld.clone().invert()).applyMatrix4(at) : undefined;
+  }
+  if (!hit.face || !hit.barycoord || !position) return undefined;
+  // Bound "attached" (three.js's default), a skinned mesh's own matrices cancel out: only its bones place it.
+  const meshAt = rest.get(skinned);
+  const outer = skinned.bindMode === THREE.AttachedBindMode ? undefined : meshAt?.clone().multiply(skinned.bindMatrixInverse);
+  if (skinned.bindMode !== THREE.AttachedBindMode && !outer) return undefined;
+  const share = [hit.barycoord.x, hit.barycoord.y, hit.barycoord.z];
+  const point = new THREE.Vector3(), corner = new THREE.Vector3(), bound = new THREE.Vector3(), moved = new THREE.Vector3();
+  const matrix = new THREE.Matrix4();
+  for (const [n, vertex] of [hit.face.a, hit.face.b, hit.face.c].entries()) {
+    bound.fromBufferAttribute(position, vertex).applyMatrix4(skinned.bindMatrix);
+    corner.set(0, 0, 0);
+    for (let k = 0; k < indices.itemSize; k++) {
+      const weight = weights.getComponent(vertex, k);
+      if (weight === 0) continue;
+      const index = indices.getComponent(vertex, k);
+      const bone = skinned.skeleton.bones[index], inverse = skinned.skeleton.boneInverses[index];
+      const at = bone && rest.get(bone);
+      if (!at || !inverse) return undefined;
+      corner.addScaledVector(moved.copy(bound).applyMatrix4(matrix.multiplyMatrices(at, inverse)), weight);
+    }
+    if (outer) corner.applyMatrix4(outer);
+    point.addScaledVector(corner, share[n]!);
+  }
+  return [point.x, point.y, point.z].every(Number.isFinite) ? point : undefined;
 }
 
 const HAIR = /hair|kami|髪|bang|ahoge|ponytail|twintail|braid/i;
@@ -62,11 +118,11 @@ export function measurePosedBounds(root: THREE.Object3D): void {
  * What of a posed VRM a ray hits first: the mesh and material, the node the hit triangle moves with and its humanoid bone.
  * `humanoid` maps the raw humanoid bone nodes to their VRM names; `springs` are the spring-bone joints (hair is a spring-bone
  * joint, or named as hair, under the head). `measure` measures the skinned meshes' bounds in this pose first
- * (measurePosedBounds); a caller that hit-tests one pose many times needs it only once. Undefined when the ray misses every
- * visible mesh.
+ * (measurePosedBounds); a caller that hit-tests one pose many times needs it only once. With `rest` (see capturePose), also
+ * where the hit point was in the rest pose. Undefined when the ray misses every visible mesh.
  */
 export function hitTestVrm(root: THREE.Object3D, humanoid: ReadonlyMap<THREE.Object3D, string>, raycaster: THREE.Raycaster,
-  springs: ReadonlySet<THREE.Object3D> = new Set(), measure = true): VrmHit | undefined {
+  springs: ReadonlySet<THREE.Object3D> = new Set(), measure = true, rest?: RestPose): VrmHit | undefined {
   if (measure) measurePosedBounds(root);
   else root.updateWorldMatrix(true, true);
   const hit = raycaster.intersectObject(root, true).find(candidate =>
@@ -80,11 +136,14 @@ export function hitTestVrm(root: THREE.Object3D, humanoid: ReadonlyMap<THREE.Obj
   const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
   const material = materials[hit.face?.materialIndex ?? 0] ?? materials[0];
   const local = root.worldToLocal(hit.point.clone());
+  const was = rest && restPoint(hit, rest);
+  const restLocal = was && root.worldToLocal(was);
   const round = (value: number) => Math.round(value * 1000) / 1000;
   return Object.freeze({
     bone, node: node.name || undefined,
     hair: !humanoid.has(node) && bone === "head" && (springs.has(node) || HAIR.test(node.name)),
     mesh: mesh.name || undefined, material: material?.name || undefined,
     point: Object.freeze({ x: round(local.x), y: round(local.y), z: round(local.z) }),
+    ...(restLocal ? { rest: Object.freeze({ x: round(restLocal.x), y: round(restLocal.y), z: round(restLocal.z) }) } : {}),
   });
 }

@@ -459,6 +459,27 @@ internal sealed partial class AvatarController : IAsyncDisposable
         finally { changes.Release(); }
     }
 
+    /// <summary>Puts the character where a character profile left it on this PC: that spot, size and monitor, locked or not. A
+    /// showing character moves there now (it isn't a move of the user's, so the character doesn't react to it); hidden, it
+    /// shows there next. Returns where the character now is.</summary>
+    internal async Task<RendererPlacement?> PlaceAsync(RendererPlacement place, CancellationToken token)
+    {
+        await changes.WaitAsync(token);
+        try
+        {
+            if (renderer is { HasExited: false } current && profile is not null)
+            {
+                var reply = await current.SendAsync("place", place, token);
+                var placed = reply.Kind == "placement" ? RendererProtocol.Data<RendererPlacement>(reply) : null;
+                if (placed is not { IsValid: true }) throw new InvalidDataException("The character didn't confirm its position.");
+                Placement = placed;
+            }
+            else Placement = place;
+            return Placement;
+        }
+        finally { changes.Release(); }
+    }
+
     private RendererPlacement? placement;
 
     /// <summary>Where the character was last left on this PC's desktop (and on which monitor), locked or not, or null for its

@@ -690,4 +690,198 @@ public sealed class TouchZoneDetectionTests
         Assert.Contains("close-ups of the head and upper body,", again, StringComparison.Ordinal);
         Assert.EndsWith(", and the whole character again for the zones the close-ups missed.", again, StringComparison.Ordinal);
     }
+
+    // ---------- the first guess, with no vision model ----------
+
+    [Fact]
+    public void AFirstGuessPlacesTheDefaultZonesFromTheCharactersShapeWithNoVisionModel()
+    {
+        var result = TouchZoneDetection.Estimate(Character(), null);
+
+        Assert.Null(result.Failure);
+        Assert.Equal(0, result.Requests);
+        Assert.Contains("a first guess with no AI: the face from the top of the character's outline", result.Steps[0], StringComparison.Ordinal);
+        var zones = result.Zones!.ToDictionary(z => z.Id, z => z.Box);
+        Assert.Equal(TouchZoneDetection.Defaults.Order(StringComparer.Ordinal), zones.Keys.Order(StringComparer.Ordinal));
+        Assert.All(zones.Values, box => Assert.True(box.Valid, $"{box}"));
+        // Down the body in order, from the head (the block at the top) to the feet at the bottom of the legs.
+        string[] down = ["eye_left", "nose", "lips", "neck", "stomach", "groin", "calf_left", "foot_left"];
+        for (var i = 1; i < down.Length; i++)
+            Assert.True(zones[down[i - 1]].CenterY < zones[down[i]].CenterY, $"{down[i - 1]} {zones[down[i - 1]]} is above {down[i]} {zones[down[i]]}");
+        Assert.True(zones["eye_left"].Y + zones["eye_left"].Height <= 90 / 400.0, $"{zones["eye_left"]}");
+        Assert.True(zones["foot_left"].Y + zones["foot_left"].Height >= 0.95, $"{zones["foot_left"]}");
+        // Facing the viewer, the character's left is on the picture's right: its left thigh on that leg (105 to 135 of 200 pixels).
+        Assert.True(zones["eye_left"].CenterX > zones["eye_right"].CenterX);
+        Assert.True(zones["thigh_left"].X >= 0.52 && zones["thigh_left"].X + zones["thigh_left"].Width <= 0.68, $"{zones["thigh_left"]}");
+
+        // With the face the renderer found, the head's zones go around it.
+        var faced = TouchZoneDetection.Estimate(Character(), new ZoneHints([], [], true) { Face = new(0.5, 0.12, 0.25) });
+        Assert.Contains("the face the renderer found", faced.Steps[0], StringComparison.Ordinal);
+        var eye = faced.Zones!.Single(z => z.Id == "eye_left").Box;
+        Assert.Equal(0.12, eye.CenterY, 2);
+        Assert.Equal(0.5 + 0.24 * 0.25, eye.CenterX, 2);
+    }
+
+    [Fact]
+    public void AFirstGuessOnABustPlacesNoLegs()
+    {
+        // A bust: the head and shoulders, cut off at the picture's bottom edge.
+        var result = TouchZoneDetection.Estimate(Picture(200, 200, Dark, (50, 10, 100, 190)), null);
+
+        var ids = result.Zones!.Select(z => z.Id).ToArray();
+        foreach (var id in new[] { "hair", "eye_left", "eye_right", "nose", "lips", "neck" }) Assert.Contains(id, ids);
+        foreach (var id in new[] { "hip_left", "groin", "thigh_left", "calf_right", "foot_left" }) Assert.DoesNotContain(id, ids);
+        Assert.All(result.Zones!, z => Assert.True(z.Box.Valid, $"{z.Id}: {z.Box}"));
+    }
+
+    [Fact]
+    public void AFirstGuessFollowsAVrmsSkeletonForItsArmsAndLegs()
+    {
+        // Arms held out level (a T pose), where the body's proportions would have them hang at its sides.
+        var tPose = Picture(200, 400, Dark, (70, 20, 60, 70), (60, 90, 80, 130), (65, 220, 30, 170), (105, 220, 30, 170), (140, 95, 58, 20), (2, 95, 58, 20));
+        ZoneHintPoint[] bones =
+        [
+            new("leftUpperArm", 0.7, 0.2625), new("leftLowerArm", 0.83, 0.2625), new("leftHand", 0.95, 0.2625),
+            new("rightUpperArm", 0.3, 0.2625), new("rightLowerArm", 0.17, 0.2625), new("rightHand", 0.05, 0.2625),
+            new("leftUpperLeg", 0.6, 0.55), new("leftLowerLeg", 0.6, 0.75), new("leftFoot", 0.6, 0.94),
+            new("rightUpperLeg", 0.4, 0.55), new("rightLowerLeg", 0.4, 0.75), new("rightFoot", 0.4, 0.94)
+        ];
+
+        var result = TouchZoneDetection.Estimate(tPose, new ZoneHints(bones, [], true));
+
+        Assert.Contains("the arms and legs from the model's skeleton", result.Steps[0], StringComparison.Ordinal);
+        Assert.Contains(result.Steps, s => s.StartsWith("from the model's skeleton: ", StringComparison.Ordinal) && s.Contains("upper_arm_left", StringComparison.Ordinal));
+        var zones = result.Zones!.ToDictionary(z => z.Id, z => z.Box);
+        // Each part of an arm along its own bones, level with the shoulder; facing the viewer, the left arm on the picture's right.
+        foreach (var (id, from, to) in new[] { ("upper_arm_left", 0.7, 0.83), ("forearm_left", 0.83, 0.95), ("upper_arm_right", 0.17, 0.3), ("forearm_right", 0.05, 0.17) })
+        {
+            Assert.True(zones[id].CenterX > from && zones[id].CenterX < to, $"{id}: {zones[id]}");
+            Assert.True(zones[id].CenterY is > 0.2375 and < 0.2875, $"{id}: {zones[id]}");
+        }
+        Assert.True(zones["thigh_left"].Contains(0.6, 0.65) && zones["calf_left"].Contains(0.6, 0.85), $"{zones["thigh_left"]}, {zones["calf_left"]}");
+    }
+
+    [Fact]
+    public void WhileTheThinkingModelFindsTheZonesTheFirstGuessKeepsTheOnesNotFoundYet()
+    {
+        CharacterTouchZone[] guessed =
+        [
+            new() { Id = "hair", Box = new(0.3, 0.02, 0.4, 0.15) }, new() { Id = "nose", Box = new(0.48, 0.15, 0.04, 0.02) },
+            new() { Id = "foot_left", Box = new(0.55, 0.9, 0.1, 0.08) }
+        ];
+        var guess = CharacterTouchZones.Estimated(null, "m", guessed, new(0, 0, 1, 1), null, DateTimeOffset.Now);
+        Assert.Equal((CharacterTouchZoneSettings.ByEstimate, true), (guess.DetectedBy, guess.Whole));
+
+        var nose = new CharacterTouchZone { Id = "nose", Box = new(0.47, 0.16, 0.06, 0.03) };
+        var partial = CharacterTouchZones.Detected(guess, "m", [nose], new(0, 0, 1, 1), null, DateTimeOffset.Now, whole: true, keepUnfound: true);
+        Assert.Equal(["hair", "nose", "foot_left"], partial.Zones.Select(z => z.Id));
+        Assert.Equal(nose.Box, partial.Zones[1].Box);
+
+        // When it is done, its zones replace the first guess.
+        var done = CharacterTouchZones.Detected(guess, "m", [nose], new(0, 0, 1, 1), null, DateTimeOffset.Now, whole: true);
+        Assert.Equal(["nose"], done.Zones.Select(z => z.Id));
+        Assert.Equal(CharacterTouchZoneSettings.ByVision, done.DetectedBy);
+    }
+
+    [Fact]
+    public async Task TheFirstGuessShowsTheCharacterAndItsZonesAtOnceWithNothingSent()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var data = Path.Combine(scope.DirectoryPath, "data");
+        var png = Png(Character());
+        await using var avatar = new AvatarController(createRenderer: () => throw new InvalidOperationException("the character must not show"),
+            createStillRenderer: () => new StillRenderer(png: png));
+        var service = new CharacterTouchZoneService(data);
+        service.Follow("model-1");
+        Assert.True(service.NeedsFirstGuess);
+        var character = new TaskCompletionSource<AvatarProfile?>();
+
+        var guessing = service.EstimateAsync(avatar, () => character.Task, CancellationToken.None);
+
+        // Busy at once, so the page drawn now says so, and Detect zones waits for it (nothing is asked).
+        Assert.True(service.Busy && service.Estimating);
+        Assert.False(service.NeedsFirstGuess);
+        Assert.Equal(CharacterTouchZoneService.FirstGuessDrawing, service.Detection);
+        Assert.Equal(CharacterTouchZoneService.FirstGuessDrawing, await service.DetectAsync(avatar, scope.Profile(),
+            (_, _, _, _, _) => throw new InvalidOperationException("nothing is sent"), CancellationToken.None));
+        character.SetResult(scope.Profile());
+        var line = await guessing;
+
+        Assert.StartsWith("First zones: Martlet placed 24 zones", line, StringComparison.Ordinal);
+        Assert.Equal(line, service.Detection);
+        Assert.False(service.Busy || service.Estimating || service.NeedsFirstGuess);
+        var saved = CharacterTouchZones.Load(data, "model-1")!;
+        Assert.Equal((CharacterTouchZoneSettings.ByEstimate, true), (saved.DetectedBy, saved.Whole));
+        Assert.Equal(TouchZoneDetection.Defaults.Order(StringComparer.Ordinal), saved.Zones.Select(z => z.Id).Order(StringComparer.Ordinal));
+        Assert.Equal(png, File.ReadAllBytes(service.SnapshotPath!));
+        // Nothing went to a Thinking model: no pictures were kept for it.
+        Assert.Null(service.Sent);
+        Assert.Null(service.SentFolder);
+        // A model with zones gets no first guess again.
+        Assert.Equal(line, await service.EstimateAsync(avatar, () => throw new InvalidOperationException("not again"), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task DetectZonesOverTheFirstGuessKeepsItsOtherZonesUntilDoneAndPutsItBackWhenItFails()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var data = Path.Combine(scope.DirectoryPath, "data");
+        var png = Png(Character());
+        await using var avatar = new AvatarController(createRenderer: () => throw new InvalidOperationException("the character must not show"),
+            createStillRenderer: () => new StillRenderer(png: png));
+        var service = new CharacterTouchZoneService(data);
+        service.Follow("model-1");
+        await service.EstimateAsync(avatar, () => Task.FromResult<AvatarProfile?>(scope.Profile()), CancellationToken.None);
+        var guessed = service.Current!;
+        Assert.Contains(guessed.Zones, z => z.Id == "foot_left");
+
+        // A request fails part way: the first guess comes back, with its picture.
+        var requests = 0;
+        var failed = await service.DetectAsync(avatar, scope.Profile(), (_, _, _, _, _) => FailsAtThree(++requests), CancellationToken.None);
+        Assert.Equal("Finding zones stopped at request 3: couldn't ask the Thinking model (ResponseTruncated). The 24 zones of the first guess are kept. " +
+            "Try again when it answers.", failed);
+        Assert.Equal(guessed.Zones.Select(z => z.Id), service.Current!.Zones.Select(z => z.Id));
+        Assert.Equal(CharacterTouchZoneSettings.ByEstimate, service.Current.DetectedBy);
+        Assert.Equal(png, File.ReadAllBytes(service.SnapshotPath!));
+
+        // It answers: while it works, a zone it found replaces its first guess and the others stay on the picture; when it is done,
+        // its zones replace the first guess.
+        requests = 0;
+        string[]? during = null;
+        var found = await service.DetectAsync(avatar, scope.Profile(), (_, _, _, _, _) =>
+        {
+            if (++requests == 3) during = [.. service.Current!.Zones.Select(z => z.Id)];
+            return requests < 3 ? FailsAtThree(requests) : Task.FromResult<(string?, string?)>(("{\"zones\":[]}", null));
+        }, CancellationToken.None);
+
+        Assert.StartsWith("Found ", found, StringComparison.Ordinal);
+        Assert.Contains("nose", during!);
+        Assert.Contains("foot_left", during!);
+        Assert.Contains(service.Current!.Zones, z => z.Id == "nose");
+        Assert.DoesNotContain(service.Current.Zones, z => z.Id == "foot_left");
+        Assert.Equal(CharacterTouchZoneSettings.ByVision, service.Current.DetectedBy);
+    }
+
+    [Fact]
+    public async Task McpPlacesAndSavesTheFirstGuessOnASnapshot()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-touch-").FullName;
+        try
+        {
+            var snapshot = Path.Combine(directory, "snapshot.png");
+            await File.WriteAllBytesAsync(snapshot, Png(Character()));
+
+            var result = System.Text.Json.JsonSerializer.SerializeToElement(await Martlet.Mcp.TouchZonesCheck.RunAsync(directory, true, null, "model-1",
+                null, null, null, null, null, null, true, null, snapshot, CancellationToken.None, estimate: true));
+
+            var estimate = result.GetProperty("estimate");
+            Assert.Equal(24, estimate.GetProperty("count").GetInt32());
+            Assert.Empty(estimate.GetProperty("missing").EnumerateArray());
+            Assert.StartsWith("No vision request", estimate.GetProperty("noAi").GetString(), StringComparison.Ordinal);
+            var saved = CharacterTouchZones.Load(directory, "model-1")!;
+            Assert.Equal((CharacterTouchZoneSettings.ByEstimate, 24), (saved.DetectedBy, saved.Zones.Count));
+            Assert.True(File.Exists(CharacterTouchZones.SnapshotPath(directory, "model-1")));
+        }
+        finally { Directory.Delete(directory, true); }
+    }
 }

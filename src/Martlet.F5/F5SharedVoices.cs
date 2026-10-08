@@ -60,18 +60,27 @@ public static class F5SharedVoices
         return library;
     }
 
+    /// <summary>The list with each starter voice it has never had, live or removed (<see cref="SpeakingVoiceLibrary.Seed"/>): a
+    /// starter voice added in an update joins an existing list once, and one the owner removed doesn't come back.</summary>
+    public static SpeakingVoiceLibrary WithStarters(SpeakingVoiceLibrary library)
+    {
+        ArgumentNullException.ThrowIfNull(library);
+        return F5BundledVoices.All.All(voice => library.Find(SpeakingVoiceLibrary.ReferenceId(voice.AudioSha256, voice.Transcript)) is not null)
+            ? library : library.Seed(Starters);
+    }
+
     /// <summary>Brings the store in <paramref name="storeDirectory"/> in step with <paramref name="library"/>.
     /// <paramref name="fetch"/> returns a recording by SHA-256 from another computer (null when none has it yet); recordings
     /// are staged in <paramref name="stagingDirectory"/>. A removed voice the store still applies, or one in
     /// <paramref name="keep"/> (a voice a route still speaks with), stays until another voice is used. Recordings Martlet no
-    /// longer ships leave the list and, on the same terms, the store.</summary>
+    /// longer ships leave the list and, on the same terms, the store; starter voices the list never had join it.</summary>
     public static async Task<F5SharedVoicesResult> ReconcileAsync(string storeDirectory, string stagingDirectory, string destination,
         SpeakingVoiceLibrary library, Func<string, CancellationToken, Task<byte[]?>> fetch, string by, DateTimeOffset now,
         IReadOnlySet<string>? keep = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(library);
         ArgumentNullException.ThrowIfNull(fetch);
-        library = WithoutRetired(library, by, now);
+        library = WithStarters(WithoutRetired(library, by, now));
         IReadOnlyDictionary<string, F5ReferenceSnapshot> local;
         Guid? applied;
         Guid[] retired;

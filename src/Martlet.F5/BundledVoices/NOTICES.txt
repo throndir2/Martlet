@@ -1,18 +1,20 @@
 Martlet starter voices - sources and notices
 ============================================
 
-Martlet starts every voice list with five short reference recordings
+Martlet starts every voice list with six short reference recordings
 (src/Martlet.F5/BundledVoices) that its voice engines can copy a voice from. Once in the
 list they are ordinary voices: the owner can remove them like any other. Each is public
-domain (or dedicated to it under CC0) or covered by the CMU ARCTIC licence below, which
-allows any use, including commercial use and redistribution. They were cut from the
-upstream recordings named here by scripts/Build-F5BundledVoices.py.
+domain (or dedicated to it under CC0) or covered by the Jenny TTS dataset licence or the
+CMU ARCTIC licence below, which allow any use, including commercial use and
+redistribution. They were cut from the upstream recordings named here by
+scripts/Build-F5BundledVoices.py.
 
-Modifications (all five clips): the spoken passage was cut out at its silences (the
+Modifications (all six clips): the spoken passage was cut out at its silences (the
 two CMU ARCTIC sentences joined by 0.3 s of silence), DC offset and rumble below 50 Hz were
 removed, the level was set to -20 dBFS speech RMS (peaks at most -1 dBFS), 10 ms fades
-were applied at each cut, LibriVox MP3s were decoded and resampled to 24 kHz, and each
-clip was written as mono 16-bit PCM WAV. The words and voices are otherwise unchanged.
+were applied at each cut, LibriVox MP3s and the Jenny FLAC were decoded and resampled to
+24 kHz, and each clip was written as mono 16-bit PCM WAV. The words and voices are
+otherwise unchanged.
 
 These licences cover the recordings. Speech Martlet generates in these voices is not
 said or endorsed by the original speakers.
@@ -39,6 +41,31 @@ librivox-woollybee.wav ("Bee (cute, bubbly)")
   Transcript: "It isn't heavy. I've got all my worldly goods in it, but it isn't heavy.
   And if it isn't carried in just a certain way the handle pulls out, so I'd better keep
   it because I know the exact knack of it."
+
+
+Jenny TTS dataset recording
+---------------------------
+
+jenny-dioco.wav ("Jenny (Dioco)")
+  The Jenny TTS dataset by Dioco (https://github.com/dioco-group/jenny-tts-dataset), voice
+  recorded for speech synthesis by Jenny, an Irish voice-over artist. Prompt 10003, read
+  from Little Women (1868) by Louisa May Alcott, Chapter IX (Meg speaking), taken from the
+  dataset's Hugging Face copy (https://huggingface.co/datasets/reach-vb/jenny_tts_dataset,
+  data/train-00000-of-00010.parquet, row "jenny/10003": 10003.flac, 48 kHz mono, SHA-256
+  c2b3c1a9c823deb9874b8c489fdf86e4ac6e1e6cf4954326a72d536beb0c8e4f), 0.075 s to the end
+  (the key knock before the speech is cut off).
+  Transcript: "Well, I am happy, and I won't fret, but it does seem as if the more one
+  gets the more one wants, doesn't it?"
+  As the licence requires, Martlet names this voice "Jenny (Dioco)".
+
+The licence in the dataset's README, unchanged:
+
+License - Attribution is required in software/websites/projects/interfaces (including
+voice interfaces) that generate audio in response to user action using this dataset.
+Atribution means: the voice must be referred to as "Jenny", and where at all practical,
+"Jenny (Dioco)". Attribution is not required when distributing the generated clips
+(although welcome). Commercial use is permitted. Don't do unfair things like claim the
+dataset is your own. No further restrictions apply.
 
 
 Public domain recordings

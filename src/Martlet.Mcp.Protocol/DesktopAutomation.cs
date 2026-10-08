@@ -860,8 +860,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // "Cancel: Set up gpu-pc").
         "TaskTitle-", "TaskState-", "TaskShow-", "TaskCancel-",
         // Companion › Profiles: each profile's state ("CharacterProfileState-3f2a9c1b" reads "In use.", "Ready." or why a part
-        // can't switch here, such as "Its look is still copying to this PC. Using it switches the rest."; never a name).
-        "CharacterProfileState-",
+        // can't switch here, such as "Its look is still copying to this PC. Using it switches the rest."; never a name) and what
+        // it keeps on this PC ("CharacterProfileHere-3f2a9c1b" reads "On this PC: its own spot and size (420 × 560, locked) ·
+        // Eyes: Follow your mouse · While it talks: any touch stops it."; sizes and fixed labels only).
+        "CharacterProfileState-", "CharacterProfileHere-",
         // Devices › Sharing work: each job's line ("WorkSharingJob-speaking" reads "Speaking. When the computer doing it is busy
         // ..."), each computer in its order ("WorkSharingPlace-speaking-diva-host" reads "1. diva-host. this PC's own; does it for
         // this PC now."), each computer's keep line ("WorkSharingHost-diva-host" reads "diva-host. Kept for desk-1.") and its

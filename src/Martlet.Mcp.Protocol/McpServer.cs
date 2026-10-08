@@ -149,7 +149,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("character_touch", "Tap the showing character like a left click that doesn't drag, at x, y (fractions 0 to 1 of the " +
             "character overlay's drawing, +y down; unzoomed, its head is near 0.5, 0.15), and return the renderer's hit test as " +
             "last: n, x, y, hit, zone (head, hair, face, body, arm, hand, leg or foot), hitAreas and drawables (Live2D), bone, node, " +
-            "hair, mesh and material (VRM). Martlet then plays its tap reaction (the desktop log records 'The character was " +
+            "mesh and material (VRM), hair (Live2D: the topmost drawable sits in a part the model names as hair; VRM: a hair joint), " +
+            "and rest ({x, y}: where the touched point of the character was in its rest pose, " +
+            "traced on the touched mesh and drawn as the overlay frames it now; touch zones compare it with their boxes, so it " +
+            "stays put while the head follows the mouse; null when the renderer can't trace it). Martlet then plays its tap " +
+            "reaction (the desktop log records 'The character was " +
             "tapped on the ...'). holdMs presses that long (600 or more is a hold, up to 10000), repeat taps the same point up to " +
             "20 times gapMs apart (default 150), and taps ([{x, y, holdMs}], up to 20) taps a sequence of points instead. With " +
             "Companion > Touch > Touch zones showing, noticed reads what Martlet noticed after settleMs: waiting (the touch " +
@@ -638,8 +642,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "desktop's paired client and Martlet.F5's reconcile engine. Checks the starter voices, sharing the list and recordings, " +
             "speaking by recording SHA-256 alone, the one-time fallback that sends a recording a host lacks, a new desktop taking every " +
             "voice from a host, the shared choice, removal everywhere (host and desktop copies deleted), stale copies, retired starter " +
-            "voices leaving an older list, a host restart and upload checks. Loopback only; the temporary folder is deleted and the " +
-            "credential vault is not touched.", new { }),
+            "voices leaving an older list, a new starter voice joining an older list once, a host restart and upload checks. Loopback " +
+            "only; the temporary folder is deleted and the credential vault is not touched.", new { }),
         Tool("character_models", "Read the shared character models from a data directory (character-models.json and the copies in " +
             "character-models, docs/CLUSTER.md \"The shared character models\"): live characters and tombstones, total size, and for " +
             "each character its key (first 16 hex digits of its ID, as in CharacterModelState-<key>), renderer, files, pieces, size, " +
@@ -652,9 +656,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("character_profiles", "Read the character profiles (Companion > Profiles) from a data directory: each profile's key (first " +
             "8 hex digits of its ID, as in CharacterProfileState-<key>), whether its personality is saved, what its look is (keep, " +
             "builtin, a listed character whose copy is ready or still copying here, or missing) and its voice (keep, listed or " +
-            "missing); the profile switched to last; and which profile matches what Martlet uses now (the active persona, the look " +
-            "in avatar.json and the voice the speaking route keeps or the shared list chose). Never returns names. Read-only; " +
-            "contacts nothing.", new
+            "missing); the profile switched to last; which profile matches what Martlet uses now (the active persona, the look " +
+            "in avatar.json and the voice the speaking route keeps or the shared list chose); and what each profile keeps on this " +
+            "PC (character-profiles-local.json: its place, size, monitor and lock, its usual gaze and whether replies may change " +
+            "it, and which touches stop it while it talks) with the profile whose choices this PC uses. Never returns names. " +
+            "Read-only; contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -734,7 +740,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "snapshot sat on the page); hints shows what the probe's part names place (areas, with the character's own side) and the " +
             "close-ups' windows they give; the zones saved for the model (modelPath, modelId or the model dataDirectory's avatar.json shows) in " +
             "character-touch-zones.json with what its last detection sent, and with touch (a CharacterTouch: {\"x\",\"y\",\"hitAreas\"," +
-            "\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\",\"wholeX\",\"wholeY\"}) the zone it lands in, how it was found, what it " +
+            "\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\",\"wholeX\",\"wholeY\",\"restX\",\"restY\",\"restWholeX\"," +
+            "\"restWholeY\"}; rest* is where the touched point was in the rest pose, which the boxes compare with when given) the zone " +
+            "it lands in, how it was found, whether it was traced to the rest pose (traced), the point compared (at), what it " +
             "plays and what it tells the character. detect runs the production detection on snapshotPath (a PNG of the character, transparent " +
             "around it), composing and encoding every picture it would send (previewDirectory keeps them), with a FIXTURE - NOT AI stand-in " +
             "that answers from answer's zones (guess, a wrong first answer, makes the checks correct it; checks sets the rounds, 0 to 5; " +
@@ -742,8 +750,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "must be found: asked for again on the whole character, then worked out from the zones around them; it " +
             "reports each request, the steps and how far the found boxes are from answer's. add (zone IDs, comma-separated, such as " +
             "\"hand_left,tail\") adds zones as the owner does with Add zone (added, in the middle of the picture; one the model has is " +
-            "marked added): detect then looks for them too and must end with them, and one it can't place stays where it was. save writes " +
-            "the parsed (or detected) zones (or, with add alone, the zones with the ones added) (and " +
+            "marked added): detect then looks for them too and must end with them, and one it can't place stays where it was. estimate " +
+            "runs the first guess the Touch zones page places on a model with no zones and no picture (TouchZoneDetection.Estimate) on " +
+            "snapshotPath with the probe's hints (its face, named parts and skeleton), with no vision request: the zones it places, the " +
+            "wanted ones it couldn't place and the steps (what placed each). save writes " +
+            "the parsed (or detected, or estimated) zones (or, with add alone, the zones with the ones added) (and " +
             "snapshotPath as their picture, and with detect the pictures sent; includeIntimate sets Include intimate zones) into an explicit, " +
             "disposable dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
             "{\"attitude\":2,\"reactions\":[\"hearts\",\"blush\"],\"linger\":3}},\"zones\":{...},\"escalation\":{\"after\":3,...}}) or " +
@@ -760,7 +771,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             temperament = new { type = "string" }, personaId = new { type = "string" }, personality = new { type = "string" },
             repeats = new { type = "integer", minimum = 1 }, detect = new { type = "boolean" }, guess = new { type = "string" },
             previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 },
-            failAt = new { type = "integer", minimum = 1 }, probePath = new { type = "string" }, add = new { type = "string" }
+            failAt = new { type = "integer", minimum = 1 }, probePath = new { type = "string" }, add = new { type = "string" },
+            estimate = new { type = "boolean" }
         }),
         Tool("character_eyes", "Companion > Eyes > Where the eyes are (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
             "with NO vision request: the request the vision model gets (a close-up of the face, 1.6 face widths square, about 768 pixels " +
@@ -1999,7 +2011,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     cancellation, OptionalString(arguments, "temperament"), OptionalString(arguments, "personaId"), OptionalString(arguments, "personality"),
                     OptionalInt(arguments, "repeats"), OptionalBool(arguments, "detect") ?? false, OptionalString(arguments, "guess"),
                     OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt"),
-                    OptionalString(arguments, "probePath"), OptionalString(arguments, "add")),
+                    OptionalString(arguments, "probePath"), OptionalString(arguments, "add"), OptionalBool(arguments, "estimate") ?? false),
                 "character_eyes" => await CharacterEyesCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "dataDirectory") is not null,
                     OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"), OptionalString(arguments, "answer"),
                     OptionalString(arguments, "second"), OptionalString(arguments, "snapshotPath"), OptionalString(arguments, "face"),
@@ -3166,6 +3178,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             ? reference.ReferenceRevision : voices.ChosenVoice?.Id;
         var current = companion?.CurrentCharacter(modelNow, voiceNow);
         var profiles = companion?.CharacterList ?? [];
+        var (hereState, hereInUse, here) = ProfilesHere(directory);
         return new
         {
             state = settings is null ? "no-settings" : profiles.Count == 0 ? "none" : "loaded",
@@ -3175,6 +3188,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             look = modelNow is null ? "model-file-outside-list" : modelNow == Martlet.Core.Settings.CharacterProfile.BuiltInModel ? "builtin"
                 : "shared:" + Martlet.Avatar.Hosting.SharedCharacterModels.Key(modelNow),
             voiceChosen = voiceNow is not null,
+            hereState,
+            hereInUse = profiles.FirstOrDefault(c => c.Id == hereInUse)?.Key,
             profiles = profiles.Select(p => new
             {
                 key = p.Key,
@@ -3189,9 +3204,61 @@ internal sealed class McpServer(DesktopAutomation desktop)
                         : "missing"
                 },
                 voice = p.VoiceId is null ? "keep" : voices.Find(p.VoiceId) is { Removed: false } ? "listed" : "missing",
-                inUse = p.Id == current?.Id
+                inUse = p.Id == current?.Id,
+                here = here.GetValueOrDefault(p.Id)
             }).ToArray()
         };
+    }
+
+    /// <summary>character-profiles-local.json in a data directory (Martlet.Desktop's CharacterProfileLocalStore): the profile whose
+    /// choices this PC uses (InUse) and what each character profile keeps on this PC, by profile ID: its place (device-independent
+    /// pixels, the monitor and whether it is locked; null without one), its usual gaze (<c>personality</c> or a gaze's word),
+    /// whether replies may change it, and which touches stop it while it talks (<c>any</c>, <c>intimate</c> or <c>never</c>). No
+    /// file means no profile keeps anything here.</summary>
+    private static (string State, Guid? InUse, Dictionary<Guid, object> Profiles) ProfilesHere(string directory)
+    {
+        var path = Path.Combine(directory, "character-profiles-local.json");
+        if (!File.Exists(path)) return ("none", null, []);
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                !document.RootElement.TryGetProperty("Profiles", out var saved) || saved.ValueKind != JsonValueKind.Object)
+                return ("unreadable", null, []);
+            Guid? inUse = document.RootElement.TryGetProperty("InUse", out var used) && used.ValueKind == JsonValueKind.String &&
+                Guid.TryParse(used.GetString(), out var usedId) ? usedId : null;
+            var profiles = new Dictionary<Guid, object>();
+            foreach (var entry in saved.EnumerateObject())
+            {
+                if (!Guid.TryParse(entry.Name, out var id) || entry.Value.ValueKind != JsonValueKind.Object) continue;
+                var kept = entry.Value;
+                object? place = null;
+                if (kept.TryGetProperty("Placement", out var at) && at.ValueKind == JsonValueKind.Object)
+                {
+                    double? Number(string name) => at.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number &&
+                        value.TryGetDouble(out var number) ? number : null;
+                    place = new
+                    {
+                        locked = at.TryGetProperty("Locked", out var locked) && locked.ValueKind == JsonValueKind.True,
+                        left = Number("Left"), top = Number("Top"), width = Number("Width"), height = Number("Height"),
+                        screen = at.TryGetProperty("Screen", out var screen) && screen.ValueKind == JsonValueKind.String ? screen.GetString() : null
+                    };
+                }
+                profiles[id] = new
+                {
+                    place,
+                    gaze = kept.TryGetProperty("GazeUsual", out var usual) && usual.ValueKind == JsonValueKind.String ? usual.GetString() : "personality",
+                    gazeFree = !(kept.TryGetProperty("GazeFree", out var free) && free.ValueKind == JsonValueKind.False),
+                    touchInterrupts = kept.TryGetProperty("TouchInterrupts", out var touches) && touches.ValueKind == JsonValueKind.String
+                        ? touches.GetString() : "any"
+                };
+            }
+            return ("loaded", inUse, profiles);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return ("unreadable", null, []);
+        }
     }
 
     /// <summary>The shared character models as the desktop keeps them in a data directory (Martlet.Avatar.Hosting's

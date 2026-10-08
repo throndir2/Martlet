@@ -44,10 +44,10 @@ internal static class F5Voices
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException) { return null; }
     }
 
-    /// <summary>The list as it is, without recordings Martlet no longer ships, or as it would start (the starter voices) when
-    /// this PC has none yet.</summary>
+    /// <summary>The list as it is, without recordings Martlet no longer ships and with starter voices it never had, or as it
+    /// would start (the starter voices) when this PC has none yet.</summary>
     internal static SpeakingVoiceLibrary View(string dataDirectory) => LoadLibrary(dataDirectory) is { } saved
-        ? F5SharedVoices.WithoutRetired(saved, HostSetupCommands.SuggestedDeviceId(), DateTimeOffset.UtcNow)
+        ? F5SharedVoices.WithStarters(F5SharedVoices.WithoutRetired(saved, HostSetupCommands.SuggestedDeviceId(), DateTimeOffset.UtcNow))
         : SpeakingVoiceLibrary.Empty.Seed(F5SharedVoices.Starters);
 
     /// <summary>Merges <paramref name="library"/> into the saved list (so a change saved meanwhile is never lost) and returns

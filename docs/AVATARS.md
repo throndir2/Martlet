@@ -46,6 +46,25 @@ Martlet actually uses, so changing the look, voice or personality by hand shows
 "A mix of your own" until a profile matches again. Removing a persona removes the
 profiles built on it.
 
+A profile also keeps, on each PC, what you set there while you use it: where its
+character stands and how big it is (with the monitor and the lock), where it
+looks (Companion › Eyes › *Where the character looks* and *Let the character
+change where it looks*) and which touches stop it while it talks (Companion ›
+Touch › *When you touch Martlet while it talks*). These stay on each PC, in
+`character-profiles-local.json` (never shared), because each computer has its own
+screens. Switching profiles first keeps them for the profile in use, then puts
+back the new profile's: a showing character moves to its place at once, and the
+move doesn't count as one of yours, so Martlet doesn't remark on it. A switch
+made on another computer, also one made while Martlet was closed here, brings
+back the new profile's choices on this PC once the shared settings arrive. A
+profile that keeps nothing on a PC yet takes on what that PC uses when it is
+switched to. Changes made while no profile matches ("A mix of your own") are kept
+for no profile, and a profile that Martlet becomes by hand doesn't lose what it
+keeps until you switch to it. Removing a profile removes what it kept. The other
+parts of a character already follow its look or personality on their own: the
+emotes and motions, combos, touch zones and eye measurements are kept for each
+model, and the touch temperament and quick sounds for each persona and voice.
+
 ## Emotes and motions
 
 Models don't share a standard for emotes. VRM 1.0 has optional preset emotions
@@ -496,6 +515,25 @@ ears, neck, chest and breasts, waist and sides, hips, groin, buttocks and inner
 thighs) react too while **Include intimate zones** is on, which it is by
 default; turn it off to leave them out. The check box names each of these parts.
 
+- **First zones, with no AI.** The first time the page shows a model that has
+  no zones and no picture yet, Martlet draws the character off screen (as
+  Detect zones does, step 1 below) and places a first guess at the short list
+  at once. Nothing is sent to any model. The page shows *Drawing the character
+  to place its first zones (no AI, nothing is sent)...*, then the picture with
+  the zones as boxes, usually within a second or two. The guess comes from what
+  Martlet can tell for certain: the model's own named parts (a Live2D model's
+  eyes, mouth, neck, arms and legs; see below), a VRM's skeleton for its arms
+  and legs, and the body's proportions for the rest. The proportions are
+  measured on the bundled Hiyori and placed around the face the renderer finds
+  (else the top of the character's outline), stretched to the character's
+  height. The hair zone stops just below the chin, and a bust gets no legs.
+  The zones follow the model's parts and react to clicks at once. The status
+  line says they are a first guess; move a box into place, or press **Detect
+  zones** and the Thinking model finds them. While it works, each zone it finds
+  replaces its first guess on the picture and the others stay. When it is
+  done, its zones replace the first guess. When it stops part way, the first
+  guess comes back. A model whose first guess couldn't be placed gets another
+  try the next time you open the page.
 - **Detect zones** shows the Thinking model pictures of the character (never the
   model's files); a model must be able to see (Companion › Vision says whether
   it can and where pictures go). The button is greyed out only when no model
@@ -603,14 +641,56 @@ default; turn it off to leave them out. The check box names each of these parts.
   the joint to the next bone's) crosses it (a calf: the shin bone; the groin:
   the hips, which move the pelvis down to the crotch). A VRM zone with no such
   bone takes the bones of its part of the body that pass near it (a cheek: the
-  head; a breast: the chest). Hair follows the head's hair. A click is matched
-  to the topmost Live2D part it hit, then hair. On a
+  head; a breast: the chest). Hair follows the head's hair.
+- A Live2D zone also takes the pieces of its own feature that its box leaves
+  out. A vision box is often drawn tight around a feature: an eye's box can
+  leave out the eye's white and lashes, and a cheek's box a wide blush. Then
+  only a bigger zone that frames the face, such as the hair, got those pieces,
+  and a click on a lash was hair. The model's own parts group a feature's
+  pieces (on the bundled Hiyori, 目 holds the eye's lashes and 目玉 its white
+  and iris). So a drawable that no smaller zone has yet is also tied to the
+  zone of the feature that its own part (or the nearest part around it that
+  has a zone) belongs to. A part belongs to one feature (one zone, or a left
+  and a right one) when nearly all (90%) of its tied drawables' area is in that
+  feature's zones: a stray lash tip in a cheek's box doesn't stop the eye's part
+  lending its lashes, but a part that holds several features, such as the
+  whole head, lends nothing. A part whose own name (or ID) says what it is
+  lends only to zones of that: 頬 (the cheeks) never lends its blush to an ear
+  whose box takes in the edge of the cheek. The drawable's middle must lie
+  within half the zone's size of its box, and the drawable must be at most four
+  times the box's size.
+- A click is traced back to the rest pose before it is matched. The zones'
+  boxes are drawn on a picture of the character at rest, but the character
+  you click moves: its head turns and nods to follow the mouse, it breathes
+  and sways, and motions and gestures move it. So the renderer finds the
+  touched point on the mesh it hit (a Live2D drawable's triangle, or a VRM
+  mesh skinned to its bones) and takes the same point of that mesh in the
+  rest pose. The same spot of the skin then lands in the same zone however
+  the model is posed, the same way Martlet's drawings stay pinned to the
+  face's skin. The last-touch line says *traced to the rest pose* when this
+  happened.
+- A click is matched to the topmost Live2D part it hit that belongs to a zone
+  (with several zones, the smallest box that holds the point). When the click
+  is not on hair, a part under it that a smaller zone inside one of those zones
+  has wins: the top of a blush drawn over the lower half of an eye is the eye,
+  not the hair that frames the face. A zone inside
+  a bigger one that also has that part wins when the point is just outside its
+  box (within half its size): a lash above a tight eye box is the eye. A smaller
+  zone inside the part's smallest zone also counts when its box holds the point,
+  and none of its own parts is under the click: a cheek, or the skin by
+  the nose, lies on the face's skin that the hair's box takes in, so it wins as
+  the finer part. A click on hair (the
+  renderer says so when the model names the topmost part's group as hair, such
+  as 前髪 or PartHairSide) stays hair: bangs drawn over an eye, or a lock
+  hanging in front of an ear. It goes to such a smaller zone only when the zone
+  has no parts of its own, such as a forehead under the bangs. On a model that
+  doesn't name its hair, bangs over an eye count as an overlay on the eye. Then hair. On a
   VRM it is then matched to the smallest zone on the part of the body the hit
   bone moves (the head, the torso, an arm or a leg, on the same side) whose box
   holds the point: one VRM bone moves a whole part, such as the head with its
-  cheeks, lips and ears. When no such box holds the point (the part has moved,
-  for example a hand raised to the face), the zone that holds that bone nearest
-  the point is used. Without a bone, the smallest box around the point is used.
+  cheeks, lips and ears. When no such box holds the point (no zone was found at
+  that spot, or the renderer couldn't trace it), the zone that holds that bone
+  nearest the point is used. Without a bone, the smallest box around the point is used.
   Boxes are compared with where the point sits with the character framed whole,
   so zooming in or panning doesn't move them. Last comes the rough part of the
   body (head, face, body, arm, hand, leg, foot); before any zones are found,

@@ -161,27 +161,37 @@ invalidation, and preview separation. It opens no network or audio device.
 
 ## Desktop voices and playback
 
-There are no built-in voices. A new voice list starts with five **starter
+There are no built-in voices. A new voice list starts with six **starter
 voices** that are free to use and share (`Martlet.F5.F5BundledVoices`, clips in
 `src\Martlet.F5\BundledVoices`); once in the list they are ordinary voices the
-owner can use, share and remove like any other. The two **cute voices** come
-first (`Cute`): two LibriVox readers voicing Anne Shirley, the excitable young
-heroine of Anne of Green Gables, in Chapter II, as read: Annie Coleman
-Rothenberg (public domain, "Annie (cute, chatty)") and WoollyBee (CC0, "Bee
-(cute, bubbly)"). Locally on F5 v1 Base (3 sentences, 2 seeds each) they spoke
-at a median 265 Hz (Annie) and about 340 Hz (Bee) against LJ's 217 Hz, with
-every word recognized. Then come a select few others: LJ Speech (public domain,
-female narrator) and two CMU ARCTIC speakers (slt, US female; bdl, US male;
-free for any use with the notice kept).
+owner can use, share and remove like any other. **Jenny (Dioco)** comes first
+and is the default: a professional Irish voice-over artist who recorded the
+Jenny TTS dataset for speech synthesis, here an 8.35 s line of Meg's from
+Little Women, a natural, cheerful adult voice (a median 183 Hz). Its licence
+allows any use, including commercial use, and requires the voice to be called
+"Jenny (Dioco)". Next are the two **cute voices** (`Cute`): two LibriVox
+readers voicing Anne Shirley, the excitable young heroine of Anne of Green
+Gables, in Chapter II, as read: Annie Coleman Rothenberg (public domain, "Annie
+(cute, chatty)") and WoollyBee (CC0, "Bee (cute, bubbly)"). Locally on F5 v1
+Base (3 sentences, 2 seeds each) they spoke at a median 265 Hz (Annie) and
+about 340 Hz (Bee) against LJ's 217 Hz, with every word recognized. Then come a
+select few others: LJ Speech (public domain, female narrator) and two CMU
+ARCTIC speakers (slt, US female; bdl, US male; free for any use with the notice
+kept).
 Earlier versions offered seven more (two LibriVox narrators and five more CMU
 ARCTIC speakers); a list that already holds one keeps it as an ordinary voice.
+A starter voice added in an update (Jenny) joins an existing list once
+(`F5SharedVoices.WithStarters`, at revision 1 like every starter entry); one
+the owner removed doesn't come back.
 `BundledVoices\NOTICES.txt` lists each source file with its SHA-256, transcript
 and the marked modifications, and `scripts\Build-F5BundledVoices.py` rebuilds
 the clips from the pinned sources (reproducibly). Each clip is 6.5-11
 seconds of speech with its exact transcript; an embedded clip is verified
-against its SHA-256 before use. The default voice is cute and female:
-`F5BundledVoices.Default` is the first starter voice marked `Cute` and `Female`
-(Annie, cute and chatty). Owners who already chose a voice keep it.
+against its SHA-256 before use. The default voice is
+`F5BundledVoices.Default`, the first starter voice: Jenny (Dioco). A starter
+entry's place in the list follows its place in `F5BundledVoices.All`, so Jenny
+is also the first voice of a list from an earlier release. Owners who already
+chose a voice keep it.
 
 Some recordings are no longer shipped (`F5BundledVoices.Retired`): the F5-TTS
 example clip and the two "anime" voices, the cute voices with pitch and
@@ -189,9 +199,9 @@ formants raised ("Annie (cute anime girl)", once the default, and "Bee (cute
 anime girl)"), which sounded artificial. The first updated desktop removes them
 from the shared list, so every computer drops them and an older copy of the
 list can't bring them back. A speaking route or applied voice that still uses
-one moves to the chosen or first voice (and becomes the chosen voice when the
-chosen one was removed), and this PC's copy is deleted once nothing speaks with
-it.
+one moves to the chosen or first voice, which is Jenny when the chosen voice
+was removed (she then becomes the chosen voice), and this PC's copy is deleted
+once nothing speaks with it.
 When Speaking is first handed to a host, Desktop uses the voice chosen on all
 computers, else the one applied here, else the first voice in the list the
 engine can clone, with no picker. Starter recordings are snapshotted with the
