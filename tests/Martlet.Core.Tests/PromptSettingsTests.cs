@@ -17,6 +17,27 @@ public sealed class PromptSettingsTests
     }
 
     [Fact]
+    public void EarlierRemarksEditsAreDroppedNowThatWhatYouSaidLatelyTakesTheirPlace()
+    {
+        var json = """
+            {"overrides": {"glance_remarks": "Said: {remarks}.", "glance_screen": "(Glance at {title}.{remarks} Reply [{silent}].)"}}
+            """;
+        var settings = Martlet.Core.Contracts.ContractJson.Read<PromptSettings>(System.Text.Encoding.UTF8.GetBytes(json));
+        settings.Validate();
+        Assert.Equal([PromptCatalog.GlanceScreen], settings.Overrides.Keys);
+        Assert.Null(PromptCatalog.Find("glance_remarks"));
+        // A glance prompt edited with {remarks} still reads well: what Martlet said lately goes in the look's notes instead.
+        Assert.Equal("(Glance at Boss fight. Reply [pass].)",
+            PromptSettings.Fill(settings, PromptCatalog.GlanceScreen, ("title", "Boss fight"), ("remarks", ""), ("silent", "pass")));
+        foreach (var id in new[] { PromptCatalog.GlanceScreen, PromptCatalog.GlanceCamera, PromptCatalog.GlanceAttention })
+        {
+            Assert.DoesNotContain("{remarks}", PromptCatalog.Default(id), StringComparison.Ordinal);
+            Assert.DoesNotContain("remarks", PromptCatalog.Find(id)!.Placeholders);
+            Assert.Contains("What you said lately", PromptCatalog.Find(id)!.Help, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void ResponseStylePromptEditsAndThePersonaStyleLineAreDropped()
     {
         // What an older Martlet could save: edits to its response-style prompts, and a Persona prompt edited while it still

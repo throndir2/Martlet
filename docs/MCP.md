@@ -421,7 +421,8 @@ each offer, take and reminder said by id only (`Reminders:`). See
 [Check-ins](CONVERSATION.md#check-ins) aren't a tool the model calls: every few
 minutes a Thinking pool member answers one short question for Martlet (do the
 lingering emotes still fit, does the gaze a reply chose still fit, did the
-character keep its promises, did it stay in character, and the owner's own),
+character keep its promises, did it stay in character, does it keep saying the
+same things, and the owner's own),
 and Martlet acts on the answer. Nothing changes in the conversation's tools or
 instructions. A reminder for the next reply goes in the notes of that one
 message only (context board source `check-in-<id>`), and the desktop log notes
@@ -1051,6 +1052,36 @@ then poll `network_status` until the laptop is `"removed":true` and
 `signin_lab status` until `"laptopRemoved":true`. `network_status` also lists
 `pairedHosts` (each paired host in `hosts.json` and how many outside addresses
 are kept with its pairing).
+
+`role_lab` (`action` `start`, `status`, `ask` or `stop`; `dataDirectory` filled
+in by the script) runs a live lab for [switching your computers between
+companion and host PC](CLUSTER.md#switching-another-computer-between-companion-and-host)
+from both sides, for the desktop on a disposable data directory:
+`src\Martlet.NodeLinkCheck` mode `role-lab` (`RoleLab.cs`) starts a gateway on
+127.0.0.1 that keeps the network and the shared settings in memory, pairs the
+desktop of the data directory under the device ID that desktop names itself by
+(`desktop-<computer>`; `hosts.json` there, the secret in the lab credential
+folder, so it also needs `Invoke-MartletMcp.ps1 -LabCredentials`), and runs a
+simulated companion PC, `lab-companion` (*LAB-COMPANION*). Once the desktop has
+bound the host to its network, the simulated PC asks to join it. Every
+2 seconds it syncs the shared settings with the real sync engine as a desktop
+does: it says what it is (`pc.lab-companion`) and follows an ask that it switch
+(`role.lab-companion`). `ask` with `role` `host` or `companion` makes it ask the
+desktop to switch (`role.<desktop device>`). `status` returns `companionRole`,
+`companionMember`, `companionWaiting` (its check number while it waits to be
+let in), what the host's copy says each computer is (`desktopSays`,
+`companionSays`) and the newest ask about each (`desktopAsk`, `companionAsk`:
+value, by, at), and its events. The values are JSON text, so an `until` that
+looks inside them has to match its escaped form. Example (with `-Desktop
+-LabCredentials -AllowUiEffects`): click `TourSkip`, start the lab, click
+`NavDevices` and `RefreshDevices` (the desktop reads `hosts.json` again), poll
+`network_status` until `"state":"member"` and `role_lab status` until
+`"companionWaiting":"`, click `NetworkCheck`, `NetworkAllow-lab-companion` and
+`ConfirmationYes`, poll until `"companionMember":true`; then click
+`Node-pc:lab-companion`, `NodeAction-MakeHostPc` and `ConfirmationYes` and poll
+`role_lab status` until `"companionRole":"host"` and `logs_tail` until *LAB-COMPANION
+is a host PC now, as you asked*; `role_lab ask host` and poll `DeviceRoleSummary`
+until *Host PC*.
 
 Sign-in from outside in the desktop: Add a computer's **Join with an invite**
 (`HostsJoinWithInvite`) opens `SignInJoinWindow` (invite `SignInInvite`,
@@ -2537,7 +2568,13 @@ character's state (*Character is showing. ...*, *Character hidden.*). Memory's
 many people Martlet knows by voice and how many to forgotten voices, how many
 its *Show* choice (`MemoryPersonFilter`) and search (`MemorySearch`, set with
 `ui_set_text`; it only filters the list) list (*Showing N.*) and what the last
-action did, never a fact or a name. `MemoryNewFact` (clears the fact editor) and
+action did, never a fact or a name; `MemoryStatus` (its bottom line) reads
+whether memory is on, is saving or why it can't be (*Memory is on.*, *Saved.
+Memory is off: ...*), never a fact or a folder. The window reads its facts the
+moment it opens, even while a reply holds the setup slot, and follows facts
+remembered, changed or forgotten elsewhere (remembering after a reply,
+`manage_memories`) on its own, so `MemoryFactStatus` changes without
+`MemoryReload` (*Refresh*). `MemoryNewFact` (clears the fact editor) and
 the `MemoryStorageSection` and `MemoryExportSection` expanders are passive
 clicks; `MemoryDeleteFact` (the selected fact or facts), `MemoryDeleteShown`
 (every fact listed now: one person's or what the search found) and
@@ -3661,7 +3698,8 @@ the desktop on a companion PC: `role`, the check-in `running`, `pool` with
 check-in `waiting`, `nextAt`, `runs`, `acted` and `last` with `at`, `result`,
 `acted`, `member` and `ms`; never what was said, answered or reminded) and the
 fixed `rules` (the 15-second look, the 3-minute minimum, the 10-second settle,
-the 10-minute idle wait, the pace choices and `keptPace`, the job kind
+the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
+`saidLatelyMinutes` for Saying the same things, the job kind
 `check-in` at the `Helper` priority, not fast, stopped while the floor is Live).
 Read-only.
 
@@ -3671,16 +3709,35 @@ Read-only.
 rules; `check-ins.json` saved and read back, with a bad pace refused; when each
 built-in check-in waits or runs (a young emote, a hidden character, the pace,
 three times the pace after an answer that kept everything, you talking, nobody
-at the PC, a young gaze, nothing new, no personality, and *Check now* on one
-that is off); the message each one sends, run on a
+at the PC, a young gaze, nothing new, no personality, too little said lately,
+and *Check now* on one that is off); the message each one sends (Saying the
+same things with each thing said and when), run on a
 production job board with a fixture member; the answers read (`OFF {blush}`
-after a `<think>` block, `**USUAL**` after thinking, a `REMIND:` bullet, `OK`,
+after a `<think>` block, `**USUAL**` after thinking, a `REMIND:` bullet, a
+`REMIND:` after a `<think>` block, `OK`,
 `SAY:`) and odd answers that change nothing (`KEEP`, a tag it wasn't asked
 about, chatter, `REMIND: nothing`); and what Martlet does: a reply's emote off
 on a production `HeldEmotes` while the owner's try stays, a reminder on a
 production context board that goes with one request only, and a check-in's
 `SAY:` worded in its own words beside a due reminder. `passed` and each step's
 `passed` and `detail`. No model, network or credentials.
+
+`said_lately_check` rehearses [what Martlet said
+lately](CONVERSATION.md#what-you-said-lately) with the production code
+(`SaidLately`, the prompt, `MomentTurn`, `BoundedTextInput`, `CheckIns`) and
+FIXTURE sayings at fixed times (NOT anything Martlet said): `what is noted`
+(never a `[pass]` or nothing; one line, cut to 160 characters; the newest 10
+within the hour), `lines with when` (`- 10:05 PM (12 min ago): "..."`),
+`the note` (Companion › Prompts › *What you said lately*, your own edit of it,
+and nothing when it is emptied or nothing was said), `which requests carry it`
+(`Look`, `Report` and `PcAudio` do; `User` and `Touch` never, so a reply to you
+starts as fast as before), `sent once, never kept` (the last notes of the
+message, left out of what the conversation keeps, and the talk window's line
+*the picture and 5 things Martlet said lately*) and `the check-in reads the
+same lines` (Saying the same things, and its wait with too little said).
+`passed` and each step's `passed` and `detail`. No model, network or
+credentials. Live looks and replies count it in the desktop log's *Turn took*
+line and the talk window's `LiveTurnInputs`, never what was said.
 
 `think_longer_check` rehearses Thinking longer with the production scheduler
 (`BackgroundJobs`), think runner (`BackgroundThink`), tool texts and request
@@ -4443,7 +4500,13 @@ roles; on another of your computers that said what it is, `NodeAction-MakeHostPc
 `NodeAction-MakeCompanionPc` (*Make it a companion PC*, or *Keep it a companion PC* while an ask to become a host PC waits),
 which switch that computer, so they need `--allow-ui-effects` and then `ConfirmationYes`; while the ask waits,
 its `DeviceComponentDetail-member` ends with *Asked by this PC at ... to become a host PC: it switches the next time
-Martlet there syncs its settings ...*), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
+Martlet there syncs its settings ...*; once it has switched, the desktop log and status line say *IMOUTO is a host PC now,
+as you asked.*, and a host PC with no host service yet reads *Its host service isn't set up yet, so it does no work for your
+other computers until someone at it chooses Set up host service on its Home ...* there instead of the host service it runs;
+Settings › What this PC is for lists the same computers of your network: `OtherRolesStatus` (what the list offers, or why it
+is empty or can't switch them), `OtherRole-<device ID>` (*IMOUTO (desktop-imouto). Companion PC that also runs a host service
+(imouto-host). Active now on diva-host.*, with the waiting ask) and `OtherRoleSwitch-<device ID>`, the same button, which
+needs `--allow-ui-effects`), and Settings for all devices holds `CheckHosts`, `ClusterSync` (checked by
 default; unticking it needs `--allow-ui-effects` and saves `off`),
 `ClusterStatus` (returned as text), `SettingsSyncStatus` (text: how many
 settings are shared, on how many hosts they are the same, when checked and
@@ -4627,7 +4690,14 @@ twice. While runs work, `HostRunsNow` (returned) lists them with their status
 lines (*2 runs working side by side: Start Docker Desktop: Waiting for Docker
 Desktop to start... · Check this PC's host: Waiting: ...*), `StepDetail-docker`
 says which run is installing or starting Docker Desktop (*"Start Docker Desktop"
-is starting Docker Desktop. You don't have to wait: ...*), and, while a host
+is starting Docker Desktop. You don't have to wait: ...*), and `Step-docker-0`
+says what that run does (*Installing Docker Desktop...*, *Starting Docker
+Desktop...* or *Getting Windows ready...*) and is disabled (`enabled: false`)
+until it ends. This includes the hidden *Start this host's roles* run of a PC
+that just became a host PC. When no run works on Docker Desktop any more, the
+dashboard reads the host service again at once (the desktop log says *No run
+works on Docker Desktop any more; reading this PC's host service again now.*),
+so the step ticks or offers its button again. While a host
 service Martlet hasn't seen set up waits for Docker Desktop, `StepDetail-service`
 offers `Step-service-0` *Set up host service* already (its run waits for Docker
 Desktop and continues). The dashboard keeps reading the host service every 30
@@ -4636,7 +4706,17 @@ one to click: `ui_click` `{"id":"HostRunCancel","window":"Martlet - Start Docker
 Desktop"}`. To exercise it without the real engine, launch the desktop with
 `DOCKER_HOST` pointing at a missing pipe and Docker Desktop already running:
 *Start Docker Desktop* (`Step-docker-0`) then waits for an engine that never
-answers, and `HostStatusConsole` (*Show host status*) waits for it.
+answers, and `HostStatusConsole` (*Show host status*) waits for it. To exercise
+a start without touching Docker Desktop or Windows at all, also set
+`MARTLET_SIMULATE_DOCKER_START` to a number of seconds (1-600) before launching
+the desktop (FIXTURE, `SimulatedDockerStart.cs`): every Docker Desktop start
+then waits that long, shared by the runs that need it as a real start is, and
+stops as a start that failed; the host-runs log says *FIXTURE
+(MARTLET_SIMULATE_DOCKER_START)*. With `this-pc-host-roles.txt` (one role per
+line, such as `ollama`) in the data directory, a desktop made a host PC (for
+example with `role_lab ask host`) starts Docker Desktop by itself, so
+`Step-docker-0` reads *Starting Docker Desktop...* and is disabled until the
+fixture ends.
 Devices' `AddComputer` (and Settings' `OpenHosts`, and on a new PC Home's
 `HomeConnectComputers` or the `HealthOpen-thinking-setup-network` fix) opens the *Add a computer*
 wizard (`HostsWindow`, titled *Martlet - add a computer*; the click may return
@@ -4739,8 +4819,15 @@ conversation replies or hears you): `HealthCheck-hostservice` shows its stage
 *Host is running*), and while it isn't ready `HealthIssue-host-service` says
 why and which of this PC's jobs stop (they no longer show as `job-<job>`
 items), with the host dashboard's next step as `HealthFix-host-service-repair-0`
-(Install or Start Docker Desktop, Set up or Start host service), then
-`HealthFix-host-service-check` and `HealthOpen-host-service-show`. On Devices,
+(Install or Start Docker Desktop, Set up or Start host service; its label is
+returned, such as *Start Docker Desktop: This PC's host service isn't working*),
+then `HealthFix-host-service-check` and `HealthOpen-host-service-show`. While a
+run installs or starts Docker Desktop, `HealthFix-host-service-repair-0` reads
+*Starting Docker Desktop...* (or *Installing Docker Desktop...*) and is
+disabled, the hero (when this item is the top problem) offers *Check again*
+instead, and on Devices the
+`CoverageFix-<job>-RepairHostService` buttons are disabled with the same label
+until that run ends. On Devices,
 `Node-this-pc` and `SelectedDeviceHealth` read *Host service not working* (or
 *not answering*), and coverage names it *This PC's host service*, never by its
 host ID. To see it, pair a disposable data directory's `hosts.json` with
@@ -6395,8 +6482,13 @@ instead (the character's *Show at startup* and Parakeet's warm-up are skipped
 too). Choosing `UseAsHost` (Settings › *What this PC is for*; it saves
 `device-role.txt`, so it needs `--allow-ui-effects`) ends a running
 conversation and hides the character, logging *This PC became a Martlet host,
-so Martlet ended the conversation...*; `UseAsCompanion` changes no saved
-companion choice, so they apply again from the next start. `DeviceRoleSummary`
+so Martlet ended the conversation...*. `UseAsCompanion` on a host PC (or
+another computer's ask that it be a companion PC again) brings back at once what
+was on when it became a host: the character, always listening and watching
+(*This PC is your companion PC again, so Martlet brings back what was on before
+it became a host: showing the character.*); after Martlet started as a host it
+does what it does at the start of a companion PC instead (the character's *Show
+at startup*, `StartCompanion`). It changes no saved companion choice. `DeviceRoleSummary`
 (*Companion PC* or *Host PC*) and `DeviceRoleText` return the role as text. A second start with the
 same data directory shows the running Martlet and exits (with `--tray` it only
 exits); a different `--data-directory` runs beside it, so disposable

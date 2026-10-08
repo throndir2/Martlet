@@ -155,6 +155,36 @@ internal static class NetworkMap
           $"{(asked == DeviceRole.Host ? "host" : "companion")} PC: it switches the next time Martlet there syncs its settings (an older " +
           "Martlet there needs updating first).";
 
+    /// <summary>What another computer says when it is a host PC without a host service of its own yet.</summary>
+    internal const string NoHostServiceYet = "Its host service isn't set up yet, so it does no work for your other computers until someone " +
+        "at it chooses Set up host service on its Home (once; Windows may ask to allow it).";
+
+    /// <summary>The command that switches another of your computers between companion and host PC (any of your computers can
+    /// switch any other; it follows on its next settings sync), or, while an ask waits, the opposite one, which withdraws it.
+    /// Null for a computer asking to join the network and for one that hasn't said what it is (an older Martlet).</summary>
+    internal static NodeCommand? RoleCommand(MartletComputer computer) =>
+        computer.Standing == ComputerStanding.Asking || computer.Role is not { } role ? null
+        : (computer.Asked ?? role) == DeviceRole.Companion
+            ? new(NodeAction.MakeHostPc, "Make it a host PC", Argument: computer.DeviceId, Component: DeviceComponent.Member)
+            : new(NodeAction.MakeCompanionPc, role == DeviceRole.Companion ? "Keep it a companion PC" : "Make it a companion PC",
+                Argument: computer.DeviceId, Component: DeviceComponent.Member);
+
+    /// <summary>What another computer is, for Settings › What this PC is for: "Companion PC.", "Host PC, runs diva-host.", a host
+    /// PC without its host service yet, or that it hasn't said (an older Martlet); then a waiting ask and where it was last active.
+    /// <paramref name="pairedHost"/> is the host service of that computer this PC is paired with, if any (a computer on an
+    /// older Martlet may not name it).</summary>
+    internal static string RoleLine(MartletComputer computer, string? pairedHost)
+    {
+        var host = computer.HostId ?? pairedHost;
+        var what = computer.Role switch
+        {
+            DeviceRole.Companion => "Companion PC" + (host is not null ? $" that also runs a host service ({host})." : "."),
+            DeviceRole.Host => host is not null ? $"Host PC, runs {host}." : "Host PC. " + NoHostServiceYet,
+            _ => "It hasn't said whether it is a companion or a host PC: it runs an older Martlet. Update it to switch it from here."
+        };
+        return what + Asked(computer) + (computer.Activity is { } activity ? " " + activity : "");
+    }
+
     internal static LipSyncHandler LipSync(AvatarProfile? avatar) =>
         avatar?.LipSync == AvatarLipSync.Loudness ? LipSyncHandler.Loudness
         : avatar?.RemoteHost is not null && avatar.LipSync == AvatarLipSync.Auto ? LipSyncHandler.Host
@@ -675,9 +705,11 @@ internal static class NetworkMap
                 ComputerStanding.Outside => "Uses your hosts but isn't in your Martlet network." + where,
                 _ => "In your Martlet network." + where
             };
-            // What it is, as it said itself; a computer on an older Martlet hasn't said, so it shows as the Martlet app.
+            // What it is, as it said itself; a computer on an older Martlet hasn't said, so it shows as the Martlet app. A host PC
+            // whose host service isn't set up yet does no work for the others until someone at it sets one up.
             var (chip, name, does) = computer.Role switch
             {
+                DeviceRole.Host when computer.HostId is null && hosting is null => ("Host PC", "Martlet host PC", NoHostServiceYet + " "),
                 DeviceRole.Host => ("Host PC", "Martlet host PC",
                     $"Runs Martlet's host service ({computer.HostId ?? hostId}) for your companion PCs and uses no jobs itself. "),
                 DeviceRole.Companion => ("Companion", "Martlet companion", "Conversations, its microphone and speakers" +
@@ -685,13 +717,7 @@ internal static class NetworkMap
                 _ => ("Martlet", "Martlet app", hosting is not null ? $"Martlet on this computer runs its host service ({hostId}). " : "")
             };
             node.Roles.Insert(0, new(chip, name, $"{computer.DeviceId}. {does}{standing}{Asked(computer)}", DeviceComponent.Member));
-            // Any of your computers can switch another between companion and host PC (it follows on its next settings sync);
-            // while an ask waits, the opposite command withdraws it.
-            if (computer.Standing != ComputerStanding.Asking && computer.Role is { } role)
-                node.Commands.Add((computer.Asked ?? role) == DeviceRole.Companion
-                    ? new(NodeAction.MakeHostPc, "Make it a host PC", Argument: computer.DeviceId, Component: DeviceComponent.Member)
-                    : new(NodeAction.MakeCompanionPc, role == DeviceRole.Companion ? "Keep it a companion PC" : "Make it a companion PC",
-                        Argument: computer.DeviceId, Component: DeviceComponent.Member));
+            if (RoleCommand(computer) is { } switching) node.Commands.Add(switching);
             // The jobs every companion PC does itself (a Windows voice, Parakeet) show on each companion PC.
             if (computer.Standing != ComputerStanding.Asking && (computer.Role == DeviceRole.Companion || computer.Role is null && hosting is null))
                 node.Roles.AddRange(onEachPc);

@@ -16,9 +16,9 @@
                         Padding="12,7" Margin="0,0,8,0" AutomationProperties.AutomationId="MemoryReload" />
                 <Button DockPanel.Dock="Right" x:Name="RetryCleanupButton" Content="Retry clean_up" Click="RetryCleanup_Click"
                         Padding="12,7" Margin="0,0,8,0" Visibility="Collapsed" AutomationProperties.AutomationId="MemoryRetryCleanup" />
+                <!-- No accessible name: a text block's name is its text, which screen readers announce and MCP reads (fixed text, never a fact or a path). -->
                 <TextBlock x:Name="ConfigurationStatus" Style="{DynamicResource Muted}" VerticalAlignment="Center" Margin="0,0,12,0"
-                           AutomationProperties.AutomationId="MemoryStatus" AutomationProperties.LiveSetting="Polite"
-                           AutomationProperties.Name="Memory configuration status" />
+                           AutomationProperties.AutomationId="MemoryStatus" AutomationProperties.LiveSetting="Polite" />
             </DockPanel>
         </Border>
         <ScrollViewer VerticalScrollBarVisibility="Auto">

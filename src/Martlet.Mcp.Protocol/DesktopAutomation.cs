@@ -288,8 +288,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // how many facts Martlet remembers, on how many hosts they are the same, when checked and how many were taken from or
         // forgotten on other computers (never a fact). MemoryFactStatus (the Memory window): how many facts it remembers, how
         // many belong to people Martlet knows by voice or to forgotten voices, how many the Show choice lists, and what the
-        // last action did (never a fact or a name).
-        "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus", "MemoryFactStatus",
+        // last action did (never a fact or a name). MemoryStatus (the Memory window's bottom line): whether memory is on, saving
+        // or why it can't be (fixed text, never a fact or a folder).
+        "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus", "MemoryFactStatus", "MemoryStatus",
         // Companion › Memory › Conversation history: whether Martlet keeps a record and may search it, and what the record holds
         // (conversations, exchanges, since when, per app); the history window's status line (counts, or what a search found) and
         // its line on changes waiting for Telegram and Discord (counts, apps and the last problem). Never what was said: the
@@ -658,8 +659,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // follow it) and its status line, and the character's colors (how many and where the accent comes from, or why they
         // couldn't be read; never its name). AppearanceColor-<n> and AppearancePreview-<id> read through the prefixes below.
         "AppearanceTheme", "AppearanceStatus", "AppearanceCharacterStatus",
-        // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role.
-        "DeviceRoleSummary", "DeviceRoleText",
+        // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role; and
+        // under it, Your other computers: what the list offers (or why it is empty or can't switch them). Each computer's row reads
+        // through OtherRole- below; its OtherRoleSwitch- button asks that computer to switch, so it needs --allow-ui-effects.
+        "DeviceRoleSummary", "DeviceRoleText", "OtherRolesStatus",
         // The host dashboard's status under its icon ("Host is running", "Needs Windows restart", "Waiting for Docker Desktop", ...), its
         // steps' heading ("This host is ready" or "Get this host running"), the line under it (how many steps are left and
         // the next one, or "All set", and when Martlet last checked) and the setup runs working now, side by side, each with
@@ -744,7 +747,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// network's computers ("NetworkMember-host-gpu-pc" reads "gpu-pc. Host, paired with this PC; added on desktop-a.") and
     /// requests to join ("NetworkJoin-desktop-b" reads "DESKTOP-B asks to join. desktop-b, through gpu-pc. Check number ...")
     /// and computers that use one of this PC's hosts but aren't in the network ("NetworkPaired-desktop-c" reads "DESKTOP-C
-    /// (desktop-c). Uses gpu-pc; active now. ..."); each device role's detail line in the selected device's details
+    /// (desktop-c). Uses gpu-pc; active now. ..."); Settings' Your other computers ("OtherRole-desktop-imouto" reads "IMOUTO
+    /// (desktop-imouto). Companion PC that also runs a host service (imouto-host). Active now on diva-host."); each device role's detail line in the selected device's details
     /// ("DeviceComponentDetail-users" reads "IMOUTO (desktop-imouto), active now; This PC, active now.",
     /// "DeviceComponentDetail-host-service" reads "Paired as diva-host. Used by IMOUTO (desktop-imouto), active now.",
     /// "DeviceComponentDetail-member" reads "In your Martlet network. Active now on diva-host.");
@@ -774,7 +778,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Ana by voice"). Never a token.
         "DiscordFriend-",
         "HostChoice",
-        "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
+        // Home's fixes for this PC's own host service ("HealthFix-host-service-repair-0" reads "Start Docker Desktop: This PC's
+        // host service isn't working", or "Starting Docker Desktop...: ..." and is disabled while a run starts it). Fixed text
+        // only; clicking one starts or sets up software, so it needs --allow-ui-effects.
+        "HealthFix-host-service-",
+        "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "OtherRole-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
         "SmartHomeDevice-", "SmartHomeUpdate-", "DiscordRule-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-", "DeviceFilter-",
         // The selected device's resource bars ("DeviceResource-vram" reads "Graphics memory: 14 of 32 GB planned (44%), 15 GB
         // free for Martlet."; a range such as "11-14 of 32 GB planned (34-44%)" when jobs grow while they work, with ", tight: ..."
