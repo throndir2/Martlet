@@ -854,6 +854,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         jobs = new(this.clock);
         StartLiveFloor();
         StartPresence();
+        // The image and audio models this PC uses (docs/SENSE_MODELS.md), before anything can send them work.
+        senseModels = SenseModels.Load(dataDirectory);
         helperPool = new ThinkingPoolHelpers(() => ThinkingPool);
         helpers = new(() => Volatile.Read(ref helperPool), () => Replying || ReplySpeaking(), dataDirectory) { Floor = floor };
         songCredentials = new(() => Volatile.Read(ref songAuthorization));
