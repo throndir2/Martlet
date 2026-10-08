@@ -2359,6 +2359,44 @@ public sealed class LiveConversationTests
         finally { window.Close(); }
     });
 
+    // A bubble is as wide as its words, never stretched to a longer caption or note under it (the tone and emotes, "Martlet saw
+    // your whole screen."). Martlet's bubbles keep to the left, yours to the right, and a long reply still wraps within the row.
+    [Fact]
+    public Task BubblesFitTheirWords() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            window.Width = 720;
+            window.Messages.Add(new ChatMessage(ChatRole.Martlet, "Oh, you too, my love!", "Martlet · 10:32 PM")
+                { Note = "Tone: happy. Emotes: smile, hearts." });
+            window.Messages.Add(new ChatMessage(ChatRole.User, "Soon to", "You (spoken) · 10:32 PM")
+                { Note = "Martlet saw your whole screen." });
+            window.Messages.Add(new ChatMessage(ChatRole.User, "Hi", "You · 10:33 PM"));
+            window.Messages.Add(new ChatMessage(ChatRole.Martlet,
+                string.Join(' ', Enumerable.Repeat("This reply is long enough to wrap.", 12)), "Martlet · 10:33 PM"));
+            var bodies = Bodies(window);
+            Assert.Equal(4, bodies.Length);
+            foreach (var body in bodies[..3])
+            {
+                var bubble = Ancestor<Border>(body, "Bubble");
+                var row = Ancestor<StackPanel>(body, "Row");
+                var blank = body.ActualWidth - body.GetRectFromCharacterIndex(body.Text.Length - 1, trailingEdge: true).Right;
+                Assert.True(blank < 4, $"\"{body.Text}\": {blank:0.#} px blank after the words in a {bubble.ActualWidth:0.#} px bubble.");
+                var left = bubble.TranslatePoint(new Point(0, 0), row).X;
+                if (body.DataContext is ChatMessage { IsUser: true })
+                    Assert.Equal(row.ActualWidth, left + bubble.ActualWidth, 1);
+                else Assert.Equal(0, left, 1);
+            }
+            var wrapped = bodies[3];
+            Assert.True(wrapped.LineCount > 1);
+            Assert.InRange(Ancestor<Border>(wrapped, "Bubble").ActualWidth, 400, 580);
+        }
+        finally { window.Close(); }
+    });
+
     [Theory]
     [InlineData(550, 450)]
     [InlineData(920, 850)]
@@ -2802,18 +2840,30 @@ public sealed class LiveConversationTests
 
     private static T Control<T>(Window window, string name) => Assert.IsType<T>(window.FindName(name));
     // The automation IDs of the talk window's bubbles, in order.
-    private static string[] BubbleIds(Window window)
+    private static string[] BubbleIds(Window window) =>
+        [.. Bodies(window).Select(System.Windows.Automation.AutomationProperties.GetAutomationId)];
+
+    // The words of the talk window's bubbles, in order.
+    private static TextBox[] Bodies(Window window)
     {
         window.UpdateLayout();
-        var found = new List<string>();
+        var found = new List<TextBox>();
         void Walk(DependencyObject node)
         {
-            if (node is TextBox { Name: "Body" } body) found.Add(System.Windows.Automation.AutomationProperties.GetAutomationId(body));
+            if (node is TextBox { Name: "Body" } body) found.Add(body);
             for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(node); i++)
                 Walk(System.Windows.Media.VisualTreeHelper.GetChild(node, i));
         }
         Walk(Control<ItemsControl>(window, "History"));
         return [.. found];
+    }
+
+    // The nearest element above node in the visual tree with this name.
+    private static T Ancestor<T>(DependencyObject node, string name) where T : FrameworkElement
+    {
+        var parent = System.Windows.Media.VisualTreeHelper.GetParent(node);
+        while (parent is not null && (parent as T)?.Name != name) parent = System.Windows.Media.VisualTreeHelper.GetParent(parent);
+        return Assert.IsType<T>(parent);
     }
     private static string Text(Window window, string name) => name == "ResultText"
         ? Control<TextBlock>(window, name).Text : Control<TextBox>(window, name).Text;
