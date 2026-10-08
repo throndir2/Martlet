@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- VRM characters now get the same help as Live2D ones for parts that swing: a tail, wings or animal ears zone follows the character's own spring bones from root to tip, wherever they swing, and a tap on cat ears counts as the ears, not the hair. ([#630](https://github.com/throndir2/Martlet/pull/630))
 - On a Live2D character, a tail, wings, animal ears or a ponytail that swings on its own now has a touch zone that follows all of it, from its root to its tip, wherever it swings. This works even for a tail that hangs hidden behind the legs. Martlet finds these parts in the character's own physics, with no AI. ([#629](https://github.com/throndir2/Martlet/pull/629))
 - A touch zone can now have several areas: use **Add area** and **Remove area** on its line in Companion › Touch › Touch zones. **Show the zones on the character** draws the zones over your character as it moves. ([#629](https://github.com/throndir2/Martlet/pull/629))
 - Share your hosts with friends right from the app: **Devices › Friends** lists each person and the hosts you share with them, with **Share** and **Stop sharing**, and **Sign-in from outside** says which sign-ins are your own computers and which are friends'. A friend's Martlet keeps a host you share under **Devices › Hosts shared with this PC** and uses it for thinking, listening, speaking, lip-sync and reading without ever joining your network, and your own work always comes first. ([#625](https://github.com/throndir2/Martlet/pull/625))
