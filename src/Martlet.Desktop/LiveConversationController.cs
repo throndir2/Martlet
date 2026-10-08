@@ -921,6 +921,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (changed) revokeAvatar?.Invoke();
         // The live floor follows what the conversation runs on now.
         UseLiveResources(next);
+        // Where pictures and recordings go follows the new Thinking model too (docs/SENSE_MODELS.md); without a data folder (tests)
+        // the choices set on the controller stay.
+        if (dataDirectory is not null) ReloadSenseModels();
+        else SenseRoutesChanged();
         stop?.Cancel("conversation.configuration_changed");
         Cancel(stopListening);
         // Opening the talk window starts the MCP servers in the background, so their tools are ready by the first reply.
@@ -5039,7 +5043,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         ConversationRuntime? song;
         lock (gate)
         {
-            owned = [.. thinkSlots.Values.Select(slot => slot.Runtime)];
+            owned = [.. thinkSlots.Values.Select(slot => slot.Runtime), .. senseSlots.Values.Select(slot => slot.Runtime)];
             song = songRuntime;
         }
         foreach (var runtime in owned)

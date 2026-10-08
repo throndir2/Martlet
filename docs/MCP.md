@@ -286,6 +286,37 @@ wait and each member's box save `thinking-pool.json`, so they need
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"backup_thinking_check"}]'
 ```
 
+### Image and audio models
+
+Thinking, the text model, writes every reply. Pictures and recordings go to it,
+or to an image or audio model of their own that puts them into words for it
+([Image and audio models](SENSE_MODELS.md)). `sense_models_status`
+(`dataDirectory`) reads `sense-models.json` (each kind's `source`: `Thinking`,
+`OtherSense` or `Own`, and the model of its own with where it runs, whether it
+uses its own key or Thinking's, and whether it sees and hears, never a key),
+the Thinking model with whether it sees and hears, and for pictures and
+recordings the `path` (`Thinking`, `Described` or `None`), the model, `unknown`
+(Martlet can't tell whether that model sees or hears) and `why`. `oneModel`
+says both kinds use the same model of their own, and `allThinking` that
+neither has one. `desktop` is the desktop's `sense-models-status.json`: for
+each kind its path, model and why, `sharesConversation`, and its line (`busy`,
+`waiting`, `held` for a reply, `runs` and the `last` job's purpose, outcome,
+milliseconds, model and problem; never what was sent or said).
+
+`sense_models_check` rehearses the production routing (`SenseRouting`) over
+the combinations of text, image and audio models with fixture model names, the
+`sense-models.json` round trip, and the production lines (`SenseLanes`) with a
+simulated runner, NOT models: no model of its own, one job at a time, a newer
+picture taking the place of a waiting one, priorities, a stale job, refusals,
+failures, a timeout, the kind check, one line for one model used for both
+kinds, and the conversation first (`lanes-hold`: a job waits while a reply
+holds the model's hardware, a running job is stopped, and a job the hold
+outlasts is dropped). In-process; it reads nothing.
+
+```powershell
+.\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"sense_models_check"},{"name":"sense_models_status"}]'
+```
+
 ### Live floor (the live turn first)
 
 The live floor puts the live conversation turn before all background work
@@ -6890,7 +6921,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `sense_models_status`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

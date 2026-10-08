@@ -57,10 +57,11 @@ public sealed record SenseJob
 }
 
 /// <summary>How a sense job ended: <see cref="SenseJobOutcome.NoModel"/> when the kind has no model of its own that takes it now
-/// (the text model takes it, or nothing does), <see cref="SenseJobOutcome.Stale"/> when a newer job replaced it or its lane
-/// wasn't free in time, <see cref="SenseJobOutcome.Refused"/> when the model refused the picture or recording (Martlet remembers
-/// that it can't see or hear).</summary>
-public enum SenseJobOutcome { Succeeded, NoModel, Stale, Failed, TimedOut, Refused }
+/// (the text model takes it, or nothing does); <see cref="SenseJobOutcome.Stale"/> when a newer job with its key took its place,
+/// or its lane (or the conversation's hold) didn't let it start in time; <see cref="SenseJobOutcome.Refused"/> when the model
+/// refused the picture or recording (Martlet remembers that it can't see or hear); <see cref="SenseJobOutcome.Preempted"/> when a
+/// reply's Thinking request started on the same computer and graphics card while it ran, so it was stopped.</summary>
+public enum SenseJobOutcome { Succeeded, NoModel, Stale, Failed, TimedOut, Refused, Preempted }
 
 /// <summary>The words a sense job got back, or why not. <see cref="Model"/> names the model ("Ollama on this PC (qwen2.5vl:7b)"),
 /// <see cref="Took"/> how long the request ran (not the wait).</summary>
@@ -83,33 +84,47 @@ public sealed record SenseAnswer(string? Text, string? Problem, bool Refused = f
     public override string ToString() => $"{nameof(SenseAnswer)} (problem: {Problem is not null})";
 }
 
-/// <summary>One sense's lane now, for the status file and MCP (never a job's text).</summary>
-public sealed record SenseLaneStatus(SenseKind Kind, bool Busy, int Waiting, int Runs, string? LastPurpose, SenseJobOutcome? LastOutcome,
-    double? LastMilliseconds, DateTimeOffset? LastAt, string? LastModel, string? LastProblem);
+/// <summary>One kind's lane now, for the status file and MCP (never a job's text): whether its model runs a job
+/// (<see cref="Busy"/>), how many wait for it, how many wait for the conversation's reply (<see cref="Held"/>), and how the
+/// last job ended.</summary>
+public sealed record SenseLaneStatus(SenseKind Kind, bool Busy, int Waiting, int Held, int Runs, string? LastPurpose,
+    SenseJobOutcome? LastOutcome, double? LastMilliseconds, DateTimeOffset? LastAt, string? LastModel, string? LastProblem);
 
-/// <summary>The image and audio models' lanes (docs/SENSE_MODELS.md): one job at a time on each kind's model, so a model on this
-/// PC or a paired computer never gets two requests at once. A waiting job with the same <see cref="SenseJob.Key"/> as a newer one
-/// is replaced (Stale); waiting jobs start highest <see cref="SenseJob.Priority"/> first, then oldest. A kind whose route isn't
-/// <see cref="SensePath.Described"/> answers <see cref="SenseJobOutcome.NoModel"/> at once. The desktop's runner sends the
-/// request; this class never touches a model, so MCP rehearses it with a simulated runner.</summary>
+/// <summary>The image and audio models' lanes (docs/SENSE_MODELS.md): one job at a time on each model of its own (both kinds
+/// share one lane when they use the same model), so a model on this PC or a paired computer never gets two requests at once.
+/// A job with a <see cref="SenseJob.Key"/> gives way to a newer job with the same key (Stale): only the newest picture is worth
+/// describing. Waiting jobs start highest <see cref="SenseJob.Priority"/> first, then oldest. A kind whose route isn't
+/// <see cref="SensePath.Described"/> answers <see cref="SenseJobOutcome.NoModel"/> at once.
+/// <para>The conversation comes first: while <c>held</c> says a kind's model must leave the hardware to the conversation (it
+/// shares the conversation's computer and graphics card, and a reply runs until its voice is all made), a job of that kind
+/// doesn't start (it waits; with <see cref="SenseJob.DropWhenStale"/> it is Stale when it can't start within its timeout), and
+/// one that runs is stopped (<see cref="SenseJobOutcome.Preempted"/>). The desktop's runner sends the request; this class never
+/// touches a model, so MCP rehearses it with a simulated runner.</para></summary>
 public sealed class SenseLanes
 {
+    /// <summary>How often a job that waits for the conversation, or runs on hardware it shares, looks at the hold again.</summary>
+    public static TimeSpan HoldPoll => TimeSpan.FromMilliseconds(20);
+
     private readonly Func<SenseKind, SenseRoute> route;
     private readonly Func<SenseKind, DeepThinkingSettings, SenseJob, CancellationToken, Task<SenseAnswer>> run;
+    private readonly Func<SenseKind, bool>? held;
     private readonly TimeProvider clock;
-    private readonly Lane[] lanes = [new(SenseKind.Image), new(SenseKind.Audio)];
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Lane> lanes = new(StringComparer.Ordinal);
+    private readonly Record[] records = [new(), new()];
 
     /// <param name="route">Where each kind goes now (read for every job, so a new choice applies to the next job).</param>
     /// <param name="run">Sends one job to the kind's model of its own and returns its words or why not.</param>
+    /// <param name="held">Whether a kind's model must leave the hardware to the conversation's reply now (null: never).</param>
     public SenseLanes(Func<SenseKind, SenseRoute> route, Func<SenseKind, DeepThinkingSettings, SenseJob, CancellationToken, Task<SenseAnswer>> run,
-        TimeProvider? clock = null)
+        TimeProvider? clock = null, Func<SenseKind, bool>? held = null)
     {
         this.route = route ?? throw new ArgumentNullException(nameof(route));
         this.run = run ?? throw new ArgumentNullException(nameof(run));
+        this.held = held;
         this.clock = clock ?? TimeProvider.System;
     }
 
-    /// <summary>Raised (off the caller's thread is possible) after a job starts or ends, for the status file.</summary>
+    /// <summary>Raised (possibly off the caller's thread) when a job waits, starts or ends, for the status file.</summary>
     public event Action? Changed;
 
     /// <summary>Runs <paramref name="job"/> on <paramref name="kind"/>'s model of its own and returns its words, or why not.
@@ -121,58 +136,129 @@ public sealed class SenseLanes
         token.ThrowIfCancellationRequested();
         var now = route(kind);
         if (now is not { Path: SensePath.Described, Model: { } model }) return SenseJobResult.NoModel(now.Why);
-        var lane = lanes[(int)kind];
-        var turn = lane.Enter(job);
-        if (turn is not null)
+        var record = records[(int)kind];
+        var name = model.Describe();
+        var lane = lanes.GetOrAdd(model.Key, _ => new Lane());
+        var mine = lane.Arrive(job.Key);
+        using var stale = job.DropWhenStale ? new CancellationTokenSource(job.Timeout, clock) : new CancellationTokenSource();
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(token, stale.Token);
+        if (lane.Enter(job, mine) is { } turn)
         {
             Changed?.Invoke();
-            using var stale = job.DropWhenStale ? new CancellationTokenSource(job.Timeout, clock) : new CancellationTokenSource();
-            using var wait = CancellationTokenSource.CreateLinkedTokenSource(token, stale.Token);
             bool started;
             try { started = await turn.Task.WaitAsync(wait.Token).ConfigureAwait(false); }
             catch (OperationCanceledException)
             {
-                // Started just as the wait ended: the lane is ours and must be passed on.
+                // Given the lane just as the wait ended: it is this job's, and must be passed on.
                 if (!lane.Leave(turn)) Exit(lane);
                 Changed?.Invoke();
                 token.ThrowIfCancellationRequested();
-                return Ended(lane, job, new(SenseJobOutcome.Stale, null, model.Describe(), "the model was busy with another job", TimeSpan.Zero));
+                return Ended(record, job, new(SenseJobOutcome.Stale, null, name, "its model was busy with another job", TimeSpan.Zero));
             }
-            if (!started)
+            if (!started) return Ended(record, job, new(SenseJobOutcome.Stale, null, name, "a newer job took its place", TimeSpan.Zero));
+        }
+        // The lane is this job's from here; Exit passes it on.
+        SenseJobResult result;
+        try
+        {
+            result = await StartAsync(kind, model, job, lane, mine, record, wait.Token, token).ConfigureAwait(false);
+        }
+        finally { Exit(lane); }
+        return Ended(record, job, result);
+    }
+
+    // Waits while the conversation holds the hardware, then runs the job, stopping it when the conversation needs the hardware.
+    private async Task<SenseJobResult> StartAsync(SenseKind kind, DeepThinkingSettings model, SenseJob job, Lane lane, long mine, Record record,
+        CancellationToken wait, CancellationToken token)
+    {
+        var name = model.Describe();
+        if (!lane.Newest(job.Key, mine)) return new(SenseJobOutcome.Stale, null, name, "a newer job took its place", TimeSpan.Zero);
+        if (held?.Invoke(kind) == true)
+        {
+            Interlocked.Increment(ref record.Holding);
+            Changed?.Invoke();
+            try
             {
+                while (held(kind))
+                {
+                    await Task.Delay(HoldPoll, clock, wait).ConfigureAwait(false);
+                    if (!lane.Newest(job.Key, mine)) return new(SenseJobOutcome.Stale, null, name, "a newer job took its place", TimeSpan.Zero);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                token.ThrowIfCancellationRequested();
+                return new(SenseJobOutcome.Stale, null, name, "the conversation's reply kept its computer busy", TimeSpan.Zero);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref record.Holding);
                 Changed?.Invoke();
-                return Ended(lane, job, new(SenseJobOutcome.Stale, null, model.Describe(), "a newer job took its place", TimeSpan.Zero));
             }
         }
         Changed?.Invoke();
         var began = clock.GetTimestamp();
-        SenseJobResult result;
+        using var timer = new CancellationTokenSource(job.Timeout, clock);
+        using var preempt = new CancellationTokenSource();
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(token, timer.Token, preempt.Token);
+        using var done = new CancellationTokenSource();
+        var watching = held is null ? Task.CompletedTask : WatchAsync(kind, preempt, done.Token);
         try
         {
-            using var timer = new CancellationTokenSource(job.Timeout, clock);
-            using var limit = CancellationTokenSource.CreateLinkedTokenSource(token, timer.Token);
-            try
+            var answer = await run(kind, model, job, limit.Token).ConfigureAwait(false);
+            var took = clock.GetElapsedTime(began);
+            return answer switch
             {
-                var answer = await run(kind, model, job, limit.Token).ConfigureAwait(false);
-                var took = clock.GetElapsedTime(began);
-                result = answer switch
-                {
-                    { Text: { } text } when !string.IsNullOrWhiteSpace(text) => new(SenseJobOutcome.Succeeded, text.Trim(), model.Describe(), null, took),
-                    { Refused: true } => new(SenseJobOutcome.Refused, null, model.Describe(), answer.Problem, took),
-                    _ => new(SenseJobOutcome.Failed, null, model.Describe(), answer.Problem ?? "it came back empty", took)
-                };
-            }
-            catch (OperationCanceledException) when (!token.IsCancellationRequested)
-            {
-                result = new(SenseJobOutcome.TimedOut, null, model.Describe(), "it didn't answer in time", clock.GetElapsedTime(began));
-            }
+                { Text: { } text } when !string.IsNullOrWhiteSpace(text) => new(SenseJobOutcome.Succeeded, text.Trim(), name, null, took),
+                { Refused: true } => new(SenseJobOutcome.Refused, null, name, answer.Problem, took),
+                _ when preempt.IsCancellationRequested => Preempted(name, took),
+                _ => new(SenseJobOutcome.Failed, null, name, answer.Problem ?? "it came back empty", took)
+            };
         }
-        finally { Exit(lane); }
-        return Ended(lane, job, result);
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            var took = clock.GetElapsedTime(began);
+            return preempt.IsCancellationRequested ? Preempted(name, took)
+                : new(SenseJobOutcome.TimedOut, null, name, "it didn't answer in time", took);
+        }
+        finally
+        {
+            done.Cancel();
+            await watching.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
     }
 
-    /// <summary>Each kind's lane now.</summary>
-    public IReadOnlyList<SenseLaneStatus> Status() => [.. lanes.Select(lane => lane.Status())];
+    private static SenseJobResult Preempted(string name, TimeSpan took) =>
+        new(SenseJobOutcome.Preempted, null, name, "a reply started on the same computer, so it was stopped", took);
+
+    // While a job runs on hardware the conversation may need: stops it as soon as a reply needs the hardware.
+    private async Task WatchAsync(SenseKind kind, CancellationTokenSource preempt, CancellationToken done)
+    {
+        try
+        {
+            while (!done.IsCancellationRequested)
+            {
+                await Task.Delay(HoldPoll, clock, done).ConfigureAwait(false);
+                if (held!(kind))
+                {
+                    preempt.Cancel();
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    /// <summary>Each kind's lane now: the lane of the model it goes to (busy and waiting), and its own jobs (held, runs, last).</summary>
+    public IReadOnlyList<SenseLaneStatus> Status() =>
+    [
+        .. new[] { SenseKind.Image, SenseKind.Audio }.Select(kind =>
+        {
+            var lane = route(kind) is { Path: SensePath.Described, Model: { } model } && lanes.TryGetValue(model.Key, out var found) ? found : null;
+            var (busy, waiting) = lane?.Load() ?? (false, 0);
+            return records[(int)kind].Status(kind, busy, waiting);
+        })
+    ];
 
     private void Exit(Lane lane)
     {
@@ -180,43 +266,88 @@ public sealed class SenseLanes
         Changed?.Invoke();
     }
 
-    private SenseJobResult Ended(Lane lane, SenseJob job, SenseJobResult result)
+    private SenseJobResult Ended(Record record, SenseJob job, SenseJobResult result)
     {
-        lane.Record(job.Purpose, result, clock.GetUtcNow());
+        record.Note(job.Purpose, result, clock.GetUtcNow());
         Changed?.Invoke();
         return result;
     }
 
     public override string ToString() => nameof(SenseLanes);
 
-    private sealed class Lane(SenseKind kind)
+    // One kind's own jobs: how many wait for the conversation, how many ran and how the last one ended.
+    private sealed class Record
     {
         private readonly object gate = new();
-        private readonly List<Waiter> waiting = [];
-        private long order;
-        private bool busy;
+        internal int Holding;
         private int runs;
         private (string Purpose, SenseJobResult Result, DateTimeOffset At)? last;
 
-        // Null: the lane was free and is now the job's. Otherwise the job waits for the task: true when it may start, false when
-        // a newer job with its key replaced it.
-        internal TaskCompletionSource<bool>? Enter(SenseJob job)
+        internal void Note(string purpose, SenseJobResult result, DateTimeOffset at)
         {
             lock (gate)
             {
-                if (!busy)
-                {
-                    busy = true;
-                    return null;
-                }
+                if (result.Outcome is SenseJobOutcome.Succeeded or SenseJobOutcome.Failed or SenseJobOutcome.Refused or
+                    SenseJobOutcome.TimedOut or SenseJobOutcome.Preempted)
+                    runs++;
+                last = (purpose, result, at);
+            }
+        }
+
+        internal SenseLaneStatus Status(SenseKind kind, bool busy, int waiting)
+        {
+            lock (gate)
+                return new(kind, busy, waiting, Volatile.Read(ref Holding), runs, last?.Purpose, last?.Result.Outcome,
+                    last is { } done && done.Result.Took > TimeSpan.Zero ? Math.Round(done.Result.Took.TotalMilliseconds) : null,
+                    last?.At, last?.Result.Model, last?.Result.Problem);
+        }
+    }
+
+    // One model's line: one job at a time, the others waiting by priority, then age.
+    private sealed class Lane
+    {
+        private readonly object gate = new();
+        private readonly List<Waiter> waiting = [];
+        private readonly Dictionary<string, long> newest = new(StringComparer.Ordinal);
+        private long order;
+        private bool busy;
+
+        // A new job's place in line; with a key, it is now the newest job with that key.
+        internal long Arrive(string? key)
+        {
+            lock (gate)
+            {
+                var mine = ++order;
+                if (key is not null) newest[key] = mine;
+                return mine;
+            }
+        }
+
+        // Whether no newer job with the same key arrived since.
+        internal bool Newest(string? key, long mine)
+        {
+            lock (gate) return key is null || !newest.TryGetValue(key, out var latest) || latest == mine;
+        }
+
+        // Null: the lane was free and is now the job's. Otherwise the job waits for the task: true when it may start, false when
+        // a newer job with its key took its place.
+        internal TaskCompletionSource<bool>? Enter(SenseJob job, long mine)
+        {
+            lock (gate)
+            {
                 if (job.Key is { } key)
                     foreach (var replaced in waiting.Where(w => w.Key == key).ToArray())
                     {
                         waiting.Remove(replaced);
                         replaced.Turn.TrySetResult(false);
                     }
+                if (!busy)
+                {
+                    busy = true;
+                    return null;
+                }
                 var turn = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                waiting.Add(new(turn, job.Key, job.Priority, ++order));
+                waiting.Add(new(turn, job.Key, job.Priority, mine));
                 return turn;
             }
         }
@@ -249,22 +380,9 @@ public sealed class SenseLanes
             }
         }
 
-        internal void Record(string purpose, SenseJobResult result, DateTimeOffset at)
+        internal (bool Busy, int Waiting) Load()
         {
-            lock (gate)
-            {
-                if (result.Outcome is SenseJobOutcome.Succeeded or SenseJobOutcome.Failed or SenseJobOutcome.Refused or SenseJobOutcome.TimedOut)
-                    runs++;
-                last = (purpose, result, at);
-            }
-        }
-
-        internal SenseLaneStatus Status()
-        {
-            lock (gate)
-                return new(kind, busy, waiting.Count, runs, last?.Purpose, last?.Result.Outcome,
-                    last is { } done && done.Result.Took > TimeSpan.Zero ? Math.Round(done.Result.Took.TotalMilliseconds) : null,
-                    last?.At, last?.Result.Model, last?.Result.Problem);
+            lock (gate) return (busy, waiting.Count);
         }
 
         private sealed record Waiter(TaskCompletionSource<bool> Turn, string? Key, int Priority, long Order);

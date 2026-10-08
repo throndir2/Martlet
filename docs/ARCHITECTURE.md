@@ -629,6 +629,12 @@ source, confidence/uncertainty, and expiry. An old screenshot is not current
 game state. Background queues never compete unboundedly with voice; measure
 game frame-time impact and host VRAM under combined workloads.
 
+**Image and audio models (2026-10-08):** Thinking, the text model, writes
+every reply. By default it also takes pictures and recordings itself (an omni
+model). The owner may choose an image model and an audio model of their own,
+which put what they see or hear into words for Thinking; a reply never waits
+for them. See [Image and audio models](SENSE_MODELS.md).
+
 P03 begins with user-saved facts and lexical retrieval in SQLite, not an
 always-recording vector database. Add embedding/reranking only when a labeled
 retrieval evaluation shows benefit. Store source consent, timestamps, model

@@ -772,7 +772,7 @@ internal sealed class LiveConversationConfiguration
 
     // Where what Martlet knows about a model came from, in a few words: "Ollama on this PC says so, checked 3 Oct".
     private static string Said(ModelAbility ability) =>
-        $"{(ability.Source is "a test request" or "a refused recording" ? "found by " + ability.Source : ability.Source + " says so")}, " +
+        $"{(ability.Source is "a test request" or "a refused recording" or "a refused picture" ? "found by " + ability.Source : ability.Source + " says so")}, " +
         $"checked {ability.CheckedAt.LocalDateTime:d MMM}";
 
     /// <summary>Whether the Thinking model can hear your voice, and what to change when it can't.</summary>

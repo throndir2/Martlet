@@ -45,7 +45,7 @@ public static class SenseRouting
         senses ??= new();
         var place = senses.Place(kind);
         var image = kind == SenseKind.Image;
-        if (place is null || place.SameAs(thinking))
+        if (place is null || IsThinking(place, thinking))
         {
             if (thinking is null) return new(kind, SensePath.None, null, "Set up Thinking first.");
             var other = senses.For(kind).Source == SenseSource.OtherSense ? $"the {(image ? "audio" : "image")} model, which is " : "";
@@ -99,8 +99,19 @@ public static class SenseRouting
         thinking is null ? HearingSupport.Unknown
         : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities, Retired(thinking));
 
-    /// <summary>Whether a model of its own sees: an endpoint by what Martlet found out about it, then its name; a paired computer's
-    /// model by its name.</summary>
+    /// <summary>Whether a model of its own is the text model itself: exactly Thinking's endpoint and model, or the same paired
+    /// computer's Ollama with the same model as a Thinking route on that computer.</summary>
+    public static bool IsThinking(DeepThinkingSettings model, SetupRoute? thinking)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        return model.SameAs(thinking) ||
+            model is { Place: DeepThinkingPlace.Host, HostId: { } host, ModelId: { } id } && model.HostRoute == SelfHostSetup.OllamaRouteId &&
+            thinking is { RouteType: SetupRouteType.GatewayOllama, Gateway.HostId: var thinkingHost } &&
+            string.Equals(thinkingHost, host, StringComparison.Ordinal) && string.Equals(thinking.ModelId, id, StringComparison.Ordinal);
+    }
+
+    /// <summary>Whether a model of its own sees: what Martlet found out about it (an endpoint by its base URL, a paired computer's
+    /// model by its gateway's origin, as for a Thinking route there), then its name.</summary>
     public static VisionSupport Sees(DeepThinkingSettings model, ModelAbilities? abilities)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -108,7 +119,7 @@ public static class SenseRouting
         {
             DeepThinkingPlace.Endpoint => VisionModelCatalog.ForRoute(model.Origin, model.ModelId, abilities,
                 ChatCompletionsEndpointCatalog.RetiredOn(model.Origin ?? "", model.ModelId ?? "") is not null),
-            DeepThinkingPlace.Host => VisionModelCatalog.Classify(model.ModelId),
+            DeepThinkingPlace.Host => VisionModelCatalog.ForRoute(model.HostOrigin, model.ModelId, abilities),
             _ => VisionSupport.Unknown
         };
     }
