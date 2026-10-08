@@ -3,9 +3,11 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using Martlet.Conversation;
 using Martlet.Core.Audio;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
+using Martlet.Mcp.Shared;
 using Martlet.Providers;
 
 namespace Martlet.Mcp;
@@ -38,10 +40,14 @@ internal static partial class HearingCheck
             : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities,
                 thinking.RouteType == SetupRouteType.ChatCompletions && ChatCompletionsEndpointCatalog.RetiredOn(thinking.Origin, thinking.ModelId) is not null);
         var choice = HearVoiceChoice(dataDirectory);
-        var staysOnThisPc = modelId is null && thinking is not null && HearingModelCatalog.StaysOnThisPc(thinking.RouteType, thinking.Origin, thinking.ModelId);
-        // Let Thinking hear my voice as replies use it (Martlet.Desktop's TalkPreferences.HearVoiceFor): your own choice wins;
-        // never chosen, it is on only while the recording stays on this PC.
-        var hearVoice = choice ?? staysOnThisPc;
+        // Where a recording goes now (docs/SENSE_MODELS.md): to Thinking, or with an audio model of its own to that model.
+        var (senses, sensesFile) = SenseModels.Read(dataDirectory);
+        var audio = SenseRouting.For(SenseKind.Audio, senses, thinking, abilities);
+        var staysOnThisPc = audio.Model is { } own ? VoiceNotes.StaysOnThisPc(own)
+            : modelId is null && thinking is not null && HearingModelCatalog.StaysOnThisPc(thinking.RouteType, thinking.Origin, thinking.ModelId);
+        // Let ... hear my voice as replies use it (Martlet.Desktop's TalkPreferences.HearVoiceFor): your own choice wins; never
+        // chosen, it is on only while the recording stays on this PC where it goes.
+        var hearVoice = VoiceNotes.MayHear(choice, staysOnThisPc);
         var transcribeFirst = TalkChoice(dataDirectory, "TranscribeFirst");
         return new
         {
@@ -53,6 +59,16 @@ internal static partial class HearingCheck
             modelHearing = modelHearing.ToString(),
             routeHearing = routeHearing?.ToString(),
             savedAbility = saved is null ? null : new { saved.Hears, saved.Sees, saved.Source, saved.CheckedAt },
+            // The audio model (sense-models.json): Thinking (the default: the text model takes recordings itself), Described (a
+            // model of its own puts your voice into words for Thinking) or None (nobody takes recordings: transcript only).
+            audioRoute = new
+            {
+                file = sensesFile, source = senses.Audio.Source.ToString(), path = audio.Path.ToString(), model = audio.Model?.Describe(),
+                unknown = audio.Unknown, why = audio.Why
+            },
+            voiceGoes = !hearVoice ? "transcriptOnly"
+                : audio.Model is not null ? audio.Described ? "audioModel" : "transcriptOnly"
+                : routeHearing == HearingSupport.Supported ? "thinking" : "transcriptOnly",
             hearVoice,
             hearVoiceChoice = choice switch { true => "on", false => "off", _ => "unset" },
             staysOnThisPc,
@@ -61,13 +77,15 @@ internal static partial class HearingCheck
                 true => "you turned it on",
                 false => "you turned it off",
                 _ when staysOnThisPc => "never chosen: on because the recording stays on this PC",
+                _ when audio.Model is not null =>
+                    "never chosen: off because the audio model isn't Ollama on this PC, so the recording would or could leave it (tick it to allow)",
                 _ => "never chosen: off because Thinking isn't Ollama on this PC, so the recording would or could leave it (tick it to allow)"
             },
             // Companion › Listening › When Thinking can hear you (shown while Thinking hears): straight (the default) or transcribe
             // first. Straight applies to always listening when the route hears; push-to-talk and messages with what the PC
-            // played, said over Martlet or for Home Assistant's Assist are transcribed first.
+            // played, said over Martlet or for Home Assistant's Assist are transcribed first. An audio model of its own turns it off.
             voicePath = transcribeFirst ? "transcribeFirst" : "straight",
-            straightApplies = hearVoice && !transcribeFirst && routeHearing == HearingSupport.Supported,
+            straightApplies = hearVoice && !transcribeFirst && routeHearing == HearingSupport.Supported && audio.Model is null,
             lastTurn = LastTurn(dataDirectory),
             fixture = await FixtureAsync(model, cancellation)
         };
@@ -106,7 +124,8 @@ internal static partial class HearingCheck
 
     /// <summary>Which way the newest spoken reply's message went to Thinking, from the desktop log (never what was said): its
     /// "Voice path:" line, and for a straight one the "Background transcript" line (how long after the reply started the words
-    /// were ready, how long speech-to-text took) and the "Straight to Thinking:" line (where the words went).</summary>
+    /// were ready, how long speech-to-text took) and the "Straight to Thinking:" line (where the words went); for one the audio
+    /// model of its own heard, whether the reply took its words and, when they came late, the "Voice description:" line.</summary>
     internal static object? LastTurn(string dataDirectory)
     {
         var directory = Martlet.Diagnostics.LocalLogs.Directory(dataDirectory);
@@ -120,26 +139,37 @@ internal static partial class HearingCheck
         var kept = after.FirstOrDefault(r => r.Message.StartsWith("Straight to Thinking: ", StringComparison.Ordinal));
         // The quick check of something short (Not words: the reply was dropped before it played; Not words, too late: labeled).
         var quick = after.FirstOrDefault(r => r.Message.StartsWith("Not words", StringComparison.Ordinal));
+        var described = path.Message.StartsWith("Voice path: described", StringComparison.Ordinal);
+        var late = described ? after.FirstOrDefault(r => r.Message.StartsWith("Voice description: ", StringComparison.Ordinal)) : null;
         var timing = transcript is null ? null : TranscriptTiming().Match(transcript.Message);
         double? Ms(string group) => timing is { Success: true } && timing.Groups[group].Success &&
             double.TryParse(timing.Groups[group].Value, System.Globalization.CultureInfo.InvariantCulture, out var ms) ? ms : null;
         var before = timing is { Success: true } && timing.Groups["when"].Value == "before";
+        var ready = described ? DescriptionReady().Match(late?.Message ?? path.Message) : null;
         return new
         {
             at = path.At,
-            path = path.Message.StartsWith("Voice path: straight", StringComparison.Ordinal) ? "straight" : "transcribeFirst",
+            path = path.Message.StartsWith("Voice path: straight", StringComparison.Ordinal) ? "straight" : described ? "described" : "transcribeFirst",
             line = path.Message,
             transcriptReadyAfterReplyStartMs = Ms("after") is { } readyMs ? before ? -readyMs : readyMs : (double?)null,
             speechToTextMs = Ms("stt"),
             transcriptLine = transcript?.Message,
             wordsLine = kept?.Message,
             notWords = quick is null ? null : quick.Message.StartsWith("Not words, too late", StringComparison.Ordinal) ? "tooLate" : "dropped",
-            notWordsLine = quick?.Message
+            notWordsLine = quick?.Message,
+            // The audio model's words about how you sounded: with the reply's own request, or with the next one (late).
+            descriptionTaken = described ? path.Message.Contains("the reply took its words", StringComparison.Ordinal) : (bool?)null,
+            descriptionReadyAfterSpeechMs = ready is { Success: true } && double.TryParse(ready.Groups["ms"].Value,
+                System.Globalization.CultureInfo.InvariantCulture, out var describedMs) ? describedMs : (double?)null,
+            descriptionLine = late?.Message
         };
     }
 
     [System.Text.RegularExpressions.GeneratedRegex(@"ready (?<after>\d+) ms (?<when>after|before) the reply started \(speech-to-text (?<stt>\d+) ms")]
     private static partial System.Text.RegularExpressions.Regex TranscriptTiming();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"ready (?<ms>\d+) ms after you stopped")]
+    private static partial System.Text.RegularExpressions.Regex DescriptionReady();
 
     private static async Task<object> FixtureAsync(string model, CancellationToken cancellation)
     {
@@ -192,9 +222,9 @@ internal static partial class HearingCheck
 
     private static int Count(List<byte[]> requests) { lock (requests) return requests.Count; }
 
-    private sealed record Asked(string? Outcome, string? Failure, string Reply);
+    internal sealed record Asked(string? Outcome, string? Failure, string Reply);
 
-    private static async Task<Asked> AskAsync(ChatCompletionsTextGenerationAdapter adapter, string baseUrl, string model,
+    internal static async Task<Asked> AskAsync(ChatCompletionsTextGenerationAdapter adapter, string baseUrl, string model,
         BoundedTextInput input, bool allowAudio, CancellationToken cancellation)
     {
         var ids = new CorrelationIds { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
@@ -304,7 +334,7 @@ internal static partial class HearingCheck
     private static int IndexOf(ReadOnlySpan<byte> data, ReadOnlySpan<byte> value) => data.IndexOf(value);
 
     // 1.5 seconds of a 16 kHz speech-like signal: a 140 Hz pulse train shaped by vowel formants, three "syllables".
-    private static BoundedWaveAudio Clip()
+    internal static BoundedWaveAudio Clip()
     {
         const int rate = 16_000;
         double[][] vowels = [[730, 1090, 2440], [270, 2290, 3010], [570, 840, 2410]];

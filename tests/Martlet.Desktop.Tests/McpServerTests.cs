@@ -70,6 +70,20 @@ public sealed class McpServerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task AudioModelCheckRehearsesYourVoiceGoingToTheAudioModelWithTheProductionCode()
+    {
+        var result = ToolResult((await SendAsync("""{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"audio_model_check"}}"""))[0]);
+        Assert.True(result.GetProperty("ok").GetBoolean(), result.ToString());
+        var steps = result.GetProperty("steps").EnumerateArray().ToDictionary(step => step.GetProperty("Name").GetString()!,
+            step => step.GetProperty("Passed").GetBoolean());
+        Assert.True(steps["in-time-reply-takes-the-words"]);
+        Assert.True(steps["late-reply-never-waits"]);
+        Assert.True(steps["late-words-go-to-the-board"]);
+        Assert.True(steps["refused"]);
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("saved").ValueKind);
+    }
+
+    [Fact]
     public async Task SaidLatelyAndCheckInsRehearsalsPassWithTheProductionCode()
     {
         var messages = await SendAsync(
