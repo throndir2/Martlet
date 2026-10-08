@@ -27,6 +27,8 @@ public static partial class TouchZoneDetection
         // Live2D characters face the viewer; a VRM's own shoulders tell (null for a side view).
         var faces = hints is { Bones.Count: > 0 } ? hints.FacesViewer : true;
         var zones = new Dictionary<string, TouchZoneBox>(StringComparer.Ordinal);
+        // The names the vision model gave the zones special to the character.
+        var labels = new Dictionary<string, string>(StringComparer.Ordinal);
         var steps = new List<string>();
         var requests = 0;
         string? failure = null;
@@ -44,7 +46,9 @@ public static partial class TouchZoneDetection
             }
             return answer;
         }
-        void Report(string text) => progress?.Invoke(new(text, Zones(zones), requests));
+        void Report(string text) => progress?.Invoke(new(text, Zones(zones, labels), requests));
+        // What a zone is, as the vision model is told: a zone special to the character by the name it gave it.
+        string What(string id) => labels.TryGetValue(id, out var label) ? label.ToLowerInvariant() : Describe(id);
         ZonePixels Compose(TouchZoneBox region, IReadOnlyList<MarkedBox>? marks = null) =>
             TouchZonePictures.Compose(snapshot, region, options.Edge, options.MaximumZoom, backdrop, grid: true, marks);
 
@@ -110,8 +114,41 @@ public static partial class TouchZoneDetection
                     Notes(tidy));
             }
         }
-        // 4. A tail, wings or a held item, on the whole character.
-        if (failure is null && extras.Any(zones.ContainsKey)) await CheckAsync("extras", "the whole character", extras, whole).ConfigureAwait(false);
+        // 4. What is special about this character (animal ears, a tail, wings, a hat, a bow, something it holds...), on the whole
+        // character: each becomes a zone, named as the vision model sees it, with the tail, wings or animal ears the model's own
+        // part names place.
+        var special = new List<string>();
+        if (failure is null && options.MaximumSpecial > 0)
+        {
+            number++;
+            Report($"Step {number}: asking what is special about this character ({SpecialExamples}...), on the whole character...");
+            picture = Compose(whole);
+            answer = await Ask(new(ZoneAskKind.Special, SpecialStep, SpecialInstructions(options.MaximumSpecial), SpecialText(hints, options.SpecialBefore),
+                picture, whole, [.. options.SpecialBefore.Select(b => b.Id)], [])).ConfigureAwait(false);
+            if (failure is null)
+            {
+                var said = ReadSpecial(answer, picture.Width, picture.Height, zones.Keys, options.MaximumSpecial);
+                foreach (var (id, label, box) in said)
+                {
+                    zones[id] = box;
+                    if (label is not null) labels[id] = label;
+                    special.Add(id);
+                }
+                var named = NamedSpecialPlaces(hints, zones);
+                foreach (var (id, box, _) in named)
+                {
+                    zones[id] = box;
+                    special.Add(id);
+                }
+                tidy = Tidy(zones, snapshot, faces);
+                steps.Add($"{SpecialStep}: " + (said.Count == 0 ? answer is null ? "no answer" : "nothing special found"
+                        : "found " + string.Join(", ", said.Select(s => s.Label is null ? s.Id : $"{s.Id} ({s.Label})"))) +
+                    (named.Count == 0 ? "" : "; added " + string.Join(", ", named.Select(n => $"{n.Id} from the model's own {n.What}"))) + Notes(tidy));
+            }
+        }
+        // 5. The zones special to it, and a tail, wings or held item the owner added, checked on the whole character.
+        var onWhole = extras.Concat(special).Distinct(StringComparer.Ordinal).ToArray();
+        if (failure is null && onWhole.Any(zones.ContainsKey)) await CheckAsync(SpecialStep, "the whole character", onWhole, whole).ConfigureAwait(false);
 
         var finished = Finish(zones, snapshot, hints);
         if (finished.Length > 0) steps.Add("finally: " + string.Join("; ", finished));
@@ -119,7 +156,7 @@ public static partial class TouchZoneDetection
         if (failure is null && Derive(zones, options.Required, snapshot, faces, regions.ToDictionary(r => r.Region.Id, r => (r.Box, r.Found)), figure, hints)
             is { Count: > 0 } derived)
             steps.Add("worked out " + string.Join("; ", derived));
-        var result = Zones(zones);
+        var result = Zones(zones, labels);
         Report(failure is null ? $"Done: {result.Count} zones after {requests} requests."
             : $"Stopped: request {requests} failed ({failure}); {result.Count} zones found until then.");
         return new(result.Count == 0 ? null : result, failure, requests, steps);
@@ -137,7 +174,7 @@ public static partial class TouchZoneDetection
                 var drawn = marks.Select(m => new MarkedBox(m.Number, m.Box, TouchZonePictures.MarkColors[(m.Number - 1) % TouchZonePictures.MarkColors.Count])).ToArray();
                 var checking = Compose(crop, drawn);
                 var reply = await Ask(new(ZoneAskKind.Check, $"{step} check {round}", CheckInstructions,
-                    CheckText(what, marks, ids.Where(id => !zones.ContainsKey(id)), problems, hints, crop), checking, crop, ids, marks)).ConfigureAwait(false);
+                    CheckText(what, marks, ids.Where(id => !zones.ContainsKey(id)), problems, hints, crop, What), checking, crop, ids, marks)).ConfigureAwait(false);
                 if (failure is not null) return;
                 var verdict = ReadCheck(reply, marks, ids, checking.Width, checking.Height);
                 if (verdict is null)
@@ -173,8 +210,11 @@ public static partial class TouchZoneDetection
 
     private static string Notes(IReadOnlyList<string> notes) => notes.Count == 0 ? "" : "; " + string.Join(", ", notes);
 
-    private static List<CharacterTouchZone> Zones(Dictionary<string, TouchZoneBox> zones) =>
-        [.. zones.OrderBy(z => CharacterTouchZones.Order(z.Key)).Select(z => new CharacterTouchZone { Id = z.Key, Box = z.Value.Clamped(), Enabled = true })];
+    private static List<CharacterTouchZone> Zones(Dictionary<string, TouchZoneBox> zones, IReadOnlyDictionary<string, string>? labels = null) =>
+        [.. zones.OrderBy(z => CharacterTouchZones.Order(z.Key)).Select(z => new CharacterTouchZone
+        {
+            Id = z.Key, Label = labels?.GetValueOrDefault(z.Key), Box = z.Value.Clamped(), Enabled = true
+        })];
 
     /// <summary>The largest distance any edge moved from <paramref name="from"/> to <paramref name="to"/>.</summary>
     public static double Moved(TouchZoneBox from, TouchZoneBox to) => new[]
@@ -222,7 +262,10 @@ public static partial class TouchZoneDetection
         var raw = new List<(string, double[])>();
         foreach (var entry in entries)
         {
-            var id = CharacterTouchZones.Normalize(ZoneAnswers.Name(entry));
+            // A zone of its own (special to the character) goes by its own ID.
+            var name = ZoneAnswers.Name(entry);
+            var own = CharacterTouchZones.Slug(name);
+            var id = own is not null && (ids.Contains(own) || marks.Any(m => m.Id == own)) ? own : CharacterTouchZones.Normalize(name);
             var mark = ZoneAnswers.Int(entry, "n", "number", "#") is { } n ? marks.FirstOrDefault(m => m.Number == n) : null;
             mark ??= id is null ? null : marks.FirstOrDefault(m => m.Id == id);
             var ok = ZoneAnswers.Bool(entry, "ok", "correct", "right", "accurate");

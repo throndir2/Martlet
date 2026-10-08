@@ -127,6 +127,11 @@ internal static class ZoneAnswers
     internal static string? Name(JsonElement entry) =>
         Property(entry, "id", "label", "zone", "name", "part") is { ValueKind: JsonValueKind.String } name ? name.GetString() : null;
 
+    /// <summary>The name in plain words an entry gives its zone (name, label or what), or null.</summary>
+    internal static string? Label(JsonElement entry) =>
+        Property(entry, "name", "label", "what") is { ValueKind: JsonValueKind.String } label && !string.IsNullOrWhiteSpace(label.GetString())
+            ? label.GetString() : null;
+
     internal static int? Int(JsonElement entry, params string[] names) => Property(entry, names) switch
     {
         { ValueKind: JsonValueKind.Number } number when number.TryGetInt32(out var value) => value,

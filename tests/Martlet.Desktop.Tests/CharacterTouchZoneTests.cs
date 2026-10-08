@@ -591,6 +591,25 @@ public sealed class CharacterTouchZoneTests
     }
 
     [Fact]
+    public void AZoneSpecialToTheCharacterReactsAsAnExtraAndKeepsTheNameItWasFoundWith()
+    {
+        var bow = new CharacterTouchZone { Id = "hair_bow", Label = "Hair bow", Box = new(0.5, 0.05, 0.1, 0.05) };
+        // It plays what an extra plays by default, the character hears its name, and Include intimate zones doesn't touch it.
+        Assert.Equal(["tilt", "smile"], CharacterTouchZones.Plan(bow, Catalog()).Select(s => s.Name));
+        Assert.Equal("your hair bow", CharacterTouchZones.Part(bow));
+        Assert.True(new CharacterTouchZoneSettings { ModelId = "m", IncludeIntimate = false, Zones = [bow] }.Active(bow));
+
+        // Found again, it keeps the owner's name for it, else the name it was found with: a tail called a fox tail is named so.
+        var saved = CharacterTouchZones.Detected(null, "m", [bow, new() { Id = "tail", Label = "Fox tail", Box = new(0.3, 0.5, 0.1, 0.2) }], null, null,
+            DateTimeOffset.Now);
+        Assert.Equal(["Fox tail", "Hair bow"], saved.Zones.Select(z => z.Name));
+        var renamed = saved with { Zones = [saved.Zones[0], saved.Zones[1] with { Label = "Ribbon" }] };
+        var again = CharacterTouchZones.Detected(renamed, "m", [bow with { Label = "Bow" }], null, null, DateTimeOffset.Now);
+        Assert.Equal("Ribbon", Assert.Single(again.Zones).Name);
+        Assert.Null(CharacterTouchZones.Problem(again));
+    }
+
+    [Fact]
     public async Task SavesPerModelAndKeepsOwnerEditsWhenDetectedAgain()
     {
         var directory = Directory.CreateTempSubdirectory("martlet-touch-").FullName;

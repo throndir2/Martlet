@@ -30,6 +30,9 @@ public static partial class TouchZoneDetection
         "hair", "tail", "held_item", "horns", "glasses_or_hat", "skirt_hem", "wings", "animal_ears"
     };
 
+    // A zone of its own, special to the character (a ribbon, a halo, a staff), can be thin too.
+    private static bool IsThin(string id) => Thin.Contains(id) || CharacterTouchZones.Kind(id) is null;
+
     private static readonly string[] HeadMiddle = ["face", "nose", "lips", "chin", "forehead"];
     private static readonly string[] BodyMiddle = ["neck", "collarbone", "chest", "stomach", "navel", "groin", "hips"];
 
@@ -56,7 +59,7 @@ public static partial class TouchZoneDetection
     public static TouchZoneBox Fit(string id, TouchZoneBox box, ZonePixels snapshot)
     {
         box = box.Clamped();
-        if (Thin.Contains(id)) return box;
+        if (IsThin(id)) return box;
         var area = PixelRect.Of(box, snapshot.Width, snapshot.Height);
         var (share, bounds) = TouchZonePictures.Opaque(snapshot, area);
         return share >= EmptyShare && bounds is { } inside && (inside.Width < area.Width || inside.Height < area.Height)
@@ -73,7 +76,7 @@ public static partial class TouchZoneDetection
         static string Name(ZoneMark mark) => $"box {mark.Number} ({mark.Id})";
         ZoneMark? Marked(string id) => marks.FirstOrDefault(m => m.Id == id);
         foreach (var mark in marks)
-            if (!Thin.Contains(mark.Id) &&
+            if (!IsThin(mark.Id) &&
                 TouchZonePictures.Opaque(snapshot, PixelRect.Of(zones[mark.Id], snapshot.Width, snapshot.Height)).Share < EmptyShare)
                 problems.Add($"{Name(mark)} covers almost none of the character");
         foreach (var (above, below) in Heights)
@@ -167,7 +170,7 @@ public static partial class TouchZoneDetection
                 }
             }
         foreach (var id in zones.Keys.ToArray())
-            if (TouchZonePictures.Opaque(snapshot, PixelRect.Of(zones[id], snapshot.Width, snapshot.Height)).Share < (Thin.Contains(id) ? 0.002 : 0.01))
+            if (TouchZonePictures.Opaque(snapshot, PixelRect.Of(zones[id], snapshot.Width, snapshot.Height)).Share < (IsThin(id) ? 0.002 : 0.01))
             {
                 zones.Remove(id);
                 notes.Add($"dropped {id}, which covered almost none of the character");

@@ -8,6 +8,9 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+- **Detect zones** now also gives your character a touch zone for each thing special to it that your Thinking model sees, such as cat ears, a tail, wings, a halo, a hat, a hair bow or what it holds, named the way the model sees it (*Hair bow*). They react like the other extras, and **Detect again** keeps their names. A tail, wings or animal ears that a Live2D character's own files name get a zone too, even in the first guess. ([#627](https://github.com/throndir2/Martlet/pull/627))
+
 ### Changed
 - Where touch zones overlap, such as where the groin meets a thigh, a touch or stroke there now counts on each of them, and Martlet hears them all: *They poked your groin and your left thigh once.* The best-matching zone still plays its reaction, and a hand held in front of the body still counts only as the hand. ([#626](https://github.com/throndir2/Martlet/pull/626))
 
