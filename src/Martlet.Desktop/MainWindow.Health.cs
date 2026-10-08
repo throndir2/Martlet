@@ -437,6 +437,9 @@ public partial class MainWindow
             Add("tools-" + failed.Name, HealthLevel.Warning, $"The {failed.Name} tool server isn't working",
                 failed.Error ?? "It stopped or failed to start.", [Open(CompanionTab.Tools, "Open tools")]);
 
+        // A better setup for your computers, found after one came back or stayed away (MainWindow.RecommendedSetup.cs).
+        if (RecommendedSetupIssue() is { } better) Add(better.Id, better.Level, better.Title, better.Detail, better.Fixes);
+
         // Updates.
         if (failedInstallMessage is { } installProblem)
             Add("update-failed", HealthLevel.Warning, "The last update didn't install", installProblem,

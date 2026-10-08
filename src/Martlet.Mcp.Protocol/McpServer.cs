@@ -1477,6 +1477,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "first, four segments at once spread over both, a computer kept for one companion PC or unticked for a job left out, " +
             "an unanswering computer skipped, Deep thinking leaving out a kept computer, and the shared setting's round trip. " +
             "In-process; reads nothing.", new { }),
+        Tool("recommended_setup_status", "Home's Recommended setup without the desktop: builds the network recommender's request with " +
+            "the desktop's own builder from a data directory (hosts.json, host-hardware.json, cluster.json, settings.json, " +
+            "work-sharing.json, thinking-pool.json, speaking-engine.txt; every host counts as online, roles are the shared plan's " +
+            "record) or, with fixture \"network\", from a built-in four-computer network (NOT real computers), runs the production " +
+            "recommender (NetworkRecommender) and lists the computers (kind, planned or left as they are, manageable), today's jobs " +
+            "and Thinking pool, the recommended changes (summary, why, benefit, downloads, someone needed at the computer), each " +
+            "computer's recommended roles and load, and whether a companion PC in use would ask (declined setups in " +
+            "recommended-setup.json count). Read-only; contacts nothing and reads no keys.", new
+        {
+            dataDirectory = new { type = "string" },
+            fixture = new { type = "string", @enum = new[] { "network" } }
+        }),
         Tool("research_check", "Rehearse web research (the research tool: Companion > Deep thinking > Web research, off by default) " +
             "end to end with Martlet's own tool texts and job kind (WebResearch: one at a time, 4 an hour, 12 minutes, offered when " +
             "done), background-job scheduler, web client (WebAccess: DuckDuckGo results parser with ads left out and redirect links " +
@@ -1772,6 +1784,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),
                 "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),
                 "work_sharing_check" => await WorkSharingCheck.RunAsync(cancellation),
+                "recommended_setup_status" => OptionalString(arguments, "fixture") is { } setupFixture
+                    ? await RecommendedSetupStatus.RunAsync(null, setupFixture, cancellation)
+                    : await RecommendedSetupStatus.RunAsync(DataDirectory(arguments), null, cancellation),
                 "discord_reply_status" => DiscordReplyCheck.Status(DataDirectory(arguments)),
                 "discord_reply_check" => await DiscordReplyCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),
