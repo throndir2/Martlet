@@ -1477,8 +1477,16 @@ with none of its own drawables under the touch, wins as its finer part and reads
 without `hair`, a drawable lower in `drawables` that a smaller zone inside the
 top drawable's zones owns wins, as an overlay over that part), `traced`
 (whether the boxes were compared with the rest point), `at` (the point they were
-compared with: `x`, `y` and `rest`, true when it is the rest point), its rough `coarse`
-zone, what it `plays`, whether Martlet `notices` it, the line the Thinking model would get for that one touch (`noticed`, such as *They patted the top of your head once.*; a press of 600 ms or more in `heldMilliseconds` is a hold) and how long it `rests`.
+compared with: `x`, `y` and `rest`, true when it is the rest point), `touched`
+(every zone the touch lands in, the matched one first: where zones overlap, each
+other zone in use whose box holds that point, on the same part of the body as
+the touch, the hit VRM bone's part, else the matched zone's; a zone whose box
+frames a smaller touched zone is left out), its rough `coarse`
+zone, what it `plays` (the matched zone's reaction), whether Martlet `notices` it,
+`noticing` (the touched zones Martlet notices), the line the Thinking model would
+get for that one touch on all of them (`noticed`, such as *They patted the top of
+your head once.* or *They poked your groin and your left thigh once.*; a press of
+600 ms or more in `heldMilliseconds` is a hold) and how long it `rests`.
 With `detect`, the production detection (`TouchZoneDetection`) runs on
 `snapshotPath` (a PNG of the character, transparent around it, as the renderer
 takes it): it composes and encodes every picture it would send (the whole
@@ -1593,8 +1601,10 @@ pictures, how large and what they showed, such as *..., and the whole character
 again for the zones the close-ups missed*, or *FIXTURE - NOT AI answered
 these.*), `TouchZonesLast` (the zone the last click landed in,
 how it was found (*box, traced to the rest pose* when the renderer traced the
-touched point back to the rest pose the zones were found in) and what it played or that it was resting, and whether Martlet
-noticed it), `TouchZonesNoticed` (what Martlet noticed that waits for a reply,
+touched point back to the rest pose the zones were found in), the other zones it
+landed in where zones overlap (*Groin (box), with Left thigh, at ...*), what it
+played or that it was resting, and which of the zones Martlet
+noticed: *it*, *them* or their names), `TouchZonesNoticed` (what Martlet noticed that waits for a reply,
 the plain touch line, *Martlet stopped talking for it.* when a touch stopped
 Martlet talking, and when a touch-only reply starts, or that it waits for
 your next message because you started talking or typing or Martlet can't reply
@@ -5234,10 +5244,12 @@ the character. The overlay samples the path every 40 ms (at most 400
 samples), hit-tests the samples in batches with one `touches` message to the
 renderer page, and sends them to Martlet as `stroke` messages on the request
 pipe (`move` batches while the stroke goes on, then `end`). Martlet matches
-each sample to a touch zone: each zone the stroke enters plays its reaction
+each sample to a touch zone, and to every other zone it lands in where zones
+overlap (`CharacterTouchZones.Touched`): each zone the stroke enters as the
+matched zone plays its reaction
 (unless it is resting), and the first zone's first emote or gesture is held
 until the stroke ends. At the end Martlet summarizes the stroke (zones crossed
-in order, pace `slow`, `steady` or `quick`, passes back and forth, seconds,
+in order, each overlapping zone a sample was on included, pace `slow`, `steady` or `quick`, passes back and forth, seconds,
 where it ended from where it began and its main direction)
 and, for the crossed zones with *Martlet notices* on (like a tap there),
 records it in the touch ledger once for each pass (at most 8) with its whole
@@ -5428,7 +5440,7 @@ desktop and no model request: `stroke` (a JSON `CharacterStroke` with its
 hit-tested samples) is summarized against the touch zones saved for `modelId`
 (or the rough zones before any were found), `changes` (a JSON array of
 `RendererPhysical`) are worded, and both go into a touch ledger. It returns the
-stroke's zones, pace, passes, `dx` and `dy` (where it ended from where it
+stroke's zones (where zones overlap, each zone a sample was on), pace, passes, `dx` and `dy` (where it ended from where it
 began, page heights), `sideways`, `way` (`down`, `up` or null) and `words`
 (`where`, `label`, `pace`, `times` and `hint`: how the ledger says its whole
 path), each change's ledger kind, words and `startsTurn` (true for touches,

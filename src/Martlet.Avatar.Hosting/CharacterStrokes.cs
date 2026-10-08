@@ -22,8 +22,9 @@ public sealed record CharacterStroke(int Id, string Phase, double Aspect, IReadO
             s.X is >= -0.5 and <= 1.5 && s.Y is >= -0.5 and <= 1.5 && s.Ms is >= 0 and <= MaximumMs && (s.Touch is null || s.Touch.IsValid));
 }
 
-/// <summary>What a stroke was: the zones it crossed in order (repeats of the zone before dropped), the zone it spent most samples
-/// on, how long it took, how far it went (page heights), its speed (page heights a second), its pace ("slow", "steady" or
+/// <summary>What a stroke was: the zones it crossed in order (repeats of the zone before dropped; where zones overlap, each one
+/// it reached), the zone it spent most samples on, how long it took, how far it went (page heights), its speed (page heights a
+/// second), its pace ("slow", "steady" or
 /// "quick"), how many passes it made (1 plus each turn back along its main direction), where it ended from where it began
 /// (<see cref="Dx"/> and <see cref="Dy"/>, page heights, +y down) and whether it went mostly sideways (<see cref="Sideways"/>).</summary>
 public sealed record StrokeSummary(IReadOnlyList<string> Zones, string? Main, int Ms, double Length, double Speed, string Pace, int Passes,
@@ -61,7 +62,13 @@ public static class CharacterStrokes
     /// <summary>Passes a second from which a back-and-forth stroke is quick whatever its speed (a rub).</summary>
     public const double QuickPasses = 2.5;
 
-    public static StrokeSummary Summarize(IReadOnlyList<StrokeSample> samples, double aspect, Func<CharacterTouch, string?> zoneOf)
+    public static StrokeSummary Summarize(IReadOnlyList<StrokeSample> samples, double aspect, Func<CharacterTouch, string?> zoneOf) =>
+        Summarize(samples, aspect, touch => zoneOf(touch) is { Length: > 0 } zone ? [zone] : []);
+
+    /// <summary>A stroke's summary, with <paramref name="zonesOf"/> naming every zone a touch is on, the matched one first (none:
+    /// no zone). Zones can overlap: where they do, the stroke is on each of them, so each counts as crossed (in the order the
+    /// stroke reached them) and each sample counts for every zone it is on.</summary>
+    public static StrokeSummary Summarize(IReadOnlyList<StrokeSample> samples, double aspect, Func<CharacterTouch, IReadOnlyList<string>> zonesOf)
     {
         var path = samples.OrderBy(s => s.Ms).ToArray();
         if (path.Length == 0) return new([], null, 0, 0, 0, "steady", 1, 0, 0);
@@ -84,13 +91,19 @@ public static class CharacterStrokes
         var zones = new List<string>();
         var counts = new Dictionary<string, int>(StringComparer.Ordinal);
         var hits = 0;
+        string[] before = [];
         foreach (var sample in path)
         {
             if (sample.Touch is not { } touch) continue;
             hits++;
-            if (zoneOf(touch) is not { Length: > 0 } zone) continue;
-            counts[zone] = counts.GetValueOrDefault(zone) + 1;
-            if (zones.Count == 0 || zones[^1] != zone) zones.Add(zone);
+            var on = zonesOf(touch).Where(z => z is { Length: > 0 }).Distinct(StringComparer.Ordinal).ToArray();
+            if (on.Length == 0) continue;
+            foreach (var zone in on)
+            {
+                counts[zone] = counts.GetValueOrDefault(zone) + 1;
+                if (!before.Contains(zone, StringComparer.Ordinal) && (zones.Count == 0 || zones[^1] != zone)) zones.Add(zone);
+            }
+            before = on;
         }
         var main = counts.Count == 0 ? null : counts.OrderByDescending(c => c.Value).ThenBy(c => zones.IndexOf(c.Key)).First().Key;
         return new(zones.Take(16).ToArray(), main, ms, Math.Round(length, 4), Math.Round(speed, 3), pace, passes, hits, path.Length,
