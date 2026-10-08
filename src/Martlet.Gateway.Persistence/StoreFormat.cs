@@ -31,7 +31,11 @@ internal static class StoreFormat
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         RespectNullableAnnotations = true,
         RespectRequiredConstructorParameters = true,
-        Converters = { new JsonStringEnumConverter<GatewayRole>(JsonNamingPolicy.SnakeCaseLower, false) }
+        Converters =
+        {
+            new JsonStringEnumConverter<GatewayRole>(JsonNamingPolicy.SnakeCaseLower, false),
+            new JsonStringEnumConverter<GatewayAccess>(JsonNamingPolicy.SnakeCaseLower, false)
+        }
     };
 
     internal static StoreDocument Document(string hostId, Guid generation, long revision,
@@ -144,6 +148,7 @@ internal static class StoreFormat
                     credential.SigningKey is { Length: 32 } &&
                     credential.Roles is { Length: > 0 and <= 3 } &&
                     credential.Roles.Distinct().Count() == credential.Roles.Length &&
+                    credential.Access is null or GatewayAccess.Friend &&
                     credential.Nonces is { Length: <= GatewayCredentialStore.MaximumNoncesPerCredential });
                 GatewayRules.Identifier(credential.DeviceId);
                 GatewayRules.Token(credential.DisplayName, 64);

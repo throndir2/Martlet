@@ -1,8 +1,8 @@
 """Dia 1.6B (Nari Labs) on this PC, the way Martlet's dia host role speaks: Martlet's own worker code (workers/dia,
 martlet_dia.worker.DiaEngine and martlet_dia.text) with the role's pinned source, weights and codec, verified by SHA-256.
 Runs in its own environment (Install-VoiceBench.ps1 -Dia), never the dia host role, whose install asks for consent to
-Nari Labs' terms. Only the starter voices (public domain and CMU ARCTIC) are used: Nari Labs forbids imitating real
-people without their permission.
+Nari Labs' terms. Only the starter voices (public domain, CMU ARCTIC and Jenny, who recorded her voice for speech
+synthesis) are used: Nari Labs forbids imitating real people without their permission.
 
     python -m voicebench.diabench fetch
     python -m voicebench.diabench run --voice librivox-annie --repeat 3

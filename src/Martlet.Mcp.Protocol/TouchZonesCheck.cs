@@ -25,7 +25,7 @@ internal static class TouchZonesCheck
         int? width, int? height, string? crop, string? probe, string? touch, bool save, bool? includeIntimate, string? snapshotPath,
         CancellationToken cancellation, string? temperamentAnswer = null, string? personaId = null, string? personality = null, int? repeats = null,
         bool detect = false, string? guess = null, string? previewDirectory = null, int? checks = null, int? failAt = null, string? probePath = null,
-        string? add = null)
+        string? add = null, bool estimate = false)
     {
         CharacterActionCatalog? catalog = null;
         string? problem = null;
@@ -102,6 +102,25 @@ internal static class TouchZonesCheck
             (detection, var found, sent) = await DetectAsync(snapshot, truth, first, hints, previewDirectory, asks, failAt, cancellation);
             detected = found is null ? null : CharacterTouchZones.Detected(saved, id, found, cropBox, probed, DateTimeOffset.Now, whole: true);
         }
+        // The first guess the Touch zones page places on a model with no zones and no picture: no vision model, nothing sent.
+        object? estimation = null;
+        if (estimate)
+        {
+            if (detect || answer is not null) throw new ArgumentException("estimate places zones with no vision answer: leave out detect and answer.");
+            if (snapshotPath is null) throw new ArgumentException("estimate needs snapshotPath: a PNG of the character, transparent around it.");
+            var snapshot = TouchZoneImages.Decode(await File.ReadAllBytesAsync(snapshotPath, cancellation));
+            var guessed = TouchZoneDetection.Estimate(snapshot, hints, asks);
+            estimation = new
+            {
+                noAi = "No vision request: Martlet placed these from the model's own named parts, its skeleton and the body's proportions.",
+                snapshot = new { snapshot.Width, snapshot.Height },
+                face = hints?.Face is { } face ? new { x = Math.Round(face.X, 4), y = Math.Round(face.Y, 4), width = Math.Round(face.Width, 4) } : null,
+                steps = guessed.Steps, count = guessed.Zones?.Count ?? 0, wanted = asks.Zones,
+                missing = asks.Zones.Where(z => guessed.Zones?.Any(g => g.Id == z) != true).ToArray(),
+                zones = guessed.Zones?.Select(Describe).ToArray() ?? []
+            };
+            detected = guessed.Zones is { Count: > 0 } zones ? CharacterTouchZones.Estimated(saved, id, zones, cropBox, probed, DateTimeOffset.Now) : null;
+        }
         if (detected is not null && includeIntimate is { } intimate) detected = detected with { IncludeIntimate = intimate };
         // Add zone alone saves the zones with the ones added, as the desktop does.
         var adds = adding.Length > 0 && detected is null ? saved! with { IncludeIntimate = includeIntimate ?? saved!.IncludeIntimate } : null;
@@ -109,7 +128,7 @@ internal static class TouchZonesCheck
         if (save)
         {
             if (!explicitDirectory) throw new ArgumentException("save needs an explicit (disposable) dataDirectory.");
-            if ((detected ?? adds) is not { } writing) throw new ArgumentException(detect ? "save found no zones to save." : "save needs an answer the parser can read, or add.");
+            if ((detected ?? adds) is not { } writing) throw new ArgumentException(detect || estimate ? "save found no zones to save." : "save needs an answer the parser can read, or add.");
             saved = await CharacterTouchZones.SaveAsync(dataDirectory, writing, DateTimeOffset.Now, cancellation);
             if (snapshotPath is not null) await CharacterTouchZones.SaveSnapshotAsync(dataDirectory, id, await File.ReadAllBytesAsync(snapshotPath, cancellation), cancellation);
             if (sent is { } pictures)
@@ -186,6 +205,7 @@ internal static class TouchZonesCheck
             parsed = answer is null ? null : parsed?.Select(Describe).ToArray() ?? [],
             hints = DescribeHints(hints),
             detection,
+            estimate = estimation,
             detected = detected is null ? null : detected.Zones.Select(Describe).ToArray(),
             wrote,
             saved = settings is null ? null : new

@@ -12,8 +12,9 @@ public sealed record F5SharedVoicesResult(SpeakingVoiceLibrary Library, int Adde
 
 /// <summary>Keeps a computer's F5 reference store, its working copy of every recording, in step with the shared
 /// <see cref="SpeakingVoiceLibrary"/>: live voices it lacks are copied in (a starter voice's recording from Martlet itself,
-/// any other from a computer that has it), removed voices are deleted, and voices only the store has (added before voices
-/// were shared) join the library. The store is held only while it changes, never while recordings are fetched.</summary>
+/// any other from a computer that has it), removed voices are deleted, voices only the store has (added before voices
+/// were shared) join the library, and recordings Martlet no longer ships leave both. The store is held only while it
+/// changes, never while recordings are fetched.</summary>
 public static class F5SharedVoices
 {
     /// <summary>The starter voices as library entries' content: name, transcript, recording SHA-256, length and source.</summary>
@@ -38,33 +39,59 @@ public static class F5SharedVoices
         _ => F5VoiceRightsBasis.PublishedSample
     };
 
-    /// <summary>Each voice's latest snapshot for <paramref name="destination"/>, by voice ID, without the retired F5-TTS
-    /// example clip. When two presets hold the same recording and words, the older one counts.</summary>
+    /// <summary>Each voice's latest snapshot for <paramref name="destination"/>, by voice ID, without recordings Martlet no
+    /// longer ships (<see cref="F5BundledVoices.Retired"/>). When two presets hold the same recording and words, the older one
+    /// counts.</summary>
     public static IReadOnlyDictionary<string, F5ReferenceSnapshot> Snapshots(F5ReferenceStoreInspection inspection, string destination) =>
         inspection.Presets
             .Select(p => p.Snapshots.LastOrDefault(s => s.Rights.ProcessingDestinationId == destination))
             .OfType<F5ReferenceSnapshot>()
-            .Where(s => !F5BundledVoices.IsRetiredSample(s.AudioSha256))
+            .Where(s => !F5BundledVoices.IsRetired(s.AudioSha256))
             .GroupBy(Id, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.OrderBy(s => s.CreatedAtUtc).First(), StringComparer.Ordinal);
+
+    /// <summary>The list without the recordings Martlet no longer ships: each such live voice is removed, so the removal wins
+    /// on every computer and an older copy of the list can't bring it back.</summary>
+    public static SpeakingVoiceLibrary WithoutRetired(SpeakingVoiceLibrary library, string by, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(library);
+        foreach (var voice in library.Live.Where(v => F5BundledVoices.IsRetired(v.AudioSha256!)))
+            library = library.Remove(voice.Id, by, now);
+        return library;
+    }
+
+    /// <summary>The list with each starter voice it has never had, live or removed (<see cref="SpeakingVoiceLibrary.Seed"/>): a
+    /// starter voice added in an update joins an existing list once, and one the owner removed doesn't come back.</summary>
+    public static SpeakingVoiceLibrary WithStarters(SpeakingVoiceLibrary library)
+    {
+        ArgumentNullException.ThrowIfNull(library);
+        return F5BundledVoices.All.All(voice => library.Find(SpeakingVoiceLibrary.ReferenceId(voice.AudioSha256, voice.Transcript)) is not null)
+            ? library : library.Seed(Starters);
+    }
 
     /// <summary>Brings the store in <paramref name="storeDirectory"/> in step with <paramref name="library"/>.
     /// <paramref name="fetch"/> returns a recording by SHA-256 from another computer (null when none has it yet); recordings
     /// are staged in <paramref name="stagingDirectory"/>. A removed voice the store still applies, or one in
-    /// <paramref name="keep"/> (a voice a route still speaks with), stays until another voice is used.</summary>
+    /// <paramref name="keep"/> (a voice a route still speaks with), stays until another voice is used. Recordings Martlet no
+    /// longer ships leave the list and, on the same terms, the store; starter voices the list never had join it.</summary>
     public static async Task<F5SharedVoicesResult> ReconcileAsync(string storeDirectory, string stagingDirectory, string destination,
         SpeakingVoiceLibrary library, Func<string, CancellationToken, Task<byte[]?>> fetch, string by, DateTimeOffset now,
         IReadOnlySet<string>? keep = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(library);
         ArgumentNullException.ThrowIfNull(fetch);
+        library = WithStarters(WithoutRetired(library, by, now));
         IReadOnlyDictionary<string, F5ReferenceSnapshot> local;
         Guid? applied;
+        Guid[] retired;
         using (var store = F5ReferencePresetStore.Open(storeDirectory, cancellationToken: cancellationToken))
         {
             var inspection = store.Inspect();
             local = Snapshots(inspection, destination);
             applied = inspection.AppliedPresetId;
+            retired = inspection.Presets.Where(p => p.Id != applied && p.Snapshots.Count > 0 &&
+                    p.Snapshots.All(s => F5BundledVoices.IsRetired(s.AudioSha256) && keep?.Contains(Id(s)) != true))
+                .Select(p => p.Id).ToArray();
             // Voices only this computer has (added before voices were shared) join the library.
             foreach (var (id, snapshot) in local)
             {
@@ -99,7 +126,7 @@ public static class F5SharedVoices
                 await File.WriteAllBytesAsync(path, audio, cancellationToken);
                 fetched.Add((voice, path));
             }
-            if (fetched.Count == 0 && removed.Length == 0) return new(library, 0, 0, waiting, Live(library, local));
+            if (fetched.Count == 0 && removed.Length == 0 && retired.Length == 0) return new(library, 0, 0, waiting, Live(library, local));
 
             var added = 0;
             var deleted = 0;
@@ -132,6 +159,15 @@ public static class F5SharedVoices
                 {
                     await store.DeleteAsync(snapshot.PresetId, cancellationToken);
                     current.Remove(Id(snapshot));
+                    deleted++;
+                }
+                catch (F5Exception error) when (error.Failure is F5Failure.Conflict or F5Failure.NotFound) { }
+            }
+            foreach (var presetId in retired)
+            {
+                try
+                {
+                    await store.DeleteAsync(presetId, cancellationToken);
                     deleted++;
                 }
                 catch (F5Exception error) when (error.Failure is F5Failure.Conflict or F5Failure.NotFound) { }

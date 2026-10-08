@@ -587,7 +587,9 @@ removed like any other ([F5 voice](F5_VOICE.md#one-voice-list-on-every-computer)
   recording SHA-256 and length, why it may be used and when it joined; and one
   entry for the voice chosen on all computers. Same hybrid revisions and merge
   rules as the plan; removed voices leave tombstones. Starter entries are
-  revision 1, so a removal anywhere wins everywhere. JSON, snake case, schema 1,
+  revision 1, so a removal anywhere wins everywhere. A recording Martlet no
+  longer ships (the former "anime" starter voices) is removed the same way by
+  the first updated desktop. JSON, snake case, schema 1,
   at most 1 MiB, 32 voices and 64 tombstones.
 - **A voice made from several recordings** (2 to 10, each at least 0.5 s) is
   still one recording on the wire: the desktop joins them, in order, after a
@@ -986,6 +988,14 @@ remove roles). It uses only the paths that already exist:
 | Join or leave the Thinking pool | Nothing to do. A computer joins the Thinking pool by itself on its next check when it runs the deep-thinking role. Martlet never writes `thinking-pool.json` for this. |
 
 While the run works, Martlet does not install its own update, and closing Martlet asks first. If Martlet closes before the run ends, the next start ends the run record: the changes not made need you.
+
+The run is a background task: Reconfigure closes the review and opens the run's
+window, *Reconfigure your computers*. It lists the changes, then each computer's
+steps and what its host engine prints, and ends with each change's outcome.
+*Hide* keeps it going in Background tasks. *Cancel task...* (or Background
+tasks' *Cancel...*) stops the changes not made yet; each says so, and the
+task shows that it was canceled. While it runs, a second Reconfigure says
+so instead of starting again.
 
 A role is never removed while the job it does cannot move off its computer: when the change that hands the job to another computer needs you or fails, the removal waits too, and the review and the outcome say so.
 

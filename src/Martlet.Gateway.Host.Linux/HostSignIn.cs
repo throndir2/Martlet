@@ -58,8 +58,8 @@ internal static class HostSignIn
                     blockedReason = GatewaySignInSettings.BlockedReason(document),
                     owner = document.Owner is { } owner ? new { user = owner.User, recoveryCodesLeft = owner.RecoveryCodes.Count } : null,
                     providers = document.Providers.Select(p => new { p.Id, p.Kind, p.Name, p.Issuer, p.ClientId, hasClientSecret = p.ClientSecret is not null }),
-                    allowed = document.Allowed.Select(a => new { a.Provider, a.Subject, a.Label }),
-                    enrolled = document.Enrolled.Select(e => new { e.DeviceId, e.Provider, e.Subject, e.Label, e.EnrolledAt }),
+                    allowed = document.Allowed.Select(a => new { a.Provider, a.Subject, a.Label, Access = a.Access ?? "member" }),
+                    enrolled = document.Enrolled.Select(e => new { e.DeviceId, e.Provider, e.Subject, e.Label, e.EnrolledAt, Access = e.Access ?? "member" }),
                     // Computers of sign-ins no longer allowed: the service revokes them here and member desktops remove them from
                     // the network on their next sync (removedFromNetwork until the roster shows it; pendingRemoval until the
                     // service has read the change).
@@ -86,21 +86,37 @@ internal static class HostSignIn
                 return 0;
             }
             case "owner-signin-allow":
+            {
                 GatewaySignInSettings.Apply(document, new()
                 {
-                    Action = "allow", Provider = options.Provider, Subject = options.Subject, Label = options.Label
+                    Action = "allow", Provider = options.Provider, Subject = options.Subject, Label = options.Label, Access = options.Access
                 }, now);
+                // Changing an identity's access revokes the computers it signed in with the old one (they sign in again).
+                var changed = document.WouldSweep().Select(e => e.DeviceId).ToArray();
                 Save(directory, document);
-                output.WriteLine($"Allowed {options.Label ?? options.Subject} ({options.Provider}) to sign in to {config.HostId}.");
+                output.WriteLine(options.Access == GatewaySignInDocument.FriendAccess
+                    ? $"Shared {config.HostId} with {options.Label ?? options.Subject} ({options.Provider}) as a friend: their computers may " +
+                        "use this host's engines (thinking, listening, speaking, lip-sync) and nothing else, and your own requests come first."
+                    : $"Allowed {options.Label ?? options.Subject} ({options.Provider}) to sign in to {config.HostId}.");
+                if (changed.Length > 0)
+                    output.WriteLine($"The service revokes {string.Join(", ", changed)}, signed in with the old access; they sign in again.");
                 return 0;
+            }
             case "owner-signin-disallow":
+            {
+                var friend = document.AccessOf(options.Provider!, options.Subject!) == GatewaySignInDocument.FriendAccess;
                 GatewaySignInSettings.Apply(document, new() { Action = "disallow", Provider = options.Provider, Subject = options.Subject }, now);
                 var computers = document.WouldSweep().Select(e => e.DeviceId).ToArray();
                 Save(directory, document);
-                output.WriteLine($"Removed {options.Subject} ({options.Provider}) and its computers from the network: " + (computers.Length == 0
-                    ? "it signed in no computer here."
-                    : $"the service revokes {string.Join(", ", computers)} and your member computers remove them from the Martlet network on their next sync."));
+                output.WriteLine(friend
+                    ? $"Stopped sharing {config.HostId} with {options.Subject} ({options.Provider}): " + (computers.Length == 0
+                        ? "no computer signed in with it here."
+                        : $"the service revokes {string.Join(", ", computers)} within seconds.")
+                    : $"Removed {options.Subject} ({options.Provider}) and its computers from the network: " + (computers.Length == 0
+                        ? "it signed in no computer here."
+                        : $"the service revokes {string.Join(", ", computers)} and your member computers remove them from the Martlet network on their next sync."));
                 return 0;
+            }
             default:
                 throw new HostInputException();
         }

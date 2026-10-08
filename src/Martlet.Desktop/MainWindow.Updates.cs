@@ -409,40 +409,74 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Downloads the available installer into Martlet's updates folder and checks it against GitHub's digest.</summary>
-    private async Task DownloadUpdateAsync()
+    /// <summary>Downloads the available installer into Martlet's updates folder and checks it against GitHub's digest, as a
+    /// background task (Download Martlet x.y.z): out of sight when Martlet downloads by itself, in its run window when
+    /// <paramref name="shown"/> (you chose Install). Cancel task stops it; the next automatic check or Install downloads it
+    /// again. Returns whether you canceled it, so a caller that tries again doesn't start it over.</summary>
+    private async Task<bool> DownloadUpdateAsync(bool shown = false)
     {
-        if (closing || updateBusy || store is null || availableUpdate is not { } update) return;
+        if (closing || updateBusy || store is null || availableUpdate is not { } update) return false;
         updateBusy = true;
         updateDrain = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-        updateDownloadCancellation = cancellation;
         DownloadUpdateButton.IsEnabled = CheckForUpdatesButton.IsEnabled = false;
-        UpdateStatusText.Text = $"Downloading Martlet {update.Version.ToString(3)} ({Mib(update)})...";
+        var version = update.Version.ToString(3);
+        var directory = store.DataDirectory;
+        UpdateStatusText.Text = $"Downloading Martlet {version} ({Mib(update)})...";
+        string? failure = null;
+        BackgroundTask? task = null;
         try
         {
-            using var http = GitHubReleaseClient.CreateHttpClient();
-            var path = SimulatedAppUpdate.Update?.Version == update.Version
-                ? SimulatedAppUpdate.Write(store.DataDirectory, update)
-                : await AppUpdateInstaller.DownloadAsync(new GitHubReleaseClient(http), update, store.DataDirectory, cancellation.Token);
-            readyUpdate = (path, update);
-            if (!closing) UpdateStatusText.Text = $"Martlet {update.Version.ToString(3)} is ready to install.";
-        }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
-        catch (Exception error) when (error is HttpRequestException or InvalidDataException or IOException or
-            UnauthorizedAccessException or ArgumentException or OperationCanceledException)
-        {
-            if (error is UpdateCleanupException) interruptedUpdateCleanup = error.Message;
-            if (!closing) UpdateStatusText.Text = $"Couldn't download update: {UpdateError(error)}";
+            await HostRunWindow.RunAsync(this, $"Download Martlet {version}", async run =>
+            {
+                task = run.BackgroundTask;
+                using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, run.Token);
+                updateDownloadCancellation = cancellation;
+                try
+                {
+                    run.Status(UpdateStatusText.Text);
+                    run.Output.Report($"Downloading {update.AssetName} ({Mib(update)}) from Martlet's GitHub Releases and checking it " +
+                        "against GitHub's SHA-256 digest...");
+                    var received = new Progress<long>(bytes =>
+                    {
+                        var text = $"Downloading Martlet {version}: {bytes * 100 / Math.Max(1, update.Bytes)}% of {Mib(update)}...";
+                        run.Status(text);
+                        if (!closing) UpdateStatusText.Text = text;
+                    });
+                    using var http = GitHubReleaseClient.CreateHttpClient();
+                    var path = SimulatedAppUpdate.Update?.Version == update.Version
+                        ? SimulatedAppUpdate.Write(directory, update)
+                        : await AppUpdateInstaller.DownloadAsync(new GitHubReleaseClient(http), update, directory, cancellation.Token, received);
+                    readyUpdate = (path, update);
+                    run.Output.Report("The download matches GitHub's SHA-256 digest. (The installer is not code-signed; the digest " +
+                        "detects a damaged download, not who published it.)");
+                    if (!closing) UpdateStatusText.Text = $"Martlet {version} is ready to install.";
+                    return $"Martlet {version} is downloaded and ready to install.";
+                }
+                // Canceled by you or by Martlet exiting: the task shows it was canceled.
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
+                catch (Exception error) when (error is HttpRequestException or InvalidDataException or IOException or
+                    UnauthorizedAccessException or ArgumentException or OperationCanceledException)
+                {
+                    if (error is UpdateCleanupException) interruptedUpdateCleanup = error.Message;
+                    failure = $"Couldn't download update: {UpdateError(error)}";
+                    throw new InvalidOperationException(failure, error);
+                }
+                finally { updateDownloadCancellation = null; }
+            }, hidden: !shown);
+            if (task?.State == BackgroundTaskState.Canceled && !closing) UpdateStatusText.Text = $"The download of Martlet {version} was canceled.";
         }
         finally
         {
-            updateDownloadCancellation = null;
             updateBusy = false;
-            if (!closing) CheckForUpdatesButton.IsEnabled = DownloadUpdateButton.IsEnabled = true;
+            if (!closing)
+            {
+                CheckForUpdatesButton.IsEnabled = DownloadUpdateButton.IsEnabled = true;
+                if (failure is not null) UpdateStatusText.Text = failure;
+            }
             updateDrain.TrySetResult();
             updateDrain = null;
         }
+        return task?.State == BackgroundTaskState.Canceled && !closing;
     }
 
     private async void DownloadUpdate_Click(object sender, RoutedEventArgs e)
@@ -465,7 +499,7 @@ public partial class MainWindow
                 (prompted ? "\n\nYou can also install it later from Settings." : ""),
                 "Install Martlet update"))
             return;
-        if (readyUpdate?.Update.Version != update.Version) await DownloadUpdateAsync();
+        if (readyUpdate?.Update.Version != update.Version) await DownloadUpdateAsync(shown: true);
         if (readyUpdate?.Update.Version != update.Version || closing) return;
         if (HostWorkBlocker() is { } still)
         {
@@ -770,36 +804,66 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Runs martlet-host update there unattended. An automatic run doesn't queue behind another change running on
-    /// that host: the engine then stops at once without changing anything (<see cref="HostEngineBusy"/>) and this returns
-    /// <see cref="HostUpdateResult.Busy"/>, so the caller tries again a few minutes later. One you <paramref name="asked"/>
-    /// for (Update hosts now) waits up to <see cref="HostUpdateTracker.AskedLockWaitSeconds"/> for that change to finish
-    /// and then updates.</summary>
+    /// <summary>Runs martlet-host update there unattended, as a background task out of sight ("Update gpu-box to Martlet x.y.z",
+    /// with the update's log as its output). An automatic run doesn't queue behind another change running on that host: the
+    /// engine then stops at once without changing anything (<see cref="HostEngineBusy"/>), this returns
+    /// <see cref="HostUpdateResult.Busy"/> so the caller tries again a few minutes later, and that try leaves Background
+    /// tasks. One you <paramref name="asked"/> for (Update hosts now) waits up to
+    /// <see cref="HostUpdateTracker.AskedLockWaitSeconds"/> for that change to finish and then updates. Cancel task stops it;
+    /// Martlet doesn't try that version there again by itself, and the host's Devices card offers Update host.</summary>
     private async Task<HostUpdateResult> UpdateHostQuietlyAsync(string id, HostSetupTarget target, string? sshHostKey = null, bool asked = false)
     {
-        hostUpdates.Note(id, asked
+        var waiting = asked
             ? $"Updating to Martlet {Version}. If something else is changing that host, this waits for it to finish first..."
-            : $"Updating to Martlet {Version}...");
+            : $"Updating to Martlet {Version}...";
+        hostUpdates.Note(id, waiting);
         if (DevicesPage.IsVisible) RenderMap();
-        try
+        var result = HostUpdateResult.Failed;
+        var name = id == ThisPcHostId ? "this PC's host service" : id;
+        BackgroundTask? task = null;
+        await HostRunWindow.RunAsync(this, $"Update {name} to Martlet {Version}", async run =>
         {
-            var (code, log) = await HostSetupCommands.RunUnattendedAsync(target, HostAction.Update, lifetime.Token, store?.DataDirectory, sshHostKey,
-                asked ? HostUpdateTracker.AskedLockWaitSeconds : 0);
-            if (HostEngineBusy.Read(code, ReadLog(log)) is { } what)
+            task = run.BackgroundTask;
+            run.Status(waiting);
+            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, run.Token);
+            int code;
+            string log;
+            try
+            {
+                (code, log) = await HostSetupCommands.RunUnattendedAsync(target, HostAction.Update, cancellation.Token, store?.DataDirectory,
+                    sshHostKey, asked ? HostUpdateTracker.AskedLockWaitSeconds : 0);
+            }
+            catch (OperationCanceledException) when (run.Token.IsCancellationRequested && !closing)
+            {
+                hostUpdates.Note(id, $"You canceled the update to Martlet {Version}. Press Update host to run it again.");
+                // This PC's own host service: keeping it current doesn't start the same update again by itself either.
+                if (target.Method == HostSetupMethod.ThisPcDocker) ownHost.Failed(Version);
+                throw;
+            }
+            catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or Win32Exception)
+            {
+                hostUpdates.Note(id, $"Couldn't start the update: {error.Message}. Press Update host to run it from Martlet.");
+                throw;
+            }
+            var lines = ReadLog(log);
+            foreach (var line in lines.TakeLast(400)) run.Output.Report(line);
+            if (HostEngineBusy.Read(code, lines) is { } what)
             {
                 hostUpdates.Note(id, HostUpdateTracker.BusyNote(Version, what, DateTime.Now));
-                return HostUpdateResult.Busy;
+                result = HostUpdateResult.Busy;
+                return $"{name} is busy with another change ({what}), so nothing was changed. Martlet tries again in a few minutes.";
             }
-            hostUpdates.Note(id, code == 0
-                ? $"{HostUpdateTracker.UpdatedNote}{Version} at {DateTime.Now:t}."
-                : "The update needs your attention on that computer. Press Update host to finish it.");
-            return code == 0 ? HostUpdateResult.Updated : HostUpdateResult.Failed;
-        }
-        catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or Win32Exception)
-        {
-            hostUpdates.Note(id, $"Couldn't start the update: {error.Message}. Press Update host to run it from Martlet.");
-            return HostUpdateResult.Failed;
-        }
+            if (code != 0)
+            {
+                hostUpdates.Note(id, "The update needs your attention on that computer. Press Update host to finish it.");
+                throw new InvalidOperationException($"The update stopped on {name} (exit {code}). Press Update host on its Devices card to finish it.");
+            }
+            hostUpdates.Note(id, $"{HostUpdateTracker.UpdatedNote}{Version} at {DateTime.Now:t}.");
+            result = HostUpdateResult.Updated;
+            return $"{name} runs Martlet {Version}.";
+        }, hidden: true);
+        if (result == HostUpdateResult.Busy && task is not null) BackgroundTasks.Discard(task);
+        return result;
     }
 
     private static string[] ReadLog(string path)

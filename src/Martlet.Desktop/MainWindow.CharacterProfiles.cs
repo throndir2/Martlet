@@ -15,7 +15,10 @@ namespace Martlet.Desktop;
 /// built-in one), its voice (one of your voices) and its personality (a persona). They are made and edited in Companion ›
 /// Profiles and switched there, on Home and in the notification-area menu. Profiles travel with the shared settings and name
 /// the look and voice by their shared IDs, so every computer switches to its own copy of the same character; the look is
-/// saved per PC as Companion › Character does and the voice is chosen on all your computers as Companion › Voice does.</summary>
+/// saved per PC as Companion › Character does and the voice is chosen on all your computers as Companion › Voice does. On each
+/// PC a profile also keeps what you leave there while it is in use (<see cref="CharacterProfileLocal"/>): where its character
+/// stands and how big it is, where it looks and which touches stop it while it talks; switching to it here, or on another
+/// computer, brings them back on this PC.</summary>
 public partial class MainWindow
 {
     /// <summary>The profile being edited in Companion › Profiles (<see cref="Guid.Empty"/> for a new one), or null.</summary>
@@ -96,6 +99,9 @@ public partial class MainWindow
             Heading("Your profiles"),
             Note("Each profile is a whole character: its look, its voice and its personality. Use one to switch all three at once, " +
                 "here, on Home or from Martlet's icon by the clock. Profiles are shared with your other Martlet computers.",
+                new Thickness(0, 0, 0, 6)),
+            Note("On each computer, a profile also keeps what you set there while you use it: where its character stands and how " +
+                "big it is, where it looks, and which touches stop it while it talks. Switch back to it and they come back.",
                 new Thickness(0, 0, 0, 10))
         };
         var status = Note(profiles.Count == 0 ? "No profiles yet."
@@ -103,13 +109,15 @@ public partial class MainWindow
               (current is not null ? "One of them is in use." : "None matches what Martlet uses now."), new Thickness(0, 0, 0, 10));
         AutomationProperties.SetAutomationId(status, "CharacterProfilesStatus");
         stack.Add(status);
+        var here = ProfilesHere();
         foreach (var profile in profiles)
         {
             var inUse = profile.Id == current?.Id;
             var detail = $"Look: {LookName(profile.ModelId, library)} · Voice: {VoiceName(profile.VoiceId, voices)} · " +
                 $"Personality: {PersonaName(profile.PersonaId, companion)}";
             var problem = ProfileProblem(profile, library, voices);
-            stack.Add(ProfileRow(profile, detail, inUse ? "In use." : problem is null ? "Ready." : problem + " Using it switches the rest.", inUse));
+            stack.Add(ProfileRow(profile, detail, inUse ? "In use." : problem is null ? "Ready." : problem + " Using it switches the rest.",
+                ProfileHereText(here.For(profile.Id)), inUse));
         }
         stack.Add(Row(PageButton(profiles.Count == 0 ? "Save what Martlet uses now as a profile..." : "New profile...",
             () => EditProfile(Guid.Empty), primary: profiles.Count == 0, id: "CharacterProfileNew")));
@@ -130,8 +138,9 @@ public partial class MainWindow
     }
 
     /// <summary>One profile: its name (with the in-use mark), what it sets, a readable state line
-    /// (<c>CharacterProfileState-key</c>: never a name) and Use, Edit and Remove.</summary>
-    private UIElement ProfileRow(CharacterProfile profile, string detail, string state, bool inUse)
+    /// (<c>CharacterProfileState-key</c>: never a name), what it keeps on this PC (<c>CharacterProfileHere-key</c>) and Use, Edit
+    /// and Remove.</summary>
+    private UIElement ProfileRow(CharacterProfile profile, string detail, string state, string here, bool inUse)
     {
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         text.Children.Add(new TextBlock
@@ -139,6 +148,9 @@ public partial class MainWindow
             Text = profile.Name + (inUse ? "  \u00b7  in use" : ""), FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap
         });
         text.Children.Add(Note(detail, new Thickness(0, 2, 0, 0)));
+        var hereText = Note(here, new Thickness(0, 2, 0, 0));
+        AutomationProperties.SetAutomationId(hereText, "CharacterProfileHere-" + profile.Key);
+        text.Children.Add(hereText);
         var stateText = Note(state, new Thickness(0, 2, 0, 0));
         AutomationProperties.SetAutomationId(stateText, "CharacterProfileState-" + profile.Key);
         text.Children.Add(stateText);
@@ -267,6 +279,8 @@ public partial class MainWindow
             if (profileEditorProblem is not null) profileEditorProblem.Text = ActionText.Text;
             return;
         }
+        // A new profile that Martlet is now (the first that matches) takes on this PC's place, eyes and touch choice.
+        RememberProfileHere();
         editingProfile = null;
         ActionText.Text = id == Guid.Empty ? $"Saved the profile '{name}'. Use it to switch to it in one step." : $"Saved '{name}'.";
         if (!closing) RenderHome();
@@ -282,6 +296,8 @@ public partial class MainWindow
         if (await ChangeCompanionAsync(companion => companion.CharacterList.Any(c => c.Id == profile.Id) ? companion.RemoveCharacter(profile.Id) : companion,
                 "Your character profiles changed.") is null)
             return;
+        // What it kept on this PC goes with it.
+        CharacterProfileLocalStore.Save(store?.DataDirectory, ProfilesHere());
         if (editingProfile == profile.Id) editingProfile = null;
         ActionText.Text = $"Removed the profile '{profile.Name}'.";
         if (!closing) RenderHome();
@@ -327,8 +343,9 @@ public partial class MainWindow
     }
 
     /// <summary>Switches Martlet to a character profile: its look on this PC, its voice on all your computers and its
-    /// personality, in one step. A part that can't switch yet (a look still copying here, a removed voice) is left as it was
-    /// and the action line says why; the rest still switches. An open conversation takes the new voice and personality
+    /// personality, in one step, then what it keeps on this PC (its place, eyes and touch choice). The profile in use first
+    /// keeps what it has on this PC now. A part that can't switch yet (a look still copying here, a removed voice) is left as
+    /// it was and the action line says why; the rest still switches. An open conversation takes the new voice and personality
     /// before its next reply.</summary>
     private async Task UseCharacterProfileAsync(Guid id)
     {
@@ -340,6 +357,10 @@ public partial class MainWindow
         try
         {
             turn = await ChangeTurnAsync();
+            await RememberBeforeSwitchAsync(token);
+            // From now on this PC uses the profile's own choices here; one that keeps none yet takes on what this PC uses now.
+            var (here, kept) = ProfilesHere().Switch(id, ProfileHereNow());
+            applyingProfileHere = true;
             if (profile.ModelId is { } modelId && !string.Equals(modelId, ShownCharacterModelId(), StringComparison.OrdinalIgnoreCase))
             {
                 CharacterModel? model = null;
@@ -348,6 +369,8 @@ public partial class MainWindow
                     notes.Add("Its look is no longer in your characters, so the look stayed as it was.");
                 else
                 {
+                    // A showing character opens with its new look where this profile left it on this PC.
+                    if (kept?.Placement is { } place) avatar.Placement = place;
                     try { await SwitchCharacterModelAsync(model, token); }
                     catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or ContractException or JsonException ||
                         SharedCharacterModels.IsFailure(error))
@@ -367,7 +390,10 @@ public partial class MainWindow
             }
             await SaveCompanionChangeAsync(companion => companion.CharacterList.Any(c => c.Id == id) ? companion.SelectCharacter(id) : companion,
                 "Martlet's character changed.", token);
-            ErrorLog.Info($"Switched to a character profile ({profile.Key}){(notes.Count == 0 ? "" : $" with {notes.Count} part(s) left as they were")}.");
+            CharacterProfileLocalStore.Save(store.DataDirectory, here);
+            if (kept is not null) await ApplyProfileHereAsync(kept, opensSoon: false, token);
+            ErrorLog.Info($"Switched to a character profile ({profile.Key}){(notes.Count == 0 ? "" : $" with {notes.Count} part(s) left as they were")}" +
+                (kept is null ? "; it takes on this PC's place, eyes and touch choice." : $"; on this PC: {ProfileHereLog(kept)}."));
             ActionText.Text = $"Martlet is now '{profile.Name}'." + (notes.Count == 0 ? OpenConversationFollows : " " + string.Join(" ", notes));
         }
         catch (OperationCanceledException) { }
@@ -377,6 +403,7 @@ public partial class MainWindow
         }
         finally
         {
+            applyingProfileHere = false;
             turn?.Dispose();
             if (!closing)
             {
@@ -385,6 +412,112 @@ public partial class MainWindow
             }
         }
     }
+
+    // ---------- what each profile keeps on this PC ----------
+
+    /// <summary>Set while Martlet switches profiles or puts back what one keeps on this PC, so that isn't kept for another one.</summary>
+    private bool applyingProfileHere;
+
+    /// <summary>What Martlet uses on this PC now, as a profile keeps it: the character's place, eyes and touch choice.</summary>
+    private CharacterProfileLocal ProfileHereNow() => new(avatar.Placement, Talk.GazeUsual, Talk.GazeFree, Talk.TouchInterrupts);
+
+    /// <summary>What the saved profiles keep on this PC and the one whose choices this PC uses (removed profiles left out).</summary>
+    private CharacterProfilesHere ProfilesHere()
+    {
+        var here = CharacterProfileLocalStore.Load(store?.DataDirectory);
+        return homeSettings?.Companion is { } companion ? here.Of([.. companion.CharacterList.Select(c => c.Id)]) : here;
+    }
+
+    /// <summary>The character was moved, resized, locked or reset, or its eyes or touch choice changed, on this PC: the profile
+    /// Martlet is now keeps it here (<see cref="CharacterProfilesHere.Remember"/>), so switching back to it brings it back.</summary>
+    private void RememberProfileHere()
+    {
+        if (applyingProfileHere || closing || store is null || CharacterNow().Current is not { } current) return;
+        if (ProfilesHere().Remember(current.Id, ProfileHereNow()) is { } next) CharacterProfileLocalStore.Save(store.DataDirectory, next);
+    }
+
+    /// <summary>Before switching profiles: the profile in use keeps what it has on this PC now, with the place read from the
+    /// showing character (a move may still be settling).</summary>
+    private async Task RememberBeforeSwitchAsync(CancellationToken token)
+    {
+        // The camera view is its own window; the overlay's place is the one from before it opened.
+        if (avatar.IsShowing && avatar.Camera is null)
+            try
+            {
+                if (await avatar.ReadPlacementAsync(token) is { } place) CharacterPlacementStore.Save(store?.DataDirectory, place);
+            }
+            catch (Exception error) when (RendererFailures.Is(error, token))
+            {
+                RendererFailures.Log("The character's position couldn't be read before switching character profiles", error);
+            }
+        RememberProfileHere();
+    }
+
+    /// <summary>Puts back what a profile keeps on this PC: where it looks and which touches stop it, then its place. A showing
+    /// character moves there now, unless it <paramref name="opensSoon"/> again with a new look: it then opens there.</summary>
+    private async Task ApplyProfileHereAsync(CharacterProfileLocal kept, bool opensSoon, CancellationToken token)
+    {
+        var applying = applyingProfileHere;
+        applyingProfileHere = true;
+        try
+        {
+            if (Talk.GazeUsual != kept.GazeUsual || Talk.GazeFree != kept.GazeFree || Talk.TouchInterrupts != kept.TouchInterrupts)
+                SaveTalk(Talk with { GazeUsual = kept.GazeUsual, GazeFree = kept.GazeFree, TouchInterrupts = kept.TouchInterrupts },
+                    render: openTab is CompanionTab.Eyes or CompanionTab.Touch);
+            if (kept.Placement is not { } place) return;
+            if (avatar.IsShowing && !opensSoon)
+                try { await avatar.PlaceAsync(place, token); }
+                catch (Exception error) when (RendererFailures.Is(error, token))
+                {
+                    RendererFailures.Log("The character couldn't move to its profile's place", error);
+                    avatar.Placement = place;
+                }
+            else avatar.Placement = place;
+            if (closing) return;
+            CharacterPlacementStore.Save(store?.DataDirectory, avatar.Placement);
+            if (characterPlacementNote is { } note) note.Text = CharacterPlacementText();
+        }
+        finally { applyingProfileHere = applying; }
+    }
+
+    /// <summary>Follows the profile switched to last (the shared settings' <see cref="CompanionSettings.ActiveCharacterId"/>) when
+    /// this PC doesn't use its choices yet: a switch made on another computer, also one that arrived while Martlet was closed here.
+    /// What that profile keeps on this PC comes back; a profile that keeps nothing here yet takes on what this PC uses now. A
+    /// switch made here is followed by <see cref="UseCharacterProfileAsync"/> itself.</summary>
+    private void FollowCharacterProfile()
+    {
+        if (applyingProfileHere || closing || store is null || homeSettings?.Companion?.ActiveCharacterId is not { } id) return;
+        var here = ProfilesHere();
+        if (here.InUse == id) return;
+        var (next, kept) = here.Switch(id, ProfileHereNow());
+        if (!CharacterProfileLocalStore.Save(store.DataDirectory, next) || kept is null) return;
+        var profile = homeSettings.Companion.CharacterList.FirstOrDefault(c => c.Id == id);
+        ErrorLog.Info($"Following the character profile switched to last ({profile?.Key}); on this PC: {ProfileHereLog(kept)}.");
+        // A new look from another computer restarts a showing character (AfterSettingsAppliedAsync): it opens at the place.
+        ApplyProfileHereAsync(kept, opensSoon: characterChanged && avatar.IsShowing, lifetime.Token).Forget();
+    }
+
+    /// <summary>A profile row's line on what it keeps on this PC (<c>CharacterProfileHere-key</c>; never a name).</summary>
+    internal static string ProfileHereText(CharacterProfileLocal? kept)
+    {
+        if (kept is null) return "On this PC: nothing yet. While you use it, it keeps where its character stands, where it looks and which touches stop it.";
+        var place = kept.Placement is { } at ? $"its own spot and size ({at.Width:0} × {at.Height:0}{(at.Locked ? ", locked" : "")})" : "no spot of its own";
+        var eyes = (kept.GazeUsual is { } mode ? CharacterGaze.Label(mode) : "As the personality decides") + (kept.GazeFree ? "" : ", replies can't change it");
+        var touch = kept.TouchInterrupts switch
+        {
+            Martlet.Conversation.TouchInterrupts.Intimate => "only intimate touches stop it",
+            Martlet.Conversation.TouchInterrupts.Never => "it finishes first",
+            _ => "any touch stops it"
+        };
+        return $"On this PC: {place} · Eyes: {eyes} · While it talks: {touch}.";
+    }
+
+    /// <summary>What a profile keeps on this PC, for the desktop log: no names, only the size, lock, monitor and choices.</summary>
+    private static string ProfileHereLog(CharacterProfileLocal kept) =>
+        (kept.Placement is { } at ? $"place {at.Width:0} × {at.Height:0}{(at.Locked ? " locked" : "")}{(at.Screen is { } screen ? $" on {CharacterScreen(screen)}" : "")}"
+            : "no place") +
+        $", gaze {(kept.GazeUsual is { } mode ? CharacterGaze.Word(mode) : RendererGaze.Personality)}{(kept.GazeFree ? "" : " (fixed)")}" +
+        $", touches while talking {kept.TouchInterrupts.ToString().ToLowerInvariant()}";
 
     // ---------- links from Character and Personality ----------
 

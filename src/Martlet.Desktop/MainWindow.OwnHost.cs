@@ -83,73 +83,96 @@ public partial class MainWindow
         }
     }
 
-    /// <summary>Builds this version's martlet-host image when needed and runs martlet-host update on this PC's Docker Desktop,
-    /// with its output in the host-runs log. Automatic: it doesn't queue behind another change running on this host; it stops
-    /// at once without changing anything and Martlet tries again a few minutes later.</summary>
+    /// <summary>Builds this version's martlet-host image when needed and runs martlet-host update on this PC's Docker Desktop, as a
+    /// background task out of sight (<see cref="OwnHostRun"/>, with the output in its window and the host-runs log). Automatic:
+    /// it doesn't queue behind another change running on this host; it stops at once without changing anything, that try leaves
+    /// Background tasks and Martlet tries again a few minutes later. Cancel task stops it, and Martlet doesn't start it again by
+    /// itself for this version.</summary>
     private async Task UpdateOwnHostAsync(string from)
     {
         var updating = hostUpdates.Begin(ThisPcHostId);
         var started = DateTimeOffset.UtcNow;
-        var output = new EngineOutput(new LineSink(line => HostRunLog.Write(OwnHostRun, line)));
         ErrorLog.Info($"Updating this PC's host service from {from} to {Version} in the background.");
-        HostRunLog.Write(OwnHostRun, $"--- started: {from} -> {Version}");
         ShowOwnHost($"Updating this PC's host service from {from} to {Version} in the background. Martlet stays usable; the " +
             "host service restarts at the end, so it stops answering for a moment.");
         RenderHost();
         var updated = false;
+        var busy = false;
+        BackgroundTask? task = null;
         try
         {
-            int exit;
-            if (SimulatedOwnHost.Active) exit = await SimulatedOwnHost.UpdateAsync(Version, output, lifetime.Token);
-            else
+            var done = await HostRunWindow.RunAsync(this, OwnHostRun, async run =>
             {
-                var target = ThisPcTarget();
-                await HostLocal.EnsureImageAsync(target, status => HostRunLog.Write(OwnHostRun, "status: " + status), output, lifetime.Token,
-                    OwnHostRun);
-                exit = await HostLocal.EngineAsync(target, ["update"], output, lifetime.Token, waitForOtherChanges: false);
-            }
-            HostRunLog.Write(OwnHostRun, $"--- exit {exit}");
-            if (closing) return;
-            if (output.Busy(exit) is { } busy)
-            {
-                ownHost.Busy(DateTimeOffset.UtcNow);
-                var again = ownHost.RetryAt!.Value.ToLocalTime();
-                ErrorLog.Info($"This PC's host service is busy ({busy}); updating it to {Version} waits until {again:t}.");
-                ShowOwnHost($"This PC's host service is busy ({busy}), so updating it to Martlet {Version} waits; nothing was changed. " +
-                    $"Martlet tries again at {again:t}.");
-                return;
-            }
-            if (exit != 0)
+                task = run.BackgroundTask;
+                run.Status($"Updating this PC's host service from {from} to Martlet {Version}...");
+                run.Output.Report($"Updating this PC's host service from {from} to Martlet {Version}.");
+                var output = new EngineOutput(run.Output);
+                using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, run.Token);
+                int exit;
+                try
+                {
+                    if (SimulatedOwnHost.Active) exit = await SimulatedOwnHost.UpdateAsync(Version, output, cancellation.Token);
+                    else
+                    {
+                        var target = ThisPcTarget();
+                        await HostLocal.EnsureImageAsync(target, run.Status, output, cancellation.Token, OwnHostRun);
+                        exit = await HostLocal.EngineAsync(target, ["update"], output, cancellation.Token, waitForOtherChanges: false);
+                    }
+                }
+                catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or Win32Exception)
+                {
+                    ownHost.Failed(Version);
+                    ErrorLog.Warn($"Couldn't update this PC's host service to {Version}", error);
+                    if (!closing)
+                        ShowOwnHost($"Couldn't update this PC's host service to Martlet {Version}: {error.Message} Update hosts (above) or the " +
+                            "host dashboard's Update host service tries again.");
+                    throw;
+                }
+                run.Output.Report($"--- exit {exit}");
+                if (closing) throw new OperationCanceledException();
+                if (output.Busy(exit) is { } what)
+                {
+                    busy = true;
+                    ownHost.Busy(DateTimeOffset.UtcNow);
+                    var again = ownHost.RetryAt!.Value.ToLocalTime();
+                    ErrorLog.Info($"This PC's host service is busy ({what}); updating it to {Version} waits until {again:t}.");
+                    var text = $"This PC's host service is busy ({what}), so updating it to Martlet {Version} waits; nothing was changed. " +
+                        $"Martlet tries again at {again:t}.";
+                    ShowOwnHost(text);
+                    return text;
+                }
+                if (exit != 0)
+                {
+                    ownHost.Failed(Version);
+                    ErrorLog.Warn($"Updating this PC's host service from {from} to {Version} stopped (exit {exit}); the host-runs log shows why.");
+                    ShowOwnHost($"Updating this PC's host service to Martlet {Version} stopped (exit {exit}); the host-runs log shows why. " +
+                        "Update hosts (above) or the host dashboard's Update host service tries again.");
+                    throw new InvalidOperationException($"Updating this PC's host service to Martlet {Version} stopped (exit {exit}). " +
+                        "The output shows why.");
+                }
+                ownHost.Updated(Version);
+                ownHostSeen = (OwnHostStep.Current, Version);
+                updated = true;
+                // The FIXTURE's host service is only the simulated one: notes and retries about the real one stay as they are.
+                if (!SimulatedOwnHost.Active)
+                {
+                    thisPcHostVersion = Version;
+                    HostUpdateSettled(ThisPcHostId);
+                }
+                ErrorLog.Info($"Updated this PC's host service from {from} to {Version} in the background " +
+                    $"({(DateTimeOffset.UtcNow - started).TotalSeconds:0} s).");
+                ShowOwnHost($"Updated this PC's host service from {from} to {Version} at {DateTime.Now:t}. Martlet keeps it on this " +
+                    "app's version after every update.");
+                return $"This PC's host service runs Martlet {Version}.";
+            }, hidden: true);
+            // You canceled it (Background tasks): it doesn't start again by itself for this version.
+            if (done is null && !closing && !updated && !busy && task?.State == BackgroundTaskState.Canceled)
             {
                 ownHost.Failed(Version);
-                ErrorLog.Warn($"Updating this PC's host service from {from} to {Version} stopped (exit {exit}); the host-runs log shows why.");
-                ShowOwnHost($"Updating this PC's host service to Martlet {Version} stopped (exit {exit}); the host-runs log shows why. " +
-                    "Update hosts (above) or the host dashboard's Update host service tries again.");
-                return;
+                ShowOwnHost($"You canceled updating this PC's host service to Martlet {Version}; nothing more changes by itself. " +
+                    "Update hosts (above) or the host dashboard's Update host service runs it again.");
             }
-            ownHost.Updated(Version);
-            ownHostSeen = (OwnHostStep.Current, Version);
-            updated = true;
-            // The FIXTURE's host service is only the simulated one: notes and retries about the real one stay as they are.
-            if (!SimulatedOwnHost.Active)
-            {
-                thisPcHostVersion = Version;
-                HostUpdateSettled(ThisPcHostId);
-            }
-            ErrorLog.Info($"Updated this PC's host service from {from} to {Version} in the background " +
-                $"({(DateTimeOffset.UtcNow - started).TotalSeconds:0} s).");
-            ShowOwnHost($"Updated this PC's host service from {from} to {Version} at {DateTime.Now:t}. Martlet keeps it on this " +
-                "app's version after every update.");
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException or Win32Exception)
-        {
-            HostRunLog.Write(OwnHostRun, "--- stopped: " + error.Message);
-            ownHost.Failed(Version);
-            ErrorLog.Warn($"Couldn't update this PC's host service to {Version}", error);
-            if (!closing)
-                ShowOwnHost($"Couldn't update this PC's host service to Martlet {Version}: {error.Message} Update hosts (above) or the " +
-                    "host dashboard's Update host service tries again.");
+            if (busy && task is not null) BackgroundTasks.Discard(task);
         }
         finally
         {

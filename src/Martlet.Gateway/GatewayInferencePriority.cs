@@ -22,15 +22,19 @@ internal sealed record GatewayPrioritySnapshot(IReadOnlyList<GatewayPriorityRout
     IReadOnlyList<GatewayPriorityEvent> LastPreemptions, IReadOnlyList<GatewayPriorityEvent> LastRefusals,
     IReadOnlyList<string> Warnings);
 
-/// <summary>Live turn first. Windows has no priority between programs on one graphics card, so the gateway keeps it: a card is
-/// held while a live-lane request runs on it and while a client's hold (POST /martlet/v1/priority/hold) keeps it. While a card
-/// is held, a new pool-lane request that uses it is turned away (job.busy, detail "live") and a running one stops at once
-/// (job.preempted): its worker aborts the request, and Ollama stops within one token or prompt batch. Holds never touch live
-/// requests. A route whose placement is unknown uses the whole host.</summary>
+/// <summary>Live turn first, then the owner first. Windows has no priority between programs on one graphics card, so the
+/// gateway keeps it: a card is held while a live-lane request runs on it and while a client's hold (POST
+/// /martlet/v1/priority/hold) keeps it. While a card is held, a new pool-lane request that uses it is turned away (job.busy,
+/// detail "live") and a running one stops at once (job.preempted): its worker aborts the request, and Ollama stops within one
+/// token or prompt batch. Holds never touch live requests. A friend's request (<see cref="GatewayAccess.Friend"/>) ranks below
+/// all of the owner's work, whatever its lane: any request of the owner stops it, and it is turned away (detail "owner") while
+/// the owner's work or a hold keeps one of its cards. A route whose placement is unknown uses the whole host.</summary>
 public sealed partial class GatewayInferenceRouteRegistry
 {
     /// <summary>The failure detail of a pool request turned away while a live turn holds its graphics card.</summary>
     internal const string PriorityDetail = "live";
+    /// <summary>The failure detail of a friend's request turned away while the owner's work keeps its graphics card or worker.</summary>
+    internal const string OwnerDetail = "owner";
     /// <summary>The failure detail of a hold refused because this host already keeps <see cref="MaximumHolds"/>.</summary>
     internal const string HoldsDetail = "holds";
     /// <summary>Clients holding at once; each client has one hold, which a new call renews.</summary>
@@ -79,7 +83,7 @@ public sealed partial class GatewayInferenceRouteRegistry
                 throw new GatewayProtocolException("job.busy", HoldsDetail);
             until = now + ttl;
             holds[principal.CredentialId] = (principal.Caller, devices, until);
-            stopped = PreemptLocked(devices, by, now);
+            stopped = PreemptLocked(devices, by, now, LiveRank);
         }
         Stop(stopped, by);
         return (devices, until);
@@ -98,11 +102,22 @@ public sealed partial class GatewayInferenceRouteRegistry
         return [.. devices.Order(StringComparer.Ordinal)];
     }
 
-    // What keeps a card of `devices` now, in words: a running live request or an unexpired hold; null when nothing does.
-    private string? HolderLocked(IReadOnlyList<string> devices, DateTimeOffset now)
+    private const int LiveRank = 2;
+
+    // Who comes first on a graphics card: the owner's live requests (2), then the owner's pool work (1), then a friend's requests
+    // (0), whatever their route's lane. A request stops running work of a lower rank on its cards, and is turned away while work of
+    // a higher rank, or a hold, keeps them.
+    private static int Rank(GatewayPrincipal principal, GatewayInferenceRoute route) =>
+        principal.Access == GatewayAccess.Friend ? 0 : route.Lane == GatewayLane.Pool ? 1 : LiveRank;
+
+    private static int Rank(GatewayInferenceJob job) => Rank(job.Principal, job.Registration.Route);
+
+    // What keeps a card of `devices` from work of `rank` now, in words: running work of a higher rank or an unexpired hold; null
+    // when nothing does.
+    private string? HolderLocked(IReadOnlyList<string> devices, DateTimeOffset now, int rank = 1)
     {
         foreach (var running in activeJobs.Values)
-            if (running.Registration.Route.Lane == GatewayLane.Live && GatewayGpus.Overlap(running.Registration.Route.Gpus, devices))
+            if (Rank(running) > rank && GatewayGpus.Overlap(running.Registration.Route.Gpus, devices))
                 return $"a {GatewayGpus.RouteName(running.Registration.Route)} request";
         foreach (var hold in holds.Values)
             if (hold.Until > now && GatewayGpus.Overlap(hold.Gpus, devices))
@@ -110,24 +125,34 @@ public sealed partial class GatewayInferenceRouteRegistry
         return null;
     }
 
-    // Records a pool request on `route` turned away because its cards are held and returns the log line; null when they're free.
+    // Records a request on `route` turned away because higher-ranked work or a hold keeps its cards, and returns the log line;
+    // null when it may run (the owner's live requests always may).
     private string? RefuseLocked(GatewayInferenceRoute route, GatewayPrincipal principal, DateTimeOffset now)
     {
-        if (HolderLocked(route.Gpus, now) is not { } holder) return null;
+        var rank = Rank(principal, route);
+        if (rank >= LiveRank || HolderLocked(route.Gpus, now, rank) is not { } holder) return null;
         refusalCount++;
         Remember(refusals, new(now, route.RouteId, route.Gpus.ToArray(), holder));
-        return $"Live turn first: turned away a {GatewayGpus.RouteName(route)} request from {principal.Caller} on " +
-            $"{GatewayGpus.Describe(route.Gpus)} while {holder} holds it.";
+        return rank == 0
+            ? $"Owner first: turned away a {GatewayGpus.RouteName(route)} request from {principal.Caller} on " +
+                $"{GatewayGpus.Describe(route.Gpus)} while {holder} of the owner uses it."
+            : $"Live turn first: turned away a {GatewayGpus.RouteName(route)} request from {principal.Caller} on " +
+                $"{GatewayGpus.Describe(route.Gpus)} while {holder} holds it.";
     }
 
-    // Marks each running pool job that shares a card of `devices` as preempted and returns them, to stop outside the lock.
-    private List<GatewayInferenceJob> PreemptLocked(IReadOnlyList<string> devices, string by, DateTimeOffset now)
+    // Marks each running job of a lower rank than `rank` that shares a card of `devices` as preempted and returns them, to stop
+    // outside the lock.
+    private List<GatewayInferenceJob> PreemptLocked(IReadOnlyList<string> devices, string by, DateTimeOffset now, int rank) =>
+        MarkPreemptedLocked(activeJobs.Values.Where(running => Rank(running) < rank &&
+            GatewayGpus.Overlap(running.Registration.Route.Gpus, devices)), by, now);
+
+    private List<GatewayInferenceJob> MarkPreemptedLocked(IEnumerable<GatewayInferenceJob> jobs, string by, DateTimeOffset now)
     {
         List<GatewayInferenceJob> stopped = [];
-        foreach (var running in activeJobs.Values)
+        foreach (var running in jobs)
         {
+            if (running.Preempted) continue;
             var route = running.Registration.Route;
-            if (route.Lane != GatewayLane.Pool || running.Preempted || !GatewayGpus.Overlap(route.Gpus, devices)) continue;
             running.MarkPreempted();
             stopped.Add(running);
             preemptionCount++;
@@ -136,7 +161,7 @@ public sealed partial class GatewayInferenceRouteRegistry
         return stopped;
     }
 
-    // Cancels preempted pool jobs: each ends with job.preempted and its worker aborts the request.
+    // Cancels preempted jobs: each ends with job.preempted and its worker aborts the request.
     private void Stop(List<GatewayInferenceJob> stopped, string by)
     {
         if (stopped.Count == 0) return;
@@ -144,8 +169,10 @@ public sealed partial class GatewayInferenceRouteRegistry
             _ = running.CancelAsync().ContinueWith(static task => _ = task.Exception, CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         var route = stopped[0].Registration.Route;
-        Report($"Live turn first: stopped {stopped.Count} {GatewayGpus.RouteName(route)} request{(stopped.Count == 1 ? "" : "s")} on " +
-            $"{GatewayGpus.Describe(route.Gpus)} for {by}; the desktop runs {(stopped.Count == 1 ? "it" : "them")} elsewhere or later.",
+        var friends = stopped.All(s => s.Principal.Access == GatewayAccess.Friend);
+        Report($"{(friends ? "Owner first" : "Live turn first")}: stopped {stopped.Count} {GatewayGpus.RouteName(route)} " +
+            $"request{(stopped.Count == 1 ? "" : "s")}{(friends ? " of a friend" : "")} on {GatewayGpus.Describe(route.Gpus)} for {by}; " +
+            $"{(friends ? "the friend's computer" : "the desktop")} runs {(stopped.Count == 1 ? "it" : "them")} elsewhere or later.",
             "priority.preempted");
     }
 
@@ -168,6 +195,8 @@ public sealed partial class GatewayInferenceRouteRegistry
         {
             var now = clock.GetUtcNow();
             var live = holds.Where(h => h.Value.Until > now).ToArray();
+            // A friend's request never holds a card; it counts with the pool work any of the owner's requests stops.
+            var owners = activeJobs.Values.Where(j => j.Principal.Access != GatewayAccess.Friend).Select(j => j.Registration.Route).ToArray();
             var running = activeJobs.Values.Select(j => j.Registration.Route).ToArray();
             var routes = byId.Values.Select(r => r.Route).OrderBy(r => r.RouteId, StringComparer.Ordinal).ToArray();
             var devices = routes.SelectMany(r => r.Gpus).Concat(live.SelectMany(h => h.Value.Gpus))
@@ -175,16 +204,16 @@ public sealed partial class GatewayInferenceRouteRegistry
             var gpus = devices.Select(device =>
             {
                 string[] one = [device];
-                var liveCount = running.Count(r => r.Lane == GatewayLane.Live && GatewayGpus.Overlap(r.Gpus, one));
+                var liveCount = owners.Count(r => r.Lane == GatewayLane.Live && GatewayGpus.Overlap(r.Gpus, one));
                 var holdCount = live.Count(h => GatewayGpus.Overlap(h.Value.Gpus, one));
-                return new GatewayPriorityGpu(device, liveCount > 0 || holdCount > 0, liveCount,
-                    running.Count(r => r.Lane == GatewayLane.Pool && GatewayGpus.Overlap(r.Gpus, one)), holdCount);
+                var all = running.Count(r => GatewayGpus.Overlap(r.Gpus, one));
+                return new GatewayPriorityGpu(device, liveCount > 0 || holdCount > 0, liveCount, all - liveCount, holdCount);
             }).ToArray();
             return new(
                 routes.Select(r => new GatewayPriorityRoute(r.RouteId, GatewayGpus.RouteName(r), r.Lane, r.Gpus.ToArray(),
                     running.Count(x => ReferenceEquals(x, r)), r.Lane == GatewayLane.Pool ? HolderLocked(r.Gpus, now) is not null : null)).ToArray(),
                 gpus,
-                running.Any(r => r.Lane == GatewayLane.Live && r.Gpus.Count == 0) || live.Any(h => h.Value.Gpus.Length == 0),
+                owners.Any(r => r.Lane == GatewayLane.Live && r.Gpus.Count == 0) || live.Any(h => h.Value.Gpus.Length == 0),
                 live.Select(h => new GatewayPriorityHold(h.Value.Holder, h.Value.Gpus, h.Value.Until)).ToArray(),
                 preemptionCount, refusalCount, preemptions.Reverse().ToArray(), refusals.Reverse().ToArray(),
                 GatewayGpus.Warnings(routes));

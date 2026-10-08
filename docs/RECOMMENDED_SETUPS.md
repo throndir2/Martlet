@@ -37,7 +37,8 @@ today and in the recommended setup, with a resource bar like the Devices page.
 It also shows who does each job (Speaking, Listening, Thinking, lip-sync and the
 Thinking pool) and every change with why. It lists notes, downloads and what
 needs someone at a computer. **Reconfigure** applies the setup on every computer
-and shows its progress. **Not now** closes the review, and this PC doesn't ask
+as a background task: its run window shows the progress, and Background tasks
+keeps it after you hide that window. **Not now** closes the review, and this PC doesn't ask
 about the same setup again. Nothing changes before Reconfigure. On a PC that is
 in no Martlet network, the button runs **Set it all up for me** instead: the same
 recommendation for one PC, with one confirmation. When a computer comes back,

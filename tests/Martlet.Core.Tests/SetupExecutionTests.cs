@@ -331,9 +331,47 @@ public sealed class SetupExecutionTests
         Assert.Empty(targets.Commands);
     }
 
+    [Fact]
+    public void A_run_says_in_lines_what_changed_on_each_computer()
+    {
+        var start = SetupRun.Start("run-6", "desk-a", Now, [("gpu-box", 2), ("desk-host", 1)]);
+        Assert.Empty(start.ChangesSince(null));
+        var working = start.With("gpu-box", SetupMachineState.Configuring, "Installing Chatterbox Turbo (1 of 2)", 0, Now.AddSeconds(1));
+        Assert.Equal(["gpu-box: Installing Chatterbox Turbo (1 of 2)..."], working.ChangesSince(start));
+        // A refresh that only shows the run is alive adds nothing.
+        Assert.Empty((working with { UpdatedAt = Now.AddMinutes(5) }).ChangesSince(working));
+        var waiting = working.With("gpu-box", SetupMachineState.Pending, "1 of 2 done; waiting for its next step", 1, Now.AddMinutes(6));
+        Assert.Equal(["gpu-box: 1 of 2 done; waiting for its next step."], waiting.ChangesSince(working));
+        var ended = waiting.With("gpu-box", SetupMachineState.Done, "All 2 changes made", 2, Now.AddMinutes(7))
+            .With("desk-host", SetupMachineState.Failed, "martlet-host remove f5 stopped on desk-host (exit 1).", 0, Now.AddMinutes(7));
+        Assert.Equal(["gpu-box: done. All 2 changes made.", "desk-host: failed. martlet-host remove f5 stopped on desk-host (exit 1)."],
+            ended.ChangesSince(waiting));
+    }
+
+    [Fact]
+    public async Task Apply_passes_what_each_role_change_prints_to_the_output()
+    {
+        var targets = new Targets();
+        SetupChange[] changes =
+        [
+            new(SetupChangeKind.RemoveRole, "gpu-box", "Remove Dia.", "w") { RoleKind = "dia" },
+            new(SetupChangeKind.AssignJob, "gpu-box", "Speak with gpu-box.", "w") { Job = ClusterJobs.Speaking }
+        ];
+        var recommendation = new NetworkRecommendation(new([], []), new([], [new JobPlan(ClusterJobs.Speaking, "gpu-box")]), changes);
+        var preflight = await SetupExecutor.PrepareAsync(recommendation, targets, default);
+        var lines = new List<string>();
+        await SetupExecutor.ApplyAsync(recommendation, preflight, targets, null, default, output: new Lines(lines));
+        Assert.Equal(["engine: remove dia on gpu-box"], lines);
+    }
+
     private sealed class Collect(List<SetupRun> runs) : IProgress<SetupRun>
     {
         public void Report(SetupRun value) => runs.Add(value);
+    }
+
+    private sealed class Lines(List<string> lines) : IProgress<string>
+    {
+        public void Report(string value) => lines.Add(value);
     }
 
     private sealed class Targets : ISetupTargets
@@ -373,6 +411,7 @@ public sealed class SetupExecutionTests
         {
             Commands.Add(command);
             OnCommand?.Invoke();
+            progress.Report($"engine: {(command.Add ? "add" : "remove")} {command.RoleKind} on {command.MachineId}");
             return Task.FromResult(command.RoleKind == "xtts" ? SetupStepResult.Failed("exit 1") : SetupStepResult.Done("ok"));
         }
 

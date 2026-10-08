@@ -442,7 +442,8 @@ public static partial class TouchZoneDetection
         // The part names place a body part better than drawable IDs do.
         return new(bones, [.. parts.Areas, .. areas.Where(a => parts.Areas.All(n => n.Part != a.Part))], faces)
         {
-            Pieces = parts.Pieces, Middle = parts.Middle, ModelParts = parts.Count, NamedModelParts = parts.Named
+            Pieces = parts.Pieces, Middle = parts.Middle, ModelParts = parts.Count, NamedModelParts = parts.Named,
+            Face = probe.Face is { IsValid: true } face ? new((face.X - crop.X) / crop.Width, (face.Y - crop.Y) / crop.Height, face.Width / crop.Width) : null
         };
     }
 

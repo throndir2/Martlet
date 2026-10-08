@@ -114,7 +114,8 @@ public partial class MainWindow
 
     private void SaveTalk(TalkPreferences next, bool render = false)
     {
-        var spoke = Talk.SpeakReplies;
+        var prior = Talk;
+        var spoke = prior.SpeakReplies;
         talk = next;
         if (!next.Save(store?.DataDirectory))
             ActionText.Text = "Couldn't save your talk choices. They apply until Martlet closes.";
@@ -128,6 +129,9 @@ public partial class MainWindow
         // An open talk window follows the change right away.
         openConversation?.UsePreferences(next, visionAddress);
         if (spoke != next.SpeakReplies) FollowVoice(next.SpeakReplies);
+        // The character profile in use keeps its own eyes and touch choice on this PC.
+        if (prior.GazeUsual != next.GazeUsual || prior.GazeFree != next.GazeFree || prior.TouchInterrupts != next.TouchInterrupts)
+            RememberProfileHere();
         RenderListening();
         if (render) RenderTab();
     }

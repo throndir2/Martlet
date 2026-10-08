@@ -18,7 +18,9 @@ namespace Martlet.NodeLinkCheck;
 /// doesn't match and only the pin is trusted). The laptop pins the host from the invite, is refused with a wrong password,
 /// a reused code and a forged pin, signs in with the right ones, asks to join and is let into the network by the home PC on
 /// the host's sign-in attestation without a check number; a non-member can't change sign-in, and removing the owner
-/// account takes the laptop's access away. Nothing leaves loopback; nothing is written to disk or the credential vault.
+/// account takes the laptop's access away. The home PC also shares the host with a friend (an identity allowed as a friend):
+/// the friend's computer reaches only the host's engines, never joins, can't sign in under another computer's ID and loses
+/// access as soon as sharing stops. Nothing leaves loopback; nothing is written to disk or the credential vault.
 /// </summary>
 internal static class SignInRehearsal
 {
@@ -213,6 +215,57 @@ internal static class SignInRehearsal
                 issuer.Browse, TimeSpan.FromSeconds(30), token);
             return (who.Subject == LabIssuer.SteamId && issuer.SteamChecks == 1, $"signed in as {who}; assertions confirmed with Steam: {issuer.SteamChecks}");
         });
+        using var keyFriend = NetworkKey.Create("lab-friend-pc");
+        var friend = new LabDesktop(keyFriend, "FRIEND-PC");
+        await Run("The home PC shares the host with a friend: the OpenID Connect identity is allowed as a friend (this host's engines only)", async () =>
+        {
+            var settings = await home.ChangeAsync(host.HostId, new JsonObject
+            {
+                ["action"] = "allow", ["provider"] = "authentik", ["subject"] = "lab-user-42", ["label"] = "Ana", ["access"] = "friend"
+            }, token);
+            var saved = System.Text.Encoding.UTF8.GetString(host.SignInBytes ?? []);
+            return (settings.Allowed.Any(a => a.Subject == "lab-user-42") && saved.Contains("\"access\": \"friend\"", StringComparison.Ordinal),
+                $"allowed: {string.Join(", ", settings.Allowed.Select(a => a.Label ?? a.Subject))}; kept as a friend in signin.json: " +
+                saved.Contains("\"access\": \"friend\"", StringComparison.Ordinal));
+        });
+        await Run("The friend's computer signs in in the (simulated) browser and gets a friend's credential: it lists the host's engines", async () =>
+        {
+            var (pairing, secret, who) = await HostSignInClient.SignInInBrowserAsync(invite, origin!, "authentik", keyFriend.DeviceId, "FRIEND-PC",
+                issuer.Browse, TimeSpan.FromSeconds(30), token);
+            friend.Keep(pairing, secret);
+            var engines = await friend.CanUseAsync(host.HostId, token);
+            var access = host.Server.Credentials.PairedDevices().FirstOrDefault(d => d.DeviceId == keyFriend.DeviceId)?.Access;
+            return (engines && access == GatewayAccess.Friend && who.Label == "me@example.net",
+                $"signed in as {who}; host keeps it as {access}; capabilities: {(engines ? "allowed" : "refused")}");
+        });
+        await Run("Everything else on the host refuses the friend (access.friend), and the friend never joins the network", async () =>
+        {
+            var codes = await friend.RefusalsAsync(host.HostId, token);
+            await friend.SyncAsync(token);
+            var seen = await home.SyncAsync(token);
+            var asked = seen.Joins.Any(j => j.DeviceId == keyFriend.DeviceId);
+            var member = home.State.Roster?.Desktop(keyFriend.DeviceId) is not null;
+            var refused = codes.All(c => c.Code == "access.friend");
+            return (refused && codes.Count >= 15 && !asked && !member,
+                $"{string.Join("; ", codes.Select(c => $"{c.Route}: {c.Code}"))}; asked to join: {asked}; in the roster: {member}");
+        });
+        await Run("A sign-in can't take over another computer's pairing: the friend signing in as HOME-PC is refused (signin.device_taken)", async () =>
+        {
+            var refused = await FailureAsync(() => HostSignInClient.SignInInBrowserAsync(invite, origin!, "authentik", keyHome.DeviceId, "HOME-PC",
+                issuer.Browse, TimeSpan.FromSeconds(30), token));
+            var homeStill = await home.CanUseAsync(host.HostId, token);
+            return (refused == "signin.device_taken" && homeStill, $"as HOME-PC: {refused}; HOME-PC still uses the host: {homeStill}");
+        });
+        await Run("Stopping sharing revokes the friend's computer at once, with no network removal (it never joined)", async () =>
+        {
+            var settings = await home.ChangeAsync(host.HostId, new JsonObject
+            {
+                ["action"] = "disallow", ["provider"] = "authentik", ["subject"] = "lab-user-42"
+            }, token);
+            var after = await friend.FailureCodeAsync(host.HostId, token);
+            var recorded = settings.RemovedFromNetwork.Any(r => r.DeviceId == keyFriend.DeviceId);
+            return (after is "auth.revoked" or "auth.invalid" && !recorded, $"friend now: {after}; listed for network removal: {recorded}");
+        });
         await Run("Removing the owner account takes the laptop's access away", async () =>
         {
             var settings = await home.ChangeAsync(host.HostId, new JsonObject { ["action"] = "remove-owner" }, token);
@@ -401,6 +454,34 @@ internal static class SignInRehearsal
         }
 
         internal async Task<bool> CanUseAsync(string hostId, CancellationToken token) => await FailureCodeAsync(hostId, token) is null;
+
+        /// <summary>What the host answers this computer on each route that isn't an engine (null when it was allowed).</summary>
+        internal async Task<IReadOnlyList<(string Route, string? Code)>> RefusalsAsync(string hostId, CancellationToken token)
+        {
+            var (pairing, secret) = pairings[hostId];
+            using var c = new Audio2FaceHostConnection(pairing, secret);
+            (string, Func<Task<object?>>)[] calls =
+            [
+                ("network", async () => await c.ReadNetworkAsync(token)),
+                ("machine", async () => await c.ReadMachineReportAsync(token)),
+                ("cluster", async () => await c.ReadClusterAsync(token)),
+                ("settings", async () => await c.ReadSettingsAsync(token)),
+                ("memories", async () => await c.ReadMemoriesAsync(token)),
+                ("voices", async () => await c.ReadVoicesAsync(token)),
+                ("speaking-voices", async () => await c.ReadSpeakingVoicesAsync(token)),
+                ("character-models", async () => await c.ReadCharacterModelsAsync(token)),
+                ("creations", async () => await c.ReadCreationsAsync(token)),
+                ("home-assistant", async () => await c.ReadHomeAssistantAsync(token)),
+                ("api-keys", async () => await c.ReadApiKeysAsync(token)),
+                ("commands", async () => await c.ReadCommandsAsync(token)),
+                ("priority", async () => await c.ReadPriorityAsync(token)),
+                ("security audit", async () => await c.ReadSecurityAuditAsync(token)),
+                ("sign-in settings", async () => await c.ReadSignInSettingsAsync(token))
+            ];
+            var codes = new List<(string, string?)>();
+            foreach (var (route, call) in calls) codes.Add((route, await FailureAsync(call)));
+            return codes;
+        }
 
         internal async Task<string?> FailureCodeAsync(string hostId, CancellationToken token)
         {

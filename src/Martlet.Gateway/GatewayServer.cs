@@ -102,6 +102,9 @@ public sealed class GatewayServer
     public void UseSignInProviderHandler(HttpMessageHandler handler) =>
         application.SignIn.Providers = new GatewaySignInProviders(application.Clock, handler).Create;
 
+    /// <summary>The sign-in service itself, for tests that plug in their own provider.</summary>
+    internal GatewaySignInService SignIn => application.SignIn;
+
     /// <summary>Keeps the commands paired computers send this host (served at /martlet/v1/commands) in
     /// <paramref name="storage"/> and accepts <paramref name="agentToken"/> (32 random bytes, base64url, also written where
     /// only the host computer itself can read it) from the Martlet app that runs them there.</summary>

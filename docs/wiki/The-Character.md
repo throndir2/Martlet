@@ -43,4 +43,6 @@ You can also make your own custom temperaments: name one, change it as you like,
 
 Character profiles combine look, voice and personality. Switch from **Companion › Profiles**, Home's **Character** box or the tray icon menu.
 
+On each computer, a profile also keeps where its character stands and how big it is, where it looks, and which touches stop it while it talks. Switch back to a profile and they come back, also after a switch on another computer. Emotes, touch zones and eye measurements already belong to each look, and the touch temperament to each personality.
+
 More detail: [Avatars](https://github.com/throndir2/Martlet/blob/main/docs/AVATARS.md), [Screen commentary](https://github.com/throndir2/Martlet/blob/main/docs/SCREEN_COMMENTARY.md), [UI design](https://github.com/throndir2/Martlet/blob/main/docs/UI_DESIGN.md).
