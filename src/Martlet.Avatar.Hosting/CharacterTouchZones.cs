@@ -54,21 +54,22 @@ public sealed record TouchZoneBox(double X, double Y, double Width, double Heigh
 }
 
 /// <summary>What touching a zone does: the gestures, emotes and motions it plays (their <see cref="CharacterActionSource.Id"/>s;
-/// null plays the zone's default, an empty list nothing), whether Martlet notices it (<see cref="Notices"/>: the touch goes to
-/// the Thinking model, with what the user says or as a short reply of its own, <see cref="Narration"/> an optional hint in the
-/// owner's words) and how long the zone then rests.</summary>
+/// null plays the zone's default, an empty list nothing), whether Martlet notices it (<see cref="Notices"/>, on by default: the
+/// touch goes to the Thinking model, with what the user says or as a short reply of its own, <see cref="Narration"/> an optional
+/// hint in the owner's words) and how long the zone then rests.</summary>
 public sealed record CharacterTouchReaction
 {
     public const double DefaultCooldown = 4, MaximumCooldown = 600;
     public IReadOnlyList<string>? Actions { get; init; }
-    /// <summary>Martlet notices touches on this zone (was "Tell the character", saved as <c>tell</c> before).</summary>
-    public bool Notices { get; init; }
+    /// <summary>Martlet notices touches on this zone (on unless the owner turns it off; was "Tell the character", saved as
+    /// <c>tell</c> before).</summary>
+    public bool Notices { get; init; } = true;
     // Settings saved before Martlet notices replaced Tell the character keep working.
     [JsonInclude, JsonPropertyName("tell")]
     private bool? Tell
     {
         get => null;
-        init { if (value == true) Notices = true; }
+        init { if (value is { } tell) Notices = tell; }
     }
     public string? Narration { get; init; }
     public double CooldownSeconds { get; init; } = DefaultCooldown;
@@ -530,6 +531,9 @@ public static class CharacterTouchZones
 
     private sealed record Document(int Version, IReadOnlyList<CharacterTouchZoneSettings> Models);
 
+    // Version 2: Martlet notices is on by default. Version 1 files are still read (UpgradedFromVersion1).
+    private const int DocumentVersion = 2;
+
     public static string Path(string dataDirectory) => System.IO.Path.Combine(dataDirectory, FileName);
 
     /// <summary>Where the snapshot the model's zones were found in is kept (a PNG).</summary>
@@ -546,11 +550,17 @@ public static class CharacterTouchZones
             var path = Path(dataDirectory);
             if (!File.Exists(path) || new FileInfo(path).Length > MaximumBytes) return [];
             var document = JsonSerializer.Deserialize<Document>(File.ReadAllBytes(path), Json);
-            return document is { Version: 1, Models: { } models }
-                ? models.Where(m => m is { ModelId: not null, Zones: not null } && m.Zones.All(z => z is { Id: not null, Box: not null })).ToArray() : [];
+            if (document is not { Version: 1 or DocumentVersion, Models: { } models }) return [];
+            var valid = models.Where(m => m is { ModelId: not null, Zones: not null } && m.Zones.All(z => z is { Id: not null, Box: not null }));
+            return document.Version == 1 ? [.. valid.Select(UpgradedFromVersion1)] : [.. valid];
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or NotSupportedException) { return []; }
     }
+
+    /// <summary>A model saved before Martlet notices was on by default: when the owner never turned it on for any of its zones,
+    /// it is on for all of them now (the old default was off); otherwise the owner's choices stay.</summary>
+    public static CharacterTouchZoneSettings UpgradedFromVersion1(CharacterTouchZoneSettings model) => model.Zones.Any(z => z.Reaction.Notices)
+        ? model : model with { Zones = [.. model.Zones.Select(z => z with { Reaction = z.Reaction with { Notices = true } })] };
 
     /// <summary>Why <paramref name="settings"/> can't be saved, or null.</summary>
     public static string? Problem(CharacterTouchZoneSettings settings)
@@ -582,7 +592,7 @@ public static class CharacterTouchZones
         {
             var models = LoadAll(dataDirectory).Where(m => m.ModelId != settings.ModelId).Append(settings)
                 .OrderByDescending(m => m.UpdatedAt).Take(MaximumModels).OrderBy(m => m.ModelId, StringComparer.Ordinal).ToArray();
-            var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(1, models), Json);
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(DocumentVersion, models), Json);
             ContractRules.Require(bytes.Length <= MaximumBytes, "The touch zones are too large.", ErrorCode.PayloadTooLarge);
             Directory.CreateDirectory(dataDirectory);
             var temporary = System.IO.Path.Combine(dataDirectory, $"character-touch-zones.{Guid.NewGuid():N}.tmp");
