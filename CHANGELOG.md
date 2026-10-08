@@ -15,6 +15,9 @@ Each release's section here is also its notes on GitHub.
 - When you make a host PC your companion PC again, from that PC or from another one, Martlet there brings the character back and starts listening and watching again as it was before it became a host, instead of waiting for Martlet to restart. ([#612](https://github.com/throndir2/Martlet/pull/612))
 - When you switch another computer between companion and host PC, the computer you are at now tells you when it has switched. A host PC that has no host service yet now says so, instead of looking like it works for your other computers. ([#612](https://github.com/throndir2/Martlet/pull/612))
 
+### Fixed
+- A computer that signs in to one of your hosts from outside home can no longer take over the pairing of another of your computers there, or act as it. Your hosts also now let each signed-in computer do only what its sign-in allows. ([#618](https://github.com/throndir2/Martlet/pull/618))
+
 ## [0.57.0] - 2026-10-07
 
 ### Added

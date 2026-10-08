@@ -482,8 +482,9 @@ A credential issued to an identity the owner allowed as a friend
 ([sharing a host with friends](../../docs/NETWORK.md#sharing-a-host-with-friends))
 has `GatewayAccess.Friend`. It is stored with the credential
 (`StoredGatewayCredential.Access`, written only for a friend's, so a store
-without friends is unchanged) and fixed for the credential's life; rotation
-keeps it. Deny by default: `GatewayRequestAuthenticator` refuses a friend's
+without friends is unchanged) and fixed for the credential's life. A rotation
+keeps it, but sign-in recognizes only the credential it issued, so a friend
+signs in again after one. Deny by default: `GatewayRequestAuthenticator` refuses a friend's
 signed request with `access.friend` (403) unless the route admits friends
 (`GatewayApiAccess.Friends`), and with `auth.revoked` (401) unless sign-in still
 records that credential for an identity allowed as a friend
