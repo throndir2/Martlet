@@ -299,12 +299,20 @@ what each one is.
   while it faces away). Live2D models have no face landmarks, so the face is
   first found at rest (an authored head or face hit area, meshes whose IDs name
   the face or cheeks, or else an estimate from the shape of the top of the
-  model). Then it is pinned to the face's own mesh vertices: when the model
-  loads, Martlet moves the head angles (`ParamAngleX`/`Y`/`Z`) to find the
-  vertices that turn with the head, and moves the other parameters to drop the
-  ones that change shape on their own (hair physics, eyelids, eyes, mouth,
-  brows). A model without those angles, or without enough such vertices, uses
-  the earlier estimate moved with `ParamAngleX`/`Y`/`Z`. Each blush level lies on its
+  model). Then it is pinned to the face's own mesh vertices. A Live2D face is
+  drawn in layers that move apart as the head nods and turns (the back hair,
+  the skin, the eyes, nose and mouth over it), so Martlet pins the face to its
+  skin: the drawable drawn highest that holds the face's middle and both
+  cheeks. The drawings then stay on the face as she looks down at the mouse,
+  also on models whose physics turns the head (head angles that only feed
+  parameters such as `ParamFaceAngleX`). A model without such a drawable is
+  pinned to the vertices that turn with the head instead: when the model
+  loads, Martlet moves the head angles (`ParamAngleX`/`Y`/`Z`) to find them,
+  and moves the other parameters to drop the ones that change shape on their
+  own (hair physics, eyelids, eyes, mouth, brows). A model with neither uses
+  the earlier estimate moved with `ParamAngleX`/`Y`/`Z` (a positive
+  `ParamAngleZ` tips the head's top toward the viewer's right, as on Hiyori).
+  Each blush level lies on its
   cheek's surface, so a turned head shows the near cheek's blush wider and the
   far one narrower (with fewer of a stronger level's lines), fading out as that
   cheek turns away; the fierce flush's band over the nose fades toward that

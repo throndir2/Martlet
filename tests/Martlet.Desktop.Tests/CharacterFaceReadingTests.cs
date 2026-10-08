@@ -37,6 +37,7 @@ public sealed class CharacterFaceReadingTests
         Assert.False(reading.TryGetProperty("mouth", out _), "a point without both numbers is left out");
         Assert.False(reading.TryGetProperty("top", out _));
         Assert.Equal(118, reading.GetProperty("pinned").GetProperty("carriers").GetInt32());
+        Assert.Equal(JsonValueKind.Null, reading.GetProperty("pinned").GetProperty("skin").ValueKind);
         Assert.False(reading.TryGetProperty("extra", out _));
 
         var unknown = Json(CharacterFaceReading.From(Json("""{"id":5,"found":false,"tracking":"guess"}"""), 5));
@@ -52,7 +53,7 @@ public sealed class CharacterFaceReadingTests
              "irisLeft":{"x":0.47,"y":0.2,"rx":0.012345678,"ry":"wide"},"irisRight":null,
              "eyeLeftShape":{"points":28,"triangles":40,"left":0.45,"top":0.18,"right":0.49,"bottom":0.22,"irisInside":true,"extra":1},
              "eyeRightShape":{"points":99999,"triangles":null,"irisInside":"yes"},
-             "pinned":{"carriers":291,"milliseconds":17,"eyeMilliseconds":8}}
+             "pinned":{"carriers":291,"skin":"ArtMesh166","milliseconds":17,"eyeMilliseconds":8}}
             """), 6));
         Assert.Equal("mesh", reading.GetProperty("eyesFrom").GetString());
         var iris = reading.GetProperty("irisLeft");
@@ -70,6 +71,7 @@ public sealed class CharacterFaceReadingTests
         Assert.Equal(JsonValueKind.Null, right.GetProperty("triangles").ValueKind);
         Assert.Equal(JsonValueKind.Null, right.GetProperty("irisInside").ValueKind);
         Assert.Equal(8, reading.GetProperty("pinned").GetProperty("eyeMilliseconds").GetInt32());
+        Assert.Equal("ArtMesh166", reading.GetProperty("pinned").GetProperty("skin").GetString());
         var guess = Json(CharacterFaceReading.From(Json("""{"id":7,"found":true,"eyesFrom":"guess"}"""), 7));
         Assert.False(guess.TryGetProperty("eyesFrom", out _));
     }

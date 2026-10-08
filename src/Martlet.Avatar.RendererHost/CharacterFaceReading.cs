@@ -8,8 +8,8 @@ namespace Martlet.Avatar.RendererHost;
 /// (mesh, bones or estimate), its middle, width and tilt, and at each cheek how much shows, how wide it is for the face's width
 /// and what of the character is there; the eyes, mouth and top of the head the overlay emotes sit on; the eyes' irises and
 /// openings (where they came from, each iris and its opening's box, size and whether the iris is inside it); with the overlays
-/// showing and, for Live2D, how many mesh vertices the face is pinned to. Positions are fractions of the character's surface
-/// (+y down), like a tap. Kept bounded and typed for UI Automation.
+/// showing and, for Live2D, how many mesh vertices the face is pinned to and the face's skin drawable when they are its skin.
+/// Positions are fractions of the character's surface (+y down), like a tap. Kept bounded and typed for UI Automation.
 /// </summary>
 internal static class CharacterFaceReading
 {
@@ -39,8 +39,8 @@ internal static class CharacterFaceReading
             if (answer.TryGetProperty(key, out var shape)) reading[key] = shape.ValueKind == JsonValueKind.Object ? Shape(shape) : null;
         reading["overlays"] = Names(answer, "overlays", MaximumOverlays);
         if (answer.TryGetProperty("pinned", out var pinned) && pinned.ValueKind == JsonValueKind.Object)
-            reading["pinned"] = new JsonObject { ["carriers"] = Count(pinned, "carriers"), ["milliseconds"] = Count(pinned, "milliseconds"),
-                ["eyeMilliseconds"] = Count(pinned, "eyeMilliseconds") };
+            reading["pinned"] = new JsonObject { ["carriers"] = Count(pinned, "carriers"), ["skin"] = Name(pinned, "skin"),
+                ["milliseconds"] = Count(pinned, "milliseconds"), ["eyeMilliseconds"] = Count(pinned, "eyeMilliseconds") };
         return reading.ToJsonString();
     }
 

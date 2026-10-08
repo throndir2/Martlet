@@ -206,7 +206,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "of its height; null when unknown) and eyeLeftShape and eyeRightShape (the eye's visible opening now: points, " +
             "triangles (null for an outline), its box left, top, right, bottom, and irisInside, whether the iris's middle is in " +
             "it; 0 points when the eye is closed or hidden), the overlays showing and pinned (Live2D: carriers, the mesh vertices " +
-            "the face rides on, milliseconds, how long finding them took at load, and eyeMilliseconds, how long finding the eyes' " +
+            "the face rides on; skin, the ID of the face's skin drawable when they are its vertices (the highest-drawn drawable " +
+            "that holds the face's middle and both cheeks at rest), else null for the vertices that ride the head; " +
+            "milliseconds, how long finding them took at load, and eyeMilliseconds, how long finding the eyes' " +
             "meshes took). summary says which tracking was used, how far the face moved (x, y, width, tilt), per cheek the share " +
             "of readings over the character, what it was mostly over and for what share, the least it showed and its across " +
             "range, eyesFrom (the sources seen) and per eye (eyeLeft, eyeRight) the share of readings with an iris, how far the " +

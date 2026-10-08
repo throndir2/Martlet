@@ -4845,14 +4845,22 @@ summary.
 without a blush of its own, and `blush_deep` and `blush_fierce` on every model,
 over its own blush) and the overlay emotes are drawn around the face each time
 the renderer page draws a frame. A Live2D model's face is pinned to its own
-face meshes. When the model loads, the page moves each head angle
-(`ParamAngleX`, `ParamAngleY`, `ParamAngleZ`) to find the mesh vertices that
-turn with the head. Then it moves every other parameter to its limits, to drop
-the vertices that change shape on their own (hair physics, eyelids, eyes,
-mouth, brows), and puts every parameter back. In each frame the eyes, cheeks,
+face meshes. Live2D draws a face in layers that move apart as the head nods and
+turns (the back hair, the skin, the eyes, nose and mouth over it), so when the
+model loads, the page first looks for the face's skin: of the drawables that
+show, the one drawn highest whose triangles hold the face's middle and both
+cheeks (one more than three face widths across or high is not skin). The face
+is then pinned to every vertex of the skin, so the blush stays on the cheeks,
+also on a model whose physics turns its head (head angles that only feed
+parameters such as `ParamFaceAngleX`). A model without such a drawable is
+pinned to the vertices that turn with the head instead: the page moves each
+head angle (`ParamAngleX`, `ParamAngleY`, `ParamAngleZ`) to find them, then
+moves every other parameter to its limits, to drop the vertices that change
+shape on their own (hair physics, eyelids, eyes, mouth, brows), and puts every
+parameter back. In each frame the eyes, cheeks,
 mouth and top of the head move with those vertices, so they follow idle
 motions, body sway, breathing, the mouse, a look at a point and gestures as
-the model draws them. A model without the standard angle parameters uses the
+the model draws them. A model with neither uses the
 earlier estimate from its head angles. A VRM's face follows its posed head
 bone. Each blush lies on its cheek's surface: a turned head shows the near
 cheek wider and the far cheek narrower, and the far cheek fades out as it
@@ -4870,6 +4878,8 @@ renderer has none; an eye with a known iris has its point at the eye's
 middle), `overlays` (the overlays showing, such as
 `["blush_deep"]`; one fading out is listed until it is gone) and
 `pinned` (Live2D: `carriers`, how many mesh vertices the face rides on,
+`skin`, the ID of the face's skin drawable when they are its vertices, or
+`null` when they are the vertices that turn with the head,
 `milliseconds`, how long finding them took at load, and `eyeMilliseconds`, how
 long finding the eyes' meshes took). The eyes for drawings over them come with
 each reading: `eyesFrom` (`mesh`: a Live2D model's iris and eye-white meshes;
