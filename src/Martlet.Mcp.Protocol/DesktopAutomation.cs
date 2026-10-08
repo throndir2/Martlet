@@ -57,9 +57,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // new PC (HomeConnectComputers).
         "AddComputer", "OpenHosts", "SelectedDeviceAdd", "NodeAction-AddComputer", "HomeConnectComputers", "HostsStepConnect",
         "HostsStepRoles", "HostsBack", "HostsNext", "HostsClose", "HostsEnterCode", "HostAddressSection", "DeviceIdSection",
-        // The setup advisor (Home's Get a setup recommendation): opening it, moving between its steps, picking a goal and
+        // The setup advisor (Home's Plan a setup from scratch): opening it, moving between its steps, picking a goal and
         // closing it only change what it shows (the answers stay in memory); its plan's Install on this PC buttons do the work.
         "OpenSetupAdvisor", "AdvisorBack", "AdvisorNext", "AdvisorClose", "GoalBalanced", "GoalSmartest", "GoalFastest", "GoalPrivate",
+        // Home's Recommended setup: in a Martlet network it opens the review of the recommended setup (worked out on this PC from
+        // what it already knows; nothing is contacted or changed), and on a PC alone it opens Set it all up for me's question.
+        // The review's Close only closes it. Reconfigure (RecommendedSetupApply) changes every computer, Not now
+        // (RecommendedSetupCancel) saves recommended-setup.json, and Set it up installs, so they need --allow-ui-effects.
+        "HomeRecommendedSetup", "RecommendedSetupClose",
         // The notification-area menu (ui_tray "menu"): Open Martlet only shows the window, Talk to Martlet opens the talk window
         // like OpenLiveConversation, Pause Martlet only stops work, Stop listening and Stop watching only stop listening or
         // watching, and End the conversation closes the talk window like CloseLive. Start listening, Start watching, Resume
@@ -561,6 +566,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ElevenLabsSave uploads a recording and saves the route, so it needs --allow-ui-effects (and spends money on ElevenLabs).
         "ElevenLabsStatus", "ElevenLabsKeyStatus", "ElevenLabsModel",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
+        // Home's Recommended setup button (its label).
+        "HomeRecommendedSetup",
         "LogSummary", "LogShareStatus", "LogDetail",
         "HostStatus", "PairedHost", "PairCodeHelp", "DockerState", "RolesSummaryText", "HostRunPairAddress", "NetworkStatus",
         // A run window's pairing panel: the note on how long the code works (fixed text) and its Copy code button's label
@@ -807,7 +814,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("SetupOldKey-Thinking-0" reads "Your OpenRouter key" or "The pairing key for diva-host"; never the key) and its
         // Remove button's name ("SetupOldKeyRemove-Thinking-0" reads "Remove your OpenRouter key"). Remove deletes the key from
         // Windows Credential Manager after OldKeyRemoveQuestion, so clicking it needs --allow-ui-effects.
-        "SetupOldKey"];
+        "SetupOldKey",
+        // Home's Recommended setup review: its title and summary, each change ("RecommendedSetupChange-0" reads "Improvement:
+        // Install Chatterbox Turbo on gpu-box's RTX 4090. ..."), each computer's name and kind, today's and the recommended roles
+        // and load ("RecommendedSetupComputer-0", "RecommendedSetupToday-0", "RecommendedSetupTarget-0", "RecommendedSetupLoad-0",
+        // "RecommendedSetupBar-0-vram"), who does each job ("RecommendedSetupJob-0"), the notes, downloads, what needs someone at a
+        // computer, what Reconfigure needs first ("RecommendedSetupPreflight-0", "RecommendedSetupSecret-0": the label only, never
+        // what is typed) and the status line with its progress and outcome. Computer names, host IDs, model names and fixed text.
+        "RecommendedSetup"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>
