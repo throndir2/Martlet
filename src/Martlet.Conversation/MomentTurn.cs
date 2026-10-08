@@ -48,13 +48,15 @@ public static class MomentTurn
 
     /// <summary>What one reply took, for the talk window and the desktop log (never what was said, seen or found): "your words,
     /// 2 lines this PC played, the picture (a notification), 1 finished job and 2 context notes". <paramref name="contextNotes"/>
-    /// counts the context board's notes the request carried (<see cref="ContextBoard"/>), and <paramref name="said"/> the things
-    /// Martlet said lately that went in its notes (<see cref="SaidLately"/>).</summary>
+    /// counts the context board's notes the request carried (<see cref="ContextBoard"/>), <paramref name="said"/> the things
+    /// Martlet said lately that went in its notes (<see cref="SaidLately"/>), and <paramref name="voice"/> says the audio model's
+    /// words about how the user sounded went with it.</summary>
     public static string Describe(bool user, int pcLines, bool picture, string? attention, int jobs, bool report = false, int touches = 0,
-        int contextNotes = 0, int said = 0)
+        int contextNotes = 0, int said = 0, bool voice = false)
     {
         var parts = new List<string>();
         if (user) parts.Add("your words");
+        if (voice) parts.Add("how you sounded");
         if (touches > 0) parts.Add(touches == 1 ? "1 touch" : $"{touches} touches");
         if (pcLines > 0) parts.Add(pcLines == 1 ? "1 line this PC played" : $"{pcLines} lines this PC played");
         if (picture) parts.Add(attention is { Length: > 0 } about ? $"the picture ({about})" : "the picture");

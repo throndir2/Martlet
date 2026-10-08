@@ -106,10 +106,11 @@ public partial class LiveConversationWindow : ThemedWindow
     // goes straight to Thinking as the Recording alone, and its words (Text stays empty) come from speech-to-text beside the reply.
     // From: where a line the PC played came from (PcActivityMonitor), when Martlet can tell. Yours: the microphone heard a voice
     // Martlet knows as yours (voice recognition's owner, or Voice ID). SpokeStart and SpokeEnd: when the microphone's voice began
-    // and its recording ended (controller clock; 0 when unknown).
+    // and its recording ended (controller clock; 0 when unknown). Voice: the audio model's words about how you sounded (VoiceNote).
     private sealed record HeardEntry(string Text, double? Confidence, HeardVoices? Voices, ChatMessage Bubble,
         BoundedWaveAudio? Recording = null, bool Pc = false, long At = 0, bool WhileYouTalked = false, ReplyTimeline? Timeline = null,
-        SpokenWords? Words = null, PcHeardFrom? From = null, bool Yours = false, long SpokeStart = 0, long SpokeEnd = 0);
+        SpokenWords? Words = null, PcHeardFrom? From = null, bool Yours = false, long SpokeStart = 0, long SpokeEnd = 0,
+        VoiceNote? Voice = null);
     // Bubbles of what went straight to Thinking, waiting for their words (FollowWords).
     private readonly List<(SpokenWords Words, ChatMessage Bubble, bool Yours)> awaitingWords = [];
     /// <summary>What a bubble shows for what went straight to Thinking until its words come.</summary>
@@ -979,10 +980,10 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool PictureGoes => watching && latestFrame is not null && clock.GetElapsedTime(latestAt) <= SeenFreshness &&
         controller.Configuration?.Vision() is not (null or VisionSupport.Unsupported);
 
-    // Whether Thinking hears your recording (Companion › Listening): your own choice, or never chosen, only while the recording
-    // stays on this PC (LocalOnly: the conversation checks that again before it sends one).
-    private (bool On, bool LocalOnly) HearsVoice =>
-        preferences.HearVoiceFor(controller.Configuration?.Routes.SingleOrDefault(route => route.Role == SetupRole.Llm));
+    // Whether a model hears your recording (Companion › Listening): your own choice, or never chosen, only while the recording
+    // stays on this PC where it goes, to Thinking or to the audio model of its own (LocalOnly: the conversation checks that again
+    // before it sends one).
+    private (bool On, bool LocalOnly) HearsVoice => preferences.HearVoiceFor(controller.RecordingStaysOnThisPc());
 
     // ---------- always listening ----------
 
@@ -1373,6 +1374,7 @@ public partial class LiveConversationWindow : ThemedWindow
         {
             // Words from the speakers never stop Martlet.
             if (speech.Interrupt is not null) heardInterrupt = null;
+            speech.Voice?.Cancel();
             LeftOutSpeakers(null, text, speakers);
             return;
         }
@@ -1381,7 +1383,7 @@ public partial class LiveConversationWindow : ThemedWindow
         activityAt = lastHeard;
         reportHeld = false;
         heardQueue.Add(new(text, speech.Confidence, speech.Voices, bubble, HearsVoice.On ? speech.Recording : null, At: lastHeard,
-            Timeline: speech.Timeline, Yours: yours, SpokeStart: speech.SpeechStartedAt, SpokeEnd: speech.SpeechEndedAt));
+            Timeline: speech.Timeline, Yours: yours, SpokeStart: speech.SpeechStartedAt, SpokeEnd: speech.SpeechEndedAt, Voice: speech.Voice));
         saidLately.Add((text, lastHeard, yours));
         LeaveOutYourVoice();
         notice = null;
@@ -1564,7 +1566,11 @@ public partial class LiveConversationWindow : ThemedWindow
                 .Select(entry => entry.Words is { } words ? entry with { Text = words.Text!, Confidence = words.Confidence, Words = null } : entry)];
             length = batch.Count == 0 ? -1 : batch.Sum(entry => entry.Text.Length + 1) - 1;
         }
-        foreach (var skipped in heardQueue.Take(heardQueue.Count - recordings.Length)) skipped.Bubble.AddNote("Not answered.");
+        foreach (var skipped in heardQueue.Take(heardQueue.Count - recordings.Length))
+        {
+            skipped.Bubble.AddNote("Not answered.");
+            skipped.Voice?.Cancel();
+        }
         heardQueue.Clear();
         // The newest of what the PC played that fits beside your own words.
         var playing = TakePlaying(length);
@@ -1584,6 +1590,8 @@ public partial class LiveConversationWindow : ThemedWindow
                         TimeSpan.FromSeconds(BoundedTextInput.HardMaxAudioSeconds)) : null;
             // The reply's wait counts from when you last stopped talking (a copy, so a restarted reply counts from there again).
             var timeline = batch.Count > 0 ? batch[^1].Timeline?.Copy() : null;
+            // The audio model's words about how you sounded, when an audio model of its own hears you (never waited for).
+            VoiceNote[] voiceNotes = [.. batch.Select(entry => entry.Voice).OfType<VoiceNote>()];
             owned = straight
                 ? controller.Start(null, Voice, microphone: false, approved: true, spoken: true, heard: batch[^1].Voices,
                     recording: recording, seen: seen, timeline: timeline, words: [.. batch.Select(entry => entry.Words!)],
@@ -1592,13 +1600,13 @@ public partial class LiveConversationWindow : ThemedWindow
                 ? controller.Start(string.Join(" ", batch.Select(entry => entry.Text)), Voice, microphone: false, approved: true,
                     spoken: true, heard: batch[^1].Voices, confidence: batch.Min(entry => entry.Confidence), recording: recording,
                     seen: seen, timeline: timeline, chattiness: BackgroundChattiness, hearLocalOnly: hearing.LocalOnly,
-                    attention: about, look: plan.Look, discordCall: CallOn)
+                    attention: about, look: plan.Look, discordCall: CallOn, voiceNotes: voiceNotes)
                 : controller.Start(PcMessage(everything), Voice, microphone: false, approved: true, spoken: true,
                     heard: batch.Count > 0 ? batch[^1].Voices : null,
                     confidence: batch.Count > 0 ? batch.Min(entry => entry.Confidence) : playing.Min(entry => entry.Confidence),
                     seen: seen, pcAudio: true, userWords: batch.Count > 0 ? string.Join(" ", batch.Select(entry => entry.Text)) : null,
                     timeline: timeline, chattiness: BackgroundChattiness, bringUp: batch.Count == 0 && plan.Jobs, attention: about,
-                    look: plan.Look, discordCall: CallOn);
+                    look: plan.Look, discordCall: CallOn, voiceNotes: voiceNotes);
             answering = everything;
             yielded = null;
             answeredAt = clock.GetTimestamp();
@@ -1617,6 +1625,7 @@ public partial class LiveConversationWindow : ThemedWindow
         catch (LiveActionException error) { notice = Remedy(error.Code); }
         catch (ContractException) { notice = Remedy("conversation.invalid_input"); }
         if (batch.Count > 0) batch[^1].Bubble.AddNote("Not answered.");
+        foreach (var entry in batch) entry.Voice?.Cancel();
         return false;
     }
 
@@ -1782,6 +1791,9 @@ public partial class LiveConversationWindow : ThemedWindow
             else if (done.Turn?.Snapshot.State == ConversationState.Completed)
                 said.AddNote(done.Straight ? "Thinking heard your voice straight away." : "Thinking heard your voice.");
         }
+        // Whether the audio model's words about how you sounded went with the reply (times only, never the words).
+        else if (!continued && done.VoiceNotes is { Count: > 0 } && asked is { } described && done.Turn?.Snapshot.State == ConversationState.Completed)
+            described.AddNote(VoiceNoteLine(done));
         // Whether the reply saw the picture of what vision watches that went with your message.
         if (!continued)
         {
@@ -1816,6 +1828,20 @@ public partial class LiveConversationWindow : ThemedWindow
     private static ProviderRole? FailedJob(LiveConversationOperation done) =>
         done.Turn?.Snapshot is { ProviderFailure: not null } snapshot ? snapshot.FailedProvider
         : done.Status.Code.StartsWith("stt.", StringComparison.Ordinal) ? ProviderRole.Stt : null;
+
+    /// <summary>The note under your words when the audio model of its own heard them: whether the reply took its words about how
+    /// you sounded and how soon after you stopped they were ready, or that they go with your next message (never the words).</summary>
+    internal static string VoiceNoteLine(LiveConversationOperation done)
+    {
+        var notes = done.VoiceNotes ?? [];
+        if (notes.FirstOrDefault(note => note.WasTaken) is { ReadyAfter: { } ready })
+            return $"The audio model described how you sounded ({ready.TotalSeconds:0.0} s after you stopped), and the reply took it.";
+        if (notes.Count > 0 && notes.All(note => note.IsReady && note.Summary is null))
+            return notes.All(note => note.Outcome == Martlet.Conversation.SenseJobOutcome.Succeeded)
+                ? "The audio model heard you; nothing stood out."
+                : "The audio model couldn't describe how you sounded this time.";
+        return "The audio model describes how you sounded; Martlet gets it with your next message.";
+    }
 
     private static string? Outcome(LiveConversationOperation done)
     {

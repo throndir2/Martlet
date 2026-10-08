@@ -11,11 +11,13 @@ namespace Martlet.Desktop;
 /// also hear it. Ignored: the utterance filter dropped it (Text is what speech-to-text wrote, only to show it as ignored).
 /// Interrupt: its words, said over Martlet, stop it (BargeInPolicy); SpeechStartedAt is when its voice began and SpeechEndedAt
 /// when its recording ended (controller clock; 0 when unknown).
-/// Words: it goes straight to a Thinking model that hears as the Recording alone, and its transcript comes later (Text is null).</summary>
+/// Words: it goes straight to a Thinking model that hears as the Recording alone, and its transcript comes later (Text is null).
+/// Voice: the audio model of its own hears it beside speech-to-text, and its words about how the user sounded may go with the
+/// reply (<see cref="VoiceNote"/>).</summary>
 internal sealed record HeardSpeech(LiveConversationStatus Status, string? Text, double? Confidence, HeardVoices? Voices,
     SpeakerCheck? SpeakerCheck, Voiceprint? Voiceprint, Martlet.Providers.BoundedWaveAudio? Recording = null,
     ReplyTimeline? Timeline = null, Martlet.Providers.UtteranceDecision? Ignored = null, BargeInDecision? Interrupt = null,
-    long SpeechStartedAt = 0, SpokenWords? Words = null, long SpeechEndedAt = 0);
+    long SpeechStartedAt = 0, SpokenWords? Words = null, long SpeechEndedAt = 0, VoiceNote? Voice = null);
 
 /// <summary>Always listening (<see cref="LiveConversationController.Listen"/>): one loop on its own slot beside replies. It
 /// records one utterance at a time and transcribes each in order while it already listens for the next, so nothing said while

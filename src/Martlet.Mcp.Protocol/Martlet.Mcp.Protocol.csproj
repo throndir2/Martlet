@@ -44,6 +44,8 @@
     <Compile Include="..\Martlet.Desktop\HostSupplies.cs" Link="Hosts\HostSupplies.cs" />
     <!-- straight_voice_check: the desktop's own words of a recording sent straight to Thinking and the conversation it keeps. -->
     <Compile Include="..\Martlet.Desktop\SpokenWords.cs" Link="Shared\SpokenWords.cs" />
+    <!-- audio_model_check: the desktop's own words of the audio model about your voice (the job, the note and the consent rule). -->
+    <Compile Include="..\Martlet.Desktop\VoiceNote.cs" Link="Shared\VoiceNote.cs" />
     <Compile Include="..\Martlet.Desktop\ConversationContextBuffer.cs" Link="Shared\ConversationContextBuffer.cs" />
     <Compile Include="..\Martlet.Desktop\VisionHistory.cs" Link="Shared\VisionHistory.cs" />
     <!-- active_app_check: the desktop's own reading of the program in front and whether it fills its monitor. -->

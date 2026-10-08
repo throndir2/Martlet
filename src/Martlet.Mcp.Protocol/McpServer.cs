@@ -1731,6 +1731,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "waiting, priorities, a stale job dropped, refusals, failures, timeouts, the kind check, one lane for one model used " +
             "for both kinds, and the conversation first (a job waits while a reply holds the model's hardware, a running job is " +
             "stopped when a reply starts, a job the hold outlasts is dropped). In-process; reads nothing.", new { }),
+        Tool("audio_model_check", "Rehearse Companion > Listening > Audio model (docs/SENSE_MODELS.md, Recordings: the audio model) " +
+            "with the production pieces against fixture Chat Completions endpoints on 127.0.0.1 (canned answers, NOT AI): where " +
+            "recordings go for the audio model's choices (SenseRouting: an audio model of its own means Thinking never gets a " +
+            "recording), the hearing consent (never chosen, only an audio model in Ollama on this PC hears you), and the desktop's own " +
+            "voice notes through SenseLanes and the Chat Completions adapter: the audio model gets the recording with its fixed " +
+            "instructions and the last lines said; Thinking gets the transcript and the audio model's words as a note sent with that " +
+            "request only, and the conversation keeps a short (voice: ...) line; words that come late go to the context board for the " +
+            "next request while the reply never waits; none adds nothing; a refused recording ends Refused. A synthesized clip, never " +
+            "a microphone; nothing leaves loopback; no credentials. Optional absolute dataDirectory: where recordings go with its " +
+            "saved choices.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("backup_thinking_check", "Rehearse Backup Thinking (Companion > Thinking pool, a hedged request: when the " +
             "conversation's Thinking model has no first words after the delay, the same request also goes to a pool member that " +
             "may answer for the conversation, and whichever starts first gives the reply) with the production race in " +
@@ -2189,6 +2202,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "thinking_pool_check" => await ThinkingPoolCheck.RunAsync(cancellation),
                 "sense_models_status" => await SenseModelsCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "sense_models_check" => await SenseModelsCheck.RunAsync(cancellation),
+                "audio_model_check" => await AudioModelCheck.RunAsync(OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments),
+                    cancellation),
                 "backup_thinking_check" => await BackupThinkingCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),
                 "live_floor_status" => await LiveFloorCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),
