@@ -175,6 +175,37 @@ internal sealed partial class LiveConversationController
 
     private static string Word(SenseKind kind) => kind == SenseKind.Image ? "image" : "audio";
 
+    /// <summary>A helper job with a picture (finding touch zones, measuring the eyes) on the image model of its own, in place of the
+    /// Thinking model: pictures go to the image model (Companion › Vision). It waits behind the image model's other jobs, at the
+    /// lowest priority, and may write and run as much as on a Thinking pool member. The answer, or null with why not; when the
+    /// image model no longer takes pictures, the Thinking model gets the job as before.</summary>
+    private async Task<(string? Answer, string? Failure)> AskImageModelAsync(HelperJobKind kind, string purpose, string instructions,
+        string text, BoundedImage image, CancellationToken token)
+    {
+        SenseJobResult result;
+        try
+        {
+            result = await RunSenseAsync(SenseKind.Image, new SenseJob
+            {
+                Purpose = HelperJobs.Name(kind), Priority = HelperPriority, Instructions = instructions, Text = text, Image = image,
+                Timeout = kind == HelperJobKind.TouchZones ? TimeSpan.FromMinutes(3) : TimeSpan.FromMinutes(5), DropWhenStale = false,
+                MaxOutputTokens = SenseJob.MaximumOutputTokens, Reasoning = null
+            }, token).ConfigureAwait(false);
+        }
+        catch (ContractException) { return (null, "the request is too large"); }
+        if (result.Outcome == SenseJobOutcome.NoModel) return await AskThinkingAsync(purpose, instructions, text, image, token).ConfigureAwait(false);
+        if (result.Succeeded)
+        {
+            ErrorLog.Info($"{purpose}: the image model ({result.Model}) did it in {result.Took.TotalMilliseconds:0} ms.");
+            return (result.Text, null);
+        }
+        ErrorLog.Warn($"{purpose}: the image model ({result.Model}) didn't do it ({result.Outcome}: {result.Problem}).");
+        return (null, result.Problem ?? result.Outcome.ToString());
+    }
+
+    /// <summary>The image model's priority for a helper job: after replies, looks and summaries.</summary>
+    internal const int HelperPriority = -10;
+
     // A model of its own refused a picture or a recording: Martlet remembers that it can't see or hear (model-abilities.json; a
     // paired computer's model by its gateway's origin), so the kind's route says so and sends it nothing more until a check or a
     // test says otherwise.

@@ -4190,13 +4190,16 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     /// <summary>A helper job outside a conversation (naming a character's emotes, finding its touch zones): on a Thinking pool
     /// member that can take it, else on the saved Thinking model (<see cref="AskThinkingAsync(string, string, string, BoundedImage?, CancellationToken)"/>)
-    /// once no reply runs or speaks.</summary>
+    /// once no reply runs or speaks. A job with a picture goes to the image model of its own instead of Thinking while pictures go
+    /// to it (<see cref="AskImageModelAsync"/>, docs/SENSE_MODELS.md).</summary>
     internal async Task<(string? Answer, string? Failure)> AskHelperAsync(HelperJobKind kind, string purpose, string instructions,
         string text, BoundedImage? image, CancellationToken token)
     {
         var (answer, failure, _) = await helpers.RunAsync(kind, purpose, image is null ? HelperCapability.Text : HelperCapability.Vision,
             () => new BoundedTextInput(text, instructions, image: image),
-            worker => AskThinkingAsync(purpose, instructions, text, image, worker), token).ConfigureAwait(false);
+            worker => image is not null && SenseRoute(SenseKind.Image).Described
+                ? AskImageModelAsync(kind, purpose, instructions, text, image, worker)
+                : AskThinkingAsync(purpose, instructions, text, image, worker), token).ConfigureAwait(false);
         return (answer, failure);
     }
 

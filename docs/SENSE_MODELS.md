@@ -185,6 +185,24 @@ Owned by the audio pipeline's pull request; this is its design.
 - **What this PC plays.** The sound digest uses the audio model first, then a
   Thinking pool member that hears, then the CPU sound tagger, as now.
 
+## Helper jobs with a picture
+
+Finding a character's touch zones and measuring its eyes send pictures of the
+character (never your screen) to a model that sees. They are [helper
+jobs](MEMORY.md#helper-jobs-on-the-thinking-pool):
+
+1. A free Thinking pool member that sees takes the job first, as before.
+2. Otherwise, while pictures go to an image model of its own, that model takes
+   the job in place of the Thinking model. The job waits behind the image
+   model's other jobs, at the lowest priority. It may write as much and run as
+   long as on a pool member (4,096 tokens; 3 minutes for touch zones, 5 for
+   the eyes).
+3. Otherwise the Thinking model takes it after any reply, as before.
+
+Companion › Touch (`TouchZonesVision`) names the model that takes the
+pictures, and *Detect zones* and *Measure the eyes* stay on while an image
+model of its own takes them, also with a Thinking model that reads only text.
+
 ## Latency rules
 
 The time from the end of your speech to Martlet's first word must never grow
