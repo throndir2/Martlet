@@ -280,9 +280,8 @@ public partial class MainWindow
         if (CompanionPage is null) return;
         if (Role == DeviceRole.Host)
         {
-            // A host has no Companion page; its routes are still reachable through full Setup.
-            nextSetupJob = JobRole(tab);
-            Setup_Click(this, new RoutedEventArgs());
+            // A host PC doesn't talk, so it has no Companion page and chooses no jobs.
+            ActionText.Text = HostHasNoCompanionText;
             return;
         }
         companionTab = tab;
@@ -459,14 +458,7 @@ public partial class MainWindow
                     new Thickness(0, 0, 0, 0)),
                 Row(PageButton("Open People", () => OpenCompanion(CompanionTab.People), link: true, id: "OpenPeople"))));
 
-        var advanced = PageButton("Advanced setup", () =>
-        {
-            nextSetupJob = role;
-            Setup_Click(this, new RoutedEventArgs());
-        }, link: true, id: "OpenSetup");
-        advanced.HorizontalAlignment = HorizontalAlignment.Left;
-        advanced.Margin = new Thickness(0, 4, 0, 0);
-        page.Children.Add(advanced);
+        if (OldKeysCard(section, role) is { } oldKeys) page.Children.Add(oldKeys);
     }
 
     /// <summary>The voice a route speaks with, in words: ", voice Zira (en-US)", or nothing.</summary>
@@ -1298,7 +1290,7 @@ public partial class MainWindow
     }
 
     /// <summary>Saves a job's route chosen on its Companion tab: the route, then its key (which resets consent), then the user's
-    /// confirmed choice. A key the route no longer uses is set aside (listed for removal in Advanced setup), and a key set aside
+    /// confirmed choice. A key the route no longer uses is set aside (listed under Keys from before), and a key set aside
     /// earlier for the chosen destination is used again, so switching providers never waits on old keys. With
     /// <paramref name="missingKey"/>, a route that ends without a key is refused with that message. Returns whether it saved.
     /// A change still saving goes first (<see cref="ChangeTurns"/>); installs, runs and replies in progress don't hold it up.</summary>

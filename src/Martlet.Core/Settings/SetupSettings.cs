@@ -1081,7 +1081,7 @@ public sealed record SetupSettings : IContract
         var old = settings.Setup!.Routes.SingleOrDefault(item => item.Role == route.Role);
         if (old is not null && settings.Setup.PendingRemovals.Any(item => item.Role == route.Role && SelfHostSetup.IsGateway(item.Scope?.RouteType)))
             ContractRules.Require(old.CredentialScope() == route.CredentialScope(),
-                "Remove this role's detached gateway credential before changing its host, pin or route type.");
+                "Remove this job's old pairing key under Keys from before on its Companion page before changing its computer or route.");
         var updated = settings with
         {
             Setup = settings.Setup! with
@@ -1154,7 +1154,7 @@ public sealed record SetupSettings : IContract
     public static string Describe(AppSettings? settings)
     {
         if (settings?.Setup is not { } setup)
-            return "Setup not started. Open Setup / resume.";
+            return "Setup not started. Choose Thinking, Voice and Listening on the Companion page.";
         var lines = new List<string>
         {
             $"Setup checkpoint: {setup.Checkpoint}.",

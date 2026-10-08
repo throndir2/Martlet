@@ -570,8 +570,9 @@ Advanced ▸  temperature, context length, custom endpoint, stored keys
 
 The sub-stories C2–C4 cover each card.
 
-- **Today**: 8 paths, two of which (*How it thinks*, *Advanced setup*) open
-  the legacy Setup window with tabs Choice › Jobs › Credentials › Review.
+- **Today**: 8 paths. The legacy Setup window, which *How it thinks* and
+  *Advanced setup* opened (tabs Choice › Jobs › Credentials › Review), is
+  removed; keys set aside are listed under *Keys from before* on each job tab.
 
 #### C2. Think on this PC
 
@@ -646,8 +647,7 @@ The sub-stories C2–C4 cover each card.
 - **Done when**: no separate Credentials step; the key is entered next to
   the provider that uses it.
 - **Today**: cloud card *Use OpenRouter* (named for the chosen provider; it
-  was *Save*), or legacy Setup › Jobs › Apply › Credentials › Store/replace key
-  › Save and exit setup.
+  was *Save*). The legacy Setup › Credentials step is removed.
 
 #### C5. Quick-switch model during a conversation
 
@@ -1187,7 +1187,7 @@ option names and in *Details*, never as navigation labels.
 | --- | --- |
 | Welcome tour (3 cards) | Replaced by Welcome › Plan › Terms › Permissions › Setting up (A1/B1) |
 | Setup advisor window | Removed; its logic becomes the *Recommended* preselection (R5) and the A1 plan |
-| Legacy Setup window (Choice, Jobs, Credentials, Review) | Removed; keys are on job tabs, stored/detached keys under Thinking › *Advanced* |
+| Legacy Setup window (Choice, Jobs, Credentials, Review) | Removed (done); keys are on job tabs, and keys set aside are under each job tab's *Keys from before* |
 | Setup section pages (Thinking, Its voice, How it listens, Character) | Become Companion tabs (done, with a Memory tab) |
 | Companion card grid | Removed; Companion is the tab set (done) |
 | Audio setup window | Split into Voice › Speakers and Listening › Microphone |
@@ -1303,7 +1303,7 @@ moves to it. Jobs already running well locally stay local.
 | **API key** | Setup › Credentials, cloud card | **Asked.** Next to the provider, once per provider, reused across jobs and brought along when joining a network. |
 | Route consent checkbox | Setup, cloud card | The terms sheet, once. |
 | *Apply this job's choice*, *Save checkpoint*, *Save and exit setup*, cloud *Save* | Setup, cloud card | Removed; choosing commits (P2). |
-| Store / read / detach / remove key | Setup › Credentials | Thinking › *Advanced* › *Keys*. |
+| Store / read / detach / remove key | Setup › Credentials | Done: the key is pasted on the cloud card; a key the job stops using is listed under the job tab's *Keys from before*, with *Remove*. |
 | Microphone | Audio setup | Default: *Windows default (Headset Mic)*, following Windows when it changes. |
 | Speakers | Audio setup | Default: *Windows default*, following Windows. |
 | Microphone and output tests (gate "qualified") | Audio setup | Optional *Test* buttons; never a gate. |
@@ -1389,7 +1389,7 @@ Each flow below asks for a step Martlet could do itself.
 | 2 | Voice / Listening › This PC | One click per option and one confirmation: Docker (installed when missing) › host service › role › switch run in one run window. Listening picks GPU or CPU in Martlet from the card's free memory and what already runs on it | Selecting *This PC* runs Docker › host service › role › model › test › switch as one chain; Listening uses native whisper.cpp with no Docker (11.6) | `MainWindow.SetupPages.cs:408-420` |
 | 3 | Voice › F5 | Done: no built-in voices; a new list starts with seven starter voices (four cute ones first, then LJ, SLT and BDL; public domain or CMU ARCTIC), the first (cute, high-pitched) is used without a picker, and the Voice tab's *Voices* list plays, switches (*Use*, one click, on every computer) and removes any voice inline (D2). The list, choice and recordings are shared with every paired Martlet computer, so replies name the recording instead of sending it | Keep | `MainWindow.Voices.cs`, `HostSpeech.cs`, `F5SharedVoices.cs`, `SpeakingVoiceLibrary.cs` |
 | 4 | Cloud card | Consent checkbox, key per job, a button named for the provider (*Use OpenRouter*; was *Save*) | Paste key = switch; key reused across jobs (C4) | `MainWindow.SetupPages.cs:540-580` |
-| 5 | Legacy Setup window | Demo preselected; *Apply this job's choice*, credentials tab, *Save checkpoint*, *Save and exit setup* | Removed | `SetupWindow.xaml` |
+| 5 | Legacy Setup window | Removed (done) | Removed | — |
 | 6 | Audio setup | Per-test confirmation; the microphone test gates *Working* (Save removed: picking applies) | Windows default devices, no gate | `AudioSetupWindow.xaml(.cs)` |
 | 7 | Conversation | Done: history and message box only; listening, spoken replies and vision are standing Companion choices with pause toggles in the window | Global talk key; Settings › Privacy | `LiveConversationWindow.xaml(.cs)`, `MainWindow.Talk.cs` |
 | 8 | Character | *Save choices* removed (done: picking saves, a showing character switches, and an own model file joins your shared characters as it is saved); *Activate reviewed avatar*, inspection and analysis permissions, manual mapping remain. Done: Companion › Character's *Your characters* adds a Live2D or VRM model (*Add a character...*), switches (*Use*) and removes characters inline; every added model is copied to every paired Martlet computer that can be the companion | Automatic mapping | `AvatarWindow.xaml(.cs)`, `Audio2FaceAutoMapping.cs`, `MainWindow.Characters.cs`, `SharedCharacterModels.cs`, `CharacterModelLibrary.cs` |

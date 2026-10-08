@@ -12,6 +12,9 @@ Each release's section here is also its notes on GitHub.
 - New in Companion › Thinking pool: **Backup Thinking**. When your Thinking model is slow to start a reply, Martlet can send the same message to a Thinking pool member you picked, and whichever starts answering first gives the reply, so a busy or loading model doesn't keep you waiting. Tick **May answer for the conversation** on the members it may use (ideally running the same model). It's off by default, and a paid cloud member is only asked when you tick it. ([#557](https://github.com/throndir2/Martlet/pull/557))
 - New in Companion › Voice: **Quick sounds while Martlet thinks**. When a reply is slow to start, Martlet first says a quick "Mm," or "Hmm..." in its own voice, and the reply follows it, so you're never left in silence. It never plays when the reply is quick, never twice in one reply and at most once every 20 seconds. It's off by default; the sounds are made once with your voice and kept on this PC, and with a paid cloud voice only when you press **Make quick sounds now**. ([#555](https://github.com/throndir2/Martlet/pull/555))
 
+### Removed
+- The **Advanced setup** link and the old setup window it opened are gone from Companion › Thinking, Voice and Listening, because each page already does everything that window did. API keys Martlet kept after you switched to another provider now show under **Keys from before** on the job's page, where you can remove them. ([#560](https://github.com/throndir2/Martlet/pull/560))
+
 ## [0.54.0] - 2026-10-07
 
 ### Added

@@ -76,6 +76,6 @@ public sealed record SetupStatus : IContract
                 $"{(role.CredentialReferenced ? "credential referenced, vault presence/revocation unknown" : "credential not configured or not required")}; " +
                 $"{(role.ConfigurationEvidence ? "configuration evidence saved, not live readiness" : "configuration evidence missing")}; connection/process not checked by this summary.")) +
             $"{Environment.NewLine}Saved choices do not authorize recording or provider requests; this summary does not start capture/screen/memory. {Audio?.Describe() ?? "Audio qualification NOT RUN."} Price and quota unknown. " +
-            $"Detached key removals pending: {PendingRemovals}. Open Setup / resume; no secret lookup or network request was made.";
+            $"Detached key removals pending: {PendingRemovals}. Remove them under Keys from before on Companion › Thinking, Voice or Listening; no secret lookup or network request was made.";
     }
 }

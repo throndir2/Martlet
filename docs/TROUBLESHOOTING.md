@@ -274,10 +274,7 @@ issue to Covecube.
 **Configuration backups are NOT support bundles.** The support ZIP described
 below contains a deliberately lossy, redacted projection and cannot restore
 settings. Use **Configuration backup / restore (local only)** from the main
-window, or **Local configuration backup / restore** in Setup / resume
-(including Setup opened from real conversation). Each path uses the same
-app-lifetime recovery owner and shared effect slot; nested recovery is owned
-by the active Setup dialog, not a disabled parent window.
+window. It uses the app-lifetime recovery owner and shared effect slot.
 Opening this screen is passive: no backup read/scan/create, vault, diagnostics,
 device, network or upload action. Saved settings and device identifiers can be
 personal. Configuration envelopes are LOCAL and **NOT encrypted or sanitized**.
@@ -314,8 +311,9 @@ A missing,
 foreign-profile, corrupt or future-version destination is refused; this is not
 portable profile import or corrupt-store repair. Preserve originals and use
 compatible manual recovery, not a reset or an older executable. If current
-active keys plus pending removals exceed sixteen, explicitly clean up selected
-detached keys in Setup before previewing again. No automatic vault deletion.
+active keys plus pending removals exceed sixteen, remove some keys under *Keys
+from before* on Companion › Thinking, Voice or Listening before previewing
+again. No automatic vault deletion.
 
 Every replacement first preserves exact current raw bytes in a new
 `settings.recovery.<uuid>.bak` beside settings. Prior recovery and historical
@@ -344,7 +342,7 @@ PASSED. No old executable is launched against a new schema.
 ## Local support workflow
 
 **Internal functionality, not a support service or a passed release gate.**
-Open **Troubleshooting** from the main window, Setup / resume, Audio setup or
+Open **Troubleshooting** from the main window, Audio setup or
 real conversation. It is available before a profile exists and when settings
 are malformed. Opening the window only displays existing shared report/state
 observations: no journal start/read, settings write, directory sweep, vault

@@ -45,10 +45,11 @@ model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
 
 ## First configured action
 
-1. In **Setup / resume**, choose the cloud API profile. Apply explicit
-   supported model IDs, store each role's key in its scoped Windows vault target,
-   then review that role's destination choice again (changing a key invalidates
-   the choice). Save the checkpoint. Do not put keys in model fields or files.
+1. On Companion › **Thinking**, **Voice** and **Listening**, choose *A cloud
+   provider* and a supported model ID, paste the provider's key next to it (it
+   goes to its scoped Windows vault target), tick the consent box and press the
+   page's *Use* button (changing a key invalidates the choice until you confirm
+   it again). Do not put keys in model fields or files.
 2. The OpenAI LLM route supports `gpt-4.1-mini-2025-04-14` and
    `gpt-4.1-2025-04-14`. Alternatively the LLM can use OpenRouter, NVIDIA Build
    or any OpenAI-compatible Chat Completions endpoint with the exact model ID

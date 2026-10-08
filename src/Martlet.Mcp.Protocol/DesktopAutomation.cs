@@ -12,9 +12,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
     {
         // Martlet for Linux and macOS (Martlet.Companion) on a Windows dev run: its three tabs (passive navigation).
         "TalkTab", "SettingsTab", "ComputerTab",
-        "OpenTroubleshooting", "OpenSetup", "OpenAudioSetup", "OpenLiveConversation",
+        "OpenTroubleshooting", "OpenAudioSetup", "OpenLiveConversation",
         "OpenConfigurationRecovery", "RefreshDiagnostics",
-        "SetupClose", "AudioClose", "CloseLive", "SupportClose",
+        "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
         "NavHome", "NavDevices", "NavCompanion", "NavCreations", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
         // The welcome wizard: Look again only asks the local network which Martlet desktops answer (as Add a computer's Find
@@ -198,7 +198,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Discord's voice line: where Martlet is in Discord voice, counts of speakers heard, utterances transcribed
         // and replies spoken (never what was said), whether DAVE is on, whether libdave loaded, and the last problem.
         "DiscordVoiceStatus",
-        "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "LiveContext", "AudioResult", "SetupActivity", "RecoveryResult", "SupportResult",
+        "LiveStatus", "LiveMic", "LiveVision", "LiveVisionStatus", "LiveContext", "AudioResult", "RecoveryResult", "SupportResult",
         // Home's Start talking reads "Show conversation" while a conversation runs (the talk window open, or hidden while Martlet
         // listens or watches); Home's Start listening / Stop listening button and its listening indicator ("Listening. Just start
         // talking.", "Hearing you…", "Not listening" or why Martlet can't listen), and its Start watching / Stop watching button
@@ -281,7 +281,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // the reason code is the outsideAccessBlockedReason. Its "Set up sign-in first" button (OutsideAccessSetUpSignIn) only opens
         // the sign-in window, which changes nothing until its own buttons are used.
         "OutsideAccessBlockedReason",
-        "VisionStatus", "VisionDisclosure", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "SetupProviderHint", "F5VoicesStatus",
+        "VisionStatus", "VisionDisclosure", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "F5VoicesStatus",
         // Companion › Vision's Now line: whether vision is on (the default) and what Martlet looks at (your whole screen by
         // default, your active window, or a camera's name or host without its path or password) and how often it comments.
         // The VisionSource-<kind> choices are radio buttons (ui_snapshot's selected) and VisionToggle's label says what it does
@@ -595,6 +595,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // (model tag, its size when Martlet knows it and what Thinking keeps using until it's ready). ConfirmationYes downloads
         // it, so it needs --allow-ui-effects.
         "LocalModelDownloadQuestion",
+        // Companion › Thinking, Voice and Listening › Keys from before: the question before a key set aside is removed for good
+        // (which key, by provider or paired computer; never the key). ConfirmationYes removes it, so it needs --allow-ui-effects.
+        "OldKeyRemoveQuestion",
         // Companion › Deep thinking: the question before a Deep thinking model joins a Thinking model on the same graphics card
         // (on a paired computer's Add Deep thinking or This PC's Use Ollama on this PC): the computer, Thinking's model tag and
         // the one-graphics-card-for-each-Thinking-model advice. ConfirmationYes adds or uses it, so it needs --allow-ui-effects.
@@ -740,7 +743,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // "WorkSharingOwnFirst-speaking"), each Use box ("WorkSharingUse-speaking-diva-host") and Up/Down buttons
         // ("WorkSharingUp-speaking-diva-host"). Changing any of them saves work-sharing.json and shares it with your other
         // computers, so it needs --allow-ui-effects. Host IDs, device IDs and fixed text only.
-        "WorkSharing"];
+        "WorkSharing",
+        // Companion › Thinking, Voice and Listening › Keys from before: each key Martlet set aside when the job stopped using it
+        // ("SetupOldKey-Thinking-0" reads "Your OpenRouter key" or "The pairing key for diva-host"; never the key) and its
+        // Remove button's name ("SetupOldKeyRemove-Thinking-0" reads "Remove your OpenRouter key"). Remove deletes the key from
+        // Windows Credential Manager after OldKeyRemoveQuestion, so clicking it needs --allow-ui-effects.
+        "SetupOldKey"];
     private int? processId;
 
     private static bool IsSafeClick(string id) =>

@@ -320,16 +320,15 @@ public sealed class McpServerTests(ITestOutputHelper output)
             Assert.Throws<InvalidOperationException>(() => DesktopAutomation.WindowForProcess(Environment.ProcessId, mainHandle));
         });
 
-        await Task.Run(() => automation.ClickAsync("NavCompanion"));
-        await Task.Delay(300);
-        await Task.Run(() => automation.ClickAsync("OpenSetup"));
+        // A modal workflow window: Home's setup advisor opens and closes with safe clicks only.
+        await Task.Run(() => automation.ClickAsync("OpenSetupAdvisor"));
         var snapshot = await WaitForWindowCount(automation, 2);
         Assert.Single(snapshot.GetProperty("controls").EnumerateArray(),
-            control => control.GetProperty("id").GetString() == "SetupClose");
-        var setupHandle = await Task.Run(() => (nint)DesktopAutomation.WindowForProcess(pid, mainHandle)
-            .FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "SetupWindow"))
+            control => control.GetProperty("id").GetString() == "AdvisorClose");
+        var advisorHandle = await Task.Run(() => (nint)DesktopAutomation.WindowForProcess(pid, mainHandle)
+            .FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "SetupAdvisorWindow"))
             .Current.NativeWindowHandle);
-        Assert.NotEqual(0, setupHandle);
+        Assert.NotEqual(0, advisorHandle);
 
         Assert.True(ShowWindowAsync(mainHandle, 0));
         await WaitForVisibility(mainHandle, false);
@@ -341,8 +340,8 @@ public sealed class McpServerTests(ITestOutputHelper output)
         });
         Assert.True(ShowWindowAsync(mainHandle, 4));
         await WaitForVisibility(mainHandle, true);
-        await Task.Run(() => automation.ClickAsync("SetupClose"));
-        await WaitForVisibility(setupHandle, false);
+        await Task.Run(() => automation.ClickAsync("AdvisorClose"));
+        await WaitForVisibility(advisorHandle, false);
         await WaitForWindowCount(automation, 1);
 
         process.Kill();
