@@ -3817,7 +3817,12 @@ second companion PC; no Thinking pool change); make before break; a host with
 two NVIDIA cards (Thinking and Deep thinking pinned to cards of their own); a
 Windows host whose voice shares its card (the voice moves to a card of its
 own); a crowded network (no card over its capacity); Deep thinking beside the
-voice (it moves to the card no live job uses); heavy roles on a companion PC
+voice (it moves to the card no live job uses); a companion PC that runs
+Singing and a Listening pool place while both hosts are gone for 155 minutes
+(needed jobs first: with no provider key, Thinking runs on its own card, the
+voice and lip-sync join it, and Singing goes as Required because it is
+optional; with a saved free key on an 8 GB card, Thinking uses the free hosted
+model and the voice and lip-sync get the card); heavy roles on a companion PC
 (they move to the host, Improvement); Thinking on a companion PC's card with
 only a processor host (it stays: no added latency); hosted Thinking that the
 owner chose (it stays, unless everything is kept local); a host left out of

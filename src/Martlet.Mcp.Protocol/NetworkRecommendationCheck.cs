@@ -25,7 +25,7 @@ internal static class NetworkRecommendationCheck
             HasHostService = hostService
         };
 
-    private static HostedRolePlacement Role(string kind, string model, int? gpu = null) => new(kind, model, gpu);
+    private static HostedRolePlacement Role(string kind, string? model = null, int? gpu = null) => new(kind, model, gpu);
 
     private static NetworkSetupRequest Network(params NetworkMachine[] machines) => new(machines) { VoiceEngine = "chatterbox" };
 
@@ -147,6 +147,40 @@ internal static class NetworkRecommendationCheck
         });
         Step("5", "Live lane first: Deep thinking moves to the card no live job uses",
             lanes.Target.Machine("gpu-box")?.Roles.FirstOrDefault(r => r.Kind == "deep-thinking")?.GpuIndex == 1, Report(lanes));
+
+        // Rule 5: needed jobs before optional extras. One companion PC runs Singing and a Listening pool place; both hosts
+        // have been away for 155 minutes (the owner's report). No provider key: PreferLocal, as Desktop plans it.
+        NetworkSetupRequest Stranded(double cardGb) => Network(Companion("desk-1", true, Nvidia(cardGb, $"RTX {cardGb} GB")) with
+        {
+            Roles = [Role("singing", "ace-step-v15-soulx-svc"), Role("stt", "large-v3-turbo")]
+        }, Host("gpu-box", Nvidia(16, "RTX 4080")) with
+        {
+            Online = false, OfflineFor = TimeSpan.FromMinutes(155),
+            Roles = [Role("ollama", "gemma4:e2b"), Role("chatterbox", "chatterbox-turbo"), Role("audio2face")]
+        }, Host("ear-box", Nvidia(12, "RTX 3060")) with
+        {
+            Online = false, OfflineFor = TimeSpan.FromMinutes(155), Roles = [Role("stt", "large-v3-turbo")]
+        }) with
+        {
+            CurrentJobs =
+            [
+                new JobPlan(ClusterJobs.Thinking, "gpu-box", OptionId: "gemma4:e2b"),
+                new JobPlan(ClusterJobs.Speaking, "gpu-box", OptionId: "chatterbox-turbo"),
+                new JobPlan(ClusterJobs.Listening, "ear-box", OptionId: "whisper-large-v3-turbo-cuda") { Pool = ["desk-1"] },
+                new JobPlan(ClusterJobs.LipSync, "gpu-box", OptionId: "audio2face-3d")
+            ],
+            Preference = HostingPreference.PreferLocal
+        };
+        var stranded = NetworkRecommender.Recommend(Stranded(12));
+        Step("5", "Needed jobs first: a companion PC whose hosts are gone thinks on its own card; the voice and lip-sync join it; Singing (optional) yields",
+            stranded.Target.Job(ClusterJobs.Thinking) is { HostId: null, OptionId: "gemma4:e2b" } &&
+            stranded.Target.Job(ClusterJobs.Speaking)?.HostId == "desk-1" && stranded.Target.Job(ClusterJobs.LipSync)?.HostId == "desk-1" &&
+            stranded.Changes.Any(c => c.Kind == SetupChangeKind.RemoveRole && c.RoleKind == "singing" && c.Benefit == SetupChangeBenefit.Required) &&
+            WithinCapacity(stranded), Report(stranded));
+        var keyed = NetworkRecommender.Recommend(Stranded(8) with { Preference = HostingPreference.Balanced, ConfiguredProviders = ["nvidia-build"] });
+        Step("5, 8", "A saved free provider key: on a smaller card Thinking uses the free hosted model, so the voice and lip-sync get the card",
+            keyed.Target.Job(ClusterJobs.Thinking)?.OptionId == "hosted:nvidia-build" && keyed.Target.Job(ClusterJobs.Speaking)?.HostId == "desk-1" &&
+            keyed.Target.Job(ClusterJobs.LipSync)?.HostId == "desk-1" && WithinCapacity(keyed), Report(keyed));
 
         // Rule 6: heavy roles on a companion PC move to a host.
         var heavy = Network(Companion("desk-1", true, Nvidia(12, "RTX 4070")) with
