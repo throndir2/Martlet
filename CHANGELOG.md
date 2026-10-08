@@ -17,7 +17,7 @@ Each release's section here is also its notes on GitHub.
 - **Show character** no longer says *Couldn't show the character: A task was canceled.* when the Martlet host you picked for lip-sync doesn't answer. The character shows as before, Martlet tells you the host isn't ready, and the mouth follows Martlet's voice until the host answers again. ([#561](https://github.com/throndir2/Martlet/pull/561))
 
 ### Removed
-- The **Advanced setup** link and the old setup window it opened are gone from Companion › Thinking, Voice and Listening, because each page already does everything that window did. API keys Martlet kept after you switched to another provider now show under **Keys from before** on the job's page, where you can remove them. ([#560](https://github.com/throndir2/Martlet/pull/560))
+- The **Advanced setup** link and the old setup window it opened are gone from Companion › Thinking, Voice and Listening, because each page already does everything that window did. API keys Martlet kept after you switched to another provider now show under **Keys from before** on the job's page, where you can remove them. ([#563](https://github.com/throndir2/Martlet/pull/563))
 
 ## [0.54.0] - 2026-10-07
 
