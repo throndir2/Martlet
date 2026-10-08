@@ -421,11 +421,13 @@ public partial class MainWindow
                 "Install the WebView2 Runtime to show the character.",
                 [new("install", "Install WebView2", () => InstallPrerequisiteAsync(Prerequisites.WebView2).Forget())]);
 
-        // Vision: on, but with nothing it can use.
+        // Vision: on, but with nothing it can use (Thinking is text-only and no image model of its own sees).
         var talk = Talk;
-        if (talk.Watch && llm is not null && LiveConversationConfiguration.Vision(llm, SavedModelAbilities()) == VisionSupport.Unsupported)
-            Add("vision", HealthLevel.Warning, "Martlet can't see with your thinking model",
-                LiveConversationConfiguration.VisionAdvice(llm, SavedModelAbilities()), [Open(CompanionTab.Vision, "Open vision")]);
+        var abilities = SavedModelAbilities();
+        var image = llm is null ? null : SavedImageRoute(llm, abilities);
+        if (talk.Watch && llm is not null && image is { Path: Martlet.Conversation.SensePath.None })
+            Add("vision", HealthLevel.Warning, image.Model is null ? "Martlet can't see with your thinking model" : "Martlet can't see with your image model",
+                LiveConversationConfiguration.VisionAdvice(llm, abilities, image), [Open(CompanionTab.Vision, "Open vision")]);
         else if (talk.Watch && VisionSource(talk) is { IsScreen: false, Id.Length: 0 })
             Add("vision-source", HealthLevel.Warning, "Vision has nothing to look at",
                 "Watching is on with a camera, but no camera is chosen.", [Open(CompanionTab.Vision, "Choose a camera")]);

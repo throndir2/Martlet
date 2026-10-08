@@ -50,9 +50,10 @@ public static class MomentTurn
     /// 2 lines this PC played, the picture (a notification), 1 finished job and 2 context notes". <paramref name="contextNotes"/>
     /// counts the context board's notes the request carried (<see cref="ContextBoard"/>), <paramref name="said"/> the things
     /// Martlet said lately that went in its notes (<see cref="SaidLately"/>), and <paramref name="voice"/> says the audio model's
-    /// words about how the user sounded went with it.</summary>
+    /// words about how the user sounded went with it. <paramref name="described"/>: in place of the picture, the reply took the
+    /// image model's description of it (docs/SENSE_MODELS.md).</summary>
     public static string Describe(bool user, int pcLines, bool picture, string? attention, int jobs, bool report = false, int touches = 0,
-        int contextNotes = 0, int said = 0, bool voice = false)
+        int contextNotes = 0, int said = 0, bool voice = false, bool described = false)
     {
         var parts = new List<string>();
         if (user) parts.Add("your words");
@@ -60,6 +61,9 @@ public static class MomentTurn
         if (touches > 0) parts.Add(touches == 1 ? "1 touch" : $"{touches} touches");
         if (pcLines > 0) parts.Add(pcLines == 1 ? "1 line this PC played" : $"{pcLines} lines this PC played");
         if (picture) parts.Add(attention is { Length: > 0 } about ? $"the picture ({about})" : "the picture");
+        else if (described)
+            parts.Add(attention is { Length: > 0 } about ? $"the image model's description of the picture ({about})"
+                : "the image model's description of the picture");
         else if (attention is { Length: > 0 } noticed) parts.Add(noticed);
         if (jobs > 0) parts.Add(jobs == 1 ? "1 finished job" : $"{jobs} finished jobs");
         else if (report) parts.Add("finished work");

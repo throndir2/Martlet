@@ -2244,6 +2244,54 @@ public sealed class LiveConversationTests
         finally { window.End(); }
     });
 
+    [Fact]
+    public Task TypingWhileMartletWatchesHasTheImageModelDescribeTheNewestPictureForTheReply() => DispatcherTest(async () =>
+    {
+        // NOT AI: the fixture's Chat Completions handler stands in for an image model of its own (docs/SENSE_MODELS.md).
+        await using var fixture = await LiveFixture.Create();
+        fixture.Controller.SenseModels = new()
+        {
+            Image = new()
+            {
+                Source = SenseSource.Own,
+                Own = new() { Place = DeepThinkingPlace.Endpoint, Origin = "https://10.77.0.20:8444/v1", ModelId = "qwen2.5vl:7b" }
+            }
+        };
+        fixture.Chat.Respond = (_, _) => Task.FromResult(TextRecordingHandler.Sse(
+            "data: {\"id\":\"chat-fixture\",\"object\":\"chat.completion.chunk\",\"model\":\"fixture\",\"choices\":[{\"index\":0,\"delta\":" +
+            "{\"role\":\"assistant\",\"content\":\"A video player, full screen\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"));
+        fixture.Answer("[pass]");
+        var glancer = new FrameGlancer();
+        var window = fixture.Open(new TalkPreferences(HandsFree: false, SpeakReplies: false, Watch: true,
+            ScreenScope: (int)WatchKind.ActiveWindow), glancer);
+        try
+        {
+            await Loaded(window);
+            Click(window, "VisionChip");
+            await fixture.Advance(() => glancer.Captures > 0);
+            // Typing counts as talking to Martlet: the image model describes the newest picture before the message goes.
+            Control<TextBox>(window, "InputText").Text = "What's this?";
+            await fixture.Advance(() => fixture.Chat.Calls >= 1 && fixture.Controller.PictureNow.Age is not null);
+            await Until(() => AutomationProperties.GetHelpText(Control<TextBlock>(window, "VisionStatusText"))
+                .Contains("Image model: 10.77.0.20 (qwen2.5vl:7b) describes the pictures for Thinking", StringComparison.Ordinal));
+            fixture.Answer("That's a video player.");
+            Click(window, "SendButton");
+            await fixture.Finish();
+            await Until(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text == "That's a video player."));
+            using (var body = JsonDocument.Parse(fixture.Llm.Body))
+            {
+                var current = ResponsesCurrentUserText(body);
+                Assert.StartsWith("What's this?", current);
+                Assert.Contains("What the user sees now (the user's active window), as Martlet's image model describes it:\nA video player, full screen",
+                    current);
+                Assert.DoesNotContain("input_image", body.RootElement.GetRawText());
+            }
+            Assert.Contains(window.Messages, m => m.Text == "What's this?" &&
+                m.Note.Contains("saw your active window through the image model's description", StringComparison.Ordinal));
+        }
+        finally { window.End(); }
+    });
+
     /// <summary>Lets the window's timer run while the clock passes a few capture ticks.</summary>
     private static async Task Ticks(LiveFixture fixture)
     {

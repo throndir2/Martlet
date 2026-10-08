@@ -740,6 +740,22 @@ internal sealed class LiveConversationConfiguration
     /// <summary>Whether the Thinking model can see, and exactly what to change when it cannot.</summary>
     internal string VisionAdvice() => VisionAdvice(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), Abilities);
 
+    /// <summary>Whether Martlet can see with this setup, for where pictures go now (<paramref name="image"/>, docs/SENSE_MODELS.md).</summary>
+    internal string VisionAdvice(SenseRoute? image) => VisionAdvice(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), Abilities, image);
+
+    /// <summary>As <see cref="VisionAdvice(SetupRoute?, ModelAbilities?)"/>, for where pictures go now (<paramref name="image"/>,
+    /// SenseRouting): the Thinking model's own advice while it takes the pictures; with an image model of its own, which model
+    /// sees them and where its words go, or why Martlet can't see.</summary>
+    internal static string VisionAdvice(SetupRoute? route, ModelAbilities? abilities, SenseRoute? image)
+    {
+        if (route is null || image is not { Model: { } own }) return VisionAdvice(route, abilities);
+        if (image.Path != SensePath.Described) return image.Why;
+        var origin = own.Place == DeepThinkingPlace.Host ? own.HostOrigin : own.Origin;
+        var found = abilities?.Find(origin, own.ModelId) is { Sees: not null } ability ? $" ({Said(ability)})" : "";
+        return $"The image model, {own.Describe()}, sees the pictures{found}: pictures go to it, and only its words go to " +
+            $"{LlmDestinationName(route)}." + (image.Unknown ? " Martlet can't tell whether it sees; it tries, and Test vision finds out." : "");
+    }
+
     internal static string VisionAdvice(SetupRoute? route, ModelAbilities? abilities = null)
     {
         if (route is null) return "Set up Thinking so Martlet can see.";
@@ -900,13 +916,43 @@ internal sealed class LiveConversationConfiguration
     /// <summary>Vision being on in Companion never starts watching by itself.</summary>
     private const string WhenItWatches = "Martlet only looks after you press Start watching (on Home, in the talk window or from the " +
         "notification-area icon). Stop watching, Stop, Esc, Pause, locking Windows or ending the conversation stops it.";
+
+    /// <summary>As <see cref="ScreenDisclosure(SetupRoute?, ChattinessChoice, WatchSource)"/>, for where pictures go now
+    /// (<paramref name="image"/>): with an image model of its own (the Described path), what goes to it and when, and that only
+    /// its words go to Thinking (or its fallback). Otherwise the text of the Thinking model's own route.</summary>
+    internal static string ScreenDisclosure(SetupRoute? route, ChattinessChoice chattiness, WatchSource source, SenseRoute? image)
+    {
+        if (image is not { Path: SensePath.Described, Model: { } own }) return ScreenDisclosure(route, chattiness, source);
+        var tuning = ScreenCommentaryPacer.AtMost(chattiness);
+        var timing = new PictureTiming();
+        var thinking = route is null ? "the Thinking model" : LlmDestinationName(route);
+        var what = source.Kind switch
+        {
+            WatchKind.ActiveScreen => "your whole screen (every monitor, the taskbar and pop-up notifications)",
+            WatchKind.ActiveWindow => "your active window",
+            _ => source.Label
+        };
+        return $"While Martlet watches, it checks {what} every {ScreenCommentaryPacer.Tick.TotalSeconds:0} seconds. Pictures go to your " +
+            $"image model, {own.Describe()}, which describes them in words: up to {tuning.LooksPerHour} looks per hour, the newest " +
+            $"picture while you talk or type (at most one every {timing.TalkEvery.TotalSeconds:0} seconds), and a changed picture at most " +
+            $"every {timing.ChangeEvery.TotalSeconds:0} seconds while you talk with Martlet. With each picture it gets " +
+            (source.IsScreen ? "the window title, the name of the program in front and " : "") +
+            $"the last few lines of your conversation. Only its words go to {thinking} (or to the fallback for Thinking, if Thinking " +
+            "fails), and a reply never waits for them. " +
+            (source.Kind == WatchKind.Camera ? "The camera light may turn on. " : "") +
+            (source.IsScreen ? "Martlet greys out its own windows, password managers and private windows, and skips minimized windows and protected video. "
+                : "Anyone in view may be seen; tell them. ") +
+            "Pictures and their descriptions are never saved or added to Memory. Provider requests may use quota or cost money. " +
+            (source.Kind == WatchKind.Url ? "Passwords in camera addresses are never saved. " : "") + WhenItWatches;
+    }
     /// <summary>A screen glance's or camera look's instructions: the look's prompt, what you saw (the [seen: ...] tag the look
-    /// ends with, <see cref="SeenTags"/>), then the chattiness line, or, while Martlet
+    /// ends with, <see cref="SeenTags"/>; with <paramref name="described"/>, Pictures as words instead, since the image model
+    /// describes the picture: docs/SENSE_MODELS.md), then the chattiness line, or, while Martlet
     /// decides how chatty it is (<paramref name="decides"/>), what the levels are and how to switch them
     /// (<see cref="ChattinessDecides"/>), the same at every level so the instructions stay the same when it switches; the level
     /// itself goes in the notes (<see cref="ChattinessNote"/>).</summary>
     internal static string? CommentaryInstructions(Chattiness chattiness, bool camera = false, PromptSettings? prompts = null,
-        bool decides = false)
+        bool decides = false, bool described = false)
     {
         var silent = ("silent", SilentReply);
         var look = PromptSettings.Fill(prompts, camera ? PromptCatalog.CommentaryCamera : PromptCatalog.CommentaryScreen, silent);
@@ -916,7 +962,8 @@ internal sealed class LiveConversationConfiguration
             Chattiness.Chatty => PromptCatalog.ChattinessChatty,
             _ => PromptCatalog.ChattinessNormal
         }, silent);
-        var parts = new[] { look, SeenTags.Instructions(prompts, SilentReply), mood }.Where(part => part is not null).ToArray();
+        var parts = new[] { look, described ? PictureDescriptions.Instructions(prompts) : SeenTags.Instructions(prompts, SilentReply), mood }
+            .Where(part => part is not null).ToArray();
         return parts.Length == 0 ? null : string.Join("\n", parts);
     }
 

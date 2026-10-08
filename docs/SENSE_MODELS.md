@@ -154,19 +154,116 @@ This is the design that the image and audio pipelines follow.
 
 ## Pictures: the image model
 
-Owned by the image pipeline's pull request; this is its design.
+Built by the image pipeline's pull request. With an image model of its own
+(the Described path), Thinking never gets a picture: the image model puts
+each picture into words, and Thinking gets the words.
 
-- **Replies.** When the image path is Described, no picture goes to Thinking.
-  The image model describes the newest picture ahead of time: when you start
-  to speak and when the watched picture changes. A reply takes the newest
-  description of the picture it would have sent, and never waits for one.
-- **Looks.** A screen glance or a camera look has two steps: the image model
-  describes the screenshot, then Thinking gets the glance message with the
-  description. Thinking decides whether to say something, as now.
-- **Screen summary over time.** It uses the image model first, then the
-  Thinking pool, as now.
-- **Can't see.** Vision works when the image path is Thinking or Described.
-  Companion and the talk window say *Can't see* only for None.
+**When it describes.** While Martlet watches, the talk window gives each
+screenshot a *picture version*. The version stays the same while nothing
+changes on the picture, and changes when it changes enough (the glancer's
+change score is 0.01 or more) or shows another window, program, full-screen
+state or source. The image model describes the newest picture ahead of time:
+
+1. While you talk or type: always listening hears you, you press the talk
+   button, you type, or something you said or typed waits for a reply. At
+   most one new description every 4 seconds.
+2. When a look is due, and the picture Martlet keeps of something that wants
+   your attention.
+3. When the picture changed, at most one every 15 seconds, and only while
+   you talked with Martlet in the last 2 minutes. Nothing is described while
+   you play or watch alone.
+
+All picture jobs use one key (`picture`) on the image model's line, so only
+the newest picture waits. After a failed description, nothing new starts for
+5 seconds, and the same picture isn't asked for again for 30 seconds.
+
+**What the image model gets.** Companion › Prompts › *Image model: describe
+the picture* (the same every time), the picture, and a message: what the
+picture shows, the program in front and the window's title (a screen only),
+and the last lines of the conversation (at most 6 messages, 200 characters
+each and 1,200 in all; seen tags removed, `[pass]` left out). It answers with
+one summary line, then details, in at most 300 tokens. Martlet keeps at most
+1,200 characters of it.
+
+**Replies.**
+
+1. When a reply's request is built, the reply takes a description only if one
+   is ready for the picture it would have sent: the same source and the same
+   window (title and program), and either nothing changed on the picture since
+   the described screenshot, or that screenshot is at most 10 seconds old
+   (the freshness rule for a picture that goes with a message). It never takes
+   one older than 60 seconds. A look at something that wants your attention
+   needs the exact picture.
+2. The description goes in the notes sent with that request only (*What the
+   image model saw*), after the *Active app with your message* note, which
+   names the window the description was made of.
+3. While the path is Described, every reply's instructions carry *Pictures as
+   words*, with or without a description, so prompt caches keep them. The
+   reply isn't told *Screen with your message* or *What you saw*, and it gets
+   no `[seen: ...]` tag.
+4. The conversation keeps `[Screen] With this message you saw <where>:
+   <summary>.`, never the note.
+5. Without a ready description, the reply goes without the picture. Your
+   message's bubble says so: *The image model's description of your whole
+   screen wasn't ready, so Martlet answered without it.* With one, it says
+   *Martlet saw your whole screen through the image model's description.*
+
+**Looks.** A screen glance or camera look has two stages:
+
+1. The image model describes the look's own picture. A description of that
+   exact picture is used again, and one being made of it is awaited.
+2. Thinking gets the glance message with the description (and the text read
+   on the screen, last), no picture, no seen tag and no look tags: without the
+   picture, Thinking can't say where the character should look, so the
+   character's eyes follow what changes on screen. The conversation keeps
+   `[Screen] You looked at <where>: <summary>.`
+
+When the image model can't describe the picture, the look ends without asking
+Thinking, and the next look waits a while, as for a busy provider. When the
+model refuses the picture, Martlet remembers that it can't see, and watching
+stops with what to change. Talking or typing stops a look in its first stage
+as it stops any look; a description being made goes on for the reply.
+
+**Screen summary over time.** While the path is Described, the summary job
+goes to the image model's line first, with the lowest priority (key
+`screen-summary`), so the next reply's picture goes first. On the
+conversation's own computer and graphics card it starts only while the live
+floor is Idle. Otherwise, or when no image model takes it, the Thinking pool
+makes it, as before.
+
+**The conversation comes first.** On the conversation's computer and graphics
+card, the foundation's hold stops a description when a reply starts and
+starts none until the reply's voice is made ([Latency rules](#latency-rules)).
+A stopped description leaves nothing for that reply, and no back-off follows.
+
+**Can't see.** Vision works when the path is Thinking or Described. Companion
+› Vision (`VisionStatus`, `VisionDisclosure`), Home's warning (*Martlet can't
+see with your image model* or *... with your thinking model*), the talk
+window's *Can't see* and `commentary.vision_unsupported` follow the path and
+apply only to None. An image model that can't see never sends the pictures to
+Thinking instead.
+
+**Privacy.** Pictures go to the image model only while vision is on and you
+pressed Start watching. Martlet's own windows, password managers and private
+windows are greyed out or skipped, as for every look. The image model is told
+never to copy private details and to say only who or which app a notification
+is from; Thinking is told never to read out private details. Descriptions are
+kept in memory only (the newest three), go when the conversation is cleared,
+paused or locked and when watching stops, and never go to logs or status
+files.
+
+**How to check it.** The desktop log says `Image model: described your whole
+screen in 1.4 s (...)` and `Picture path: described (...)` with times only.
+`image-model-status.json` counts described replies, replies that went without,
+looks and descriptions. MCP's `image_model_check` reads both and rehearses the
+pipeline against fixture endpoints ([MCP](MCP.md#image-and-audio-models)).
+Code: `PictureDescriptions.cs` (shared with MCP), `LiveConversationController.Pictures.cs`,
+`LiveConversationWindow.Pictures.cs` and `ImageModelScreenDigestThinker`
+(`PoolScreenDigestThinker.cs`). Tests: `ImageModelPipelineTests`
+(Martlet.Desktop.Tests).
+
+NOT RUN in the change that built it: a real image model and a real screen
+capture in the talk window; fixture endpoints stood in.
 
 ## Recordings: the audio model
 

@@ -59,6 +59,9 @@ public sealed class MomentTurnTests
             MomentTurn.Describe(true, 2, true, "a notification", 1));
         Assert.Equal("1 line this PC played and 3 finished jobs", MomentTurn.Describe(false, 1, false, null, 3));
         Assert.Equal("the picture and finished work", MomentTurn.Describe(false, 0, true, null, 0, report: true));
+        // With an image model of its own, the reply takes its description in place of the picture.
+        Assert.Equal("your words and the image model's description of the picture (a notification)",
+            MomentTurn.Describe(true, 0, false, "a notification", 0, described: true));
         Assert.Equal("nothing", MomentTurn.Describe(false, 0, false, null, 0));
     }
 }

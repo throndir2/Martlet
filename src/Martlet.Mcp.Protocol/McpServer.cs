@@ -1731,6 +1731,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "waiting, priorities, a stale job dropped, refusals, failures, timeouts, the kind check, one lane for one model used " +
             "for both kinds, and the conversation first (a job waits while a reply holds the model's hardware, a running job is " +
             "stopped when a reply starts, a job the hold outlasts is dropped). In-process; reads nothing.", new { }),
+        Tool("image_model_check", "The image model (docs/SENSE_MODELS.md, Pictures: the image model) from a data directory: where " +
+            "pictures go now (sense-models.json, the Thinking route and model-abilities.json through the production SenseRouting, or " +
+            "an image model of its own given as imageOrigin and imageModel), the state of its three prompts, the desktop's " +
+            "image-model-status.json (described replies and replies that went without, looks, the newest description's age and time; " +
+            "never a description) and the newest \"Picture path:\" and \"Image model:\" log lines. Then a rehearsal with the " +
+            "production SenseLanes, PictureDescriptions, prompts and Chat Completions adapter against two fixture endpoints on " +
+            "127.0.0.1 (the image model and Thinking; canned words, NOT AI) and synthetic screenshots (no screen capture): a " +
+            "description made ahead of time when you start to talk, a described reply (no picture to Thinking, the note and the " +
+            "fixed Pictures as words instruction, no seen tag, the kept [Screen] line), a reply that doesn't wait while the image " +
+            "model is still describing a changed picture (delayMs, default 1500), and a look in two stages (the description of the " +
+            "same picture used again, then a new picture described first). Reads no credentials; contacts only its own fixtures.", new
+        {
+            dataDirectory = new { type = "string" },
+            imageOrigin = new { type = "string" },
+            imageModel = new { type = "string" },
+            delayMs = new { type = "integer" }
+        }),
         Tool("audio_model_check", "Rehearse Companion > Listening > Audio model (docs/SENSE_MODELS.md, Recordings: the audio model) " +
             "with the production pieces against fixture Chat Completions endpoints on 127.0.0.1 (canned answers, NOT AI): where " +
             "recordings go for the audio model's choices (SenseRouting: an audio model of its own means Thinking never gets a " +
@@ -2203,6 +2220,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "thinking_pool_check" => await ThinkingPoolCheck.RunAsync(cancellation),
                 "sense_models_status" => await SenseModelsCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "sense_models_check" => await SenseModelsCheck.RunAsync(cancellation),
+                "image_model_check" => await ImageModelCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "imageOrigin"),
+                    OptionalString(arguments, "imageModel"), OptionalInt(arguments, "delayMs"), cancellation),
                 "audio_model_check" => await AudioModelCheck.RunAsync(OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments),
                     cancellation),
                 "backup_thinking_check" => await BackupThinkingCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),

@@ -86,22 +86,45 @@ internal sealed record ListeningOptions(bool HandsFree, VoiceActivitySettings Ac
 /// <summary>The newest picture of what vision watches (taken at most a few seconds earlier), sent along with what the user
 /// types or says while vision is on, so the reply sees what they see. <paramref name="Title"/> is the active window's title or
 /// the camera's name (empty for an address); <paramref name="App"/> is the program in front, by name, and
-/// <paramref name="FullScreen"/> says its window fills its monitor (<see cref="ActiveApp"/>; a screen only).</summary>
-internal sealed record SeenScreen(BoundedImage Image, string Title, WatchSource Source, string App = "", bool FullScreen = false)
+/// <paramref name="FullScreen"/> says its window fills its monitor (<see cref="ActiveApp"/>; a screen only).
+/// <paramref name="Picture"/> is its picture version (the same while nothing changes on it; 0 when unknown) and
+/// <paramref name="TakenAt"/> when it was taken: an image model's description counts for it by these (<see cref="PictureDescriptions"/>).</summary>
+internal sealed record SeenScreen(BoundedImage Image, string Title, WatchSource Source, string App = "", bool FullScreen = false,
+    long Picture = 0, DateTimeOffset? TakenAt = null)
 {
+    /// <summary>This picture as the image model gets it, without its pixels (<see cref="PictureShot"/>).</summary>
+    internal PictureShot Shot() => ShotOf(Title, Source, App, FullScreen, Picture, TakenAt);
+
+    /// <summary>A picture of <paramref name="source"/> as the image model gets it, before its pixels are encoded: the talk window
+    /// keys its screenshots with this, and <see cref="Shot"/> gives the same for the picture that goes with a message.</summary>
+    internal static PictureShot ShotOf(string title, WatchSource source, string app, bool fullScreen, long picture, DateTimeOffset? takenAt)
+    {
+        var clean = Clean(title);
+        return new(picture, takenAt ?? DateTimeOffset.MinValue, $"{source.Kind}:{source.Id}", !source.IsScreen,
+            source.IsScreen ? clean : "", source.IsScreen ? ActiveApp.Clean(app) : "", source.IsScreen && fullScreen,
+            Describe(source.Kind, clean), Short(source.Kind, clean));
+    }
+
+    /// <summary>What the picture shows in a few words, for the note with the image model's description.</summary>
+    private static string Short(WatchKind kind, string title) => kind switch
+    {
+        WatchKind.ActiveWindow => "the user's active window",
+        WatchKind.ActiveScreen => "the user's whole screen",
+        WatchKind.Camera => title.Length > 0 ? $"the user's camera \"{title}\"" : "the user's camera",
+        _ => "the user's phone or network camera"
+    };
+
     /// <summary>What the picture shows, for the Screen with your message prompt. It goes in the instructions, so it never
     /// names the window or the program: those change as the user switches windows and go in the notes (<see cref="Active"/>).</summary>
-    internal string Describe()
+    internal string Describe() => Describe(Source.Kind, CleanTitle);
+
+    private static string Describe(WatchKind kind, string title) => kind switch
     {
-        var title = CleanTitle;
-        return Source.Kind switch
-        {
-            WatchKind.ActiveWindow => "the user's active window",
-            WatchKind.ActiveScreen => "the user's whole screen: every monitor, with the taskbar and any pop-up notifications",
-            WatchKind.Camera => title.Length > 0 ? $"what the user's camera \"{title}\" sees" : "what the user's camera sees",
-            _ => "what the user's phone or network camera sees"
-        };
-    }
+        WatchKind.ActiveWindow => "the user's active window",
+        WatchKind.ActiveScreen => "the user's whole screen: every monitor, with the taskbar and any pop-up notifications",
+        WatchKind.Camera => title.Length > 0 ? $"what the user's camera \"{title}\" sees" : "what the user's camera sees",
+        _ => "what the user's phone or network camera sees"
+    };
 
     /// <summary>The Active app with your message note for a picture of the screen: the program in front, whether it is full
     /// screen and the window's title. It goes in the notes that are sent but not kept, after the user's words, so the start of
@@ -140,7 +163,9 @@ internal sealed record SeenScreen(BoundedImage Image, string Title, WatchSource 
         ? VisionHistory.WithMessage(!Source.IsScreen, Where(), seen)
         : VisionHistory.Look(!Source.IsScreen, Where(), why, seen);
 
-    private string CleanTitle => new string(Title.Where(c => !char.IsControl(c) && c != '"').Take(80).ToArray()).Trim();
+    private string CleanTitle => Clean(Title);
+
+    private static string Clean(string title) => new string(title.Where(c => !char.IsControl(c) && c != '"').Take(80).ToArray()).Trim();
 
     public override string ToString() => nameof(SeenScreen);
 }
@@ -199,6 +224,14 @@ internal sealed class LiveConversationOperation
     [JsonIgnore] internal SeenScreen? Seen { get; init; }
     /// <summary>The reply's request carried <see cref="Seen"/>'s picture.</summary>
     internal bool ScreenSent { get; set; }
+    /// <summary>Where this reply's or look's picture goes (docs/SENSE_MODELS.md): in Thinking's own request, to the image model to be
+    /// described in words, or nowhere. Fixed when a reply or look with a picture starts; null for a reply without one (a touch, a
+    /// reply started early), which follows the route when its request is built.</summary>
+    internal SensePath? ImagePath { get; init; }
+    /// <summary>In place of the picture, the request carried the image model's description of it (<see cref="Described"/>).</summary>
+    internal bool ScreenDescribed => Described is not null;
+    /// <summary>The image model's description this reply or look took; in memory only, never saved or logged.</summary>
+    [JsonIgnore] internal PictureDescription? Described { get; set; }
     /// <summary>The reply's request as it was sent, which the request after the reply continues on a Thinking model on this
     /// PC (<see cref="AfterReply"/>). In memory only, never saved.</summary>
     [JsonIgnore] internal BoundedTextInput? Sent { get; set; }
@@ -622,8 +655,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
     }
     internal LiveConversationConfiguration? Configuration { get { lock (gate) return configuration; } }
-    /// <summary>Who makes the screen summaries over time: the Thinking pool's digest jobs on a member that sees.</summary>
-    internal IScreenDigestThinker ScreenDigestThinker => screenDigestThinker ??= new PoolScreenDigestThinker(() => ThinkingPool);
+    /// <summary>Who makes the screen summaries over time: the image model first while it describes pictures, otherwise the
+    /// Thinking pool's digest jobs on a member that sees.</summary>
+    internal IScreenDigestThinker ScreenDigestThinker => screenDigestThinker ??=
+        new ImageModelScreenDigestThinker(this, new PoolScreenDigestThinker(() => ThinkingPool));
     private IScreenDigestThinker? screenDigestThinker;
     /// <summary>Where screen summaries go: the context board, for the next reply's notes.</summary>
     internal IScreenDigestBoard ScreenDigestBoard => screenDigestBoard ??= new BoardScreenDigest(Board);
@@ -1071,8 +1106,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             var selected = configuration ?? throw new LiveActionException("conversation.setup_required");
             if (selected.Unavailable(voice, microphone) is not null) throw new LiveActionException("conversation.configuration_unsupported");
             long acceptedRevision = revision = checked(revision + 1);
-            // Vision being on is the permission for its pictures; a text-only Thinking model never gets one.
-            if (selected.Vision() == VisionSupport.Unsupported) seen = null;
+            // Vision being on is the permission for its pictures. They go in Thinking's own request, to the image model to be
+            // described in words for Thinking, or nowhere when no model takes them (docs/SENSE_MODELS.md).
+            var imagePath = SenseRoute(SenseKind.Image, selected).Path;
+            if (imagePath == SensePath.None) seen = null;
             // Hearing that is on only because it was never chosen holds only while the recording stays on this PC; an audio model
             // of its own takes recordings in Thinking's place, so then Thinking never gets one (docs/SENSE_MODELS.md).
             var stays = RecordingStaysOnThisPc(selected);
@@ -1081,7 +1118,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (!hear) recording = null;
             var authorization = new ConversationAuthorization(selected, voice, microphone, clock,
                 () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, caller,
-                screen: seen is not null, hear: hear);
+                screen: seen is not null && imagePath == SensePath.Thinking, hear: hear);
             operation = new(authorization, caller)
             {
                 MemoryRequested = memory is not null && selected.Memory is { Enabled: true },
@@ -1092,7 +1129,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 BringUp = bringUp, Attention = seen is null ? null : attention, Look = look,
                 Origin = remote ? origin : null, OriginSpeaker = remote ? originSpeaker : null, Remote = remote,
                 WhileSinging = spoken ? singing?.Now() : null,
-                BackgroundChattiness = chattiness,
+                BackgroundChattiness = chattiness, ImagePath = imagePath,
                 LatencyTimeline = timeline ?? new ReplyTimeline(clock, microphone ? ReplyTimeline.YouPressed
                     : spoken ? ReplyTimeline.Asked : ReplyTimeline.YouSent)
             };
@@ -1119,6 +1156,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
         published.SetResult();
         SuperviseAsync(operation).Forget();
+        // Pressing the talk button: recording and speech-to-text give the image model time to describe the picture first.
+        if (microphone && operation is { ImagePath: SensePath.Described, Seen: { } pressed }) DescribeAhead(pressed, PictureTrigger.Talking);
         return operation;
     }
 
@@ -1587,6 +1626,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         saidLately.Clear();
         lastCache = null;
         conversationId = Guid.NewGuid();
+        // The image model's descriptions belong to this conversation too.
+        pictures?.Forget();
         // The audio model's late words were about messages the conversation no longer keeps.
         Board.Clear(VoiceNotes.BoardSource);
     }
@@ -1626,10 +1667,14 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// which either answers [pass] (silence) or one short remark that is spoken like any reply. It bypasses the
     /// participation policy (that decides whether to answer the user); the caller's pacer decides when to look. With
     /// <paramref name="look"/> (Martlet decides where the character looks) the model may also start its answer with a look tag
-    /// that turns the character's eyes to part of the picture.</summary>
+    /// that turns the character's eyes to part of the picture. When the image model describes pictures (the Described path) the
+    /// look has two stages: the image model describes the picture (<paramref name="picture"/> is its picture version and
+    /// <paramref name="takenAt"/> when it was taken, so a description of the same picture is used again), then Thinking gets the
+    /// glance message with the description instead of the picture.</summary>
     internal LiveConversationOperation StartCommentary(BoundedImage image, string windowTitle, ChattinessChoice chattiness, bool voice,
         bool screenApproved, WatchSource? source = null, CancellationToken caller = default, AttentionSignal? attention = null,
-        bool look = false, string? screenText = null, string? app = null, bool fullScreen = false)
+        bool look = false, string? screenText = null, string? app = null, bool fullScreen = false, long picture = 0,
+        DateTimeOffset? takenAt = null)
     {
         ArgumentNullException.ThrowIfNull(image);
         if (!screenApproved) throw new LiveActionException("conversation.permission_required");
@@ -1642,14 +1687,18 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (operations.IsRunning) throw new LiveActionException("conversation.ownership_busy");
             var selected = configuration ?? throw new LiveActionException("conversation.setup_required");
             if (selected.Unavailable(voice, false) is not null) throw new LiveActionException("conversation.configuration_unsupported");
-            if (selected.Vision() == VisionSupport.Unsupported) throw new LiveActionException("commentary.vision_unsupported");
+            // Martlet can't see only when no model takes pictures (docs/SENSE_MODELS.md).
+            var imagePath = SenseRoute(SenseKind.Image, selected).Path;
+            if (imagePath == SensePath.None) throw new LiveActionException("commentary.vision_unsupported");
             long acceptedRevision = revision = checked(revision + 1);
             var authorization = new ConversationAuthorization(selected, voice, false, clock,
-                () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, caller, screen: true);
-            operation = new(authorization, caller) { Commentary = true, Attention = attention };
+                () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, caller,
+                screen: imagePath == SensePath.Thinking);
+            operation = new(authorization, caller) { Commentary = true, Attention = attention, ImagePath = imagePath };
             active = operation;
             var camera = source is { IsScreen: false };
-            var looked = new SeenScreen(image, windowTitle, source ?? new(WatchKind.ActiveWindow), camera ? "" : app ?? "", !camera && fullScreen);
+            var looked = new SeenScreen(image, windowTitle, source ?? new(WatchKind.ActiveWindow), camera ? "" : app ?? "", !camera && fullScreen,
+                picture, takenAt);
             var prompt = CommentaryPromptLocked(windowTitle, camera, selected.Prompts, attention, looked);
             var read = camera ? null : ReadOnScreen(selected.Prompts, screenText);
             var worker = operations.TryStart(async token =>
@@ -1707,6 +1756,25 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         try
         {
             await operation.Authorization.ValidateSettingsAsync(worker).ConfigureAwait(false);
+            // Two stages when the image model describes pictures (docs/SENSE_MODELS.md): it describes the look's own picture first
+            // (a description already made of that exact picture is used again), then Thinking gets the glance message with the
+            // description instead of the picture.
+            PictureDescription? described = null;
+            if (operation.ImagePath == SensePath.Described)
+            {
+                operation.Publish(new("commentary.describing"));
+                var first = await DescribeLookAsync(looked, operation.Authorization.Configuration.Prompts, worker).ConfigureAwait(false);
+                NoteLookPicture(first);
+                if (first.Description is not { } words)
+                {
+                    ErrorLog.Info($"Vision: the image model couldn't describe the picture for a {(camera ? "camera look" : "screen glance")} " +
+                        $"({first.Result.Outcome}: {first.Result.Problem ?? "no words"}), so Martlet didn't look this time.");
+                    operation.Publish(new(first.Result.Outcome == SenseJobOutcome.Refused ? "commentary.image_refused" : "commentary.not_described",
+                        Finished: true));
+                    return new(SetupWorkOutcome.Failed);
+                }
+                described = operation.Described = words;
+            }
             IReadOnlyList<TextHistoryMessage> earlier;
             lock (gate) earlier = context.Snapshot();
             var lore = await ScanLoreAsync(operation, prompt, earlier, operation.Authorization.Configuration.Persona, worker)
@@ -1725,14 +1793,18 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // What Martlet said lately goes last in the look's notes, sent with this request only (never kept), so it can
                 // tell whether a remark is worth saying again.
                 var (lately, latelyCount) = SaidLatelyLocked(configured.Prompts);
-                var request = configured.Request(new(GlanceMessage(prompt, read)), operation.Authorization.Voice, history, null, lore,
-                    out var usedHistory, out _, out var usedLore, image,
+                // Described: the image model's words go in the message in place of the picture, with no seen tag and no look
+                // tags (only the picture tells where to look); the instructions say what the words are.
+                var note = described is null ? null : PictureDescriptions.Note(configured.Prompts, described) ?? described.Text;
+                var request = configured.Request(new(note is null ? GlanceMessage(prompt, read) : PictureDescriptions.GlanceMessage(prompt, note, read)),
+                    operation.Authorization.Voice, history, null, lore,
+                    out var usedHistory, out _, out var usedLore, note is null ? image : null,
                     Join(LiveConversationConfiguration.Moment(configured.Prompts), configured.AdultInstructions,
-                        LiveConversationConfiguration.CommentaryInstructions(level, camera, configured.Prompts, decides)),
+                        LiveConversationConfiguration.CommentaryInstructions(level, camera, configured.Prompts, decides, described: note is not null)),
                     LiveConversationConfiguration.SilentReply, characterActions: characterActions,
-                    gaze: look ? CharacterGaze.Prompt(configured.Prompts, LiveConversationConfiguration.SilentReply) : null,
+                    gaze: look && note is null ? CharacterGaze.Prompt(configured.Prompts, LiveConversationConfiguration.SilentReply) : null,
                     chattiness: decides ? configured.ChattinessNote(level) : null,
-                    controlTags: LiveConversationConfiguration.ControlTags(decides, picture: true, configured.Prompts),
+                    controlTags: LiveConversationConfiguration.ControlTags(decides, picture: note is null, configured.Prompts),
                     board: Join(board.Text, lately));
                 operation.SaidLately = latelyCount;
                 operation.LookOffered = request.CharacterTags.Any(CharacterGaze.IsTag);
@@ -1751,8 +1823,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             operation.BoardNotes = board.Notes.Count;
             operation.BoardKept = board.KeptText;
             // Nothing else waited (that would have made it a reply that takes the look along): the look alone.
-            operation.Inputs = MomentTurn.Describe(false, 0, true, operation.Attention?.Plain, 0, contextNotes: operation.BoardNotes,
-                said: operation.SaidLately);
+            operation.Inputs = MomentTurn.Describe(false, 0, described is null, operation.Attention?.Plain, 0, contextNotes: operation.BoardNotes,
+                said: operation.SaidLately, described: described is not null);
             ErrorLog.Info($"Turn took: {operation.Inputs} (a look).");
             var terminal = await turn.Completion.ConfigureAwait(false);
             NoteFallback(camera ? "Camera glance" : "Screen glance", operation.Authorization.Configuration, terminal);
@@ -1771,12 +1843,13 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     if (ReferenceEquals(active, operation) && !operation.Authorization.IsCanceled)
                     {
                         // Every look stays in the conversation, passed or not: where Martlet looked and what it saw (the look's
-                        // [seen: ...] words, never the picture), then its remark or [pass]. Passes in a row keep only the last.
+                        // [seen: ...] words, or the first line of the image model's description; never the picture), then its remark
+                        // or [pass]. Passes in a row keep only the last.
                         var remark = passed ? $"[{LiveConversationConfiguration.SilentReply}]" : text.Trim();
-                        var seen = SeenTags.Description(turn.Controls);
+                        var seen = described?.Summary ?? SeenTags.Description(turn.Controls);
                         var replaced = context.AddLook(operation.WithBoardKept(looked.HistoryLine(seen, why: operation.Attention?.Describe()))!, remark, passed);
                         ErrorLog.Info($"Vision: the conversation keeps a {(camera ? "camera look" : "screen glance")} " +
-                            $"({(passed ? "passed" : "remark")}, {(seen is null ? "no description" : "described")}" +
+                            $"({(passed ? "passed" : "remark")}, {(described is not null ? "described by the image model" : seen is null ? "no description" : "described")}" +
                             $"{(replaced ? ", in place of the passed look before it" : "")}).");
                         if (!passed) saidLately.Add(clock.GetLocalNow(), remark);
                     }
@@ -2136,6 +2209,15 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // While vision is on, the newest picture of what it watches goes with the message, so the reply sees it too.
                 // A message too long to fit beside the picture goes without it.
                 var seen = operation.Authorization.Screen ? operation.Seen : null;
+                // With an image model of its own (the Described path) no picture goes to Thinking. The reply takes the image model's
+                // description of the picture it would have sent when one is ready now (it never waits for one), as a note sent with
+                // this request only, and every reply is told what such notes are, the same way each time (docs/SENSE_MODELS.md).
+                var describes = (operation.ImagePath ?? SenseRoute(SenseKind.Image, configured).Path) == SensePath.Described;
+                var description = describes ? DescriptionFor(operation) : null;
+                // The note and the [Screen] line say the window and program the description was made of.
+                var describedSeen = description is null ? null
+                    : operation.Seen! with { Title = description.Shot.Title, App = description.Shot.App, FullScreen = description.Shot.FullScreen };
+                var describedNote = description is null ? null : PictureDescriptions.Note(prompts, description);
                 // A report keeps the instructions of the reply before it (who was heard, always listening), so it starts the same.
                 var heardBy = operation.OnItsOwn ? lastAsked.Heard : operation.Heard;
                 var background = !operation.Report && operation.Delivery is { } carried
@@ -2189,10 +2271,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                             recording is null ? null : PromptSettings.Fill(prompts, straight ? PromptCatalog.HeardVoiceOnly : PromptCatalog.HeardVoice),
                             described,
                             picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe())),
-                            picture is null ? null : SeenTags.Instructions(prompts, LiveConversationConfiguration.SilentReply)),
+                            picture is null ? null : SeenTags.Instructions(prompts, LiveConversationConfiguration.SilentReply),
+                            describes ? PictureDescriptions.Instructions(prompts) : null),
                         voices: VoicePromptContext.Block(operation.Heard),
                         messageNotes: Join(home is { Kind: HomeTurnKind.Tools } ? null : home?.Instructions, background,
-                            picture is null ? null : noticed, recalled, songNote, whileSinging, touchNote),
+                            picture is null && describedNote is null ? null : noticed, recalled, songNote, whileSinging, touchNote),
                         silentReply: operation.Spoken ? LiveConversationConfiguration.SilentReply : null, tools: toolset,
                         closingInstructions: operation.Authorization.Configuration.ReplyClosing(operation.Authorization.Voice), audio: recording, imageOptional: true,
                         characterActions: characterActions, withoutReasoning: reasoningRefused.Contains(configured.ToolModelKey()),
@@ -2200,9 +2283,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         controlTags: LiveConversationConfiguration.ControlTags(decides, picture is not null, prompts),
                         spokenWords: straight ? token => SpokenWords.TranscriptAsync(operation.StraightWords!, token) : null,
                         // The program in front and the window's title change as the user switches windows: they go with the
-                        // picture in the notes that are sent but not kept, never in the instructions, and only when the
-                        // conversation's latest [Screen] line doesn't already say them.
-                        board: Join(heardHow.Note, board.Text, picture?.Active(prompts, sentHistory), lately), backup: backup);
+                        // picture (or its description) in the notes that are sent but not kept, never in the instructions, and only
+                        // when the conversation's latest [Screen] line doesn't already say them.
+                        board: Join(heardHow.Note, board.Text,
+                            picture?.Active(prompts, sentHistory) ?? (describedNote is null ? null : describedSeen?.Active(prompts, sentHistory)),
+                            describedNote, lately), backup: backup);
                 ConversationRequest request;
                 int usedHistory, usedMemory, usedLore;
                 var picture = seen;
@@ -2213,16 +2298,20 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         request = Ask(picture, past, out usedHistory, out usedMemory, out usedLore);
                         break;
                     }
-                    // A message too long to fit goes without what was said in earlier conversations first, then without the picture.
-                    catch (LiveActionException error) when (error.Code == "conversation.input_limit" && (past is not null || picture is not null))
+                    // A message too long to fit goes without what was said in earlier conversations first, then without the picture
+                    // (or its description).
+                    catch (LiveActionException error) when (error.Code == "conversation.input_limit" &&
+                        (past is not null || picture is not null || describedNote is not null))
                     {
                         if (past is not null) (past, pastCount) = (null, 0);
-                        else picture = null;
+                        else if (picture is not null) picture = null;
+                        else describedNote = null;
                     }
                 }
                 operation.PastExchanges = pastCount;
                 operation.VoiceSent = request.Input.Audio is not null;
                 operation.ScreenSent = request.Input.Image is not null;
+                operation.Described = describedNote is null ? null : description;
                 operation.Sent = request.Input;
                 // Exchanges this reply had to leave out are never sent again, so the next replies start the same way (a reply
                 // started early lets go of them once it is taken).
@@ -2269,8 +2358,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // started so the first words never wait for it.
             operation.Inputs = MomentTurn.Describe(own is not null || straight,
                 operation.PcAudio ? input!.UserText.Split('\n').Count(line => line.StartsWith(LiveConversationConfiguration.PcAudioMarker, StringComparison.Ordinal)) : 0,
-                operation.ScreenSent, operation.ScreenSent ? operation.Attention?.Plain : null, operation.Delivery?.Jobs.Count ?? 0, operation.Report,
-                operation.Touches?.Touches ?? 0, operation.BoardNotes, operation.SaidLately, operation.VoiceNotesTaken > 0);
+                operation.ScreenSent, operation.ScreenSent || operation.ScreenDescribed ? operation.Attention?.Plain : null, operation.Delivery?.Jobs.Count ?? 0, operation.Report,
+                operation.Touches?.Touches ?? 0, operation.BoardNotes, operation.SaidLately, operation.VoiceNotesTaken > 0, operation.ScreenDescribed);
             if (operation.Touches is { } carriedTouches)
             {
                 ErrorLog.Info($"Touches: {carriedTouches.Count} went to Thinking " +
@@ -2279,6 +2368,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             }
             ErrorLog.Info($"Turn took: {operation.Inputs} ({(operation.Report ? "Martlet's report" : operation.Touch ? "a reaction to being touched" : own is not null || straight ? "a reply to you" : "a reply to what this PC played")}" +
                 $"{(operation.Look ? ", counted as a look" : "")}).");
+            // Whether a reply with a picture on the Described path took the image model's description (MCP's image_model_check reads
+            // the newest line).
+            NotePicturePath(operation);
             // Which way what was said went to Thinking (MCP's hearing_check reads the newest line), and once speech-to-text beside
             // the reply has the words, how long after the reply started they came.
             if (straight)
@@ -2348,7 +2440,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         // A message that came with a picture keeps where it was from and what the reply saw in it (its [seen: ...]
                         // words), on a line after the message; the picture itself is never kept.
                         var sawLine = operation.ScreenSent && !terminal.ImageRejected && operation.Seen is { } pictured
-                            ? pictured.HistoryLine(SeenTags.Description(turn.Controls), message: true) : null;
+                            ? pictured.HistoryLine(SeenTags.Description(turn.Controls), message: true)
+                            // In place of the picture, the image model's description: its first line is what Martlet saw.
+                            : operation.Described is { } words && operation.Seen is { } shown
+                            ? (shown with { Title = words.Shot.Title, App = words.Shot.App, FullScreen = words.Shot.FullScreen }).HistoryLine(words.Summary, message: true)
+                            : null;
                         // The touches that came with a message stay noted after it too ("(touch: top of head pat x3)"), so later
                         // replies know; a touch-only reply's message is that line itself.
                         if (!operation.Touch && operation.Touches?.HistoryLine is { Length: > 0 } touchLine)
@@ -3513,16 +3609,18 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 var selected = configuration ?? throw new LiveActionException("conversation.setup_required");
                 if (selected.Unavailable(voice, false) is not null) throw new LiveActionException("conversation.configuration_unsupported");
                 var input = BackgroundJobs.ReportMessage(selected.Prompts, delivery.Jobs);
-                // While vision is on, the newest picture goes with it too, so the report sees what the user is doing.
-                if (selected.Vision() == VisionSupport.Unsupported) seen = null;
+                // While vision is on, the newest picture goes with it too (or the image model's description of it), so the report
+                // sees what the user is doing.
+                var imagePath = SenseRoute(SenseKind.Image, selected).Path;
+                if (imagePath == SensePath.None) seen = null;
                 long acceptedRevision = revision = checked(revision + 1);
                 var authorization = new ConversationAuthorization(selected, voice, false, clock,
                     () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, CancellationToken.None,
-                    screen: seen is not null);
+                    screen: seen is not null && imagePath == SensePath.Thinking);
                 operation = new(authorization, CancellationToken.None)
                 {
                     Report = true, Delivery = delivery, Spoken = lastAsked.Spoken, BackgroundChattiness = lastAsked.Chattiness,
-                    Seen = seen, Attention = seen is null ? null : attention, Look = look
+                    Seen = seen, Attention = seen is null ? null : attention, Look = look, ImagePath = imagePath
                 };
                 active = operation;
                 var worker = operations.TryStart(async token =>
