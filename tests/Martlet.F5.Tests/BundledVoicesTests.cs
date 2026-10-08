@@ -6,11 +6,13 @@ namespace Martlet.F5.Tests;
 public sealed class BundledVoicesTests
 {
     [Fact]
-    public void StarterVoicesAreTheFiveRecordingsAsReadWithAnnieFirst()
+    public void StarterVoicesAreTheSixRecordingsAsReadWithAnnieFirst()
     {
-        Assert.Equal(["librivox-annie", "librivox-woollybee", "lj-speech", "arctic-slt", "arctic-bdl"],
+        Assert.Equal(["librivox-annie", "librivox-woollybee", "jenny-dioco", "lj-speech", "arctic-slt", "arctic-bdl"],
             F5BundledVoices.All.Select(voice => voice.Key));
         Assert.Equal("librivox-annie", F5BundledVoices.Default.Key);
+        // The Jenny TTS dataset's licence: the voice is referred to as "Jenny (Dioco)".
+        Assert.Equal("Jenny (Dioco)", F5BundledVoices.Find("jenny-dioco")!.Name);
         Assert.DoesNotContain(F5BundledVoices.All, voice => voice.Name.Contains("anime", StringComparison.OrdinalIgnoreCase));
         foreach (var voice in F5BundledVoices.All)
         {
@@ -18,6 +20,27 @@ public sealed class BundledVoicesTests
             Assert.Equal(voice.AudioSha256, Convert.ToHexStringLower(SHA256.HashData(voice.ReadAudio())));
             Assert.False(F5BundledVoices.IsRetired(voice.AudioSha256));
         }
+    }
+
+    [Fact]
+    public void AStarterVoiceAddedInAnUpdateJoinsAnOlderListOnceAndARemovedOneNeverComesBack()
+    {
+        var now = DateTimeOffset.UtcNow;
+        string Id(string key) => F5BundledVoices.Find(key) is { } voice ? SpeakingVoiceLibrary.ReferenceId(voice.AudioSha256, voice.Transcript)
+            : throw new InvalidOperationException(key);
+        var jenny = F5BundledVoices.Find("jenny-dioco")!;
+        // A list from before Jenny, with LJ removed by the owner.
+        var older = SpeakingVoiceLibrary.Empty.Seed(F5SharedVoices.Starters.Where(voice => voice.AudioSha256 != jenny.AudioSha256))
+            .Remove(Id("lj-speech"), "owner-desktop", now);
+        Assert.Null(older.Find(Id("jenny-dioco")));
+
+        var updated = F5SharedVoices.WithStarters(older);
+
+        Assert.True(updated.Find(Id("jenny-dioco")) is { Removed: false, Revision: SpeakingVoiceLibrary.StarterRevision, UpdatedBy: SpeakingVoiceLibrary.StarterWriter });
+        Assert.True(updated.Find(Id("lj-speech"))!.Removed);
+        Assert.Same(updated, F5SharedVoices.WithStarters(updated));
+        var removed = updated.Remove(Id("jenny-dioco"), "owner-desktop", now);
+        Assert.True(F5SharedVoices.WithStarters(removed).Find(Id("jenny-dioco"))!.Removed);
     }
 
     [Fact]

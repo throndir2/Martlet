@@ -1240,7 +1240,9 @@ reaches the other; removing a starter voice deletes its recording on both hosts
 and the other desktop's copy; a stale copy can't bring it back; a list from an
 older Martlet that still lists the retired "anime" voices loses them in the
 next reconcile without waiting for their recordings, the host follows and a
-stale copy can't bring them back; speaking with a
+stale copy can't bring them back; a list from before a new starter voice
+(Jenny) gets it in the next reconcile, once, with its recording from Martlet,
+while a starter the owner removed stays removed; speaking with a
 removed voice sends the recording, which the host doesn't keep; a host restart
 keeps the list and recordings; a wrong SHA-256, a recording no voice has and a
 listed recording that isn't a WAV are refused; reading a missing recording
@@ -5680,7 +5682,7 @@ voice comes from a cloud provider). There are no built-in voices and no groups:
 one list, in the order voices joined it (a new list starts with the starter
 voices). `F5VoicesStatus` reads how many voices there are and which is chosen or in
 use (a starter voice's name, "one of your recordings", or "a voice no longer in
-the list"), for example "5 voices. None chosen yet; Martlet starts with Annie
+the list"), for example "6 voices. None chosen yet; Martlet starts with Annie
 (cute, chatty)." `F5VoicesShared` reads whether the list is shared with the
 paired Martlet computers ("Voices shared with 2 of 2 computers at 7:15 PM.",
 voices still copying to this PC, hosts to update, or "No other Martlet computers

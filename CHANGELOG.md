@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- A new starter voice, **Jenny (Dioco)**: Jenny is a professional Irish voice-over artist who recorded her voice for speech synthesis, so it sounds clean and natural. It joins your voice list on all your computers once; pick it with **Use** in Companion › Voice › Voices, or remove it like any other voice. ([#619](https://github.com/throndir2/Martlet/pull/619))
 - Share a host with a friend: on a Linux host, `martlet-host owner-signin-allow ... --access friend` lets a friend sign in with their own account and use only that host's thinking, listening, speaking, lip-sync and reading, never your network, settings or anything else of yours. Your own requests always come first. ([#618](https://github.com/throndir2/Martlet/pull/618))
 - New in Companion › Check-ins: **Saying the same things** reads what Martlet said in the last hour, and when, and when it keeps saying the same thing again and again, it reminds Martlet in its next reply to say something new. ([#613](https://github.com/throndir2/Martlet/pull/613))
 - Settings › What this PC is for now lists **Your other computers**: each one says whether it is a companion PC or a host PC, with a button to make it a host PC or a companion PC again from where you are. It is the same switch the Devices map has, now easy to find. ([#612](https://github.com/throndir2/Martlet/pull/612))
