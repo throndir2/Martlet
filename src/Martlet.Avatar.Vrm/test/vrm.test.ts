@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { cheekFrame, inspectVrm, LIMITS, loadLocalVrm, VRM_GESTURES, VrmRuntime, type PlaybackIdentity, type Selection } from "../src/index.js";
+import { cheekFrame, inspectVrm, LIMITS, loadLocalVrm, VRM_GESTURES, VRM_HOLD_PARTS, VrmRuntime, type PlaybackIdentity, type Selection } from "../src/index.js";
 import { encodeGlb, fixture, fixtureDocument } from "./fixture.js";
 
 const identity: PlaybackIdentity = {
@@ -340,6 +340,13 @@ test("blush shows an authored cheek expression, held until released, and the fac
   assert.equal(own.playGesture("blush", true), true);
   for (let i = 0; i < 100; i++) own.update(0.1);
   assert.ok(vrm.expressionManager.getValue("CheekRed")! > 0.99, "held, it stays");
+  assert.equal(own.setAction("happy", true), true);
+  for (let i = 0; i < 20; i++) own.update(0.1);
+  assert.ok(vrm.expressionManager.getValue("CheekRed")! > 0.99, "a passing emote leaves the held blush on");
+  assert.equal(own.playGesture("blush"), true);
+  for (let i = 0; i < 50; i++) own.update(0.1);
+  assert.ok(vrm.expressionManager.getValue("CheekRed")! > 0.99 && own.gestureState.held.includes("blush"),
+    "played once while held, it stays held");
   assert.equal(own.endGesture("blush"), undefined);
   for (let i = 0; i < 20; i++) own.update(0.1);
   assert.ok(vrm.expressionManager.getValue("CheekRed")! < 0.01);
@@ -411,12 +418,12 @@ test("touch and mood gestures use the face presets and holdable ones stay until 
   runtime.update(0.016);
   const rest = bone("head").rotation.x;
   assert.equal(runtime.playGesture("giggle"), true);
-  assert.deepEqual(runtime.gestureState, { playing: "giggle" });
+  assert.deepEqual(runtime.gestureState, { playing: "giggle", held: [] });
   for (let i = 0; i < 10; i++) runtime.update(0.05);
   assert.ok(face("happy") > 0.7, "giggles with a happy face");
   for (let i = 0; i < 30; i++) runtime.update(0.05);
   assert.equal(face("happy"), 0, "the face settles back");
-  assert.deepEqual(runtime.gestureState, {});
+  assert.deepEqual(runtime.gestureState, { held: [] });
   assert.equal(runtime.playGesture("flinch"), true);
   runtime.update(0.05); runtime.update(0.05);
   assert.ok(bone("head").rotation.x < rest - 0.05 && bone("spine").rotation.x < -0.1, "jerks back");
@@ -424,24 +431,72 @@ test("touch and mood gestures use the face presets and holdable ones stay until 
   assert.ok(Math.abs(bone("spine").rotation.x) < 1e-6, "and settles");
 
   assert.equal(runtime.playGesture("drowsy", true), true);
-  assert.deepEqual(runtime.gestureState, { held: "drowsy" });
+  assert.deepEqual(runtime.gestureState, { held: ["drowsy"] });
   for (let i = 0; i < 300; i++) runtime.update(0.05);
   assert.ok(face("blink") >= 0.5 && bone("head").rotation.x > rest + 0.05, "still drowsy after 15 seconds");
   assert.equal(runtime.playGesture("nod"), true);
-  assert.deepEqual(runtime.gestureState, { playing: "nod", held: "drowsy" });
+  assert.deepEqual(runtime.gestureState, { playing: "nod", held: ["drowsy"] });
   for (let i = 0; i < 30; i++) runtime.update(0.05);
-  assert.deepEqual(runtime.gestureState, { held: "drowsy" }, "the nod played on top and the held pose resumes");
+  assert.deepEqual(runtime.gestureState, { held: ["drowsy"] }, "the nod played on top and the held pose resumes");
   assert.ok(face("blink") >= 0.5);
   assert.equal(runtime.playGesture("shy", true), true);
   for (let i = 0; i < 30; i++) runtime.update(0.05);
-  assert.deepEqual(runtime.gestureState, { held: "shy" });
+  assert.deepEqual(runtime.gestureState, { held: ["shy"] }, "shy moves the eyes and head too, so drowsy lets go");
   assert.ok(Math.abs(bone("spine").rotation.y) > 0.1, "shy turns the body away");
   assert.ok(face("blink") < 0.05, "crossfaded from drowsy");
   runtime.endGesture("shy");
-  assert.deepEqual(runtime.gestureState, {});
+  assert.deepEqual(runtime.gestureState, { held: [] });
   for (let i = 0; i < 30; i++) runtime.update(0.05);
   assert.ok(Math.abs(bone("spine").rotation.y) < 1e-9, "the body comes back once let go");
   assert.equal(runtime.playGesture("wink", true), true);
-  assert.deepEqual(runtime.gestureState, { playing: "wink" }, "a gesture that can't be held plays once");
+  assert.deepEqual(runtime.gestureState, { playing: "wink", held: [] }, "a gesture that can't be held plays once");
   runtime.dispose();
+});
+
+test("held gestures that move different parts layer, and one that shares a part lets the other go", async () => {
+  const { document, bin } = fixtureDocument();
+  (document.extensions.VRMC_vrm.expressions.custom as Record<string, unknown>).CheekRed = { morphTargetBinds: [{ node: 17, index: 7, weight: 1 }] };
+  const runtime = new VrmRuntime(); await runtime.load(encodeGlb(document, bin)); runtime.startIdle();
+  const vrm = (runtime as unknown as { model: { humanoid: { getNormalizedBoneNode(name: string): THREE.Object3D };
+    expressionManager: { getValue(name: string): number | null } } }).model;
+  const bone = (name: string) => vrm.humanoid.getNormalizedBoneNode(name);
+  const face = (name: string) => vrm.expressionManager.getValue(name) ?? 0;
+  assert.deepEqual([VRM_HOLD_PARTS.eyes_up, VRM_HOLD_PARTS.mouth_open, VRM_HOLD_PARTS.blush], [["eyes"], ["mouth"], ["cheeks"]]);
+  assert.ok(runtime.gestures.includes("eyes_up") && runtime.gestures.includes("mouth_open"));
+  runtime.update(0.016);
+  const head = bone("head").rotation.x;
+  for (const name of ["eyes_up", "mouth_open", "blush"]) assert.equal(runtime.playGesture(name, true), true, name);
+  assert.deepEqual(runtime.gestureState, { held: ["eyes_up", "mouth_open", "blush"] }, "the eyes, the mouth and the cheeks stay on together");
+  for (let i = 0; i < 40; i++) runtime.update(0.05);
+  assert.ok(bone("leftEye").rotation.x < -0.15 && bone("rightEye").rotation.x < -0.15, "the eyes turn up");
+  assert.ok(Math.abs(bone("head").rotation.x - head) < 1e-6, "the head stays where it looks");
+  assert.ok(face("aa") > 0.6, "the mouth opens (with aa: this model has no oh)");
+  assert.ok(face("CheekRed") > 0.99, "the cheeks blush");
+  for (let i = 0; i < 20; i++) { runtime.setLipSync(0); runtime.update(0.05); }
+  assert.ok(face("aa") < 0.3, "the held mouth eases back while the voice speaks");
+  for (let i = 0; i < 5; i++) { runtime.setLipSync(1); runtime.update(0.05); }
+  assert.ok(face("aa") > 0.9, "and the voice still opens it");
+  assert.equal(runtime.playGesture("pout", true), true);
+  assert.deepEqual(runtime.gestureState, { held: ["eyes_up", "pout", "blush"] }, "pout moves the mouth too, so mouth_open lets go");
+  assert.equal(runtime.playGesture("look_away", true), true);
+  assert.deepEqual(runtime.gestureState, { held: ["look_away", "blush"] }, "look_away moves the eyes and head, so eyes_up and pout let go");
+  runtime.endGesture("look_away");
+  assert.deepEqual(runtime.gestureState, { held: ["blush"] }, "ending one leaves the others on");
+  for (let i = 0; i < 40; i++) runtime.update(0.05);
+  assert.ok(Math.abs(bone("leftEye").rotation.x) < 1e-6, "the eyes come back once let go");
+  assert.ok(face("CheekRed") > 0.99, "the blush stays");
+  runtime.dispose();
+
+  // A model with an oh mouth holds it open with oh and leaves aa to the voice.
+  (document.extensions.VRMC_vrm.expressions.preset as Record<string, unknown>).oh = { morphTargetBinds: [{ node: 17, index: 7, weight: 1 }] };
+  const round = new VrmRuntime(); await round.load(encodeGlb(document, bin)); round.startIdle();
+  const roundFace = (name: string) => (round as unknown as { model: { expressionManager: { getValue(name: string): number | null } } })
+    .model.expressionManager.getValue(name) ?? 0;
+  assert.equal(round.playGesture("mouth_open", true), true);
+  for (let i = 0; i < 40; i++) round.update(0.05);
+  assert.ok(roundFace("oh") > 0.6 && roundFace("aa") === 0, "oh holds the mouth open");
+  round.endGesture("mouth_open");
+  for (let i = 0; i < 40; i++) round.update(0.05);
+  assert.ok(roundFace("oh") < 1e-6, "and closes it when let go");
+  round.dispose();
 });

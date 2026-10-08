@@ -7,8 +7,9 @@ namespace Martlet.Core.Settings;
 /// <summary>Companion › Thinking pool, on this PC (thinking-pool.json in the data folder; never shared, because which machine
 /// is free depends on the computer you talk to). The pool is one shared set of Thinking models for background work: thinking
 /// longer, research, screen and sound summaries, judges and helpers. Each member is one place (<see cref="DeepThinkingSettings"/>,
-/// a single place without its own pool): a paired Martlet host whose owner turned Join the Thinking pool on (its Thinking pool
-/// role), a model in Ollama on this PC, or an OpenAI-compatible endpoint, each with its slot count. The live conversation keeps
+/// a single place without its own pool): a paired Martlet host with a Thinking model, which joins by itself
+/// (<see cref="ThinkingPoolAutoJoin"/>; its Thinking pool role, or its Ollama) unless the owner took it out
+/// (<see cref="LeftByOwner"/>), a model in Ollama on this PC, or an OpenAI-compatible endpoint, each with its slot count. The live conversation keeps
 /// its own Thinking route; pool work never uses it, except that thinking longer and research use the conversation model while
 /// the pool is empty when <see cref="UseConversationModelWhenEmpty"/> is on (the default). Martlet writes this file from the
 /// older deep-thinking.json once, the first time it reads the pool.</summary>
@@ -53,6 +54,32 @@ public sealed record ThinkingPoolSettings
         AnswersForConversation = [.. AnswersForConversation.Where(k => k != key), .. answers ? new[] { key } : []]
     };
 
+    /// <summary>The paired computers (host IDs) the owner took out of the pool (In the Thinking pool unticked). Martlet adds a
+    /// computer with a Thinking model by itself (<see cref="ThinkingPoolAutoJoin"/>), but never one in this list; ticking it
+    /// again takes it off the list. A file saved before this list existed reads as empty.</summary>
+    public IReadOnlyList<string> LeftByOwner { get => leftByOwner; init => leftByOwner = value ?? []; }
+    private readonly IReadOnlyList<string> leftByOwner = [];
+
+    /// <summary>The most computers kept out; keeping out one more forgets the oldest.</summary>
+    public const int MaxLeftByOwner = 64;
+
+    /// <summary>Whether the owner took <paramref name="hostId"/> out of the pool, so it never joins by itself.</summary>
+    public bool Left(string hostId) => LeftByOwner.Contains(hostId, StringComparer.Ordinal);
+
+    /// <summary>The pool with <paramref name="hostId"/> kept out (or no longer kept out). The members don't change.</summary>
+    public ThinkingPoolSettings KeepOut(string hostId, bool keepOut)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(hostId);
+        return this with
+        {
+            LeftByOwner = [.. LeftByOwner.Where(h => h != hostId).Concat(keepOut ? new[] { hostId } : []).TakeLast(MaxLeftByOwner)]
+        };
+    }
+
+    /// <summary>The pool without <paramref name="hostId"/>'s member, with the computer kept out so it doesn't join again by
+    /// itself (the owner unticked In the Thinking pool).</summary>
+    public ThinkingPoolSettings TakeOut(string hostId) => Remove("host:" + hostId).KeepOut(hostId, true);
+
     /// <summary>The members as one place with its pool (the first member and the others), as Martlet's planner reads them. An
     /// empty pool reads as the conversation model (Same as Thinking).</summary>
     [JsonIgnore]
@@ -81,13 +108,24 @@ public sealed record ThinkingPoolSettings
     };
 
     /// <summary>Every place the planner considers: the members, or the conversation model while the pool is empty and that is
-    /// allowed. An empty pool without it plans nothing that can run.</summary>
-    public DeepThinkingPool Plan(IReadOnlyList<SetupRoute> routes, Martlet.Core.Cluster.WorkSharingSettings? sharing = null, string? device = null)
+    /// allowed. An empty pool without it plans nothing that can run. <paramref name="offline"/> (the paired computers that don't
+    /// answer now; null: all count as online) leaves those members out of what can run; when nothing else can run, thinking
+    /// longer and research use the conversation model meanwhile, as with an empty pool, when that is allowed.</summary>
+    public DeepThinkingPool Plan(IReadOnlyList<SetupRoute> routes, Martlet.Core.Cluster.WorkSharingSettings? sharing = null, string? device = null,
+        IReadOnlyCollection<string>? offline = null)
     {
         if (Members.Count == 0 && !UseConversationModelWhenEmpty)
             return new([new DeepThinkingSpot(new(), new(false, "The Thinking pool has no member, and Use the conversation model when " +
                 "the pool is empty is off. Add a member on Companion › Thinking pool."), "no member")]);
-        return DeepThinkingPool.For(Places, routes, sharing, device);
+        var pool = DeepThinkingPool.For(Places, routes, sharing, device, offline);
+        if (Members.Count == 0 || !UseConversationModelWhenEmpty || pool.Plan is not { Available: false, Offline: true } gone) return pool;
+        // The members that would run are all offline: the conversation model stands in, as for an empty pool, until one answers.
+        var conversation = DeepThinkingPool.For(new(), routes, sharing, device).Spots[0];
+        if (!conversation.Plan.Available) return pool;
+        return new([conversation with
+        {
+            Plan = conversation.Plan with { Why = $"{gone.Why} Meanwhile thinking longer and research use the conversation model. {conversation.Plan.Why}" }
+        }, .. pool.Spots]);
     }
 
     public void Validate()
@@ -101,6 +139,10 @@ public sealed record ThinkingPoolSettings
         ContractRules.Require(AnswersForConversation.Count <= 2 * DeepThinkingSettings.MaxPlaces &&
             AnswersForConversation.All(k => k is { Length: > 0 and <= 4096 } && !k.Any(char.IsControl)),
             "The members that may answer for the conversation are a short list of member keys.");
+        ContractRules.Require(LeftByOwner.Count <= MaxLeftByOwner &&
+            LeftByOwner.All(h => h is { Length: > 0 and <= 128 } && !h.Any(char.IsControl)) &&
+            LeftByOwner.Distinct(StringComparer.Ordinal).Count() == LeftByOwner.Count,
+            $"The computers kept out of the Thinking pool are at most {MaxLeftByOwner} different computer names.");
         foreach (var member in Members) member.Validate();
     }
 

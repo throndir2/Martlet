@@ -838,6 +838,20 @@ class PlaybackTests(unittest.TestCase):
         import martlet_chatterbox_host as host
         cls.host = host
 
+    @unittest.skipUnless(_have("torch"), "needs PyTorch")
+    def test_two_decodings_meet_smoothly(self):
+        import torch
+
+        old, new = torch.zeros(1, 80, 8), torch.ones(1, 80, 8)
+        joined = self.host._join(old, new)
+        # From the last decoding's frames to this one's, one step at a time across the overlap.
+        self.assertEqual(joined.shape, (1, 80, 8))
+        self.assertTrue(torch.allclose(joined[0, 0], torch.linspace(0.0, 1.0, 8)))
+        self.assertTrue(torch.equal(joined[:, :, 0], old[:, :, 0]))
+        self.assertTrue(torch.equal(joined[:, :, -1], new[:, :, -1]))
+        # Frames that don't line up are left as they were.
+        self.assertIs(self.host._join(old, torch.ones(1, 80, 5)), old)
+
     def playback(self, now, token=0.018, scale=1.0):
         return self.host._Playback(first_tokens=55, clock=lambda: now[0], speed=self.host._CpuSpeed(token, scale))
 
@@ -927,6 +941,28 @@ class PlaybackTests(unittest.TestCase):
         slow = self.playback(now, token=0.03)
         slow.begin_piece(expected=140)
         self.assertGreater(slow.first, 55)
+
+    def test_the_holdback_never_makes_a_piece_start_later(self):
+        now = [10.0]
+        self.assertEqual(self.host.CPU_HOLD_TOKENS, 8)
+        self.assertEqual(self.host._Playback().most_hold, 8)
+        for token in (0.018, 0.025):
+            holds = {}
+            for expected in range(30, 501):
+                speed = self.host._CpuSpeed(token, 1.0)
+                held = self.host._Playback(first_tokens=55, clock=lambda: now[0], speed=speed)
+                lookahead_only = self.host._Playback(first_tokens=55, clock=lambda: now[0], speed=speed, hold=3)
+                held.begin_piece(expected)
+                lookahead_only.begin_piece(expected)
+                # The first chunk comes exactly where keeping back only the decoder's lookahead puts it.
+                self.assertEqual(held.first, lookahead_only.first, (token, expected))
+                self.assertEqual(lookahead_only.hold, 3)
+                self.assertTrue(3 <= held.hold <= 8)
+                holds[expected] = held.hold
+            if token == 0.018:
+                # On a quiet i7-13700K a sentence up to 5.7 s keeps back all 8; a longer piece as many as its timing allows.
+                self.assertEqual({holds[e] for e in range(30, 143)}, {8})
+                self.assertLess(min(holds.values()), 8)
 
 
 class CpuTests(unittest.TestCase):

@@ -101,7 +101,7 @@ public sealed class SetupService(SettingsStore settingsStore, ICredentialStore c
             {
                 Role = route.Role,
                 CredentialId = old,
-                Scope = SelfHostSetup.IsGateway(route.RouteType) || route.RouteType == SetupRouteType.ChatCompletions
+                Scope = SelfHostSetup.IsGateway(route.RouteType) || route.RouteType is SetupRouteType.ChatCompletions or SetupRouteType.ElevenLabs
                     ? CredentialScopeSettings.From(route)
                     : null
             }).ToArray()
