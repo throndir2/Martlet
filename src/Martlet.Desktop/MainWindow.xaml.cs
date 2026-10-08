@@ -188,6 +188,7 @@ public partial class MainWindow : ThemedWindow
         InitializeNodePresence();
         InitializeSettingsSync();
         InitializeReminders();
+        InitializeRecommendedSetup();
         InitializeConfiguring();
         InitializeMemorySync();
         InitializeNetwork();

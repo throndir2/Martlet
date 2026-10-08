@@ -8,8 +8,8 @@ Martlet measurements**; no GPU/driver/model tuple is qualified yet
 VRAM headroom and measure your own machine. Per-model numbers, with which are
 measured, sourced or estimated, are in [Resource footprints](RESOURCE_FOOTPRINTS.md).
 
-**In the app:** the welcome tour's **Recommend a setup for me**, or **Not sure
-what you need? Get a recommendation** on Home, opens the setup advisor. It asks for
+**In the app:** the welcome tour's **Recommend a setup for me**, or **Plan a
+setup from scratch** on Home, opens the setup advisor. It asks for
 your goal (balanced, smartest, fastest or private), features and computers. For
 computers it reads this PC's graphics card from Windows and fills in each paired
 Martlet host with the GPU it reported (see
@@ -23,6 +23,33 @@ one is missing, **Install on this PC** installs just those; otherwise it saves,
 installs and contacts nothing. The recommendations and availability labels live in
 [`SetupAdvisor.cs`](../src/Martlet.Core/Installation/SetupAdvisor.cs); update
 them when a route ships.
+
+**Recommended setup on Home (the computers you have now):** on a companion PC,
+**Recommended setup** plans all the computers in your Martlet network from what
+this PC already knows. It contacts nothing to plan. It uses each computer's
+hardware report, the roles its last check found, the shared "who does what"
+plan, Devices › Sharing work, the Thinking pool, your voice engine and your
+provider keys ([`RecommendedSetupInputs.cs`](../src/Martlet.Desktop/RecommendedSetupInputs.cs)).
+The network recommender (`NetworkRecommender`) then applies
+[its rules](#recommended-setup-for-all-your-computers). Companion PCs stay light because they often run games, and each graphics
+card runs at most one language model. A review window shows each computer
+today and in the recommended setup, with a resource bar like the Devices page.
+It also shows who does each job (Speaking, Listening, Thinking, lip-sync and the
+Thinking pool) and every change with why. It lists notes, downloads and what
+needs someone at a computer. **Reconfigure** applies the setup on every computer
+and shows its progress. **Not now** closes the review, and this PC doesn't ask
+about the same setup again. Nothing changes before Reconfigure. On a PC that is
+in no Martlet network, the button runs **Set it all up for me** instead: the same
+recommendation for one PC, with one confirmation. When a computer comes back,
+or stays away longer than the time chosen in Settings › Your other computers (10
+minutes by default), each companion PC checks again
+in the background. It never checks while Martlet replies or hears you. When the
+setup is already right, or only minor changes would help, nothing shows (one
+log line). Otherwise the companion PC someone used in the last 10 minutes shows
+**A better setup is ready for your computers** on Home, with **Review**. It
+also shows a notification while Martlet's window is hidden. A companion PC
+that nobody uses keeps the suggestion for an hour and asks when someone uses
+it. Setups declined on that PC are not asked about again.
 
 **Not in the installer:** setup asks no questions, so the advisor above is the
 single place these rules live. The installer only offers to start Martlet, whose
