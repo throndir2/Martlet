@@ -13,6 +13,9 @@ Each release's section here is also its notes on GitHub.
 - New in Companion › Thinking pool: **Backup Thinking**. When your Thinking model is slow to start a reply, Martlet can send the same message to a Thinking pool member you picked, and whichever starts answering first gives the reply, so a busy or loading model doesn't keep you waiting. Tick **May answer for the conversation** on the members it may use (ideally running the same model). It's off by default, and a paid cloud member is only asked when you tick it. ([#557](https://github.com/throndir2/Martlet/pull/557))
 - New in Companion › Voice: **Quick sounds while Martlet thinks**. When a reply is slow to start, Martlet first says a quick "Mm," or "Hmm..." in its own voice, and the reply follows it, so you're never left in silence. It never plays when the reply is quick, never twice in one reply and at most once every 20 seconds. It's off by default; the sounds are made once with your voice and kept on this PC, and with a paid cloud voice only when you press **Make quick sounds now**. ([#555](https://github.com/throndir2/Martlet/pull/555))
 
+### Removed
+- The **Response style** sliders (Helpful, Sarcastic, Silly, Distracted and Playful teasing) are gone from Personality, along with their style prompts in Companion › Prompts. They only added one randomly picked style line to each message, and no character card has them. Your persona's own text, like a character card's, now sets how Martlet talks. Settings from older versions still load. ([#562](https://github.com/throndir2/Martlet/pull/562))
+
 ## [0.54.0] - 2026-10-07
 
 ### Added
