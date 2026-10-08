@@ -80,8 +80,47 @@ and recordings.
 - A model's key is in Windows Credential Manager. A model on the same base URL
   as Thinking can use Thinking's key.
 
-The Companion controls come in their own pull request. Then this section names
-them, with their automation IDs.
+### The cards on Vision and Listening
+
+Companion › Vision has an **Image model** card right after *Now*, and
+Companion › Listening has an **Audio model** card above *Hear how you say it*
+(`MainWindow.SenseModels.cs`). Each card has two parts.
+
+1. **What takes it now:** the choice (`ImageModelNow`), where the input goes
+   and why (`ImageModelRoute`, the words of `SenseRouting.For`), what the
+   model is known to do (`ImageModelKnown`) and, for a model of its own, what
+   is sent and where (`ImageModelSent`). Then the card's test: **Test vision**
+   (`ImageModelTest`) asks the model that takes pictures, and **Test hearing**
+   (`AudioModelTest`) asks an audio model of its own. Thinking's own Test
+   hearing stays under *Hear how you say it* (`TalkHearVoiceTest`).
+2. **The choice:** one option for each row of the table above
+   (`Place-ImageModel-Thinking`, `-OtherSense`, `-ThisPc`, `-Cloud` and
+   `-Computer`; `Place-AudioModel-...` without `-Computer`). An option only
+   shows its panel. The panel's own button saves `sense-models.json`, and the
+   running conversation follows at once (`ReloadSenseModels`).
+
+The panels:
+
+| Option | What you fill in | Saves with |
+| --- | --- | --- |
+| The text model, the other kind's model | Nothing | `ImageModelUseThinking`, `ImageModelUseOther` |
+| Ollama on this PC | A model Ollama has (`ImageModelLocalModel`), with what each one takes (`ImageModelLocalStatus`, `ImageModelLocalKnown`) and whether it fits beside Thinking's on the graphics card (`ImageModelLocalFit`) | `ImageModelUseLocal` (`ImageModelPullModel` downloads it) |
+| A cloud provider or server | The provider (also a model app found on this PC), the base URL, the model ID, a key and the consent tick | `ImageModelSaveCloud` |
+| One of your computers | Nothing: each paired computer offers its Thinking pool role, or its Ollama when it doesn't do Thinking for this PC (`ImageModelHost-<host>`) | `ImageModelUseHost-<host>` |
+
+Keys follow these rules (`SenseModelChoice`):
+
+- A model keeps its saved key for the same base URL. One key can serve both
+  kinds: an audio model on the image model's base URL uses the image model's
+  key.
+- Without a key of its own, a model on Thinking's base URL uses Thinking's
+  key.
+- A new key replaces the old one. Martlet deletes a key from Windows Credential
+  Manager when no choice uses it any more.
+
+Companion › Thinking's *Now* card says that Thinking is the text model and
+where pictures and recordings go (`ThinkingSenses`), with links to the two
+cards (`ThinkingOpenImageModel`, `ThinkingOpenAudioModel`).
 
 ## Where each kind of input goes
 
@@ -395,8 +434,26 @@ your other computers as the `model-abilities` setting
    otherwise. A paired computer's model is kept by its gateway's origin.
 4. **The model's name,** last (`VisionModelCatalog`, `HearingModelCatalog`).
 
-Test vision and the checks of a model of its own come with the Companion
-controls' pull request.
+How each check works for each model:
+
+| Model | Metadata | Test |
+| --- | --- | --- |
+| Thinking | When it is chosen or tested (`CheckNewModelContextAsync`) | Test hearing (Listening) and Test vision (Vision), on an OpenAI-compatible endpoint |
+| An image or audio model on an endpoint | When it is chosen (`CheckChosenModelAsync`): Ollama on this PC through `/api/show` without loading the model, another server through its model list with the key the model uses. Ollama on this PC is also asked about a model when you pick it in the panel. | Test vision or Test hearing on the card, sent straight to the endpoint |
+| An image model on a paired computer | None: its gateway shows no metadata, so its name counts | Test vision through its gateway with the image model's runner: in its lane while it takes pictures (`RunSenseAsync`), else straight to it (`TestSenseAsync`), so a model found not to see can be tested again. It waits while a reply needs that computer |
+
+**Test vision** (`ModelVisionTest`) sends one picture of a single word, drawn
+on this PC in large dark capitals on white (`VisionTestPicture`, a 640 x 240
+PNG), with the question *The attached picture shows one English word. Reply
+with only that word.* The request has Thinking steps Off and a small reply
+budget, like Test hearing. The word is one of twelve, drawn at random, so a
+model that doesn't see can't guess it. The right word means *sees*. Another
+answer, or a server that refuses the picture, means *doesn't see*. A key
+problem, a missing model or an unreachable server tells nothing. A test of a
+cloud model asks first, because it is one small request with your key.
+
+`model-abilities.json` keeps one source and date for each model, so the
+cards say *as Martlet found out (last check on <date>: <source>)*.
 
 ## Barge-in, end of turn and the word check
 

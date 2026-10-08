@@ -562,6 +562,7 @@ public partial class MainWindow
         if (section == CompanionTab.Listening) page.Children.Add(TalkModeCard());
         if (section == CompanionTab.Listening) page.Children.Add(EchoCard());
         if (section == CompanionTab.Listening) page.Children.Add(PcAudioCard());
+        if (section == CompanionTab.Listening) page.Children.Add(SenseModelCards(SenseKind.Audio));
         if (section == CompanionTab.Listening) page.Children.Add(HearVoiceCard());
         if (section == CompanionTab.Listening)
             page.Children.Add(Card(Heading("Who is talking"),
@@ -603,6 +604,7 @@ public partial class MainWindow
         var nowText = new TextBlock { Text = status, FontSize = 15, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(nowText, "SetupJobNow-" + section);
         now.Children.Add(nowText);
+        if (section == CompanionTab.Thinking) now.Children.Add(TextModelLine(route));
         if (NetworkJobNote(job.Job) is { } network)
         {
             var line = new TextBlock { Text = network, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
