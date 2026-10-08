@@ -11,6 +11,9 @@ Each release's section here is also its notes on GitHub.
 ### Added
 - New in Companion › Check-ins: every few minutes your Thinking pool checks on Martlet and fixes what a small model forgets. It turns off emotes a reply left on that no longer fit (a blush long after the compliment), takes the character's eyes back to their usual gaze, and reminds Martlet in its next reply of a promise it never kept ("I'll remind you in 10 minutes!") or when its replies drift out of character. Add your own check-ins too, such as suggesting a break after hours at the PC: choose what each one gets to know, how often it runs, and whether it reminds Martlet or Martlet brings it up on its own. Check-ins run only on your Thinking pool, never on your conversation model, so replies never wait for them. ([#604](https://github.com/throndir2/Martlet/pull/604))
 
+### Fixed
+- **Eyes › Watch the window you're using** now really watches what you do: your character's eyes follow where you move the mouse or type in the window you're using, instead of staring at the middle of it (which, for most windows, looked like staring off to one side). ([#608](https://github.com/throndir2/Martlet/pull/608))
+
 ## [0.56.0] - 2026-10-07
 
 ### Added
