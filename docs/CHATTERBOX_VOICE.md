@@ -174,7 +174,14 @@ volume, `martlet-chatterbox-nano-models`.
   | The GPU's schedule (12, 25, 50, 100 tokens), 2 steps | −0.16 | −0.21 | −0.18 | (GPU) |
 
   The service's own stream makes the same audio as the tested decoding (within
-  one 16-bit step) when its chunk points and noise are fixed. The GPU's
+  one 16-bit step) when its chunk points and noise are fixed. The benchmark
+  session then checked #579 through the service itself, with its own client
+  and scorer: 4 voices (annie, bdl, lj-speech, woollybee) × sentence, medium
+  and long × 4 takes per arm, streamed and whole in alternating blocks, takes
+  not paired. Streamed minus whole was −0.01 ± 0.05 UTMOS over 12 cells
+  (sentence +0.07, medium −0.07, long −0.03); #560, measured the same way,
+  was −0.15 ± 0.08 (−0.27, −0.21, −0.43). Speaker similarity was +0.002, and
+  the word error rate was the same. The GPU's
   schedule loses about as much as #560 did, so Turbo's and Nano's streaming on
   a graphics card probably sounds worse at its joins too. A longer holdback
   there would leave its first chunk (12 tokens) almost no audio, so it is
@@ -191,7 +198,20 @@ volume, `martlet-chatterbox-nano-models`.
   sentence was slower than real time. That is why the CPU engine is Nano.
 - **The CPU must be free.** With other programs keeping about 15 cores busy, a
   4.3 s piece took 4.5 s (1.05x real time), so the voice pauses between pieces.
-  Don't give Nano the CPU that also runs Thinking or other heavy work.
+  Streamed pieces pause under load too. In the benchmark session's check of
+  #579, with other programs using 2-20 cores (median about 5), 6 of 32 medium
+  and long takes paused (0.12-1.45 s in all per take), mostly when others used
+  about 6 cores or more. In this repository's A/B, the takes alternated
+  between the two holdbacks, so both saw the same load: the whole CPU was
+  25-45 % busy with the service, with one spike to 91-93 %, and T3 took 19-26 ms
+  a token. 13 s pieces paused in 2 of 10 takes with the default holdback and in
+  4 of 10 with #560's 3 (one of the two was 5.3 s, during the spike). 6.4 s
+  pieces paused in none of 8, and the median first audio was the same (3.27 s
+  against 3.22 s). The holdback does
+  not cause the pauses; load does. A bigger first chunk would prevent some,
+  but it would make the first word later, so the schedule keeps the first
+  chunk as early as it can. Don't give Nano the CPU that also runs Thinking or
+  other heavy work.
 - Memory: after loading, the service holds 2.4-2.6 GB, and at most 4.5 GB while
   it speaks (Turbo on the CPU: 3.4 and 6.6 GB). Loading takes 5-8 s, and
   warming up (the first conditionals, about 3-18 s for librosa's first run, and

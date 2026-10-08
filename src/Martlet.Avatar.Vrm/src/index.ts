@@ -1,3 +1,4 @@
+export * from "./eyes.js";
 export * from "./inspect.js";
 export * from "./runtime.js";
 export * from "./renderer.js";

@@ -313,6 +313,76 @@ test("the face Martlet draws over is read unprompted for MCP: how it is followed
   assert.ok(!posts.some(post => post.error));
 });
 
+test("the eyes measured by vision reach the adapter, and the page answers where the eyes come from without ever failing", async () => {
+  const posts = [], hints = [];
+  let from = "estimate", refusing = false;
+  class Renderer {
+    load() { return Promise.resolve({ expressions: [] }); }
+    resize() {}
+    update() {}
+    setView() {}
+    dispose() {}
+    setEyeHint(hint) {
+      hints.push(hint);
+      if (refusing) throw new Error("controlled hint failure");
+      from = hint ? "vision" : "estimate";
+      return from;
+    }
+    get eyesFrom() { return from; }
+  }
+  const { send } = await page(Renderer, posts);
+  const hint = { left: { iris: { x: -0.2, y: 0.01, r: 0.06 }, eye: { x: -0.2, y: 0, rx: 0.12, ry: 0.08 } } };
+  await send({ kind: "eyes", data: hint });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { eyesFrom: null }, "no model shows yet");
+  assert.equal(hints.length, 0);
+  await send({ kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm" } });
+  await send({ kind: "eyes", data: hint });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { eyesFrom: "vision" });
+  assert.deepEqual(JSON.parse(JSON.stringify(hints.at(-1))), hint, "the hint goes to the adapter as it came");
+  await send({ kind: "eyes", data: null });
+  assert.equal(hints.at(-1), undefined, "null clears it");
+  assert.equal(posts.at(-1).eyesFrom, "estimate");
+  refusing = true;
+  await send({ kind: "eyes", data: hint });
+  assert.equal(posts.at(-1).eyesFrom, "estimate", "a hint the adapter can't take leaves the eyes as they were");
+  assert.ok(!posts.some(post => post.error), "and never fails the renderer");
+  await send({ kind: "face", data: { id: 9 } });
+  assert.equal(posts.at(-1).faceReading.id, 9, "which still answers");
+});
+
+test("a face reading has the eyes: where they came from, each iris and its opening's box, size and whether the iris is in it", async () => {
+  const posts = [];
+  const square = (x, y, r) => [{ x: x - r, y: y - r }, { x: x + r, y: y - r }, { x: x + r, y: y + r }, { x: x - r, y: y + r }];
+  let shapeRight = { points: square(266, 100, 6), triangles: [0, 1, 2, 0, 2, 3] };
+  class Renderer {
+    load() { return Promise.resolve({ expressions: [] }); }
+    resize() {}
+    update() {}
+    setView() {}
+    dispose() {}
+    faceAnchor() { return { x: 250, y: 100, width: 80, angle: 0, tracking: "mesh", eyesFrom: "mesh",
+      cheekLeft: { x: 230, y: 115 }, cheekRight: { x: 270, y: 115 }, eyeLeft: { x: 234, y: 100 }, eyeRight: { x: 266, y: 100 },
+      irisLeft: { x: 235, y: 100, rx: 5, ry: 6 }, irisRight: { x: 275, y: 100, rx: 5, ry: 6 },
+      eyeLeftShape: { points: square(234, 100, 8).concat([{ x: 230, y: 108 }]) }, eyeRightShape: shapeRight }; }
+  }
+  const { send } = await page(Renderer, posts);
+  await send({ kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm" } });
+  await send({ kind: "face", data: { id: 3 } });
+  const reading = JSON.parse(JSON.stringify(posts.at(-1))).faceReading;
+  assert.equal(reading.eyesFrom, "mesh");
+  assert.deepEqual(reading.irisLeft, { x: 0.47, y: 0.2, rx: 0.01, ry: 0.012 });
+  assert.deepEqual(reading.eyeLeftShape, { points: 5, triangles: null, left: 0.452, top: 0.184, right: 0.484, bottom: 0.216, irisInside: true });
+  assert.deepEqual(reading.eyeRightShape, { points: 4, triangles: 2, left: 0.52, top: 0.188, right: 0.544, bottom: 0.212, irisInside: false },
+    "this iris lies outside its opening");
+  shapeRight = { points: [], triangles: [] };
+  await send({ kind: "face", data: { id: 4 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))).faceReading.eyeRightShape, { points: 0, triangles: 0, irisInside: false },
+    "a closed eye has no opening");
+  shapeRight = { points: square(266, 100, 6), triangles: [0, 1, 9] };
+  await send({ kind: "face", data: { id: 5 } });
+  assert.equal(JSON.parse(JSON.stringify(posts.at(-1))).faceReading.eyeRightShape, null, "a triangle past the points drops the shape");
+});
+
 test("shared Live2D/VRM page leaves the desktop visible behind the canvas", async () => {
   const html = await readFile(new URL("index.html", import.meta.url), "utf8");
   assert.match(html, /html,body\{[^}]*background:transparent[;}]/);
