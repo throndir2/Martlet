@@ -184,6 +184,102 @@ public sealed class TouchZoneDetectionTests
     }
 
     [Fact]
+    public async Task ARequestThatFailsPartWayStopsTheDetectionWithTheZonesFoundUntilThen()
+    {
+        var asks = new List<ZoneAsk>();
+        // The parts, the head's close-up, then its check fails: the model's computer stopped answering.
+        var result = await TouchZoneDetection.RunAsync(Character(), null, (ask, _) =>
+        {
+            asks.Add(ask);
+            return Task.FromResult<(string?, string?)>(asks.Count == 3 ? (null, "ResponseTruncated") : (TouchZoneDetection.Oracle(ask, Truth), null));
+        }, null, CancellationToken.None, new ZoneDetectionOptions { Required = TouchZoneDetection.Erogenous });
+
+        Assert.Equal("ResponseTruncated", result.Failure);
+        Assert.Equal(3, result.Requests);
+        Assert.Equal(3, asks.Count);
+        Assert.Equal(ZoneAskKind.Check, asks[^1].Kind);
+        Assert.Contains(result.Zones!, z => z.Id == "face");
+        Assert.DoesNotContain(result.Zones!, z => z.Id == "chest");
+        Assert.Contains("head check 1: the request failed (ResponseTruncated), so finding zones stopped", result.Steps);
+        // Nothing is asked again or worked out after a failure.
+        Assert.DoesNotContain(result.Steps, s => s.StartsWith("worked out", StringComparison.Ordinal));
+
+        // An answer with nothing usable in it is not a failure: the detection goes on.
+        var quiet = await TouchZoneDetection.RunAsync(Character(), null, (ask, _) =>
+            Task.FromResult<(string?, string?)>((ask.Step == "head" ? null : TouchZoneDetection.Oracle(ask, Truth), null)), null, CancellationToken.None);
+        Assert.Null(quiet.Failure);
+        Assert.Contains(quiet.Zones!, z => z.Id == "chest");
+    }
+
+    [Fact]
+    public async Task TheIntimateZonesAreAskedForAgainThenWorkedOutWhileIncludeIntimateZonesIsOn()
+    {
+        var groin = new CharacterTouchZone { Id = "groin", Box = new(0.45, 0.5, 0.1, 0.08) };
+        var asks = new List<ZoneAsk>();
+        // The close-ups leave out every intimate zone but the chest; asked again on the whole character, the model finds the groin.
+        var result = await TouchZoneDetection.RunAsync(Character(), null, (ask, _) =>
+        {
+            asks.Add(ask);
+            return Task.FromResult<(string?, string?)>((TouchZoneDetection.Oracle(ask, ask.Step == TouchZoneDetection.MissingStep ? [.. Truth, groin] : Truth), null));
+        }, null, CancellationToken.None, new ZoneDetectionOptions { Required = TouchZoneDetection.Erogenous });
+
+        Assert.Null(result.Failure);
+        var again = Assert.Single(asks, a => a.Step == TouchZoneDetection.MissingStep);
+        Assert.Equal(new TouchZoneBox(0, 0, 1, 1), again.Region);
+        Assert.Contains("groin - the groin, where the legs meet", again.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("chest -", again.Text, StringComparison.Ordinal);
+        Assert.Contains("A zone that clothing or hair covers is still there", again.Instructions, StringComparison.Ordinal);
+        Assert.Contains("A zone that clothing or hair covers is still there", TouchZoneDetection.ZonesInstructions, StringComparison.Ordinal);
+        Assert.Contains("A zone that clothing or hair covers is still there", TouchZoneDetection.CheckInstructions, StringComparison.Ordinal);
+        foreach (var id in TouchZoneDetection.Erogenous) Assert.Contains(result.Zones!, z => z.Id == id);
+        var zones = result.Zones!.ToDictionary(z => z.Id, z => z.Box);
+        // The groin is the model's own box; the rest are worked out from the zones around them.
+        Assert.True(TouchZoneDetection.Moved(zones["groin"], groin.Box) <= 0.03, $"groin: {zones["groin"]}");
+        var worked = Assert.Single(result.Steps, s => s.StartsWith("worked out", StringComparison.Ordinal));
+        Assert.DoesNotContain("groin", worked, StringComparison.Ordinal);
+        Assert.Contains("breast_left from the chest", worked, StringComparison.Ordinal);
+        Assert.Contains("hips from the thighs", worked, StringComparison.Ordinal);
+        Assert.Contains("inner_thigh_left from thigh_left", worked, StringComparison.Ordinal);
+        // Facing the viewer, the character's left is on the picture's right; the inner side of a thigh faces the legs' middle.
+        Assert.True(zones["breast_left"].CenterX > zones["breast_right"].CenterX);
+        Assert.True(zones["ear_left"].CenterX > zones["ear_right"].CenterX);
+        Assert.True(zones["inner_thigh_left"].CenterX > zones["inner_thigh_right"].CenterX);
+        Assert.True(zones["inner_thigh_left"].CenterX < zones["thigh_left"].CenterX);
+        Assert.True(zones["breast_left"].Y >= zones["chest"].Y && zones["breast_left"].Y + zones["breast_left"].Height <= zones["chest"].Y + zones["chest"].Height + 0.01);
+        Assert.True(zones["lips"].CenterY > zones["face"].CenterY);
+        Assert.True(zones["neck"].Y >= zones["face"].Y + zones["face"].Height - 0.01 && zones["neck"].Y < zones["chest"].Y);
+        Assert.True(zones["hips"].Y < zones["thigh_left"].Y && zones["hips"].Y + zones["hips"].Height > zones["thigh_left"].Y);
+
+        // With Include intimate zones off, nothing is asked again or worked out.
+        var off = await TouchZoneDetection.RunAsync(Character(), null,
+            (ask, _) => Task.FromResult<(string?, string?)>((TouchZoneDetection.Oracle(ask, Truth), null)), null, CancellationToken.None);
+        Assert.DoesNotContain(off.Steps, s => s.StartsWith(TouchZoneDetection.MissingStep, StringComparison.Ordinal) || s.StartsWith("worked out", StringComparison.Ordinal));
+        Assert.DoesNotContain(off.Zones!, z => z.Id == "groin");
+    }
+
+    [Fact]
+    public void ACharacterWithNoLowerBodyGetsNoHipsOrGroinWorkedOut()
+    {
+        // A bust-up: head and chest only.
+        var bust = Picture(200, 200, Dark, (50, 10, 100, 190));
+        var zones = new Dictionary<string, TouchZoneBox> { ["face"] = new(0.35, 0.1, 0.3, 0.3), ["chest"] = new(0.3, 0.6, 0.4, 0.3) };
+        var regions = new Dictionary<string, (TouchZoneBox, bool)>
+        {
+            ["head"] = (new(0.25, 0.05, 0.5, 0.45), true), ["upper_body"] = (new(0.25, 0.5, 0.5, 0.5), true),
+            ["lower_body"] = (new(0.25, 0.9, 0.5, 0.1), false)
+        };
+
+        var notes = TouchZoneDetection.Derive(zones, TouchZoneDetection.Erogenous, bust, true, regions, new(0.25, 0.05, 0.5, 0.95));
+
+        Assert.Contains("not hips, groin, buttocks, inner_thigh_left, inner_thigh_right: the character shows no lower body", notes);
+        Assert.DoesNotContain("groin", zones.Keys);
+        Assert.DoesNotContain("hips", zones.Keys);
+        foreach (var id in new[] { "lips", "ear_left", "ear_right", "neck", "breast_left", "breast_right", "waist" }) Assert.Contains(id, zones.Keys);
+        // Only missing zones are worked out: the chest stays the model's.
+        Assert.Equal(new TouchZoneBox(0.3, 0.6, 0.4, 0.3), zones["chest"]);
+    }
+
+    [Fact]
     public void HintsComeFromTheSkeletonAndNamedParts()
     {
         var probe = new RendererZoneProbe(
@@ -311,8 +407,8 @@ public sealed class TouchZoneDetectionTests
     }
 
     // A still renderer as the touch zones picture needs it: it records what it was started with and asked, and answers with a
-    // picture (or fails to start).
-    private sealed class StillRenderer(bool failStart = false) : IAvatarRenderer
+    // picture (png, or three bytes that aren't one; or fails to start).
+    private sealed class StillRenderer(bool failStart = false, byte[]? png = null) : IAvatarRenderer
     {
         internal List<RendererMessage> Sent { get; } = [];
         internal string? Revision { get; private set; }
@@ -330,7 +426,7 @@ public sealed class TouchZoneDetectionTests
         {
             Sent.Add(RendererProtocol.Message(kind, Guid.Empty, data));
             return Task.FromResult(RendererProtocol.Message("picture", Guid.Empty,
-                new RendererPicture(Convert.ToBase64String([1, 2, 3]), 1, 3, 0.34, 0.04, 0.28, 1.07, new([new("Hair", 0.4, 0.05, 0.6, 0.3)]), 0.94)));
+                new RendererPicture(Convert.ToBase64String(png ?? [1, 2, 3]), 1, 3, 0.34, 0.04, 0.28, 1.07, new([new("Hair", 0.4, 0.05, 0.6, 0.3)]), 0.94)));
         }
         public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
     }
@@ -364,6 +460,82 @@ public sealed class TouchZoneDetectionTests
         Assert.Empty(stills[^1].Sent);
     }
 
+    private static byte[] Png(ZonePixels pixels)
+    {
+        var source = System.Windows.Media.Imaging.BitmapSource.Create(pixels.Width, pixels.Height, 96, 96, System.Windows.Media.PixelFormats.Bgra32,
+            null, pixels.Bgra, pixels.Width * 4);
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(source));
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+        return stream.ToArray();
+    }
+
+    // A vision model's answer to each request of a detection, by number: the parts, then the head's close-up; at request 3 (the
+    // head's check) the computer it runs on stops answering.
+    private static Task<(string?, string?)> FailsAtThree(int request) => Task.FromResult<(string?, string?)>(request switch
+    {
+        1 => ("{\"parts\":[{\"id\":\"head\",\"left\":0.3,\"top\":0.03,\"right\":0.7,\"bottom\":0.25},{\"id\":\"upper_body\",\"left\":0.25,\"top\":0.2," +
+            "\"right\":0.75,\"bottom\":0.57},{\"id\":\"lower_body\",\"left\":0.3,\"top\":0.5,\"right\":0.7,\"bottom\":0.99}]}", null),
+        2 => ("{\"zones\":[{\"id\":\"face\",\"left\":0.3,\"top\":0.3,\"right\":0.7,\"bottom\":0.7}]}", null),
+        _ => (null, "ResponseTruncated")
+    });
+
+    [Fact]
+    public async Task ADetectionThatFailsPartWayKeepsTheZonesFromBeforeAndTheirPicture()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var data = Path.Combine(scope.DirectoryPath, "data");
+        var png = Png(Character());
+        await using var avatar = new AvatarController(createRenderer: () => throw new InvalidOperationException("the character must not show"),
+            createStillRenderer: () => new StillRenderer(png: png));
+        await CharacterTouchZones.SaveAsync(data, new CharacterTouchZoneSettings
+        {
+            ModelId = "model-1", DetectedBy = CharacterTouchZoneSettings.ByVision, Zones = [.. Truth]
+        }, DateTimeOffset.Now);
+        byte[] earlierPicture = [9, 8, 7];
+        await CharacterTouchZones.SaveSnapshotAsync(data, "model-1", earlierPicture);
+        var service = new CharacterTouchZoneService(data);
+        service.Follow("model-1");
+        var requests = 0;
+
+        var line = await service.DetectAsync(avatar, scope.Profile(), (_, _, _, _, _) => FailsAtThree(++requests), CancellationToken.None);
+
+        Assert.Equal(3, requests);
+        Assert.Equal("Finding zones stopped at request 3: couldn't ask the Thinking model (ResponseTruncated). Your 7 zones from before are kept. " +
+            "Try again when it answers.", line);
+        Assert.Equal(line, service.Detection);
+        // The zones found until then were saved over the earlier ones as they came; the earlier ones and their picture are back.
+        Assert.Equal(Truth.Select(z => z.Id), service.Current!.Zones.Select(z => z.Id));
+        Assert.Equal(Truth.Select(z => z.Id), CharacterTouchZones.Load(data, "model-1")!.Zones.Select(z => z.Id));
+        Assert.Equal(earlierPicture, File.ReadAllBytes(CharacterTouchZones.SnapshotPath(data, "model-1")));
+        // The pictures sent belong to the detection that failed, not to the zones shown.
+        Assert.False(service.Sent!.Saved);
+        Assert.Equal(3, service.Sent.Requests);
+        Assert.False(service.Busy);
+    }
+
+    [Fact]
+    public async Task WithNoZonesBeforeADetectionThatFailsPartWayKeepsTheZonesFoundUntilThen()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var data = Path.Combine(scope.DirectoryPath, "data");
+        var png = Png(Character());
+        await using var avatar = new AvatarController(createRenderer: () => throw new InvalidOperationException("the character must not show"),
+            createStillRenderer: () => new StillRenderer(png: png));
+        var service = new CharacterTouchZoneService(data);
+        service.Follow("model-1");
+        var requests = 0;
+
+        var line = await service.DetectAsync(avatar, scope.Profile(), (_, _, _, _, _) => FailsAtThree(++requests), CancellationToken.None);
+
+        Assert.Equal("Finding zones stopped at request 3: couldn't ask the Thinking model (ResponseTruncated). The 1 zone found until then is kept. " +
+            "Press Detect again to find the rest.", line);
+        Assert.Equal(["face"], service.Current!.Zones.Select(z => z.Id));
+        Assert.Equal(png, File.ReadAllBytes(CharacterTouchZones.SnapshotPath(data, "model-1")));
+        Assert.True(service.Sent!.Saved);
+    }
+
     [Fact]
     public void WhatWasSentIsDescribedPlainly()
     {
@@ -381,5 +553,10 @@ public sealed class TouchZoneDetectionTests
         Assert.Contains("close-ups of the head and upper body", line, StringComparison.Ordinal);
         Assert.Contains("for 1 check.", line, StringComparison.Ordinal);
         Assert.StartsWith("FIXTURE - NOT AI", (sent with { Fixture = true }).Describe(), StringComparison.Ordinal);
+        // Asking again for the zones the close-ups missed is said apart from the close-ups.
+        var again = (sent with { Pictures = [.. sent.Pictures, new("05-missing.png", TouchZoneDetection.MissingStep, "Zones", 402, 1024, 180_000, "image/png")] })
+            .Describe();
+        Assert.Contains("close-ups of the head and upper body,", again, StringComparison.Ordinal);
+        Assert.EndsWith(", and the whole character again for the zones the close-ups missed.", again, StringComparison.Ordinal);
     }
 }

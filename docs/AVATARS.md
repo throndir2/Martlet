@@ -398,6 +398,15 @@ waist, hips, groin, buttocks and inner thighs) react too while
      and numbered, and it says which are right, corrects the others, removes
      zones that aren't there and adds ones it missed. This repeats for up to two
      rounds per part, or until it changes nothing.
+  6. With **Include intimate zones** on, the intimate zones are always found.
+     The close-ups and checks tell the model that a zone covered by clothing or
+     hair is still there. When the close-ups still miss one, the model sees the
+     whole character once more and is asked for only those zones. Any zone it
+     still leaves out (or refuses) is worked out from the zones around it: the
+     breasts from the chest, the hips over the thighs, the groin between the
+     thighs, the buttocks low on the hips, the inner thighs from the thighs, and
+     the lips, ears and neck from the face. A character that shows no lower body
+     gets no hips or groin.
 
   Between steps the CPU does what it can tell for certain: it fits each box to
   the character's pixels, swaps left and right back when a pair is the wrong way
@@ -406,8 +415,12 @@ waist, hips, groin, buttocks and inner thighs) react too while
   nose, a box that misses where a VRM's own skeleton puts the part). A VRM's
   bone positions and a Live2D model's part names (such as `HairFront`) go to
   the model as hints. A box that still misses its VRM bone moves onto it.
-  Detection makes about 7 to 12 requests; **Stop** stops it and keeps the zones
-  found until then, and the picture shows the zones as they are found. Each
+  Detection makes about 7 to 13 requests; **Stop** stops it and keeps the zones
+  found until then, and the picture shows the zones as they are found. When a
+  request fails (the Thinking model, or the computer it runs on, stops
+  answering), finding zones stops at that request and says so. The zones from
+  before stay, with their picture. When there were none before, the zones found
+  until then stay. Each
   request is a [helper job](MEMORY.md#helper-jobs-on-the-thinking-pool) that
   needs vision: a free Thinking pool member that can see takes it first (and
   **Detect zones** works with such a member even when the Thinking model can't
