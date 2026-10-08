@@ -20,6 +20,7 @@ Each release's section here is also its notes on GitHub.
 - A stroke across several parts of your character now reaches Martlet as one path in order, such as *They slowly stroked down from your chest over your stomach to your thighs*, with every part it crossed (not only the first three), which way it went, and left and right sides said together. ([#597](https://github.com/throndir2/Martlet/pull/597))
 
 ### Fixed
+- Chat bubbles in the talk window are now only as wide as their words, without the empty space that a longer name, time or note next to them used to add. ([#602](https://github.com/throndir2/Martlet/pull/602))
 - While Martlet speaks, its voice now always moves your character's mouth, even when an emote sets the mouth, such as an open mouth, `{starstruck}`, `{ahegao}` or one of the character's own expressions (a VRoid emotion, for example). About a second after Martlet stops talking, the emote's mouth comes back. ([#601](https://github.com/throndir2/Martlet/pull/601))
 - Martlet's drawings on a Live2D character's face, such as the blush, tears, sweat drops and symbols over the head, now stay in place when she looks down at your mouse or turns and tilts her head, also on characters whose head moves through their own physics. ([#598](https://github.com/throndir2/Martlet/pull/598))
 

@@ -4032,7 +4032,9 @@ screen `bounds` (`[x, y, width, height]` in pixels) and, for text controls, the
 `textBounds` of their first line of text (geometry only, never the text), so
 alignment can be checked: in the talk window, the empty box's hint
 `LivePlaceholder` must have the same `bounds` position as the `textBounds` of
-text typed into `LiveInput`.
+text typed into `LiveInput`. Each message bubble (`LiveMessage-*`) is only as
+wide as its words: for a one-line message, `bounds` is about 4 pixels wider
+than `textBounds` (room for the caret), even under a longer caption or note.
 `windowStates` lists each window's `name`, automation `id`, `enabled`, and
 whether its frame is `resizable`, `minimizable` and `maximizable`, whether it is
 `minimized`, whether it is the `foreground` window (has the focus) and whether
