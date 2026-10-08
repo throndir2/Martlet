@@ -2,8 +2,9 @@ using System.Globalization;
 
 namespace Martlet.Avatar.Hosting;
 
-/// <summary>What one detection request asks for: where the big parts are, a close-up's zones, or a check of drawn boxes.</summary>
-public enum ZoneAskKind { Parts, Zones, Check }
+/// <summary>What one detection request asks for: where the big parts are, a close-up's zones, what is special about the
+/// character, or a check of drawn boxes.</summary>
+public enum ZoneAskKind { Parts, Zones, Check, Special }
 
 /// <summary>A numbered box drawn on a check picture: its zone and its box as fractions of the picture sent.</summary>
 public sealed record ZoneMark(int Number, string Id, TouchZoneBox Box);
@@ -56,9 +57,10 @@ public sealed record ZoneHints(IReadOnlyList<ZoneHintPoint> Bones, IReadOnlyList
 
 /// <summary>How a detection goes: the longer side of each picture sent, how far a close-up may zoom in, how many check rounds
 /// each part gets, the zones it looks for (<see cref="TouchZoneDetection.Defaults"/> unless told otherwise; Detect zones adds
-/// the ones the owner added: <see cref="TouchZoneDetection.For"/>) and the zones it must end with (looked for too, asked for
+/// the ones the owner added: <see cref="TouchZoneDetection.For"/>), the zones it must end with (looked for too, asked for
 /// again on the whole character when the close-ups missed them, then worked out from the zones around them where Martlet
-/// can: the intimate ones, with Include intimate zones on).</summary>
+/// can: the intimate ones, with Include intimate zones on), and how many zones special to the character it may add, with the
+/// special zones found before.</summary>
 public sealed record ZoneDetectionOptions
 {
     public int Edge { get; init; } = 1024;
@@ -66,6 +68,11 @@ public sealed record ZoneDetectionOptions
     public int Checks { get; init; } = 2;
     public IReadOnlyList<string> Zones { get; init; } = TouchZoneDetection.Defaults;
     public IReadOnlyList<string> Required { get; init; } = [];
+    /// <summary>The most zones special to the character (<see cref="TouchZoneDetection.IsSpecial"/>) the vision model may add;
+    /// 0 doesn't ask what is special about it.</summary>
+    public int MaximumSpecial { get; init; } = TouchZoneDetection.DefaultSpecial;
+    /// <summary>The zones special to the character found before (ID and name): the vision model is asked to keep their IDs.</summary>
+    public IReadOnlyList<(string Id, string Name)> SpecialBefore { get; init; } = [];
 }
 
 /// <summary>A detection's progress: what it does now, the zones found so far (fractions of the snapshot) and the requests made.</summary>
@@ -83,7 +90,9 @@ public sealed record ZoneRegion(string Id, string What, IReadOnlyList<string> Zo
 /// <see cref="Defaults"/> and the zones the owner added. One picture of the whole character with a grid finds the head, upper
 /// body and lower body (and a tail, wings or a held item the owner added); a close-up of each part finds its zones; then the
 /// model checks each part's boxes, drawn and numbered on the close-up, and corrects them,
-/// for a few rounds or until it says they are right. Between steps the CPU shrinks each box to the character's pixels, swaps
+/// for a few rounds or until it says they are right. Last, the whole character again says what is special about it (animal
+/// ears, a tail, a hat, a bow...): each becomes a zone, named as the model sees it (<see cref="IsSpecial"/>), and is checked too.
+/// Between steps the CPU shrinks each box to the character's pixels, swaps
 /// left and right back when a pair is the wrong way round, and lists problems for the next check: a box over the background,
 /// a chin above a nose, a box that misses where the model's own skeleton puts the part.</summary>
 public static partial class TouchZoneDetection
@@ -137,7 +146,8 @@ public static partial class TouchZoneDetection
     /// <summary>How Detect zones (and Detect again) goes for the model of <paramref name="saved"/>: it looks for
     /// <see cref="Defaults"/> and every zone the owner added (<see cref="CharacterTouchZone.Added"/>), and must end with the zones
     /// the owner added and, with Include intimate zones on (<paramref name="includeIntimate"/>, else the saved choice, on by
-    /// default), the intimate ones it looks for.</summary>
+    /// default), the intimate ones it looks for. It also asks what is special about the character, telling the vision model the
+    /// special zones found before so it keeps their IDs.</summary>
     public static ZoneDetectionOptions For(CharacterTouchZoneSettings? saved, bool? includeIntimate = null)
     {
         var added = saved?.Zones.Where(z => z.Added).Select(z => z.Id).Distinct(StringComparer.Ordinal).ToArray() ?? [];
@@ -146,7 +156,8 @@ public static partial class TouchZoneDetection
         return new()
         {
             Zones = zones,
-            Required = [.. zones.Where(id => added.Contains(id, StringComparer.Ordinal) || intimate && CharacterTouchZones.Kind(id)?.Intimate == true)]
+            Required = [.. zones.Where(id => added.Contains(id, StringComparer.Ordinal) || intimate && CharacterTouchZones.Kind(id)?.Intimate == true)],
+            SpecialBefore = [.. (saved?.Zones ?? []).Where(z => !z.Added && IsSpecial(z.Id)).Select(z => (z.Id, z.Name))]
         };
     }
 
@@ -191,8 +202,9 @@ public static partial class TouchZoneDetection
         ["skirt_hem"] = "the bottom edge of a skirt or dress", ["tail"] = "a tail", ["wings"] = "wings", ["held_item"] = "something the character holds"
     };
 
-    /// <summary>What a zone is, as the vision model is told ("the character's left cheek").</summary>
-    public static string Describe(string id) => Where.TryGetValue(id, out var where) ? where : CharacterTouchZones.Kind(id)?.Label.ToLowerInvariant() ?? id;
+    /// <summary>What a zone is, as the vision model is told ("the character's left cheek"); a zone of its own, by its ID in words.</summary>
+    public static string Describe(string id) =>
+        Where.TryGetValue(id, out var where) ? where : CharacterTouchZones.Kind(id)?.Label.ToLowerInvariant() ?? id.Replace('_', ' ');
 
     // ---------- what the vision model is told ----------
 
@@ -263,15 +275,17 @@ public static partial class TouchZoneDetection
         "This picture shows the whole character.\nZones (id - what):\n" + string.Join("\n", missing.Select(id => $"{id} - {Describe(id)}")) +
         HintsText(hints, new(0, 0, 1, 1));
 
-    /// <summary>The message that goes with a check: the numbered boxes, the zones without one and what the CPU found wrong.</summary>
+    /// <summary>The message that goes with a check: the numbered boxes, the zones without one and what the CPU found wrong. A zone
+    /// is told as <paramref name="describe"/> says (else <see cref="Describe"/>): a zone special to the character by its name.</summary>
     public static string CheckText(string what, IReadOnlyList<ZoneMark> marks, IEnumerable<string> missing, IReadOnlyList<string> problems,
-        ZoneHints? hints, TouchZoneBox crop)
+        ZoneHints? hints, TouchZoneBox crop, Func<string, string>? describe = null)
     {
+        describe ??= Describe;
         var text = $"This picture shows {what}. The boxes (number = id - what):\n" +
-            string.Join("\n", marks.Select(m => $"{m.Number} = {m.Id} - {Describe(m.Id)}"));
+            string.Join("\n", marks.Select(m => $"{m.Number} = {m.Id} - {describe(m.Id)}"));
         var absent = missing.ToArray();
         if (absent.Length > 0)
-            text += "\nZones without a box (add them if you can see them):\n" + string.Join("\n", absent.Select(id => $"{id} - {Describe(id)}"));
+            text += "\nZones without a box (add them if you can see them):\n" + string.Join("\n", absent.Select(id => $"{id} - {describe(id)}"));
         if (problems.Count > 0) text += "\nMartlet measured these problems; check them first:\n- " + string.Join("\n- ", problems);
         return text + HintsText(hints, crop);
     }

@@ -249,6 +249,18 @@ public sealed class CharacterTouchTemperamentTests
     }
 
     [Fact]
+    public void AZoneSpecialToTheCharacterFeelsAsItsExtrasDo()
+    {
+        // A zone of its own (a hair bow the vision model found) is covered by the extras category.
+        var decided = Temperament("{\"groups\":{\"extras\":{\"attitude\":2,\"reactions\":[\"hearts\"]}}}");
+        Assert.Equal("loves", CharacterTouchTemperaments.Attitude(decided, "hair_bow"));
+        var plan = CharacterTouchZones.React(new CharacterTouchZone { Id = "hair_bow", Label = "Hair bow", Box = new(0, 0, 1, 1) }, Catalog(), decided, 1);
+        Assert.Equal((TouchReactionPlan.FromTemperament, "loves"), (plan.From, plan.Attitude));
+        Assert.Equal(["hearts"], plan.Actions.Select(s => s.Name));
+        Assert.Null(CharacterTouchTemperaments.Attitude(Temperament("{\"groups\":{\"head\":{\"attitude\":2}}}"), "hair_bow"));
+    }
+
+    [Fact]
     public void TheTouchLineSaysHowThePersonaFeelsAboutWhereItWasTouched()
     {
         CharacterTouchZone Zone(string id) => new() { Id = id, Box = new(0, 0, 1, 1) };

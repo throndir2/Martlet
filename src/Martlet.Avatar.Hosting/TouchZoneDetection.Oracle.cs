@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 
 namespace Martlet.Avatar.Hosting;
 
@@ -6,7 +7,8 @@ public static partial class TouchZoneDetection
 {
     /// <summary>FIXTURE - NOT AI: a stand-in for the vision model that answers every request from known zones
     /// (<paramref name="truth"/>, fractions of the whole snapshot) as a perfect model would: the parts around them, each
-    /// close-up's zones (<paramref name="guess"/>'s instead, when given, so the checks have something to correct), and each
+    /// close-up's zones (<paramref name="guess"/>'s instead, when given, so the checks have something to correct), what is
+    /// special about the character (the known zones that are, <see cref="IsSpecial"/>, with their names), and each
     /// check (a box within <see cref="Noise"/> of the known one is right, others are corrected, unknown ones aren't there and
     /// known ones without a box are added). Its answers are JSON as the instructions ask.</summary>
     public static string Oracle(ZoneAsk ask, IReadOnlyList<CharacterTouchZone> truth, IReadOnlyList<CharacterTouchZone>? guess = null)
@@ -25,6 +27,10 @@ public static partial class TouchZoneDetection
                 foreach (var extra in Extras.Where(ask.Ids.Contains))
                     if (known.TryGetValue(extra, out var box) && Seen(box) is { } seen) entries.Add(Entry("id", extra, seen));
                 return "{\"parts\":[" + string.Join(",", entries) + "]}";
+            case ZoneAskKind.Special:
+                foreach (var zone in truth.Where(z => IsSpecial(z.Id)).DistinctBy(z => z.Id))
+                    if (Seen(zone.Box) is { } seen) entries.Add(Entry("id", zone.Id, seen, $"\"name\":{JsonSerializer.Serialize(zone.Name.ToLowerInvariant())},"));
+                return "{\"special\":[" + string.Join(",", entries) + "]}";
             case ZoneAskKind.Zones:
                 var source = guess is null ? known : Boxes(guess);
                 foreach (var id in ask.Ids)

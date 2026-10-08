@@ -1431,7 +1431,10 @@ character (its `ids`: head, upper_body and lower_body, and a tail, wings or
 held item only when the owner added one), `zones` with each close-up (its
 `regions` and the wanted zones each asks for) and `check` with the numbered
 boxes, each with its `instructions` and an example `text`; `extras`, the
-tail, wings or held item it looks for), `parsed`
+tail, wings or held item it looks for; `special`, what is special about the
+character: the `maximum` zones of its own the model may add (6 by default),
+its `instructions`, an example `text` and `before`, the special zones found
+before with their `id` and `name`, whose IDs the model is asked to keep), `parsed`
 (what the production parser makes of `answer`, a simulated vision reply about
 the whole picture: JSON boxes as fractions or named edges (`left`, `top`,
 `right`, `bottom`), pixels of a `width` × `height` picture, 400 × 800 by
@@ -1458,7 +1461,8 @@ whether a snapshot
 is kept, what the last detection `sent` (its plain `line`, `requests`,
 `pictures`, `steps` and, from its `probe.json`, the `probe`'s hints as above) and
 each zone's parts, `plays`, whether Martlet `notices` it, whether the owner
-`added` it and the owner's `hint`) and,
+`added` it, whether it is `special` to the character (found as special, not
+added) and the owner's `hint`) and,
 with `touch` (a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
 it lands with the character framed whole), `match`: the zone it lands
 in, `how` (`drawable`, `bone`, `hair`, `box` or `coarse`; with a VRM `bone`, the
@@ -1488,7 +1492,16 @@ mouth (`lips`), ears, breasts, hips (`hip_left`, `hip_right`) and groin;
 `TouchZoneDetection.Erogenous` lists every intimate kind) must be found, and
 so must the zones the owner added: the ones the close-ups miss are
 asked for again on the whole character (the `missing` step), then the intimate
-ones are worked out from the zones around them. With a probe whose parts name body parts, the
+ones are worked out from the zones around them. After the close-ups (and the
+`missing` step), the `special` step asks the whole character what is special
+about it (at most `special` zones, 0 to 10, 6 by default; 0 doesn't ask): the
+stand-in lists `answer`'s zones that are special, which are the extras Martlet
+knows (such as `tail`) and zones of its own that `answer` names with an ID and
+a `name` (such as `{"id":"hair_bow","name":"hair bow",...}`). Each becomes a
+zone with that name; ordinary body parts and anything intimate are left out.
+A tail, wings or animal ears the probe's part names place are added too. The
+`special check` rounds then check them on the whole character (the `steps` say
+*special: found hair_bow (Hair bow)*). With a probe whose parts name body parts, the
 close-ups' windows come from them and boxes that clearly miss their named part
 are moved onto it (the `steps` say *took head, upper_body, lower_body from the
 model's own named parts* and *moved neck onto the model's own neck*).
@@ -1498,7 +1511,8 @@ snapshot, `marks`, the message,
 the stand-in's answer and whether it `failed`), the `steps` (what each found,
 swapped, moved, removed, added or worked out), `requestCount`, the `failure` it
 stopped at (null when none), what it `missed`, the `wanted` zones, the `required` zones and those
-still missing (`requiredMissing`), and how far the found boxes are
+still missing (`requiredMissing`), the zones `special` to the character it
+found (each `Id` and `Name`), and how far the found boxes are
 from `answer`'s (`worstEdge`, `meanEdge`).
 With `estimate` (and no `answer` or `detect`), the first guess that the Touch
 zones page places on a model with no zones and no picture
@@ -1584,11 +1598,15 @@ reads in `ui_snapshot`; choosing one saves `talk-preferences.json`, so it
 needs `--allow-ui-effects`),
 `TouchZonesSaveState` and each zone's `TouchZoneState-<n>` (its ID, the parts
 it follows, *added by you* for a zone the owner added, which *Detect again*
-looks for too and keeps where it is when it can't find it, and its default
-reaction), and `TouchZonesAddNote` (which zones *Detect zones* looks for:
+looks for too and keeps where it is when it can't find it, or *special to this
+character* for a zone *Detect zones* found as special to the character, and its
+default reaction), and `TouchZonesAddNote` (which zones *Detect zones* looks for:
 *Detect zones looks for the hair, eyes, ears, nose, mouth, neck, breasts, upper
-arms, forearms, stomach, hips, groin, thighs, calves and feet. Add any other
-zone here...*). `TouchZonesDetect` sends the character's
+arms, forearms, stomach, hips, groin, thighs, calves and feet, and for anything
+special to this character, such as animal ears, a tail, wings, a hat or a bow.
+Add any other zone here...*). When a detection finds zones special to the
+character, `TouchZonesDetection` names them: *Found 27 zones (2 special to this
+character: hair bow and tail) at ...*. `TouchZonesDetect` sends the character's
 pictures to Thinking; it is disabled only while a detection runs, while the
 character is still being read, or when no model can see pictures (never because
 the character is hidden). The picture comes from a second renderer that loads

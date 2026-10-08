@@ -472,7 +472,8 @@ public partial class MainWindow
 
         // Add a zone Detect zones doesn't look for (or missed): it starts in the middle of the picture; move it into place, or press
         // Detect again and the Thinking model places it too.
-        var addNote = Note($"Detect zones looks for the {TouchZoneDetection.DefaultParts}. Add any other zone here: it starts in the middle " +
+        var addNote = Note($"Detect zones looks for the {TouchZoneDetection.DefaultParts}, and for anything special to this character, such as " +
+            $"{TouchZoneDetection.SpecialExamples}. Add any other zone here: it starts in the middle " +
             "of the picture. Move it into place, or press Detect again and your Thinking model places it too.", new Thickness(0, 16, 0, 0));
         AutomationProperties.SetAutomationId(addNote, "TouchZonesAddNote");
         AddRow(list, addNote);
@@ -685,7 +686,7 @@ public partial class MainWindow
             var kind = CharacterTouchZones.Kind(zone.Id);
             var parts = zone.Drawables.Count > 0 ? $"{zone.Drawables.Count} part{(zone.Drawables.Count == 1 ? "" : "s")}"
                 : zone.Bones.Count > 0 ? string.Join(", ", zone.Bones.Take(3)) : "box only";
-            return $"{zone.Id}  \u00b7  {parts}" + (zone.Added ? "  \u00b7  added by you" : "") +
+            return $"{zone.Id}  \u00b7  {parts}" + (zone.Added ? "  \u00b7  added by you" : TouchZoneDetection.IsSpecial(zone.Id) ? "  \u00b7  special to this character" : "") +
                 (kind?.Intimate == true && !settings.IncludeIntimate ? "  \u00b7  intimate, off" : "") +
                 (defaults.From == TouchReactionPlan.FromTemperament ? $"  \u00b7  temperament ({defaults.Attitude}): " : "  \u00b7  default: ") +
                 (defaults.Actions.Count == 0 ? "nothing" : string.Join(" + ", defaults.Actions.Select(s => s.Name)));
