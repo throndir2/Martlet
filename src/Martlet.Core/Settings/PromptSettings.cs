@@ -44,6 +44,9 @@ public static class PromptCatalog
     public const string SeenWithMessage = "seen_with_message";
     public const string SeenApp = "seen_app";
     public const string SeenTag = "seen_tag";
+    public const string SeenDescribed = "seen_described";
+    public const string SeenDescribedNote = "seen_described_note";
+    public const string DescribePicture = "describe_picture";
     public const string ReadOnScreen = "read_on_screen";
     public const string ScreenDigest = "screen_digest";
     public const string ChattinessQuiet = "chattiness_quiet";
@@ -133,6 +136,17 @@ public static class PromptCatalog
         "worth a word right now. Never answer them one by one or list them. When the user talks to you, always answer them; " +
         "when the message holds none of their words and nothing in it is worth saying anything about, reply with exactly " +
         "[{silent}].";
+
+    public const string DefaultDescribePictureInstructions =
+        "You are the eyes of a companion app that talks with the user but can't see. Describe the attached picture of what the " +
+        "user sees right now, for the companion. Start with one short line, at most 15 words, that says what the user is doing " +
+        "or watching. Then write up to 6 short lines with the details that matter for that: what happens in the active app that " +
+        "the message names (the game, video, stream, document, code or chat), and the names, numbers and short text on screen " +
+        "that show what is going on. Use what was said lately to pick what matters. Skip the UI, menus, icons, the taskbar and " +
+        "the user's setup unless they are what matters. Never copy private details (messages, emails, names in them, account or " +
+        "phone numbers, passwords); for a notification, say only who or which app it is from. For a camera picture, never try " +
+        "to identify anyone, never guess anyone's age, health or identity, and don't describe bodies, looks or clothes. Plain " +
+        "text only, no markdown, at most 120 words.";
 
     public const string DefaultSaidLatelyInstructions =
         "What you said lately, oldest first (it is {time} now):\n{said}\nBefore you speak, check what you're about to say " +
@@ -727,6 +741,32 @@ public static class PromptCatalog
             "never shown or spoken; it only helps you remember what you saw. Never put private details in it (messages, emails, " +
             "names in them, numbers).",
             ["silent"]),
+        new(SeenDescribed, VisionGroup, "Pictures as words",
+            "Added to every reply and look while an image model of its own describes pictures for the Thinking model (Companion " +
+            "› Vision › Image model), in place of Screen with your message and What you saw. It never changes, so the model's " +
+            "prompt cache keeps it. The image model's description goes in the notes of the message it came with, or in a look's " +
+            "message (What the image model saw).",
+            "Martlet's image model sees for you: it looks at the picture of what the user sees and describes it in words. A note " +
+            "that starts with \"What the user sees now\" is that description: treat it as your own look at the picture, and " +
+            "wherever your instructions mention the picture or the image, use it. Use it when it helps your answer, especially " +
+            "when they refer to something on it (\"this\", \"look at that\", \"who messaged me?\"), and then talk about what they " +
+            "are doing or watching, never about the UI or their setup unless they ask. Never mention the note, the description or " +
+            "an image model, never describe it unprompted, and never read out private details from it (messages, emails, numbers) " +
+            "unless they ask about them. Without such a note you don't know what is on their screen right now: don't guess.",
+            []),
+        new(SeenDescribedNote, VisionGroup, "What the image model saw",
+            "The image model's description of the newest picture: in the notes of your message (sent but not kept; the " +
+            "conversation keeps a [Screen] line made from its first line instead), or in a look's message. {source} says what " +
+            "the picture shows (your active window, your whole screen or a camera); {description} is the image model's answer. " +
+            "A reply takes it only when it is ready and never waits for it.",
+            "What the user sees now ({source}), as Martlet's image model describes it:\n{description}",
+            ["source", "description"]),
+        new(DescribePicture, VisionGroup, "Image model: describe the picture",
+            "The instructions an image model of its own (Companion › Vision › Image model) gets with each picture it describes " +
+            "for the Thinking model: while you talk or type, and for each look. Martlet's message with the picture says what it " +
+            "shows, the program in front and its window's title, and the last few lines of the conversation. The first line of " +
+            "the answer stays in the conversation as what Martlet saw.",
+            DefaultDescribePictureInstructions, []),
         new(ReadOnScreen, VisionGroup, "Text on screen",
             "Added at the end of a screen glance, and of a reply that takes a look, while Companion › Reading reads the text on " +
             "your screen. {text} is the text read from that screenshot, one line each, top to bottom. It never goes with what " +
@@ -879,7 +919,7 @@ public static class PromptCatalog
 
     /// <summary>Prompts that are the message itself, so they can't be emptied.</summary>
     public static bool Required(string id) => id is GlanceScreen or GlanceCamera or GlanceAttention or BackgroundThink or BackgroundDone or ReminderDue or
-        SongLyrics or ResearchStep or CheckInDue;
+        SongLyrics or ResearchStep or CheckInDue or DescribePicture;
 
     public static string Default(string id) =>
         Find(id)?.Default ?? throw new ContractException(ErrorCode.InvalidContract, $"Unknown prompt '{id}'.");

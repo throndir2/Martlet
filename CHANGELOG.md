@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Martlet can see with a separate image model: when you choose one, it describes your screen or camera in words for your Thinking model, so even a Thinking model that only reads text knows what you see. The image model describes the newest picture while you talk or type, a reply takes its description only when it's ready and never waits for it, and looks describe their picture first. The screen summary over time uses it too, and Companion › Vision and the talk window say where your pictures go. ([#635](https://github.com/throndir2/Martlet/pull/635))
 - Use the model app you already run on your PC for Thinking: Companion › Thinking › This PC › **A model app you already use** finds LM Studio, llama.cpp, KoboldCpp, Jan, vLLM, Lemonade, GPT4All, Docker Model Runner and other OpenAI-compatible apps, lists their models, tests one and switches to it, with no cloud wording and no key unless the app asks for one. Any other app works by typing the address it shows, such as `localhost:5001`, and Home tells you when the app stops answering. The macOS and Linux app gets **Find model apps**. ([#633](https://github.com/throndir2/Martlet/pull/633))
 
 ### Changed

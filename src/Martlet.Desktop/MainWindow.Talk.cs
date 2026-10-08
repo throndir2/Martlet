@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using Martlet.Audio;
+using Martlet.Conversation;
 using Martlet.Core.Settings;
 using Martlet.Home;
 using Martlet.Providers;
@@ -608,7 +609,9 @@ public partial class MainWindow
         var prefs = Talk;
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         var abilities = SavedModelAbilities();
-        var canSee = thinking is not null && LiveConversationConfiguration.Vision(thinking, abilities) != VisionSupport.Unsupported;
+        // Martlet can see when its pictures go to Thinking or to an image model of its own (docs/SENSE_MODELS.md).
+        var image = SavedImageRoute(thinking, abilities);
+        var canSee = thinking is not null && image.Path != SensePath.None;
         var source = VisionSource(prefs);
         var chosen = source.IsScreen || source.Id.Length > 0;
         var chattiness = ChattinessTags.Choice(prefs.ScreenChattiness);
@@ -623,7 +626,7 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(nowText, "VisionNow");
         var now = new List<UIElement> { Heading("Now"), nowText };
         if (prefs.Watch && !chosen) now.Add(Warning(source.Kind == WatchKind.Camera ? "Choose a camera below." : "Enter the camera address below."));
-        var advice = LiveConversationConfiguration.VisionAdvice(thinking, abilities);
+        var advice = LiveConversationConfiguration.VisionAdvice(thinking, abilities, image);
         var adviceText = canSee ? Note(advice, new Thickness(0, 0, 0, 0)) : Warning(advice);
         AutomationProperties.SetAutomationId(adviceText, "VisionStatus");
         now.Add(adviceText);
@@ -722,7 +725,7 @@ public partial class MainWindow
                 "to what this PC plays (Listening › Watch along).", new Thickness(0, 0, 0, 8)),
             .. ChattinessPicker("VisionChattiness")]));
         page.Children.Add(GazeCard(prefs));
-        page.Children.Add(ScreenSummaryCard(prefs));
+        page.Children.Add(ScreenSummaryCard(prefs, image.Path == SensePath.Described));
 
         toggle = PageButton(prefs.Watch ? "Turn vision off" : "Turn vision on", () =>
         {
@@ -731,7 +734,7 @@ public partial class MainWindow
             ActionText.Text = on ? "Vision is on. Press Start watching on Home or in the talk window when you want Martlet to look." : "Vision is off.";
         }, primary: !prefs.Watch, id: "VisionToggle");
         toggle.IsEnabled = prefs.Watch || canSee && chosen;
-        var disclosure = Note(LiveConversationConfiguration.ScreenDisclosure(thinking, chattiness, source), new Thickness(0, 0, 0, 8));
+        var disclosure = Note(LiveConversationConfiguration.ScreenDisclosure(thinking, chattiness, source, image), new Thickness(0, 0, 0, 8));
         AutomationProperties.SetAutomationId(disclosure, "VisionDisclosure");
         page.Children.Add(Card(Heading(prefs.Watch ? "Vision is on" : "Let Martlet see"), disclosure, Row(toggle)));
     }
@@ -802,31 +805,34 @@ public partial class MainWindow
                 "is sent.", new Thickness(0, 6, 0, 0)));
     }
 
-    /// <summary>Companion › Vision › Screen summary over time (on by default): while Martlet watches, a Thinking model that sees
-    /// in the Thinking pool sums up in the background what changed on the screen, and the next reply gets it as a note.</summary>
-    private Border ScreenSummaryCard(TalkPreferences prefs)
+    /// <summary>Companion › Vision › Screen summary over time (on by default): while Martlet watches, an image model of its own
+    /// (<paramref name="byImageModel"/>, the saved choice) or a Thinking model that sees in the Thinking pool sums up in the
+    /// background what changed on the screen, and the next reply gets it as a note.</summary>
+    private Border ScreenSummaryCard(TalkPreferences prefs, bool byImageModel)
     {
-        var canSee = conversation?.ScreenDigestThinker.CanSee == true;
+        var canSee = byImageModel || conversation?.ScreenDigestThinker.CanSee == true;
         var box = new CheckBox { Content = "Screen summary over time", IsChecked = prefs.ScreenSummary, Margin = new Thickness(0, 0, 0, 6) };
         AutomationProperties.SetAutomationId(box, "VisionScreenSummary");
         box.Checked += (_, _) => { if (!Talk.ScreenSummary) SaveTalk(Talk with { ScreenSummary = true }, render: true); };
         box.Unchecked += (_, _) => { if (Talk.ScreenSummary) SaveTalk(Talk with { ScreenSummary = false }, render: true); };
-        var text = ScreenSummaryStatus(prefs.ScreenSummary, prefs.Watch, canSee);
+        var text = ScreenSummaryStatus(prefs.ScreenSummary, prefs.Watch, canSee, byImageModel);
         var status = prefs.ScreenSummary && prefs.Watch && !canSee ? Warning(text) : Note(text, new Thickness(0, 0, 0, 6));
         AutomationProperties.SetAutomationId(status, "VisionScreenSummaryStatus");
         return Card(Heading("Screen summary over time"), box, status,
             Note("Each reply gets only the newest picture, so it starts to speak as fast as before. With this on, Martlet also " +
                 "keeps the last few pictures that changed (about 25 seconds, in memory only, never saved) and, every 15 seconds " +
-                "while they change or when you start to talk, sends a small sheet of them with the text read on them to a Thinking " +
-                "model that sees in the background. It is never the model your conversation uses. The one or two lines it " +
+                "while they change or when you start to talk, sends a small sheet of them with the text read on them to your " +
+                "image model (when you chose one) or a Thinking model that sees in the Thinking pool, in the background. It is " +
+                "never the model your conversation uses. The one or two lines it " +
                 "answers (\"They switched from VS Code to a boss fight\") go with your next message as a note. A reply never " +
                 "waits for it. Each summary is one more request with a picture, which may cost more.", new Thickness(0, 6, 0, 0)));
     }
 
-    internal static string ScreenSummaryStatus(bool on, bool vision, bool canSee) =>
+    internal static string ScreenSummaryStatus(bool on, bool vision, bool canSee, bool byImageModel = false) =>
         !on ? "Off. Replies know only the newest picture."
         : !vision ? "On, but vision is off. Turn vision on below."
         : !canSee ? "Off for now: the Thinking pool has no other model that sees. Add one that sees in Companion › Thinking pool."
+        : byImageModel ? "On. While Martlet watches, your image model sums up what changed for your next message."
         : "On. While Martlet watches, a Thinking model that sees sums up what changed for your next message.";
 
     private string GazeStatus(TalkPreferences prefs)

@@ -317,6 +317,47 @@ outlasts is dropped). In-process; it reads nothing.
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"sense_models_check"},{"name":"sense_models_status"}]'
 ```
 
+`image_model_check` (`dataDirectory`; optional `imageOrigin` and `imageModel`
+to rehearse an image model of its own that isn't saved; optional `delayMs`,
+200 to 10,000, default 1,500) shows the image model's side
+([Pictures: the image model](SENSE_MODELS.md#pictures-the-image-model)).
+`route` is where pictures go now (the production `SenseRouting` over
+`sense-models.json`, the Thinking route and `model-abilities.json`), and
+`prompts` says whether *Image model: describe the picture*, *Pictures as words*
+and *What the image model saw* are the default, edited or empty. `live` is the
+desktop's `image-model-status.json`: the path, model and why, `sharesConversation`,
+how many descriptions were `made` and `failed` and how many are `running`, the
+`newest` one's age, time, trigger, model and source, how many replies took a
+description (`replies.described`) or went without one (`replies.without`), how
+many looks were described, `reused` a description or `failed`, and the
+`lastReply`. Never a description. `lastTurn` is the newest `Picture path:` and
+`Image model:` lines of the desktop log.
+
+`rehearsal` runs the production `SenseLanes`, `PictureDescriptions`, prompts
+and Chat Completions adapter against two fixture endpoints on 127.0.0.1 (the
+image model and Thinking; canned words, NOT AI) with synthetic screenshots (no
+screen capture). `ahead`: you start to talk, and the image model describes the
+newest picture with the program in front, the window's title and what was said
+lately. `describedReply`: the reply takes the description at once, as a note;
+Thinking gets no picture (`picturesToThinking` 0), the fixed *Pictures as
+words* instruction and no seen tag; `keptLine` is the `[Screen]` line the
+conversation keeps. `neverWaits`: the picture changed and the image model
+answers only after `delayMs`; the reply is sent at once without a description
+(`replySentWithoutWaitingMs`), and the description is ready for the next
+reply. `look`: a look at the same picture uses the description again (no new
+request) and sends Thinking the glance message with it; a look at a new
+picture asks the image model first. `ok` is true when all of these hold.
+
+```powershell
+.\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"image_model_check","arguments":{"imageOrigin":"http://127.0.0.1:11434/v1","imageModel":"qwen2.5vl:7b"}}]'
+```
+
+The talk window shows the image model too: `LiveTurnInputs` says *the image
+model's description of the picture* when a reply or look took one, and the help
+text of `LiveVisionStatus` names the image model, how long its last
+description took and whether the last reply took it. Companion › Vision's
+`VisionStatus` and `VisionDisclosure` say where pictures go.
+
 ### Live floor (the live turn first)
 
 The live floor puts the live conversation turn before all background work
@@ -6971,7 +7012,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `sense_models_status`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

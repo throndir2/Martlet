@@ -740,13 +740,14 @@ public partial class LiveConversationWindow : ThemedWindow
         if (!look) return (SeenNow(), null);
         var about = lookAttention;
         var frame = about is not null ? attentionFrame : latestFrame;
+        var shot = about is not null ? attentionShot : latestShot;
         lookWanted = false;
         lookAttention = null;
         waitNote = null;
         SeenScreen? seen = null;
-        if (frame is not null && controller.Configuration?.Vision() is not (null or VisionSupport.Unsupported))
+        if (frame is not null && controller.CanSee)
         {
-            try { seen = Seen(frame); }
+            try { seen = Seen(frame, shot); }
             catch (Exception error) when (error is ContractException or InvalidOperationException or NotSupportedException or
                 System.Runtime.InteropServices.ExternalException) { }
         }
@@ -975,9 +976,8 @@ public partial class LiveConversationWindow : ThemedWindow
         owned is not { OwnershipReleased: false } && commentary is not { OwnershipReleased: false }
             ? new(Voice, BackgroundChattiness, CallOn) : null;
 
-    // The newest picture of what vision watches would go with what you say now (SeenNow).
-    private bool PictureGoes => watching && latestFrame is not null && clock.GetElapsedTime(latestAt) <= SeenFreshness &&
-        controller.Configuration?.Vision() is not (null or VisionSupport.Unsupported);
+    // The newest picture of what vision watches would go with what you say now (SeenNow), or the image model's description of it.
+    private bool PictureGoes => watching && latestFrame is not null && clock.GetElapsedTime(latestAt) <= SeenFreshness && controller.CanSee;
 
     // Whether Thinking hears your recording (Companion › Listening): your own choice, or never chosen, only while the recording
     // stays on this PC (LocalOnly: the conversation checks that again before it sends one).
@@ -1789,6 +1789,10 @@ public partial class LiveConversationWindow : ThemedWindow
             var seenIt = done.ScreenSent && !rejected && done.Turn?.Snapshot.State == ConversationState.Completed;
             if (rejected) asked?.AddNote("Thinking couldn't take the picture of your screen, so it got your words only.");
             else if (seenIt && done.Seen is { } seen) asked?.AddNote($"{CharacterName} saw {seen.Source.Label}.");
+            // With an image model of its own: whether the reply took its description of the picture, or it wasn't ready yet.
+            else if (done is { ImagePath: SensePath.Described, Seen: { } pictured } && done.Turn?.Snapshot.State == ConversationState.Completed)
+                asked?.AddNote(done.ScreenDescribed ? $"{CharacterName} saw {pictured.Source.Label} through the image model's description."
+                    : $"The image model's description of {pictured.Source.Label} wasn't ready, so {CharacterName} answered without it.");
             if (rejected && watching && controller.Configuration is { } selected && selected.Vision() != VisionSupport.Supported)
                 StopWatching($"The Thinking model rejected the picture. {selected.VisionAdvice()}");
         }
@@ -1841,7 +1845,12 @@ public partial class LiveConversationWindow : ThemedWindow
 
     private void Input_Changed(object sender, TextChangedEventArgs e)
     {
-        if (InputText.Text.Length > 0) warmup?.Touch();
+        if (InputText.Text.Length > 0)
+        {
+            warmup?.Touch();
+            // Typing counts as talking to Martlet: an image model of its own describes the newest picture meanwhile.
+            typedAt = clock.GetTimestamp();
+        }
         RenderActions();
     }
 
@@ -2310,8 +2319,7 @@ public partial class LiveConversationWindow : ThemedWindow
             }
         }
         VisionChip.ToolTip = watching
-            ? $"Martlet checks {watchSource.Label}, occasionally sends one picture to the Thinking model and sends the newest " +
-              "with what you type or say." +
+            ? WatchingTip() +
               (noticing ? " It looks right away when a notification pops up or a taskbar button flashes." : "") +
               (lastCheck is { } checkedAt ? $" Last checked at {checkedAt:T}." : "") +
               (captureNote is { } why ? $" Full-screen capture is unavailable: {why}. Try borderless or windowed mode." : "") +
@@ -2514,9 +2522,10 @@ public partial class LiveConversationWindow : ThemedWindow
         visionProblem = null;
         var selected = controller.Configuration;
         if (closed || !Available || selected is null) return;
-        if (selected.Vision() == VisionSupport.Unsupported)
+        // Martlet can't see only when no model takes pictures (Thinking is text-only, or the image model of its own doesn't see).
+        if (!controller.CanSee)
         {
-            CantWatch(selected.VisionAdvice());
+            CantWatch(controller.ImageAdvice());
             return;
         }
         var source = SavedSource();
@@ -2534,6 +2543,7 @@ public partial class LiveConversationWindow : ThemedWindow
         seeing = lookFailed = false;
         monitors = 0;
         lastCheck = null;
+        latestShot = attentionShot = null;
         StartReading();
         digest.Use(controller.ScreenDigestThinker, controller.ScreenDigestBoard);
         digest.Turn(preferences.ScreenSummary);
@@ -2603,10 +2613,10 @@ public partial class LiveConversationWindow : ThemedWindow
     private SeenScreen? SeenNow()
     {
         if (!watching || latestFrame is not { } frame || clock.GetElapsedTime(latestAt) > SeenFreshness) return null;
-        if (controller.Configuration?.Vision() is null or VisionSupport.Unsupported) return null;
+        if (!controller.CanSee) return null;
         try
         {
-            return Seen(frame);
+            return Seen(frame, latestShot);
         }
         catch (Exception error) when (error is ContractException or InvalidOperationException or NotSupportedException or
             System.Runtime.InteropServices.ExternalException)
@@ -2616,9 +2626,11 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     // A picture to send with a reply: an address's host is not useful to the model; a camera's or window's name is, and for the
-    // screen so are the program in front and whether it fills its monitor.
-    private SeenScreen Seen(ScreenFrame frame) =>
-        new(frame.Encode(), watchSource.Kind == WatchKind.Url ? "" : frame.Title, watchSource, frame.App, frame.FullScreen);
+    // screen so are the program in front and whether it fills its monitor. Its picture version and time let a reply take the
+    // image model's description of it.
+    private SeenScreen Seen(ScreenFrame frame, PictureShot? shot) =>
+        new(frame.Encode(), watchSource.Kind == WatchKind.Url ? "" : frame.Title, watchSource, frame.App, frame.FullScreen,
+            shot?.Version ?? 0, shot?.TakenAt);
 
     /// <summary>The vision line under the status, kept short: what Martlet watches, then only a look in progress, why it is
     /// holding off (you seem away, its break, a busy provider, something that wants your attention once you're done talking)
@@ -2638,8 +2650,8 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     /// <summary>The vision line's tooltip: how many monitors the whole screen spans, the program in front (and whether it is full
-    /// screen) as the Thinking model is told it, how the last look went and what wanted your attention but wasn't looked at.
-    /// Empty while not watching; never window titles.</summary>
+    /// screen) as the Thinking model is told it, how the last look went, what wanted your attention but wasn't looked at, and
+    /// the image model's last description while it describes the pictures. Empty while not watching; never window titles.</summary>
     private string VisionDetail() => !watching ? "" : string.Join(" ", new[]
     {
         monitors > 1 ? $"Your whole screen is {monitors} monitors." : null,
@@ -2647,7 +2659,8 @@ public partial class LiveConversationWindow : ThemedWindow
             ? $"Active app: {ActiveApp.Describe(frame.App, frame.FullScreen)}." : null,
         lookNote,
         attentionNote,
-        readNote
+        readNote,
+        ImageModelDetail()
     }.Where(note => note is not null));
 
     // Runs on the UI timer: notices conversation and what wants your attention, collects finished glances and schedules the
@@ -2669,6 +2682,9 @@ public partial class LiveConversationWindow : ThemedWindow
         if (hearing && !wasHearing) digest.UserSpeaking();
         wasHearing = hearing;
         digest.Tick();
+        // With an image model of its own: while you talk or type, it describes the newest picture ahead of time, so the reply
+        // takes the description without waiting (the controller asks only when none counts for that picture).
+        if (Talking && controller.ImageDescribed) DescribeAhead(PictureTrigger.Talking);
         // Something wants your attention: capture now, while the notification is still up.
         if (noticing && attentionWatcher.Check() is { } signal)
         {
@@ -2711,8 +2727,9 @@ public partial class LiveConversationWindow : ThemedWindow
             seeing = result.Frame is not null;
             if (result.Frame is not { } frame)
             {
-                // Nothing current to look at or to send with your messages.
+                // Nothing current to look at or to send with your messages; the next screenshot is a new picture.
                 DropLatest();
+                latestShot = null;
                 lookWanted = false;
                 sight = !source.IsScreen ? result.Skip switch
                 {
@@ -2731,19 +2748,31 @@ public partial class LiveConversationWindow : ThemedWindow
                 };
                 return;
             }
+            // An image model of its own that refused a picture can't see (Martlet remembered it): watching stops with what to change.
+            if (controller.OwnImageModel && !controller.CanSee)
+            {
+                frame.Clear();
+                StopWatching(controller.ImageAdvice());
+                return;
+            }
             monitors = source.Kind == WatchKind.ActiveScreen ? result.Monitors : 0;
             sight = source.Kind == WatchKind.ActiveScreen ? "Watching your whole screen."
                 : !result.BehindMartlet ? $"Watching {source.Label}." : "Watching the window behind Martlet.";
             if (!twinkling) Motion.Blink(VisionDot);
             pacer.ObserveFrame(frame.Change);
+            var shot = KeyFor(frame);
+            var changed = shot.Version != latestShot?.Version;
             DropLatest();
             latestFrame = frame;
             latestAt = clock.GetTimestamp();
+            latestShot = shot;
             digest.Observe(frame.Width, frame.Height, frame.Title, frame.Change, ReadText(), frame.CopyPixels,
                 ActiveApp.Label(frame.App, frame.FullScreen));
             if (source.IsScreen) ReadScreen(frame);
             // With each new screenshot of your screen Martlet may decide to look at something on it instead of your mouse.
             if (source.IsScreen) Gaze?.Observe(frame);
+            // With an image model of its own, a changed picture is described ahead of time while you talk with Martlet (paced).
+            if (changed && controller.ImageDescribed) DescribeAhead(PictureTrigger.Changed);
             var busy = commentary is { OwnershipReleased: false } || pendingText is not null || operations.IsRunning || Conversing;
             // Keyboard/mouse idleness means "away" only for the screen; in front of a camera people often don't type at all.
             var idle = source.IsScreen ? glancer.UserIdle : TimeSpan.Zero;
@@ -2761,6 +2790,7 @@ public partial class LiveConversationWindow : ThemedWindow
                         return;
                     }
                     attentionFrame = frame;
+                    attentionShot = latestShot;
                 }
                 var heed = pacer.DecideAttention(busy, idle);
                 if (heed == PacerVerdict.Look)
@@ -2770,6 +2800,7 @@ public partial class LiveConversationWindow : ThemedWindow
                     attentionNote = null;
                     lookWanted = true;
                     waitNote = null;
+                    if (controller.ImageDescribed) DescribeAhead(PictureTrigger.Look, attention: true);
                     if (!operations.IsRunning) TryStartCommentary();
                     return;
                 }
@@ -2800,6 +2831,8 @@ public partial class LiveConversationWindow : ThemedWindow
                 _ => null
             };
             if (!lookWanted) return;
+            // With an image model of its own, the look's picture is described now: a look or a reply that takes it uses that.
+            if (controller.ImageDescribed) DescribeAhead(PictureTrigger.Look);
             if (!operations.IsRunning) TryStartCommentary();
         }
         finally
@@ -2824,6 +2857,7 @@ public partial class LiveConversationWindow : ThemedWindow
     private bool TryStartCommentary()
     {
         var frame = lookAttention is not null ? attentionFrame : latestFrame;
+        var shot = lookAttention is not null ? attentionShot : latestShot;
         // While Martlet sings, a look waits until the song is over.
         if (!lookWanted || !watching || closed || frame is null || operations.IsRunning || controller.Singing?.Playing == true) return false;
         // One moment: a look that is due while lines this PC played or finished work wait is one reply that takes them all.
@@ -2835,10 +2869,11 @@ public partial class LiveConversationWindow : ThemedWindow
         try
         {
             var image = frame.Encode();
-            // An address's host is not useful to the model; a camera's or window's name is, and so is the program in front.
+            // An address's host is not useful to the model; a camera's or window's name is, and so is the program in front. The
+            // picture's version lets an image model's description of the same picture be used again.
             commentary = controller.StartCommentary(image, watchSource.Kind == WatchKind.Url ? "" : frame.Title, SavedChoice,
                 Voice, screenApproved: true, watchSource, attention: about, look: watchSource.IsScreen && Gaze?.Offer(frame) == true,
-                screenText: ReadText(), app: frame.App, fullScreen: frame.FullScreen);
+                screenText: ReadText(), app: frame.App, fullScreen: frame.FullScreen, picture: shot?.Version ?? 0, takenAt: shot?.TakenAt);
             if (about is not null) pacer?.NoteAttention();
             waitNote = null;
             return true;
@@ -2851,7 +2886,7 @@ public partial class LiveConversationWindow : ThemedWindow
                 if (about is not null) attention ??= about;
                 return false;
             }
-            StopWatching(error.Code == "commentary.vision_unsupported" ? controller.Configuration?.VisionAdvice() ?? Remedy(error.Code) : Remedy(error.Code));
+            StopWatching(error.Code == "commentary.vision_unsupported" ? controller.ImageAdvice() : Remedy(error.Code));
             return false;
         }
         catch (Exception error) when (error is ContractException or InvalidOperationException or NotSupportedException or System.Runtime.InteropServices.ExternalException)
@@ -2891,6 +2926,22 @@ public partial class LiveConversationWindow : ThemedWindow
             lookNote = status.Code == "runtime.Refused" ? $"Last look {at}: no comment." : $"Last look {at}: stopped.";
             return;
         }
+        // The image model refused the look's picture, so it can't see (Martlet remembered it): watching stops with what to change.
+        if (status.Code == "commentary.image_refused")
+        {
+            StopWatching(controller.ImageAdvice());
+            return;
+        }
+        // The image model couldn't describe the look's picture (busy, too slow or failing): the next look waits a while, as for a
+        // busy provider.
+        if (status.Code == "commentary.not_described" && pacer is not null)
+        {
+            var later = pacer.NoteBackoff();
+            lookFailed = true;
+            lookNote = $"Last look {at}: the image model couldn't describe the picture. " +
+                $"Looking again in {(int)later.TotalMinutes} minute{(later.TotalMinutes >= 2 ? "s" : "")}.";
+            return;
+        }
         var selected = controller.Configuration;
         var provider = done.Turn?.Snapshot.ProviderFailure ?? status.ProviderFailure;
         var job = FailedJob(done);
@@ -2927,6 +2978,9 @@ public partial class LiveConversationWindow : ThemedWindow
         reader = null;
         readNote = null;
         digest.Turn(false);
+        // The image model's descriptions of what Martlet watched go too.
+        controller.ForgetPictures();
+        latestShot = attentionShot = null;
         Gaze?.Stop();
         DropAttentionFrame();
         DropLatest();
