@@ -1510,11 +1510,20 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("check_ins_check", "Rehearse check-ins end to end with the production code, FIXTURE facts and canned answers (NOT AI): " +
             "the check-in job kind's rules, check-ins.json saved and read back (and a bad pace refused), when each built-in check-in " +
-            "waits or runs (too young, hidden character, interval, you talking, nobody at the PC, nothing new, Check now), the " +
+            "waits or runs (too young, hidden character, interval, you talking, nobody at the PC, nothing new, too little said lately, " +
+            "Check now), the " +
             "message each sends, their runs on a production Thinking pool job board with a fixture member, reading answers (OFF " +
             "tags, KEEP, USUAL, REMIND:, SAY:, OK, a <think> block, chatter), and what Martlet does: a reply's lingering emote off " +
             "on a production HeldEmotes (never the owner's try), a reminder on a production context board that goes with exactly " +
             "one request, and something to bring up worded as the check-in's own beside a due reminder. No model, network or " +
+            "credentials.", new { }),
+        Tool("said_lately_check", "Rehearse what Martlet said lately (docs/CONVERSATION.md#what-you-said-lately) with the " +
+            "production code and FIXTURE sayings at fixed times (NOT anything Martlet said): what is noted (never a [pass] or " +
+            "nothing; one line, cut to 160 characters; the newest 10 within the hour), the lines with the time of day and how long " +
+            "ago (\"10:05 PM (12 min ago)\"), the note through Companion > Prompts > What you said lately (nothing when it is " +
+            "emptied or nothing was said), which requests carry it (looks, reports and remarks on what this PC plays; never a " +
+            "reply to the user's words or touches, so their first words never wait), where it sits in a request (the last notes, " +
+            "sent once and never kept) and the Saying the same things check-in reading the same lines. No model, network or " +
             "credentials.", new { }),
         Tool("setup_run_status", "Applying the recommended setup to all your computers and the Configuring state (docs/CLUSTER.md), " +
             "from a data directory: every computer's published run (shared-settings.json, setup-run.<device>: who started it and when, " +
@@ -2042,6 +2051,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "reminders_check" => await RemindersCheck.RunAsync(cancellation),
                 "check_ins_status" => await CheckInsCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "check_ins_check" => await CheckInsCheck.RunAsync(cancellation),
+                "said_lately_check" => await SaidLatelyCheck.RunAsync(cancellation),
                 "setup_run_status" => await SetupRunCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "setup_run_check" => await SetupRunCheck.RunAsync(cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
