@@ -28,7 +28,7 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
         ArgumentNullException.ThrowIfNull(build);
         catalog ??= FootprintCatalog.Default;
         var request = build.Request;
-        string Name(string? id) => id is null ? "" : build.Names.GetValueOrDefault(id)
+        string Name(string? id) => id is null or "" ? "your companion PCs" : build.Names.GetValueOrDefault(id)
             ?? request.Machines.FirstOrDefault(m => m.Specs.Id == id)?.Specs.Name ?? id;
 
         var changes = recommendation.Changes
@@ -64,7 +64,9 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
             var before = recommendation.Current.Job(job.Job) ?? request.CurrentJobs.FirstOrDefault(j => j.Job == job.Job);
             var who = Who(job, Name, catalog);
             var line = $"{ClusterSync.Title(job.Job)}: {who}";
-            if (before is not null && (before.HostId != job.HostId || before.Off != job.Off)) line += $" (today: {Who(before, Name, catalog)})";
+            if (before is not null && (before.HostId != job.HostId || before.Off != job.Off ||
+                    before.OptionId is not null && job.OptionId is not null && before.OptionId != job.OptionId))
+                line += $" (today: {Who(before, Name, catalog)})";
             if (job.Pool.Count > 0) line += $". When it is busy: {string.Join(", ", job.Pool.Select(Name))}";
             jobs.Add(line + ".");
         }
@@ -83,11 +85,12 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
 
         var notes = recommendation.Notes.Concat(build.Notes).Distinct(StringComparer.Ordinal).ToArray();
         var count = recommendation.Changes.Count;
-        var places = recommendation.Changes.Select(c => c.MachineId).Distinct(StringComparer.Ordinal).Count();
+        // A change with no computer ("") is a job no host does before or after (a hosted provider, or each companion PC itself).
+        var places = recommendation.Changes.Select(c => c.MachineId).Where(id => id.Length > 0).Distinct(StringComparer.Ordinal).Count();
         var computersCount = request.Machines.Count;
         var summary = recommendation.AlreadyOptimal
             ? $"Martlet checked {Count(computersCount, "computer")} against the recommended setup. Nothing needs to change."
-            : $"{Count(count, "change")} on {Count(places, "computer")}. Companion PCs stay light so games keep their graphics card, " +
+            : $"{Count(count, "change")}{(places > 0 ? $" on {Count(places, "computer")}" : "")}. Companion PCs stay light so games keep their graphics card, " +
               "and each graphics card runs at most one language model. Nothing changes until you choose Reconfigure.";
         return new(recommendation.AlreadyOptimal ? OptimalTitle : "A better setup is ready for your computers", summary, computers, jobs,
             changes, notes, downloadText, manual, recommendation.AlreadyOptimal, recommendation.Fingerprint);
@@ -122,7 +125,8 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
     private static string Who(JobPlan job, Func<string?, string> name, FootprintCatalog catalog) =>
         job.Off ? "nobody (the character moves its mouth with the voice's loudness)"
         : job.HostId is { } host ? name(host)
-        : job.OptionId is { } option && catalog.Find(option) is { IsLocal: false } hosted ? hosted.DisplayName
+        : job.OptionId is { } option && catalog.Find(option) is { } found
+            ? found.IsLocal ? $"each companion PC itself ({found.DisplayName})" : found.DisplayName
         : "each companion PC itself";
 
     /// <summary>The Devices page's bars for a machine's planned use: graphics memory, memory and processor.</summary>

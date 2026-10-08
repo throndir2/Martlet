@@ -223,6 +223,32 @@ public sealed class RecommendedSetupTests
     }
 
     [Fact]
+    public void A_job_that_moves_between_options_without_a_host_says_where_it_runs_before_and_after()
+    {
+        var catalog = new FootprintCatalog(
+        [
+            new ComponentOption { Id = "hosted:openai", Component = PlanComponent.Thinking, DisplayName = "OpenAI GPT-5 mini", Hosting = OptionHosting.External, ProviderId = "openai" },
+            new ComponentOption { Id = "think:e2b", Component = PlanComponent.Thinking, DisplayName = "Gemma 4 E2B", ModelId = "gemma4:e2b", HostRoleKind = "ollama" }
+        ]);
+        var build = Build(Plan());
+        var today = NetworkRecommender.Today(build.Request) with { Jobs = [new JobPlan(ClusterJobs.Thinking, null, OptionId: "hosted:openai")] };
+        var target = today with { Jobs = [new JobPlan(ClusterJobs.Thinking, null, OptionId: "think:e2b")] };
+        var recommendation = new NetworkRecommendation(today, target,
+        [
+            new SetupChange(SetupChangeKind.AssignJob, "", "Each companion PC thinks with Gemma 4 E2B in its own Ollama.", "You keep everything on your computers.")
+            {
+                Job = ClusterJobs.Thinking, OptionId = "think:e2b", DownloadGb = 7.2
+            }
+        ]) { Fingerprint = "e2b" };
+
+        var review = RecommendedSetupReview.From(recommendation, build, catalog);
+        Assert.StartsWith("1 change. ", review.Summary);
+        Assert.Equal("your companion PCs", review.Changes.Single().Computer);
+        Assert.Equal("Downloads about 7.2 GB: your companion PCs 7.2 GB.", review.Downloads);
+        Assert.Contains("Thinking: each companion PC itself (Gemma 4 E2B) (today: OpenAI GPT-5 mini).", review.Jobs);
+    }
+
+    [Fact]
     public void An_optimal_setup_reads_so_and_has_nothing_to_change()
     {
         var build = Build(Plan());
