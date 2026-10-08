@@ -150,8 +150,8 @@ holds its own copy.
   core (what it does on Docker Desktop, which can't pin), 0.75x with PyTorch's
   own 16 threads, and 1.05x when other programs kept about 15 cores busy; it
   held 2.4-2.6 GB and at most 4.5 GB
-  ([Chatterbox Nano](CHATTERBOX_VOICE.md#chatterbox-nano)). The planner never
-  picks it over the Windows voices (same quality tier, listed after them).
+  ([Chatterbox Nano](CHATTERBOX_VOICE.md#chatterbox-nano)). Windows voices were
+  removed, so the planner picks it when no card has room for a voice engine.
 - **Chatterbox Turbo, Dia, F5:** voicebench on DIVA's RTX 4070, each alone on
   the card, 2026-10-04 ([Voice latency](VOICE_LATENCY.md#local-options-measured-voicebench),
   [Dia](DIA_VOICE.md)). F5's 0.9 GB was read beside the resident roles; its
@@ -169,10 +169,6 @@ holds its own copy.
   ([GPT-SoVITS](GPT_SOVITS_VOICE.md)); GPU memory NOT RUN (no NVIDIA GPU there).
   Third-party guides quote up to about 6 GB for v2Pro; the 4 GB minimum card is
   Martlet's role requirement.
-- **Windows voices (M):** System.Speech `SpeechSynthesizer` (Microsoft David
-  Desktop) writing replies to a wave file in a loop for 10 s on an i7-13700K
-  (32 GB): 0.17 GB including its PowerShell host (about 0.08 GB of that is the
-  host), 0.87-0.92 threads busy while speaking, 0 idle.
 - **Docker images (E):** a PyTorch CUDA image is about 6-15 GB (GPT-SoVITS
   6.7 GB and Singing 14.7 GB measured); about 8 GB is assumed for the others.
 - **Shown to the owner:** Companion › Voice reads each voice's line from this

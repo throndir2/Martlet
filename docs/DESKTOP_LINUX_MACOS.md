@@ -126,7 +126,6 @@ also runs on Metal. So:
 | Listening: whisper.cpp / Parakeet on this computer | Yes (Metal / CPU) | CPU, `base`/`small` | CPU, CUDA or Vulkan |
 | Listening: Windows speech | **No** | **No** | **No** |
 | Speaking: OpenAI | Yes | Yes | Yes |
-| Speaking: Windows voices | **No** | **No** | **No** |
 | Speaking: F5 voice cloning | Via a paired NVIDIA host (F5-MLX later) | Via a paired NVIDIA host | Via a paired host, or this PC's own Docker host with an NVIDIA GPU (6 GB+) |
 | Lip-sync: loudness | Yes | Yes | Yes |
 | Lip-sync: Audio2Face | Only via a paired NVIDIA host | Only via a paired NVIDIA host | Paired host, or this PC with NVIDIA 4 GB+ |

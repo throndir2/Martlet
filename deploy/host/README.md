@@ -648,7 +648,7 @@ what* shows which computer handles each job:
   at a time: choosing another engine there installs it with `exclusive=voice` (above), or, when
   it is already installed, switches Speaking to it and then removes the engines it no longer uses
   (`martlet-host remove`, downloads kept), so the old model frees the graphics card's memory.
-  When Speaking leaves a host's engine for another computer, a Windows voice or a cloud voice,
+  When Speaking leaves a host's engine for another computer or a cloud voice,
   Martlet removes that engine there the same way once Speaking has moved (unless failover keeps
   the same engine on it as a backup). The confirmation names them; Speaking on that host pauses
   while a new engine installs. The Voice engine card's *Stop* button removes leftovers on a host

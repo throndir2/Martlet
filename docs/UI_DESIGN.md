@@ -491,13 +491,10 @@ window ends it unless Martlet is listening or watching, which only hides it.
     confirmation when Ollama doesn't have it and then loading it, and switches
     Thinking only once it is loaded, so the current Thinking answers until then
     and the first reply doesn't wait; a model that can't download or load leaves
-    Thinking unchanged). Voice offers two one-click choices, the one in use (or the one this
-    PC's hardware suits) first: **F5 voice, with Docker** (*Set up F5 with
+    Thinking unchanged). Voice offers a one-click choice: **F5 voice, with Docker** (*Set up F5 with
     Docker* sets up and pairs Martlet's host service on this PC, so this PC
     also becomes one of your hosts, installs F5 and switches over with the first
-    of Martlet's starter voices, Jenny (Dioco), a professional voice-over artist) or **Windows voice, no Docker** (*Use a Windows
-    voice* picks an installed voice in this PC's language, with no host
-    service; a voice list and *Hear it* follow). Listening offers the same kind
+    of Martlet's starter voices, Jenny (Dioco), a professional voice-over artist). Windows voices were removed. Listening offers the same kind
     of two choices for whisper in Martlet's host service: **On the graphics
     card** or **On the processor**. Martlet reads the card live (nvidia-smi:
     memory in use, driver 580+ for whisper's CUDA build) and adds what it

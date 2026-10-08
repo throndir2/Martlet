@@ -321,7 +321,7 @@ so I can talk to it in minutes.*
      four rows, each with the recommended choice and a reason:
      - Thinking — *This PC · Qwen 3 8B · fits your 12 GB GPU* (or *Cloud ·
        OpenRouter · your PC can't run a useful model*).
-     - Voice — *This PC · Windows voice* / *This PC · F5* / *Cloud*.
+     - Voice — *This PC · Chatterbox Nano* / *This PC · F5* / *Cloud*.
      - Listening — *This PC · Whisper small* / *Windows speech* / *Cloud*.
      - Character — *Hiyori · lip-sync by voice loudness*.
      Each row has *Change* (expands P2 in place). Total download size and
@@ -852,7 +852,7 @@ updates *Where it runs* automatically (and offers to install it).
 #### D4. Change where the voice runs
 
 - **Start**: Voice tab › *Where it runs*.
-- **Flow**: same P2 pattern as C2–C4 (This PC: Windows voice or F5; another
+- **Flow**: same P2 pattern as C2–C4 (This PC: Chatterbox Nano or F5; another
   computer: F5 host; cloud: OpenAI TTS etc.). The voice list filters to
   voices that engine can speak.
 - **Clicks**: 2.
@@ -1380,7 +1380,7 @@ default, is detected, or is installed by Martlet.
 | Situation | User does | Martlet sets up |
 | --- | --- | --- |
 | Gaming PC (NVIDIA 12 GB+), no key | *Set up* › *Agree and set up* | Thinking: local model sized to the GPU (Ollama). Listening: whisper on this PC. Voice: F5 with the bundled default voice. Character: Hiyori, voice-loudness lip-sync. |
-| Mid PC (NVIDIA 6–10 GB), no key | Same, 2 clicks | Thinking: 8B local model. Listening: whisper (CPU, so the GPU stays free for thinking). Voice: Windows voice. |
+| Mid PC (NVIDIA 6–10 GB), no key | Same, 2 clicks | Thinking: 8B local model. Listening: whisper (CPU, so the GPU stays free for thinking). Voice: Chatterbox Nano (on the card when it has room, else on the processor). |
 | Laptop, no GPU, OpenAI key | Pick *Cloud* for Thinking, paste key, agree | Thinking, Listening and Voice all on OpenAI with that one key. |
 | Laptop, no GPU, OpenRouter or NVIDIA Build key | Pick *Cloud*, paste key, agree | Thinking on that provider. Listening and Voice on Windows speech (no install, no key). |
 | Laptop, no GPU, no key | *Set up* › *Agree and set up* | Thinking: small CPU model (slow but works, Home suggests a key or another computer). Listening and Voice: Windows speech. Works with zero typing. |
@@ -1394,8 +1394,8 @@ sizes follow [Recommended setups](RECOMMENDED_SETUPS.md).
 
 | This PC | Thinking | Listening | Voice | Lip-sync |
 | --- | --- | --- | --- | --- |
-| No NVIDIA GPU | Cloud if a key is given, else a ~3B CPU model | Windows speech | Windows voice | Voice loudness |
-| NVIDIA 6–10 GB | 8B local | whisper small (CPU) | Windows voice | Voice loudness |
+| No NVIDIA GPU | Cloud if a key is given, else a ~3B CPU model | Windows speech | Chatterbox Nano on the processor | Voice loudness |
+| NVIDIA 6–10 GB | 8B local | whisper small (CPU) | Chatterbox Nano | Voice loudness |
 | NVIDIA 12–16 GB | 8B–14B local | whisper (GPU) | F5, bundled voice | Voice loudness (Audio2Face offered) |
 | NVIDIA 24 GB+ | 14B–32B local | whisper (GPU) | F5, bundled voice | Voice loudness (Audio2Face offered) |
 | Network has a stronger computer | That computer, for any job it does better | same | same | same |
@@ -1468,11 +1468,10 @@ prompt per run.
 
 These need building before the recipes in 11.2 work:
 
-1. **Windows speech as a route.** Done for speaking: *Its voice › This PC ›
-   Windows voice, no Docker* saves an installed Windows voice and
-   conversations speak with it through SAPI on this PC (no System.Speech
-   package in the release). `Martlet.Stt.Windows` (recognition) still isn't a
-   choice in the app.
+1. **Windows speech as a route.** Windows voices were removed from speaking:
+   Chatterbox Nano on the processor is the voice for a computer without a
+   graphics card. `Martlet.Stt.Windows` (recognition) still isn't a choice in
+   the app.
 2. **Listening on this PC without Docker.** `Martlet.LocalStt` (native
    whisper.cpp, no Docker) exists as a disabled candidate. Wiring it in
    removes WSL, Docker Desktop and the host service from the most common
