@@ -531,6 +531,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // SetupListenStandInDownload button downloads that model, so it needs --allow-ui-effects.
         "SetupJobStandIn-Listening",
         "SetupCloudKeyStatus-Thinking", "SetupCloudKeyStatus-Voice", "SetupCloudKeyStatus-Listening",
+        // Companion › Voice › A cloud provider › ElevenLabs (the owner's cloned voice with tones): whether it is in use, its model,
+        // on and confirmed, whether a key is saved and whether ElevenLabs asked to verify the voice (never the voice's name, its
+        // voice ID or the key); what the key field will do; and the chosen model ("Eleven v4 Turbo (real time, recommended)").
+        // Its abilities and where it runs read through the VoiceEngine prefix (VoiceEngineAbilities-elevenlabs,
+        // VoiceEngineRunsOn-elevenlabs). The voice choice (ElevenLabsVoice) holds the owner's voice names, so it is not readable;
+        // ElevenLabsSave uploads a recording and saves the route, so it needs --allow-ui-effects (and spends money on ElevenLabs).
+        "ElevenLabsStatus", "ElevenLabsKeyStatus", "ElevenLabsModel",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
         "LogSummary", "LogShareStatus", "LogDetail",
         "HostStatus", "PairedHost", "PairCodeHelp", "DockerState", "RolesSummaryText", "HostRunPairAddress", "NetworkStatus",

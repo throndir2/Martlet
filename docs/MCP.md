@@ -2711,6 +2711,69 @@ transcribed, 2 replies spoken · DAVE on · libdave loaded (DAVE v1) · Last
 problem: ...* (counts only, never what was said). The live bot logs *Discord
 voice: joined a channel (2 people there).*
 
+### ElevenLabs voice
+
+`elevenlabs_check` rehearses [ElevenLabs as the Voice](ELEVENLABS_VOICE.md)
+(the owner's cloned voice with tones) end to end against `ElevenLabsFixture`, a
+local stand-in on 127.0.0.1 that follows ElevenLabs' documented protocol.
+FIXTURE, NOT ElevenLabs, NOT AI: its voice is a quiet tone, and its first audio
+waits 100 ms to stand in for model latency (not a measurement). It runs three
+steps:
+
+1. **Cloning.** Instant Voice Cloning with a synthetic WAV. `clone.sent` shows
+   the form Martlet sent (`name`, `fileName` `voice.wav`, `contentType`
+   `audio/wav`, `wave`, `removeBackgroundNoise` `false`, `description`) and
+   whether the key matched.
+2. **One piece** straight through `ElevenLabsDialogueClient`. `segment` gives
+   its `audioBytes`, any `failure` and `detail`, and the fixture timings
+   `connectMs`, `firstAudioMs` and `totalMs`.
+3. **A whole spoken reply** through the production conversation runtime. A
+   fixture Chat Completions endpoint streams `reply` a word at a time (by
+   default one with `[laughs]`, `[whispers]` and `[happy]`), and a fixture
+   speaker plays nothing.
+
+`ok` needs all of these:
+
+- `thinkingPrompt.listsElevenLabsTags`: the Thinking prompt lists ElevenLabs'
+  own tags (`tags` gives each tag, its kind and its cue).
+- `tags.reachedElevenLabs`: every tag the reply wrote reaches ElevenLabs as
+  written.
+- `tags.chatClean` and `tags.captionsClean`: the chat text and every caption
+  show no tag.
+- `protocol.ok`: each connection carries `model_id`, `output_format=pcm_24000`,
+  the key in the `xi-api-key` header (`keyInHeader`, never `keyInBody`), the
+  one cloned voice and `close_socket`.
+
+`scenario` is `reply` (default), `model-refused` or `bad-key`. With
+`model-refused`, the WebSocket refuses the model with `param: model_id`, as its
+API reference describes. The voice then fails as `ModelUnsupported`, and
+`segment.detail` says to choose Eleven v3 Conversational. The text still
+completes. With `bad-key`, cloning and speech fail as `Authentication`. `model`
+is `eleven_v4_turbo` (default) or `eleven_v3_conversational`. With
+`dataDirectory`, `saved` reports the saved ElevenLabs choice: `voiceRoute`,
+`usesElevenLabs`, `model`, `enabled`, `confirmed`, `keySaved`, `clonedVoice`,
+`requiresVerification` and `keysFromBefore`. It never gives the key, the voice
+ID or the voice's name. Nothing is sent to ElevenLabs: `live` is always NOT
+RUN, because there is no ElevenLabs account or key.
+
+```powershell
+.\scripts\Invoke-MartletMcp.ps1 -Build -Calls '[
+  {"name":"elevenlabs_check"},
+  {"name":"elevenlabs_check","arguments":{"scenario":"model-refused"}},
+  {"name":"elevenlabs_check","arguments":{"scenario":"bad-key"}}]'
+```
+
+On Companion › Voice › *A cloud provider*, the ElevenLabs card's status is
+readable: `ElevenLabsStatus` (*Not in use...* or *In use: Eleven v4 Turbo with
+your cloned voice. Key saved.*, and whether ElevenLabs asked to verify the
+voice; never the voice's name), `ElevenLabsKeyStatus` (what the key field will
+do; never the key) and `ElevenLabsModel` (the chosen model). The card's
+abilities and where it runs read through `VoiceEngineAbilities-elevenlabs` and
+`VoiceEngineRunsOn-elevenlabs`. `ElevenLabsVoice` holds the owner's voice names,
+so it is not readable. `ElevenLabsKey` and `ElevenLabsConsent` are inputs.
+`ElevenLabsSave` uploads a recording and saves the route, so it needs
+`--allow-ui-effects`. Never press it in a check: it would contact ElevenLabs.
+
 ### Latency
 
 Every reply writes one *Reply latency* line to the desktop log: how long from

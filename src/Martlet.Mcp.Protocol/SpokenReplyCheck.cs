@@ -431,7 +431,7 @@ internal static class SpokenReplyCheck
     // Streams the reply a chunk at a time (a sentence, or a word for a given reply) with a pause between, the way a cloud model
     // streams it; with reasoning, a hidden reasoning delta comes first and the words only after that long, like a reasoning
     // model on OpenRouter. It notes whether each request carried the Thinking steps control and, with refuseThinking, refuses those.
-    private static async Task ServeAsync(TcpListener listener, string[] chunks, TimeSpan gap, TimeSpan reasoning,
+    internal static async Task ServeAsync(TcpListener listener, string[] chunks, TimeSpan gap, TimeSpan reasoning,
         CancellationToken cancellation, List<bool> asked, bool refuseThinking)
     {
         while (!cancellation.IsCancellationRequested)
@@ -533,7 +533,7 @@ internal static class SpokenReplyCheck
     }
 
     // Takes every sample at once and opens no device: nothing is played.
-    private sealed class Speakers : IPlaybackDeviceFactory
+    internal sealed class Speakers : IPlaybackDeviceFactory
     {
         private long samples;
         private int opens;
