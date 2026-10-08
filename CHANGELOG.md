@@ -8,6 +8,9 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+- Your character now gets fewer, clearer touch zones: **Detect zones** finds only the hair, eyes, ears, nose, mouth, neck, breasts, upper arms, forearms, stomach, hips, groin, thighs, calves and feet, with a left and a right one where there are two. Add any other zone with **Add zone** in Companion › Character › Touch zones, and **Detect again** looks for it too, or leaves it where you put it when it can't find it. Press **Detect again** to move a character you set up before to the shorter list. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+
 ## [0.56.0] - 2026-10-07
 
 ### Added

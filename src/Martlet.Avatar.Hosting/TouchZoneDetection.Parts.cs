@@ -176,10 +176,10 @@ public static partial class TouchZoneDetection
 
     /// <summary>Where the model's own named parts put the zone <paramref name="id"/> (fractions of the snapshot), and what that is
     /// ("neck", "mouth", "left leg (its top)"); null when the model names nothing for it (or has no <see cref="ZoneHints.Pieces"/>).
-    /// A zone of its own part is on that part (the lips on the mouth, the tail on the tail); others are a share of a larger part:
-    /// the forehead high on the face, the chest high on the upper body, the waist low on it, the hips from the bottom of the upper
-    /// body to where the legs meet, a thigh at the top of its leg, a knee in its middle and a foot at its bottom. Left and right
-    /// are the character's own.</summary>
+    /// A zone of its own part is on that part (the lips on the mouth, an eye on that eye, the tail on the tail); others are a
+    /// share of a larger part: the forehead high on the face, the chest high on the upper body, the waist low on it, the hips
+    /// from the bottom of the upper body to where the legs meet (and a hip on its side of them), a thigh at the top of its leg,
+    /// a knee in its middle and a foot at its bottom. Left and right are the character's own.</summary>
     public static (TouchZoneBox Box, string What)? NamedPlace(string id, ZoneHints? hints)
     {
         if (hints is not { Named: true }) return null;
@@ -203,6 +203,8 @@ public static partial class TouchZoneDetection
             "top_of_head" => At(head is null ? null : Band(head, 0, 0.3), "head (its top)"),
             "forehead" => face is not null ? At(Band(face, 0.05, 0.45), "face (its top)") : At(head is null ? null : Band(head, 0.2, 0.5), "head (its forehead)"),
             "face" => face is not null ? At(face, "face") : At(head is null ? null : Band(head, 0.25, 1), "head (its face)"),
+            "eye" => At(Whole(hints, "eyes", side), $"{limb}eye") ?? At(Whole(hints, "eyes") is { } eyes ? Sided(eyes) : null, $"eyes (its {limb}side)") ??
+                At(face is null ? null : Sided(Band(face, 0.3, 0.7)), $"face (its {limb}eye)"),
             "cheek" => At(Whole(hints, "cheeks", side), $"{limb}cheek") ?? At(face is null ? null : Sided(Band(face, 0.45, 0.85)), $"face (its {limb}cheek)"),
             "nose" => At(Whole(hints, "nose"), "nose") ?? At(face is null ? null : Central(Band(face, 0.45, 0.8), 0.34), "face (its nose)"),
             "lips" => At(Whole(hints, "mouth"), "mouth") ?? At(face is null ? null : Central(Band(face, 0.65, 0.92), 0.5), "face (its mouth)"),
@@ -219,6 +221,7 @@ public static partial class TouchZoneDetection
             "upper_arm" or "forearm" => At(Whole(hints, "arms", side), $"{limb}arm"),
             "hand" => At(Whole(hints, "hands", side), $"{limb}hand") ?? At(Whole(hints, "arms", side), $"{limb}arm"),
             "hips" => At(hips, "hips"),
+            "hip" => At(hips is null ? null : Sided(hips), $"hips (its {limb}side)"),
             "groin" => At(hips is null ? null : Central(Band(hips, 0.5, 1), 0.4), "hips (where the legs meet)"),
             "buttocks" => At(hips is null ? null : Band(hips, 0.3, 1), "hips"),
             "thigh" => At(leg is null ? null : Band(leg, 0, 0.42), $"{limb}leg (its top)"),

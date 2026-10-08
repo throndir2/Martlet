@@ -106,7 +106,7 @@ public sealed class TouchZoneNamedPartsTests
                 ZoneAskKind.Zones => TouchZoneDetection.Oracle(ask, WrongAnswer, WrongAnswer),
                 _ => "{\"zones\":[" + string.Join(",", ask.Marks.Select(m => $"{{\"n\":{m.Number},\"ok\":true}}")) + "],\"done\":true}"
             }, null));
-        }, null, CancellationToken.None, new ZoneDetectionOptions { Checks = checks, Required = TouchZoneDetection.Erogenous });
+        }, null, CancellationToken.None, new ZoneDetectionOptions { Checks = checks, Zones = TouchZoneDetection.Findable, Required = TouchZoneDetection.Erogenous });
         return (result, asks);
     }
 

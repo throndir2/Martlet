@@ -9,7 +9,8 @@ using Martlet.Providers;
 namespace Martlet.Mcp;
 
 /// <summary>character_touch_zones: Companion › Character › Touch zones as Martlet.Avatar.Hosting's CharacterTouchZones runs them,
-/// with NO vision request: the zone list and the step-by-step vision requests, what the production parser makes of a simulated
+/// with NO vision request: the zone list (and the defaults Detect zones looks for) and the step-by-step vision requests for the
+/// model (the default zones and the ones the owner added: add adds zones as Add zone does), what the production parser makes of a simulated
 /// vision answer (fractions, pixels or 0..1000 grounding) and how it binds to a simulated drawables/bones probe, the zones saved
 /// for the model in a data directory, and which zone a simulated touch lands in with what it plays (from the model's emotes and
 /// gestures) and tells the character. With detect, the production detection (TouchZoneDetection) runs on a real snapshot PNG,
@@ -23,7 +24,8 @@ internal static class TouchZonesCheck
     internal static async Task<object> RunAsync(string dataDirectory, bool explicitDirectory, string? modelPath, string? modelId, string? answer,
         int? width, int? height, string? crop, string? probe, string? touch, bool save, bool? includeIntimate, string? snapshotPath,
         CancellationToken cancellation, string? temperamentAnswer = null, string? personaId = null, string? personality = null, int? repeats = null,
-        bool detect = false, string? guess = null, string? previewDirectory = null, int? checks = null, int? failAt = null, string? probePath = null)
+        bool detect = false, string? guess = null, string? previewDirectory = null, int? checks = null, int? failAt = null, string? probePath = null,
+        string? add = null)
     {
         CharacterActionCatalog? catalog = null;
         string? problem = null;
@@ -72,6 +74,21 @@ internal static class TouchZonesCheck
         var hints = TouchZoneDetection.Hints(probed, cropBox);
         var parsed = answer is null ? null : CharacterTouchZones.Parse(answer, w, h);
         var saved = CharacterTouchZones.Load(dataDirectory, id);
+        // The owner's Add zone: each zone added in the middle of the picture (one the model has is marked added), so Detect again
+        // looks for it too.
+        string[] adding = [.. (add ?? "").Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries).Select(CharacterTouchZones.Normalize).OfType<string>().Distinct()];
+        if (add is not null && adding.Length == 0) throw new ArgumentException("add names no zone Martlet knows: give zone IDs such as \"hand_left,tail\".");
+        if (adding.Length > 0)
+        {
+            var before = saved ?? new CharacterTouchZoneSettings { ModelId = id, DetectedBy = CharacterTouchZoneSettings.ByOwner };
+            saved = before with
+            {
+                Zones = [.. before.Zones.Select(z => adding.Contains(z.Id) ? z with { Added = true } : z),
+                    .. adding.Where(a => before.Zones.All(z => z.Id != a)).Select(a => new CharacterTouchZone { Id = a, Box = new(0.4, 0.4, 0.2, 0.2), Added = true })]
+            };
+        }
+        // How Detect zones goes for this model: the zones it looks for and the ones it must end with.
+        var asks = TouchZoneDetection.For(saved, includeIntimate) with { Checks = Math.Clamp(checks ?? 2, 0, 5) };
         CharacterTouchZoneSettings? detected = parsed is null ? null : CharacterTouchZones.Detected(saved, id, parsed, cropBox, probed, DateTimeOffset.Now);
         object? detection = null;
         (TouchZoneSent Sent, List<(string File, byte[] Bytes)> Pictures)? sent = null;
@@ -82,19 +99,18 @@ internal static class TouchZonesCheck
             var truth = CharacterTouchZones.Parse(answer, snapshot.Width, snapshot.Height) ??
                 throw new ArgumentException("detect needs answer: the zones a perfect vision model would find, as JSON about the whole snapshot.");
             var first = guess is null ? null : CharacterTouchZones.Parse(guess, snapshot.Width, snapshot.Height);
-            // Include intimate zones is on unless it is turned off, here or in the saved zones: then the intimate zones must be found.
-            var required = (includeIntimate ?? saved?.IncludeIntimate) == false ? [] : TouchZoneDetection.Erogenous;
-            (detection, var found, sent) = await DetectAsync(snapshot, truth, first, hints, previewDirectory, checks,
-                required, failAt, cancellation);
+            (detection, var found, sent) = await DetectAsync(snapshot, truth, first, hints, previewDirectory, asks, failAt, cancellation);
             detected = found is null ? null : CharacterTouchZones.Detected(saved, id, found, cropBox, probed, DateTimeOffset.Now, whole: true);
         }
         if (detected is not null && includeIntimate is { } intimate) detected = detected with { IncludeIntimate = intimate };
+        // Add zone alone saves the zones with the ones added, as the desktop does.
+        var adds = adding.Length > 0 && detected is null ? saved! with { IncludeIntimate = includeIntimate ?? saved!.IncludeIntimate } : null;
         string? wrote = null;
         if (save)
         {
             if (!explicitDirectory) throw new ArgumentException("save needs an explicit (disposable) dataDirectory.");
-            if (detected is null) throw new ArgumentException(detect ? "save found no zones to save." : "save needs an answer the parser can read.");
-            saved = await CharacterTouchZones.SaveAsync(dataDirectory, detected, DateTimeOffset.Now, cancellation);
+            if ((detected ?? adds) is not { } writing) throw new ArgumentException(detect ? "save found no zones to save." : "save needs an answer the parser can read, or add.");
+            saved = await CharacterTouchZones.SaveAsync(dataDirectory, writing, DateTimeOffset.Now, cancellation);
             if (snapshotPath is not null) await CharacterTouchZones.SaveSnapshotAsync(dataDirectory, id, await File.ReadAllBytesAsync(snapshotPath, cancellation), cancellation);
             if (sent is { } pictures)
             {
@@ -102,7 +118,7 @@ internal static class TouchZonesCheck
                 foreach (var (file, bytes) in pictures.Pictures) await File.WriteAllBytesAsync(Path.Combine(folder, file), bytes, cancellation);
                 await CharacterTouchZones.SaveSentAsync(dataDirectory, id, pictures.Sent, cancellation);
             }
-            wrote = $"Saved {detected.Zones.Count} zones for the model in {CharacterTouchZones.FileName}" + (snapshotPath is null ? "." : " with the snapshot") +
+            wrote = $"Saved {writing.Zones.Count} zones for the model in {CharacterTouchZones.FileName}" + (snapshotPath is null ? "." : " with the snapshot") +
                 (sent is null ? "" : " and the pictures the detection sent") + (snapshotPath is null ? "" : ".");
         }
         var settings = saved ?? detected;
@@ -135,19 +151,34 @@ internal static class TouchZonesCheck
             zones = new
             {
                 count = CharacterTouchZones.Kinds.Count,
-                intimate = CharacterTouchZones.Kinds.Where(k => k.Intimate).Select(k => k.Id).ToArray()
+                intimate = CharacterTouchZones.Kinds.Where(k => k.Intimate).Select(k => k.Id).ToArray(),
+                defaults = TouchZoneDetection.Defaults, defaultParts = TouchZoneDetection.DefaultParts
             },
             request = new
             {
-                parts = new { instructions = TouchZoneDetection.PartsInstructions, text = TouchZoneDetection.PartsText(null) },
+                // What Detect zones looks for on this model (the defaults and the zones the owner added) and must end with.
+                wanted = asks.Zones, required = asks.Required,
+                added = saved?.Zones.Where(z => z.Added).Select(z => z.Id).ToArray() ?? [],
+                parts = new
+                {
+                    instructions = TouchZoneDetection.PartsInstructions,
+                    ids = TouchZoneDetection.PartsFor(asks.Zones.Concat(asks.Required)),
+                    text = TouchZoneDetection.PartsText(null, asks.Zones.Concat(asks.Required))
+                },
                 zones = new
                 {
                     instructions = TouchZoneDetection.ZonesInstructions,
-                    regions = TouchZoneDetection.Regions.Select(r => new { r.Id, r.What, r.Zones }).ToArray(),
-                    text = TouchZoneDetection.ZonesText(TouchZoneDetection.Regions[0], null, new(0, 0, 1, 1))
+                    regions = TouchZoneDetection.Regions.Select(r => new
+                    {
+                        r.Id, r.What, Zones = r.Zones.Where(z => asks.Zones.Contains(z) || asks.Required.Contains(z)).ToArray()
+                    }).ToArray(),
+                    text = TouchZoneDetection.ZonesText(TouchZoneDetection.Regions[0] with
+                    {
+                        Zones = [.. TouchZoneDetection.Regions[0].Zones.Where(z => asks.Zones.Contains(z) || asks.Required.Contains(z))]
+                    }, null, new(0, 0, 1, 1))
                 },
                 check = new { instructions = TouchZoneDetection.CheckInstructions },
-                extras = TouchZoneDetection.Extras
+                extras = TouchZoneDetection.Extras.Where(z => asks.Zones.Contains(z) || asks.Required.Contains(z)).ToArray()
             },
             parsed = answer is null ? null : parsed?.Select(Describe).ToArray() ?? [],
             hints = DescribeHints(hints),
@@ -168,7 +199,7 @@ internal static class TouchZonesCheck
                     } : null,
                 each = settings.Zones.Select(z => new
                 {
-                    z.Id, z.Name, z.Enabled, active = settings.Active(z), drawables = z.Drawables.Count, z.Bones,
+                    z.Id, z.Name, z.Enabled, active = settings.Active(z), z.Added, drawables = z.Drawables.Count, z.Bones,
                     plays = CharacterTouchZones.React(z, catalog, temperament, 1) is var r && r.From == TouchReactionPlan.FromOwner
                         ? string.Join(" + ", r.Actions.Select(s => s.Name)) : r.From + ": " + string.Join(" + ", r.Actions.Select(s => s.Name)),
                     notices = z.Reaction.Notices, hint = CharacterTouchZones.Narration(z)
@@ -235,10 +266,11 @@ internal static class TouchZonesCheck
 
     // The production detection on a real snapshot, with a FIXTURE - NOT AI stand-in answering from truth (guess answers the
     // close-ups first, so the checks have something to correct; at request failAt it fails instead, as a model that stopped
-    // answering). Every picture is composed and encoded as the desktop sends it.
+    // answering), looking for the zones options names as Detect zones does. Every picture is composed and encoded as the desktop
+    // sends it.
     private static async Task<(object Report, IReadOnlyList<CharacterTouchZone>? Zones, (TouchZoneSent Sent, List<(string File, byte[] Bytes)> Pictures)? Sent)>
         DetectAsync(ZonePixels snapshot, IReadOnlyList<CharacterTouchZone> truth, IReadOnlyList<CharacterTouchZone>? guess, ZoneHints? hints,
-            string? previewDirectory, int? checks, IReadOnlyList<string> required, int? failAt, CancellationToken cancellation)
+            string? previewDirectory, ZoneDetectionOptions options, int? failAt, CancellationToken cancellation)
     {
         if (previewDirectory is not null) Directory.CreateDirectory(previewDirectory);
         var pictures = new List<(string File, byte[] Bytes)>();
@@ -260,8 +292,9 @@ internal static class TouchZonesCheck
                 region = Edges(ask.Region), marks = ask.Marks.Count, text = ask.Text, answer = reply, failed = fails ? "a simulated failure" : null
             });
             return (reply, fails ? "a simulated failure" : (string?)null);
-        }, null, cancellation, new ZoneDetectionOptions { Checks = Math.Clamp(checks ?? 2, 0, 5), Required = required });
+        }, null, cancellation, options);
         var found = result.Zones ?? [];
+        var required = options.Required;
         var errors = found.Select(z => truth.FirstOrDefault(t => t.Id == z.Id) is { } t ? TouchZoneDetection.Moved(z.Box, t.Box) : double.NaN)
             .Where(double.IsFinite).ToArray();
         var report = new
@@ -269,7 +302,7 @@ internal static class TouchZonesCheck
             fixture = "FIXTURE - NOT AI: a stand-in answered from the given zones; no vision request was made",
             snapshot = new { snapshot.Width, snapshot.Height }, requestCount = result.Requests, failure = result.Failure, result.Steps, asked,
             found = found.Count, given = truth.Count, missed = truth.Where(t => found.All(z => z.Id != t.Id)).Select(t => t.Id).ToArray(),
-            required, requiredMissing = required.Where(id => found.All(z => z.Id != id)).ToArray(),
+            wanted = options.Zones, required, requiredMissing = required.Where(id => found.All(z => z.Id != id)).ToArray(),
             worstEdge = errors.Length == 0 ? (double?)null : Math.Round(errors.Max(), 4),
             meanEdge = errors.Length == 0 ? (double?)null : Math.Round(errors.Average(), 4),
             zones = found.Select(Describe).ToArray()
@@ -301,7 +334,7 @@ internal static class TouchZonesCheck
     private static object Describe(CharacterTouchZone zone) => new
     {
         zone.Id, zone.Name, box = new[] { zone.Box.X, zone.Box.Y, zone.Box.Width, zone.Box.Height }.Select(v => Math.Round(v, 4)).ToArray(),
-        zone.Drawables, zone.Bones
+        zone.Drawables, zone.Bones, zone.Added
     };
 
     // A box as its left, top, right and bottom edges (fractions of the snapshot), rounded.

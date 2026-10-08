@@ -662,8 +662,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             changes = new { type = "string" }, noticeAll = new { type = "boolean" }
         }),
         Tool("character_touch_zones", "Companion > Character > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones and TouchZoneDetection; " +
-            "docs/AVATARS.md \"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate), the step-by-step vision " +
-            "requests (parts on the whole character, zones on each close-up, checks of the numbered boxes), what the production parser makes " +
+            "docs/AVATARS.md \"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate, and the defaults Detect " +
+            "zones looks for), the step-by-step vision requests for the model (parts on the whole character, zones on each close-up, " +
+            "checks of the numbered boxes; wanted: the default zones and the ones the owner added, required: the ones it must end with), " +
+            "what the production parser makes " +
             "of answer (a simulated vision reply about the whole picture: JSON boxes as fractions or named edges, pixels of a width x height " +
             "picture or Qwen-style 0..1000 bbox_2d grounding) bound to probe (a simulated renderer zones probe: {\"drawables\":[{\"id\",\"left\"," +
             "\"top\",\"right\",\"bottom\",\"part\"}],\"bones\":[{\"bone\",\"x\",\"y\"}],\"parts\":[{\"id\",\"name\",\"parent\"}]} in page fractions, " +
@@ -678,7 +680,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "that answers from answer's zones (guess, a wrong first answer, makes the checks correct it; checks sets the rounds, 0 to 5; " +
             "failAt makes that request fail, as a model that stopped answering); with includeIntimate on (the default) the intimate zones " +
             "must be found: asked for again on the whole character, then worked out from the zones around them; it " +
-            "reports each request, the steps and how far the found boxes are from answer's. save writes the parsed (or detected) zones (and " +
+            "reports each request, the steps and how far the found boxes are from answer's. add (zone IDs, comma-separated, such as " +
+            "\"hand_left,tail\") adds zones as the owner does with Add zone (added, in the middle of the picture; one the model has is " +
+            "marked added): detect then looks for them too and must end with them, and one it can't place stays where it was. save writes " +
+            "the parsed (or detected) zones (or, with add alone, the zones with the ones added) (and " +
             "snapshotPath as their picture, and with detect the pictures sent; includeIntimate sets Include intimate zones) into an explicit, " +
             "disposable dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
             "{\"attitude\":2,\"reactions\":[\"hearts\",\"blush\"],\"linger\":3}},\"zones\":{...},\"escalation\":{\"after\":3,...}}) or " +
@@ -695,7 +700,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             temperament = new { type = "string" }, personaId = new { type = "string" }, personality = new { type = "string" },
             repeats = new { type = "integer", minimum = 1 }, detect = new { type = "boolean" }, guess = new { type = "string" },
             previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 },
-            failAt = new { type = "integer", minimum = 1 }, probePath = new { type = "string" }
+            failAt = new { type = "integer", minimum = 1 }, probePath = new { type = "string" }, add = new { type = "string" }
         }),
         Tool("character_eyes", "Companion > Character > Touch zones > Eyes (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
             "with NO vision request: the request the vision model gets (a close-up of the face, 1.6 face widths square, about 768 pixels " +
@@ -1883,7 +1888,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     cancellation, OptionalString(arguments, "temperament"), OptionalString(arguments, "personaId"), OptionalString(arguments, "personality"),
                     OptionalInt(arguments, "repeats"), OptionalBool(arguments, "detect") ?? false, OptionalString(arguments, "guess"),
                     OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt"),
-                    OptionalString(arguments, "probePath")),
+                    OptionalString(arguments, "probePath"), OptionalString(arguments, "add")),
                 "character_eyes" => await CharacterEyesCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "dataDirectory") is not null,
                     OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"), OptionalString(arguments, "answer"),
                     OptionalString(arguments, "second"), OptionalString(arguments, "snapshotPath"), OptionalString(arguments, "face"),

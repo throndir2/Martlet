@@ -125,6 +125,9 @@ public sealed class TouchZoneDetectionTests
         new() { Id = "foot_left", Box = new(0.525, 0.9, 0.15, 0.075) }
     ];
 
+    // A detection that looks for every zone it can (as when the owner added them all), so the face and chest are looked for too.
+    private static readonly ZoneDetectionOptions Everything = new() { Zones = TouchZoneDetection.Findable };
+
     [Fact]
     public async Task TheLoopFindsEachPartCloseUpAndCorrectsItsBoxesUntilTheyAreRight()
     {
@@ -141,7 +144,7 @@ public sealed class TouchZoneDetectionTests
         {
             asks.Add(ask);
             return Task.FromResult<(string?, string?)>((TouchZoneDetection.Oracle(ask, Truth, guess), null));
-        }, p => progress.Add(p.Text), CancellationToken.None);
+        }, p => progress.Add(p.Text), CancellationToken.None, Everything);
 
         Assert.Null(result.Failure);
         foreach (var truth in Truth)
@@ -172,7 +175,7 @@ public sealed class TouchZoneDetectionTests
             asks.Add(ask);
             return Task.FromResult<(string?, string?)>(ask.Kind == ZoneAskKind.Parts ? ("I see a character.", null)
                 : (TouchZoneDetection.Oracle(ask, Truth), null));
-        }, null, CancellationToken.None);
+        }, null, CancellationToken.None, Everything);
         Assert.Contains(result.Steps, s => s.Contains("guessed head, upper_body, lower_body from the character's outline", StringComparison.Ordinal));
         Assert.Contains(result.Zones!, z => z.Id == "face");
 
@@ -192,7 +195,7 @@ public sealed class TouchZoneDetectionTests
         {
             asks.Add(ask);
             return Task.FromResult<(string?, string?)>(asks.Count == 3 ? (null, "ResponseTruncated") : (TouchZoneDetection.Oracle(ask, Truth), null));
-        }, null, CancellationToken.None, new ZoneDetectionOptions { Required = TouchZoneDetection.Erogenous });
+        }, null, CancellationToken.None, Everything with { Required = TouchZoneDetection.Erogenous });
 
         Assert.Equal("ResponseTruncated", result.Failure);
         Assert.Equal(3, result.Requests);
@@ -206,7 +209,8 @@ public sealed class TouchZoneDetectionTests
 
         // An answer with nothing usable in it is not a failure: the detection goes on.
         var quiet = await TouchZoneDetection.RunAsync(Character(), null, (ask, _) =>
-            Task.FromResult<(string?, string?)>((ask.Step == "head" ? null : TouchZoneDetection.Oracle(ask, Truth), null)), null, CancellationToken.None);
+            Task.FromResult<(string?, string?)>((ask.Step == "head" ? null : TouchZoneDetection.Oracle(ask, Truth), null)), null, CancellationToken.None,
+            Everything);
         Assert.Null(quiet.Failure);
         Assert.Contains(quiet.Zones!, z => z.Id == "chest");
     }
@@ -221,7 +225,7 @@ public sealed class TouchZoneDetectionTests
         {
             asks.Add(ask);
             return Task.FromResult<(string?, string?)>((TouchZoneDetection.Oracle(ask, ask.Step == TouchZoneDetection.MissingStep ? [.. Truth, groin] : Truth), null));
-        }, null, CancellationToken.None, new ZoneDetectionOptions { Required = TouchZoneDetection.Erogenous });
+        }, null, CancellationToken.None, Everything with { Required = TouchZoneDetection.Erogenous });
 
         Assert.Null(result.Failure);
         var again = Assert.Single(asks, a => a.Step == TouchZoneDetection.MissingStep);
@@ -271,12 +275,119 @@ public sealed class TouchZoneDetectionTests
 
         var notes = TouchZoneDetection.Derive(zones, TouchZoneDetection.Erogenous, bust, true, regions, new(0.25, 0.05, 0.5, 0.95));
 
-        Assert.Contains("not hips, groin, buttocks, inner_thigh_left, inner_thigh_right: the character shows no lower body", notes);
+        Assert.Contains("not hips, hip_left, hip_right, groin, buttocks, inner_thigh_left, inner_thigh_right: the character shows no lower body", notes);
         Assert.DoesNotContain("groin", zones.Keys);
         Assert.DoesNotContain("hips", zones.Keys);
+        Assert.DoesNotContain("hip_left", zones.Keys);
         foreach (var id in new[] { "lips", "ear_left", "ear_right", "neck", "breast_left", "breast_right", "waist" }) Assert.Contains(id, zones.Keys);
         // Only missing zones are worked out: the chest stays the model's.
         Assert.Equal(new TouchZoneBox(0.3, 0.6, 0.4, 0.3), zones["chest"]);
+    }
+
+    [Fact]
+    public async Task DetectZonesLooksOnlyForTheDefaultZonesAndTheOnesTheOwnerAdded()
+    {
+        // The owner added the left hand and a tail; the face was found by an older detection, not added.
+        var saved = new CharacterTouchZoneSettings
+        {
+            ModelId = "m",
+            Zones =
+            [
+                new() { Id = "face", Box = Truth[1].Box }, new() { Id = "hand_left", Box = new(0.4, 0.4, 0.2, 0.2), Added = true },
+                new() { Id = "tail", Box = new(0.4, 0.4, 0.2, 0.2), Added = true }
+            ]
+        };
+        var options = TouchZoneDetection.For(saved);
+        Assert.Equal(24, TouchZoneDetection.Defaults.Count);
+        Assert.Equal([.. TouchZoneDetection.Defaults, "hand_left", "tail"], options.Zones);
+        // The intimate ones it looks for must be found while Include intimate zones is on, and so must the ones the owner added.
+        Assert.Equal(["ear_left", "ear_right", "lips", "neck", "breast_left", "breast_right", "hip_left", "hip_right", "groin", "hand_left", "tail"],
+            options.Required);
+        Assert.Equal(["hand_left", "tail"], TouchZoneDetection.For(saved with { IncludeIntimate = false }).Required);
+        Assert.Equal(TouchZoneDetection.Defaults, TouchZoneDetection.For(null).Zones);
+        // Every default zone is one Martlet knows, under the names the owner sees.
+        Assert.All(TouchZoneDetection.Defaults, id => Assert.NotNull(CharacterTouchZones.Kind(id)));
+        Assert.Equal(["Left thigh", "Left calf", "Left forearm", "Mouth", "Left eye", "Left hip"],
+            new[] { "thigh_left", "calf_left", "forearm_left", "lips", "eye_left", "hip_left" }.Select(id => CharacterTouchZones.Kind(id)!.Label));
+
+        CharacterTouchZone[] truth =
+        [
+            .. Truth, new() { Id = "eye_left", Box = new(0.52, 0.11, 0.06, 0.03) }, new() { Id = "eye_right", Box = new(0.42, 0.11, 0.06, 0.03) },
+            new() { Id = "nose", Box = new(0.47, 0.145, 0.06, 0.03) }, new() { Id = "hand_left", Box = new(0.6, 0.45, 0.08, 0.06) },
+            new() { Id = "tail", Box = new(0.3, 0.45, 0.05, 0.15) }
+        ];
+        var asks = new List<ZoneAsk>();
+        var result = await TouchZoneDetection.RunAsync(Character(), null, (ask, _) =>
+        {
+            asks.Add(ask);
+            return Task.FromResult<(string?, string?)>((TouchZoneDetection.Oracle(ask, truth), null));
+        }, null, CancellationToken.None, options);
+
+        Assert.Null(result.Failure);
+        // The whole character is asked for its tail, but not for wings or a held item.
+        Assert.Equal(["head", "upper_body", "lower_body", "tail"], asks[0].Ids);
+        Assert.Contains("tail - a tail", asks[0].Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("wings -", asks[0].Text, StringComparison.Ordinal);
+        // Each close-up asks only for the default zones and the ones the owner added.
+        Assert.Equal(["hair", "eye_left", "eye_right", "nose", "lips", "ear_left", "ear_right"], asks.Single(a => a.Step == "head").Ids);
+        Assert.Contains("lips - the mouth and lips", asks.Single(a => a.Step == "head").Text, StringComparison.Ordinal);
+        var upper = asks.Single(a => a.Step == "upper_body");
+        Assert.Contains("hand_left", upper.Ids);
+        Assert.DoesNotContain("chest", upper.Ids);
+        Assert.DoesNotContain("hand_right", upper.Ids);
+        var found = result.Zones!.Select(z => z.Id).ToArray();
+        Assert.All(found, id => Assert.Contains(id, options.Zones));
+        foreach (var id in new[] { "hair", "eye_left", "eye_right", "nose", "stomach", "thigh_left", "foot_left", "hand_left", "tail" }) Assert.Contains(id, found);
+        Assert.DoesNotContain("face", found);
+        Assert.DoesNotContain("chest", found);
+        // The intimate zones the close-ups and the whole character missed are worked out, each hip its side of the hips.
+        foreach (var id in options.Required) Assert.Contains(id, found);
+        var zones = result.Zones!.ToDictionary(z => z.Id, z => z.Box);
+        Assert.True(zones["hip_left"].CenterX > zones["hip_right"].CenterX, "facing the viewer, the left hip is on the picture's right");
+        Assert.True(zones["eye_left"].CenterX > zones["eye_right"].CenterX);
+    }
+
+    [Fact]
+    public async Task DetectAgainKeepsAZoneTheOwnerAddedWhereItWasWhenItCantPlaceIt()
+    {
+        var saved = new CharacterTouchZoneSettings
+        {
+            ModelId = "m", Crop = new(0, 0, 1, 1),
+            Zones =
+            [
+                new() { Id = "hair", Box = new(0.3, 0, 0.4, 0.2) }, new() { Id = "forehead", Box = new(0.4, 0.1, 0.2, 0.05) },
+                new() { Id = "hand_left", Box = new(0.7, 0.5, 0.1, 0.1), Added = true, Label = "Paw", Enabled = false },
+                new() { Id = "tail", Box = new(0.2, 0.6, 0.1, 0.2), Added = true }
+            ]
+        };
+
+        // Found again: the hair and the tail. The hand isn't, and the forehead isn't looked for any more.
+        var again = CharacterTouchZones.Detected(saved, "m",
+            [new() { Id = "tail", Box = new(0.25, 0.6, 0.1, 0.2) }, new() { Id = "hair", Box = new(0.3, 0, 0.4, 0.25) }],
+            new(0.1, 0, 0.8, 1), null, DateTimeOffset.Now, whole: true);
+
+        Assert.Equal(["hair", "hand_left", "tail"], again.Zones.Select(z => z.Id));
+        var hand = again.Zones[1];
+        Assert.True(hand.Added);
+        Assert.Equal(("Paw", false), (hand.Label, hand.Enabled));
+        // It stays on the same place of the page: the new picture starts a tenth of the page further right and is 0.8 wide.
+        Assert.Equal(0.75, hand.Box.X, 6);
+        Assert.Equal(0.125, hand.Box.Width, 6);
+        Assert.Equal(0.5, hand.Box.Y, 6);
+        // One found again takes its new box and stays the owner's.
+        Assert.True(again.Zones[2].Added);
+        Assert.Equal(0.25, again.Zones[2].Box.X, 6);
+        Assert.False(again.Zones[0].Added);
+
+        var directory = Directory.CreateTempSubdirectory("martlet-touch-").FullName;
+        try
+        {
+            await CharacterTouchZones.SaveAsync(directory, again, DateTimeOffset.Now);
+            Assert.Equal([false, true, true], CharacterTouchZones.Load(directory, "m")!.Zones.Select(z => z.Added));
+            // Only a zone the owner added says so in the file.
+            Assert.Equal(2, System.Text.RegularExpressions.Regex.Count(File.ReadAllText(CharacterTouchZones.Path(directory)), "\"added\""));
+        }
+        finally { Directory.Delete(directory, true); }
     }
 
     [Fact]
@@ -497,7 +608,7 @@ public sealed class TouchZoneDetectionTests
     {
         1 => ("{\"parts\":[{\"id\":\"head\",\"left\":0.3,\"top\":0.03,\"right\":0.7,\"bottom\":0.25},{\"id\":\"upper_body\",\"left\":0.25,\"top\":0.2," +
             "\"right\":0.75,\"bottom\":0.57},{\"id\":\"lower_body\",\"left\":0.3,\"top\":0.5,\"right\":0.7,\"bottom\":0.99}]}", null),
-        2 => ("{\"zones\":[{\"id\":\"face\",\"left\":0.3,\"top\":0.3,\"right\":0.7,\"bottom\":0.7}]}", null),
+        2 => ("{\"zones\":[{\"id\":\"nose\",\"left\":0.3,\"top\":0.3,\"right\":0.7,\"bottom\":0.7}]}", null),
         _ => (null, "ResponseTruncated")
     });
 
@@ -551,7 +662,7 @@ public sealed class TouchZoneDetectionTests
 
         Assert.Equal("Finding zones stopped at request 3: couldn't ask the Thinking model (ResponseTruncated). The 1 zone found until then is kept. " +
             "Press Detect again to find the rest.", line);
-        Assert.Equal(["face"], service.Current!.Zones.Select(z => z.Id));
+        Assert.Equal(["nose"], service.Current!.Zones.Select(z => z.Id));
         Assert.Equal(png, File.ReadAllBytes(CharacterTouchZones.SnapshotPath(data, "model-1")));
         Assert.True(service.Sent!.Saved);
     }

@@ -93,7 +93,9 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
     /// <summary>Takes a picture of <paramref name="profile"/>'s character (drawn off screen in its rest pose, so it needn't show:
     /// <see cref="AvatarController.ZoneSnapshotAsync"/>) and finds its zones step by step with the Thinking model (through
     /// <paramref name="ask"/>, one picture each: <see cref="TouchZoneDetection"/>), saving the zones as they are found, bound to
-    /// the model's drawables or bones, and keeping every picture sent (<see cref="Sent"/>). When a request fails part way, finding
+    /// the model's drawables or bones, and keeping every picture sent (<see cref="Sent"/>). It looks for the default zones and the
+    /// ones the owner added (<see cref="TouchZoneDetection.For"/>); a zone the owner added that it can't place stays where it was.
+    /// When a request fails part way, finding
     /// zones stops there: the zones from before (and their picture) come back, or, with none before, the zones found until then
     /// are kept. Returns what happened.</summary>
     internal async Task<string> DetectAsync(AvatarController avatar, AvatarProfile profile,
@@ -165,8 +167,9 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
                 return await ask($"Finding touch zones ({zoneAsk.Step})", zoneAsk.Instructions, zoneAsk.Text, image, cancel);
             }
 
-            // With Include intimate zones on (it is unless the owner turned it off), the intimate zones must be found.
-            var options = new ZoneDetectionOptions { Required = before?.IncludeIntimate == false ? [] : TouchZoneDetection.Erogenous };
+            // It looks for the default zones and the ones the owner added; with Include intimate zones on (it is unless the owner
+            // turned it off), the intimate ones must be found, and so must the ones the owner added.
+            var options = TouchZoneDetection.For(before);
             var result = await Task.Run(() => TouchZoneDetection.RunAsync(snapshot, hints, AskAsync, progress =>
             {
                 latest = progress.Zones;
