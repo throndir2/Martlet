@@ -515,6 +515,25 @@ ears, neck, chest and breasts, waist and sides, hips, groin, buttocks and inner
 thighs) react too while **Include intimate zones** is on, which it is by
 default; turn it off to leave them out. The check box names each of these parts.
 
+- **First zones, with no AI.** The first time the page shows a model that has
+  no zones and no picture yet, Martlet draws the character off screen (as
+  Detect zones does, step 1 below) and places a first guess at the short list
+  at once. Nothing is sent to any model. The page shows *Drawing the character
+  to place its first zones (no AI, nothing is sent)...*, then the picture with
+  the zones as boxes, usually within a second or two. The guess comes from what
+  Martlet can tell for certain: the model's own named parts (a Live2D model's
+  eyes, mouth, neck, arms and legs; see below), a VRM's skeleton for its arms
+  and legs, and the body's proportions for the rest. The proportions are
+  measured on the bundled Hiyori and placed around the face the renderer finds
+  (else the top of the character's outline), stretched to the character's
+  height. The hair zone stops just below the chin, and a bust gets no legs.
+  The zones follow the model's parts and react to clicks at once. The status
+  line says they are a first guess; move a box into place, or press **Detect
+  zones** and the Thinking model finds them. While it works, each zone it finds
+  replaces its first guess on the picture and the others stay. When it is
+  done, its zones replace the first guess. When it stops part way, the first
+  guess comes back. A model whose first guess couldn't be placed gets another
+  try the next time you open the page.
 - **Detect zones** shows the Thinking model pictures of the character (never the
   model's files); a model must be able to see (Companion › Vision says whether
   it can and where pictures go). The button is greyed out only when no model

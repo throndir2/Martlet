@@ -278,4 +278,24 @@ public sealed class TouchZoneNamedPartsTests
         Assert.Contains("(chest) is off the model's own upper body (its chest)", check.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("(upper_arm_left) is off", check.Text, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void AFirstGuessPutsJaneDoesZonesOnHerOwnNamedParts()
+    {
+        var result = TouchZoneDetection.Estimate(JanePicture(), TouchZoneDetection.Hints(JaneProbe(), new(0, 0, 1, 1)));
+
+        Assert.Null(result.Failure);
+        Assert.Contains("the face from the model's own face", result.Steps[0], StringComparison.Ordinal);
+        Assert.Contains(result.Steps, s => s.StartsWith("from the model's own named parts: ", StringComparison.Ordinal));
+        var zones = result.Zones!.ToDictionary(z => z.Id, z => z.Box);
+        Assert.Equal(TouchZoneDetection.Defaults.Order(StringComparer.Ordinal), zones.Keys.Order(StringComparer.Ordinal));
+        // On her own mouth and neck, and her left arm and leg on the picture's right (右臂 and 右腿, whatever their names say).
+        Assert.True(Inside(zones["lips"], Box(-0.02, 0.703, 0.017, 0.669)), $"{zones["lips"]}");
+        Assert.True(Inside(zones["neck"], Box(-0.083, 0.75, 0.083, 0.592)), $"{zones["neck"]}");
+        Assert.True(Inside(zones["upper_arm_left"], Box(0.068, 0.618, 0.263, -0.028)), $"{zones["upper_arm_left"]}");
+        Assert.True(Inside(zones["thigh_left"], Box(-0.038, 0.241, 0.169, -0.962)), $"{zones["thigh_left"]}");
+        Assert.True(zones["eye_left"].CenterX > zones["eye_right"].CenterX);
+        // Her ponytail hangs to her hips; the hair still stops just below her chin.
+        Assert.True(zones["hair"].Y + zones["hair"].Height < Y(0.55), $"{zones["hair"]}");
+    }
 }

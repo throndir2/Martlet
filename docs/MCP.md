@@ -1500,6 +1500,17 @@ swapped, moved, removed, added or worked out), `requestCount`, the `failure` it
 stopped at (null when none), what it `missed`, the `wanted` zones, the `required` zones and those
 still missing (`requiredMissing`), and how far the found boxes are
 from `answer`'s (`worstEdge`, `meanEdge`).
+With `estimate` (and no `answer` or `detect`), the first guess that the Touch
+zones page places on a model with no zones and no picture
+(`TouchZoneDetection.Estimate`) runs on `snapshotPath`, with the probe's hints
+(`probe` or `probePath`: its face, named parts and skeleton). No vision request
+is made. `estimate` then reports the `face` the probe gave, the `steps` (where
+the face came from, how far the body was stretched and which zones each source
+placed: *from the model's own named parts: ...*, *from the model's skeleton:
+...*, *from the body's proportions: ...*), the `count`, the `wanted` zones and
+the ones it couldn't place (`missing`), and the `zones`; `detected` shows them
+bound to the probe, and `save` writes them as the page does (marked
+`estimate`, with `snapshotPath` as their picture).
 The model is `modelPath`, `modelId` or the one the `dataDirectory`'s
 `avatar.json` shows. `save` (an explicit, disposable `dataDirectory` only)
 writes the parsed zones (with `detect`, the detected ones and every picture the
@@ -1528,23 +1539,32 @@ other the file names): its `personaId`, `name`, whether it is `active`, what it
 (`usedBy`). Never the model's path; it contacts nothing.
 
 The section's status fields (on Companion › Touch, `CompanionTab-Touch`) are `TouchZonesStatus` (how many zones, how many in
-use and who found them, or that none are found yet), `TouchZonesVision`
+use and who found them: the Thinking model, you, or *A first guess Martlet placed from the character's own parts and shape,
+with no AI...*; or that none are found yet), `TouchZonesVision`
 (which model sees the pictures: a Thinking pool member that can see, else
 whether the Thinking model can see and where pictures go; read from the saved
 setup, so it is right before the talk window opens), `TouchZonesDetectNote`
 (shown only when `TouchZonesDetect` is off because no model can see pictures:
 *Detect zones is off: no model that can see pictures is set up...* or *...the
 Thinking model is text-only...*), `TouchZonesDetection`
-(how *Detect zones* went, and each step while it runs: *Step 2: finding the
+(the first guess on a model with no zones and no picture: *Drawing the
+character to place its first zones (no AI, nothing is sent)...* as soon as the
+page opens, then *First zones: Martlet placed 24 zones at ... with no AI and
+nothing sent...*, with `TouchZonesPicture` and one `TouchZoneRect-<n>` per zone,
+no click and no `--allow-ui-effects` needed; a first guess that couldn't be
+placed is tried again when the page opens again. Then
+how *Detect zones* went, and each step while it runs: *Step 2: finding the
 zones of the character's head in a close-up...*, *Checking the zones of ...,
 round 1 of 2...*, *Step 5: asking again for 3 zones the close-ups missed, on
 the whole character...*; it shows *Taking a picture of the character...* at
 once, even when the click left the keyboard focus on `TouchZonesDetect`. When a
 request fails it reads *Finding zones stopped at request 4: couldn't ask the
 Thinking model (ResponseTruncated). Your 38 zones from before are kept. Try
-again when it answers.*: the zones from before and their picture stay, or, with
+again when it answers.*: the zones from before and their picture stay (over a
+first guess: *The 24 zones of the first guess are kept.*), or, with
 none before, *The 5 zones found until then are kept. Press Detect again to find
-the rest.*), `TouchZonesSent` (what the last detection sent: how many
+the rest.*; while it runs over a first guess, the zones it has found replace
+their first guesses on the picture and the others stay until it is done), `TouchZonesSent` (what the last detection sent: how many
 pictures, how large and what they showed, such as *..., and the whole character
 again for the zones the close-ups missed*, or *FIXTURE - NOT AI answered
 these.*), `TouchZonesLast` (the zone the last click landed in,

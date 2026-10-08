@@ -28,11 +28,18 @@ public sealed record ZoneHintArea(string Part, TouchZoneBox Box, int Drawables, 
 /// and which way the character faces (a name's 左 or L only groups a limb's drawables; null in the middle).</summary>
 public sealed record ZoneHintPiece(TouchZoneBox Box, IReadOnlyList<string> Parts, string? Side);
 
+/// <summary>Where the renderer's face anchor put the face in the snapshot: the middle of its eye line (fractions of the snapshot)
+/// and its width (a fraction of the snapshot's width).</summary>
+public sealed record ZoneHintFace(double X, double Y, double Width);
+
 /// <summary>What the renderer's probe says about the character in the snapshot: its VRM bones and its named Live2D parts, and
 /// whether it faces the viewer (its left on the picture's right; null when that can't be told).</summary>
 public sealed record ZoneHints(IReadOnlyList<ZoneHintPoint> Bones, IReadOnlyList<ZoneHintArea> Areas, bool? FacesViewer)
 {
     public bool Empty => Bones.Count == 0 && Areas.Count == 0;
+    /// <summary>Where the renderer's face anchor put the face (null when the probe had none). The first guess at the zones
+    /// (<see cref="TouchZoneDetection.Estimate"/>) places the head's zones around it.</summary>
+    public ZoneHintFace? Face { get; init; }
     /// <summary>The drawables in the parts the model's own part names call body parts; empty for a model whose part names say
     /// nothing (or a VRM). With them, the close-ups hold their parts and boxes that miss their part move onto it.</summary>
     public IReadOnlyList<ZoneHintPiece> Pieces { get; init; } = [];
