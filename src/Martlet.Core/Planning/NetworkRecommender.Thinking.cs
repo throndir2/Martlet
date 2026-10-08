@@ -237,7 +237,7 @@ public static partial class NetworkRecommender
                 return;
             }
             foreach (var (node, role) in natives) Commit(node, role, role.Card, job);
-            Decide(job, null, now.Id, $"{Plain(now)} in Ollama on {(singlePc ? "this PC" : "each companion PC")}{FirstWord(now)}.");
+            Decide(job, null, now.Id, $"{Plain(now)} in Ollama on {OwnPcs()}{FirstWord(now)}.");
         }
 
         /// <summary>A new place for Thinking (rule 7: the fastest model that hears, on an idle card of a host): a hosted
@@ -257,7 +257,9 @@ public static partial class NetworkRecommender
             if (ThinkHere(now, forced.Benefit, forced.Why, most, strict: !singlePc)) return;
             if (hosted is not null)
             {
-                DecideHosted(hosted, forced.Benefit, $"{forced.Why} {hosted.DisplayName}: no host has a graphics card of its own free for a local model.");
+                DecideHosted(hosted, forced.Benefit, $"{forced.Why} {hosted.DisplayName}: " + (singlePc
+                    ? "no graphics card on this PC has room for a local model beside the other jobs."
+                    : "no host has a graphics card of its own free for a local model."));
                 return;
             }
             if (ThinkHere(now, forced.Benefit, forced.Why, most, strict: false)) return;
