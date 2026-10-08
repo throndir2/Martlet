@@ -1209,13 +1209,16 @@ internal sealed partial class RendererWindow : Window
         viewport.LastTouch = JsonSerializer.Serialize(new
         {
             n = pending.Id, x = touch.X, y = touch.Y, hit, zone = hit ? touch.CoarseZone : null, touch.HitAreas, touch.Drawables,
-            touch.Bone, touch.Node, touch.Hair, touch.Mesh, touch.Material, held = touch.HeldMilliseconds
+            touch.Bone, touch.Node, touch.Hair, touch.Mesh, touch.Material, held = touch.HeldMilliseconds,
+            rest = touch is { RestX: { } restX, RestY: { } restY } ? new { x = restX, y = restY } : null
         }, RendererProtocol.Json);
         if (hit) SendTouch(touch);
     }
 
     /// <summary>One answer of the page's hit test at <paramref name="x"/>, <paramref name="y"/>: whether it found the character
-    /// and what is there, and where that point sits with the character framed whole. Malformed names are dropped.</summary>
+    /// and what is there, where that point sits with the character framed whole, and where the touched point of the character
+    /// was in its rest pose (the page's <c>rest</c>, framed now and whole). Malformed names, and a rest point far off the page,
+    /// are dropped.</summary>
     private (bool Hit, CharacterTouch Touch) ReadTouch(JsonElement answer, double x, double y)
     {
         static string? Name(JsonElement owner, string property) =>
@@ -1228,13 +1231,20 @@ internal sealed partial class RendererWindow : Window
                     .Select(item => item.GetString()!).Where(text => text.Length is > 0 and <= CharacterTouch.MaximumName && !text.Any(char.IsControl))
                     .Take(most).ToArray()
                 : [];
+        static bool Near(double value) => value is >= CharacterTouch.MinimumFar and <= CharacterTouch.MaximumFar;
         var (wholeX, wholeY) = Unframed(x, y);
         if (answer.ValueKind != JsonValueKind.Object) return (false, new(x, y, [], [], null, null, false, null, null, 0, wholeX, wholeY));
         var hit = answer.TryGetProperty("hit", out var found) && found.ValueKind == JsonValueKind.True;
+        double? restX = null, restY = null, restWholeX = null, restWholeY = null;
+        if (answer.TryGetProperty("rest", out var rest) && rest.ValueKind == JsonValueKind.Object &&
+            rest.TryGetProperty("x", out var rx) && rx.ValueKind == JsonValueKind.Number && rx.TryGetDouble(out var px) &&
+            rest.TryGetProperty("y", out var ry) && ry.ValueKind == JsonValueKind.Number && ry.TryGetDouble(out var py) &&
+            Near(px) && Near(py) && Unframed(px, py) is var (wx, wy) && Near(wx) && Near(wy))
+            (restX, restY, restWholeX, restWholeY) = (px, py, wx, wy);
         return (hit, new CharacterTouch(x, y, Names(answer, "hitAreas", CharacterTouch.MaximumHitAreas),
             Names(answer, "drawables", CharacterTouch.MaximumDrawables), Name(answer, "bone"), Name(answer, "node"),
             answer.TryGetProperty("hair", out var hair) && hair.ValueKind == JsonValueKind.True, Name(answer, "mesh"), Name(answer, "material"),
-            0, wholeX, wholeY));
+            0, wholeX, wholeY, restX, restY, restWholeX, restWholeY));
     }
 
     private async void SendTouch(CharacterTouch touch)

@@ -558,7 +558,8 @@ test("a tap is hit-tested and answered unprompted; a failing hit test is a miss,
     startIdle() {}
     hitTest(x, y) {
       if (throwing) throw new Error("controlled hit test failure");
-      return x < 0.5 ? { bone: "head", node: "HairRoot", hair: true, mesh: "Hair", material: "HairMat", point: { x, y, z: 0 } } : undefined;
+      return x < 0.5 ? { bone: "head", node: "HairRoot", hair: true, mesh: "Hair", material: "HairMat", point: { x, y, z: 0 },
+        ...(y < 0.15 ? { restCanvas: { x: x + 0.012345, y: y - 0.02 } } : {}) } : undefined;
     }
     dispose() {}
   }
@@ -578,10 +579,12 @@ test("a tap is hit-tested and answered unprompted; a failing hit test is a miss,
   await module.evaluate();
   await onMessage({ data: { kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm" } } });
   await onMessage({ data: { kind: "touch", data: { id: 1, x: 0.25, y: 0.1 } } });
+  // Where the touched point was in the rest pose comes with it, rounded like the tap.
   assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), { touch: { id: 1, hit: true, hitAreas: [], drawables: [], bone: "head",
-    node: "HairRoot", hair: true, mesh: "Hair", material: "HairMat" } });
+    node: "HairRoot", hair: true, mesh: "Hair", material: "HairMat", rest: { x: 0.2623, y: 0.08 } } });
   await onMessage({ data: { kind: "touch", data: { id: 2, x: 0.75, y: 0.1 } } });
   assert.equal(posts.at(-1).touch.hit, false);
+  assert.equal(posts.at(-1).touch.rest, null);
   throwing = true;
   await onMessage({ data: { kind: "touch", data: { id: 3, x: 0.25, y: 0.1 } } });
   assert.equal(posts.at(-1).touch.hit, false);
@@ -590,5 +593,7 @@ test("a tap is hit-tested and answered unprompted; a failing hit test is a miss,
   assert.equal(posts.at(-1).touches.id, 4);
   assert.deepEqual(posts.at(-1).touches.hits.map(hit => hit.hit), [true, false, true]);
   assert.equal(posts.at(-1).touches.hits[0].bone, "head");
+  // A hit the adapter can't trace has no rest point.
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1).touches.hits.map(hit => hit.rest))), [{ x: 0.2623, y: 0.08 }, null, null]);
   assert.ok(!posts.some(post => post.error));
 });

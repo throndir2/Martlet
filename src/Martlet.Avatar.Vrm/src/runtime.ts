@@ -4,7 +4,7 @@ import { VRM, type VRMExpression, VRMHumanBoneList, VRMLoaderPlugin } from "@pix
 import { blinkPresets, finite, gazePresets, inspectVrm, integer, mouthPresets, object, requireValid, VrmError,
   type VrmCapabilities } from "./inspect.js";
 import { type EyeFields, type EyeHint, type EyesFrom, type FaceFrame, VrmEyes } from "./eyes.js";
-import { hitTestVrm, type VrmHit } from "./touch.js";
+import { capturePose, hitTestVrm, type RestPose, type VrmHit } from "./touch.js";
 
 type BoneName = Parameters<VRM["humanoid"]["getNormalizedBoneNode"]>[0];
 
@@ -517,6 +517,8 @@ export class VrmRuntime {
   // Each new pose (update, reset, load) counts up; a hit test measures the skinned meshes' bounds again only in a new pose.
   private poses = 0;
   private measured = -1;
+  /** Every node's world matrix in the rest pose (see startIdle), which touches are traced back to. */
+  private rest: RestPose | undefined;
 
   get capabilities(): VrmCapabilities | undefined { return this.inspected; }
   get scene(): THREE.Group | undefined { return this.model?.scene; }
@@ -533,8 +535,14 @@ export class VrmRuntime {
   }
 
   /** Relaxed arms and hands, breathing, a slow sway, blinking, cursor-follow and loudness lip-sync while no mapped A2F turn is
-   *  active. */
-  startIdle(): void { this.loaded(); this.idle = true; }
+   *  active. Its first pose (looking ahead, before any time passes) is the rest pose: the touch zones picture shows it, and
+   *  touches are traced back to it (see hitTestRay). */
+  startIdle(): void {
+    const model = this.loaded();
+    this.idle = true;
+    this.update(0);
+    this.rest = capturePose(model.scene);
+  }
 
   setLipSync(level: number): void {
     this.loaded();
@@ -1119,8 +1127,9 @@ export class VrmRuntime {
 
   stop(): void { this.loaded(); this.clearControls(); }
 
-  /** What of the posed model a ray hits first (see touch.ts), or undefined when it misses. The skinned meshes' bounds are
-   *  measured again once per pose, so a batch of points (a stroke) measures them once. */
+  /** What of the posed model a ray hits first (see touch.ts), or undefined when it misses, with where the hit point was in the
+   *  rest pose once idle has started (see startIdle). The skinned meshes' bounds are measured again once per pose, so a batch
+   *  of points (a stroke) measures them once. */
   hitTestRay(raycaster: THREE.Raycaster): VrmHit | undefined {
     const model = this.loaded();
     const humanoid = new Map<THREE.Object3D, string>();
@@ -1128,7 +1137,7 @@ export class VrmRuntime {
     const springs = new Set<THREE.Object3D>([...model.springBoneManager?.joints ?? []].map(joint => joint.bone));
     const measure = this.measured !== this.poses;
     this.measured = this.poses;
-    return hitTestVrm(model.scene, humanoid, raycaster, springs, measure);
+    return hitTestVrm(model.scene, humanoid, raycaster, springs, measure, this.rest);
   }
 
   dispose(): void {
@@ -1165,6 +1174,7 @@ export class VrmRuntime {
     this.model = undefined; this.inspected = undefined; this.selection = undefined; this.revision = undefined; this.inputMode = undefined;
     this.eyes = undefined;
     this.actions.clear(); this.heldExpressions.clear(); this.gesture = undefined; this.held = []; this.blush = undefined; this.hipsRest = undefined;
+    this.rest = undefined;
     this.talk = 0; this.speaking = false; this.heldMouth = 0;
   }
 }

@@ -149,7 +149,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("character_touch", "Tap the showing character like a left click that doesn't drag, at x, y (fractions 0 to 1 of the " +
             "character overlay's drawing, +y down; unzoomed, its head is near 0.5, 0.15), and return the renderer's hit test as " +
             "last: n, x, y, hit, zone (head, hair, face, body, arm, hand, leg or foot), hitAreas and drawables (Live2D), bone, node, " +
-            "hair, mesh and material (VRM). Martlet then plays its tap reaction (the desktop log records 'The character was " +
+            "mesh and material (VRM), hair (Live2D: the topmost drawable sits in a part the model names as hair; VRM: a hair joint), " +
+            "and rest ({x, y}: where the touched point of the character was in its rest pose, " +
+            "traced on the touched mesh and drawn as the overlay frames it now; touch zones compare it with their boxes, so it " +
+            "stays put while the head follows the mouse; null when the renderer can't trace it). Martlet then plays its tap " +
+            "reaction (the desktop log records 'The character was " +
             "tapped on the ...'). holdMs presses that long (600 or more is a hold, up to 10000), repeat taps the same point up to " +
             "20 times gapMs apart (default 150), and taps ([{x, y, holdMs}], up to 20) taps a sequence of points instead. With " +
             "Companion > Touch > Touch zones showing, noticed reads what Martlet noticed after settleMs: waiting (the touch " +
@@ -718,7 +722,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "snapshot sat on the page); hints shows what the probe's part names place (areas, with the character's own side) and the " +
             "close-ups' windows they give; the zones saved for the model (modelPath, modelId or the model dataDirectory's avatar.json shows) in " +
             "character-touch-zones.json with what its last detection sent, and with touch (a CharacterTouch: {\"x\",\"y\",\"hitAreas\"," +
-            "\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\",\"wholeX\",\"wholeY\"}) the zone it lands in, how it was found, what it " +
+            "\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\",\"wholeX\",\"wholeY\",\"restX\",\"restY\",\"restWholeX\"," +
+            "\"restWholeY\"}; rest* is where the touched point was in the rest pose, which the boxes compare with when given) the zone " +
+            "it lands in, how it was found, whether it was traced to the rest pose (traced), the point compared (at), what it " +
             "plays and what it tells the character. detect runs the production detection on snapshotPath (a PNG of the character, transparent " +
             "around it), composing and encoding every picture it would send (previewDirectory keeps them), with a FIXTURE - NOT AI stand-in " +
             "that answers from answer's zones (guess, a wrong first answer, makes the checks correct it; checks sets the rounds, 0 to 5; " +
