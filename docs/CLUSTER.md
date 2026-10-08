@@ -497,18 +497,43 @@ host's file are **NOT RUN**.
 
 ### Switching another computer between companion and host
 
-On the Devices map, another of your computers that says what it is (its
-`pc.<device ID>`) offers **Make it a host PC** (or, on a host PC, **Make it a
-companion PC**) on its row. After a confirmation this PC writes that computer's
-`role.<device ID>` entry and gives it to your hosts at once; that computer
-follows it on its next settings sync (within 15 seconds while Martlet runs
-there, or when Martlet starts there next), exactly as if you had chosen *Use as
-a Martlet host* on it: it ends a conversation and hides the character, keeps its
-companion choices for later, and shows its host dashboard, which sets up its host
-service if it has none yet (installing Docker Desktop may still need someone at
-that PC once). It waits while Martlet is replying or hearing you there and
-switches right after. Until it has switched, its row says who asked and when,
-and the command becomes **Keep it a companion PC**, which withdraws the ask.
+You can make any of your other computers a host PC, or a companion PC again,
+from the computer you are at. Use one of these:
+
+- **Settings › What this PC is for › Your other computers**: each computer of
+  your Martlet network with what it is now and a button.
+- **The Devices map**: select the computer; its row has the same button.
+
+The button reads **Make it a host PC** on a companion PC and **Make it a
+companion PC** on a host PC. It shows for a computer that says what it is (its
+`pc.<device ID>`). After a confirmation, this PC writes that computer's
+`role.<device ID>` entry and gives it to your hosts at once. That computer
+follows it on its next settings sync: within 15 seconds while Martlet runs
+there, or when Martlet starts there next. It waits while Martlet is replying or
+hearing you there, and switches right after. Until it has switched, its row
+says who asked and when, and the button becomes **Keep it a companion PC**,
+which withdraws the ask.
+
+When it switches, this PC says so once on its status line and in its log, for
+example *IMOUTO is a host PC now, as you asked.* A later choice made on that
+computer (or asked from another one) replaces the ask, and this PC says that
+too.
+
+The computer that switches does what *Use as a Martlet host* or *Use as my
+companion PC* does there, and Home shows its new dashboard:
+
+| It becomes | What Martlet does there |
+| --- | --- |
+| A host PC | Ends a conversation and hides the character, keeps its companion choices and keeps the PC awake. When it has a host service with roles, Martlet starts Docker Desktop and those roles there by itself and loads their models; it never installs anything. |
+| A companion PC again | Shows the character and starts listening and watching as they were when it became a host. When Martlet started as a host since, it does what it does at the start of a companion PC: the character if it shows at startup, and *When Martlet starts, show the character and start listening*. A host service it runs keeps serving your other computers. |
+
+A computer with no host service yet becomes a host PC, but it does no work for
+your other computers until someone at it chooses **Set up host service** on its
+Home once (Windows may ask to allow it). Your other computers say so on its row
+and in Settings, and the confirmation says so before you ask. To tell these
+apart, each computer names the host service it runs in its `pc.<device ID>`:
+the one it is paired with, the one its host dashboard reads, or, on a host PC
+while Docker Desktop is stopped, the one Martlet saw set up there before.
 
 Each computer also records its own choice in its `role.<device ID>`, so the
 newest choice wins wherever it was made: a computer switched back on itself
@@ -518,13 +543,15 @@ computers* on and a host both computers sync with. A computer on a Martlet
 older than this keeps the entry unread until it is updated (its row keeps
 saying it was asked), and one that never said what it is offers no switch.
 
-Checked locally: the merge rules with a unit test, and through MCP on disposable
-data folders: a desktop whose shared settings held another computer's ask
-switched to *Host PC* on its own and recorded it in `pc.<device ID>`, and a
-desktop in a fixture network (a signed roster with a second member) showed
-*Make it a host PC* on that member, wrote `role.desktop-b` after the
-confirmation and then showed the waiting ask and *Keep it a companion PC*. Two
-real computers switching each other through a real host is **NOT RUN**.
+Checked locally: the merge rules with a unit test, the map's rows, the Settings
+lines and the button with unit tests, and end to end through MCP with
+`role_lab` ([MCP](MCP.md)) on a disposable data folder. The lab ran a real
+gateway on loopback, paired with the real desktop, and a simulated companion PC
+that joined the desktop's network. The desktop made it a host PC from the map
+and a companion PC again from Settings, and said so each time. The simulated PC
+then made the desktop a host PC (the character hid) and a companion PC again
+(the character showed again). Two real computers switching each other through a
+real host are **NOT RUN**.
 
 ## The shared memories
 

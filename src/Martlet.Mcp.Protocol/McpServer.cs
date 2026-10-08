@@ -457,6 +457,20 @@ internal sealed class McpServer(DesktopAutomation desktop)
             action = new { type = "string", @enum = new[] { "start", "status", "stop" } },
             dataDirectory = new { type = "string" }
         }, ["action"]),
+        Tool("role_lab", "A live lab for switching your computers between companion and host PC, for the desktop on a disposable " +
+            "data directory. action \"start\": a real gateway on 127.0.0.1 (Martlet.NodeLinkCheck role-lab; the network and shared " +
+            "settings in memory) paired with the desktop of dataDirectory under the device ID that desktop names itself by (hosts.json " +
+            "there; the secret in the lab credential folder of MARTLET_LAB_CREDENTIALS, so run Invoke-MartletMcp.ps1 -LabCredentials), " +
+            "and a simulated companion PC (lab-companion) that asks to join the desktop's network once it is bound, syncs the shared " +
+            "settings every 2 seconds, says what it is (pc.lab-companion) and follows an ask that it switch (role.lab-companion). " +
+            "\"ask\" with role host or companion: the simulated PC asks the desktop to become that (role.<desktop device>). \"status\": " +
+            "the simulated PC's role and membership, what the host's copy says each computer is and the newest ask about each, and " +
+            "its events. \"stop\": ends it (it also ends with this server).", new
+        {
+            action = new { type = "string", @enum = new[] { "start", "status", "ask", "stop" } },
+            role = new { type = "string", @enum = new[] { "host", "companion" } },
+            dataDirectory = new { type = "string" }
+        }, ["action"]),
         Tool("signin_selftest", "Rehearse joining from outside home by signing in, end to end with the production code: a real " +
             "gateway on 127.0.0.1 (pinned TLS, in-memory signin.json and network.json), a member desktop at home that sets up the " +
             "owner account (password plus a real authenticator secret and recovery codes) and makes an invite, and a laptop that " +
@@ -1920,6 +1934,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "network_selftest" => await NodeLinkCheckAsync(cancellation, "network"),
             "signin_selftest" => await NodeLinkCheckAsync(cancellation, "signin"),
             "signin_lab" => await SignInLabAsync(arguments, cancellation),
+            "role_lab" => await RoleLabAsync(arguments, cancellation),
                 "nearby_status" => NearbyStatus(arguments),
                 "virtualization_status" => await VirtualizationStatusAsync(arguments, cancellation),
                 "host_service_status" => await HostServiceStatusAsync(cancellation),
@@ -2428,6 +2443,92 @@ internal sealed class McpServer(DesktopAutomation desktop)
 
     /// <summary>Martlet.NodeLinkCheck's executable in this source checkout's build (the same configuration as this server).</summary>
     private static System.Diagnostics.Process? signInLab;
+    private static System.Diagnostics.Process? roleLab;
+
+    /// <summary>Starts a live lab (Martlet.NodeLinkCheck <paramref name="mode"/> &lt;data directory&gt;) and returns the process and
+    /// its first line, which says whether it is ready. The lab keeps its pairing secrets in the lab credential folder.</summary>
+    private static async Task<(System.Diagnostics.Process Process, JsonElement Ready)> StartLabAsync(string mode, string directory, string name,
+        CancellationToken cancellation)
+    {
+        if (Environment.GetEnvironmentVariable(Martlet.Credentials.Windows.LabCredentialNative.Variable) is not { Length: > 0 })
+            throw new InvalidOperationException("Run with Invoke-MartletMcp.ps1 -LabCredentials: the lab keeps its pairing secret in a lab folder, never Windows Credential Manager.");
+        Directory.CreateDirectory(directory);
+        var start = new System.Diagnostics.ProcessStartInfo(NodeLinkCheckProgram())
+        {
+            UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        start.ArgumentList.Add(mode);
+        start.ArgumentList.Add(directory);
+        var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException($"Couldn't start the {name}.");
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
+        timeout.CancelAfter(TimeSpan.FromSeconds(90));
+        var line = await process.StandardOutput.ReadLineAsync(timeout.Token);
+        if (line is null || !line.Contains("\"ready\":true", StringComparison.Ordinal))
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            throw new InvalidOperationException($"The {name} didn't start: " + (line ?? await process.StandardError.ReadToEndAsync(cancellation)));
+        }
+        return (process, JsonSerializer.Deserialize<JsonElement>(line));
+    }
+
+    /// <summary>Ends a live lab: closing its standard input stops it.</summary>
+    private static void StopLab(System.Diagnostics.Process? lab)
+    {
+        if (lab is not { HasExited: false } running) return;
+        running.StandardInput.Close();
+        if (!running.WaitForExit(10_000)) running.Kill(entireProcessTree: true);
+    }
+
+    /// <summary>Starts, reads, asks or stops the live lab for switching computers between companion and host PC
+    /// (Martlet.NodeLinkCheck role-lab) for a disposable data directory.</summary>
+    private static async Task<object> RoleLabAsync(JsonElement arguments, CancellationToken cancellation)
+    {
+        var directory = DataDirectory(arguments);
+        var status = Path.Combine(directory, "role-lab.json");
+        switch (OptionalString(arguments, "action"))
+        {
+            case "start":
+            {
+                if (roleLab is { HasExited: false }) throw new InvalidOperationException("The role lab is already running; stop it first.");
+                var (process, ready) = await StartLabAsync("role-lab", directory, "role lab", cancellation);
+                roleLab = process;
+                return ready;
+            }
+            case "status":
+                return await ReadLabStatusAsync(status, roleLab, cancellation);
+            case "ask":
+            {
+                if (roleLab is not { HasExited: false }) throw new InvalidOperationException("Start the role lab first.");
+                var role = OptionalString(arguments, "role");
+                if (role is not ("host" or "companion")) throw new ArgumentException("role is host or companion.");
+                var ask = Path.Combine(directory, "role-lab.ask");
+                await File.WriteAllTextAsync(ask + ".tmp", role, cancellation);
+                File.Move(ask + ".tmp", ask, overwrite: true);
+                return new { asked = role };
+            }
+            case "stop":
+                StopLab(roleLab);
+                roleLab = null;
+                return new { stopped = true };
+            default:
+                throw new InvalidOperationException("action is start, status, ask or stop.");
+        }
+    }
+
+    /// <summary>A live lab's status file, read again when the lab is swapping it in at that moment; whether the lab still runs
+    /// when there is none yet.</summary>
+    private static async Task<object> ReadLabStatusAsync(string path, System.Diagnostics.Process? lab, CancellationToken cancellation)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                return File.Exists(path) ? JsonSerializer.Deserialize<JsonElement>(await File.ReadAllBytesAsync(path, cancellation))
+                    : new { ready = false, running = lab is { HasExited: false } };
+            }
+            catch (IOException) when (attempt < 5) { await Task.Delay(50, cancellation); }
+        }
+    }
 
     /// <summary>Starts, reads or stops the live sign-in lab (Martlet.NodeLinkCheck signin-lab) for a disposable data directory.</summary>
     private static async Task<object> SignInLabAsync(JsonElement arguments, CancellationToken cancellation)
@@ -2439,36 +2540,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             case "start":
             {
                 if (signInLab is { HasExited: false }) throw new InvalidOperationException("The sign-in lab is already running; stop it first.");
-                if (Environment.GetEnvironmentVariable(Martlet.Credentials.Windows.LabCredentialNative.Variable) is not { Length: > 0 })
-                    throw new InvalidOperationException("Run with Invoke-MartletMcp.ps1 -LabCredentials: the lab keeps its pairing secret in a lab folder, never Windows Credential Manager.");
-                Directory.CreateDirectory(directory);
-                var start = new System.Diagnostics.ProcessStartInfo(NodeLinkCheckProgram())
-                {
-                    UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true
-                };
-                start.ArgumentList.Add("signin-lab");
-                start.ArgumentList.Add(directory);
-                var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("Couldn't start the sign-in lab.");
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-                timeout.CancelAfter(TimeSpan.FromSeconds(90));
-                var line = await process.StandardOutput.ReadLineAsync(timeout.Token);
-                if (line is null || !line.Contains("\"ready\":true", StringComparison.Ordinal))
-                {
-                    if (!process.HasExited) process.Kill(entireProcessTree: true);
-                    throw new InvalidOperationException("The sign-in lab didn't start: " + (line ?? await process.StandardError.ReadToEndAsync(cancellation)));
-                }
+                var (process, ready) = await StartLabAsync("signin-lab", directory, "sign-in lab", cancellation);
                 signInLab = process;
-                return JsonSerializer.Deserialize<JsonElement>(line);
+                return ready;
             }
             case "status":
                 return File.Exists(status) ? JsonSerializer.Deserialize<JsonElement>(await File.ReadAllBytesAsync(status, cancellation))
                     : new { ready = false, running = signInLab is { HasExited: false } };
             case "stop":
-                if (signInLab is { HasExited: false } running)
-                {
-                    running.StandardInput.Close();
-                    if (!running.WaitForExit(10_000)) running.Kill(entireProcessTree: true);
-                }
+                StopLab(signInLab);
                 signInLab = null;
                 return new { stopped = true };
             default:
