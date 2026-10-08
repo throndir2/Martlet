@@ -2553,7 +2553,13 @@ character's state (*Character is showing. ...*, *Character hidden.*). Memory's
 many people Martlet knows by voice and how many to forgotten voices, how many
 its *Show* choice (`MemoryPersonFilter`) and search (`MemorySearch`, set with
 `ui_set_text`; it only filters the list) list (*Showing N.*) and what the last
-action did, never a fact or a name. `MemoryNewFact` (clears the fact editor) and
+action did, never a fact or a name; `MemoryStatus` (its bottom line) reads
+whether memory is on, is saving or why it can't be (*Memory is on.*, *Saved.
+Memory is off: ...*), never a fact or a folder. The window reads its facts the
+moment it opens, even while a reply holds the setup slot, and follows facts
+remembered, changed or forgotten elsewhere (remembering after a reply,
+`manage_memories`) on its own, so `MemoryFactStatus` changes without
+`MemoryReload` (*Refresh*). `MemoryNewFact` (clears the fact editor) and
 the `MemoryStorageSection` and `MemoryExportSection` expanders are passive
 clicks; `MemoryDeleteFact` (the selected fact or facts), `MemoryDeleteShown`
 (every fact listed now: one person's or what the search found) and
