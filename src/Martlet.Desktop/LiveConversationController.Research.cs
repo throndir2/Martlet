@@ -14,8 +14,9 @@ internal sealed partial class LiveConversationController
     internal Func<WebAccess> ResearchWeb { get; init; } = () => new WebAccess();
 
     /// <summary>Whether replies get research: Web research and Thinking longer on, a Thinking route that does function calling
-    /// and somewhere for Deep thinking to think.</summary>
-    private bool OffersResearch(LiveConversationConfiguration configured) =>
+    /// and somewhere for Deep thinking to think, with every computer counted as online (the tools stay the same while computers
+    /// come and go).</summary>
+    internal bool OffersResearch(LiveConversationConfiguration configured) =>
         configured.OffersThinkLonger && configured.ThinkLonger.Researches && DeepPlan(configured).Available;
 
     /// <summary>research: starts the research job on a free Deep thinking place and returns at once, telling the model to tell
@@ -31,14 +32,17 @@ internal sealed partial class LiveConversationController
         }
         var label = WebResearch.Label(arguments.Topic);
         if (!configured.ThinkLonger.Researches) return new(WebResearch.TurnedOff, true);
-        var pool = DeepPool(configured);
-        var plan = pool.Plan;
+        // Members whose computers are offline now can't start it; they stay in the list, so the broker places it on one once it
+        // answers again.
+        var live = LivePool(configured);
+        var plan = live.Plan;
         if (!plan.Available)
         {
             tools?.Record(server, WebResearch.Name, "not started: unavailable", label, false);
             ErrorLog.Info($"Web research: a new job wasn't started ({plan.Why})");
             return new(WebResearch.Unavailable(plan.Why), true);
         }
+        var pool = Placing(DeepPool(configured), live);
         var toldUser = !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
         var sent = operation.Sent;
         var thinkingModel = configured.Route(SetupRole.Llm).ModelId;
@@ -96,12 +100,16 @@ internal sealed partial class LiveConversationController
                     NoteFallback("Web research", configured, terminal);
                     NoteInput("Web research", terminal, reply: false);
                     if (IsFailure(terminal) && terminal.State != ConversationState.Canceled)
+                    {
                         ErrorLog.Warn($"Web research: a step on {there} failed ({Describe(terminal)}).");
+                        // Its computer didn't answer: offline at once, so the step (and the next job) goes elsewhere.
+                        if (terminal.ProviderFailure == ProviderFailureCode.Network) NoteUnreachable(here.Settings, job.Id);
+                    }
                 }
             };
         }, at => pool.Find(at.Id) is { } next && ThinkLonger.ContinuesInPlace(next.Settings, thinkingRoute), stepToken,
             (at, _) => ErrorLog.Info($"Web research: {job.Id} stopped a step on {at.Name} for the conversation; it goes on later."),
-            (at, began) => HeldOnHost(pool, at, began)),
+            (at, began) => HeldOnHost(pool, at, began), GoesOnElsewhere("Web research", job.Id)),
             configured.Prompts);
         try
         {

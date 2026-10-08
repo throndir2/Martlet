@@ -73,7 +73,11 @@ another host** choice.
   to a free one of those computers, the one sharing least with the conversation
   first (one doing none of its jobs before one that also speaks, before the
   computer doing Thinking), so with four computers one speaks and three think
-  about three things at once. Each result comes back to the speaking computer
+  about three things at once. A member whose computer stops answering (the
+  device sync check, or a pool job that can't reach it) gets no new work, and
+  its slots leave the pool until it answers again; work waiting in line then
+  starts there ([Computers that go
+  offline](CONVERSATION.md#computers-that-go-offline)). Each result comes back to the speaking computer
   and is brought into its conversation as usual. Other kinds of background work
   use the same placement (`BackgroundPlaces`; see [Background job
   API](CONVERSATION.md#background-job-api-for-new-kinds-of-background-work)).
@@ -276,6 +280,47 @@ should run, use Home's **Recommended setup**. It suggests changes for all your
 computers, and Reconfigure applies them. When a computer comes back or stays
 away, a companion PC checks again and asks on Home when a better setup is ready.
 See [Recommended setups](RECOMMENDED_SETUPS.md).
+
+## When a computer goes away or comes back
+
+Device sync's check of every paired host (every 15 seconds while *Keep Martlet
+the same on all my computers* is on) and Thinking pool jobs feed one record of
+which computers answer now (`HostPresence` in the desktop). It marks a host
+offline at the first failed check, so the Thinking pool reacts at once. The
+notices on a companion PC's Home add patience on top of it
+(`PresenceWatch` in `Martlet.Core.Cluster`):
+
+1. A computer that misses one check and then answers says nothing.
+2. A computer that stays silent for 30 seconds (two checks) is **missing**.
+   Home shows a warning, *Working with less: gpu-box isn't answering*, with
+   what it did for you, from the shared plan: the jobs a failover moved
+   ("Martlet moved Speaking to desk-host."), the jobs that stay with it until it
+   is back, the pools it was in (Speaking pool, Listening pool, Thinking pool)
+   and whether they go on with your other computers, and roles no other
+   computer runs. The item ID is `presence-missing-<hostId>`. The Devices map
+   row says *Not answering for N min*.
+3. A computer still missing after the time chosen in **Settings › Your other
+   computers** (*Look for a better setup when a computer is away for N
+   minutes*: 2 to 60 minutes, 10 by default, kept per PC in
+   `node-presence.txt`) has **stayed away**, once per absence.
+4. A missing computer that answers again for 30 seconds is **back**. Home shows
+   *gpu-box is back* with how long it was away and the jobs that a failover
+   moved and that stay where they are. The item ID is `presence-back-<hostId>`.
+   You can dismiss it, and it clears by itself after 10 minutes.
+5. A computer that flaps (answers again for less than 30 seconds, then goes
+   silent again) stays one absence: it is missing once, stays away once and is
+   back once, when it answers for 30 seconds.
+
+Each of these is an event for the recommended setup on the companion PC:
+`MainWindow.PresenceChanged` (`PresenceChange(HostId, Name, Kind, At)`, where
+`Kind` is `WentMissing`, `StayedAway` or `CameBack`), raised on the UI thread
+on a companion PC only. `MainWindow.OfflineFor(hostId)` says how long a
+computer hasn't answered. This PC's own host service is left out, because Home
+has its own item for it. A host PC's Home is the host dashboard and shows none
+of these. The desktop writes `node-presence.json` (host IDs, computer names,
+states and times, and the notices) when a computer's state changes, for the
+`node_presence_status` MCP tool. Nothing here runs on the reply path: a
+5-second timer on the UI thread does nothing while every computer answers.
 
 ## Edge cases
 

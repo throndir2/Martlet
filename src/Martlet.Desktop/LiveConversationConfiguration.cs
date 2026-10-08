@@ -217,6 +217,7 @@ internal sealed class LiveConversationConfiguration
     private static bool IsHost(SetupRoute? route) => route?.RouteType == SetupRouteType.GatewayOllama;
     private static bool IsHostVoice(SetupRoute? route) => route?.RouteType == SetupRouteType.GatewayF5;
     private static bool IsWindowsVoice(SetupRoute? route) => route?.RouteType == SetupRouteType.LocalWindowsTts;
+    private static bool IsElevenLabs(SetupRoute? route) => route?.RouteType == SetupRouteType.ElevenLabs;
 
     internal TextModelSelection TextSelection()
     {
@@ -294,12 +295,20 @@ internal sealed class LiveConversationConfiguration
     internal static WindowsVoiceTarget? WindowsVoiceTargetOf(SetupRoute? route) =>
         IsWindowsVoice(route) && route!.VoiceId is { } voice ? new(voice) : null;
 
-    /// <summary>The speech selection a voice action authorizes: the OpenAI model and voice, the installed Windows voice, or
-    /// the host's F5 model and the applied reference voice (its preset ID; the voice itself stays in the local F5 preset store).</summary>
+    /// <summary>The owner's cloned ElevenLabs voice that speaks replies, when Its voice uses ElevenLabs.</summary>
+    internal ElevenLabsVoiceTarget? ElevenLabsVoiceTarget() => ElevenLabsVoiceTargetOf(Route(SetupRole.Tts));
+
+    internal static ElevenLabsVoiceTarget? ElevenLabsVoiceTargetOf(SetupRoute? route) =>
+        IsElevenLabs(route) && route!.VoiceId is { } voice ? new(voice, route.ModelId) : null;
+
+    /// <summary>The speech selection a voice action authorizes: the OpenAI model and voice, the installed Windows voice, the
+    /// ElevenLabs model and cloned voice, or the host's F5 model and the applied reference voice (its preset ID; the voice itself
+    /// stays in the local F5 preset store).</summary>
     internal SpeechSynthesisSelection SpeechSelection()
     {
         var route = Route(SetupRole.Tts);
         if (WindowsVoiceTarget() is { } windows) return WindowsVoiceSynthesisStream.Selection(windows);
+        if (ElevenLabsVoiceTarget() is { } cloned) return ElevenLabsSpeechSynthesisStream.Selection(cloned);
         return IsHostVoice(route)
             ? new(SelfHostSetup.GatewayF5Alias, route.ModelId, route.Reference?.PresetId.ToString("N") ?? "none",
                 SpeechOutputFormat.Pcm24KhzMono16Le)
@@ -346,6 +355,14 @@ internal sealed class LiveConversationConfiguration
             {
                 if (route.Consent != route.Selection()) return "Choose the Windows voice again in Companion › Voice.";
                 if (WindowsVoiceTarget() is null) return "Choose a Windows voice in Companion › Voice.";
+                continue;
+            }
+            if (role == SetupRole.Tts && IsElevenLabs(route) && route.Enabled == true)
+            {
+                if (route.Consent != route.Selection()) return "Review ElevenLabs in Companion › Voice.";
+                if (route.CredentialId is null) return "Add your ElevenLabs API key in Companion › Voice.";
+                if (!ElevenLabsSetup.SupportsModel(route.ModelId) || ElevenLabsVoiceTarget() is null)
+                    return "Choose ElevenLabs again in Companion › Voice.";
                 continue;
             }
             if (role == SetupRole.Llm && IsChat(route) && route.Enabled == true)
@@ -420,6 +437,8 @@ internal sealed class LiveConversationConfiguration
             var tts = Routes.SingleOrDefault(r => r.Role == SetupRole.Tts);
             if (IsWindowsVoice(tts))
                 lines.Add($"Replies are spoken by Windows on this PC through {Audio.Output.DisplayName}.");
+            else if (IsElevenLabs(tts))
+                lines.Add($"Reply text goes to ElevenLabs, which speaks it with your cloned voice. Audio plays through {Audio.Output.DisplayName}.");
             else if (!IsHostVoice(tts) || tts!.Gateway is not { } gateway)
                 lines.Add($"Reply text goes to OpenAI for speech. Audio plays through {Audio.Output.DisplayName}.");
             else
@@ -512,7 +531,7 @@ internal sealed class LiveConversationConfiguration
                         withoutReasoning ? GenerationSettings.WithoutReasoning(ReplyGeneration) : ReplyGeneration, tools, TextFallback(),
                         imageOptional && image is not null,
                         characterTags, Persona?.SpokenBreaks ?? SpeechBreaks.Default, controlTags, audio is null ? null : spokenWords)
-                        { Backup = backup };
+                        { Backup = backup, ElevenLabsVoice = voice ? ElevenLabsVoiceTarget() : null };
                 }
             }
         }
@@ -590,10 +609,11 @@ internal sealed class LiveConversationConfiguration
             .Where(text => text is not null).Select(text => (Text: Clean(text!), At: earlier.LastIndexOf(Clean(text!), StringComparison.Ordinal)))
             .Where(found => found.At >= 0).OrderByDescending(found => found.At).Select(found => found.Text).FirstOrDefault();
 
-    /// <summary>The self-hosted voice engine that speaks replies, or null for OpenAI, Windows or no voice.</summary>
+    /// <summary>The voice engine that speaks replies: a self-hosted one, ElevenLabs, or null for OpenAI, Windows or no voice.</summary>
     internal SpeechEngine? SpeakingEngine() =>
-        Routes.SingleOrDefault(r => r.Role == SetupRole.Tts) is { } tts && IsHostVoice(tts)
-            ? SpeechEngines.ForRoute(tts.GatewaySnapshot?.RouteId) ?? SpeechEngines.ForModel(tts.ModelId) : null;
+        Routes.SingleOrDefault(r => r.Role == SetupRole.Tts) is not { } tts ? null
+        : IsElevenLabs(tts) ? SpeechEngines.ElevenLabs
+        : IsHostVoice(tts) ? SpeechEngines.ForRoute(tts.GatewaySnapshot?.RouteId) ?? SpeechEngines.ForModel(tts.ModelId) : null;
 
     /// <summary>Tells the Thinking model exactly the speaking engine's tags in its own syntax (Companion › Prompts › Voice sounds
     /// and tones), or null when the voice has no tags or the owner emptied the prompt.</summary>

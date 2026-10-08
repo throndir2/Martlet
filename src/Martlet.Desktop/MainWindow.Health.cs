@@ -418,7 +418,8 @@ public partial class MainWindow
             if (reachable == false) hostsDown++;
             if (namedHosts.Contains(id)) continue;
             HealthFix Show() => new("show", "Show on the map", () => ShowDevice("host:" + id), Passive: true);
-            if (reachable == false)
+            // A host device sync checks waits for the presence notice below (one missed check says nothing).
+            if (reachable == false && !PresenceCovers(id))
                 Add("host-" + id, HealthLevel.Warning, $"{id} isn't answering",
                     "It is not handling any task right now. Check that it is on and on your network.",
                     [new("check", $"Check {id} now", () => CheckHostsAsync([host]).Forget()), Show()]);
@@ -427,6 +428,8 @@ public partial class MainWindow
                     $"It runs {reported ?? "an older version"}. Update it to Martlet {Version}.",
                     [new("update", $"Update {id}", () => RunNodeAction(NodeAction.UpdateHost, id)), Show()]);
         }
+        // Your other computers going away and coming back (MainWindow.NodePresence.cs).
+        foreach (var issue in PresenceIssues()) Add(issue.Id, issue.Level, issue.Title, issue.Detail, issue.Fixes);
 
         // Tool servers.
         var toolServers = mcpTools.Servers;

@@ -119,6 +119,14 @@ public sealed class ConversationRequest(
     /// to start, the same request also goes to a Thinking pool member, and whichever has words first gives the reply.</summary>
     [JsonIgnore] public IThinkingBackup? Backup { get; init; }
 
+    /// <summary>The owner's cloned ElevenLabs voice that speaks the reply, or null for another voice. Its audio tags
+    /// ([laughs], [whispers]) stay in the text it is sent.</summary>
+    [JsonIgnore] public ElevenLabsVoiceTarget? ElevenLabsVoice { get; init; }
+
+    /// <summary>The tags the reply's voice keeps in the text it is sent (every other voice tag is dropped): ElevenLabs' or the
+    /// host engine's; none without a voice.</summary>
+    internal IReadOnlyList<VoiceTag> KeptVoiceTags => Speech is null ? [] : SpeechEngines.TagsFor(ElevenLabsVoice is not null, HostSpeech?.ModelId);
+
     /// <summary>The most character tags one request may carry.</summary>
     public const int MaximumCharacterTags = 128;
 
@@ -184,14 +192,18 @@ public sealed class ConversationRequest(
             voice.Output.Validate();
             voice.Limits.Validate();
             ContractRules.Identifier(voice.Selection.ModelAlias);
-            ContractRules.Require(HostSpeech is null || WindowsVoice is null, "Choose one voice for the spoken reply.",
-                ErrorCode.ProviderCapability);
+            ContractRules.Require(new object?[] { HostSpeech, WindowsVoice, ElevenLabsVoice }.Count(target => target is not null) <= 1,
+                "Choose one voice for the spoken reply.", ErrorCode.ProviderCapability);
             if (WindowsVoice is { } windowsVoice)
             {
                 WindowsSpeechSetup.InstalledId(windowsVoice.VoiceId);
                 ContractRules.Require(voice.Selection == WindowsVoiceSynthesisStream.Selection(windowsVoice),
                     "A Windows voice requires its own alias, installed-voice model and exact voice.", ErrorCode.ProviderCapability);
             }
+            else if (ElevenLabsVoice is { } elevenLabs)
+                ContractRules.Require(ElevenLabsSpeechCatalog.SupportsModel(elevenLabs.ModelId) && ElevenLabsSetup.IsVoiceId(elevenLabs.VoiceId) &&
+                    voice.Selection == ElevenLabsSpeechSynthesisStream.Selection(elevenLabs),
+                    "An ElevenLabs voice requires its own alias, a supported model and the cloned voice.", ErrorCode.ProviderCapability);
             else if (HostSpeech is { } hostSpeech)
                 ContractRules.Require(voice.Selection.ModelAlias == SelfHostSetup.GatewayF5Alias &&
                     voice.Selection.UpstreamModelId == hostSpeech.ModelId &&
