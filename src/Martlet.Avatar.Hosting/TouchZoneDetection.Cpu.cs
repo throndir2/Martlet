@@ -147,6 +147,151 @@ public static partial class TouchZoneDetection
     private static bool Sensible(TouchZoneBox box, TouchZoneBox figure) =>
         box.Valid && box.Width >= 0.03 && box.Height >= 0.03 && figure.Covers(box) >= 0.5;
 
+    // ---------- zones that must be found, worked out ----------
+
+    /// <summary>Works out each zone in <paramref name="required"/> that is still missing from the zones around it: the lips and
+    /// ears from the face, the neck below the chin, the chest from the breasts (or between the neck and the stomach), the breasts
+    /// from the chest, the waist at the navel, the hips over the thighs, the groin between the thighs, the buttocks low on the
+    /// hips and each inner thigh from its thigh (one of a pair from the other, mirrored). Without those it uses the parts' windows
+    /// (<paramref name="regions"/>: head, upper_body and lower_body, fractions of the snapshot, and whether the model found them)
+    /// and the character's outline (<paramref name="figure"/>); lower-body zones only when there is a lower body. Each box is
+    /// fitted to the character's pixels. Left and right are the character's own: facing the viewer (or unknown), its left is on
+    /// the picture's right. Returns one note per zone worked out, saying from what.</summary>
+    public static List<string> Derive(Dictionary<string, TouchZoneBox> zones, IReadOnlyCollection<string> required, ZonePixels snapshot,
+        bool? facesViewer, IReadOnlyDictionary<string, (TouchZoneBox Box, bool Found)> regions, TouchZoneBox figure)
+    {
+        var notes = new List<string>();
+        if (required.All(zones.ContainsKey)) return notes;
+        var faces = facesViewer ?? true;
+        TouchZoneBox? Has(string id) => zones.TryGetValue(id, out var box) ? box : null;
+        TouchZoneBox Region(string id, double top, double height) => regions.TryGetValue(id, out var region) ? region.Box
+            : new(figure.X, figure.Y + top * figure.Height, figure.Width, height * figure.Height);
+        var head = Region("head", 0, 0.3);
+        var upper = Region("upper_body", 0.18, 0.44);
+        var lower = Region("lower_body", 0.5, 0.5);
+        void Put(string id, TouchZoneBox box, string from)
+        {
+            if (!required.Contains(id) || zones.ContainsKey(id)) return;
+            zones[id] = Fit(id, box.Clamped(), snapshot);
+            notes.Add($"{id} from {from}");
+        }
+        static TouchZoneBox Edges(double left, double top, double right, double bottom) =>
+            new(left, top, Math.Max(0.005, right - left), Math.Max(0.005, bottom - top));
+        static TouchZoneBox Join(params TouchZoneBox[] boxes) =>
+            Edges(boxes.Min(b => b.X), boxes.Min(b => b.Y), boxes.Max(b => b.X + b.Width), boxes.Max(b => b.Y + b.Height));
+        static TouchZoneBox Mirror(TouchZoneBox box, double middle) => new(2 * middle - box.X - box.Width, box.Y, box.Width, box.Height);
+        // One side of a box: the character's left is on the picture's right when it faces you.
+        TouchZoneBox Side(TouchZoneBox box, bool characterLeft)
+        {
+            var width = box.Width * 0.48;
+            return new(characterLeft == faces ? box.X + box.Width - width : box.X, box.Y, width, box.Height);
+        }
+        // One of a pair from the other, mirrored about middle; else from the box given.
+        void Pair(string id, string other, double middle, TouchZoneBox box, string from)
+        {
+            if (Has(other) is { } partner) Put(id, Mirror(partner, middle), $"{other}, mirrored");
+            else Put(id, box, from);
+        }
+
+        // The head: the face (found, else its own parts, else the middle of the head's lower part) gives the lips, ears and neck.
+        var faceParts = new[] { "forehead", "nose", "lips", "chin", "cheek_left", "cheek_right" }.Select(Has).OfType<TouchZoneBox>().ToArray();
+        var (face, faceFrom) = Has("face") is { } found ? (found, "the face")
+            : faceParts.Length >= 2 ? (Join(faceParts), "the face's parts")
+            : (Edges(head.CenterX - 0.25 * head.Width, head.Y + 0.35 * head.Height, head.CenterX + 0.25 * head.Width, head.Y + 0.9 * head.Height), "the head");
+        Put("lips", Edges(face.CenterX - 0.17 * face.Width, face.Y + 0.68 * face.Height, face.CenterX + 0.17 * face.Width, face.Y + 0.82 * face.Height), faceFrom);
+        foreach (var left in new[] { true, false })
+        {
+            // Ears stick out past the face's sides.
+            var x = left == faces ? face.X + 0.98 * face.Width : face.X - 0.3 * face.Width;
+            Pair(left ? "ear_left" : "ear_right", left ? "ear_right" : "ear_left", face.CenterX,
+                Edges(x, face.Y + 0.25 * face.Height, x + 0.32 * face.Width, face.Y + 0.6 * face.Height), faceFrom);
+        }
+        var neckTop = Has("chin") is { } chin ? chin.Y + chin.Height : face.Y + face.Height;
+        var neckBottom = Has("collarbone")?.Y ?? Has("chest")?.Y ?? 0;
+        if (neckBottom < neckTop + 0.1 * face.Height || neckBottom > neckTop + face.Height) neckBottom = neckTop + 0.35 * face.Height;
+        Put("neck", Edges(face.CenterX - 0.2 * face.Width, neckTop, face.CenterX + 0.2 * face.Width, neckBottom), Has("chin") is null ? faceFrom : "the chin");
+
+        // The torso: its middle and width from the zones down its middle, else the upper body's window.
+        var middles = BodyMiddle.Select(Has).OfType<TouchZoneBox>().ToArray();
+        var middle = middles.Length > 0 ? middles.Average(b => b.CenterX) : upper.CenterX;
+        var torso = (Has("stomach") ?? Has("chest") ?? Has("waist"))?.Width ?? 0.45 * upper.Width;
+        var breasts = new[] { Has("breast_left"), Has("breast_right") }.OfType<TouchZoneBox>().ToArray();
+        TouchZoneBox chest;
+        if (Has("chest") is { } chestFound) chest = chestFound;
+        else if (breasts.Length > 0)
+        {
+            var both = breasts.Length == 2 ? Join(breasts) : Join(breasts[0], Mirror(breasts[0], middle));
+            chest = Edges(both.X - 0.08 * both.Width, both.Y - 0.35 * both.Height, both.X + 1.08 * both.Width, both.Y + both.Height);
+            Put("chest", chest, "the breasts");
+        }
+        else
+        {
+            var top = Has("neck") is { } neck ? neck.Y + neck.Height : upper.Y + 0.1 * upper.Height;
+            var bottom = Has("stomach")?.Y ?? Has("navel")?.Y ?? 0;
+            if (bottom < top + 0.05 * upper.Height) bottom = top + 0.3 * upper.Height;
+            // The chest is wider than the stomach below it.
+            chest = Edges(middle - 0.65 * torso, top, middle + 0.65 * torso, bottom);
+            Put("chest", chest, Has("neck") is null ? "the upper body" : "the neck and stomach");
+        }
+        var bust = Edges(chest.X, chest.Y + 0.3 * chest.Height, chest.X + chest.Width, chest.Y + chest.Height);
+        Pair("breast_left", "breast_right", chest.CenterX, Side(bust, characterLeft: true), "the chest");
+        Pair("breast_right", "breast_left", chest.CenterX, Side(bust, characterLeft: false), "the chest");
+        var (stomach, navel) = (Has("stomach"), Has("navel"));
+        var waistY = navel?.CenterY ?? (stomach is { } s ? s.Y + 0.75 * s.Height : chest.Y + 1.6 * chest.Height);
+        var waistHeight = stomach is { } belly ? 0.8 * belly.Height : 0.4 * chest.Height;
+        Put("waist", Edges(middle - 0.6 * torso, waistY - waistHeight / 2, middle + 0.6 * torso, waistY + waistHeight / 2),
+            navel is not null ? "the navel" : stomach is not null ? "the stomach" : "the chest");
+
+        // The lower body, only when the character has one: the hips over the thighs, the groin between them, the buttocks low on
+        // the hips and the inner side of each thigh.
+        var legs = Regions[2].Zones.Any(zones.ContainsKey) || regions.TryGetValue("lower_body", out var legsFound) && legsFound.Found;
+        if (!legs)
+        {
+            var skipped = new[] { "hips", "groin", "buttocks", "inner_thigh_left", "inner_thigh_right" }.Where(id => required.Contains(id) && !zones.ContainsKey(id)).ToArray();
+            if (skipped.Length > 0) notes.Add($"not {string.Join(", ", skipped)}: the character shows no lower body");
+            return notes;
+        }
+        var thighs = new[] { Has("thigh_left"), Has("thigh_right") }.OfType<TouchZoneBox>().ToArray();
+        var legsMiddle = thighs.Length == 2 ? thighs.Average(t => t.CenterX) : Has("groin")?.CenterX ?? middle;
+        TouchZoneBox hips;
+        string hipsFrom;
+        if (Has("hips") is { } hipsFound) (hips, hipsFrom) = (hipsFound, "the hips");
+        else if (thighs.Length > 0)
+        {
+            // Thighs often flare wider than the hips: the hips take three quarters of their width, over the legs' middle, from the
+            // waist (kept a fair way above the thighs) to just below the thighs' top.
+            var both = thighs.Length == 2 ? Join(thighs) : Join(thighs[0], Mirror(thighs[0], middle));
+            var top = Math.Clamp(Has("waist") is { } waist ? waist.Y + waist.Height : both.Y - 0.3 * both.Height,
+                both.Y - 0.6 * both.Height, both.Y - 0.2 * both.Height);
+            (hips, hipsFrom) = (Edges(legsMiddle - 0.375 * both.Width, top, legsMiddle + 0.375 * both.Width, both.Y + 0.05 * both.Height), "the thighs");
+            Put("hips", hips, hipsFrom);
+        }
+        else
+        {
+            (hips, hipsFrom) = (Edges(lower.CenterX - 0.3 * lower.Width, lower.Y, lower.CenterX + 0.3 * lower.Width, lower.Y + 0.2 * lower.Height), "the lower body");
+            Put("hips", hips, hipsFrom);
+        }
+        var crotch = thighs.Length > 0 ? Math.Max(hips.Y + hips.Height, thighs.Min(t => t.Y) + 0.15 * thighs.Max(t => t.Height)) : hips.Y + hips.Height;
+        Put("groin", Edges(legsMiddle - 0.15 * hips.Width, hips.Y + 0.45 * hips.Height, legsMiddle + 0.15 * hips.Width, crotch),
+            thighs.Length > 0 ? hipsFrom == "the hips" ? "the hips and thighs" : "the thighs" : hipsFrom);
+        Put("buttocks", Edges(hips.X, hips.Y + 0.4 * hips.Height, hips.X + hips.Width, hips.Y + 1.15 * hips.Height), hipsFrom);
+        foreach (var left in new[] { true, false })
+        {
+            var (id, thighId) = left ? ("inner_thigh_left", "thigh_left") : ("inner_thigh_right", "thigh_right");
+            if (Has(thighId) is { } thigh)
+            {
+                // The inner side faces the legs' middle.
+                var (from, to) = thigh.CenterX > legsMiddle ? (thigh.X, thigh.X + 0.45 * thigh.Width) : (thigh.X + 0.55 * thigh.Width, thigh.X + thigh.Width);
+                Put(id, Edges(from, thigh.Y + 0.1 * thigh.Height, to, thigh.Y + 0.75 * thigh.Height), thighId);
+            }
+            else
+                Pair(id, left ? "inner_thigh_right" : "inner_thigh_left", legsMiddle,
+                    Side(Edges(lower.CenterX - 0.2 * lower.Width, lower.Y + 0.12 * lower.Height, lower.CenterX + 0.2 * lower.Width, lower.Y + 0.4 * lower.Height), left),
+                    "the lower body");
+        }
+        return notes;
+    }
+
     // A part's window when the model didn't find it: from the skeleton's neck and hips, else from the character's outline.
     private static TouchZoneBox Fallback(string region, TouchZoneBox figure, ZoneHints? hints)
     {

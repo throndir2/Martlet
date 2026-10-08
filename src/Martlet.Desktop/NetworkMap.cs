@@ -80,7 +80,7 @@ internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSe
     IReadOnlyDictionary<string, IReadOnlyList<HostUser>>? HostUsers = null, ClusterPlan? Plan = null,
     IReadOnlyList<MartletComputer>? Computers = null, IReadOnlyCollection<string>? DeepThinkingHosts = null,
     IReadOnlyDictionary<string, string>? HostOutside = null, string? OwnHostTrouble = null,
-    IReadOnlyCollection<string>? ThinkingPoolLeft = null);
+    IReadOnlyCollection<string>? ThinkingPoolLeft = null, IReadOnlyDictionary<string, TimeSpan>? HostAway = null);
 
 /// <summary>A computer paired with a host, in words ("IMOUTO (desktop-imouto), active now"); <paramref name="ThisPc"/> marks
 /// this PC itself.</summary>
@@ -192,6 +192,7 @@ internal static class NetworkMap
     private static string RouteDetail(SetupRoute route)
     {
         var text = route.RouteType == SetupRouteType.LocalWindowsTts ? WindowsVoices.DisplayName(route.VoiceId)
+            : route.ClonedVoice is { } cloned ? $"Voice {cloned.Name}, cloned"
             : route.VoiceId is { } voice ? $"Voice {voice}"
             : route.Reference is { } reference ? $"Voice {reference.PresetName}"
             // The model is what tells two setups of one provider apart (the cloud model every computer uses, say).
@@ -265,6 +266,7 @@ internal static class NetworkMap
         SetupRouteType.LocalWindowsTts => "Windows voice",
         SetupRouteType.LocalWhisper => "Speech recognition on this PC",
         SetupRouteType.LocalParakeet => "Speech recognition on this PC",
+        SetupRouteType.ElevenLabs => "ElevenLabs",
         _ => "OpenAI"
     };
 
@@ -521,7 +523,9 @@ internal static class NetworkMap
                 target.Facts.Add(new("Connection", paired.Reach));
                 AddHardware(target, inputs, paired.HostId);
                 if (check is null) target.Worsen(NodeHealth.Unknown, "Paired, not checked yet");
-                else if (check.Reachable == false) target.Worsen(NodeHealth.Attention, "Not reachable");
+                else if (check.Reachable == false)
+                    target.Worsen(NodeHealth.Attention, inputs.HostAway?.TryGetValue(paired.HostId, out var away) == true &&
+                        NodePresenceNotices.MapText(away) is { } silent ? silent : "Not reachable");
                 else if (check.Reachable is null) target.Worsen(NodeHealth.Unknown, "Checking...");
                 else if (target.Health == NodeHealth.Ready) target.HealthText = inCharge ? "Connected, handling lip-sync" : "Connected";
             }

@@ -9,16 +9,29 @@ type BoneName = Parameters<VRM["humanoid"]["getNormalizedBoneNode"]>[0];
 
 /** Martlet's own gestures, played on any VRM that has the humanoid bones they move. After the reply gestures come the voice
  *  emotes, played when the voice makes their sound or tone (laugh, sigh, gasp...), then the touch and mood gestures (wink,
- *  pout, shy...), which also use the model's preset expressions (blinkLeft, relaxed, happy...) when it has them. */
+ *  pout, shy...), which also use the model's preset expressions (blinkLeft, relaxed, happy...) when it has them, then the
+ *  held face parts (eyes_up turns the eye bones, mouth_open the oh or aa mouth expression). */
 export const VRM_GESTURES = Object.freeze(["nod", "shake", "tilt", "bow", "sway", "wave", "shrug", "bounce", "blush",
   "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat", "groan", "sniff", "shush", "inhale", "exhale", "mumble", "hum",
   "sneeze", "whistle", "happy", "sarcastic", "angry", "fear", "crying", "whispering", "dramatic",
-  "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy"] as const);
+  "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy",
+  "eyes_up", "mouth_open"] as const);
 export type VrmGesture = typeof VRM_GESTURES[number];
-/** The gestures that can be held (an action with `hold: true`): eased into and kept, gently alive, until ended. */
-export const VRM_HOLDABLE_GESTURES = Object.freeze(["pout", "shy", "look_away", "drowsy"] as const);
+/** The gestures that can be held (an action with `hold: true`): eased into and kept, gently alive, until ended. The model's
+ *  own blush can be held too (see `playGesture`). */
+export const VRM_HOLDABLE_GESTURES = Object.freeze(["pout", "shy", "look_away", "drowsy", "eyes_up", "mouth_open"] as const);
 type HoldableGesture = typeof VRM_HOLDABLE_GESTURES[number];
 const holdable = (name: string): name is HoldableGesture => (VRM_HOLDABLE_GESTURES as readonly string[]).includes(name);
+/** A part of the face or body a held gesture moves. */
+export type VrmGesturePart = "eyes" | "mouth" | "cheeks" | "brows" | "head";
+/** The parts each held gesture moves (the head part includes the body; the model's own blush is the cheeks). Held gestures
+ *  layer: holding one lets go only of the held gestures that move a part it moves too. */
+export const VRM_HOLD_PARTS: Readonly<Record<HoldableGesture | "blush", readonly VrmGesturePart[]>> = Object.freeze({
+  pout: ["mouth", "brows", "head"], shy: ["eyes", "mouth", "head"], look_away: ["eyes", "head"], drowsy: ["eyes", "head"],
+  blush: ["cheeks"], eyes_up: ["eyes"], mouth_open: ["mouth"],
+});
+const sharePart = (a: HoldableGesture | "blush", b: HoldableGesture | "blush") =>
+  VRM_HOLD_PARTS[a].some(part => VRM_HOLD_PARTS[b].includes(part));
 const head: readonly BoneName[] = ["head"], headSpine: readonly BoneName[] = ["head", "spine"];
 const GESTURE_BONES: Readonly<Record<VrmGesture, readonly BoneName[]>> = Object.freeze({
   nod: head, shake: head, tilt: head, bow: ["spine"], sway: ["spine"],
@@ -32,6 +45,8 @@ const GESTURE_BONES: Readonly<Record<VrmGesture, readonly BoneName[]>> = Object.
   dramatic: ["head", "leftUpperArm", "rightUpperArm"],
   wink: head, pout: head, shy: headSpine, giggle: headSpine, flinch: headSpine, lean_in: headSpine, look_away: head, think: head,
   eye_roll: head, drowsy: headSpine,
+  // The eye bones turn up; the mouth needs the oh or aa expression (see gestures).
+  eyes_up: ["leftEye", "rightEye"], mouth_open: head,
 });
 const GESTURE_SECONDS: Readonly<Record<VrmGesture, number>> = Object.freeze({
   nod: 1.1, shake: 1.2, tilt: 1.8, bow: 2, sway: 2.4, wave: 2.4, shrug: 1.8, bounce: 1.2, blush: 4,
@@ -39,17 +54,34 @@ const GESTURE_SECONDS: Readonly<Record<VrmGesture, number>> = Object.freeze({
   exhale: 1.8, mumble: 2, hum: 2.6, sneeze: 1.6, whistle: 2, happy: 2.4, sarcastic: 1.8, angry: 2.4, fear: 2, crying: 3,
   whispering: 2.2, dramatic: 2.4,
   wink: 1.1, pout: 2.6, shy: 3.5, giggle: 1.6, flinch: 1.4, lean_in: 2.8, look_away: 2.4, think: 2.8, eye_roll: 1.8, drowsy: 4.5,
+  eyes_up: 3, mouth_open: 2.6,
 });
 const GESTURE_FADE: Partial<Record<VrmGesture, number>> = { bounce: 0.15, gasp: 0.12, fear: 0.15, cough: 0.1, sniff: 0.1, sneeze: 0.1,
   wink: 0.12, giggle: 0.15, flinch: 0.05, eye_roll: 0.2 };
 /** A custom expression that is the model's own blush. */
 const BLUSH_EXPRESSION = /blush|cheek|照れ|赤面|頬|脸红|臉紅|홍조/i;
 
+/** The mouth expression a held open mouth uses: `oh` (a round open mouth), else `aa`; undefined when the model has neither. */
+function mouthShape(model: VRM): "oh" | "aa" | undefined {
+  const expressions = model.expressionManager;
+  return expressions?.getExpression("oh") ? "oh" : expressions?.getExpression("aa") ? "aa" : undefined;
+}
+
+/** How far the eyes turn (radians) at a held eyes gesture's full strength: the model's own look-up range for its eye bones
+ *  when it has one (5° to 20°), else 12°. */
+function eyeRange(model: VRM, gaze: VrmCapabilities["gaze"] | undefined): number {
+  const scale = gaze === "bone" ? (model.lookAt?.applier as { rangeMapVerticalUp?: { outputScale?: unknown } } | undefined)
+    ?.rangeMapVerticalUp?.outputScale : undefined;
+  return (typeof scale === "number" && Number.isFinite(scale) ? Math.max(5, Math.min(20, scale)) : 12) * Math.PI / 180;
+}
+
 /** How a voice emote moves the body `t` seconds in at weight `w`: head yaw (gx, right) and pitch (gy, up) like the look,
  *  head roll (tilt), spine bend (forward), lean (sideways) and turn (spineY, to the character's left), shoulders (up), arms
- *  opened out to the sides (open), and preset expressions by name to weights (face; ones the model lacks are skipped). */
+ *  opened out to the sides (open), the eyes turned on their own (eyeX right, eyeY up, -1 to 1 of their range), a held open
+ *  mouth (0 to 1) and preset expressions by name to weights (face; ones the model lacks are skipped). */
 export interface GesturePose {
   gx: number; gy: number; tilt: number; spineX: number; spineZ: number; shoulders: number; open: number; spineY: number;
+  eyeX: number; eyeY: number; mouth: number;
   face: Record<string, number>;
 }
 
@@ -85,7 +117,7 @@ export function drowse(t: number): number {
 }
 
 /** A holdable gesture's pose at weight `w`, kept alive by `t` (pout huffs, shy peeks back, look_away glances back, drowsy
- *  nods off and catches itself), so a held pose never looks frozen. */
+ *  nods off and catches itself, raised eyes drift, an open mouth breathes), so a held pose never looks frozen. */
 function moodPose(pose: GesturePose, name: HoldableGesture, t: number, w: number): void {
   switch (name) {
     case "pout": pose.gx = (-0.25 + 0.05 * cycle(t, 2.6)) * w; pose.gy = -0.1 * w; pose.tilt = -0.08 * w; pose.face = { angry: 0.3 * w }; break;
@@ -103,13 +135,16 @@ function moodPose(pose: GesturePose, name: HoldableGesture, t: number, w: number
       pose.gy = -(0.35 + 0.25 * droop) * w; pose.tilt = (0.06 + 0.1 * droop) * w; pose.spineX = 0.08 * w; pose.shoulders = -0.5 * w;
       pose.face = { blink: (0.5 + 0.35 * droop) * w }; break;
     }
+    case "eyes_up": pose.eyeX = 0.1 * cycle(t, 7.3) * w; pose.eyeY = (0.9 + 0.05 * cycle(t, 4.7)) * w; break;
+    case "mouth_open": pose.mouth = (0.75 + 0.08 * cycle(t, 2.8)) * w; break;
   }
 }
 
-const emptyPose = (): GesturePose => ({ gx: 0, gy: 0, tilt: 0, spineX: 0, spineZ: 0, shoulders: 0, open: 0, spineY: 0, face: {} });
+const emptyPose = (): GesturePose => ({ gx: 0, gy: 0, tilt: 0, spineX: 0, spineZ: 0, shoulders: 0, open: 0, spineY: 0, eyeX: 0, eyeY: 0,
+  mouth: 0, face: {} });
 
 function addPose(into: GesturePose, pose: GesturePose): void {
-  for (const key of ["gx", "gy", "tilt", "spineX", "spineZ", "shoulders", "open", "spineY"] as const) into[key] += pose[key];
+  for (const key of ["gx", "gy", "tilt", "spineX", "spineZ", "shoulders", "open", "spineY", "eyeX", "eyeY", "mouth"] as const) into[key] += pose[key];
   const face = { ...into.face };
   for (const [name, weight] of Object.entries(pose.face)) face[name] = Math.max(face[name] ?? 0, weight);
   into.face = face;
@@ -147,7 +182,7 @@ export function gesturePose(name: VrmGesture, t: number, w: number): GesturePose
     case "whispering": pose.gx = 0.3 * w; pose.tilt = 0.25 * w; pose.spineX = 0.12 * w; pose.spineZ = 0.06 * w; break;
     case "dramatic": pose.gx = 0.3 * Math.sin(Math.PI * t / GESTURE_SECONDS.dramatic) * w; pose.gy = 0.4 * w; pose.spineX = -0.1 * w; pose.open = w; break;
     case "wink": pose.gx = 0.05 * w; pose.gy = 0.05 * w; pose.tilt = 0.1 * w; pose.face = { blinkLeft: w, happy: 0.2 * w }; break;
-    case "pout": case "shy": case "look_away": case "drowsy": moodPose(pose, name, t, w); break;
+    case "pout": case "shy": case "look_away": case "drowsy": case "eyes_up": case "mouth_open": moodPose(pose, name, t, w); break;
     case "giggle": {
       const bounce = Math.abs(cycle(t, 0.36));
       pose.gy = (0.08 - 0.2 * bounce) * w; pose.spineX = 0.05 * bounce * w; pose.shoulders = 0.6 * bounce * w; pose.tilt = 0.1 * w;
@@ -396,6 +431,8 @@ export class VrmRuntime {
   private gesture: { name: VrmGesture; seconds: number } | undefined;
   private blush: { name: string; seconds: number; hold: boolean } | undefined;
   private held: { name: HoldableGesture; seconds: number; progress: number; on: boolean }[] = [];
+  // 0 to 1: how much the voice moves the mouth now (eased), so a held open mouth makes room for lip-sync.
+  private talk = 0;
   private face: Readonly<Record<string, number>> = {};
   // Expressions the gestures' face wrote last frame and their values before, put back before the next frame is composed.
   private readonly faceRestore = new Map<string, number>();
@@ -450,17 +487,19 @@ export class VrmRuntime {
     return true;
   }
 
-  /** Martlet's gestures this model has the humanoid bones for. */
+  /** Martlet's gestures this model has the humanoid bones for (and, for mouth_open, the oh or aa mouth expression). */
   get gestures(): readonly VrmGesture[] {
     const model = this.model;
-    return model ? VRM_GESTURES.filter(name => GESTURE_BONES[name].every(bone => model.humanoid.getNormalizedBoneNode(bone))) : [];
+    return model ? VRM_GESTURES.filter(name => GESTURE_BONES[name].every(bone => model.humanoid.getNormalizedBoneNode(bone)) &&
+      (name !== "mouth_open" || mouthShape(model) !== undefined)) : [];
   }
 
   /** Starts one of Martlet's gestures (see `gestures`), replacing one already playing: head gestures, a bow, a sway, a wave,
    *  a shrug, an excited bounce, a voice emote (a laugh, a sigh, a gasp...) or a touch or mood gesture (a wink, a flinch...).
-   *  With `hold`, a holdable one (VRM_HOLDABLE_GESTURES) eases in and stays until `endGesture`, crossfading from one held
-   *  before; a gesture played meanwhile plays on top of it, the held pose easing back partway and resuming after. A blush
-   *  shows the model's own blush or cheek expression (4 seconds, or held); false when it has none (the page draws one). */
+   *  With `hold`, a holdable one (VRM_HOLDABLE_GESTURES) eases in and stays until `endGesture`. Held gestures layer: holding
+   *  one lets go only of the held ones that move a part it moves too (VRM_HOLD_PARTS), crossfading from them. A gesture
+   *  played meanwhile plays on top, the held poses easing back partway and resuming after. A blush shows the model's own
+   *  blush or cheek expression (4 seconds, or held: the cheeks); false when it has none (the page draws one). */
   playGesture(name: string, hold = false): boolean {
     const model = this.loaded();
     if (!(this.gestures as readonly string[]).includes(name)) return false;
@@ -468,16 +507,18 @@ export class VrmRuntime {
       const reserved: readonly string[] = [...mouthPresets, ...blinkPresets, ...gazePresets];
       const own = model.expressionManager?.expressions.map(e => e.expressionName)
         .find(n => !reserved.includes(n) && BLUSH_EXPRESSION.test(n));
-      if (!own || !this.setAction(own, true)) return false;
-      // Held, it is the one held gesture: the one held before lets go.
-      if (hold) for (const held of this.held) held.on = false;
-      this.blush = { name: own, seconds: 0, hold };
+      // Played once while it is held, it stays held, as the other held gestures do; held, passing emotes leave it on.
+      const keep = hold || this.blush?.hold === true;
+      if (!own || !this.setAction(own, true, keep)) return false;
+      if (hold) this.letGo("blush");
+      this.blush = { name: own, seconds: 0, hold: keep };
       return true;
     }
     if (hold && holdable(name)) {
-      if (this.blush?.hold) this.endGesture("blush");
-      for (const held of this.held) held.on = held.name === name;
-      if (!this.held.some(held => held.name === name)) this.held.push({ name, seconds: 0, progress: 0, on: true });
+      this.letGo(name);
+      const held = this.held.find(h => h.name === name);
+      if (held) held.on = true;
+      else this.held.push({ name, seconds: 0, progress: 0, on: true });
       return true;
     }
     if (name === "bounce") this.hipsRest ??= model.humanoid.getNormalizedBoneNode("hips")?.position.y;
@@ -485,16 +526,23 @@ export class VrmRuntime {
     return true;
   }
 
+  /** Lets go of the held gestures (the held blush included) that move a part `name` moves too. */
+  private letGo(name: HoldableGesture | "blush"): void {
+    for (const held of this.held) if (held.name !== name && sharePart(held.name, name)) held.on = false;
+    if (name !== "blush" && this.blush?.hold && sharePart("blush", name)) this.endGesture("blush");
+  }
+
   /** Lets a held gesture go (eased out); one playing once just finishes. */
   endGesture(name: string): void {
     for (const held of this.held) if (held.name === name) held.on = false;
-    if (name === "blush" && this.blush) { this.setAction(this.blush.name, false); this.blush = undefined; }
+    if (name === "blush" && this.blush) { this.setAction(this.blush.name, false, this.blush.hold); this.blush = undefined; }
   }
 
-  /** The gesture playing once and the one held, if any. */
-  get gestureState(): { readonly playing?: VrmGesture; readonly held?: HoldableGesture | "blush" } {
-    const held = this.blush?.hold ? "blush" as const : this.held.find(h => h.on)?.name;
-    return Object.freeze({ ...(this.gesture ? { playing: this.gesture.name } : {}), ...(held ? { held } : {}) });
+  /** The gesture playing once, if any, and every gesture held. */
+  get gestureState(): { readonly playing?: VrmGesture; readonly held: readonly (HoldableGesture | "blush")[] } {
+    const held: (HoldableGesture | "blush")[] = this.held.filter(h => h.on).map(h => h.name);
+    if (this.blush?.hold) held.push("blush");
+    return Object.freeze({ ...(this.gesture ? { playing: this.gesture.name } : {}), held: Object.freeze(held) });
   }
 
   /** The held gestures' combined pose `deltaSeconds` later, eased back by `duck` (0..1) under a gesture playing once. */
@@ -637,6 +685,9 @@ export class VrmRuntime {
       bone("neck")?.rotation.set(-y * 0.15, x * 0.2, Math.sin(this.idleTime * 0.7) * 0.02);
       bone("head")?.rotation.set(-y * 0.2, x * 0.3, tilt);
     }
+    // Only a held eyes gesture (eyes_up) turns the eyes while idle; the head keeps following the look.
+    const range = eyeRange(model, this.inspected?.gaze), clamp = (value: number) => Math.max(-1, Math.min(1, value));
+    for (const eye of ["leftEye", "rightEye"] as const) bone(eye)?.rotation.set(-range * clamp(pose.eyeY), range * clamp(pose.eyeX), 0);
     const expressions = model.expressionManager;
     if (!expressions) return;
     this.speechAge += deltaSeconds;
@@ -644,7 +695,12 @@ export class VrmRuntime {
     this.speech += (target - this.speech) * Math.min(1, deltaSeconds * (target > this.speech ? 30 : 14));
     // Fresh composed (Audio2Face) frames own the mouth; loudness resumes when they stop.
     const composing = this.identity !== undefined && this.composedAge < 0.25;
-    if (!composing && expressions.getExpression("aa")) expressions.setValue("aa", this.speech);
+    // A held open mouth eases back while the voice moves the mouth, so lip-sync still shows on it.
+    this.talk += ((composing || this.speechAge <= 0.3 ? 1 : 0) - this.talk) * Math.min(1, deltaSeconds * 5);
+    const mouthOpen = Math.min(1, pose.mouth) * (1 - 0.7 * this.talk), shape = mouthShape(model);
+    if (!composing && expressions.getExpression("aa")) expressions.setValue("aa", Math.min(1, this.speech + (shape === "aa" ? mouthOpen : 0)));
+    if (shape === "oh" && !(this.identity !== undefined && this.selection?.mappings.some(m => m.expression === "oh")))
+      expressions.setValue("oh", mouthOpen);
     const blinkOwned = this.identity !== undefined && (this.selection?.mappings.some(m => m.aspect === "blink") ?? false);
     if (blinkOwned || !expressions.getExpression("blink")) return;
     if (this.blinkTime < 0 && (this.nextBlink -= deltaSeconds) <= 0) this.blinkTime = 0;
@@ -902,5 +958,6 @@ export class VrmRuntime {
     }
     this.model = undefined; this.inspected = undefined; this.selection = undefined; this.revision = undefined; this.inputMode = undefined;
     this.actions.clear(); this.heldExpressions.clear(); this.gesture = undefined; this.held = []; this.blush = undefined; this.hipsRest = undefined;
+    this.talk = 0;
   }
 }

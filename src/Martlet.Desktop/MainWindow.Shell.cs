@@ -1009,7 +1009,7 @@ public partial class MainWindow
 
     private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
         HardwareStore?.Load() ?? [], homeHosts, hostUpdates.Notes, HostUsers(), clusterEnabled ? clusterPlan : null, OtherComputers(),
-        DeepThinkingHosts(), HostOutsideFacts(), OwnHostTrouble(), ThinkingPoolLeft());
+        DeepThinkingHosts(), HostOutsideFacts(), OwnHostTrouble(), ThinkingPoolLeft(), PresenceAway());
 
     /// <summary>The paired computers the owner keeps out of the Thinking pool (unticked), or null.</summary>
     private IReadOnlyCollection<string>? ThinkingPoolLeft() =>
@@ -1406,6 +1406,9 @@ public partial class MainWindow
         try { results = await Task.WhenAll(hosts.Select(async h => (h.HostId, await HostControl.CheckAsync(h.Pairing, HardwareStore, lifetime.Token)))); }
         catch (OperationCanceledException) { return; }
         foreach (var (id, check) in results) hostChecks[id] = check;
+        // What answered and what didn't counts for the Thinking pool too, also while Keep in sync is off.
+        foreach (var (id, check) in results)
+            if (check.Reachable is { } reachable) HostPresence.Note(id, reachable);
         if (closing) return;
         // A role whose settings changed there (from here or another computer) serves another model now: follow it.
         FollowHostModelsAsync(results.Where(r => r.Check.Reachable == true).Select(r => r.Id).ToArray()).Forget();

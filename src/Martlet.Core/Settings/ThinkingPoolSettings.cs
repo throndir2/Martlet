@@ -108,13 +108,24 @@ public sealed record ThinkingPoolSettings
     };
 
     /// <summary>Every place the planner considers: the members, or the conversation model while the pool is empty and that is
-    /// allowed. An empty pool without it plans nothing that can run.</summary>
-    public DeepThinkingPool Plan(IReadOnlyList<SetupRoute> routes, Martlet.Core.Cluster.WorkSharingSettings? sharing = null, string? device = null)
+    /// allowed. An empty pool without it plans nothing that can run. <paramref name="offline"/> (the paired computers that don't
+    /// answer now; null: all count as online) leaves those members out of what can run; when nothing else can run, thinking
+    /// longer and research use the conversation model meanwhile, as with an empty pool, when that is allowed.</summary>
+    public DeepThinkingPool Plan(IReadOnlyList<SetupRoute> routes, Martlet.Core.Cluster.WorkSharingSettings? sharing = null, string? device = null,
+        IReadOnlyCollection<string>? offline = null)
     {
         if (Members.Count == 0 && !UseConversationModelWhenEmpty)
             return new([new DeepThinkingSpot(new(), new(false, "The Thinking pool has no member, and Use the conversation model when " +
                 "the pool is empty is off. Add a member on Companion › Thinking pool."), "no member")]);
-        return DeepThinkingPool.For(Places, routes, sharing, device);
+        var pool = DeepThinkingPool.For(Places, routes, sharing, device, offline);
+        if (Members.Count == 0 || !UseConversationModelWhenEmpty || pool.Plan is not { Available: false, Offline: true } gone) return pool;
+        // The members that would run are all offline: the conversation model stands in, as for an empty pool, until one answers.
+        var conversation = DeepThinkingPool.For(new(), routes, sharing, device).Spots[0];
+        if (!conversation.Plan.Available) return pool;
+        return new([conversation with
+        {
+            Plan = conversation.Plan with { Why = $"{gone.Why} Meanwhile thinking longer and research use the conversation model. {conversation.Plan.Why}" }
+        }, .. pool.Spots]);
     }
 
     public void Validate()

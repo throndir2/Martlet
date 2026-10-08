@@ -228,6 +228,30 @@ public sealed class McpServerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task CharacterStatusReadsWhetherClicksPassThroughTheCharacter()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.ClickThrough." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var none = ToolResult((await SendAsync(DataCall("character_status", directory)))[0]).GetProperty("clickThrough");
+            Assert.Equal(("none", false), (none.GetProperty("state").GetString(), none.GetProperty("on").GetBoolean()));
+
+            Assert.True(Martlet.Desktop.CharacterClickThroughStore.Save(directory, true));
+            var on = ToolResult((await SendAsync(DataCall("character_status", directory)))[0]).GetProperty("clickThrough");
+            Assert.Equal(("loaded", true), (on.GetProperty("state").GetString(), on.GetProperty("on").GetBoolean()));
+
+            File.WriteAllText(Path.Combine(directory, Martlet.Desktop.CharacterClickThroughStore.FileName), "not json");
+            var unreadable = ToolResult((await SendAsync(DataCall("character_status", directory)))[0]).GetProperty("clickThrough");
+            Assert.Equal(("unreadable", false), (unreadable.GetProperty("state").GetString(), unreadable.GetProperty("on").GetBoolean()));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task MessagingStatusReadsTelegramWithoutTokenOrChats()
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.Messaging." + Guid.NewGuid().ToString("N"));

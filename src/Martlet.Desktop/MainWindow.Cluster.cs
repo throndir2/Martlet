@@ -322,6 +322,7 @@ public partial class MainWindow
             if (change.Answering) ErrorLog.Info(change.Text);
             else ErrorLog.Warn(change.Text);
         }
+        HostPresence.Note(probe.HostId, probe.Reachable);
         if (!probe.Reachable)
         {
             // One slow answer from a busy host is not a change: its last check stands until it counts as not answering.

@@ -137,7 +137,7 @@ public partial class MainWindow
                 (can.HasFlag(ThinkingCapability.Audio) ? ", hears recordings" : "") +
                 (spot is { Plan.Available: false } ? $". Can't run now: {spot.Plan.Why}" : ".") +
                 // A paired computer that stopped answering stays a member: its slots come back by themselves.
-                (member is { Place: DeepThinkingPlace.Host, HostId: { } memberHost } && hostChecks.GetValueOrDefault(memberHost)?.Reachable == false
+                (member is { Place: DeepThinkingPlace.Host, HostId: { } memberHost } && HostPresence.IsOffline(memberHost)
                     ? $" Offline now: its slot{(member.ThinksAtOnce == 1 ? "" : "s")} come{(member.ThinksAtOnce == 1 ? "s" : "")} back when it answers again."
                     : "");
             var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
