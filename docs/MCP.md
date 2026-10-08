@@ -202,22 +202,32 @@ background work ([The Thinking pool](CONVERSATION.md#the-thinking-pool)).
 `thinking_pool_status` (`dataDirectory`) reads `thinking-pool.json` (or what
 Martlet would make from the older `deep-thinking.json`, without writing it):
 each member with its slots, whether it sees pictures or hears recordings and
-whether it can run; *Use the conversation model when the pool is empty*; the
+whether it can run; the computers the owner keeps out (`leftByOwner`, host IDs
+only: they never join by themselves); *Use the conversation model when the pool is empty*; the
 usable slots and whether one stays free for fast jobs; each job kind's
 priority, whether it is fast and whether a member can run it (`canRun`);
 guidance and likely-slowdown warnings; and the desktop's
-`thinking-pool-status.json` (running and waiting jobs by kind, the live floor's
+`thinking-pool-status.json` (`leftByOwner`, running and waiting jobs by kind, the live floor's
 level, the jobs waiting for the conversation and the ones it stopped this turn
 and in all, never a job's text). `thinking_pool_check` rehearses the production job board with simulated
 members (NOT models): no member, capabilities, the fast slot, priorities, retry
-on another member, a stale job dropped and the migration. On the desktop the
+on another member, a stale job dropped and the migration. Its `auto-join` steps
+run the production rule (`ThinkingPoolAutoJoin`) on sample hosts: a host with
+the Thinking pool role joins with its slots, an Ollama-only host joins unless it
+does this PC's Thinking, a member on Ollama moves to the role, and a computer
+kept out, one Sharing work never uses, a full pool and a host PC are skipped. On the desktop the
 card reads through `ThinkingPoolSummary`, `ThinkingPoolGuidance`,
 `ThinkingPoolWarnings`, `ThinkingPoolLiveFloor` (which members start no new
 pool work while you talk with Martlet because they share the conversation's
-computer) and `ThinkingPoolMember-<n>`; the
+computer) and `ThinkingPoolMember-<n>` (it says *Offline now* for a member whose
+computer doesn't answer); *One of your computers* reads through
+`DeepThinkingAutoJoin` (computers with a Thinking model join by themselves, and
+which ones are kept out) and `DeepThinkingHost-<host>` (*In the pool, offline
+now*, *Kept out of the pool*, or what joins at its next check). The
 `ThinkingPoolUseConversationModel` box, `ThinkingPoolSlots-<n>`,
-`ThinkingPoolRemove-<n>` and `DeepThinkingPool-<host>` (*Join the Thinking
-pool*) save `thinking-pool.json`, so they need `--allow-ui-effects`.
+`ThinkingPoolRemove-<n>` and `DeepThinkingPool-<host>` (*In the Thinking
+pool*: unticking keeps the computer out, ticking adds it again) save
+`thinking-pool.json`, so they need `--allow-ui-effects`.
 
 ```powershell
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"thinking_pool_check"},{"name":"thinking_pool_status"}]'
@@ -3068,10 +3078,10 @@ check. With `live: true` it also asks Ollama on this PC (the saved local Thinkin
 model, or `model`) two made-up turns with the saved persona: `live.turns`
 (`outcome`, `reply`, `ms`). Loopback only; reads no credentials.
 
-The Companion › Deep thinking page's `DeepThinkingPoolStatus` says how many
+The Companion › Thinking pool page's `DeepThinkingPoolStatus` says how many
 places think at once, and each paired computer's `DeepThinkingPool-<host>` box
-(*Think on diva too*, ticked or not) reads; ticking it saves
-`deep-thinking.json`, so it needs `--allow-ui-effects`.
+(*diva in the Thinking pool*, ticked or not) reads; changing it saves
+`thinking-pool.json`, so it needs `--allow-ui-effects`.
 
 `reminders_status` shows Martlet's [reminders](CONVERSATION.md#reminders)
 from a data directory's `shared-settings.json` (optional absolute
@@ -5064,7 +5074,10 @@ each paired computer's
 `DeepThinkingHost-<host ID>` (*diva: Its Deep thinking role runs qwen3-8b.*,
 *diva: Ollama runs gemma4:27b. Add the Deep thinking role ...*, *Thinks here
 (...)*, *Its Ollama (...) does Thinking for the conversation. Add the Deep
-thinking role there ...*) and, when Deep thinking there would share one
+thinking role there ...*; on Companion › Thinking pool also *In the pool,
+offline now: its 2 slots come back when it answers again.*, *... Kept out of
+the pool, because you unticked it. Tick In the Thinking pool to add it again.*
+and *... It joins the pool by itself at its next check.*) and, when Deep thinking there would share one
 graphics card with the computer's Thinking model,
 `DeepThinkingShare-<host ID>` (*diva: diva already runs a Thinking model
 (gemma4:e4b) on its only graphics card. ... We recommend one graphics card for

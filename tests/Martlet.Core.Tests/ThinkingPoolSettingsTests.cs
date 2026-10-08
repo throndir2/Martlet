@@ -73,6 +73,57 @@ public sealed class ThinkingPoolSettingsTests : IDisposable
     }
 
     [Fact]
+    public void A_computer_taken_out_is_kept_out_across_a_save_and_ticking_it_again_clears_that()
+    {
+        var pool = new ThinkingPoolSettings().Add(Role("diva")).Add(Role("ripley")).WithAnswers("host:diva", true).TakeOut("diva");
+        Assert.Equal(["host:ripley"], pool.Members.Select(m => m.Key));
+        Assert.Empty(pool.AnswersForConversation);
+        Assert.True(pool.Left("diva"));
+        Assert.False(pool.Left("ripley"));
+        // Remove alone (other callers) takes a member out without keeping its computer out.
+        Assert.False(pool.Remove("host:ripley").Left("ripley"));
+
+        Assert.True(pool.Save(directory));
+        var (loaded, state) = ThinkingPoolSettings.Read(directory);
+        Assert.Equal("loaded", state);
+        Assert.Equal(["diva"], loaded.LeftByOwner);
+        Assert.Contains("\"LeftByOwner\"", File.ReadAllText(Path.Combine(directory, ThinkingPoolSettings.FileName)), StringComparison.Ordinal);
+
+        var back = loaded.KeepOut("diva", false);
+        Assert.Empty(back.LeftByOwner);
+        Assert.Equal(["diva"], back.KeepOut("diva", true).KeepOut("diva", true).LeftByOwner);
+    }
+
+    [Fact]
+    public void An_older_file_without_the_kept_out_list_reads_as_empty()
+    {
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, ThinkingPoolSettings.FileName),
+            """{ "SchemaVersion": 1, "Members": [], "UseConversationModelWhenEmpty": true, "AnswersForConversation": [] }""");
+        var (loaded, state) = ThinkingPoolSettings.Read(directory);
+        Assert.Equal("loaded", state);
+        Assert.Empty(loaded.LeftByOwner);
+        Assert.False(loaded.Left("diva"));
+
+        File.WriteAllText(Path.Combine(directory, ThinkingPoolSettings.FileName), """{ "SchemaVersion": 1, "LeftByOwner": null }""");
+        Assert.Empty(ThinkingPoolSettings.Read(directory).Settings.LeftByOwner);
+    }
+
+    [Fact]
+    public void The_kept_out_list_is_bounded()
+    {
+        var many = Enumerable.Range(0, ThinkingPoolSettings.MaxLeftByOwner + 5)
+            .Aggregate(new ThinkingPoolSettings(), (pool, i) => pool.KeepOut("gpu-" + i, true));
+        Assert.Equal(ThinkingPoolSettings.MaxLeftByOwner, many.LeftByOwner.Count);
+        Assert.True(many.Left("gpu-" + (ThinkingPoolSettings.MaxLeftByOwner + 4)));
+        Assert.False(many.Left("gpu-0"));
+        many.Validate();
+        Assert.Throws<ContractException>(() => new ThinkingPoolSettings { LeftByOwner = ["diva", "diva"] }.Validate());
+        Assert.Throws<ContractException>(() => new ThinkingPoolSettings { LeftByOwner = [""] }.Validate());
+        Assert.Throws<ContractException>(() => new ThinkingPoolSettings { LeftByOwner = ["bad\nname"] }.Validate());
+    }
+
+    [Fact]
     public void An_empty_pool_uses_the_conversation_model_only_when_allowed()
     {
         var thinking = Chat(SetupRole.Llm, OpenRouter, "x-ai/grok-4.3");

@@ -475,6 +475,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "DeepThinkingNow", "DeepThinkingParallel", "ThinkLongerStatus", "ThinkLongerEffort",
         "ThinkLongerDelivery", "DeepThinkingHosts", "DeepThinkingLocalStatus", "DeepThinkingLocalFit", "DeepThinkingLocalShare", "DeepThinkingSameStatus",
         "DeepThinkingKeyStatus", "DeepThinkingPoolStatus", "LiveTasks", "LiveJobs", "LiveSong",
+        // Companion › Thinking pool › One of your computers: the rule that computers with a Thinking model join by themselves,
+        // and which computers you keep out (computer names only).
+        "DeepThinkingAutoJoin",
         // Companion › Thinking pool › Pool members: the member count and usable slots, the guidance ("1 slot: long thinking can
         // delay screen and sound summaries; add a second slot for the full experience."), the likely-slowdown warnings (a member
         // beside the conversation's Thinking model or the voice), the live floor's line (which members start no new pool work
@@ -715,8 +718,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // reads the role's settings there and opens its dialog, so it needs --allow-ui-effects). Thinking's, Listening's and
         // Lip-sync's computers have the same button for the role they run ("SetupChangeHost-thinking-diva" reads "Change model:
         // conversation model on diva (now gemma4-e4b)").
-        // Each paired computer's Join the Thinking pool box ("DeepThinkingPool-diva" reads "Join the Thinking pool on diva" and
-        // whether it is ticked; ticking it saves thinking-pool.json, so it needs --allow-ui-effects). Each pool member's line
+        // Each paired computer's In the Thinking pool box ("DeepThinkingPool-diva" reads "diva in the Thinking pool" and whether
+        // it is ticked: a computer with a Thinking model joins by itself; unticking takes it out and keeps it out, ticking adds it
+        // again; both save thinking-pool.json, so they need --allow-ui-effects). Its line (DeepThinkingHost-diva) says when a
+        // member is offline now or a computer is kept out. Each pool member's line
         // ("ThinkingPoolMember-0" reads "diva's Thinking pool (qwen3-8b): 2 slots; text only."), its slot choice
         // (ThinkingPoolSlots-0) and its Remove button (ThinkingPoolRemove-0); both save thinking-pool.json, so they need
         // --allow-ui-effects. Its May answer for the conversation box ("ThinkingPoolAnswers-0" reads "diva's Thinking pool
