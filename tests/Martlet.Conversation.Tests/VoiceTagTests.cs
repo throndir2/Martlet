@@ -315,7 +315,7 @@ public sealed class VoiceTagTests
 
     [Theory]
     [InlineData("Hi. [expressive] We won [laugh] today!", "Hi.|[expressive] We won today!")]
-    [InlineData("[excited] Yay! [whisper] Quiet now.", "[expressive] Yay!|[whispering] Quiet now.")]
+    [InlineData("[excited] Yay! [whisper] Quiet now.", "[expressive] Yay!|Quiet now.")]
     [InlineData("(excitedly) Look at that!", "[expressive] Look at that!")]
     public void Chatterbox_original_keeps_only_its_style_tags(string input, string expected)
     {
@@ -327,13 +327,14 @@ public sealed class VoiceTagTests
     }
 
     [Fact]
-    public void Thinking_prompt_for_chatterbox_original_offers_expressive_and_whispering_as_tones_only()
+    public void Thinking_prompt_for_chatterbox_original_offers_expressive_as_its_only_tone()
     {
         var prompt = VoiceTags.Instructions(SpeechEngines.ChatterboxOriginal, null)!;
         Assert.StartsWith("Your replies are spoken aloud by Chatterbox Original", prompt);
         Assert.DoesNotContain(VoiceTags.SoundsHeading, prompt);
         Assert.Contains(VoiceTags.TonesHeading + "\n[expressive] - expressive and animated", prompt);
-        Assert.Contains("\n[whispering] - ", prompt);
+        // The model can't whisper and Martlet adds no whisper of its own, so the reply isn't offered one.
+        Assert.DoesNotContain("[whispering]", prompt);
         Assert.DoesNotContain("[laugh]", prompt);
         Assert.Same(SpeechEngines.ChatterboxOriginalTags, SpeechEngines.TagsForModel("chatterbox-original"));
         Assert.Same(SpeechEngines.ChatterboxTurboTags, SpeechEngines.TagsForModel("chatterbox-nano"));

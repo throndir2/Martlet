@@ -32,7 +32,6 @@ import time
 import traceback
 import urllib.request
 from collections import OrderedDict
-from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -106,11 +105,6 @@ SPEECH_TOKENS_PER_TEXT_TOKEN = int(os.environ.get("MARTLET_CHATTERBOX_TOKENS_PER
 SPEECH_TOKENS_PER_TAG = int(os.environ.get("MARTLET_CHATTERBOX_TOKENS_PER_TAG", "100"))
 # The tokenizer's 19 tags (added_tokens.json, ids 50257-50275).
 TAG_TOKEN_FIRST, TAG_TOKEN_LAST = 50257, 50275
-# Turbo reads its [whispering] tag but doesn't whisper (measured on four starter voices: as voiced as without it, at the same
-# level), and its vocoder takes the voice's pitch from the mel, not from a source it could be told to drop. So a sentence that
-# starts with the tag is whispered here (Whisperer), this many dB below the voice's own level, before the watermark.
-WHISPER_TAG = "[whispering]"
-WHISPER_DB = float(os.environ.get("MARTLET_CHATTERBOX_WHISPER_DB", "-6"))
 # How many speech tokens are drawn between asking the GPU whether the stop token came (the tokens are the same as asking
 # after every one; measured on an RTX 4070, 11.3 -> 11.1 ms a token, the same 30 ms with another program using the card).
 CHECK_EVERY = 4
@@ -784,8 +778,6 @@ class EngineHost:
         self.idle_checks = 0
         self.idle_last_ms: int | None = None
         self.idle_fastest_ms: int | None = None
-        # Sentences whispered since the service started (Whisperer): what /status reports as whisper.parts.
-        self.whispered_parts = 0
         # The original model (OriginalVoice), its sentences said expressively since the service started, and the style the last
         # reply asked for (what /status reports as style).
         self.original: OriginalVoice | None = None
@@ -817,7 +809,6 @@ class EngineHost:
                     "first_tokens": CPU_FIRST_TOKENS if self.fast.on_cpu else None,
                     "hold_tokens": CPU_HOLD_TOKENS if self.fast.on_cpu else 3, "on": self.fast.streams,
                     "token_ms": round(self.fast.cpu_speed.token * 1000, 1) if self.fast.on_cpu else None},
-                "whisper": {"level_db": WHISPER_DB, "parts": self.whispered_parts},
                 "worker": self.identity,
             }
             if _pinned().family == "original":
@@ -988,7 +979,6 @@ class EngineHost:
                     # On the CPU the reply's pieces share one playback clock, so a later piece streams only when needed.
                     playback = _Playback(speed=fast.cpu_speed) if fast is not None else None
                     capped = 0
-                    whispered_parts = 0
                     for chunk in job.request.chunks:
                         if job.cancel_requested:
                             return
@@ -998,44 +988,38 @@ class EngineHost:
                             if not job.chunk_completed(chunk.index):
                                 return
                             continue
-                        # A sentence starting with [whispering] is whispered here: Turbo itself doesn't.
-                        for part, whisper in _whisper_parts(text):
-                            whispered_parts += whisper
-                            spoken = False
-                            if streaming:
-                                # Spoken as it is made: the first audio leaves after about a dozen speech tokens on a GPU,
-                                # CPU_FIRST_TOKENS on the CPU.
-                                try:
-                                    for pcm in fast.stream(part, cancelled=lambda: job.cancel_requested, whisper=whisper,
-                                                           playback=playback):
-                                        spoken = True
-                                        first_audio = first_audio if first_audio is not None else time.monotonic() - started
-                                        samples += len(pcm) // 2
-                                        if not job.emit_pcm(chunk.index, pcm):
-                                            return
-                                except CacheTooSmall:
-                                    pass
-                                if job.cancel_requested:
-                                    return
-                            if not spoken:
-                                pcm = _generate_with_memory_retry(engine, part, reference_path, whisper=whisper)
-                                first_audio = first_audio if first_audio is not None else time.monotonic() - started
-                                samples += len(pcm) // 2
-                                if not job.emit_pcm(chunk.index, pcm):
-                                    return
-                            if fast is not None and fast.capped:
-                                capped += 1
+                        # The piece goes to the model whole, with its tags as written: a [whispering] is the model's own
+                        # whisper, never an effect added here.
+                        spoken = False
+                        if streaming:
+                            # Spoken as it is made: the first audio leaves after about a dozen speech tokens on a GPU,
+                            # CPU_FIRST_TOKENS on the CPU.
+                            try:
+                                for pcm in fast.stream(text, cancelled=lambda: job.cancel_requested, playback=playback):
+                                    spoken = True
+                                    first_audio = first_audio if first_audio is not None else time.monotonic() - started
+                                    samples += len(pcm) // 2
+                                    if not job.emit_pcm(chunk.index, pcm):
+                                        return
+                            except CacheTooSmall:
+                                pass
+                            if job.cancel_requested:
+                                return
+                        if not spoken:
+                            pcm = _generate_with_memory_retry(engine, text, reference_path)
+                            first_audio = first_audio if first_audio is not None else time.monotonic() - started
+                            samples += len(pcm) // 2
+                            if not job.emit_pcm(chunk.index, pcm):
+                                return
+                        if fast is not None and fast.capped:
+                            capped += 1
                         if not job.chunk_completed(chunk.index):
                             return
-                    if whispered_parts:
-                        with self.lock:
-                            self.whispered_parts += whispered_parts
                     # Timing only, never the text: how long this reply's speech took to make.
                     _log(f"Made {samples / 24_000:.2f} s of speech in {(time.monotonic() - started) * 1000:.0f} ms, first audio after "
                          f"{(first_audio or 0) * 1000:.0f} ms ({'kept' if cached else 'new'} voice conditionals, "
                          f"{'CUDA graph' if fast is not None and fast.graph_ready else 'eager'} decoding"
                          f"{', streamed' if streaming else ''}"
-                         f"{f', {whispered_parts} part(s) whispered' if whispered_parts else ''}"
                          f"{f', {capped} piece(s) stopped at their speech-token limit' if capped else ''}).")
                 job.completed()
             finally:
@@ -1084,23 +1068,22 @@ class EngineHost:
 
     def _speak_original(self, job: Job, original: "OriginalVoice") -> bool:
         """The original model: each part of each piece spoken whole, as the reply's style says (VoiceStyle: general, or
-        expressive for a sentence that starts with [expressive]; [whispering] whispers it). False when the reply stopped."""
+        expressive for a sentence that starts with [expressive]). False when the reply stopped."""
         started = time.monotonic()
         cached = original.use_reference(job.request.reference.audio)
         samples = 0
         first_audio: float | None = None
-        whispered_parts = expressive_parts = capped = 0
+        expressive_parts = capped = 0
         for chunk in job.request.chunks:
             if job.cancel_requested:
                 return False
             text = _speakable(chunk.text)
-            for part, expressive, whisper in _original_parts(text) if text else []:
+            for part, expressive in _original_parts(text) if text else []:
                 if job.cancel_requested:
                     return False
-                whispered_parts += whisper
                 expressive_parts += expressive
                 exaggeration, cfg_weight = job.request.style.expressive if expressive else job.request.style.general
-                pcm = original.speak(part, exaggeration, cfg_weight, whisper)
+                pcm = original.speak(part, exaggeration, cfg_weight)
                 capped += original.capped
                 first_audio = first_audio if first_audio is not None else time.monotonic() - started
                 samples += len(pcm) // 2
@@ -1109,14 +1092,12 @@ class EngineHost:
             if not job.chunk_completed(chunk.index):
                 return False
         with self.lock:
-            self.whispered_parts += whispered_parts
             self.expressive_parts += expressive_parts
             self.last_style = job.request.style
         # Timing only, never the text.
         _log(f"Made {samples / 24_000:.2f} s of speech in {(time.monotonic() - started) * 1000:.0f} ms, first audio after "
              f"{(first_audio or 0) * 1000:.0f} ms ({'kept' if cached else 'new'} voice conditionals, original model on "
              f"{original.device}{f', {expressive_parts} part(s) expressive' if expressive_parts else ''}"
-             f"{f', {whispered_parts} part(s) whispered' if whispered_parts else ''}"
              f"{f', {capped} piece(s) stopped at their speech-token limit' if capped else ''}).")
         return True
 
@@ -1223,29 +1204,33 @@ def _speakable(text: str) -> str:
 
 
 _SENTENCE_END = re.compile(r"[.!?]+[\"')\]\u2019\u201d]*(?=\s|$)")
-_WHISPER = re.compile(re.escape(WHISPER_TAG), re.IGNORECASE)
 _WORD = re.compile(r"\w")
+# The original model's style tags, all left out of what it reads. Only [expressive] changes how a sentence is said: the model
+# can't whisper, and Martlet adds no whisper of its own, so a [whispering] (an older desktop still sends it) is just dropped.
+_STYLE_TAGS = re.compile(r"\[(expressive|whispering)\]", re.IGNORECASE)
+_EXPRESSIVE = re.compile(r"\[expressive\]", re.IGNORECASE)
 
 
-def _whisper_parts(text: str) -> list[tuple[str, bool]]:
-    """A piece as (text, whispered) parts in order: from each [whispering] to the end of its sentence (. ! or ?, or the
-    piece's end) whispered, as the Thinking prompt promises a tone; the rest in the voice. Neighbouring whispered sentences
-    stay one part; a [whispering] with nothing after it in its sentence whispers nothing. The tag stays in the text."""
+def _original_parts(text: str) -> list[tuple[str, bool]]:
+    """A piece for the original model as (text, expressive) parts in order: from each [expressive] to the end of its sentence
+    (. ! or ? or the piece's end) expressive, as the Thinking prompt promises a tone; the rest in the general voice. The
+    original model has no tag tokens, so the tags are left out of what it reads. Neighbouring parts in the same style stay one
+    part; a tag with no words after it in its sentence styles nothing."""
     parts: list[tuple[str, bool]] = []
 
-    def add(part: str, whisper: bool) -> None:
-        part = part.strip()
+    def add(part: str, expressive: bool) -> None:
+        part = " ".join(_STYLE_TAGS.sub(" ", part).split())
         if not part:
             return
-        if whisper and not _WORD.search(_WHISPER.sub("", part)):
-            whisper = False
-        if parts and parts[-1][1] == whisper:
-            parts[-1] = (f"{parts[-1][0]} {part}", whisper)
+        if not _WORD.search(part):
+            expressive = False
+        if parts and parts[-1][1] == expressive:
+            parts[-1] = (f"{parts[-1][0]} {part}", expressive)
         else:
-            parts.append((part, whisper))
+            parts.append((part, expressive))
 
     position = 0
-    while tag := _WHISPER.search(text, position):
+    while tag := _EXPRESSIVE.search(text, position):
         add(text[position:tag.start()], False)
         end = _SENTENCE_END.search(text, tag.end())
         stop = end.end() if end else len(text)
@@ -1253,152 +1238,6 @@ def _whisper_parts(text: str) -> list[tuple[str, bool]]:
         position = stop
     add(text[position:], False)
     return parts
-
-
-_STYLE_TAGS = re.compile(r"\[(expressive|whispering)\]", re.IGNORECASE)
-
-
-def _original_parts(text: str) -> list[tuple[str, bool, bool]]:
-    """A piece for the original model as (text, expressive, whispered) parts in order: from each [expressive] or [whispering]
-    to the end of its sentence (. ! or ?, or the piece's end) in that style, both when both start it, as the Thinking prompt
-    promises a tone; the rest in the general voice. The original model has no tag tokens, so the tags are left out of what it
-    reads. Neighbouring parts in the same style stay one part; a tag with no words after it in its sentence styles nothing."""
-    parts: list[tuple[str, bool, bool]] = []
-
-    def add(part: str, expressive: bool, whisper: bool) -> None:
-        part = " ".join(_STYLE_TAGS.sub(" ", part).split())
-        if not part:
-            return
-        if not _WORD.search(part):
-            expressive = whisper = False
-        if parts and parts[-1][1:] == (expressive, whisper):
-            parts[-1] = (f"{parts[-1][0]} {part}", expressive, whisper)
-        else:
-            parts.append((part, expressive, whisper))
-
-    position = 0
-    while tag := _STYLE_TAGS.search(text, position):
-        add(text[position:tag.start()], False, False)
-        end = _SENTENCE_END.search(text, tag.end())
-        stop = end.end() if end else len(text)
-        styles = {found.group(1).lower() for found in _STYLE_TAGS.finditer(text, tag.start(), stop)}
-        add(text[tag.start():stop], "expressive" in styles, "whispering" in styles)
-        position = stop
-    add(text[position:], False, False)
-    return parts
-
-
-class Whisperer:
-    """A voice turned into a whisper as its audio arrives (float samples in, as many out): each 25 ms frame's spectral
-    envelope (linear prediction, order 2 + 1 per kHz) shapes white noise instead of the voice's pulses, as breath through a
-    whispering mouth does, high-passed at 300 Hz (where a whisper has no voice) and then set to the frame's own level
-    WHISPER_DB lower; the frames are overlap-added under sine windows, so the noise's level stays even. What arrives is
-    whispered in order whatever the chunks, the same as all at once; the last 25-40 ms waits for the next audio or
-    finish()."""
-
-    def __init__(self, rate: int = 24_000, seed: int = 0, gain_db: float | None = None) -> None:
-        import numpy as np  # type: ignore
-        from scipy.signal import butter  # type: ignore
-
-        self.np = np
-        self.order = 2 + rate // 1000
-        self.frame = int(0.025 * rate) // 2 * 2
-        self.hop = self.frame // 2
-        hann = np.hanning(self.frame + 1)[:-1]
-        self.analysis = hann
-        self.analysis_energy = float(np.dot(hann, hann))
-        self.synthesis = np.sqrt(hann)
-        self.expand = 0.994 ** np.arange(self.order + 1)
-        self.size = 1 << (2 * self.frame - 1).bit_length()
-        self.gain = 10 ** ((WHISPER_DB if gain_db is None else gain_db) / 20)
-        self.sos = butter(4, 300, "highpass", fs=rate, output="sos")
-        self.rng = np.random.default_rng(seed)
-        # Half a frame of silence first, so the first frame is centred on the first sample; its output is dropped.
-        self.pending = np.zeros(self.hop)
-        self.tail = np.zeros(self.hop)
-        self.skip = self.hop
-        self.received = 0
-        self.sent = 0
-
-    def feed(self, samples: Any) -> Any:
-        """The whispered audio ready so far for these samples."""
-        samples = self.np.asarray(samples, dtype=self.np.float64).reshape(-1)
-        self.received += samples.size
-        return self._push(samples)
-
-    def finish(self) -> Any:
-        """The rest of the whisper, so that as many samples came out as went in."""
-        return self._push(self.np.zeros(self.frame + self.hop))
-
-    def _push(self, samples: Any) -> Any:
-        np = self.np
-        self.pending = np.concatenate([self.pending, samples])
-        ready = []
-        while self.pending.size >= self.frame:
-            ready.append(self._frame(self.pending[: self.frame]))
-            self.pending = self.pending[self.hop:]
-        if not ready:
-            return np.zeros(0, dtype=np.float32)
-        out = np.concatenate(ready)
-        dropped = min(self.skip, out.size)
-        self.skip -= dropped
-        out = out[dropped:][: max(0, self.received - self.sent)]
-        self.sent += out.size
-        return np.clip(out, -1.0, 1.0).astype(np.float32)
-
-    def _frame(self, x: Any) -> Any:
-        """The finished first half of this frame's slot: the last frame's second half plus this frame's first."""
-        np = self.np
-        windowed = x * self.analysis
-        power = float(np.dot(windowed, windowed)) / self.analysis_energy
-        y = np.zeros(self.frame)
-        if power > 1e-10:
-            from scipy.linalg import solve_toeplitz  # type: ignore
-            from scipy.signal import lfilter, sosfilt  # type: ignore
-
-            spectrum = np.fft.rfft(windowed, self.size)
-            r = np.fft.irfft(spectrum.real ** 2 + spectrum.imag ** 2, self.size)[: self.order + 1]
-            r[0] *= 1.0 + 1e-6
-            try:
-                a = np.concatenate([[1.0], solve_toeplitz(r[:-1], -r[1:])]) * self.expand
-                noise = sosfilt(self.sos, lfilter([1.0], a, self.rng.standard_normal(self.frame)))
-                level = float(np.dot(noise, noise)) / self.frame
-                if math.isfinite(level) and level > 0:
-                    y = noise * (math.sqrt(power / level) * self.gain) * self.synthesis
-            except (np.linalg.LinAlgError, ValueError):
-                pass
-        y[: self.hop] += self.tail
-        self.tail = y[self.hop:].copy()
-        return y[: self.hop]
-
-
-def whispered(samples: Any, rate: int = 24_000) -> Any:
-    """A whole piece whispered (Whisperer)."""
-    import numpy as np  # type: ignore
-
-    whisperer = Whisperer(rate)
-    return np.concatenate([whisperer.feed(samples), whisperer.finish()])
-
-
-@contextmanager
-def _whispering(model: Any) -> Any:
-    """While inside, what model.generate makes is whispered: its Perth watermarker, which generate() runs on the finished
-    speech, whispers the speech first, so the watermark is still applied to (and found in) what is sent."""
-    marker = model.watermarker
-    own = "apply_watermark" in vars(marker)
-    original = marker.apply_watermark
-
-    def apply(wav: Any, sample_rate: int, **kwargs: Any) -> Any:
-        return original(whispered(wav, int(sample_rate)), sample_rate=sample_rate, **kwargs)
-
-    marker.apply_watermark = apply
-    try:
-        yield
-    finally:
-        if own:
-            marker.apply_watermark = original
-        else:
-            del marker.apply_watermark
 
 
 def _free_gpu_memory() -> None:
@@ -1414,18 +1253,16 @@ def _free_gpu_memory() -> None:
         pass
 
 
-def _generate_with_memory_retry(model: Any, text: str, reference_path: Path | None, whisper: bool = False) -> bytes:
-    """One sentence (whispered when whisper is set); when the graphics card runs out of memory, free the cache once and try
-    again."""
-    with _whispering(model) if whisper else nullcontext():
-        try:
-            return _real_generate_pcm(model, text, reference_path)
-        except Exception as exc:
-            if not _out_of_memory(exc):
-                raise
-            _log(f"Out of graphics memory ({_failure_detail(exc)}); freeing cached memory and trying once more.")
-            _free_gpu_memory()
-            return _real_generate_pcm(model, text, reference_path)
+def _generate_with_memory_retry(model: Any, text: str, reference_path: Path | None) -> bytes:
+    """One sentence; when the graphics card runs out of memory, free the cache once and try again."""
+    try:
+        return _real_generate_pcm(model, text, reference_path)
+    except Exception as exc:
+        if not _out_of_memory(exc):
+            raise
+        _log(f"Out of graphics memory ({_failure_detail(exc)}); freeing cached memory and trying once more.")
+        _free_gpu_memory()
+        return _real_generate_pcm(model, text, reference_path)
 
 
 class FakeEngine:
@@ -1869,15 +1706,14 @@ class FastTurbo:
             return False
         return self.graph_ready or (self.on_cpu and CPU_FIRST_TOKENS > 0)
 
-    def stream(self, text: str, cancelled: Any = None, whisper: bool = False, playback: "_Playback | None" = None) -> Any:
+    def stream(self, text: str, cancelled: Any = None, playback: "_Playback | None" = None) -> Any:
         """One piece of speech as 24 kHz mono PCM16 chunks, each watermarked. On a GPU the first comes after about 12 speech
         tokens (half a second of speech) and then 25, 50 and 100 more at a time; on the CPU, when playback (the reply's
         _Playback, shared by its pieces) says one is due. Each chunk decodes every token so far with the same noise
         and holds back the last 3 tokens' frames until their lookahead is known; the vocoder carries its source and an 8-frame
         mel overlap across chunks, and the 160 ms where chunks meet is crossfaded (CosyVoice 2's streaming scheme, which
         S3Gen comes from). Measured against a whole-piece decode: the same length, less difference than two whole decodes
-        with different noise, no larger sample jumps at the seams, and the watermark still detected. With whisper the
-        speech is whispered (Whisperer) before it is watermarked."""
+        with different noise, no larger sample jumps at the seams, and the watermark still detected."""
         import numpy as np  # type: ignore
         import torch  # type: ignore
         from chatterbox.models.s3gen.const import S3GEN_SIL  # type: ignore
@@ -1891,7 +1727,6 @@ class FastTurbo:
         overlap = 8 * 480
         window = torch.from_numpy(np.hamming(2 * overlap)).float()
         trim = s3.trim_fade.float().cpu()
-        whisperer = Whisperer(int(model.sr)) if whisper else None
         with torch.inference_mode():
             noise = torch.randn(1, 80, 2 * (prompt + 1100), device=model.device, dtype=s3.dtype)
 
@@ -1946,10 +1781,6 @@ class FastTurbo:
                     wav[:, :len(trim)] *= trim
                     first = False
                 samples = wav[0].numpy()
-                if whisperer is not None:
-                    samples = whisperer.feed(samples)
-                    if last:
-                        samples = np.concatenate([samples, whisperer.finish()])
                 pcm = None
                 if samples.size:
                     marked = model.watermarker.apply_watermark(samples, sample_rate=model.sr)
@@ -2197,18 +2028,17 @@ class OriginalVoice:
             self.conditionals.popitem(last=False)
         return False
 
-    def speak(self, text: str, exaggeration: float, cfg_weight: float, whisper: bool = False) -> bytes:
-        """One part as 24 kHz mono PCM16 (whispered before the watermark when whisper is set); when the graphics card runs out
-        of memory, the cache is freed once and the part tried again."""
-        with _whispering(self.model) if whisper else nullcontext():
-            try:
-                return self._speak(text, exaggeration, cfg_weight)
-            except Exception as exc:
-                if not _out_of_memory(exc):
-                    raise
-                _log(f"Out of graphics memory ({_failure_detail(exc)}); freeing cached memory and trying once more.")
-                _free_gpu_memory()
-                return self._speak(text, exaggeration, cfg_weight)
+    def speak(self, text: str, exaggeration: float, cfg_weight: float) -> bytes:
+        """One part as 24 kHz mono PCM16; when the graphics card runs out of memory, the cache is freed once and the part tried
+        again."""
+        try:
+            return self._speak(text, exaggeration, cfg_weight)
+        except Exception as exc:
+            if not _out_of_memory(exc):
+                raise
+            _log(f"Out of graphics memory ({_failure_detail(exc)}); freeing cached memory and trying once more.")
+            _free_gpu_memory()
+            return self._speak(text, exaggeration, cfg_weight)
 
     def _speak(self, text: str, exaggeration: float, cfg_weight: float) -> bytes:
         wav, self.capped = _original_generate(self.model, text, exaggeration, cfg_weight)
