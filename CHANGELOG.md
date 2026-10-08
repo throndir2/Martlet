@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.58.0] - 2026-10-08
+
 ### Added
 - Companion › Touch › Touch zones now shows your character and a first guess at its touch zones as soon as you open it, so clicks on the character react right away. Martlet places the guess from the character's own parts and shape, with no AI and nothing sent. Press **Detect zones** and your Thinking model then finds the zones, replacing the first guess as it goes. ([#621](https://github.com/throndir2/Martlet/pull/621))
 - Character profiles now also remember, on each computer, where your character stands and how big it is, where it looks, and which touches stop it while it talks. Switch back to a profile, here or on another computer, and they come back; Companion › Profiles shows what each one keeps on this PC. ([#620](https://github.com/throndir2/Martlet/pull/620))
