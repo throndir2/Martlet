@@ -87,7 +87,9 @@ internal static class ContextBoardCheck
             var secondCarried = Carried(secondUser);
             var staleSkipped = !firstCarried.Contains(ContextBoard.Sound) && !firstSnapshot.Sources.Contains(ContextBoard.Sound);
             var consumedOnce = firstCarried.Contains(ContextBoard.Touch) && !secondCarried.Contains(ContextBoard.Touch) && consumed >= 1;
-            var orderStable = firstSnapshot.Sources.Take(3).SequenceEqual([ContextBoard.Character, ContextBoard.Screen, ContextBoard.Touch]);
+            // The fixture's own notes keep the board's order, whatever known source (gaze, activity) a caller posts between them.
+            var orderStable = firstSnapshot.Sources.Where(s => s is ContextBoard.Character or ContextBoard.Screen or ContextBoard.Touch)
+                .SequenceEqual([ContextBoard.Character, ContextBoard.Screen, ContextBoard.Touch]);
             var postedFirst = posted is not null && firstSnapshot.Notes.Any(n => n.Version == posted.Version);
             var postedSecond = posted is not null && secondSnapshot.Notes.Any(n => n.Version == posted.Version);
             var ok = firstAnswer.Outcome == "Completed" && secondAnswer.Outcome == "Completed" && keptIsStart && !keptHasBoard &&
