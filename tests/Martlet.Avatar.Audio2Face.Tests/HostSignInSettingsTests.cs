@@ -28,6 +28,17 @@ public sealed class HostSignInSettingsTests
     }
 
     [Fact]
+    public void Allowing_one_of_your_computers_sends_no_access_so_hosts_older_than_friend_sharing_take_it()
+    {
+        var member = HostSignInAccess.AllowChange("authentik", "me-1", "me@example.net", friend: false);
+        Assert.False(member.ContainsKey("access"));
+        Assert.Equal("allow", (string?)member["action"]);
+        Assert.Equal("me-1", (string?)member["subject"]);
+        var friend = HostSignInAccess.AllowChange("authentik", "ana-7", null, friend: true);
+        Assert.Equal("friend", (string?)friend["access"]);
+    }
+
+    [Fact]
     public void The_settings_answer_says_which_identities_and_computers_are_a_friends_and_which_are_yours()
     {
         using var document = System.Text.Json.JsonDocument.Parse("""

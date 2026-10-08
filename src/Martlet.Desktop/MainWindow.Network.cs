@@ -42,6 +42,8 @@ public partial class MainWindow
     private string? networkProblem;
     private bool networkBusy;
     private bool networkQueued;
+    /// <summary>Hosts of your network named like a host a friend shares with this PC (logged once each).</summary>
+    private readonly HashSet<string> networkSameNames = new(StringComparer.Ordinal);
 
     private void InitializeNetwork()
     {
@@ -104,11 +106,18 @@ public partial class MainWindow
                 return;
             }
             NetworkSyncResult result;
+            // Your network never pairs a host of yours named like a host a friend shares with this PC: that would replace it.
+            var sharedNames = sharedHosts.Select(h => h.HostId).Except(before.Ignored, StringComparer.Ordinal).ToArray();
             using (var key = NetworkIdentity.LoadOrCreate(directory, NetworkIdentity.DeviceId(hosts)))
             {
                 var engine = new NetworkSyncEngine(key, Environment.MachineName);
-                result = await engine.SyncAsync(before, pairings, ConnectToHost, lifetime.Token);
+                result = await engine.SyncAsync(before with { Ignored = [.. before.Ignored, .. sharedNames] }, pairings, ConnectToHost,
+                    lifetime.Token);
             }
+            foreach (var id in sharedNames.Where(id => result.State.Roster?.Host(id) is { Removed: false }))
+                if (networkSameNames.Add(id))
+                    ErrorLog.Warn($"Martlet network: your host {id} has the same name as a host a friend shares with this PC, so this PC " +
+                        "doesn't pair it. Forget the shared one under Devices › Hosts shared with this PC to use yours.");
             if (closing) return;
             networkProblem = null;
             foreach (var (pairing, secret) in result.Paired)
@@ -141,7 +150,8 @@ public partial class MainWindow
             var state = result.State with
             {
                 Adopt = result.State.Adopt.Union(latest.Adopt.Except(before.Adopt, StringComparer.Ordinal), StringComparer.Ordinal).ToArray(),
-                Ignored = result.State.Ignored.Union(latest.Ignored.Except(before.Ignored, StringComparer.Ordinal), StringComparer.Ordinal).ToArray()
+                Ignored = result.State.Ignored.Except(sharedNames, StringComparer.Ordinal)
+                    .Union(latest.Ignored.Except(before.Ignored, StringComparer.Ordinal), StringComparer.Ordinal).ToArray()
             };
             if (state.Roster is { } merged && latest.Roster is { } local && local.NetworkId == merged.NetworkId && local.Digest() != before.Roster?.Digest())
                 state = state with { Roster = NetworkRoster.Accept(merged, local).Roster };
@@ -383,7 +393,7 @@ public partial class MainWindow
         // Counts only: the addresses themselves show in the Outside addresses dialog, not in the row (or MCP snapshots).
         var count = member.Addresses?.Count ?? 0;
         var text = count == 0 ? "No outside addresses." : count == 1 ? "1 outside address." : $"{count} outside addresses.";
-        return HostRoutes.For(member.Origin) switch
+        return HostRoutes.For(member.Origin, member.Spki) switch
         {
             { Route: "home" } => text + " Reached at home.",
             { Route: "outside", Address: { } at } => text + $" Reached from outside home (outside address {Array.IndexOf(member.Addresses?.ToArray() ?? [], at) + 1}).",
@@ -612,7 +622,7 @@ public partial class MainWindow
         {
             var others = roster.ActiveDesktops.Count() - 1;
             var hosts = roster.ActiveHosts.Count();
-            var away = roster.ActiveHosts.Count(h => HostRoutes.For(h.Origin) is { Route: "outside" });
+            var away = roster.ActiveHosts.Count(h => HostRoutes.For(h.Origin, h.Spki) is { Route: "outside" });
             return $"This PC is in your Martlet network with {Count(others, "other computer")} and {Count(hosts, "host")}. " +
                 (away > 0 ? $"{Count(away, "host")} {(away == 1 ? "is" : "are")} reached from outside home right now. " : "") +
                 "Hosts you pair on any of them are shared with all of them" +

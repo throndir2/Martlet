@@ -2,8 +2,10 @@ using System.Text.Json;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
+using Martlet.Core.Contracts;
 using Martlet.Core.Installation;
 using Martlet.Core.Network;
+using Martlet.Core.Settings;
 using Martlet.Desktop;
 
 namespace Martlet.Desktop.Tests;
@@ -95,12 +97,69 @@ public sealed class SharedHostsTests
         var local = ClusterSync.Local(ClusterJobs.LipSync, null, avatar, shared: ["friends-host"]);
         Assert.Equal(new LocalJob("friends-host", false, Shared: true), local);
         Assert.False(ClusterSync.Seeds(local));
+        Assert.False(ClusterSync.Recordable(local, ["home-host", "friends-host"]));
         var plan = ClusterPlan.Empty.Assign(ClusterJobs.LipSync, "home-host", false, false, null, "desktop-b", Now);
         Assert.True(ClusterSync.Matches(plan.For(ClusterJobs.LipSync)!, local));
         // The same pairing as one of your own hosts is recorded and followed as before.
         var own = ClusterSync.Local(ClusterJobs.LipSync, null, avatar);
         Assert.True(ClusterSync.Seeds(own));
+        Assert.True(ClusterSync.Recordable(own, ["friends-host"]));
         Assert.False(ClusterSync.Matches(plan.For(ClusterJobs.LipSync)!, own));
+        // A job that still names a shared host this PC forgot is no longer marked shared, but it isn't one of your hosts either:
+        // it never goes into the plan. This PC's own choice (no host) always may.
+        Assert.False(ClusterSync.Recordable(own, ["home-host"]));
+        Assert.True(ClusterSync.Recordable(new LocalJob(null, false), []));
+    }
+
+    [Fact]
+    public void A_shared_host_and_your_own_host_with_the_same_home_address_are_reached_apart()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        const string friendsKey = "sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+        var own = Own("desk-host", "192.168.71.10") with { OutsideAddresses = ["mine.example.net:9443"] };
+        var shared = Shared("friends-desk", "192.168.71.10", ["friend.example.net:9443"]);
+        shared = shared with { Pairing = shared.Pairing with { SpkiFingerprint = friendsKey } };
+        HostRegistry.Save(scope.DirectoryPath, [own, shared]);
+        HostRegistry.Load(scope.DirectoryPath);
+        // Your host keeps the plain entry (unchanged for every caller); the friend's host has its own, by its key.
+        Assert.Equal(["mine.example.net:9443"], HostRoutes.For("https://192.168.71.10:9443")!.Outside);
+        Assert.Equal(["mine.example.net:9443"], HostRoutes.For("https://192.168.71.10:9443", Spki)!.Outside);
+        Assert.Equal(["friend.example.net:9443"], HostRoutes.For("https://192.168.71.10:9443", friendsKey)!.Outside);
+        Assert.Equal("friends-desk", HostRoutes.For("https://192.168.71.10:9443", friendsKey)!.HostId);
+        // Your network's roster (or a new address set for your host) never moves the friend's host.
+        HostRoutes.Set("https://192.168.71.10:9443", "desk-host", ["vpn.example.net:9443"], Spki);
+        Assert.Equal(["friend.example.net:9443"], HostRoutes.For("https://192.168.71.10:9443", friendsKey)!.Outside);
+        Assert.Equal(["vpn.example.net:9443"], HostRoutes.For("https://192.168.71.10:9443")!.Outside);
+    }
+
+    [Fact]
+    public async Task Your_own_pairing_and_a_shared_host_never_replace_each_other_under_one_name()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var pairings = new HostPairings(scope.DirectoryPath, new AvatarProfileStore(scope.DirectoryPath),
+            new SetupService(new SettingsStore(scope.DirectoryPath), new UnusedVault()));
+        HostRegistry.Save(scope.DirectoryPath, [Shared("friends-host", "10.20.30.40")]);
+        var another = Remote("friends-host", "192.168.70.20") with { SpkiFingerprint = "sha256:" + new string('e', 64) };
+        // Your network (or the Add a computer wizard) pairing your own host with the friend's host's name is refused.
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            pairings.AddAsync(another, HostSetupMethod.Agent, null, default, adopt: false));
+        Assert.Contains("a friend shares", refused.Message, StringComparison.Ordinal);
+        Assert.True(Assert.Single(HostRegistry.Load(scope.DirectoryPath)).Shared);
+        // The same host (the same key) becomes one of yours when its owner makes this PC's sign-in theirs.
+        var (mine, _) = await pairings.AddAsync(Remote("friends-host", "10.20.30.40"), HostSetupMethod.Agent, null, default, adopt: false);
+        Assert.False(mine.Shared);
+        Assert.False(Assert.Single(HostRegistry.Load(scope.DirectoryPath)).Shared);
+        // And a friend's host never replaces one of yours with the same name.
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            pairings.AddAsync(another, HostSetupMethod.Agent, null, default, adopt: false, access: HostSignInAccess.Friend));
+        Assert.False(Assert.Single(HostRegistry.Load(scope.DirectoryPath)).Shared);
+    }
+
+    private sealed class UnusedVault : ICredentialStore
+    {
+        public CredentialError Write(CredentialBinding binding, SecretLease secret) => throw new InvalidOperationException();
+        public CredentialReadResult Read(CredentialBinding binding) => throw new InvalidOperationException();
+        public CredentialError Delete(CredentialBinding binding) => throw new InvalidOperationException();
     }
 
     [Fact]

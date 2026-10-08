@@ -217,12 +217,31 @@ internal static class SignInRehearsal
         });
         using var keyFriend = NetworkKey.Create("lab-friend-pc");
         var friend = new LabDesktop(keyFriend, "FRIEND-PC");
+        await Run("A host too old to share with friends says so: the home PC is asked to update it (signin.friends_unsupported)", async () =>
+        {
+            // Hosts older than friend sharing refuse the unknown "access" field (request.invalid); a field this host doesn't
+            // know gets the same answer here. Allowing one of your own computers sends no "access", so older hosts take it.
+            var change = HostSignInAccess.AllowChange("authentik", "lab-user-42", "Ana", friend: true);
+            change["lab_unknown_field"] = true;
+            string? message = null;
+            string? refused;
+            try
+            {
+                await home.ChangeAsync(host.HostId, change, token);
+                refused = null;
+            }
+            catch (Audio2FaceHostException error)
+            {
+                refused = error.Code;
+                message = error.Message;
+            }
+            var member = HostSignInAccess.AllowChange("authentik", "lab-user-42", "Ana", friend: false);
+            return (refused == "signin.friends_unsupported" && member["access"] is null && message?.Contains("Update it first", StringComparison.Ordinal) == true,
+                $"friend allow refused as {refused ?? "nothing"}: {message}; a member allow sends access: {member["access"] is not null}");
+        });
         await Run("The home PC shares the host with a friend: the OpenID Connect identity is allowed as a friend (this host's engines only)", async () =>
         {
-            var settings = await home.ChangeAsync(host.HostId, new JsonObject
-            {
-                ["action"] = "allow", ["provider"] = "authentik", ["subject"] = "lab-user-42", ["label"] = "Ana", ["access"] = "friend"
-            }, token);
+            var settings = await home.ChangeAsync(host.HostId, HostSignInAccess.AllowChange("authentik", "lab-user-42", "Ana", friend: true), token);
             var saved = System.Text.Encoding.UTF8.GetString(host.SignInBytes ?? []);
             // The desktop's client reads the access back too (Sign-in from outside and Devices › Friends show it).
             var friendRead = settings.Allowed.FirstOrDefault(a => a.Subject == "lab-user-42") is { Friend: true };

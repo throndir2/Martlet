@@ -212,11 +212,16 @@ internal static class HostRegistry
         {
             throw new InvalidDataException($"Saved hosts couldn't be read ({error.Message}). Pair again.", error);
         }
+        // A host a friend shares never holds this PC's voices (speak there with the recording itself from the first sentence),
+        // and its owner's home address never changes how this PC reaches its own host at the same address (or the other way).
+        foreach (var host in hosts.Where(h => h.Shared))
+        {
+            Audio2FaceHostConnection.SendRecordingTo(host.HostId);
+            HostRoutes.KeepApart(host.Pairing.Origin, host.Pairing.SpkiFingerprint);
+        }
         // Saved outside addresses reach the host until the roster (which wins once this PC syncs it) says otherwise.
         foreach (var host in hosts.Where(h => h.OutsideAddresses is { Count: > 0 }))
-            HostRoutes.Prime(host.Pairing.Origin, host.HostId, host.OutsideAddresses!);
-        // A host a friend shares never holds this PC's voices: speak there with the recording itself from the first sentence.
-        foreach (var host in hosts.Where(h => h.Shared)) Audio2FaceHostConnection.SendRecordingTo(host.HostId);
+            HostRoutes.Prime(host.Pairing.Origin, host.HostId, host.OutsideAddresses!, host.Pairing.SpkiFingerprint);
         for (var i = 0; i < hosts.Count; i++)
             if (hosts[i].Method == HostSetupMethod.OnHost ||
                 thisPcAddress is not null && hosts[i].Method == HostSetupMethod.ThisPcDocker && !IsThisPc(hosts[i].Address, thisPcAddress))
@@ -326,6 +331,13 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
         var previous = hosts.FirstOrDefault(h => h.HostId == pairing.HostId);
         if (method == HostSetupMethod.OnHost) method = HostSetupMethod.Agent;
         var shared = access == HostSignInAccess.Friend;
+        // A friend's host and one of yours never replace each other under the same name. Only the same host (the same key)
+        // changes between the two, when its owner switches this PC's sign-in.
+        if (previous is not null && previous.Shared != shared && previous.Pairing.SpkiFingerprint != pairing.SpkiFingerprint)
+            throw new InvalidOperationException(shared
+                ? $"{pairing.HostId} is already one of your own hosts on this PC, so Martlet can't keep a friend's host with the same name here."
+                : $"{pairing.HostId} is a host a friend shares with this PC, so Martlet can't pair your own host with the same name here. " +
+                  "Forget the shared one under Devices › Hosts shared with this PC first.");
         var ssh = !shared && method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative;
         var host = new PairedHost
         {
@@ -345,8 +357,12 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
             OutsideAddresses = outsideAddresses is { Count: > 0 } ? outsideAddresses.ToArray()
                 : previous is { } before && before.Shared == shared ? before.OutsideAddresses : null
         };
-        if (host.OutsideAddresses is { Count: > 0 } outside) HostRoutes.Set(pairing.Origin, pairing.HostId, outside);
-        if (shared) Audio2FaceHostConnection.SendRecordingTo(pairing.HostId);
+        if (shared)
+        {
+            Audio2FaceHostConnection.SendRecordingTo(pairing.HostId);
+            HostRoutes.KeepApart(pairing.Origin, pairing.SpkiFingerprint);
+        }
+        if (host.OutsideAddresses is { Count: > 0 } outside) HostRoutes.Set(pairing.Origin, pairing.HostId, outside, pairing.SpkiFingerprint);
         HostRegistry.Save(dataDirectory, HostRegistry.Upsert(hosts, host));
         var lipSync = profile?.RemoteHost?.HostId == pairing.HostId;
         if (lipSync) await profiles.SaveAsync(profile! with { RemoteHost = pairing }, revision, token);

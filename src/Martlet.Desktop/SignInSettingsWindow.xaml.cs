@@ -138,11 +138,8 @@ public partial class SignInSettingsWindow : ThemedWindow
               "remove them from your Martlet network on their next sync, so they lose every host. When they sign in again, they may use only " +
               "this host's engines.";
         if (!ConfirmationDialog.Confirm(this, question, allowed.Friend ? "Make one of my computers" : "Make a friend")) return;
-        await ChangeAsync(new JsonObject
-        {
-            ["action"] = "allow", ["provider"] = allowed.Provider, ["subject"] = allowed.Subject, ["label"] = allowed.Label,
-            ["access"] = allowed.Friend ? HostSignInAccess.Member : HostSignInAccess.Friend
-        }, allowed.Friend ? $"{name} is one of your computers now; its computers sign in again to join your network."
+        await ChangeAsync(HostSignInAccess.AllowChange(allowed.Provider, allowed.Subject, allowed.Label, friend: !allowed.Friend),
+            allowed.Friend ? $"{name} is one of your computers now; its computers sign in again to join your network."
             : $"{name} is a friend now: its computers sign in again and then use only {host.HostId}'s engines.");
     }
 
@@ -225,12 +222,9 @@ public partial class SignInSettingsWindow : ThemedWindow
     {
         var friend = (AllowAccessBox.SelectedItem as ComboBoxItem)?.Tag as string == HostSignInAccess.Friend;
         var name = AllowLabelText.Text.Trim() is { Length: > 0 } typed ? typed : AllowSubjectText.Text.Trim();
-        await ChangeAsync(new JsonObject
-        {
-            ["action"] = "allow", ["provider"] = AllowProviderText.Text.Trim(), ["subject"] = AllowSubjectText.Text.Trim(),
-            ["label"] = AllowLabelText.Text.Trim() is { Length: > 0 } label ? label : null,
-            ["access"] = friend ? HostSignInAccess.Friend : HostSignInAccess.Member
-        }, friend ? $"Allowed {name} as a friend: once they sign in with the invite, their computer may use {host.HostId}'s engines."
+        await ChangeAsync(HostSignInAccess.AllowChange(AllowProviderText.Text.Trim(), AllowSubjectText.Text.Trim(),
+                AllowLabelText.Text.Trim() is { Length: > 0 } label ? label : null, friend),
+            friend ? $"Allowed {name} as a friend: once they sign in with the invite, their computer may use {host.HostId}'s engines."
             : $"Allowed {name} as one of your computers.");
     }
 
@@ -294,11 +288,7 @@ public partial class SignInSettingsWindow : ThemedWindow
     private async Task AllowNewestAsync(bool friend)
     {
         if (shown?.Refused.FirstOrDefault() is not { } newest) { StatusText.Text = "Nobody is waiting to be allowed."; return; }
-        await ChangeAsync(new JsonObject
-        {
-            ["action"] = "allow", ["provider"] = newest.Provider, ["subject"] = newest.Subject, ["label"] = newest.Label,
-            ["access"] = friend ? HostSignInAccess.Friend : HostSignInAccess.Member
-        }, friend
+        await ChangeAsync(HostSignInAccess.AllowChange(newest.Provider, newest.Subject, newest.Label, friend), friend
             ? $"Allowed {newest.Label ?? newest.Subject} as a friend. Once they sign in again from {newest.DeviceId}, their computer may use {host.HostId}'s engines."
             : $"Allowed {newest.Label ?? newest.Subject}. Sign in again from {newest.DeviceId}.");
     }

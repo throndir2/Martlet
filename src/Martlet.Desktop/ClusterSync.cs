@@ -96,6 +96,12 @@ internal static class ClusterSync
     /// computers can't use it.</summary>
     internal static bool Seeds(LocalJob local) => !local.Shared && (local.HostId is not null || local.Off);
 
+    /// <summary>Whether what this PC does for a job may go into your shared plan: its own choice (no host) or a host of yours
+    /// (<paramref name="own"/>: the hosts paired here that no friend shares, and this PC's own host service). A host a friend
+    /// shares, or one this PC no longer has (a forgotten shared host a job still names), never goes in.</summary>
+    internal static bool Recordable(LocalJob local, IReadOnlyCollection<string> own) =>
+        !local.Shared && (local.HostId is null || own.Contains(local.HostId));
+
     /// <summary>Whether this PC takes <paramref name="job"/> on for every computer, through its own host service: the owner set
     /// the job up on this PC to run here (the shared route, chosen on <paramref name="device"/>, is the one this PC uses and runs
     /// on the computer itself, like Ollama), and the plan leaves it to each computer's own choice. Then the computer it was set

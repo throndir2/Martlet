@@ -31,6 +31,15 @@ public static class HostSignInAccess
 
     /// <summary>"friend" stays a friend; anything else (absent, "member", an unknown word from a newer host) is the owner's.</summary>
     public static string Normalize(string? value) => value == Friend ? Friend : Member;
+
+    /// <summary>The settings change that allows an identity as one of the owner's computers or as a friend. A member entry
+    /// carries no "access" (the host's default), so hosts older than friend sharing still accept it.</summary>
+    public static JsonObject AllowChange(string provider, string subject, string? label, bool friend)
+    {
+        var change = new JsonObject { ["action"] = "allow", ["provider"] = provider, ["subject"] = subject, ["label"] = label };
+        if (friend) change["access"] = Friend;
+        return change;
+    }
 }
 
 /// <summary>Who a computer signed in as (shown to people; the host decides), and the access that sign-in gave
@@ -405,12 +414,13 @@ public sealed partial class Audio2FaceHostConnection
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + SignInSettingsPath) { Content = Audio2FaceHostClient.JsonContent(body) };
             Sign(request, body);
-            return await SignInSettingsAsync(request, cancellationToken).ConfigureAwait(false);
+            return await SignInSettingsAsync(request, cancellationToken, friendChange: (string?)change["access"] == HostSignInAccess.Friend)
+                .ConfigureAwait(false);
         }
         finally { CryptographicOperations.ZeroMemory(body); }
     }
 
-    private async Task<HostSignInSettings> SignInSettingsAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    private async Task<HostSignInSettings> SignInSettingsAsync(HttpRequestMessage request, CancellationToken cancellationToken, bool friendChange = false)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
@@ -424,6 +434,10 @@ public sealed partial class Audio2FaceHostConnection
             {
                 "request.invalid" when response.StatusCode == HttpStatusCode.BadRequest && request.Method == HttpMethod.Get =>
                     new Audio2FaceHostException("signin.unsupported", $"{pairing.HostId} runs an older Martlet without sign-in. Update it first."),
+                // Hosts older than friend sharing refuse the unknown "access" field.
+                "request.invalid" when response.StatusCode == HttpStatusCode.BadRequest && friendChange =>
+                    new Audio2FaceHostException("signin.friends_unsupported",
+                        $"{pairing.HostId} runs an older Martlet that can't share with friends yet. Update it first."),
                 "signin.invalid" => new Audio2FaceHostException(code, "The authenticator code didn't match. Check the app shows this host's entry and try the current code."),
                 "signin.weak_password" => new Audio2FaceHostException(code, "Use a password of at least 12 characters."),
                 "signin.denied" => new Audio2FaceHostException(code, "Only a computer in your Martlet network can change this host's sign-in."),

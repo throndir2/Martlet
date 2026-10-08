@@ -607,7 +607,9 @@ sharing** for each of your hosts where their provider is set up. It works the
 same for every host you manage from the app: this PC's own host service, a
 Linux host and a Windows host. An identity that is one of your own computers'
 sign-ins somewhere is not listed; change it in that host's **Sign-in from
-outside**.
+outside**. A host that runs a Martlet older than friend sharing can't share:
+the app says to update it first. Allowing one of your own computers there works
+as before.
 
 ### On your friend's Martlet
 
@@ -626,7 +628,14 @@ to join through it.
 - **This PC only.** A job on a shared host is that computer's own choice: it is
   never recorded in your friend's shared plan (*who does what*), never followed
   by their other computers, and never moved by the plan. Leaving it, the
-  computer follows the plan again.
+  computer follows the plan again. A job that still names a shared host after
+  it was forgotten never goes into the plan either.
+- **Never mixed with their own hosts.** A shared host and one of your friend's
+  own hosts never replace each other under the same name. **Join with an
+  invite** refuses a friend's host named like one of theirs. Their network
+  doesn't pair one of their own hosts named like a shared host (the log says
+  so) until they forget the shared one. Even with the same home address (two
+  homes can use the same private address), each is reached on its own route.
 - **Engines only.** Nothing between your friend's own computers talks to a
   shared host: not the network sync, the plan, shared settings, memories,
   voices, speaking voices, characters, creations, Home Assistant, API keys,
@@ -654,7 +663,7 @@ to join through it.
 | Diagnostics | The desktop log records the network as this PC sees it whenever it changes (membership, requests to join, who each host is paired with) and each host's note (`Martlet network: ...` lines on the Diagnostics page or MCP `logs_tail`) |
 | MCP | `network_status` (this PC's network from a data directory), `network_selftest` (end-to-end rehearsal on loopback, `Martlet.NodeLinkCheck network`) and `exposure_selftest` (the gateway's guard for a host reachable from outside home, `Martlet.NodeLinkCheck exposure`); card IDs in [MCP](MCP.md) |
 | Sign-in | `Martlet.Gateway` `GatewaySignIn.cs` (`GatewaySignInService`, settings rules, `signin.json`), `GatewayAccounts.cs` (password verifier, recovery codes), `GatewaySignInHttp.cs` (`/martlet/v1/signin`, `/begin`, `/complete`, `/settings`); `Martlet.Core` `Access/Totp.cs` and `Network/NetworkInvite.cs`; desktop `Remote/HostSignIn.cs`, `SignInJoinWindow`, `SignInSettingsWindow`; Linux `HostSignIn.cs` (`owner-signin-*`, `owner-invite`); MCP `signin_selftest` |
-| Friends | `GatewayAccess` (`GatewayContracts.cs`), kept with each credential (`GatewayPairing.cs`, `StoredGatewayCredential.Access`); deny by default in `GatewayAuthentication.cs` (`GatewayRequestAuthenticator`) with `GatewayApiAccess.Friends` per route (`GatewayApiKeys.cs`); `GatewaySignInService.FriendAllowed`; owner first in `GatewayInferencePriority.cs` and `GatewayInferenceRegistry.cs` (`BeginAsync`). Desktop: `HostSignInAccess` and `access` on sign-in answers, settings and network devices (`Remote/HostSignIn.cs`, `Remote/HostNetwork.cs`); `SignInSettingsWindow` (access per identity, switch, remove); `MainWindow.Friends.cs` and `Friends.cs` (`FriendsOverview`: Devices › Friends and Hosts shared with this PC); `PairedHost.Access` (`HostControl.cs`); `ClusterSync.Local` (`LocalJob.Shared`); `WorkSharingRoster.Classify` and `WorkRefusal.Owner` (owner first); MCP `network_status` (`pairedHosts[].access`, `friends`) and `signin_lab` (`mode` `owner` or `friend`) |
+| Friends | `GatewayAccess` (`GatewayContracts.cs`), kept with each credential (`GatewayPairing.cs`, `StoredGatewayCredential.Access`); deny by default in `GatewayAuthentication.cs` (`GatewayRequestAuthenticator`) with `GatewayApiAccess.Friends` per route (`GatewayApiKeys.cs`); `GatewaySignInService.FriendAllowed`; owner first in `GatewayInferencePriority.cs` and `GatewayInferenceRegistry.cs` (`BeginAsync`). Desktop: `HostSignInAccess` (`AllowChange`) and `access` on sign-in answers, settings and network devices (`Remote/HostSignIn.cs`, `Remote/HostNetwork.cs`); `HostRoutes.KeepApart` (a shared host's routes apart from your own host at the same home address); `SignInSettingsWindow` (access per identity, switch, remove); `MainWindow.Friends.cs` and `Friends.cs` (`FriendsOverview`: Devices › Friends and Hosts shared with this PC); `PairedHost.Access` (`HostControl.cs`); `ClusterSync.Local` (`LocalJob.Shared`) and `ClusterSync.Recordable`; `WorkSharingRoster.Classify` and `WorkRefusal.Owner` (owner first); MCP `network_status` (`pairedHosts[].access`, `friends`) and `signin_lab` (`mode` `owner` or `friend`) |
 | Outside home | `Martlet.Gateway` `GatewayGuard.cs` (guard, exposure choices, audit) and `GatewaySecurityAudit.cs` (`GET /martlet/v1/security/audit`); desktop `Remote/HostSecurity.cs` (`ReadSecurityAuditAsync`), `Remote/HostRoutes.cs` (which address a connection dials) and the **Outside addresses** button (`MainWindow.Network.cs`); `NetworkMember.Addresses` in `Martlet.Core`; Linux `HostExposure.cs` (`martlet-host owner-exposure`, `exposure.json`) |
 
 Apps and scripts outside the network (Home Assistant, your own scripts) don't
@@ -696,12 +705,17 @@ shows the live host in **Sign-in from outside**, and **Remove and remove its
 computers from the network** makes it remove the laptop, which loses the host.
 Sharing a host with friends on the desktop side is checked by `signin_selftest`
 (the desktop's client reads `access` back from the sign-in answer, the sign-in
-settings and the host's network answer), the desktop, Core and Audio2Face unit
-tests (`SharedHostsTests`: a shared pairing kept with its access, never one of
-your hosts on the map or in the plan, a friend's computer shown as one, the
-owner-first refusal moving a request on, Devices › Friends' per-person overview;
+settings and the host's network answer, and a friend change that the host
+can't read is reported as *update it first*, `signin.friends_unsupported`), the
+desktop, Core and Audio2Face unit tests (`SharedHostsTests`: a shared pairing
+kept with its access, never one of your hosts on the map or in the plan (not
+even after it is forgotten), a friend's computer shown as one, a shared host
+and your own host with the same home address reached apart, a shared host and
+your own pairing never replacing each other under one name, the owner-first
+refusal moving a request on, Devices › Friends' per-person overview;
 `WorkSharingTests`: a live request passes a shared host whose owner needs it at
-once, and background work goes on later; `HostSignInSettingsTests`), and the
+once, and background work goes on later; `HostSignInSettingsTests`: a member
+allow sends no `access`, so older hosts take it), and the
 running desktop against a live lab host through MCP `signin_lab`, headless:
 with `mode` `friend` and `signInDesktop`, a desktop holding a shared pairing
 read only the host's engines (*it offers this PC: Thinking*) and, over 80

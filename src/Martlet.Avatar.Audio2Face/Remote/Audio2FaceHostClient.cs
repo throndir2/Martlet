@@ -403,7 +403,7 @@ public static class Audio2FaceHostClient
         // Every paired connection to the same host (same home origin, pinned key and clock) shares one pool of kept
         // connections, so the desktop's regular checks and syncs don't open a new TCP and TLS connection each time.
         var handler = Pools.GetOrAdd((origin, spkiFingerprint, clock ?? TimeProvider.System),
-            key => new(() => CreateHandler(key.Origin, presented => presented == key.Spki, key.Clock))).Value;
+            key => new(() => CreateHandler(key.Origin, presented => presented == key.Spki, key.Clock, key.Spki))).Value;
         return new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri(origin + "/"), Timeout = Timeout.InfiniteTimeSpan };
     }
 
@@ -428,7 +428,9 @@ public static class Audio2FaceHostClient
             BaseAddress = new Uri(origin + "/"), Timeout = Timeout.InfiniteTimeSpan
         };
 
-    private static SocketsHttpHandler CreateHandler(string origin, Func<string, bool> accept, TimeProvider now)
+    /// <param name="spki">The pinned key of a paired host, so a host kept apart (<see cref="HostRoutes.KeepApart"/>) is routed on
+    /// its own; null while pairing.</param>
+    private static SocketsHttpHandler CreateHandler(string origin, Func<string, bool> accept, TimeProvider now, string? spki = null)
     {
         var handler = new SocketsHttpHandler
         {
@@ -448,12 +450,12 @@ public static class Audio2FaceHostClient
         handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, chain, errors) =>
         {
             var valid = ValidateCertificate(certificate, chain, errors, accept, now);
-            if (!valid) HostRoutes.KeyRejected(origin);
+            if (!valid) HostRoutes.KeyRejected(origin, spki);
             return valid;
         };
         // The request keeps the home origin (TLS checks the pinned key, signatures are unchanged); HostRoutes only picks
         // which address the TCP connection dials: home, or an outside address when home doesn't answer.
-        handler.ConnectCallback = HostRoutes.ConnectAsync;
+        handler.ConnectCallback = (context, token) => HostRoutes.ConnectAsync(context, spki, token);
         return handler;
     }
 

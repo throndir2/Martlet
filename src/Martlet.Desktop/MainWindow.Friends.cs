@@ -205,7 +205,7 @@ public partial class MainWindow
             : $"Stop sharing {hostId} with {friend.Name}? {hostId} revokes their computers at once, and a request of theirs that is running stops.";
         if (!ConfirmationDialog.Confirm(this, question, share ? $"Share {hostId}" : "Stop sharing")) return;
         JsonObject change = share
-            ? new() { ["action"] = "allow", ["provider"] = friend.Provider, ["subject"] = friend.Subject, ["label"] = friend.Label, ["access"] = HostSignInAccess.Friend }
+            ? HostSignInAccess.AllowChange(friend.Provider, friend.Subject, friend.Label, friend: true)
             : new() { ["action"] = "disallow", ["provider"] = friend.Provider, ["subject"] = friend.Subject };
         try
         {
@@ -218,7 +218,7 @@ public partial class MainWindow
             ActionText.Text = share
                 ? $"{hostId} is shared with {friend.Name}. Send them its invite (Sign-in from outside › Make invite) if they don't have it."
                 : $"Stopped sharing {hostId} with {friend.Name}; their computers lost access there.";
-            ErrorLog.Info($"Friends: {(share ? "shared" : "stopped sharing")} {hostId} {(share ? "with" : "with")} {friend.Name} ({friend.Provider}).");
+            ErrorLog.Info($"Friends: {(share ? "shared" : "stopped sharing")} {hostId} with {friend.Name} ({friend.Provider}).");
             // The host's network answer marks (or no longer lists) their computers on the next sync.
             QueueNetworkSync();
         }
