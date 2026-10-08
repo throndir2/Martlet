@@ -54,12 +54,16 @@ your setup can't.
    - at most 12 / 24 / 45 looks per hour (Quiet / Normal / Chatty), because each
      look is one model request; while Martlet decides, the level it picked sets
      these, so it may use up to Chatty's 45 (what Companion discloses).
-5. A look sends **one** screenshot (JPEG) with the window title, your persona
-   and recent conversation to the Thinking model. The model is told to make an
-   educated guess at what you are doing right now (from the picture, what it saw
-   at its last looks, what you said, what it heard your PC play and the screen
-   summary), and to talk only about that: never about your computer or setup
-   (monitors, windows, apps, tabs, layout, wallpaper or how busy it looks). It is
+5. A look sends **one** screenshot (JPEG) with the window title, the name of
+   the [program in front](#the-program-in-front) and whether it is full
+   screen, your persona and recent conversation to the Thinking model. The
+   model is told to focus only on what you are actively doing or watching in
+   that program (only that, when it is full screen), to make an educated guess
+   at what you are doing right now (from the picture, what it saw at its last
+   looks, what you said, what it heard your PC play and the screen summary),
+   and to talk only about that: never about the UI (the program's own buttons,
+   menus, toolbars, tabs, settings or theme) or your computer or setup
+   (monitors, windows, apps, layout, wallpaper or how busy it looks). It is
    also told that real
    friends stay quiet and to answer exactly `[pass]` unless something is worth a
    remark, never to narrate the screen, repeat itself (it is given what it said
@@ -120,6 +124,31 @@ Normal and keeps the level it picked until Martlet closes.
   its first word. The prompt adds a few hundred tokens to the instructions,
   which the prompt cache keeps; Companion's disclosure counts Chatty's budget.
 
+## The program in front
+
+Every screenshot of your screen also says which program you are using and
+whether it is full screen, so Martlet talks about your game, video or work
+instead of what else is on screen.
+
+- **The name** is the one in the program's own file: its description (such as
+  *Google Chrome*, *Visual Studio Code* or a game's name), else its product
+  name, else its file name. For a Store app, the name is the app's, not
+  Windows' frame around it. When a Martlet window is in front, it is the
+  program of the window behind it.
+- **Full screen** means the window covers its whole monitor, taskbar included,
+  and is not an ordinary maximized window with a title bar. Full-screen games
+  (exclusive or borderless), full-screen videos and slide shows count.
+- Martlet reads both from Windows (the window's process and its size). It
+  never hooks or injects into the program, and the name is never logged.
+- A look's message says it as *Active app: Google Chrome (full screen).*,
+  before the window's title; a reply's picture gets the same in a note when it
+  changed (see below); the conversation keeps it in the `[Screen]` line; and the
+  screen summary over time names it with each screenshot.
+- The talk window's vision line tooltip shows what Martlet tells the model:
+  *Active app: Google Chrome (full screen).* It never shows the window's
+  title. Martlet MCP's `active_app_check` reads it with the production code
+  ([MCP](MCP.md)).
+
 ## Martlet sees what you see when you talk to it
 
 While vision is on, everything you type or say also goes with the **newest
@@ -127,13 +156,24 @@ picture** of what Martlet watches (taken in the last 10 seconds; a skipped
 capture, say a private window in front, sends none), so you can ask *"what do
 you think of this?"*, *"who just messaged me?"* or *"how do I beat this boss?"*.
 The reply is told the picture is what you see right now and to use it only when
-it helps, without describing it unprompted. Your message's bubble says *Martlet
+it helps, without describing it unprompted, and then to talk about what you are
+doing or watching, never the UI or your setup unless you ask. Your message's bubble says *Martlet
 saw your whole screen.* (or your active window, or the camera). These pictures don't count
 toward the looks per hour, but they make each reply's request larger, which may
 cost more. If the Thinking model rejects the picture, Martlet asks again with
 your words only and says so on your message; a model Martlet doesn't know can
 see also stops vision with the fix, like a rejected look. Memory never gets the
 picture.
+
+The reply's instructions (Companion › Prompts › *Screen with your message*)
+say only what the picture shows (your active window, your whole screen or a
+camera), so they stay the same when you switch windows and the model's prompt
+cache keeps them. When the program in front or its window changed since the
+conversation's latest `[Screen]` line, they go after your words, in a note that
+is sent but not kept (*Active app with your message*: *Active app in the
+picture: Google Chrome (full screen). Active window: "..."*); otherwise that
+line already says them, and nothing is added. The conversation keeps the
+message's `[Screen]` line instead of the note.
 
 ## Martlet knows what changed over time
 
@@ -144,7 +184,8 @@ also keeps a short **screen summary over time**:
 
 1. While Martlet watches (screen or camera), it keeps the last pictures that
    changed **in memory only**: never saved, never logged, zeroed when let go.
-   A picture that hardly changed, with the same window, is skipped, so the
+   A picture that hardly changed, with the same window and program in front, is
+   skipped, so the
    newest kept one is still what is on screen. It keeps up to 8 pictures,
    each at most 512 px. A picture goes once the picture after it is more than
    24 seconds old. Martlet's own windows, password managers and private
@@ -156,7 +197,8 @@ also keeps a short **screen summary over time**:
    the pool's last free slot). It is
    never the model your conversation uses. The job is one small picture (a
    contact sheet: 2 to 4 of the kept pictures, oldest first, about 1024 x 580
-   px and about 30 KB), the windows' titles, the text Companion › Reading read
+   px and about 30 KB), the windows' titles and the programs in front, the text
+   Companion › Reading read
    on them, and Companion › Prompts › *Screen summary over time*. One job runs at
    a time. The pool drops a job that no member takes, or that does not finish,
    within 15 seconds. A job that takes longer than 20 seconds after its newest
@@ -201,8 +243,10 @@ work as one conversation.
   next replies send: a line that starts with `[Screen]` (or `[Camera]`) and says
   where Martlet looked and what it saw, then its remark or `[pass]`, such as
   *[Screen] You looked at the user's active window "Program.cs - Visual Studio
-  Code": they're coding, a build is running.* The source and the window's title (or
-  the camera's name) are cleaned the way the look's prompt gets them; a look a
+  Code" (Visual Studio Code): they're coding, a build is running.* The source,
+  the window's title (or the camera's name) and the
+  [program in front](#the-program-in-front) (with *full screen* when it is) are
+  cleaned the way the look's prompt gets them; a look a
   notification or a flashing taskbar button started says so in brackets.
 - **Passes don't pile up.** A look Martlet passes on takes the place of the
   exchange just before it when that is also a passed look, so a quiet stretch
@@ -210,13 +254,13 @@ work as one conversation.
   stretch. Only the end of the next request changes, which is new anyway, so
   the prompt cache keeps the start.
 - **A message with a picture** keeps a line after its words: *[Screen] With
-  this message you saw the user's whole screen (active window "Discord"): a
-  chat app with a new message.* A picture the model rejected leaves no line.
+  this message you saw the user's whole screen (active window "Discord" in
+  Discord): a chat app with a new message.* A picture the model rejected leaves no line.
 - **What it saw** comes from the reply itself, adding no wait: a look, and a
   reply whose message came with a picture, is told (Companion › Prompts ›
   *What you saw*, the same on every request, so the instructions stay the same)
   to end with `[seen: a few words]` on what is going on, mainly what you are
-  doing, after its last sentence or after
+  doing or watching (not the UI or your setup), after its last sentence or after
   `[pass]`. It is a control tag like the chattiness tags: never shown, spoken,
   captioned or kept as Martlet's words, and as soon as what follows a finished
   sentence can only be it (`[see...`), that sentence goes to the voice. Its

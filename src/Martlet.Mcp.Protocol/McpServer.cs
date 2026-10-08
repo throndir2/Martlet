@@ -1328,6 +1328,17 @@ internal sealed class McpServer(DesktopAutomation desktop)
             dataDirectory = new { type = "string" },
             reply = new { type = "string", maxLength = 1024 }
         }),
+        Tool("active_app_check", "The program in front and whether it is full screen, as Martlet's screen glances tell the " +
+            "Thinking model (docs/SCREEN_COMMENTARY.md), read with the desktop's production ActiveApp: inFront (the window in " +
+            "front now: found, app, fullScreen, told (the words a look sends) and readMs (how long reading it took, first and " +
+            "again); never its title), sample (the name explorer.exe " +
+            "gets), rules (the full-screen rule on FIXTURE windows: borderless, maximized with and without a title bar, smaller " +
+            "than its monitor, on a second monitor) and prompts (Companion > Prompts > Screen glance message and Active app " +
+            "with your message as a data directory's settings.json fills them for a FIXTURE full-screen game, and the [Screen] " +
+            "line the conversation keeps). Reads no credentials and contacts nothing.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
         Tool("screen_digest_check", "The screen summary over time (docs/SCREEN_COMMENTARY.md), run once with the desktop's " +
             "production ScreenDigester on FIXTURE frames (made-up pictures of a code editor, then a game with low health; no " +
             "screen capture) and a FIXTURE thinker and context board (no model, nothing sent). Returns the setting (Companion > " +
@@ -1915,6 +1926,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "discord_text_check" => await DiscordTextCheck.RunAsync(DataDirectory(arguments), arguments, cancellation),
                 "chattiness_status" => await ChattinessCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "vision_history_check" => await VisionHistoryCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
+                "active_app_check" => await ActiveAppCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "screen_digest_check" => await ScreenDigestCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "reply"), cancellation),
                 "context_check" => await ContextCheck.RunAsync(DataDirectory(arguments), cancellation),
                 "context_board" => await ContextBoardCheck.RunAsync(OptionalString(arguments, "source"), OptionalString(arguments, "text"),

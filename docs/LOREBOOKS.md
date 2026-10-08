@@ -16,7 +16,8 @@ editor.
 3. The message being answered and the messages before it, up to the **scan
    depth** (2 by default: your message and Martlet's last reply), are searched
    for each entry's keywords. Screen and camera glances scan their prompt,
-   including the window title, so a game's lore can trigger while you play it.
+   including the window title and the program in front, so a game's lore can
+   trigger while you play it.
 4. An entry triggers when any keyword matches and its optional **filter
    keywords** pass their rule: *and any*, *and all*, *none of them* or *not all
    of them*. Always-on entries need no keyword. An entry with a **chance** below
