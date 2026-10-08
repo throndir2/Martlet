@@ -79,6 +79,12 @@ internal static class SetupRunCheck
         Step("preflight: someone at old-box makes its change", Item(5).Verdict == SetupStepVerdict.NeedsSomeoneThere, Item(5).Text);
         Step("preflight: laptop runs no host service", Item(6).Verdict == SetupStepVerdict.CannotApply, Item(6).Text);
         Step("preflight: the Thinking pool joins by itself", Item(11).Verdict == SetupStepVerdict.Automatic, Item(11).Text);
+        Step("preflight: thinking in each companion's own Ollama is ready, with the download's terms",
+            Item(8).Verdict == SetupStepVerdict.Ready && Item(8).Terms?.Contains("ollama.com") == true, Item(8).Text);
+        Step("preflight: a hosted provider the owner must choose says where", Item(14).Verdict == SetupStepVerdict.NeedsOwner && !Item(14).Applies &&
+            Item(14).Text.Contains("Companion"), Item(14).Text);
+        Step("preflight: the role still doing that job stays until it moves", Item(16).Verdict == SetupStepVerdict.NeedsOwner && !Item(16).Applies,
+            Item(16).Text);
         Step("preflight: downloads add up", Math.Abs(preflight.DownloadGb - 12.5) < 0.01, preflight.DownloadGb);
 
         var need = preflight.Unanswered.Single();
@@ -101,8 +107,16 @@ internal static class SetupRunCheck
             targets.Commands.Select(c => c.ToString()));
         Step("the NGC key went only to Audio2Face", targets.Commands.Count(c => c.Secrets.Count > 0) == 1 &&
             targets.Commands.Single(c => c.Secrets.Count > 0).Secrets.GetValueOrDefault("secret.ngc_api_key") == "nvapi-fixture-0000");
-        Step("terms recorded as accepted for each install shown", targets.Accepted.SequenceEqual(["ollama@gpu-box", "stt@desk-host", "chatterbox@gpu-box",
-            "deep-thinking@linux-box", "audio2face@gpu-box"]), targets.Accepted);
+        Step("terms recorded as accepted for each install and download shown", targets.Accepted.SequenceEqual(["ollama@gpu-box", "stt@desk-host",
+            "chatterbox@gpu-box", "deep-thinking@linux-box", "audio2face@gpu-box", "thinking@"]), targets.Accepted);
+        Step("thinking switched on this PC through the Companion path (each companion's own Ollama)", targets.Routes.SequenceEqual(["thinking=gemma4:e2b"]) &&
+            outcome.Steps[8].State == SetupMachineState.Done, targets.Routes);
+        Step("a provider the owner must choose is never reported done, and its plan doesn't change",
+            outcome.Steps[14].State == SetupMachineState.NeedsAttention && outcome.Steps[14].Text.Contains("Choose") &&
+            targets.Plan.For(ClusterJobs.Listening) is null, outcome.Steps[14].Text);
+        Step("loudness lip-sync: lip-sync off in the plan", targets.Plan.For(ClusterJobs.LipSync) is { HostId: null, Off: true });
+        Step("the role whose job didn't move stays (make before break)", outcome.Steps[16].State == SetupMachineState.NeedsAttention &&
+            targets.Commands.All(c => c.RoleKind != "stt" || c.Add), outcome.Steps[16].Text);
         Step("plan: speaking on gpu-box with failover, thinking back to each PC's choice",
             targets.Plan.For(ClusterJobs.Speaking) is { HostId: "gpu-box", Failover: true } && targets.Plan.For(ClusterJobs.Thinking) is { HostId: null, Failover: false },
             targets.Plan.Assignments.Select(a => $"{a.Job}={a.HostId ?? "(each PC)"}{(a.Failover ? " failover" : "")}"));
@@ -118,7 +132,7 @@ internal static class SetupRunCheck
         var final = outcome.Run;
         Step("run: first published with every computer waiting", runs.FirstOrDefault()?.Machines.All(m => m.State == SetupMachineState.Pending) == true);
         Step("run: Configuring with the step and its count while it works",
-            runs.Any(r => r.Machine("gpu-box") is { State: SetupMachineState.Configuring, Step: "Installing Chatterbox Turbo on its NVIDIA GeForce RTX 4090 (2 of 4)" }),
+            runs.Any(r => r.Machine("gpu-box") is { State: SetupMachineState.Configuring, Step: "Installing Chatterbox Turbo on its NVIDIA GeForce RTX 4090 (2 of 5)" }),
             runs.Select(r => r.Machine("gpu-box")?.Step).Distinct());
         Step("run: each computer ends as its steps did", final.Finished &&
             final.Machine("desk-host")?.State == SetupMachineState.Done && final.Machine("gpu-box")?.State == SetupMachineState.NeedsAttention &&
@@ -159,7 +173,8 @@ internal static class SetupRunCheck
     private static NetworkRecommendation Fixture()
     {
         SetupChange Role(SetupChangeKind kind, string machine, string role, string summary) => new(kind, machine, summary, "fixture") { RoleKind = role };
-        var target = new NetworkSetup([], [new JobPlan(ClusterJobs.Speaking, "gpu-box"), new JobPlan(ClusterJobs.Thinking, null, OptionId: "nvidia-build")]);
+        var target = new NetworkSetup([], [new JobPlan(ClusterJobs.Speaking, "gpu-box"), new JobPlan(ClusterJobs.Thinking, null, OptionId: "gemma4:e2b"),
+            new JobPlan(ClusterJobs.Listening, null, OptionId: "hosted:openai-transcribe"), new JobPlan(ClusterJobs.LipSync, null, OptionId: "loudness-lipsync")]);
         SetupChange[] changes =
         [
             Role(SetupChangeKind.MoveToGpu, "gpu-box", "ollama", "Move Thinking to gpu-box's RTX 3060.") with { GpuIndex = 1 },
@@ -172,12 +187,16 @@ internal static class SetupRunCheck
             Role(SetupChangeKind.AddRole, "old-box", "ollama", "Install Thinking on old-box.") with { NeedsSomeoneThere = true, DownloadGb = 3 },
             Role(SetupChangeKind.AddRole, "laptop", "stt", "Install Listening on laptop."),
             new(SetupChangeKind.AssignJob, "gpu-box", "Speak with gpu-box.", "fixture") { Job = ClusterJobs.Speaking, FromMachineId = "desk-host" },
-            new(SetupChangeKind.AssignJob, "", "Think with NVIDIA Build.", "fixture") { Job = ClusterJobs.Thinking, FromMachineId = "desk-host" },
+            new(SetupChangeKind.AssignJob, "", "Think with Gemma 4 E2B in each companion PC's own Ollama.", "fixture") { Job = ClusterJobs.Thinking, FromMachineId = "desk-host" },
             new(SetupChangeKind.JoinPool, "desk-host", "Let desk-host speak when gpu-box is busy.", "fixture") { Job = ClusterJobs.Speaking },
             new(SetupChangeKind.LeavePool, "linux-box", "Keep listening off linux-box.", "fixture") { Job = ClusterJobs.Listening },
             new(SetupChangeKind.JoinPool, "linux-box", "linux-box joins the Thinking pool.", "fixture"),
             Role(SetupChangeKind.RemoveRole, "desk-host", "f5", "Remove F5-TTS from this PC."),
-            Role(SetupChangeKind.RemoveRole, "linux-box", "xtts", "Remove XTTS-v2 from linux-box.")
+            Role(SetupChangeKind.RemoveRole, "linux-box", "xtts", "Remove XTTS-v2 from linux-box."),
+            // A job no host does next, by a hosted provider the owner must choose; loudness lip-sync; a role kept while its job can't move.
+            new(SetupChangeKind.AssignJob, "", "Listen with OpenAI transcription.", "fixture") { Job = ClusterJobs.Listening, FromMachineId = "linux-box" },
+            new(SetupChangeKind.AssignJob, "", "Move the mouth with the voice's loudness.", "fixture") { Job = ClusterJobs.LipSync, FromMachineId = "gpu-box" },
+            Role(SetupChangeKind.RemoveRole, "linux-box", "stt", "Remove Listening from linux-box.")
         ];
         return new(new NetworkSetup([], []), target, changes) { Fingerprint = "fixture-1" };
     }
@@ -192,6 +211,7 @@ internal static class SetupRunCheck
         internal List<SetupRoleCommand> Commands { get; } = [];
         internal List<string> Accepted { get; } = [];
         internal List<SetupRun> Published { get; } = [];
+        internal List<string> Routes { get; } = [];
         internal ClusterPlan Plan { get; private set; } = ClusterPlan.Empty.Assign(ClusterJobs.Thinking, "desk-host", false, false, null, "fixture", DateTimeOffset.UtcNow.AddDays(-1));
         internal WorkSharingSettings Sharing { get; private set; } = new WorkSharingSettings().With(new WorkSharingJob
             { Job = WorkSharingJobs.Speaking, Never = ["desk-host"] });
@@ -277,6 +297,20 @@ internal static class SetupRunCheck
             return Task.FromResult(SetupStepResult.Done($"{job} sharing changed for {machineId}."));
         }
 
+        public Task<SetupRouteReading> ReadRouteAsync(string job, string optionId, CancellationToken cancel) => Task.FromResult(optionId switch
+        {
+            "gemma4:e2b" => new SetupRouteReading(SetupStepVerdict.Ready, "Thinking uses Gemma 4 E2B in Ollama on this PC.")
+                { Terms = "Ollama downloads gemma4:e2b (7.2 GB) from ollama.com when it isn't on this PC yet. The model's own license applies." },
+            _ => new SetupRouteReading(SetupStepVerdict.NeedsOwner, $"Choose {optionId} for {job} in Companion; it needs your API key there.")
+        });
+
+        public Task<SetupStepResult> UseRouteAsync(string job, string optionId, CancellationToken cancel)
+        {
+            Routes.Add($"{job}={optionId}");
+            Plan = Plan.Assign(job, null, false, false, null, Device, DateTimeOffset.UtcNow);
+            return Task.FromResult(SetupStepResult.Done($"{job} uses {optionId} on this PC."));
+        }
+
         public Task<IReadOnlyDictionary<string, string>> CheckAsync(CancellationToken cancel)
         {
             Checks++;
@@ -293,6 +327,6 @@ internal static class SetupRunCheck
             return Task.CompletedTask;
         }
 
-        void ISetupTargets.Accepted(SetupPreflightItem item) => Accepted.Add($"{item.Change.RoleKind}@{item.Change.MachineId}");
+        void ISetupTargets.Accepted(SetupPreflightItem item) => Accepted.Add($"{item.Change.RoleKind ?? item.Change.Job}@{item.Change.MachineId}");
     }
 }

@@ -3388,11 +3388,16 @@ old-box (Martlet can't reach it) and laptop (no host service). The preflight:
 Chatterbox Turbo's terms with the RTX 4090 by UUID, Parakeet chosen as the stt
 variant with that variant's terms only, moving Thinking keeping its model, Audio2Face
 showing and sending its default engine's terms, an NGC key the owner enters, old-box needing someone there, laptop unable to run
-host roles, the Thinking pool joining by itself and the downloads added up.
+host roles, the Thinking pool joining by itself, thinking moving to each companion
+PC's own Ollama (ready, with the download's terms), a hosted provider the owner
+must choose in Companion (never made here) and the role still doing that job
+kept until it moves, and the downloads added up.
 The run: the host commands in order with their arguments (nothing for skipped
 changes), the key only to Audio2Face and never in text, the terms recorded as
 accepted, speaking on gpu-box with failover and thinking back to each PC's
-choice in the plan, Sharing work, one cluster check, a failed removal that
+choice in the plan, thinking switched through the Companion path, the hosted
+provider reported as needing the owner with its plan unchanged, loudness
+lip-sync off in the plan, the role whose job didn't move kept, Sharing work, one cluster check, a failed removal that
 doesn't stop the others, a job this PC can't follow yet reported, the run
 record (all waiting, then *Configuring* with the step and its count, then how
 each computer ended) read back from the shared settings as
