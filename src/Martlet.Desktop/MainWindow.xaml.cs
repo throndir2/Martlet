@@ -186,6 +186,7 @@ public partial class MainWindow : ThemedWindow
         InitializeCluster();
         InitializeSettingsSync();
         InitializeReminders();
+        InitializeConfiguring();
         InitializeMemorySync();
         InitializeNetwork();
         InitializeApiKeys();

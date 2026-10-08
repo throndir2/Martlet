@@ -26,6 +26,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "OpenPeople", "OpenPrompts", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck", "LogsRefresh",
         // Devices' Map and List only switch how the devices show.
         "DevicesViewMap", "DevicesViewList",
+        // Home's Configuring indicators (companion and host PC) only open the Devices map.
+        "HomeConfiguring", "HostConfiguring",
         // The MCP directory's Close and its optional-settings section only close or expand; opening it, searching and Load more
         // send a request to the directory, and Install writes mcp.json and starts a server, so those need --allow-ui-effects.
         "McpDirectoryClose", "McpDirectoryOptional",
@@ -204,6 +206,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // talking.", "Hearing you…", "Not listening" or why Martlet can't listen), and its Start watching / Stop watching button
         // and watching indicator ("Watching your active window.", "Taking a look…", "Not watching" or why Martlet can't see).
         "OpenLiveConversation", "HomeListen", "HomeListeningStatus", "HomeWatch", "HomeWatchingStatus",
+        // Home's Configuring indicator (companion Home, and HostConfiguring on a host PC's Home): a run applying the recommended
+        // setup ("Configuring your computers: 1 of 3 finished. gpu-box: Installing Chatterbox Turbo (2 of 4).", or how it
+        // ended), a host role this PC changes or this PC following a plan change. Machine IDs, role names and counts only.
+        "HomeConfiguring", "HomeConfiguringStatus", "HostConfiguring", "HostConfiguringStatus",
         "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView", "SetupCharacterSpeechDisplay",
         // Where the character's speech bubble goes: following the character or in one place, and its pixel offsets.
         "SetupCharacterBubblePlacement", "SetupCharacterBubbleOffsetX", "SetupCharacterBubbleOffsetY",

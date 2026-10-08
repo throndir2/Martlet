@@ -8,7 +8,9 @@ using Martlet.Core.Settings;
 namespace Martlet.Desktop;
 
 internal enum NodeKind { ThisPc, Host, Computer, Cloud, Missing, Add }
-internal enum NodeHealth { Ready, Unknown, Off, Attention }
+/// <summary>A device's status. <see cref="Configuring"/>: Martlet is changing it right now (the recommended setup, a host role,
+/// following a plan change); it shows over every other status until the change ends.</summary>
+internal enum NodeHealth { Ready, Unknown, Off, Attention, Configuring }
 internal enum NodeAction
 {
     Companion, AudioSetup, Character, ToggleCharacter, Prerequisites, HostThisPc, AddComputer, ManageHost, CheckHost, HostDashboard, Advisor,
@@ -79,7 +81,8 @@ internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSe
     IReadOnlyList<PairedHost>? Hosts = null, IReadOnlyDictionary<string, string>? HostUpdates = null,
     IReadOnlyDictionary<string, IReadOnlyList<HostUser>>? HostUsers = null, ClusterPlan? Plan = null,
     IReadOnlyList<MartletComputer>? Computers = null, IReadOnlyCollection<string>? DeepThinkingHosts = null,
-    IReadOnlyDictionary<string, string>? HostOutside = null, string? OwnHostTrouble = null);
+    IReadOnlyDictionary<string, string>? HostOutside = null, string? OwnHostTrouble = null,
+    IReadOnlyDictionary<string, string>? Configuring = null);
 
 /// <summary>A computer paired with a host, in words ("IMOUTO (desktop-imouto), active now"); <paramref name="ThisPc"/> marks
 /// this PC itself.</summary>
@@ -132,6 +135,13 @@ internal static class NetworkMap
             Health = health;
             HealthText = text;
             return true;
+        }
+
+        /// <summary>Shows that Martlet changes this device now, with the step it works on.</summary>
+        internal void Configure(string step)
+        {
+            Health = NodeHealth.Configuring;
+            HealthText = "Configuring: " + step;
         }
 
         internal NetworkNode Build() =>
@@ -754,6 +764,10 @@ internal static class NetworkMap
             thisPc.Commands.Add(new(NodeAction.HostThisPc, "Run host services on this PC"));
             thisPc.Commands.Add(new(NodeAction.Prerequisites, "Prerequisites"));
         }
+
+        // Computers Martlet changes right now (by host ID, device ID or "this-pc") show Configuring with their step.
+        foreach (var (id, step) in inputs.Configuring ?? new Dictionary<string, string>())
+            (id == "this-pc" || id == ownHostId ? thisPc : nodes.GetValueOrDefault("host:" + id) ?? nodes.GetValueOrDefault("pc:" + id))?.Configure(step);
 
         // Its details are just the ways to add one, each a whole clickable card (nothing there only looks like a button).
         var add = new Draft("add", NodeKind.Add, "Add a computer", "Use another computer", AddGlyph) { Health = NodeHealth.Unknown, HealthText = "" };

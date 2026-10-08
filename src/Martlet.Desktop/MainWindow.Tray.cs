@@ -126,7 +126,7 @@ public partial class MainWindow
                 : talk.IsVisible ? "Martlet: talk window open" : "Martlet is running"
         : "Martlet is running";
 
-    private void UpdateTray() => tray?.SetToolTip(TrayStatusText());
+    private void UpdateTray() => tray?.SetToolTip(TrayStatusText() + (closing || TrayConfiguringText() is not { } configuring ? "" : "\n" + configuring));
 
     // ---------- the icon's menu ----------
 

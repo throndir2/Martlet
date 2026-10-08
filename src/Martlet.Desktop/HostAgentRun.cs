@@ -84,6 +84,15 @@ internal static class HostAgentRun
                 HostVerb.Exposure => $"Saving how {name} is reached from outside home; its gateway restarts...",
                 _ => $"Reading {name}'s status..."
             });
+            // While the change waits or runs there, Home and the Devices map show that computer as Configuring.
+            using var activity = request.Kind is NodeCommandKinds.AddRole or NodeCommandKinds.RemoveRole or NodeCommandKinds.Update
+                ? HostActivity.Begin(name, request.Kind switch
+                {
+                    NodeCommandKinds.AddRole => $"{(action.Changing ? "Changing" : "Installing")} {HostRoles.Names([role!])}",
+                    NodeCommandKinds.RemoveRole => $"Removing {HostRoles.Names([role!])}",
+                    _ => $"Updating to Martlet {version}"
+                })
+                : null;
             var command = await RunCommandAsync(connection, name, request.Kind, request.Arguments, request.Secrets, run);
             if (command.State != NodeCommandState.Succeeded)
                 throw new InvalidOperationException(command.Summary ?? $"Martlet on {name} could not finish it.");

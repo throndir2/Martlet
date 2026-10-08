@@ -154,11 +154,15 @@ public sealed record SharedSettings
     /// ("reminders.desktop-a"): only that computer writes it.</summary>
     public const string RemindersPrefix = "reminders.";
 
-    /// <summary>Whether <paramref name="key"/> is about one computer (its own entry, its role or its reminders) rather than a
-    /// setting.</summary>
+    /// <summary>The prefix of the entry where a computer publishes the run that applies the recommended setup to all your
+    /// computers ("setup-run.desktop-a", <see cref="Cluster.SetupRun"/>): only that computer writes it.</summary>
+    public const string SetupRunPrefix = "setup-run.";
+
+    /// <summary>Whether <paramref name="key"/> is about one computer (its own entry, its role, its reminders or its setup run)
+    /// rather than a setting.</summary>
     public static bool IsDeviceKey(string key) =>
         key.StartsWith(DevicePrefix, StringComparison.Ordinal) || key.StartsWith(RolePrefix, StringComparison.Ordinal) ||
-        key.StartsWith(RemindersPrefix, StringComparison.Ordinal);
+        key.StartsWith(RemindersPrefix, StringComparison.Ordinal) || key.StartsWith(SetupRunPrefix, StringComparison.Ordinal);
 
     public static bool IsKey(string? key) => key is { Length: > 0 and <= 64 } && char.IsAsciiLetterLower(key[0]) &&
         key.All(c => char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c is '-' or '.');

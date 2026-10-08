@@ -137,6 +137,18 @@
                                                            AutomationProperties.AutomationId="HomeWatchingStatus" AutomationProperties.LiveSetting="Polite"/>
                                             </StackPanel>
                                         </Border>
+                                        <!-- Configuring your computers (MainWindow.RecommendedSetupApply.cs): a run applying the recommended setup,
+                                             a host role being changed or this PC following a plan change. Opens the Devices map. -->
+                                        <Button x:Name="ConfiguringIndicator" Visibility="Collapsed" HorizontalAlignment="Left" Padding="12,6" Margin="0,2,8,8"
+                                                Click="Configuring_Click" Cursor="Hand" ToolTip="See your computers on the Devices map"
+                                                AutomationProperties.AutomationId="HomeConfiguring" AutomationProperties.Name="Configuring your computers">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Ellipse x:Name="ConfiguringDot" Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center"
+                                                         Fill="{DynamicResource AccentBrush}"/>
+                                                <TextBlock x:Name="ConfiguringStatusText" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="520"
+                                                           AutomationProperties.AutomationId="HomeConfiguringStatus" AutomationProperties.LiveSetting="Polite"/>
+                                            </StackPanel>
+                                        </Button>
                                     </WrapPanel>
                                     <WrapPanel Margin="0,4,0,0">
                                         <Button x:Name="AdvisorButton" Style="{DynamicResource LinkButton}" Content="Get a setup recommendation"
@@ -214,6 +226,17 @@
                                         <Button Content="Show host status" Click="HostStatusConsole_Click" Padding="16,12" Margin="0,0,12,8"
                                                 AutomationProperties.AutomationId="HostStatusConsole"/>
                                     </WrapPanel>
+                                    <!-- Configuring your computers, as on the companion Home (MainWindow.RecommendedSetupApply.cs). -->
+                                    <Button x:Name="HostConfiguringIndicator" Visibility="Collapsed" HorizontalAlignment="Left" Padding="12,6" Margin="0,2,8,8"
+                                            Click="Configuring_Click" Cursor="Hand" ToolTip="See your computers on the Devices map"
+                                            AutomationProperties.AutomationId="HostConfiguring" AutomationProperties.Name="Configuring your computers">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Ellipse x:Name="HostConfiguringDot" Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center"
+                                                     Fill="{DynamicResource AccentBrush}"/>
+                                            <TextBlock x:Name="HostConfiguringStatusText" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="520"
+                                                       AutomationProperties.AutomationId="HostConfiguringStatus" AutomationProperties.LiveSetting="Polite"/>
+                                        </StackPanel>
+                                    </Button>
                                 </StackPanel>
                                 <Grid Grid.Column="1" Width="170" Margin="20,0,0,0" VerticalAlignment="Center">
                                     <Grid Width="120" Height="120" HorizontalAlignment="Center">
