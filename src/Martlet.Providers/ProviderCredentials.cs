@@ -30,6 +30,9 @@ public sealed class BoundProviderCredential : IDisposable
     internal AuthenticationHeaderValue CreateAuthorization() =>
         new("Bearer", secret ?? throw new CredentialUnavailableException());
 
+    // For providers that take the key in their own header (ElevenLabs' xi-api-key), never logged or shown.
+    internal string Reveal() => secret ?? throw new CredentialUnavailableException();
+
     public void Dispose() => secret = null;
     public override string ToString() => "[provider credential redacted]";
 }

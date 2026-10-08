@@ -410,9 +410,12 @@ public partial class MainWindow
             }),
             (JobPlace.Computer, "Another of your computers",
                 $"Use another paired computer on your network for {job.Job}."),
-            (JobPlace.Cloud, "A cloud provider", role == SetupRole.Llm
-                ? "Use OpenAI, OpenRouter, NVIDIA Build or another compatible provider. Requests may cost money."
-                : "Use OpenAI with your API key. Requests may cost money.")));
+            (JobPlace.Cloud, "A cloud provider", role switch
+            {
+                SetupRole.Llm => "Use OpenAI, OpenRouter, NVIDIA Build or another compatible provider. Requests may cost money.",
+                SetupRole.Tts => "Use OpenAI's voices, or ElevenLabs with a voice cloned from yours and tones. Requests cost money.",
+                _ => "Use OpenAI with your API key. Requests may cost money."
+            })));
 
         page.Children.Add(place switch
         {
@@ -423,6 +426,9 @@ public partial class MainWindow
             JobPlace.Computer => ComputersCard(job, route, role == SetupRole.Llm ? null : thisPc),
             _ => CloudCard(section, job, route)
         });
+
+        // Speaking in the cloud can also be ElevenLabs: a voice cloned from one of yours, with tones.
+        if (section == CompanionTab.Voice && place == JobPlace.Cloud) page.Children.Add(ElevenLabsCard(route));
 
         // Singing uses the voices of the voice library on a computer with the singing role, wherever Speaking runs.
         if (section == CompanionTab.Voice) page.Children.Add(SingingCard());
@@ -461,9 +467,10 @@ public partial class MainWindow
         if (OldKeysCard(section, role) is { } oldKeys) page.Children.Add(oldKeys);
     }
 
-    /// <summary>The voice a route speaks with, in words: ", voice Zira (en-US)", or nothing.</summary>
+    /// <summary>The voice a route speaks with, in words: ", voice Zira (en-US)", ", voice Mia (cloned on ElevenLabs)", or nothing.</summary>
     private static string VoiceSuffix(SetupRoute route) =>
         route.Reference is { } reference ? $", voice {reference.PresetName}"
+        : route.ClonedVoice is { } cloned ? $", voice {cloned.Name} (cloned on ElevenLabs)"
         : route.VoiceId is { } voice ? $", voice {(route.RouteType == SetupRouteType.LocalWindowsTts ? WindowsVoices.DisplayName(voice) : voice)}"
         : "";
 
@@ -1313,11 +1320,12 @@ public partial class MainWindow
             var updated = select(settings);
             var chosen = updated.Setup!.Routes.Single(r => r.Role == role);
             var reused = false;
-            if (key is null && chosen is { CredentialId: null, RouteType: SetupRouteType.OpenAi or SetupRouteType.ChatCompletions })
+            if (key is null && chosen is { CredentialId: null, RouteType: SetupRouteType.OpenAi or SetupRouteType.ChatCompletions or SetupRouteType.ElevenLabs })
             {
                 var service = setupService;
-                foreach (var setAside in SetupSettings.SetAsideCredentials(updated, role,
-                             chosen.RouteType == SetupRouteType.ChatCompletions ? chosen.Origin : null))
+                foreach (var setAside in chosen.RouteType == SetupRouteType.ElevenLabs
+                             ? SetupSettings.SetAsideElevenLabsCredentials(updated)
+                             : SetupSettings.SetAsideCredentials(updated, role, chosen.RouteType == SetupRouteType.ChatCompletions ? chosen.Origin : null))
                 {
                     // Only a key still in Windows Credential Manager is used again; it is read on a worker and never shown.
                     var candidate = SetupSettings.ReattachSetAsideCredential(updated, setAside);
