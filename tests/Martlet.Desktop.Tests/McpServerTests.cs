@@ -274,6 +274,43 @@ public sealed class McpServerTests(ITestOutputHelper output)
                 profiles[0].GetProperty("inUse").GetBoolean()));
             Assert.Equal((gone.Key, "missing", "missing", false), (profiles[1].GetProperty("key").GetString(), profiles[1].GetProperty("look").GetString(),
                 profiles[1].GetProperty("voice").GetString(), profiles[1].GetProperty("inUse").GetBoolean()));
+            Assert.Equal("none", result.GetProperty("hereState").GetString());
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task CharacterProfilesReportsWhatEachProfileKeepsOnThisPc()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Martlet.Mcp.ProfilesHere." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var settings = Martlet.Core.Settings.CompanionSettings.Begin(null);
+            var companion = settings.Companion!
+                .AddCharacter("Secret tall", settings.Companion.ActivePersonaId, Martlet.Core.Settings.CharacterProfile.BuiltInModel, null, out var tall)
+                .AddCharacter("Secret small", settings.Companion.ActivePersonaId, null, null, out var small);
+            File.WriteAllBytes(Path.Combine(directory, "settings.json"), Martlet.Core.Contracts.ContractJson.Write(settings with { Companion = companion }));
+            Assert.True(CharacterProfileLocalStore.Save(directory, CharacterProfilesHere.Empty.With(tall.Id, new CharacterProfileLocal(
+                new Martlet.Avatar.Hosting.RendererPlacement(true, 2120, 300, 520, 693, @"\\.\DISPLAY2", 200, 260),
+                Martlet.Avatar.Hosting.GazeMode.Near, false, Martlet.Conversation.TouchInterrupts.Never)).Using(tall.Id)));
+
+            var message = (await SendAsync(DataCall("character_profiles", directory)))[0];
+            Assert.DoesNotContain("Secret", message.GetRawText());
+            var result = ToolResult(message);
+            Assert.Equal(("loaded", tall.Key), (result.GetProperty("hereState").GetString(), result.GetProperty("hereInUse").GetString()));
+            var profiles = result.GetProperty("profiles").EnumerateArray().ToArray();
+            var here = profiles.Single(p => p.GetProperty("key").GetString() == tall.Key).GetProperty("here");
+            var place = here.GetProperty("place");
+            Assert.Equal((true, 520.0, 693.0, @"\\.\DISPLAY2"), (place.GetProperty("locked").GetBoolean(), place.GetProperty("width").GetDouble(),
+                place.GetProperty("height").GetDouble(), place.GetProperty("screen").GetString()));
+            Assert.Equal(("near", false, "never"), (here.GetProperty("gaze").GetString(), here.GetProperty("gazeFree").GetBoolean(),
+                here.GetProperty("touchInterrupts").GetString()));
+            var nothing = profiles.Single(p => p.GetProperty("key").GetString() == small.Key);
+            Assert.True(!nothing.TryGetProperty("here", out var none) || none.ValueKind == JsonValueKind.Null);
         }
         finally
         {

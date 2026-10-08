@@ -1297,8 +1297,16 @@ speaking route keeps or the shared voice list chose; null when none does),
 `model-file-outside-list`), `voiceChosen`, and per profile its `key` (the first 8
 hex digits of its ID, as in `CharacterProfileState-<key>`), `personaSaved`,
 `personaActive`, `look` (`keep`, `builtin`, `ready`, `copying` or `missing`),
-`voice` (`keep`, `listed` or `missing`) and `inUse`. Names are never returned.
-Read-only; it contacts nothing.
+`voice` (`keep`, `listed` or `missing`) and `inUse`. It also reads what each
+profile keeps on this PC (`character-profiles-local.json`, never shared):
+`hereState` (`none`, `loaded` or `unreadable`), `hereInUse` (the key of the
+profile whose choices this PC uses now: the one switched to here or followed
+after a switch on another computer), and per profile `here` (null when it keeps
+nothing here yet) with `place` (`locked`, `left`, `top`, `width`, `height` in
+device-independent pixels and `screen`, or null), `gaze` (`personality`,
+`mouse`, `near`, `ahead` or `window`), `gazeFree` and `touchInterrupts` (`any`,
+`intimate` or `never`). Names are never returned. Read-only; it contacts
+nothing.
 
 `creations_status` reads [Martlet's creations](CREATIONS.md) from a data
 directory (optional absolute `dataDirectory`; the script gives a disposable one):
@@ -5457,7 +5465,8 @@ MARTLET_SIMULATE_RENDERER_FAILURE).*), and the desktop log says so each time
 the character shows (*FIXTURE: the character renderer fails its ... commands*).
 The renderer still starts, draws and closes normally. Commands include `where`
 (saving its place after `ui_move`), `lock` (`ToggleCharacterLock`), `zoom`
-(`ResetCharacterZoom`), `home` (`ResetCharacterPosition`), `mouth` (the
+(`ResetCharacterZoom`), `home` (`ResetCharacterPosition`), `place` (a character
+profile's place when you switch profiles), `mouth` (the
 loudness mouth), `reset` and `apply` (Audio2Face frames), `gaze`, `action`
 (emotes and motions), `say` (speech bubbles), `theme` and `camera`.
 
@@ -5531,7 +5540,23 @@ in use ("2 profiles. One of them is in use." or "None matches what Martlet uses
 now."). Each row's `CharacterProfileState-<key>` (the first 8 hex digits of the
 profile's ID) reads "In use.", "Ready." or why a part can't switch here ("Its
 look is still copying to this PC. Using it switches the rest.", "Its voice is no
-longer in your voices."), never a name. Its controls are
+longer in your voices."), never a name. Each row's `CharacterProfileHere-<key>`
+reads what the profile keeps on this PC ("On this PC: its own spot and size (360
+× 480, locked) · Eyes: Watch the window you're using, replies can't change it ·
+While it talks: only intimate touches stop it." or "On this PC: nothing yet.
+..."). While a profile is in use, moving, resizing, locking or resetting the
+character, choosing where it looks (`CharacterGaze-<choice>`,
+`CharacterGazeFree` or the overlay's Eyes menu) and choosing which touches stop
+it (`TouchInterrupt-<choice>`) are kept for that profile on this PC. Using a
+profile first keeps the one in use, then puts back the new one's choices: the
+showing character moves to its place without counting as a move of yours
+(renderer command `place`; `avatar-renderer` logs *The character moved to where
+its profile left it on DISPLAY1.*) and the desktop log records *Switched to a
+character profile (<key>); on this PC: place 360 × 480 locked on DISPLAY1, gaze
+window (fixed), touches while talking intimate.* A switch made on another
+computer, also while Martlet was closed, is followed after the shared settings
+arrive (*Following the character profile switched to last (<key>); ...*). A
+profile that keeps nothing here yet takes on what this PC uses. Its controls are
 `CharacterProfileUse-<key>` (disabled while in use), `CharacterProfileEdit-<key>`
 (passive: opens the form) and `CharacterProfileRemove-<key>` (asks with
 `ConfirmationYes`/`ConfirmationNo`). `CharacterProfileNew` (passive) opens the
