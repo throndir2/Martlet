@@ -310,7 +310,9 @@ member that can take it (text, or vision for touch zones and the eyes), so it do
 compete with the reply or its prompt cache. Memory, naming, temperament and the
 eyes are low priority; touch zones are higher, because you wait for them. When no member
 can take a job, or the pool can't finish it, Martlet uses the conversation's
-Thinking model, after the reply finishes speaking. The desktop log names the
+Thinking model, after the reply finishes speaking. A job with a picture goes to
+the image model of its own instead while pictures go to it ([Image and audio
+models](SENSE_MODELS.md#helper-jobs-with-a-picture)). The desktop log names the
 route of each job, and MCP's `helper_jobs_status` shows the last route of each
 kind (`helper-jobs.json`).
 The model answers in a strict line format: `REMEMBER: <fact>`,
