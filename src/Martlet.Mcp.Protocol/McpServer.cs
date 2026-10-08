@@ -1450,6 +1450,24 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "canceling one, who says a due reminder (both offer, the PC used most recently takes it, the other stays quiet), the " +
             "conversation's wording through BackgroundJobs (on its own as soon as Martlet is free, or in the notes of the next " +
             "message), a PC alone taking it at once and one far too late let go. No model, network or credentials.", new { }),
+        Tool("check_ins_status", "Martlet's check-ins (Companion › Check-ins; docs/CONVERSATION.md#check-ins: short questions the " +
+            "Thinking pool answers every few minutes, such as whether lingering emotes still fit), from a data directory: " +
+            "check-ins.json (each check-in on or off, how often it runs, what it does with its answer, the owner's own with their " +
+            "task and facts), check-ins-status.json written by the desktop on a companion PC (the pool member that can take them, " +
+            "why each waits, the one running, runs and actions since Martlet started and each last run's time, member, duration and " +
+            "result in a few words; never what was said, answered or reminded) and the fixed rules (pace, minimum age, quiet and idle " +
+            "waits, the job kind's priority and live floor rule). Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("check_ins_check", "Rehearse check-ins end to end with the production code, FIXTURE facts and canned answers (NOT AI): " +
+            "the check-in job kind's rules, check-ins.json saved and read back (and a bad pace refused), when each built-in check-in " +
+            "waits or runs (too young, hidden character, interval, you talking, nobody at the PC, nothing new, Check now), the " +
+            "message each sends, their runs on a production Thinking pool job board with a fixture member, reading answers (OFF " +
+            "tags, KEEP, USUAL, REMIND:, SAY:, OK, a <think> block, chatter), and what Martlet does: a reply's lingering emote off " +
+            "on a production HeldEmotes (never the owner's try), a reminder on a production context board that goes with exactly " +
+            "one request, and something to bring up worded as the check-in's own beside a due reminder. No model, network or " +
+            "credentials.", new { }),
         Tool("setup_run_status", "Applying the recommended setup to all your computers and the Configuring state (docs/CLUSTER.md), " +
             "from a data directory: every computer's published run (shared-settings.json, setup-run.<device>: who started it and when, " +
             "whether it is active, its summary, each computer's state Pending/Configuring/Done/Failed/NeedsAttention with its step " +
@@ -1969,6 +1987,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalBool(arguments, "live") ?? false, cancellation),
                 "reminders_status" => await RemindersCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "reminders_check" => await RemindersCheck.RunAsync(cancellation),
+                "check_ins_status" => await CheckInsCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "check_ins_check" => await CheckInsCheck.RunAsync(cancellation),
                 "setup_run_status" => await SetupRunCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "setup_run_check" => await SetupRunCheck.RunAsync(cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),

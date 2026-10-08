@@ -190,6 +190,7 @@ public partial class MainWindow : ThemedWindow
         InitializeNodePresence();
         InitializeSettingsSync();
         InitializeReminders();
+        InitializeCheckIns();
         InitializeRecommendedSetup();
         InitializeConfiguring();
         InitializeMemorySync();
@@ -247,6 +248,7 @@ public partial class MainWindow : ThemedWindow
         StartNodePresence();
         StartSettingsSync();
         StartReminders();
+        StartCheckIns();
         StartMemorySync();
         StartNetwork();
         StartApiKeys();

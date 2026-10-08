@@ -544,7 +544,7 @@ thinks and research count against the same slots:
 | `Digest` (screen or sound) | 50 | yes |
 | `ThinkLonger` | 40 | no |
 | `TouchZones` | 35 | no |
-| `Memory`, `Naming` | 20 (`Helper`) | no |
+| `Memory`, `Naming`, `CheckIn` | 20 (`Helper`) | no |
 | `Research` | 10 | no |
 
 Helper jobs use these kinds through `HelperJobs` and `ThinkingPoolHelpers`.
@@ -552,7 +552,9 @@ Remembering after a reply is a `Memory` job. Emote naming and touch temperament
 are `Naming` jobs, and touch-zone detection is a `TouchZones` job that needs
 vision. When the pool can't do one, the conversation's Thinking model does it
 after the reply finishes speaking
-([helper jobs](MEMORY.md#helper-jobs-on-the-thinking-pool)).
+([helper jobs](MEMORY.md#helper-jobs-on-the-thinking-pool)). A
+[check-in](#check-ins) is a `CheckIn` job; it has no fallback, so it waits
+until a member can take it.
 
 ### Pool API (desktop)
 
@@ -714,7 +716,7 @@ wait, and while the floor isn't Idle they get new work first:
 | --- | --- | --- |
 | `BargeInJudge`, `EndOfTurnJudge` | Start, on a member that shares nothing first. | The same. |
 | `Digest` (screen or sound summary) | Doesn't start. | Doesn't start; a running one stops and its result is dropped (`ThinkingJobOutcome.Preempted`). |
-| `Memory`, `Naming` (touch temperament too) | Doesn't start. | Doesn't start; a running one stops and waits in line again. |
+| `Memory`, `Naming` (touch temperament too), `CheckIn` | Doesn't start. | Doesn't start; a running one stops and waits in line again. |
 | `TouchZones` | Doesn't start. | Doesn't start; a running one goes on. |
 | `ThinkLonger`, `Research` | Doesn't start. | Doesn't start; a running one stops, keeps what it wrote, says *Paused: waiting for the conversation* and goes on later on any free member (one that shares nothing first). |
 
@@ -1216,6 +1218,130 @@ PCs with MCP `reminders_check`, and on a disposable data folder through
 started without the window and, with no Thinking set up, shown as a
 notification and marked said (`reminders_status`). A real model setting and
 saying one, and two real companion PCs through a real host, are **NOT RUN**.
+
+## Check-ins
+
+A small conversation model forgets what it left on. It writes `{blush}` and
+never `{/blush}`, chooses `{look ahead}` and never looks back, or says *"I'll
+remind you in 10 minutes!"* and never calls `reminders`. **Check-ins**
+(Companion › Check-ins) fix this. Every few minutes a Thinking pool member
+answers one short question about the companion, with only the facts that
+matter for that question, and Martlet acts on the answer.
+
+**Built-in check-ins.** All are on by default. The choices are this PC's own
+(`check-ins.json` in the data folder, never shared), because each PC shows its
+own character and runs its own conversation.
+
+| Check-in | Every | Asks, with these facts | Martlet then |
+| --- | --- | --- | --- |
+| Lingering emotes (`emotes`) | 5 min | Do the emotes a reply turned on still fit? The emotes with their hints and how long each has shown, the end of the conversation, how long it has been quiet, the day and time. | Turns off each emote the answer names (`OFF {blush}`), as `{/blush}` does. `KEEP` changes nothing. |
+| Where the character looks (`gaze`) | 5 min | Does the gaze a reply chose still fit? What the eyes do now and usually, how long ago the reply chose it, the end of the conversation. | `USUAL` takes the eyes back to their usual gaze, as `{look usual}` does. `KEEP` changes nothing. |
+| Promises (`promises`) | 5 min | Did the character say it would do something it never started? The end of the conversation, the reminders set and this conversation's background work. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
+| Staying in character (`character`) | 15 min | Did the last replies drift (out of character, generic, repeating, long, talking about notes or tools)? The personality and the last replies. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
+
+**When a check-in runs.** Every 15 seconds a companion PC looks at its
+check-ins, and the first one that may run starts. Only one runs at a time. A
+check-in waits:
+
+- until its pace (2, 5, 10, 15, 30, 60 or 120 minutes) has passed since it last
+  ran. After an answer that kept everything (`KEEP`), with nothing new said
+  since, Lingering emotes and Where the character looks wait three times their
+  pace, so the pool isn't asked the same question again and again;
+- until it has something to check: an emote a reply turned on that has shown
+  for 3 minutes, a gaze a reply chose 3 minutes ago, something new said
+  (Promises, while the conversation was active in the last 30 minutes), 4 new
+  replies (Staying in character), or a written task (your own);
+- while the conversation is busy (you talk, or something happened in the last
+  10 seconds), so it never races a reply;
+- while nobody used this PC for 10 minutes (keyboard, mouse or talking with
+  Martlet), so the pool isn't asked again and again while nobody is there;
+- while no Thinking pool member can take it.
+
+Lingering emotes looks only at emotes a reply turned on (their own tag or a
+combo's). It never turns off an emote you turned on with *Try*, or one a touch
+holds: `HeldEmote.Why` records why each emote went on.
+
+**Where it runs.** A check-in is a `ThinkingJobKind.CheckIn` job
+([Job board](#job-board)): the helpers' priority (20), never the slot kept
+free for fast kinds, stopped and queued again while the
+[live floor](#the-live-floor-the-live-turn-comes-first) is Live on a member
+that shares the conversation's hardware, and dropped when no member takes it
+within 2 minutes. It never runs on the conversation's own Thinking route, not
+even with an empty pool, so the conversation's prompt cache and its time to
+first words stay the same. With no member, check-ins wait. A check-in asks for
+Thinking steps off and at most 600 tokens.
+
+**Reminders for the next reply.** A `REMIND:` answer goes on the
+[context board](#context-board) as source `check-in-<id>` (such as
+`check-in-promises`), filled into Companion › Prompts › *Check-in: reminder
+for the next reply*: *A reminder from your own check-in, for you only: ...
+Follow it in this reply where it fits, without mentioning it.* It is posted
+with `consume`, so it goes with exactly one request, in the notes after your
+words. It is never kept in the conversation, so the start of every request
+stays the same. It waits at most 30 minutes for a message.
+
+**Your own check-ins.** *Add a check-in* adds one (off, at most 8). Each has a
+name, what it checks (your words, up to 2,000 characters), how often it runs,
+what it gets to know (the conversation, its personality, emotes and gaze,
+reminders and background work, what changed on screen, what the PC plays,
+whether you're at the PC; it always gets the day and time) and what happens
+with its answer:
+
+- *Reminds Martlet in its next reply*: a `REMIND:` line goes on the context
+  board, as above.
+- *Martlet brings it up*: a `SAY:` line becomes a notice job (`checkin-1`,
+  `CheckIns.SayKind`) that comes up like a due reminder: on Martlet's own as
+  soon as it is free (Companion › Prompts › *Check-in: brought up on its own*),
+  or in the notes of your next message (*Check-in: brought up, with your
+  message*). Where no conversation runs, Martlet starts one without the talk
+  window, as for a reminder. A notice kind's own prompts are its
+  `BackgroundJobKind.Wording`; due reminders keep theirs and come first.
+
+Your words go through Companion › Prompts › *Check-in: your own*, which adds the
+facts, the time and the answer format. Ideas: *"If the user has been at it for
+hours, suggest a short break"*, *"If it's late at night, remind Martlet to talk
+more softly"*, *"If the user seems stressed, remind Martlet to be gentle"*.
+
+**Answers.** Martlet reads the last decisive line, so thinking written before
+the answer doesn't count. Markdown, bullets, quotes and a reasoning model's
+`<think>` block are skipped (`CheckIns.Read`). `OK`, `KEEP` and `REMIND:
+nothing` change nothing, and so does an answer Martlet can't read (the status
+says so).
+
+**Prompts.** Companion › Prompts › *Check-ins* holds every check-in prompt: the
+instructions every check-in gets, one for each built-in check-in, the wrapper
+of your own, the reminder for the next reply and the two prompts for what is
+brought up. Empty a built-in check-in's prompt and it doesn't run.
+
+**What you see.** Companion › Check-ins shows how many are on and the member
+that takes them first (`CheckInsNow`), the last check-in that ran
+(`CheckInsLast`), and for each check-in why it waits, its last run and how many
+times it ran and acted (`CheckInStatus-<id>`). *Check now* runs one at once,
+whether it is on or due, when it has something to check. The desktop log notes
+each run with words and counts only (*Check-ins: Lingering emotes ran on diva
+(qwen3:8b) in 1.2 s: turned off {blush}.*), and `check-ins-status.json` says
+the same for [MCP](MCP.md#check-ins). Neither keeps what was said, answered or
+reminded.
+
+**API** (`Martlet.Conversation.CheckIns`): `All(settings)` lists the
+check-ins, `Wait(checkIn, state, last, now)` says why one waits (null: it
+runs), `Focus` narrows the facts to what it may act on, `Prepare` makes the
+`ThinkingJob`, `Read` reads the answer into a `CheckInVerdict` and `Note` words
+a reminder. The desktop gathers `CheckInState` on its UI thread
+(`MainWindow.CheckIns.cs`). To add a built-in check-in:
+
+1. Add it to `CheckIns.BuiltIn`, with its prompt in `PromptCatalog`.
+2. Add its waits to `CheckIns.Wait` and its message to `CheckIns.Message`.
+3. Give it an outcome Martlet already acts on, or act on a new one in
+   `MainWindow.ActOnCheckInAsync`.
+
+Checked locally: `CheckInsTests` (waits, messages, answers, the board note, the
+wording beside a due reminder, settings), the Desktop tests for an emote a reply
+turned on against a try, a check-in taking the eyes back to their usual gaze and
+the real talk window bringing up a check-in's `SAY:` through a fixture Thinking
+endpoint, MCP's `check_ins_check` and `check_ins_status`, and the page on a
+disposable data folder through `-Desktop`. A real model answering a check-in is
+**NOT RUN**.
 
 ## Singing in conversation
 

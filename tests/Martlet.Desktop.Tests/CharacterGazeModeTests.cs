@@ -201,6 +201,32 @@ public sealed class CharacterGazeModeTests
     }
 
     [Fact]
+    public async Task A_check_in_takes_the_eyes_back_to_their_usual_gaze()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer();
+        await using var avatar = new AvatarController(createRenderer: () => renderer, allowControlledClock: true);
+        var gaze = avatar.Gaze;
+        await avatar.ShowAsync(scope.Profile() with { LipSync = AvatarLipSync.Loudness }, default);
+        Assert.Null(gaze.ChosenSince);
+        Assert.False(gaze.BackToUsual("A check-in"));
+
+        avatar.Cues.Post([new CharacterCue("{look ahead}", TimeSpan.Zero)], Task.CompletedTask);
+        await Until(() => gaze.Settings.Changed);
+        Assert.NotNull(gaze.ChosenSince);
+        await Until(() => renderer.Gazes.Length == 1);
+        Assert.Equal(GazeMode.Ahead, renderer.Gazes[0].Mode);
+
+        Assert.True(gaze.BackToUsual("A check-in"));
+        Assert.False(gaze.Settings.Changed);
+        Assert.Null(gaze.ChosenSince);
+        Assert.Null(gaze.Prompt(null)!.Looking);
+        await Until(() => renderer.Gazes.Length == 2);
+        Assert.Equal(GazeMode.Mouse, renderer.Gazes[1].Mode);
+        await avatar.StopAsync();
+    }
+
+    [Fact]
     public Task The_overlay_looks_ahead_at_the_mouse_after_a_touch_and_offers_an_eyes_menu() => OnDispatcher(async () =>
     {
         using var input = new PendingInput();

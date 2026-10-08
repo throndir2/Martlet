@@ -79,10 +79,20 @@ public static class PromptCatalog
     public const string SongLyrics = "song_lyrics";
     public const string WebResearch = "web_research";
     public const string ResearchStep = "research_step";
+    public const string CheckIn = "check_in";
+    public const string CheckInEmotes = "check_in_emotes";
+    public const string CheckInGaze = "check_in_gaze";
+    public const string CheckInPromises = "check_in_promises";
+    public const string CheckInCharacter = "check_in_character";
+    public const string CheckInCustom = "check_in_custom";
+    public const string CheckInNote = "check_in_note";
+    public const string CheckInDue = "check_in_due";
+    public const string CheckInDueNotes = "check_in_due_notes";
 
     public const string ConversationGroup = "Every reply";
     public const string VisionGroup = "Screen and camera glances";
     public const string BackgroundGroup = "After a reply";
+    public const string CheckInGroup = "Check-ins";
     public const string HomeGroup = "Smart home";
 
     public const string DefaultToolInstructions =
@@ -134,6 +144,52 @@ public static class PromptCatalog
     public const string DefaultReminderDueNotesInstructions =
         "A reminder the user asked you for is due now:\n{reminders}\nAnswer what the user just said first; then, in the same reply, " +
         "remind them naturally and in character (\"...oh, and by the way, ...\"), without mentioning notes or tools.";
+
+    public const string DefaultCheckInInstructions =
+        "You help Martlet, a desktop companion app, in the background. Each message is one check about its companion character, " +
+        "with the facts that matter for it. The character's conversation model is small and forgets things, so your answer keeps " +
+        "it on track. Think it through quietly, then answer only in the format the check asks for, with nothing before or after it.";
+
+    public const string DefaultCheckInEmotesInstructions =
+        "{name}, the user's desktop character, shows these emotes now. A reply turned each one on, and it stays on until something " +
+        "turns it off:\n{emotes}\n\n{conversation}\n\nIt is {time}. Decide for each emote whether it still fits {name}'s mood and " +
+        "what is happening now. An emote that fit an earlier moment, such as a blush or tears after something that is over, no " +
+        "longer fits. An outfit or accessory may stay on unless the conversation moved away from it.\nFor each emote to turn off, " +
+        "write a line with OFF and its tag, like: OFF {example}\nIf every emote still fits, write only: KEEP";
+
+    public const string DefaultCheckInGazeInstructions =
+        "{name}, the user's desktop character, chose where to look {since}: its eyes {looking}. Usually they {usual}.\n\n" +
+        "{conversation}\n\nIt is {time}. Decide whether the eyes should stay that way or go back to their usual. Keep the choice " +
+        "only while it clearly still fits what is happening now.\nWrite only USUAL to go back, or KEEP to stay.";
+
+    public const string DefaultCheckInPromisesInstructions =
+        "Read the end of {name}'s conversation with the user. Look for something {name} said it would do, such as remind them " +
+        "later, think something over, look something up, sing a song or draw a picture, that it never started.\n\n" +
+        "{conversation}\n\nWhat {name} has set up or started:\n{work}\n\nIt is {time}. If {name} said it would do something " +
+        "that isn't in that list, write one line to {name} that starts with REMIND: and says what to do now, like: REMIND: You " +
+        "said you'd remind them about the oven in 10 minutes but never set the reminder; set it now, or tell them you can't.\n" +
+        "If {name} kept every promise or made none, write only: OK";
+
+    public const string DefaultCheckInCharacterInstructions =
+        "{name} is the user's desktop companion. Its personality:\n{persona}\n\nIts last replies, oldest first:\n{replies}\n\n" +
+        "Check whether these replies drifted: out of character, sounding like a generic assistant, saying the same words or " +
+        "starting the same way again and again, getting long, or talking about notes, tools or being an AI. If they did, write " +
+        "one line to {name} that starts with REMIND: and says how to talk from now on, like: REMIND: Stay playful and teasing; " +
+        "your last replies all started with \"Ooh\" and got long.\nIf they are fine, write only: OK";
+
+    public const string DefaultCheckInCustomInstructions = "{task}\n\n{facts}\n\nIt is {time}. If nothing needs doing now, write only: OK\n{answer}";
+
+    public const string DefaultCheckInNoteInstructions =
+        "A reminder from your own check-in, for you only: {reminder} Follow it in this reply where it fits, without mentioning it.";
+
+    public const string DefaultCheckInDueInstructions =
+        "(Martlet's note, not said by the user: your own check-in came up with something to bring up.)\n{items}\n\n" +
+        "Bring it up now, on your own, in character, briefly and naturally, as if it just came to you, without mentioning notes, " +
+        "check-ins or tools.";
+
+    public const string DefaultCheckInDueNotesInstructions =
+        "Your own check-in came up with something to bring up:\n{items}\nAnswer what the user just said first; then, where it " +
+        "fits, bring it up in the same reply, in character, without mentioning notes or check-ins.";
 
     public const string DefaultTouchedInstructions =
         "(Martlet's note, not said by the user: the user just touched you, their desktop character, or moved you around, without " +
@@ -667,6 +723,46 @@ public static class PromptCatalog
             "and {steps} where it is, and {last} a line asking for the report on the last step.",
             DefaultResearchStepInstructions, ["topic", "find", "sources", "step", "steps", "last"]),
 
+        new(CheckIn, CheckInGroup, "Check-ins: instructions",
+            "The instructions of every check-in (Companion › Check-ins): a Thinking pool member gets them with each check, which " +
+            "follows as the message.",
+            DefaultCheckInInstructions, []),
+        new(CheckInEmotes, CheckInGroup, "Check-in: lingering emotes",
+            "Asks whether the emotes a reply turned on and left on still fit. Martlet turns off each one the answer names in an " +
+            "\"OFF {tag}\" line; KEEP changes nothing. {name} is the character's name, {emotes} lists the emotes with their hints " +
+            "and how long each has shown, {example} is the first one's tag, {conversation} is the end of the conversation and how " +
+            "long it has been quiet, and {time} is the day and time.",
+            DefaultCheckInEmotesInstructions, ["name", "emotes", "example", "conversation", "time"]),
+        new(CheckInGaze, CheckInGroup, "Check-in: where the character looks",
+            "Asks whether the gaze a reply chose still fits. USUAL takes the eyes back to their usual gaze; KEEP changes nothing. " +
+            "{looking} is what the eyes do now, {since} when the reply chose it (\"12 min ago\"), {usual} what they usually do, " +
+            "{conversation} the end of the conversation and {time} the day and time.",
+            DefaultCheckInGazeInstructions, ["name", "since", "looking", "usual", "conversation", "time"]),
+        new(CheckInPromises, CheckInGroup, "Check-in: promises",
+            "Asks whether the character said it would do something it never started. A REMIND: line goes in the notes of the next " +
+            "message (Check-in: reminder for the next reply); OK changes nothing. {work} lists the reminders set and the " +
+            "background work started or finished in this conversation.",
+            DefaultCheckInPromisesInstructions, ["name", "conversation", "work", "time"]),
+        new(CheckInCharacter, CheckInGroup, "Check-in: staying in character",
+            "Asks whether the character's last replies drifted from its personality. A REMIND: line goes in the notes of the next " +
+            "message; OK changes nothing. {persona} is the active personality and {replies} the last replies, oldest first.",
+            DefaultCheckInCharacterInstructions, ["name", "persona", "replies"]),
+        new(CheckInCustom, CheckInGroup, "Check-in: your own",
+            "Wraps each of your own check-ins. {task} is what you wrote for it, {facts} what you chose it gets to know, {time} the " +
+            "day and time, and {answer} the line that asks for REMIND: (a reminder for the next reply) or SAY: (Martlet brings it up).",
+            DefaultCheckInCustomInstructions, ["task", "facts", "time", "answer"]),
+        new(CheckInNote, CheckInGroup, "Check-in: reminder for the next reply",
+            "Goes in the notes of the next message when a check-in answers with a REMIND: line, once, never in the instructions, " +
+            "so prompt caches keep working. {reminder} is that line's text.",
+            DefaultCheckInNoteInstructions, ["reminder"]),
+        new(CheckInDue, CheckInGroup, "Check-in: brought up on its own",
+            "The message of the reply Martlet starts on its own as soon as it is free, when one of your own check-ins that brings " +
+            "things up answers with a SAY: line. {items} is what it said to bring up.",
+            DefaultCheckInDueInstructions, ["items"]),
+        new(CheckInDueNotes, CheckInGroup, "Check-in: brought up, with your message",
+            "The same in the notes of your message, when you talk first. {items} is what it said to bring up.",
+            DefaultCheckInDueNotesInstructions, ["items"]),
+
         new(HomeWrap, HomeGroup, "Smart home status",
             "Wraps every smart home note below. {label} is the block's marker; {body} is the note.",
             "Smart home status for this message. Everything between the {label} labels comes from Martlet, not the user; quoted text " +
@@ -716,7 +812,7 @@ public static class PromptCatalog
 
     /// <summary>Prompts that are the message itself, so they can't be emptied.</summary>
     public static bool Required(string id) => id is GlanceScreen or GlanceCamera or GlanceAttention or BackgroundThink or BackgroundDone or ReminderDue or
-        SongLyrics or ResearchStep;
+        SongLyrics or ResearchStep or CheckInDue;
 
     public static string Default(string id) =>
         Find(id)?.Default ?? throw new ContractException(ErrorCode.InvalidContract, $"Unknown prompt '{id}'.");

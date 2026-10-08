@@ -345,7 +345,7 @@ internal sealed class CharacterGazeService
         return spot;
     }
 
-    private void Choose(GazeMode? mode)
+    private void Choose(GazeMode? mode, string? why = null)
     {
         GazeSettings before, after;
         lock (gate)
@@ -358,9 +358,27 @@ internal sealed class CharacterGazeService
         }
         ErrorLog.Info(after.Changed
             ? $"The Thinking model chose the character's gaze: {CharacterGaze.Word(after.Mode)} (usually {CharacterGaze.Word(after.Usual)})."
-            : $"The Thinking model took the character's eyes back to their usual gaze ({CharacterGaze.Word(after.Usual)}).");
+            : $"{why ?? "The Thinking model"} took the character's eyes back to their usual gaze ({CharacterGaze.Word(after.Usual)}).");
         if (after.Mode != before.Mode) Refresh();
         Changed?.Invoke();
+    }
+
+    /// <summary>When a reply's choice began to hold the eyes, or null while they do their usual.</summary>
+    internal DateTimeOffset? ChosenSince
+    {
+        get
+        {
+            lock (gate) return SettingsLocked().Changed ? chosenAt : null;
+        }
+    }
+
+    /// <summary>Takes the eyes back to their usual gaze because of <paramref name="why"/> ("A check-in"), as a reply's
+    /// <c>{look usual}</c> does. Returns whether a reply's choice held them.</summary>
+    internal bool BackToUsual(string why)
+    {
+        if (ChosenSince is null) return false;
+        Choose(null, why);
+        return true;
     }
 
     /// <summary>Vision stopped: the eyes go back to their usual gaze and what was seen is forgotten.</summary>

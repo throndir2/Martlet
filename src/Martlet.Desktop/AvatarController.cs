@@ -234,7 +234,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
         if (source.Kind == CharacterActionKind.Gesture) ForgetLetGo(heldGestures);
         if (holds)
         {
-            if (Held.Add(source, profile?.ModelPath, DateTimeOffset.Now) is { } dropped)
+            if (Held.Add(source, profile?.ModelPath, DateTimeOffset.Now, reason) is { } dropped)
                 await SendOffAsync(current, dropped.Source, token).ConfigureAwait(false);
         }
         else if (started && source.Kind == CharacterActionKind.Expression) HoldExpression(current, source.Name, finished);

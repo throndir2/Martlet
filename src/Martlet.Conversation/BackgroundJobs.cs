@@ -40,7 +40,19 @@ public sealed record BackgroundJobKind(string Name, int MaxActive, int? MaxPerHo
     /// and goes on there. A kind whose runner doesn't is never stopped.</summary>
     public bool Yields { get; init; }
 
+    /// <summary>A <see cref="Notice"/> kind's own prompts (a check-in's): null uses a due reminder's.</summary>
+    public NoticeWording? Wording { get; init; }
+
     internal ThinkingDemand? Demand(IReadOnlyList<BackgroundPlace> pool) => PoolKind is { } kind ? ThinkingDemand.For(kind, pool) : null;
+}
+
+/// <summary>How the conversation is told about a notice kind's jobs: the prompt of the reply Martlet starts on its own
+/// (<paramref name="Message"/>) and the one for the notes of the user's next message (<paramref name="Notes"/>), each filled
+/// with the notices, one per line, as <paramref name="Placeholder"/>.</summary>
+public sealed record NoticeWording(string Message, string Notes, string Placeholder)
+{
+    /// <summary>A due reminder's: Companion › Prompts › Reminder due, and Reminder due, with your message.</summary>
+    public static NoticeWording Reminder { get; } = new(PromptCatalog.ReminderDue, PromptCatalog.ReminderDueNotes, "reminders");
 }
 
 /// <summary>What a job produced: its <paramref name="Result"/> for the conversation (the text the model gets back), or the
@@ -603,38 +615,42 @@ public sealed class BackgroundJobs : IDisposable
     }
 
     /// <summary>The message of the reply Martlet starts on its own to bring up <paramref name="finished"/> jobs (Companion ›
-    /// Prompts › Background work finished, and Reminder due for due reminders): its note with the results, shortened until a
-    /// request can carry it.</summary>
+    /// Prompts › Background work finished, Reminder due for due reminders, and a notice kind's own <see cref="NoticeWording"/>,
+    /// such as a check-in's): its note with the results, shortened until a request can carry it.</summary>
     public static BoundedTextInput ReportMessage(PromptSettings? prompts, IReadOnlyList<BackgroundJob> finished)
     {
-        var notices = finished.Where(job => job.Kind.Notice).ToArray();
+        var notices = Wordings(finished);
         var work = finished.Where(job => !job.Kind.Notice).ToArray();
         for (var limit = 10_000; ; limit /= 2)
         {
-            var text = string.Join("\n\n", new[]
-            {
-                notices.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.ReminderDue, ("reminders", Notices(notices, limit))),
-                work.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.BackgroundDone, ("results", Results(work, limit)))
-            }.OfType<string>());
+            var text = string.Join("\n\n", notices.Select(group =>
+                    PromptSettings.Fill(prompts, group.Key.Message, (group.Key.Placeholder, Notices(group, limit / notices.Length))))
+                .Append(work.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.BackgroundDone, ("results", Results(work, limit))))
+                .OfType<string>());
             try { return new(text); }
             catch (ContractException) when (limit > 500) { }
         }
     }
 
     /// <summary>What goes in the notes of the user's next message about <paramref name="finished"/> jobs not brought up yet
-    /// (Companion › Prompts › Background work finished, with your message, and Reminder due, with your message), or null when
-    /// those prompts were emptied.</summary>
+    /// (Companion › Prompts › Background work finished, with your message, Reminder due, with your message, and a notice kind's
+    /// own <see cref="NoticeWording.Notes"/>), or null when those prompts were emptied.</summary>
     public static string? ReportNotes(PromptSettings? prompts, IReadOnlyList<BackgroundJob> finished)
     {
-        var notices = finished.Where(job => job.Kind.Notice).ToArray();
+        var notices = Wordings(finished);
         var work = finished.Where(job => !job.Kind.Notice).ToArray();
-        var text = string.Join("\n\n", new[]
-        {
-            notices.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.ReminderDueNotes, ("reminders", Notices(notices, 4_000))),
-            work.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.BackgroundDoneNotes, ("results", Results(work, 6_000)))
-        }.Where(part => !string.IsNullOrWhiteSpace(part)));
+        var text = string.Join("\n\n", notices.Select(group =>
+                PromptSettings.Fill(prompts, group.Key.Notes, (group.Key.Placeholder, Notices(group, 4_000))))
+            .Append(work.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.BackgroundDoneNotes, ("results", Results(work, 6_000))))
+            .Where(part => !string.IsNullOrWhiteSpace(part)));
         return text.Length == 0 ? null : text;
     }
+
+    // The notices by how they are worded: due reminders first, then each other notice kind's (a check-in's) in the order they
+    // finished.
+    private static IGrouping<NoticeWording, BackgroundJob>[] Wordings(IReadOnlyList<BackgroundJob> finished) =>
+        [.. finished.Where(job => job.Kind.Notice).GroupBy(job => job.Kind.Wording ?? NoticeWording.Reminder)
+            .OrderBy(group => group.Key == NoticeWording.Reminder ? 0 : 1)];
 
     /// <summary>The due notices (reminders) as the conversation is told about them, one per line.</summary>
     public static string Notices(IEnumerable<BackgroundJob> notices, int limit = 4_000)

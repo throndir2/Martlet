@@ -331,6 +331,31 @@ public sealed class LingeringEmoteTests
         new("gesture:" + name, CharacterActionKind.Gesture, name, "");
 
     [Fact]
+    public async Task A_check_in_sees_which_lingering_emotes_a_reply_turned_on_and_never_the_owners_tries()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer();
+        await using var avatar = new AvatarController(createRenderer: () => renderer, allowControlledClock: true);
+        avatar.UseActions(_ => Catalog());
+        await avatar.ShowAsync(scope.Profile() with { LipSync = AvatarLipSync.Loudness }, default);
+
+        avatar.Cues.Post([new CharacterCue("{glasses}", TimeSpan.Zero)], Task.CompletedTask);
+        await Until(() => avatar.Held.Holds("expression:Glasses"));
+        Assert.True(await avatar.PlayActionAsync(Source("expression:Star"), "a try", null, default, hold: true));
+        var glasses = avatar.Held.Current.Single(h => h.Source.Id == "expression:Glasses");
+        Assert.Equal("{glasses}", glasses.Why);
+        Assert.True(glasses.ByReply);
+        Assert.False(avatar.Held.Current.Single(h => h.Source.Id == "expression:Star").ByReply);
+
+        // A check-in turns the reply's emote off the way {/glasses} does; the owner's try stays on.
+        Assert.True(await avatar.StopActionAsync(glasses.Source, "a check-in", default));
+        Assert.Equal(new RendererAction("expression", "Glasses", false, true), renderer.Actions.Last());
+        Assert.Contains("for a check-in", avatar.LastAction);
+        Assert.Equal(["expression:Star"], avatar.Held.Current.Select(h => h.Source.Id));
+        await avatar.StopAsync();
+    }
+
+    [Fact]
     public async Task A_renderer_that_runs_out_of_time_bringing_a_lingering_emote_back_still_shows_the_character()
     {
         using var scope = new AvatarHostingTests.Scope();

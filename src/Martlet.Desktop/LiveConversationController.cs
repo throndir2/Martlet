@@ -2595,6 +2595,28 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         return start.Job;
     }
 
+    /// <summary>Brings what a check-in said to bring up into this conversation, like a due reminder (<see cref="CheckIns.SayKind"/>,
+    /// with the Check-in: brought up prompts). Null when the conversation is closing or too many wait.</summary>
+    internal BackgroundJob? BringUp(string label, string text)
+    {
+        var start = jobs.Start(CheckIns.SayKind, label.Length > 80 ? label[..80] + "…" : label,
+            (_, _) => Task.FromResult(BackgroundJobOutcome.Done(text)));
+        return start.Job;
+    }
+
+    /// <summary>The newest <paramref name="count"/> exchanges of this conversation (oldest first: what the user said and the reply)
+    /// and how many it has had in all, a count that only grows, for a check-in. In memory only.</summary>
+    internal (IReadOnlyList<CheckInExchange> Exchanges, long Total) RecentExchanges(int count)
+    {
+        lock (gate)
+        {
+            var messages = context.Snapshot();
+            var exchanges = new List<CheckInExchange>();
+            for (var i = 0; i + 1 < messages.Count; i += 2) exchanges.Add(new(messages[i].Text, messages[i + 1].Text));
+            return ([.. exchanges.Skip(Math.Max(0, exchanges.Count - count))], context.Start + context.Count);
+        }
+    }
+
     /// <summary>manage_memories: the model finds, adds, corrects, reassigns or forgets facts when the user asks. Changes are noted
     /// in the talk window like background remembering's.</summary>
     private async ValueTask<ConversationToolResult> ManageMemoriesAsync(LiveConversationOperation operation, Guid revision, TextToolCall call,

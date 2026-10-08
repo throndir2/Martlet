@@ -21,7 +21,7 @@ namespace Martlet.Desktop;
 /// <summary>The Companion page's pages: the one place each choice that shapes Martlet is made, listed by group in a side list.
 /// Home and Devices link here. A new page adds its value here (in list order) and one arm each in GroupOf, TabTitle, TabGlyph,
 /// TabIntro and RenderTab.</summary>
-internal enum CompanionTab { Thinking, DeepThinking, Voice, Listening, Vision, Reading, LipSync, Profiles, Character, Personality, Prompts, Lorebook, Memory, People, Replies, Tools, Pictures, SmartHome, Discord, Messaging }
+internal enum CompanionTab { Thinking, DeepThinking, Voice, Listening, Vision, Reading, LipSync, Profiles, Character, Personality, Prompts, Lorebook, Memory, People, Replies, CheckIns, Tools, Pictures, SmartHome, Discord, Messaging }
 
 /// <summary>The side list's groups, in order: how it works (where each job runs), who it is (look, personality, what it knows)
 /// and what it does (how it answers and acts). A group with no pages yet is not shown.</summary>
@@ -114,6 +114,7 @@ public partial class MainWindow
         CompanionTab.Thinking or CompanionTab.DeepThinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.Vision or CompanionTab.Reading or CompanionTab.LipSync => CompanionGroup.HowItWorks,
         CompanionTab.Profiles or CompanionTab.Character or CompanionTab.Personality or CompanionTab.Prompts or CompanionTab.Lorebook or CompanionTab.Memory or CompanionTab.People => CompanionGroup.WhoItIs,
         CompanionTab.Replies => CompanionGroup.WhatItDoes,
+        CompanionTab.CheckIns => CompanionGroup.WhatItDoes,
         CompanionTab.Tools => CompanionGroup.WhatItDoes,
         CompanionTab.Pictures => CompanionGroup.WhatItDoes,
         CompanionTab.SmartHome => CompanionGroup.WhatItDoes,
@@ -146,6 +147,7 @@ public partial class MainWindow
         CompanionTab.Memory => "Memory",
         CompanionTab.People => "People",
         CompanionTab.Replies => "Replies",
+        CompanionTab.CheckIns => "Check-ins",
         CompanionTab.Tools => "Tools",
         CompanionTab.Pictures => "Pictures",
         CompanionTab.SmartHome => "Smart home",
@@ -172,6 +174,7 @@ public partial class MainWindow
         CompanionTab.Memory => "\uE8F1",
         CompanionTab.People => "\uE716",
         CompanionTab.Replies => "\uE8F2",
+        CompanionTab.CheckIns => "\uE73E",
         CompanionTab.Tools => "\uE90F",
         CompanionTab.Pictures => "\uE8B9",
         CompanionTab.SmartHome => "\uEC26",
@@ -198,6 +201,7 @@ public partial class MainWindow
         CompanionTab.Memory => "Facts Martlet remembers about you between conversations.",
         CompanionTab.People => "Teach Martlet whose voices it hears and the names they use.",
         CompanionTab.Replies => "Control reply length and creativity.",
+        CompanionTab.CheckIns => "Every few minutes the Thinking pool checks what Martlet left on and said, and reminds it of what it forgot: small models forget a lot.",
         CompanionTab.Tools => "Let Martlet run terminal commands and use MCP tools while you talk, and choose when it must ask first.",
         CompanionTab.Pictures => "Let Martlet draw pictures when you ask: on your own graphics card with ComfyUI, or with a paid cloud provider.",
         CompanionTab.SmartHome => "Find, set up or install Home Assistant, share it with your other computers, and let Martlet control your home when you ask.",
@@ -366,6 +370,7 @@ public partial class MainWindow
             case CompanionTab.Memory: RenderMemoryTab(body); break;
             case CompanionTab.People: RenderPeopleTab(body); break;
             case CompanionTab.Replies: RenderRepliesTab(body); break;
+            case CompanionTab.CheckIns: RenderCheckInsTab(body); break;
             case CompanionTab.DeepThinking: RenderDeepThinkingTab(body); break;
             case CompanionTab.Tools: RenderToolsTab(body); break;
             case CompanionTab.Pictures: RenderPicturesTab(body); break;
