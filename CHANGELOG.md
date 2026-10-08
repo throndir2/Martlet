@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Companion › Touch › Touch zones can now zoom the character's picture up to 8 times, with **Zoom in**, **Zoom out** and **Reset zoom** or Ctrl+mouse wheel, so you can move and resize small zones such as an eye or the mouth precisely. The boxes' lines and corners stay the same size, so each drag moves a box by a smaller step; zoomed in, drag the picture or scroll to look around it. ([#628](https://github.com/throndir2/Martlet/pull/628))
 - **Detect zones** now also gives your character a touch zone for each thing special to it that your Thinking model sees, such as cat ears, a tail, wings, a halo, a hat, a hair bow or what it holds, named the way the model sees it (*Hair bow*). They react like the other extras, and **Detect again** keeps their names. A tail, wings or animal ears that a Live2D character's own files name get a zone too, even in the first guess. ([#627](https://github.com/throndir2/Martlet/pull/627))
 
 ### Changed
