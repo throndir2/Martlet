@@ -30,7 +30,8 @@ async function page(Renderer, posts) {
   let onMessage, draw;
   const element = { clientWidth: 500, clientHeight: 500, width: 500, height: 500, toDataURL: () => "data:image/png;base64,AAAA" };
   const context = vm.createContext({
-    document: { getElementById: () => element },
+    // A Live2D load adds the Core's script to the page and imports the Framework (sdk.js).
+    document: { getElementById: () => element, createElement: () => ({}), head: { append: script => queueMicrotask(() => script.onload()) } },
     window: { chrome: { webview: {
       postMessage: data => posts.push(data),
       addEventListener: (_event, callback) => { onMessage = callback; }
@@ -40,7 +41,12 @@ async function page(Renderer, posts) {
     ArrayBuffer, Uint8Array, Map, Set, Error
   });
   const module = new vm.SourceTextModule(await readFile(new URL("app.js", import.meta.url), "utf8"),
-    { context, identifier: new URL("app.js", import.meta.url).href });
+    { context, identifier: new URL("app.js", import.meta.url).href, importModuleDynamically: async () => {
+      const sdk = new vm.SyntheticModule(["sdk"], function () { this.setExport("sdk", {}); }, { context });
+      await sdk.link(() => {});
+      await sdk.evaluate();
+      return sdk;
+    } });
   await module.link(link(context, Renderer));
   await module.evaluate();
   return { send: message => onMessage({ data: message }), draw: now => draw(now) };
@@ -97,6 +103,41 @@ test("a picture taken by a showing character's renderer draws the canvas again a
   await send({ kind: "picture", data: { width: 2046, height: 1364, zoom: 1, x: 0, y: 0, frame: 0.5 } });
   assert.equal(posts.at(-1).png, "data:image/png;base64,AAAA");
   assert.deepEqual(calls.slice(3), [["resize", 500, 500], ["view", 2, 0.1, -0.2, 0.5], ["update", 0]]);
+});
+
+test("a Live2D picture tells each drawable's part and the model's own named parts; parts that can't be read are only left out", async () => {
+  const posts = [];
+  let failing = false;
+  class Renderer {
+    load() { return Promise.resolve({ parameters: [] }); }
+    get modelSummary() { return undefined; }
+    setView() {}
+    update() {}
+    drawableBounds() {
+      return [{ id: "ArtMesh131", left: 0.512345, top: 0.5, right: 0.6, bottom: 0.9, part: "Part31" }, { id: "ArtMesh7", left: 0.1, top: 0.1, right: 0.2, bottom: 0.2 }];
+    }
+    modelParts() {
+      if (failing) throw new Error("controlled parts failure");
+      return [{ id: "Part", name: "立绘" }, { id: "Part31", name: "右腿", parent: "Part" }];
+    }
+    dispose() {}
+  }
+  const { send } = await page(Renderer, posts);
+  await send({ kind: "load", data: { renderer: "Live2D", resourceRevision: "a".repeat(64), modelFile: "简.model3.json",
+    assets: ["core.js", "sdk.js", "简.model3.json"], still: true } });
+  await send({ kind: "picture", data: { width: 2046, height: 1364, zoom: 1, x: 0, y: 0, frame: 0.5 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))), {
+    png: "data:image/png;base64,AAAA",
+    drawables: [{ id: "ArtMesh131", left: 0.5123, top: 0.5, right: 0.6, bottom: 0.9, part: "Part31" }, { id: "ArtMesh7", left: 0.1, top: 0.1, right: 0.2, bottom: 0.2 }],
+    parts: [{ id: "Part", name: "立绘" }, { id: "Part31", name: "右腿", parent: "Part" }]
+  });
+
+  failing = true;
+  await send({ kind: "picture", data: { width: 2046, height: 1364, zoom: 1, x: 0, y: 0, frame: 0.5 } });
+  const picture = JSON.parse(JSON.stringify(posts.at(-1)));
+  assert.equal(picture.drawables.length, 2, "the picture and its drawables still come");
+  assert.deepEqual(picture.parts, []);
+  assert.ok(!posts.some(post => post.error), "and it never fails the renderer");
 });
 
 test("a blush the model can't show is drawn over the face, held until turned off", async () => {

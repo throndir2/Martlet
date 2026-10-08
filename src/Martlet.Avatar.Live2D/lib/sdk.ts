@@ -25,6 +25,12 @@ export interface CubismModel {
   getDrawableVertexIndices(index: number): Uint16Array;
   getDrawableRenderOrders(): Int32Array;
   getParameterValueByIndex?(index: number): number;
+  /** The index of the part a drawable belongs to, or -1. */
+  getDrawableParentPartIndex?(index: number): number;
+  getPartCount?(): number;
+  getPartId?(index: number): { getString(): { s: string } };
+  /** Each part's parent part index, -1 for a top part. */
+  getPartParentPartIndices?(): Int32Array;
   update(): void;
 }
 

@@ -1666,7 +1666,8 @@ internal sealed partial class RendererWindow : Window
         try
         {
             probe = new(drawn.TryGetProperty("drawables", out var drawables) ? drawables.Deserialize<RendererDrawableBox[]>(RendererProtocol.Json) : null,
-                drawn.TryGetProperty("bones", out var bones) ? bones.Deserialize<RendererBonePoint[]>(RendererProtocol.Json) : null);
+                drawn.TryGetProperty("bones", out var bones) ? bones.Deserialize<RendererBonePoint[]>(RendererProtocol.Json) : null,
+                drawn.TryGetProperty("parts", out var parts) ? parts.Deserialize<RendererModelPart[]>(RendererProtocol.Json) : null);
         }
         catch (JsonException error) { ErrorLog.Warn($"Couldn't read where the character's parts are: {error.Message}"); }
         return (Decode(bytes), probe);

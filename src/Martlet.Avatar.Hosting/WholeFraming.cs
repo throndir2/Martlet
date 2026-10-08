@@ -87,8 +87,10 @@ public static class WholeFraming
 
     /// <summary>A zones probe taken in the framing <paramref name="zoom"/>, <paramref name="x"/>, <paramref name="y"/> as it
     /// would read with the character framed whole.</summary>
-    public static RendererZoneProbe Unframed(RendererZoneProbe probe, double zoom, double x, double y, double frame) => new(
-        probe.Drawables?.Select(d => Unframed(new TouchZoneBox(d.Left, d.Top, d.Right - d.Left, d.Bottom - d.Top), zoom, x, y, frame) is var box
-            ? new RendererDrawableBox(d.Id, box.X, box.Y, box.X + box.Width, box.Y + box.Height) : d).ToArray(),
-        probe.Bones?.Select(b => CharacterTouch.Unframed(b.X, b.Y, zoom, x, y, frame) is var (bx, by) ? new RendererBonePoint(b.Bone, bx, by) : b).ToArray());
+    public static RendererZoneProbe Unframed(RendererZoneProbe probe, double zoom, double x, double y, double frame) => probe with
+    {
+        Drawables = probe.Drawables?.Select(d => Unframed(new TouchZoneBox(d.Left, d.Top, d.Right - d.Left, d.Bottom - d.Top), zoom, x, y, frame) is var box
+            ? d with { Left = box.X, Top = box.Y, Right = box.X + box.Width, Bottom = box.Y + box.Height } : d).ToArray(),
+        Bones = probe.Bones?.Select(b => CharacterTouch.Unframed(b.X, b.Y, zoom, x, y, frame) is var (bx, by) ? new RendererBonePoint(b.Bone, bx, by) : b).ToArray()
+    };
 }

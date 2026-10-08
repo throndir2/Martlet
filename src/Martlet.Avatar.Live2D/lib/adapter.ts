@@ -170,6 +170,7 @@ export class Live2DAdapter {
   #faceProbeMilliseconds = 0;
   #eyeBlinkIds: readonly string[] = [];
   #lipSyncIds: readonly string[] = [];
+  #partNames: ReadonlyMap<string, string> = new Map();
 
   constructor(canvas: HTMLCanvasElement, options: {
     sdk?: SdkModules;
@@ -236,13 +237,15 @@ export class Live2DAdapter {
     return model && this.#modelTop !== undefined && !this.#loading ? this.#modelTop * this.#fitScale(model) : undefined;
   }
 
-  /** Each visible drawable's bounds now, as fractions of the canvas (origin top-left, +y down), for touch zones. */
-  drawableBounds(): { id: string; left: number; top: number; right: number; bottom: number }[] {
+  /** Each visible drawable's bounds now, as fractions of the canvas (origin top-left, +y down), and the ID of the part it belongs
+   *  to (when the SDK says), for touch zones. */
+  drawableBounds(): { id: string; left: number; top: number; right: number; bottom: number; part?: string }[] {
     this.#ready();
     const model = this.#resources!.model!;
     const aspect = this.#canvas.width / this.#canvas.height;
     const view = this.#view;
     const scale = this.#fitScale(model) * view.zoom;
+    const parts = this.#partIds(model);
     const bounds = [];
     for (let i = 0; i < model.getDrawableCount() && bounds.length < 2000; i++) {
       if (!model.getDrawableDynamicFlagIsVisible(i) || model.getDrawableOpacity(i) < 0.05) continue;
@@ -253,10 +256,32 @@ export class Live2DAdapter {
         const y = (1 - (vertices[v + 1]! * scale + view.y)) / 2;
         left = Math.min(left, x); right = Math.max(right, x); top = Math.min(top, y); bottom = Math.max(bottom, y);
       }
+      const part = parts[model.getDrawableParentPartIndex?.(i) ?? -1];
       if (Number.isFinite(left) && Number.isFinite(top) && right > left && bottom > top)
-        bounds.push({ id: model.getDrawableId(i).getString().s, left, top, right, bottom });
+        bounds.push({ id: model.getDrawableId(i).getString().s, left, top, right, bottom, ...(part ? { part } : {}) });
     }
     return bounds;
+  }
+
+  /** The model's own parts (groups of drawables and parts) for touch zones: each part's ID, the name the model's DisplayInfo
+   *  file gives it, if any, and its parent part's ID (none for a top part). At most `LIMITS.parts`; empty when the SDK can't
+   *  say. */
+  modelParts(): { id: string; name?: string; parent?: string }[] {
+    this.#ready();
+    const model = this.#resources!.model!;
+    const ids = this.#partIds(model);
+    const parents = model.getPartParentPartIndices?.();
+    return ids.map((id, i) => {
+      const name = this.#partNames.get(id), parent = parents ? ids[parents[i] ?? -1] : undefined;
+      return { id, ...(name ? { name } : {}), ...(parent ? { parent } : {}) };
+    });
+  }
+
+  #partIds(model: CubismModel): string[] {
+    if (!model.getPartCount || !model.getPartId) return [];
+    const ids: string[] = [];
+    for (let i = 0; i < Math.min(model.getPartCount(), LIMITS.parts); i++) ids.push(model.getPartId(i).getString().s);
+    return ids;
   }
 
   playMotion(group: string): boolean {
@@ -480,6 +505,7 @@ export class Live2DAdapter {
         }
       }
       this.#bundle = bundle;
+      this.#partNames = bundle.partNames();
       this.#plan = new MappingPlan(this.#parameters, bundle.description, []);
       this.#loading = false;
       this.#neutral();
@@ -916,6 +942,7 @@ export class Live2DAdapter {
     this.#faceProbeMilliseconds = 0;
     this.#eyeBlinkIds = [];
     this.#lipSyncIds = [];
+    this.#partNames = new Map();
     if (!resources) return;
     const errors: unknown[] = [];
     const release = (action: () => void) => {

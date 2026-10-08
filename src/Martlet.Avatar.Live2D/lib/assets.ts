@@ -14,6 +14,9 @@ export const LIMITS = Object.freeze({
   texturePixels: 32 * 1024 * 1024,
   parameters: 1024,
   drawables: 2048,
+  /** At most this many of a model's parts are reported for touch zones, each name cut to `partName` characters. */
+  parts: 1024,
+  partName: 64,
   vertices: 250_000,
   indices: 750_000,
   canvasDimension: 2048,
@@ -38,6 +41,8 @@ export interface ModelDescription {
   readonly hitAreas: readonly { readonly id: string; readonly name: string }[];
   readonly physics?: string;
   readonly pose?: string;
+  /** The model3.json DisplayInfo (*.cdi3.json): the names of its parameters and parts, read for touch zones (`partNames`). */
+  readonly displayInfo?: string;
   readonly diagnostics: readonly Diagnostic[];
 }
 
@@ -175,7 +180,7 @@ export class LocalModelBundle {
     for (const field of ["Physics", "Pose", "UserData", "DisplayInfo"]) {
       if (refs[field] !== undefined) {
         optional[field] = resolve(refs[field], ".json");
-        if (field === "UserData" || field === "DisplayInfo")
+        if (field === "UserData")
           diagnostics.push({ code: "INACTIVE_METADATA", message: `${field} is declared but not executed.` });
       }
     }
@@ -275,8 +280,32 @@ export class LocalModelBundle {
       hitAreas: Object.freeze(hitAreas),
       ...(optional.Physics ? { physics: optional.Physics } : {}),
       ...(optional.Pose ? { pose: optional.Pose } : {}),
+      ...(optional.DisplayInfo ? { displayInfo: optional.DisplayInfo } : {}),
       diagnostics: Object.freeze(diagnostics.map(d => Object.freeze(d))),
     });
+  }
+
+  /** The names the model's DisplayInfo file gives its parts, by part ID, in any language (头, 前髪, Arm L...): at most
+   *  `LIMITS.parts`, without control characters and cut to `LIMITS.partName` characters. Empty without a DisplayInfo file or
+   *  when it can't be read; only data, never executed. */
+  partNames(): ReadonlyMap<string, string> {
+    const names = new Map<string, string>();
+    if (!this.description.displayInfo) return names;
+    try {
+      const root: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(this.read(this.description.displayInfo)));
+      const parts = root !== null && typeof root === "object" ? Reflect.get(root, "Parts") : undefined;
+      if (!Array.isArray(parts)) return names;
+      for (const part of parts.slice(0, LIMITS.parts)) {
+        if (part === null || typeof part !== "object") continue;
+        const id: unknown = Reflect.get(part, "Id"), name: unknown = Reflect.get(part, "Name");
+        if (typeof id !== "string" || id.length === 0 || id.length > 256 || typeof name !== "string") continue;
+        const text = name.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, LIMITS.partName);
+        if (text) names.set(id, text);
+      }
+    } catch {
+      // A DisplayInfo file that can't be read only names no parts.
+    }
+    return names;
   }
 
   read(name: string): Uint8Array<ArrayBuffer> {
