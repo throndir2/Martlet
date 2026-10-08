@@ -79,15 +79,13 @@ public partial class MainWindow
     private async Task HoldForStrokeAsync(CharacterActionSource source, string reason)
     {
         try { await avatar.PlayActionAsync(source, reason, null, lifetime.Token, hold: true); }
-        catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
-            InvalidDataException or TimeoutException or ObjectDisposedException) { }
+        catch (Exception error) when (error is OperationCanceledException || RendererFailures.Is(error, lifetime.Token)) { }
     }
 
     private async Task StopStrokeHoldAsync(CharacterActionSource source)
     {
         try { await avatar.StopActionAsync(source, "the end of a stroke", lifetime.Token); }
-        catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
-            InvalidDataException or TimeoutException or ObjectDisposedException) { }
+        catch (Exception error) when (error is OperationCanceledException || RendererFailures.Is(error, lifetime.Token)) { }
     }
 
     /// <summary>A stroke ended: Martlet notices it on the crossed zones that have Martlet notices on (like a tap there), one

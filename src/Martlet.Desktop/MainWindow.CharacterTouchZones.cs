@@ -90,8 +90,7 @@ public partial class MainWindow
             await Task.Delay(TimeSpan.FromSeconds(lingerSeconds), lifetime.Token);
             await avatar.StopActionAsync(source, reason + " (lingered)", lifetime.Token);
         }
-        catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
-            InvalidDataException or TimeoutException or ObjectDisposedException) { }
+        catch (Exception error) when (error is OperationCanceledException || RendererFailures.Is(error, lifetime.Token)) { }
     }
 
     private const string TouchZonesNoticedIdle = "Nothing waits for Martlet.";
