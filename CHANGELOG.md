@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-10-08
+
 ### Added
 - VRM characters now get the same help as Live2D ones for parts that swing: a tail, wings or animal ears zone follows the character's own spring bones from root to tip, wherever they swing, and a tap on cat ears counts as the ears, not the hair. ([#630](https://github.com/throndir2/Martlet/pull/630))
 - On a Live2D character, a tail, wings, animal ears or a ponytail that swings on its own now has a touch zone that follows all of it, from its root to its tip, wherever it swings. This works even for a tail that hangs hidden behind the legs. Martlet finds these parts in the character's own physics, with no AI. ([#629](https://github.com/throndir2/Martlet/pull/629))

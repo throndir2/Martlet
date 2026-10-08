@@ -50,13 +50,13 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.58.0
+## 🆕 What's new in 0.59.0
 
-- 🎙️ **Jenny, a new natural voice**: Martlet now starts with Jenny (Dioco), a clean, natural voice from a professional Irish voice-over artist. The two "cute anime girl" voices are gone.
-- 👆 **Touch zones right away**: open Companion › Touch › Touch zones and your character shows at once with a first guess at its touch zones, so touches work right away. **Detect zones** then finds the zones with your Thinking model.
-- 🔁 **Repeats itself less**: before Martlet speaks up on its own, it looks at what it said in the last hour and says something again only when it's worth it.
-- 👤 **Profiles remember more**: each character profile now remembers, on each computer, where your character stands, how big it is, where it looks and which touches stop it while it talks.
-- 🤝 **Share a host with a friend**: a friend can sign in to your Linux host with their own account and use only its AI, never your settings or anything else of yours. Your own requests come first.
+- 🤝 **Share hosts with friends from the app**: **Devices › Friends** shows who you share your hosts with, with **Share** and **Stop sharing**. A friend's Martlet uses a host you share without ever joining your network.
+- 🐾 **Touch zones that swing along**: a tail, wings, animal ears or a ponytail now gets a touch zone that follows it wherever it swings, on Live2D and VRM characters.
+- 🎀 **Zones for what makes your character special**: **Detect zones** now also adds zones for things like cat ears, a halo, a hat or a hair bow.
+- 🔍 **Zoom in to place zones precisely**: zoom the Touch zones picture up to 8 times to place small zones, such as an eye, exactly. A zone can now have several areas, too.
+- 🎯 **Touches land where you aim**: zones stay on the right part while your character moves, and a touch where zones overlap counts on each of them.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
