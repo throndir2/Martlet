@@ -242,6 +242,7 @@ public sealed class FriendAccessTests
 
         internal async Task<IssuedDeviceCredential> SignInAsync(string subject, string device)
         {
+            Clock.Advance(TimeSpan.FromSeconds(1));
             var (attempt, _) = await Service.BeginAsync("idp", Challenge, "http://127.0.0.1:53111/", CancellationToken.None);
             var proof = JsonDocument.Parse(JsonSerializer.Serialize(new { code = subject })).RootElement;
             return (await Service.CompleteAsync(attempt.Id, device, device.ToUpperInvariant(), proof, CancellationToken.None)).Credential;
@@ -308,6 +309,78 @@ public sealed class FriendAccessTests
         Assert.False(lab.Service.FriendAllowed(stray.CredentialId));
         var detached = new GatewaySignInService(lab.Credentials, lab.Clock, new SystemGatewayCrypto(), (_, _) => { });
         Assert.False(detached.FriendAllowed(stray.CredentialId));
+    }
+
+    [Fact]
+    public async Task Pictures_and_singing_stay_the_owners_while_a_friend_lists_and_uses_the_other_engines()
+    {
+        await using var pictures = new Martlet.Gateway.Pictures.PictureRelayWorker(new Uri("http://127.0.0.1:50086/"));
+        await using var singing = new Martlet.Gateway.Singing.SongRelayWorker(new Uri("http://127.0.0.1:1/"));
+        await using var thinking = new Martlet.Gateway.Ollama.OllamaRelayWorker(new Uri("http://127.0.0.1:11434/"), "gemma4:e4b");
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [pictures, singing, thinking]);
+        var owner = await SetUpSignInAsync(host);
+        var friend = await FriendAsync(host, owner);
+        async Task<string[]> RoutesAsync(GatewayRequestSigner who)
+        {
+            using var response = await host.Client.SendAsync(host.SignedGet("/martlet/v1/capabilities", GatewayRole.Voice, who));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            return (await ReadAsync(response)).GetProperty("routes").EnumerateArray().Select(r => r.GetProperty("route_id").GetString()!).ToArray();
+        }
+
+        Assert.Equal(new[] { pictures.Route.RouteId, singing.Route.RouteId, thinking.Route.RouteId }.Order(StringComparer.Ordinal),
+            await RoutesAsync(owner));
+        Assert.Equal([thinking.Route.RouteId], await RoutesAsync(friend));
+        // Their queues, histories, results and models are the whole host's: a friend is refused before anything is read.
+        foreach (var path in new[] { pictures.Route.Path, singing.Route.Path })
+        {
+            using var refused = await host.Client.SendAsync(host.SignedPost(path, GatewayRole.Voice, friend,
+                Encoding.UTF8.GetBytes("""{"operation":"status"}""")));
+            Assert.True(refused.StatusCode == HttpStatusCode.Forbidden, $"{path}: {refused.StatusCode}");
+            Assert.Equal("access.friend", await GatewayTestHost.FailureCode(refused));
+        }
+        Assert.True(GatewayInferenceRouteRegistry.FriendsMayUse(thinking.Route));
+        Assert.False(GatewayInferenceRouteRegistry.FriendsMayUse(pictures.Route));
+        Assert.False(GatewayInferenceRouteRegistry.FriendsMayUse(singing.Route));
+    }
+
+    [Fact]
+    public async Task A_friend_keeps_at_most_three_computers_and_friends_never_fill_the_credential_table()
+    {
+        var lab = new ServiceLab();
+        lab.Allow("friend-1", "friend");
+        var first = await lab.SignInAsync("friend-1", "pc-1");
+        var second = await lab.SignInAsync("friend-1", "pc-2");
+        var third = await lab.SignInAsync("friend-1", "pc-3");
+        // A fourth computer replaces the friend's oldest: its credential is revoked, not just forgotten.
+        var fourth = await lab.SignInAsync("friend-1", "pc-4");
+        Assert.False(lab.Live(first));
+        Assert.All(new[] { second, third, fourth }, credential => Assert.True(lab.Live(credential)));
+        Assert.Equal(["pc-2", "pc-3", "pc-4"], lab.Service.Snapshot().Enrolled.Select(e => e.DeviceId).Order());
+        Assert.Contains(lab.Log, line => line.StartsWith("Revoked pc-1, the oldest computer of", StringComparison.Ordinal));
+
+        // A friend credential sign-in no longer records (signin.json replaced behind the service) frees its slot on the next
+        // friend's sign-in.
+        var stray = lab.Credentials.Issue("stray-pc", "STRAY", [GatewayRole.Voice], CancellationToken.None, GatewayAccess.Friend);
+        lab.Allow("friend-2", "friend");
+        await lab.SignInAsync("friend-2", "other-pc");
+        Assert.False(lab.Live(stray));
+
+        // All friends together: at most MaximumFriendCredentials computers, then signin.friends_full; the owner's own
+        // identities still sign in.
+        var count = lab.Credentials.ListRegistrations().Count(r => r.Access == GatewayAccess.Friend);
+        for (var i = 3; count < GatewaySignInService.MaximumFriendCredentials; i++)
+        {
+            lab.Allow($"friend-{i}", "friend");
+            for (var d = 0; d < GatewaySignInService.MaximumFriendDevices && count < GatewaySignInService.MaximumFriendCredentials; d++, count++)
+                await lab.SignInAsync($"friend-{i}", $"friend-{i}-pc-{d}");
+        }
+        lab.Allow("friend-late", "friend");
+        Assert.Equal("signin.friends_full", (await Assert.ThrowsAsync<GatewayProtocolException>(() =>
+            lab.SignInAsync("friend-late", "late-pc"))).Failure.Code);
+        lab.Allow("me", null);
+        Assert.Equal(GatewayAccess.Full, (await lab.SignInAsync("me", "my-laptop")).Access);
+        Assert.Equal(GatewaySignInService.MaximumFriendCredentials,
+            lab.Credentials.ListRegistrations().Count(r => r.Access == GatewayAccess.Friend));
     }
 
     [Fact]

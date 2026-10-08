@@ -26,8 +26,10 @@ internal sealed partial class GatewayHttpApplication
             var bodyHash = crypto.Sha256(bytes);
             principal = Authorize(context.Request, bodyHash, GatewayApiAccess.Engine, route.RequiredRole);
             GatewayRules.Require(principal.Role == route.RequiredRole, "auth.role");
-            // A friend never reaches the owner's speaking voices: it carries its own recording with each request.
+            // A friend never reaches the owner's speaking voices: it carries its own recording with each request. Engines that
+            // keep work of the whole host (pictures, singing) stay the owner's.
             friend = principal.Access == GatewayAccess.Friend;
+            GatewayRules.Require(!friend || GatewayInferenceRouteRegistry.FriendsMayUse(route), "access.friend");
             request = GatewayInferenceJson.ParseRequest(
                 bytes,
                 route,

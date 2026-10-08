@@ -263,7 +263,7 @@ internal sealed partial class GatewayHttpApplication
                     Workers = workers.CapabilitiesFor(principal.Role),
                     RegistryId = GatewayInferenceProtocol.RegistryId,
                     RegistryVersion = GatewayInferenceProtocol.RegistryVersion,
-                    Routes = inference.CapabilitiesFor(principal.Role)
+                    Routes = inference.CapabilitiesFor(principal.Role, principal.Access == GatewayAccess.Friend)
                 }).ConfigureAwait(false);
                 return;
             }

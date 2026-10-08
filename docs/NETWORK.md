@@ -556,12 +556,21 @@ What a friend's computer gets on a shared host:
 - **The engines only.** Its sign-in gives it a friend's credential
   (`GatewayAccess.Friend`, kept with the credential, so it stays a friend's even
   if `signin.json` is lost). The host lets it read the version, the capabilities
-  and the status and use the inference routes of the `voice` role, and cancel
-  its own requests. Every other route refuses it (`access.friend`) before
-  anything is read: pairing, the network, the hardware report, who does what,
-  voices, speaking voices, characters, creations, Home Assistant, settings,
-  memories, API keys, commands, logs, GPU priority, the security audit and the
-  sign-in settings. These refusals never lock a friend out.
+  and the status, use the engines that serve only the request that asks
+  (thinking, listening, speaking, lip-sync and reading), and cancel its own
+  requests. Pictures and singing keep the whole host's queues, results and
+  models, so they stay yours: the host leaves them out of a friend's
+  capabilities and refuses them. Every other route refuses a friend too
+  (`access.friend`) before anything is read: pairing, the network, the hardware
+  report, who does what, voices, speaking voices, characters, creations, Home
+  Assistant, settings, memories, API keys, commands, logs, GPU priority, the
+  security audit and the sign-in settings. These refusals never lock a friend
+  out.
+- **A few computers each.** A friend keeps at most three computers on a host.
+  Signing in on a fourth replaces (revokes) their oldest. All friends together
+  keep at most 32 computers on a host; then a new one is refused
+  (`signin.friends_full`). So friends can never fill the room the host keeps
+  for your own computers' pairings.
 - **Never in your network.** The host never attests a friend's computer, and a
   friend can't ask to join. A friend can't sign in under another computer's ID
   (`signin.device_taken`).
@@ -623,7 +632,9 @@ the home PC's ID is refused (`signin.device_taken`) and stopping sharing revokes
 the friend at once), the gateway, Core, desktop and Linux
 gateway unit tests (RFC 6238 vectors, lockout, allow list, removal records,
 readiness, outside addresses kept with pairings, `martlet-host owner-signin-*`
-and `owner-invite` on a fixture file system, friend access on every route,
+and `owner-invite` on a fixture file system, friend access on every route
+(pictures and singing refused and left out of a friend's capabilities), at most
+three computers per friend and 32 for all friends,
 device ID takeover, access changes, a friend's access kept across a restart of
 the protected store, and the owner first on a fixture Ollama: the owner's reply
 stops a friend's request on the same worker and takes its slot, a friend is

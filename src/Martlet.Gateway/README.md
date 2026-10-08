@@ -389,7 +389,7 @@ never signs in) or has a live credential that this identity's earlier sign-in
 didn't issue (a pairing made another way, or another identity's computer);
 otherwise it replaces that earlier sign-in's credential. Failures: `signin.unavailable` (404),
 `signin.invalid` (401), `signin.not_allowed` (403), `signin.expired` (400),
-`signin.device_taken` (409), `signin.provider` (502); each sign-in outcome is recorded with the request
+`signin.device_taken` (409), `signin.friends_full` (409), `signin.provider` (502); each sign-in outcome is recorded with the request
 guard under route class `signin` and the claimed or verified account as
 subject, and `TryAdmit` adds the per-account lockout. The member-only
 `GET`/`POST /martlet/v1/signin/settings` (signed; `signin.denied` for a
@@ -494,7 +494,16 @@ never without sign-in).
 
 | Friends may use | Everything else answers `access.friend` before anything is read |
 | --- | --- |
-| `GET version` (with `access` `friend`), `GET capabilities`, `GET status`, the inference routes of their role, `POST inference/cancel` (their own requests) | pairing, `network*`, `machine`, `cluster`, `voices`, `speaking-voices`, `character-models`, `creations`, `home-assistant`, `settings`, `memories`, `api-keys`, `commands`, `logs`, `priority`, `security/audit`, `signin/settings` |
+| `GET version` (with `access` `friend`), `GET capabilities` (only the routes friends may use), `GET status`, the inference routes of their role whose every operation serves only the request that asks (`GatewayInferenceRouteRegistry.FriendsMayUse`: chat, speaking, lip-sync, transcription, reading, perception), `POST inference/cancel` (their own requests) | the picture and song routes (they keep the whole host's queues, histories, results and models), pairing, `network*`, `machine`, `cluster`, `voices`, `speaking-voices`, `character-models`, `creations`, `home-assistant`, `settings`, `memories`, `api-keys`, `commands`, `logs`, `priority`, `security/audit`, `signin/settings` |
+
+A friend keeps at most three computers on a host
+(`GatewaySignInService.MaximumFriendDevices`; a sign-in on another revokes their
+oldest) and all friends together at most 32 (`MaximumFriendCredentials`; then
+`signin.friends_full`, 409), so friends never fill the credential table. A
+friend's credential that sign-in no longer records (`signin.json` replaced) is
+revoked on the next friend's sign-in, and when more than 64 sign-ins are
+recorded, friends' oldest records go first and their credentials are revoked
+with them.
 
 `access.friend` refusals don't count toward lockout. A friend's speaking
 requests never reach the owner's shared speaking voices: a voice named only by
@@ -557,8 +566,8 @@ bounded pull-driven NDJSON. Authenticated operations
 require an exact route with no query. Unknown methods/routes do not redirect.
 Unpaired clients cannot read version, capabilities, status, worker IDs, model
 metadata or failure details. A [friend's device](#friend-access) is admitted
-only by version, capabilities, status, the inference routes of its role and
-cancel; every other signed operation above answers it `access.friend`.
+only by version, capabilities, status, the request-scoped inference routes of
+its role and cancel; every other signed operation above answers it `access.friend`.
 
 `IGatewayWorker` exposes only validated capability metadata and a bounded
 status method. There is no worker URL, raw HTTP client, model-management API,
@@ -753,6 +762,7 @@ operator actions are:
 | `auth.role` | Use a separately approved least-privilege role |
 | `access.friend` | The host is shared with this device for its engines only; use version, capabilities, status and the inference routes ([friend access](#friend-access)) |
 | `signin.device_taken` | Sign in from the computer's own ID; a member desktop pairs by its network key, and a pairing made another way is removed by the owner first |
+| `signin.friends_full` | The host keeps as many friends' computers as it allows (32); the owner stops sharing with someone first |
 | `action.denied` | Obtain the exact provider/action permission; permanent pairing is not approval |
 | `job.replay` | Use a new explicitly permitted action and request ID; a new nonce alone cannot duplicate a batch |
 | `job.busy` | The route's worker runs as many jobs as it can; with `detail` `live`, a live turn holds the graphics card of this pool-lane request: run it on another computer or after the live turn; with `detail` `owner`, the host's owner is using it: a friend runs it elsewhere or later |

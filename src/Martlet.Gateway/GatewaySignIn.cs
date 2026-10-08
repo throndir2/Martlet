@@ -199,17 +199,18 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
             }
             var access = current.AccessOf(who.Provider, who.Subject);
             RequireDeviceFreeLocked(current, deviceId, who);
+            List<GatewaySignInEnrollment> evicted = access is null ? [] : MakeRoomForFriendLocked(current, deviceId, who);
             credentials.RevokeDevice(deviceId, cancellationToken);
             var issued = credentials.Issue(deviceId, Martlet.Core.Network.NetworkRoster.CleanName(displayName, deviceId), [GatewayRole.Voice],
                 cancellationToken, access == GatewaySignInDocument.FriendAccess ? GatewayAccess.Friend : GatewayAccess.Full);
             var next = current.Clone();
-            next.Enrolled.RemoveAll(e => e.DeviceId == deviceId);
+            next.Enrolled.RemoveAll(e => e.DeviceId == deviceId || evicted.Any(x => x.DeviceId == e.DeviceId));
             next.Enrolled.Add(new()
             {
                 DeviceId = deviceId, Provider = who.Provider, Subject = who.Subject, Label = who.Label, EnrolledAt = clock.GetUtcNow(),
                 Access = access, CredentialId = issued.CredentialId
             });
-            if (next.Enrolled.Count > MaximumEnrolled) next.Enrolled.RemoveRange(0, next.Enrolled.Count - MaximumEnrolled);
+            var dropped = Trim(next, deviceId);
             try { SaveLocked(next); }
             catch (Exception error) when (error is not GatewayProtocolException)
             {
@@ -221,11 +222,55 @@ internal sealed class GatewaySignInService(GatewayCredentialStore credentials, T
                 }
                 log(LogLevels.Warn, "Could not save signin.json; the computer that signed in is paired, but a member desktop will ask for an Allow to let it into the network.");
             }
+            foreach (var replaced in evicted.Concat(dropped.Where(d => d.Access is not null)))
+            {
+                if (replaced.CredentialId is { } id) credentials.RevokeCredential(id);
+                log(LogLevels.Info, $"Revoked {replaced.DeviceId}, the oldest computer of {replaced.Label ?? replaced.Subject} ({replaced.Provider}) here: a friend " +
+                    $"keeps at most {MaximumFriendDevices} computers and {MaximumEnrolled} sign-ins are recorded.");
+            }
             log(LogLevels.Info, access is null
                 ? $"{deviceId} paired by signing in as {Display(who)}."
                 : $"{deviceId} paired by signing in as {Display(who)}, a friend: it may use this host's engines and nothing else.");
             return (issued, who);
         }
+    }
+
+    /// <summary>Computers one friend keeps here; signing in on another replaces their oldest.</summary>
+    internal const int MaximumFriendDevices = 3;
+    /// <summary>Friends' computers together; more are refused (signin.friends_full), so friends never fill the credential table
+    /// (<see cref="GatewayCredentialStore.MaximumRegistrations"/>) the owner's computers need.</summary>
+    internal const int MaximumFriendCredentials = 32;
+
+    // Frees room for a friend's new computer and returns the enrollments it replaces (that friend's oldest beyond
+    // MaximumFriendDevices). Friend credentials sign-in no longer records (signin.json edited or replaced) can never be used
+    // again, so their slots are freed first; then all friends together stay under MaximumFriendCredentials.
+    private List<GatewaySignInEnrollment> MakeRoomForFriendLocked(GatewaySignInDocument current, string deviceId, GatewaySignInIdentity who)
+    {
+        var live = credentials.ListRegistrations().Where(r => !r.Revoked && r.Access == GatewayAccess.Friend).ToList();
+        foreach (var orphan in live.Where(r => !current.Enrolled.Any(e => e.CredentialId == r.CredentialId)).ToArray())
+        {
+            credentials.RevokeCredential(orphan.CredentialId);
+            live.Remove(orphan);
+        }
+        var theirs = current.Enrolled.Where(e => e.Access is not null && e.Provider == who.Provider && e.Subject == who.Subject &&
+            e.DeviceId != deviceId).OrderBy(e => e.EnrolledAt).ToList();
+        var evicted = theirs.Take(Math.Max(0, theirs.Count - (MaximumFriendDevices - 1))).ToList();
+        var others = live.Count(r => r.DeviceId != deviceId && !evicted.Any(e => e.CredentialId == r.CredentialId));
+        GatewayRules.Require(others < MaximumFriendCredentials, "signin.friends_full");
+        return evicted;
+    }
+
+    // Keeps at most MaximumEnrolled records: friends' oldest go first (the caller revokes their credentials); the owner's
+    // computers' oldest only when theirs alone fill the list, as before. The record just added always stays.
+    private static List<GatewaySignInEnrollment> Trim(GatewaySignInDocument next, string deviceId)
+    {
+        var over = next.Enrolled.Count - MaximumEnrolled;
+        if (over <= 0) return [];
+        var candidates = next.Enrolled.Where(e => e.DeviceId != deviceId);
+        var dropped = candidates.Where(e => e.Access is not null).OrderBy(e => e.EnrolledAt)
+            .Concat(candidates.Where(e => e.Access is null).OrderBy(e => e.EnrolledAt)).Take(over).ToList();
+        next.Enrolled.RemoveAll(dropped.Contains);
+        return dropped;
     }
 
     /// <summary>Who decides that a device ID belongs to an active member desktop of this host's network (those pair by their

@@ -68,13 +68,20 @@ public sealed partial class GatewayInferenceRouteRegistry
     }
 
     internal GatewayInferenceRouteCapability[] CapabilitiesFor(
-        GatewayRole role) =>
+        GatewayRole role, bool friend = false) =>
         byId.Values
-            .Where(registration => registration.Route.RequiredRole == role)
+            .Where(registration => registration.Route.RequiredRole == role && (!friend || FriendsMayUse(registration.Route)))
             .OrderBy(registration => registration.Route.RouteId, StringComparer.Ordinal)
             .Select(registration => GatewayInferenceRouteCapability.From(
                 registration.Route))
             .ToArray();
+
+    /// <summary>The engines a friend may use: those whose every operation serves only the request that asks. Pictures and
+    /// singing keep queues, histories, results and models of the whole host, so they stay the owner's, as does any kind not
+    /// listed here.</summary>
+    internal static bool FriendsMayUse(GatewayInferenceRoute route) => route.Kind is GatewayInferenceKind.OllamaChat or
+        GatewayInferenceKind.F5Synthesis or GatewayInferenceKind.Audio2Face or GatewayInferenceKind.Transcription or
+        GatewayInferenceKind.Ocr or GatewayInferenceKind.PerceptionOcr or GatewayInferenceKind.PerceptionVlm;
 
     internal bool TryGetByPath(
         string path,
