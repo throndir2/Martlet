@@ -5,10 +5,12 @@ page says which model takes each kind, how the words of an image or audio
 model go to the model that answers, and the rules that keep the time to
 Martlet's first word the same.
 
-Status (2026-10-08): the foundation is in place (the settings file, the
-routing, one job line for each model, the runner, the status file and MCP). The
-image pipeline, the audio pipeline and the Companion controls come in their own
-pull requests. Until each one lands, its section below gives the design.
+Status (2026-10-08): in place. The foundation (#634) has the settings file,
+the routing, one job line for each model, the runner, the status file and MCP.
+The image pipeline (#640) and the audio pipeline (#637) use it, and the
+Companion cards, Test vision and the metadata checks (#644) choose the models.
+Helper jobs with a picture use the image model (#635, #641). A real image or
+audio model was NOT RUN; see [Checks](#checks).
 
 ## Short answers
 
@@ -491,10 +493,13 @@ are null):
 `Source` is `Thinking` (the default), `OtherSense` or `Own`. A file Martlet
 can't read counts as the default for both kinds.
 
-`sense-models-status.json` is written by the desktop: for each kind, its path,
-model and why, whether its model shares the conversation's computer, and its
-line (busy, waiting, held for a reply, runs, and the last job's purpose,
-outcome and time).
+`sense-models-status.json` is written by the desktop: whether a talk window
+loaded the settings (`conversation`), and for each kind its path, model and
+why, whether its model shares the conversation's computer, and its line (busy,
+waiting, held for a reply, runs, and the last job's purpose, outcome and
+time). Before a talk window loads the settings, a model of its own is routed
+by what Martlet found out about it (`model-abilities.json`), and a kind that
+goes to the text model says to set up Thinking.
 
 ## For developers
 
@@ -543,15 +548,21 @@ is kept in memory only.
 - MCP: `sense_models_status` reads a data folder's choices, routes and the
   desktop's status file. `sense_models_check` rehearses the routing and the
   lines with a simulated runner ([MCP](MCP.md#image-and-audio-models)).
-  `audio_model_check` rehearses the audio path against fixture endpoints on
-  127.0.0.1 with the desktop's own voice notes.
-- Tests: `SenseModelsTests` (Martlet.Core.Tests), `SenseRoutingTests` and
-  `SenseLanesTests` (Martlet.Conversation.Tests), and `SenseModelsDesktopTests`
-  (Martlet.Desktop.Tests: a fixture endpoint gets the picture, a refused
-  picture is remembered, and a job waits for, or stops for, a reply on the
-  same computer). `AudioModelVoiceTests` (Martlet.Desktop.Tests): no recording
+  `image_model_check` and `audio_model_check` rehearse the picture and voice
+  paths against fixture endpoints on 127.0.0.1 with the production code.
+  `model_ability_check` rehearses Test vision and Test hearing, and
+  `model_lab` runs a fixture endpoint for the desktop's cards.
+- Tests: `SenseModelsTests` and `SenseModelChoiceTests` (Martlet.Core.Tests),
+  `SenseRoutingTests` and `SenseLanesTests` (Martlet.Conversation.Tests),
+  `ModelVisionTestTests` (Martlet.Providers.Tests), and in
+  Martlet.Desktop.Tests `SenseModelsDesktopTests` (a fixture endpoint gets the
+  picture, a refused picture is remembered, a job waits for or stops for a
+  reply on the same computer, helper jobs), `ImageModelPipelineTests` (no
+  picture to Thinking, a reply never waits, two-step looks, the default
+  requests the same byte for byte), `AudioModelVoiceTests` (no recording
   goes to Thinking, the reply never waits, ready words go with it and late
   ones with the next request, the consent rule, shared hardware, the sound
-  digest's judge, the words and the defaults.
-- NOT RUN: a real image or audio model. Each pipeline's pull request says what
-  it ran.
+  digest's judge, the words and the defaults) and `SenseModelCardsTests`.
+- NOT RUN: a real image or audio model, and the desktop log's `Reply latency`
+  and `Thinking input` lines with real models. Each pull request says what it
+  ran.

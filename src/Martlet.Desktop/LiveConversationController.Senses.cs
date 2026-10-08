@@ -74,9 +74,12 @@ internal sealed partial class LiveConversationController
     /// words, or nowhere (docs/SENSE_MODELS.md). Cheap: no request and no file; a refusal recorded during use shows at once.</summary>
     internal SenseRoute SenseRoute(SenseKind kind) => SenseRoute(kind, Configuration);
 
-    /// <summary>Where <paramref name="kind"/> goes for <paramref name="configured"/> (a turn's own configuration).</summary>
+    /// <summary>Where <paramref name="kind"/> goes for <paramref name="configured"/> (a turn's own configuration). Before a talk
+    /// window loads the settings (null), a model of its own still goes by what Martlet found out about it (model-abilities.json),
+    /// and a kind that goes to the text model says to set up Thinking.</summary>
     internal SenseRoute SenseRoute(SenseKind kind, LiveConversationConfiguration? configured) =>
-        SenseRouting.For(kind, SenseModels, configured?.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), configured?.Abilities,
+        SenseRouting.For(kind, SenseModels, configured?.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm),
+            configured?.Abilities ?? Volatile.Read(ref poolAbilities),
             configured?.Vision() ?? VisionSupport.Unknown, configured?.Hearing() ?? HearingSupport.Unknown);
 
     /// <summary>Runs <paramref name="job"/> on <paramref name="kind"/>'s model of its own (<see cref="SenseLanes.RunAsync"/>):
@@ -268,6 +271,9 @@ internal sealed partial class LiveConversationController
         return JsonSerializer.Serialize(new
         {
             schemaVersion = 1, updated = clock.GetUtcNow(),
+            // Whether a conversation loaded the settings (a talk window opened); before that a kind that goes to the text model says
+            // to set up Thinking, and the routes of models of their own come from model-abilities.json alone.
+            conversation = Configuration is not null,
             senses = new[] { SenseKind.Image, SenseKind.Audio }.Select(kind =>
             {
                 var route = SenseRoute(kind);

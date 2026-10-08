@@ -216,6 +216,26 @@ public sealed class SenseModelsDesktopTests
     }
 
     [Fact]
+    public async Task Before_a_conversation_loads_the_settings_a_model_of_its_own_goes_by_what_martlet_found_out()
+    {
+        await using var fixture = await LiveFixture.Create(data: true);
+        fixture.Controller.SenseModels = WithEyes;
+        // Its name says it sees, but a test (or another computer, shared) found that it doesn't.
+        Assert.True(new ModelAbilities().With(new()
+        {
+            Origin = EyesUrl, ModelId = "qwen2.5vl:7b", Sees = false, Source = "a test request", CheckedAt = DateTimeOffset.UtcNow
+        }).Save(fixture.DirectoryPath));
+        fixture.Controller.ReloadAbilities();
+
+        var before = fixture.Controller.SenseRoute(SenseKind.Image, null);
+        Assert.Equal(SensePath.None, before.Path);
+        Assert.Contains("doesn't see pictures", before.Why);
+        Assert.Equal(SensePath.None, fixture.Controller.SenseRoute(SenseKind.Image).Path);
+        // The status file says whether a conversation loaded the settings (the fixture's did).
+        Assert.Contains("\"conversation\": true", fixture.Controller.SenseStatusJson());
+    }
+
+    [Fact]
     public async Task A_helper_job_with_a_picture_goes_to_the_image_model_when_no_pool_member_sees()
     {
         await using var fixture = await LiveFixture.Create();
