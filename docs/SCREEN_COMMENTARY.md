@@ -66,8 +66,10 @@ your setup can't.
    (monitors, windows, apps, layout, wallpaper or how busy it looks). It is
    also told that real
    friends stay quiet and to answer exactly `[pass]` unless something is worth a
-   remark, never to narrate the screen, repeat itself (it is given what it said
-   in the last 30 minutes) or read out private details. A new message, call or
+   remark, never to narrate the screen, repeat itself (its notes list what it
+   said in the last hour, each with when:
+   [What you said lately](CONVERSATION.md#what-you-said-lately)) or read out
+   private details. A new message, call or
    reminder is worth a heads-up, naming only who or which app it is from (*Sam
    just messaged you*), never the message itself. `[pass]` is never
    spoken; a remark is spoken with the selected voice like any reply. When

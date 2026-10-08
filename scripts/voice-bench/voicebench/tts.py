@@ -22,10 +22,6 @@ STARTER_VOICES = REPO / "src" / "Martlet.F5" / "BundledVoices"
 # The starter voices' words (src/Martlet.F5/BundledVoices/NOTICES.txt).
 STARTER_TRANSCRIPTS = {
     "librivox-annie": "But am I talking too much? People are always telling me I do. Would you rather I didn't talk? If you say so, I'll stop.",
-    "librivox-annie-anime": "But am I talking too much? People are always telling me I do. Would you rather I didn't talk? If you say so, "
-                            "I'll stop.",
-    "librivox-woollybee-anime": "You do get so attached to things like that, don't you? Is there a brook anywhere near Green Gables? I "
-                                "forgot to ask Mrs. Spencer that.",
     "librivox-woollybee": "It isn't heavy. I've got all my worldly goods in it, but it isn't heavy. And if it isn't carried in just a "
                           "certain way the handle pulls out, so I'd better keep it because I know the exact knack of it.",
     "lj-speech": "Printing, then, for our purpose, may be considered as the art of making books by means of movable types.",

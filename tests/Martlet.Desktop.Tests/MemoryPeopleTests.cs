@@ -293,7 +293,9 @@ public sealed class MemoryPeopleTests
             Control<TextBox>(window, "FactContent").Text = "Takes the bus to work.";
             Control<ComboBox>(window, "RetentionChoice").SelectedIndex = 0;
             Click(window, "MemorySaveFact");
-            await Until(() => !runner.IsRunning && list.Items.Count == 3);
+            // The list follows the change at once; the action's own line follows when it finishes.
+            await Until(() => !runner.IsRunning && list.Items.Count == 3 &&
+                Text(window, "FactStatus").StartsWith("Fact added.", StringComparison.Ordinal));
             Assert.StartsWith("Fact added. 3 facts remembered: 2 belong to 2 people", Text(window, "FactStatus"));
             var bus = list.Items.Cast<MemoryWindow.FactItem>().Single(i => i.Fact.Content == "Takes the bus to work.");
             Assert.Equal(sam.Id, bus.Fact.VoiceId);
@@ -311,7 +313,59 @@ public sealed class MemoryPeopleTests
         finally
         {
             window.Close();
-            await Until(() => !runner.IsRunning);
+            await Until(() => !runner.IsRunning && window.Settled);
+        }
+    });
+
+    [Fact]
+    public Task MemoryWindowFollowsFactsRememberedElsewhereAndKeepsWhatYouAreWriting() => OnDispatcher(async () =>
+    {
+        using var scope = new Scope();
+        var (roster, sam, other, _) = Roster();
+        var store = new SettingsStore(scope.Data);
+        var initial = SetupSettings.Begin(null);
+        var saved = await store.SaveAsync(initial, null);
+        using var memory = new DesktopMemoryService(store);
+        var configured = await memory.SaveConfigurationAsync(initial, saved.Revision, true, MemoryStoragePolicy.AppLocalData, null);
+        var revision = configured.Settings.Memory!.ConfigurationRevision;
+        await memory.SaveFactAsync(revision, "Plays the cello.", MemoryRetention.UntilDeleted(), other.Id);
+        var runner = new SetupOperationRunner();
+        var window = new MemoryWindow(memory, runner, voices: () => roster) { ShowActivated = false, ShowInTaskbar = false };
+        window.Show();
+        try
+        {
+            var list = Control<ListBox>(window, "FactsList");
+            var person = Control<ComboBox>(window, "PersonChoice");
+            await Until(() => list.Items.Count == 1);
+
+            // A new fact you are writing for the other voice (not yours, the default) stays as it is while a conversation
+            // remembers something about Sam.
+            Control<TextBox>(window, "FactContent").Text = "Takes the bus.";
+            person.SelectedItem = person.Items.Cast<object>().Single(o => o.ToString() == $"Voice {other.Number}");
+            await memory.RememberAsync(revision, [],
+                [new MemoryCaptureOperation(MemoryCaptureKind.Remember, Content: "Sam's dog is called Biscuit.", VoiceId: sam.Id)],
+                id => MemoryPeople.Canonical(id, roster));
+            await Until(() => list.Items.Count == 2);
+            Assert.StartsWith("2 facts remembered: 2 belong to 2 people", Text(window, "FactStatus"));
+            Assert.Equal("Takes the bus.", Text(window, "FactContent"));
+            Assert.Equal($"Voice {other.Number}", person.SelectedItem!.ToString());
+
+            // A fact you are changing stays selected, with your words and the person you chose, while manage_memories adds one.
+            list.SelectedItem = list.Items.Cast<MemoryWindow.FactItem>().Single(i => i.Fact.Content == "Plays the cello.");
+            Control<TextBox>(window, "FactContent").Text = "Plays the cello on Sundays.";
+            person.SelectedIndex = 0;
+            var tool = await MemoryTools.RunAsync(memory, revision, """{"action":"remember","fact":"The house has a red door.","person":"everyone"}""",
+                roster, null, CancellationToken.None);
+            Assert.False(tool.Result.IsError, tool.Result.Output);
+            await Until(() => list.Items.Count == 3);
+            Assert.Equal("Plays the cello.", Assert.IsType<MemoryWindow.FactItem>(list.SelectedItem).Fact.Content);
+            Assert.Equal("Plays the cello on Sundays.", Text(window, "FactContent"));
+            Assert.Equal("Everyone", person.SelectedItem!.ToString());
+        }
+        finally
+        {
+            window.Close();
+            await Until(() => !runner.IsRunning && window.Settled);
         }
     });
 
@@ -368,7 +422,8 @@ public sealed class MemoryPeopleTests
             Assert.Equal(2, list.Items.Count);
             Assert.Equal("Delete all of Sam's facts (2)", deleteShown.Content);
             Click(window, "MemoryDeleteShown");
-            await Until(() => !runner.IsRunning && list.Items.Count == 0);
+            await Until(() => !runner.IsRunning && list.Items.Count == 0 &&
+                Text(window, "FactStatus").StartsWith("Deleted", StringComparison.Ordinal));
             Assert.Contains("all 2 of Sam's facts", questions[^1]);
             Assert.StartsWith("Deleted 2 facts. 0 facts remembered", Text(window, "FactStatus"));
 
@@ -386,7 +441,7 @@ public sealed class MemoryPeopleTests
         finally
         {
             window.Close();
-            await Until(() => !runner.IsRunning);
+            await Until(() => !runner.IsRunning && window.Settled);
         }
     });
 

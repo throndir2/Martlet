@@ -54,7 +54,7 @@ GPT-SoVITS clones only recordings of 3 to 10 seconds. Desktop marks other voices
 Speaking to GPT-SoVITS skips them when it picks the voice; the speech client,
 the gateway (`SpeechEngine.MinimumReferenceMilliseconds`/`Maximum...`) and the
 worker refuse them. All included voices fit except "Bee (cute, bubbly)" (10.6 s).
-Martlet's default, "Annie (cute anime girl)", fits.
+Martlet's default, "Annie (cute, chatty)", fits.
 
 The request carries `reference_language`: `ja` when the recording's transcript
 has kana or kanji, otherwise `en` (`SpeechEngines.ReferenceLanguage`). Each reply

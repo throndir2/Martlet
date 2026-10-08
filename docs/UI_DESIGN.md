@@ -487,7 +487,7 @@ window ends it unless Martlet is listening or watching, which only hides it.
     PC's hardware suits) first: **F5 voice, with Docker** (*Set up F5 with
     Docker* sets up and pairs Martlet's host service on this PC, so this PC
     also becomes one of your hosts, installs F5 and switches over with the first
-    of Martlet's starter voices, a cute, high-pitched one) or **Windows voice, no Docker** (*Use a Windows
+    of Martlet's starter voices, a cute, chatty one) or **Windows voice, no Docker** (*Use a Windows
     voice* picks an installed voice in this PC's language, with no host
     service; a voice list and *Hear it* follow). Listening offers the same kind
     of two choices for whisper in Martlet's host service: **On the graphics
@@ -582,14 +582,20 @@ in [COMPONENTS.md](COMPONENTS.md).
 ### Run windows and Background tasks
 
 Long steps (setting up, updating or pairing a computer, adding or removing a
-role, downloads, Docker Desktop and Windows features) run in a *run window*:
+role, reconfiguring your computers with the recommended setup, downloads such
+as a Martlet update, Parakeet or cloudflared, Docker Desktop and Windows
+features) run in a *run window*:
 live output, a status line, *Hide* and *Cancel task...*. *Hide*, Esc and the
 window's close button only hide it while it runs, so a stray click never stops
 the work; *Cancel task...* sits apart on the left and always asks first (*Keep
 running* is the default). A question the run asks (a password, a role's
 choices) brings its window back with it, and a run outlives the window that
 started it. Once it ends, *Hide* becomes *Close*; a run that ends while hidden
-closes its window.
+closes its window. Long steps that Martlet starts by itself run hidden from the
+start: downloading an update, updating your hosts, keeping this PC's host
+service current and the role changes your other computers ask for. An
+automatic host update that finds the host busy changes nothing and leaves the
+list; Martlet tries it again a few minutes later.
 
 **Background tasks** in the navigation rail (its count shows how many run now)
 lists every run since Martlet started, newest first, with how long it has run

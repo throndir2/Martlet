@@ -20,7 +20,9 @@ namespace Martlet.Desktop;
 public partial class MainWindow
 {
     private sealed record HomeStep(string Id, string Title, string Detail, bool Done, bool Optional, IReadOnlyList<StepCommand> Commands);
-    private sealed record StepCommand(string Label, Action Run, bool Primary = false);
+    /// <summary>A step's button. <paramref name="Enabled"/> false greys it out while a run already does what it would do (its
+    /// label then says so, such as "Starting Docker Desktop...").</summary>
+    private sealed record StepCommand(string Label, Action Run, bool Primary = false, bool Enabled = true);
     private sealed record MapElement(NetworkNode Node, Button Card, System.Windows.Shapes.Path? Track, System.Windows.Shapes.Path? Flow, Ellipse? Ring);
 
     private static readonly string Version = AppVersions.Current;
@@ -98,11 +100,28 @@ public partial class MainWindow
     }
 
     /// <summary>A shared setup step (installing or starting Docker Desktop, for example) started or ended: the host dashboard
-    /// says so on its Docker Desktop step and offers what can go ahead meanwhile.</summary>
+    /// says so on its Docker Desktop step and offers what can go ahead meanwhile; a companion PC's Home and Devices do so for
+    /// its own host service. Once no run works on Docker Desktop any more, this PC's host service is read again at once, so
+    /// the step ticks as soon as Docker Desktop runs (or offers its button again) without waiting for the next check.</summary>
     private void SharedStepsChanged() => Dispatcher.BeginInvoke(() =>
     {
-        if (!closing) RenderHost();
+        if (closing) return;
+        var working = DockerUnderway;
+        // Background reads of this PC's host service wait while a conversation replies or hears you, as the timed ones do.
+        if (dockerWorkShown && !working && HostsHere && !Talking)
+        {
+            ErrorLog.Info("No run works on Docker Desktop any more; reading this PC's host service again now.");
+            CheckThisPcHostAsync().Forget();
+        }
+        dockerWorkShown = working;
+        RenderHost();
+        if (Role != DeviceRole.Companion) return;
+        RenderHealth();
+        if (DevicesPage.IsVisible) RenderMap();
     });
+
+    /// <summary>Whether a run worked on Docker Desktop when the shared setup steps last changed.</summary>
+    private bool dockerWorkShown;
 
     private void StartAmbientMotion()
     {
@@ -377,7 +396,7 @@ public partial class MainWindow
         try
         {
             var loaded = await setupService.LoadAsync(lifetime.Token);
-            homeSettings = await LeaveRetiredSampleAsync(loaded, lifetime.Token) ?? loaded.Settings;
+            homeSettings = await LeaveRetiredVoiceAsync(loaded, lifetime.Token) ?? loaded.Settings;
             SpeakingEngineChoice.Sync(store.DataDirectory, homeSettings);
             // No voice goes by the companion's own name: one learned by mistake is dropped (names the owner typed stay).
             localVoices.DropCompanionNames(Martlet.Core.Speakers.CompanionNames.From(homeSettings?.Companion?.Personas.Select(p => p.Name),
@@ -502,7 +521,8 @@ public partial class MainWindow
                 : new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
             foreach (var command in step.Commands)
             {
-                var button = new Button { Content = command.Label, Margin = below ? new Thickness(0, 0, 8, 8) : new Thickness(8, 0, 0, 0), MinWidth = 86 };
+                var button = new Button { Content = command.Label, Margin = below ? new Thickness(0, 0, 8, 8) : new Thickness(8, 0, 0, 0), MinWidth = 86,
+                    IsEnabled = command.Enabled };
                 if (command.Primary && ReferenceEquals(step, current)) button.SetResourceReference(StyleProperty, "PrimaryButton");
                 AutomationProperties.SetName(button, $"{command.Label}: {step.Title}");
                 AutomationProperties.SetAutomationId(button, $"Step-{step.Id}-{actions.Children.Count}");
@@ -594,8 +614,25 @@ public partial class MainWindow
     }
 
     /// <summary>Docker Desktop is being installed, Windows readied for it or it is being started, by a run working now.</summary>
-    private static bool DockerUnderway =>
-        HostsWindow.InstallingDocker || SharedSteps.IsRunning(SharedSteps.WindowsReady) || SharedSteps.IsRunning(SharedSteps.DockerStart);
+    private static bool DockerUnderway => DockerWorkNow() is not null;
+
+    /// <summary>The Docker Desktop step's greyed-out label for what the runs working now do with Docker Desktop, or null when
+    /// none does (<see cref="DockerWorkLabel"/>).</summary>
+    private static string? DockerWorkNow() =>
+        DockerWorkLabel(SharedSteps.Now().Select(step => step.Key), HostRunWindow.IsRunningTitled(HostsWindow.InstallDockerTitle));
+
+    /// <summary>What the Docker Desktop step's button says, greyed out, while runs work on Docker Desktop: installing it
+    /// (<paramref name="installing"/>: the Install Docker Desktop run works), starting it, or getting Windows ready for it.
+    /// A start checks Windows too, so that check doesn't change the label. <paramref name="steps"/> are the keys of the
+    /// <see cref="SharedSteps"/> running now. Null when no run works on Docker Desktop.</summary>
+    internal static string? DockerWorkLabel(IEnumerable<string> steps, bool installing)
+    {
+        var running = steps.ToHashSet(StringComparer.Ordinal);
+        return installing || running.Contains(SharedSteps.DockerInstall) ? "Installing Docker Desktop..."
+            : running.Contains(SharedSteps.DockerStart) ? "Starting Docker Desktop..."
+            : running.Contains(SharedSteps.WindowsReady) ? "Getting Windows ready..."
+            : null;
+    }
 
     /// <summary>What the runs working on Docker Desktop are doing now ("\"Start Docker Desktop\" is starting Docker Desktop"),
     /// or null when none is.</summary>
@@ -628,6 +665,9 @@ public partial class MainWindow
         var windowsBlocks = !done && installed && virtualization?.Blocked == true;
         var engineWaiting = machine.DockerRunning && state?.Stage == LocalHostServiceStage.DockerNotRunning;
         var underway = done ? null : DockerWork();
+        // While a run works on Docker Desktop (for example the one a new host PC starts by itself), the step's button says what
+        // that run does and stays greyed out until it ends, so nobody starts Docker Desktop a second time.
+        var working = done ? null : DockerWorkNow();
         var action = virtualization switch
         {
             { RestartRequired: true } => "Restart Windows",
@@ -635,6 +675,9 @@ public partial class MainWindow
             { NeedsChanges: true } => "Turn on Windows features",
             _ => "Review Windows setup"
         };
+        StepCommand next = windowsBlocks ? new(action, PrepareWindows, true)
+            : installed ? new("Start Docker Desktop", StartDocker, true)
+            : new("Install Docker Desktop", InstallDocker, true);
         return new("docker", "Docker Desktop",
             done ? "Running."
                 : underway is not null ? underway + ". You don't have to wait: other setup can go ahead meanwhile, and steps that need " +
@@ -644,11 +687,7 @@ public partial class MainWindow
                 : state is null && installed ? "Checking Docker Desktop's engine..."
                 : installed ? "Installed, but not running." : "Required for the host service.",
             done, false,
-            done ? []
-                : windowsBlocks ? [new(action, PrepareWindows, true)]
-                : installed
-                ? [new("Start Docker Desktop", StartDocker, true)]
-                : [new("Install Docker Desktop", InstallDocker, true)]);
+            done ? [] : [working is null ? next : next with { Label = working, Enabled = false }]);
     }
 
     private HomeStep ServiceStep(LocalHostServiceState? state)

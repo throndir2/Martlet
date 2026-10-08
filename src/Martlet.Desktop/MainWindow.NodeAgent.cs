@@ -10,7 +10,9 @@ namespace Martlet.Desktop;
 /// <summary>This PC as a node your other Martlet computers can command. When this PC runs a host service (Docker Desktop),
 /// Martlet here is that host's agent: every few seconds it asks the host's gateway for commands paired computers sent (with
 /// the token the gateway wrote where only this PC can read it), runs them side by side in the background (update Martlet and
-/// the host service, add or remove a role, status; an update runs alone) and streams their output back. This PC's host
+/// the host service, add or remove a role, status; an update runs alone) and streams their output back. Each change to this
+/// PC's host service is a background task here too, out of sight (Background tasks lists it, with its output, and can cancel
+/// it). This PC's host
 /// service follows this PC's version by itself (<see cref="FollowOwnHostAsync"/>), so a host service from before commands
 /// existed gets them too. On by default; Settings › Your other computers turns it off (node-commands.txt).</summary>
 public partial class MainWindow
@@ -266,8 +268,12 @@ public partial class MainWindow
         });
     }
 
-    /// <summary>How a command from another computer names itself to runs on this PC that wait for the same step.</summary>
+    /// <summary>How a command from another computer names itself to runs on this PC that wait for the same step, when it runs
+    /// without a background task (a status or a reading).</summary>
     private const string NodeCommandRunTitle = "A command from your other computer";
+
+    /// <summary>The background tasks of the commands from other computers running here now, by command ID.</summary>
+    private readonly Dictionary<string, HostRunWindow> nodeCommandRuns = new(StringComparer.Ordinal);
 
     /// <summary>Runs commands on the UI thread, where Martlet's update and host-service state lives.</summary>
     private sealed class LocalCommandRunner(MainWindow window) : INodeCommandRunner
@@ -277,6 +283,56 @@ public partial class MainWindow
         public Task<NodeCommandOutcome?> RunAsync(Martlet.Core.Nodes.NodeCommand command, IReadOnlyDictionary<string, string> secrets, bool resumed,
             IProgress<string> output, CancellationToken cancellationToken) =>
             window.Dispatcher.InvokeAsync(() => window.RunNodeCommandAsync(command, secrets, resumed, output, cancellationToken)).Task.Unwrap();
+    }
+
+    /// <summary>Runs <paramref name="work"/> for <paramref name="command"/> as a background task out of sight, titled
+    /// <paramref name="title"/> (it names the run to others that wait for the same step) with <paramref name="status"/> as its
+    /// status line. What it prints goes back to the computer that asked and into the task's window. Cancel task stops it here,
+    /// tells that computer so and calls <paramref name="canceledByOwner"/>; Martlet exiting leaves it for after the restart,
+    /// as before.</summary>
+    private async Task<NodeCommandOutcome?> RunAsBackgroundTaskAsync(Martlet.Core.Nodes.NodeCommand command, string title, string status,
+        IProgress<string> output, CancellationToken token, Func<IProgress<string>, string, CancellationToken, Task<NodeCommandOutcome?>> work,
+        Action? canceledByOwner = null)
+    {
+        NodeCommandOutcome? outcome = null;
+        System.Runtime.ExceptionServices.ExceptionDispatchInfo? failure = null;
+        var canceledHere = false;
+        await HostRunWindow.RunAsync(this, title, async run =>
+        {
+            nodeCommandRuns[command.Id] = run;
+            try
+            {
+                using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token, run.Token);
+                run.Status(status);
+                var both = new LineSink(line =>
+                {
+                    output.Report(line);
+                    run.Output.Report(line);
+                });
+                outcome = await work(both, title, cancellation.Token);
+            }
+            catch (OperationCanceledException) when (run.Token.IsCancellationRequested && !token.IsCancellationRequested && !closing)
+            {
+                canceledHere = true;
+                throw;
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                failure = System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error);
+                throw;
+            }
+            finally { nodeCommandRuns.Remove(command.Id); }
+            return outcome is null ? "It continues later."
+                : outcome.Succeeded ? outcome.Summary : throw new InvalidOperationException(outcome.Summary);
+        }, hidden: true);
+        failure?.Throw();
+        if (canceledHere)
+        {
+            canceledByOwner?.Invoke();
+            return new(false, $"Canceled on {Environment.MachineName}: its owner canceled it in Background tasks.");
+        }
+        token.ThrowIfCancellationRequested();
+        return outcome;
     }
 
     private async Task<NodeCommandOutcome?> RunNodeCommandAsync(Martlet.Core.Nodes.NodeCommand command, IReadOnlyDictionary<string, string> secrets, bool resumed,
@@ -304,8 +360,26 @@ public partial class MainWindow
         if (command.Kind == NodeCommandKinds.AddRole && CannotHand(nodeAgentHostId ?? "", role!, HostRoles.All.FirstOrDefault(r => r.Kind == role)?.Job ?? "")
             is { } cannot)
             return new(false, $"{role} can't be installed on {here}: {cannot}");
+        // A status or a reading takes moments; a change to this PC's host service is a background task here (Background tasks).
+        if (command.Kind is NodeCommandKinds.Status or NodeCommandKinds.DescribeRole)
+            return await RunEngineCommandAsync(command, secrets, role, engine, output, NodeCommandRunTitle, token);
+        var name = role is null ? "" : HostRoles.Names([role]);
+        return await RunAsBackgroundTaskAsync(command, NodeCommandAgent.Describe(command), command.Kind switch
+        {
+            NodeCommandKinds.AddRole => $"Installing {name} on this PC for {command.RequestedBy}. This can take a while...",
+            NodeCommandKinds.RemoveRole => $"Removing {name} from this PC for {command.RequestedBy}...",
+            _ => $"Changing how this PC's host service is reached from outside home, for {command.RequestedBy}..."
+        }, output, token, (lines, title, cancel) => RunEngineCommandAsync(command, secrets, role, engine, lines, title, cancel));
+    }
+
+    /// <summary>Runs a command from another computer with this PC's host engine (<paramref name="engine"/>), as
+    /// <paramref name="by"/> for runs that wait for the same step.</summary>
+    private async Task<NodeCommandOutcome?> RunEngineCommandAsync(Martlet.Core.Nodes.NodeCommand command, IReadOnlyDictionary<string, string> secrets,
+        string? role, string[] engine, IProgress<string> output, string by, CancellationToken token)
+    {
+        var here = Environment.MachineName;
         await EnsureLocalEngineAsync(output, token);
-        var target = await HostLocal.EngineForChangeAsync(ThisPcTarget(), role, output.Report, output, token, NodeCommandRunTitle);
+        var target = await HostLocal.EngineForChangeAsync(ThisPcTarget(), role, output.Report, output, token, by);
         Dictionary<string, string>? answers = null;
         if (command.Kind == NodeCommandKinds.AddRole)
         {
@@ -371,7 +445,9 @@ public partial class MainWindow
                 for (var attempt = 0; attempt < 3 && readyUpdate?.Update.Version != offered.Version && !closing; attempt++)
                 {
                     await WaitForUpdateWorkAsync(token);
-                    if (readyUpdate?.Update.Version != offered.Version) await DownloadUpdateAsync();
+                    // You canceled the download here (Background tasks): it isn't started again for this command.
+                    if (readyUpdate?.Update.Version != offered.Version && await DownloadUpdateAsync())
+                        return new(false, $"The download of Martlet {offered.Version.ToString(3)} on {here} was canceled there (Background tasks).");
                 }
                 if (readyUpdate is not { } downloaded || downloaded.Update.Version != offered.Version)
                     return new(false, $"The download on {here} didn't finish: {UpdateStatusText.Text}");
@@ -405,20 +481,26 @@ public partial class MainWindow
         using var updating = hostUpdates.Begin(ThisPcHostId);
         try
         {
-            await EnsureLocalEngineAsync(output, token);
-            output.Report($"Updating {here}'s host service from {current ?? "an unknown version"} to {Version}. Its pairings and roles stay; " +
-                "it restarts at the end, so it stops answering for a moment.");
-            var target = ThisPcTarget();
-            await HostLocal.EnsureImageAsync(target, output.Report, output, token, NodeCommandRunTitle);
-            // A change already running on this host (an install, for example) finishes first; the output says so.
-            var engineOutput = new EngineOutput(output);
-            var exit = await HostLocal.EngineAsync(target, ["update"], engineOutput, token);
-            if (engineOutput.Busy(exit) is { } busy)
-                return new(false, $"{here}'s host stayed busy with another change ({busy}), so its host service wasn't updated. Send the update again when that finishes.", exit);
-            if (exit != 0) return new(false, $"Updating {here}'s host service stopped (exit {exit}). The output shows why.", exit);
-            thisPcHostVersion = Version;
-            HostUpdateSettled(ThisPcHostId);
-            return new(true, $"{here} runs Martlet {Version}: the app and its host service.", 0);
+            return await RunAsBackgroundTaskAsync(command, $"Update this PC's host service to Martlet {Version} (from {command.RequestedBy})",
+                $"Updating this PC's host service to Martlet {Version} for {command.RequestedBy}...", output, token, async (lines, by, cancel) =>
+                {
+                    await EnsureLocalEngineAsync(lines, cancel);
+                    lines.Report($"Updating {here}'s host service from {current ?? "an unknown version"} to {Version}. Its pairings and roles stay; " +
+                        "it restarts at the end, so it stops answering for a moment.");
+                    var target = ThisPcTarget();
+                    await HostLocal.EnsureImageAsync(target, lines.Report, lines, cancel, by);
+                    // A change already running on this host (an install, for example) finishes first; the output says so.
+                    var engineOutput = new EngineOutput(lines);
+                    var exit = await HostLocal.EngineAsync(target, ["update"], engineOutput, cancel);
+                    if (engineOutput.Busy(exit) is { } busy)
+                        return new(false, $"{here}'s host stayed busy with another change ({busy}), so its host service wasn't updated. Send the update again when that finishes.", exit);
+                    if (exit != 0) return new(false, $"Updating {here}'s host service stopped (exit {exit}). The output shows why.", exit);
+                    thisPcHostVersion = Version;
+                    HostUpdateSettled(ThisPcHostId);
+                    return new(true, $"{here} runs Martlet {Version}: the app and its host service.", 0);
+                },
+                // Keeping this PC's host service current doesn't start the update you canceled again by itself.
+                canceledByOwner: () => ownHost.Failed(Version));
         }
         finally { hostUpdatesRunning = false; }
     }

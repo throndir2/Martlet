@@ -69,6 +69,22 @@ public sealed class McpServerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task SaidLatelyAndCheckInsRehearsalsPassWithTheProductionCode()
+    {
+        var messages = await SendAsync(
+            """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"said_lately_check"}}""",
+            """{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"check_ins_check"}}""");
+        foreach (var message in messages)
+        {
+            var result = ToolResult(message);
+            Assert.True(result.GetProperty("passed").GetBoolean(), result.GetRawText());
+        }
+        var steps = ToolResult(messages[0]).GetProperty("steps").EnumerateArray().Select(s => s.GetProperty("name").GetString()).ToArray();
+        Assert.Contains("which requests carry it", steps);
+        Assert.Contains("the check-in reads the same lines", steps);
+    }
+
+    [Fact]
     public async Task DeniesUnapprovedUiEffectsAndUnrelatedProcesses()
     {
         var messages = await SendAsync(

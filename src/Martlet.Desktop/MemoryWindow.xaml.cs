@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using Martlet.Core.Contracts;
 using Martlet.Core.Settings;
 using Martlet.Core.Speakers;
@@ -65,6 +66,18 @@ public partial class MemoryWindow : ThemedWindow
     private bool rendering;
     /// <summary>The fact (and its revision) the editor holds, or null for a new fact.</summary>
     private (Guid Id, long Revision)? editing;
+    /// <summary>Cancels the window's own reads when it closes.</summary>
+    private readonly CancellationTokenSource lifetime = new();
+    /// <summary>The read of the facts running now, and whether to read once more after it.</summary>
+    private Task? refreshing;
+    private bool refreshAgain;
+    /// <summary>The store version the list shows, so a read that finds nothing new leaves the list and its status alone.</summary>
+    private (Guid Store, long Revision)? shownStore;
+    /// <summary>What the facts line says on its own (the counts, or why the facts can't be shown). An action here puts what it
+    /// did in front of it, so a change shown meanwhile never doubles that.</summary>
+    private string factsLine = "";
+    /// <summary>Follows other Martlet work (a reply) that holds the shared setup slot, so the buttons come back when it ends.</summary>
+    private readonly DispatcherTimer busyCheck = new() { Interval = TimeSpan.FromMilliseconds(250) };
 
     /// <param name="voices">The voices Martlet knows (People), whose facts the window can show and choose.</param>
     /// <param name="person">A voice ID whose facts to show first (People's "What Martlet remembers").</param>
@@ -85,6 +98,7 @@ public partial class MemoryWindow : ThemedWindow
         this.voices = voices ?? (() => VoiceRoster.Empty);
         showPerson = person;
         autoSave = new AutoSave(SaveConfigurationAsync);
+        busyCheck.Tick += (_, _) => BusyChecked();
         InitializeComponent();
         RetentionChoice.ItemsSource = NewRetentionOptions;
         RetentionChoice.SelectedIndex = 0;
@@ -92,16 +106,41 @@ public partial class MemoryWindow : ThemedWindow
         RenderActions();
     }
 
-    private async void Window_Loaded(object sender, RoutedEventArgs e) => await LoadAsync();
+    /// <summary>The window is closed and none of its reads or actions still runs (tests wait for this before deleting files).</summary>
+    internal bool Settled => closed && active is null && (refreshing is null or { IsCompleted: true });
+
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        // Facts Martlet remembers, changes or forgets while the window is open (in a conversation, or when asked to) show at once.
+        service.FactsChanged += Service_FactsChanged;
+        await LoadAsync();
+    }
+
     private async void Reload_Click(object sender, RoutedEventArgs e) => await LoadAsync();
     private void RetryCleanup_Click(object sender, RoutedEventArgs e) => service.RetryCleanup();
 
+    // Raised off the dispatcher by any work that changed facts, this window's own included.
+    private void Service_FactsChanged() => Dispatcher.InvokeAsync(() =>
+    {
+        if (!closed) RefreshFactsAsync().Forget();
+    });
+
+    /// <summary>Reads the settings and then the facts. Both are read directly, not on the setup slot a reply holds while
+    /// Martlet answers, so the window fills in the moment it opens, even mid-conversation.</summary>
     private async Task LoadAsync()
     {
-        SettingsLoadResult? loaded = null;
-        await RunAsync(async token => loaded = await service.LoadAsync(token).ConfigureAwait(false),
-            "Couldn't load memory settings. No facts were opened.");
-        if (closed || loaded is null)
+        SettingsLoadResult loaded;
+        try
+        {
+            loaded = await service.LoadAsync(lifetime.Token);
+        }
+        catch (Exception error) when (error is OperationCanceledException or ContractException or IOException or
+            UnauthorizedAccessException or ArgumentException)
+        {
+            if (!closed) ConfigurationStatus.Text = "Couldn't load memory settings. No facts were opened.";
+            return;
+        }
+        if (closed)
             return;
         if (loaded.State != SettingsLoadState.Loaded || loaded.Error is not null || loaded.Settings is null)
         {
@@ -135,8 +174,7 @@ public partial class MemoryWindow : ThemedWindow
         }
         rendering = false;
         DisposeExportPreview();
-        FactsList.ItemsSource = null;
-        facts = [];
+        ClearFacts();
         ResetEditor();
         RenderPeople();
         ConfigurationStatus.Text = memory is null
@@ -199,8 +237,7 @@ public partial class MemoryWindow : ThemedWindow
         loadedRevision = result.Save.Save.Revision;
         configurationRevision = result.Settings.Memory!.ConfigurationRevision;
         DisposeExportPreview();
-        FactsList.ItemsSource = null;
-        facts = [];
+        ClearFacts();
         ConfigurationStatus.Text = result.Settings.Memory.Enabled
             ? "Saved. Memory is on: Martlet will remember and recall lasting facts."
             : "Saved. Memory is off: saved facts stay on this PC; turn memory on to review or delete them.";
@@ -211,20 +248,71 @@ public partial class MemoryWindow : ThemedWindow
         return true;
     }
 
-    private async Task RefreshFactsAsync()
+    /// <summary>Reads the facts again and shows them: on opening, after an action here and whenever facts change elsewhere (a
+    /// conversation remembered something, or Martlet was asked to change its memories). One read runs at a time; asked again
+    /// meanwhile, it reads once more after it, so the list always ends up showing the newest facts.</summary>
+    private Task RefreshFactsAsync()
     {
-        if (!RequireCurrentEnabledConfiguration(FactStatus))
+        if (refreshing is { IsCompleted: false })
+        {
+            refreshAgain = true;
+            return refreshing;
+        }
+        return refreshing = RefreshLoopAsync();
+    }
+
+    private async Task RefreshLoopAsync()
+    {
+        do
+        {
+            refreshAgain = false;
+            await ReadFactsAsync();
+        }
+        while (refreshAgain && !closed);
+    }
+
+    private async Task ReadFactsAsync()
+    {
+        // Facts show once memory is on with the settings shown here saved. A store waiting for Retry cleanup stays held.
+        if (closed || !CurrentEnabledConfiguration() || service.HasPendingCleanup)
             return;
-        MemoryInspection? inspection = null;
-        await RunAsync(async token =>
-            inspection = await service.InspectAsync(configurationRevision, token).ConfigureAwait(false),
-            "Couldn't refresh facts.");
-        if (closed || inspection is null)
+        var revision = configurationRevision;
+        MemoryInspection inspection;
+        try
+        {
+            // Not on the setup slot (a reply holds it while Martlet answers): the memory service lets one user at a time in.
+            inspection = await service.InspectAsync(revision, lifetime.Token);
+        }
+        catch (Exception error) when (error is MemoryException or DesktopMemoryException or ContractException or
+            OperationCanceledException or ArgumentException or NotSupportedException or IOException or UnauthorizedAccessException)
+        {
+            if (!closed && revision == configurationRevision)
+                FactStatus.Text = factsLine = Describe(error);
             return;
+        }
+        if (closed || revision != configurationRevision || !CurrentEnabledConfiguration())
+            return;
+        // Nothing changed since the list was shown: keep it, its selection and what the last action said.
+        if (shownStore == (inspection.StoreId, inspection.StoreRevision))
+            return;
+        shownStore = (inspection.StoreId, inspection.StoreRevision);
+        if (exportPreview is not null && exportPreview.StoreRevision != inspection.StoreRevision)
+        {
+            DisposeExportPreview();
+            ExportStatus.Text = "Memory changed after the preview. Preview the export again.";
+        }
         facts = inspection.Facts;
         RenderPeople();
         RenderFacts();
         RenderActions();
+    }
+
+    /// <summary>Empties the list until the facts are read again.</summary>
+    private void ClearFacts()
+    {
+        FactsList.ItemsSource = null;
+        facts = [];
+        shownStore = null;
     }
 
     /// <summary>The Show and Belongs to choices: everyone, each voice Martlet knows (yours first, then named ones), and the
@@ -250,18 +338,23 @@ public partial class MemoryWindow : ThemedWindow
             : filters.FirstOrDefault(o => o.Kind == wanted?.Kind && o.VoiceId == wantedVoice) ?? filters[0];
         rendering = false;
         showPerson = null;
-        ResetPersonChoice(null);
+        // Reading the facts again never changes whose the fact you are writing or changing is.
+        ResetPersonChoice(editing is { } held ? facts.FirstOrDefault(f => f.Id == held.Id) : null,
+            PersonChoice.SelectedItem as PersonOption);
     }
 
-    /// <summary>The Belongs to options; a fact whose voice was forgotten keeps that voice as an option.</summary>
-    private void ResetPersonChoice(MemoryFact? fact)
+    /// <summary>The Belongs to options; a fact whose voice was forgotten keeps that voice as an option. <paramref name="keep"/> is
+    /// a choice already made, kept while it is still offered (a voice merged meanwhile becomes the voice it joined).</summary>
+    private void ResetPersonChoice(MemoryFact? fact, PersonOption? keep = null)
     {
         var options = new List<PersonOption> { new(EveryoneLabel, PersonKind.Everyone) };
         options.AddRange(((IEnumerable<PersonOption>?)PersonFilter.ItemsSource ?? []).Where(o => o.Kind == PersonKind.Voice));
         if (fact?.VoiceId is { } id && roster.Resolve(id) is null)
             options.Add(new("A forgotten voice", PersonKind.Forgotten, id));
         PersonChoice.ItemsSource = options;
-        var voice = fact is not null ? MemoryPeople.Canonical(fact.VoiceId, roster) is { } canonical && roster.Resolve(canonical) is not null
+        var voice = keep is not null
+                ? options.Any(o => o.VoiceId == keep.VoiceId) ? keep.VoiceId : MemoryPeople.Canonical(keep.VoiceId, roster)
+            : fact is not null ? MemoryPeople.Canonical(fact.VoiceId, roster) is { } canonical && roster.Resolve(canonical) is not null
                 ? canonical : fact.VoiceId
             // A new fact belongs to the voice shown, else to yours: you typed it.
             : PersonFilter.SelectedItem is PersonOption { Kind: PersonKind.Voice } shown ? shown.VoiceId
@@ -292,7 +385,7 @@ public partial class MemoryWindow : ThemedWindow
             FactsList.SelectedItems.Add(item);
         rendering = false;
         var all = filter?.Kind is null or PersonKind.All && words.Length == 0;
-        FactStatus.Text = Summary(shown.Length, all);
+        FactStatus.Text = factsLine = Summary(shown.Length, all);
         DeleteShownButton.Visibility = all ? Visibility.Collapsed : Visibility.Visible;
         DeleteShownButton.Content = (words.Length > 0 ? shown.Length == 1 ? "Delete the 1 found" : $"Delete all {shown.Length} found"
             : filter?.Kind switch
@@ -371,7 +464,7 @@ public partial class MemoryWindow : ThemedWindow
         FactsList.UnselectAll();
         ResetEditor();
         await RefreshFactsAsync();
-        FactStatus.Text = "Fact added. " + FactStatus.Text;
+        FactStatus.Text = "Fact added. " + factsLine;
     }
 
     private async void EditFact_Click(object sender, RoutedEventArgs e)
@@ -397,7 +490,7 @@ public partial class MemoryWindow : ThemedWindow
             return;
         DisposeExportPreview();
         await RefreshFactsAsync();
-        FactStatus.Text = "Fact updated. " + FactStatus.Text;
+        FactStatus.Text = "Fact updated. " + factsLine;
     }
 
     private async void DeleteFact_Click(object sender, RoutedEventArgs e)
@@ -418,7 +511,7 @@ public partial class MemoryWindow : ThemedWindow
                 return;
             DisposeExportPreview();
             await RefreshFactsAsync();
-            FactStatus.Text = "Fact deleted. " + FactStatus.Text;
+            FactStatus.Text = "Fact deleted. " + factsLine;
         }
         else if (selected.Count > 1)
             await DeleteManyAsync(selected, $"Delete the {selected.Count} selected facts?", "Delete remembered facts");
@@ -456,7 +549,7 @@ public partial class MemoryWindow : ThemedWindow
         DisposeExportPreview();
         FactsList.UnselectAll();
         await RefreshFactsAsync();
-        FactStatus.Text = (receipt.DeletedFacts == 1 ? "Deleted 1 fact. " : $"Deleted {receipt.DeletedFacts} facts. ") + FactStatus.Text;
+        FactStatus.Text = (receipt.DeletedFacts == 1 ? "Deleted 1 fact. " : $"Deleted {receipt.DeletedFacts} facts. ") + factsLine;
     }
 
     private void NewFact_Click(object sender, RoutedEventArgs e)
@@ -735,10 +828,9 @@ public partial class MemoryWindow : ThemedWindow
         RetryCleanupButton.Visibility = service.HasPendingCleanup ? Visibility.Visible : Visibility.Collapsed;
         if (service.HasPendingCleanup)
             ConfigurationStatus.Text = "Memory cleanup is pending. Check folder access, then retry cleanup.";
-        var enabled = ConfigurationMatchesPersisted() &&
-            loadedSettings?.Memory is { Enabled: true } memory &&
-            memory.ConfigurationRevision == configurationRevision;
-        ReloadButton.IsEnabled = !busy;
+        var enabled = CurrentEnabledConfiguration();
+        // Refresh only reads, so it works while a reply holds the setup slot; it waits for this window's own action.
+        ReloadButton.IsEnabled = active is null;
         CreateExportPreviewButton.IsEnabled = enabled && !busy;
         var selected = FactsList.SelectedItems.Count;
         SaveFactButton.IsEnabled = enabled && !busy;
@@ -754,7 +846,32 @@ public partial class MemoryWindow : ThemedWindow
         ExportButton.IsEnabled = enabled && !busy && exportPreview is not null &&
             AcceptExport.IsChecked == true && !string.IsNullOrWhiteSpace(ExportDestination.Text);
         RenderResolvedDirectory();
+        if (busy && !closed && !busyCheck.IsEnabled)
+            busyCheck.Start();
     }
+
+    /// <summary>Other Martlet work (a reply, or a store waiting for Retry cleanup) holds the setup slot: once it ends, the
+    /// buttons come back, and facts not read yet are read.</summary>
+    private void BusyChecked()
+    {
+        if (closed)
+        {
+            busyCheck.Stop();
+            return;
+        }
+        if (operations.IsRunning)
+            return;
+        busyCheck.Stop();
+        RenderActions();
+        if (shownStore is null)
+            RefreshFactsAsync().Forget();
+    }
+
+    /// <summary>Memory is on with the settings shown here saved, so its facts can be read and changed.</summary>
+    private bool CurrentEnabledConfiguration() =>
+        ConfigurationMatchesPersisted() &&
+        loadedSettings?.Memory is { Enabled: true } memory &&
+        memory.ConfigurationRevision == configurationRevision;
 
     private bool ConfigurationMatchesPersisted()
     {
@@ -783,9 +900,7 @@ public partial class MemoryWindow : ThemedWindow
 
     private bool RequireCurrentEnabledConfiguration(TextBlock status)
     {
-        if (ConfigurationMatchesPersisted() &&
-            loadedSettings?.Memory is { Enabled: true } memory &&
-            memory.ConfigurationRevision == configurationRevision)
+        if (CurrentEnabledConfiguration())
             return true;
         status.Text = loadedSettings?.Memory is { Enabled: false } && ConfigurationMatchesPersisted()
             ? "Turn memory on to add or change facts."
@@ -797,11 +912,10 @@ public partial class MemoryWindow : ThemedWindow
     {
         if (ConfigurationMatchesPersisted())
             return;
-        FactsList.ItemsSource = null;
-        facts = [];
+        ClearFacts();
         ResetEditor();
         DisposeExportPreview();
-        FactStatus.Text = "Memory settings changed. Facts show again once they are saved.";
+        FactStatus.Text = factsLine = "Memory settings changed. Facts show again once they are saved.";
     }
 
     private void DisposeExportPreview()
@@ -880,6 +994,9 @@ public partial class MemoryWindow : ThemedWindow
             return;
         }
         closed = true;
+        service.FactsChanged -= Service_FactsChanged;
+        busyCheck.Stop();
+        lifetime.Cancel();
         autoSave.Cancel();
         active?.RequestCancellation();
         DisposeExportPreview();
