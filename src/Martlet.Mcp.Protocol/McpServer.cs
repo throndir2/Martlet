@@ -872,7 +872,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             id = new { type = "string", maxLength = 64 }
         }),
         Tool("character_status", "Read Companion > Personality and Character as saved in a data directory (they save on their own, " +
-            "with no Save button): the personas (name, whether Martlet uses it, response-style weights, speech breaks, instruction " +
+            "with no Save button): the personas (name, whether Martlet uses it, speech breaks, instruction " +
             "length; never the instructions), the character model (built-in character name or the own model's file type, never its " +
             "path; renderer, lip-sync mode, show at startup, the lip-sync host's ID), whether the character's position is locked on " +
             "this PC and where (placement), whether Martlet's voice is muted (voice: Speak Martlet's replies aloud, which the " +
@@ -3425,11 +3425,6 @@ internal sealed class McpServer(DesktopAutomation desktop)
             personas = companion?.Personas.Select(p => new
             {
                 name = p.Name, active = p.Id == companion.ActivePersonaId, instructionCharacters = p.Text.Length,
-                styles = new
-                {
-                    helpful = p.Styles.Helpful, sarcastic = p.Styles.Sarcastic, silly = p.Styles.Silly,
-                    distracted = p.Styles.Distracted, playfulTeasing = p.Styles.PlayfulTeasing
-                },
                 speechBreaks = Breaks(p.SpokenBreaks)
             }).ToArray() ?? []
         };

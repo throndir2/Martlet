@@ -1,69 +1,9 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Martlet.Core.Contracts;
 
 namespace Martlet.Core.Settings;
-
-[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
-public sealed record ResponseStyleWeights : IContract
-{
-    public required int Helpful { get; init; }
-    public required int Sarcastic { get; init; }
-    public required int Silly { get; init; }
-    public required int Distracted { get; init; }
-    public required int PlayfulTeasing { get; init; }
-
-    public static ResponseStyleWeights HelpfulOnly() => new()
-    {
-        Helpful = 100,
-        Sarcastic = 0,
-        Silly = 0,
-        Distracted = 0,
-        PlayfulTeasing = 0
-    };
-
-    public void Validate()
-    {
-        var values = new[] { Helpful, Sarcastic, Silly, Distracted, PlayfulTeasing };
-        ContractRules.Require(values.All(value => value is >= 0 and <= 100),
-            "Each response-style weight must be from 0 through 100.");
-        ContractRules.Require(values.Any(value => value > 0),
-            "At least one response-style weight must be greater than zero.");
-    }
-}
-
-public enum ResponseStyle { Helpful, Sarcastic, Silly, Distracted, PlayfulTeasing }
-
-public static class ResponseStyleSelector
-{
-    public static ResponseStyle Select(ResponseStyleWeights weights, Func<int, int> next)
-    {
-        ArgumentNullException.ThrowIfNull(weights);
-        ArgumentNullException.ThrowIfNull(next);
-        weights.Validate();
-        var weighted = new[]
-        {
-            (ResponseStyle.Helpful, weights.Helpful),
-            (ResponseStyle.Sarcastic, weights.Sarcastic),
-            (ResponseStyle.Silly, weights.Silly),
-            (ResponseStyle.Distracted, weights.Distracted),
-            (ResponseStyle.PlayfulTeasing, weights.PlayfulTeasing)
-        };
-        var positive = weighted.Where(item => item.Item2 > 0).ToArray();
-        if (positive.Length == 1)
-            return positive[0].Item1;
-        var total = positive.Sum(item => item.Item2);
-        var selected = next(total);
-        ContractRules.Require(selected >= 0 && selected < total, "The response-style selector returned an invalid sample.");
-        foreach (var (style, weight) in positive)
-        {
-            if (selected < weight)
-                return style;
-            selected -= weight;
-        }
-        throw new ContractException(ErrorCode.InvalidContract, "The response-style selector could not select a style.");
-    }
-}
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record PersonaProfile : IContract
@@ -77,7 +17,12 @@ public sealed record PersonaProfile : IContract
     public required Guid ConfigurationRevision { get; init; }
     public required string Name { get; init; }
     public required string Text { get; init; }
-    public required ResponseStyleWeights Styles { get; init; }
+
+    // Earlier settings saved response-style weights (helpful, sarcastic, silly, distracted, playful teasing); Martlet no longer
+    // picks a style for each reply, so saved weights still load, are ignored and are not written again.
+    [JsonInclude, JsonPropertyName("styles"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    private JsonElement? RetiredStyles { get => null; init { } }
+
     /// <summary>Where this persona's spoken replies break between pieces; absent for the defaults.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SpeechBreaks? Breaks { get; init; }
@@ -94,8 +39,6 @@ public sealed record PersonaProfile : IContract
             Name == Name.Trim() && !Name.Any(char.IsControl),
             "Persona names must be 1-64 visible characters without leading or trailing whitespace.");
         ValidateText(Text);
-        ContractRules.Require(Styles is not null, "Response-style weights are required.");
-        Styles!.Validate();
         Breaks?.Validate();
     }
 
@@ -198,8 +141,7 @@ public sealed record CompanionSettings : IContract
             Id = Guid.NewGuid(),
             ConfigurationRevision = Guid.NewGuid(),
             Name = "Martlet",
-            Text = "Be a helpful conversational companion.",
-            Styles = ResponseStyleWeights.HelpfulOnly()
+            Text = "Be a helpful conversational companion."
         };
         return new() { SchemaVersion = 1, ActivePersonaId = persona.Id, Personas = [persona] };
     }
@@ -224,7 +166,6 @@ public sealed record CompanionSettings : IContract
             ConfigurationRevision = Guid.NewGuid(),
             Name = name,
             Text = source?.Text ?? "",
-            Styles = source?.Styles ?? ResponseStyleWeights.HelpfulOnly(),
             Breaks = source?.Breaks
         };
         persona.Validate();
@@ -237,19 +178,18 @@ public sealed record CompanionSettings : IContract
         return updated;
     }
 
-    /// <summary>Replaces a persona's name, text and styles, and its speech breaks when <paramref name="breaks"/> is given
-    /// (null keeps them).</summary>
-    public CompanionSettings Update(Guid id, string name, string text, ResponseStyleWeights styles, SpeechBreaks? breaks = null)
+    /// <summary>Replaces a persona's name and text, and its speech breaks when <paramref name="breaks"/> is given (null keeps
+    /// them).</summary>
+    public CompanionSettings Update(Guid id, string name, string text, SpeechBreaks? breaks = null)
     {
         var prior = Personas.SingleOrDefault(persona => persona.Id == id);
         ContractRules.Require(prior is not null, "Select a persona from this profile.");
         var replacement = prior! with
         {
-            Name = name, Text = text, Styles = styles, Breaks = breaks is null ? prior.Breaks : SpeechBreaks.Normalize(breaks)
+            Name = name, Text = text, Breaks = breaks is null ? prior.Breaks : SpeechBreaks.Normalize(breaks)
         };
         replacement.Validate();
-        if (replacement.Name == prior.Name && replacement.Text == prior.Text && replacement.Styles == prior.Styles &&
-            replacement.Breaks == prior.Breaks)
+        if (replacement.Name == prior.Name && replacement.Text == prior.Text && replacement.Breaks == prior.Breaks)
             return this;
         replacement = replacement with { ConfigurationRevision = Guid.NewGuid() };
         var updated = this with

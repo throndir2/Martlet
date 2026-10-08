@@ -117,7 +117,7 @@ public sealed class CharacterGazeModeTests
         await using var fixture = await LiveFixture.Create();
         var configuration = LiveConversationConfiguration.From(await fixture.Store.LoadAsync())!;
         var gaze = CharacterGaze.ReplyPrompt(configuration.Prompts, GazeMode.Mouse);
-        ConversationRequest Ask(string? looking) => configuration.Request(new("Hi."), false, ResponseStyle.Helpful, [], null, null,
+        ConversationRequest Ask(string? looking) => configuration.Request(new("Hi."), false, [], null, null,
             out _, out _, out _, characterActions: (_, _) => CharacterGaze.Join(new CharacterActionPrompt("Emote tags.", ["{blush}"]), gaze, looking),
             board: looking);
         var plain = Ask(null);

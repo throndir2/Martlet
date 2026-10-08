@@ -2142,7 +2142,7 @@ settings, so they need `--allow-ui-effects`; `ui_set_text` with an empty
 data directory (optional absolute `dataDirectory`, default the current
 user's): `personality` (`state` `none`, `loaded` or `unreadable` with
 `problem`; `active`, the persona Martlet uses; and each persona's `name`,
-`active`, `instructionCharacters`, `styles` weights and `speechBreaks`
+`active`, `instructionCharacters` and `speechBreaks`
 (`periods`, `questionMarks`, `exclamationMarks`, `shortEndingWords`
 and `isDefault`), never its
 instructions), `character` (from `avatar.json`: `model` `built-in` with
@@ -2189,8 +2189,8 @@ apps. `HistoryEditSave`, `HistoryDeleteMessage`, `HistoryDeleteConversation`,
 `HistoryDeleteAll` and `HistoryPlatformCancel` write (deletes ask first, No by
 default) and need `--allow-ui-effects`. Each editor's footer line, `CompanionSaveState`,
 `AvatarSaveState` and `LorebookSaveState`, reads *All changes saved.*,
-*Saving...*, *Not saved yet: <why>* (for example an empty persona name, all
-response styles at zero, or *Choose your model file: an existing .vrm or
+*Saving...*, *Not saved yet: <why>* (for example an empty persona name, or
+*Choose your model file: an existing .vrm or
 .model3.json file.*) or *Not saved: <why>*; `AvatarStatus` reads the
 character's state (*Character is showing. ...*, *Character hidden.*). Memory's
 `MemoryFactStatus` reads how many facts it remembers, how many belong to how
@@ -2202,7 +2202,7 @@ the `MemoryStorageSection` and `MemoryExportSection` expanders are passive
 clicks; `MemoryDeleteFact` (the selected fact or facts), `MemoryDeleteShown`
 (every fact listed now: one person's or what the search found) and
 `MemoryDeleteAll` ask first and need `--allow-ui-effects`. Their
-fields (`CompanionName`, `CompanionText`, the `CompanionHelpful`... sliders,
+fields (`CompanionName`, `CompanionText`,
 the *Where the voice pauses* check boxes
 `CompanionBreakPeriods`, `CompanionBreakQuestions` and
 `CompanionBreakExclamations` (their `checkedState` is the persona's choice) and

@@ -235,10 +235,9 @@ public sealed partial class SettingsStore
         {
             var replacement = next.Personas.SingleOrDefault(item => item.Id == persona.Id);
             if (replacement is not null &&
-                (replacement.Name != persona.Name || replacement.Text != persona.Text || replacement.Styles != persona.Styles ||
-                 replacement.Breaks != persona.Breaks))
+                (replacement.Name != persona.Name || replacement.Text != persona.Text || replacement.Breaks != persona.Breaks))
                 ContractRules.Require(replacement.ConfigurationRevision != persona.ConfigurationRevision,
-                    "Changed persona content, response styles or speech breaks require a fresh configuration revision.");
+                    "Changed persona content or speech breaks require a fresh configuration revision.");
         }
     }
 

@@ -73,8 +73,7 @@ internal static class DiscordReplyCheck
         var liveModel = model ?? (localOllama ? thinking!.ModelId : null);
         var persona = loaded.Settings?.Companion?.ActivePersona;
         var personaText = persona is null ? null
-            : PromptSettings.Fill(loaded.Settings!.Prompts, PromptCatalog.Persona, ("name", persona.Name), ("persona", persona.Text),
-                ("style", PromptSettings.Text(loaded.Settings.Prompts, PromptCatalog.StyleHelpful)));
+            : PromptSettings.Fill(loaded.Settings!.Prompts, PromptCatalog.Persona, ("name", persona.Name), ("persona", persona.Text));
         return new
         {
             fixture = await FixtureAsync(cancellation),

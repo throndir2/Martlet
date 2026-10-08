@@ -491,9 +491,9 @@ local debug text. Tests cover name-in-quotation, similar names, multiple
 speakers, silence hallucination, continuous talk, wake during playback,
 and ignored input. Changing policy never silently activates continuous cloud STT.
 
-### Listen-first context and response styles
+### Listen-first context
 
-[R22/R24](COMPANION_REQUIREMENTS.md) extend, rather than replace, the policy
+[R22](COMPANION_REQUIREMENTS.md) extends, rather than replaces, the policy
 boundary. Caller-owned, consented observations may be retained as bounded
 session context without creating a reply per observation. Proposed limits are
 120 seconds, 32 observations and 16 KiB UTF-8 text, further bounded by model
@@ -505,10 +505,8 @@ before sending retained context to a changed route.
 New activity invalidates a proposed gap-based dispatch. Only a fresh eligible
 decision can lead to LLM/TTS; quiet accumulation uses no second inference
 model. Participation frequency/gap/cooldown and opt-in capture remain separate
-from per-persona helpful/sarcastic/silly/distracted/teasing weights. Select a
-style only after admission, using a testable weighted selector; persona/style
-never overrides truthfulness, explicit controls or permission. The current
-V05b adds fixed-revision persona and weighted style instructions to fresh
+from the persona. The persona never overrides truthfulness, explicit controls
+or permission. The current V05b adds fixed-revision persona instructions to fresh
 explicit turns. The reused explicit-context slice adds the open talk window's
 completed exchanges, the newest that fit the context size (Companion ›
 Replies), with lifecycle clearing; it is not the proposed automatic

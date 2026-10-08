@@ -173,7 +173,6 @@ internal sealed class LiveConversationOperation
     /// PC (<see cref="AfterReply"/>). In memory only, never saved.</summary>
     [JsonIgnore] internal BoundedTextInput? Sent { get; set; }
     internal Guid? PersonaRevision { get; set; }
-    internal ResponseStyle? ResponseStyle { get; set; }
     internal int ContextMessages { get; set; }
     internal int ContextMessagesOmitted { get; set; }
     internal bool MemoryRequested { get; set; }
@@ -417,7 +416,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private readonly ConversationContextBuffer context;
     private readonly string? dataDirectory;
     private readonly TimeProvider clock;
-    private readonly Func<int, int> nextStyle;
     private readonly Action? revokeAvatar;
     // The desktop character's emotes and motions a reply may use, for the speaking engine (null: a reply that isn't spoken).
     private readonly Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions;
@@ -720,7 +718,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         ICaptureDeviceFactory captureDevices, IPlaybackDeviceFactory playbackDevices, TimeProvider? clock = null,
         Func<IProviderCredentialSource, TimeProvider, ConversationRuntime>? runtimeFactory = null,
         Func<IProviderCredentialSource, TimeProvider, OpenAiTranscriptionAdapter>? transcriptionFactory = null,
-        Func<int, int>? nextStyle = null,
         DesktopMemoryService? memory = null,
         GeneratedSpeechObserver? generatedSpeech = null, Action? revokeAvatar = null, VoiceIdentity? voiceIdentity = null,
         IHostTranscriptionClient? hostListener = null, string? dataDirectory = null, SpokenTextFeed? spokenText = null,
@@ -748,7 +745,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         Board = board ?? new();
         if (echoReducer is not null) echoReducer.Reported += EchoReported;
         this.clock = clock ?? TimeProvider.System;
-        this.nextStyle = nextStyle ?? RandomNumberGenerator.GetInt32;
         this.revokeAvatar = revokeAvatar;
         this.memory = memory;
         this.lorebooks = lorebooks;
@@ -1547,12 +1543,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 operation.Authorization.Check(worker);
                 var configured = operation.Authorization.Configuration;
                 var persona = configured.Persona;
-                ResponseStyle? style = persona is null ? null : ResponseStyleSelector.Select(persona.Styles, nextStyle);
                 // Earlier messages go exactly as they were sent (with their notes), so the request starts like the one before.
                 var history = context.Snapshot(sent: true);
                 var level = ChattinessTags.Level(chattiness, decided);
                 board = BoardFor(configured, operation.Authorization.Voice);
-                var request = configured.Request(new(GlanceMessage(prompt, read)), operation.Authorization.Voice, style, history, null, lore,
+                var request = configured.Request(new(GlanceMessage(prompt, read)), operation.Authorization.Voice, history, null, lore,
                     out var usedHistory, out _, out var usedLore, image,
                     Join(LiveConversationConfiguration.Moment(configured.Prompts),
                         LiveConversationConfiguration.CommentaryInstructions(level, camera, configured.Prompts, decides)),
@@ -1565,7 +1560,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 // Exchanges a look had to leave out are never sent again, so later requests start the same way.
                 context.LetGoBefore(context.Start + (history.Count - usedHistory) / 2);
                 operation.PersonaRevision = persona?.ConfigurationRevision;
-                operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;
                 operation.ContextMessagesOmitted = history.Count - usedHistory;
                 RecordLore(operation, lore, usedLore);
@@ -1821,7 +1815,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             ConversationTurn turn;
             ContextBoardSnapshot board = ContextBoardSnapshot.Empty;
             PersonaProfile? persona;
-            ResponseStyle? style;
             IReadOnlyList<TextHistoryMessage> history, sentHistory;
             long historyStart;
             Guid conversation;
@@ -1845,8 +1838,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     lease = committed;
                 }
                 persona = operation.Authorization.Configuration.Persona;
-                style = persona is null ? null :
-                    ResponseStyleSelector.Select(persona.Styles, nextStyle);
                 history = context.Snapshot();
                 // Earlier messages go exactly as they were sent (with their notes), so the request starts like the one before;
                 // lore, memory and learning names read what was said (history).
@@ -1987,7 +1978,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 var backup = BackupFor(operation);
                 ConversationRequest Ask(SeenScreen? picture, string? recalled, out int keptHistory, out int keptFacts, out int keptEntries) =>
                     operation.Authorization.Configuration.Request(
-                        input!, operation.Authorization.Voice, style, sentHistory, memoryResult, lore,
+                        input!, operation.Authorization.Voice, sentHistory, memoryResult, lore,
                         out keptHistory, out keptFacts, out keptEntries, image: picture?.Image,
                         extraInstructions: Join(LiveConversationConfiguration.Moment(prompts),
                             home is { Kind: HomeTurnKind.Tools } ? home.Instructions : null,
@@ -2036,7 +2027,6 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 if (early is null) context.LetGoBefore(letGo);
                 else early.LetGoBefore = letGo;
                 operation.PersonaRevision = persona?.ConfigurationRevision;
-                operation.ResponseStyle = style;
                 operation.ContextMessages = usedHistory;
                 operation.ContextMessagesOmitted = history.Count - usedHistory;
                 operation.MemoryFactsUsed = usedMemory;

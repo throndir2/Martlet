@@ -50,13 +50,13 @@ public sealed class LiveConversationTests
         var long_ = new string('a', 16_000);
         var history = Enumerable.Range(0, 60).Select(i => new TextHistoryMessage(i % 2 == 0 ? TextHistoryRole.User : TextHistoryRole.Assistant, long_))
             .ToArray();
-        var request = configuration.Request(new("Tell me about the castle"), false, ResponseStyle.Helpful, history, null, lore,
+        var request = configuration.Request(new("Tell me about the castle"), false, history, null, lore,
             out var usedHistory, out _, out var usedLore, closingInstructions: LiveConversationConfiguration.ReplyLengthInstructions);
         Assert.Equal(2, usedLore);
         Assert.True(usedHistory < history.Length);
         var instructions = request.Input.Personality!;
         Assert.Contains("Companion name:", instructions);
-        Assert.Contains("Dominant style for this reply: helpful.", instructions);
+        Assert.DoesNotContain("Dominant style", instructions, StringComparison.Ordinal);
         Assert.EndsWith(LiveConversationConfiguration.ReplyLengthInstructions, instructions);
         Assert.DoesNotContain("[MARTLET_LOREBOOK]", instructions);
         var notes = request.Input.Notes!;
@@ -105,7 +105,7 @@ public sealed class LiveConversationTests
         Assert.True(configuration.NetworkThinking);
         Assert.Equal(TimeSpan.FromMinutes(2), configuration.TextLimits.MaxRequestTime);
         Assert.Equal(LiveConversationConfiguration.ActionLifetime,
-            configuration.Request(new("Hi"), false, ResponseStyle.Helpful, [], null, null, out _, out _, out _).Limits.TurnTimeout);
+            configuration.Request(new("Hi"), false, [], null, null, out _, out _, out _).Limits.TurnTimeout);
         // Host Ollama's num_predict also pays for thinking: the Chat Completions budget, under a small saved context size.
         Assert.Equal(GenerationSettings.ChatReplyTokens, configuration.TextLimits.MaxOutputTokens);
         Assert.Equal(1_024, LiveConversationConfiguration.From(loaded with
@@ -115,7 +115,7 @@ public sealed class LiveConversationTests
         Assert.Contains("Maximum length is 4096 tokens, including any hidden thinking",
             MainWindow.DescribeGeneration(null, paired.Setup!.Routes.Single(r => r.Role == SetupRole.Llm)));
         Assert.Contains("your Martlet host fixture-host", configuration.Disclosure(false));
-        var request = configuration.Request(new("Hello host"), false, ResponseStyle.Helpful, [], null, null, out _, out _, out _);
+        var request = configuration.Request(new("Hello host"), false, [], null, null, out _, out _, out _);
         Assert.Equal(SelfHostSetup.GatewayOllamaAlias, request.Model.ModelAlias);
         Assert.Equal("llama3.2-3b", request.Model.UpstreamModelId);
         Assert.Equal(("fixture-host", "https://127.0.0.1:7443", pairingCredential),
@@ -124,7 +124,7 @@ public sealed class LiveConversationTests
         Assert.Equal(VisionSupport.Unsupported, configuration.Vision());
         Assert.Contains("vision-capable model for the host", configuration.VisionAdvice());
         var image = new BoundedImage([0xFF, 0xD8, 0xFF, .. new byte[32]], ImageMediaType.Jpeg, 4, 4);
-        var glance = configuration.Request(new("(Screen glance.)"), false, ResponseStyle.Helpful, [], null, null, out _, out _, out _, image,
+        var glance = configuration.Request(new("(Screen glance.)"), false, [], null, null, out _, out _, out _, image,
             LiveConversationConfiguration.CommentaryInstructions(Chattiness.Normal), LiveConversationConfiguration.SilentReply);
         Assert.Same(image, glance.Input.Image);
         Assert.Equal("pass", glance.SilentReply);
@@ -604,7 +604,7 @@ public sealed class LiveConversationTests
         await fixture.Save(loaded.Settings with
         {
             Generation = new() { ContextTokens = GenerationSettings.MinimumContextTokens },
-            Companion = loaded.Settings.Companion.Update(persona.Id, persona.Name, new string('\u00e9', 2_000), persona.Styles)
+            Companion = loaded.Settings.Companion.Update(persona.Id, persona.Name, new string('\u00e9', 2_000))
         });
         await fixture.EnableMemory();
         fixture.Controller.AutoCapture = false;
@@ -673,8 +673,7 @@ public sealed class LiveConversationTests
         {
             Generation = new() { ContextTokens = GenerationSettings.MinimumContextTokens },
             Companion = loaded.Settings.Companion.Update(
-                persona.Id, persona.Name, new string('\u00e9', 7_800),
-                persona.Styles)
+                persona.Id, persona.Name, new string('\u00e9', 7_800))
         };
         await fixture.Save(changed);
         await fixture.EnableMemory();
@@ -836,7 +835,7 @@ public sealed class LiveConversationTests
             Assert.False(body.RootElement.GetProperty("store").GetBoolean());
             Assert.Contains("typed-content-canary", Encoding.UTF8.GetString(fixture.Llm.Body));
             Assert.Contains("Be a helpful conversational companion.", body.RootElement.GetProperty("instructions").GetString());
-            Assert.Contains("Dominant style for this reply: helpful.", body.RootElement.GetProperty("instructions").GetString());
+            Assert.DoesNotContain("Dominant style", Encoding.UTF8.GetString(fixture.Llm.Body), StringComparison.Ordinal);
             Assert.DoesNotContain("MARTLET_NOTES", ResponsesCurrentUserText(body));
             Assert.Equal(voice ? 3 : 1, fixture.Native.Targets.Count);
             Assert.All(fixture.Native.Leases, lease => Assert.Throws<ObjectDisposedException>(() => lease.Use(_ => { })));
@@ -860,19 +859,15 @@ public sealed class LiveConversationTests
     });
 
     [Fact]
-    public async Task FreshActionSnapshotsPersonaRevisionAndWeightedStyle()
+    public async Task FreshActionSnapshotsPersonaRevisionWithoutAResponseStyle()
     {
-        await using var fixture = await LiveFixture.Create(nextStyle: _ => 40);
+        await using var fixture = await LiveFixture.Create();
         var loaded = await fixture.Store.LoadAsync();
         var persona = loaded.Settings!.Companion!.ActivePersona;
-        var styles = new ResponseStyleWeights
-        {
-            Helpful = 40, Sarcastic = 20, Silly = 20, Distracted = 10, PlayfulTeasing = 10
-        };
         var changed = loaded.Settings with
         {
             Companion = loaded.Settings.Companion.Update(
-                persona.Id, "Corvid", "Prefer concise companion replies.", styles)
+                persona.Id, "Corvid", "Prefer concise companion replies.")
         };
         await fixture.Save(changed);
 
@@ -880,13 +875,12 @@ public sealed class LiveConversationTests
         await fixture.Finish(operation);
 
         Assert.Equal(changed.Companion!.ActivePersona.ConfigurationRevision, operation.PersonaRevision);
-        Assert.Equal(ResponseStyle.Sarcastic, operation.ResponseStyle);
         using var body = JsonDocument.Parse(fixture.Llm.Body);
         var instructions = body.RootElement.GetProperty("instructions").GetString();
         Assert.Contains("Companion name: Corvid", instructions);
         Assert.Contains("Prefer concise companion replies.", instructions);
-        Assert.DoesNotContain("Dominant style for this reply: sarcastic.", instructions);
-        Assert.Contains("Dominant style for this reply: sarcastic.", ResponsesCurrentNotes(body));
+        // Only the persona says how Martlet talks: no response style is picked or sent, in the instructions or the notes.
+        Assert.DoesNotContain("Dominant style", Encoding.UTF8.GetString(fixture.Llm.Body), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1198,7 +1192,6 @@ public sealed class LiveConversationTests
 
         Assert.Equal("runtime.Completed", operation.Status.Code);
         Assert.Null(operation.PersonaRevision);
-        Assert.Null(operation.ResponseStyle);
         using var body = JsonDocument.Parse(fixture.Llm.Body);
         var instructions = body.RootElement.GetProperty("instructions").GetString()!;
         Assert.DoesNotContain("Companion name:", instructions);
@@ -1255,7 +1248,7 @@ public sealed class LiveConversationTests
             var changed = loaded.Settings with
             {
                 Companion = loaded.Settings.Companion.Update(
-                    persona.Id, persona.Name, "Changed after action acceptance.", persona.Styles)
+                    persona.Id, persona.Name, "Changed after action acceptance.")
             };
             Assert.True((await fixture.Store.SaveAsync(changed, loaded.Revision)).Saved);
         };
@@ -1279,7 +1272,7 @@ public sealed class LiveConversationTests
             // A persona and message beyond the context size are refused, never cut.
             Generation = new() { ContextTokens = GenerationSettings.MinimumContextTokens },
             Companion = loaded.Settings.Companion.Update(
-                persona.Id, persona.Name, new string('\u00e9', PersonaProfile.MaximumTextCharacters), persona.Styles)
+                persona.Id, persona.Name, new string('\u00e9', PersonaProfile.MaximumTextCharacters))
         };
         await fixture.Save(changed);
 
@@ -2808,7 +2801,7 @@ internal sealed class LiveFixture : IAsyncDisposable
     /// <summary>The voices Martlet knows (voices.json in the fixture's folder), when the test asked for them.</summary>
     internal LocalVoices? Voices { get; }
     internal LiveConversationController Controller { get; }
-    internal LiveFixture(ControlledDevice? output = null, Func<int, int>? nextStyle = null, VoiceIdentity? voiceIdentity = null,
+    internal LiveFixture(ControlledDevice? output = null, VoiceIdentity? voiceIdentity = null,
         IPcAudioSourceFactory? pcAudio = null, bool voices = false, bool history = false, bool tools = false, bool echo = false,
         ILocalTranscriber? localListener = null, IEndOfTurnJudge? turnJudge = null, IWindowsVoiceClient? windowsVoice = null)
     {
@@ -2827,7 +2820,6 @@ internal sealed class LiveFixture : IAsyncDisposable
                 chat: target => ChatCompletionsTextGenerationAdapter.CreateForFixture(target.BaseUrl, Chat,
                     target.Keyless ? null : credentials, clock), windowsVoice: windowsVoice),
             (credentials, clock) => OpenAiTranscriptionAdapter.CreateForFixture(Stt, credentials, clock),
-            nextStyle,
             memory: Memory, voiceIdentity: voiceIdentity, voices: Voices,
             pcAudio: pcAudio is null ? null : new PcAudioCaptureFactory(pcAudio, Clock), tools: ToolService, history: History,
             // Echo reduction over the fixture microphone, with speakers whose loopback stays quiet and a canceller that keeps
@@ -2841,12 +2833,12 @@ internal sealed class LiveFixture : IAsyncDisposable
             Assert.Equal("api.openai.com", request.RequestUri!.Host);
         };
     }
-    internal static async Task<LiveFixture> Create(ControlledDevice? output = null, Func<int, int>? nextStyle = null,
+    internal static async Task<LiveFixture> Create(ControlledDevice? output = null,
         bool legacy = false, VoiceIdentity? voiceIdentity = null, IPcAudioSourceFactory? pcAudio = null, bool voices = false,
         bool history = false, bool tools = false, bool echo = false, ILocalTranscriber? localListener = null,
         IEndOfTurnJudge? turnJudge = null, IWindowsVoiceClient? windowsVoice = null)
     {
-        var fixture = new LiveFixture(output, nextStyle, voiceIdentity, pcAudio, voices, history, tools, echo, localListener, turnJudge,
+        var fixture = new LiveFixture(output, voiceIdentity, pcAudio, voices, history, tools, echo, localListener, turnJudge,
             windowsVoice);
         var settings = SetupSettings.Begin(null);
         settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api },

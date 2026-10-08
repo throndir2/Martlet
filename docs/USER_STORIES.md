@@ -190,7 +190,7 @@ Right-click: *Start talking*, *Show/Hide character*, *Mute microphone*,
 | Where listening runs, mic, talk mode, Voice ID | Companion › Listening | Home Now line, Devices job row, Fix card, conversation 🎤 › *Listening settings* |
 | Where lip-sync runs | Companion › Lip-sync | Home Now line (when it isn't working), Devices tile |
 | Character model, size, position | Companion › Character | Home Now line, Devices tile, ☺ long-press/right-click, tray |
-| Personas, style mix, character cards | Companion › Personality | conversation ☺ menu |
+| Personas, character cards | Companion › Personality | conversation ☺ menu |
 | Memory | Companion › Memory | conversation 🧠 › *Manage memory* |
 | Permissions | Settings › Privacy | every header chip's menu |
 | Machines and roles | Devices | Machine pickers on job pages (*Manage on Devices*) |
@@ -895,12 +895,12 @@ Advanced ▸   mapping, renderer, model files
 #### F6. Edit personality
 
 - **Flow**: edit fields inline on Companion › Personality (name, about,
-  style: helpful ━━●━ playful ━●━━ …, *Persona ▾*); changes save
+  *Persona ▾*); changes save
   automatically (with undo). *Persona ▾* switches or adds personas;
   *Import/Export* under its menu.
 - **Clicks**: 0 to edit, 2 to switch persona.
-- **Today**: Companion › Personality shows the active persona and its style
-  mix, and opens the Personality window. Edits there save automatically (a
+- **Today**: Companion › Personality shows the active persona,
+  and opens the Personality window. Edits there save automatically (a
   moment after typing or a slider stops; at once for choosing, adding,
   duplicating, deleting or importing a persona), the persona chosen in its
   list is the one Martlet uses, and its footer says *All changes saved.* or
