@@ -10,7 +10,7 @@ public enum PhysicalKind { Tap, Pat, Hold, Stroke, Moved, Zoomed, Panned, Resize
 /// where, as the character hears it ("the top of your head", "your left cheek"), and <paramref name="Zones"/> several places
 /// (a stroke across them); <paramref name="Label"/> a short name for the conversation's history ("top of head");
 /// <paramref name="Detail"/> more about it ("to another monitor", "in"); <paramref name="Hint"/> the owner's own words for a
-/// zone's touch (Companion › Character › Touch zones).</summary>
+/// zone's touch (Companion › Touch › Touch zones).</summary>
 public sealed record PhysicalEvent(PhysicalKind Kind, TimeSpan At, string? Zone = null, string? Label = null, string? Detail = null,
     string? Hint = null, IReadOnlyList<string>? Zones = null);
 

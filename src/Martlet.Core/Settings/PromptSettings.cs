@@ -439,7 +439,7 @@ public static class PromptCatalog
             DefaultReminderDueNotesInstructions, ["reminders"]),
         new(Touched, ConversationGroup, "Touched",
             "The message of the short reply Martlet starts on its own when you touch or stroke the desktop character (on zones " +
-            "with Martlet notices on, Companion › Character › Touch zones) or move it around, and say nothing: about 1.2 seconds " +
+            "with Martlet notices on, Companion › Touch › Touch zones) or move it around, and say nothing: about 1.2 seconds " +
             "after the last touch, at most once every 4 seconds. {touches} says what you did, such as They slowly stroked down " +
             "from your chest over your stomach to your thighs once. {silent} is the word the model answers to stay quiet.",
             DefaultTouchedInstructions, ["touches", "silent"]),
@@ -471,8 +471,8 @@ public static class PromptCatalog
             "Never write other sound or tone tags, or stage directions. Tags are heard, never shown.",
             ["engine", "tags", "example"]),
         new(CharacterActions, ConversationGroup, "Character emotes and motions",
-            "Added to replies while the desktop character shows and has emotes or motions turned on (Companion › Character › Emotes " +
-            "and motions). {tags} lists the ones not already set off by a voice tag, one per line with its When to use hint; {example} " +
+            "Added to replies while the desktop character shows and has emotes or motions turned on (Companion › Emotes and " +
+            "motions). {tags} lists the ones not already set off by a voice tag, one per line with its When to use hint; {example} " +
             "is the first.",
             DefaultCharacterActionInstructions, ["tags", "example"]),
         new(CharacterShowing, ConversationGroup, "Character emotes showing now",
@@ -484,7 +484,7 @@ public static class PromptCatalog
             "it no longer fits, otherwise leave it on.",
             ["showing", "example"]),
         new(CharacterGaze, ConversationGroup, "Where you look",
-            "Added to replies while the desktop character shows and may change where it looks (Companion › Character › Where the " +
+            "Added to replies while the desktop character shows and may change where it looks (Companion › Eyes › Where the " +
             "character looks). {usual} is what its eyes usually do (\"follow the user's mouse pointer wherever it goes\"), from " +
             "your choice or the personality; it changes only when that changes, so prompt caches keep working. {tags} lists the " +
             "look tags, one per line with what each does. Empty it and the character keeps its usual gaze.",
@@ -701,7 +701,7 @@ public static class PromptCatalog
             "Reply exactly {nothing} only when neither job has anything.\n\nFirst job:\n{remembering}\n\nSecond job:\n{naming}",
             ["remembering", "naming", "nothing"]),
         new(CharacterActionNaming, BackgroundGroup, "Naming character emotes",
-            "Asks the Thinking model what each of a character model's emotes and motions is (Companion › Character › Emotes and " +
+            "Asks the Thinking model what each of a character model's emotes and motions is (Companion › Emotes and " +
             "motions › Name them with Thinking; also once for each new model). The numbered list follows it; Martlet reads the " +
             "\"<number>: tag | cue | when\" and SKIP lines. {cues} lists the voice sounds and tones an emote can follow.",
             DefaultCharacterActionNamingInstructions, ["cues"]),

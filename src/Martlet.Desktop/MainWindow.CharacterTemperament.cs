@@ -10,7 +10,7 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Character › Touch temperament: how the active persona's character acts (never what it says) when each
+/// <summary>Companion › Touch › Touch temperament: how the active persona's character acts (never what it says) when each
 /// part of it is touched: how much it likes it (hates to craves) and which emotes, gestures and face symbols play, in one table
 /// with a line per category (each names the parts it covers; intimate parts have their own) and per part that reacts
 /// differently. The Thinking model decides the persona's own temperament from the personality in the background after the
@@ -33,7 +33,8 @@ public partial class MainWindow
         characterTemperaments.Changed += () => Dispatcher.InvokeAsync(() =>
         {
             if (temperamentDecision is not null) ShowStatusLine(temperamentDecision, characterTemperaments.Status);
-            if (closing || openTab != CompanionTab.Character || CompanionContent.IsKeyboardFocusWithin || tabEdited) return;
+            // The Touch page shows the temperament; the Eyes page shows the gaze it decides.
+            if (closing || openTab is not (CompanionTab.Touch or CompanionTab.Eyes) || CompanionContent.IsKeyboardFocusWithin || tabEdited) return;
             if (!characterTemperaments.Busy && !decidingTemperament) RenderTab();
         });
         // A decided (or edited, or shared) temperament may change the character's usual gaze.
@@ -68,7 +69,7 @@ public partial class MainWindow
         {
             decidingTemperament = false;
             tabEdited = false;
-            if (!closing && openTab == CompanionTab.Character) RenderTab();
+            if (!closing && openTab == CompanionTab.Touch) RenderTab();
         }
     }
 
@@ -195,7 +196,7 @@ public partial class MainWindow
                 return;
             }
             temperamentUseNote = done;
-            if (!closing && openTab == CompanionTab.Character) RenderTab();
+            if (!closing && openTab == CompanionTab.Touch) RenderTab();
         }
         // A line of the Uses rows: a label in the table's name column, then its controls.
         DockPanel UseLine(string text, Control target, params FrameworkElement[] controls)

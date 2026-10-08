@@ -8,7 +8,7 @@ using Martlet.Providers;
 
 namespace Martlet.Mcp;
 
-/// <summary>character_touch_zones: Companion › Character › Touch zones as Martlet.Avatar.Hosting's CharacterTouchZones runs them,
+/// <summary>character_touch_zones: Companion › Touch › Touch zones as Martlet.Avatar.Hosting's CharacterTouchZones runs them,
 /// with NO vision request: the zone list and the step-by-step vision requests, what the production parser makes of a simulated
 /// vision answer (fractions, pixels or 0..1000 grounding) and how it binds to a simulated drawables/bones probe, the zones saved
 /// for the model in a data directory, and which zone a simulated touch lands in with what it plays (from the model's emotes and

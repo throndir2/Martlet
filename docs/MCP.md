@@ -1360,7 +1360,7 @@ saved ones stay. With `answer`, a simulated Thinking reply such as
 it (`read`, `problem`, `actions`, `prompt`). Model-authored names only, never
 the model's path; it reads and contacts nothing else.
 
-`character_touch_zones` rehearses Companion › Character › [Touch zones](AVATARS.md#touch-zones)
+`character_touch_zones` rehearses Companion › Touch › [Touch zones](AVATARS.md#touch-zones)
 with no vision request: `zones` (how many Martlet knows and which are
 `intimate`, used only with *Include intimate zones*), `request` (the
 step-by-step requests: `parts` with the whole character, `zones` with each
@@ -1452,7 +1452,7 @@ other the file names): its `personaId`, `name`, whether it is `active`, what it
 `Id`, `Name`, `summary`, `groups`, `zones` and the personas that use it
 (`usedBy`). Never the model's path; it contacts nothing.
 
-The section's status fields are `TouchZonesStatus` (how many zones, how many in
+The section's status fields (on Companion › Touch, `CompanionTab-Touch`) are `TouchZonesStatus` (how many zones, how many in
 use and who found them, or that none are found yet), `TouchZonesVision`
 (which model sees the pictures: a Thinking pool member that can see, else
 whether the Thinking model can see and where pictures go; read from the saved
@@ -1530,7 +1530,7 @@ makes the stand-in fail that request instead of answering, as a model whose
 computer stopped answering: *Detect zones* then stops there and keeps the zones
 from before (FIXTURE - NOT AI in `TouchZonesDetection`).
 
-`character_eyes` rehearses Companion › Character › Touch zones › [Eyes](AVATARS.md#eyes)
+`character_eyes` rehearses Companion › Eyes › [Where the eyes are](AVATARS.md#eyes)
 with no vision request: `request` (the close-up's `edge`, 768 pixels, and its
 width in `faceWidths`, 1.6, with the `instructions`, the first `text`, the
 `check` message that goes with the boxes drawn and numbered, and the `again`
@@ -1562,7 +1562,7 @@ measurement for the model (`modelPath`, `modelId` or the one the
 AI, as *Measure the eyes* would; `forget` removes it. Never the model's path;
 it contacts nothing.
 
-The Eyes rows (in the Touch zones card) read through `CharacterEyesStatus`
+Companion › Eyes › *Where the eyes are* (`CompanionTab-Eyes`) reads through `CharacterEyesStatus`
 (where the shown model's eyes come from: *From the model's own meshes.*,
 *From the model's own eye bones and meshes.*, *Measured with vision at 3:12
 PM.* or *Estimated: Martlet guesses where the eyes are from the face...*; while
@@ -1593,7 +1593,7 @@ that file's text (JSON about the close-up, as `answer` above; shown in
 picture, so the whole path runs with no vision request (and *Measure the eyes*
 is on without a model that can see).
 
-Touch temperament (below Touch zones) reads through `TouchTemperamentStatus`
+Touch temperament (on Companion › Touch, below Touch zones) reads through `TouchTemperamentStatus`
 (for which persona and who decided it: built-in reactions, the Thinking model,
 `FIXTURE - NOT AI` or your own choices; or what it uses instead: *built-in
 reactions, as you chose* or *your custom temperament "Shy cat"*; its `help` is
@@ -1657,7 +1657,7 @@ path with no model.
 
 `character_gaze` shows [where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks).
 `usual` is the usual gaze from the `dataDirectory`'s `talk-preferences.json`
-(Companion › Character › Where the character looks and the overlay's Eyes
+(Companion › Eyes › Where the character looks and the overlay's Eyes
 menu): `choice` (`personality`, the default, `mouse`, `near`, `ahead` or
 `window`; `GazeUsual`), `free` (whether replies may change it; `GazeFree`),
 `personality` (the gaze of the temperament that the active persona of
@@ -1699,7 +1699,7 @@ answers (`answer` replaces the samples): `spoken`, `shown`, `quiet`
 a look without words) and `gazes` (each gaze cue's tag, `gaze` and
 `afterPiece`). Read-only; it contacts nothing.
 
-Companion › Character › Where the character looks reads through
+Companion › Eyes › Where the character looks (`CompanionTab-Eyes`) reads through
 `CharacterGazeNow`: what the eyes do now and why (*The character looks straight
 ahead, as its personality decided. It may change where it looks in its
 replies.*; *as you chose*; what a reply chose and when; *Right now it looks at
@@ -4089,7 +4089,7 @@ Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible 
 automation IDs, enabled states, checkbox states, and selected read-only status
 fields (a text block's text, or a button's accessible name); it does not dump arbitrary editable fields or credentials.
 It returns the first 200 controls; `idPrefix` keeps only those whose automation ID
-starts with it (`TouchZone` for Companion › Character › Touch zones, below the
+starts with it (`TouchZone` for Companion › Touch › Touch zones, below the
 long emotes list).
 A status text whose details sit in its tooltip (the talk window's `LiveVisionStatus`,
 `LivePcAudio`, `LiveChattiness` and `LiveContext`) also returns them as `help`
@@ -4721,6 +4721,23 @@ filter pills, list items), a combo box in the status fields reads as its
 chosen option, and a check box in the status fields reads as its label (its
 `checkedState` says whether it is ticked).
 
+The desktop character has its own group in Companion's side list, *How it
+looks*: `CompanionTab-Character` (the character model, showing and hiding it,
+its position, zoom and your characters), `CompanionTab-SpeechBubbles`,
+`CompanionTab-Emotes` (emotes, motions and combos), `CompanionTab-Eyes` (where
+the character looks and where its eyes are) and `CompanionTab-Touch` (touch
+zones and touch temperament). When Emotes and motions or Touch opens (or is
+drawn again while scrolled to its top), only its first six rows show at once;
+the other rows join a batch at a time once the page has drawn, within about
+half a second, so poll `ui_snapshot` with `until` for a later row's ID (such as
+`CharacterActionOn-40` or `TouchTemperamentStatus`). Every row is built at
+once, so a save always includes every row. Drawn again further down the page,
+every row shows at once and the page keeps its place. The desktop log records
+how long each Companion page took to show when it opens, such as *Companion ›
+Touch drew in 62 ms (21 ms to build, 41 ms to lay out), 919 elements.*, and,
+for a page whose rows join in batches, *Companion › Touch showed all 43 rows
+in 8 batches, 290 ms after it opened.*
+
 For the desktop character, open `CompanionTab-Character`; with
 `--allow-ui-effects`, `SetupCharacterToggle` shows or hides it and
 `SetupCharacterZoomIn`, `SetupCharacterZoomOut` and `SetupCharacterResetZoom`
@@ -4872,7 +4889,7 @@ shows.
 Martlet then reacts locally, without asking any model: the model's own tap
 motion when it has one (a group named like `TapHead`, `Tap@Head`, `TapBody`
 or `Tap`), else a head tilt (or nod) for the head, hair and face and a
-surprised look (or gasp or nod) elsewhere; Companion › Character › Touch zones (`character_touch_zones`) replaces that with the reaction of the zone the tap lands in (`TouchZonesLast`). The desktop log records *The
+surprised look (or gasp or nod) elsewhere; Companion › Touch › Touch zones (`character_touch_zones`) replaces that with the reaction of the zone the tap lands in (`TouchZonesLast`). The desktop log records *The
 character was tapped on the body (hit areas Body).* and *Character motion
 'TapBody' played for a tap on the body.* `character_touch` taps it through
 UI Automation (`MoveAvatar`'s value, `"x,y"`) at `x`, `y` (fractions 0 to 1
@@ -4885,7 +4902,7 @@ names only, never paths) and `held` (how long the press lasted, in ms). `holdMs`
 that long (`"x,y,ms"` as `MoveAvatar`'s value; 600 or more is a hold), `repeat`
 taps the same point up to 20 times `gapMs` apart, and `taps`
 (`[{x, y, holdMs}]`, up to 20) taps a sequence of points, each after the hit
-test of the one before. With Companion › Character › Touch zones showing,
+test of the one before. With Companion › Touch › Touch zones showing,
 `noticed` reads what Martlet noticed after `settleMs`: `waiting`
 (`TouchZonesNoticed`), `last` (`TouchZonesNoticedLast`) and `zone`
 (`TouchZonesLast`). Without `x`, `y` or `taps` it only reads the last tap, as
@@ -4931,7 +4948,7 @@ every `stepMs` (default 40), which needs `--allow-ui-effects` and a locked
 position, waits for the stroke to end and returns the overlay's reading as
 `last`: the last tap's fields plus `stroke` (`n`, `samples`, `hits`, `ms` and
 the coarse `zones` crossed) and `physical`. Without `points` it only reads.
-Companion › Character › Touch zones' `CharacterPhysicalLast` shows Martlet's
+Companion › Touch › Touch zones' `CharacterPhysicalLast` shows Martlet's
 summary.
 
 **Where Martlet draws over the face**: the blush levels (the blush on a model
@@ -5194,7 +5211,7 @@ The renderer still starts, draws and closes normally. Commands include `where`
 loudness mouth), `reset` and `apply` (Audio2Face frames), `gaze`, `action`
 (emotes and motions), `say` (speech bubbles), `theme` and `camera`.
 
-The same page's *Speech bubbles and subtitles* card has the checkboxes
+Companion › Speech bubbles (`CompanionTab-SpeechBubbles`) has the *Speech bubbles and subtitles* card with the checkboxes
 `SetupCharacterSpeechBubbles` (on by default) and `SetupCharacterSubtitles`
 (off by default); snapshots return their states, and `SetupCharacterSpeechDisplay`
 returns whether each is on and whether bubbles show now (character showing) or
@@ -5305,7 +5322,7 @@ everywhere (a tombstone travels); both need `--allow-ui-effects`.
 {"seedDataDirectory": ...}` fills a disposable folder with two test tones for
 checking the page.
 
-Companion › Character's *Emotes and motions* card lists the
+Companion › *Emotes and motions* (`CompanionTab-Emotes`) lists the
 [emotes and motions](AVATARS.md#emotes-and-motions) of the character this PC
 shows (or would show). `CharacterActionsStatus` reads how many emotes and
 motions the model has (with the Martlet gestures its rig supports) and whether they were named

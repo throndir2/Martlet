@@ -111,7 +111,7 @@ public static partial class CharacterActions
         _ => $"a combination of {string.Join(", ", parts.Take(parts.Count - 1))} and {parts[^1]}"
     };
 
-    /// <summary>The parts a combo's Parts box names (Companion › Character › Emotes and motions › Combos): tags such as
+    /// <summary>The parts a combo's Parts box names (Companion › Emotes and motions › Combos): tags such as
     /// "blush hearts nod" (braces allowed; spaces, commas or + between them) or IDs, matched to <paramref name="actions"/>, each
     /// once, in order. Returns their IDs, or null with <paramref name="problem"/> ("no emote has the tag 'x'.") when a word names
     /// none.</summary>

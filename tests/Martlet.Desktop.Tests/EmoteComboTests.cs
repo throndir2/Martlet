@@ -404,7 +404,7 @@ public sealed class EmoteComboTests
         Assert.Contains(new RendererAction("expression", "Glasses", false, true), renderer.Actions);
         Assert.EndsWith(": turned off \"Glasses\".", avatar.LastAction);
 
-        // Try (Companion › Character › Combos) plays them the same way, for a try.
+        // Try (Companion › Emotes and motions › Combos) plays them the same way, for a try.
         Assert.Equal(2, await avatar.PlayComboAsync("agree", [(Source("expression:Smile"), false), (Source("motion:Wave"), false)], "a try",
             null, default));
         Assert.StartsWith("Combo {agree} for a try at ", avatar.LastAction);

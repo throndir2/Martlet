@@ -309,8 +309,8 @@
             </Setter.Value>
         </Setter>
     </Style>
-    <!-- Dense editor rows (Companion › Character's touch zones, touch temperament and emotes): text boxes, choices and buttons 32
-         pixels tall, so a row's controls, short labels and check boxes line up on one centre line. -->
+    <!-- Dense editor rows (Companion › Emotes and motions, and Touch's touch zones and touch temperament): text boxes, choices
+         and buttons 32 pixels tall, so a row's controls, short labels and check boxes line up on one centre line. -->
     <Style x:Key="CompactTextBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
         <Setter Property="Padding" Value="8,4"/>
         <Setter Property="MinHeight" Value="32"/>

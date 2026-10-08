@@ -87,7 +87,7 @@ what each one is.
   (`starEyes` → `star_eyes`), common Chinese, Japanese and Korean emote words are
   translated (`脸红` → `blush`, `涙` → `tears`, `웃음` → `smile`), and anything
   else is numbered (`emote_3`, `motion_2`).
-- **Settings**: Companion › Character › **Emotes and motions** lists each one
+- **Settings**: Companion › **Emotes and motions** lists each one
   with a check box, its tag, its voice cue and when to use it, a **Try** button
   (while the character shows) and what it changes. *When to use* is the hint the
   reply prompt puts next to the tag (`{sweat} - a sweat drop, for nervousness or
@@ -467,7 +467,7 @@ what each one is.
   drives.
 - **Where it looks**: the head and eyes follow the character's usual gaze (your
   mouse, your mouse only when it's near, straight ahead, or the window you're
-  using), chosen on Companion › Character › **Where the character looks** or
+  using), chosen on Companion › Eyes › **Where the character looks** or
   the character's right-click **Eyes** menu, or by its personality. Replies may
   change it with gaze tags (`{look ahead}`), a touch can turn the eyes to your
   mouse for a moment, and with Companion › Vision › **Glances at your screen**
@@ -479,7 +479,7 @@ what each one is.
 ## Touch zones
 
 Click the character (a left click, not a drag) and it reacts to where you
-touched it. Companion › Character › **Touch zones** lists the zones of the
+touched it. Companion › Touch › **Touch zones** lists the zones of the
 model it shows: the top of the head (a head pat), hair, forehead, face, cheeks,
 nose, chin, shoulders, arms, hands, stomach, legs and feet, and extras such as
 animal ears, a tail or wings. Intimate zones (lips, ears, neck, chest and
@@ -655,7 +655,7 @@ swirls). They should cover only the iris and never go outside the eye, so the
 renderer must know where each eye is. A model's own data says so when it can:
 a Live2D model's iris meshes, or a VRM's eye bones and meshes. For a model
 without that data, the Thinking model measures the eyes once with its vision.
-Companion › Character › Touch zones › **Eyes** says where the shown model's
+Companion › Eyes › **Where the eyes are** says where the shown model's
 eyes come from: *From the model's own meshes.*, *From the model's own eye
 bones and meshes.*, *Measured with vision at 3:12 PM.* or *Estimated: ...*.
 
@@ -693,7 +693,7 @@ bones and meshes.*, *Measured with vision at 3:12 PM.* or *Estimated: ...*.
 ### Touch temperament
 
 The personality decides how the character acts when it is touched, and where
-its eyes usually go. Companion › Character › **Touch temperament** shows, for
+its eyes usually go. Companion › Touch › **Touch temperament** shows, for
 the persona in use, one table with a line for each category of its body (head
 and face, shoulders and torso, arms and hands, legs and feet, extras, and
 intimate parts) and for each part that reacts differently from its category.

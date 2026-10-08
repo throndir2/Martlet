@@ -7,7 +7,7 @@ using Martlet.Core.Settings;
 namespace Martlet.Mcp;
 
 /// <summary>character_gaze: where the character looks as saved in a data directory. Its usual gaze (talk-preferences.json
-/// GazeUsual and GazeFree: Companion › Character › Where the character looks and the overlay's Eyes menu; the persona's gaze in
+/// GazeUsual and GazeFree: Companion › Eyes › Where the character looks and the overlay's Eyes menu; the persona's gaze in
 /// character-temperaments.json; else the mouse), what replies are told about it and an aim rehearsal of each gaze (the
 /// production CharacterGaze.Aim the overlay uses, with a mouse near and far from the character and a window). Then Companion ›
 /// Vision › Glances at your screen (DecideGaze: the usual gaze unless Martlet decides) and a rehearsal of the production decision

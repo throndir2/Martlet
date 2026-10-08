@@ -14,7 +14,7 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Character › Touch zones: where a left click on the character lands (top of the head, a cheek, a hand...)
+/// <summary>Companion › Touch › Touch zones: where a left click on the character lands (top of the head, a cheek, a hand...)
 /// and what the character does then. The Thinking model finds the zones once per model in a snapshot of the character (when it
 /// can see; Detect zones asks again), Martlet binds each to the model's drawables or bones so it follows the model as it moves,
 /// and each zone plays its emotes and gestures, may be noticed by Martlet (the touches go to the Thinking model) and rests a few
@@ -39,7 +39,7 @@ public partial class MainWindow
             if (touchZonesLast is not null) touchZonesLast.Text = characterTouchZones.LastMatch ?? TouchZonesIdle();
             if (touchZonesNoticed is not null) touchZonesNoticed.Text = characterTouchZones.Noticed ?? TouchZonesNoticedIdle;
             if (touchZonesNoticedLast is not null) touchZonesNoticedLast.Text = characterTouchZones.NoticedLast ?? "";
-            if (closing || openTab != CompanionTab.Character || CompanionContent.IsKeyboardFocusWithin || tabEdited) return;
+            if (closing || openTab != CompanionTab.Touch || CompanionContent.IsKeyboardFocusWithin || tabEdited) return;
             if (detectingTouchZones || characterTouchZones.Busy || renderedZonesModel != characterTouchZones.ModelId) RenderTab();
         });
         avatar.TouchRouter = OnCharacterTouched;
@@ -114,18 +114,28 @@ public partial class MainWindow
     private bool showTouchZonesSent;
     private const double TouchZonesPictureHeight = 600, TouchZonesPictureWidth = 440;
 
-    // A picture file decoded once at about the size it shows (the snapshot can be 2048 pixels tall).
-    private static BitmapImage PictureAt(string path)
+    // Pictures decoded once at about the size they show, kept while their file stays the same (Detect again and Measure the eyes
+    // write new pictures under the same names), so drawing a page again doesn't decode them again. On the UI thread.
+    private static readonly Dictionary<(string Path, int Height, int Width), (DateTime Written, long Length, BitmapImage Picture)> decodedPictures = [];
+
+    // A picture file decoded at about the size it shows (the snapshot can be 2048 pixels tall).
+    private static BitmapImage PictureAt(string path, int decodeHeight = (int)(TouchZonesPictureHeight * 2), int decodeWidth = 0)
     {
+        var file = new FileInfo(path);
+        var (key, written, length) = ((path, decodeHeight, decodeWidth), file.LastWriteTimeUtc, file.Length);
+        if (decodedPictures.TryGetValue(key, out var kept) && kept.Written == written && kept.Length == length) return kept.Picture;
         var bitmap = new BitmapImage();
         bitmap.BeginInit();
         bitmap.CacheOption = BitmapCacheOption.OnLoad;
-        // Detect again writes a new picture under the same name.
+        // The file's own changes are followed above, not by WPF's image cache.
         bitmap.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
-        bitmap.DecodePixelHeight = (int)(TouchZonesPictureHeight * 2);
+        if (decodeHeight > 0) bitmap.DecodePixelHeight = decodeHeight;
+        if (decodeWidth > 0) bitmap.DecodePixelWidth = decodeWidth;
         bitmap.UriSource = new Uri(path);
         bitmap.EndInit();
         bitmap.Freeze();
+        if (decodedPictures.Count >= 4) decodedPictures.Clear();
+        decodedPictures[key] = (written, length, bitmap);
         return bitmap;
     }
 
@@ -143,7 +153,7 @@ public partial class MainWindow
         detectTouchZones = stop;
         // Detecting... and Stop show at once. A click leaves the keyboard focus on Detect zones, and the page holds back its updates
         // while the focus is in it; rendering it again takes the focus off the old button, so each step's progress shows too.
-        if (!closing && openTab == CompanionTab.Character) RenderTab();
+        if (!closing && openTab == CompanionTab.Touch) RenderTab();
         try
         {
             // The picture is drawn off screen by a renderer of its own, in the character's rest pose: the character needn't show,
@@ -169,7 +179,7 @@ public partial class MainWindow
             detectTouchZones = null;
             detectingTouchZones = false;
             tabEdited = false;
-            if (!closing && openTab == CompanionTab.Character) RenderTab();
+            if (!closing && openTab == CompanionTab.Touch) RenderTab();
         }
     }
 
@@ -290,7 +300,6 @@ public partial class MainWindow
                 stack.Add(Row(open));
             }
         }
-        AddCharacterEyes(stack, catalog);
         if (catalog is null) return Card([.. stack]);
 
         var modelId = catalog.Inventory.ModelId;
@@ -343,19 +352,26 @@ public partial class MainWindow
                 var image = new Image { Source = bitmap, Width = width, Height = height, Stretch = Stretch.Fill };
                 canvas.Children.Add(image);
                 canvas.Background = new SolidColorBrush(Color.FromArgb(0x18, 0x80, 0x80, 0x80));
-                // The whole character as Thinking saw it: the same framing, on its backdrop with the grid.
+                // The whole character as Thinking saw it: the same framing, on its backdrop with the grid (decoded only to show it).
                 if (characterTouchZones.SentWholePicture is { } seenPath)
                 {
-                    var seen = PictureAt(seenPath);
                     var view = new CheckBox
                     {
                         Content = "Show the picture Thinking saw (on a plain backdrop, with its grid)", IsChecked = showTouchZonesSent,
                         Margin = new Thickness(0, 8, 0, 0)
                     };
                     AutomationProperties.SetAutomationId(view, "TouchZonesSentView");
-                    view.Checked += (_, _) => { showTouchZonesSent = true; image.Source = seen; };
+                    void ShowSeen()
+                    {
+                        try { image.Source = PictureAt(seenPath); }
+                        catch (Exception error) when (error is IOException or NotSupportedException or UriFormatException or InvalidOperationException)
+                        {
+                            image.Source = bitmap;
+                        }
+                    }
+                    view.Checked += (_, _) => { showTouchZonesSent = true; ShowSeen(); };
                     view.Unchecked += (_, _) => { showTouchZonesSent = false; image.Source = bitmap; };
-                    if (showTouchZonesSent) image.Source = seen;
+                    if (showTouchZonesSent) ShowSeen();
                     stack.Add(view);
                 }
             }
@@ -370,12 +386,15 @@ public partial class MainWindow
                 CharacterActionKind.Expression => "emote", CharacterActionKind.Motion => "motion", _ => "gesture"
             }));
         var showing = avatar.IsShowing && characterActions.For(avatar.InspectedProfile?.ModelPath) is not null;
+        // The zones' rows, then Add zone; on a page just opened they join a batch at a time (their boxes show on the picture at once).
+        var list = new StackPanel();
+        stack.Add(list);
         var index = 0;
         foreach (var zone in (settings?.Zones ?? []).Take(CharacterTouchZones.MaximumZones))
         {
             var row = new ZoneRow(this, zone, index++, catalog, reactionItems, settings!, showing, Edited, temperament);
             rows.Add(row);
-            stack.Add(row.View);
+            AddRow(list, row.View);
             if (width > 0) row.Draw(canvas, width, height, ZoneColors[(row.Number) % ZoneColors.Length]);
         }
 
@@ -401,7 +420,7 @@ public partial class MainWindow
             addRow.Children.Add(kinds);
             add.Margin = new Thickness(8, 0, 0, 0);
             addRow.Children.Add(add);
-            stack.Add(addRow);
+            AddRow(list, addRow);
         }
         var card = Card([.. stack]);
         card.Unloaded += (_, _) => { if (autoSave.Pending) autoSave.SaveNowAsync().Forget(); };
@@ -412,7 +431,7 @@ public partial class MainWindow
             var why = await characterTouchZones.SaveAsync(next, lifetime.Token);
             tabEdited = false;
             if (why is not null) saveState.Text = "Not saved: " + why;
-            else if (openTab == CompanionTab.Character) RenderTab();
+            else if (openTab == CompanionTab.Touch) RenderTab();
         }
     }
 

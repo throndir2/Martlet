@@ -24,7 +24,7 @@ public sealed record CharacterAction
     public string? Mode { get; init; }
 }
 
-/// <summary>One model's emote and motion settings (Companion › Character › Emotes and motions). <see cref="DetectedBy"/> is
+/// <summary>One model's emote and motion settings (Companion › Emotes and motions). <see cref="DetectedBy"/> is
 /// <c>thinking</c> once the Thinking model named them, otherwise <c>names</c> (made from the model's own names).
 /// <see cref="Combos"/> are the model's combos of its emotes and motions, or null for none (so a file without combos reads and
 /// writes as before). <see cref="GivenCombos"/> are the tags of Martlet's own combos (<see cref="CharacterActions.MartletCombos"/>)

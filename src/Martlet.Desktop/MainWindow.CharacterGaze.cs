@@ -5,7 +5,7 @@ using Martlet.Avatar.Hosting;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Character › Where the character looks (and the character's right-click Eyes menu): its usual gaze
+/// <summary>Companion › Eyes › Where the character looks (and the character's right-click Eyes menu): its usual gaze
 /// (as the personality decides, the default, or your choice: your mouse, your mouse when it's near, straight ahead or the window
 /// you're using) and whether the character may change where it looks in its replies. Saved on this PC in
 /// talk-preferences.json.</summary>
@@ -27,13 +27,13 @@ public partial class MainWindow
     {
         if (action == RendererRequest.FreeOn || action == RendererRequest.FreeOff)
         {
-            SaveTalk(Talk with { GazeFree = action == RendererRequest.FreeOn }, render: openTab == CompanionTab.Character);
+            SaveTalk(Talk with { GazeFree = action == RendererRequest.FreeOn }, render: openTab == CompanionTab.Eyes);
             return;
         }
         var choice = action[RendererRequest.LookPrefix.Length..];
         if (!RendererGaze.Choices.Contains(choice)) return;
         SaveTalk(Talk with { GazeUsual = choice == RendererGaze.Personality ? null : CharacterGaze.ModeOf(choice) },
-            render: openTab == CompanionTab.Character);
+            render: openTab == CompanionTab.Eyes);
     }
 
     private Border CharacterGazeCard()
@@ -47,7 +47,7 @@ public partial class MainWindow
                 "menu, under Eyes.", new Thickness(0, 0, 0, 8))
         };
         var personalityChoice = Choice("CharacterGaze", "As the personality decides (recommended)",
-            "Your Thinking model picks it from the personality, with the touch temperament below: " +
+            "Your Thinking model picks it from the personality, with the touch temperament (on the Touch page): " +
             (personality is { } decided ? $"now {CharacterGaze.Label(decided)}." : "not decided yet, so it follows your mouse."),
             prefs.GazeUsual is null, "CharacterGaze-personality");
         personalityChoice.Checked += (_, _) => { if (Talk.GazeUsual is not null) SaveTalk(Talk with { GazeUsual = null }, render: true); };
@@ -74,7 +74,7 @@ public partial class MainWindow
         stack.Add(free);
         stack.Add(Note("In its replies the character can look away, follow your mouse or watch your window, and it stays that way " +
             "until a reply changes it again or you choose here. Each reply is told its usual gaze, and a note says when its eyes " +
-            "do something else. A touch can also turn its eyes to your mouse for a moment (Touch temperament, below).",
+            "do something else. A touch can also turn its eyes to your mouse for a moment (Touch temperament, on the Touch page).",
             new Thickness(0, 0, 0, 6)));
         characterGazeNow = Note(avatar.Gaze.Looking, new Thickness(0, 2, 0, 0));
         AutomationProperties.SetAutomationId(characterGazeNow, "CharacterGazeNow");

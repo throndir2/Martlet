@@ -5,7 +5,7 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
-/// <summary>Each persona's touch temperament (Companion › Character › Touch temperament): how the character acts when a zone is
+/// <summary>Each persona's touch temperament (Companion › Touch › Touch temperament): how the character acts when a zone is
 /// touched. The Thinking model decides a persona's own temperament from the personality in the background when the personality
 /// is saved with a meaningful change (never during a reply), and on Re-decide from personality; the owner's own edits stay until
 /// they re-decide. The owner can also make named custom temperaments and choose, per persona, its own, the built-in reactions or

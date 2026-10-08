@@ -33,7 +33,7 @@ namespace Martlet.Desktop;
 // for Thinking on the user's own computers unless EarlyRepliesCloud (Also for cloud models, off by default: a reply let go there
 // may still cost its input); EarlyVoice (on by default) prepares the first spoken words too, for a paid cloud voice only with
 // EarlyRepliesCloud.
-// Companion › Character › Where the character looks (also the character's right-click Eyes menu): its usual gaze (GazeUsual: a
+// Companion › Eyes › Where the character looks (also the character's right-click Eyes menu): its usual gaze (GazeUsual: a
 // GazeMode, or null, the default, for as the personality decides) and whether the character may change where it looks in its
 // replies (GazeFree, on by default).
 // Companion › Voice › Quick sounds while Martlet thinks (QuickSounds, off by default; this PC only, since the clips are made on

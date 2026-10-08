@@ -319,7 +319,7 @@ are never saved, logged, put in local memory or support bundles.
 ## Where the character looks
 
 The character's **usual gaze** is what its head and eyes do when nothing else
-draws them. Choose it on Companion › Character › **Where the character looks**
+draws them. Choose it on Companion › Eyes › **Where the character looks**
 or on the character's right-click menu, under **Eyes** (saved on this PC as
 `GazeUsual` in `talk-preferences.json`):
 

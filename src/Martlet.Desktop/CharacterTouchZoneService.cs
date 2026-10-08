@@ -6,7 +6,7 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>The touch zones of the character this PC shows (Companion › Character › Touch zones): found per model by the
+/// <summary>The touch zones of the character this PC shows (Companion › Touch › Touch zones): found per model by the
 /// Thinking model (when it can see) step by step in a snapshot of the character (<see cref="TouchZoneDetection"/>), bound to the
 /// model's drawables or bones, saved per model in character-touch-zones.json with the pictures the model saw, and what a touch
 /// on each does.</summary>
