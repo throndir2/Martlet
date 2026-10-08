@@ -1,3 +1,5 @@
+using System.IO;
+using System.Net.Http;
 using System.Runtime.CompilerServices;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
@@ -11,7 +13,8 @@ namespace Martlet.Desktop;
 internal interface IAvatarHostLink : IDisposable
 {
     string Authority { get; }
-    /// <summary>True when the host currently advertises its Audio2Face relay (cached; rechecked at most every 30 s).</summary>
+    /// <summary>True when the host currently advertises its Audio2Face relay (cached; rechecked at most every 30 s). A host
+    /// that refuses, doesn't answer in time or drops the connection is not ready; only the caller's cancellation throws.</summary>
     Task<bool> ReadyAsync(CancellationToken token);
     IAsyncEnumerable<RemoteFaceFrame> AnimateAsync(CorrelationIds ids, long epoch, int sampleRate, ReadOnlyMemory<byte> pcm,
         CancellationToken token);
@@ -33,7 +36,11 @@ internal sealed class GatewayAvatarHostLink(Audio2FaceHostConnection connection,
         if (time.GetUtcNow() - checkedAt < Recheck) return false;
         checkedAt = time.GetUtcNow();
         try { Volatile.Write(ref route, await connection.ReadRouteAsync(token).ConfigureAwait(false)); }
-        catch (Audio2FaceHostException) { route = null; }
+        catch (Exception error) when (error is Audio2FaceHostException or HttpRequestException or IOException ||
+            error is OperationCanceledException && !token.IsCancellationRequested)
+        {
+            Volatile.Write(ref route, null);
+        }
         return route is not null;
     }
 

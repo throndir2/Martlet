@@ -13,6 +13,9 @@ Each release's section here is also its notes on GitHub.
 - New in Companion › Thinking pool: **Backup Thinking**. When your Thinking model is slow to start a reply, Martlet can send the same message to a Thinking pool member you picked, and whichever starts answering first gives the reply, so a busy or loading model doesn't keep you waiting. Tick **May answer for the conversation** on the members it may use (ideally running the same model). It's off by default, and a paid cloud member is only asked when you tick it. ([#557](https://github.com/throndir2/Martlet/pull/557))
 - New in Companion › Voice: **Quick sounds while Martlet thinks**. When a reply is slow to start, Martlet first says a quick "Mm," or "Hmm..." in its own voice, and the reply follows it, so you're never left in silence. It never plays when the reply is quick, never twice in one reply and at most once every 20 seconds. It's off by default; the sounds are made once with your voice and kept on this PC, and with a paid cloud voice only when you press **Make quick sounds now**. ([#555](https://github.com/throndir2/Martlet/pull/555))
 
+### Fixed
+- **Show character** no longer says *Couldn't show the character: A task was canceled.* when the Martlet host you picked for lip-sync doesn't answer. The character shows as before, Martlet tells you the host isn't ready, and the mouth follows Martlet's voice until the host answers again. ([#561](https://github.com/throndir2/Martlet/pull/561))
+
 ## [0.54.0] - 2026-10-07
 
 ### Added
