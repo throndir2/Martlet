@@ -1594,7 +1594,8 @@ public partial class LiveConversationWindow : ThemedWindow
         // background work on its own isn't a wait of yours, so it has no line.
         if (!done.OnItsOwn && !notWords && done.Turn?.Snapshot is { } finishedReply &&
             ReplyLatency.Describe(done.LatencyTimeline, done.ReplyStartedAt, done.LatencyTimeline?.Clock ?? clock, finishedReply,
-                done.Authorization.Configuration.LatencyModels(done.Spoken || done.Authorization.Microphone),
+                done.Authorization.Configuration.LatencyModels(done.Spoken || done.Authorization.Microphone,
+                    done.LatencyTimeline?.StandIn ?? done.StandIn),
                 interrupted: ReferenceEquals(yielded, done) && code == "conversation.interrupted",
                 passed: done.Passed, restarted: continued, floor: controller.LiveFloorNote) is { } latency)
             ErrorLog.Info(latency);

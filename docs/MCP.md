@@ -442,7 +442,12 @@ the voice models (`included`: `found`, `runtime`, `voiceModels`), whether any
 Parakeet model is downloaded (`parakeet`), `parakeetModels` (Companion ›
 Listening › *Parakeet in Martlet*: `listening`, the Listening route type with
 its `parakeetModel`, whether this Martlet `known`s it and whether it is
-`downloaded`; `displayLanguage` and the `recommended` model for it,
+`downloaded`; `standIn`, the Parakeet model that hears an utterance on this
+PC's processor when Listening's own route (a paired host or OpenAI) fails, as
+the desktop chooses it (`model`, `name`), or why none does (`reason`:
+*Listening isn't set up*, *Listening already runs on this PC*, *no Parakeet
+model hears Windows' display language (ja-JP)* or *parakeet-tdt-110m-en isn't
+downloaded in speechDirectory*); `displayLanguage` and the `recommended` model for it,
 `parakeet-tdt-110m-en` for English and `parakeet-tdt-0.6b-v3-int8` otherwise;
 and `models`, each with `id`, `name`, `languages`, `englishOnly`,
 `downloadMb`, `revision`, `downloaded`, `notice` (its NOTICE file is there),
@@ -3624,7 +3629,22 @@ and use* asks one confirmation, `ConfirmationYes`, then downloads that model
 and switches Listening to it; *Use it* switches to a downloaded model at once),
 they
 change data or download and need `--allow-ui-effects` (People has no sharing
-switch of its own: the list follows `ClusterSync`). Each voice's
+switch of its own: the list follows `ClusterSync`). While Listening uses a paired
+host or OpenAI, Listening's *Now* card has `SetupJobStandIn-Listening` (a passive
+value): what hears you on this PC's processor when that route can't (*If OpenAI
+can't hear you, Parakeet TDT 110M (English) hears you on this PC's processor
+instead. Nothing is sent anywhere.*), or *... Martlet can't either. Download
+Parakeet TDT 110M (English) and this PC's processor hears you instead.* with
+`SetupListenStandInDownload`, which asks one confirmation (`ConfirmationYes`),
+downloads that model and leaves Listening as it is, so it needs
+`--allow-ui-effects`. A turn the stand-in heard shows in `logs_tail` as
+*Transcription failed (outcome Failed, provider ...; Parakeet &lt;model&gt; on
+this PC heard it instead in N ms)*, then, for 60 s while the route isn't asked,
+*Listening: Parakeet &lt;model&gt; on this PC heard it instead in N ms, without
+asking Listening's own route ...*; its *Reply latency* line ends with
+*speech-to-text &lt;model&gt; on this PC, standing in for &lt;route model&gt;*,
+and Home's `HealthIssue-failed-listening` keeps the route's failure until it
+answers again. Each voice's
 `PeopleMemories-3` (*Memories*: what Martlet remembers about them) only opens Memory
 showing that voice's facts, so it is a passive click; read `MemoryFactStatus`
 there (*Showing N.*) or `memory_status` for whose facts are. On Devices, `Node-<id>`

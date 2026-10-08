@@ -199,15 +199,17 @@ internal sealed class LiveConversationConfiguration
     internal SetupRoute Route(SetupRole role) => Routes.Single(r => r.Role == role);
 
     /// <summary>Which Thinking model, voice and speech-to-text a reply used, for the desktop log's reply latency line (model IDs
-    /// only), or null when none is set.</summary>
-    internal string? LatencyModels(bool spokenInput)
+    /// only), or null when none is set. <paramref name="standIn"/> is the Parakeet model on this PC that transcribed the turn
+    /// because Listening's own route failed.</summary>
+    internal string? LatencyModels(bool spokenInput, string? standIn = null)
     {
         string? Model(SetupRole role) => Routes.FirstOrDefault(route => route.Role == role && route.Enabled == true)?.ModelId;
         var parts = new List<string>();
         if (Model(SetupRole.Llm) is { } llm)
             parts.Add("Thinking " + llm + $" (thinking steps {(GenerationSettings.ThinkingSteps(Generation) ? "on" : "off")})");
         if (Model(SetupRole.Tts) is { } tts) parts.Add("voice " + tts);
-        if (spokenInput && Model(SetupRole.Stt) is { } stt) parts.Add("speech-to-text " + stt);
+        if (spokenInput && Model(SetupRole.Stt) is { } stt)
+            parts.Add("speech-to-text " + (standIn is null ? stt : $"{standIn} on this PC, standing in for {stt}"));
         return parts.Count == 0 ? null : string.Join(", ", parts);
     }
 

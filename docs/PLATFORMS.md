@@ -192,7 +192,9 @@ now. The macOS, iOS and Android apps must implement them the same way.
    means ("Martlet can't hear you; you can still type") and one-click fixes:
    use the Setup choice instead, check the host now, or open Setup or Devices.
    When thinking is down, the Home headline says "Martlet can't reply right
-   now", and each job row on the Devices page repeats the problem.
+   now", and each job row on the Devices page repeats the problem. When a
+   Listening host doesn't answer and a Parakeet model is downloaded on this PC,
+   listening is reduced, not lost: Parakeet on this PC hears you meanwhile.
 5. **No surprises before destructive actions.** Before you forget a host or
    remove a role, Martlet lists what each job will do: move by failover to a
    named host, go back to your Setup choice (naming the provider, what it
@@ -202,7 +204,10 @@ now. The macOS, iOS and Android apps must implement them the same way.
    mentioned too.
 6. **Never a silent cloud fallback.** A job moves to a cloud provider only
    after a confirmation that names it. Failover moves jobs only between your
-   own hosts that run the same engine.
+   own hosts that run the same engine. The one automatic stand-in stays on this
+   PC: when Listening's own route fails, a downloaded Parakeet model hears that
+   utterance on this PC's processor, and nothing is sent anywhere
+   ([Voices](VOICES.md#when-listenings-own-choice-cant-hear-you)).
 7. **Phones and tablets manage their own roles.** Their Devices entries have no
    SSH, install, remove, update or prepare commands. An iPhone or iPad host is
    marked as hosting only while Martlet is open on it, with failover

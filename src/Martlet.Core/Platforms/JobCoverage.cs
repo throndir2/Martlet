@@ -58,6 +58,9 @@ public sealed record JobSituation
     /// <summary>The choice the job can go back to (the Setup route kept aside while a host does it), or null.</summary>
     public string? Fallback { get; init; }
     public bool FallbackIsCloud { get; init; }
+    /// <summary>For listening: what hears you on this device while the host can't ("Parakeet TDT 110M (English)", on this
+    /// device's processor), or null when nothing does.</summary>
+    public string? StandIn { get; init; }
 }
 
 /// <summary>How well a job is covered: ready; unknown (not checked); not chosen; limited (works in a reduced way);
@@ -125,6 +128,12 @@ public static class JobCoverageRules
         if (job.NotConnected is { } why) return Result(down, $"{job.DoerName}: {why}.", [.. fallback, CoverageFix.OpenSetup]);
         if (job.Doer != JobDoer.Host || job.Host is not { } host) return Result(CoverageState.Ready, "");
 
+        // Listening whose host can't hear you: Parakeet on this device's processor stands in, so it works in a reduced way.
+        if (job.Job == ClusterJobs.Listening && job.StandIn is { } standIn)
+        {
+            down = CoverageState.Limited;
+            effect = $"{standIn} hears you on this device's processor meanwhile.";
+        }
         // This PC's own host service is named as such, never by its host ID as if it were another computer.
         var name = host.ThisPc ? "This PC's host service" : host.HostId;
         if (!host.Paired)
