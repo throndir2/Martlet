@@ -27,6 +27,9 @@ Each release's section here is also its notes on GitHub.
 - The welcome tour's suggested setup now names the right Companion page for each part's backup, instead of always saying Companion › Thinking. ([#639](https://github.com/throndir2/Martlet/pull/639))
 - When always listening can't use your microphone, Martlet no longer opens and drops it every 5 seconds. It tries again after 1 second, then waits longer each time (up to 30 seconds), Home says how often it tries, and the log says why the microphone failed. ([#632](https://github.com/throndir2/Martlet/pull/632))
 
+### Removed
+- Settings no longer has the old Diagnostics section. Its status report is still in Settings › Tools › Troubleshooting, and Martlet creates your settings by itself when you first save a choice. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+
 ## [0.59.0] - 2026-10-08
 
 ### Added

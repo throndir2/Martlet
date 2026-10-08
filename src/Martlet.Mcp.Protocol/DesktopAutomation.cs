@@ -13,10 +13,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Martlet for Linux and macOS (Martlet.Companion) on a Windows dev run: its three tabs (passive navigation).
         "TalkTab", "SettingsTab", "ComputerTab",
         "OpenTroubleshooting", "OpenAudioSetup", "OpenLiveConversation",
-        "OpenConfigurationRecovery", "RefreshDiagnostics",
+        "OpenConfigurationRecovery",
+        // Troubleshooting › Refresh status: the same read-only status probes Martlet runs at start.
+        "SupportRefresh",
         "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
-        "NavHome", "NavDevices", "NavCompanion", "NavCreations", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
+        "NavHome", "NavDevices", "NavCompanion", "NavCreations", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack",
         // The welcome wizard: Look again only asks the local network which Martlet desktops answer (as Add a computer's Find
         // again does), Enter an address opens Add a computer, Next on the hardware step and the two preference cards only move
         // on and show the suggestion. Choosing a network saves the device role, Join asks the other computer, Use these
@@ -213,7 +215,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // their reasons, local-model warnings, the key-storage note and the chosen engines.
         "StatusLine", "CharacterState", "CompanionStatus", "Refusals", "NotOffered", "ThinkingWarnings", "KeyNote", "ThinkingEngine", "ListeningEngine",
         "SpeakingEngine",
-        "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
+        // Troubleshooting: the status report (each check's state and remedy) and the last conversation activity. No secrets.
+        "SupportReport",
         // Settings › Tools: this PC's processor type and whether Martlet runs under x64 emulation (Windows on Arm), with what
         // that means. Fixed wording.
         "ThisPcArchitecture",

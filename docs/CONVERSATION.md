@@ -2623,7 +2623,7 @@ Use SDK 10.0.401 and the committed normal locks:
 dotnet restore Martlet.slnx --locked-mode --artifacts-path $artifacts
 dotnet build Martlet.slnx --no-restore -c Release --artifacts-path $artifacts
 dotnet test Martlet.slnx --no-build -c Release --artifacts-path $artifacts
-.\scripts\Smoke-Desktop.ps1 -ExecutablePath "$artifacts\bin\Martlet.Desktop\release\Martlet.Desktop.exe"
+.\scripts\Invoke-MartletMcp.ps1 -Desktop -Calls '[{"name":"ui_snapshot"}]'
 ```
 
 On the pooled-drive developer host, use one unique session-owned **C:** artifacts

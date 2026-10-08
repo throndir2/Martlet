@@ -724,7 +724,7 @@
                          AutomationProperties.AutomationId="LogDetail" AutomationProperties.Name="The selected log line in full"/>
             </Grid>
 
-            <!-- Settings: appearance, role, updates, tools and diagnostics -->
+            <!-- Settings: appearance, role, updates and tools -->
             <ScrollViewer x:Name="SettingsPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="36,30,36,24" MaxWidth="1000">
                     <TextBlock Text="Settings" Style="{DynamicResource PageTitle}" Margin="0,0,0,18"/>
@@ -887,37 +887,6 @@
                                         AutomationProperties.AutomationId="OpenHosts" AutomationProperties.Name="Set up hosts" />
                             </WrapPanel>
                         </StackPanel>
-                    </Border>
-
-                    <Border Style="{DynamicResource CardStyle}">
-                        <Expander Header="Diagnostics" AutomationProperties.AutomationId="DiagnosticsSection">
-                            <StackPanel Margin="0,8,0,0">
-                                <TextBlock Style="{DynamicResource Muted}" Text="Detailed local status."/>
-                                <TextBlock x:Name="ActivityText" Style="{DynamicResource Muted}" Margin="0,4,0,0"
-                                           AutomationProperties.Name="Diagnostic activity" AutomationProperties.LiveSetting="Polite" />
-                                <Label Target="{Binding ElementName=PipelineText}" Content="_Pipeline status" />
-                                <TextBox x:Name="PipelineText" IsReadOnly="True" TextWrapping="Wrap" Height="160" VerticalScrollBarVisibility="Auto"
-                                         AutomationProperties.AutomationId="PipelineStatus"
-                                         AutomationProperties.Name="Conversation status" />
-                                <Label Target="{Binding ElementName=StatusText}" Content="_Status" />
-                                <TextBox x:Name="StatusText" IsReadOnly="True" TextWrapping="Wrap" MinHeight="180" MaxHeight="360" VerticalScrollBarVisibility="Auto"
-                                         AutomationProperties.Name="Foundation status details" AutomationProperties.AutomationId="FoundationStatus" />
-                                <TextBlock x:Name="DataPathText" Style="{DynamicResource Muted}" Margin="0,10,0,0" AutomationProperties.Name="Local settings location" />
-                                <Label Content="Audio setup _status" Target="{Binding ElementName=AudioStatusText}" />
-                                <TextBox x:Name="AudioStatusText" IsReadOnly="True" TextWrapping="Wrap" Height="100" VerticalScrollBarVisibility="Auto"
-                                         AutomationProperties.AutomationId="LocalAudioStatus" AutomationProperties.Name="Audio setup status" />
-                                <WrapPanel Margin="0,10,0,0">
-                                    <Button x:Name="RefreshButton" Content="_Refresh local status" Margin="0,4,12,4" Click="Refresh_Click"
-                                            AutomationProperties.AutomationId="RefreshDiagnostics" AutomationProperties.Name="Refresh local status" />
-                                    <Button x:Name="StopButton" Content="S_top diagnostics" Margin="0,4,12,4" IsEnabled="False" Click="Stop_Click"
-                                            AutomationProperties.AutomationId="StopDiagnostics" AutomationProperties.Name="Stop diagnostics" />
-                                    <Button x:Name="CreateButton" Content="_Create profile" Margin="0,4,12,4" IsEnabled="False" Click="Create_Click"
-                                            AutomationProperties.AutomationId="CreateProfile" AutomationProperties.Name="Create profile" />
-                                </WrapPanel>
-                                <TextBlock Style="{DynamicResource Muted}" Margin="0,10,0,0"
-                                           Text="Creating a profile saves starter settings. Exit Martlet closes it completely." />
-                            </StackPanel>
-                        </Expander>
                     </Border>
 
                     <DockPanel Margin="0,0,0,8">

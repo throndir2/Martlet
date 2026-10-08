@@ -570,10 +570,9 @@ window ends it unless Martlet is listening or watching, which only hides it.
   reaches one over SSH it answers *Martlet on your network*, and its status
   line names the hosts it offers, the last request, and when Windows Firewall
   or a Public network keeps other computers out, with *Let my other computers
-  reach this PC*, one administrator prompt), tools
-  (Troubleshooting, Backup and restore, Prerequisites, Martlet hosts), and
-  *Diagnostics* (pipeline, status details, local audio
-  evidence, refresh and stop, create profile). Exit is also here.
+  reach this PC*, one administrator prompt) and tools
+  (Troubleshooting, Backup and restore, Prerequisites, Martlet hosts).
+  Troubleshooting shows the status report. Exit is also here.
 
 ### 8. Setup (configuration)
 

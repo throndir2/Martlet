@@ -20,7 +20,7 @@ public partial class MainWindow
     private LiveConversationWindow? ConversationSession()
     {
         if (openConversation is { } open) return open;
-        if (conversation is null || closing || saving || model?.IsRunning == true || Role == DeviceRole.Host) return null;
+        if (conversation is null || closing || model?.IsRunning == true || Role == DeviceRole.Host) return null;
         var window = new LiveConversationWindow(setupService!, setupOperations, conversation, audioSessionEvents, voiceIdentity: voiceIdentity,
             preferences: Talk, videoAddress: visionAddress)
             { Owner = this, Support = support, Gaze = avatar.Gaze, Calls = discordCalls };
@@ -200,7 +200,7 @@ public partial class MainWindow
         var started = talk is { ListeningStarted: true };
         var (text, problem) = talk?.ListeningStatus ?? ("Not listening", false);
         var show = handsFree && conversation is not null;
-        var idle = !saving && model?.IsRunning != true;
+        var idle = model?.IsRunning != true;
         var enabled = started || idle;
         var visionOn = talk?.VisionOn ?? Talk.Watch;
         var watchStarted = talk is { WatchingStarted: true };
