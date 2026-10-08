@@ -3891,7 +3891,9 @@ can't reply" problem. The result has:
   each computer's recommended `roles`, `why` and `load` (percent of graphics
   memory, memory and processor), the `jobs`, the `thinkingPool`, `cannotReply`
   and `cannotReplyNote` (nobody does Thinking, and why, such as *No computer
-  has room for a Thinking model, and no free API key is saved.*), `offline`
+  has room for a Thinking model, and no free API key is saved.*),
+  `cannotSpeak` and `cannotSpeakNote` (no computer and no hosted voice with a
+  saved key can speak, and how to give Martlet a voice), `offline`
   (each computer that stays away: `computer`, `minutes` and its `note`) and
   `notes`. The review window reads `cannotReply` and `offline`, not the
   sentences in `notes`.

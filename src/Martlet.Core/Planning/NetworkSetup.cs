@@ -160,6 +160,13 @@ public sealed record NetworkRecommendation(NetworkSetup Current, NetworkSetup Ta
     /// today's setup isn't simply kept: Martlet can't reply until Thinking is set up.</summary>
     public bool CannotReply => CannotReplyNote is not null;
 
+    /// <summary>The note in <see cref="Notes"/> that says Martlet can't speak ("Martlet can't speak yet: no computer can run
+    /// ..."), or null when a voice speaks. Replies still show as text.</summary>
+    public string? CannotSpeakNote { get; init; }
+
+    /// <summary>In the recommended setup no computer and no hosted voice with a saved key can speak.</summary>
+    public bool CannotSpeak => CannotSpeakNote is not null;
+
     /// <summary>Today's setup is already the recommended one.</summary>
     public bool AlreadyOptimal => Changes.Count == 0;
 

@@ -554,11 +554,15 @@ public sealed class NetworkRecommenderTests
     {
         var keyed = NetworkRecommender.Recommend(LoneVoice(false) with { ConfiguredProviders = ["openai"] });
         Assert.Equal(FootprintCatalog.OpenAiVoiceId, keyed.Target.Job(ClusterJobs.Speaking)!.OptionId);
+        Assert.False(keyed.CannotSpeak);
 
         var mute = NetworkRecommender.Recommend(LoneVoice(false));
         Assert.Null(mute.Target.Job(ClusterJobs.Speaking)?.OptionId);
         Assert.Contains(mute.Notes, n => n.StartsWith("Martlet can't speak yet", StringComparison.Ordinal) &&
             n.Contains("host service", StringComparison.Ordinal) && n.Contains("Chatterbox Nano", StringComparison.Ordinal));
+        Assert.True(mute.CannotSpeak);
+        Assert.Contains(mute.CannotSpeakNote!, mute.Notes);
+        Assert.False(NetworkRecommender.Recommend(LoneVoice(true)).CannotSpeak);
     }
 
     [Fact]

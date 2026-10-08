@@ -97,6 +97,7 @@ internal static class RecommendedSetupStatus
                 jobs = recommendation.Target.Jobs.Select(j => new { job = j.Job, host = j.HostId is null ? null : Name(j.HostId), off = j.Off, option = j.OptionId, pool = j.Pool.Select(Name), why = j.Why }),
                 thinkingPool = recommendation.Target.ThinkingPool.Select(Name),
                 cannotReply = recommendation.CannotReply, cannotReplyNote = recommendation.CannotReplyNote,
+                cannotSpeak = recommendation.CannotSpeak, cannotSpeakNote = recommendation.CannotSpeakNote,
                 offline = recommendation.Offline.Select(o => new { computer = Name(o.Id), minutes = Math.Round(o.For.TotalMinutes), note = o.Note }),
                 notes = recommendation.Notes
             },

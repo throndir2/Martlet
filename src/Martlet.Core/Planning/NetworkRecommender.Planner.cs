@@ -31,6 +31,8 @@ public static partial class NetworkRecommender
         private readonly List<OfflineComputer> offline = [];
         /// <summary>The note that says Martlet can't reply: no computer and no hosted provider can do Thinking.</summary>
         private string? cannotReply;
+        /// <summary>The note that says Martlet can't speak: no computer and no hosted voice can do Speaking.</summary>
+        private string? cannotSpeak;
 
         public NetworkSetup Current { get; }
 
@@ -83,7 +85,7 @@ public static partial class NetworkRecommender
             return new(Current, target, changes)
             {
                 Fingerprint = FingerprintOf(target), Notes = notes.Distinct(StringComparer.Ordinal).ToArray(), Offline = offline.ToArray(),
-                CannotReplyNote = stays ? null : cannotReply
+                CannotReplyNote = stays ? null : cannotReply, CannotSpeakNote = cannotSpeak
             };
         }
 
