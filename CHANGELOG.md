@@ -14,16 +14,16 @@ Each release's section here is also its notes on GitHub.
 - Use the model app you already run on your PC for Thinking: Companion › Thinking › This PC › **A model app you already use** finds LM Studio, llama.cpp, KoboldCpp, Jan, vLLM, Lemonade, GPT4All, Docker Model Runner and other OpenAI-compatible apps, lists their models, tests one and switches to it, with no cloud wording and no key unless the app asks for one. Any other app works by typing the address it shows, such as `localhost:5001`, and Home tells you when the app stops answering. The macOS and Linux app gets **Find model apps**. ([#633](https://github.com/throndir2/Martlet/pull/633))
 
 ### Changed
-- The setup advisor's **Balanced** plan now keeps Thinking on your own computers, on the graphics card first or the processor when none is free, so a working Martlet needs no account or sign-up. Only **Smartest answers** uses an online model. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
-- Companion's side list now starts with the parts Martlet needs, in order: Thinking, Listening, Voice and Lip-sync. The Thinking pool, Singing, Pictures, Vision and Reading moved to a new **Optional extras** group, and each page says it's optional. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
-- Singing has its own page, Companion › Singing, instead of a card at the bottom of the Voice page. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
-- When no Thinking model is chosen, the Devices map now says Martlet needs one to answer you and suggests a free model on your own computers first. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+- The setup advisor's **Balanced** plan now keeps Thinking on your own computers, on the graphics card first or the processor when none is free, so a working Martlet needs no account or sign-up. Only **Smartest answers** uses an online model. ([#639](https://github.com/throndir2/Martlet/pull/639))
+- Companion's side list now starts with the parts Martlet needs, in order: Thinking, Listening, Voice and Lip-sync. The Thinking pool, Singing, Pictures, Vision and Reading moved to a new **Optional extras** group, and each page says it's optional. ([#639](https://github.com/throndir2/Martlet/pull/639))
+- Singing has its own page, Companion › Singing, instead of a card at the bottom of the Voice page. ([#639](https://github.com/throndir2/Martlet/pull/639))
+- When no Thinking model is chosen, the Devices map now says Martlet needs one to answer you and suggests a free model on your own computers first. ([#639](https://github.com/throndir2/Martlet/pull/639))
 - On a host PC, Home now shows **Switch to companion PC** at the top, so turning it back into your companion PC is one click away instead of a small link at the bottom. ([#636](https://github.com/throndir2/Martlet/pull/636))
 - Companion › Thinking › This PC › Ollama now says that any Ollama model works, including a Hugging Face GGUF or a model you made yourself. ([#633](https://github.com/throndir2/Martlet/pull/633))
 
 ### Fixed
 - Recommended setup now gives Thinking, the voice, listening and lip-sync your graphics card before optional extras such as Singing. A PC whose other computers are gone now gets its own Thinking model instead of keeping Singing, and with a free provider key saved, Thinking uses the free model when the card has no room for a local one. ([#638](https://github.com/throndir2/Martlet/pull/638))
-- The welcome tour's suggested setup now names the right Companion page for each part's backup, instead of always saying Companion › Thinking. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+- The welcome tour's suggested setup now names the right Companion page for each part's backup, instead of always saying Companion › Thinking. ([#639](https://github.com/throndir2/Martlet/pull/639))
 - When always listening can't use your microphone, Martlet no longer opens and drops it every 5 seconds. It tries again after 1 second, then waits longer each time (up to 30 seconds), Home says how often it tries, and the log says why the microphone failed. ([#632](https://github.com/throndir2/Martlet/pull/632))
 
 ## [0.59.0] - 2026-10-08
