@@ -1477,6 +1477,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "first, four segments at once spread over both, a computer kept for one companion PC or unticked for a job left out, " +
             "an unanswering computer skipped, Deep thinking leaving out a kept computer, and the shared setting's round trip. " +
             "In-process; reads nothing.", new { }),
+        Tool("node_presence_status", "When your other computers go away or come back, from a data directory: the per-PC away time " +
+            "(node-presence.txt; Settings > Your other computers, default 10 minutes), the rules (missing after 30 seconds without " +
+            "an answer, back after 30 seconds of answers, the back notice shown 10 minutes) and the report the desktop writes when " +
+            "a computer's state changes (node-presence.json: each paired computer's state Answering, NotAnswering, Missing, Away, " +
+            "Returning or Back, since when, and the notices Home shows, such as \"Working with less: gpu-box isn't answering\"). " +
+            "Host IDs, computer names and times only. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("node_presence_check", "Rehearse the presence notices and events with the production rules (PresenceWatch, " +
+            "NodePresenceNotices, NodePresenceSettings, NodePresenceReport) on scripted timelines: a check every 15 seconds with " +
+            "the desktop's presence rule and a 5-second tick, NOT real hosts. One flaky miss says nothing; 30 seconds without an " +
+            "answer goes missing once with a notice that names the failover move, the job that waits and the pools; still missing " +
+            "after 10 minutes stays away once; 30 seconds of answers comes back once and the notice clears after 10 minutes or " +
+            "when dismissed; a flapping computer stays one absence; the away time follows the per-PC choice; the report round trip; " +
+            "an unpaired computer is forgotten. In-process; writes only a temporary folder.", new { }),
         Tool("research_check", "Rehearse web research (the research tool: Companion > Deep thinking > Web research, off by default) " +
             "end to end with Martlet's own tool texts and job kind (WebResearch: one at a time, 4 an hour, 12 minutes, offered when " +
             "done), background-job scheduler, web client (WebAccess: DuckDuckGo results parser with ads left out and redirect links " +
@@ -1772,6 +1788,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),
                 "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),
                 "work_sharing_check" => await WorkSharingCheck.RunAsync(cancellation),
+                "node_presence_status" => NodePresenceCheck.Status(DataDirectory(arguments)),
+                "node_presence_check" => NodePresenceCheck.Run(),
                 "discord_reply_status" => DiscordReplyCheck.Status(DataDirectory(arguments)),
                 "discord_reply_check" => await DiscordReplyCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),

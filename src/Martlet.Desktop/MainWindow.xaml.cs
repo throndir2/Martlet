@@ -184,6 +184,7 @@ public partial class MainWindow : ThemedWindow
         }
         InitializeShell();
         InitializeCluster();
+        InitializeNodePresence();
         InitializeSettingsSync();
         InitializeReminders();
         InitializeMemorySync();
@@ -238,6 +239,7 @@ public partial class MainWindow : ThemedWindow
         // An update Martlet just restarted into brings back the character, listening and watching that were on when it closed for it.
         if (!closing) await ResumeAfterUpdateAsync();
         StartCluster();
+        StartNodePresence();
         StartSettingsSync();
         StartReminders();
         StartMemorySync();

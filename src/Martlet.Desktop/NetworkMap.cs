@@ -79,7 +79,8 @@ internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSe
     IReadOnlyList<PairedHost>? Hosts = null, IReadOnlyDictionary<string, string>? HostUpdates = null,
     IReadOnlyDictionary<string, IReadOnlyList<HostUser>>? HostUsers = null, ClusterPlan? Plan = null,
     IReadOnlyList<MartletComputer>? Computers = null, IReadOnlyCollection<string>? DeepThinkingHosts = null,
-    IReadOnlyDictionary<string, string>? HostOutside = null, string? OwnHostTrouble = null);
+    IReadOnlyDictionary<string, string>? HostOutside = null, string? OwnHostTrouble = null,
+    IReadOnlyDictionary<string, TimeSpan>? HostAway = null);
 
 /// <summary>A computer paired with a host, in words ("IMOUTO (desktop-imouto), active now"); <paramref name="ThisPc"/> marks
 /// this PC itself.</summary>
@@ -517,7 +518,9 @@ internal static class NetworkMap
                 target.Facts.Add(new("Connection", paired.Reach));
                 AddHardware(target, inputs, paired.HostId);
                 if (check is null) target.Worsen(NodeHealth.Unknown, "Paired, not checked yet");
-                else if (check.Reachable == false) target.Worsen(NodeHealth.Attention, "Not reachable");
+                else if (check.Reachable == false)
+                    target.Worsen(NodeHealth.Attention, inputs.HostAway?.TryGetValue(paired.HostId, out var away) == true &&
+                        NodePresenceNotices.MapText(away) is { } silent ? silent : "Not reachable");
                 else if (check.Reachable is null) target.Worsen(NodeHealth.Unknown, "Checking...");
                 else if (target.Health == NodeHealth.Ready) target.HealthText = inCharge ? "Connected, handling lip-sync" : "Connected";
             }
