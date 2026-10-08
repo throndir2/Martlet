@@ -19,7 +19,9 @@ public sealed class SetupAdvisorTests
         Assert.Equal("Loudness lip-sync", Role(advice, "Lip-sync").Choice);
         Assert.DoesNotContain(advice.Roles, r => r.Where == "Online");
         Assert.Contains(AdvisorInstall.Ollama, advice.ThisPcInstalls);
-        Assert.DoesNotContain(AdvisorNextStep.Hosts, advice.NextSteps);
+        // Chatterbox Nano on the processor runs in the Martlet host service on this PC.
+        Assert.Contains(AdvisorInstall.DockerDesktop, advice.ThisPcInstalls);
+        Assert.Contains(AdvisorNextStep.Hosts, advice.NextSteps);
     }
 
     [Fact]
