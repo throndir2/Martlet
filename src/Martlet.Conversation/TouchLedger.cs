@@ -24,6 +24,8 @@ public sealed record TouchBurst(IReadOnlyList<TouchEntry> Entries)
 {
     public string Line => TouchWording.Line(Entries);
     public string HistoryLine => TouchWording.HistoryLine(Entries);
+    /// <summary>The talk window's note for a reply to these touches alone ("You touched Ivy (touch: top of head pat x3)").</summary>
+    public string Note(string? character) => TouchWording.Note(character, Entries);
     /// <summary>How many things the user did (each tap counts).</summary>
     public int Count => Entries.Sum(e => e.Count);
     /// <summary>How many of them may start a reply on their own (<see cref="PhysicalKinds.StartsTurn"/>: touches and moves of the
@@ -112,6 +114,11 @@ public static class TouchWording
     public static string HistoryLine(IReadOnlyList<TouchEntry> entries) =>
         entries.Count == 0 ? "" : HistoryMarker + " " + string.Join(", ", entries.Select(e =>
             (e.Label is { Length: > 0 } label ? label + " " : "") + PhysicalKinds.Short(e.Kind) + (e.Count > 1 ? $" x{e.Count}" : ""))) + ")";
+
+    /// <summary>The talk window's note for a reply to touches alone: who was touched, by <paramref name="character"/>'s name (the
+    /// persona's; "Martlet" without one), then the history line ("You touched Ivy (touch: top of head pat x3)").</summary>
+    public static string Note(string? character, IReadOnlyList<TouchEntry> entries) =>
+        $"You touched {Martlet.Core.Speakers.CompanionNames.Character(character)} {HistoryLine(entries)}";
 }
 
 /// <summary>What the user did to the desktop character since Martlet last heard about it (touches on zones Martlet notices,

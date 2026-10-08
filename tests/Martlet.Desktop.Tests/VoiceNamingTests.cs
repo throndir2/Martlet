@@ -47,6 +47,33 @@ public sealed class VoiceNamingTests
         Assert.Empty(VoiceNaming.Parse(VoiceNaming.Nothing, naming, null).Updates);
     }
 
+    // The excerpts remembering and learning names read say who said the companion's lines by the name of the persona it is,
+    // the way the Thinking model knows the character; without one they say Martlet.
+    [Fact]
+    public void ExcerptsLabelTheCompanionsLinesWithThePersonasName()
+    {
+        var (heard, _, _) = Heard();
+        var naming = Naming(heard, CompanionNames.From(["Ava"]));
+        var named = VoiceNaming.Prompt(naming, "Morning!", "Morning, sunshine.", "Hi, I'm Alex.", "Nice to meet you, Alex!", companion: "Ava").Input.UserText;
+        const string Own = "Martlet, the companion, goes by its persona's name here: the lines marked \"Ava:\" are its own words.";
+        Assert.Contains(Own, named);
+        Assert.Contains("\nAva: Morning, sunshine.\n", named);
+        Assert.EndsWith("\nAva: Nice to meet you, Alex!", named);
+        Assert.DoesNotContain("Martlet: ", named);
+        var remembered = MemoryCapture.Prompt("Morning!", "Morning, sunshine.", "My dog is Biscuit.", "What a lovely name!", [], companion: "Ava").Input.UserText;
+        Assert.Contains(Own, remembered);
+        Assert.Contains("\nAva: Morning, sunshine.\n", remembered);
+        Assert.EndsWith("\nUser: My dog is Biscuit.\nAva: What a lovely name!", remembered);
+        var both = AfterReply.Prompt([], naming, "Morning!", "Morning, sunshine.", "Hi, I'm Alex.", "Nice to meet you, Alex!", null, companion: "Ava");
+        Assert.Contains(Own, both.Input.UserText);
+        Assert.Contains("\nAva: Morning, sunshine.\n", both.Input.UserText);
+        Assert.EndsWith("\nAva: Nice to meet you, Alex!", both.Input.UserText);
+        // Called Martlet, the excerpt is as it always was.
+        var plain = MemoryCapture.Prompt(null, null, "My dog is Biscuit.", "What a lovely name!", []).Input.UserText;
+        Assert.EndsWith("\nMartlet: What a lovely name!", plain);
+        Assert.DoesNotContain("goes by its persona's name", plain);
+    }
+
     [Fact]
     public void AVoiceNeverLearnsTheCompanionsOwnName()
     {

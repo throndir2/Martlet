@@ -40,6 +40,16 @@ public sealed class VoiceUpdatesTests
         Assert.False(CompanionNames.Martlet.Matches("Jane"));
     }
 
+    // What a conversation calls the character: the persona's name as typed (trimmed), or Martlet without one.
+    [Theory]
+    [InlineData("Ivy", "Ivy")]
+    [InlineData(" Jane Doe (sarcastic) ", "Jane Doe (sarcastic)")]
+    [InlineData("", "Martlet")]
+    [InlineData("  ", "Martlet")]
+    [InlineData(null, "Martlet")]
+    public void TheCharacterGoesByItsPersonasName(string? persona, string expected) =>
+        Assert.Equal(expected, CompanionNames.Character(persona));
+
     [Fact]
     public void PlaceholdersAreNeverLearnedAsNames()
     {

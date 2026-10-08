@@ -655,7 +655,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "times). changes is a JSON array of RendererPhysical {\"kind\":\"moved|home|zoomed|zoom_reset|panned\",\"dx\",\"dy\"," +
             "\"screenWidth\",\"fromScreen\",\"toScreen\",\"zoomFrom\",\"zoomTo\",\"focus\"}. Returns each change's ledger kind and words, " +
             "the plain line the next reply would carry (\"They slowly stroked your hair 4 times, then moved you to their other " +
-            "monitor.\"), the history line and whether it would start a reply on its own (touches, strokes and moves do). noticeAll " +
+            "monitor.\"), the history line, whether it would start a reply on its own (touches, strokes and moves do), character " +
+            "(what the talk window and the Thinking model call the character: the name of the persona dataDirectory's settings " +
+            "use, else Martlet) and note (the talk window's note for a reply to them alone, \"You touched Ivy (touch: hair " +
+            "stroke x4, moved)\", or null when they wouldn't start one). noticeAll " +
             "(default true) treats every zone as having Martlet notices on; false uses the zones' own setting.", new
         {
             dataDirectory = new { type = "string" }, modelId = new { type = "string" }, stroke = new { type = "string" },
@@ -1746,6 +1749,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "PastConversations and HistoryPlatforms) on synthetic conversations in a disposable folder: recording exchanges into month files, a line " +
             "cut short by a crash skipped after a restart, an ordinary message recalling nothing, \"Do you remember...\" and " +
             "\"What did we talk about yesterday?\" bringing back the right exchanges (never the conversation going on), " +
+            "the replies in them under the persona's name (fixture persona Ivy; Martlet without one), " +
             "search_conversations by words and by time and its answers, deleting one conversation and everything, exchanges from " +
             "Telegram and Discord keeping their app, chat and message IDs (Discord never recalled in the talk window), what " +
             "deleting and editing one message asks of each app (48 hours on Telegram, never your DM messages on Discord, edited " +

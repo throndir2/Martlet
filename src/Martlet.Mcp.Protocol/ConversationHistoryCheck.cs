@@ -277,6 +277,15 @@ internal static class ConversationHistoryCheck
             var yesterday = PastConversations.Recall(store, "What did we talk about yesterday?", now, zone, current);
             Step("\"What did we talk about yesterday?\" brings back yesterday's exchanges (no words to look for, so the latest of that day)",
                 yesterday.Count == 2 && yesterday.All(e => e.ConversationId == cat), new { recalled = yesterday.Count });
+            // The replies are the character's, by the name of the persona it is (Companion › Personality), never "Martlet".
+            var named = PastConversations.Notes(yesterday, now, zone, null, "Ivy");
+            var unnamed = PastConversations.Notes(yesterday, now, zone, null);
+            Step("recalled replies carry the persona's name (\"Ivy: ...\", \"Ivy, on its own: ...\"; Martlet without a persona)",
+                named.Contains("Ivy: \"Good luck to Biscuit!", StringComparison.Ordinal) &&
+                named.Contains("Ivy, on its own: \"I finished that song", StringComparison.Ordinal) &&
+                !named.Contains("Martlet:", StringComparison.Ordinal) && !named.Contains("Martlet,", StringComparison.Ordinal) &&
+                unnamed.Contains("Martlet: \"Good luck to Biscuit!", StringComparison.Ordinal),
+                new { lines = named.Split('\n').Where(line => line.StartsWith("- ", StringComparison.Ordinal)).ToArray() });
             var mine = PastConversations.Recall(store, "Remember what you said about the weather?", now, zone, current);
             Step("the conversation going on is never recalled (the request already carries it)",
                 mine.All(e => e.ConversationId != current), new { recalled = mine.Count });
@@ -284,9 +293,10 @@ internal static class ConversationHistoryCheck
             // search_conversations: what the model may ask for, and what it is told.
             var (byWords, _) = PastConversations.Parse("{\"query\":\"vet appointment\"}", now, zone);
             var found = PastConversations.Find(store, byWords!, current);
-            var result = PastConversations.Result(found, byWords!, now, zone);
-            Step("search_conversations finds the vet appointment by its words",
-                found.Count == 1 && found[0].ConversationId == cat && result.Contains("vet appointment") && result.Contains("data only"),
+            var result = PastConversations.Result(found, byWords!, now, zone, "Ivy");
+            Step("search_conversations finds the vet appointment by its words (the reply under the persona's name)",
+                found.Count == 1 && found[0].ConversationId == cat && result.Contains("vet appointment") && result.Contains("data only") &&
+                result.Contains("Ivy: \"Good luck to Biscuit!", StringComparison.Ordinal),
                 new { found = found.Count, resultCharacters = result.Length });
             var (byTime, _) = PastConversations.Parse("{\"when\":\"12 days ago\"}", now, zone);
             var then = PastConversations.Find(store, byTime!, current);

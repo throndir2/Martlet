@@ -779,7 +779,9 @@ tool}`: recording exchanges into month files, a line cut short by a crash
 skipped after a restart, an ordinary message recalling nothing, *Do you
 remember what I said about Kyoto?* and *What did we talk about yesterday?*
 bringing back the right exchanges (never the conversation going on) with the
-notes' size, `search_conversations` by words and by time and what it tells the
+notes' size, the replies in them under the persona's name (*Ivy: ...* and
+*Ivy, on its own: ...* for the fixture persona Ivy, *Martlet: ...* without
+one), `search_conversations` by words and by time and what it tells the
 model, deleting one conversation and everything, exchanges from Telegram and
 Discord keeping their app, chat and message IDs over a restart (Discord never
 recalled in the talk window), what deleting and editing one message asks of
@@ -5090,7 +5092,12 @@ began, page heights), `sideways`, `way` (`down`, `up` or null) and `words`
 (`where`, `label`, `pace`, `times` and `hint`: how the ledger says its whole
 path), each change's ledger kind, words and `startsTurn` (true for touches,
 strokes and moves), the plain
-`line` the next reply would carry, the `history` line and `startsTurn`.
+`line` the next reply would carry, the `history` line and `startsTurn`,
+`character` (what the talk window and the Thinking model call the character:
+the name of the persona the data directory's settings use, else *Martlet*)
+and `note` (the talk window's note for a reply to them alone, such as *You
+touched Ivy (touch: hair stroke x4, moved)*, or null when they wouldn't start
+one).
 `noticeAll` (default true) treats every zone as having *Martlet notices* on;
 false uses the zones' own setting.
 
@@ -5738,7 +5745,7 @@ how the last look went
 (*Last look 10:17 PM (a flashing taskbar button): nothing to say.*) and what
 wanted your attention but wasn't looked at (*Noticed a notification at 10:17 PM
 but didn't look: you seem away.*); whether a message went with the picture is
-the note on its bubble (*Martlet saw your whole screen.*); neither contains
+the note on its bubble (*Ivy saw your whole screen.*, by the persona's name); neither contains
 window titles; to rehearse a flash, show any test window minimized and call
 `FlashWindowEx` on it), `LiveGaze` (while Martlet decides where the character
 looks and watches your screen: what its eyes are on now, *Looking at your
@@ -5982,7 +5989,16 @@ message in `LiveHistory` has an automation ID for whose it is, never its words:
 `LiveMessage-PcAudio`; so `ui_snapshot` shows, for example, that something
 that went straight to Thinking and speech-to-text couldn't transcribe left no
 `LiveMessage-You` bubble (the log says *Background transcript: speech-to-text
-couldn't transcribe what went straight to Thinking ...*). Below it, the *Speakers and echo* card has
+couldn't transcribe what went straight to Thinking ...*). The talk window calls
+the character by the name of the persona Martlet uses (Companion ›
+Personality): its title, header, message box and empty conversation, each
+reply's label (*Ivy · 10:39 PM*, *Ivy, about your whole screen*) and the notes
+in its history (*You touched Ivy (touch: ...)*, *Ivy stayed quiet.*). MCP never
+returns that name: the window's accessible name stays *Talk with Martlet*, the
+history's words and labels are not values, and the status lines MCP reads
+(`LiveStatus`, `HomeListeningStatus`, `TouchZonesNoticed`, `TouchZonesNoticedLast`)
+keep saying Martlet; `character_physical_check` returns the touch note with
+the data directory's persona name. Below it, the *Speakers and echo* card has
 `TalkReduceEcho` (*Reduce echo from my speakers*, on by default; its
 `checkedState` is the saved choice and `ui_toggle` needs `--allow-ui-effects`)
 and `TalkReduceEchoStatus` (returned: *On. Martlet removes what this PC plays
