@@ -16,6 +16,7 @@ public sealed class CharacterFaceReadingTests
              "cheekLeft":{"x":0.46,"y":0.23,"visible":1,"across":1.2,"hit":true,"drawables":["D_FACE","D_HAIR","D_EAR","D_NECK"],
                "bone":null,"mesh":null},
              "cheekRight":{"x":"far","y":0.23,"visible":0.4,"across":0.6,"hit":false,"drawables":[],"bone":"bad\u0001name"},
+             "eyeLeft":{"x":0.4812345,"y":0.19},"eyeRight":{"x":0.53,"y":0.19},"mouth":{"x":0.51,"y":"low"},"top":null,
              "overlays":["blush",7,""],"pinned":{"carriers":118,"milliseconds":12},"extra":"dropped"}
             """), 4));
         Assert.Equal(4, reading.GetProperty("n").GetInt32());
@@ -31,6 +32,10 @@ public sealed class CharacterFaceReadingTests
         Assert.Equal(JsonValueKind.Null, right.GetProperty("bone").ValueKind);
         Assert.Equal(0.6, right.GetProperty("across").GetDouble());
         Assert.Equal(["blush"], reading.GetProperty("overlays").EnumerateArray().Select(o => o.GetString()));
+        Assert.Equal(0.4812, reading.GetProperty("eyeLeft").GetProperty("x").GetDouble());
+        Assert.Equal(0.19, reading.GetProperty("eyeRight").GetProperty("y").GetDouble());
+        Assert.False(reading.TryGetProperty("mouth", out _), "a point without both numbers is left out");
+        Assert.False(reading.TryGetProperty("top", out _));
         Assert.Equal(118, reading.GetProperty("pinned").GetProperty("carriers").GetInt32());
         Assert.False(reading.TryGetProperty("extra", out _));
 

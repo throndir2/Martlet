@@ -197,7 +197,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "VRM's head bone; estimate: a Live2D model's head angles, when no face meshes were found), x, y and width (fractions of " +
             "the character overlay's drawing, +y down), tilt (degrees, clockwise), cheekLeft and cheekRight (x, y; visible, 0 to " +
             "1 as the cheek turns away; across, the cheek's width against the face's, below 1 on a turned head's far cheek; and " +
-            "the renderer's hit test there: hit, drawables, bone, mesh), the eyes for drawings over them: eyesFrom (mesh: a Live2D " +
+            "the renderer's hit test there: hit, drawables, bone, mesh), eyeLeft, eyeRight, mouth and top (x, y: the eye and mouth " +
+            "points the overlay emotes such as tears or tongue_out are drawn from, and the top of the head; an eye with a known " +
+            "iris has its point at the eye's middle), the eyes for drawings over them: eyesFrom (mesh: a Live2D " +
             "model's iris and eye-white meshes; bones: a VRM's eye bones with its iris and eye-white meshes; vision: eyes measured " +
             "by vision fill what the model can't give; estimate: an eye has neither, so its iris and opening are left out), " +
             "irisLeft and irisRight (x, y, rx, ry: the iris's middle and radii, x and rx fractions of the drawing's width, y and ry " +
@@ -585,7 +587,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "mumble, hum, sneeze, whistle, happy, sarcastic, angry, fear, crying, whispering, dramatic; and the overlay emotes drawn over the face of any " +
             "Live2D model or VRM with a head: sweat, anger, hearts, sparkles, tears, gloom, question, exclaim, sleepy, music; then the held face parts " +
             "eyes_up (Live2D ParamEyeBallY, VRM eye bones) and mouth_open (Live2D ParamMouthOpenY, a VRM's oh or aa mouth), which stay on with held " +
-            "gestures that move other parts of the face) with what it changes, its tag, voice cue, when to use it (use: the owner's or the Thinking model's text, null when empty; hint: what the reply prompt says, which is Martlet's own hint while use is null), whether " +
+            "gestures that move other parts of the face; and last more overlay emotes: heart_eyes, star_eyes, tongue_out, drool, steam, dizzy, idea, " +
+            "ellipsis) with what it changes, its tag, voice cue, when to use it (use: the owner's or the Thinking model's text, null when empty; hint: what the reply prompt says, which is Martlet's own hint while use is null), whether " +
             "it is on, its mode (brief, or lingering: stays on after {tag} until {/tag}; modeSaved false when it is the default, " +
             "vtsToggle when a VTube Studio ToggleExpression hotkey turns it on) and whether replies are offered it for engine (a voice engine key; \"none\" or absent: a voice without tags); the " +
             "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; " +
@@ -1564,6 +1567,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "first, four segments at once spread over both, a computer kept for one companion PC or unticked for a job left out, " +
             "an unanswering computer skipped, Deep thinking leaving out a kept computer, and the shared setting's round trip. " +
             "In-process; reads nothing.", new { }),
+        Tool("recommended_setup_status", "Home's Recommended setup without the desktop: builds the network recommender's request with " +
+            "the desktop's own builder from a data directory (hosts.json, host-hardware.json, cluster.json, settings.json, " +
+            "work-sharing.json, thinking-pool.json, speaking-engine.txt; every host counts as online, roles are the shared plan's " +
+            "record) or, with fixture \"network\", from a built-in four-computer network (NOT real computers), runs the production " +
+            "recommender (NetworkRecommender) and lists the computers (kind, planned or left as they are, manageable), today's jobs " +
+            "and Thinking pool, the recommended changes (summary, why, benefit, downloads, someone needed at the computer), each " +
+            "computer's recommended roles and load, and whether a companion PC in use would ask (declined setups in " +
+            "recommended-setup.json count). Read-only; contacts nothing and reads no keys.", new
+        {
+            dataDirectory = new { type = "string" },
+            fixture = new { type = "string", @enum = new[] { "network" } }
+        }),
         Tool("network_recommendation_check", "Rehearse Home's Recommended setup for all your computers with the production network " +
             "recommender (NetworkRecommender) on built-in fixture networks, NOT real computers: two companion PCs and two hosts with " +
             "nothing set up, a host with two NVIDIA cards, a Windows host whose voice shares its card, a crowded network, Deep " +
@@ -1888,6 +1903,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),
                 "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),
                 "work_sharing_check" => await WorkSharingCheck.RunAsync(cancellation),
+                "recommended_setup_status" => OptionalString(arguments, "fixture") is { } setupFixture
+                    ? await RecommendedSetupStatus.RunAsync(null, setupFixture, cancellation)
+                    : await RecommendedSetupStatus.RunAsync(DataDirectory(arguments), null, cancellation),
                 "network_recommendation_check" => NetworkRecommendationCheck.Run(),
                 "node_presence_status" => NodePresenceCheck.Status(DataDirectory(arguments)),
                 "node_presence_check" => NodePresenceCheck.Run(),
