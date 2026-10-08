@@ -634,9 +634,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("character_profiles", "Read the character profiles (Companion > Profiles) from a data directory: each profile's key (first " +
             "8 hex digits of its ID, as in CharacterProfileState-<key>), whether its personality is saved, what its look is (keep, " +
             "builtin, a listed character whose copy is ready or still copying here, or missing) and its voice (keep, listed or " +
-            "missing); the profile switched to last; and which profile matches what Martlet uses now (the active persona, the look " +
-            "in avatar.json and the voice the speaking route keeps or the shared list chose). Never returns names. Read-only; " +
-            "contacts nothing.", new
+            "missing); the profile switched to last; which profile matches what Martlet uses now (the active persona, the look " +
+            "in avatar.json and the voice the speaking route keeps or the shared list chose); and what each profile keeps on this " +
+            "PC (character-profiles-local.json: its place, size, monitor and lock, its usual gaze and whether replies may change " +
+            "it, and which touches stop it while it talks) with the profile whose choices this PC uses. Never returns names. " +
+            "Read-only; contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -3139,6 +3141,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             ? reference.ReferenceRevision : voices.ChosenVoice?.Id;
         var current = companion?.CurrentCharacter(modelNow, voiceNow);
         var profiles = companion?.CharacterList ?? [];
+        var (hereState, hereInUse, here) = ProfilesHere(directory);
         return new
         {
             state = settings is null ? "no-settings" : profiles.Count == 0 ? "none" : "loaded",
@@ -3148,6 +3151,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             look = modelNow is null ? "model-file-outside-list" : modelNow == Martlet.Core.Settings.CharacterProfile.BuiltInModel ? "builtin"
                 : "shared:" + Martlet.Avatar.Hosting.SharedCharacterModels.Key(modelNow),
             voiceChosen = voiceNow is not null,
+            hereState,
+            hereInUse = profiles.FirstOrDefault(c => c.Id == hereInUse)?.Key,
             profiles = profiles.Select(p => new
             {
                 key = p.Key,
@@ -3162,9 +3167,61 @@ internal sealed class McpServer(DesktopAutomation desktop)
                         : "missing"
                 },
                 voice = p.VoiceId is null ? "keep" : voices.Find(p.VoiceId) is { Removed: false } ? "listed" : "missing",
-                inUse = p.Id == current?.Id
+                inUse = p.Id == current?.Id,
+                here = here.GetValueOrDefault(p.Id)
             }).ToArray()
         };
+    }
+
+    /// <summary>character-profiles-local.json in a data directory (Martlet.Desktop's CharacterProfileLocalStore): the profile whose
+    /// choices this PC uses (InUse) and what each character profile keeps on this PC, by profile ID: its place (device-independent
+    /// pixels, the monitor and whether it is locked; null without one), its usual gaze (<c>personality</c> or a gaze's word),
+    /// whether replies may change it, and which touches stop it while it talks (<c>any</c>, <c>intimate</c> or <c>never</c>). No
+    /// file means no profile keeps anything here.</summary>
+    private static (string State, Guid? InUse, Dictionary<Guid, object> Profiles) ProfilesHere(string directory)
+    {
+        var path = Path.Combine(directory, "character-profiles-local.json");
+        if (!File.Exists(path)) return ("none", null, []);
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                !document.RootElement.TryGetProperty("Profiles", out var saved) || saved.ValueKind != JsonValueKind.Object)
+                return ("unreadable", null, []);
+            Guid? inUse = document.RootElement.TryGetProperty("InUse", out var used) && used.ValueKind == JsonValueKind.String &&
+                Guid.TryParse(used.GetString(), out var usedId) ? usedId : null;
+            var profiles = new Dictionary<Guid, object>();
+            foreach (var entry in saved.EnumerateObject())
+            {
+                if (!Guid.TryParse(entry.Name, out var id) || entry.Value.ValueKind != JsonValueKind.Object) continue;
+                var kept = entry.Value;
+                object? place = null;
+                if (kept.TryGetProperty("Placement", out var at) && at.ValueKind == JsonValueKind.Object)
+                {
+                    double? Number(string name) => at.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number &&
+                        value.TryGetDouble(out var number) ? number : null;
+                    place = new
+                    {
+                        locked = at.TryGetProperty("Locked", out var locked) && locked.ValueKind == JsonValueKind.True,
+                        left = Number("Left"), top = Number("Top"), width = Number("Width"), height = Number("Height"),
+                        screen = at.TryGetProperty("Screen", out var screen) && screen.ValueKind == JsonValueKind.String ? screen.GetString() : null
+                    };
+                }
+                profiles[id] = new
+                {
+                    place,
+                    gaze = kept.TryGetProperty("GazeUsual", out var usual) && usual.ValueKind == JsonValueKind.String ? usual.GetString() : "personality",
+                    gazeFree = !(kept.TryGetProperty("GazeFree", out var free) && free.ValueKind == JsonValueKind.False),
+                    touchInterrupts = kept.TryGetProperty("TouchInterrupts", out var touches) && touches.ValueKind == JsonValueKind.String
+                        ? touches.GetString() : "any"
+                };
+            }
+            return ("loaded", inUse, profiles);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return ("unreadable", null, []);
+        }
     }
 
     /// <summary>The shared character models as the desktop keeps them in a data directory (Martlet.Avatar.Hosting's

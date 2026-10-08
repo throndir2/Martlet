@@ -619,36 +619,64 @@ internal sealed partial class RendererWindow : Window
     /// work area; otherwise where it was when that spot is still on a screen; otherwise at its default spot.</summary>
     private void RestorePlacement(RendererPlacement placement)
     {
-        if (placement.IsValid)
+        if (PlacedBounds(placement, moving: false) is { } bounds)
         {
-            var frame = Math.Clamp(placement.Width, MinFrameWidth, MaxFrameWidth);
-            var height = Math.Clamp(placement.Height, MinFrameWidth, Math.Max(MinFrameWidth, SystemParameters.VirtualScreenHeight));
-            var width = OverlayWidth(frame);
-            Point? at = null;
-            if (placement is { Screen: { } name, ScreenLeft: { } dx, ScreenTop: { } dy } && ScreenNamed(name) is { } screen)
-            {
-                var work = screen.Work;
-                var middle = new Point(work.Left + dx + FrameOffset(width) + frame / 2, work.Top + dy + height / 2);
-                var kept = new Point(Math.Clamp(middle.X, work.Left, Math.Max(work.Left, work.Right)),
-                    Math.Clamp(middle.Y, work.Top, Math.Max(work.Top, work.Bottom)));
-                at = new(work.Left + dx + (kept.X - middle.X), work.Top + dy + (kept.Y - middle.Y));
-                ErrorLog.Info($"The character is back where it was left on {ScreenLabel(name)}.");
-            }
-            else if (OnAScreen(new Point(placement.Left + FrameOffset(width) + frame / 2, placement.Top + height / 2)))
-            {
-                at = new(placement.Left, placement.Top);
-                ErrorLog.Info(placement.Screen is { } gone
-                    ? $"The character's screen ({ScreenLabel(gone)}) isn't connected; it shows where it was on the desktop."
-                    : "The character is back where it was left.");
-            }
-            else ErrorLog.Warn("The character's saved position isn't on a screen now; it shows at its default spot.");
-            if (at is { } place)
-            {
-                Width = width;
-                Height = height;
-                Left = place.X;
-                Top = place.Y;
-            }
+            Width = bounds.Width;
+            Height = bounds.Height;
+            Left = bounds.Left;
+            Top = bounds.Top;
+        }
+        LockPlacement(placement.Locked);
+    }
+
+    /// <summary>Where the overlay goes for a saved place (<see cref="RestorePlacement"/>): its window's top-left corner and size,
+    /// or null when the place isn't valid or isn't on a screen now. <paramref name="moving"/>: a character profile's place for the
+    /// showing character (<see cref="MovePlacement"/>), which otherwise stays where it is.</summary>
+    private (double Left, double Top, double Width, double Height)? PlacedBounds(RendererPlacement placement, bool moving)
+    {
+        if (!placement.IsValid) return null;
+        var frame = Math.Clamp(placement.Width, MinFrameWidth, MaxFrameWidth);
+        var height = Math.Clamp(placement.Height, MinFrameWidth, Math.Max(MinFrameWidth, SystemParameters.VirtualScreenHeight));
+        var width = OverlayWidth(frame);
+        if (placement is { Screen: { } name, ScreenLeft: { } dx, ScreenTop: { } dy } && ScreenNamed(name) is { } screen)
+        {
+            var work = screen.Work;
+            var middle = new Point(work.Left + dx + FrameOffset(width) + frame / 2, work.Top + dy + height / 2);
+            var kept = new Point(Math.Clamp(middle.X, work.Left, Math.Max(work.Left, work.Right)),
+                Math.Clamp(middle.Y, work.Top, Math.Max(work.Top, work.Bottom)));
+            ErrorLog.Info(moving ? $"The character moved to where its profile left it on {ScreenLabel(name)}."
+                : $"The character is back where it was left on {ScreenLabel(name)}.");
+            return (work.Left + dx + (kept.X - middle.X), work.Top + dy + (kept.Y - middle.Y), width, height);
+        }
+        if (OnAScreen(new Point(placement.Left + FrameOffset(width) + frame / 2, placement.Top + height / 2)))
+        {
+            ErrorLog.Info(placement.Screen is { } gone
+                ? $"The character's screen ({ScreenLabel(gone)}) isn't connected; it {(moving ? "moved to" : "shows")} where it was on the desktop."
+                : moving ? "The character moved to where its profile left it." : "The character is back where it was left.");
+            return (placement.Left, placement.Top, width, height);
+        }
+        ErrorLog.Warn($"The character's saved position isn't on a screen now; {(moving ? "it stays where it is" : "it shows at its default spot")}.");
+        return null;
+    }
+
+    /// <summary>Martlet's character profiles: puts the showing overlay where that profile's character was left on this PC, at
+    /// that size, locked or not (as <see cref="RestorePlacement"/> does). It isn't a move of the user's, so the character doesn't
+    /// react to it and Martlet saves the place itself. While the camera view shows, the overlay goes there when the camera view
+    /// closes.</summary>
+    private void MovePlacement(RendererPlacement placement)
+    {
+        EndPan();
+        var bounds = PlacedBounds(placement, moving: true);
+        if (camera is { } open)
+        {
+            if (bounds is { } at) camera = (at.Left, at.Top, at.Width, at.Height, open.Topmost);
+        }
+        else if (bounds is { } at)
+        {
+            Width = at.Width;
+            Height = at.Height;
+            Left = at.Left;
+            Top = at.Top;
         }
         LockPlacement(placement.Locked);
     }
@@ -1565,7 +1593,7 @@ internal sealed partial class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "click-through" or "voice" or "gaze" or "where" or "camera" or "snapshot" or "zones" or "eyes"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "click-through" or "voice" or "gaze" or "where" or "place" or "camera" or "snapshot" or "zones" or "eyes"))
                     throw new InvalidDataException("Renderer command is invalid.");
                 if (message.Kind == "eyes")
                 {
@@ -1607,6 +1635,15 @@ internal sealed partial class RendererWindow : Window
                 if (message.Kind == "where")
                 {
                     await ReplyAsync("placement", Placement());
+                    continue;
+                }
+                // A character profile's own place on this PC (Martlet's profile switch).
+                if (message.Kind == "place")
+                {
+                    var placement = RendererProtocol.Data<RendererPlacement>(message);
+                    if (!placement.IsValid) throw new InvalidDataException("The character's place is invalid.");
+                    MovePlacement(placement);
+                    await ReplyAsync("placement", camera is null ? Placement() : placement);
                     continue;
                 }
                 if (message.Kind == "lock")

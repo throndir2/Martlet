@@ -70,7 +70,9 @@ public sealed record RendererCamera(bool On, string Background = "#00B140", stri
 /// <summary>Where the character overlay is: its window's top-left corner and the character frame's width and height, in
 /// device-independent pixels, and whether its place is locked. <paramref name="Screen"/> names the monitor it is on (Windows'
 /// device name, such as <c>\\.\DISPLAY2</c>) and <paramref name="ScreenLeft"/>, <paramref name="ScreenTop"/> its top-left
-/// relative to that monitor's work area, so it goes back to the same monitor even after the screens are rearranged.</summary>
+/// relative to that monitor's work area, so it goes back to the same monitor even after the screens are rearranged. Martlet
+/// also sends one as "place" to put a showing character where a character profile left it on this PC (at that size, locked or
+/// not; while the camera view shows, the overlay goes there when it closes); the reply is where the character is then.</summary>
 public sealed record RendererPlacement(bool Locked, double Left, double Top, double Width, double Height, string? Screen = null,
     double? ScreenLeft = null, double? ScreenTop = null)
 {
