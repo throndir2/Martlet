@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.60.0] - 2026-10-08
+
 ### Added
 - Companion › Vision has a new **Image model** card and Companion › Listening an **Audio model** card. Keep the default (the same model as Thinking, which writes every reply), or choose Ollama on this PC, a cloud provider or server, a model app on this PC, or for pictures one of your computers. Each card says where pictures or recordings go, what the model is known to do and what is sent where. **Test vision** checks that a model reads a word drawn on your PC, **Test hearing** now works for the audio model too, and Martlet remembers what each model can do. ([#644](https://github.com/throndir2/Martlet/pull/644))
 - While no online provider key is saved, the Recommended setup window, Home's Thinking problems and Companion › Thinking offer a free API key: **Get a free key** opens NVIDIA Build, and **Add your key** opens the right box with NVIDIA Build already chosen. The key keeps Martlet able to reply when your computers are offline or have no room for thinking, and the recommended setup plans again with it. ([#643](https://github.com/throndir2/Martlet/pull/643))
