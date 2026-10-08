@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Character profiles now also remember, on each computer, where your character stands and how big it is, where it looks, and which touches stop it while it talks. Switch back to a profile, here or on another computer, and they come back; Companion › Profiles shows what each one keeps on this PC. ([#620](https://github.com/throndir2/Martlet/pull/620))
 - New in Companion › Check-ins: **Saying the same things** reads what Martlet said in the last hour, and when, and when it keeps saying the same thing again and again, it reminds Martlet in its next reply to say something new. ([#613](https://github.com/throndir2/Martlet/pull/613))
 - Settings › What this PC is for now lists **Your other computers**: each one says whether it is a companion PC or a host PC, with a button to make it a host PC or a companion PC again from where you are. It is the same switch the Devices map has, now easy to find. ([#612](https://github.com/throndir2/Martlet/pull/612))
 
