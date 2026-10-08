@@ -58,7 +58,8 @@ public partial class MainWindow
             {
                 GazeMode.Near => "It looks at your mouse pointer only while it is near the character, and otherwise straight ahead.",
                 GazeMode.Ahead => "It looks straight ahead and doesn't follow your mouse.",
-                GazeMode.Window => "It watches the window you're using, as if it follows what you do.",
+                GazeMode.Window => "It watches what you do in the window you're using: where you move the mouse or type in it, " +
+                    "and its middle until you do.",
                 _ => "Its head and eyes follow your mouse pointer everywhere."
             }, prefs.GazeUsual == mode, "CharacterGaze-" + word);
             option.Checked += (_, _) => { if (Talk.GazeUsual != mode) SaveTalk(Talk with { GazeUsual = mode }, render: true); };

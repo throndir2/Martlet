@@ -17,6 +17,7 @@ Each release's section here is also its notes on GitHub.
 - The talk window now calls your character by its personality's name instead of "Martlet": in its title, at the top, in the message box and in the conversation, such as *You touched Ivy* or *Ivy, about your whole screen*. Your Thinking model sees that name on your character's own lines when it recalls earlier conversations or remembers things, and the songs it writes are for your character to sing. ([#606](https://github.com/throndir2/Martlet/pull/606))
 
 ### Fixed
+- **Eyes › Watch the window you're using** now really watches what you do: your character's eyes follow where you move the mouse or type in the window you're using, instead of staring at the middle of it (which, for most windows, looked like staring off to one side). ([#608](https://github.com/throndir2/Martlet/pull/608))
 - When your microphone picks up a video, show, game or music from your speakers while Martlet hears what this PC plays, Martlet no longer takes those words for yours: it shows them as a faded note and hears them only as what the PC played. ([#607](https://github.com/throndir2/Martlet/pull/607))
 
 ## [0.56.0] - 2026-10-07

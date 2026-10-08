@@ -262,6 +262,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumMouthSamples },
             gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
         }),
+        Tool("character_look", "Read where the showing character looks now, samples times (1 to 60, default 1) gapMs apart (0 to " +
+            "5000, default 250), as the overlay last turned its head and eyes (it does every 50 ms). Each reading (looks) has n, " +
+            "target (mouse; window: where you work in the window you're using; point: a spot Martlet asked it to look at; or " +
+            "ahead), x and y (the direction, -1 to 1, +x right, +y up), at (the point on the desktop in screen pixels, or null), " +
+            "usual (the usual gaze: mouse, near, ahead or window), window (the window you're using: left, top, width and height, " +
+            "never its title; null when none) and watching (for the window gaze: pointer, text cursor or middle). summary gives " +
+            "the targets and watching seen and the x and y ranges (least, most). Reading changes nothing, so it needs no " +
+            "--allow-ui-effects.", new
+        {
+            samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumLookSamples },
+            gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
+        }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
             "[x, y, width, height] in physical screen pixels) and whether Martlet still runs. \"open\" and \"menu\" send the icon " +
@@ -731,13 +743,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "window; GazeFree: whether the character may change it in replies), the gaze of the touch temperament the persona uses in " +
             "character-temperaments.json (its own or a custom one; the active persona, or personaId), the gaze that applies and who set it, what every reply is told about it and the " +
             "note while its own choice holds the eyes. aim rehearses the production CharacterGaze.Aim the overlay runs for each " +
-            "gaze (a mouse far from and near the character, a window, a touch's look at the mouse, a glance). saved is the glances " +
+            "gaze (a mouse far from and near the character, a window, where you work in it, a touch's look at the mouse, a glance), " +
+            "and watch rehearses the production WindowWatch the window gaze uses on a sequence of moments (switching windows, the " +
+            "pointer moving over the window or onto the character, typing, the desktop in front), each with what the eyes watch " +
+            "(pointer, text cursor or middle) and where. saved is the glances " +
             "choice (DecideGaze: usual gaze unless Martlet decides), then a rehearsal of the production decision " +
             "(Martlet.Avatar.Hosting CharacterGaze and GazeDirector) on " +
             "generated 1920x1080 pictures (NOT screenshots; nothing is captured): a notification popping up, the same spot again soon " +
             "and later, another change right after a glance, a notification behind the character, the character's own motion, its " +
             "speech bubble, a new scene, a change by the mouse and changes all over, each with the expected and actual verdict and " +
-            "the spot looked at (ok: all scenarios and aims as expected). Also where each look tag points on one and two screens, " +
+            "the spot looked at (ok: all scenarios, aims and watch moments as expected). Also where each look tag points on one and two screens, " +
             "the gaze tags, the screen glance's look instructions (the data directory's edited prompts included) and what the " +
             "production segmenter makes of answers with look tags (spoken, shown, quiet, the look and gaze cues); answer replaces " +
             "the sample answers. Reads only; contacts nothing.", new
@@ -1874,6 +1889,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_pose" => await desktop.PoseCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "character_mouth" => await desktop.MouthCharacterAsync(MouthLevels(arguments), OptionalInt(arguments, "stepMs"),
                     OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
+                "character_look" => await desktop.LookCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "turn_judge_check" => await TurnJudgeCheck.RunAsync(arguments, MartletDirectory(arguments), cancellation),

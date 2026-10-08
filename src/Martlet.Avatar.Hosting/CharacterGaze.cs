@@ -46,6 +46,10 @@ public readonly record struct ScreenRect(int Left, int Top, int Width, int Heigh
 
     public bool Intersects(double left, double top, double right, double bottom) =>
         !IsEmpty && left < Right && right > Left && top < Bottom && bottom > Top;
+
+    public bool Contains(ScreenPoint point) => !IsEmpty && point.X >= Left && point.X < Right && point.Y >= Top && point.Y < Bottom;
+
+    public ScreenPoint Middle => new(Left + Width / 2.0, Top + Height / 2.0);
 }
 
 /// <summary>A point on the desktop in physical screen pixels.</summary>
@@ -204,11 +208,12 @@ public static class CharacterGaze
 
     /// <summary>Where the eyes turn this moment and toward what: "point" (a point Martlet asked for, while it holds), "mouse"
     /// (while a touch holds the eyes on it, or by the gaze: always for <see cref="GazeMode.Mouse"/>, only while it is near the
-    /// character's <paramref name="frame"/> for <see cref="GazeMode.Near"/>), "window" (the middle of the window the user is
-    /// using, for <see cref="GazeMode.Window"/>) or "ahead" (straight ahead: no point). A "mouse" target with no point means the
-    /// mouse can't be read now (the eyes stay where they are).</summary>
+    /// character's <paramref name="frame"/> for <see cref="GazeMode.Near"/>), "window" (for <see cref="GazeMode.Window"/>: where
+    /// the user last worked in the window they are using, <paramref name="working"/> from <see cref="WindowWatch"/>, while that
+    /// is in the window; else its middle) or "ahead" (straight ahead: no point). A "mouse" target with no point means the mouse
+    /// can't be read now (the eyes stay where they are).</summary>
     public static (string Target, ScreenPoint? At) Aim(GazeMode mode, ScreenPoint? point, bool attending, ScreenPoint? mouse,
-        ScreenRect frame, ScreenRect? window)
+        ScreenRect frame, ScreenRect? window, ScreenPoint? working = null)
     {
         if (point is { } held) return ("point", held);
         if (attending) return ("mouse", mouse);
@@ -216,11 +221,15 @@ public static class CharacterGaze
         {
             GazeMode.Mouse => ("mouse", mouse),
             GazeMode.Near when mouse is { } at && IsNear(frame, at) => ("mouse", at),
-            GazeMode.Window when window is { IsEmpty: false } active =>
-                ("window", new ScreenPoint(active.Left + active.Width / 2.0, active.Top + active.Height / 2.0)),
+            GazeMode.Window when Watched(window, working) is { } spot => ("window", spot),
             _ => ("ahead", null)
         };
     }
+
+    /// <summary>Where the eyes go in the window the user is using: <paramref name="working"/> (where they last pointed or typed
+    /// in it) while it is in the window, else the window's middle; null without a window.</summary>
+    public static ScreenPoint? Watched(ScreenRect? window, ScreenPoint? working) =>
+        window is not { IsEmpty: false } used ? null : working is { } at && used.Contains(at) ? at : used.Middle;
 
     /// <summary>Whether the mouse is near the character: over its frame or within <see cref="NearMargin"/> of the frame's width
     /// around it.</summary>
@@ -310,6 +319,53 @@ public static class CharacterGaze
         for (var i = 0; i < current.Length; i++) changes[i] = (byte)Math.Abs(current[i] - previous[i]);
         return changes;
     }
+}
+
+/// <summary>
+/// What the character watches in the window the user is using (<see cref="GazeMode.Window"/>): where the user works in it, the
+/// way someone watching over their shoulder follows what they do. That is where they last pointed (the mouse moving over that
+/// window, not over the character or another window) or typed (its text cursor moving, in programs that show one). Just after
+/// they switch to another window it is that window's text cursor, or the mouse when it is over the window (the click that
+/// switched), and otherwise nothing yet, so the eyes go to the window's middle (<see cref="CharacterGaze.Watched"/>).
+/// </summary>
+public sealed class WindowWatch
+{
+    public const string Pointer = "pointer", TextCursor = "text cursor", Middle = "middle";
+    private nint window;
+    private ScreenPoint? mouse, caret;
+
+    /// <summary>Where the user last worked in the window they use, or null (nothing yet: its middle).</summary>
+    public ScreenPoint? Working { get; private set; }
+
+    /// <summary>What <see cref="Working"/> is: <see cref="Pointer"/> or <see cref="TextCursor"/>; null with nothing yet.</summary>
+    public string? From { get; private set; }
+
+    /// <summary>One look at the desktop (the overlay's, every 50 ms): the window the user is using (0 for none), the mouse pointer
+    /// (null when it can't be read) and whether it is over that window, and that window's text cursor (null when it shows none,
+    /// or the window isn't in front). Returns <see cref="Working"/>.</summary>
+    public ScreenPoint? Update(nint used, ScreenPoint? pointer, bool over, ScreenPoint? textCursor)
+    {
+        if (used != window)
+        {
+            window = used;
+            caret = null;
+            Working = null;
+            From = null;
+            if (textCursor is { } typing) (Working, From) = (typing, TextCursor);
+            else if (over && pointer is { } at) (Working, From) = (at, Pointer);
+        }
+        else if (textCursor is { } typing && typing != caret) (Working, From) = (typing, TextCursor);
+        else if (over && pointer is { } at && at != mouse) (Working, From) = (at, Pointer);
+        // A pointer or text cursor that can't be read for a moment (the character's menu in front) isn't a move when it is back.
+        if (pointer is not null) mouse = pointer;
+        if (textCursor is not null) caret = textCursor;
+        return Working;
+    }
+
+    /// <summary>What the eyes watch in <paramref name="window"/> now: <see cref="Pointer"/>, <see cref="TextCursor"/> or
+    /// <see cref="Middle"/>; null without a window.</summary>
+    public string? Watching(ScreenRect? window) =>
+        window is not { IsEmpty: false } used ? null : Working is { } at && used.Contains(at) ? From : Middle;
 }
 
 /// <summary>

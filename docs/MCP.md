@@ -1694,8 +1694,18 @@ the character's frame near the lower-right corner, each with its `expected`
 and actual `target` (`mouse`, `ahead`, `window` or `point`) and the point `at`:
 `mouseFar`, `nearModeMouseFar` (`ahead`), `nearModeMouseNear` (`mouse`),
 `aheadModeMouseNear` (`ahead`), `windowMode` (the window's middle),
-`windowModeNoWindow` (`ahead`), `touchWhileAhead` (`mouse`) and
-`glanceWhileFollowing` (`point`). `saved` is Companion › Vision › Glances at
+`windowModeWorking` (where you worked in the window), `windowModeWorkedOutside`
+(a place outside the window: its middle again), `windowModeNoWindow`
+(`ahead`), `touchWhileAhead` (`mouse`) and `glanceWhileFollowing` (`point`).
+`watch` rehearses the production `WindowWatch` the window gaze uses, with
+`CharacterGaze.Aim`, over a sequence of moments, each with its `expected` and
+actual `watching` (`pointer`, `text cursor` or `middle`; null without a
+window), `target` and point `at`: `switchedWithTheKeyboard` (`middle`),
+`pointerMovesOverTheWindow` (`pointer`), `typingWhileThePointerRests` and
+`typingOn` (`text cursor`), `pointerOnTheCharacter` (still the text cursor),
+`pointerMovesOverTheWindowAgain` (`pointer`), `pointerBackOnTheCharacter`
+(still the pointer), `anotherWindowWithATextCursor` (`text cursor`),
+`desktopInFront` (`ahead`) and `clickedBackIntoTheWindow` (`pointer`). `saved` is Companion › Vision › Glances at
 your screen (`usual gaze`, the default, or `martlet decides`, from `DecideGaze`
 in `talk-preferences.json`), then the change `grid` (32×18 cells, `ChangeThreshold`
 and the stronger `CharacterChangeThreshold` under the character's overlay) and
@@ -1709,7 +1719,7 @@ the lower-right corner (a glance at the bottom right),
 `sameSpotAgainLater` (a glance), `notificationBehindTheCharacter` (a glance),
 `onlyTheCharacterMoved` and `speechBubble` (`OnlyCharacter`), `newScene`
 (`Everywhere`), `byTheMouse` (`ByMouse`) and `changesAllOver` (`Scattered`);
-`ok` is true when every verdict and aim is as expected. `tags` gives where each look tag
+`ok` is true when every verdict, aim and watch moment is as expected. `tags` gives where each look tag
 points on one screen and on two side by side, `modeTags` the five gaze tags
 and the gaze each sets (`usual` for `{look usual}`), `notTags` lists tags that
 aren't look tags, `prompt` is what a screen glance is told (`instructions`, with the
@@ -5116,6 +5126,23 @@ The readings start at once. This changes the character, so it needs
    pause, and goes back to `emote` about a second after the last level.
 
 `MoveAvatar`'s value in `ui_snapshot` shows the last reading as `mouth`.
+
+**Where the character looks now**: `character_look` reads it through UI
+Automation (`MoveAvatar`'s value `"look"`), `samples` times (1 to 60) `gapMs`
+apart (default 250), as the overlay last turned the head and eyes (it does
+every 50 ms; see [Where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks)).
+Each reading in `looks` has `n`, `target` (`mouse`; `window`: where you work in
+the window you're using; `point`: a spot Martlet asked it to look at; or
+`ahead`), `x` and `y` (the direction, -1 to 1, +x right, +y up), `at` (the
+point on the desktop in screen pixels, or null), `usual` (the usual gaze),
+`window` (the window you're using: `left`, `top`, `width` and `height`, never
+its title; null when none) and `watching` (for the window gaze: `pointer`,
+`text cursor` or `middle`). `summary` gives the `targets` and `watching` seen
+and the `x` and `y` ranges (`least`, `most`). Reading changes nothing, so it
+needs no `--allow-ui-effects`. While the Windows session is locked, no window
+is in front and the mouse can't be read, so the window gaze keeps the last
+window it knew, or reads `ahead` with no `window` when it knew none.
+`MoveAvatar`'s value in `ui_snapshot` shows the last reading as `look`.
 
 **Moves, zooms and other changes Martlet hears about**: the overlay notes each
 drag, arrow-key nudge, `ui_move`, zoom (wheel, menu, keys or Martlet's zoom

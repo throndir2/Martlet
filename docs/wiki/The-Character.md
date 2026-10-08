@@ -31,7 +31,7 @@ Automatic mode tries local Audio2Face, then a paired host with Audio2Face, then 
 
 ## Where the character looks
 
-Right-click the character and open **Eyes**, or use **Companion › Character › Where the character looks**, to choose what its eyes usually do: as its personality decides (the default), follow your mouse, follow your mouse only when it's near, look straight ahead, or watch the window you're using. With **Let the character change it** on, the character can change that in its replies, and it stays that way until it changes it again.
+Right-click the character and open **Eyes**, or use **Companion › Character › Where the character looks**, to choose what its eyes usually do: as its personality decides (the default), follow your mouse, follow your mouse only when it's near, look straight ahead, or watch the window you're using. Watching the window, its eyes follow what you do there: where you move the mouse or type in it, and its middle until you do. With **Let the character change it** on, the character can change that in its replies, and it stays that way until it changes it again.
 
 ## Touch temperament
 
