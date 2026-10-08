@@ -23,12 +23,10 @@ public static partial class NetworkRecommender
             return new(machines, jobs) { ThinkingPool = pool };
         }
 
-        private string AwayWhy(Node node) => node.Presence switch
-        {
-            Presence.Gone => $"Hasn't answered for {Minutes(node.Machine.OfflineFor)}, so Martlet plans without it.",
-            Presence.Away => "Isn't answering now; nothing changes there until it is back.",
-            _ => ""
-        };
+        private static string AwayWhy(Node node) => node.Presence == Presence.Gone
+            ? $"{(node.Machine.OfflineFor is { TotalMinutes: >= 1 } away ? $"Hasn't answered for {Minutes(away)}" : "Isn't answering")}, " +
+              "so Martlet plans without it."
+            : "";
 
         private NetworkSetup BuildTarget()
         {
@@ -38,14 +36,9 @@ public static partial class NetworkRecommender
                 .ToArray();
             var machines = nodes.Select(n => n.Presence == Presence.Here
                 ? new MachinePlan(n.Id, n.Machine.Kind, Placements(n)) { Why = MachineWhy(n), Usage = Usage(n, n.Roles, InApp(n, jobs)) }
-                : new MachinePlan(n.Id, n.Machine.Kind, n.Machine.Roles)
-                {
-                    Why = AwayWhy(n),
-                    Usage = n.Presence == Presence.Gone ? null : Usage(n, n.Today, InApp(n, jobs))
-                }).ToArray();
-            var pool = nodes.Where(n => !optOut.Contains(n.Id) && (n.Presence == Presence.Here
-                    ? n.Roles.Any(r => r.Kind == DeepThinkingRole && (r.Purpose == ThinkingPoolPlace || r.Fixed))
-                    : n.Presence == Presence.Away && n.Machine.Roles.Any(r => r.Kind == DeepThinkingRole)))
+                : new MachinePlan(n.Id, n.Machine.Kind, n.Machine.Roles) { Why = AwayWhy(n) }).ToArray();
+            var pool = nodes.Where(n => !optOut.Contains(n.Id) && n.Presence == Presence.Here &&
+                    n.Roles.Any(r => r.Kind == DeepThinkingRole && (r.Purpose == ThinkingPoolPlace || r.Fixed)))
                 .Select(n => n.Id).ToArray();
             return new(machines, jobs) { ThinkingPool = pool };
         }

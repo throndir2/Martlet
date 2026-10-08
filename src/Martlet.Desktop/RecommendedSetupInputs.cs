@@ -49,7 +49,6 @@ internal sealed record SetupSources(IReadOnlyList<SetupComputer> Computers)
     /// <summary>The voice engine the owner chose, as a host role kind ("chatterbox").</summary>
     public string? VoiceEngine { get; init; }
     public IReadOnlyCollection<string> ConfiguredProviders { get; init; } = [];
-    public TimeSpan OfflineGrace { get; init; } = TimeSpan.FromMinutes(10);
 }
 
 /// <summary>The recommender's request and what the review says about computers the request leaves out.
@@ -94,7 +93,11 @@ internal static class RecommendedSetupInputs
                     notes.Add($"{computer.Name} runs only the parts inside Martlet (no host service), so nothing changes there.");
                 continue;
             }
-            var online = computer.Reachable != false;
+            // This PC is always part of the network: the owner is at it. A computer that isn't answering is not: the
+            // recommender plans without it and its jobs move.
+            var online = computer.ThisPc || computer.Reachable != false;
+            if (computer.ThisPc && computer.HasHostService && computer.Reachable == false)
+                notes.Add("This PC's host service isn't answering, so changes to it wait until it runs again.");
             machines.Add(new NetworkMachine(specs with
             {
                 Id = computer.Id, Name = computer.Name, IsPrimary = computer.Kind == NetworkMachineKind.Companion
@@ -118,8 +121,7 @@ internal static class RecommendedSetupInputs
             CurrentJobs = jobs,
             CurrentThinkingPool = [.. sources.ThinkingPool.Where(id => !sources.PoolOptOut.Contains(id, StringComparer.Ordinal)).Distinct(StringComparer.Ordinal)],
             ThinkingPoolOptOut = [.. sources.PoolOptOut.Distinct(StringComparer.Ordinal)],
-            VoiceEngine = sources.VoiceEngine,
-            OfflineGrace = sources.OfflineGrace
+            VoiceEngine = sources.VoiceEngine
         };
         return new(request, notes, names);
     }
@@ -239,11 +241,13 @@ internal static class RecommendedSetupInputs
     /// runs one, else its device id), every paired host (a companion PC when your Martlet network says that computer is one)
     /// and the member companion PCs without a host service. A host is manageable as on the Devices map: this PC's own host
     /// service, or a host whose roles Martlet changes from here (its platform allows it and Martlet can reach it: through
-    /// Martlet there or over SSH). <paramref name="nodes"/> (the Devices map) names the catalog option doing each job today.</summary>
+    /// Martlet there or over SSH). A host the presence record (<paramref name="offlineFor"/>) says isn't answering counts as
+    /// offline even when its last connection check is older. <paramref name="nodes"/> (the Devices map) names the catalog
+    /// option doing each job today.</summary>
     internal static SetupSources Sources(NetworkInputs inputs, IReadOnlyList<NetworkNode>? nodes, string device, string? ownHostId,
         double? diskFreeGb, Func<string, TimeSpan?>? offlineFor = null, WorkSharingSettings? sharing = null,
         IReadOnlyCollection<string>? thinkingPool = null, IReadOnlyCollection<string>? poolOptOut = null, string? voiceEngine = null,
-        IReadOnlyCollection<string>? configuredProviders = null, TimeSpan? offlineGrace = null)
+        IReadOnlyCollection<string>? configuredProviders = null)
     {
         ArgumentNullException.ThrowIfNull(inputs);
         var computers = new List<SetupComputer>();
@@ -266,14 +270,15 @@ internal static class RecommendedSetupInputs
             var member = members.FirstOrDefault(c => (c.HostId ?? HostSetupCommands.SuggestedHostId(c.Name)) == id);
             var hardware = inputs.HostHardware?.FirstOrDefault(h => h.HostId == id);
             var check = inputs.HostChecks.GetValueOrDefault(id);
+            var away = offlineFor?.Invoke(id);
             computers.Add(new SetupComputer(id, member?.Name ?? id,
                 member?.Role == DeviceRole.Companion ? NetworkMachineKind.Companion : NetworkMachineKind.Host)
             {
                 Hardware = hardware,
                 HasHostService = true,
                 Manageable = host.CanLaunch && PlatformCatalog.ManagesRolesRemotely(PlatformDevice.FromHost(id, hardware)),
-                Reachable = check?.Reachable,
-                OfflineFor = offlineFor?.Invoke(id),
+                Reachable = away is not null ? false : check?.Reachable,
+                OfflineFor = away,
                 Offers = check?.Offers
             });
         }
@@ -302,7 +307,7 @@ internal static class RecommendedSetupInputs
         {
             Plan = inputs.Plan, LocalJobs = jobs, JobOptions = options, Sharing = sharing ?? new(), Device = device,
             ThinkingPool = thinkingPool ?? [], PoolOptOut = poolOptOut ?? [], VoiceEngine = voiceEngine,
-            ConfiguredProviders = providers, OfflineGrace = offlineGrace ?? TimeSpan.FromMinutes(10)
+            ConfiguredProviders = providers
         };
     }
 

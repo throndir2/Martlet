@@ -320,7 +320,9 @@ notices on a companion PC's Home add patience on top of it
 3. A computer still missing after the time chosen in **Settings › Your other
    computers** (*Look for a better setup when a computer is away for N
    minutes*: 2 to 60 minutes, 10 by default, kept per PC in
-   `node-presence.txt`) has **stayed away**, once per absence.
+   `node-presence.txt`) has **stayed away**, once per absence. This time only
+   decides when Martlet checks the recommended setup again by itself: Home's
+   **Recommended setup** always plans without a computer that isn't answering.
 4. A missing computer that answers again for 30 seconds is **back**. Home shows
    *gpu-box is back* with how long it was away and the jobs that a failover
    moved and that stay where they are. The item ID is `presence-back-<hostId>`.

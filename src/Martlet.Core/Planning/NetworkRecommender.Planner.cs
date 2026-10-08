@@ -18,7 +18,7 @@ public static partial class NetworkRecommender
         /// <summary>The voice engine Speaking uses in the plan: <see cref="engine"/>, or Chatterbox Nano while no computer has
         /// room for it.</summary>
         private string? voice;
-        /// <summary>One companion PC alone (computers away past the grace don't count): it may use its own card as the
+        /// <summary>One companion PC alone (computers that aren't answering don't count): it may use its own card as the
         /// placement engine does.</summary>
         private readonly bool singlePc;
         private readonly int companions;
@@ -98,9 +98,7 @@ public static partial class NetworkRecommender
         private Node Build(NetworkMachine machine)
         {
             var spec = machine.Specs;
-            var presence = machine.Online ? Presence.Here
-                : machine.OfflineFor is { } away && away >= request.OfflineGrace ? Presence.Gone
-                : Presence.Away;
+            var presence = machine.Online ? Presence.Here : Presence.Gone;
             var all = Enumerable.Range(0, spec.Gpus.Count).ToArray();
             var nvidia = all.Where(i => spec.Gpus[i].IsNvidia).ToArray();
             int? main = all.Length == 0 ? null
@@ -185,11 +183,13 @@ public static partial class NetworkRecommender
                 ?? named.OrderByDescending(o => o.GpuGb).First();
         }
 
-        /// <summary>Whether a host role's <paramref name="model"/> is <paramref name="option"/>'s: its id, its model, or its model
-        /// with the engine's name in front ("whisper-large-v3-turbo" is the catalog's "large-v3-turbo", not "small").</summary>
+        /// <summary>Whether a host role's <paramref name="model"/> is <paramref name="option"/>'s: its id, its model, its model
+        /// as a host route names it (an Ollama tag's ':' becomes '-': "gemma4-e4b" is "gemma4:e4b"), or its model with the
+        /// engine's name in front ("whisper-large-v3-turbo" is the catalog's "large-v3-turbo", not "small").</summary>
         private static bool Names(ComponentOption option, string model) =>
             Same(option.ModelId, model) || Same(option.Id, model) || option.ModelId is { Length: > 0 } id &&
-            (model.EndsWith("-" + id, StringComparison.OrdinalIgnoreCase) || model.EndsWith("/" + id, StringComparison.OrdinalIgnoreCase));
+            (Same(id.Replace(':', '-'), model.Replace(':', '-')) ||
+             model.EndsWith("-" + id, StringComparison.OrdinalIgnoreCase) || model.EndsWith("/" + id, StringComparison.OrdinalIgnoreCase));
 
         /// <summary>About how much graphics memory an Ollama model takes from the size in its name ("14b": 4-bit weights,
         /// about 0.65 GB per billion parameters, plus its context and buffers), or null.</summary>

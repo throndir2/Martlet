@@ -236,21 +236,24 @@ internal static class NetworkRecommendationCheck
         });
         Step("9", "The Thinking pool skips the host the owner left out", optOut.Target.ThinkingPool.SequenceEqual(["gpu-b"]), Report(optOut));
 
-        // Rule 10: the voice host away for 4 and for 25 minutes (grace 10 minutes).
-        NetworkSetupRequest Away(int minutes) => Network(Companion("desk-1"), Companion("desk-2"), Host("voice-a", Nvidia(12, "RTX 3060")) with
+        // Rule 10: a computer that isn't answering is not part of the network, from its first missed check.
+        NetworkSetupRequest Away(int? minutes) => Network(Companion("desk-1"), Companion("desk-2"), Host("voice-a", Nvidia(12, "RTX 3060")) with
         {
-            Online = false, OfflineFor = TimeSpan.FromMinutes(minutes), Roles = [Role("chatterbox", "chatterbox-turbo")]
+            Online = false, OfflineFor = minutes is { } m ? TimeSpan.FromMinutes(m) : null, Roles = [Role("chatterbox", "chatterbox-turbo")]
         }, Host("voice-b", Nvidia(12, "RTX 3060")) with { Roles = [Role("chatterbox", "chatterbox-turbo")] }) with
         {
             CurrentJobs = [new JobPlan(ClusterJobs.Speaking, "voice-a", OptionId: "chatterbox-turbo") { Pool = ["voice-b"] }],
             Wanted = [PlanComponent.Voice]
         };
+        bool Moved(NetworkRecommendation r) => r.Target.Job(ClusterJobs.Speaking)?.HostId == "voice-b" &&
+            r.Changes.Any(c => c.Kind == SetupChangeKind.AssignJob && c.Benefit == SetupChangeBenefit.Required) &&
+            !r.Changes.Any(c => c.MachineId == "voice-a" && c.Kind is SetupChangeKind.AddRole or SetupChangeKind.RemoveRole);
+        var missed = NetworkRecommender.Recommend(Away(null));
         var brief = NetworkRecommender.Recommend(Away(4));
         var gone = NetworkRecommender.Recommend(Away(25));
-        Step("10", "Away 4 minutes: planned as if back, no changes; away 25 minutes: Speaking moves (Required)",
-            brief.AlreadyOptimal && gone.Target.Job(ClusterJobs.Speaking)?.HostId == "voice-b" &&
-            gone.Changes.Any(c => c.Kind == SetupChangeKind.AssignJob && c.Benefit == SetupChangeBenefit.Required),
-            new { fourMinutes = Report(brief), twentyFiveMinutes = Report(gone) });
+        Step("10", "Not answering (just now, 4 minutes, 25 minutes): planned without it, Speaking moves (Required), nothing changes there",
+            Moved(missed) && Moved(brief) && Moved(gone),
+            new { justNow = Report(missed), fourMinutes = Report(brief), twentyFiveMinutes = Report(gone) });
 
         // Rule 11: stability and determinism.
         var again = NetworkRecommender.Recommend(Apply(fresh, plan));

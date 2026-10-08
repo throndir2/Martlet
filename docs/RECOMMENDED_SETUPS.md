@@ -373,13 +373,13 @@ The planner uses these rules, in this order of importance:
    job only when no host can do it and Martlet needs it (Thinking without a
    hosted provider, your voice engine). Then the companion PC with the most
    free hardware takes it. One companion PC alone uses its own card, as the
-   welcome setup does. Computers that stay away longer than the grace time
-   don't count, so a companion PC whose hosts are gone plans like one alone:
+   welcome setup does. Computers that aren't answering don't count, so a
+   companion PC whose hosts are off plans like one alone:
    Thinking in its own Ollama, then the voice and lip-sync on its card, and
    listening in the app (on the card when room is left).
 7. **No added latency.** A live job never moves to a model with a later first
    word or to a busier card than today's. The only exceptions are a computer
-   that stays away and a card that is too full. New jobs get the fastest
+   that isn't answering and a card that is too full. New jobs get the fastest
    choices: a small model that hears (Gemma 4 E2B) on a card of its own.
    Other new roles go beside Thinking's model only when no other card has
    room.
@@ -404,17 +404,21 @@ The planner uses these rules, in this order of importance:
    by itself when it runs one, and hosts that you left out of the pool get
    none. Thinking's own job has no pool: another computer would start your
    conversation without its prompt cache.
-10. **Computers that are away.** A computer that is away for less than the
-    grace time (10 minutes) is planned as if it were back, with no changes
-    there. A computer that is away for longer is planned without, and its jobs
-    and pool places move (Required). A computer without a hardware report stays
-    as it is. The recommendation lists the computers that stay away, and it
+10. **Computers that aren't answering.** A computer that isn't answering is not
+    part of the network for the recommendation, from its first missed check:
+    the planner plans without it, changes nothing there, and its jobs and pool
+    places move (Required). Turn off your other computers and the PC you use
+    gets a setup for itself at once. The time in Settings › Your other computers
+    only decides when Martlet checks again by itself, so a computer that is off
+    for a moment doesn't bring a suggestion. A computer without a hardware
+    report stays as it is. The recommendation lists the computers that aren't
+    answering, and it
     says when nobody can do Thinking and why (for example *no free API key is
     saved*), so the review window shows one sentence for each and doesn't
     read the change texts.
 11. **Stability.** What runs stays where it runs unless the change helps. Each
     change is *Required* (something is missing, too full or on a computer that
-    stays away), an *Improvement* (sooner replies, lighter companion PCs, more
+    isn't answering), an *Improvement* (sooner replies, lighter companion PCs, more
     computers sharing the work) or *Minor* (a tidy-up). Automatic checks ask
     only about Required changes and Improvements. When today's setup is the
     recommended one, there are no changes. The fingerprint of the recommended

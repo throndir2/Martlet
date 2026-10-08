@@ -64,7 +64,7 @@ public sealed class RecommendedSetupTests
     private static SetupRequestBuild Build(ClusterPlan? plan = null, WorkSharingSettings? sharing = null, IReadOnlyCollection<string>? optOut = null,
         Func<string, TimeSpan?>? offlineFor = null, IReadOnlyCollection<string>? providers = null) =>
         RecommendedSetupInputs.Request(RecommendedSetupInputs.Sources(Network(plan), null, "desktop-desk", "desk-host", 400, offlineFor, sharing,
-            ["diva-host", "gpu-box"], optOut, "chatterbox", providers ?? ["openrouter"], TimeSpan.FromMinutes(15)));
+            ["diva-host", "gpu-box"], optOut, "chatterbox", providers ?? ["openrouter"]));
 
     [Fact]
     public void Every_computer_gets_the_cluster_plans_id_and_its_kind()
@@ -114,12 +114,30 @@ public sealed class RecommendedSetupTests
         // Not checked: its roles are the shared plan's record.
         Assert.Equal(["chatterbox", "stt"], gpu.Roles.Select(r => r.Kind));
         Assert.True(build.Request.Machines.Single(m => m.Specs.Id == "diva-host").Online);
-        Assert.Equal(TimeSpan.FromMinutes(15), build.Request.OfflineGrace);
+
+        // The presence record wins over an older connection check: diva-host answered its last check, but it isn't answering now.
+        var away = Build(Plan(), offlineFor: id => id == "diva-host" ? TimeSpan.FromSeconds(40) : null).Request.Machines.Single(m => m.Specs.Id == "diva-host");
+        Assert.False(away.Online);
+        Assert.Equal(TimeSpan.FromSeconds(40), away.OfflineFor);
 
         // Paired over SSH without a target: Martlet can't change it from here.
         var sources = RecommendedSetupInputs.Sources(Network(Plan()), null, "desktop-desk", "desk-host", 400);
         Assert.False(sources.Computers.Single(c => c.Id == "lost-box").Manageable);
         Assert.True(sources.Computers.Single(c => c.Id == "desk-host").Manageable);
+    }
+
+    [Fact]
+    public void This_pc_stays_in_the_plan_when_its_own_host_service_doesnt_answer()
+    {
+        var checks = new Dictionary<string, HostCheck>
+        {
+            ["desk-host"] = new(false, "Not reachable"),
+            ["diva-host"] = new(true, "Connected", new Dictionary<string, string> { ["chatterbox"] = "chatterbox-turbo" })
+        };
+        var build = RecommendedSetupInputs.Request(RecommendedSetupInputs.Sources(Network(Plan(), checks), null, "desktop-desk", "desk-host", 400,
+            id => id == "desk-host" ? TimeSpan.FromMinutes(3) : null));
+        Assert.True(build.Request.Machines.Single(m => m.Specs.Id == "desk-host").Online);
+        Assert.Contains("This PC's host service isn't answering, so changes to it wait until it runs again.", build.Notes);
     }
 
     [Fact]
@@ -204,7 +222,7 @@ public sealed class RecommendedSetupTests
     }
 
     [Fact]
-    public void Computers_away_past_the_grace_get_one_sentence_instead_of_the_same_words_on_every_change()
+    public void Computers_that_arent_answering_get_one_sentence_instead_of_the_same_words_on_every_change()
     {
         var build = Build(Plan(), offlineFor: id => id == "gpu-box" ? TimeSpan.FromMinutes(155) : null);
         const string speaking = "gpu-box hasn't answered for 155 minutes, so speaking moves.";
@@ -227,6 +245,10 @@ public sealed class RecommendedSetupTests
         var review = RecommendedSetupReview.From(recommendation, build);
         Assert.Equal(["This PC has room.", ""], review.Changes.Select(c => c.Why));
         Assert.Equal("gpu-box hasn't answered for 2 hours, so Martlet plans without it.", review.Offline);
+        Assert.Equal("Recommended: left out while it isn't answering", review.Computers.Single(c => c.Id == "gpu-box").Recommended);
+        Assert.Equal("gpu-box isn't answering, so Martlet plans without it.", RecommendedSetupReview.OfflineSentence([("gpu-box", TimeSpan.Zero)]));
+        Assert.Equal("MIKU and IMOUTO aren't answering, so Martlet plans without them.",
+            RecommendedSetupReview.OfflineSentence([("MIKU", TimeSpan.FromSeconds(20)), ("IMOUTO", TimeSpan.FromSeconds(40))]));
         Assert.Contains("Downloads wait for a fast connection.", review.Notes);
         Assert.DoesNotContain(review.Notes, n => n.Contains("hasn't answered", StringComparison.Ordinal));
         // The recommender decides who is away: with nobody away, nothing is condensed.
@@ -313,7 +335,8 @@ public sealed class RecommendedSetupTests
         Assert.Equal("Recommended: Thinking (gemma4:12b)", desk.Recommended);
         var gpu = review.Computers.Single(c => c.Id == "gpu-box");
         Assert.Equal("Host PC, not answering", gpu.Kind);
-        Assert.Equal("Recommended: Chatterbox Turbo, Listening (whisper-large-v3-turbo)", gpu.Recommended);
+        // A computer that isn't answering is never part of the plan.
+        Assert.Equal("Recommended: left out while it isn't answering", gpu.Recommended);
         Assert.Equal("Recommended: no change", review.Computers.Single(c => c.Id == "diva-host").Recommended);
         Assert.Contains("Speaking: gpu-box (today: This PC). When it is busy: DIVA.", review.Jobs);
         Assert.Contains("Thinking: This PC.", review.Jobs);
@@ -373,7 +396,8 @@ public sealed class RecommendedSetupTests
             Target = recommendation.Target with { Machines = [.. recommendation.Target.Machines.Select(m => m.MachineId == "gpu-box" ? m with { Usage = usage } : m)] }
         };
         var gpu = RecommendedSetupReview.From(recommendation, build).Computers.Single(c => c.Id == "gpu-box");
-        Assert.StartsWith("Recommended load: 46% graphics memory, 9% memory, 12% processor (today: ", gpu.Load);
+        // gpu-box isn't answering, so it has no load today.
+        Assert.Equal("Recommended load: 46% graphics memory, 9% memory, 12% processor.", gpu.Load);
         Assert.Equal([CapacityResource.GraphicsMemory, CapacityResource.Memory, CapacityResource.Processor], gpu.Bars.Select(b => b.Resource));
         Assert.Equal(11, gpu.Bars[0].Planned);
     }
