@@ -1730,7 +1730,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "runner, NOT models: no model of its own answers at once, one job at a time, a newer picture replacing the one " +
             "waiting, priorities, a stale job dropped, refusals, failures, timeouts, the kind check, one lane for one model used " +
             "for both kinds, and the conversation first (a job waits while a reply holds the model's hardware, a running job is " +
-            "stopped when a reply starts, a job the hold outlasts is dropped). In-process; reads nothing.", new { }),
+            "stopped when a reply starts, a job the hold outlasts is dropped), and a background job (a helper, priority below zero) " +
+            "giving way to a reply's picture and starting again, while a summary waits behind it. In-process; reads nothing.", new { }),
         Tool("image_model_check", "The image model (docs/SENSE_MODELS.md, Pictures: the image model) from a data directory: where " +
             "pictures go now (sense-models.json, the Thinking route and model-abilities.json through the production SenseRouting, or " +
             "an image model of its own given as imageOrigin and imageModel), the state of its three prompts, the desktop's " +
