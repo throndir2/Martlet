@@ -461,7 +461,7 @@ internal static class NetworkMap
         {
             var missing = Node("missing:brain", NodeKind.Missing, "Conversation model", "Not chosen yet", CloudGlyph);
             missing.Worsen(NodeHealth.Attention, "Choose one");
-            missing.Roles.Add(new("Thinks", "Thinking", "Choose a cloud model or one on your own computers.",
+            missing.Roles.Add(new("Thinks", "Thinking", "Martlet needs this to answer you. Run a free model on your own computers (a graphics card, or the processor if there is none), or choose an online one.",
                 DeviceComponent.Job(SetupRole.Llm)));
             missing.Commands.Add(new(NodeAction.Companion, "Set up thinking in Companion", true, nameof(SetupRole.Llm), DeviceComponent.Job(SetupRole.Llm)));
             missing.Commands.Add(new(NodeAction.Advisor, "Get a recommendation", Component: DeviceComponent.Job(SetupRole.Llm)));
@@ -528,7 +528,7 @@ internal static class NetworkMap
                 else if (model is not null && !(role.Kind == HostRoles.Ollama && thinks) && !(role.Kind == HostRoles.Stt && listens) &&
                     !(role.Kind == speaking && speaks))
                     target.Roles.Add(new(role.Chip, role.Name, role.Kind == HostRoles.Singing
-                            ? "Ready. Martlet makes its songs here when you ask it to sing (Companion > Voice > Singing)."
+                            ? "Ready. Martlet makes its songs here when you ask it to sing (Companion > Singing)."
                             : $"Ready. Assign {role.Job} to use it.",
                         DeviceComponent.Standby(role.Kind)));
             }

@@ -92,15 +92,19 @@ never to a cloud provider).
 | Memory embeddings/reranking (future) | Possible | Small models run on CPU | Optional | Current memory is lexical and fully local. |
 | Voice Studio training (future) | None | No | Often most of a 12-24 GB card for hours | Run it where it cannot stall live conversation. |
 
-**Nothing requires a GPU.** The minimum working setup is the Windows app plus
-an API. Only Audio2Face lip-sync strictly needs an NVIDIA GPU, and loudness
+**Nothing requires a GPU or an account.** The minimum working setup is the
+Windows app on its own: Thinking runs a small model on the processor (slower,
+but free and with no sign-up). A graphics card makes it quicker, and an online
+model is optional. Only Audio2Face lip-sync strictly needs an NVIDIA GPU, and loudness
 lip-sync replaces it on any PC. The advisor and the **Martlet prerequisites**
 tool install what each layout needs on the Windows PC (Windows speech, Ollama,
 WSL 2 + Docker Desktop); see [Prerequisites](PREREQUISITES.md).
 
-### Offload the LLM first
+### An online LLM is optional
 
-The LLM uses the most VRAM and is the easiest role to move off your GPU.
+An online model is the easiest way to free your GPU, but it needs an account
+with the provider (a sign-up and an API key). So the advisor's Balanced goal
+keeps Thinking on your own computers, and only *Smartest answers* sends it online.
 Martlet's Chat Completions route accepts any OpenAI-compatible HTTPS base URL
 (choose it under **Setup > Destinations > LLM provider / endpoint**; see
 [Setup](SETUP.md)). Two endpoints are named in Martlet:
@@ -110,33 +114,35 @@ any chat model in its catalog). Both host open-weight models much larger than
 a consumer GPU can hold, and you can change the model ID without reinstalling
 anything. This leaves the local GPU free for voice and face.
 
-The tradeoff is data and cost. Transcripts and conversation text go to that
+The tradeoff is data, cost and the sign-up. Transcripts and conversation text go to that
 provider; OpenRouter also forwards requests to the upstream provider it routes
 to. Pricing and retention vary by model, so check them before choosing.
-Run the LLM locally if you need privacy, offline use, no per-token charges or
+Run the LLM locally if you need privacy, offline use, no account, no per-token charges or
 the fastest responses (see [Choose a goal](#choose-a-goal)).
 
 ### Where a GPU helps most
 
-For the balanced default (best answers plus your own voice and face), spend
-VRAM in this order:
+For the balanced default (the advisor's *Balanced* goal), spend VRAM in this
+order. Martlet needs Thinking to answer, so it gets the card first:
 
-1. **TTS**: custom voice, low latency, no per-character cost, small footprint.
-2. **Audio2Face**: the only way to get rich facial animation.
-3. **STT**: keeps microphone audio at home and improves accuracy. CPU is fine
+1. **LLM**: free and private on your own card, with no account. With no card
+   free, a small model runs on the processor. An online model (see above)
+   frees the card if you have an account.
+2. **TTS**: custom voice, low latency, no per-character cost, small footprint.
+3. **Audio2Face**: the only way to get rich facial animation.
+4. **STT**: keeps microphone audio at home and improves accuracy. CPU is fine
    for push-to-talk, so this is optional.
-4. **LLM**: uses the most VRAM. Offload it to OpenRouter or NVIDIA Build unless
-   you need privacy, offline use, no per-token charges or the fastest responses.
 5. **Vision**: heaviest and least latency-sensitive. Use a hosted vision model or a separate machine.
 
 ### Choose a goal
 
 | Goal | LLM | STT | TTS | Why |
 | --- | --- | --- | --- | --- |
+| Balanced (the default) | Local: the GPU first, else the processor | CPU | Local GPU when room is left, else CPU | Free, with no account or sign-up; Thinking gets the card first |
 | Best answers | Large hosted model (OpenRouter, NVIDIA Build, OpenAI) | CPU or API | Local GPU | Frontier-size models without VRAM limits |
 | Fastest responses | A **small** local model that hears (Gemma 4 E2B) on the GPU | Parakeet on the CPU, or none (the model hears) | Cloned voice on the same GPU | No internet round trip or provider queue; a small model answers soonest |
 | Private or offline | Local | Local | Local | Nothing leaves your machines |
-| Gaming on the Martlet PC | Hosted or on another machine | API, CPU or another machine | API or another machine | The game keeps the GPU |
+| Gaming on the Martlet PC | On another machine, else the processor (or hosted, with an account) | API, CPU or another machine | API or another machine | The game keeps the GPU |
 
 **Why a local LLM can be fastest.** Martlet speaks sentence by sentence: the
 first sentence goes to TTS while the LLM is still writing the rest. The wait
@@ -156,13 +162,17 @@ same RAM and VRAM; it does not add capacity. Plan on **32 GB system RAM**
 (64 GB is comfortable).
 
 **If you game on this PC**, a game and local models compete for the same VRAM
-and frame time. While gaming, put the LLM on OpenRouter or NVIDIA Build (and
-STT/TTS on an API if you want), and use loudness lip-sync. Add local TTS and
+and frame time. While gaming, the advisor's Balanced plan runs Thinking on
+another of your computers, or on this PC's processor (slower, but free and with
+no account). With an account, OpenRouter or NVIDIA Build is quicker (and
+STT/TTS can use an API if you want). Use loudness lip-sync. Add local TTS and
 Audio2Face only if the game leaves enough VRAM free.
 
-**If the PC is mostly for Martlet**, the recommended default puts the LLM on an
-endpoint (OpenRouter, NVIDIA Build or OpenAI), so VRAM goes to voice and face.
-The last column shows what else fits if you want the LLM local too.
+**If the PC is mostly for Martlet**, the advisor's Balanced plan puts Thinking
+on the graphics card first; the voice and lip-sync use the room that is left.
+If you have an account with an online provider, an endpoint (OpenRouter,
+NVIDIA Build or OpenAI) frees the VRAM for voice and face instead: the table
+shows that layout, and its last column shows what else fits with the LLM local too.
 
 | VRAM | STT | TTS | Lip-sync | Vision | Local LLM that also fits |
 | --- | --- | --- | --- | --- | --- |
@@ -172,7 +182,7 @@ The last column shows what else fits if you want the LLM local too.
 | 24 GB | Local GPU | Local GPU | Audio2Face | Endpoint, or load on demand | 12-14B Q4 |
 | 32 GB+ | Local GPU | Local GPU | Audio2Face | Local possible | 14B+ Q4, or 24B+ without local vision |
 
-**Recommended hybrid:** LLM on OpenRouter or NVIDIA Build (any model you
+**Hybrid with an account:** LLM on OpenRouter or NVIDIA Build (any model you
 like; the prefilled defaults also see your screen, and NVIDIA Build's
 `google/diffusiongemma-26b-a4b-it` is a fast Free Endpoint), local CPU STT, local GPU TTS with your voice, and local Audio2Face.
 Microphone audio and your voice stay at home, and the GPU goes where it helps most.

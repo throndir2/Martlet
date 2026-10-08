@@ -13,11 +13,30 @@ public sealed class CompanionPagesTests
     public void TheCharacterHasAGroupOfItsOwnPages()
     {
         var groups = Enum.GetValues<CompanionTab>().GroupBy(MainWindow.GroupOf).OrderBy(g => g.Key).ToArray();
-        Assert.Equal(new[] { "How it works", "Who it is", "How it looks", "What it does" }, groups.Select(g => MainWindow.GroupTitle(g.Key)));
+        Assert.Equal(new[] { "How it works", "Optional extras", "Who it is", "How it looks", "What it does" }, groups.Select(g => MainWindow.GroupTitle(g.Key)));
         Assert.Equal(new[] { "Character", "Speech bubbles", "Emotes and motions", "Eyes", "Touch" },
             groups.Single(g => g.Key == CompanionGroup.HowItLooks).Select(MainWindow.TabTitle));
         Assert.DoesNotContain(CompanionTab.Character, groups.Single(g => g.Key == CompanionGroup.WhoItIs));
     }
+
+    [Fact]
+    public void TheJobsMartletNeedsComeFirstAndTheExtrasSayTheyAreOptional()
+    {
+        var groups = Enum.GetValues<CompanionTab>().GroupBy(MainWindow.GroupOf).ToDictionary(g => g.Key, g => g.ToArray());
+        Assert.Equal(new[] { "Thinking", "Listening", "Voice", "Lip-sync" }, groups[CompanionGroup.HowItWorks].Select(MainWindow.TabTitle));
+        Assert.Equal(new[] { CompanionTab.DeepThinking, CompanionTab.Singing, CompanionTab.Pictures, CompanionTab.Vision, CompanionTab.Reading },
+            groups[CompanionGroup.Extras]);
+        Assert.All(groups[CompanionGroup.Extras], tab => Assert.StartsWith("Optional.", MainWindow.TabIntro(tab)));
+        Assert.All(groups[CompanionGroup.HowItWorks], tab => Assert.DoesNotContain("Optional", MainWindow.TabIntro(tab)));
+    }
+
+    [Theory]
+    [InlineData(Martlet.Core.Planning.PlanComponent.Thinking, "Thinking")]
+    [InlineData(Martlet.Core.Planning.PlanComponent.Listening, "Listening")]
+    [InlineData(Martlet.Core.Planning.PlanComponent.Voice, "Voice")]
+    [InlineData(Martlet.Core.Planning.PlanComponent.LipSync, "Lip-sync")]
+    public void AWelcomeCardsBackupIsSetUpOnItsOwnPage(Martlet.Core.Planning.PlanComponent component, string page) =>
+        Assert.Equal(page, MainWindow.FallbackPage(component));
 
     [Fact]
     public void EveryPageHasItsOwnTitleIconAndIntro()

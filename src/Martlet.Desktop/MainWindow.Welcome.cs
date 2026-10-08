@@ -259,6 +259,15 @@ public partial class MainWindow
             (plan.Joining.Count > 0 ? " Joining: " + string.Join(" | ", plan.Joining.Select(j => $"{j.Kind} {j.Component} {j.ToOptionId}")) : ""));
     }
 
+    /// <summary>The Companion page where the welcome card's backup for <paramref name="component"/> is set up.</summary>
+    internal static string FallbackPage(PlanComponent component) => TabTitle(component switch
+    {
+        PlanComponent.Voice => CompanionTab.Voice,
+        PlanComponent.Listening => CompanionTab.Listening,
+        PlanComponent.LipSync => CompanionTab.LipSync,
+        _ => CompanionTab.Thinking
+    });
+
     private Border PlanCard(WelcomePlan plan, PlanComponent component, IReadOnlyList<SetupRoute> routes)
     {
         var role = component switch
@@ -280,7 +289,7 @@ public partial class MainWindow
         var why = kept is not null ? "Already set up, so it stays as it is."
             : assignment is null ? plan.Placement.Dropped.FirstOrDefault(d => d.Component == component)?.Why ?? ""
             : assignment.Why + (plan.Placement.Fallback(component) is { } fallback
-                ? $" If it's down, {fallback.Option.DisplayName} ({WelcomePlan.Where(fallback)}) can take over; set that up later in Companion › Thinking."
+                ? $" If it's down, {fallback.Option.DisplayName} ({WelcomePlan.Where(fallback)}) can take over; set that up later in Companion › {FallbackPage(component)}."
                 : "");
         var reason = new TextBlock { Text = why, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 6) };
         reason.SetResourceReference(StyleProperty, "Muted");
