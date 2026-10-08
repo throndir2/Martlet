@@ -8,6 +8,9 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+- When the computer you listen with (or OpenAI) can't hear you, because it's off, its service stopped or its key is gone, a Parakeet model downloaded on this PC hears you instead, on your processor, so the conversation goes on and nothing is sent anywhere. For the next minute Martlet goes straight to Parakeet, then tries your choice again. Companion › Listening says which model stands in, or lets you download one without changing Listening. ([#559](https://github.com/throndir2/Martlet/pull/559))
+
 ## [0.54.0] - 2026-10-07
 
 ### Added
