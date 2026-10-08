@@ -524,8 +524,15 @@ public static class CharacterTouchTemperaments
     private static readonly JsonSerializerOptions ShareJson = new(Json) { WriteIndented = false };
 
     /// <summary>The file's version: 1 kept each persona's own temperament; 2 adds the custom temperaments and which one each
-    /// persona uses. An older Martlet reports a version 2 file as saved by a newer Martlet instead of dropping what it holds.</summary>
+    /// persona uses. Martlet still writes version 1, word for word as before, while nothing needs version 2 (<see cref="NeedsVersion2"/>),
+    /// so the text the owner's computers share doesn't change on its own when one of them updates. An older Martlet reports a
+    /// version 2 file from another computer as saved by a newer Martlet.</summary>
     public const int FileVersion = 2;
+
+    /// <summary>Whether the temperaments need version 2: a custom temperament, a persona that uses one or the built-in reactions,
+    /// or an intimate line (an older Martlet would drop a temperament with a category it doesn't know).</summary>
+    public static bool NeedsVersion2(TouchTemperamentSet set) =>
+        set.Custom.Count > 0 || set.Uses.Count > 0 || set.Personas.Any(t => t.Groups.ContainsKey(IntimateId));
 
     private sealed record Document(int Version, IReadOnlyList<CharacterTouchTemperament> Personas, IReadOnlyList<CustomTouchTemperament>? Custom = null,
         IReadOnlyDictionary<Guid, string>? Uses = null);
@@ -699,9 +706,10 @@ public static class CharacterTouchTemperaments
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
-    // Sorted, so the same temperaments always write the same text.
-    private static Document ToDocument(TouchTemperamentSet set) =>
-        new(FileVersion, [.. set.Personas.OrderBy(t => t.PersonaId)], [.. set.Custom.OrderBy(c => c.Id)], set.Uses.OrderBy(u => u.Key).ToDictionary());
+    // Sorted, so the same temperaments always write the same text; version 1 (without custom and uses) while nothing needs 2.
+    private static Document ToDocument(TouchTemperamentSet set) => NeedsVersion2(set)
+        ? new(FileVersion, [.. set.Personas.OrderBy(t => t.PersonaId)], [.. set.Custom.OrderBy(c => c.Id)], set.Uses.OrderBy(u => u.Key).ToDictionary())
+        : new(1, [.. set.Personas.OrderBy(t => t.PersonaId)]);
 
     /// <summary>Every persona's own temperament, the custom temperaments and which one each persona uses, as the owner's computers
     /// share them (compact, sorted).</summary>
@@ -710,33 +718,20 @@ public static class CharacterTouchTemperaments
     public static bool HasAny(string dataDirectory) =>
         LoadSet(dataDirectory) is var set && (set.Personas.Count > 0 || set.Custom.Count > 0 || set.Uses.Count > 0);
 
-    /// <summary>Replaces this computer's temperaments with <paramref name="shared"/> (another computer's <see cref="Share"/>).
-    /// An older Martlet's (version 1) knows nothing of the custom temperaments, so this computer's stay, with the personas that
-    /// use them. Throws <see cref="ContractException"/> when they are unreadable here (written by a newer Martlet).</summary>
+    /// <summary>Replaces this computer's temperaments with <paramref name="shared"/> (another computer's <see cref="Share"/>), all
+    /// of them, so this computer then shares the same text: the newest change wins, as for every shared setting. Throws
+    /// <see cref="ContractException"/> when they are unreadable here (written by a newer Martlet).</summary>
     public static async Task ReplaceAllAsync(string dataDirectory, string shared, CancellationToken token = default)
     {
-        Document? document;
         TouchTemperamentSet? set;
-        try
-        {
-            document = JsonSerializer.Deserialize<Document>(shared, Json);
-            set = Valid(document);
-        }
+        try { set = Valid(JsonSerializer.Deserialize<Document>(shared, Json)); }
         catch (Exception error) when (error is JsonException or NotSupportedException)
         {
             throw new ContractException(ErrorCode.UnsupportedVersion, "They were saved by a newer Martlet. Update this PC to use them.");
         }
         ContractRules.Require(set is not null, "They were saved by a newer Martlet. Update this PC to use them.", ErrorCode.UnsupportedVersion);
         await Gate.WaitAsync(token);
-        try
-        {
-            if (document!.Version == 1)
-            {
-                var here = LoadSet(dataDirectory);
-                set = set! with { Custom = here.Custom, Uses = here.Uses };
-            }
-            await WriteAsync(dataDirectory, set! with { Personas = set.Personas.Take(MaximumPersonas).ToArray() }, token);
-        }
+        try { await WriteAsync(dataDirectory, set! with { Personas = set.Personas.Take(MaximumPersonas).ToArray() }, token); }
         finally { Gate.Release(); }
     }
 }

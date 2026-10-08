@@ -584,12 +584,13 @@ category*; **Add part** offers every zone, the breasts and the groin too.
   Shoulders and torso; the hips, groin, buttocks and inner thighs as Legs and
   feet.
 - The personas' own temperaments, the custom temperaments and which one each
-  persona uses are saved in `character-temperaments.json` (version 2; Martlet
-  still reads version 1 files). They travel with the shared settings, like the
-  personas. An older Martlet that gets them from another computer says that a
-  newer Martlet saved them, instead of dropping them. When an older Martlet's
-  temperaments arrive here, this PC keeps its custom temperaments and which
-  persona uses which.
+  persona uses are saved in `character-temperaments.json`. They travel with the
+  shared settings, like the personas, and the newest change wins. Martlet
+  writes version 2 of the file only when a custom temperament, a choice under
+  **Uses** or an *Intimate parts* line needs it. Until then it writes version
+  1, as before, so updating Martlet changes nothing that your computers share.
+  An older Martlet that gets version 2 from another computer says that a newer
+  Martlet saved it, instead of dropping temperaments it can't read.
 
 ## 1. Choose a renderer, analyzer and feature owners separately
 

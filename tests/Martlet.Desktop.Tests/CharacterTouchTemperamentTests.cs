@@ -351,7 +351,7 @@ public sealed class CharacterTouchTemperamentTests
             Assert.Empty(set.Custom);
             Assert.Equal("dislikes", CharacterTouchTemperaments.Attitude(set.For(Persona), "breast_left"));
 
-            // The next change writes version 2 and keeps what was there.
+            // A choice needs version 2, and what was there stays.
             await CharacterTouchTemperaments.UpdateAsync(directory, s => s.Choose(Guid.NewGuid(), CharacterTouchTemperaments.BuiltIn));
             Assert.Contains("\"version\": 2", File.ReadAllText(CharacterTouchTemperaments.Path(directory)));
             Assert.Equal(CharacterTouchTemperament.ByOwner, CharacterTouchTemperaments.Load(directory, Persona)!.Source);
@@ -363,14 +363,50 @@ public sealed class CharacterTouchTemperamentTests
                 CharacterTouchTemperaments.ReplaceAllAsync(directory, "{\"version\":3,\"personas\":[]}"));
             Assert.Equal(CharacterTouchTemperament.ByOwner, CharacterTouchTemperaments.Load(directory, Persona)!.Source);
 
-            // An older Martlet's temperaments (version 1) replace the personas' own but keep this PC's custom ones and choices.
+            // Another computer's temperaments replace all of this PC's, so both then share the same text: the newest change wins.
             var made = CustomTouchTemperament.Copy("Shy cat", null, DateTimeOffset.Now);
             await CharacterTouchTemperaments.UpdateAsync(directory, s => s.WithCustom(made).Choose(Persona, made.Id.ToString()));
-            await CharacterTouchTemperaments.ReplaceAllAsync(directory, "{\"version\":1,\"personas\":[{\"persona_id\":\"" + Persona +
-                "\",\"source\":\"thinking\",\"groups\":{\"head\":{\"attitude\":3}},\"zones\":{}}]}");
-            var merged = CharacterTouchTemperaments.LoadSet(directory);
-            Assert.Equal(CharacterTouchTemperament.ByThinking, merged.Own(Persona)!.Source);
-            Assert.Equal("Shy cat", merged.CustomOf(Persona)!.Name);
+            var elsewhere = Directory.CreateTempSubdirectory("martlet-temperament-").FullName;
+            try
+            {
+                await CharacterTouchTemperaments.SaveAsync(elsewhere, Temperament("{\"groups\":{\"head\":{\"attitude\":3}}}"), DateTimeOffset.Now);
+                var older = CharacterTouchTemperaments.Share(elsewhere);
+                await CharacterTouchTemperaments.ReplaceAllAsync(directory, older);
+                var replaced = CharacterTouchTemperaments.LoadSet(directory);
+                Assert.Equal(CharacterTouchTemperament.ByThinking, replaced.Own(Persona)!.Source);
+                Assert.Empty(replaced.Custom);
+                Assert.Equal(older, CharacterTouchTemperaments.Share(directory));
+            }
+            finally { Directory.Delete(elsewhere, true); }
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
+    public async Task TheSharedTextStaysVersion1UntilSomethingNeedsVersion2()
+    {
+        var directory = Directory.CreateTempSubdirectory("martlet-temperament-").FullName;
+        try
+        {
+            // A temperament as older Martlets saved it shares the same text as before, so updating Martlet changes nothing to sync.
+            await CharacterTouchTemperaments.SaveAsync(directory, Temperament("{\"groups\":{\"head\":{\"attitude\":2}}}"), DateTimeOffset.Now);
+            var shared = CharacterTouchTemperaments.Share(directory);
+            Assert.StartsWith("{\"version\":1,\"personas\":[{", shared);
+            Assert.DoesNotContain("\"custom\"", shared);
+            Assert.DoesNotContain("\"uses\"", shared);
+            Assert.False(CharacterTouchTemperaments.NeedsVersion2(CharacterTouchTemperaments.LoadSet(directory)));
+
+            // An intimate line needs version 2: an older Martlet would drop a temperament with a category it doesn't know.
+            await CharacterTouchTemperaments.SaveAsync(directory, Temperament("{\"groups\":{\"intimate\":{\"attitude\":1}}}"), DateTimeOffset.Now);
+            Assert.StartsWith("{\"version\":2,", CharacterTouchTemperaments.Share(directory));
+            await CharacterTouchTemperaments.SaveAsync(directory, Temperament("{\"groups\":{\"head\":{\"attitude\":2}}}"), DateTimeOffset.Now);
+            Assert.StartsWith("{\"version\":1,", CharacterTouchTemperaments.Share(directory));
+
+            // So does a persona that uses the built-in reactions or a custom temperament.
+            await CharacterTouchTemperaments.UpdateAsync(directory, s => s.Choose(Persona, CharacterTouchTemperaments.BuiltIn));
+            Assert.StartsWith("{\"version\":2,", CharacterTouchTemperaments.Share(directory));
+            await CharacterTouchTemperaments.UpdateAsync(directory, s => s.Choose(Persona, null));
+            Assert.StartsWith("{\"version\":1,", CharacterTouchTemperaments.Share(directory));
         }
         finally { Directory.Delete(directory, true); }
     }
