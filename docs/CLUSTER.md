@@ -245,6 +245,12 @@ Devices card are checked locally (`WorkSharingTests`,
 the Devices card through `-Desktop`); requests between real hosts are **NOT
 RUN**.
 
+**Recommended setup.** Home's recommended setup for all your computers plans
+who does each job, the Speaking and Listening pools above and the Thinking
+pool from the hardware of every computer. It keeps companion PCs light and
+never adds conversation latency. See
+[Recommended setup for all your computers](RECOMMENDED_SETUPS.md#recommended-setup-for-all-your-computers).
+
 ### Live turn first on a shared graphics card
 
 A host's live work (replies, voices, listening, lip-sync, reading) and its

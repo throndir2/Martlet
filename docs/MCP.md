@@ -3167,6 +3167,28 @@ check finds a better setup, Home shows `HealthIssue-recommended-setup`. Its
 Review (`HealthOpen-recommended-setup-review`) opens the review, and its Not now
 (`HealthFix-recommended-setup-decline`) saves `recommended-setup.json`, so it
 needs `--allow-ui-effects`.
+
+`network_recommendation_check` runs the production network recommender
+(`NetworkRecommender`, Home's
+[recommended setup for all your computers](RECOMMENDED_SETUPS.md#recommended-setup-for-all-your-computers))
+on built-in fixture networks, **NOT real computers**. It takes no arguments
+and reads nothing. Each step names its rule (1 to 12) and reports `passed` and
+its detail: the change list (kind, computer, benefit, summary and why), the
+target roles, jobs, pools, Thinking pool and notes. The steps are: two
+companion PCs and two hosts with nothing set up (companion PCs run no host
+roles; Thinking gets Gemma 4 E2B on a card of its own; one more voice for the
+second companion PC; no Thinking pool change); make before break; a host with
+two NVIDIA cards (Thinking and Deep thinking pinned to cards of their own); a
+Windows host whose voice shares its card (the voice moves to a card of its
+own); a crowded network (no card over its capacity); Deep thinking beside the
+voice (it moves to the card no live job uses); heavy roles on a companion PC
+(they move to the host, Improvement); Thinking on a companion PC's card with
+only a processor host (it stays: no added latency); hosted Thinking that the
+owner chose (it stays, unless everything is kept local); a host left out of
+the Thinking pool; the voice host away 4 and 25 minutes (no change, then
+Speaking moves as Required); and the applied recommendation (no changes and the
+same fingerprint in any order). `ok` is true when every step passed.
+
 `node_presence_status` shows when your other computers go away or come back
 ([CLUSTER](CLUSTER.md#when-a-computer-goes-away-or-comes-back); optional
 absolute `dataDirectory`, default the current user's): `awayMinutes` (Settings
