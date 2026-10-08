@@ -120,8 +120,8 @@ public static class CharacterPhysicalWords
     // A left and a right zone of one kind, said together.
     private static readonly Dictionary<string, string> Pairs = new(StringComparer.Ordinal)
     {
-        ["cheek"] = "cheeks", ["ear"] = "ears", ["shoulder"] = "shoulders", ["breast"] = "breasts", ["upper_arm"] = "upper arms",
-        ["forearm"] = "forearms", ["hand"] = "hands", ["thigh"] = "thighs", ["inner_thigh"] = "inner thighs", ["knee"] = "knees",
+        ["eye"] = "eyes", ["cheek"] = "cheeks", ["ear"] = "ears", ["shoulder"] = "shoulders", ["breast"] = "breasts", ["upper_arm"] = "upper arms",
+        ["forearm"] = "forearms", ["hand"] = "hands", ["hip"] = "hips", ["thigh"] = "thighs", ["inner_thigh"] = "inner thighs", ["knee"] = "knees",
         ["calf"] = "calves", ["foot"] = "feet"
     };
 

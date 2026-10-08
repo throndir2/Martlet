@@ -398,12 +398,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Touch › Touch zones: how many zones the shown model has, how many are in use and who found them, whether
         // the Thinking model can see (and where pictures go), how Detect zones went (each step while it runs), what the last
         // detection sent (how many pictures, how large, what they showed), which zone the last touch landed in and what it
-        // played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows and default reaction).
-        // TouchZonesDetectNote says why Detect zones is off (no model that can see pictures).
+        // played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows, "added by you" for a zone
+        // the owner added, which Detect again looks for too, and its default reaction).
+        // TouchZonesDetectNote says why Detect zones is off (no model that can see pictures), and TouchZonesAddNote which zones
+        // Detect zones looks for (fixed text).
         // Detect zones sends the character's pictures to Thinking, Try plays on the character, Open the pictures opens Explorer,
         // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
-        "TouchZonesDetectNote",
+        "TouchZonesDetectNote", "TouchZonesAddNote",
         // Companion › Eyes › Where the eyes are: where the shown model's eyes come from (the model's own meshes or eye bones,
         // the vision measurement and when it was taken, or an estimate), how measuring went (each step while it runs, or why it
         // failed) and, only when no model can see pictures, why Measure the eyes is off. Fixed text, times and counts only.
@@ -418,7 +420,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // something to say). Each line's attitude (TouchTemperamentAttitude-<category or zone ID>, below) is an attitude word, its
         // TouchTemperamentReaction-/TouchTemperamentReaction2- the reactions, its TouchTemperamentLinger- and
         // TouchTemperamentLook-<category or zone ID> the seconds the first reaction stays on and the eyes then look at your mouse,
-        // TouchTemperamentParts-<category ID> the parts the category covers ("Parts: lips, left ear, ..."), TouchTemperamentAfter the
+        // TouchTemperamentParts-<category ID> the parts the category covers ("Parts: mouth, left ear, ..."), TouchTemperamentAfter the
         // touches in a row before it escalates and TouchTemperamentGaze where the eyes usually go. TouchTemperamentUse is the
         // temperament the persona uses (Decided from its personality, Built-in reactions or a custom temperament's name),
         // TouchTemperamentName and TouchTemperamentNewName the custom temperament's name and the name typed for a new one,
@@ -1343,6 +1345,54 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 .Select(face => face.GetProperty("eyesFrom").GetString()).Distinct().ToArray(),
             eyeLeft = Eye("irisLeft", "eyeLeftShape"), eyeRight = Eye("irisRight", "eyeRightShape")
         };
+    }
+
+    internal const int MaximumLookSamples = 60;
+
+    /// <summary>Reads where the showing character looks now <paramref name="samples"/> times, <paramref name="gapMs"/> apart,
+    /// through MoveAvatar's UI Automation value ("look"). It changes nothing, so it needs no --allow-ui-effects. Returns each
+    /// reading (what the eyes are on, the direction and the point, the usual gaze, and the window you're using and what the eyes
+    /// watch in it) and a summary: the targets and what the eyes watched in the window, and the range of the direction.</summary>
+    internal async Task<object> LookCharacterAsync(int? samples, int? gapMs)
+    {
+        var count = samples ?? 1;
+        if (count is < 1 or > MaximumLookSamples) throw new ArgumentException($"samples is 1 to {MaximumLookSamples}.");
+        if (gapMs is < 0 or > 5000) throw new ArgumentException("gapMs is 0 to 5000.");
+        var element = Find("MoveAvatar");
+        if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            throw new InvalidOperationException("The character overlay can't be read through UI Automation.");
+        var value = (ValuePattern)pattern;
+        if (value.Current.IsReadOnly) throw new InvalidOperationException("Where the character looks can't be read until it has loaded.");
+        static System.Text.Json.JsonElement? Look(string text) => string.IsNullOrEmpty(text) ? null :
+            System.Text.Json.JsonDocument.Parse(text).RootElement is { ValueKind: System.Text.Json.JsonValueKind.Object } root &&
+            root.TryGetProperty("look", out var look) ? look.Clone() : null;
+        var looks = new List<System.Text.Json.JsonElement>();
+        for (var i = 0; i < count; i++)
+        {
+            if (i > 0) await Task.Delay(gapMs ?? 250);
+            var before = Look(value.Current.Value)?.GetRawText();
+            value.SetValue("look");
+            var waited = Stopwatch.StartNew();
+            System.Text.Json.JsonElement? after;
+            while ((after = Look(value.Current.Value))?.GetRawText() == before && waited.Elapsed < TimeSpan.FromSeconds(3)) await Task.Delay(20);
+            if (after is { } read && read.GetRawText() != before) looks.Add(read);
+        }
+        return new { samples = count, read = looks.Count, looks, summary = LookSummary(looks),
+            note = looks.Count == 0 ? "The renderer didn't answer within 3 seconds." : null };
+    }
+
+    // The targets and what the eyes watched in the window across the readings, and the least and most of the direction.
+    internal static object LookSummary(IReadOnlyList<System.Text.Json.JsonElement> looks)
+    {
+        string[] Words(string name) => [.. looks.Select(look => look.TryGetProperty(name, out var word) &&
+            word.ValueKind == System.Text.Json.JsonValueKind.String ? word.GetString() : null).OfType<string>().Distinct()];
+        object? Range(string name)
+        {
+            double[] values = [.. looks.Where(look => look.TryGetProperty(name, out var number) && number.ValueKind == System.Text.Json.JsonValueKind.Number)
+                .Select(look => look.GetProperty(name).GetDouble())];
+            return values.Length == 0 ? null : new { least = values.Min(), most = values.Max() };
+        }
+        return new { targets = Words("target"), watching = Words("watching"), x = Range("x"), y = Range("y") };
     }
 
     internal const int MaximumPoseSamples = 60;

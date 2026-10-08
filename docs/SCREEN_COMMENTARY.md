@@ -332,9 +332,14 @@ or on the character's right-click menu, under **Eyes** (saved on this PC as
   character or within half the character's width around it; otherwise it
   looks straight ahead.
 - **Look straight ahead**: it ignores the pointer.
-- **Watch the window you're using**: it looks at the middle of the window in
-  front (the last one you used while its own menu is open; none for the
-  desktop or the taskbar).
+- **Watch the window you're using**: it watches what you do in the window in
+  front. Its eyes go where you last moved the mouse over that window (not
+  over the character or another window) or typed in it (the text cursor, in
+  programs that show Windows' own, such as Notepad; browsers and many other
+  apps draw their own, so there it follows the mouse). Until you do either,
+  it looks at the middle of the window. It keeps watching the window you used
+  last while its own menu is open, and looks straight ahead for the desktop or
+  the taskbar.
 
 **Let the character change it** (on by default; `GazeFree`) lets replies change
 where the character looks. Every reply is told the usual gaze and five tags

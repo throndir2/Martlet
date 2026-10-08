@@ -141,6 +141,7 @@ internal sealed partial class RendererWindow : Window
         viewport.ReadPose = ReadPose;
         viewport.ReadMouth = ReadMouth;
         viewport.PlayVoice = PlayVoice;
+        viewport.ReadLook = ReadLook;
         viewport.LostMouseCapture += (_, _) =>
         {
             if (stroke is { } lost && !strokeReleasing) EndStroke(lost.Last, Environment.TickCount64);
@@ -1865,9 +1866,9 @@ internal sealed partial class RendererWindow : Window
         lifetime.Cancel();
     }
 
-    // The character's head and eyes follow its usual gaze (the mouse, the mouse when it's near, straight ahead or the window the
-    // user is using), or for a while a point on the desktop Martlet asked it to look at, or the mouse after a touch ("gaze");
-    // messages to the browser are fire-and-forget and never replied to.
+    // The character's head and eyes follow its usual gaze (the mouse, the mouse when it's near, straight ahead or where the user
+    // works in the window they are using), or for a while a point on the desktop Martlet asked it to look at, or the mouse after
+    // a touch ("gaze"); messages to the browser are fire-and-forget and never replied to.
     private void StartLookTracking()
     {
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
@@ -1881,7 +1882,8 @@ internal sealed partial class RendererWindow : Window
 
     // Where Martlet asked the character to look (physical screen pixels, like its screenshots) and until when; until when a touch
     // keeps its eyes on the mouse; its usual gaze and what the Eyes menu shows checked; the direction the browser was last given
-    // (+x right, +y up, -1 to 1) and what it was toward; and the window the user was last using (for GazeMode.Window).
+    // (+x right, +y up, -1 to 1), what it was toward and the point there; and the window the user was last using and where they
+    // work in it (for GazeMode.Window).
     private Point? gazePoint;
     private long gazeUntil, attendUntil;
     private GazeMode gazeMode = GazeMode.Mouse;
@@ -1889,7 +1891,10 @@ internal sealed partial class RendererWindow : Window
     private bool gazeFree = true;
     private double lookX = double.NaN, lookY = double.NaN;
     private string lookTarget = "mouse";
+    private ScreenPoint? lookAt;
+    private IntPtr userHandle;
     private ScreenRect? userWindow;
+    private readonly WindowWatch windowWatch = new();
 
     /// <summary>Turns the head and eyes toward what the gaze says now. False once the browser can't take messages any more.</summary>
     private bool Look(bool always = false)
@@ -1929,11 +1934,13 @@ internal sealed partial class RendererWindow : Window
         var frame = new ScreenRect((int)Math.Round(frameTopLeft.X), (int)Math.Round(frameTopLeft.Y),
             (int)Math.Round(frameBottomRight.X - frameTopLeft.X), (int)Math.Round(frameBottomRight.Y - frameTopLeft.Y));
         // The window the user is using is kept track of in every gaze, so watching it starts at once (also from the Eyes menu,
-        // which is in front then).
-        var used = UserWindow();
+        // which is in front then), with where they last pointed or typed in it.
+        var (handle, used, front) = UserWindow();
+        windowWatch.Update(handle, mouse, front && mouse is { } pointer && Under(pointer) == handle, front ? TextCursor(handle) : null);
         var (target, at) = CharacterGaze.Aim(gazeMode, gazePoint is { } point ? new ScreenPoint(point.X, point.Y) : null, now < attendUntil,
-            mouse, frame, used);
+            mouse, frame, used, windowWatch.Working);
         lookTarget = target;
+        lookAt = at;
         if (target == "ahead") return (0, 0);
         if (at is not { } aim) return null;
         // Martlet's points are physical pixels; the mouse and windows are read in this process's own coordinates, like the face.
@@ -1941,18 +1948,42 @@ internal sealed partial class RendererWindow : Window
         return (Math.Clamp((aim.X - face.X) / 700, -1, 1), Math.Clamp((face.Y - aim.Y) / 700, -1, 1));
     }
 
-    /// <summary>The window the user is using: the one in front, unless it is one of the character's own (its menus; then the one
-    /// before stays), minimized, or the desktop or taskbar (then none). Null when none is known.</summary>
-    private ScreenRect? UserWindow()
+    /// <summary>The window the user is using and whether it is in front now: the one in front, unless it is one of the character's
+    /// own (its menus; then the one before stays, not in front), minimized, or the desktop or taskbar (then none). Its handle is
+    /// zero and its place null when none is known.</summary>
+    private (IntPtr Handle, ScreenRect? Area, bool Front) UserWindow()
     {
         var front = GetForegroundWindow();
-        if (front == IntPtr.Zero || GetWindowThreadProcessId(front, out var owner) == 0 || owner == (uint)Environment.ProcessId) return userWindow;
+        if (front == IntPtr.Zero || GetWindowThreadProcessId(front, out var owner) == 0 || owner == (uint)Environment.ProcessId)
+            return (userHandle, userWindow, false);
         var name = new StringBuilder(64);
         var shell = GetClassName(front, name, name.Capacity) > 0 &&
             name.ToString() is "Progman" or "WorkerW" or "Shell_TrayWnd" or "Shell_SecondaryTrayWnd";
-        userWindow = !shell && !IsIconic(front) && GetWindowRect(front, out var rect) && rect.Right > rect.Left && rect.Bottom > rect.Top
-            ? new ScreenRect(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top) : null;
-        return userWindow;
+        var rect = default(NativeRect);
+        var usable = !shell && !IsIconic(front) && GetWindowRect(front, out rect) && rect.Right > rect.Left && rect.Bottom > rect.Top;
+        userHandle = usable ? front : IntPtr.Zero;
+        userWindow = usable ? new ScreenRect(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top) : null;
+        return (userHandle, userWindow, usable);
+    }
+
+    /// <summary>The top-level window under a screen point: not the character where it is drawn (its overlay is), but the window
+    /// behind where the overlay is clear.</summary>
+    private static IntPtr Under(ScreenPoint point)
+    {
+        var under = WindowFromPoint(new CursorPoint { X = (int)Math.Round(point.X), Y = (int)Math.Round(point.Y) });
+        return under == IntPtr.Zero ? IntPtr.Zero : GetAncestor(under, RootAncestor);
+    }
+
+    /// <summary>Where the text cursor (caret) of <paramref name="window"/> is on the screen, or null when it shows none: classic
+    /// Windows programs such as Notepad show Windows' own, while browsers and many other apps draw theirs.</summary>
+    private static ScreenPoint? TextCursor(IntPtr window)
+    {
+        var thread = GetWindowThreadProcessId(window, out _);
+        var info = new GuiThreadInfo { Size = System.Runtime.InteropServices.Marshal.SizeOf<GuiThreadInfo>() };
+        if (thread == 0 || !GetGUIThreadInfo(thread, ref info) || info.Caret == IntPtr.Zero || info.CaretRect.Bottom <= info.CaretRect.Top ||
+            !IsWindowVisible(info.Caret) || GetAncestor(info.Caret, RootAncestor) != window) return null;
+        var middle = new CursorPoint { X = (info.CaretRect.Left + info.CaretRect.Right) / 2, Y = (info.CaretRect.Top + info.CaretRect.Bottom) / 2 };
+        return ClientToScreen(info.Caret, ref middle) ? new ScreenPoint(middle.X, middle.Y) : null;
     }
 
     /// <summary>A screen point as this window's process sees it, in physical pixels (unchanged where Windows doesn't scale it).</summary>
@@ -1961,6 +1992,28 @@ internal sealed partial class RendererWindow : Window
         var native = new CursorPoint { X = (int)Math.Round(point.X), Y = (int)Math.Round(point.Y) };
         var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
         return handle != IntPtr.Zero && LogicalToPhysicalPointForPerMonitorDPI(handle, ref native) ? new(native.X, native.Y) : point;
+    }
+
+    private int lookReadings;
+
+    /// <summary>Where the character looks now (as of its last look, at most 50 ms ago), for Martlet's MCP character_look through
+    /// UI Automation: what the eyes are on ("mouse", "window", "point" or "ahead"), the direction the browser was last given
+    /// (-1 to 1, +x right, +y up), the point on the desktop, the usual gaze, and the window the user is using (where it is, never
+    /// its title) and what the eyes watch in it (the pointer, the text cursor or its middle). It changes nothing.</summary>
+    private void ReadLook()
+    {
+        var used = userWindow;
+        viewport.LastLook = JsonSerializer.Serialize(new
+        {
+            n = ++lookReadings,
+            target = lookTarget,
+            x = double.IsFinite(lookX) ? Math.Round(lookX, 3) : 0,
+            y = double.IsFinite(lookY) ? Math.Round(lookY, 3) : 0,
+            at = lookAt is { } point ? new { x = Math.Round(point.X), y = Math.Round(point.Y) } : null,
+            usual = CharacterGaze.Word(gazeMode),
+            window = used is { } area ? new { left = area.Left, top = area.Top, width = area.Width, height = area.Height } : null,
+            watching = lookTarget == "window" ? windowWatch.Watching(used) : null
+        });
     }
 
     /// <summary>Sets the usual gaze and the Eyes menu's choices (when given), then looks at the asked-for point for a while, or at
@@ -2006,6 +2059,35 @@ internal sealed partial class RendererWindow : Window
 
     [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
     private static extern int GetClassName(IntPtr window, StringBuilder name, int capacity);
+
+    private const uint RootAncestor = 2;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(CursorPoint point);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr window, uint flags);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr window);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool ClientToScreen(IntPtr window, ref CursorPoint point);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct GuiThreadInfo
+    {
+        public int Size;
+        public uint Flags;
+        public IntPtr Active, Focus, Capture, MenuOwner, MoveSize, Caret;
+        public NativeRect CaretRect;
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
 
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     private struct CursorPoint { public int X, Y; }

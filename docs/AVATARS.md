@@ -466,8 +466,8 @@ what each one is.
   `aa` when it has no `oh`; a composed (Audio2Face) turn keeps the mouth it
   drives.
 - **Where it looks**: the head and eyes follow the character's usual gaze (your
-  mouse, your mouse only when it's near, straight ahead, or the window you're
-  using), chosen on Companion › Eyes › **Where the character looks** or
+  mouse, your mouse only when it's near, straight ahead, or where you point or
+  type in the window you're using), chosen on Companion › Eyes › **Where the character looks** or
   the character's right-click **Eyes** menu, or by its personality. Replies may
   change it with gaze tags (`{look ahead}`), a touch can turn the eyes to your
   mouse for a moment, and with Companion › Vision › **Glances at your screen**
@@ -480,13 +480,21 @@ what each one is.
 
 Click the character (a left click, not a drag) and it reacts to where you
 touched it. Companion › Touch › **Touch zones** lists the zones of the
-model it shows: the top of the head (a head pat), hair, forehead, face, cheeks,
-nose, chin, shoulders, arms, hands, stomach, legs and feet, and extras such as
-animal ears, a tail or wings. Intimate zones (lips, ears, neck, chest and
-breasts, waist and sides, hips, groin, buttocks and inner thighs) react too while
-**Include intimate zones** is on, which it is by default; turn it off to leave them out.
-The check box names each of these parts, and **Add zone** offers every zone
-Martlet knows that the model doesn't have yet, the breasts and the groin too.
+model it shows. **Detect zones** looks for a short list on every character:
+the hair, the left and right eye, the left and right ear, the nose, the mouth,
+the neck, the left and right breast, each upper arm and forearm, the stomach,
+the left and right hip, the groin, each thigh and calf, and the left and right
+foot. **Add zone** offers every other zone Martlet knows that the model doesn't
+have yet: the top of the head (a head pat), forehead, face, cheeks, chin,
+shoulders, hands, chest, waist, knees, buttocks, inner thighs, and extras such
+as animal ears, a tail or wings. A zone you add starts in the middle of the
+picture: move it into place, or press **Detect again** and the Thinking model
+looks for it too. When it can't find a zone you added, the zone stays where it
+was. Detect again drops the other zones it doesn't find, so zones that an
+older Martlet found beyond the short list go away. Intimate zones (the mouth,
+ears, neck, chest and breasts, waist and sides, hips, groin, buttocks and inner
+thighs) react too while **Include intimate zones** is on, which it is by
+default; turn it off to leave them out. The check box names each of these parts.
 
 - **Detect zones** shows the Thinking model pictures of the character (never the
   model's files); a model must be able to see (Companion › Vision says whether
@@ -509,27 +517,30 @@ Martlet knows that the model doesn't have yet, the breasts and the groin too.
      0.1 to 0.9 along the top and left edges, so the model can read positions.
   3. The model sees the whole character (1024 pixels on its longer side) and
      marks its head, upper body and lower body, and a tail, wings or a held
-     item. When it can't, the character's outline (or a VRM's skeleton) gives
+     item when you added that zone. When it can't, the character's outline (or a VRM's skeleton) gives
      those parts. When the Live2D model names its own parts (see below), those
      parts give the head, upper body and lower body instead, so each close-up
      holds all of its part. The lower body then starts at the bottom of the
      upper body, so it always shows the hips and groin, and each close-up
      reaches a little into the part next to it.
   4. The model sees a close-up of each part, up to four times larger, and marks
-     its zones there. Left and right are the character's own.
+     the zones it looks for there (the short list and the zones you added). Left
+     and right are the character's own.
   5. The model checks its own boxes: they are drawn on the close-up in colors
      and numbered, and it says which are right, corrects the others, removes
      zones that aren't there and adds ones it missed. This repeats for up to two
      rounds per part, or until it changes nothing.
-  6. With **Include intimate zones** on, the intimate zones are always found.
+  6. With **Include intimate zones** on, the intimate zones it looks for are
+     always found. The zones you added are always looked for again too.
      The close-ups and checks tell the model that a zone covered by clothing or
      hair is still there. When the close-ups still miss one, the model sees the
-     whole character once more and is asked for only those zones. Any zone it
-     still leaves out (or refuses) is worked out from the zones around it: the
-     breasts from the chest, the hips over the thighs, the groin between the
-     thighs, the buttocks low on the hips, the inner thighs from the thighs, and
-     the lips, ears and neck from the face. A character that shows no lower body
-     gets no hips or groin.
+     whole character once more and is asked for only those zones. Any intimate
+     zone it still leaves out (or refuses) is worked out from the zones around it: the
+     breasts from the chest, the hips over the thighs, each hip as its side of
+     the hips, the groin between the thighs, the buttocks low on the hips, the
+     inner thighs from the thighs, and the mouth, ears and neck from the face (or
+     the eyes and nose). A character that shows no lower body gets no hips or
+     groin.
 
   Between steps the CPU does what it can tell for certain: it fits each box to
   the character's pixels, swaps left and right back when a pair is the wrong way
@@ -722,12 +733,12 @@ Under each category's line, *Parts:* names the zones it covers:
 
 | Category | Parts |
 | --- | --- |
-| Head and face | top of head, hair, forehead, face and eyes, cheeks, nose, chin |
+| Head and face | top of head, hair, forehead, face, eyes, cheeks, nose, chin |
 | Shoulders and torso | shoulders, collarbone, stomach, navel, lower back |
 | Arms and hands | upper arms, forearms, hands |
 | Legs and feet | thighs, knees, calves, feet |
 | Extras (animal ears, tail, wings...) | animal ears, tail, horns, wings, glasses or hat, skirt hem, held item |
-| Intimate parts | lips, ears, neck, chest and breasts, waist and sides, hips, groin, buttocks, inner thighs |
+| Intimate parts | mouth, ears, neck, chest and breasts, waist and sides, hips, groin, buttocks, inner thighs |
 
 Give one part its own line under *Parts that react differently from their
 category*; **Add part** offers every zone, the breasts and the groin too.

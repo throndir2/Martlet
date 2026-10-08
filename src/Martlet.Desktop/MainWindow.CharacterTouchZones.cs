@@ -14,9 +14,10 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Touch › Touch zones: where a left click on the character lands (top of the head, a cheek, a hand...)
+/// <summary>Companion › Touch › Touch zones: where a left click on the character lands (the hair, an eye, a hand...)
 /// and what the character does then. The Thinking model finds the zones once per model in a snapshot of the character (when it
-/// can see; Detect zones asks again), Martlet binds each to the model's drawables or bones so it follows the model as it moves,
+/// can see; Detect zones asks again): the default zones (<see cref="TouchZoneDetection.Defaults"/>) and any the owner added with
+/// Add zone. Martlet binds each to the model's drawables or bones so it follows the model as it moves,
 /// and each zone plays its emotes and gestures, may be noticed by Martlet (the touches go to the Thinking model) and rests a few
 /// seconds. Intimate zones work only with Include intimate zones on (on by default). Edits save as you make them, per model, on this PC.</summary>
 public partial class MainWindow
@@ -386,7 +387,8 @@ public partial class MainWindow
                 CharacterActionKind.Expression => "emote", CharacterActionKind.Motion => "motion", _ => "gesture"
             }));
         var showing = avatar.IsShowing && characterActions.For(avatar.InspectedProfile?.ModelPath) is not null;
-        // The zones' rows, then Add zone; on a page just opened they join a batch at a time (their boxes show on the picture at once).
+        // The zones' rows, then the Add zone note and controls; on a page just opened they join a batch at a time (their boxes show
+        // on the picture at once).
         var list = new StackPanel();
         stack.Add(list);
         var index = 0;
@@ -398,7 +400,12 @@ public partial class MainWindow
             if (width > 0) row.Draw(canvas, width, height, ZoneColors[(row.Number) % ZoneColors.Length]);
         }
 
-        // Add a zone the Thinking model missed: it starts in the middle of the picture; move it into place.
+        // Add a zone Detect zones doesn't look for (or missed): it starts in the middle of the picture; move it into place, or press
+        // Detect again and the Thinking model places it too.
+        var addNote = Note($"Detect zones looks for the {TouchZoneDetection.DefaultParts}. Add any other zone here: it starts in the middle " +
+            "of the picture. Move it into place, or press Detect again and your Thinking model places it too.", new Thickness(0, 16, 0, 0));
+        AutomationProperties.SetAutomationId(addNote, "TouchZonesAddNote");
+        AddRow(list, addNote);
         var missing = CharacterTouchZones.Kinds.Where(k => settings?.Zones.Any(z => z.Id == k.Id) != true).ToArray();
         if (missing.Length > 0)
         {
@@ -412,11 +419,12 @@ public partial class MainWindow
                 var added = current with
                 {
                     IncludeIntimate = intimate.IsChecked == true,
-                    Zones = [.. rows.Where(r => !r.Deleted).Select(r => r.Read()), new CharacterTouchZone { Id = kind.Id, Box = new(0.4, 0.4, 0.2, 0.2) }]
+                    Zones = [.. rows.Where(r => !r.Deleted).Select(r => r.Read()), new CharacterTouchZone { Id = kind.Id, Box = new(0.4, 0.4, 0.2, 0.2), Added = true }]
                 };
                 SaveAndRender(added);
             }, id: "TouchZonesAdd"));
-            var addRow = new WrapPanel { Margin = new Thickness(0, 16, 0, 0) };
+            AutomationProperties.SetHelpText(add, "Adds the zone in the middle of the picture. Detect again looks for it too, and keeps it where it is when it can't find it.");
+            var addRow = new WrapPanel { Margin = new Thickness(0, 6, 0, 0) };
             addRow.Children.Add(kinds);
             add.Margin = new Thickness(8, 0, 0, 0);
             addRow.Children.Add(add);
@@ -604,7 +612,8 @@ public partial class MainWindow
             var kind = CharacterTouchZones.Kind(zone.Id);
             var parts = zone.Drawables.Count > 0 ? $"{zone.Drawables.Count} part{(zone.Drawables.Count == 1 ? "" : "s")}"
                 : zone.Bones.Count > 0 ? string.Join(", ", zone.Bones.Take(3)) : "box only";
-            return $"{zone.Id}  \u00b7  {parts}" + (kind?.Intimate == true && !settings.IncludeIntimate ? "  \u00b7  intimate, off" : "") +
+            return $"{zone.Id}  \u00b7  {parts}" + (zone.Added ? "  \u00b7  added by you" : "") +
+                (kind?.Intimate == true && !settings.IncludeIntimate ? "  \u00b7  intimate, off" : "") +
                 (defaults.From == TouchReactionPlan.FromTemperament ? $"  \u00b7  temperament ({defaults.Attitude}): " : "  \u00b7  default: ") +
                 (defaults.Actions.Count == 0 ? "nothing" : string.Join(" + ", defaults.Actions.Select(s => s.Name)));
         }

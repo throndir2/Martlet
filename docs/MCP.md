@@ -1361,11 +1361,17 @@ it (`read`, `problem`, `actions`, `prompt`). Model-authored names only, never
 the model's path; it reads and contacts nothing else.
 
 `character_touch_zones` rehearses Companion › Touch › [Touch zones](AVATARS.md#touch-zones)
-with no vision request: `zones` (how many Martlet knows and which are
-`intimate`, used only with *Include intimate zones*), `request` (the
-step-by-step requests: `parts` with the whole character, `zones` with each
-close-up (its `regions` and the zones each asks for) and `check` with the
-numbered boxes, each with its `instructions` and an example `text`), `parsed`
+with no vision request: `zones` (how many Martlet knows, which are
+`intimate`, used only with *Include intimate zones*, and the `defaults`
+*Detect zones* looks for on every character, with `defaultParts` in words),
+`request` (the step-by-step requests for the model: `wanted`, the zones a
+detection looks for, which are the defaults and the ones the owner added
+(`added`), and `required`, the ones it must end with; `parts` with the whole
+character (its `ids`: head, upper_body and lower_body, and a tail, wings or
+held item only when the owner added one), `zones` with each close-up (its
+`regions` and the wanted zones each asks for) and `check` with the numbered
+boxes, each with its `instructions` and an example `text`; `extras`, the
+tail, wings or held item it looks for), `parsed`
 (what the production parser makes of `answer`, a simulated vision reply about
 the whole picture: JSON boxes as fractions or named edges (`left`, `top`,
 `right`, `bottom`), pixels of a `width` × `height` picture, 400 × 800 by
@@ -1391,7 +1397,8 @@ zoomed out to show parts the model draws past its own canvas, such as legs),
 whether a snapshot
 is kept, what the last detection `sent` (its plain `line`, `requests`,
 `pictures`, `steps` and, from its `probe.json`, the `probe`'s hints as above) and
-each zone's parts, `plays`, whether Martlet `notices` it and the owner's `hint`) and,
+each zone's parts, `plays`, whether Martlet `notices` it, whether the owner
+`added` it and the owner's `hint`) and,
 with `touch` (a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
 it lands with the character framed whole), `match`: the zone it lands
 in, `how` (`drawable`, `bone`, `hair`, `box` or `coarse`; with a VRM `bone`, the
@@ -1408,12 +1415,20 @@ of the snapshot). `guess`, a wrong first answer in the same form, answers the
 close-ups instead, so the checks have something to correct; `checks` sets the
 rounds per part (0 to 5, 2 by default); `failAt` makes that request (1 for the
 first) fail instead of answering, as a model whose computer stopped answering,
-so the detection stops there. With Include intimate zones on (`includeIntimate`,
-on unless it or the saved zones turn it off) the intimate zones
-(`TouchZoneDetection.Erogenous`: neck, lips, ears, chest, breasts, waist, hips,
-groin, buttocks and inner thighs) must be found: the ones the close-ups miss are
-asked for again on the whole character (the `missing` step), then worked out
-from the zones around them. With a probe whose parts name body parts, the
+so the detection stops there. The detection looks for `request`'s `wanted`
+zones. `add` (zone IDs, comma-separated, such as `hand_left,tail`) adds zones
+as the owner's *Add zone* does (in the middle of the picture, marked `added`;
+a zone the model already has is only marked): the detection then looks for
+them too and must end with them, and `detected` keeps one it can't place where
+it was (moved with the picture when the `crop` changed). With `save` and no
+`answer` or `detect`, `add` saves the zones with the ones added, as *Add zone*
+does. With Include intimate zones on (`includeIntimate`, on unless it or the
+saved zones turn it off) the intimate zones it looks for (by default the neck,
+mouth (`lips`), ears, breasts, hips (`hip_left`, `hip_right`) and groin;
+`TouchZoneDetection.Erogenous` lists every intimate kind) must be found, and
+so must the zones the owner added: the ones the close-ups miss are
+asked for again on the whole character (the `missing` step), then the intimate
+ones are worked out from the zones around them. With a probe whose parts name body parts, the
 close-ups' windows come from them and boxes that clearly miss their named part
 are moved onto it (the `steps` say *took head, upper_body, lower_body from the
 model's own named parts* and *moved neck onto the model's own neck*).
@@ -1422,7 +1437,7 @@ model's own named parts* and *moved neck onto the model's own neck*).
 snapshot, `marks`, the message,
 the stand-in's answer and whether it `failed`), the `steps` (what each found,
 swapped, moved, removed, added or worked out), `requestCount`, the `failure` it
-stopped at (null when none), what it `missed`, the `required` zones and those
+stopped at (null when none), what it `missed`, the `wanted` zones, the `required` zones and those
 still missing (`requiredMissing`), and how far the found boxes are
 from `answer`'s (`worstEdge`, `meanEdge`).
 The model is `modelPath`, `modelId` or the one the `dataDirectory`'s
@@ -1483,7 +1498,12 @@ history line and exactly what the Thinking model was told),
 crossed, pace, passes, seconds and samples on the character; or the last move,
 zoom, pan, lock, hide or show as Martlet's touch ledger heard it),
 `TouchZonesSaveState` and each zone's `TouchZoneState-<n>` (its ID, the parts
-it follows and its default reaction). `TouchZonesDetect` sends the character's
+it follows, *added by you* for a zone the owner added, which *Detect again*
+looks for too and keeps where it is when it can't find it, and its default
+reaction), and `TouchZonesAddNote` (which zones *Detect zones* looks for:
+*Detect zones looks for the hair, eyes, ears, nose, mouth, neck, breasts, upper
+arms, forearms, stomach, hips, groin, thighs, calves and feet. Add any other
+zone here...*). `TouchZonesDetect` sends the character's
 pictures to Thinking; it is disabled only while a detection runs, while the
 character is still being read, or when no model can see pictures (never because
 the character is hidden). The picture comes from a second renderer that loads
@@ -1504,7 +1524,8 @@ it under the boxes, `TouchZonesSentOpen` opens the folder of pictures in
 Explorer, `TouchZoneTry-<n>` plays on the character, and
 `TouchZonesIntimate` (its value is its label, which names every intimate part,
 the breasts and the groin too), `TouchZonesAdd`/`TouchZonesAddKind` (its value
-is the zone chosen to add; it offers every zone the model doesn't have yet) and each zone's
+is the zone chosen to add; it offers every zone the model doesn't have yet, and
+the zone it adds is marked *added by you*) and each zone's
 `TouchZoneOn-`, `TouchZoneName-`, `TouchZoneReaction-`, `TouchZoneReaction2-`,
 `TouchZoneNotices-` (*Martlet notices*; its checked state reads in `ui_snapshot`), `TouchZoneNarration-` (the owner's optional hint; it shows only while *Martlet notices* is on), `TouchZoneCooldown-`, `TouchZoneBox-`,
 `TouchZoneDelete-` and its box on the picture (`TouchZoneRect-<n>`, inside
@@ -1673,8 +1694,18 @@ the character's frame near the lower-right corner, each with its `expected`
 and actual `target` (`mouse`, `ahead`, `window` or `point`) and the point `at`:
 `mouseFar`, `nearModeMouseFar` (`ahead`), `nearModeMouseNear` (`mouse`),
 `aheadModeMouseNear` (`ahead`), `windowMode` (the window's middle),
-`windowModeNoWindow` (`ahead`), `touchWhileAhead` (`mouse`) and
-`glanceWhileFollowing` (`point`). `saved` is Companion › Vision › Glances at
+`windowModeWorking` (where you worked in the window), `windowModeWorkedOutside`
+(a place outside the window: its middle again), `windowModeNoWindow`
+(`ahead`), `touchWhileAhead` (`mouse`) and `glanceWhileFollowing` (`point`).
+`watch` rehearses the production `WindowWatch` the window gaze uses, with
+`CharacterGaze.Aim`, over a sequence of moments, each with its `expected` and
+actual `watching` (`pointer`, `text cursor` or `middle`; null without a
+window), `target` and point `at`: `switchedWithTheKeyboard` (`middle`),
+`pointerMovesOverTheWindow` (`pointer`), `typingWhileThePointerRests` and
+`typingOn` (`text cursor`), `pointerOnTheCharacter` (still the text cursor),
+`pointerMovesOverTheWindowAgain` (`pointer`), `pointerBackOnTheCharacter`
+(still the pointer), `anotherWindowWithATextCursor` (`text cursor`),
+`desktopInFront` (`ahead`) and `clickedBackIntoTheWindow` (`pointer`). `saved` is Companion › Vision › Glances at
 your screen (`usual gaze`, the default, or `martlet decides`, from `DecideGaze`
 in `talk-preferences.json`), then the change `grid` (32×18 cells, `ChangeThreshold`
 and the stronger `CharacterChangeThreshold` under the character's overlay) and
@@ -1688,7 +1719,7 @@ the lower-right corner (a glance at the bottom right),
 `sameSpotAgainLater` (a glance), `notificationBehindTheCharacter` (a glance),
 `onlyTheCharacterMoved` and `speechBubble` (`OnlyCharacter`), `newScene`
 (`Everywhere`), `byTheMouse` (`ByMouse`) and `changesAllOver` (`Scattered`);
-`ok` is true when every verdict and aim is as expected. `tags` gives where each look tag
+`ok` is true when every verdict, aim and watch moment is as expected. `tags` gives where each look tag
 points on one screen and on two side by side, `modeTags` the five gaze tags
 and the gaze each sets (`usual` for `{look usual}`), `notTags` lists tags that
 aren't look tags, `prompt` is what a screen glance is told (`instructions`, with the
@@ -4019,6 +4050,36 @@ quote is kept). `ok` is true when all hold, every sample came out as expected
 and the fixture's Martlet-free source was used. It reads no credentials and
 contacts nothing.
 
+`pc_activity_check` checks [where what this PC plays comes from](CONVERSATION.md#where-it-comes-from-and-what-you-are-doing)
+(optional `seconds`, 1-20, default 3). `live` runs the production
+`PcActivityMonitor` with `WindowsPcActivitySource` on this PC for those seconds
+(the volume mixer's session meters, the apps' windows, the window in front, full
+screen and the GPU Engine counters; nothing is recorded, played, kept or sent,
+so `recorded` is always false, and raw window titles are never returned):
+`ticks`, `averageTickMs`, `problem`, the `summary` and the `note` a reply would
+read (the context board's `activity` note), and `apps`: every app with an audio
+session (`app`, `kind`, `label`, `peak`, `audible`, `foreground`, `fullScreen`,
+`exclusiveFullScreen`, `gpuPercent`, `programKnown`, `windows`). `rehearsal`
+runs FIXTURE apps, levels and lines on a simulated clock: `classify` (the
+production classifier on fixed apps such as Plex full screen, a YouTube video
+or a Twitch stream in a browser, Netflix in a browser, a private window, Discord,
+Zoom, Google Meet, Spotify, a game in a Steam library, an unknown app full screen
+with the graphics card busy, OBS and VLC with a movie or a song; each `scene`,
+`kind`, `label`, `expected`, `ok`), `lines` (a voice chat over a game, the game
+alone, a YouTube video and silence: each fixture line's `[PC audio] From ...:`
+text against `expected` with `mediaOnly`, then the `note` against `expectedNote`), `speakers` (the
+production check `PcEcho.Speakers` on a simulated clock that tells the
+microphone hearing this PC's speakers apart from you: a video or a game line
+the microphone heard at that same moment is the speakers; the same words the
+video said 10 seconds before, your voice played back by a voice changer, a game
+while a voice changer also played, a voice chat repeating you, a short answer,
+common words scattered through a long video, you quoting the video and you
+talking over it are not; each `scene`, `heard`, `played`,
+`playedFrom`, `expected`, `fromSpeakers`, `ok`) and `prompts` (the built-in
+*What this PC plays* and *Always listening* prompts with what they must say,
+and `missing`). `ok` is true when the live look had no problem and every
+fixture came out as expected. It reads no credentials and contacts nothing.
+
 `logs_timeline` reads the logs as the desktop's
 [Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-shared-logs) shows
 them (optional absolute `dataDirectory`, default the current user's): this PC's
@@ -5083,6 +5144,23 @@ The readings start at once. This changes the character, so it needs
 
 `MoveAvatar`'s value in `ui_snapshot` shows the last reading as `mouth`.
 
+**Where the character looks now**: `character_look` reads it through UI
+Automation (`MoveAvatar`'s value `"look"`), `samples` times (1 to 60) `gapMs`
+apart (default 250), as the overlay last turned the head and eyes (it does
+every 50 ms; see [Where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks)).
+Each reading in `looks` has `n`, `target` (`mouse`; `window`: where you work in
+the window you're using; `point`: a spot Martlet asked it to look at; or
+`ahead`), `x` and `y` (the direction, -1 to 1, +x right, +y up), `at` (the
+point on the desktop in screen pixels, or null), `usual` (the usual gaze),
+`window` (the window you're using: `left`, `top`, `width` and `height`, never
+its title; null when none) and `watching` (for the window gaze: `pointer`,
+`text cursor` or `middle`). `summary` gives the `targets` and `watching` seen
+and the `x` and `y` ranges (`least`, `most`). Reading changes nothing, so it
+needs no `--allow-ui-effects`. While the Windows session is locked, no window
+is in front and the mouse can't be read, so the window gaze keeps the last
+window it knew, or reads `ahead` with no `window` when it knew none.
+`MoveAvatar`'s value in `ui_snapshot` shows the last reading as `look`.
+
 **Moves, zooms and other changes Martlet hears about**: the overlay notes each
 drag, arrow-key nudge, `ui_move`, zoom (wheel, menu, keys or Martlet's zoom
 buttons), reset zoom, pan of a zoomed view and Reset position, and once it has
@@ -6055,10 +6133,15 @@ and always listening chosen, the talk window's `LivePcAudio` line (returned)
 says *Also hears this PC once you start listening.*, *Also hearing this PC.*,
 *Hearing this PC play something…* or why it can't hear the PC; its `help` says
 how: *Martlet hears everything this PC plays except its own voice.* or
-*Martlet hears what plays on <your output>, paused while it speaks.*, followed
-by *This PC plays your voice back too; Martlet left out N line(s) of it.* once
+*Martlet hears what plays on <your output>, paused while it speaks.*, then what
+you seem to be doing on the PC (*Now: playing a game (Elden Ring), full screen;
+in a voice chat in Discord.*, from `PcActivityMonitor`), *The microphone also
+heard this PC's speakers; Martlet left out N line(s) of it.* once the
+microphone repeated what a video, show, game or music played, and *This PC
+plays your voice back too; Martlet left out N line(s) of it.* once
 a line the PC played repeated what you said; what the PC played shows in
-`LiveHistory` as *Playing on this PC* bubbles. Pressing `LiveMic` with it on
+`LiveHistory` as *Playing on this PC* bubbles, named after where it came from
+when Martlet can tell (*Playing on this PC: a YouTube video in Chrome*). Pressing `LiveMic` with it on
 records what the PC plays, so leave it off (or don't start listening) when
 verifying on a desktop whose sound must not be captured. Each reply writes a
 *Reply latency* line to the desktop log (see [Latency](#latency)), which
