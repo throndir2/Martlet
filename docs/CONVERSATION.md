@@ -258,6 +258,8 @@ reads the entire conversation again before every reply (on a 12B model, about
   background source that is still fresh ([Context board](#context-board)).
   They are sent with this message only and never kept in the conversation,
   so the message the next request carries again is the start of what was sent.
+  What Martlet says on its own also gets what it said lately, last in that
+  block ([What you said lately](#what-you-said-lately)).
 - When the conversation outgrows the context, Martlet lets go of a quarter
   more of the oldest exchanges than it must (and forgets them), so the next
   several replies start at the same exchange instead of moving by one every
@@ -400,6 +402,58 @@ window's `LiveTurnInputs` line says what the newest reply took (*Last reply took
 the desktop log has a *Turn took: ...* line per reply and look, and
 `think_longer_check`'s `moment` part in [Martlet MCP](MCP.md) rehearses the
 plan and a combined request.
+
+## What you said lately
+
+A small model often says the same thing again and again: the same remark on a
+game, the same joke, the same opener. So Martlet keeps what it said lately,
+each with when it said it (`Martlet.Conversation.SaidLately`). What Martlet
+says on its own checks that list before it speaks.
+
+- **What is kept.** Each reply, remark and reaction that the conversation
+  keeps, with the local time: replies to you, screen and camera remarks,
+  remarks on what this PC plays, reactions to touches and reports. A `[pass]`
+  is not kept. Each one is one line of at most 160 characters. Martlet keeps
+  the newest 10 and uses those from the last hour. The list is in memory only:
+  it is never saved or logged, and Martlet forgets it with the conversation
+  (Refresh context, pause, lock, closing the talk window).
+- **Which requests carry it.** Only what Martlet says on its own while nobody
+  waits for its first words (`SaidLately.Carries`): a screen or camera look,
+  a reply to what this PC played that holds none of your words, and a report
+  (finished work, a due reminder, a check-in's `SAY:`). A reply to your words
+  (typed, spoken, straight to Thinking or from a messaging chat) or to a
+  touch never carries it. Its request stays exactly as it was, so the time to
+  its first words does not change.
+- **Where it goes.** Companion › Prompts › *What you said lately* gets the
+  list, oldest first, each line with the time of day and how long ago
+  (`- 10:05 PM (12 min ago): "Ooh, that boss is almost down!"`), the time now
+  and the `[pass]` word. It goes last in the context board's notes block, at
+  the end of the message. That block is sent with this request only and is
+  never kept, so the next request starts like this one and prompt caches keep
+  working. An emptied prompt sends nothing.
+- **What it asks.** The model checks what it is about to say against the
+  list. It does not say a thing again, not even in other words, unless
+  something changed or enough time has passed; then it says it differently.
+  When nothing new is worth saying and nothing asks it to speak, it answers
+  `[pass]`.
+- **What you see.** The talk window's `LiveTurnInputs` line and the desktop
+  log's *Turn took* line count it (*Last look took the picture and 3 things
+  Martlet said lately.*), never what was said.
+
+It replaces the glances' *Earlier remarks* prompt (the last four screen
+remarks, without times). Saved edits of that prompt are dropped, and a glance
+prompt edited with `{remarks}` gets nothing there.
+
+The *Saying the same things* check-in reads the same list
+([Check-ins](#check-ins)). When Martlet keeps repeating itself, a reminder
+goes in the notes of its next reply, a reply to you included.
+
+Checked locally: `SaidLatelyTests`, `CheckInsTests` and `PromptSettingsTests`,
+the real controller with a fixture Thinking endpoint (`SaidLatelyDesktopTests`:
+a look, a reply to what the PC played and a due reminder carry it with when;
+replies to you and to a touch don't; Refresh context and an emptied prompt
+send nothing), and MCP `said_lately_check`. A real model reading it is **NOT
+RUN**.
 
 ## The Thinking pool
 
@@ -1233,8 +1287,9 @@ saying one, and two real companion PCs through a real host, are **NOT RUN**.
 ## Check-ins
 
 A small conversation model forgets what it left on. It writes `{blush}` and
-never `{/blush}`, chooses `{look ahead}` and never looks back, or says *"I'll
-remind you in 10 minutes!"* and never calls `reminders`. **Check-ins**
+never `{/blush}`, chooses `{look ahead}` and never looks back, says *"I'll
+remind you in 10 minutes!"* and never calls `reminders`, or says the same
+thing again and again. **Check-ins**
 (Companion › Check-ins) fix this. Every few minutes a Thinking pool member
 answers one short question about the companion, with only the facts that
 matter for that question, and Martlet acts on the answer.
@@ -1249,6 +1304,7 @@ own character and runs its own conversation.
 | Where the character looks (`gaze`) | 5 min | Does the gaze a reply chose still fit? What the eyes do now and usually, how long ago the reply chose it, the end of the conversation. | `USUAL` takes the eyes back to their usual gaze, as `{look usual}` does. `KEEP` changes nothing. |
 | Promises (`promises`) | 5 min | Did the character say it would do something it never started? The end of the conversation, the reminders set and this conversation's background work. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
 | Staying in character (`character`) | 15 min | Did the last replies drift (out of character, generic, repeating, long, talking about notes or tools)? The personality and the last replies. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
+| Saying the same things (`repeats`) | 10 min | Does the character keep saying the same things (the same remark, joke, question, opener or topic again and again, or something it said not long ago while nothing new happened)? [What it said lately](#what-you-said-lately), each with when (`10:05 PM (12 min ago)`), and the day and time. | A `REMIND:` line goes in the notes of the next message. `OK` changes nothing. |
 
 **When a check-in runs.** Every 15 seconds a companion PC looks at its
 check-ins, and the first one that may run starts. Only one runs at a time. A
@@ -1261,7 +1317,9 @@ check-in waits:
 - until it has something to check: an emote a reply turned on that has shown
   for 3 minutes, a gaze a reply chose 3 minutes ago, something new said
   (Promises, while the conversation was active in the last 30 minutes), 4 new
-  replies (Staying in character), or a written task (your own);
+  replies (Staying in character), 3 things the character said in the last
+  hour and something new said since it last ran (Saying the same things), or a
+  written task (your own);
 - while the conversation is busy (you talk, or something happened in the last
   10 seconds), so it never races a reply;
 - while nobody used this PC for 10 minutes (keyboard, mouse or talking with
