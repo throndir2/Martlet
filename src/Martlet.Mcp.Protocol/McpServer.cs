@@ -108,9 +108,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("ui_click", "Invoke an automation-ID control. Only safe navigation controls work without --allow-ui-effects. With " +
             "several windows that have the control (side-by-side run windows each have HostRunCancel), window names the one to use: " +
-            "its title as ui_snapshot lists it (for example \"Martlet - Start Docker Desktop\").", new
+            "its title as ui_snapshot lists it (for example \"Martlet - Start Docker Desktop\"). With focus true the control takes the " +
+            "keyboard focus first, as a mouse click gives it (its window comes to the front).", new
         {
-            id = new { type = "string" }, window = new { type = "string" }
+            id = new { type = "string" }, window = new { type = "string" }, focus = new { type = "boolean" }
         }, ["id"]),
         Tool("ui_select", "Select a named option from a combo box. Requires --allow-ui-effects.", new
         {
@@ -602,7 +603,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\",\"wholeX\",\"wholeY\"}) the zone it lands in, how it was found, what it " +
             "plays and what it tells the character. detect runs the production detection on snapshotPath (a PNG of the character, transparent " +
             "around it), composing and encoding every picture it would send (previewDirectory keeps them), with a FIXTURE - NOT AI stand-in " +
-            "that answers from answer's zones (guess, a wrong first answer, makes the checks correct it; checks sets the rounds, 0 to 5); it " +
+            "that answers from answer's zones (guess, a wrong first answer, makes the checks correct it; checks sets the rounds, 0 to 5; " +
+            "failAt makes that request fail, as a model that stopped answering); with includeIntimate on (the default) the intimate zones " +
+            "must be found: asked for again on the whole character, then worked out from the zones around them; it " +
             "reports each request, the steps and how far the found boxes are from answer's. save writes the parsed (or detected) zones (and " +
             "snapshotPath as their picture, and with detect the pictures sent; includeIntimate sets Include intimate zones) into an explicit, " +
             "disposable dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
@@ -617,7 +620,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             save = new { type = "boolean" }, includeIntimate = new { type = "boolean" }, snapshotPath = new { type = "string" },
             temperament = new { type = "string" }, personaId = new { type = "string" }, personality = new { type = "string" },
             repeats = new { type = "integer", minimum = 1 }, detect = new { type = "boolean" }, guess = new { type = "string" },
-            previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 }
+            previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 },
+            failAt = new { type = "integer", minimum = 1 }
         }),
         Tool("character_gaze", "Where the character looks (Companion > Character > Where the character looks, the overlay's Eyes " +
             "menu and Companion > Vision > Glances at your screen; docs/SCREEN_COMMENTARY.md \"Where the character looks\"): usual " +
@@ -1671,7 +1675,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false, OptionalString(arguments, "idPrefix")),
-                "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id"), OptionalString(arguments, "window")),
+                "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id"), OptionalString(arguments, "window"),
+                    OptionalBool(arguments, "focus") ?? false),
                 "ui_select" => desktop.Select(RequiredString(arguments, "id"), RequiredString(arguments, "item")),
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"),
                     OptionalString(arguments, "text") ?? throw new ArgumentException("Missing string 'text'.")),
@@ -1733,7 +1738,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalBool(arguments, "save") ?? false, OptionalBool(arguments, "includeIntimate"), OptionalString(arguments, "snapshotPath"),
                     cancellation, OptionalString(arguments, "temperament"), OptionalString(arguments, "personaId"), OptionalString(arguments, "personality"),
                     OptionalInt(arguments, "repeats"), OptionalBool(arguments, "detect") ?? false, OptionalString(arguments, "guess"),
-                    OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks")),
+                    OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt")),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),

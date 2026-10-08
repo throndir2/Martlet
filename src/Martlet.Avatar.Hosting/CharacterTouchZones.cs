@@ -523,8 +523,10 @@ public sealed record TouchZoneSent(DateTimeOffset At, bool Fixture, int Requests
     public string Describe()
     {
         var largest = Pictures.Count == 0 ? 0 : Pictures.Max(p => Math.Max(p.Width, p.Height));
-        var closeUps = Pictures.Where(p => p.Kind == nameof(ZoneAskKind.Zones)).Select(p => p.Step.Replace('_', ' ')).Distinct().ToArray();
+        var closeUps = Pictures.Where(p => p.Kind == nameof(ZoneAskKind.Zones) && p.Step != TouchZoneDetection.MissingStep)
+            .Select(p => p.Step.Replace('_', ' ')).Distinct().ToArray();
         var checks = Pictures.Count(p => p.Kind == nameof(ZoneAskKind.Check));
+        var again = Pictures.Any(p => p.Step == TouchZoneDetection.MissingStep);
         var parts = closeUps.Length switch
         {
             0 => "",
@@ -535,6 +537,7 @@ public sealed record TouchZoneSent(DateTimeOffset At, bool Fixture, int Requests
             $"Thinking saw {Pictures.Count} picture{(Pictures.Count == 1 ? "" : "s")} on {At.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}, " +
             $"up to {largest} pixels on the longer side, each on a plain backdrop with a grid of tenths" +
             (parts.Length > 0 ? $": the whole character, then close-ups of the {parts}" : "") +
-            (checks > 0 ? $", with its boxes drawn and numbered for {checks} check{(checks == 1 ? "" : "s")}" : "") + ".";
+            (checks > 0 ? $", with its boxes drawn and numbered for {checks} check{(checks == 1 ? "" : "s")}" : "") +
+            (again ? ", and the whole character again for the zones the close-ups missed" : "") + ".";
     }
 }
