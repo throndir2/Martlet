@@ -509,7 +509,7 @@ glasses, a cape or something it holds (step 7 below). **Add zone** offers every 
 have yet: the top of the head (a head pat), forehead, face, cheeks, chin,
 shoulders, hands, chest, waist, knees, buttocks, inner thighs, and extras such
 as animal ears, a tail or wings. A zone you add starts in the middle of the
-picture: move it into place, or press **Detect again** and the Thinking model
+picture (zoomed in, in the middle of the part you see): move it into place, or press **Detect again** and the Thinking model
 looks for it too. When it can't find a zone you added, the zone stays where it
 was. Detect again drops the other zones it doesn't find, so zones that an
 older Martlet found beyond the short list go away. Intimate zones (the mouth,
@@ -758,7 +758,14 @@ default; turn it off to leave them out. The check box names each of these parts.
   *Touched, with your message* and *Touched, cutting you off*). While the switch is on, a box beside it takes your
   own words for the touch (optional), sent as a hint. Rename, turn off, move or resize
   (drag the box or its corner on the picture, or type it), delete or add zones;
-  **Try** plays one. Zones are saved per model in `character-touch-zones.json`,
+  **Try** plays one. To place a box precisely, zoom the picture in with
+  **Zoom in** (up to 8x) or Ctrl+mouse wheel over it (which zooms where the
+  pointer is): the picture grows but the boxes' lines, names and corners keep
+  their size, so the same drag moves a box by smaller steps. Zoomed in, the
+  mouse wheel and the scroll bars move around the picture (Shift+wheel goes
+  sideways), and so does a drag on the picture where there is no box; Ctrl+drag
+  or a drag with the middle button moves it from anywhere. **Reset zoom** shows
+  the whole picture again, as does opening the page again. Zones are saved per model in `character-touch-zones.json`,
   with the picture in `character-touch-zones\`.
 - **Touching Martlet while it talks**: a touch Martlet notices stops the reply
   or screen remark it is saying aloud at once, the way talking over it does,
