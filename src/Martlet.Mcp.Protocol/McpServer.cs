@@ -152,7 +152,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "hair, mesh and material (VRM). Martlet then plays its tap reaction (the desktop log records 'The character was " +
             "tapped on the ...'). holdMs presses that long (600 or more is a hold, up to 10000), repeat taps the same point up to " +
             "20 times gapMs apart (default 150), and taps ([{x, y, holdMs}], up to 20) taps a sequence of points instead. With " +
-            "Companion > Character > Touch zones showing, noticed reads what Martlet noticed after settleMs: waiting (the touch " +
+            "Companion > Touch > Touch zones showing, noticed reads what Martlet noticed after settleMs: waiting (the touch " +
             "line that waits for a reply and when a touch reply starts), last (which reply took the last touches and what " +
             "Thinking was told) and zone (TouchZonesLast). Tapping requires --allow-ui-effects; without x, y or taps it only " +
             "reads the last tap.", new
@@ -184,7 +184,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "down; unzoomed, its hair is near 0.5, 0.1 and its face near 0.5, 0.2), one point every stepMs milliseconds (10 to " +
             "2000, default 40). Martlet hit-tests the path, plays each crossed zone's reaction (the first zone's emote held until " +
             "the stroke ends) and records the stroke in the touch ledger. Returns the overlay's stroke record as last.stroke (n, " +
-            "samples, hits, ms, coarse zones crossed); Companion > Character > Touch zones' CharacterPhysicalLast reads Martlet's " +
+            "samples, hits, ms, coarse zones crossed); Companion > Touch > Touch zones' CharacterPhysicalLast reads Martlet's " +
             "summary (zones, pace, passes). last.physical is the last settled move, zoom or pan (kind, dx, dy, from and to monitors, " +
             "zoomFrom, zoomTo, focus). Requires --allow-ui-effects; without points it only reads the last stroke.", new
         {
@@ -260,6 +260,18 @@ internal sealed class McpServer(DesktopAutomation desktop)
             levels = new { type = "array", items = new { type = "number", minimum = 0, maximum = 1 }, minItems = 1, maxItems = DesktopAutomation.MaximumVoiceLevels },
             stepMs = new { type = "integer", minimum = 10, maximum = 1000 },
             samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumMouthSamples },
+            gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
+        }),
+        Tool("character_look", "Read where the showing character looks now, samples times (1 to 60, default 1) gapMs apart (0 to " +
+            "5000, default 250), as the overlay last turned its head and eyes (it does every 50 ms). Each reading (looks) has n, " +
+            "target (mouse; window: where you work in the window you're using; point: a spot Martlet asked it to look at; or " +
+            "ahead), x and y (the direction, -1 to 1, +x right, +y up), at (the point on the desktop in screen pixels, or null), " +
+            "usual (the usual gaze: mouse, near, ahead or window), window (the window you're using: left, top, width and height, " +
+            "never its title; null when none) and watching (for the window gaze: pointer, text cursor or middle). summary gives " +
+            "the targets and watching seen and the x and y ranges (least, most). Reading changes nothing, so it needs no " +
+            "--allow-ui-effects.", new
+        {
+            samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumLookSamples },
             gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
         }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
@@ -624,7 +636,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
-        Tool("character_actions", "Read a character model's emotes and motions as Companion > Character > Emotes and motions uses " +
+        Tool("character_actions", "Read a character model's emotes and motions as Companion > Emotes and motions uses " +
             "them (Martlet.Avatar.Hosting, docs/AVATARS.md \"Emotes and motions\"): modelPath (a .model3.json or .vrm on this PC) or the " +
             "model dataDirectory's avatar.json shows. Returns the renderer, the model's key, how many files the renderer reads (a VTube " +
             "Studio model's .vtube.json and loose .exp3/.motion3 files included) and what came from VTube Studio's settings, then each " +
@@ -669,15 +681,29 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "times). changes is a JSON array of RendererPhysical {\"kind\":\"moved|home|zoomed|zoom_reset|panned\",\"dx\",\"dy\"," +
             "\"screenWidth\",\"fromScreen\",\"toScreen\",\"zoomFrom\",\"zoomTo\",\"focus\"}. Returns each change's ledger kind and words, " +
             "the plain line the next reply would carry (\"They slowly stroked your hair 4 times, then moved you to their other " +
-            "monitor.\"), the history line and whether it would start a reply on its own (touches, strokes and moves do). noticeAll " +
-            "(default true) treats every zone as having Martlet notices on; false uses the zones' own setting.", new
+            "monitor.\"), the history line, whether it would start a reply on its own (touches, strokes and moves do), character " +
+            "(what the talk window and the Thinking model call the character: the name of the persona dataDirectory's settings " +
+            "use, else Martlet) and note (the talk window's note for a reply to them alone, \"You touched Ivy (touch: hair " +
+            "stroke x4, moved)\", or null when they wouldn't start one). noticeAll " +
+            "(default true) treats every zone as having Martlet notices on; false uses the zones' own setting. personaId takes how " +
+            "that persona feels about the zones from character-temperaments.json (feeling). earlier (0 to 20) records the same " +
+            "stroke that many times before, a minute apart, each taken by a reply, so the line names the places the user keeps " +
+            "coming back to (often). said and answering stand for a touch that stopped Martlet talking (what it had said aloud and " +
+            "the message it was answering). touchInterrupts (any, intimate or never; default any) says whether the stroke would " +
+            "stop Martlet talking (interrupts). Returns told (what Thinking hears of the touches), message (a touch-only reply's " +
+            "whole message, Companion > Prompts > Touched) and notes (Touched, with your message), with the prompts saved in " +
+            "dataDirectory's settings.json.", new
         {
             dataDirectory = new { type = "string" }, modelId = new { type = "string" }, stroke = new { type = "string" },
-            changes = new { type = "string" }, noticeAll = new { type = "boolean" }
+            changes = new { type = "string" }, noticeAll = new { type = "boolean" }, personaId = new { type = "string" },
+            earlier = new { type = "integer", minimum = 0, maximum = 20 }, said = new { type = "string", maxLength = 4096 },
+            answering = new { type = "string", maxLength = 4096 }, touchInterrupts = new { type = "string", @enum = new[] { "any", "intimate", "never" } }
         }),
-        Tool("character_touch_zones", "Companion > Character > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones and TouchZoneDetection; " +
-            "docs/AVATARS.md \"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate), the step-by-step vision " +
-            "requests (parts on the whole character, zones on each close-up, checks of the numbered boxes), what the production parser makes " +
+        Tool("character_touch_zones", "Companion > Touch > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones and TouchZoneDetection; " +
+            "docs/AVATARS.md \"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate, and the defaults Detect " +
+            "zones looks for), the step-by-step vision requests for the model (parts on the whole character, zones on each close-up, " +
+            "checks of the numbered boxes; wanted: the default zones and the ones the owner added, required: the ones it must end with), " +
+            "what the production parser makes " +
             "of answer (a simulated vision reply about the whole picture: JSON boxes as fractions or named edges, pixels of a width x height " +
             "picture or Qwen-style 0..1000 bbox_2d grounding) bound to probe (a simulated renderer zones probe: {\"drawables\":[{\"id\",\"left\"," +
             "\"top\",\"right\",\"bottom\",\"part\"}],\"bones\":[{\"bone\",\"x\",\"y\"}],\"parts\":[{\"id\",\"name\",\"parent\"}]} in page fractions, " +
@@ -692,7 +718,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "that answers from answer's zones (guess, a wrong first answer, makes the checks correct it; checks sets the rounds, 0 to 5; " +
             "failAt makes that request fail, as a model that stopped answering); with includeIntimate on (the default) the intimate zones " +
             "must be found: asked for again on the whole character, then worked out from the zones around them; it " +
-            "reports each request, the steps and how far the found boxes are from answer's. save writes the parsed (or detected) zones (and " +
+            "reports each request, the steps and how far the found boxes are from answer's. add (zone IDs, comma-separated, such as " +
+            "\"hand_left,tail\") adds zones as the owner does with Add zone (added, in the middle of the picture; one the model has is " +
+            "marked added): detect then looks for them too and must end with them, and one it can't place stays where it was. save writes " +
+            "the parsed (or detected) zones (or, with add alone, the zones with the ones added) (and " +
             "snapshotPath as their picture, and with detect the pictures sent; includeIntimate sets Include intimate zones) into an explicit, " +
             "disposable dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
             "{\"attitude\":2,\"reactions\":[\"hearts\",\"blush\"],\"linger\":3}},\"zones\":{...},\"escalation\":{\"after\":3,...}}) or " +
@@ -709,9 +738,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             temperament = new { type = "string" }, personaId = new { type = "string" }, personality = new { type = "string" },
             repeats = new { type = "integer", minimum = 1 }, detect = new { type = "boolean" }, guess = new { type = "string" },
             previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 },
-            failAt = new { type = "integer", minimum = 1 }, probePath = new { type = "string" }
+            failAt = new { type = "integer", minimum = 1 }, probePath = new { type = "string" }, add = new { type = "string" }
         }),
-        Tool("character_eyes", "Companion > Character > Touch zones > Eyes (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
+        Tool("character_eyes", "Companion > Eyes > Where the eyes are (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
             "with NO vision request: the request the vision model gets (a close-up of the face, 1.6 face widths square, about 768 pixels " +
             "with a grid; its instructions, message, the check message and the message after an unreadable answer), what the production " +
             "parser, checks and conversion make of answer (a simulated vision reply about the close-up: {\"left\":{\"iris\":{\"left\",\"top\"," +
@@ -731,19 +760,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
             previewDirectory = new { type = "string" }, save = new { type = "boolean" }, forget = new { type = "boolean" },
             eyesFrom = new { type = "string", @enum = new[] { "mesh", "bones", "vision", "estimate" } }
         }),
-        Tool("character_gaze", "Where the character looks (Companion > Character > Where the character looks, the overlay's Eyes " +
+        Tool("character_gaze", "Where the character looks (Companion > Eyes > Where the character looks, the overlay's Eyes " +
             "menu and Companion > Vision > Glances at your screen; docs/SCREEN_COMMENTARY.md \"Where the character looks\"): usual " +
             "is the usual gaze saved in a data directory's talk-preferences.json (GazeUsual: personality, mouse, near, ahead or " +
             "window; GazeFree: whether the character may change it in replies), the gaze of the touch temperament the persona uses in " +
             "character-temperaments.json (its own or a custom one; the active persona, or personaId), the gaze that applies and who set it, what every reply is told about it and the " +
             "note while its own choice holds the eyes. aim rehearses the production CharacterGaze.Aim the overlay runs for each " +
-            "gaze (a mouse far from and near the character, a window, a touch's look at the mouse, a glance). saved is the glances " +
+            "gaze (a mouse far from and near the character, a window, where you work in it, a touch's look at the mouse, a glance), " +
+            "and watch rehearses the production WindowWatch the window gaze uses on a sequence of moments (switching windows, the " +
+            "pointer moving over the window or onto the character, typing, the desktop in front), each with what the eyes watch " +
+            "(pointer, text cursor or middle) and where. saved is the glances " +
             "choice (DecideGaze: usual gaze unless Martlet decides), then a rehearsal of the production decision " +
             "(Martlet.Avatar.Hosting CharacterGaze and GazeDirector) on " +
             "generated 1920x1080 pictures (NOT screenshots; nothing is captured): a notification popping up, the same spot again soon " +
             "and later, another change right after a glance, a notification behind the character, the character's own motion, its " +
             "speech bubble, a new scene, a change by the mouse and changes all over, each with the expected and actual verdict and " +
-            "the spot looked at (ok: all scenarios and aims as expected). Also where each look tag points on one and two screens, " +
+            "the spot looked at (ok: all scenarios, aims and watch moments as expected). Also where each look tag points on one and two screens, " +
             "the gaze tags, the screen glance's look instructions (the data directory's edited prompts included) and what the " +
             "production segmenter makes of answers with look tags (spoken, shown, quiet, the look and gaze cues); answer replaces " +
             "the sample answers. Reads only; contacts nothing.", new
@@ -991,7 +1023,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "per three UTF-8 bytes), plus the tokens of all prompts together. With id, also returns that one prompt's effective text " +
             "(the saved edit or the built-in text) exactly as Martlet uses it. shortFirstSentence: Companion > Replies > Short " +
             "first sentence (on by default) and what closes a spoken and an unspoken reply's instructions with it, exactly as the " +
-            "desktop sends them. Read-only.", new
+            "desktop sends them. adultContent: Companion > Replies > Adult content (off by default), its prompt's state and, while " +
+            "on, the instructions it adds to every reply and remark. Read-only.", new
         {
             dataDirectory = new { type = "string" },
             id = new { type = "string", maxLength = 64 }
@@ -1286,6 +1319,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "when this PC plays it back, on fixed samples. Reads no credentials and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
+        }),
+        Tool("pc_activity_check", "Hear what this PC plays: which app plays what Martlet hears and what kind of thing it is (a YouTube " +
+            "video in a browser, a show or movie in Plex or a player, a game, a voice chat in Discord, a call, music), told apart " +
+            "deterministically from the app, the site its browser window shows, where its program is installed (a game library), " +
+            "the window in front and full screen, and how busy it keeps the graphics card. live: the production PcActivityMonitor and " +
+            "WindowsPcActivitySource on this PC for seconds (default 3): every app with an audio session (the volume mixer's meters " +
+            "only; nothing is recorded, played, kept or sent; raw window titles are never returned) with its kind and label, the " +
+            "average tick cost, the summary and the note a reply reads (the context board's activity note). rehearsal (FIXTURE apps, " +
+            "levels and lines on a simulated clock): the classifier on fixed apps, where fixture lines came from as their " +
+            "[PC audio] From ...: labels, the note, the speakers check (PcEcho.Speakers on a simulated clock: a line the microphone " +
+            "heard at the same moment as what only a video, show, game or music played is the speakers; never earlier words, a voice " +
+            "chat, a voice changer or your own voice played back) and the " +
+            "built-in What this PC plays and Always listening prompts. Reads no credentials and contacts nothing.", new
+        {
+            seconds = new { type = "integer", minimum = 1, maximum = 20 }
         }),
         Tool("sound_digest_check", "Companion > Listening > Describe PC sounds (on by default while Hear what this PC plays is on): the " +
             "saved choices, the desktop's sound-digest.json (on, the active judge: a Thinking pool model that hears or the CPU sound " +
@@ -1760,6 +1808,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "PastConversations and HistoryPlatforms) on synthetic conversations in a disposable folder: recording exchanges into month files, a line " +
             "cut short by a crash skipped after a restart, an ordinary message recalling nothing, \"Do you remember...\" and " +
             "\"What did we talk about yesterday?\" bringing back the right exchanges (never the conversation going on), " +
+            "the replies in them under the persona's name (fixture persona Ivy; Martlet without one), " +
             "search_conversations by words and by time and its answers, deleting one conversation and everything, exchanges from " +
             "Telegram and Discord keeping their app, chat and message IDs (Discord never recalled in the talk window), what " +
             "deleting and editing one message asks of each app (48 hours on Telegram, never your DM messages on Discord, edited " +
@@ -1864,6 +1913,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_pose" => await desktop.PoseCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "character_mouth" => await desktop.MouthCharacterAsync(MouthLevels(arguments), OptionalInt(arguments, "stepMs"),
                     OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
+                "character_look" => await desktop.LookCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "turn_judge_check" => await TurnJudgeCheck.RunAsync(arguments, MartletDirectory(arguments), cancellation),
@@ -1907,7 +1957,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_actions" => await CharacterActionsCheckAsync(arguments, cancellation),
                 "character_gaze" => GazeCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer"), OptionalString(arguments, "personaId")),
                 "character_physical_check" => PhysicalCheck.Run(DataDirectory(arguments), OptionalString(arguments, "modelId"),
-                    OptionalString(arguments, "stroke"), OptionalString(arguments, "changes"), OptionalBool(arguments, "noticeAll") ?? true),
+                    OptionalString(arguments, "stroke"), OptionalString(arguments, "changes"), OptionalBool(arguments, "noticeAll") ?? true,
+                    OptionalString(arguments, "personaId"), OptionalInt(arguments, "earlier") ?? 0, OptionalString(arguments, "said"),
+                    OptionalString(arguments, "answering"), OptionalString(arguments, "touchInterrupts")),
                 "character_touch_zones" => await TouchZonesCheck.RunAsync(DataDirectory(arguments),
                     OptionalString(arguments, "dataDirectory") is not null, OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"),
                     OptionalString(arguments, "answer"), OptionalInt(arguments, "width"), OptionalInt(arguments, "height"),
@@ -1916,7 +1968,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     cancellation, OptionalString(arguments, "temperament"), OptionalString(arguments, "personaId"), OptionalString(arguments, "personality"),
                     OptionalInt(arguments, "repeats"), OptionalBool(arguments, "detect") ?? false, OptionalString(arguments, "guess"),
                     OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt"),
-                    OptionalString(arguments, "probePath")),
+                    OptionalString(arguments, "probePath"), OptionalString(arguments, "add")),
                 "character_eyes" => await CharacterEyesCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "dataDirectory") is not null,
                     OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"), OptionalString(arguments, "answer"),
                     OptionalString(arguments, "second"), OptionalString(arguments, "snapshotPath"), OptionalString(arguments, "face"),
@@ -1979,6 +2031,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     SpeechDirectory(arguments), cancellation),
                 "barge_in_check" => await BargeInCheck.RunAsync(arguments, DataDirectory(arguments), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
+                "pc_activity_check" => await PcActivityCheck.RunAsync(OptionalInt(arguments, "seconds"), cancellation),
                 "sound_digest_check" => await SoundDigestCheck.RunAsync(DataDirectory(arguments), MartletDirectory(arguments),
                     OptionalString(arguments, "wavFile"), cancellation),
                 "discord_call_check" => await DiscordCallCheck.RunAsync(DataDirectory(arguments), cancellation),
@@ -2787,7 +2840,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         };
     }
 
-    /// <summary>character_actions: a character model's emotes and motions as Companion › Character › Emotes and motions uses
+    /// <summary>character_actions: a character model's emotes and motions as Companion › Emotes and motions uses
     /// them (Martlet.Avatar.Hosting's inventory, saved settings and prompts), optionally with a simulated Thinking answer parsed
     /// by the production naming parser. Model-authored names and model-relative file names only; never the model's path.</summary>
     private static async Task<object> CharacterActionsCheckAsync(JsonElement arguments, CancellationToken cancellation)
@@ -3787,6 +3840,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 prompt = Of(Martlet.Core.Settings.PromptCatalog.ShortFirstSentence),
                 spokenClosing = Martlet.Core.Settings.PromptSettings.ReplyClosing(prompts, generation, true, Martlet.Conversation.StayQuiet.Marker),
                 unspokenClosing = Martlet.Core.Settings.PromptSettings.ReplyClosing(prompts, generation, false, Martlet.Conversation.StayQuiet.Marker)
+            },
+            // Companion › Replies › Adult content (off by default) and the instructions it adds after the One moment prompt of
+            // every reply and remark (never in a Discord call), exactly as the desktop sends them; null while it is off.
+            adultContent = new
+            {
+                on = Martlet.Core.Settings.GenerationSettings.Adult(generation),
+                prompt = Of(Martlet.Core.Settings.PromptCatalog.AdultContent),
+                instructions = Martlet.Core.Settings.GenerationSettings.Adult(generation)
+                    ? Martlet.Core.Settings.PromptSettings.Fill(prompts, Martlet.Core.Settings.PromptCatalog.AdultContent) : null
             }
         };
     }

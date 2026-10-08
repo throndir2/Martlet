@@ -7,15 +7,19 @@ public static partial class TouchZoneDetection
     // Left and right pairs, and parts that are always above others on a standing character.
     private static readonly (string Left, string Right)[] Pairs =
     [
-        ("cheek_left", "cheek_right"), ("ear_left", "ear_right"), ("shoulder_left", "shoulder_right"), ("breast_left", "breast_right"),
-        ("upper_arm_left", "upper_arm_right"), ("forearm_left", "forearm_right"), ("hand_left", "hand_right"), ("thigh_left", "thigh_right"),
-        ("inner_thigh_left", "inner_thigh_right"), ("knee_left", "knee_right"), ("calf_left", "calf_right"), ("foot_left", "foot_right")
+        ("eye_left", "eye_right"), ("cheek_left", "cheek_right"), ("ear_left", "ear_right"), ("shoulder_left", "shoulder_right"),
+        ("breast_left", "breast_right"), ("upper_arm_left", "upper_arm_right"), ("forearm_left", "forearm_right"), ("hand_left", "hand_right"),
+        ("hip_left", "hip_right"), ("thigh_left", "thigh_right"), ("inner_thigh_left", "inner_thigh_right"), ("knee_left", "knee_right"),
+        ("calf_left", "calf_right"), ("foot_left", "foot_right")
     ];
 
     private static readonly (string Above, string Below)[] Heights =
     [
         ("top_of_head", "forehead"), ("forehead", "nose"), ("nose", "lips"), ("lips", "chin"), ("forehead", "chin"), ("chin", "neck"),
+        ("eye_left", "nose"), ("eye_right", "nose"), ("eye_left", "lips"), ("eye_right", "lips"), ("lips", "neck"),
         ("neck", "chest"), ("collarbone", "chest"), ("chest", "stomach"), ("chest", "navel"), ("stomach", "groin"), ("navel", "groin"),
+        ("neck", "breast_left"), ("neck", "breast_right"), ("breast_left", "stomach"), ("breast_right", "stomach"),
+        ("hip_left", "thigh_left"), ("hip_right", "thigh_right"), ("thigh_left", "calf_left"), ("thigh_right", "calf_right"),
         ("thigh_left", "knee_left"), ("thigh_right", "knee_right"), ("knee_left", "calf_left"), ("knee_right", "calf_right"),
         ("calf_left", "foot_left"), ("calf_right", "foot_right")
     ];
@@ -101,7 +105,8 @@ public static partial class TouchZoneDetection
     // The middle of the face (for the face's pairs) or of the body (for the rest), from the zones found there.
     private static double? Midline(IReadOnlyDictionary<string, TouchZoneBox> zones, string pair)
     {
-        var middle = (pair.StartsWith("cheek", StringComparison.Ordinal) || pair.StartsWith("ear", StringComparison.Ordinal) ? HeadMiddle : BodyMiddle)
+        var middle = (pair.StartsWith("cheek", StringComparison.Ordinal) || pair.StartsWith("ear", StringComparison.Ordinal) ||
+                pair.StartsWith("eye", StringComparison.Ordinal) ? HeadMiddle : BodyMiddle)
             .Where(zones.ContainsKey).Select(id => zones[id].CenterX).ToArray();
         return middle.Length == 0 ? null : middle.Average();
     }
@@ -120,6 +125,7 @@ public static partial class TouchZoneDetection
         foreach (var side in new[] { "left", "right" })
             found.AddRange(
             [
+                ($"eye_{side}", At($"{side}Eye")),
                 ($"shoulder_{side}", At($"{side}UpperArm")), ($"upper_arm_{side}", At($"{side}UpperArm", $"{side}LowerArm")),
                 ($"forearm_{side}", At($"{side}LowerArm", $"{side}Hand")), ($"hand_{side}", At($"{side}LowerArm", $"{side}Hand", 1.35)),
                 ($"thigh_{side}", At($"{side}UpperLeg", $"{side}LowerLeg")), ($"knee_{side}", At($"{side}LowerLeg")),
@@ -178,8 +184,9 @@ public static partial class TouchZoneDetection
     /// <summary>Works out each zone in <paramref name="required"/> that is still missing: where the model's own named parts put it
     /// (<paramref name="hints"/>: the neck on its neck, the lips on its mouth, the hips between its upper body and its legs...),
     /// else from the zones around it: the lips and
-    /// ears from the face, the neck below the chin, the chest from the breasts (or between the neck and the stomach), the breasts
-    /// from the chest, the waist at the navel, the hips over the thighs, the groin between the thighs, the buttocks low on the
+    /// ears from the face (or its eyes, nose and other parts), the neck below the chin, the chest from the breasts (or between
+    /// the neck and the stomach), the breasts from the chest, the waist at the navel, the hips over the thighs (or around the
+    /// hip found), each hip as its side of the hips, the groin between the thighs, the buttocks low on the
     /// hips and each inner thigh from its thigh (one of a pair from the other, mirrored). Without those it uses the parts' windows
     /// (<paramref name="regions"/>: head, upper_body and lower_body, fractions of the snapshot, and whether the model found them)
     /// and the character's outline (<paramref name="figure"/>); lower-body zones only when there is a lower body. Each box is
@@ -225,9 +232,11 @@ public static partial class TouchZoneDetection
         }
 
         // The head: the face (found, else its own parts, else the middle of the head's lower part) gives the lips, ears and neck.
-        var faceParts = new[] { "forehead", "nose", "lips", "chin", "cheek_left", "cheek_right" }.Select(Has).OfType<TouchZoneBox>().ToArray();
+        // Parts across the top of the face (the eyes, the forehead) go on down: a face is about as tall as it is wide.
+        var faceParts = new[] { "forehead", "eye_left", "eye_right", "nose", "lips", "chin", "cheek_left", "cheek_right" }
+            .Select(Has).OfType<TouchZoneBox>().ToArray();
         var (face, faceFrom) = Has("face") is { } found ? (found, "the face")
-            : faceParts.Length >= 2 ? (Join(faceParts), "the face's parts")
+            : faceParts.Length >= 2 && Join(faceParts) is var joined ? (joined.Height < 0.6 * joined.Width ? joined with { Height = joined.Width } : joined, "the face's parts")
             : (Edges(head.CenterX - 0.25 * head.Width, head.Y + 0.35 * head.Height, head.CenterX + 0.25 * head.Width, head.Y + 0.9 * head.Height), "the head");
         Put("lips", Edges(face.CenterX - 0.17 * face.Width, face.Y + 0.68 * face.Height, face.CenterX + 0.17 * face.Width, face.Y + 0.82 * face.Height), faceFrom);
         foreach (var left in new[] { true, false })
@@ -273,20 +282,28 @@ public static partial class TouchZoneDetection
         Put("waist", Edges(middle - 0.6 * torso, waistY - waistHeight / 2, middle + 0.6 * torso, waistY + waistHeight / 2),
             navel is not null ? "the navel" : stomach is not null ? "the stomach" : "the chest");
 
-        // The lower body, only when the character has one: the hips over the thighs, the groin between them, the buttocks low on
-        // the hips and the inner side of each thigh.
+        // The lower body, only when the character has one: the hips over the thighs, each hip its side of them, the groin between
+        // the thighs, the buttocks low on the hips and the inner side of each thigh.
         var legs = Regions[2].Zones.Any(zones.ContainsKey) || regions.TryGetValue("lower_body", out var legsFound) && legsFound.Found;
         if (!legs)
         {
-            var skipped = new[] { "hips", "groin", "buttocks", "inner_thigh_left", "inner_thigh_right" }.Where(id => required.Contains(id) && !zones.ContainsKey(id)).ToArray();
+            var skipped = new[] { "hips", "hip_left", "hip_right", "groin", "buttocks", "inner_thigh_left", "inner_thigh_right" }
+                .Where(id => required.Contains(id) && !zones.ContainsKey(id)).ToArray();
             if (skipped.Length > 0) notes.Add($"not {string.Join(", ", skipped)}: the character shows no lower body");
             return notes;
         }
         var thighs = new[] { Has("thigh_left"), Has("thigh_right") }.OfType<TouchZoneBox>().ToArray();
-        var legsMiddle = thighs.Length == 2 ? thighs.Average(t => t.CenterX) : Has("groin")?.CenterX ?? middle;
+        var sides = new[] { Has("hip_left"), Has("hip_right") }.OfType<TouchZoneBox>().ToArray();
+        var legsMiddle = thighs.Length == 2 ? thighs.Average(t => t.CenterX) : sides.Length == 2 ? sides.Average(s => s.CenterX) : Has("groin")?.CenterX ?? middle;
         TouchZoneBox hips;
         string hipsFrom;
         if (Has("hips") is { } hipsFound) (hips, hipsFrom) = (hipsFound, "the hips");
+        else if (sides.Length > 0)
+        {
+            (hips, hipsFrom) = (sides.Length == 2 ? Join(sides) : Join(sides[0], Mirror(sides[0], legsMiddle)),
+                sides.Length == 2 ? "hip_left and hip_right" : Has("hip_left") is null ? "hip_right" : "hip_left");
+            Put("hips", hips, hipsFrom);
+        }
         else if (thighs.Length > 0)
         {
             // Thighs often flare wider than the hips: the hips take three quarters of their width, over the legs' middle, from the
@@ -303,6 +320,8 @@ public static partial class TouchZoneDetection
             Put("hips", hips, hipsFrom);
         }
         var crotch = thighs.Length > 0 ? Math.Max(hips.Y + hips.Height, thighs.Min(t => t.Y) + 0.15 * thighs.Max(t => t.Height)) : hips.Y + hips.Height;
+        Pair("hip_left", "hip_right", legsMiddle, Side(hips, characterLeft: true), hipsFrom);
+        Pair("hip_right", "hip_left", legsMiddle, Side(hips, characterLeft: false), hipsFrom);
         Put("groin", Edges(legsMiddle - 0.15 * hips.Width, hips.Y + 0.45 * hips.Height, legsMiddle + 0.15 * hips.Width, crotch),
             thighs.Length > 0 ? hipsFrom == "the hips" ? "the hips and thighs" : "the thighs" : hipsFrom);
         Put("buttocks", Edges(hips.X, hips.Y + 0.4 * hips.Height, hips.X + hips.Width, hips.Y + 1.15 * hips.Height), hipsFrom);

@@ -78,6 +78,18 @@ public partial class MainWindow
 
     private static int ShortFirstIndex(bool? shortFirst) => GenerationSettings.StartsShort(new() { ShortFirstSentence = shortFirst }) ? 0 : 1;
 
+    /// <summary>Companion › Replies › Adult content: each choice and what it saves as <see cref="GenerationSettings.AdultContent"/>.
+    /// Off is the default: it saves nothing (null).</summary>
+    private static readonly IReadOnlyList<(string Name, bool? Value)> AdultChoices = [("Off", null), ("On (18+)", true)];
+    private const string AdultRange = "Off (default) or On, only if you are 18 or older";
+    private const string AdultHelp = "On lets Martlet flirt, be sexual and react explicitly, always true to its personality, when " +
+        "its character is an adult; it never does with a character under 18. Touches on intimate parts then count as sexual, and " +
+        "when you keep touching one, Martlet takes it as deliberate and reacts more and more. Never in a Discord call, where others " +
+        "can hear. Many cloud models refuse such content; models you run yourself usually don't. The words it is given are the " +
+        "Adult content prompt on Prompts.";
+
+    private static int AdultIndex(bool? adult) => GenerationSettings.Adult(new() { AdultContent = adult }) ? 1 : 0;
+
     private void RenderRepliesTab(Panel page)
     {
         var route = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
@@ -120,8 +132,16 @@ public partial class MainWindow
         };
         AutomationProperties.SetAutomationId(shortFirst, "RepliesShortFirstSentence");
         AutomationProperties.SetHelpText(shortFirst, ShortFirstRange + ". " + ShortFirstHelp);
+        var adult = new ComboBox
+        {
+            Width = 96, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 6, 0, 0), ItemsSource = AdultChoices.Select(c => c.Name).ToArray(),
+            SelectedIndex = AdultIndex(saved?.AdultContent)
+        };
+        AutomationProperties.SetAutomationId(adult, "RepliesAdultContent");
+        AutomationProperties.SetHelpText(adult, AdultRange + ". " + AdultHelp);
         // There is no Save button: a valid change saves a moment after typing stops, into the newest saved settings.
-        var autoSave = new AutoSave(() => SaveRepliesFromAsync(boxes, thinking, shortFirst, generation =>
+        var autoSave = new AutoSave(() => SaveRepliesFromAsync(boxes, thinking, shortFirst, adult, generation =>
         {
             described.Text = DescribeGeneration(generation, route);
             showContextStatus?.Invoke();
@@ -138,6 +158,9 @@ public partial class MainWindow
         shortFirst.SelectionChanged += (_, _) => { tabEdited = true; autoSave.Changed(); };
         AddRepliesRow(grid, new Label { Content = "_Short first sentence", Target = shortFirst, Padding = new Thickness(0, 8, 8, 0), VerticalAlignment = VerticalAlignment.Top },
             shortFirst, ShortFirstRange, ShortFirstHelp, null);
+        adult.SelectionChanged += (_, _) => { tabEdited = true; autoSave.Changed(); };
+        AddRepliesRow(grid, new Label { Content = "_Adult content", Target = adult, Padding = new Thickness(0, 8, 8, 0), VerticalAlignment = VerticalAlignment.Top },
+            adult, AdultRange, AdultHelp, null);
         foreach (var setting in ReplySettings)
         {
             var use = route is null ? GenerationSettingUse.Used : GenerationSupport.Use(route.RouteType, route.Origin, setting.Setting);
@@ -294,6 +317,7 @@ public partial class MainWindow
             GenerationSettingUse.Unused ? "" : GenerationSettings.ThinkingSteps(settings) ? "Thinking steps are on. " : "Thinking steps are off. ";
         thinking += GenerationSettings.StartsShort(settings) ? "Spoken replies start with a short first sentence. "
             : "Spoken replies don't start with a short first sentence. ";
+        if (GenerationSettings.Adult(settings)) thinking += "Adult content is on. ";
         if (settings is null)
             return $"{brief}. {stop}. {thinking}Other settings use the model default.";
         var parts = new List<string>();
@@ -308,7 +332,7 @@ public partial class MainWindow
     /// newest saved settings. A field that isn't a number in range says so (on the status line) and nothing is saved until it is
     /// fixed. Returns false to be tried again shortly while another change holds the settings.</summary>
     private async Task<bool> SaveRepliesFromAsync(IReadOnlyDictionary<GenerationSetting, TextBox> boxes, ComboBox thinking,
-        ComboBox shortFirst, Action<GenerationSettings?> saved)
+        ComboBox shortFirst, ComboBox adult, Action<GenerationSettings?> saved)
     {
         var values = new Dictionary<GenerationSetting, double?>();
         foreach (var setting in ReplySettings)
@@ -339,7 +363,8 @@ public partial class MainWindow
             PresencePenalty = values[GenerationSetting.PresencePenalty],
             ContextTokens = Whole(GenerationSetting.ContextTokens),
             Reasoning = ThinkingChoices[Math.Max(0, thinking.SelectedIndex)].Value,
-            ShortFirstSentence = ShortFirstChoices[Math.Max(0, shortFirst.SelectedIndex)].Value
+            ShortFirstSentence = ShortFirstChoices[Math.Max(0, shortFirst.SelectedIndex)].Value,
+            AdultContent = AdultChoices[Math.Max(0, adult.SelectedIndex)].Value
         };
         try { generation.Validate(); }
         catch (ContractException error)

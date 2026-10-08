@@ -33,12 +33,15 @@ namespace Martlet.Desktop;
 // for Thinking on the user's own computers unless EarlyRepliesCloud (Also for cloud models, off by default: a reply let go there
 // may still cost its input); EarlyVoice (on by default) prepares the first spoken words too, for a paid cloud voice only with
 // EarlyRepliesCloud.
-// Companion › Character › Where the character looks (also the character's right-click Eyes menu): its usual gaze (GazeUsual: a
+// Companion › Eyes › Where the character looks (also the character's right-click Eyes menu): its usual gaze (GazeUsual: a
 // GazeMode, or null, the default, for as the personality decides) and whether the character may change where it looks in its
 // replies (GazeFree, on by default).
 // Companion › Voice › Quick sounds while Martlet thinks (QuickSounds, off by default; this PC only, since the clips are made on
 // it): a short sound in Martlet's own voice when a reply has no audio of its own QuickSoundDelayMs after it was confirmed
 // (QuickSoundOptions.DelayChoices, 700 by default).
+// Companion › Touch › Touch zones › When you touch Martlet while it talks (TouchInterrupts: any touch Martlet notices, the
+// default, only intimate touches, or never): a touch stops the reply or remark Martlet is saying, like talking over it, and its
+// reaction knows what Martlet was saying.
 internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity = 0.5, int PauseIndex = 1, bool VoiceId = false,
     int ScreenChattiness = 1, int ScreenScope = (int)WatchKind.ActiveScreen, string CameraId = "", string CameraName = "",
     string VideoAddress = "", bool SpeakReplies = true, bool Watch = true, int Version = 0, bool? HearVoice = null,
@@ -47,7 +50,7 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
     Martlet.Conversation.BargeInBehavior BargeInStyle = Martlet.Conversation.BargeInBehavior.PauseAndDecide, bool JudgeTurns = true,
     bool DescribePcSounds = true, bool ScreenSummary = true, bool EarlyReplies = true, bool EarlyRepliesCloud = false,
     bool EarlyVoice = true, Martlet.Avatar.Hosting.GazeMode? GazeUsual = null, bool GazeFree = true, bool QuickSounds = false,
-    int QuickSoundDelayMs = 700)
+    int QuickSoundDelayMs = 700, Martlet.Conversation.TouchInterrupts TouchInterrupts = Martlet.Conversation.TouchInterrupts.Any)
 {
     private const string FileName = "talk-preferences.json";
 
@@ -97,6 +100,7 @@ internal sealed record TalkPreferences(bool HandsFree = true, double Sensitivity
                 QuickSoundDelayMs = Martlet.Conversation.QuickSoundOptions.DelayChoices.Contains(loaded.QuickSoundDelayMs)
                     ? loaded.QuickSoundDelayMs : (int)Martlet.Conversation.QuickSoundOptions.DefaultDelay.TotalMilliseconds,
                 GazeUsual = loaded.GazeUsual is { } usual && Enum.IsDefined(usual) ? usual : null,
+                TouchInterrupts = Enum.IsDefined(loaded.TouchInterrupts) ? loaded.TouchInterrupts : Martlet.Conversation.TouchInterrupts.Any,
                 Version = CurrentVersion
             };
         }

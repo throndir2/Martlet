@@ -66,8 +66,9 @@ public sealed class TouchTurnTests
         var message = LastUser(fixture.Llm.Body);
         Assert.Contains("They zoomed in on your face, then poked your left cheek twice.", message, StringComparison.Ordinal);
         Assert.Contains("touched you, their desktop character", message, StringComparison.Ordinal);
-        // It asks for words out loud, never only an emote or the silent reply.
-        Assert.Contains("always say something, never only an emote, a sound or [pass]", message, StringComparison.Ordinal);
+        // It asks for a sound or words out loud, never silence or an emote alone.
+        Assert.Contains("make a sound", message, StringComparison.Ordinal);
+        Assert.Contains("Never stay silent: don't answer with only an emote or [pass].", message, StringComparison.Ordinal);
         Assert.Equal(plain, Instructions(fixture.Llm.Body));
         Assert.Equal("2 touches", touched.Inputs);
 
@@ -96,10 +97,72 @@ public sealed class TouchTurnTests
         Assert.Equal("runtime.Completed", moved!.Status.Code);
         Assert.True(moved.Touch);
         var message = LastUser(fixture.Llm.Body);
-        Assert.Contains("or moved you around, without saying anything.) They moved you to their other monitor. React to it out loud",
-            message, StringComparison.Ordinal);
+        Assert.Contains("or moved you around, without saying a word. That is how they talk to you right now.) They moved you to their " +
+            "other monitor. React to it out loud", message, StringComparison.Ordinal);
         Assert.Equal("1 touch", moved.Inputs);
         Assert.Null(fixture.Controller.Touches.Peek(fixture.Controller.TouchNow));
+    }
+
+    [Fact]
+    public async Task ATouchThatStoppedMartletTellsTheReactionWhatItWasSayingAndAnswering()
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Answer("Sure.");
+        await fixture.Finish(fixture.Start("Hello."));
+
+        var now = fixture.Controller.TouchNow;
+        fixture.Controller.Touches.Record(new(PhysicalKind.Tap, now, "your groin", "groin", Intimate: true, Feeling: "you hate being touched there"));
+        fixture.Controller.Touches.CutIn(new("Once upon a time there was a fox.", "Tell me a story.", now));
+        fixture.Answer("Hey! Hands off while I'm telling a story!");
+        var reaction = fixture.Controller.StartTouch(voice: false);
+        Assert.NotNull(reaction);
+        await fixture.Finish(reaction);
+        Assert.Equal("runtime.Completed", reaction!.Status.Code);
+        var message = LastUser(fixture.Llm.Body);
+        Assert.Contains("They poked your groin once (you hate being touched there). They did it while you were talking, so you stopped " +
+            "mid-sentence. You had said, out loud: \"Once upon a time there was a fox.\" You were answering their message: \"Tell me a " +
+            "story.\" Decide for yourself how to go on", message, StringComparison.Ordinal);
+        Assert.Contains(reaction.TouchText!, message, StringComparison.Ordinal);
+        Assert.Null(fixture.Controller.Touches.Peek(fixture.Controller.TouchNow));
+
+        // Touches that come with a message go in its notes, and Martlet decides what comes first.
+        fixture.Controller.Touches.Record(new(PhysicalKind.Stroke, fixture.Controller.TouchNow, "your hair", "hair", "slowly"));
+        fixture.Answer("Mm, nice. Anyway, the fox...");
+        await fixture.Finish(fixture.Start("Go on."));
+        var notes = LastUser(fixture.Llm.Body);
+        Assert.Contains("They slowly stroked your hair once. Take it in together with what they said", notes, StringComparison.Ordinal);
+        Assert.Contains("You decide what comes first.", notes, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AdultContentFollowsOneMomentInEveryReplyOnlyWhileItIsOn()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var adult = PromptSettings.Fill(null, PromptCatalog.AdultContent)!;
+        var moment = LiveConversationConfiguration.Moment(null)!;
+        fixture.Answer("Hi.");
+        await fixture.Finish(fixture.Start("Hello."));
+        Assert.DoesNotContain(adult, Instructions(fixture.Llm.Body), StringComparison.Ordinal);
+
+        var loaded = await fixture.Store.LoadAsync();
+        await fixture.Save(loaded.Settings! with { Generation = new() { AdultContent = true } });
+        fixture.Answer("Hi again.");
+        await fixture.Finish(fixture.Start("Hello again."));
+        var first = Instructions(fixture.Llm.Body);
+        Assert.Contains(moment + "\n\n" + adult, first, StringComparison.Ordinal);
+        // The same every time, so the prompt cache keeps it; a touch reaction starts the same way.
+        fixture.Answer("Again.");
+        await fixture.Finish(fixture.Start("And again."));
+        Assert.Equal(first, Instructions(fixture.Llm.Body));
+        fixture.Controller.Touches.Record(new(PhysicalKind.Tap, fixture.Controller.TouchNow, "your chest", "chest", Intimate: true));
+        fixture.Answer("Eek!");
+        await fixture.Finish(fixture.Controller.StartTouch(voice: false));
+        Assert.Equal(first, Instructions(fixture.Llm.Body));
+        Assert.Contains("under 18", adult, StringComparison.Ordinal);
+        // MainWindow's statics need WPF's pack: scheme, which a test that shows no window hasn't registered yet.
+        _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
+        Assert.Contains("Adult content is on.", MainWindow.DescribeGeneration(new() { AdultContent = true }));
+        Assert.DoesNotContain("Adult content", MainWindow.DescribeGeneration(null));
     }
 
     [Fact]
@@ -109,6 +172,8 @@ public sealed class TouchTurnTests
         Assert.Contains("{touches}", PromptCatalog.All.Single(p => p.Id == PromptCatalog.TouchedNotes).Default, StringComparison.Ordinal);
         Assert.Equal(["touches", "silent"], PromptCatalog.All.Single(p => p.Id == PromptCatalog.Touched).Placeholders);
         Assert.Contains("{silent}", PromptCatalog.All.Single(p => p.Id == PromptCatalog.Touched).Default, StringComparison.Ordinal);
+        Assert.Equal(["said", "answering"], PromptCatalog.All.Single(p => p.Id == PromptCatalog.TouchedCutIn).Placeholders);
+        Assert.Empty(PromptCatalog.All.Single(p => p.Id == PromptCatalog.AdultContent).Placeholders);
         Assert.Equal("Last reply took 2 touches.", LiveConversationWindow.TurnInputsLine(false, false,
             MomentTurn.Describe(false, 0, false, null, 0, touches: 2), false));
     }

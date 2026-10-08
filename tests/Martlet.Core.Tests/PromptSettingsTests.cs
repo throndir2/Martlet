@@ -83,6 +83,31 @@ public sealed class PromptSettingsTests
     }
 
     [Fact]
+    public void AdultContentIsOffUnlessTurnedOnAndGuardsAgainstMinors()
+    {
+        Assert.False(GenerationSettings.Adult(null));
+        Assert.False(GenerationSettings.Adult(new()));
+        var on = new GenerationSettings { AdultContent = true };
+        Assert.False(on.IsDefault);
+        Assert.True(GenerationSettings.Adult(on));
+        Assert.Same(on, GenerationSettings.Normalize(on));
+        var settings = CompanionSettings.Begin(null) with { Generation = on };
+        settings.Validate();
+        var json = System.Text.Encoding.UTF8.GetString(Martlet.Core.Contracts.ContractJson.Write(settings));
+        Assert.Contains("\"adult_content\": true", json);
+        Assert.Equal(on, SettingsJson.Read(System.Text.Encoding.UTF8.GetBytes(json)).Generation);
+        Assert.DoesNotContain("adult_content",
+            System.Text.Encoding.UTF8.GetString(Martlet.Core.Contracts.ContractJson.Write(CompanionSettings.Begin(null))));
+
+        // Its prompt is editable, has no placeholders, and never allows anything sexual with someone under 18.
+        var prompt = PromptCatalog.All.Single(p => p.Id == PromptCatalog.AdultContent);
+        Assert.Empty(prompt.Placeholders);
+        Assert.Contains("under 18", prompt.Default);
+        Assert.Contains("true to your personality", prompt.Default);
+        Assert.Equal(prompt.Default, PromptSettings.Fill(null, PromptCatalog.AdultContent));
+    }
+
+    [Fact]
     public void ScreenGlancesReactToWhatTheUserDoesNotToTheirSetup()
     {
         var look = PromptSettings.Fill(null, PromptCatalog.CommentaryScreen, ("silent", "pass"))!;

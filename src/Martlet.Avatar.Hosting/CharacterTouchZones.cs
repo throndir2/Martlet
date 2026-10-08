@@ -76,7 +76,7 @@ public sealed record CharacterTouchReaction
 }
 
 /// <summary>One zone found on a model: its box in the snapshot (fractions of the picture), the Live2D drawables or VRM bones that
-/// lie in it (so it follows the model as it moves), whether it is used, and its reaction.</summary>
+/// lie in it (so it follows the model as it moves), whether it is used, its reaction, and whether the owner added it.</summary>
 public sealed record CharacterTouchZone
 {
     public required string Id { get; init; }
@@ -86,11 +86,15 @@ public sealed record CharacterTouchZone
     public IReadOnlyList<string> Bones { get; init; } = [];
     public bool Enabled { get; init; } = true;
     public CharacterTouchReaction Reaction { get; init; } = new();
+    /// <summary>The owner added this zone (Add zone): Detect again looks for it too, beside
+    /// <see cref="TouchZoneDetection.Defaults"/>, and keeps it where it is when it can't place it.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Added { get; init; }
 
     [JsonIgnore] public string Name => Label ?? CharacterTouchZones.Kind(Id)?.Label ?? Id;
 }
 
-/// <summary>One model's touch zones (Companion › Character › Touch zones). <see cref="Crop"/> is where the snapshot the zones were
+/// <summary>One model's touch zones (Companion › Touch › Touch zones). <see cref="Crop"/> is where the snapshot the zones were
 /// found in sat on the renderer page (fractions of the page), so a zone's box can be compared with a touch.</summary>
 public sealed record CharacterTouchZoneSettings
 {
@@ -140,10 +144,11 @@ public static class CharacterTouchZones
     public const double MostlyInside = 0.6;
     /// <summary>Every intimate zone kind in plain words, left and right together (Include intimate zones and the touch
     /// temperament's Intimate parts name them so).</summary>
-    public const string IntimateParts = "lips, ears, neck, chest and breasts, waist and sides, hips, groin, buttocks and inner thighs";
+    public const string IntimateParts = "mouth, ears, neck, chest and breasts, waist and sides, hips, groin, buttocks and inner thighs";
 
     private static readonly string[][] HeadPat = [["lean_in", "tilt"], ["smile", "happy"]];
     private static readonly string[][] Face = [["tilt", "nod"], ["smile", "happy"]];
+    private static readonly string[][] Eye = [["flinch", "surprise"], ["pout", "tilt"]];
     private static readonly string[][] Cheek = [["blush"], ["shy", "smile"]];
     private static readonly string[][] Intimate = [["blush"], ["flinch", "surprise", "gasp"]];
     private static readonly string[][] Tickle = [["flinch", "surprise"], ["giggle", "laugh", "chuckle"]];
@@ -156,17 +161,21 @@ public static class CharacterTouchZones
     private static TouchZoneKind Z(string id, string label, TouchZoneGroup group, string narration, string[][] defaults, bool intimate = false) =>
         new(id, label, group, intimate, narration, defaults);
 
-    /// <summary>Every zone, in the order the vision model is asked for them. Left and right are the character's own.</summary>
+    /// <summary>Every zone Martlet knows, in the order the vision model is asked for them. Detect zones looks for
+    /// <see cref="TouchZoneDetection.Defaults"/> and the ones the owner added; Add zone offers the rest. Left and right are the
+    /// character's own.</summary>
     public static readonly IReadOnlyList<TouchZoneKind> Kinds =
     [
         Z("top_of_head", "Top of head", TouchZoneGroup.Head, "*gently pats your head*", HeadPat),
         Z("hair", "Hair", TouchZoneGroup.Head, "*runs fingers through your hair*", HeadPat),
         Z("forehead", "Forehead", TouchZoneGroup.Head, "*pokes your forehead*", Face),
-        Z("face", "Face and eyes", TouchZoneGroup.Head, "*touches your face*", Face),
+        Z("face", "Face", TouchZoneGroup.Head, "*touches your face*", Face),
+        Z("eye_left", "Left eye", TouchZoneGroup.Head, "*touches near your eye*", Eye),
+        Z("eye_right", "Right eye", TouchZoneGroup.Head, "*touches near your eye*", Eye),
         Z("cheek_left", "Left cheek", TouchZoneGroup.Head, "*pokes your cheek*", Cheek),
         Z("cheek_right", "Right cheek", TouchZoneGroup.Head, "*pokes your cheek*", Cheek),
         Z("nose", "Nose", TouchZoneGroup.Head, "*boops your nose*", Face),
-        Z("lips", "Lips", TouchZoneGroup.Head, "*touches your lips*", Intimate, true),
+        Z("lips", "Mouth", TouchZoneGroup.Head, "*touches your lips*", Intimate, true),
         Z("chin", "Chin", TouchZoneGroup.Head, "*tilts your chin up*", Face),
         Z("ear_left", "Left ear", TouchZoneGroup.Head, "*touches your ear*", Intimate, true),
         Z("ear_right", "Right ear", TouchZoneGroup.Head, "*touches your ear*", Intimate, true),
@@ -188,6 +197,8 @@ public static class CharacterTouchZones
         Z("hand_left", "Left hand", TouchZoneGroup.Arms, "*holds your hand*", Hand),
         Z("hand_right", "Right hand", TouchZoneGroup.Arms, "*holds your hand*", Hand),
         Z("hips", "Hips", TouchZoneGroup.LowerBody, "*touches your hips*", Intimate, true),
+        Z("hip_left", "Left hip", TouchZoneGroup.LowerBody, "*touches your hip*", Intimate, true),
+        Z("hip_right", "Right hip", TouchZoneGroup.LowerBody, "*touches your hip*", Intimate, true),
         Z("groin", "Groin", TouchZoneGroup.LowerBody, "*touches you between the legs*", Intimate, true),
         Z("buttocks", "Buttocks", TouchZoneGroup.LowerBody, "*pats your bottom*", Intimate, true),
         Z("thigh_left", "Left thigh", TouchZoneGroup.LowerBody, "*touches your thigh*", Leg),
@@ -221,7 +232,13 @@ public static class CharacterTouchZones
         ["right_knee"] = "knee_right", ["left_thigh"] = "thigh_left", ["right_thigh"] = "thigh_right", ["left_breast"] = "breast_left",
         ["right_breast"] = "breast_right", ["left_upper_arm"] = "upper_arm_left", ["right_upper_arm"] = "upper_arm_right",
         ["left_forearm"] = "forearm_left", ["right_forearm"] = "forearm_right", ["left_calf"] = "calf_left", ["right_calf"] = "calf_right",
-        ["left_inner_thigh"] = "inner_thigh_left", ["right_inner_thigh"] = "inner_thigh_right"
+        ["left_inner_thigh"] = "inner_thigh_left", ["right_inner_thigh"] = "inner_thigh_right", ["left_eye"] = "eye_left",
+        ["right_eye"] = "eye_right", ["left_hip"] = "hip_left", ["right_hip"] = "hip_right",
+        // Plain names for the parts of a limb: the lower arm is the forearm, the upper leg the thigh and the lower leg the calf.
+        ["left_lower_arm"] = "forearm_left", ["right_lower_arm"] = "forearm_right", ["lower_arm_left"] = "forearm_left",
+        ["lower_arm_right"] = "forearm_right", ["left_upper_leg"] = "thigh_left", ["right_upper_leg"] = "thigh_right",
+        ["upper_leg_left"] = "thigh_left", ["upper_leg_right"] = "thigh_right", ["left_lower_leg"] = "calf_left",
+        ["right_lower_leg"] = "calf_right", ["lower_leg_left"] = "calf_left", ["lower_leg_right"] = "calf_right"
     };
 
     // A's rough zones, when no found zone matched: the found zones to try, else the first one's default reaction.
@@ -361,19 +378,33 @@ public static class CharacterTouchZones
         }).ToArray();
     }
 
-    /// <summary>Newly found zones merged with the saved ones: a zone found again keeps the owner's label, choice and reaction;
-    /// one not found again is dropped. <paramref name="whole"/>: the snapshot framed the character whole.</summary>
+    /// <summary>Newly found zones merged with the saved ones: a zone found again keeps the owner's label, choice, reaction and
+    /// whether the owner added it. A zone the owner added (<see cref="CharacterTouchZone.Added"/>) that wasn't found again stays
+    /// where it was; any other zone not found again is dropped. <paramref name="whole"/>: the snapshot framed the character
+    /// whole.</summary>
     public static CharacterTouchZoneSettings Detected(CharacterTouchZoneSettings? saved, string modelId, IReadOnlyList<CharacterTouchZone> found,
         TouchZoneBox? crop, RendererZoneProbe? probe, DateTimeOffset now, bool whole = false)
     {
         var bound = Bind(found, crop, probe);
         var merged = bound.Select(zone => saved?.Zones.FirstOrDefault(z => z.Id == zone.Id) is { } old
-            ? zone with { Label = old.Label, Enabled = old.Enabled, Reaction = old.Reaction } : zone).ToList();
+            ? zone with { Label = old.Label, Enabled = old.Enabled, Reaction = old.Reaction, Added = old.Added } : zone).ToList();
+        // Its box was a fraction of the earlier snapshot: it stays on the same place of the page in the new one.
+        TouchZoneBox Rebased(TouchZoneBox box) => saved?.Crop is { } was && crop is { } next && was != next ? box.Within(was).Relative(next).Clamped() : box;
+        var kept = saved?.Zones.Where(z => z.Added && merged.All(m => m.Id != z.Id)).Select(z => z with { Box = Rebased(z.Box) }).ToArray() ?? [];
+        merged.AddRange(Bind(kept, crop, probe));
         return new()
         {
             ModelId = modelId, DetectedBy = CharacterTouchZoneSettings.ByVision, DetectedAt = now.ToUniversalTime(), UpdatedAt = now.ToUniversalTime(),
-            IncludeIntimate = saved?.IncludeIntimate ?? true, Crop = crop, Whole = whole, Zones = merged
+            IncludeIntimate = saved?.IncludeIntimate ?? true, Crop = crop, Whole = whole, Zones = [.. merged.OrderBy(z => Order(z.Id))]
         };
+    }
+
+    /// <summary>Where a zone comes in <see cref="Kinds"/> (a zone Martlet doesn't know comes last).</summary>
+    public static int Order(string id)
+    {
+        for (var i = 0; i < Kinds.Count; i++)
+            if (Kinds[i].Id == id) return i;
+        return int.MaxValue;
     }
 
     // ---------- matching a touch ----------

@@ -17,6 +17,10 @@ internal sealed class LiveConversationConfiguration
     /// <summary>The saved microphone and speakers, or the Windows defaults when none were saved in Audio setup.</summary>
     internal AudioSettings Audio { get; }
     internal PersonaProfile? Persona { get; }
+    /// <summary>What the conversation calls the character: the persona's name, or "Martlet" without one
+    /// (<see cref="Martlet.Core.Speakers.CompanionNames.Character"/>). The Thinking model reads it as who says the character's
+    /// lines in excerpts of the conversation (past conversations, remembering and learning names).</summary>
+    internal string CharacterName => Martlet.Core.Speakers.CompanionNames.Character(Persona?.Name);
     /// <summary>The names the companion itself goes by (Martlet and every persona's), never learned as a voice's name. Worked
     /// out on first use, off the reply's path.</summary>
     internal Martlet.Core.Speakers.CompanionNames CompanionNames => companionNames.Value;
@@ -689,6 +693,14 @@ internal sealed class LiveConversationConfiguration
     /// the user's words, what this PC played, a picture and finished background work together, to answer in one reply.</summary>
     internal static string? Moment(PromptSettings? prompts) =>
         PromptSettings.Fill(prompts, PromptCatalog.Moment, ("silent", SilentReply));
+
+    /// <summary>Companion › Prompts › Adult content while Companion › Replies › Adult content is on, else null: it follows the One
+    /// moment prompt in every reply and remark (never in a Discord call), the same each time.</summary>
+    internal string? AdultInstructions => GenerationSettings.Adult(Generation) ? PromptSettings.Fill(Prompts, PromptCatalog.AdultContent) : null;
+
+    /// <summary>What the Thinking model hears of <paramref name="burst"/> (<see cref="Martlet.Conversation.TouchWording.Told"/>).</summary>
+    internal static string TouchWords(PromptSettings? prompts, Martlet.Conversation.TouchBurst burst) =>
+        Martlet.Conversation.TouchWording.Told(prompts, burst);
 
     /// <summary>What starts each line of a message that was heard from what the PC plays (Hear what this PC plays), so the
     /// Thinking model, the history and memory tell it apart from the user's own words.</summary>

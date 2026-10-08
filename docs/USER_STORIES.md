@@ -128,7 +128,9 @@ These are acceptance criteria for every screen.
 │ Home     │  Needs attention (fixes), Health tiles, Start talking    │
 │ Companion│  How it works: Thinking · Voice · Listening · Vision ·   │
 │          │    Lip-sync                                              │
-│          │  Who it is: Character · Personality · Lorebook · Memory  │
+│          │  Who it is: Personality · Lorebook · Memory              │
+│          │  How it looks: Character · Speech bubbles · Emotes and   │
+│          │    motions · Eyes · Touch                                │
 │          │  What it does: Replies · Tools · Smart home              │
 │ Devices  │  Network map, machines, who does what                    │
 │ Settings │  General · Privacy · Network · Updates · Help            │
@@ -140,9 +142,11 @@ These are acceptance criteria for every screen.
   first) and **Health** tiles (one per part, each a link to its page). It
   replaced the four *Now lines* and the *Fix* card; see
   [UI design](UI_DESIGN.md#2-home-main-pc).
-- **Companion**: a side list of pages in three groups. *How it works* holds
-  the job pages (each asks where the job runs); *Who it is* holds the look,
-  the personality and what it knows; *What it does* holds how it answers and
+- **Companion**: a side list of pages in four groups. *How it works* holds
+  the job pages (each asks where the job runs); *Who it is* holds the
+  personality and what it knows; *How it looks* holds the desktop character
+  (its model, speech bubbles, emotes and motions, eyes and touch, each on a
+  small page of its own so it opens at once); *What it does* holds how it answers and
   acts. A page gets its own entry only if it has its own *Where it runs*
   choice, its own consent or data destination, or its own list to edit;
   anything else is a card on an existing page. This replaces the Companion
@@ -838,8 +842,9 @@ Microphone is first because it is the most common thing to change.
 
 #### F1. Change the character (overview of every way)
 
-All entry points land on **Companion › Character** (personality and lip-sync
-have their own pages, *Personality* and *Lip-sync*, next to it):
+All entry points land on **Companion › Character** (speech bubbles, emotes
+and motions, eyes and touch have their own pages next to it under *How it
+looks*; personality and lip-sync have theirs, *Personality* and *Lip-sync*):
 
 | Entry point | Clicks |
 | --- | ---: |
@@ -854,9 +859,12 @@ The Character page:
 Now: Hiyori · showing                                          [ Hide character ]
 
 Character   [Hiyori (built-in)] [My VRM]  [ + Import ]
-On screen    Speech bubbles [On]  Subtitles [Off]  [ Reset position ]  [ Reset size ]
+On screen    [ Reset position ]  [ Reset size ]  [ Lock position ]
 Advanced ▸   mapping, renderer, model files
 ```
+
+Speech bubbles, emotes and motions, eyes and touch are pages of their own
+next to it, so the Character page stays short and opens at once.
 
 - **Today**: 13 paths; the Character window (one *Show character* / *Hide
   character* button; built-in or own model, lip-sync and *Show at startup*

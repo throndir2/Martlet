@@ -27,15 +27,15 @@ Automatic mode tries local Audio2Face, then a paired host with Audio2Face, then 
 
 ## Emotes and motions
 
-**Companion › Character › Emotes and motions** lists model actions and gestures. Martlet can name them with Thinking. Reply tags such as `{nod}` are removed from chat and performed by the character.
+**Companion › Emotes and motions** lists model actions and gestures. Martlet can name them with Thinking. Reply tags such as `{nod}` are removed from chat and performed by the character.
 
 ## Where the character looks
 
-Right-click the character and open **Eyes**, or use **Companion › Character › Where the character looks**, to choose what its eyes usually do: as its personality decides (the default), follow your mouse, follow your mouse only when it's near, look straight ahead, or watch the window you're using. With **Let the character change it** on, the character can change that in its replies, and it stays that way until it changes it again.
+Right-click the character and open **Eyes**, or use **Companion › Eyes › Where the character looks**, to choose what its eyes usually do: as its personality decides (the default), follow your mouse, follow your mouse only when it's near, look straight ahead, or watch the window you're using. Watching the window, its eyes follow what you do there: where you move the mouse or type in it, and its middle until you do. With **Let the character change it** on, the character can change that in its replies, and it stays that way until it changes it again.
 
 ## Touch temperament
 
-When you save a personality, Thinking decides how the character reacts to touches on each part of its body, and where its eyes usually go. A shy, passive character can ignore your mouse and most touches, then blush and look at your mouse when you touch it somewhere it cares about. Edit it under **Companion › Character › Touch temperament**. Each body area is a category that lists its parts, and intimate parts (lips, ears, neck, chest and breasts, waist, hips, groin, buttocks and inner thighs) have a category of their own.
+When you save a personality, Thinking decides how the character reacts to touches on each part of its body, and where its eyes usually go. A shy, passive character can ignore your mouse and most touches, then blush and look at your mouse when you touch it somewhere it cares about. Edit it under **Companion › Touch › Touch temperament**. Each body area is a category that lists its parts, and intimate parts (mouth, ears, neck, chest and breasts, waist, hips, groin, buttocks and inner thighs) have a category of their own.
 
 You can also make your own custom temperaments: name one, change it as you like, and choose it under **Uses** for any persona. Changing a custom temperament changes it for every persona that uses it.
 

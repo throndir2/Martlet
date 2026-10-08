@@ -6,7 +6,7 @@ using Martlet.Avatar.Hosting;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Character › Emotes and motions › Combos: the shown model's combos of its emotes, motions and gestures
+/// <summary>Companion › Emotes and motions › Combos: the shown model's combos of its emotes, motions and gestures
 /// (Martlet's own, given once, and the owner's). Each ties a tag to 2 to 6 of them: a reply's {tag} sets off every part at once
 /// and {/tag} turns its lingering parts off. They save with the model's emote settings (the card's own autosave), so they are the
 /// same on all the owner's computers.</summary>

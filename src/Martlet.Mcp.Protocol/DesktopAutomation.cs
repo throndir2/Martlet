@@ -36,10 +36,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // nothing. Stop singing only ends the song playing (musically). Nothing in the talk window plays a song. Its background
         // tasks chip (LiveTasks) and the task list's close button (LiveTasksClose) only open and close the list.
         "LiveStop", "LiveRefreshContext", "LiveSongStop", "LiveTasks", "LiveTasksClose",
-        // Companion › Character › Touch zones' Stop only stops finding zones; it sends nothing (the zones found until then were
+        // Companion › Touch › Touch zones' Stop only stops finding zones; it sends nothing (the zones found until then were
         // already saved).
         "TouchZonesStop",
-        // Companion › Character › Emotes and motions › Combos: Add a combo only adds an empty row. Nothing saves until the row has
+        // Companion › Emotes and motions › Combos: Add a combo only adds an empty row. Nothing saves until the row has
         // a tag and parts, and typing them needs --allow-ui-effects.
         "CharacterCombosAdd",
         // Companion › Replies' Open Deep thinking only opens that page.
@@ -375,7 +375,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // name), whether they are shared with the paired Martlet computers (with how many and when), and why Add a character
         // couldn't add a model (never the typed name or file path).
         "CharacterModelsStatus", "CharacterModelsShared", "CharacterModelAddProblem",
-        // Companion › Character › Emotes and motions: how many the shown model has and who named them, the Thinking model's
+        // Companion › Emotes and motions: how many the shown model has and who named them, the Thinking model's
         // naming progress, the tags offered to replies and what follows the voice's cues, the last one played (model-authored
         // names only) and whether edits saved. Each row's name and kind (CharacterActionName-<n>, a model-authored name), and
         // its Try button's label (CharacterActionTry-<n>: "Try", or "Turn off" while that lingering emote is on). The grey hint in
@@ -395,30 +395,32 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // parts is on); all four read through SafeValuePrefixes. Typing a combo's tag, parts or When to use, its on box and Remove
         // save, and Try and Turn off change what the character shows, so they need --allow-ui-effects.
         "CharacterCombosStatus",
-        // Companion › Character › Touch zones: how many zones the shown model has, how many are in use and who found them, whether
+        // Companion › Touch › Touch zones: how many zones the shown model has, how many are in use and who found them, whether
         // the Thinking model can see (and where pictures go), how Detect zones went (each step while it runs), what the last
         // detection sent (how many pictures, how large, what they showed), which zone the last touch landed in and what it
-        // played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows and default reaction).
-        // TouchZonesDetectNote says why Detect zones is off (no model that can see pictures).
+        // played, and whether edits saved. Each zone's line (TouchZoneState-<n>: its ID, parts it follows, "added by you" for a zone
+        // the owner added, which Detect again looks for too, and its default reaction).
+        // TouchZonesDetectNote says why Detect zones is off (no model that can see pictures), and TouchZonesAddNote which zones
+        // Detect zones looks for (fixed text).
         // Detect zones sends the character's pictures to Thinking, Try plays on the character, Open the pictures opens Explorer,
         // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
-        "TouchZonesDetectNote",
-        // Companion › Character › Touch zones › Eyes: where the shown model's eyes come from (the model's own meshes or eye bones,
+        "TouchZonesDetectNote", "TouchZonesAddNote",
+        // Companion › Eyes › Where the eyes are: where the shown model's eyes come from (the model's own meshes or eye bones,
         // the vision measurement and when it was taken, or an estimate), how measuring went (each step while it runs, or why it
         // failed) and, only when no model can see pictures, why Measure the eyes is off. Fixed text, times and counts only.
         // Measure the eyes (CharacterEyesMeasure) sends a close-up of the character's face to Thinking and Forget the measurement
         // (CharacterEyesForget) deletes it, so they need --allow-ui-effects; CharacterEyesPicture (the close-up with its boxes)
         // isn't a value.
         "CharacterEyesStatus", "CharacterEyesProgress", "CharacterEyesNote",
-        // Companion › Character › Touch temperament: who decided the active persona's temperament (built-in, the Thinking model,
+        // Companion › Touch › Touch temperament: who decided the active persona's temperament (built-in, the Thinking model,
         // FIXTURE - NOT AI or the owner) or which custom temperament or built-in reactions it uses instead; its help text is the
         // whole temperament in words: "head loves, torso hates, ..., intimate loves", its eyes and the parts whose touch turns them to
         // your mouse), how deciding went and whether edits saved or what a Uses, Create, Rename or Delete did (each only while it has
         // something to say). Each line's attitude (TouchTemperamentAttitude-<category or zone ID>, below) is an attitude word, its
         // TouchTemperamentReaction-/TouchTemperamentReaction2- the reactions, its TouchTemperamentLinger- and
         // TouchTemperamentLook-<category or zone ID> the seconds the first reaction stays on and the eyes then look at your mouse,
-        // TouchTemperamentParts-<category ID> the parts the category covers ("Parts: lips, left ear, ..."), TouchTemperamentAfter the
+        // TouchTemperamentParts-<category ID> the parts the category covers ("Parts: mouth, left ear, ..."), TouchTemperamentAfter the
         // touches in a row before it escalates and TouchTemperamentGaze where the eyes usually go. TouchTemperamentUse is the
         // temperament the persona uses (Decided from its personality, Built-in reactions or a custom temperament's name),
         // TouchTemperamentName and TouchTemperamentNewName the custom temperament's name and the name typed for a new one,
@@ -431,13 +433,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Touch zones' Include intimate zones check box (its label names every intimate part; checkedState says whether it is on)
         // and the zone chosen to add (TouchZonesAddKind).
         "TouchZonesIntimate", "TouchZonesAddKind",
-        // Companion › Character › Where the character looks: what the eyes do now and why (your choice, the personality's or
+        // Companion › Eyes › Where the character looks: what the eyes do now and why (your choice, the personality's or
         // the character's own in a reply; a touch's look at your mouse; whether it may change where it looks). Its
         // CharacterGaze-<choice> radio buttons (selected) and CharacterGazeFree check box (checkedState) save
         // talk-preferences.json, so they need --allow-ui-effects.
         "CharacterGazeNow",
-        // What Martlet noticed (zones with Martlet notices on) that waits for a reply and when a touch reply would start, and
-        // which reply took the last touches and what the Thinking model was told (zone names and the touch line, no words).
+        // What Martlet noticed (zones with Martlet notices on) that waits for a reply and when a touch reply would start (and
+        // whether a touch stopped Martlet talking), and which reply took the last touches and what the Thinking model was told
+        // (zone names and the touch line, no words). Touch zones' TouchInterrupt-<choice> radio buttons (any, intimate, never;
+        // selected) save talk-preferences.json, so they need --allow-ui-effects.
         "TouchZonesNoticed", "TouchZonesNoticedLast",
         // Touch zones' line on the last stroke across the locked character (zones crossed, pace, passes, seconds, samples on the
         // character) or the last move, zoom, pan, lock, hide or show, as Martlet's touch ledger heard it. Fixed wording and zone
@@ -513,6 +517,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Replies › Short first sentence: the chosen option (On, the default, or Off; choosing one with ui_select
         // saves it, so it needs --allow-ui-effects).
         "RepliesShortFirstSentence",
+        // Companion › Replies › Adult content: the chosen option (Off, the default, or On (18+); choosing one with ui_select
+        // saves it, so it needs --allow-ui-effects).
+        "RepliesAdultContent",
         // Companion › Deep thinking: where a think goes and whether it can run there alongside the conversation (and why); Thinking
         // longer's state (on by default; Where it thinks › Off turns it off) or what keeps it from working, and the chosen
         // effort, time limit, hourly limit and when it shares results (choosing one with ui_select saves them, so they need
@@ -1122,7 +1129,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// drawing, +y down; needs --allow-ui-effects) through MoveAvatar's UI Automation value, like a click there held for
     /// <paramref name="holdMs"/> (600 or more: a hold), <paramref name="repeat"/> times <paramref name="gapMs"/> apart, or each
     /// of <paramref name="taps"/> (x, y, holdMs) in turn, waiting for the renderer's hit test after each; without a point it only
-    /// reads the last tap. Returns the last tap as the overlay reports it and, when Companion › Character › Touch zones shows,
+    /// reads the last tap. Returns the last tap as the overlay reports it and, when Companion › Touch › Touch zones shows,
     /// what Martlet noticed (TouchZonesNoticed, TouchZonesNoticedLast) after <paramref name="settleMs"/>.</summary>
     internal async Task<object> TouchCharacterAsync(double? x, double? y, int? holdMs = null, int? repeat = null, int? gapMs = null,
         IReadOnlyList<(double X, double Y, int HoldMs)>? taps = null, int? settleMs = null)
@@ -1166,7 +1173,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
 
     internal const int MaximumTaps = 20;
 
-    // What Martlet noticed, when Companion › Character › Touch zones shows (null otherwise).
+    // What Martlet noticed, when Companion › Touch › Touch zones shows (null otherwise).
     private object? Noticed()
     {
         string? Text(string id)
@@ -1343,6 +1350,54 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 .Select(face => face.GetProperty("eyesFrom").GetString()).Distinct().ToArray(),
             eyeLeft = Eye("irisLeft", "eyeLeftShape"), eyeRight = Eye("irisRight", "eyeRightShape")
         };
+    }
+
+    internal const int MaximumLookSamples = 60;
+
+    /// <summary>Reads where the showing character looks now <paramref name="samples"/> times, <paramref name="gapMs"/> apart,
+    /// through MoveAvatar's UI Automation value ("look"). It changes nothing, so it needs no --allow-ui-effects. Returns each
+    /// reading (what the eyes are on, the direction and the point, the usual gaze, and the window you're using and what the eyes
+    /// watch in it) and a summary: the targets and what the eyes watched in the window, and the range of the direction.</summary>
+    internal async Task<object> LookCharacterAsync(int? samples, int? gapMs)
+    {
+        var count = samples ?? 1;
+        if (count is < 1 or > MaximumLookSamples) throw new ArgumentException($"samples is 1 to {MaximumLookSamples}.");
+        if (gapMs is < 0 or > 5000) throw new ArgumentException("gapMs is 0 to 5000.");
+        var element = Find("MoveAvatar");
+        if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            throw new InvalidOperationException("The character overlay can't be read through UI Automation.");
+        var value = (ValuePattern)pattern;
+        if (value.Current.IsReadOnly) throw new InvalidOperationException("Where the character looks can't be read until it has loaded.");
+        static System.Text.Json.JsonElement? Look(string text) => string.IsNullOrEmpty(text) ? null :
+            System.Text.Json.JsonDocument.Parse(text).RootElement is { ValueKind: System.Text.Json.JsonValueKind.Object } root &&
+            root.TryGetProperty("look", out var look) ? look.Clone() : null;
+        var looks = new List<System.Text.Json.JsonElement>();
+        for (var i = 0; i < count; i++)
+        {
+            if (i > 0) await Task.Delay(gapMs ?? 250);
+            var before = Look(value.Current.Value)?.GetRawText();
+            value.SetValue("look");
+            var waited = Stopwatch.StartNew();
+            System.Text.Json.JsonElement? after;
+            while ((after = Look(value.Current.Value))?.GetRawText() == before && waited.Elapsed < TimeSpan.FromSeconds(3)) await Task.Delay(20);
+            if (after is { } read && read.GetRawText() != before) looks.Add(read);
+        }
+        return new { samples = count, read = looks.Count, looks, summary = LookSummary(looks),
+            note = looks.Count == 0 ? "The renderer didn't answer within 3 seconds." : null };
+    }
+
+    // The targets and what the eyes watched in the window across the readings, and the least and most of the direction.
+    internal static object LookSummary(IReadOnlyList<System.Text.Json.JsonElement> looks)
+    {
+        string[] Words(string name) => [.. looks.Select(look => look.TryGetProperty(name, out var word) &&
+            word.ValueKind == System.Text.Json.JsonValueKind.String ? word.GetString() : null).OfType<string>().Distinct()];
+        object? Range(string name)
+        {
+            double[] values = [.. looks.Where(look => look.TryGetProperty(name, out var number) && number.ValueKind == System.Text.Json.JsonValueKind.Number)
+                .Select(look => look.GetProperty(name).GetDouble())];
+            return values.Length == 0 ? null : new { least = values.Min(), most = values.Max() };
+        }
+        return new { targets = Words("target"), watching = Words("watching"), x = Range("x"), y = Range("y") };
     }
 
     internal const int MaximumPoseSamples = 60;

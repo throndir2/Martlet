@@ -106,6 +106,8 @@ public sealed class ConversationTurn
     private int pauses, resumes;
     private TimeSpan pausedTime;
     private string? sentence;
+    // What was said aloud so far: each sentence's words (without voice tags) once it started playing. Guarded by Sync.
+    private readonly StringBuilder saidAloud = new();
     // How long this reply has played, which its character cues are timed by: it pauses and resumes with the reply, and it
     // stops when the reply is stopped, replaced or fails, so a cue the reply hasn't reached is never acted.
     private readonly CharacterCueClock cueClock;
@@ -189,6 +191,11 @@ public sealed class ConversationTurn
 
     /// <summary>The sentence Martlet is saying aloud right now (its words, without voice tags), or null between sentences.</summary>
     public string? Sentence { get { lock (Sync) return sentence; } }
+
+    /// <summary>What Martlet has said aloud of this reply so far: the words of each sentence that started playing (without voice
+    /// tags), in order; the last one may have been cut off. Empty for a reply that isn't spoken, or before its first sentence
+    /// plays.</summary>
+    public string SaidAloud { get { lock (Sync) return saidAloud.ToString(); } }
 
     /// <summary>Whether what Martlet says aloud is paused (<see cref="Pause"/>).</summary>
     public bool Paused { get { lock (Sync) return paused; } }
@@ -1417,6 +1424,7 @@ public sealed class ConversationTurn
                         if (paused) run.Pause();
                         playback = run;
                         sentence = VoiceTags.Strip(take.Text).Trim();
+                        if (sentence.Length > 0) saidAloud.Append(saidAloud.Length > 0 ? " " : "").Append(sentence);
                         playbackStartedAfter ??= Clock.GetElapsedTime(startedAt);
                         speechRequest = take.Ids.RequestId;
                         speechObservation = Owner.GeneratedSpeech?.Begin(run, frame.Format);

@@ -229,6 +229,10 @@ internal sealed class LiveConversationOperation
     [JsonIgnore] internal Martlet.Conversation.TouchBurst? Touches { get; set; }
     /// <summary>What Thinking was told about <see cref="Touches"/>: the touch reply's message or the note on the user's.</summary>
     [JsonIgnore] internal string? TouchText { get; set; }
+    /// <summary>The user's own words this reply answers (typed, or said and transcribed), once its request was built; null for
+    /// what Martlet starts on its own, what only the PC played, or what went straight to Thinking. A touch that stops the reply
+    /// tells the next one what it was answering (<see cref="Martlet.Conversation.TouchCut"/>).</summary>
+    [JsonIgnore] internal string? Asked { get; set; }
     /// <summary>The finished background jobs this reply brings into the conversation (its own message for a report, or the notes
     /// of the user's message); completed once the exchange is kept, otherwise returned for the next reply.</summary>
     [JsonIgnore] internal BackgroundDelivery? Delivery { get; set; }
@@ -302,6 +306,8 @@ internal sealed class LiveConversationOperation
     internal TimeSpan? Speech { get; set; }
     /// <summary>The controller-clock timestamp the utterance's voice began at (0 when unknown).</summary>
     internal long SpeechStartedAt { get; set; }
+    /// <summary>The controller-clock timestamp its recording ended at (0 when unknown).</summary>
+    internal long SpeechEndedAt { get; set; }
     /// <summary>The end-of-turn judge's quick transcript of exactly the speech kept (Parakeet on this PC); speech-to-text reuses
     /// it. Null when there is none or the kept audio differs from what it transcribed.</summary>
     [JsonIgnore] internal QuickWords? QuickWords { get; set; }
@@ -530,6 +536,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private LiveConversationOperation? pcTranscribing;
     // Companion › Listening › Describe PC sounds: the sound digest of what this PC plays (null when Martlet can't hear the PC).
     private readonly PcSoundDigest? soundDigest;
+    // What makes sound on this PC (which app, what kind), while Martlet hears it: labels each line it hears and keeps the
+    // context board's "activity" note (null when Martlet can't hear the PC).
+    private readonly PcActivityMonitor? pcActivity;
+    private string? activityNote;
+    private long activityPostedAt;
     private long listenEpoch, spokeUntil;
     // Thinking models that rejected a recording this app session; they get the transcript only until Martlet restarts.
     private readonly HashSet<string> deafModels = new(StringComparer.Ordinal);
@@ -634,6 +645,34 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// <summary>The sound digest of what this PC plays (Companion › Listening › Describe PC sounds), or null when Martlet can't
     /// hear the PC here.</summary>
     internal PcSoundDigest? SoundDigest => soundDigest;
+    /// <summary>What makes sound on this PC while Martlet hears it (a YouTube video in Chrome, a game, a voice chat in Discord):
+    /// the talk window turns it on with the PC listener; null when Martlet can't hear the PC here.</summary>
+    internal PcActivityMonitor? PcActivity => pcActivity;
+
+    /// <summary>How long the context board's note on what the user is doing stays fresh (the monitor posts it again sooner).</summary>
+    internal static TimeSpan ActivityNoteAge => TimeSpan.FromSeconds(30);
+
+    // The monitor's newest look (on its own thread): the context board's "activity" note, posted when it changed or every 10
+    // seconds so it stays fresh, and cleared when the monitor stops or nothing is known. The desktop log says when it changed.
+    private void PostActivity(PcActivityState state)
+    {
+        var note = state.Note;
+        var now = clock.GetTimestamp();
+        if (note is null)
+        {
+            Board.Clear(ContextBoard.Activity);
+            activityNote = null;
+            return;
+        }
+        if (note == activityNote && clock.GetElapsedTime(activityPostedAt, now) < TimeSpan.FromSeconds(10)) return;
+        Board.Post(ContextBoard.Activity, note, clock.GetLocalNow(), ActivityNoteAge);
+        if (note != activityNote)
+            ErrorLog.Info($"What you're doing on this PC, as Martlet guesses it: {string.Join("; ", state.Activities.Select(entry =>
+                $"{entry.Source.Kind} ({(entry.Source.Kind == PcActivityKind.Game ? "a game" : entry.Source.App)}" +
+                $"{(entry.FullScreen ? ", full screen" : "")}{(entry.Audible ? "" : ", quiet")})"))}.");
+        activityNote = note;
+        activityPostedAt = now;
+    }
     /// <summary>Martlet's background work in this conversation (think_longer): what runs, what finished and what waits to be
     /// brought up.</summary>
     internal BackgroundJobs Jobs => jobs;
@@ -749,7 +788,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         PcAudioCaptureFactory? pcAudio = null, CharacterCueFeed? characterCues = null,
         Func<SpeechEngine?, PromptSettings?, CharacterActionPrompt?>? characterActions = null,
         DesktopConversationHistory? history = null, ConversationSinging? singing = null, ContextBoard? board = null,
-        IEndOfTurnJudge? turnJudge = null, Func<SetupRoute, string?>? listeningStandIn = null)
+        IEndOfTurnJudge? turnJudge = null, Func<SetupRoute, string?>? listeningStandIn = null,
+        PcActivityMonitor? pcActivity = null)
 
     {
         this.operations = operations;
@@ -780,6 +820,13 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (pcAudio?.Sound is { } sound)
             soundDigest = new PcSoundDigest(sound, () => pcAudio.WithoutMartlet != true && Speaking is not null,
                 () => PoolSoundJudge.For(ThinkingPool), Board, dataDirectory, held: () => PoolSoundJudge.Held(ThinkingPool));
+        // What makes sound on this PC is followed only while Martlet hears the PC; its clock must be this controller's, which
+        // times each utterance.
+        if (pcAudio is not null && pcActivity is not null)
+        {
+            this.pcActivity = pcActivity;
+            pcActivity.Updated += PostActivity;
+        }
         localTranscription = localListener is null ? null : new(localListener, this.clock);
         localWords = localListener;
         this.listeningStandIn = listeningStandIn;
@@ -1228,6 +1275,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     continue;
                 }
                 listening.BeginTranscribing();
+                utterance.SpeechEndedAt = clock.GetTimestamp();
                 utterance.Hearing = false;
                 utterance.TalkingOver = false;
                 if (!listening.Options.Pc && !listening.Options.BargeIn && Speaking == PlaybackMode.Reply)
@@ -1285,7 +1333,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         utterance.SpeakerCheck, utterance.Voiceprint, utterance.Status.Code == "listen.heard" ? utterance.Recording : null,
         utterance.LatencyTimeline, utterance.Status.Code == "listen.ignored" ? utterance.Ignored : null,
         utterance.Status.Code == "listen.heard" ? utterance.Interrupts : null, utterance.SpeechStartedAt,
-        utterance.Status.Code == "listen.heard" ? utterance.Words : null);
+        utterance.Status.Code == "listen.heard" ? utterance.Words : null, utterance.SpeechEndedAt);
 
     /// <summary>Whether what was just heard goes straight to Thinking as the recording alone, with speech-to-text beside the
     /// reply: Thinking may hear it and the straight path is chosen (Companion › Listening), the Thinking model hears and hasn't
@@ -1582,7 +1630,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 board = BoardFor(configured, operation.Authorization.Voice);
                 var request = configured.Request(new(GlanceMessage(prompt, read)), operation.Authorization.Voice, history, null, lore,
                     out var usedHistory, out _, out var usedLore, image,
-                    Join(LiveConversationConfiguration.Moment(configured.Prompts),
+                    Join(LiveConversationConfiguration.Moment(configured.Prompts), configured.AdultInstructions,
                         LiveConversationConfiguration.CommentaryInstructions(level, camera, configured.Prompts, decides)),
                     LiveConversationConfiguration.SilentReply, characterActions: characterActions,
                     gaze: look ? CharacterGaze.Prompt(configured.Prompts, LiveConversationConfiguration.SilentReply) : null,
@@ -1891,6 +1939,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // speaker), tools and finished background work go with it, and what needs its words (Assist, earlier conversations,
             // lorebook keywords in it) waits for the next message.
             var own = operation.OnItsOwn || straight ? null : operation.PcAudio ? operation.UserWords : input!.UserText;
+            operation.Asked = own;
             DesktopMemoryRecall? memoryResult = null;
             if (operation.MemoryRequested && (own ?? (straight ? StraightRecallQuery(history) : null)) is { } query)
             {
@@ -1969,7 +2018,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             var pastCount = 0;
             if (own is not null && this.history is { } pastRecord && pastRecord.Active(configured.Memory))
             {
-                past = pastRecord.RecallNotes(own, conversation, sentHistory, configured.Prompts, out pastCount);
+                past = pastRecord.RecallNotes(own, conversation, sentHistory, configured.Prompts, out pastCount, configured.CharacterName);
                 if (past is not null) operation.LatencyTimeline?.Mark("past conversations");
             }
 
@@ -2005,15 +2054,17 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 if (!operation.OnItsOwn && !operation.Remote && (own is not null || straight) && operation.Touches is null)
                     operation.Touches = touches.Drain(TouchNow);
                 var touchNote = !operation.Touch && operation.Touches is { } touched
-                    ? PromptSettings.Fill(prompts, PromptCatalog.TouchedNotes, ("touches", touched.Line)) : null;
+                    ? PromptSettings.Fill(prompts, PromptCatalog.TouchedNotes, ("touches", LiveConversationConfiguration.TouchWords(prompts, touched))) : null;
                 operation.TouchText = operation.Touch ? input!.UserText : touchNote;
+                // Adult content (Companion › Replies), the same in every reply and remark, never in a Discord call.
+                var adult = operation.DiscordCall ? null : configured.AdultInstructions;
                 // Backup Thinking: once this reply's Thinking request is slow to start, a pool member may answer it instead.
                 var backup = BackupFor(operation);
                 ConversationRequest Ask(SeenScreen? picture, string? recalled, out int keptHistory, out int keptFacts, out int keptEntries) =>
                     operation.Authorization.Configuration.Request(
                         input!, operation.Authorization.Voice, sentHistory, memoryResult, lore,
                         out keptHistory, out keptFacts, out keptEntries, image: picture?.Image,
-                        extraInstructions: Join(LiveConversationConfiguration.Moment(prompts),
+                        extraInstructions: Join(LiveConversationConfiguration.Moment(prompts), adult,
                             home is { Kind: HomeTurnKind.Tools } ? home.Instructions : null,
                             VoicePromptContext.Preamble(heardBy, prompts),
                             operation.Spoken ? LiveConversationConfiguration.Listening(prompts) : null,
@@ -2507,7 +2558,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (configured.SupportsTools && dataDirectory is not null && PictureClient.IsSetUp(dataDirectory))
             own.Add((PictureTools.Definition, (call, token) => ValueTask.FromResult(DrawPicture(operation, configured, call))));
         if (configured.SupportsTools && history?.Searchable(configured.Memory) == true)
-            own.Add((PastConversations.Definition, (call, token) => SearchConversationsAsync(call, conversation, token)));
+            own.Add((PastConversations.Definition, (call, token) => SearchConversationsAsync(call, conversation, configured.CharacterName, token)));
         var kinds = Creations.Kinds;
         if (kinds.Count > 0 && configured.SupportsTools && dataDirectory is not null)
         {
@@ -2649,10 +2700,12 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         return outcome.Result;
     }
 
-    /// <summary>search_conversations: searches the record of earlier conversations (not this one, which the model has).</summary>
-    private async ValueTask<ConversationToolResult> SearchConversationsAsync(TextToolCall call, Guid conversation, CancellationToken token)
+    /// <summary>search_conversations: searches the record of earlier conversations (not this one, which the model has), the
+    /// replies under <paramref name="companion"/>'s name.</summary>
+    private async ValueTask<ConversationToolResult> SearchConversationsAsync(TextToolCall call, Guid conversation, string companion,
+        CancellationToken token)
     {
-        var (result, outcome) = await history!.SearchAsync(call, conversation, token).ConfigureAwait(false);
+        var (result, outcome) = await history!.SearchAsync(call, conversation, token, companion).ConfigureAwait(false);
         tools?.Record("Martlet", PastConversations.ToolName, outcome, ConversationHistory.Preview(call.ArgumentsJson, 120), result.IsError);
         return result;
     }
@@ -3394,7 +3447,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 if (selected.Unavailable(voice, false) is not null) throw new LiveActionException("conversation.configuration_unsupported");
                 if (touches.Peek(TouchNow) is not { StartsTurn: true }) return null;
                 burst = touches.Drain(TouchNow)!;
-                var input = new BoundedTextInput(PromptSettings.Fill(selected.Prompts, PromptCatalog.Touched, ("touches", burst.Line),
+                var input = new BoundedTextInput(PromptSettings.Fill(selected.Prompts, PromptCatalog.Touched,
+                    ("touches", LiveConversationConfiguration.TouchWords(selected.Prompts, burst)),
                     ("silent", LiveConversationConfiguration.SilentReply)) ?? burst.Line);
                 long acceptedRevision = revision = checked(revision + 1);
                 var authorization = new ConversationAuthorization(selected, voice, false, clock,
@@ -3923,7 +3977,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 ? VoiceNaming.Context(job.Heard, voices.Roster, job.User, job.Configuration.CompanionNames) : null;
             var prompt = AfterReply.Prompt(remember ? known : null, naming, job.EarlierUser, job.EarlierReply, job.User, job.Reply,
                 job.Configuration.Prompts, job.Conversation, job.Configuration.FitsContext, remember ? job.Present : null,
-                remember ? MemoryPeople.Labels(known!, roster) : null);
+                remember ? MemoryPeople.Labels(known!, roster) : null, job.Configuration.CharacterName);
             var purpose = remember && job.Heard is not null ? "Remembering and learning names" : remember ? "Remembering" : "Learning names";
             // A Thinking pool member reads the short excerpt (it has no copy of this conversation in its cache); the conversation's
             // own model continues the reply's request as before, after the reply finished speaking.
@@ -3931,7 +3985,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             var (answer, failure, onPool) = await helpers.RunAsync(HelperJobKind.Memory, purpose, HelperCapability.Text,
                 () => (pooled = AfterReply.Prompt(remember ? known : null, naming, job.EarlierUser, job.EarlierReply, job.User, job.Reply,
                     job.Configuration.Prompts, null, null, remember ? job.Present : null,
-                    remember ? MemoryPeople.Labels(known!, roster) : null)).Input,
+                    remember ? MemoryPeople.Labels(known!, roster) : null, job.Configuration.CharacterName)).Input,
                 worker => AskAsync(purpose, job.Configuration, prompt.Input, worker), token).ConfigureAwait(false);
             if (onPool) prompt = pooled!;
             if (answer is null)
@@ -4919,6 +4973,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         Cancel(stopListening);
         echoReducer?.Forget();
         soundDigest?.Dispose();
+        pcActivity?.Dispose();
         // Background work ends with Martlet, and so does the live floor (a hold on a host's graphics cards is let go).
         StopPresence();
         jobs.Dispose();

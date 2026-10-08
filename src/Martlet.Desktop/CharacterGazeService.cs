@@ -7,7 +7,7 @@ namespace Martlet.Desktop;
 
 /// <summary>
 /// Where the showing character looks. Its head and eyes follow its usual gaze on their own (the overlay does that): the mouse,
-/// the mouse when it's near, straight ahead or the window you're using, as you chose (Companion › Character › Where the
+/// the mouse when it's near, straight ahead or the window you're using, as you chose (Companion › Eyes › Where the
 /// character looks, or the character's right-click Eyes menu) or else as its personality decided (the persona's temperament).
 /// While the character may change where it looks, a reply's mode tag (<c>{look ahead}</c>) changes that until a reply changes it
 /// again, and every reply is told its usual gaze (with a note while its own choice holds the eyes). A touch whose temperament
@@ -189,7 +189,7 @@ internal sealed class CharacterGazeService
         _ => "Looking at your mouse"
     };
 
-    /// <summary>What the eyes do now and why, for the owner (Companion › Character › Where the character looks).</summary>
+    /// <summary>What the eyes do now and why, for the owner (Companion › Eyes › Where the character looks).</summary>
     internal string Looking
     {
         get

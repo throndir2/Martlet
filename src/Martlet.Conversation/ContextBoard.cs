@@ -53,6 +53,8 @@ public sealed class ContextBoard
     public const string Screen = "screen";
     /// <summary>A line about the sounds this PC plays (music, game sounds, laughter).</summary>
     public const string Sound = "sound";
+    /// <summary>What the user seems to be doing on this PC (which apps play sound, what fills the screen), while Martlet hears it.</summary>
+    public const string Activity = "activity";
     /// <summary>Touches on the character (taps, pats, strokes, drags, zoom); usually posted with <c>consume</c>.</summary>
     public const string Touch = "touch";
 
@@ -68,7 +70,7 @@ public sealed class ContextBoard
     public static readonly TimeSpan MaximumAge = TimeSpan.FromHours(1);
 
     // The known sources come first, in this order; others follow by name.
-    private static readonly string[] Order = [Character, Gaze, Screen, Sound, Touch];
+    private static readonly string[] Order = [Character, Gaze, Screen, Sound, Activity, Touch];
 
     private readonly object gate = new();
     private readonly Dictionary<string, ContextNote> notes = new(StringComparer.Ordinal);
@@ -130,7 +132,7 @@ public sealed class ContextBoard
     }
 
     /// <summary>The fresh notes at <paramref name="now"/>, in the stable source order (<see cref="Character"/>, <see cref="Gaze"/>,
-    /// <see cref="Screen"/>, <see cref="Sound"/>, <see cref="Touch"/>, then others by name), within
+    /// <see cref="Screen"/>, <see cref="Sound"/>, <see cref="Activity"/>, <see cref="Touch"/>, then others by name), within
     /// <see cref="MaximumUtf8Bytes"/>. Stale notes are dropped. Nothing is consumed: <see cref="MarkSent"/> does that once the
     /// request is sent.</summary>
     public ContextBoardSnapshot Snapshot(DateTimeOffset now)

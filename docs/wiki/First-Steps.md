@@ -38,7 +38,7 @@ Cloud choices may cost money and send text/images to that provider.
 - **Companion › Listening** to change the microphone or speech recognizer.
 - **Companion › People** for recognized voices.
 - **Companion › Voice** to change the voice.
-- **Companion › Character** for the desktop character.
+- **Companion › Character** for the desktop character. The pages after it under **How it looks** set its speech bubbles, emotes and motions, eyes and touch.
 - **Companion › Vision** for screen or camera commentary.
 
 ## 4. Start talking and listening

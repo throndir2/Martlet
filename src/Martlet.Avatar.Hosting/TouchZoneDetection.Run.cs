@@ -8,7 +8,9 @@ public sealed record ZoneVerdict(IReadOnlySet<int> Right, IReadOnlyDictionary<in
 public static partial class TouchZoneDetection
 {
     /// <summary>Finds the zones of the character in <paramref name="snapshot"/> (the renderer's picture, transparent around the
-    /// character) with <paramref name="ask"/>, the vision model. Every request's picture is composed here; <paramref name="progress"/>
+    /// character) with <paramref name="ask"/>, the vision model. It looks only for the zones <paramref name="options"/> names
+    /// (<see cref="ZoneDetectionOptions.Zones"/> and <see cref="ZoneDetectionOptions.Required"/>). Every request's picture is
+    /// composed here; <paramref name="progress"/>
     /// hears each step. Stops at the first request that fails (no vision model, or the model or the computer it runs on stopped
     /// answering), with the zones found until then and why; an answer with nothing usable in it is not a failure.</summary>
     public static async Task<ZoneDetectionResult> RunAsync(ZonePixels snapshot, ZoneHints? hints,
@@ -16,6 +18,9 @@ public static partial class TouchZoneDetection
         CancellationToken token, ZoneDetectionOptions? options = null)
     {
         options ??= new();
+        // The zones it looks for, the ones it must end with among them.
+        var wanted = options.Zones.Concat(options.Required).ToHashSet(StringComparer.Ordinal);
+        var extras = Extras.Where(wanted.Contains).ToArray();
         var whole = new TouchZoneBox(0, 0, 1, 1);
         var figure = TouchZonePictures.OpaqueBounds(snapshot, new(0, 0, snapshot.Width, snapshot.Height))?.Fraction(snapshot.Width, snapshot.Height) ?? whole;
         var backdrop = TouchZonePictures.Backdrop(snapshot);
@@ -46,18 +51,20 @@ public static partial class TouchZoneDetection
         // 1. The whole character: where its parts are.
         Report("Step 1: asking the Thinking model where the head, body and legs are, on the whole character with a grid...");
         var picture = Compose(whole);
-        var answer = await Ask(new(ZoneAskKind.Parts, "parts", PartsInstructions, PartsText(hints), picture, whole, PartIds, [])).ConfigureAwait(false);
+        var answer = await Ask(new(ZoneAskKind.Parts, "parts", PartsInstructions, PartsText(hints, extras), picture, whole, PartsFor(extras), []))
+            .ConfigureAwait(false);
         if (failure is not null) return new(null, failure, requests, steps);
         var parts = ReadBoxes(answer, picture.Width, picture.Height, PartId);
-        foreach (var extra in Extras)
+        foreach (var extra in extras)
             if (parts.TryGetValue(extra, out var box)) zones[extra] = box;
         // The model's own named parts give a close-up's window when they can: it then holds all of that part, whatever the vision
-        // model saw.
+        // model saw. Each close-up asks only for the zones the detection looks for.
         var regions = Regions.Select(r =>
         {
             var found = parts.TryGetValue(r.Id, out var b) && Sensible(b, figure);
             var named = NamedRegion(r.Id, hints);
-            return (Region: r, Found: found || named is not null, Box: named ?? (found ? b! : Fallback(r.Id, figure, hints)), Named: named is not null);
+            return (Region: r with { Zones = [.. r.Zones.Where(wanted.Contains)] }, Found: found || named is not null,
+                Box: named ?? (found ? b! : Fallback(r.Id, figure, hints)), Named: named is not null);
         }).ToArray();
         var tidy = Tidy(zones, snapshot, faces);
         steps.Add($"parts: found {string.Join(", ", parts.Keys)}" + (parts.Count == 0 ? "nothing" : "") +
@@ -65,10 +72,11 @@ public static partial class TouchZoneDetection
             (regions.Any(r => r.Named) ? $"; took {string.Join(", ", regions.Where(r => r.Named).Select(r => r.Region.Id))} from the model's own named parts" : "") +
             Notes(tidy));
 
-        // 2. Each part close up: its zones, then the model checks them.
+        // 2. Each part close up: its zones, then the model checks them. A part with no zones to look for isn't asked about.
         var number = 1;
         foreach (var (region, _, box, _) in regions)
         {
+            if (region.Zones.Count == 0) continue;
             number++;
             var crop = Crop(box, snapshot);
             Report($"Step {number}: finding the zones of {region.What} in a close-up...");
@@ -83,8 +91,8 @@ public static partial class TouchZoneDetection
             await CheckAsync(region.Id, region.What, region.Zones, crop).ConfigureAwait(false);
             if (failure is not null) break;
         }
-        // 3. Zones that must be found (the intimate ones, with Include intimate zones on) that the close-ups missed, or a check
-        // removed: asked for once more, on the whole character.
+        // 3. Zones that must be found (the ones the owner added, and the intimate ones with Include intimate zones on) that the
+        // close-ups missed, or a check removed: asked for once more, on the whole character.
         if (failure is null && options.Required.Where(id => !zones.ContainsKey(id)).ToArray() is { Length: > 0 } missing)
         {
             number++;
@@ -103,7 +111,7 @@ public static partial class TouchZoneDetection
             }
         }
         // 4. A tail, wings or a held item, on the whole character.
-        if (failure is null && Extras.Any(zones.ContainsKey)) await CheckAsync("extras", "the whole character", Extras, whole).ConfigureAwait(false);
+        if (failure is null && extras.Any(zones.ContainsKey)) await CheckAsync("extras", "the whole character", extras, whole).ConfigureAwait(false);
 
         var finished = Finish(zones, snapshot, hints);
         if (finished.Length > 0) steps.Add("finally: " + string.Join("; ", finished));
@@ -166,14 +174,7 @@ public static partial class TouchZoneDetection
     private static string Notes(IReadOnlyList<string> notes) => notes.Count == 0 ? "" : "; " + string.Join(", ", notes);
 
     private static List<CharacterTouchZone> Zones(Dictionary<string, TouchZoneBox> zones) =>
-        [.. zones.OrderBy(z => Order(z.Key)).Select(z => new CharacterTouchZone { Id = z.Key, Box = z.Value.Clamped(), Enabled = true })];
-
-    private static int Order(string id)
-    {
-        for (var i = 0; i < CharacterTouchZones.Kinds.Count; i++)
-            if (CharacterTouchZones.Kinds[i].Id == id) return i;
-        return int.MaxValue;
-    }
+        [.. zones.OrderBy(z => CharacterTouchZones.Order(z.Key)).Select(z => new CharacterTouchZone { Id = z.Key, Box = z.Value.Clamped(), Enabled = true })];
 
     /// <summary>The largest distance any edge moved from <paramref name="from"/> to <paramref name="to"/>.</summary>
     public static double Moved(TouchZoneBox from, TouchZoneBox to) => new[]

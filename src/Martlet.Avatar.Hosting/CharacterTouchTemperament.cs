@@ -55,7 +55,7 @@ public sealed record CharacterTouchTemperament
     [JsonIgnore] public CustomTouchTemperament? Custom { get; init; }
 }
 
-/// <summary>A touch temperament the owner made and named (Companion › Character › Touch temperament), which any persona can use
+/// <summary>A touch temperament the owner made and named (Companion › Touch › Touch temperament), which any persona can use
 /// instead of its own (<see cref="TouchTemperamentSet.Uses"/>). Editing it changes it for every persona that uses it. It never
 /// goes to the Thinking model.</summary>
 public sealed record CustomTouchTemperament
@@ -176,7 +176,7 @@ public static class CharacterTouchTemperaments
     /// <summary>What <see cref="TouchTemperamentSet.Uses"/> holds for a persona that uses the built-in reactions.</summary>
     public const string BuiltIn = "built_in";
     public const int MaximumCustom = 32, MaximumNameLength = 40, MaximumUses = 64;
-    /// <summary>The choices besides the custom temperaments, as Companion › Character › Touch temperament names them. A custom
+    /// <summary>The choices besides the custom temperaments, as Companion › Touch › Touch temperament names them. A custom
     /// temperament can't take these names.</summary>
     public const string OwnLabel = "Decided from its personality", BuiltInLabel = "Built-in reactions";
 
@@ -271,6 +271,21 @@ public static class CharacterTouchTemperaments
     /// Data for others to use (such as a touch summary); nothing here puts it in a prompt.</summary>
     public static string? Attitude(CharacterTouchTemperament? temperament, string zoneId) =>
         Entry(temperament, zoneId) is { } entry ? AttitudeWord(entry.Attitude) : null;
+
+    /// <summary>How the persona feels about being touched on <paramref name="zones"/>, from its temperament, for the touch line:
+    /// "you love being touched there", or across zones it feels differently about, "you love it on your chest and your stomach,
+    /// and hate it on your groin". Null when the temperament covers none of them or is neutral about them all.</summary>
+    public static string? Feeling(CharacterTouchTemperament? temperament, IReadOnlyList<CharacterTouchZone> zones)
+    {
+        var felt = zones.Select(z => (Zone: z, Word: Attitude(temperament, z.Id))).Where(f => f.Word is not null and not "neutral").ToArray();
+        if (felt.Length == 0) return null;
+        // hates, dislikes, likes, loves, craves: the verb after "you".
+        static string Verb(string word) => word[..^1];
+        var groups = felt.GroupBy(f => f.Word!).ToArray();
+        if (groups.Length == 1 && felt.Length == zones.Count) return $"you {Verb(groups[0].Key)} being touched there";
+        static string List(IReadOnlyList<string> parts) => parts.Count == 1 ? parts[0] : string.Join(", ", parts.Take(parts.Count - 1)) + " and " + parts[^1];
+        return "you " + string.Join(", and ", groups.Select(g => $"{Verb(g.Key)} it on {List([.. g.Select(f => CharacterTouchZones.Part(f.Zone))])}"));
+    }
 
     /// <summary>The abstract reactions a touch plays: the entry's (or its attitude's defaults; none when it picked
     /// <see cref="NoReaction"/>), with the escalation's first after <see cref="TouchEscalation.After"/> touches in a row of a

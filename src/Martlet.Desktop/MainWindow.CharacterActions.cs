@@ -7,7 +7,7 @@ using Martlet.Core.Settings;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Character › Emotes and motions: every emote (expression) and motion of the character this PC shows,
+/// <summary>Companion › Emotes and motions: every emote (expression) and motion of the character this PC shows,
 /// plus Martlet's own nod and shake, with the tag replies write for each ({blush}), when to use it, the voice cue that also
 /// sets it off ([laugh] with Chatterbox Turbo, (laughs) with Dia) and whether it is used, then the owner's combos of them
 /// (MainWindow.CharacterCombos.cs). The Thinking model names them once for each new model (Name them with Thinking asks
@@ -57,10 +57,12 @@ public partial class MainWindow
             avatar.ReconcileHeldAsync(lifetime.Token).Forget();
             Dispatcher.InvokeAsync(() =>
             {
-                if (closing || openTab != CompanionTab.Character || CompanionContent.IsKeyboardFocusWithin) return;
+                // Emotes and motions shows the catalog's rows, and Touch offers them as each zone's reactions. (Eyes follows the
+                // model through its own service.)
+                if (closing || openTab is not (CompanionTab.Emotes or CompanionTab.Touch) || CompanionContent.IsKeyboardFocusWithin) return;
                 // Another model's emotes replace the rows at once; the same model's re-render waits until nothing is being edited.
                 var model = characterActions.Current?.Inventory.ModelId;
-                if (!tabEdited || model != renderedActionsModel) RenderTab();
+                if (!tabEdited || model != (openTab == CompanionTab.Emotes ? renderedActionsModel : renderedZonesModel)) RenderTab();
             });
         };
     }
@@ -68,7 +70,7 @@ public partial class MainWindow
     private TextBlock? characterActionsHeld;
     private readonly List<(string Id, Button Button)> characterActionTries = [];
 
-    /// <summary>The lingering emotes the character shows now, in words (Companion › Character › Emotes and motions).</summary>
+    /// <summary>The lingering emotes the character shows now, in words (Companion › Emotes and motions).</summary>
     private string HeldText()
     {
         var held = avatar.Held.Current;
@@ -76,7 +78,7 @@ public partial class MainWindow
             $"{h.Source.Name} ({CharacterActions.Age(DateTimeOffset.Now - h.Since)})")) + ". Clear emotes on the character's menu turns them off.";
     }
 
-    /// <summary>Clear emotes (the character's right-click menu or Companion › Character): turns off every lingering emote.</summary>
+    /// <summary>Clear emotes (the character's right-click menu or Companion › Emotes and motions): turns off every lingering emote.</summary>
     private async Task ClearCharacterEmotesAsync()
     {
         try { await avatar.ClearHeldAsync("Clear emotes", lifetime.Token); }
@@ -86,8 +88,8 @@ public partial class MainWindow
     private string? renderedActionsModel;
 
     /// <summary>Keeps the loaded emotes and motions on the model this PC shows (or would show), and names a showing model's
-    /// with the Thinking model once (when Thinking is set up). Runs from the character timer and when Companion › Character
-    /// renders.</summary>
+    /// with the Thinking model once (when Thinking is set up). Runs from the character timer and when Companion › Emotes and
+    /// motions, Eyes or Touch renders.</summary>
     private void FollowCharacterActions()
     {
         if (closing || loadingCharacterActions) return;
@@ -225,6 +227,9 @@ public partial class MainWindow
             foreach (var combo in comboRows) combo.Refresh();
         }
         var cues = new[] { NoCue }.Concat(VoiceTags.Cues).ToArray();
+        // The rows, then the combos; on a page just opened they join a batch at a time.
+        var list = new StackPanel();
+        stack.Add(list);
         var index = 0;
         foreach (var (source, action) in catalog.Entries)
         {
@@ -301,11 +306,13 @@ public partial class MainWindow
             when.Children.Add(RowLabel("When to use", use));
             when.Children.Add(useBox);
             fields.Children.Add(when);
-            stack.Add(header);
-            stack.Add(fields);
+            var rowView = new StackPanel();
+            rowView.Children.Add(header);
+            rowView.Children.Add(fields);
+            AddRow(list, rowView);
         }
         // The owner's combos of these emotes, after them (MainWindow.CharacterCombos.cs).
-        stack.Add(CharacterCombosSection(catalog, comboRows, CurrentActions, Edited, showing));
+        AddRow(list, CharacterCombosSection(catalog, comboRows, CurrentActions, Edited, showing));
         return Card([.. stack]);
     }
 
@@ -353,6 +360,6 @@ public partial class MainWindow
         var why = await characterActions.ResetAsync(lifetime.Token);
         tabEdited = false;
         if (why is not null && characterActionsLast is not null) characterActionsLast.Text = "Couldn't reset: " + why;
-        else if (openTab == CompanionTab.Character) RenderTab();
+        else if (openTab == CompanionTab.Emotes) RenderTab();
     }
 }

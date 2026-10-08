@@ -21,11 +21,16 @@ namespace Martlet.Desktop;
 /// <summary>The Companion page's pages: the one place each choice that shapes Martlet is made, listed by group in a side list.
 /// Home and Devices link here. A new page adds its value here (in list order) and one arm each in GroupOf, TabTitle, TabGlyph,
 /// TabIntro and RenderTab.</summary>
-internal enum CompanionTab { Thinking, DeepThinking, Voice, Listening, Vision, Reading, LipSync, Profiles, Character, Personality, Prompts, Lorebook, Memory, People, Replies, CheckIns, Tools, Pictures, SmartHome, Discord, Messaging }
+internal enum CompanionTab
+{
+    Thinking, DeepThinking, Voice, Listening, Vision, Reading, LipSync, Profiles, Personality, Prompts, Lorebook, Memory, People,
+    Character, SpeechBubbles, Emotes, Eyes, Touch, Replies, CheckIns, Tools, Pictures, SmartHome, Discord, Messaging
+}
 
-/// <summary>The side list's groups, in order: how it works (where each job runs), who it is (look, personality, what it knows)
-/// and what it does (how it answers and acts). A group with no pages yet is not shown.</summary>
-internal enum CompanionGroup { HowItWorks, WhoItIs, WhatItDoes }
+/// <summary>The side list's groups, in order: how it works (where each job runs), who it is (personality and what it knows),
+/// how it looks (the desktop character: its model, speech bubbles, emotes, eyes and touch) and what it does (how it answers and
+/// acts). A group with no pages yet is not shown.</summary>
+internal enum CompanionGroup { HowItWorks, WhoItIs, HowItLooks, WhatItDoes }
 
 /// <summary>A conversation model Ollama can download and run on this PC. <paramref name="MinimumVramGb"/> is the graphics card
 /// it needs to run comfortably beside a game and Martlet's character (0 means any PC). <paramref name="Hears"/>: Ollama takes
@@ -33,7 +38,8 @@ internal enum CompanionGroup { HowItWorks, WhoItIs, WhatItDoes }
 internal sealed record LocalChatModel(string Id, string Size, string Fits, double MinimumVramGb, bool Hears);
 
 /// <summary>The Companion page: a side list of pages in groups (How it works: Thinking, Voice, Listening, Lip-sync; Who it is:
-/// Profiles, Character, Personality, Lorebook, Memory; What it does: Smart home, Discord). Each job page asks where the job runs (this PC by default, another of your computers, or a
+/// Profiles, Personality, Lorebook, Memory; How it looks: Character, Speech bubbles, Emotes and motions, Eyes, Touch; What it
+/// does: Smart home, Discord). Each job page asks where the job runs (this PC by default, another of your computers, or a
 /// cloud provider; voice loudness for lip-sync) and shows only that place's fields, including the API key for a cloud provider.
 /// Everything saves through the same setup service, consent and credential rules as Setup.</summary>
 public partial class MainWindow
@@ -109,10 +115,11 @@ public partial class MainWindow
         _ => CompanionTab.Thinking
     };
 
-    private static CompanionGroup GroupOf(CompanionTab section) => section switch
+    internal static CompanionGroup GroupOf(CompanionTab section) => section switch
     {
         CompanionTab.Thinking or CompanionTab.DeepThinking or CompanionTab.Voice or CompanionTab.Listening or CompanionTab.Vision or CompanionTab.Reading or CompanionTab.LipSync => CompanionGroup.HowItWorks,
-        CompanionTab.Profiles or CompanionTab.Character or CompanionTab.Personality or CompanionTab.Prompts or CompanionTab.Lorebook or CompanionTab.Memory or CompanionTab.People => CompanionGroup.WhoItIs,
+        CompanionTab.Profiles or CompanionTab.Personality or CompanionTab.Prompts or CompanionTab.Lorebook or CompanionTab.Memory or CompanionTab.People => CompanionGroup.WhoItIs,
+        CompanionTab.Character or CompanionTab.SpeechBubbles or CompanionTab.Emotes or CompanionTab.Eyes or CompanionTab.Touch => CompanionGroup.HowItLooks,
         CompanionTab.Replies => CompanionGroup.WhatItDoes,
         CompanionTab.CheckIns => CompanionGroup.WhatItDoes,
         CompanionTab.Tools => CompanionGroup.WhatItDoes,
@@ -123,14 +130,15 @@ public partial class MainWindow
         _ => CompanionGroup.WhatItDoes
     };
 
-    private static string GroupTitle(CompanionGroup group) => group switch
+    internal static string GroupTitle(CompanionGroup group) => group switch
     {
         CompanionGroup.HowItWorks => "How it works",
         CompanionGroup.WhoItIs => "Who it is",
+        CompanionGroup.HowItLooks => "How it looks",
         _ => "What it does"
     };
 
-    private static string TabTitle(CompanionTab section) => section switch
+    internal static string TabTitle(CompanionTab section) => section switch
     {
         CompanionTab.Thinking => "Thinking",
         CompanionTab.DeepThinking => "Thinking pool",
@@ -141,6 +149,10 @@ public partial class MainWindow
         CompanionTab.LipSync => "Lip-sync",
         CompanionTab.Profiles => "Profiles",
         CompanionTab.Character => "Character",
+        CompanionTab.SpeechBubbles => "Speech bubbles",
+        CompanionTab.Emotes => "Emotes and motions",
+        CompanionTab.Eyes => "Eyes",
+        CompanionTab.Touch => "Touch",
         CompanionTab.Personality => "Personality",
         CompanionTab.Prompts => "Prompts",
         CompanionTab.Lorebook => "Lorebook",
@@ -157,7 +169,7 @@ public partial class MainWindow
     };
 
     /// <summary>The page's icon in the side list (Segoe Fluent Icons).</summary>
-    private static string TabGlyph(CompanionTab section) => section switch
+    internal static string TabGlyph(CompanionTab section) => section switch
     {
         CompanionTab.Thinking => "\uE82F",
         CompanionTab.DeepThinking => "\uE945",
@@ -168,6 +180,10 @@ public partial class MainWindow
         CompanionTab.LipSync => "\uE8BD",
         CompanionTab.Profiles => "\uE748",
         CompanionTab.Character => "\uE77B",
+        CompanionTab.SpeechBubbles => "\uE90A",
+        CompanionTab.Emotes => "\uE899",
+        CompanionTab.Eyes => "\uE7B3",
+        CompanionTab.Touch => "\uE815",
         CompanionTab.Personality => "\uE76E",
         CompanionTab.Prompts => "\uE943",
         CompanionTab.Lorebook => "\uE736",
@@ -184,7 +200,7 @@ public partial class MainWindow
     };
 
     /// <summary>The line under the page title: what the page decides, in one or two sentences.</summary>
-    private static string TabIntro(CompanionTab section) => section switch
+    internal static string TabIntro(CompanionTab section) => section switch
     {
         CompanionTab.Thinking => "Choose where Martlet thinks and which model it uses. This PC keeps conversations local.",
         CompanionTab.DeepThinking => "Thinking answers you. The Thinking pool works out hard tasks and other background jobs on your other models, ideally on another machine, so Martlet keeps talking.",
@@ -194,7 +210,11 @@ public partial class MainWindow
         CompanionTab.Reading => "Choose where Martlet reads the text on your screen while it watches: Windows OCR on this PC, or Martlet's Reading role on one of your computers.",
         CompanionTab.LipSync => "Choose what moves the character's mouth.",
         CompanionTab.Profiles => "Switch who Martlet is in one step: each profile sets the character's look, voice and personality together.",
-        CompanionTab.Character => "Choose Martlet's character, size, position and motion.",
+        CompanionTab.Character => "Choose Martlet's character, and its size and position on your desktop.",
+        CompanionTab.SpeechBubbles => "Show Martlet's spoken words in a bubble beside the character, or as subtitles.",
+        CompanionTab.Emotes => "Choose the emotes and motions that Martlet's replies can play on the character, and make combos of them.",
+        CompanionTab.Eyes => "Choose where the character looks. Martlet also finds its eyes, so that emotes drawn over them fit.",
+        CompanionTab.Touch => "Choose what the character does when you click or stroke it: its touch zones, and how it feels about each touch.",
         CompanionTab.Personality => "Edit Martlet's personas.",
         CompanionTab.Prompts => "Every instruction Martlet sends to the Thinking model. Edit any of them; your text is used instead of the built-in one.",
         CompanionTab.Lorebook => "Add lore entries Martlet can use when keywords come up.",
@@ -298,10 +318,44 @@ public partial class MainWindow
     {
         openTab = companionTab;
         CompanionScroll.ScrollToTop();
-        RenderTab();
+        tabOpenedAt = Stopwatch.GetTimestamp();
+        openingTab = true;
+        try { RenderTab(); }
+        finally { openingTab = false; }
+        var built = Stopwatch.GetElapsedTime(tabOpenedAt);
         Motion.Enter(entering ? CompanionPage : CompanionContent);
         if (openTab == CompanionTab.LipSync) CheckOwnLipSyncAsync().Forget();
+        LogPageDrawn(companionTab, tabOpenedAt, built);
     }
+
+    /// <summary>Logs how long an opened page took to show: building its controls, then laying them out (done when the
+    /// dispatcher reaches loaded-priority work), and how many elements it holds. The desktop log's "Companion › Character drew
+    /// in 12 ms (...)" lines.</summary>
+    private void LogPageDrawn(CompanionTab tab, long started, TimeSpan built) =>
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (closing || openTab != tab) return;
+            var drawn = Stopwatch.GetElapsedTime(started);
+            ErrorLog.Info($"Companion › {TabTitle(tab)} drew in {drawn.TotalMilliseconds:0} ms ({built.TotalMilliseconds:0} ms to build, " +
+                $"{(drawn - built).TotalMilliseconds:0} ms to lay out), {Elements(CompanionContent)} elements.");
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
+
+    private static int Elements(DependencyObject parent)
+    {
+        var count = 1;
+        for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+            count += Elements(System.Windows.Media.VisualTreeHelper.GetChild(parent, i));
+        return count;
+    }
+
+    // The rows of the page's long lists (emotes and motions, touch zones): on a page just opened, or drawn again at its top,
+    // they join a batch at a time once the page has drawn (RowBatches).
+    private readonly RowBatches rowBatches = new();
+    private bool openingTab;
+    private long tabOpenedAt;
+
+    /// <summary>Adds a row of a long list to <paramref name="panel"/>, at once or a moment after the page draws (RowBatches).</summary>
+    private void AddRow(Panel panel, UIElement row) => rowBatches.Add(panel, row);
 
     private readonly Dictionary<CompanionTab, RadioButton> companionNav = [];
     private bool selectingNav;
@@ -343,6 +397,9 @@ public partial class MainWindow
         finally { selectingNav = false; }
 
         var page = CompanionContent;
+        // A page just opened, or drawn again while scrolled to its top, adds its long lists a few rows at a time; drawn again
+        // further down, it adds every row at once, so it keeps its place.
+        rowBatches.Begin(openingTab || CompanionScroll.VerticalOffset <= 0);
         page.Children.Clear();
         var group = new TextBlock { Text = GroupTitle(GroupOf(section)).ToUpperInvariant() };
         group.SetResourceReference(StyleProperty, "Eyebrow");
@@ -364,6 +421,10 @@ public partial class MainWindow
             case CompanionTab.LipSync: RenderLipSyncTab(body); break;
             case CompanionTab.Profiles: RenderProfilesTab(body); break;
             case CompanionTab.Character: RenderCharacterTab(body); break;
+            case CompanionTab.SpeechBubbles: body.Children.Add(SpeechDisplayCard()); break;
+            case CompanionTab.Emotes: body.Children.Add(CharacterActionsCard()); break;
+            case CompanionTab.Eyes: RenderEyesTab(body); break;
+            case CompanionTab.Touch: RenderTouchTab(body); break;
             case CompanionTab.Personality: RenderPersonalityTab(body); break;
             case CompanionTab.Prompts: RenderPromptsTab(body); break;
             case CompanionTab.Lorebook: RenderLorebookTab(body); break;
@@ -379,6 +440,13 @@ public partial class MainWindow
             case CompanionTab.Messaging: RenderMessagingTab(body); break;
             default: throw new UnreachableException($"The Companion page {section} has no content.");
         }
+        // The desktop log's "Companion › Touch showed all 49 rows in 8 batches, 260 ms after it opened." lines.
+        var opened = openingTab ? tabOpenedAt : (long?)null;
+        rowBatches.End(Dispatcher, opened is not { } start ? null : (rows, batches) =>
+        {
+            if (!closing) ErrorLog.Info($"Companion › {TabTitle(section)} showed all {rows} rows in {batches} batches, " +
+                $"{Stopwatch.GetElapsedTime(start).TotalMilliseconds:0} ms after it opened.");
+        });
     }
 
     // ---------- job pages ----------
@@ -1447,24 +1515,38 @@ public partial class MainWindow
             modelStack.Children.Add(modelNote);
         }
         page.Children.Add(modelCard);
-        page.Children.Add(ProfilesLinkCard());
-        page.Children.Add(CharacterActionsCard());
-        page.Children.Add(CharacterGazeCard());
-        page.Children.Add(CharacterTouchZonesCard());
-        page.Children.Add(CharacterTemperamentCard());
-        page.Children.Add(CharacterModelsCard());
-        page.Children.Add(SpeechDisplayCard());
         characterViewText = null;
-        if (!showing) return;
-        // Wheel zoom happens on the overlay itself; Martlet reads the overlay's view whenever this page renders.
-        characterViewText = Note("", new Thickness(0, 8, 0, 0));
-        AutomationProperties.SetAutomationId(characterViewText, "SetupCharacterView");
-        page.Children.Add(Card(Heading("Zoom"),
-            Note("Use the mouse wheel over the character to zoom. Ctrl+drag or middle-drag pans when zoomed in.", new Thickness(0, 0, 0, 0)),
-            Row(PageButton("Zoom in", () => ZoomCharacterAsync("in").Forget(), id: "SetupCharacterZoomIn"),
-                PageButton("Zoom out", () => ZoomCharacterAsync("out").Forget(), id: "SetupCharacterZoomOut")),
-            characterViewText));
-        ZoomCharacterAsync("status").Forget();
+        if (showing)
+        {
+            // Wheel zoom happens on the overlay itself; Martlet reads the overlay's view whenever this page renders.
+            characterViewText = Note("", new Thickness(0, 8, 0, 0));
+            AutomationProperties.SetAutomationId(characterViewText, "SetupCharacterView");
+            page.Children.Add(Card(Heading("Zoom"),
+                Note("Use the mouse wheel over the character to zoom. Ctrl+drag or middle-drag pans when zoomed in.", new Thickness(0, 0, 0, 0)),
+                Row(PageButton("Zoom in", () => ZoomCharacterAsync("in").Forget(), id: "SetupCharacterZoomIn"),
+                    PageButton("Zoom out", () => ZoomCharacterAsync("out").Forget(), id: "SetupCharacterZoomOut")),
+                characterViewText));
+            ZoomCharacterAsync("status").Forget();
+        }
+        page.Children.Add(CharacterModelsCard());
+        page.Children.Add(ProfilesLinkCard());
+    }
+
+    /// <summary>Companion › Eyes: where the character looks, then where its eyes are (for the emotes drawn over them).</summary>
+    private void RenderEyesTab(Panel page)
+    {
+        FollowCharacterActions();
+        page.Children.Add(CharacterGazeCard());
+        page.Children.Add(CharacterEyesCard());
+    }
+
+    /// <summary>Companion › Touch: the shown model's touch zones, then the active persona's touch temperament (which joins with the
+    /// zones' last rows on a page just opened).</summary>
+    private void RenderTouchTab(Panel page)
+    {
+        FollowCharacterActions();
+        page.Children.Add(CharacterTouchZonesCard());
+        AddRow(page, CharacterTemperamentCard());
     }
 
     private CheckBox? speechBubbleChoice, subtitleChoice;
@@ -1473,7 +1555,7 @@ public partial class MainWindow
     private TextBlock? speechDisplayText;
     private Button? speechPreviewButton;
 
-    /// <summary>Companion › Character's speech bubbles (on by default, shown while the character is) and subtitles: the same
+    /// <summary>Companion › Speech bubbles (on by default, shown while the character is) and subtitles: the same
     /// saved choices as the character settings window, applied from Martlet's next sentence. Also where the bubble goes:
     /// following the character's head (default) or staying in one place, nudged by horizontal and vertical offsets.</summary>
     private Border SpeechDisplayCard()
@@ -1938,7 +2020,7 @@ public partial class MainWindow
         return button;
     }
 
-    // ---------- dense editor rows (Companion › Character's touch zones, touch temperament and emotes) ----------
+    // ---------- dense editor rows (Companion › Emotes and motions, and Touch's touch zones and touch temperament) ----------
 
     /// <summary>Where a dense row's fields start, under its name: an empty check box is 29 pixels wide (its box and the gap its
     /// template keeps before content), then a 6-pixel gap.</summary>

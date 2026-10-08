@@ -432,18 +432,27 @@ window ends it unless Martlet is listening or watching, which only hides it.
        watching* starts looking).
     5. *Lip-sync*: who moves the character's mouth, and where it runs.
   - **Who it is**:
-    6. *Character*: what it looks like now, then the character model (show,
-       hide, choose and customize, reset). The character window has one
-       *Show character*/*Hide character (Esc)* button at the top and saves
-       each choice on its own; a showing character switches at once.
-    7. *Personality*: the active persona, *Edit
+    6. *Personality*: the active persona, *Edit
        personality*, and *Import a character card*. The Personality window
        makes the persona chosen in its list the one Martlet uses and saves
        every edit on its own (no *Apply*, *Save* or *Reload*).
-    8. *Lorebook*: how many lorebooks are on for the active persona, each
+    7. *Lorebook*: how many lorebooks are on for the active persona, each
        lorebook with *Turn on/off*, *Edit lorebooks* and *Import a lorebook*
        (see [Lorebooks](LOREBOOKS.md)).
-    9. *Memory*: whether memory is on, and *Manage memory* for its facts.
+    8. *Memory*: whether memory is on, and *Manage memory* for its facts.
+  - **How it looks** (the desktop character, split into small pages so each
+    opens at once):
+    9. *Character*: what it looks like now, then the character model (show,
+       hide, choose and customize, reset, lock, click-through), its zoom and
+       your characters. The character window has one
+       *Show character*/*Hide character (Esc)* button at the top and saves
+       each choice on its own; a showing character switches at once.
+    10. *Speech bubbles*: speech bubbles and subtitles, and where the bubble
+        goes.
+    11. *Emotes and motions*: what replies can play on the character, and
+        combos of them.
+    12. *Eyes*: where the character looks, and where its eyes are.
+    13. *Touch*: touch zones and the touch temperament.
   - **What it does**: how it answers and acts: *Replies* (generation
     settings, and *Thinking steps*: whether a reasoning model thinks before it
     answers, Off by default), *Tools* (the MCP servers Martlet may call while you talk, whether

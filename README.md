@@ -50,13 +50,13 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.56.0
+## 🆕 What's new in 0.57.0
 
-- 🪟 **Knows the app you're using**: Martlet sees which app is in front and whether it's full screen, like a game or a video, and talks about what you do in it instead of your screen's menus and buttons.
-- 👆 **Answers your touches**: pokes, pats and strokes on any touch zone now get a few words out loud, and Martlet reacts when you drag your character somewhere new.
-- 😍 **Ready-made emote combos**: your character starts with combos such as lovestruck, flustered and starstruck that show several emotes at once.
-- 👄 **A mouth that follows the voice**: while Martlet speaks, its voice always moves your character's mouth, even during an emote, and Live2D face drawings stay in place when the head moves.
-- 🤫 **Natural Chatterbox whispers**: Chatterbox voices whisper only the way the voice model does, without Martlet's old whisper effect.
+- 🔔 **Check-ins**: every few minutes your Thinking pool checks on Martlet. It turns off emotes that no longer fit and reminds Martlet of promises it didn't keep. Add your own check-ins too, such as a reminder to take a break.
+- 🎧 **Knows where sounds come from**: while Martlet hears what your PC plays, it knows if a line came from a video, a game, music or your voice chat, and doesn't answer it as if you'd said it.
+- 👆 **Touches that interrupt**: touch Martlet while it talks and it stops to react, then decides whether to go on. A touch now always gets a sound or words out loud.
+- 🏷️ **Your character's own name**: the talk window calls your character by its personality's name instead of "Martlet".
+- ⚡ **A faster Character page**: Companion › Character opens at once, with its settings split into small pages under **How it looks**, and **Detect zones** finds fewer, clearer touch zones.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
