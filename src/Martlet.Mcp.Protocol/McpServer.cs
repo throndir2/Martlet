@@ -560,13 +560,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "(lingering emotes add their {/tag} off tags); with showing (tags the character would show now, as \"glasses\" or " +
             "\"glasses:12\" for 12 minutes) also showingNote, the line the newest message's notes get; " +
             "and the Thinking naming prompt. With voiceTag (a voice's tag such as \"[laugh]\" or \"(sighs)\", or a reply tag such as " +
-            "\"{nod}\" or \"{/glasses}\"), also what it sets off (setsOff: kind, name and whether it holds; with several expressions or motions " +
-            "on one cue, one picked at random) or turns off (turnsOff). " +
+            "\"{nod}\", \"{/glasses}\" or a combo's \"{flustered}\" or \"{/flustered}\"), also what it sets off (setsOff: kind, name and " +
+            "whether it holds; with several expressions or motions on one cue, one picked at random; a combo's parts that are on) or " +
+            "turns off (turnsOff: the lingering emote, or a combo's lingering parts) and the combo it names (combo). " +
+            "Also the owner's combos for the model (combos: n as in CharacterComboTag-<n>, tag, each part's id, kind, name, tag, " +
+            "whether it is on and its mode, use, hint, whether it is on, whether it has a lingering part and whether replies are " +
+            "offered it); with combos (strings such as \"flustered: blush hearts nod | when flattered\", parsed as the Combos " +
+            "section's boxes are) those replace the saved ones, or combosProblem says why they can't be saved. " +
             "With answer (a simulated Thinking reply such as \"1: blush | - | when shy\"), also what the " +
             "production parser makes of it. Reads only; contacts nothing and never returns the model's path.", new
         {
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, engine = new { type = "string" },
-            answer = new { type = "string" }, voiceTag = new { type = "string" }, showing = new { type = "array", items = new { type = "string" } }
+            answer = new { type = "string" }, voiceTag = new { type = "string" }, showing = new { type = "array", items = new { type = "string" } },
+            combos = new { type = "array", items = new { type = "string" } }
         }),
         Tool("character_physical_check", "What Martlet makes of a stroke across the locked character and of moves and zooms " +
             "(Martlet.Avatar.Hosting CharacterStrokes and CharacterPhysicalWords with Martlet.Conversation's TouchLedger), headless, " +
@@ -2528,6 +2534,33 @@ internal sealed class McpServer(DesktopAutomation desktop)
             prompts = Martlet.Core.Settings.SettingsJson.Read(File.ReadAllBytes(Path.Combine(directory, "settings.json"))).Prompts;
         var saved = directory is null ? null : Martlet.Avatar.Hosting.CharacterActions.Load(directory, inventory.ModelId);
         var catalog = new Martlet.Avatar.Hosting.CharacterActionCatalog(inventory, Martlet.Avatar.Hosting.CharacterActions.Merge(inventory, saved));
+        // Combos to rehearse ("flustered: blush hearts nod | when flattered"), read as the Combos section's boxes are; they replace
+        // the saved combos when they could be saved.
+        string? combosProblem = null;
+        if (OptionalStrings(arguments, "combos") is { } comboLines)
+        {
+            var written = new List<Martlet.Avatar.Hosting.CharacterCombo>();
+            foreach (var line in comboLines)
+            {
+                var halves = line.Split('|', 2);
+                var colon = halves[0].IndexOf(':');
+                var ids = Martlet.Avatar.Hosting.CharacterActions.ParseParts(colon < 0 ? "" : halves[0][(colon + 1)..], catalog.Settings.Actions,
+                    out var why);
+                if (ids is null)
+                {
+                    combosProblem ??= why;
+                    continue;
+                }
+                written.Add(new()
+                {
+                    Tag = (colon < 0 ? halves[0] : halves[0][..colon]).Trim().Trim('{', '}').Trim().ToLowerInvariant(), Parts = ids,
+                    Use = halves.Length > 1 && halves[1].Trim() is { Length: > 0 } use ? use : null
+                });
+            }
+            var rehearsed = catalog.Settings with { Combos = written.Count == 0 ? null : written };
+            combosProblem ??= Martlet.Avatar.Hosting.CharacterActions.Problem(rehearsed);
+            if (combosProblem is null) catalog = catalog with { Settings = rehearsed };
+        }
         var key = OptionalString(arguments, "engine");
         var engine = key is null or "none" ? null
             : Martlet.Core.Settings.SpeechEngines.ForKey(key) ?? throw new ArgumentException($"Unknown voice engine '{key}'.");
@@ -2582,12 +2615,28 @@ internal sealed class McpServer(DesktopAutomation desktop)
             engine = engine?.Key, actions = Describe(catalog),
             replyPrompt = reply?.Instructions, replyTags = reply?.Tags, showingNote = reply?.Showing,
             namingPrompt = naming is { } ask ? new { instructions = ask.Instructions, list = ask.List } : null,
+            combos = catalog.Combos.Select((c, n) => new
+            {
+                n, tag = c.Tag,
+                parts = c.Parts.Select(id => catalog.Entries.FirstOrDefault(e => e.Source.Id == id) is { Source: { } source } part
+                    ? new
+                    {
+                        id, kind = source.Kind.ToString().ToLowerInvariant(), name = source.Name, tag = part.Action.Tag, enabled = part.Action.Enabled,
+                        mode = part.Action.Mode ?? Martlet.Avatar.Hosting.CharacterActions.DefaultMode(source, part.Action.Tag)
+                    }
+                    : new { id, kind = "missing", name = id, tag = (string?)null, enabled = false, mode = "" }).ToArray(),
+                use = c.Use, hint = catalog.Hint(c), enabled = c.Enabled, lingers = catalog.Lingers(c),
+                offered = reply?.Tags.Contains("{" + c.Tag + "}") == true
+            }).ToArray(),
+            combosProblem,
             voiceTag, setsOff = voiceTag is null ? null
                 : catalog.For(voiceTag).Select(s => new
                 {
                     kind = s.Kind.ToString().ToLowerInvariant(), name = s.Name, holds = voiceTag.StartsWith('{') && catalog.Lingers(s)
                 }).ToArray(),
-            turnsOff = voiceTag is not null && catalog.Off(voiceTag) is { } off ? new { kind = off.Kind.ToString().ToLowerInvariant(), name = off.Name } : null,
+            turnsOff = voiceTag is null ? null : catalog.Off(voiceTag).Select(off => new { kind = off.Kind.ToString().ToLowerInvariant(), name = off.Name })
+                .ToArray(),
+            combo = voiceTag is not null && catalog.Combo(voiceTag) is { } voiceCombo ? voiceCombo.Tag : null,
             parsed
         };
     }
