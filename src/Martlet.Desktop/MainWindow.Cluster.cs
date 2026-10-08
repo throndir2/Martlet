@@ -378,6 +378,13 @@ public partial class MainWindow
                 continue;
             }
             string? problem;
+            // While it switches to a host that is ready (a change usually made on another computer), this PC shows Configuring; not
+            // again on every check for a job it couldn't follow last time.
+            if (!clusterFollow.ContainsKey(job) && (desired.HostId is null || clusterProbes.GetValueOrDefault(desired.HostId)?.Serves(job) == true))
+            {
+                clusterFollowingText = $"Switching {ClusterSync.Title(job).ToLowerInvariant()} to {ClusterSync.Who(job, desired.HostId, desired.Off)}";
+                ShowConfiguring();
+            }
             try
             {
                 problem = job == ClusterJobs.LipSync ? await FollowLipSyncAsync(desired)
@@ -389,6 +396,14 @@ public partial class MainWindow
                 ContractException or JsonException or ArgumentException or Audio2FaceHostException)
             {
                 problem = error.Message;
+            }
+            finally
+            {
+                if (clusterFollowingText is not null)
+                {
+                    clusterFollowingText = null;
+                    ShowConfiguring();
+                }
             }
             var after = LocalJobFor(job);
             clusterObserved[job] = ObservedJob(job);

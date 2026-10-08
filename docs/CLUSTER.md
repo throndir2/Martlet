@@ -906,3 +906,97 @@ gateway container built from this source (token read with `docker exec`,
 runner on a real host PC (installing an update, `martlet-host` runs, real
 installs side by side), the engine locks on a real Docker-method host, an older
 gateway refusing the `running` list, and two real computers are **NOT RUN**.
+
+## Applying the recommended setup
+
+Home's recommended setup suggests one setup for all your computers. After you
+review it and click **Reconfigure**, Martlet applies it to every computer
+(`SetupExecutor` in `Martlet.Core.Planning`; the desktop's paths are in
+`MainWindow.RecommendedSetupApply.cs`).
+
+Before Reconfigure, the review shows the **preflight**
+(`PrepareRecommendedSetupAsync`). For each role that Martlet installs or
+changes, Martlet reads the role from that computer (`martlet-host describe`,
+the same reading as the install dialogs: `host.describe-role` through Martlet
+on that computer, this PC's own host engine, or SSH). The preflight shows:
+
+- the terms and licenses of each role (its own and those of the variant it
+  uses, for example Parakeet's or Whisper's),
+- each secret that a role needs and that the host does not store yet (for
+  example an NGC API key; the change then needs you),
+- about how much each change downloads,
+- the changes that need someone at that computer, and the changes that Martlet
+  cannot make, each with the reason.
+
+The Reconfigure click accepts the terms that the review showed. Martlet logs
+that acceptance for each install. A change that the review did not show is
+never made. A secret that you enter in the review stays in memory and goes
+only to the host that needs it.
+
+Then Martlet makes the changes in the order of the recommendation (make before
+break: move or change roles, add roles, hand over jobs, share work, then
+remove roles). It uses only the paths that already exist:
+
+| Change | Path |
+| --- | --- |
+| Add a role, change its model, move it to a graphics card | `host.add-role` with `choice.<VAR>` answers through Martlet on that computer; this PC's own host engine; or the SSH runner without questions, as automatic host updates use it. The model selects its choice and its variant (`choice.STT_ENGINE=parakeet` for a Parakeet model). A choice that selects a variant is always sent, with its default when the change names none, so the host installs the variant whose terms the review showed. An installed role keeps what it runs with now. `choice.gpu` is the UUID of the card from the describe output, found by the card's exact name (then a name that contains the other, then its place among the NVIDIA cards). |
+| Remove a role | `host.remove-role`, or `martlet-host remove` on this PC or over SSH |
+| Hand a job to a computer | The shared cluster plan, as *Use for ...* on the Devices map does, with failover on. Without a host, each companion PC uses its own choice again. |
+| Share speaking or listening | Devices › Sharing work (`work-sharing.json`, the `work-sharing` shared setting): the computer is no longer in the job's *never* list, and sharing is on. Leaving puts it on that list. |
+| Join or leave the Thinking pool | Nothing to do. A computer joins the Thinking pool by itself on its next check when it runs the deep-thinking role. Martlet never writes `thinking-pool.json` for this. |
+
+While the run works, Martlet does not install its own update, and closing Martlet asks first. If Martlet closes before the run ends, the next start ends the run record: the changes not made need you.
+
+A failed step does not stop the other steps. Each step keeps your other
+choices: a job that moves to a host keeps the previous route aside, as a
+manual handoff does. After the last step, Martlet checks every host once
+(*Check hosts*), so this PC and every companion PC follow the new plan within
+one check. A job that this PC cannot follow yet (for example, no voice is
+selected for that engine) is reported as a change that needs you.
+
+## Configuring
+
+While Martlet changes a computer, every computer shows that computer as
+**Configuring**:
+
+- **The run record.** The computer that applies a recommended setup publishes
+  a `SetupRun` (`Martlet.Core.Cluster`) as its own shared settings entry,
+  `setup-run.<device ID>`. The record holds the run ID, the device that started
+  it and when, and one entry for each computer: *Pending*, *Configuring*,
+  *Done*, *Failed* or *NeedsAttention*, with the current step in words
+  ("Installing Chatterbox Turbo (2 of 4)"). It also holds the time the run
+  finished. Only that computer writes its entry. Like the `pc.` and `role.`
+  entries, it is not counted as a shared setting, and it leaves first when a
+  copy is full. Every computer reads it on its next settings sync (every 15
+  seconds). A run that has not changed for two hours is no longer shown as
+  active. A finished run stays on Home for ten minutes.
+- **Host role changes.** A host shows Configuring while this PC installs,
+  changes or removes a role on it, or updates it through Martlet on that
+  computer. A host PC shows Configuring while it runs such a command from
+  another computer.
+- **Following a plan change.** A companion PC shows Configuring for a short
+  time while it switches a job to follow the shared plan.
+
+Where it shows:
+
+- **Home.** On a companion PC, the hero shows *Configuring your computers*
+  beside the listening indicator (`HomeConfiguring`, with its text in
+  `HomeConfiguringStatus`). On a host PC, it shows under the host buttons
+  (`HostConfiguring`, `HostConfiguringStatus`). A click opens the Devices map.
+- **The Devices map.** The computer shows the status *Configuring: <step>*
+  over its other statuses (`NodeHealth.Configuring`).
+- **The tray.** The tooltip adds a line, for example *Configuring 2
+  computers*.
+
+This work runs on the settings sync, the node agent and the host runs. Nothing
+of it is on the reply path.
+
+Checked locally: `setup_run_check` (MCP) runs the production executor on a
+fixture recommendation against simulated computers: the preflight, the host
+commands and their arguments, the secret, the plan with failover, Sharing work,
+a failed step, a change missing from the review, and the run record as another
+computer reads it. `setup_run_status` (MCP) reads the published runs, the plan
+and Sharing work from a data directory. The desktop showed a run from another
+computer on Home and on the Devices map (MCP `-Desktop`, disposable data
+directory). Real installs on real hosts, SSH hosts and two real computers are
+**NOT RUN**.
