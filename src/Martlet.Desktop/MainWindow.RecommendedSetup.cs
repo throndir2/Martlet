@@ -72,11 +72,11 @@ public partial class MainWindow
     {
         var inputs = Inputs();
         var directory = store?.DataDirectory;
-        var pool = ThinkingPoolSettings.Load(directory).Places.Places.Where(p => p.OnHostRole && p.HostId is not null)
-            .Select(p => p.HostId!).ToArray();
+        var poolSettings = ThinkingPoolSettings.Load(directory);
+        var pool = poolSettings.Places.Places.Where(p => p.OnHostRole && p.HostId is not null).Select(p => p.HostId!).ToArray();
         return RecommendedSetupInputs.Sources(inputs, NetworkMap.Build(inputs), ClusterDevice, OwnHostId(), ThisPcDiskFreeGb(),
-            offlineFor: null, sharing: directory is null ? null : WorkSharingSettings.Load(directory), thinkingPool: pool, poolOptOut: null,
-            voiceEngine: SpeakingEngineChoice.Current.HostRoleKind, configuredProviders: ConfiguredProviders());
+            offlineFor: null, sharing: directory is null ? null : WorkSharingSettings.Load(directory), thinkingPool: pool,
+            poolOptOut: poolSettings.LeftByOwner, voiceEngine: SpeakingEngineChoice.Current.HostRoleKind, configuredProviders: ConfiguredProviders());
     }
 
     private void ShowRecommendedSetup(SetupRequestBuild build, NetworkRecommendation recommendation)

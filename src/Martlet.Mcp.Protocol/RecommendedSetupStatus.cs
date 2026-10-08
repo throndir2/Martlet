@@ -133,12 +133,12 @@ internal static class RecommendedSetupStatus
         try { chosen = File.ReadAllText(Path.Combine(directory, "speaking-engine.txt")).Trim(); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         var voice = SpeechEngines.ForRoute(speaking?.GatewaySnapshot?.RouteId) ?? SpeechEngines.ForKey(chosen) ?? SpeechEngines.Default;
-        var pool = ThinkingPoolSettings.Read(directory, save: false).Settings.Places.Places.Where(p => p.OnHostRole && p.HostId is not null)
-            .Select(p => p.HostId!).ToArray();
+        var poolSettings = ThinkingPoolSettings.Read(directory, save: false).Settings;
+        var pool = poolSettings.Places.Places.Where(p => p.OnHostRole && p.HostId is not null).Select(p => p.HostId!).ToArray();
         return new SetupSources(computers)
         {
             Plan = plan, LocalJobs = jobs, Sharing = WorkSharingSettings.Load(directory), Device = device, ThinkingPool = pool,
-            VoiceEngine = voice.HostRoleKind, ConfiguredProviders = providers
+            PoolOptOut = poolSettings.LeftByOwner, VoiceEngine = voice.HostRoleKind, ConfiguredProviders = providers
         };
     }
 
