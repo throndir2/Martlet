@@ -248,6 +248,22 @@ public sealed class CharacterTouchTemperamentTests
         Assert.Contains("intimate as body groups", CharacterTouchTemperaments.Summary(older));
     }
 
+    [Fact]
+    public void TheTouchLineSaysHowThePersonaFeelsAboutWhereItWasTouched()
+    {
+        CharacterTouchZone Zone(string id) => new() { Id = id, Box = new(0, 0, 1, 1) };
+        var decided = Temperament("{\"groups\":{\"head\":{\"attitude\":0},\"torso\":{\"attitude\":2},\"intimate\":{\"attitude\":-2}}}");
+        Assert.Equal("you love being touched there", CharacterTouchTemperaments.Feeling(decided, [Zone("stomach")]));
+        Assert.Equal("you hate being touched there", CharacterTouchTemperaments.Feeling(decided, [Zone("groin")]));
+        // Neutral, or not decided: nothing to say.
+        Assert.Null(CharacterTouchTemperaments.Feeling(decided, [Zone("nose")]));
+        Assert.Null(CharacterTouchTemperaments.Feeling(null, [Zone("stomach")]));
+        // A stroke across zones it feels differently about says each, in the order they were crossed.
+        Assert.Equal("you love it on your stomach and your navel, and hate it on your groin",
+            CharacterTouchTemperaments.Feeling(decided, [Zone("stomach"), Zone("navel"), Zone("nose"), Zone("groin")]));
+        Assert.Equal("you love being touched there", CharacterTouchTemperaments.Feeling(decided, [Zone("stomach"), Zone("navel")]));
+    }
+
     [Theory]
     [InlineData("intimate")]
     [InlineData("intimate_parts")]

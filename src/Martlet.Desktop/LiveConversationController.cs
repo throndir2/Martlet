@@ -229,6 +229,10 @@ internal sealed class LiveConversationOperation
     [JsonIgnore] internal Martlet.Conversation.TouchBurst? Touches { get; set; }
     /// <summary>What Thinking was told about <see cref="Touches"/>: the touch reply's message or the note on the user's.</summary>
     [JsonIgnore] internal string? TouchText { get; set; }
+    /// <summary>The user's own words this reply answers (typed, or said and transcribed), once its request was built; null for
+    /// what Martlet starts on its own, what only the PC played, or what went straight to Thinking. A touch that stops the reply
+    /// tells the next one what it was answering (<see cref="Martlet.Conversation.TouchCut"/>).</summary>
+    [JsonIgnore] internal string? Asked { get; set; }
     /// <summary>The finished background jobs this reply brings into the conversation (its own message for a report, or the notes
     /// of the user's message); completed once the exchange is kept, otherwise returned for the next reply.</summary>
     [JsonIgnore] internal BackgroundDelivery? Delivery { get; set; }
@@ -1626,7 +1630,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 board = BoardFor(configured, operation.Authorization.Voice);
                 var request = configured.Request(new(GlanceMessage(prompt, read)), operation.Authorization.Voice, history, null, lore,
                     out var usedHistory, out _, out var usedLore, image,
-                    Join(LiveConversationConfiguration.Moment(configured.Prompts),
+                    Join(LiveConversationConfiguration.Moment(configured.Prompts), configured.AdultInstructions,
                         LiveConversationConfiguration.CommentaryInstructions(level, camera, configured.Prompts, decides)),
                     LiveConversationConfiguration.SilentReply, characterActions: characterActions,
                     gaze: look ? CharacterGaze.Prompt(configured.Prompts, LiveConversationConfiguration.SilentReply) : null,
@@ -1935,6 +1939,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // speaker), tools and finished background work go with it, and what needs its words (Assist, earlier conversations,
             // lorebook keywords in it) waits for the next message.
             var own = operation.OnItsOwn || straight ? null : operation.PcAudio ? operation.UserWords : input!.UserText;
+            operation.Asked = own;
             DesktopMemoryRecall? memoryResult = null;
             if (operation.MemoryRequested && (own ?? (straight ? StraightRecallQuery(history) : null)) is { } query)
             {
@@ -2049,15 +2054,17 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 if (!operation.OnItsOwn && !operation.Remote && (own is not null || straight) && operation.Touches is null)
                     operation.Touches = touches.Drain(TouchNow);
                 var touchNote = !operation.Touch && operation.Touches is { } touched
-                    ? PromptSettings.Fill(prompts, PromptCatalog.TouchedNotes, ("touches", touched.Line)) : null;
+                    ? PromptSettings.Fill(prompts, PromptCatalog.TouchedNotes, ("touches", LiveConversationConfiguration.TouchWords(prompts, touched))) : null;
                 operation.TouchText = operation.Touch ? input!.UserText : touchNote;
+                // Adult content (Companion › Replies), the same in every reply and remark, never in a Discord call.
+                var adult = operation.DiscordCall ? null : configured.AdultInstructions;
                 // Backup Thinking: once this reply's Thinking request is slow to start, a pool member may answer it instead.
                 var backup = BackupFor(operation);
                 ConversationRequest Ask(SeenScreen? picture, string? recalled, out int keptHistory, out int keptFacts, out int keptEntries) =>
                     operation.Authorization.Configuration.Request(
                         input!, operation.Authorization.Voice, sentHistory, memoryResult, lore,
                         out keptHistory, out keptFacts, out keptEntries, image: picture?.Image,
-                        extraInstructions: Join(LiveConversationConfiguration.Moment(prompts),
+                        extraInstructions: Join(LiveConversationConfiguration.Moment(prompts), adult,
                             home is { Kind: HomeTurnKind.Tools } ? home.Instructions : null,
                             VoicePromptContext.Preamble(heardBy, prompts),
                             operation.Spoken ? LiveConversationConfiguration.Listening(prompts) : null,
@@ -3440,7 +3447,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 if (selected.Unavailable(voice, false) is not null) throw new LiveActionException("conversation.configuration_unsupported");
                 if (touches.Peek(TouchNow) is not { StartsTurn: true }) return null;
                 burst = touches.Drain(TouchNow)!;
-                var input = new BoundedTextInput(PromptSettings.Fill(selected.Prompts, PromptCatalog.Touched, ("touches", burst.Line),
+                var input = new BoundedTextInput(PromptSettings.Fill(selected.Prompts, PromptCatalog.Touched,
+                    ("touches", LiveConversationConfiguration.TouchWords(selected.Prompts, burst)),
                     ("silent", LiveConversationConfiguration.SilentReply)) ?? burst.Line);
                 long acceptedRevision = revision = checked(revision + 1);
                 var authorization = new ConversationAuthorization(selected, voice, false, clock,

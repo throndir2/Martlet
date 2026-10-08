@@ -625,22 +625,54 @@ default; turn it off to leave them out. The check box names each of these parts.
   zone (a quick tap on the top of the head or the hair is a pat, elsewhere a
   poke, and a press of about 0.6 seconds or more a hold) into one plain line,
   such as *They patted the top of your head 3 times over 2 seconds, then poked
-  your left cheek once.* The local reaction still plays at once. When you talk
+  your left cheek once.* The line also says how the persona feels about being
+  touched there, from its touch temperament (*They poked your groin once (you
+  hate being touched there)*), and, when you keep coming back to a place across
+  replies (5 or more touches there in the last 10 minutes), how often: *They
+  keep coming back to your groin: 9 times in the last 4 minutes.* The local
+  reaction still plays at once. When you talk
   or type, the line goes with your message (after your words), and Martlet
-  answers you first, then reacts to the touch too. When you say
+  takes both in and decides what comes first: a sudden or intimate touch can
+  make it react first, a light one may get only a word. When you say
   nothing, Martlet starts a short reply of its own about 1.2 seconds after your
   last touch (at most 3 seconds after the first, at most once every 4 seconds);
-  its prompt asks for a sentence or two out loud, never only an emote or
-  silence, and for a reaction that builds when you keep going. Starting to talk
-  or type first cancels it, and while Martlet is replying the
-  touches wait for the next turn. The conversation keeps a short line such as
+  touching it without a word is a normal way to talk to it, so its prompt asks
+  for a sound (a gasp, a giggle, a sigh, written out or as a voice tag) or
+  words out loud, never silence or an emote alone, and for a reaction that
+  builds when you keep going. Starting to talk or type first cancels it. The
+  conversation keeps a short line such as
   *(touch: top of head pat x3)*, the talk window shows a touch-only reply as a
-  note, and the two prompts are on Companion › Prompts (*Touched* and
-  *Touched, with your message*). While the switch is on, a box beside it takes your
+  note, and the prompts are on Companion › Prompts (*Touched*,
+  *Touched, with your message* and *Touched, cutting you off*). While the switch is on, a box beside it takes your
   own words for the touch (optional), sent as a hint. Rename, turn off, move or resize
   (drag the box or its corner on the picture, or type it), delete or add zones;
   **Try** plays one. Zones are saved per model in `character-touch-zones.json`,
   with the picture in `character-touch-zones\`.
+- **Touching Martlet while it talks**: a touch Martlet notices stops the reply
+  or screen remark it is saying aloud at once, the way talking over it does,
+  and its reaction starts about half a second after your last touch (no 4
+  second wait). The reaction is told what Martlet had said aloud and the
+  message it was answering, so it decides how to go on: react first, then pick
+  up where it left off, change course or leave the rest unsaid. The stopped
+  reply shows *Stopped for your touch.* Touch zones › **When you touch Martlet
+  while it talks** chooses which touches do this (this PC only): any touch
+  Martlet notices (the default), only touches on intimate parts, or none
+  (Martlet finishes first and the touches wait). Moving or zooming the
+  character never stops it, a reaction to an earlier touch is never stopped
+  (new touches wait for the next one), and a touch while Martlet is still
+  thinking waits for its next reply, so the reply you asked for never starts
+  later.
+- **Adult content**: Companion › Replies › **Adult content** (off by default;
+  turn it on only if you are 18 or older) adds the *Adult content* prompt to
+  every reply and screen remark, never in a Discord call where others can
+  hear. With it, an adult character may flirt, be sexual and react to touches
+  explicitly, always true to its personality, and it may also refuse or set
+  limits. Touches on intimate parts count as sexual (the groin is the
+  character's genitals, the chest its breasts), and when you keep touching or
+  stroking one part, Martlet takes it as deliberate and its reaction builds.
+  The prompt forbids anything sexual with or about anyone under 18, and a
+  character that is a minor treats intimate touches as a boundary. Many cloud
+  models refuse such content; models you run yourself usually don't.
 - **Strokes**: with the character's position locked, a press and drag across
   it can't move it, so it strokes the character. Each zone the stroke crosses
   plays its reaction at once (unless it is resting), and the first zone's emote

@@ -63,7 +63,9 @@ public partial class MainWindow
         characterTouchZones.React(touch, (zone, repeats) => TouchPlan(zone, catalog, temperament, repeats), PlayTouchAsync,
             zone => Dispatcher.InvokeAsync(() =>
                 NoticePhysical(touch.Held ? PhysicalKind.Hold : CharacterTouchZones.Pats(zone) ? PhysicalKind.Pat : PhysicalKind.Tap,
-                    CharacterTouchZones.Part(zone), zone.Name.ToLowerInvariant(), hint: CharacterTouchZones.Narration(zone))),
+                    CharacterTouchZones.Part(zone), zone.Name.ToLowerInvariant(), hint: CharacterTouchZones.Narration(zone),
+                    intimate: CharacterTouchZones.Kind(zone.Id)?.Intimate == true,
+                    feeling: CharacterTouchTemperaments.Feeling(temperament, [zone]))),
             look: avatar.Gaze.Attend);
         return true;
     }
@@ -101,19 +103,46 @@ public partial class MainWindow
     /// a stroke, moving or zooming it...): it goes to the conversation's touch ledger, waits for the next reply and, for touches
     /// (<see cref="PhysicalKinds.StartsTurn"/>), starts a short reply of its own when the user says nothing. On the UI thread.
     /// <paramref name="zone"/> is where, as the character hears it ("the top of your head"), <paramref name="label"/> its short
-    /// name for the history ("top of head"), <paramref name="detail"/> more ("to another monitor") and <paramref name="hint"/>
-    /// the owner's own words for it.</summary>
+    /// name for the history ("top of head"), <paramref name="detail"/> more ("to another monitor"), <paramref name="hint"/>
+    /// the owner's own words for it, <paramref name="zones"/> each place it touched (a stroke's zones), <paramref name="intimate"/>
+    /// whether it touched an intimate zone and <paramref name="feeling"/> how the persona feels about it.</summary>
     internal void NoticePhysical(PhysicalKind kind, string? zone = null, string? label = null, string? detail = null, string? hint = null,
-        IReadOnlyList<string>? zones = null)
+        IReadOnlyList<string>? zones = null, bool intimate = false, string? feeling = null)
     {
         if (closing || Role == DeviceRole.Host || conversation is null || ConversationSession() is not { } talk) return;
         if (!talk.IsVisible) talk.StartInBackground();
-        talk.Physical(new PhysicalEvent(kind, conversation.TouchNow, zone, label, detail, hint, zones));
+        talk.Physical(new PhysicalEvent(kind, conversation.TouchNow, zone, label, detail, hint, zones, intimate, feeling));
     }
 
     private CancellationTokenSource? detectTouchZones;
     private bool showTouchZonesSent;
     private const double TouchZonesPictureHeight = 600, TouchZonesPictureWidth = 440;
+
+    /// <summary>Touch zones › When you touch Martlet while it talks (<see cref="TalkPreferences.TouchInterrupts"/>, this PC): a
+    /// touch it notices stops the reply or remark it is saying, like talking over it, and its reaction knows what it was saying.</summary>
+    private void AddTouchInterrupts(List<UIElement> stack)
+    {
+        stack.Add(new TextBlock
+        {
+            Text = "When you touch Martlet while it talks", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 8, 0, 6),
+            TextWrapping = TextWrapping.Wrap
+        });
+        foreach (var (choice, word, title, detail) in new (TouchInterrupts, string, string, string)[]
+        {
+            (TouchInterrupts.Any, "any", "It stops to react (recommended)",
+                "Any touch Martlet notices stops what it is saying, like talking over it. It reacts a moment after your last touch " +
+                "and decides whether to pick up where it left off."),
+            (TouchInterrupts.Intimate, "intimate", "It stops only for intimate touches",
+                $"Only a touch on an intimate part ({CharacterTouchZones.IntimateParts}) stops it; other touches wait until it finishes."),
+            (TouchInterrupts.Never, "never", "It finishes first",
+                "Your touches wait, and Martlet reacts to them after what it is saying.")
+        })
+        {
+            var option = Choice("TouchInterrupts", title, detail, Talk.TouchInterrupts == choice, "TouchInterrupt-" + word);
+            option.Checked += (_, _) => { if (Talk.TouchInterrupts != choice) SaveTalk(Talk with { TouchInterrupts = choice }); };
+            stack.Add(option);
+        }
+    }
 
     // Pictures decoded once at about the size they show, kept while their file stays the same (Detect again and Measure the eyes
     // write new pictures under the same names), so drawing a page again doesn't decode them again. On the UI thread.
@@ -258,6 +287,7 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(physicalLastText, "CharacterPhysicalLast");
         AutomationProperties.SetLiveSetting(physicalLastText, AutomationLiveSetting.Polite);
         stack.Add(physicalLastText);
+        AddTouchInterrupts(stack);
         var saveState = Note("", new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(saveState, "TouchZonesSaveState");
         AutomationProperties.SetLiveSetting(saveState, AutomationLiveSetting.Polite);

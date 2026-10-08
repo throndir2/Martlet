@@ -438,8 +438,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // CharacterGaze-<choice> radio buttons (selected) and CharacterGazeFree check box (checkedState) save
         // talk-preferences.json, so they need --allow-ui-effects.
         "CharacterGazeNow",
-        // What Martlet noticed (zones with Martlet notices on) that waits for a reply and when a touch reply would start, and
-        // which reply took the last touches and what the Thinking model was told (zone names and the touch line, no words).
+        // What Martlet noticed (zones with Martlet notices on) that waits for a reply and when a touch reply would start (and
+        // whether a touch stopped Martlet talking), and which reply took the last touches and what the Thinking model was told
+        // (zone names and the touch line, no words). Touch zones' TouchInterrupt-<choice> radio buttons (any, intimate, never;
+        // selected) save talk-preferences.json, so they need --allow-ui-effects.
         "TouchZonesNoticed", "TouchZonesNoticedLast",
         // Touch zones' line on the last stroke across the locked character (zones crossed, pace, passes, seconds, samples on the
         // character) or the last move, zoom, pan, lock, hide or show, as Martlet's touch ledger heard it. Fixed wording and zone
@@ -515,6 +517,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Replies › Short first sentence: the chosen option (On, the default, or Off; choosing one with ui_select
         // saves it, so it needs --allow-ui-effects).
         "RepliesShortFirstSentence",
+        // Companion › Replies › Adult content: the chosen option (Off, the default, or On (18+); choosing one with ui_select
+        // saves it, so it needs --allow-ui-effects).
+        "RepliesAdultContent",
         // Companion › Deep thinking: where a think goes and whether it can run there alongside the conversation (and why); Thinking
         // longer's state (on by default; Where it thinks › Off turns it off) or what keeps it from working, and the chosen
         // effort, time limit, hourly limit and when it shares results (choosing one with ui_select saves them, so they need

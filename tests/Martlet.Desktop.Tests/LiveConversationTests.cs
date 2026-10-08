@@ -2780,6 +2780,64 @@ public sealed class LiveConversationTests
     });
 
     [Fact]
+    public Task ATouchStopsTheSpokenReplyAndTheReactionKnowsWhatMartletWasSaying() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create(new ControlledDevice { AutoConsume = false });
+        fixture.Answer("Once upon a time there was a fox.", " It lived in a quiet wood.");
+        var window = fixture.Open(new TalkPreferences(HandsFree: false, SpeakReplies: true));
+        try
+        {
+            await Loaded(window);
+            Control<TextBox>(window, "InputText").Text = "Tell me a story.";
+            Click(window, "SendButton");
+            await Until(() => fixture.Output.Starts > 0);
+            var story = Assert.IsType<LiveConversationOperation>(window.Current);
+            await Until(() => story.Turn?.SaidAloud.Length > 0);
+            Assert.Equal("Tell me a story.", story.Asked);
+
+            // A poke on an intimate part while Martlet tells it: it stops at once, like talking over it.
+            fixture.Answer("Eek! Hey, I was telling a story!");
+            window.Physical(new PhysicalEvent(PhysicalKind.Tap, fixture.Controller.TouchNow, "your groin", "groin", Intimate: true));
+            Assert.Contains("Martlet stopped talking for it.", window.TouchStatus);
+            await fixture.Advance(() => story.OwnershipReleased);
+            Assert.Equal(LiveConversationWindow.TouchCutInCode, story.Status.Code);
+            await Until(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Note.Contains("Stopped for your touch.")));
+
+            // Its reaction starts about half a second after the touch, on its own, and knows what it was saying.
+            await fixture.Advance(() => fixture.Llm.Calls >= 2);
+            using var body = JsonDocument.Parse(fixture.Llm.Body);
+            var message = ResponsesCurrentUserText(body);
+            Assert.Contains("They poked your groin once. They did it while you were talking, so you stopped mid-sentence. You had said, " +
+                "out loud: \"Once upon a time there was a fox.\" You were answering their message: \"Tell me a story.\"", message);
+            Assert.True(Assert.IsType<LiveConversationOperation>(window.Current).Touch);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task ATouchThatIsNotIntimateWaitsWhileMartletTalksWhenOnlyIntimateTouchesStopIt() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create(new ControlledDevice { AutoConsume = false });
+        fixture.Answer("Once upon a time there was a fox.");
+        var window = fixture.Open(new TalkPreferences(HandsFree: false, SpeakReplies: true, TouchInterrupts: TouchInterrupts.Intimate));
+        try
+        {
+            await Loaded(window);
+            Control<TextBox>(window, "InputText").Text = "Tell me a story.";
+            Click(window, "SendButton");
+            await Until(() => fixture.Output.Starts > 0);
+            var story = Assert.IsType<LiveConversationOperation>(window.Current);
+            // Only intimate touches stop it: a pat on the head waits for it to finish.
+            window.Physical(new PhysicalEvent(PhysicalKind.Pat, fixture.Controller.TouchNow, "the top of your head", "top of head"));
+            await Heartbeat();
+            Assert.False(story.OwnershipReleased);
+            Assert.Equal(1, fixture.Llm.Calls);
+            Assert.DoesNotContain("stopped talking", window.TouchStatus);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
     public Task EscapeDuringSettingsLoadRetainsOwnershipUntilWorkerReturns() => DispatcherTest(async () =>
     {
         await using var fixture = await LiveFixture.Create();

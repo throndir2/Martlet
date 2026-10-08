@@ -671,10 +671,19 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "(what the talk window and the Thinking model call the character: the name of the persona dataDirectory's settings " +
             "use, else Martlet) and note (the talk window's note for a reply to them alone, \"You touched Ivy (touch: hair " +
             "stroke x4, moved)\", or null when they wouldn't start one). noticeAll " +
-            "(default true) treats every zone as having Martlet notices on; false uses the zones' own setting.", new
+            "(default true) treats every zone as having Martlet notices on; false uses the zones' own setting. personaId takes how " +
+            "that persona feels about the zones from character-temperaments.json (feeling). earlier (0 to 20) records the same " +
+            "stroke that many times before, a minute apart, each taken by a reply, so the line names the places the user keeps " +
+            "coming back to (often). said and answering stand for a touch that stopped Martlet talking (what it had said aloud and " +
+            "the message it was answering). touchInterrupts (any, intimate or never; default any) says whether the stroke would " +
+            "stop Martlet talking (interrupts). Returns told (what Thinking hears of the touches), message (a touch-only reply's " +
+            "whole message, Companion > Prompts > Touched) and notes (Touched, with your message), with the prompts saved in " +
+            "dataDirectory's settings.json.", new
         {
             dataDirectory = new { type = "string" }, modelId = new { type = "string" }, stroke = new { type = "string" },
-            changes = new { type = "string" }, noticeAll = new { type = "boolean" }
+            changes = new { type = "string" }, noticeAll = new { type = "boolean" }, personaId = new { type = "string" },
+            earlier = new { type = "integer", minimum = 0, maximum = 20 }, said = new { type = "string", maxLength = 4096 },
+            answering = new { type = "string", maxLength = 4096 }, touchInterrupts = new { type = "string", @enum = new[] { "any", "intimate", "never" } }
         }),
         Tool("character_touch_zones", "Companion > Touch > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones and TouchZoneDetection; " +
             "docs/AVATARS.md \"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate, and the defaults Detect " +
@@ -1000,7 +1009,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "per three UTF-8 bytes), plus the tokens of all prompts together. With id, also returns that one prompt's effective text " +
             "(the saved edit or the built-in text) exactly as Martlet uses it. shortFirstSentence: Companion > Replies > Short " +
             "first sentence (on by default) and what closes a spoken and an unspoken reply's instructions with it, exactly as the " +
-            "desktop sends them. Read-only.", new
+            "desktop sends them. adultContent: Companion > Replies > Adult content (off by default), its prompt's state and, while " +
+            "on, the instructions it adds to every reply and remark. Read-only.", new
         {
             dataDirectory = new { type = "string" },
             id = new { type = "string", maxLength = 64 }
@@ -1932,7 +1942,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "character_actions" => await CharacterActionsCheckAsync(arguments, cancellation),
                 "character_gaze" => GazeCheck.Run(DataDirectory(arguments), OptionalString(arguments, "answer"), OptionalString(arguments, "personaId")),
                 "character_physical_check" => PhysicalCheck.Run(DataDirectory(arguments), OptionalString(arguments, "modelId"),
-                    OptionalString(arguments, "stroke"), OptionalString(arguments, "changes"), OptionalBool(arguments, "noticeAll") ?? true),
+                    OptionalString(arguments, "stroke"), OptionalString(arguments, "changes"), OptionalBool(arguments, "noticeAll") ?? true,
+                    OptionalString(arguments, "personaId"), OptionalInt(arguments, "earlier") ?? 0, OptionalString(arguments, "said"),
+                    OptionalString(arguments, "answering"), OptionalString(arguments, "touchInterrupts")),
                 "character_touch_zones" => await TouchZonesCheck.RunAsync(DataDirectory(arguments),
                     OptionalString(arguments, "dataDirectory") is not null, OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"),
                     OptionalString(arguments, "answer"), OptionalInt(arguments, "width"), OptionalInt(arguments, "height"),
@@ -3748,6 +3760,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 prompt = Of(Martlet.Core.Settings.PromptCatalog.ShortFirstSentence),
                 spokenClosing = Martlet.Core.Settings.PromptSettings.ReplyClosing(prompts, generation, true, Martlet.Conversation.StayQuiet.Marker),
                 unspokenClosing = Martlet.Core.Settings.PromptSettings.ReplyClosing(prompts, generation, false, Martlet.Conversation.StayQuiet.Marker)
+            },
+            // Companion › Replies › Adult content (off by default) and the instructions it adds after the One moment prompt of
+            // every reply and remark (never in a Discord call), exactly as the desktop sends them; null while it is off.
+            adultContent = new
+            {
+                on = Martlet.Core.Settings.GenerationSettings.Adult(generation),
+                prompt = Of(Martlet.Core.Settings.PromptCatalog.AdultContent),
+                instructions = Martlet.Core.Settings.GenerationSettings.Adult(generation)
+                    ? Martlet.Core.Settings.PromptSettings.Fill(prompts, Martlet.Core.Settings.PromptCatalog.AdultContent) : null
             }
         };
     }

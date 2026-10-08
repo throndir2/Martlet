@@ -1490,13 +1490,18 @@ again for the zones the close-ups missed*, or *FIXTURE - NOT AI answered
 these.*), `TouchZonesLast` (the zone the last click landed in,
 how it was found and what it played or that it was resting, and whether Martlet
 noticed it), `TouchZonesNoticed` (what Martlet noticed that waits for a reply,
-the plain touch line, and when a touch-only reply starts, or that it waits for
+the plain touch line, *Martlet stopped talking for it.* when a touch stopped
+Martlet talking, and when a touch-only reply starts, or that it waits for
 your next message because you started talking or typing or Martlet can't reply
 now), `TouchZonesNoticedLast` (which reply took the last touches, the short
 history line and exactly what the Thinking model was told),
 `CharacterPhysicalLast` (the last stroke across the locked character: zones
 crossed, pace, passes, seconds and samples on the character; or the last move,
 zoom, pan, lock, hide or show as Martlet's touch ledger heard it),
+`TouchInterrupt-any`, `TouchInterrupt-intimate` and `TouchInterrupt-never`
+(*When you touch Martlet while it talks*: radio buttons whose `selected` state
+reads in `ui_snapshot`; choosing one saves `talk-preferences.json`, so it
+needs `--allow-ui-effects`),
 `TouchZonesSaveState` and each zone's `TouchZoneState-<n>` (its ID, the parts
 it follows, *added by you* for a zone the owner added, which *Detect again*
 looks for too and keeps where it is when it can't find it, and its default
@@ -2434,6 +2439,13 @@ spoken). On Companion › Replies, `RepliesShortFirstSentence` reads the chosen
 option (*On* or *Off*; choosing one with `ui_select` saves it, so it needs
 `--allow-ui-effects`) and `RepliesNow` says whether spoken replies start with a
 short first sentence.
+`adultContent` is Companion › Replies › *Adult content*: `on` (off by
+default), the *Adult content* prompt's `state`, and while it is on the
+`instructions` it adds after the *One moment* prompt of every reply and screen
+remark (never in a Discord call), exactly as the desktop sends them.
+`RepliesAdultContent` reads the chosen option (*Off* or *On (18+)*; choosing
+one with `ui_select` saves it, so it needs `--allow-ui-effects`), and
+`RepliesNow` adds *Adult content is on.* while it is.
 On the page, `PromptsNow` reads how many prompts are edited or emptied,
 `PromptsTokens` the estimated tokens of all prompts together as typed
 (*All prompts together: about 3,456 tokens. ...*) and
@@ -4977,10 +4989,28 @@ reply to what you say or type carries the touch line in its notes (the desktop
 log's *Touches: 3 went to Thinking in the notes of your message.*), and touches
 on their own start a short reply of their own (*... as a short reply of their
 own.*; the talk window's `LiveTurnInputs` reads *Last reply took 2 touches.*).
-Its message (Companion › Prompts › *Touched*) asks for a sentence or two out
-loud, never only an emote, a sound or `[pass]`.
+Its message (Companion › Prompts › *Touched*) asks for a sound or words out
+loud, never silence, an emote alone or `[pass]`. The touch line names how the
+persona feels about the touched zones (its touch temperament) and, after 5 or
+more touches on one place in the last 10 minutes across replies, *They keep
+coming back to ...*.
 Without a Thinking setup `TouchZonesNoticed` says the touches wait for your next
 message.
+
+**Touching Martlet while it talks**: with *When you touch Martlet while it
+talks* on *any* (the default) or, for a touch on an intimate part, *intimate*,
+a touch on the character while Martlet says a reply, a report or a screen
+remark aloud (never its reaction to an earlier touch) stops it at once
+(`controller.Stop(..., keepContext: true)`, status `touch.cut_in`, or
+`commentary.interrupted` for a remark; the reply's note reads *Stopped for
+your touch.*). The touch ledger keeps what Martlet had said aloud
+(`ConversationTurn.SaidAloud`, the sentences that started playing, at most
+the last 300 characters) and the user's own words it was answering, and the
+reaction starts 0.5 seconds after the last touch with no cooldown; its message
+adds Companion › Prompts › *Touched, cutting you off*. The desktop log reads
+*Touches: Martlet stopped its reply for a touch (poke on groin); its reaction
+starts about 0.5 s after the last touch.* Moving or zooming the character never
+stops Martlet, and a touch while it still thinks waits for its next reply.
 
 **Stroking the character**: while the character's position is locked, a left
 press that drags beyond Windows' drag distance can't move it, so it strokes
@@ -5194,7 +5224,19 @@ and `note` (the talk window's note for a reply to them alone, such as *You
 touched Ivy (touch: hair stroke x4, moved)*, or null when they wouldn't start
 one).
 `noticeAll` (default true) treats every zone as having *Martlet notices* on;
-false uses the zones' own setting.
+false uses the zones' own setting. `personaId` takes that persona's touch
+temperament from `character-temperaments.json` and returns the stroke's
+`feeling` (*you love it on your chest, and hate it on your groin*), with
+`intimate` and `interrupts` (whether the stroke would stop Martlet talking with
+`touchInterrupts`: `any`, the default, `intimate` or `never`). `earlier` (0 to
+20) records the same stroke that many times before, a minute apart, each taken
+by a reply, so `often` lists the places the user keeps coming back to (`place`,
+`count`, `minutes`) and the line ends with *They keep coming back to ...*.
+`said` and `answering` stand for a touch that stopped Martlet talking. It also
+returns `told` (what the Thinking model hears of the touches, with *Touched,
+cutting you off* when a touch stopped Martlet), `message` (a touch-only
+reply's whole message, Companion › Prompts › *Touched*) and `notes` (*Touched,
+with your message*), with the prompts saved in the data directory.
 
 **Locking the character's position**: Home's `ToggleCharacterLock`
 (*Lock character position*, shown while the character shows or is locked),
