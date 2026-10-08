@@ -45,10 +45,11 @@ model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
 
 ## First configured action
 
-1. In **Setup / resume**, choose the cloud API profile. Apply explicit
-   supported model IDs, store each role's key in its scoped Windows vault target,
-   then review that role's destination choice again (changing a key invalidates
-   the choice). Save the checkpoint. Do not put keys in model fields or files.
+1. On Companion › **Thinking**, **Voice** and **Listening**, choose *A cloud
+   provider* and a supported model ID, paste the provider's key next to it (it
+   goes to its scoped Windows vault target), tick the consent box and press the
+   page's *Use* button (changing a key invalidates the choice until you confirm
+   it again). Do not put keys in model fields or files.
 2. The OpenAI LLM route supports `gpt-4.1-mini-2025-04-14` and
    `gpt-4.1-2025-04-14`. Alternatively the LLM can use OpenRouter, NVIDIA Build
    or any OpenAI-compatible Chat Completions endpoint with the exact model ID
@@ -139,7 +140,7 @@ model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
    sentence in the speech bubble and subtitles too, without a voice request or
    an output device.
 7. **Companion › Prompts** lists every internal prompt Martlet sends to the
-   Thinking model: the persona wrapper, the style line and each response style,
+   Thinking model: the persona wrapper,
    reply length, always listening, tools, Thinking longer, who is talking,
    lorebook, memory and past conversations introductions, notes with messages, the screen and
    camera glance instructions, messages (including the one sent
@@ -150,7 +151,7 @@ model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
    that joins them, and the smart home notes. Each
    one is editable; a saved edit replaces the built-in text wherever it is used
    (settings `prompts.overrides`, by prompt ID, absent while nothing is
-   edited). Words in braces such as `{name}`, `{persona}`, `{style}` or
+   edited). Words in braces such as `{name}`, `{persona}` or
    `{silent}` are filled in when the prompt is sent, and an emptied prompt
    sends nothing (the glance messages, the Thinking longer task and *Background
    work finished* can't be emptied). Martlet still parses
@@ -163,10 +164,12 @@ model that can see images. See [Screen commentary](SCREEN_COMMENTARY.md).
 
 STT receives only the selected microphone's completed bounded utterance. LLM
 receives the typed text or that final transcript plus the fixed active persona
-revision, one weighted response style selected only after participation
-accepts the turn, and the reply-length instruction (all as worded in Companion › Prompts). Persona/style and user input share the existing byte/token
+revision and the reply-length instruction (both as worded in Companion › Prompts). Persona and user input share the existing byte/token
 reservation; an over-budget combination is rejected without truncation or a
-provider call. Valid legacy v1/v2 profiles upload no implicit persona/style
+provider call. Martlet has no response styles: the persona text alone sets how
+Martlet talks. Response-style weights and style prompt edits that older
+versions saved still load, are ignored and are not saved again; a Persona
+prompt edit loses its old `{style}` line. Valid legacy v1/v2 profiles upload no implicit persona
 instruction until settings v3 is explicitly
 saved. The conversation so far is supplied from volatile memory: every
 completed exchange of the open talk window, the newest that fit the context

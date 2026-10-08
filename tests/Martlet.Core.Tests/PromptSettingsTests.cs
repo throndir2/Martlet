@@ -17,6 +17,27 @@ public sealed class PromptSettingsTests
     }
 
     [Fact]
+    public void ResponseStylePromptEditsAndThePersonaStyleLineAreDropped()
+    {
+        // What an older Martlet could save: edits to its response-style prompts, and a Persona prompt edited while it still
+        // had the style line.
+        var json = """
+            {"overrides": {"style": "Style now: {style}", "style_helpful": "helpful.", "style_sarcastic": "snarky.",
+              "style_silly": "silly.", "style_distracted": "distracted.", "style_playful_teasing": "teasing.",
+              "persona": "Companion name: {name}\nPersona:\n{persona}\n\nDominant style for this reply: {style}",
+              "reply_length": "Keep it short."}}
+            """;
+        var settings = Martlet.Core.Contracts.ContractJson.Read<PromptSettings>(System.Text.Encoding.UTF8.GetBytes(json));
+        Assert.Equal([PromptCatalog.Persona, PromptCatalog.ReplyLength], settings.Overrides.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal("Companion name: {name}\nPersona:\n{persona}", settings.Overrides[PromptCatalog.Persona]);
+        Assert.Equal("Companion name: Mira\nPersona:\nKind.",
+            PromptSettings.Fill(settings, PromptCatalog.Persona, ("name", "Mira"), ("persona", "Kind.")));
+        foreach (var id in new[] { "style", "style_helpful", "style_sarcastic", "style_silly", "style_distracted", "style_playful_teasing" })
+            Assert.Null(PromptCatalog.Find(id));
+        Assert.DoesNotContain("{style}", PromptCatalog.Default(PromptCatalog.Persona), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ShortFirstSentenceClosesSpokenRepliesJustBeforeReplyLength()
     {
         var length = PromptSettings.Fill(null, PromptCatalog.ReplyLength)!;

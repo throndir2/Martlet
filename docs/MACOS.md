@@ -88,7 +88,7 @@ mechanism; **Partial** = planned with a stated limit; **No** = not planned.
 | Speaking: on-device voices | Windows voices | **Yes: Apple voices and Personal Voice** | **Yes: new generic speech route (IO04)** | `AVSpeechSynthesizer.write(_:toBufferCallback:)` | MA03, MA04 |
 | Speaking: F5 voice cloning | Paired NVIDIA host | Yes: on this Mac (MLX) or a paired host | **Yes on Apple silicon: existing F5 route via MLX** | [f5-tts-swift](https://github.com/lucasnewman/f5-tts-swift) | MA03 |
 | Voice ID | Yes | Yes (port of the GE2E encoder, shared with IO09) | - | Accelerate | MA07 |
-| Persona, response styles, participation policy | Yes | Yes (shared with IO05) | - | Swift port | MA04 |
+| Persona, participation policy | Yes | Yes (shared with IO05) | - | Swift port | MA04 |
 | Local memory | Yes | Yes (shared with IO09) | - | Swift port | MA07 |
 | Watch my screen (game commentary) | Yes | **Yes, after the screen-recording permission** | - | ScreenCaptureKit | MA06 |
 | Vision model for screen looks | OpenAI, Chat Completions, host Ollama | Same, plus on-device Apple model (macOS 27) and MLX vision models | Chat route accepts the image | `FoundationModels` images, mlx-swift-lm VLMs | MA02, MA06 |

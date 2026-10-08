@@ -128,11 +128,12 @@
             </Setter.Value>
         </Setter>
     </Style>
+    <!-- Text and password boxes apply their own Padding inside PART_ContentHost: a margin from Padding here would add it twice. -->
     <ControlTemplate x:Key="InputTemplate" TargetType="Control">
         <Grid>
             <Border x:Name="Chrome" Background="{TemplateBinding Background}" CornerRadius="10"
                     BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
-                <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                <ScrollViewer x:Name="PART_ContentHost"/>
             </Border>
             <Border x:Name="FocusRing" BorderBrush="{DynamicResource FocusBrush}" BorderThickness="2"
                     CornerRadius="10" IsHitTestVisible="False" Visibility="Hidden"/>
@@ -191,7 +192,7 @@
             <Grid>
                 <Border x:Name="Chrome" Background="{TemplateBinding Background}" CornerRadius="10"
                         BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
-                    <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                    <ScrollViewer x:Name="PART_ContentHost"/>
                 </Border>
                 <Border x:Name="FocusRing" BorderBrush="{DynamicResource FocusBrush}" BorderThickness="2"
                         CornerRadius="10" IsHitTestVisible="False" Visibility="Hidden"/>
@@ -236,6 +237,7 @@
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
         <Setter Property="MinHeight" Value="38"/>
+        <Setter Property="Padding" Value="12,8,36,8"/>
         <Setter Property="FocusVisualStyle" Value="{StaticResource KeyboardFocus}"/>
         <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
         <Setter Property="Template">
@@ -260,7 +262,7 @@
                         <ContentPresenter Content="{TemplateBinding SelectionBoxItem}"
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
                                           ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
-                                          IsHitTestVisible="False" Margin="12,8,36,8" VerticalAlignment="Center"/>
+                                          IsHitTestVisible="False" Margin="{TemplateBinding Padding}" VerticalAlignment="Center"/>
                         <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom"
                                AllowsTransparency="True" Focusable="False">
                             <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}"
@@ -306,6 +308,24 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+    <!-- Dense editor rows (Companion › Character's touch zones, touch temperament and emotes): text boxes, choices and buttons 32
+         pixels tall, so a row's controls, short labels and check boxes line up on one centre line. -->
+    <Style x:Key="CompactTextBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+        <Setter Property="Padding" Value="8,4"/>
+        <Setter Property="MinHeight" Value="32"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="CompactComboBox" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+        <Setter Property="Padding" Value="10,4,32,4"/>
+        <Setter Property="MinHeight" Value="32"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="CompactButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Padding" Value="12,4"/>
+        <Setter Property="MinHeight" Value="32"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
     <Style TargetType="CheckBox">
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>

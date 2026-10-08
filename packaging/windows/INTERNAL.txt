@@ -25,27 +25,26 @@ Martlet Doctor (Internal) opens a command window and prints the same status.
 In that window, run Martlet.Doctor.exe --help for the implemented CLI options.
 Doctor status can return 2 (incomplete/not ready), which is expected here.
 
-Setup / resume saves configuration only: named
-OpenAI routes with explicit upstream model/voice IDs and role-specific
-destination/data/cost choices. Saving setup makes no provider call and does not
+Companion's Thinking, Voice and Listening pages save configuration only:
+routes with explicit upstream model/voice IDs and role-specific
+destination/data/cost choices. Saving a page makes no provider call and does not
 establish account, model or device readiness.
-Use Back, Save checkpoint, Save and exit setup, and Reload to resume safely.
 In an authorized real action, microphone audio goes to cloud STT, text to LLM,
 and response text to TTS only when generated-voice output is selected.
 Screen stays OFF; local memory is separately OFF by default. Key validity,
-price and quota are unknown. The UI links
-official pricing and retention information. Saved choices never grant capture
+price and quota are unknown; check the provider's own pricing and data
+retention pages. Saved choices never grant capture
 on launch or perpetual paid-request permission.
 
-Keys are masked and stored only by an explicit confirmed Windows Credential
-Manager action for the selected profile, role and api.openai.com origin.
-Ordinary status never reads a key. Replacement invalidates consent and detaches
-the old key; deletion is separately confirmed for an exact pending reference.
+Keys are masked and stored in Windows Credential Manager only when you press a
+page's button, for the selected profile, role and provider origin.
+Ordinary status never reads a key. Replacement invalidates consent and sets the
+old key aside under Keys from before; removing it is separately confirmed.
 Interrupted transactions retain pending cleanup metadata: reload and review.
 The OS vault does not protect against malware already running as your user.
 
 Real API conversation:
-  Save a supported named OpenAI configuration in Setup / resume; return and
+  Save a supported named OpenAI configuration on the Companion pages; return and
   Reload saved choices. Unsupported/missing routes remain unavailable. There
   is no model discovery, automatic fallback, key validation or free-request
   promise. Review the displayed supported IDs, destinations and one-action
@@ -82,7 +81,7 @@ Local memory (OFF by default):
   Configuration backup excludes facts and restores memory OFF; installation
   never enables memory or assumes ownership of an existing store.
 
-Troubleshooting (available from the main window, Setup / resume, Audio setup
+Troubleshooting (available from the main window, Audio setup
 and real conversation, including before a profile exists or with invalid settings):
   Opening Troubleshooting starts no journal, settings write, key lookup, audio
   capture/playback, provider request or upload. Refresh uses shared local checks.
@@ -117,7 +116,7 @@ bounds through Diagnostics only; Doctor does not bundle Martlet.Support.
 See TROUBLESHOOTING.md in this help directory for the full local workflow.
 
 V07a local configuration backup / restore:
-  Open from the main window or Setup / resume. Opening is passive.
+  Open from the main window. Opening is passive.
   Configuration snapshots are NOT support bundles, encrypted files or uploads.
   Choose an explicit new local .martlet-config output (create-only), review
   scope, and confirm. Includes validated configuration and personal device IDs;

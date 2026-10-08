@@ -56,8 +56,9 @@ speakers*. A job editor only links there ("Listening needs a microphone").
 
 Credentials move from a separate step into the provider section of the job
 editor (status + *Add key* / *Replace key*), keyed by provider origin, so one
-OpenAI key serves all OpenAI jobs. The Credentials tab remains for listing and
-removing detached keys.
+OpenAI key serves all OpenAI jobs. The separate Credentials tab is removed: a
+key the job stops using is listed under *Keys from before* on the job's page,
+with *Remove*.
 
 ## Defaults
 

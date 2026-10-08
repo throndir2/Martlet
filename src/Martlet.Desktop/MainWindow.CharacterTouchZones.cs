@@ -379,10 +379,10 @@ public partial class MainWindow
         var missing = CharacterTouchZones.Kinds.Where(k => settings?.Zones.Any(z => z.Id == k.Id) != true).ToArray();
         if (missing.Length > 0)
         {
-            var kinds = new ComboBox { ItemsSource = missing.Select(k => k.Label).ToArray(), SelectedIndex = 0, MinWidth = 180, MinHeight = 26 };
+            var kinds = Compact(new ComboBox { ItemsSource = missing.Select(k => k.Label).ToArray(), SelectedIndex = 0, MinWidth = 180 });
             AutomationProperties.SetName(kinds, "Zone to add");
             AutomationProperties.SetAutomationId(kinds, "TouchZonesAddKind");
-            var add = PageButton("Add zone", () =>
+            var add = Compact(PageButton("Add zone", () =>
             {
                 var kind = missing[Math.Max(0, kinds.SelectedIndex)];
                 var current = characterTouchZones.Current ?? new CharacterTouchZoneSettings { ModelId = modelId, DetectedBy = CharacterTouchZoneSettings.ByOwner };
@@ -392,8 +392,8 @@ public partial class MainWindow
                     Zones = [.. rows.Where(r => !r.Deleted).Select(r => r.Read()), new CharacterTouchZone { Id = kind.Id, Box = new(0.4, 0.4, 0.2, 0.2) }]
                 };
                 SaveAndRender(added);
-            }, id: "TouchZonesAdd");
-            var addRow = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
+            }, id: "TouchZonesAdd"));
+            var addRow = new WrapPanel { Margin = new Thickness(0, 16, 0, 0) };
             addRow.Children.Add(kinds);
             add.Margin = new Thickness(8, 0, 0, 0);
             addRow.Children.Add(add);
@@ -430,7 +430,8 @@ public partial class MainWindow
                 (zone.Reaction.Notices ? " Martlet notices touches here" + (CharacterTouchZones.Narration(zone) is { } line ? $" (your words: \"{line}\")." : ".") : ""));
     }
 
-    /// <summary>One zone's row: on, name, reaction (two picks), Martlet notices, hint, rest, box, Try and Delete, and its box on the picture.</summary>
+    /// <summary>One zone's row: on, name, reaction (two picks), rest, box, Martlet notices and its hint, Try and Delete, and its box on
+    /// the picture. The fields sit in compact groups that wrap under the name; the hint shows while Martlet notices the zone.</summary>
     private sealed class ZoneRow
     {
         private const string DefaultChoice = "(default)", NothingChoice = "(nothing)", NoSecond = "(nothing else)";
@@ -442,7 +443,7 @@ public partial class MainWindow
         private readonly Action edited;
         internal int Number { get; }
         internal bool Deleted { get; private set; }
-        internal StackPanel View { get; } = new() { Margin = new Thickness(0, 10, 0, 0) };
+        internal StackPanel View { get; } = new() { Margin = new Thickness(0, 14, 0, 0) };
 
         internal ZoneRow(MainWindow window, CharacterTouchZone zone, int number, CharacterActionCatalog catalog,
             IReadOnlyList<(string Id, string Label)> items, CharacterTouchZoneSettings settings, bool showing, Action edited,
@@ -453,95 +454,106 @@ public partial class MainWindow
             this.edited = edited;
             Number = number;
             var kind = CharacterTouchZones.Kind(zone.Id);
-            on = new CheckBox { IsChecked = zone.Enabled, VerticalAlignment = VerticalAlignment.Center };
+            on = RowSwitch(zone.Enabled);
             AutomationProperties.SetName(on, $"Use {zone.Name}");
             AutomationProperties.SetAutomationId(on, $"TouchZoneOn-{number}");
-            name = new TextBox { Text = zone.Name, Width = 160, MaxLength = CharacterTouchZones.MaximumLabelLength, Margin = new Thickness(6, 0, 0, 0) };
+            name = Compact(new TextBox { Text = zone.Name, Width = 150, MaxLength = CharacterTouchZones.MaximumLabelLength });
             AutomationProperties.SetName(name, $"Name of {zone.Name}");
             AutomationProperties.SetAutomationId(name, $"TouchZoneName-{number}");
             var state = new TextBlock
             {
                 Text = Describe(zone, settings, CharacterTouchZones.React(zone with { Reaction = zone.Reaction with { Actions = null } }, catalog, temperament, 1)),
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 0, 0), TextWrapping = TextWrapping.Wrap
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 8, 0), FontSize = 13
             };
             state.SetResourceReference(StyleProperty, "Muted");
             AutomationProperties.SetAutomationId(state, $"TouchZoneState-{number}");
-            var tryIt = PageButton("Try", () => window.TryTouchZone(Read(), catalog), id: $"TouchZoneTry-{number}");
-            tryIt.MinWidth = 60;
+            var tryIt = Compact(PageButton("Try", () => window.TryTouchZone(Read(), catalog), id: $"TouchZoneTry-{number}"));
             tryIt.IsEnabled = showing;
-            var delete = PageButton("Delete", () =>
+            var delete = Compact(PageButton("Delete", () =>
             {
                 Deleted = true;
                 View.Visibility = Visibility.Collapsed;
                 rectangle?.SetValue(UIElement.VisibilityProperty, Visibility.Collapsed);
                 label?.SetValue(UIElement.VisibilityProperty, Visibility.Collapsed);
                 edited();
-            }, id: $"TouchZoneDelete-{number}");
-            delete.MinWidth = 60;
-            delete.Margin = tryIt.Margin = new Thickness(8, 0, 0, 0);
+            }, id: $"TouchZoneDelete-{number}"));
+            delete.Margin = new Thickness(6, 0, 0, 0);
+            // Level with the name, also when a narrow window puts the note under it.
+            tryIt.VerticalAlignment = delete.VerticalAlignment = VerticalAlignment.Top;
+            // The note sits beside the name, or under it when the window is too narrow for both.
+            var named = new StackPanel { Orientation = Orientation.Horizontal };
+            named.Children.Add(on);
+            named.Children.Add(name);
+            var title = new FillWrapPanel { FillMinimum = 160, FillIndent = RowIndent - 10 };
+            title.Children.Add(named);
+            title.Children.Add(state);
             var header = new DockPanel();
             DockPanel.SetDock(delete, Dock.Right);
             DockPanel.SetDock(tryIt, Dock.Right);
             header.Children.Add(delete);
             header.Children.Add(tryIt);
-            header.Children.Add(on);
-            header.Children.Add(name);
-            header.Children.Add(state);
+            header.Children.Add(title);
 
             var labels = new[] { DefaultChoice, NothingChoice }.Concat(items.Select(i => i.Label)).ToArray();
             var chosen = zone.Reaction.Actions;
-            first = new ComboBox { ItemsSource = labels, MinWidth = 180, MinHeight = 26 };
+            first = Compact(new ComboBox { ItemsSource = labels, Width = 170 });
             first.SelectedIndex = chosen is null ? 0 : chosen.Count == 0 ? 1 : Math.Max(0, IndexOf(chosen[0]) + 2);
             AutomationProperties.SetName(first, $"What {zone.Name} plays");
             AutomationProperties.SetAutomationId(first, $"TouchZoneReaction-{number}");
-            second = new ComboBox { ItemsSource = new[] { NoSecond }.Concat(items.Select(i => i.Label)).ToArray(), MinWidth = 160, MinHeight = 26 };
+            second = Compact(new ComboBox { ItemsSource = new[] { NoSecond }.Concat(items.Select(i => i.Label)).ToArray(), Width = 150 });
             second.SelectedIndex = chosen is { Count: > 1 } ? Math.Max(0, IndexOf(chosen[1]) + 1) : 0;
             second.IsEnabled = first.SelectedIndex > 1;
             AutomationProperties.SetName(second, $"What else {zone.Name} plays");
             AutomationProperties.SetAutomationId(second, $"TouchZoneReaction2-{number}");
-            notices = new CheckBox { Content = "Martlet notices", IsChecked = zone.Reaction.Notices, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 6, 0) };
+            notices = new CheckBox
+            {
+                Content = "Martlet notices", IsChecked = zone.Reaction.Notices, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 6)
+            };
             AutomationProperties.SetAutomationId(notices, $"TouchZoneNotices-{number}");
             AutomationProperties.SetHelpText(notices, "Touches here go to your Thinking model: with what you say next, or in a short reply of their own.");
-            narration = new TextBox
+            narration = Compact(new TextBox
             {
-                Text = zone.Reaction.Narration is { } own && own != kind?.Narration ? own : "", MinWidth = 200,
-                MaxLength = CharacterTouchZones.MaximumNarrationLength, IsEnabled = zone.Reaction.Notices
-            };
+                Text = zone.Reaction.Narration is { } own && own != kind?.Narration ? own : "", MinWidth = 150,
+                MaxLength = CharacterTouchZones.MaximumNarrationLength
+            });
             AutomationProperties.SetName(narration, $"Your own words for touching {zone.Name} (optional hint)");
             AutomationProperties.SetAutomationId(narration, $"TouchZoneNarration-{number}");
-            rest = new TextBox { Text = zone.Reaction.CooldownSeconds.ToString("0.#", CultureInfo.CurrentCulture), Width = 72 };
+            // Only a zone Martlet notices sends the owner's words, so the box shows only then.
+            var words = WithHint(narration, "Your own words for the touch (optional)");
+            words.Margin = new Thickness(0, 0, 0, 6);
+            words.Visibility = zone.Reaction.Notices ? Visibility.Visible : Visibility.Collapsed;
+            rest = Compact(new TextBox { Text = zone.Reaction.CooldownSeconds.ToString("0.#", CultureInfo.CurrentCulture), Width = 48 });
             AutomationProperties.SetName(rest, $"Seconds {zone.Name} rests after a touch");
             AutomationProperties.SetAutomationId(rest, $"TouchZoneCooldown-{number}");
-            box = new TextBox { Text = BoxText(zone.Box), Width = 190 };
+            box = Compact(new TextBox { Text = BoxText(zone.Box), Width = 120 });
             AutomationProperties.SetName(box, $"Box of {zone.Name}: left, top, width, height in percent of the picture");
             AutomationProperties.SetAutomationId(box, $"TouchZoneBox-{number}");
+            box.ToolTip = "Left, top, width and height, in percent of the picture. Or drag the box on the picture, or its corner to resize it.";
 
             on.Checked += (_, _) => edited();
             on.Unchecked += (_, _) => edited();
             name.TextChanged += (_, _) => edited();
             first.SelectionChanged += (_, _) => { second.IsEnabled = first.SelectedIndex > 1; edited(); };
             second.SelectionChanged += (_, _) => edited();
-            notices.Checked += (_, _) => { narration.IsEnabled = true; edited(); };
-            notices.Unchecked += (_, _) => { narration.IsEnabled = false; edited(); };
+            notices.Checked += (_, _) => { words.Visibility = Visibility.Visible; edited(); };
+            notices.Unchecked += (_, _) => { words.Visibility = Visibility.Collapsed; edited(); };
             narration.TextChanged += (_, _) => edited();
             rest.TextChanged += (_, _) => edited();
             box.TextChanged += (_, _) => { Place(); edited(); };
 
-            var fields = new WrapPanel { Margin = new Thickness(24, 4, 0, 0) };
-            fields.Children.Add(new Label { Content = "Plays", Target = first, Padding = new Thickness(0, 4, 6, 4) });
-            fields.Children.Add(first);
-            fields.Children.Add(new Label { Content = "and", Target = second, Padding = new Thickness(6, 4, 6, 4) });
-            fields.Children.Add(second);
+            // Lined up under the name: what it plays, how long it rests, its box and Martlet notices; the owner's words take the rest
+            // of the line, or a line of their own.
+            var fields = new FillWrapPanel { Margin = new Thickness(RowIndent, 6, 0, 0), FillMinimum = 200 };
+            var plays = RowGroup(RowLabel("Plays", first, width: 44), first);
+            plays.Margin = new Thickness(0, 0, 0, 6);
+            fields.Children.Add(plays);
+            fields.Children.Add(RowGroup(RowLabel("and", second, 8), second));
+            fields.Children.Add(RowGroup(RowLabel("Rests", rest), rest, RowLabel("seconds", rest, 6, 0)));
+            fields.Children.Add(RowGroup(RowLabel("Box", box, width: 44), box));
             fields.Children.Add(notices);
-            fields.Children.Add(narration);
-            var more = new WrapPanel { Margin = new Thickness(24, 4, 0, 0) };
-            more.Children.Add(new Label { Content = "Rests (seconds)", Target = rest, Padding = new Thickness(0, 4, 6, 4) });
-            more.Children.Add(rest);
-            more.Children.Add(new Label { Content = "Box (%: left, top, width, height)", Target = box, Padding = new Thickness(12, 4, 6, 4) });
-            more.Children.Add(box);
+            fields.Children.Add(words);
             View.Children.Add(header);
             View.Children.Add(fields);
-            View.Children.Add(more);
         }
 
         private int IndexOf(string id)

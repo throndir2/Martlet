@@ -153,6 +153,33 @@ public sealed class PlatformCatalogTests
     }
 
     [Fact]
+    public void Listening_whose_host_is_down_works_in_a_reduced_way_while_parakeet_on_this_device_stands_in()
+    {
+        var job = new JobSituation
+        {
+            Job = ClusterJobs.Listening, Doer = JobDoer.Host, DoerName = "gpu-1",
+            Host = new() { HostId = "gpu-1", Reachable = false, Engine = "whisper", SyncOn = true }
+        };
+        var down = JobCoverageRules.Evaluate(job);
+        Assert.Equal(CoverageState.Unavailable, down.State);
+        Assert.Equal(JobCoverageRules.Effect(ClusterJobs.Listening), down.Effect);
+        Assert.Equal("Martlet can't hear you right now", JobCoverageRules.Headline([down]));
+
+        var standIn = JobCoverageRules.Evaluate(job with { StandIn = "Parakeet TDT 110M (English)" });
+        Assert.Equal(CoverageState.Limited, standIn.State);
+        Assert.Equal("gpu-1 isn't answering. Failover is off for this job.", standIn.Problem);
+        Assert.Equal("Parakeet TDT 110M (English) hears you on this device's processor meanwhile.", standIn.Effect);
+        Assert.Equal([CoverageFix.CheckHost, CoverageFix.OpenDevices], standIn.Fixes);
+        Assert.Equal("Something is working in a reduced way", JobCoverageRules.Headline([standIn]));
+        var missing = JobCoverageRules.Evaluate(job with { StandIn = "Parakeet", Host = job.Host! with { Reachable = true, Serves = false } });
+        Assert.Equal(CoverageState.Limited, missing.State);
+        // A host that answers needs no stand-in; only listening has one; and turned off in Setup, nothing listens at all.
+        Assert.Equal(CoverageState.Ready, JobCoverageRules.Evaluate(job with { StandIn = "Parakeet", Host = job.Host! with { Reachable = true, Serves = true } }).State);
+        Assert.Equal(CoverageState.Unavailable, JobCoverageRules.Evaluate(job with { Job = ClusterJobs.Thinking, StandIn = "Parakeet" }).State);
+        Assert.Equal(CoverageState.Unavailable, JobCoverageRules.Evaluate(job with { StandIn = "Parakeet", Enabled = false }).State);
+    }
+
+    [Fact]
     public void Coverage_names_this_PCs_own_host_service_and_offers_the_step_that_fixes_it()
     {
         // The user's case: a companion PC (IMOUTO) that also hosts gives lip-sync to its own host service, imouto-host.

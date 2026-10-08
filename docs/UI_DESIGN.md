@@ -42,7 +42,8 @@ obvious next step at every stage, and a living map of the user's computers.
    paid provider with its key and consent (*Use OpenRouter*, *Use as
    fallback*), connecting with a token (*Connect with token*, *Reconnect*),
    starting programs (*Save and start* for MCP servers), adding or updating a
-   remembered fact (*Add fact*), and the legacy Setup window's checkpoints.
+   remembered fact (*Add fact*), and removing a key Martlet kept from before
+   (*Remove*, after a confirmation).
 
 ## Stages and surfaces
 
@@ -435,7 +436,7 @@ window ends it unless Martlet is listening or watching, which only hides it.
        hide, choose and customize, reset). The character window has one
        *Show character*/*Hide character (Esc)* button at the top and saves
        each choice on its own; a showing character switches at once.
-    7. *Personality*: the active persona and its style mix, *Edit
+    7. *Personality*: the active persona, *Edit
        personality*, and *Import a character card*. The Personality window
        makes the persona chosen in its list the one Martlet uses and saves
        every edit on its own (no *Apply*, *Save* or *Reload*).
@@ -520,8 +521,10 @@ window ends it unless Martlet is listening or watching, which only hides it.
   - *Another of your computers*: the same host list as the job tabs, with *Use
     it*, *Add a computer*, *Check hosts* and the Devices map.
 
-  *Advanced setup* at the bottom of each job tab opens the full Setup window on
-  that job, for every route type and stored or detached keys. Microphone and
+  *Keys from before*, at the bottom of a job tab, lists the keys Martlet set
+  aside when that job stopped using them (a cloud provider's key after a
+  switch, or an old pairing key), each with *Remove*. It shows only when the
+  job has such a key. Microphone and
   speakers, character customization, personality and memory facts still open
   their own windows from their tabs; the F5 voices are listed inline on Voice.
 
@@ -557,13 +560,13 @@ window ends it unless Martlet is listening or watching, which only hides it.
 
 ### 8. Setup (configuration)
 
-Setup keeps its four checkpoints (Overview, Jobs, Credentials, Review), drawn as
-a numbered stepper with a connecting line, and *Next* is the primary button.
-*Overview* describes using AI models. *Jobs* sets up one job at a time
-(Thinking, Listening, Speaking) and shows only that job's fields, with the
-provider's recommended model prefilled. It is the *Advanced setup* behind each
-Companion job tab, which opens it on the matching job. Consent and credential
-behavior did not change. The broader redesign
+There is no separate Setup window. Each job is set up on its own Companion tab
+(Thinking, Voice, Listening): where it runs, then only that place's fields,
+with the provider's recommended model prefilled, the API key and the consent
+box. A key the job stops using is kept, so switching back needs no new key, and
+the tab lists it under *Keys from before*, where *Remove* deletes it for good
+after a confirmation. A host PC chooses no jobs, so a shortcut to a job page
+says so on the status line instead. The broader redesign
 (jobs, placement on hosts, audio separation and queued local model hosting) is
 in [COMPONENTS.md](COMPONENTS.md).
 
@@ -682,11 +685,10 @@ looping animations do not start and transitions complete immediately.
 3. `MainWindow` becomes the shell: nav rail, welcome tour, stage-aware home,
    host dashboard, devices map with detail panel, Companion tabs and Settings.
    Tests drive `ConversationButton`, `NavCompanion`, the Companion buttons by
-   automation ID (`OpenSetup`, `OpenAudioSetup`) and `ActionText`.
+   automation ID (`OpenAudioSetup`, `OpenPeople`) and `ActionText`.
 4. `HostsWindow` becomes the wizard, with the connection check and firewall
    helper exposed for the map and the host dashboard.
 5. `LiveConversationWindow` is only the conversation: history bubbles, the
    message box and the Listening, Vision and Stop toggles (section 6). Its
    choices live in `TalkPreferences` (`talk-preferences.json`), edited on the
    Companion Listening, Voice and Vision pages (`MainWindow.Talk.cs`).
-6. `SetupWindow` gets the stepper style.

@@ -18,7 +18,7 @@ public sealed class RecoveryException : Exception
         RecoveryFailure.WrongProfile => "This snapshot belongs to another Martlet profile. Reconfigure this profile instead.",
         RecoveryFailure.Conflict => "The restore preview is out of date. Preview the snapshot again.",
         RecoveryFailure.CleanupPending => "The restore finished, but cleanup needs attention. Check access and free space, then try cleanup again.",
-        RecoveryFailure.CleanupCapacity => "Too many credential cleanups are pending. Remove old detached keys in Setup, then preview again.",
+        RecoveryFailure.CleanupCapacity => "Too many old keys are waiting for removal. Remove some under Keys from before on Companion › Thinking, Voice or Listening, then preview again.",
         _ => "Martlet could not access recovery storage. Check free space, permissions and the destination."
     })
     { Failure = failure; RetainedFile = retainedFile; }

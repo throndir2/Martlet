@@ -209,7 +209,7 @@ public sealed class LingeringEmoteTests
     {
         await using var fixture = await LiveFixture.Create();
         var configuration = LiveConversationConfiguration.From(await fixture.Store.LoadAsync())!;
-        ConversationRequest Ask(string? showing) => configuration.Request(new("Hi."), false, ResponseStyle.Helpful, [], null, null,
+        ConversationRequest Ask(string? showing) => configuration.Request(new("Hi."), false, [], null, null,
             out _, out _, out _, characterActions: (_, _) => new CharacterActionPrompt("Emote tags.", ["{glasses}", "{/glasses}"], showing),
             board: showing);
         var without = Ask(null);

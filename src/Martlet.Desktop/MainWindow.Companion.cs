@@ -192,7 +192,7 @@ public partial class MainWindow
         CompanionTab.LipSync => "Choose what moves the character's mouth.",
         CompanionTab.Profiles => "Switch who Martlet is in one step: each profile sets the character's look, voice and personality together.",
         CompanionTab.Character => "Choose Martlet's character, size, position and motion.",
-        CompanionTab.Personality => "Edit Martlet's personas and response style.",
+        CompanionTab.Personality => "Edit Martlet's personas.",
         CompanionTab.Prompts => "Every instruction Martlet sends to the Thinking model. Edit any of them; your text is used instead of the built-in one.",
         CompanionTab.Lorebook => "Add lore entries Martlet can use when keywords come up.",
         CompanionTab.Memory => "Facts Martlet remembers about you between conversations.",
@@ -280,9 +280,8 @@ public partial class MainWindow
         if (CompanionPage is null) return;
         if (Role == DeviceRole.Host)
         {
-            // A host has no Companion page; its routes are still reachable through full Setup.
-            nextSetupJob = JobRole(tab);
-            Setup_Click(this, new RoutedEventArgs());
+            // A host PC doesn't talk, so it has no Companion page and chooses no jobs.
+            ActionText.Text = HostHasNoCompanionText;
             return;
         }
         companionTab = tab;
@@ -459,14 +458,7 @@ public partial class MainWindow
                     new Thickness(0, 0, 0, 0)),
                 Row(PageButton("Open People", () => OpenCompanion(CompanionTab.People), link: true, id: "OpenPeople"))));
 
-        var advanced = PageButton("Advanced setup", () =>
-        {
-            nextSetupJob = role;
-            Setup_Click(this, new RoutedEventArgs());
-        }, link: true, id: "OpenSetup");
-        advanced.HorizontalAlignment = HorizontalAlignment.Left;
-        advanced.Margin = new Thickness(0, 4, 0, 0);
-        page.Children.Add(advanced);
+        if (OldKeysCard(section, role) is { } oldKeys) page.Children.Add(oldKeys);
     }
 
     /// <summary>The voice a route speaks with, in words: ", voice Zira (en-US)", or nothing.</summary>
@@ -504,6 +496,7 @@ public partial class MainWindow
             AutomationProperties.SetAutomationId(line, "SetupJobNetwork-" + section);
             now.Children.Add(line);
         }
+        if (section == CompanionTab.Listening && StandInLine(route) is { } standIn) now.Children.Add(standIn);
         if (problem is not null)
         {
             var warning = new TextBlock { Text = $"Needs attention: {problem.Problem} {problem.Effect}", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
@@ -1298,7 +1291,7 @@ public partial class MainWindow
     }
 
     /// <summary>Saves a job's route chosen on its Companion tab: the route, then its key (which resets consent), then the user's
-    /// confirmed choice. A key the route no longer uses is set aside (listed for removal in Advanced setup), and a key set aside
+    /// confirmed choice. A key the route no longer uses is set aside (listed under Keys from before), and a key set aside
     /// earlier for the chosen destination is used again, so switching providers never waits on old keys. With
     /// <paramref name="missingKey"/>, a route that ends without a key is refused with that message. Returns whether it saved.
     /// A change still saving goes first (<see cref="ChangeTurns"/>); installs, runs and replies in progress don't hold it up.</summary>
@@ -1624,31 +1617,14 @@ public partial class MainWindow
 
     // ---------- personality ----------
 
-    /// <summary>A persona's response-style mix in words: "always helpful", or "helpful 70%, silly 30%".</summary>
-    internal static string StyleMix(ResponseStyleWeights styles)
-    {
-        var parts = new (string Name, int Weight)[]
-        {
-            ("helpful", styles.Helpful), ("sarcastic", styles.Sarcastic), ("silly", styles.Silly),
-            ("distracted", styles.Distracted), ("playful teasing", styles.PlayfulTeasing)
-        }.Where(p => p.Weight > 0).OrderByDescending(p => p.Weight).ToArray();
-        var total = parts.Sum(p => p.Weight);
-        return parts.Length switch
-        {
-            0 => "helpful",
-            1 => "always " + parts[0].Name,
-            _ => string.Join(", ", parts.Select(p => $"{p.Name} {Math.Round(100.0 * p.Weight / total):0}%"))
-        };
-    }
-
     private void RenderPersonalityTab(Panel page)
     {
         var companion = homeSettings?.Companion;
         var persona = companion?.ActivePersona;
         var count = companion?.Personas.Count ?? 1;
         page.Children.Add(PageNowCard(persona is null
-            ? "Default persona. Style: helpful."
-            : $"{persona.Name}{(count > 1 ? $", one of {count} personas" : "")}. Style: {StyleMix(persona.Styles)}.", null));
+            ? "Default persona."
+            : $"{persona.Name}{(count > 1 ? $", one of {count} personas" : "")}.", null));
 
         page.Children.Add(Card(Heading("Personas"),
             Note("Create, edit or switch personas. Changes save on their own, and the next message uses the chosen persona.", new Thickness(0, 0, 0, 8)),
@@ -1938,5 +1914,65 @@ public partial class MainWindow
         if (id is not null) AutomationProperties.SetAutomationId(button, id);
         button.Click += (_, _) => run();
         return button;
+    }
+
+    // ---------- dense editor rows (Companion › Character's touch zones, touch temperament and emotes) ----------
+
+    /// <summary>Where a dense row's fields start, under its name: an empty check box is 29 pixels wide (its box and the gap its
+    /// template keeps before content), then a 6-pixel gap.</summary>
+    private const double RowIndent = 35;
+
+    /// <summary>The check box that turns a dense row on, before its name.</summary>
+    private static CheckBox RowSwitch(bool on) =>
+        new() { IsChecked = on, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, RowIndent - 29, 0) };
+
+    /// <summary>Makes a text box, choice or button one of a dense row's compact controls: 32 pixels tall, on the row's centre line.</summary>
+    private static T Compact<T>(T control) where T : Control
+    {
+        control.SetResourceReference(StyleProperty, control switch
+        {
+            TextBox => "CompactTextBox", ComboBox => "CompactComboBox", _ => "CompactButton"
+        });
+        if (control is Button) control.MinWidth = 56;
+        return control;
+    }
+
+    /// <summary>A short muted label in a dense row, on the centre line of the control it names. Labels that start a row's lines get
+    /// the same <paramref name="width"/>, so the boxes after them line up.</summary>
+    private static Label RowLabel(string text, UIElement target, double left = 0, double right = 6, double width = 0)
+    {
+        var label = new Label
+        {
+            Content = text, Target = target, Padding = new Thickness(left, 0, right, 0), VerticalAlignment = VerticalAlignment.Center,
+            MinWidth = width
+        };
+        label.SetResourceReference(ForegroundProperty, "MutedBrush");
+        return label;
+    }
+
+    /// <summary>Items of a dense row that stay together when the row wraps, such as a label and its box.</summary>
+    private static StackPanel RowGroup(params UIElement[] items)
+    {
+        var group = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 18, 6) };
+        foreach (var item in items) group.Children.Add(item);
+        return group;
+    }
+
+    /// <summary>A text box with a grey <paramref name="hint"/> over it while it is empty.</summary>
+    private static Grid WithHint(TextBox box, string hint, string? id = null)
+    {
+        var shown = new TextBlock
+        {
+            Text = hint, IsHitTestVisible = false, TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(box.Padding.Left + 1, 0, box.Padding.Right + 1, 0),
+            Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed
+        };
+        shown.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        if (id is not null) AutomationProperties.SetAutomationId(shown, id);
+        box.TextChanged += (_, _) => shown.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        var grid = new Grid { VerticalAlignment = VerticalAlignment.Center };
+        grid.Children.Add(box);
+        grid.Children.Add(shown);
+        return grid;
     }
 }

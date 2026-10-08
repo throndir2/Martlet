@@ -202,6 +202,44 @@ public partial class MainWindow
         : installed(model.Id) ? null
         : $"{model} isn't downloaded on this PC yet. Download it in Companion › Listening › Parakeet in Martlet.";
 
+    // ---------- Listening › When Listening's own choice can't hear you ----------
+
+    /// <summary>The Parakeet model on this PC that hears an utterance when Listening's own route (a paired host or OpenAI)
+    /// fails (<see cref="LocalSpeechSetup.ListeningStandIn"/>), or null.</summary>
+    private string? ListeningStandIn(SetupRoute? route) => parakeet is { } local
+        ? LocalSpeechSetup.ListeningStandIn(route, local.Installed, CultureInfo.CurrentUICulture, local.Loaded) : null;
+
+    /// <summary>The Listening Now card's line on what hears you when Listening's own route (a paired host or OpenAI) can't:
+    /// Parakeet on this PC's processor, or the download that makes it so (Listening doesn't change). Null when Listening runs
+    /// on this PC or isn't chosen, or no Parakeet model hears Windows' display language.</summary>
+    private UIElement? StandInLine(SetupRoute? route)
+    {
+        if (parakeet is null || route is null || route.RouteType is not (null or SetupRouteType.OpenAi or SetupRouteType.GatewayStt))
+            return null;
+        var where = route.RouteType == SetupRouteType.GatewayStt ? route.Gateway?.HostId ?? "your host" : "OpenAI";
+        var standIn = ListeningStandIn(route);
+        var download = standIn is null ? ParakeetModels.Find(LocalSpeechSetup.ListeningStandIn(route, _ => true, CultureInfo.CurrentUICulture)) : null;
+        if (standIn is null && (download is null || SherpaComponents.RuntimeDirectory() is null)) return null;
+        var line = new TextBlock
+        {
+            Text = standIn is not null
+                ? $"If {where} can't hear you, {ParakeetName(standIn)} hears you on this PC's processor instead. Nothing is sent anywhere."
+                : $"If {where} can't hear you, Martlet can't either. Download {download} and this PC's processor hears you instead.",
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0)
+        };
+        line.SetResourceReference(StyleProperty, "Muted");
+        AutomationProperties.SetAutomationId(line, "SetupJobStandIn-Listening");
+        if (download is null) return line;
+        var button = PageButton(installingParakeet == download.Id ? "Downloading..."
+                : $"Download {download.Name} ({SherpaComponents.Megabytes(download.DownloadBytes)})",
+            () => UseParakeetAsync(download, use: false).Forget(), link: true, id: "SetupListenStandInDownload");
+        button.IsEnabled = installingParakeet is null;
+        var panel = new StackPanel();
+        panel.Children.Add(line);
+        panel.Children.Add(Row(button));
+        return panel;
+    }
+
     /// <summary>Parakeet inside Martlet: no Docker or host service. Three models, each with what it is for, its download and the
     /// one recommended for Windows' display language (the fastest for English, v3 otherwise); each downloads once on request.</summary>
     private List<UIElement> ParakeetOption(SetupRoute? route)
@@ -244,17 +282,20 @@ public partial class MainWindow
     }
 
     /// <summary>Listening with Parakeet <paramref name="model"/> on this PC: one confirmation for its download (when needed),
-    /// then the route switches to it.</summary>
-    private async Task<bool> UseParakeetAsync(ParakeetModel model, bool confirmed = false)
+    /// then the route switches to it. With <paramref name="use"/> false it is only downloaded, so this PC's processor hears you
+    /// when Listening's own route (a paired host or OpenAI) can't, and Listening doesn't change.</summary>
+    private async Task<bool> UseParakeetAsync(ParakeetModel model, bool confirmed = false, bool use = true)
     {
         if (store is null || setupService is null || parakeet is null || closing || installingParakeet is not null) return false;
         var root = parakeet.Root;
         if (!parakeet.Installed(model.Id))
         {
             var size = SherpaComponents.Megabytes(model.DownloadBytes);
-            if (!confirmed && !ConfirmationDialog.Confirm(this,
-                    $"Download {model} ({size}) and use it for listening?\n\nSpeech stays on this PC and recordings aren't saved.",
-                    "Download and use"))
+            if (!confirmed && !ConfirmationDialog.Confirm(this, use
+                    ? $"Download {model} ({size}) and use it for listening?\n\nSpeech stays on this PC and recordings aren't saved."
+                    : $"Download {model} ({size}) so this PC's processor hears you when Listening's own choice can't?\n\n" +
+                        "Listening doesn't change. Speech stays on this PC and recordings aren't saved.",
+                    use ? "Download and use" : "Download"))
                 return false;
             installingParakeet = model.Id;
             parakeetProgress = null;
@@ -282,6 +323,13 @@ public partial class MainWindow
                 parakeetProgress = null;
                 if (!closing && openTab == CompanionTab.Listening) RenderTab();
             }
+        }
+        if (!use)
+        {
+            // Not loaded now: the stand-in loads it the first time Listening's own route fails.
+            ActionText.Text = $"{model} is downloaded. This PC's processor hears you with it when Listening's own choice can't.";
+            RenderHome();
+            return true;
         }
         parakeet.WarmAsync(model.Id).Forget();
         var saved = await SaveSectionRouteAsync(HostJob.Listening, settings => LocalSpeechSetup.SelectParakeet(settings, model.Id), key: null,

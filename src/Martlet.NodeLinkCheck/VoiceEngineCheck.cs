@@ -46,6 +46,10 @@ internal static class VoiceEngineCheck
         var before = await StatusAsync(endpoint, token);
         var watch = Stopwatch.StartNew();
         double? firstAudioMs = null;
+        // A listener who plays the first audio at once: when what has arrived will have played, and the pauses it heard.
+        double? playEndsMs = null;
+        double pauseMs = 0;
+        var pauses = 0;
         long samples = 0, sumSquares = 0;
         var peak = 0;
         var pcm = new List<short>();
@@ -64,7 +68,20 @@ internal static class VoiceEngineCheck
                 new CorrelationIds { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() }, 1,
                 DateTimeOffset.UtcNow.AddMinutes(4), reference, sentence, token, style))
             {
-                firstAudioMs ??= watch.Elapsed.TotalMilliseconds;
+                var arrivedMs = watch.Elapsed.TotalMilliseconds;
+                firstAudioMs ??= arrivedMs;
+                var frameMs = frame.Length / 2 * 1000.0 / SampleRate;
+                if (playEndsMs is { } endsMs && arrivedMs > endsMs)
+                {
+                    // Everything before it had played: the listener heard a pause.
+                    pauseMs += arrivedMs - endsMs;
+                    if (arrivedMs - endsMs > 20) pauses++;
+                    playEndsMs = arrivedMs + frameMs;
+                }
+                else
+                {
+                    playEndsMs = (playEndsMs ?? arrivedMs) + frameMs;
+                }
                 for (var i = 0; i + 1 < frame.Length; i += 2)
                 {
                     int sample = BinaryPrimitives.ReadInt16LittleEndian(frame.AsSpan(i));
@@ -109,6 +126,9 @@ internal static class VoiceEngineCheck
             firstAudioMs = firstAudioMs is { } first ? Math.Round(first) : (double?)null,
             elapsedMs = Math.Round(elapsedMs),
             realTimeFactor = seconds > 0 ? Math.Round(elapsedMs / 1000 / seconds, 2) : (double?)null,
+            // Pauses longer than 20 ms a listener would hear when playing from the first audio, and all pauses together.
+            pauses,
+            pauseMs = Math.Round(pauseMs),
             peakDbfs = Level(peak),
             rmsDbfs = Level(rms),
             audible,
@@ -166,6 +186,9 @@ internal static class VoiceEngineCheck
             object? cpu = root.TryGetProperty("cpu", out var cpus) && cpus.ValueKind == JsonValueKind.Object ? cpus.Clone() : null;
             int? decoderSteps = root.TryGetProperty("decoder_steps", out var steps) && steps.ValueKind == JsonValueKind.Number
                 ? steps.GetInt32() : null;
+            // Turbo's and Nano's streaming (on, and on the CPU first_tokens: the speech tokens before the first chunk).
+            object? streaming = root.TryGetProperty("streaming", out var streamed) && streamed.ValueKind == JsonValueKind.Object
+                ? streamed.Clone() : null;
             return new
             {
                 answered = true,
@@ -178,6 +201,7 @@ internal static class VoiceEngineCheck
                 device = Text("device"),
                 // Turbo's and Nano's decoder steps a whole piece takes (1 on the CPU, 2 on a GPU).
                 decoderSteps,
+                streaming,
                 cpu,
                 runtime,
                 idleCheck,
