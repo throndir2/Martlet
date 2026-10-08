@@ -103,6 +103,10 @@
                                         <!-- Locks the character where it is; only this window (here or Companion › Character) unlocks it. -->
                                         <Button x:Name="LockCharacterButton" Content="Lock character p_osition" Click="LockCharacter_Click" Padding="16,12" Margin="0,0,12,8"
                                                 Visibility="Collapsed" AutomationProperties.AutomationId="ToggleCharacterLock"/>
+                                        <!-- Lets clicks pass through the character; the character can't turn it off itself, so it is turned off here,
+                                             in Companion › Character or from the notification-area icon. -->
+                                        <Button x:Name="ClickThroughCharacterButton" Content="Turn on click-thro_ugh" Click="ClickThroughCharacter_Click" Padding="16,12" Margin="0,0,12,8"
+                                                Visibility="Collapsed" AutomationProperties.AutomationId="ToggleCharacterClickThrough"/>
                                     </WrapPanel>
                                     <!-- Character profiles (MainWindow.CharacterProfiles.cs): switch look, voice and personality at once -->
                                     <WrapPanel x:Name="HomeCharacterRow" Margin="0,0,0,8" Visibility="Collapsed">
@@ -763,6 +767,15 @@
                                     HorizontalAlignment="Left" Margin="0,8,0,0" Visibility="Collapsed"
                                     ToolTip="Adds Windows Firewall rules for port 9444 on your private network (administrator approval once)"
                                     AutomationProperties.AutomationId="NearbyFirewall"/>
+                            <WrapPanel Margin="0,14,0,0">
+                                <TextBlock Text="Look for a better setup when a computer is away for" VerticalAlignment="Center" Margin="0,0,8,4"/>
+                                <ComboBox x:Name="PresenceAwayChoice" Width="72" Margin="0,0,8,4"
+                                          AutomationProperties.AutomationId="PresenceAwayMinutes"
+                                          AutomationProperties.Name="Minutes a computer is away before Martlet looks for a better setup"/>
+                                <TextBlock Text="minutes" VerticalAlignment="Center" Margin="0,0,0,4"/>
+                            </WrapPanel>
+                            <TextBlock Style="{DynamicResource Muted}" Margin="0,4,0,0" TextWrapping="Wrap" AutomationProperties.AutomationId="PresenceAwayStatus"
+                                       Text="Home says when one of your computers stops answering for 30 seconds and when it is back. A short miss is not counted."/>
                         </StackPanel>
                     </Border>
 

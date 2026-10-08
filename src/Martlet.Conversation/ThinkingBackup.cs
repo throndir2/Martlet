@@ -171,7 +171,7 @@ public static class ThinkingBackupMembers
             if (allowed.FirstOrDefault(spot => spot.Key == place.Id) is not { } spot) continue;
             var member = spot.Settings;
             var name = member.Describe();
-            string? problem = !spot.Plan.Available ? "can't run now"
+            string? problem = !spot.Plan.Available ? spot.Plan.Offline ? "is offline" : "can't run now"
                 : live.Shares(place) ? "shares the conversation's computer"
                 : held && Paid(member) ? "is a paid cloud provider and the reply isn't taken yet"
                 : input.Tools.Count > 0 && member.Place != DeepThinkingPlace.Endpoint ? "can't use tools"

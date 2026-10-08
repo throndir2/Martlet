@@ -200,4 +200,35 @@ public sealed class DeepThinkingPlanTests
         var two = DeepThinkingPool.For(Role("diva").WithPool([Role("ripley")]), [LocalThinking]);
         Assert.StartsWith("One think runs at a time alongside the conversation on its places (diva and ripley)", two.Plan.Why, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void A_place_on_an_offline_computer_is_left_out_until_it_answers_and_the_plan_says_so()
+    {
+        var deep = Role("diva").WithPool([Role("ripley") with { Slots = 2 }, Role("imouto"), LocalOllama("gemma4:12b")]);
+        var all = DeepThinkingPool.For(deep, [CloudThinking]);
+        Assert.StartsWith("Up to 4 thinks run at once", all.Plan.Why, StringComparison.Ordinal);
+
+        // ripley is offline: its two slots leave the pool, the others go on; a place on this PC never counts as offline.
+        var some = DeepThinkingPool.For(deep, [CloudThinking], offline: ["ripley", "this PC"]);
+        Assert.Equal(["diva", "imouto", "this PC"], some.Usable.Select(s => s.Computer));
+        Assert.StartsWith("Up to 2 thinks run at once alongside the conversation on its places (diva, imouto and this PC)", some.Plan.Why,
+            StringComparison.Ordinal);
+        Assert.Equal(DeepThinkingPlan.Away("ripley"), some.Find("host:ripley")!.Plan);
+
+        // Every computer that would run is offline: one says so by name, several together.
+        var hosts = Role("diva").WithPool([Role("ripley")]);
+        Assert.Equal("diva is offline; its slots come back when it answers again.",
+            DeepThinkingPool.For(Role("diva"), [CloudThinking], offline: ["diva"]).Plan.Why);
+        var none = DeepThinkingPool.For(hosts, [CloudThinking], offline: ["diva", "ripley"]).Plan;
+        Assert.Equal(new DeepThinkingPlan(false, "Every Thinking pool computer is offline (diva and ripley); their slots come back when they answer again.")
+            { Offline = true }, none);
+        // Devices › Sharing work's reason wins over offline: it is the one the owner can act on.
+        var never = new Martlet.Core.Cluster.WorkSharingSettings().With(new Martlet.Core.Cluster.WorkSharingJob
+        {
+            Job = Martlet.Core.Cluster.WorkSharingJobs.DeepThinking, Never = ["diva"]
+        });
+        var kept = DeepThinkingPool.For(Role("diva"), [CloudThinking], never, offline: ["diva"]).Plan;
+        Assert.False(kept.Offline);
+        Assert.Contains("never uses diva", kept.Why, StringComparison.Ordinal);
+    }
 }

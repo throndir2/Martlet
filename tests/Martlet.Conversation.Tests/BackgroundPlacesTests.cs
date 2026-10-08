@@ -154,4 +154,53 @@ public sealed class BackgroundPlacesTests
         Assert.EndsWith("Up to 3 at once; more wait in line.", ThinkLonger.Description(new ThinkLongerSettings(), ThinkLonger.Slots(places)),
             StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task No_work_goes_to_an_offline_place_and_work_waiting_in_line_starts_there_once_it_answers_again()
+    {
+        using var jobs = new BackgroundJobs();
+        var offline = new HashSet<string>(StringComparer.Ordinal) { Diva.Id };
+        jobs.Places.Reachable = place => !offline.Contains(place.Id);
+        var release = new TaskCompletionSource();
+        BackgroundPlace[] pool = [Diva with { Slots = 2 }, Ripley];
+        var kind = ThinkLonger.Kind(new ThinkLongerSettings(), 4);
+        // diva would go first (rank 0, first in the pool), but it is offline: ripley takes the first job...
+        var first = jobs.Start(kind, "a task", Until(release.Task), pool, wait: true);
+        Assert.Equal("ripley", first.Job!.Place!.Name);
+        Assert.False(jobs.Places.Answers(Diva));
+        // ...and the next waits in line rather than go to diva.
+        var second = jobs.Start(kind, "another task", Until(release.Task), pool, wait: true);
+        Assert.Null(second.Job!.Place);
+        await WaitAsync(() => jobs.Places.Line.SequenceEqual([second.Job.Id]));
+        // diva answers again: the broker is asked to look again, and the waiting job starts there at once.
+        offline.Clear();
+        jobs.Places.Reconsider();
+        await WaitAsync(() => second.Job.Place?.Name == "diva");
+        Assert.Empty(jobs.Places.Line);
+        release.SetResult();
+        await WaitAsync(() => first.Job.Finished && second.Job.Finished);
+    }
+
+    [Fact]
+    public void An_offline_places_slots_dont_count_as_free_for_the_last_free_slot_rule()
+    {
+        var places = new BackgroundPlaces();
+        // Four slots in all, two of them on diva, which is offline: only ripley's and imouto's slots are there.
+        BackgroundPlace diva = Diva with { Slots = 2 };
+        IReadOnlyList<BackgroundPlace> pool = [diva, Ripley, Imouto];
+        var demand = ThinkingDemand.For(ThinkingJobKind.ThinkLonger, pool);
+        var offline = new HashSet<string>(StringComparer.Ordinal) { diva.Id };
+        places.Reachable = place => !offline.Contains(place.Id);
+        // ripley and imouto answer: two free slots, so one long job may start and the other slot stays free for fast jobs.
+        var think = places.TryAcquire(pool, "think-1", demand: demand);
+        Assert.Equal("ripley", think!.Place.Name);
+        // The one free slot left is the last: diva's two offline slots don't count as free, so a second long job may not take it.
+        Assert.Null(places.TryAcquire(pool, "think-2", demand: demand));
+        // A fast job may.
+        Assert.Equal("imouto", places.TryAcquire(pool, "digest-1", demand: ThinkingDemand.For(ThinkingJobKind.Digest, pool))!.Place.Name);
+        // Without presence (everything answers) diva's slots are there, and a long job could start on it.
+        offline.Clear();
+        places.Reconsider();
+        Assert.Equal("diva", places.TryAcquire(pool, "think-3", demand: demand)!.Place.Name);
+    }
 }

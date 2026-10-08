@@ -118,6 +118,24 @@ internal static class DeepThinkingRehearsal
             return Task.FromResult((ok, $"Deep thinking's Ollama got {deep.Requests.Count} request(s): {toDeep}; " +
                 $"the conversation model's got {conversation.Requests.Count}: {toConversation}"));
         });
+        await Run("A Thinking pool job (remembering) asks the role for its largest context window with a smaller budget of its own, and the gateway takes it", async () =>
+        {
+            if (deepRoute is null) return (false, "NOT RUN: the Deep thinking route is missing");
+            // What the desktop's pool job asks a paired computer for (DeepThinkTarget.OneShot): its input bound (the window less
+            // a medium think's 8,192 output tokens) plus its own 1,024, and the role's largest window so the model stays loaded.
+            // Martlet 0.54.0 sent that budget as the bound and the gateway refused the pair as request.invalid.
+            const int window = GenerationSettings.MaximumHostContextTokens, output = 1_024, budget = window - 8_192 + output;
+            var before = deep.Requests.Count;
+            var text = new StringBuilder();
+            await foreach (var delta in thinks.StreamChatAsync(deepRoute, Ids(), 4, DateTimeOffset.UtcNow.AddSeconds(30), "Pick what to remember.",
+                [], "The user likes green tea.", 0.7, output, budget,
+                sampling: new GenerationSettings { Reasoning = false, ContextTokens = window }, cancellationToken: token))
+                text.Append(delta);
+            Asked? asked;
+            lock (deep.Requests) asked = deep.Requests.Skip(before).SingleOrDefault();
+            var ok = text.ToString() == "I thought it over: here's the plan." && asked is { Model: DeepModel, Think: false, ContextTokens: window };
+            return (ok, $"a budget of {budget:N0} tokens with a {window:N0}-token window: the role answered \"{text}\"; its Ollama got {asked}");
+        });
         await Run($"{Slots} thinks run at once on the Deep thinking role's {Slots} slots while a reply streams; one more is turned away (job.busy) until a slot frees", async () =>
         {
             if (thinkingRoute is null || deepRoute is null) return (false, "NOT RUN: a route is missing");
