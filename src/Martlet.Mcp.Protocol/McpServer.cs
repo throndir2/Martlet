@@ -1397,7 +1397,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "Backup Thinking's choices (on or off, the delay or automatic, each member's May answer for the conversation and whether " +
             "it is a paid cloud provider) and the member it would ask now for a reply that is taken; " +
             "and the desktop's thinking-pool-status.json (running and waiting jobs by kind, never a job's text; Backup Thinking's " +
-            "automatic delay, recent replies and how it ended lately). Read-only.", new
+            "automatic delay, recent replies and how it ended lately). From that file, each member's online state (whether its " +
+            "computer answers now, and since when it doesn't) and the pool's slots now against its slots when every computer " +
+            "answers (presence). Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -1405,8 +1407,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "code) with simulated members, NOT models: an empty pool answering no member at once, a picture going to the member " +
             "that sees and a recording finding none, two slots where a second long job waits while a judge takes the last free " +
             "slot, one slot where waiting jobs run highest priority first (barge-in judge, digest, research), a busy member passed " +
-            "over for the next, a stale judge dropped, and deep-thinking.json read once into thinking-pool.json. In-process; " +
-            "reads nothing.", new { }),
+            "over for the next, a stale judge dropped, deep-thinking.json read once into thinking-pool.json, paired hosts joining " +
+            "the pool by themselves (ThinkingPoolAutoJoin, sample hosts), and presence: a " +
+            "member's computer going offline (its slots leave the pool, jobs go to the others and wait for it, the last-free-slot " +
+            "rule counts only computers that answer, every computer offline lets the conversation model stand in) and answering " +
+            "again (its slots come back and a job waiting in line starts there), while the think_longer tool text stays " +
+            "byte-identical. In-process; reads nothing.", new { }),
         Tool("backup_thinking_check", "Rehearse Backup Thinking (Companion > Thinking pool, a hedged request: when the " +
             "conversation's Thinking model has no first words after the delay, the same request also goes to a pool member that " +
             "may answer for the conversation, and whichever starts first gives the reply) with the production race in " +

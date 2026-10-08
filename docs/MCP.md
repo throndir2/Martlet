@@ -229,6 +229,24 @@ now*, *Kept out of the pool*, or what joins at its next check). The
 pool*: unticking keeps the computer out, ticking adds it again) save
 `thinking-pool.json`, so they need `--allow-ui-effects`.
 
+The pool follows which computers answer
+([Computers that go offline](CONVERSATION.md#computers-that-go-offline)).
+`thinking-pool-status.json` gives each member `online` (whether its computer
+answers now) and `offlineSince`, and the pool `slots` and `free` (members that
+answer now), `configuredSlots` (every member) and `conversationModelStandsIn`
+(every member that would run is offline, so thinking longer and research use the
+conversation model). The desktop writes the file again on each change.
+`thinking_pool_status` copies this into each member's `online` and
+`offlineSince` and into `presence` (`slots`, `free`, `configuredSlots`, the
+`offline` names); both stay null until the desktop has written the file. The
+`presence` steps of `thinking_pool_check` take a member offline and back with
+the production broker and plan. They check that its slots leave and come back,
+jobs go to the other members, a job waiting in line starts on the member that
+answers again, and the conversation model stands in when every member is
+offline. They also check that the `think_longer` tool text stays byte-identical
+during all of this. The member list in `background-jobs.json` (`places`) gives
+each place `offline`.
+
 ```powershell
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"thinking_pool_check"},{"name":"thinking_pool_status"}]'
 ```
