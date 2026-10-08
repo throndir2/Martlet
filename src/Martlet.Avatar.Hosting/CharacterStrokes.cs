@@ -24,13 +24,20 @@ public sealed record CharacterStroke(int Id, string Phase, double Aspect, IReadO
 
 /// <summary>What a stroke was: the zones it crossed in order (repeats of the zone before dropped), the zone it spent most samples
 /// on, how long it took, how far it went (page heights), its speed (page heights a second), its pace ("slow", "steady" or
-/// "quick") and how many passes it made (1 plus each turn back along its main direction).</summary>
+/// "quick"), how many passes it made (1 plus each turn back along its main direction), where it ended from where it began
+/// (<see cref="Dx"/> and <see cref="Dy"/>, page heights, +y down) and whether it went mostly sideways (<see cref="Sideways"/>).</summary>
 public sealed record StrokeSummary(IReadOnlyList<string> Zones, string? Main, int Ms, double Length, double Speed, string Pace, int Passes,
-    int Hits, int Samples)
+    int Hits, int Samples, double Dx = 0, double Dy = 0, bool Sideways = false)
 {
     /// <summary>The zones in the order first crossed, without repeats.</summary>
     [JsonIgnore]
     public IReadOnlyList<string> Distinct => [.. Zones.Distinct(StringComparer.Ordinal)];
+
+    /// <summary>Which way a stroke that didn't turn back went: "down" (toward the feet of an upright character) or "up" when it
+    /// went mostly up or down the page, else null (across, or back and forth).</summary>
+    [JsonIgnore]
+    public string? Way => Passes > 1 || Math.Abs(Dy) < CharacterStrokes.TurnDistance || Math.Abs(Dy) < Math.Abs(Dx) * 0.75 ? null
+        : Dy > 0 ? "down" : "up";
 
     /// <summary>The stroke's manner for the character's ear: "slowly", "quickly" or nothing, and "back and forth" when it
     /// turned back at least once.</summary>
@@ -86,7 +93,8 @@ public static class CharacterStrokes
             if (zones.Count == 0 || zones[^1] != zone) zones.Add(zone);
         }
         var main = counts.Count == 0 ? null : counts.OrderByDescending(c => c.Value).ThenBy(c => zones.IndexOf(c.Key)).First().Key;
-        return new(zones.Take(16).ToArray(), main, ms, Math.Round(length, 4), Math.Round(speed, 3), pace, passes, hits, path.Length);
+        return new(zones.Take(16).ToArray(), main, ms, Math.Round(length, 4), Math.Round(speed, 3), pace, passes, hits, path.Length,
+            Math.Round((path[^1].X - path[0].X) * aspect, 4), Math.Round(path[^1].Y - path[0].Y, 4), alongX);
     }
 
     // Direction changes along one axis, each counted once the pointer has come back TurnDistance from its farthest point.

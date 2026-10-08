@@ -40,7 +40,7 @@ public sealed class TouchLedgerTests
     }
 
     [Fact]
-    public void EveryKindHasWordsAndOnlyTouchesStartAReply()
+    public void EveryKindHasWordsAndOnlyTouchesAndMovesStartAReply()
     {
         foreach (var kind in Enum.GetValues<PhysicalKind>())
         {
@@ -49,17 +49,23 @@ public sealed class TouchLedgerTests
         }
         Assert.True(PhysicalKinds.StartsTurn(PhysicalKind.Stroke));
         Assert.True(PhysicalKinds.StartsTurn(PhysicalKind.Hold));
-        Assert.False(PhysicalKinds.StartsTurn(PhysicalKind.Moved));
+        // Being moved around is handled like a touch, though it isn't one; the rest of what the user does to the window only
+        // goes with the next reply.
+        Assert.True(PhysicalKinds.StartsTurn(PhysicalKind.Moved));
+        Assert.False(PhysicalKinds.IsTouch(PhysicalKind.Moved));
         Assert.False(PhysicalKinds.StartsTurn(PhysicalKind.Zoomed));
+        Assert.False(PhysicalKinds.StartsTurn(PhysicalKind.Hidden));
 
         var ledger = new TouchLedger();
-        ledger.Record(new(PhysicalKind.Moved, S(1), Detail: "to another monitor"));
         ledger.Record(new(PhysicalKind.Zoomed, S(2)));
         ledger.Record(new(PhysicalKind.Zoomed, S(3)));
+        Assert.False(ledger.Peek(S(3))!.StartsTurn);
+        ledger.Record(new(PhysicalKind.Moved, S(3), Detail: "to another monitor"));
         var burst = ledger.Peek(S(3))!;
-        Assert.False(burst.StartsTurn);
-        Assert.Equal("They moved you to another monitor, then zoomed in on you twice over 1 second.", burst.Line);
-        Assert.Equal("(touch: moved, zoomed x2)", burst.HistoryLine);
+        Assert.True(burst.StartsTurn);
+        Assert.Equal(1, burst.Touches);
+        Assert.Equal("They zoomed in on you twice over 1 second, then moved you to another monitor.", burst.Line);
+        Assert.Equal("(touch: zoomed x2, moved)", burst.HistoryLine);
         ledger.Record(new(PhysicalKind.Stroke, S(4), Zones: ["your hair", "the top of your head"], Label: "hair", Hint: "*strokes*"));
         Assert.EndsWith("then stroked your hair and the top of your head once (\"*strokes*\").", ledger.Peek(S(4))!.Line);
         ledger.Record(new(PhysicalKind.Hold, S(5), "your left hand", "left hand"));

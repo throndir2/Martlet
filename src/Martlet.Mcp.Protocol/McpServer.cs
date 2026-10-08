@@ -628,12 +628,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "(Martlet.Avatar.Hosting CharacterStrokes and CharacterPhysicalWords with Martlet.Conversation's TouchLedger), headless, " +
             "with no desktop and no model request. stroke is a JSON CharacterStroke {\"id\",\"phase\":\"end\",\"aspect\",\"samples\":" +
             "[{\"x\",\"y\",\"ms\",\"touch\":CharacterTouch or null}]} summarized against the touch zones saved for modelId in dataDirectory " +
-            "(or the rough zones before any were found): zones crossed, main zone, ms, length, speed, pace (slow, steady or quick) and " +
-            "passes. changes is a JSON array of RendererPhysical {\"kind\":\"moved|home|zoomed|zoom_reset|panned\",\"dx\",\"dy\"," +
+            "(or the rough zones before any were found): zones crossed, main zone, ms, length, speed, pace (slow, steady or quick), " +
+            "passes, dx and dy (where it ended from where it began, page heights), sideways and way (down, up or null), and words: how " +
+            "the ledger says its whole path (where, such as \"down from your chest over your stomach to your thighs\", label, pace, " +
+            "times). changes is a JSON array of RendererPhysical {\"kind\":\"moved|home|zoomed|zoom_reset|panned\",\"dx\",\"dy\"," +
             "\"screenWidth\",\"fromScreen\",\"toScreen\",\"zoomFrom\",\"zoomTo\",\"focus\"}. Returns each change's ledger kind and words, " +
             "the plain line the next reply would carry (\"They slowly stroked your hair 4 times, then moved you to their other " +
-            "monitor.\"), the history line and whether it would start a reply on its own. noticeAll (default true) treats every zone as " +
-            "having Martlet notices on; false uses the zones' own setting.", new
+            "monitor.\"), the history line and whether it would start a reply on its own (touches, strokes and moves do). noticeAll " +
+            "(default true) treats every zone as having Martlet notices on; false uses the zones' own setting.", new
         {
             dataDirectory = new { type = "string" }, modelId = new { type = "string" }, stroke = new { type = "string" },
             changes = new { type = "string" }, noticeAll = new { type = "boolean" }

@@ -210,9 +210,9 @@ public partial class MainWindow
                 "close-up, and corrects them until it says they are right. Between steps Martlet fits each box to the character's " +
                 "pixels, puts left and right back the right way round and points out boxes that look wrong. It then ties each zone " +
                 "to the model's own parts so it follows the character as it moves. " +
-                "Choose what each zone plays, whether Martlet notices it and how long it rests. Martlet notices adds up your touches " +
-                "and tells your Thinking model: with what you say next, or, when you say nothing, in a short reply of its own about " +
-                "a second after your last touch. Changes save as you make them, for this model.", new Thickness(0, 0, 0, 8))
+                "Choose what each zone plays, whether Martlet notices it (on by default) and how long it rests. Martlet notices adds " +
+                "up your touches and strokes on the zone and tells your Thinking model: with what you say next, or, when you say " +
+                "nothing, in a short reply of its own about a second after your last touch. Changes save as you make them, for this model.", new Thickness(0, 0, 0, 8))
         };
         var status = Note(catalog is null ? "Reading the character..." : TouchZonesStatusText(settings), new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(status, "TouchZonesStatus");
