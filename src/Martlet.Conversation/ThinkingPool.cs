@@ -132,6 +132,11 @@ public sealed record ThinkingJobResult(ThinkingJobOutcome Outcome, string? Text,
     public static ThinkingJobResult NoMember(ThinkingCapability needs) =>
         new(ThinkingJobOutcome.NoMember, null, null, null, $"the Thinking pool has no member that can do {Describe(needs)}", 0);
 
+    /// <summary>Every member that could do the job is on a computer that doesn't answer now: callers use their fallback, as for
+    /// <see cref="NoMember"/>.</summary>
+    public static ThinkingJobResult Offline(ThinkingCapability needs) =>
+        new(ThinkingJobOutcome.NoMember, null, null, null, $"every Thinking pool member that can do {Describe(needs)} is offline", 0);
+
     public static string Describe(ThinkingCapability needs) => string.Join(" and ", new[]
     {
         needs.HasFlag(ThinkingCapability.Text) ? "text" : null,
@@ -142,16 +147,23 @@ public sealed record ThinkingJobResult(ThinkingJobOutcome Outcome, string? Text,
     public override string ToString() => $"{nameof(ThinkingJobResult)} {Outcome} on {Member ?? "none"}";
 }
 
-/// <summary>One member in <see cref="ThinkingPoolStatus"/>: its place, slots in use and what it can do.</summary>
-public sealed record ThinkingPoolMemberStatus(string Id, string Name, int Slots, int Used, ThinkingCapability Can, int Rank);
+/// <summary>One member in <see cref="ThinkingPoolStatus"/>: its place, slots in use and what it can do. <see cref="Online"/>:
+/// whether its computer answers now (<see cref="BackgroundPlaces.Reachable"/>); an offline member's slots aren't in the pool's.</summary>
+public sealed record ThinkingPoolMemberStatus(string Id, string Name, int Slots, int Used, ThinkingCapability Can, int Rank)
+{
+    public bool Online { get; init; } = true;
+}
 
 /// <summary>What the Thinking pool does now (no job text): its members, slots, the slot kept free for fast kinds, running and
-/// waiting jobs by kind, and guidance. With the live floor: its level (<see cref="Floor"/>), the waiting jobs held only because
-/// the conversation needs their members (<see cref="Held"/>: waiting for the conversation) and the jobs it stopped since the
-/// floor last left Idle and in all (<see cref="StoppedNow"/>, <see cref="Stopped"/>).</summary>
+/// waiting jobs by kind, and guidance. <see cref="Slots"/> and <see cref="Free"/> count the members whose computers answer now;
+/// <see cref="ConfiguredSlots"/> counts every member. With the live floor: its level (<see cref="Floor"/>), the waiting jobs
+/// held only because the conversation needs their members (<see cref="Held"/>: waiting for the conversation) and the jobs it
+/// stopped since the floor last left Idle and in all (<see cref="StoppedNow"/>, <see cref="Stopped"/>).</summary>
 public sealed record ThinkingPoolStatus(IReadOnlyList<ThinkingPoolMemberStatus> Members, int Slots, int Free, bool KeepsFastSlot,
     IReadOnlyDictionary<string, int> Running, IReadOnlyDictionary<string, int> Waiting, IReadOnlyList<string> Guidance)
 {
+    /// <summary>The slots of every member, online or not: the pool's slots when all its computers answer.</summary>
+    public int ConfiguredSlots { get; init; }
     public string? Floor { get; init; }
     public IReadOnlyDictionary<string, int> Held { get; init; } = new Dictionary<string, int>();
     public IReadOnlyDictionary<string, int> StoppedNow { get; init; } = new Dictionary<string, int>();
@@ -165,6 +177,8 @@ public sealed record ThinkingPoolStatus(IReadOnlyList<ThinkingPoolMemberStatus> 
 /// <see cref="BackgroundPlaces"/> with the conversation's background jobs (think_longer, research), so every pool job counts
 /// against the same slots. A job goes to a free slot of a capable member (the one sharing least with the conversation first);
 /// a busy, unavailable or failed member is passed over for the next; when all are busy it waits in line, highest priority first.
+/// A member whose computer doesn't answer now (<see cref="BackgroundPlaces.Reachable"/>) gets no job and its slots leave the
+/// pool's; a job waiting in line goes to it as soon as it answers again.
 /// Long kinds never take the pool's last free slot while the pool has two or more slots. The live floor's rules
 /// (<see cref="LiveFloorRules"/>, the broker's <see cref="BackgroundPlaces.Rules"/>) decide besides: a job they stop (or a member
 /// whose computer holds its graphics card for a live turn, <see cref="ThinkingAnswer.HeldForLive"/>) waits in line again and runs
@@ -179,7 +193,9 @@ public sealed class ThinkingJobBoard
     private readonly TimeProvider clock;
     private long number;
 
-    /// <param name="members">The pool's members now (read on each call, so a settings change takes effect at once).</param>
+    /// <param name="members">The pool's members now (read on each call, so a settings change takes effect at once), whether their
+    /// computers answer or not: the board passes over a member that doesn't answer (<see cref="BackgroundPlaces.Answers"/>) when
+    /// it places a job, and a job waiting in line goes to it once it answers again.</param>
     /// <param name="run">Runs one attempt of a job on a member. It throws <see cref="OperationCanceledException"/> once its token
     /// is canceled; any other exception counts as a failed attempt.</param>
     public ThinkingJobBoard(BackgroundPlaces places, Func<IReadOnlyList<BackgroundPlace>> members,
@@ -193,41 +209,45 @@ public sealed class ThinkingJobBoard
 
     public BackgroundPlaces Places { get; }
 
+    /// <summary>Every member, whether its computer answers now or not.</summary>
     public IReadOnlyList<BackgroundPlace> Members => members();
 
-    /// <summary>Whether a member can take a job of <paramref name="kind"/> that needs <paramref name="needs"/>, without posting
-    /// it (no waiting and no slot taken): callers choose their fallback when it is false.</summary>
-    public bool CanRun(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text) =>
-        Members.Any(member => (member.Can & needs) == needs);
+    /// <summary>The members whose computers answer now.</summary>
+    public IReadOnlyList<BackgroundPlace> Online => [.. Members.Where(Places.Answers)];
 
-    /// <summary>Whether a member that can take such a job may start it now (the live floor's rules; no slot taken), so a caller
-    /// doesn't prepare work no member would take before it is stale.</summary>
+    /// <summary>Whether a member that answers now can take a job of <paramref name="kind"/> that needs <paramref name="needs"/>,
+    /// without posting it (no waiting and no slot taken): callers choose their fallback when it is false.</summary>
+    public bool CanRun(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text) =>
+        Online.Any(member => (member.Can & needs) == needs);
+
+    /// <summary>Whether a member that can take such a job may start it now (it answers, and the live floor's rules allow it; no
+    /// slot taken), so a caller doesn't prepare work no member would take before it is stale.</summary>
     public bool MayStartNow(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text)
     {
         var rules = Places.Rules;
-        return Members.Any(member => (member.Can & needs) == needs && (rules?.MayStart(member, kind) ?? true));
+        return Online.Any(member => (member.Can & needs) == needs && (rules?.MayStart(member, kind) ?? true));
     }
 
-    /// <summary>Whether a member that can take such a job shares no hardware with the live conversation (no slot taken).</summary>
+    /// <summary>Whether a member that answers and can take such a job shares no hardware with the live conversation (no slot taken).</summary>
     public bool CanRunBeside(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text)
     {
         var rules = Places.Rules;
-        return Members.Any(member => (member.Can & needs) == needs && rules?.Shares(member) != true);
+        return Online.Any(member => (member.Can & needs) == needs && rules?.Shares(member) != true);
     }
 
     /// <summary>The member a job of <paramref name="kind"/> needing <paramref name="needs"/> would go to first when every slot is
     /// free (the one sharing least with the conversation, one the live conversation doesn't use first while it isn't idle), with
-    /// its name and model; null when none can (no slot taken).</summary>
+    /// its name and model; null when none that answers now can (no slot taken).</summary>
     public BackgroundPlace? Find(ThinkingJobKind kind, ThinkingCapability needs = ThinkingCapability.Text)
     {
         var rules = Places.Rules;
-        return Members.Where(member => (member.Can & needs) == needs)
+        return Online.Where(member => (member.Can & needs) == needs)
             .OrderBy(member => rules?.Avoid(member) == true ? 1 : 0).ThenBy(member => member.Standing).FirstOrDefault();
     }
 
     /// <summary>Runs <paramref name="job"/> on the pool (see the class summary) and returns its result. A pool without a capable
-    /// member returns <see cref="ThinkingJobOutcome.NoMember"/> at once. Canceling <paramref name="token"/> throws
-    /// <see cref="OperationCanceledException"/>.</summary>
+    /// member that answers now returns <see cref="ThinkingJobOutcome.NoMember"/> at once. Canceling <paramref name="token"/>
+    /// throws <see cref="OperationCanceledException"/>.</summary>
     public async Task<ThinkingJobResult> RunAsync(ThinkingJob job, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(job);
@@ -237,6 +257,7 @@ public sealed class ThinkingJobBoard
         var pool = Members;
         var capable = pool.Where(member => (member.Can & needs) == needs).ToArray();
         if (capable.Length == 0) return ThinkingJobResult.NoMember(needs);
+        if (!capable.Any(Places.Answers)) return ThinkingJobResult.Offline(needs);
         var holder = $"{ThinkingJobKinds.Name(job.Kind)}-{Interlocked.Increment(ref number)}";
         if (holder.Length > 64) holder = holder[..64];
         var demand = ThinkingDemand.For(job.Kind, pool, job.Priority);
@@ -259,6 +280,12 @@ public sealed class ThinkingJobBoard
             var left = capable.Where(member => !tried.Contains(member.Id)).ToArray();
             if (left.Length == 0)
                 return new(ThinkingJobOutcome.Failed, null, null, null, problem ?? "no member could do it", attempts) { Preemptions = preemptions };
+            // The members left are all offline (one may have stopped answering during the last attempt): don't wait for them.
+            if (!left.Any(Places.Answers))
+                return new(ThinkingJobOutcome.Failed, null, null, null, problem ?? "every member that could do it is offline", attempts)
+                {
+                    Preemptions = preemptions
+                };
             BackgroundPlaceLease lease;
             try { lease = await Places.AcquireAsync(left, holder, waiting.Token, demand, preemptible: true).ConfigureAwait(false); }
             catch (OperationCanceledException) when (!token.IsCancellationRequested) { return Stale(); }
@@ -327,9 +354,13 @@ public sealed class ThinkingJobBoard
         ArgumentNullException.ThrowIfNull(places);
         var leases = places.Leases;
         var members = pool.Select(member => new ThinkingPoolMemberStatus(member.Id, member.Name, member.Slots,
-            Math.Min(member.Slots, leases.Where(l => l.Place.Id == member.Id).Sum(l => l.Whole ? member.Slots : 1)), member.Can, member.Rank)).ToArray();
-        var slots = members.Sum(m => m.Slots);
-        var free = members.Sum(m => m.Slots - m.Used);
+            Math.Min(member.Slots, leases.Where(l => l.Place.Id == member.Id).Sum(l => l.Whole ? member.Slots : 1)), member.Can, member.Rank)
+        {
+            Online = places.Answers(member)
+        }).ToArray();
+        var online = members.Where(m => m.Online).ToArray();
+        var slots = online.Sum(m => m.Slots);
+        var free = online.Sum(m => m.Slots - m.Used);
         var ids = pool.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
         Dictionary<string, int> running = new(StringComparer.Ordinal), waiting = new(StringComparer.Ordinal), held = new(StringComparer.Ordinal);
         foreach (var lease in leases.Where(l => ids.Contains(l.Place.Id) && l.Kind is not null))
@@ -342,28 +373,48 @@ public sealed class ThinkingJobBoard
         var floor = rules as LiveFloorRules;
         return new(members, slots, free, slots >= 2, running, waiting, Guidance(members))
         {
+            ConfiguredSlots = members.Sum(m => m.Slots),
             Floor = floor?.Floor.Level.ToString(), Held = held,
             StoppedNow = floor?.Period.Stopped ?? LiveFloorCounts.Empty.Stopped, Stopped = floor?.Total.Stopped ?? LiveFloorCounts.Empty.Stopped,
             SharesLive = rules is null ? [] : [.. pool.Where(rules.Shares).Select(p => p.Id)]
         };
     }
-    /// <summary>Plain-words guidance for a pool of <paramref name="members"/>.</summary>
+    /// <summary>Plain-words guidance for a pool of <paramref name="members"/>: the slots of the members that answer now, and which
+    /// members are offline.</summary>
     public static IReadOnlyList<string> Guidance(IReadOnlyList<ThinkingPoolMemberStatus> members)
     {
-        var slots = members.Sum(m => m.Slots);
+        var online = members.Where(m => m.Online).ToArray();
+        var away = members.Where(m => !m.Online).ToArray();
+        var slots = online.Sum(m => m.Slots);
         List<string> notes = [];
         if (members.Count == 0)
             notes.Add("The Thinking pool has no member: thinking longer and research use the conversation model when that is allowed, " +
                 "and screen and sound summaries and the judges use their own simple rules.");
+        else if (online.Length == 0)
+            notes.Add($"Every Thinking pool computer is offline ({Names(away)}): thinking longer and research use the conversation model " +
+                "when that is allowed, and screen and sound summaries and the judges use their own simple rules until one answers again.");
         else if (slots == 1)
             notes.Add("1 slot: long thinking can delay screen and sound summaries; add a second slot for the full experience.");
         else
             notes.Add($"{slots} slots: one stays free for quick jobs (judges and summaries) while long thinking runs.");
-        if (members.Count > 0 && !members.Any(m => m.Can.HasFlag(ThinkingCapability.Vision)))
-            notes.Add("No member sees pictures: screen summaries use their simple rules. Add a member with a vision model.");
-        if (members.Count > 0 && !members.Any(m => m.Can.HasFlag(ThinkingCapability.Audio)))
-            notes.Add("No member hears recordings: sound summaries use the transcript only.");
+        if (online.Length > 0 && away.Length > 0)
+            notes.Add($"{Names(away)} {(away.Length == 1 ? "is" : "are")} offline: {slots} of {members.Sum(m => m.Slots)} slots answer now, " +
+                "and the others come back when their computers answer again.");
+        if (online.Length > 0 && !online.Any(m => m.Can.HasFlag(ThinkingCapability.Vision)))
+            notes.Add(members.Any(m => m.Can.HasFlag(ThinkingCapability.Vision))
+                ? "No member that answers now sees pictures: screen summaries use their simple rules until one does."
+                : "No member sees pictures: screen summaries use their simple rules. Add a member with a vision model.");
+        if (online.Length > 0 && !online.Any(m => m.Can.HasFlag(ThinkingCapability.Audio)))
+            notes.Add(members.Any(m => m.Can.HasFlag(ThinkingCapability.Audio))
+                ? "No member that answers now hears recordings: sound summaries use the transcript only until one does."
+                : "No member hears recordings: sound summaries use the transcript only.");
         return notes;
+    }
+
+    private static string Names(IReadOnlyList<ThinkingPoolMemberStatus> members)
+    {
+        var names = members.Select(m => m.Name).Distinct(StringComparer.Ordinal).ToArray();
+        return names.Length == 1 ? names[0] : $"{string.Join(", ", names[..^1])} and {names[^1]}";
     }
 
     public override string ToString() => nameof(ThinkingJobBoard);
