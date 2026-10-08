@@ -18,6 +18,7 @@ Each release's section here is also its notes on GitHub.
 - Companion › Thinking › This PC › Ollama now says that any Ollama model works, including a Hugging Face GGUF or a model you made yourself. ([#633](https://github.com/throndir2/Martlet/pull/633))
 
 ### Fixed
+- Recommended setup now gives Thinking, the voice, listening and lip-sync your graphics card before optional extras such as Singing. A PC whose other computers are gone now gets its own Thinking model instead of keeping Singing, and with a free provider key saved, Thinking uses the free model when the card has no room for a local one. ([#638](https://github.com/throndir2/Martlet/pull/638))
 - When always listening can't use your microphone, Martlet no longer opens and drops it every 5 seconds. It tries again after 1 second, then waits longer each time (up to 30 seconds), Home says how often it tries, and the log says why the microphone failed. ([#632](https://github.com/throndir2/Martlet/pull/632))
 
 ## [0.59.0] - 2026-10-08
