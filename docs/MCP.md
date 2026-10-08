@@ -3887,10 +3887,18 @@ can't reply" problem. The result has:
   order), `thinkingPool`, `thinkingPoolOptOut`, `voiceEngine`, `preference` and
   `offlineGraceMinutes`.
 - `recommendation`: `alreadyOptimal`, `worthAsking`, `fingerprint`, the
-  `changes` (`kind`, `computer`, `summary`, `why`, `benefit`, `roleKind`,
-  `model`, `job`, `needsSomeoneThere`, `downloadGb`), each computer's
-  recommended `roles`, `why` and `load` (percent of graphics memory, memory and
-  processor), the `jobs`, the `thinkingPool` and `notes`.
+  `changes` (`kind`, `computer`, `summary`, `why`, `away` (the sentence in
+  `why` about a computer that stays away, which the review leaves out),
+  `benefit`, `roleKind`, `model`, `job`, `needsSomeoneThere`, `downloadGb`),
+  each computer's recommended `roles`, `why` and `load` (percent of graphics
+  memory, memory and processor), the `jobs`, the `thinkingPool`, `cannotReply`
+  and `cannotReplyNote` (nobody does Thinking, and why, such as *No computer
+  has room for a Thinking model, and no free API key is saved.*),
+  `cannotSpeak` and `cannotSpeakNote` (no computer and no hosted voice with a
+  saved key can speak, and how to give Martlet a voice), `offline`
+  (each computer that stays away: `computer`, `minutes` and its `note`) and
+  `notes`. The review window reads `cannotReply` and `offline`, not the
+  sentences in `notes`.
 - `companionInUseAsks`: what a companion PC someone uses would do after an
   automatic check (`Ask`, `Wait` or `Nothing`, and why), with `declinedHere`
   (this setup is in the directory's `recommended-setup.json`).

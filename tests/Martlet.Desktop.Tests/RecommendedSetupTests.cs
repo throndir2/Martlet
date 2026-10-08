@@ -207,16 +207,21 @@ public sealed class RecommendedSetupTests
     public void Computers_away_past_the_grace_get_one_sentence_instead_of_the_same_words_on_every_change()
     {
         var build = Build(Plan(), offlineFor: id => id == "gpu-box" ? TimeSpan.FromMinutes(155) : null);
+        const string speaking = "gpu-box hasn't answered for 155 minutes, so speaking moves.";
+        const string lipSync = "gpu-box hasn't answered for 155 minutes, so lip-sync moves.";
+        const string away = "gpu-box hasn't answered for 155 minutes, so Martlet plans without it.";
         var recommendation = Recommendation(build) with
         {
             Changes =
             [
-                new SetupChange(SetupChangeKind.AssignJob, "desk-host", "This PC does Speaking.",
-                    "gpu-box hasn't answered for 155 minutes, so speaking moves. This PC has room.") { Job = ClusterJobs.Speaking },
-                new SetupChange(SetupChangeKind.AssignJob, "desk-host", "This PC does lip-sync.",
-                    "gpu-box hasn't answered for 155 minutes, so lip-sync moves.") { Job = ClusterJobs.Speaking }
+                new SetupChange(SetupChangeKind.AssignJob, "desk-host", "This PC does Speaking.", $"{speaking} This PC has room.")
+                {
+                    Job = ClusterJobs.Speaking, Away = speaking
+                },
+                new SetupChange(SetupChangeKind.AssignJob, "desk-host", "This PC does lip-sync.", lipSync) { Job = ClusterJobs.Speaking, Away = lipSync }
             ],
-            Notes = ["gpu-box hasn't answered for 155 minutes, so Martlet plans without it.", "Downloads wait for a fast connection."]
+            Notes = [away, "Downloads wait for a fast connection."],
+            Offline = [new OfflineComputer("gpu-box", TimeSpan.FromMinutes(155), away)]
         };
 
         var review = RecommendedSetupReview.From(recommendation, build);
@@ -224,8 +229,26 @@ public sealed class RecommendedSetupTests
         Assert.Equal("gpu-box hasn't answered for 2 hours, so Martlet plans without it.", review.Offline);
         Assert.Contains("Downloads wait for a fast connection.", review.Notes);
         Assert.DoesNotContain(review.Notes, n => n.Contains("hasn't answered", StringComparison.Ordinal));
-        // Within the grace nothing is condensed.
-        Assert.Null(RecommendedSetupReview.From(recommendation, Build(Plan(), offlineFor: _ => TimeSpan.FromMinutes(5))).Offline);
+        // The recommender decides who is away: with nobody away, nothing is condensed.
+        Assert.Null(RecommendedSetupReview.From(recommendation with { Offline = [] }, build).Offline);
+    }
+
+    [Fact]
+    public void The_offline_fixture_review_reads_the_recommenders_fields_not_its_sentences()
+    {
+        var build = RecommendedSetupInputs.Request(RecommendedSetupInputs.OfflineFixture(DateTimeOffset.UtcNow));
+        var recommendation = NetworkRecommender.Recommend(build.Request, FootprintCatalog.Default);
+        var review = RecommendedSetupReview.From(recommendation, build);
+
+        Assert.Equal(["imouto-host", "miku-host"], recommendation.Offline.Select(o => o.Id));
+        Assert.Matches("^(MIKU and IMOUTO|IMOUTO and MIKU) haven't answered for 2 hours, so Martlet plans without them\\.$", review.Offline);
+        Assert.DoesNotContain(review.Changes, c => c.Why.Contains("hasn't answered", StringComparison.Ordinal));
+        Assert.DoesNotContain(review.Notes, n => n.Contains("hasn't answered", StringComparison.Ordinal));
+        Assert.True(recommendation.CannotReply);
+        Assert.True(review.CannotReply);
+        Assert.Contains("no free API key is saved", recommendation.CannotReplyNote, StringComparison.Ordinal);
+        Assert.DoesNotContain(review.Notes, n => n.Contains("can't reply until", StringComparison.Ordinal));
+        Assert.DoesNotContain(review.Changes, c => c.Summary.Contains("Whisper small", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -244,25 +267,26 @@ public sealed class RecommendedSetupTests
         var build = Build(Plan(), providers: []);
         var today = NetworkRecommender.Today(build.Request) with { Jobs = [new JobPlan(ClusterJobs.Thinking, "desk-host")] };
         var target = today with { Jobs = [new JobPlan(ClusterJobs.Thinking, null)] };
+        const string cannot = "No computer has room for a Thinking model, and no free API key is saved. Martlet can't reply until one is set up.";
         var recommendation = new NetworkRecommendation(today, target,
         [
-            new SetupChange(SetupChangeKind.AssignJob, "", "Nobody does thinking.", "No computer can run a Thinking model.") { Job = ClusterJobs.Thinking }
-        ]) { Fingerprint = "nobody", Notes = ["No computer can run a Thinking model, so Martlet can't reply until one is set up."] };
+            new SetupChange(SetupChangeKind.AssignJob, "", "Nobody does thinking.", "No computer has room for a Thinking model, and no free API key is saved.")
+            {
+                Job = ClusterJobs.Thinking
+            }
+        ]) { Fingerprint = "nobody", Notes = [cannot], CannotReplyNote = cannot };
 
-        Assert.True(RecommendedSetupReview.CannotReplyIn(recommendation));
         var review = RecommendedSetupReview.From(recommendation, build);
         Assert.True(review.CannotReply);
         Assert.True(review.OffersFreeKey);
-        Assert.DoesNotContain(review.Notes, n => n.Contains("can't reply until", StringComparison.Ordinal));
+        Assert.DoesNotContain(cannot, review.Notes);
         Assert.Equal(FreeKeyUse.Thinking, FreeKeyPrompt.Use(review.OffersFreeKey, review.CannotReply));
 
         // A saved key (OpenRouter here): no prompt, and the problem points to Companion › Thinking.
         Assert.False(RecommendedSetupReview.From(recommendation, Build(Plan())).OffersFreeKey);
         Assert.EndsWith("Choose where Thinking runs in Companion › Thinking.", FreeKeyPrompt.Problem(offerKey: false), StringComparison.Ordinal);
-        // Thinking online, on a computer or kept as today's "each companion PC itself": Martlet can reply.
-        Assert.False(RecommendedSetupReview.CannotReplyIn(recommendation with { Target = today with { Jobs = [new JobPlan(ClusterJobs.Thinking, null, OptionId: "hosted:nvidia-build")] } }));
-        Assert.False(RecommendedSetupReview.CannotReplyIn(recommendation with { Target = today }));
-        Assert.False(RecommendedSetupReview.CannotReplyIn(recommendation with { Current = target }));
+        // The recommender says whether Martlet can reply; the review doesn't read its sentences.
+        Assert.False(RecommendedSetupReview.From(recommendation with { CannotReplyNote = null }, build).CannotReply);
     }
 
     [Fact]

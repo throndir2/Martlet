@@ -81,7 +81,7 @@ internal static class RecommendedSetupStatus
                 alreadyOptimal = recommendation.AlreadyOptimal, worthAsking = recommendation.WorthAsking, fingerprint = recommendation.Fingerprint,
                 changes = recommendation.Changes.Select(c => new
                 {
-                    kind = c.Kind.ToString(), computer = Name(c.MachineId), summary = c.Summary, why = c.Why, benefit = c.Benefit.ToString(),
+                    kind = c.Kind.ToString(), computer = Name(c.MachineId), summary = c.Summary, why = c.Why, away = c.Away, benefit = c.Benefit.ToString(),
                     roleKind = c.RoleKind, model = c.Model, job = c.Job, needsSomeoneThere = c.NeedsSomeoneThere, downloadGb = c.DownloadGb
                 }),
                 machines = recommendation.Target.Machines.Select(m => new
@@ -96,6 +96,9 @@ internal static class RecommendedSetupStatus
                 }),
                 jobs = recommendation.Target.Jobs.Select(j => new { job = j.Job, host = j.HostId is null ? null : Name(j.HostId), off = j.Off, option = j.OptionId, pool = j.Pool.Select(Name), why = j.Why }),
                 thinkingPool = recommendation.Target.ThinkingPool.Select(Name),
+                cannotReply = recommendation.CannotReply, cannotReplyNote = recommendation.CannotReplyNote,
+                cannotSpeak = recommendation.CannotSpeak, cannotSpeakNote = recommendation.CannotSpeakNote,
+                offline = recommendation.Offline.Select(o => new { computer = Name(o.Id), minutes = Math.Round(o.For.TotalMinutes), note = o.Note }),
                 notes = recommendation.Notes
             },
             companionInUseAsks = new { step = step.ToString(), why, declinedHere = memory.WasDeclined(recommendation.Fingerprint), declined = memory.Declined.Count }

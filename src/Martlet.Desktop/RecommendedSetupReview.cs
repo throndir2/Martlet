@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.RegularExpressions;
 using Martlet.Core.Cluster;
 using Martlet.Core.Planning;
 using Martlet.Core.Settings;
@@ -36,19 +35,15 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
         string Name(string? id) => id is null or "" ? "your companion PCs" : build.Names.GetValueOrDefault(id)
             ?? request.Machines.FirstOrDefault(m => m.Specs.Id == id)?.Specs.Name ?? id;
 
-        // Computers that stay away (past the grace): one sentence says so, so each change's reason and the notes leave it out.
-        var gone = request.Machines.Where(m => !m.Online && m.OfflineFor is { } away && away >= request.OfflineGrace).ToArray();
-        var goneNames = gone.SelectMany(m => new[] { m.Specs.Name, m.Specs.Id, Name(m.Specs.Id) })
-            .Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(StringComparer.Ordinal).OrderByDescending(n => n.Length).ToArray();
-        var awayWords = goneNames.Length == 0 ? null
-            : new Regex($"(?:{string.Join("|", goneNames.Select(Regex.Escape))}) hasn't answered for [^,.;]+(?:, so [^.]* moves)?\\.\\s*",
-                RegexOptions.CultureInvariant);
-        string Plain(string why) => awayWords is null ? why : awayWords.Replace(why, "").Trim();
-        var cannotReply = CannotReplyIn(recommendation);
+        // Computers that stay away (past the grace): one sentence says so, so each change's reason (SetupChange.Detail) and the
+        // notes leave it out.
+        var ids = request.Machines.Select(m => m.Specs.Id).ToList();
+        var gone = recommendation.Offline.OrderBy(o => ids.IndexOf(o.Id)).ToArray();
+        var cannotReply = recommendation.CannotReply;
 
         var changes = recommendation.Changes
             .Select((change, index) => (change, index)).OrderBy(c => c.change.Benefit).ThenBy(c => c.index)
-            .Select(c => new ReviewChange(c.change.Summary, Plain(c.change.Why), BenefitWord(c.change.Benefit), Name(c.change.MachineId),
+            .Select(c => new ReviewChange(c.change.Summary, c.change.Detail, BenefitWord(c.change.Benefit), Name(c.change.MachineId),
                 c.change.NeedsSomeoneThere))
             .ToArray();
 
@@ -98,11 +93,8 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
             : $"Downloads about {Gb(downloads.Sum(d => d.Gb))}: " + string.Join(", ", downloads.Select(d => $"{d.Name} {Gb(d.Gb)}")) + ".";
         var manual = recommendation.Changes.Where(c => c.NeedsSomeoneThere).Select(c => $"On {Name(c.MachineId)}: {c.Summary}").ToArray();
 
-        var notes = recommendation.Notes.Concat(build.Notes).Distinct(StringComparer.Ordinal)
-            .Where(note => !goneNames.Any(n => note.StartsWith(n + " hasn't answered for", StringComparison.Ordinal) &&
-                note.Contains(", so Martlet plans without it", StringComparison.Ordinal)))
-            .Where(note => !cannotReply || !note.Contains("can't reply until", StringComparison.Ordinal))
-            .ToArray();
+        var hidden = gone.Select(o => o.Note).Append(recommendation.CannotReplyNote).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        var notes = recommendation.Notes.Concat(build.Notes).Distinct(StringComparer.Ordinal).Where(note => !hidden.Contains(note)).ToArray();
         var count = recommendation.Changes.Count;
         // A change with no computer ("") is a job no host does before or after (a hosted provider, or each companion PC itself).
         var places = recommendation.Changes.Select(c => c.MachineId).Where(id => id.Length > 0).Distinct(StringComparer.Ordinal).Count();
@@ -113,19 +105,7 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
               "and each graphics card runs at most one language model. Nothing changes until you choose Reconfigure.";
         return new(recommendation.AlreadyOptimal ? OptimalTitle : "A better setup is ready for your computers", summary, computers, jobs,
             changes, notes, downloadText, manual, recommendation.AlreadyOptimal, recommendation.Fingerprint, cannotReply,
-            FreeKeyPrompt.Shows(request.ConfiguredProviders), OfflineSentence(gone.Select(m => (Name(m.Specs.Id), m.OfflineFor!.Value)).ToArray()));
-    }
-
-    /// <summary>In the recommended setup nobody does Thinking (no computer, no hosted provider, not each companion PC), and
-    /// that isn't simply today's setup kept as it is: Martlet can't reply.</summary>
-    internal static bool CannotReplyIn(NetworkRecommendation recommendation)
-    {
-        ArgumentNullException.ThrowIfNull(recommendation);
-        var target = recommendation.Target.Job(ClusterJobs.Thinking);
-        if (target is null || target.HostId is not null || target.OptionId is not null || target.Off) return false;
-        // Today's job read from settings has no option, so a job kept exactly as today (each companion PC itself) looks the same.
-        var today = recommendation.Current.Job(ClusterJobs.Thinking);
-        return today is null || today.HostId is not null || today.OptionId is not null || today.Off;
+            FreeKeyPrompt.Shows(request.ConfiguredProviders), OfflineSentence(gone.Select(o => (Name(o.Id), o.For)).ToArray()));
     }
 
     /// <summary>"MIKU and IMOUTO haven't answered for 2 hours, so Martlet plans without them.", or null when every computer

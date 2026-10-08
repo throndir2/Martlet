@@ -127,7 +127,20 @@ public sealed record SetupChange(SetupChangeKind Kind, string MachineId, string 
     /// <summary>The computer can't be changed from here (<see cref="NetworkMachine.Manageable"/> is false): someone has to
     /// make this change at that computer.</summary>
     public bool NeedsSomeoneThere { get; init; }
+    /// <summary>The sentence in <see cref="Why"/> about a computer that stays away ("MIKU hasn't answered for 155 minutes, so
+    /// thinking moves."), or null. <see cref="NetworkRecommendation.Offline"/> lists those computers.</summary>
+    public string? Away { get; init; }
+
+    /// <summary><see cref="Why"/> without <see cref="Away"/>: the reason for a review that names the computers that stay away
+    /// once (empty when the computer staying away is the only reason).</summary>
+    public string Detail => Away is { Length: > 0 } away
+        ? Why.Replace(away, "", StringComparison.Ordinal).Replace("  ", " ", StringComparison.Ordinal).Trim()
+        : Why;
 }
+
+/// <summary>A computer that hasn't answered for longer than the offline grace: the recommendation plans without it.
+/// <see cref="Note"/> is its sentence in <see cref="NetworkRecommendation.Notes"/>.</summary>
+public sealed record OfflineComputer(string Id, TimeSpan For, string Note);
 
 /// <summary>The recommended setup for all the owner's computers and the changes that get there from today's.
 /// <see cref="Fingerprint"/> is the same for the same recommended setup, so a suggestion the owner declined isn't asked
@@ -137,6 +150,22 @@ public sealed record NetworkRecommendation(NetworkSetup Current, NetworkSetup Ta
     public string Fingerprint { get; init; } = "";
     /// <summary>Plain sentences about the whole network ("gpu-box hasn't answered for 12 minutes, so its jobs move.").</summary>
     public IReadOnlyList<string> Notes { get; init; } = [];
+    /// <summary>The computers the recommendation plans without (away past the grace), in the order of their ids.</summary>
+    public IReadOnlyList<OfflineComputer> Offline { get; init; } = [];
+    /// <summary>The note in <see cref="Notes"/> that says Martlet can't reply ("No computer has room for a Thinking model, and
+    /// no free API key is saved. ..."), or null when it can.</summary>
+    public string? CannotReplyNote { get; init; }
+
+    /// <summary>In the recommended setup nobody does Thinking (no computer has room, and no hosted provider can), and
+    /// today's setup isn't simply kept: Martlet can't reply until Thinking is set up.</summary>
+    public bool CannotReply => CannotReplyNote is not null;
+
+    /// <summary>The note in <see cref="Notes"/> that says Martlet can't speak ("Martlet can't speak yet: no computer can run
+    /// ..."), or null when a voice speaks. Replies still show as text.</summary>
+    public string? CannotSpeakNote { get; init; }
+
+    /// <summary>In the recommended setup no computer and no hosted voice with a saved key can speak.</summary>
+    public bool CannotSpeak => CannotSpeakNote is not null;
 
     /// <summary>Today's setup is already the recommended one.</summary>
     public bool AlreadyOptimal => Changes.Count == 0;

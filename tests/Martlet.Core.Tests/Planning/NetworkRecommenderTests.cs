@@ -554,11 +554,15 @@ public sealed class NetworkRecommenderTests
     {
         var keyed = NetworkRecommender.Recommend(LoneVoice(false) with { ConfiguredProviders = ["openai"] });
         Assert.Equal(FootprintCatalog.OpenAiVoiceId, keyed.Target.Job(ClusterJobs.Speaking)!.OptionId);
+        Assert.False(keyed.CannotSpeak);
 
         var mute = NetworkRecommender.Recommend(LoneVoice(false));
         Assert.Null(mute.Target.Job(ClusterJobs.Speaking)?.OptionId);
         Assert.Contains(mute.Notes, n => n.StartsWith("Martlet can't speak yet", StringComparison.Ordinal) &&
             n.Contains("host service", StringComparison.Ordinal) && n.Contains("Chatterbox Nano", StringComparison.Ordinal));
+        Assert.True(mute.CannotSpeak);
+        Assert.Contains(mute.CannotSpeakNote!, mute.Notes);
+        Assert.False(NetworkRecommender.Recommend(LoneVoice(true)).CannotSpeak);
     }
 
     [Fact]
@@ -766,5 +770,95 @@ public sealed class NetworkRecommenderTests
         var local = NetworkRecommender.Recommend(HostsGoneForHours(8));
         Assert.Equal("gemma4:e2b", local.Target.Job(ClusterJobs.Thinking)!.OptionId);
         Assert.Null(local.Target.Job(ClusterJobs.Thinking)!.HostId);
+    }
+
+    /// <summary>The offline fixture: a small companion PC with no graphics card (4 GB memory, 4 threads) that listens with
+    /// Whisper, and both hosts gone for 155 minutes, so no computer that answers has room for a Thinking model.</summary>
+    private static NetworkSetupRequest NoRoomToThink(HostingPreference preference = HostingPreference.PreferLocal, params string[] keys) => Network(
+        new NetworkMachine(new MachineSpecs("this-pc", "This PC") { RamGb = 4, CpuThreads = 4, IsPrimary = true }, NetworkMachineKind.Companion)
+        {
+            HasHostService = true, Roles = [Role("stt", "whisper-large-v3-turbo")]
+        },
+        Host("miku", Nvidia(24)) with
+        {
+            Online = false, OfflineFor = TimeSpan.FromMinutes(155),
+            Roles = [Role("ollama", "gemma4:12b"), Role("chatterbox", "chatterbox-turbo"), Role("audio2face")]
+        },
+        Host("imouto", Nvidia(12)) with { Online = false, OfflineFor = TimeSpan.FromMinutes(155), Roles = [Role("stt", "whisper-large-v3-turbo")] }) with
+    {
+        CurrentJobs =
+        [
+            new JobPlan(ClusterJobs.Thinking, "miku"), new JobPlan(ClusterJobs.Speaking, "miku"),
+            new JobPlan(ClusterJobs.Listening, "imouto"), new JobPlan(ClusterJobs.LipSync, "miku")
+        ],
+        Preference = preference, ConfiguredProviders = keys
+    };
+
+    [Fact]
+    public void NobodyToThinkSaysNoFreeKeyIsSavedAndMarksItForTheReview()
+    {
+        var recommendation = NetworkRecommender.Recommend(NoRoomToThink());
+
+        var thinking = recommendation.Target.Job(ClusterJobs.Thinking)!;
+        Assert.Null(thinking.HostId);
+        Assert.Null(thinking.OptionId);
+        Assert.True(recommendation.CannotReply);
+        Assert.Equal("No computer has room for a Thinking model, and no free API key is saved. Martlet can't reply until one is set up.",
+            recommendation.CannotReplyNote);
+        Assert.Contains(recommendation.CannotReplyNote!, recommendation.Notes);
+        Assert.DoesNotContain(recommendation.Notes, n => n.Contains("hosted endpoint is allowed", StringComparison.Ordinal));
+
+        // Each change names the computer that stays away in Away, and Detail is the rest of the reason.
+        var nobody = recommendation.Changes.Single(c => c.Kind == SetupChangeKind.AssignJob && c.Job == ClusterJobs.Thinking);
+        Assert.Equal("miku hasn't answered for 155 minutes, so thinking moves.", nobody.Away);
+        Assert.Equal("No computer has room for a Thinking model, and no free API key is saved.", nobody.Detail);
+        Assert.All(recommendation.Changes, c => Assert.DoesNotContain("hasn't answered", c.Detail, StringComparison.Ordinal));
+        Assert.All(recommendation.Changes.Where(c => c.Why.Contains("hasn't answered", StringComparison.Ordinal)), c => Assert.NotNull(c.Away));
+
+        // The computers it plans without, with the note that says so.
+        Assert.Equal(["imouto", "miku"], recommendation.Offline.Select(o => o.Id));
+        Assert.All(recommendation.Offline, o =>
+        {
+            Assert.Equal(TimeSpan.FromMinutes(155), o.For);
+            Assert.Contains(o.Note, recommendation.Notes);
+            Assert.StartsWith($"{o.Id} hasn't answered for 155 minutes, so Martlet plans without it", o.Note, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void NobodyToThinkWithASavedKeySaysWhyNoHostedProviderThinks()
+    {
+        // A saved key, but the owner keeps everything on their computers: no hosted provider, and the reason says so.
+        var local = NetworkRecommender.Recommend(NoRoomToThink(HostingPreference.PreferLocal, "nvidia-build"));
+        Assert.Equal("No computer has room for a Thinking model, and you keep everything on your computers. Martlet can't reply until one is set up.",
+            local.CannotReplyNote);
+
+        // The desktop plans Balanced with a saved key: the free hosted model thinks, and Martlet can reply.
+        var hosted = NetworkRecommender.Recommend(NoRoomToThink(HostingPreference.Balanced, "nvidia-build"));
+        Assert.Equal("hosted:nvidia-build", hosted.Target.Job(ClusterJobs.Thinking)!.OptionId);
+        Assert.False(hosted.CannotReply);
+        Assert.Null(hosted.CannotReplyNote);
+        Assert.DoesNotContain(hosted.Notes, n => n.Contains("can't reply until", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AWhisperModelNamedWithItsEngineIsLabelledAsItsOwnCatalogModel()
+    {
+        // "whisper-large-v3-turbo" is the catalog's "large-v3-turbo"; it was read as an unknown model, and on a computer with no
+        // graphics card that took the processor variant, so the change said "Remove Whisper small (Listening)".
+        var recommendation = NetworkRecommender.Recommend(NoRoomToThink());
+
+        var remove = recommendation.Changes.Single(c => c.Kind == SetupChangeKind.RemoveRole && c.MachineId == "this-pc" && c.RoleKind == "stt");
+        Assert.Contains("Whisper large-v3 turbo", remove.Summary, StringComparison.Ordinal);
+        Assert.DoesNotContain(recommendation.Changes, c => c.Summary.Contains("Whisper small", StringComparison.Ordinal));
+        Assert.Equal("whisper-large-v3-turbo", remove.Model);
+
+        // On a host with a card the same name runs the large model on the card, as its catalog name does.
+        var gpu = NetworkRecommender.Recommend(Network(Companion("c1"), Host("h1", Nvidia(24)) with { Roles = [Role("stt", "whisper-large-v3-turbo")] }) with
+        {
+            CurrentJobs = [new JobPlan(ClusterJobs.Listening, "h1")]
+        });
+        Assert.DoesNotContain(gpu.Changes, c => c.Kind is SetupChangeKind.ChangeModel or SetupChangeKind.RemoveRole && c.RoleKind == "stt");
+        Assert.Contains(gpu.Target.Machine("h1")!.Usage!.Items, i => i.OptionId == "whisper-large-v3-turbo-cuda");
     }
 }

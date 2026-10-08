@@ -52,6 +52,9 @@ internal static class NetworkRecommendationCheck
             jobs = recommendation.Target.Jobs.Select(j => new { j.Job, j.HostId, j.Off, j.OptionId, j.Pool }),
             thinkingPool = recommendation.Target.ThinkingPool
         },
+        recommendation.CannotReply,
+        recommendation.CannotSpeak,
+        offline = recommendation.Offline.Select(o => o.Id),
         recommendation.Notes
     };
 
@@ -274,8 +277,8 @@ internal static class NetworkRecommendationCheck
             Option(hostedVoice) == FootprintCatalog.OpenAiVoiceId, Report(hostedVoice));
         var mute = NetworkRecommender.Recommend(Lone(false));
         Step("voice", "Fallback 4: nothing can speak, so a note says how to set up the host service for Chatterbox Nano (never silent)",
-            Option(mute) is null && mute.Notes.Any(n => n.StartsWith("Martlet can't speak yet", StringComparison.Ordinal) &&
-                n.Contains("host service", StringComparison.Ordinal)), Report(mute));
+            Option(mute) is null && mute.CannotSpeak && mute.Notes.Contains(mute.CannotSpeakNote) &&
+                mute.CannotSpeakNote!.Contains("host service", StringComparison.Ordinal) && !processor.CannotSpeak, Report(mute));
 
         return new { ok, fixture = "built-in fixture networks (NOT real computers)", steps };
     }

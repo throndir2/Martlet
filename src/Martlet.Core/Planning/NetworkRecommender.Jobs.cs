@@ -29,6 +29,7 @@ public static partial class NetworkRecommender
             if (starvedVoice is not { } starved) return;
             starvedVoice = null;
             notes.Remove(starved.Note);
+            if (cannotSpeak == starved.Note) cannotSpeak = null;
             decisions.Remove(ClusterJobs.Speaking);
             starved.Undo?.Invoke();
             voice = engine;
@@ -128,7 +129,8 @@ public static partial class NetworkRecommender
                 Decide(job, gone.Id, today!.OptionId, $"{room}{nanoText}, so {Lower(job)} stays with {gone.Name} until it answers again.", benefit);
             else
                 Decide(job, null, null, $"{reason} {room}{nanoText}, so Martlet can't speak yet. {setUp}", benefit);
-            Starve(benefit, reason, prefer, $"Martlet can't speak yet: no computer can run {EngineName}{nanoText}. {setUp}", null);
+            cannotSpeak = $"Martlet can't speak yet: no computer can run {EngineName}{nanoText}. {setUp}";
+            Starve(benefit, reason, prefer, cannotSpeak, null);
         }
 
         /// <summary>Speaking fell back: the note says so, and later steps let the owner's engine try again.</summary>

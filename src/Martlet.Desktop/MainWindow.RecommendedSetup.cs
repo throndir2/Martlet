@@ -278,7 +278,7 @@ public partial class MainWindow
         var first = changes.OrderBy(c => c.Benefit).FirstOrDefault()?.Summary;
         HealthFix review = new("review", "Review", () => OpenRecommendedSetupAsync().Forget(), Passive: true);
         HealthFix decline = new("decline", "Not now", () => DeclineRecommendedSetup(notice.Recommendation.Fingerprint));
-        if (RecommendedSetupReview.CannotReplyIn(notice.Recommendation))
+        if (notice.Recommendation.CannotReply)
         {
             var offerKey = FreeKeyPrompt.Shows(ConfiguredProviders());
             return new("recommended-setup", HealthLevel.Warning, FreeKeyPrompt.ProblemTitle,

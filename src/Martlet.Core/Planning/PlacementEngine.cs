@@ -579,8 +579,11 @@ public static class PlacementEngine
             }
             else
             {
+                var lack = !catalog.For(PlanComponent.Thinking).Any(o => !o.IsLocal && Configured(o)) ? "no free API key is saved"
+                    : Preference == HostingPreference.PreferLocal ? "you keep everything on your computers"
+                    : "no hosted provider is allowed";
                 dropped.Add(new(PlanComponent.Thinking, Preference == HostingPreference.PreferLocal ? DropReason.KeptLocal : DropReason.NoRoom,
-                    "No computer can run a Thinking model, and no hosted endpoint is allowed. Martlet cannot reply until one is set up."));
+                    $"No computer has room for a Thinking model, and {lack}. Martlet can't reply until one is set up."));
                 return;
             }
             Place(chosen, AssignmentRole.Primary, why);
