@@ -453,8 +453,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("network_status", "Read this PC's Martlet network from a data directory (network.json and whether its network key " +
             "exists): member, waiting for approval (with the check number) or in no network; the network ID; each desktop and host " +
             "in the roster (ID, name, removed, who changed it last); hosts paired on purpose (adopt) and forgotten here (ignored); " +
-            "each paired host in hosts.json with how many outside addresses are kept with its pairing (pairedHosts). " +
-            "Read-only; contacts nothing and returns no keys or addresses.", new
+            "each paired host in hosts.json with how many outside addresses are kept with its pairing and its access (pairedHosts: " +
+            "\"member\" for your own, \"friend\" for a host a friend shares with this PC, used for its engines only and never in this " +
+            "PC's network); and who your hosts are shared with as Devices › Friends last read it (friends: per host, each friend's " +
+            "label, provider and how many of their computers signed in, and how many asked; friends.json). Read-only; contacts " +
+            "nothing and returns no keys or addresses.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -473,15 +476,29 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "engine (found, bind hosts, join with a check number, pair every member with every host by itself, refuse forged keys " +
             "and rosters, remove a desktop and a host). Loopback only; writes nothing to disk or the credential vault.", new { }),
         Tool("signin_lab", "A live sign-in lab for the desktop on a disposable data directory, so the Sign-in from outside " +
-            "window can be driven against a real paired host. action \"start\": a real gateway on 127.0.0.1 (Martlet.NodeLinkCheck " +
-            "signin-lab) with an owner account, an OpenID Connect provider (an issuer in that process) and an allowed identity; it " +
-            "pairs the desktop of dataDirectory (hosts.json there; the secret in the lab credential folder of " +
-            "MARTLET_LAB_CREDENTIALS, never Windows Credential Manager, so the MCP server and desktop must run with " +
-            "Invoke-MartletMcp.ps1 -LabCredentials), and a simulated laptop signs in with that identity and keeps syncing the network. " +
-            "\"status\": what the lab sees (whether the desktop bound the host, whether the laptop is a member, was removed, can still " +
-            "use the host, the laptop's network events). \"stop\": ends it (it also ends with this server).", new
+            "window and Join with an invite can be driven against a real host. action \"start\" with mode \"owner\" (the default): a " +
+            "real gateway on 127.0.0.1 (Martlet.NodeLinkCheck signin-lab) with an owner account, an OpenID Connect provider (an " +
+            "issuer in that process) and an allowed identity; it pairs the desktop of dataDirectory (hosts.json there; the secret in " +
+            "the lab credential folder of MARTLET_LAB_CREDENTIALS, never Windows Credential Manager, so the MCP server and desktop " +
+            "must run with Invoke-MartletMcp.ps1 -LabCredentials), a simulated laptop signs in with that identity and keeps syncing " +
+            "the network, and a simulated friend's computer (lab-friend-7, ana@example.net) signs in every 3 seconds until the owner " +
+            "allows it as a friend in the window, then reports what the host gives it. mode \"friend\": the desktop of dataDirectory " +
+            "is the friend: the lab host belongs to a simulated owner, runs a fixture Ollama Thinking route and allows the lab " +
+            "identity as a friend; status carries the invite to paste in Join with an invite, and the lab's simulated browser " +
+            "answers the desktop's sign-in (MARTLET_LAB_BROWSER, set by -LabCredentials); with signInDesktop true (for a locked or " +
+            "headless session, where the window can't be driven) the lab signs the desktop in as the friend itself, under the device ID " +
+            "that desktop names itself by, and keeps the pairing as Join with an invite does (hosts.json with access friend), so the " +
+            "desktop started afterwards on that data directory runs with a shared host. \"status\": what the lab sees (owner mode: " +
+            "whether the desktop bound the host, the laptop's membership and events, the friend's access, the engines it reaches and " +
+            "the refusals elsewhere; friend mode: whether the desktop signed in as a friend, its access, whether it ever asked to " +
+            "join or was refused anything (access.friend), and its Thinking requests). With shareWithFriend true (owner mode, for a " +
+            "session without the window) the lab's own admin desktop shares the host with the simulated friend from the start, so the " +
+            "running desktop meets a friend's computer in its network sync. \"stop\": ends it (it also ends with this server).", new
         {
             action = new { type = "string", @enum = new[] { "start", "status", "stop" } },
+            mode = new { type = "string", @enum = new[] { "owner", "friend" } },
+            signInDesktop = new { type = "boolean" },
+            shareWithFriend = new { type = "boolean" },
             dataDirectory = new { type = "string" }
         }, ["action"]),
         Tool("role_lab", "A live lab for switching your computers between companion and host PC, for the desktop on a disposable " +
@@ -627,7 +644,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "the request, never returned): GET /martlet/v1/priority with each route's lane (live or pool) and graphics cards, each " +
             "card's hold state (held, live and pool requests running, holds), whether the whole host is held, the holds, the preempted " +
             "and refused counts, the last preemptions and refusals (what held the card) and placement warnings. A host older than " +
-            "GPU priority is reported as such. Read-only: takes no hold and starts no work; contacts only paired hosts.", new
+            "GPU priority is reported as such. Read-only: takes no hold and starts no work; contacts only paired hosts, never a host a " +
+            "friend shares with that desktop (it keeps its priority to its owner).", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -2481,14 +2499,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
         return new { endpoint = uri.GetLeftPart(UriPartial.Authority) + "/", route = "martlet.gateway.song.v1", port = 50085, service, choices, paired };
     }
 
-    /// <summary>The host IDs in a data directory's hosts.json (nothing secret: pairing secrets stay in Credential Manager).</summary>
+    /// <summary>The host IDs in a data directory's hosts.json (nothing secret: pairing secrets stay in Credential Manager), without
+    /// hosts friends share with that desktop (they never offer Singing to it).</summary>
     private static HashSet<string> PairedHostIds(string directory)
     {
         try
         {
             using var hosts = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(directory, "hosts.json")));
             return hosts.RootElement.TryGetProperty("hosts", out var list) && list.ValueKind == JsonValueKind.Array
-                ? list.EnumerateArray().Select(h => h.TryGetProperty("pairing", out var pairing) && pairing.TryGetProperty("hostId", out var id)
+                ? list.EnumerateArray().Where(h => !IsSharedHost(h)).Select(h => h.TryGetProperty("pairing", out var pairing) && pairing.TryGetProperty("hostId", out var id)
                     ? id.GetString() : null).OfType<string>().ToHashSet(StringComparer.Ordinal)
                 : [];
         }
@@ -2508,7 +2527,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
     /// <summary>Starts a live lab (Martlet.NodeLinkCheck <paramref name="mode"/> &lt;data directory&gt;) and returns the process and
     /// its first line, which says whether it is ready. The lab keeps its pairing secrets in the lab credential folder.</summary>
     private static async Task<(System.Diagnostics.Process Process, JsonElement Ready)> StartLabAsync(string mode, string directory, string name,
-        CancellationToken cancellation)
+        CancellationToken cancellation, params string[] extra)
     {
         if (Environment.GetEnvironmentVariable(Martlet.Credentials.Windows.LabCredentialNative.Variable) is not { Length: > 0 })
             throw new InvalidOperationException("Run with Invoke-MartletMcp.ps1 -LabCredentials: the lab keeps its pairing secret in a lab folder, never Windows Credential Manager.");
@@ -2519,6 +2538,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
         };
         start.ArgumentList.Add(mode);
         start.ArgumentList.Add(directory);
+        foreach (var argument in extra) start.ArgumentList.Add(argument);
         var process = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException($"Couldn't start the {name}.");
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         timeout.CancelAfter(TimeSpan.FromSeconds(90));
@@ -2600,7 +2620,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
             case "start":
             {
                 if (signInLab is { HasExited: false }) throw new InvalidOperationException("The sign-in lab is already running; stop it first.");
-                var (process, ready) = await StartLabAsync("signin-lab", directory, "sign-in lab", cancellation);
+                var mode = OptionalString(arguments, "mode") ?? "owner";
+                if (mode is not ("owner" or "friend")) throw new ArgumentException("mode is owner or friend.");
+                var extra = new List<string> { "--mode", mode };
+                if (OptionalBool(arguments, "signInDesktop") == true)
+                    extra.Add(mode == "friend" ? "--sign-in-desktop" : throw new ArgumentException("signInDesktop goes with mode friend."));
+                if (OptionalBool(arguments, "shareWithFriend") == true)
+                    extra.Add(mode == "owner" ? "--share-with-friend" : throw new ArgumentException("shareWithFriend goes with mode owner."));
+                var (process, ready) = await StartLabAsync("signin-lab", directory, "sign-in lab", cancellation, [.. extra]);
                 signInLab = process;
                 return ready;
             }
@@ -3761,7 +3788,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         var key = File.Exists(Path.Combine(directory, "network", "device_ecdsa"));
         var path = Path.Combine(directory, Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.FileName);
         var pairedHosts = PairedHostsSummary(directory);
-        if (!File.Exists(path)) return new { state = "none", key, pairedHosts };
+        var friends = FriendsSummary(directory);
+        if (!File.Exists(path)) return new { state = "none", key, pairedHosts, friends };
         Martlet.Avatar.Audio2Face.Remote.NetworkLocalState local;
         try { local = Martlet.Avatar.Audio2Face.Remote.NetworkLocalState.Parse(File.ReadAllBytes(path)); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
@@ -3782,11 +3810,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             adopt = local.Adopt,
             ignored = local.Ignored,
             removedFrom = local.RemovedFrom,
-            pairedHosts
+            pairedHosts,
+            friends
         };
     }
 
-    /// <summary>hosts.json in short: each paired host's ID and how many outside addresses are kept with its pairing.</summary>
+    /// <summary>hosts.json in short: each paired host's ID, how many outside addresses are kept with its pairing and its access
+    /// ("friend" for a host a friend shares with this PC: its engines only, never in this PC's network; "member" for your own).</summary>
     private static object? PairedHostsSummary(string directory)
     {
         try
@@ -3798,13 +3828,30 @@ internal sealed class McpServer(DesktopAutomation desktop)
             {
                 hostId = h.GetProperty("pairing").GetProperty("hostId").GetString(),
                 outsideAddresses = h.TryGetProperty("outsideAddresses", out var outside) && outside.ValueKind == JsonValueKind.Array
-                    ? outside.GetArrayLength() : 0
+                    ? outside.GetArrayLength() : 0,
+                access = IsSharedHost(h) ? "friend" : "member"
             }).ToArray();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException)
         {
             return "unreadable";
         }
+    }
+
+    /// <summary>Whether a hosts.json entry is a host a friend shares with that desktop (Martlet.Desktop's PairedHost.Access).</summary>
+    internal static bool IsSharedHost(JsonElement host) =>
+        host.TryGetProperty("access", out var access) && access.ValueKind == JsonValueKind.String && access.GetString() == "friend";
+
+    /// <summary>friends.json: what Devices › Friends last read from each of your hosts (people's labels, providers, how many of
+    /// their computers signed in, how many asked); null when the desktop hasn't read it.</summary>
+    private static object? FriendsSummary(string directory)
+    {
+        try
+        {
+            var path = Path.Combine(directory, "friends.json");
+            return File.Exists(path) ? JsonSerializer.Deserialize<JsonElement>(File.ReadAllBytes(path)) : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { return "unreadable"; }
     }
 
     /// <summary>Probes each roster host's home and outside addresses (pinned TLS, GET /health/live) when contactHosts is true.</summary>

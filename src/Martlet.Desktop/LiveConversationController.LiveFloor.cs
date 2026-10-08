@@ -174,6 +174,8 @@ internal sealed partial class LiveConversationController
                 if (floor.Level == LiveFloorLevel.Live)
                     foreach (var (host, routes) in floorRules.Resources.Hosts)
                     {
+                        // A host a friend shares with this PC keeps its graphics cards for its owner: it is never asked to hold one.
+                        if (WorkSharingRoster.IsShared(host)) continue;
                         try
                         {
                             await hold.HoldAsync(host, routes, HoldTime, token).ConfigureAwait(false);

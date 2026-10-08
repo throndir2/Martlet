@@ -24,6 +24,14 @@ public sealed partial class Audio2FaceHostConnection
     // Hosts that refused a request naming its recording (older than shared speaking voices): send the recording itself.
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> RecordingHosts = new(StringComparer.Ordinal);
 
+    /// <summary>Speaks on <paramref name="hostId"/> with the recording itself from the first request: a host a friend shares with
+    /// this PC never holds this PC's voices (a recording named only by its SHA-256 answers <c>reference.missing</c> there), so
+    /// asking by name first would only add a round trip to every sentence.</summary>
+    public static void SendRecordingTo(string hostId) => RecordingHosts[hostId] = true;
+
+    /// <summary>Whether speaking on <paramref name="hostId"/> sends the recording from the first request.</summary>
+    public static bool SendsRecordingTo(string hostId) => RecordingHosts.ContainsKey(hostId);
+
     /// <summary>Whether the last <see cref="StreamSpeechAsync"/> on this connection had to send the recording itself.</summary>
     public bool LastSpeechSentRecording { get; private set; }
 

@@ -2,6 +2,8 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
 using Martlet.Avatar.Audio2Face.Remote;
 using Martlet.Avatar.Hosting;
 using Martlet.Core.Access;
@@ -11,8 +13,9 @@ using Martlet.Core.Network;
 namespace Martlet.Desktop;
 
 /// <summary>At home, on a member PC: a paired host's sign-in settings (the owner account with its mandatory authenticator
-/// and recovery codes, the other allowed identities, the computers that signed in) and the invite to hand a computer that is
-/// away. Every change goes to the host over this PC's signed, pinned connection; nothing secret is read back.</summary>
+/// and recovery codes, the other allowed identities, each one of your computers or a friend's, the computers that signed in)
+/// and the invite to hand a computer that is away or a friend. Every change goes to the host over this PC's signed, pinned
+/// connection; nothing secret is read back.</summary>
 public partial class SignInSettingsWindow : ThemedWindow
 {
     private readonly AvatarRemoteHost host;
@@ -71,12 +74,16 @@ public partial class SignInSettingsWindow : ThemedWindow
             : "Not set up. Set a name and password, then add the authenticator secret to your app.";
         if (settings.OwnerUser is { } name) OwnerUserText.Text = name;
         AllowedText.Text = settings.Allowed.Count == 0 ? "None."
-            : string.Join(Environment.NewLine, settings.Allowed.Select(a => $"{a.Label ?? a.Subject} ({a.Provider}: {a.Subject})"));
+            : string.Join(Environment.NewLine, settings.Allowed.Select(a => $"{a.Label ?? a.Subject} ({a.Provider}: {a.Subject}), " +
+                (a.Friend ? "a friend: this host's engines only" : "one of your computers")));
+        AllowedPanel.Children.Clear();
+        foreach (var allowed in settings.Allowed) AllowedPanel.Children.Add(AllowedRow(allowed));
         ProvidersText.Text = settings.Providers.Count == 0 ? "No sign-in providers are set up on this host yet."
             : "Providers: " + string.Join(", ", settings.Providers.Select(p => $"{p.Name} ({p.Id}, {p.Kind})"));
         EnrolledText.Text = settings.Enrolled.Count == 0 ? "None yet."
             : string.Join(Environment.NewLine, settings.Enrolled.Select(e =>
-                $"{e.DeviceId}: signed in as {e.Label ?? e.Subject} ({e.Provider}) {e.EnrolledAt.ToLocalTime():g}"));
+                $"{e.DeviceId}: signed in as {e.Label ?? e.Subject} ({e.Provider}), " +
+                (e.Friend ? "a friend's computer (this host's engines only)" : "one of your computers") + $", {e.EnrolledAt.ToLocalTime():g}"));
         RemovedText.Text = settings.RemovedFromNetwork.Count == 0 ? "None."
             : string.Join(Environment.NewLine, settings.RemovedFromNetwork.Select(e =>
                 $"{e.DeviceId}: its sign-in as {e.Label ?? e.Subject} ({e.Provider}) was removed {e.EnrolledAt.ToLocalTime():g}; your computers remove it from the network on their next sync"));
@@ -87,6 +94,66 @@ public partial class SignInSettingsWindow : ThemedWindow
             RecoveryText.Visibility = Visibility.Visible;
         }
         StatusText.Text = done ?? $"Read {host.HostId}'s sign-in settings.";
+    }
+
+    /// <summary>One allowed identity: who it is, what its computers get, and buttons to switch that and to remove it.</summary>
+    private FrameworkElement AllowedRow(HostSignInAllowed allowed)
+    {
+        var key = FriendsOverview.Key(allowed.Provider, allowed.Subject);
+        var row = new DockPanel { Margin = new Thickness(0, 4, 0, 4) };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        var change = new Button { Content = allowed.Friend ? "Make one of my computers" : "Make a friend", Margin = new Thickness(8, 0, 0, 0) };
+        AutomationProperties.SetAutomationId(change, "SignInAccess-" + key);
+        AutomationProperties.SetName(change, (allowed.Friend ? "Make one of my computers: " : "Make a friend: ") + (allowed.Label ?? allowed.Subject));
+        change.Click += async (_, _) => await SwitchAccessAsync(allowed);
+        var remove = new Button { Content = "Remove", Margin = new Thickness(8, 0, 0, 0) };
+        AutomationProperties.SetAutomationId(remove, "SignInRemove-" + key);
+        AutomationProperties.SetName(remove, "Remove the sign-in of " + (allowed.Label ?? allowed.Subject));
+        remove.Click += async (_, _) => await RemoveAsync(allowed);
+        buttons.Children.Add(change);
+        buttons.Children.Add(remove);
+        DockPanel.SetDock(buttons, Dock.Right);
+        row.Children.Add(buttons);
+        var text = new TextBlock
+        {
+            Text = $"{allowed.Label ?? allowed.Subject} ({allowed.Provider}: {allowed.Subject}): " +
+                (allowed.Friend ? "a friend. Its computers use only this host's engines and never join your network."
+                    : "one of your computers. It joins your Martlet network."),
+            TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center
+        };
+        AutomationProperties.SetAutomationId(text, "SignInAllowed-" + key);
+        row.Children.Add(text);
+        return row;
+    }
+
+    /// <summary>Switches an identity between one of your computers and a friend: the host allows it again with the other access
+    /// and revokes the computers it signed in with the old one, which sign in again.</summary>
+    private async Task SwitchAccessAsync(HostSignInAllowed allowed)
+    {
+        var name = allowed.Label ?? allowed.Subject;
+        var question = allowed.Friend
+            ? $"Make {name} one of your own computers on {host.HostId}? Its computers that signed in as a friend lose access now. When they " +
+              "sign in again, they join your Martlet network and can use all your hosts, settings and memories."
+            : $"Make {name} a friend on {host.HostId}? Its computers that signed in as yours lose access to this host now, and your computers " +
+              "remove them from your Martlet network on their next sync, so they lose every host. When they sign in again, they may use only " +
+              "this host's engines.";
+        if (!ConfirmationDialog.Confirm(this, question, allowed.Friend ? "Make one of my computers" : "Make a friend")) return;
+        await ChangeAsync(HostSignInAccess.AllowChange(allowed.Provider, allowed.Subject, allowed.Label, friend: !allowed.Friend),
+            allowed.Friend ? $"{name} is one of your computers now; its computers sign in again to join your network."
+            : $"{name} is a friend now: its computers sign in again and then use only {host.HostId}'s engines.");
+    }
+
+    private async Task RemoveAsync(HostSignInAllowed allowed)
+    {
+        var name = allowed.Label ?? allowed.Subject;
+        if (!ConfirmationDialog.Confirm(this, allowed.Friend
+                ? $"Stop sharing {host.HostId} with {name}? This host revokes their computers at once."
+                : $"Remove {name}'s sign-in? This host revokes the computers it signed in, and your computers remove them from your Martlet " +
+                  "network on their next sync, so they lose every host.", "Remove sign-in"))
+            return;
+        await ChangeAsync(new JsonObject { ["action"] = "disallow", ["provider"] = allowed.Provider, ["subject"] = allowed.Subject },
+            allowed.Friend ? $"Stopped sharing {host.HostId} with {name}; their computers lost access."
+                : $"Removed {name}. This host revoked the computers it signed in, and your computers remove them from your Martlet network on their next sync.");
     }
 
     private async Task ChangeAsync(JsonObject change, string done)
@@ -151,16 +218,20 @@ public partial class SignInSettingsWindow : ThemedWindow
         await ChangeAsync(new JsonObject { ["action"] = "remove-owner" }, "Owner account removed.");
     }
 
-    private async void Allow_Click(object sender, RoutedEventArgs e) => await ChangeAsync(new JsonObject
+    private async void Allow_Click(object sender, RoutedEventArgs e)
     {
-        ["action"] = "allow", ["provider"] = AllowProviderText.Text.Trim(), ["subject"] = AllowSubjectText.Text.Trim(),
-        ["label"] = AllowLabelText.Text.Trim() is { Length: > 0 } label ? label : null
-    }, "Allowed.");
+        var friend = (AllowAccessBox.SelectedItem as ComboBoxItem)?.Tag as string == HostSignInAccess.Friend;
+        var name = AllowLabelText.Text.Trim() is { Length: > 0 } typed ? typed : AllowSubjectText.Text.Trim();
+        await ChangeAsync(HostSignInAccess.AllowChange(AllowProviderText.Text.Trim(), AllowSubjectText.Text.Trim(),
+                AllowLabelText.Text.Trim() is { Length: > 0 } label ? label : null, friend),
+            friend ? $"Allowed {name} as a friend: once they sign in with the invite, their computer may use {host.HostId}'s engines."
+            : $"Allowed {name} as one of your computers.");
+    }
 
     private async void Disallow_Click(object sender, RoutedEventArgs e) => await ChangeAsync(new JsonObject
     {
         ["action"] = "disallow", ["provider"] = AllowProviderText.Text.Trim(), ["subject"] = AllowSubjectText.Text.Trim()
-    }, "Removed. This host revoked the computers it signed in, and your computers remove them from your Martlet network on their next sync.");
+    }, "Removed. This host revoked the computers it signed in; your computers remove your own among them from your Martlet network on their next sync.");
 
     private void ProviderKind_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
@@ -209,13 +280,17 @@ public partial class SignInSettingsWindow : ThemedWindow
         ["action"] = "remove-provider", ["id"] = ProviderIdText.Text.Trim().ToLowerInvariant()
     }, "Provider removed; computers that signed in with it lost access.");
 
-    private async void AllowRefused_Click(object sender, RoutedEventArgs e)
+    private async void AllowRefused_Click(object sender, RoutedEventArgs e) => await AllowNewestAsync(friend: false);
+
+    private async void AllowRefusedFriend_Click(object sender, RoutedEventArgs e) => await AllowNewestAsync(friend: true);
+
+    /// <summary>Allows the identity that signed in most recently without being allowed, as one of your computers or as a friend.</summary>
+    private async Task AllowNewestAsync(bool friend)
     {
         if (shown?.Refused.FirstOrDefault() is not { } newest) { StatusText.Text = "Nobody is waiting to be allowed."; return; }
-        await ChangeAsync(new JsonObject
-        {
-            ["action"] = "allow", ["provider"] = newest.Provider, ["subject"] = newest.Subject, ["label"] = newest.Label
-        }, $"Allowed {newest.Label ?? newest.Subject}. Sign in again from {newest.DeviceId}.");
+        await ChangeAsync(HostSignInAccess.AllowChange(newest.Provider, newest.Subject, newest.Label, friend), friend
+            ? $"Allowed {newest.Label ?? newest.Subject} as a friend. Once they sign in again from {newest.DeviceId}, their computer may use {host.HostId}'s engines."
+            : $"Allowed {newest.Label ?? newest.Subject}. Sign in again from {newest.DeviceId}.");
     }
 
     private void MakeInvite_Click(object sender, RoutedEventArgs e)

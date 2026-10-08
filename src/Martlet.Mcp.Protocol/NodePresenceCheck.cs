@@ -51,14 +51,16 @@ internal static class NodePresenceCheck
         };
     }
 
-    // The paired host IDs in hosts.json and the one saved as this PC's own (Docker Desktop here).
+    // The paired host IDs in hosts.json and the one saved as this PC's own (Docker Desktop here). A host a friend shares with this PC
+    // isn't watched (as the desktop's PresenceHosts).
     private static (string[] Hosts, string? Own) Paired(string dataDirectory)
     {
         try
         {
             var path = Path.Combine(dataDirectory, "hosts.json");
             if (!File.Exists(path) || new FileInfo(path).Length > 65_536) return ([], null);
-            var hosts = (JsonNode.Parse(File.ReadAllText(path))?["hosts"] as JsonArray ?? []).OfType<JsonObject>().ToArray();
+            var hosts = (JsonNode.Parse(File.ReadAllText(path))?["hosts"] as JsonArray ?? []).OfType<JsonObject>()
+                .Where(h => h["access"]?.GetValue<string>() != "friend").ToArray();
             return ([.. hosts.Select(h => h["pairing"]?["hostId"]?.GetValue<string>()).OfType<string>()],
                 hosts.FirstOrDefault(h => h["method"]?.GetValue<string>() == "ThisPcDocker")?["pairing"]?["hostId"]?.GetValue<string>());
         }

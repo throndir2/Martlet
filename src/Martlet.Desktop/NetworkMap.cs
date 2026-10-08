@@ -67,6 +67,10 @@ internal sealed record HostCheck(bool? Reachable, string Text, IReadOnlyDictiona
     /// has no Deep thinking role.</summary>
     public int? DeepThinkingSlots => Routes?.FirstOrDefault(r => r.RouteId == Martlet.Avatar.Audio2Face.Remote.HostRoute.DeepThinkingRouteId)
         ?.MaximumConcurrency;
+
+    /// <summary>The host's refusal code when it answered with one (for example <c>auth.revoked</c> once a friend's host stopped
+    /// sharing with this PC), else null.</summary>
+    public string? Code { get; init; }
 }
 
 /// <summary>A device on the map. <paramref name="HealthCommand"/> is what clicking its status runs, when the status names
@@ -83,14 +87,15 @@ internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSe
     IReadOnlyList<MartletComputer>? Computers = null, IReadOnlyCollection<string>? DeepThinkingHosts = null,
     IReadOnlyDictionary<string, string>? HostOutside = null, string? OwnHostTrouble = null,
     IReadOnlyCollection<string>? ThinkingPoolLeft = null, IReadOnlyDictionary<string, TimeSpan>? HostAway = null,
-    IReadOnlyDictionary<string, string>? Configuring = null);
+    IReadOnlyDictionary<string, string>? Configuring = null, IReadOnlyList<PairedHost>? SharedHosts = null);
 
 /// <summary>A computer paired with a host, in words ("IMOUTO (desktop-imouto), active now"); <paramref name="ThisPc"/> marks
 /// this PC itself.</summary>
 internal sealed record HostUser(string Text, bool ThisPc);
 
-/// <summary>Where another Martlet computer stands with your Martlet network.</summary>
-internal enum ComputerStanding { Member, Asking, Outside }
+/// <summary>Where another Martlet computer stands with your Martlet network. <see cref="Friend"/>: a friend's computer that
+/// signed in to one of your hosts as a friend; it uses that host's engines only and never joins.</summary>
+internal enum ComputerStanding { Member, Asking, Outside, Friend }
 
 /// <summary>Another computer that runs Martlet: a member of your Martlet network, one asking to join it (with its check number
 /// and the host it asked through) or one that uses your hosts outside it. <paramref name="Activity"/> is where it was last
@@ -163,7 +168,7 @@ internal static class NetworkMap
     /// switch any other; it follows on its next settings sync), or, while an ask waits, the opposite one, which withdraws it.
     /// Null for a computer asking to join the network and for one that hasn't said what it is (an older Martlet).</summary>
     internal static NodeCommand? RoleCommand(MartletComputer computer) =>
-        computer.Standing == ComputerStanding.Asking || computer.Role is not { } role ? null
+        computer.Standing is ComputerStanding.Asking or ComputerStanding.Friend || computer.Role is not { } role ? null
         : (computer.Asked ?? role) == DeviceRole.Companion
             ? new(NodeAction.MakeHostPc, "Make it a host PC", Argument: computer.DeviceId, Component: DeviceComponent.Member)
             : new(NodeAction.MakeCompanionPc, role == DeviceRole.Companion ? "Keep it a companion PC" : "Make it a companion PC",
@@ -198,11 +203,13 @@ internal static class NetworkMap
         settings?.Setup?.Routes.FirstOrDefault(r => r.Role == role) is { Gateway: { } gateway } route &&
         SelfHostSetup.IsGateway(route.RouteType) ? gateway.HostId : null;
 
-    /// <summary>All paired hosts, including a lip-sync pairing saved only in the avatar profile.</summary>
+    /// <summary>All paired hosts, including a lip-sync pairing saved only in the avatar profile; never a host a friend shares
+    /// with this PC (<see cref="NetworkInputs.SharedHosts"/>), even when it does this PC's lip-sync.</summary>
     internal static IReadOnlyList<PairedHost> Hosts(NetworkInputs inputs)
     {
-        var hosts = (inputs.Hosts ?? []).ToList();
-        if (inputs.Avatar?.RemoteHost is { } assigned && hosts.All(h => h.HostId != assigned.HostId))
+        var hosts = (inputs.Hosts ?? []).Where(h => !h.Shared).ToList();
+        if (inputs.Avatar?.RemoteHost is { } assigned && hosts.All(h => h.HostId != assigned.HostId) &&
+            inputs.SharedHosts?.Any(h => h.HostId == assigned.HostId) != true)
             hosts.Add(new() { Pairing = assigned });
         return hosts;
     }
@@ -694,8 +701,10 @@ internal static class NetworkMap
         // host service is that host's device too (the host it names, or the one Martlet names after the PC: DIVA runs diva-host).
         foreach (var computer in inputs.Computers ?? [])
         {
+            var friend = computer.Standing == ComputerStanding.Friend;
             var hostId = computer.HostId ?? HostSetupCommands.SuggestedHostId(computer.Name);
-            var hosting = nodes.GetValueOrDefault("host:" + hostId);
+            // A friend's computer is never one of your hosts, whatever it is called.
+            var hosting = friend ? null : nodes.GetValueOrDefault("host:" + hostId);
             var node = hosting ?? Node("pc:" + computer.DeviceId, NodeKind.Computer, computer.Name, computer.DeviceId, ThisPcGlyph);
             var where = computer.Activity is { } activity ? " " + activity : "";
             var standing = computer.Standing switch
@@ -703,6 +712,9 @@ internal static class NetworkMap
                 ComputerStanding.Asking => $"Asks to join your Martlet network through {computer.Through} (check number {computer.CheckNumber}). " +
                     "Allow it under Your Martlet network below.",
                 ComputerStanding.Outside => "Uses your hosts but isn't in your Martlet network." + where,
+                ComputerStanding.Friend => $"A friend's computer: it signed in to {computer.Through ?? "your host"} as a friend and uses only its " +
+                    "engines (thinking, listening, speaking, lip-sync, reading). It never joins your Martlet network; your own work comes " +
+                    "first. Stop sharing under Friends below." + where,
                 _ => "In your Martlet network." + where
             };
             // What it is, as it said itself; a computer on an older Martlet hasn't said, so it shows as the Martlet app. A host PC
@@ -718,8 +730,9 @@ internal static class NetworkMap
             };
             node.Roles.Insert(0, new(chip, name, $"{computer.DeviceId}. {does}{standing}{Asked(computer)}", DeviceComponent.Member));
             if (RoleCommand(computer) is { } switching) node.Commands.Add(switching);
-            // The jobs every companion PC does itself (a Windows voice, Parakeet) show on each companion PC.
-            if (computer.Standing != ComputerStanding.Asking && (computer.Role == DeviceRole.Companion || computer.Role is null && hosting is null))
+            // The jobs every companion PC does itself (a Windows voice, Parakeet) show on each companion PC; a friend's has its own.
+            if (computer.Standing is not (ComputerStanding.Asking or ComputerStanding.Friend) &&
+                (computer.Role == DeviceRole.Companion || computer.Role is null && hosting is null))
                 node.Roles.AddRange(onEachPc);
             if (hosting is not null)
             {
@@ -734,10 +747,12 @@ internal static class NetworkMap
             {
                 ComputerStanding.Member => "Member",
                 ComputerStanding.Asking => $"Asks to join (check number {computer.CheckNumber})",
+                ComputerStanding.Friend => "Never: a friend's computer",
                 _ => "Not a member"
             }));
             if (computer.Standing == ComputerStanding.Asking) node.Worsen(NodeHealth.Attention, "Asks to join");
             else if (computer.Standing == ComputerStanding.Outside) node.Worsen(NodeHealth.Unknown, "Not in your network");
+            else if (computer.Standing == ComputerStanding.Friend) node.HealthText = computer.Active ? "A friend's, active now" : "A friend's";
             else if (computer.Active) node.HealthText = "Active now";
             else node.Worsen(NodeHealth.Unknown, "Not active now");
         }
@@ -765,6 +780,12 @@ internal static class NetworkMap
                     // Lip-sync by this PC's own host service is already on this PC: the way back is without the host service.
                     thisPc.Commands.Add(new(NodeAction.LipSyncThisPc, inputs.Avatar!.RemoteHost!.HostId == ownHostId
                         ? "Do lip-sync without the host service" : "Take lip-sync back to this PC"));
+                    // A host a friend shares isn't one of your hosts (drawn above): it shows with the lip-sync it does for this PC.
+                    if (inputs.SharedHosts?.FirstOrDefault(h => h.HostId == inputs.Avatar.RemoteHost.HostId) is { } friendsLipSync)
+                    {
+                        var face = Node("host:" + friendsLipSync.HostId, NodeKind.Host, friendsLipSync.HostId, friendsLipSync.Address, ComputerGlyph);
+                        face.Roles.Add(new("Lip-sync", "Lip-sync", "Handles lip-sync for this PC.", DeviceComponent.LipSync));
+                    }
                     break;
             }
             var audio = inputs.Settings?.Audio is { } devices
@@ -802,6 +823,16 @@ internal static class NetworkMap
         // Computers Martlet changes right now (by host ID, device ID or "this-pc") show Configuring with their step.
         foreach (var (id, step) in inputs.Configuring ?? new Dictionary<string, string>())
             (id == "this-pc" || id == ownHostId ? thisPc : nodes.GetValueOrDefault("host:" + id) ?? nodes.GetValueOrDefault("pc:" + id))?.Configure(step);
+
+        // A host a friend shares with this PC shows where one of this PC's jobs uses it, marked as theirs.
+        foreach (var friendsHost in inputs.SharedHosts ?? [])
+            if (nodes.GetValueOrDefault("host:" + friendsHost.HostId) is { } draft && draft.Kind == NodeKind.Host)
+            {
+                draft.Subtitle = "Shared by a friend";
+                draft.Facts.Add(new("Shared with this PC", "By a friend: its engines only, for this PC only"));
+                draft.Notes.Add("A friend shares this host with this PC. It never joins your Martlet network, your other computers don't " +
+                    "use it, and its owner's own work comes first. Devices › Hosts shared with this PC lists it.");
+            }
 
         // Its details are just the ways to add one, each a whole clickable card (nothing there only looks like a button).
         var add = new Draft("add", NodeKind.Add, "Add a computer", "Use another computer", AddGlyph) { Health = NodeHealth.Unknown, HealthText = "" };

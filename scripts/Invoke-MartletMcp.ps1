@@ -32,7 +32,8 @@ param(
     [switch]$AllowUiEffects,
     [switch]$KeepDesktop,
     # Keep pairing secrets in a lab-credentials folder inside the data directory instead of Windows Credential Manager, for the
-    # desktop and MCP processes this starts (MARTLET_LAB_CREDENTIALS); needed by signin_lab and role_lab.
+    # desktop and MCP processes this starts (MARTLET_LAB_CREDENTIALS); needed by signin_lab and role_lab. It also gives both a
+    # lab-browser folder (MARTLET_LAB_BROWSER) where the desktop hands a browser sign-in page to signin_lab's simulated browser.
     [switch]$LabCredentials,
     [switch]$Build,
     [string]$Configuration = 'Release',
@@ -74,9 +75,12 @@ $data = if ($DataDirectory) { $DataDirectory } else {
     Join-Path ([System.IO.Path]::GetTempPath()) ('Martlet.Mcp.Verify.' + [guid]::NewGuid().ToString('N'))
 }
 $labFolder = $null
+$labBrowser = $null
 if ($LabCredentials) {
     $labFolder = Join-Path $data 'lab-credentials'
     $null = New-Item -ItemType Directory -Force -Path $labFolder
+    $labBrowser = Join-Path $data 'lab-browser'
+    $null = New-Item -ItemType Directory -Force -Path $labBrowser
 }
 $desktopProcess = $null
 $mcp = $null
@@ -116,7 +120,7 @@ try {
         $start.ArgumentList.Add($data)
         foreach ($argument in $DesktopArguments) { $start.ArgumentList.Add($argument) }
         $start.UseShellExecute = $false
-        if ($labFolder) { $start.Environment['MARTLET_LAB_CREDENTIALS'] = $labFolder }
+        if ($labFolder) { $start.Environment['MARTLET_LAB_CREDENTIALS'] = $labFolder; $start.Environment['MARTLET_LAB_BROWSER'] = $labBrowser }
         $desktopProcess = [System.Diagnostics.Process]::Start($start)
         $DesktopProcessId = $desktopProcess.Id
     }
@@ -124,7 +128,7 @@ try {
     $start = [System.Diagnostics.ProcessStartInfo]::new($server)
     if ($AllowUiEffects) { $start.ArgumentList.Add('--allow-ui-effects') }
     $start.UseShellExecute = $false
-    if ($labFolder) { $start.Environment['MARTLET_LAB_CREDENTIALS'] = $labFolder }
+    if ($labFolder) { $start.Environment['MARTLET_LAB_CREDENTIALS'] = $labFolder; $start.Environment['MARTLET_LAB_BROWSER'] = $labBrowser }
     $start.RedirectStandardInput = $true
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true

@@ -13,14 +13,15 @@ internal static class LiveGpuHolds
 {
     internal static ILiveGpuHold Shared { get; } = new HostLiveGpuHold(Connect, ErrorLog.Info);
 
-    // A paired connection to the host, with the pairing secret read from Windows Credential Manager (never copied).
+    // A paired connection to the host, with the pairing secret read from Windows Credential Manager (never copied). A host a
+    // friend shares with this PC is never held: holds are its owner's (it answers a friend's hold with access.friend).
     private static IHostGpuHoldChannel? Connect(string hostId)
     {
         if (WorkSharingRoster.DataDirectory is not { } directory) return null;
         IReadOnlyList<PairedHost> hosts;
         try { hosts = HostRegistry.Load(directory); }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return null; }
-        return hosts.FirstOrDefault(h => h.HostId == hostId) is { } host
+        return hosts.FirstOrDefault(h => h.HostId == hostId && !h.Shared) is { } host
             ? HostTextClient.Connect(WorkSharingRoster.TextTarget(host, SelfHostSetup.OllamaRouteId)) : null;
     }
 }

@@ -18,7 +18,7 @@
                 <TextBlock x:Name="OutsideWarningText" TextWrapping="Wrap" Margin="0,8,0,0" FontWeight="SemiBold" Visibility="Collapsed"
                            Foreground="{DynamicResource WarningBrush}" AutomationProperties.AutomationId="SignInOutsideWarning"/>
                 <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,6,0,14"
-                           Text="Let one of your computers join this host while it is away from home, by signing in instead of typing a code shown here. A computer that signs in is paired like any other and joins your Martlet network by itself. Remove it from the network or remove its sign-in here to take access away."/>
+                           Text="Let one of your computers join this host while it is away from home, by signing in instead of typing a code shown here. A computer that signs in is paired like any other and joins your Martlet network by itself. You can also share this host's engines with a friend: allow their account as a friend below and send them the invite. Remove a sign-in here to take access away."/>
 
                 <Border Style="{DynamicResource CardStyle}" Margin="0,0,0,14">
                     <StackPanel>
@@ -54,12 +54,14 @@
 
                 <Border Style="{DynamicResource CardStyle}" Margin="0,0,0,14">
                     <StackPanel>
-                        <TextBlock Text="Other allowed sign-ins" FontWeight="SemiBold" FontSize="15"/>
+                        <TextBlock Text="Allowed sign-ins" FontWeight="SemiBold" FontSize="15"/>
                         <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,8"
-                                   Text="Identities at a sign-in provider set up on this host that may join (the provider's ID and the account's stable subject). Removing one takes access away from the computers it signed in."/>
+                                   Text="Identities at a sign-in provider set up on this host (the provider's ID and the account's stable subject). Each is one of your own computers, which joins your Martlet network, or a friend's, which uses only this host's engines (thinking, listening, speaking, lip-sync and reading), never joins your network and always goes after your own work. Changing which one an identity is makes its computers sign in again. Removing one takes access away from the computers it signed in."/>
                         <TextBlock x:Name="AllowedText" TextWrapping="Wrap" Margin="0,0,0,8" AutomationProperties.AutomationId="SignInAllowedList"/>
+                        <StackPanel x:Name="AllowedPanel" AutomationProperties.Name="Allowed sign-ins" Margin="0,0,0,8"/>
                         <TextBlock x:Name="ProvidersText" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,0,0,8"
                                    AutomationProperties.AutomationId="SignInProvidersList"/>
+                        <TextBlock Text="Allow another sign-in: provider ID, subject and a label (an email or name)" Margin="0,0,0,4" TextWrapping="Wrap"/>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/><ColumnDefinition Width="2*"/><ColumnDefinition Width="2*"/>
@@ -71,10 +73,17 @@
                             <TextBox x:Name="AllowLabelText" Grid.Column="2" AutomationProperties.AutomationId="SignInAllowLabel"
                                      AutomationProperties.Name="Label (an email or name)"/>
                         </Grid>
+                        <ComboBox x:Name="AllowAccessBox" Margin="0,8,0,0" AutomationProperties.AutomationId="SignInAllowAccess"
+                                  AutomationProperties.Name="What the computers it signs in get">
+                            <ComboBoxItem Content="One of my computers: it joins my Martlet network" Tag="member" IsSelected="True"
+                                          AutomationProperties.AutomationId="SignInAllowAccess-member"/>
+                            <ComboBoxItem Content="A friend: this host's engines only, never my network" Tag="friend"
+                                          AutomationProperties.AutomationId="SignInAllowAccess-friend"/>
+                        </ComboBox>
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <Button Content="A_llow" Click="Allow_Click" Margin="0,0,10,0" AutomationProperties.AutomationId="SignInAllow"/>
-                            <Button Content="Remove and remove its computers from the network" Click="Disallow_Click" AutomationProperties.AutomationId="SignInDisallow"
-                                    ToolTip="This host revokes the computers it signed in, and your computers remove them from your Martlet network on their next sync, so they lose every host"/>
+                            <Button Content="Remove and take its computers' access away" Click="Disallow_Click" AutomationProperties.AutomationId="SignInDisallow"
+                                    ToolTip="This host revokes the computers it signed in. Your own computers among them are removed from your Martlet network on your computers' next sync, so they lose every host; a friend's computer never joined it"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -118,7 +127,13 @@
                         </StackPanel>
                         <TextBlock Text="Signed in but not allowed yet" FontWeight="SemiBold" Margin="0,12,0,4"/>
                         <TextBlock x:Name="RefusedText" TextWrapping="Wrap" Margin="0,0,0,8" AutomationProperties.AutomationId="SignInRefusedList"/>
-                        <Button Content="Allow the _newest" Click="AllowRefused_Click" HorizontalAlignment="Left" AutomationProperties.AutomationId="SignInRefusedAllow"/>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Allow the _newest as one of my computers" Click="AllowRefused_Click" Margin="0,0,10,0"
+                                    AutomationProperties.AutomationId="SignInRefusedAllow"/>
+                            <Button Content="Allow the newest as a _friend" Click="AllowRefusedFriend_Click"
+                                    AutomationProperties.AutomationId="SignInRefusedAllowFriend"
+                                    ToolTip="Their computer may then use only this host's engines; it never joins your Martlet network"/>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
@@ -135,7 +150,7 @@
                     <StackPanel>
                         <TextBlock Text="Invite" FontWeight="SemiBold" FontSize="15"/>
                         <TextBlock Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,4,0,8"
-                                   Text="The invite tells a computer away from home where this host answers and which key to expect. It holds no secret; signing in is what lets a computer in. It starts with the outside addresses your network has for this host (Your Martlet network › Outside addresses); set them there so the computer keeps reaching the host after it joins."/>
+                                   Text="The invite tells a computer away from home where this host answers and which key to expect. It holds no secret; signing in is what lets a computer in. Send it to a friend too, once their account is allowed as a friend. It starts with the outside addresses your network has for this host (Your Martlet network › Outside addresses); set them there so the computer keeps reaching the host after it joins."/>
                         <TextBlock Text="Outside address(es), separated by spaces"/>
                         <TextBox x:Name="InviteAddressText" Margin="0,4,0,8" AutomationProperties.AutomationId="SignInInviteAddress"/>
                         <Button Content="_Make invite" Click="MakeInvite_Click" HorizontalAlignment="Left" AutomationProperties.AutomationId="SignInInviteMake"/>

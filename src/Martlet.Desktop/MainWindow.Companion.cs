@@ -1127,6 +1127,32 @@ public partial class MainWindow
             AutomationProperties.SetAutomationId(why, "HostChoicesUnable-" + job);
             stack.Add(why);
         }
+        // Hosts friends share with this PC: this PC only, never your network's choice; their engines are their owners'.
+        if (sharedHosts.Count > 0) stack.Add(Heading("Shared with this PC"));
+        foreach (var host in sharedHosts)
+        {
+            var check = hostChecks.GetValueOrDefault(host.HostId);
+            var offers = check?.Offers?.Keys.Any(k => k == roleKind || HostRoles.Speaks(roleKind) && HostRoles.Speaks(k)) == true;
+            var detail = owner == host.HostId ? ownerDetail + " A friend shares it with this PC."
+                : offers ? $"A friend shares it with this PC. It offers {engine}."
+                : check?.Reachable == true ? $"A friend shares it with this PC, but it doesn't offer {engine}. Only its owner can add it."
+                : check?.Reachable == false ? "A friend shares it with this PC. Not reachable right now." : "A friend shares it with this PC.";
+            var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            text.Children.Add(new TextBlock { Text = host.HostId, FontSize = 15, FontWeight = FontWeights.SemiBold });
+            var line = Note(detail, new Thickness(0, 2, 0, 0));
+            AutomationProperties.SetName(line, $"{host.HostId}: {detail}");
+            AutomationProperties.SetAutomationId(line, $"HostChoice-{job}-{host.HostId}");
+            text.Children.Add(line);
+            var use = PageButton(owner == host.HostId ? again ?? "In use" : "Use it on this PC",
+                () => assign("host:" + host.HostId).Forget(), id: $"SetupUseHost-{job}-{host.HostId}");
+            var inUse = owner == host.HostId && again is null;
+            use.IsEnabled = !inUse && (offers || check?.Reachable != true);
+            var row = new DockPanel { Margin = new Thickness(0, 0, 0, 10) };
+            DockPanel.SetDock(use, Dock.Right);
+            row.Children.Add(use);
+            row.Children.Add(text);
+            stack.Add(row);
+        }
         stack.Add(Row(
             PageButton("Add a computer", () => RunNodeAction(NodeAction.AddComputer), primary: hosts.Length == 0, id: "SetupAddComputer-" + job),
             paired.Length == 0 ? null : PageButton("Check hosts", () => RunNodeAction(NodeAction.CheckHost), id: "SetupCheckHosts-" + job),

@@ -176,7 +176,8 @@ internal static class SingingCheck
         }, token);
     }
 
-    /// <summary>The paired hosts in a desktop data directory's hosts.json (nonsecret pairing identities).</summary>
+    /// <summary>The paired hosts in a desktop data directory's hosts.json (nonsecret pairing identities); never a host a friend
+    /// shares with that desktop (access "friend"), which never offers Singing or GPU priority to it.</summary>
     internal static IReadOnlyList<Martlet.Avatar.Hosting.AvatarRemoteHost> PairedHosts(string dataDirectory)
     {
         var path = Path.Combine(dataDirectory, "hosts.json");
@@ -185,6 +186,7 @@ internal static class SingingCheck
         var hosts = new List<Martlet.Avatar.Hosting.AvatarRemoteHost>();
         foreach (var entry in document.RootElement.GetProperty("hosts").EnumerateArray())
         {
+            if (entry.TryGetProperty("access", out var access) && access.ValueKind == JsonValueKind.String && access.GetString() == "friend") continue;
             var pairing = entry.GetProperty("pairing");
             var host = new Martlet.Avatar.Hosting.AvatarRemoteHost
             {

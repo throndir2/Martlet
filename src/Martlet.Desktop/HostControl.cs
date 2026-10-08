@@ -28,9 +28,18 @@ internal sealed record PairedHost
     /// signed in with, then from the network roster on every sync. A computer that has never been on the home network
     /// reconnects with these (home address first, these after 1.5 seconds) whatever its network state.</summary>
     public IReadOnlyList<string>? OutsideAddresses { get; init; }
+    /// <summary>"friend" for a host a friend shares with this PC (<see cref="HostSignInAccess.Friend"/>): this PC signed in there
+    /// as a friend and may use only its engines (thinking, listening, speaking, lip-sync, reading). It is never part of this
+    /// PC's Martlet network or its shared plan, and none of the syncs between your own computers talk to it. Null for your own
+    /// hosts.</summary>
+    public string? Access { get; init; }
+    /// <summary>Who this PC signed in as on a shared host ("ana@example.net (google)"), for people to see.</summary>
+    public string? SignedInAs { get; init; }
 
     [JsonIgnore] public string HostId => Pairing.HostId;
     [JsonIgnore] public string Address => new Uri(Pairing.Origin).Host;
+    /// <summary>A host a friend shares with this PC: its engines only (see <see cref="Access"/>).</summary>
+    [JsonIgnore] public bool Shared => Access == HostSignInAccess.Friend;
 
     internal HostSetupTarget Target(string version) => new(Method, SshTarget ?? "", Address, HostId, version);
 
@@ -203,9 +212,16 @@ internal static class HostRegistry
         {
             throw new InvalidDataException($"Saved hosts couldn't be read ({error.Message}). Pair again.", error);
         }
+        // A host a friend shares never holds this PC's voices (speak there with the recording itself from the first sentence),
+        // and its owner's home address never changes how this PC reaches its own host at the same address (or the other way).
+        foreach (var host in hosts.Where(h => h.Shared))
+        {
+            Audio2FaceHostConnection.SendRecordingTo(host.HostId);
+            HostRoutes.KeepApart(host.Pairing.Origin, host.Pairing.SpkiFingerprint);
+        }
         // Saved outside addresses reach the host until the roster (which wins once this PC syncs it) says otherwise.
         foreach (var host in hosts.Where(h => h.OutsideAddresses is { Count: > 0 }))
-            HostRoutes.Prime(host.Pairing.Origin, host.HostId, host.OutsideAddresses!);
+            HostRoutes.Prime(host.Pairing.Origin, host.HostId, host.OutsideAddresses!, host.Pairing.SpkiFingerprint);
         for (var i = 0; i < hosts.Count; i++)
             if (hosts[i].Method == HostSetupMethod.OnHost ||
                 thisPcAddress is not null && hosts[i].Method == HostSetupMethod.ThisPcDocker && !IsThisPc(hosts[i].Address, thisPcAddress))
@@ -238,11 +254,12 @@ internal static class HostRegistry
     }
 
     /// <summary>The hosts with their outside addresses taken from <paramref name="roster"/> where it lists that host (with the
-    /// same home origin); unchanged hosts are returned as they are, so the caller saves only when something changed.</summary>
+    /// same home origin); unchanged hosts are returned as they are, so the caller saves only when something changed. A host a
+    /// friend shares is never in this PC's roster, so its invite's addresses stay.</summary>
     internal static IReadOnlyList<PairedHost> WithRosterAddresses(IReadOnlyList<PairedHost> hosts, Martlet.Core.Network.NetworkRoster? roster)
     {
         if (roster is null) return hosts;
-        return hosts.Select(h => roster.Host(h.HostId) is { Removed: false } entry && entry.Origin == h.Pairing.Origin &&
+        return hosts.Select(h => !h.Shared && roster.Host(h.HostId) is { Removed: false } entry && entry.Origin == h.Pairing.Origin &&
                 !(entry.Addresses ?? []).SequenceEqual(h.OutsideAddresses ?? [])
             ? h with { OutsideAddresses = entry.Addresses is { Count: > 0 } a ? a.ToArray() : null }
             : h).ToList();
@@ -302,34 +319,57 @@ internal sealed class HostPairings(string dataDirectory, AvatarProfileStore prof
 
     /// <summary>Saves a new pairing. Pairing hands the host no job: it stands by until you hand it one (handing it lip-sync
     /// checks it runs Audio2Face, or installs it in the same step). Re-pairing a host keeps its role. A pairing the owner made
-    /// here (<paramref name="adopt"/>) is shared with the Martlet network on its next sync, even after a removal.</summary>
+    /// here (<paramref name="adopt"/>) is shared with the Martlet network on its next sync, even after a removal. A host a friend
+    /// shares with this PC (<paramref name="access"/> "friend", from its sign-in) is kept apart: never adopted into this PC's
+    /// network, never in its shared plan.</summary>
     internal async Task<(PairedHost Host, bool LipSync)> AddAsync(AvatarRemoteHost pairing, HostSetupMethod method, string? sshTarget,
-        CancellationToken token, string? sshHostKey = null, bool adopt = true, IReadOnlyList<string>? outsideAddresses = null)
+        CancellationToken token, string? sshHostKey = null, bool adopt = true, IReadOnlyList<string>? outsideAddresses = null,
+        string? access = null, string? signedInAs = null)
     {
         var (profile, revision) = await LoadProfileAsync(token);
         var hosts = HostRegistry.Load(dataDirectory, profile?.RemoteHost, HostSetupCommands.ThisPcAddress());
         var previous = hosts.FirstOrDefault(h => h.HostId == pairing.HostId);
         if (method == HostSetupMethod.OnHost) method = HostSetupMethod.Agent;
-        var ssh = method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative;
+        var shared = access == HostSignInAccess.Friend;
+        // A friend's host and one of yours never replace each other under the same name. Only the same host (the same key)
+        // changes between the two, when its owner switches this PC's sign-in.
+        if (previous is not null && previous.Shared != shared && previous.Pairing.SpkiFingerprint != pairing.SpkiFingerprint)
+            throw new InvalidOperationException(shared
+                ? $"{pairing.HostId} is already one of your own hosts on this PC, so Martlet can't keep a friend's host with the same name here."
+                : $"{pairing.HostId} is a host a friend shares with this PC, so Martlet can't pair your own host with the same name here. " +
+                  "Forget the shared one under Devices › Hosts shared with this PC first.");
+        var ssh = !shared && method is HostSetupMethod.SshDocker or HostSetupMethod.SshNative;
         var host = new PairedHost
         {
-            Pairing = pairing, Method = method,
+            Pairing = pairing, Method = shared ? HostSetupMethod.Agent : method,
             SshTarget = ssh ? sshTarget : null,
-            SshHostKey = ssh ? sshHostKey ?? (previous?.SshTarget == sshTarget ? previous?.SshHostKey : null) : null
+            SshHostKey = ssh ? sshHostKey ?? (previous?.SshTarget == sshTarget ? previous?.SshHostKey : null) : null,
+            Access = shared ? HostSignInAccess.Friend : null, SignedInAs = shared ? signedInAs : null
         };
-        // Re-pairing with a code keeps how Martlet already reaches it (for example over SSH).
-        if (previous is not null && method == HostSetupMethod.Agent)
+        // Re-pairing with a code keeps how Martlet already reaches it (for example over SSH); a friend's host is reached only
+        // through its gateway.
+        if (previous is not null && method == HostSetupMethod.Agent && !shared && !previous.Shared)
             host = host with { Method = previous.Method, SshTarget = previous.SshTarget, SshHostKey = previous.SshHostKey };
-        if (previous is not null) host = host with { WakeMac = previous.WakeMac };
-        host = host with { OutsideAddresses = outsideAddresses is { Count: > 0 } ? outsideAddresses.ToArray() : previous?.OutsideAddresses };
-        if (host.OutsideAddresses is { Count: > 0 } outside) HostRoutes.Set(pairing.Origin, pairing.HostId, outside);
+        if (previous is not null && !shared) host = host with { WakeMac = previous.WakeMac };
+        host = host with
+        {
+            // The addresses of a friend's host never become your own host's (or the other way round) under the same name.
+            OutsideAddresses = outsideAddresses is { Count: > 0 } ? outsideAddresses.ToArray()
+                : previous is { } before && before.Shared == shared ? before.OutsideAddresses : null
+        };
+        if (shared)
+        {
+            Audio2FaceHostConnection.SendRecordingTo(pairing.HostId);
+            HostRoutes.KeepApart(pairing.Origin, pairing.SpkiFingerprint);
+        }
+        if (host.OutsideAddresses is { Count: > 0 } outside) HostRoutes.Set(pairing.Origin, pairing.HostId, outside, pairing.SpkiFingerprint);
         HostRegistry.Save(dataDirectory, HostRegistry.Upsert(hosts, host));
         var lipSync = profile?.RemoteHost?.HostId == pairing.HostId;
         if (lipSync) await profiles.SaveAsync(profile! with { RemoteHost = pairing }, revision, token);
         var store = new WindowsCredentialStore();
         foreach (var old in new[] { previous?.Pairing, lipSync ? profile!.RemoteHost : null })
             if (old is not null && old.CredentialId != pairing.CredentialId) store.DeleteAvatarHostSecret(old.HostId, old.CredentialId);
-        if (adopt) NetworkIdentity.Adopt(dataDirectory, pairing.HostId);
+        if (adopt && !shared) NetworkIdentity.Adopt(dataDirectory, pairing.HostId);
         return (host, lipSync);
     }
 
@@ -413,8 +453,10 @@ internal static class HostControl
             .Select(r => r.Kind == HostRoles.DeepThinking && new HostCheck(true, "", offers, Routes: routes).DeepThinkingSlots is > 1 and var slots
                 ? $"{r.Name} ({slots} thinks at once)" : r.Name)) + ".";
 
-    /// <summary>Reads which roles a paired host currently offers this PC, and saves the hardware it reports.</summary>
-    internal static async Task<HostCheck> CheckAsync(AvatarRemoteHost host, HostHardwareStore? hardware, CancellationToken token)
+    /// <summary>Reads which roles a paired host currently offers this PC, and saves the hardware it reports. A host a friend
+    /// shares with this PC (<paramref name="shared"/>) says only which engines it offers: its hardware is its owner's.</summary>
+    internal static async Task<HostCheck> CheckAsync(AvatarRemoteHost host, HostHardwareStore? hardware, CancellationToken token,
+        bool shared = false)
     {
         using var read = new WindowsCredentialStore().ReadAvatarHostSecret(host.HostId, host.CredentialId);
         if (read.Error != CredentialError.None || read.Secret is null)
@@ -429,6 +471,7 @@ internal static class HostControl
                 if (HostRoles.ForRoute(route.RouteId) is { } role) offers[role.Kind] = route.ModelId;
             var text = Describe(offers, routes);
             string? version = null;
+            if (shared) return new(true, text, offers, null, routes);
             try
             {
                 var (hardwareText, reported) = await HostsWindow.ReadHardwareAsync(connection, hardware, token);
@@ -444,7 +487,7 @@ internal static class HostControl
         catch (Exception error) when (error is Audio2FaceHostException or IOException or UnauthorizedAccessException or ContractException or
             InvalidOperationException or ArgumentException or JsonException or TimeoutException or HttpRequestException)
         {
-            return new(false, error.Message);
+            return new(false, error.Message) { Code = (error as Audio2FaceHostException)?.Code };
         }
         finally { connection?.Dispose(); }
     }

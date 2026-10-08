@@ -43,7 +43,11 @@ another host** choice.
 
 - **Nodes** are your paired Martlet hosts (each runs the gateway) and the
   companion desktops that use them. Desktops are the only consumers of the
-  jobs; hosts run the roles (Ollama, whisper, F5, Audio2Face).
+  jobs; hosts run the roles (Ollama, whisper, F5, Audio2Face). A host a friend
+  shares with one of your computers is never a node: that computer uses it for
+  a job on its own, the plan never records or moves that choice, and your other
+  computers keep the plan's
+  ([sharing a host with friends](NETWORK.md#on-your-friends-martlet)).
 - The shared configuration is the **cluster plan** (`Martlet.Core.Cluster`):
   - one entry per **job** (`thinking`, `listening`, `speaking`, `lip-sync`):
     the host in charge, or no host (the job's

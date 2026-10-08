@@ -114,12 +114,15 @@ public sealed class WorkSharingTests
     private sealed class Gone : Exception;
     // The computer keeps its graphics card for a live turn (a host's job.busy with detail live, or job.preempted).
     private sealed class Held : Exception;
+    // A host a friend shares with this PC keeps its card for its owner's own work (job.busy with detail owner).
+    private sealed class OwnersTurn : Exception;
 
     private static WorkRefusal Classify(Exception error) => error switch
     {
         Busy => WorkRefusal.Busy,
         Gone => WorkRefusal.Unavailable,
         Held => WorkRefusal.Preempted,
+        OwnersTurn => WorkRefusal.Owner,
         _ => WorkRefusal.None
     };
 
@@ -353,5 +356,48 @@ public sealed class WorkSharingTests
         Assert.False(live.IsCompleted);
         host.RefuseLive = false;
         Assert.Equal("reply by diva", await live);
+    }
+
+    [Fact]
+    public async Task A_shared_host_whose_owner_needs_it_is_passed_over_at_once_and_background_work_goes_on_later()
+    {
+        var queue = new WorkQueue { Retry = TimeSpan.FromMilliseconds(10) };
+        var calls = 0;
+        IAsyncEnumerable<string> Run(string id, string request, CancellationToken token)
+        {
+            if (id == "friends-host")
+            {
+                Interlocked.Increment(ref calls);
+                return Refused();
+            }
+            return new Computer(id, TimeSpan.Zero).Run(request, token);
+        }
+        static async IAsyncEnumerable<string> Refused()
+        {
+            await Task.Yield();
+            throw new OwnersTurn();
+#pragma warning disable CS0162
+            yield break;
+#pragma warning restore CS0162
+        }
+        async Task<string> Ask(string request, WorkPriority priority, params string[] order)
+        {
+            await foreach (var answer in queue.StreamAsync("speaking", order, h => h, (h, t) => Run(h, request, t), Classify,
+                DateTimeOffset.UtcNow.AddSeconds(10), null, CancellationToken.None, priority))
+                return answer;
+            throw new InvalidOperationException();
+        }
+
+        // A live request takes the next computer at once, without waiting for the shared host.
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Equal("a by m1-host", await Ask("a", WorkPriority.Live, "friends-host", "m1-host"));
+        Assert.Equal(1, calls);
+        // With no other computer it gives up at once with the owner's refusal; it never waits in line for it.
+        await Assert.ThrowsAsync<OwnersTurn>(() => Ask("b", WorkPriority.Live, "friends-host"));
+        Assert.Equal(2, calls);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5));
+        Assert.Equal(0, queue.Waiting);
+        // Background work there goes on later, as when a live turn holds a card.
+        await Assert.ThrowsAsync<WorkPreemptedException>(() => Ask("c", WorkPriority.Background, "friends-host"));
     }
 }
