@@ -9,7 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
-- **Detect zones** now also gives your character a touch zone for each thing special to it that your Thinking model sees, such as cat ears, a tail, wings, a halo, a hat, a hair bow or what it holds, named the way the model sees it (*Hair bow*). They react like the other extras, and **Detect again** keeps their names. A tail, wings or animal ears that a Live2D character's own files name get a zone too, even in the first guess. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+- **Detect zones** now also gives your character a touch zone for each thing special to it that your Thinking model sees, such as cat ears, a tail, wings, a halo, a hat, a hair bow or what it holds, named the way the model sees it (*Hair bow*). They react like the other extras, and **Detect again** keeps their names. A tail, wings or animal ears that a Live2D character's own files name get a zone too, even in the first guess. ([#627](https://github.com/throndir2/Martlet/pull/627))
 
 ### Fixed
 - Touch zones stay on the right part of your character while it moves: a tap on its cheek, eye or mouth lands on that zone even while its head follows your mouse, nods or tilts. The whites of the eyes, the lashes and a wide blush now count as their eye or cheek instead of the hair, and a blush near an ear no longer counts as the ear. ([#624](https://github.com/throndir2/Martlet/pull/624))
