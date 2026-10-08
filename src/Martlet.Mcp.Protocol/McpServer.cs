@@ -1477,6 +1477,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "first, four segments at once spread over both, a computer kept for one companion PC or unticked for a job left out, " +
             "an unanswering computer skipped, Deep thinking leaving out a kept computer, and the shared setting's round trip. " +
             "In-process; reads nothing.", new { }),
+        Tool("network_recommendation_check", "Rehearse Home's Recommended setup for all your computers with the production network " +
+            "recommender (NetworkRecommender) on built-in fixture networks, NOT real computers: two companion PCs and two hosts with " +
+            "nothing set up, a host with two NVIDIA cards, a Windows host whose voice shares its card, a crowded network, Deep " +
+            "thinking beside the voice, heavy roles on a companion PC, Thinking with only a processor host, hosted Thinking the owner " +
+            "chose, a host left out of the Thinking pool, the voice host away 4 and 25 minutes, and the applied recommendation. Each " +
+            "step names its rule (1-12), passed and the change list, target roles, jobs, pools and notes. In-process; reads nothing.", new { }),
         Tool("research_check", "Rehearse web research (the research tool: Companion > Deep thinking > Web research, off by default) " +
             "end to end with Martlet's own tool texts and job kind (WebResearch: one at a time, 4 an hour, 12 minutes, offered when " +
             "done), background-job scheduler, web client (WebAccess: DuckDuckGo results parser with ads left out and redirect links " +
@@ -1772,6 +1778,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),
                 "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),
                 "work_sharing_check" => await WorkSharingCheck.RunAsync(cancellation),
+                "network_recommendation_check" => NetworkRecommendationCheck.Run(),
                 "discord_reply_status" => DiscordReplyCheck.Status(DataDirectory(arguments)),
                 "discord_reply_check" => await DiscordReplyCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),
