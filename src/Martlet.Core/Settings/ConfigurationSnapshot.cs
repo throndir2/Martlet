@@ -214,6 +214,7 @@ public sealed class ConfigurationRestorePlan
             SetupRouteType.GatewayOllama => "paired-host model",
             SetupRouteType.GatewayF5 => "paired-host voice",
             SetupRouteType.GatewayStt => "paired-host speech recognition",
+            SetupRouteType.ElevenLabs => "ElevenLabs voice",
             _ => "selected route"
         };
     private static string Describe(AudioChoice? choice) => choice is null ? "not selected" :

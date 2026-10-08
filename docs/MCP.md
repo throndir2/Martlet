@@ -1297,7 +1297,15 @@ would show now (`["glasses", "blush:12"]`, minutes after the colon),
 showing {blush} (12 min), ...*); it never goes in the instructions. With `voiceTag`, a voice's tag such as `[laugh]` or
 `(sighs)` or a reply tag such as `{nod}` or `{/blush}`, `setsOff` lists what it sets off
 (`kind`, `name` and `holds`, whether it lingers, such as the `laugh` voice emote; one expression and one
-motion picked at random when several share a cue) and `turnsOff` the lingering emote an off tag turns off. With `answer`, a simulated Thinking reply such as
+motion picked at random when several share a cue; for a combo's tag such as `{flustered}`, each of its parts that is on)
+and `turnsOff` lists what an off tag turns off (the lingering emote, or a combo's lingering parts); `combo` is the combo
+the tag names, or null. `combos` lists the owner's [combos](AVATARS.md#emotes-and-motions) for the model: each one's `n`
+as in `CharacterComboTag-<n>`, `tag`, `parts` (each part's `id`, `kind`, `name`, `tag`, `enabled` and `mode`; `kind`
+is `missing` for a part the model doesn't have), `use`, `hint` (what replies get next to the tag), `enabled`, `lingers`
+(a part that is on lingers, so `{/tag}` is offered too) and `offered`. With `combos`, strings such as
+`flustered: blush hearts nod | when flattered` read the way the Combos section's boxes are read, those combos replace
+the saved ones; when they can't be saved, `combosProblem` says why (such as *no emote has the tag 'wave'.*) and the
+saved ones stay. With `answer`, a simulated Thinking reply such as
 `1: blush | - | stays | when shy` (the mode may be left out), `parsed` shows what the production parser makes of
 it (`read`, `problem`, `actions`, `prompt`). Model-authored names only, never
 the model's path; it reads and contacts nothing else.
@@ -2720,6 +2728,69 @@ reads like *Voice: in General (My server) · 2 speakers heard, 3 utterances
 transcribed, 2 replies spoken · DAVE on · libdave loaded (DAVE v1) · Last
 problem: ...* (counts only, never what was said). The live bot logs *Discord
 voice: joined a channel (2 people there).*
+
+### ElevenLabs voice
+
+`elevenlabs_check` rehearses [ElevenLabs as the Voice](ELEVENLABS_VOICE.md)
+(the owner's cloned voice with tones) end to end against `ElevenLabsFixture`, a
+local stand-in on 127.0.0.1 that follows ElevenLabs' documented protocol.
+FIXTURE, NOT ElevenLabs, NOT AI: its voice is a quiet tone, and its first audio
+waits 100 ms to stand in for model latency (not a measurement). It runs three
+steps:
+
+1. **Cloning.** Instant Voice Cloning with a synthetic WAV. `clone.sent` shows
+   the form Martlet sent (`name`, `fileName` `voice.wav`, `contentType`
+   `audio/wav`, `wave`, `removeBackgroundNoise` `false`, `description`) and
+   whether the key matched.
+2. **One piece** straight through `ElevenLabsDialogueClient`. `segment` gives
+   its `audioBytes`, any `failure` and `detail`, and the fixture timings
+   `connectMs`, `firstAudioMs` and `totalMs`.
+3. **A whole spoken reply** through the production conversation runtime. A
+   fixture Chat Completions endpoint streams `reply` a word at a time (by
+   default one with `[laughs]`, `[whispers]` and `[happy]`), and a fixture
+   speaker plays nothing.
+
+`ok` needs all of these:
+
+- `thinkingPrompt.listsElevenLabsTags`: the Thinking prompt lists ElevenLabs'
+  own tags (`tags` gives each tag, its kind and its cue).
+- `tags.reachedElevenLabs`: every tag the reply wrote reaches ElevenLabs as
+  written.
+- `tags.chatClean` and `tags.captionsClean`: the chat text and every caption
+  show no tag.
+- `protocol.ok`: each connection carries `model_id`, `output_format=pcm_24000`,
+  the key in the `xi-api-key` header (`keyInHeader`, never `keyInBody`), the
+  one cloned voice and `close_socket`.
+
+`scenario` is `reply` (default), `model-refused` or `bad-key`. With
+`model-refused`, the WebSocket refuses the model with `param: model_id`, as its
+API reference describes. The voice then fails as `ModelUnsupported`, and
+`segment.detail` says to choose Eleven v3 Conversational. The text still
+completes. With `bad-key`, cloning and speech fail as `Authentication`. `model`
+is `eleven_v4_turbo` (default) or `eleven_v3_conversational`. With
+`dataDirectory`, `saved` reports the saved ElevenLabs choice: `voiceRoute`,
+`usesElevenLabs`, `model`, `enabled`, `confirmed`, `keySaved`, `clonedVoice`,
+`requiresVerification` and `keysFromBefore`. It never gives the key, the voice
+ID or the voice's name. Nothing is sent to ElevenLabs: `live` is always NOT
+RUN, because there is no ElevenLabs account or key.
+
+```powershell
+.\scripts\Invoke-MartletMcp.ps1 -Build -Calls '[
+  {"name":"elevenlabs_check"},
+  {"name":"elevenlabs_check","arguments":{"scenario":"model-refused"}},
+  {"name":"elevenlabs_check","arguments":{"scenario":"bad-key"}}]'
+```
+
+On Companion › Voice › *A cloud provider*, the ElevenLabs card's status is
+readable: `ElevenLabsStatus` (*Not in use...* or *In use: Eleven v4 Turbo with
+your cloned voice. Key saved.*, and whether ElevenLabs asked to verify the
+voice; never the voice's name), `ElevenLabsKeyStatus` (what the key field will
+do; never the key) and `ElevenLabsModel` (the chosen model). The card's
+abilities and where it runs read through `VoiceEngineAbilities-elevenlabs` and
+`VoiceEngineRunsOn-elevenlabs`. `ElevenLabsVoice` holds the owner's voice names,
+so it is not readable. `ElevenLabsKey` and `ElevenLabsConsent` are inputs.
+`ElevenLabsSave` uploads a recording and saves the route, so it needs
+`--allow-ui-effects`. Never press it in a check: it would contact ElevenLabs.
 
 ### Latency
 
@@ -4633,10 +4704,35 @@ are on.*); `CharacterActionsLast` then reads *Turned on the expression ...* or
 *Turned off ...*, and `logs_tail` `desktop` *Character expression 'Glasses' held
 for a try.* `CharacterActionsClear` (*Clear emotes*) and the character overlay
 menu's `CharacterClearEmotes` turn every lingering emote off (*Cleared 2
-lingering emotes for Clear emotes ...*). Editing a row
-saves `character-actions.json`, `CharacterActionsDetect` (*Name them with
+lingering emotes for Clear emotes ...*).
+
+The card ends with **Combos**. `CharacterCombosStatus` reads how many combos
+the model has and which tags replies get (*1 combo. Replies can use 1:
+{flustered}.* or *No combos yet.*). `CharacterCombosAdd` (*Add a combo*,
+passive) adds an empty row; nothing is saved until the row has a tag and parts.
+Row `<n>` (as in `character_actions`' `combos`) has `CharacterComboOn-<n>`
+(check box), `CharacterComboName-<n>` (*{flustered} · combo*, or *New combo*;
+a status field), `CharacterComboState-<n>` (a status field: what it sets off,
+such as *Turns on "hearts" until {/flustered}; plays "blush" and "nod" once.*,
+or why its parts can't be read, such as *No emote has the tag 'wave'.*),
+`CharacterComboTag-<n>`, `CharacterComboParts-<n>` (the parts' tags, such as
+`blush hearts nod`), `CharacterComboUse-<n>` (the When to use box),
+`CharacterComboHint-<n>` (the grey hint in that box while it is empty, such as
+*a combination of {blush}, {hearts} and {nod}*), `CharacterComboTry-<n>` (its
+label, a status field, reads *Turn off* while one of its lingering parts is
+on) and `CharacterComboRemove-<n>`. A part's tag that names no emote reads
+*Not saved: no emote has the tag 'wave'.* in `CharacterActionsSaveState`. After
+Try, `CharacterActionsLast` reads *Combo {flustered} for a try at 6:22:47 PM:
+turned on "hearts"; played "blush" and "nod".* (*Combo {/flustered} for a try
+...: turned off "hearts".* after Turn off, and *for a reply* when a reply's tag
+set it off), and `logs_tail` `desktop` has a line for each part and *Character
+combo {flustered} for a try: 1 turned on, 0 kept on, 2 played, 0 failed.* Typing
+in a combo's boxes, its check box and Remove save, and Try and Turn off change
+the overlay, so they need `--allow-ui-effects`.
+
+Editing an emote's row saves `character-actions.json`, `CharacterActionsDetect` (*Name them with
 Thinking*) sends the model's emote and motion names and details to the Thinking
-model, `CharacterActionsReset` goes back to the model's own names, and Try,
+model, `CharacterActionsReset` goes back to the model's own names (the combos stay), and Try,
 Turn off and Clear emotes change the overlay, so all of them need `--allow-ui-effects`. The first time a model
 shows with a Thinking model set up, Martlet names its emotes once on its own.
 `character_actions` reads the same settings headlessly.

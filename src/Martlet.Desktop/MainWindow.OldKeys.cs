@@ -22,6 +22,7 @@ public partial class MainWindow
     internal static string OldKeyName(PendingCredentialRemoval removal) => removal.Scope switch
     {
         null or { RouteType: SetupRouteType.OpenAi } => "your OpenAI key",
+        { RouteType: SetupRouteType.ElevenLabs } => "your ElevenLabs key",
         { RouteType: SetupRouteType.ChatCompletions } scope => ChatCompletionsEndpointCatalog.Named(scope.Origin) is { } named
             ? $"your {named.Name} key"
             : $"your key for {(Uri.TryCreate(scope.Origin, UriKind.Absolute, out var uri) ? uri.Authority : scope.Origin)}",

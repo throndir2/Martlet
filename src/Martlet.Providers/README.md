@@ -605,6 +605,27 @@ primitives with separate speech authorization and evidence. V04 owns
 current-epoch filtering, session budgets, bounded validated text delivery,
 TTS staging and Stop. Neither is wired into the application here.
 
+## ElevenLabs: cloned voice with tones
+
+`ElevenLabsVoiceCloner` (Instant Voice Cloning, `POST /v1/voices/add`) and
+`ElevenLabsDialogueClient` (the Text to Dialogue WebSocket,
+`/v1/text-to-dialogue/stream-input` with `output_format=pcm_24000`) follow
+ElevenLabs' documentation, read 2026-10-07. `ElevenLabsSpeechSynthesisStream`
+is a `PcmChunkSpeechSynthesisStream`, so it checks the same one-use speech
+authorization as the other voices, bound to `https://api.elevenlabs.io`, the TTS
+role and the model. One connection carries one segment: the key goes in the
+`xi-api-key` header, then `{"voices":[id]}`, the segment as one `inputs` entry
+and `close_socket`. The base64 `audio` messages are raw PCM16, and a lone byte
+at a chunk's end is carried to the next chunk. ElevenLabs' error messages
+(`message`, `error`, `code`, `param`) map to `ProviderFailureCode`s
+(`ElevenLabsDialogueClient.Classify`), and their text goes only to
+`ProviderDiagnostics`. Both clients accept only ElevenLabs' origin or a numeric
+loopback origin for `ElevenLabsFixture`, a local stand-in that follows the
+documented protocol (FIXTURE, NOT ElevenLabs). The owner's flow, the tags and
+the verification are in [ElevenLabs voice](../../docs/ELEVENLABS_VOICE.md).
+
+**NOT RUN:** any request to the live ElevenLabs service (no account or key).
+
 ## V03c: bounded raw-PCM speech transport
 
 `OpenAiSpeechSynthesisAdapter` implements exactly one text segment per
