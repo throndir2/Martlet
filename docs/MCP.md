@@ -202,22 +202,32 @@ background work ([The Thinking pool](CONVERSATION.md#the-thinking-pool)).
 `thinking_pool_status` (`dataDirectory`) reads `thinking-pool.json` (or what
 Martlet would make from the older `deep-thinking.json`, without writing it):
 each member with its slots, whether it sees pictures or hears recordings and
-whether it can run; *Use the conversation model when the pool is empty*; the
+whether it can run; the computers the owner keeps out (`leftByOwner`, host IDs
+only: they never join by themselves); *Use the conversation model when the pool is empty*; the
 usable slots and whether one stays free for fast jobs; each job kind's
 priority, whether it is fast and whether a member can run it (`canRun`);
 guidance and likely-slowdown warnings; and the desktop's
-`thinking-pool-status.json` (running and waiting jobs by kind, the live floor's
+`thinking-pool-status.json` (`leftByOwner`, running and waiting jobs by kind, the live floor's
 level, the jobs waiting for the conversation and the ones it stopped this turn
 and in all, never a job's text). `thinking_pool_check` rehearses the production job board with simulated
 members (NOT models): no member, capabilities, the fast slot, priorities, retry
-on another member, a stale job dropped and the migration. On the desktop the
+on another member, a stale job dropped and the migration. Its `auto-join` steps
+run the production rule (`ThinkingPoolAutoJoin`) on sample hosts: a host with
+the Thinking pool role joins with its slots, an Ollama-only host joins unless it
+does this PC's Thinking, a member on Ollama moves to the role, and a computer
+kept out, one Sharing work never uses, a full pool and a host PC are skipped. On the desktop the
 card reads through `ThinkingPoolSummary`, `ThinkingPoolGuidance`,
 `ThinkingPoolWarnings`, `ThinkingPoolLiveFloor` (which members start no new
 pool work while you talk with Martlet because they share the conversation's
-computer) and `ThinkingPoolMember-<n>`; the
+computer) and `ThinkingPoolMember-<n>` (it says *Offline now* for a member whose
+computer doesn't answer); *One of your computers* reads through
+`DeepThinkingAutoJoin` (computers with a Thinking model join by themselves, and
+which ones are kept out) and `DeepThinkingHost-<host>` (*In the pool, offline
+now*, *Kept out of the pool*, or what joins at its next check). The
 `ThinkingPoolUseConversationModel` box, `ThinkingPoolSlots-<n>`,
-`ThinkingPoolRemove-<n>` and `DeepThinkingPool-<host>` (*Join the Thinking
-pool*) save `thinking-pool.json`, so they need `--allow-ui-effects`.
+`ThinkingPoolRemove-<n>` and `DeepThinkingPool-<host>` (*In the Thinking
+pool*: unticking keeps the computer out, ticking adds it again) save
+`thinking-pool.json`, so they need `--allow-ui-effects`.
 
 ```powershell
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"thinking_pool_check"},{"name":"thinking_pool_status"}]'
@@ -1289,7 +1299,11 @@ bound to `probe`, a simulated renderer zones probe of Live2D `drawables` and
 VRM `bones` in page fractions, with `crop`, `"left,top,width,height"` where
 the snapshot sat on the page), `saved` (the model's zones in
 `character-touch-zones.json`: how many, how many are `active`, who found them,
-whether they were found with the character framed `whole`, whether a snapshot
+whether they were found with the character framed `whole`, the `crop` (where
+the picture sat on the page with the character framed whole, as `left`, `top`,
+`width` and `height` fractions; a `top` plus `height` above 1 means the picture
+zoomed out to show parts the model draws past its own canvas, such as legs),
+whether a snapshot
 is kept, what the last detection `sent` (its plain `line`, `requests`,
 `pictures` and `steps`), and each zone's parts, `plays`, whether Martlet `notices` it and the owner's `hint`) and,
 with `touch` (a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
@@ -1329,7 +1343,12 @@ and zone and the escalation). Never the model's path; it contacts nothing.
 
 The section's status fields are `TouchZonesStatus` (how many zones, how many in
 use and who found them, or that none are found yet), `TouchZonesVision`
-(whether the Thinking model can see and where pictures go), `TouchZonesDetection`
+(which model sees the pictures: a Thinking pool member that can see, else
+whether the Thinking model can see and where pictures go; read from the saved
+setup, so it is right before the talk window opens), `TouchZonesDetectNote`
+(shown only when `TouchZonesDetect` is off because no model can see pictures:
+*Detect zones is off: no model that can see pictures is set up...* or *...the
+Thinking model is text-only...*), `TouchZonesDetection`
 (how *Detect zones* went, and each step while it runs: *Step 2: finding the
 zones of the character's head in a close-up...*, *Checking the zones of ...,
 round 1 of 2...*), `TouchZonesSent` (what the last detection sent: how many
@@ -1346,7 +1365,17 @@ crossed, pace, passes, seconds and samples on the character; or the last move,
 zoom, pan, lock, hide or show as Martlet's touch ledger heard it),
 `TouchZonesSaveState` and each zone's `TouchZoneState-<n>` (its ID, the parts
 it follows and its default reaction). `TouchZonesDetect` sends the character's
-pictures to Thinking, `TouchZonesStop` (shown while it runs; a passive click)
+pictures to Thinking; it is disabled only while a detection runs, while the
+character is still being read, or when no model can see pictures (never because
+the character is hidden). The picture comes from a second renderer that loads
+the character off screen (its window *Martlet character picture* sits outside
+every screen and is fully transparent), never animates, draws one frame in the
+rest pose and closes; the character on the desktop (`SetupCharacterNow`,
+`SetupCharacterView`) doesn't change. The desktop log records *Character model
+loaded off screen for its touch zones picture* and *Finding touch zones: a ...
+picture of the character in its rest pose, drawn off screen*, with *zoomed out
+to 0.94x to show the parts drawn past the model's own canvas* when the model
+draws past its own canvas. `TouchZonesStop` (shown while it runs; a passive click)
 stops it and keeps the zones found until then, `TouchZonesSentView` (*Show the
 picture Thinking saw*, a check box) shows the whole character as Thinking saw
 it under the boxes, `TouchZonesSentOpen` opens the folder of pictures in
@@ -1364,29 +1393,41 @@ the same centre line. Setting
 `MARTLET_TOUCH_ZONES_FIXTURE` to a text file before launching the desktop makes
 a FIXTURE - NOT AI stand-in answer every request of *Detect zones* from that
 file's zones (JSON about the whole snapshot, as `answer` above; shown in
-`TouchZonesDetection` and `TouchZonesSent`) after taking the real snapshot,
+`TouchZonesVision`, `TouchZonesDetection` and `TouchZonesSent`) after taking the real snapshot,
 composing and keeping every picture and probing the showing model's drawables
-or bones, so the whole detection runs with no vision request.
+or bones, so the whole detection runs with no vision request (and *Detect
+zones* is on without a model that can see).
 
 Touch temperament (below Touch zones) reads through `TouchTemperamentStatus`
 (for which persona and who decided it: built-in reactions, the Thinking model,
-`FIXTURE - NOT AI` or your own choices), `TouchTemperamentSummary` (the
-attitude per group and zone, such as *head loves, torso neutral (no
+`FIXTURE - NOT AI` or your own choices; its `help` is the whole temperament in
+words: the attitude per group and zone, such as *head loves, torso neutral (no
 reaction), ...*, the eyes (*eyes: look straight ahead*), the parts whose touch
 turns them to your mouse and after how many touches it escalates),
 `TouchTemperamentDecision` (how deciding went, or that a personality change
-left your own choices in place), `TouchTemperamentSaveState`,
+left your own choices in place; shown until you change something yourself),
+`TouchTemperamentSaveState` (both only while they have something to say),
 `TouchTemperamentGaze` (*Eyes usually*: a gaze's label or *(not decided:
-follow your mouse)*), each line's `TouchTemperamentAttitude-<group or zone
-ID>` (an attitude word or *(built-in reaction)*) and `TouchTemperamentLook-<group
-or zone ID>` (the seconds the eyes look at your mouse after a touch there).
+follow your mouse)*), `TouchTemperamentAfter` (touches in a row before it
+escalates) and each table line's `TouchTemperamentAttitude-<group or zone
+ID>` (an attitude word or *(built-in)*), `TouchTemperamentReaction-` (*(default)*,
+the feeling's usual reactions, *(nothing)* or a reaction such as *look away*),
+`TouchTemperamentReaction2-` (*(nothing)* or a reaction),
+`TouchTemperamentLinger-` and `TouchTemperamentLook-<group or zone ID>` (the
+seconds the first reaction stays on and the eyes look at your mouse after a
+touch there). A line shows only the controls that apply: a group at
+*(built-in)* shows only its attitude, `TouchTemperamentReaction2-` shows after
+a chosen first reaction and `TouchTemperamentLinger-` not after *(nothing)*,
+so the others are not in `ui_snapshot` until then.
 `TouchZonesLast` and `TouchZoneState-<n>` also name the attitude, whether the
 reaction came from the temperament and how long it looks at your mouse.
-`TouchTemperamentDecide` sends the personality to Thinking,
+`TouchTemperamentDecide` (*Decide from personality* before anything is
+decided, then *Re-decide from personality*) sends the personality to Thinking,
 and `TouchTemperamentReset`, `TouchTemperamentGaze`, `TouchTemperamentAttitude-`,
-`TouchTemperamentReaction-` (its *(no reaction)* plays nothing), `TouchTemperamentReaction2-`,
+`TouchTemperamentReaction-`, `TouchTemperamentReaction2-`,
 `TouchTemperamentLinger-`, `TouchTemperamentLook-`, `TouchTemperamentAfter`, `TouchTemperamentAddKind`,
-`TouchTemperamentAdd` and `TouchTemperamentRemove-` save, so they all need
+`TouchTemperamentAdd` and `TouchTemperamentRemove-<zone ID>` (the small ✕ by a
+part's name) save, so they all need
 `--allow-ui-effects`. `character_touch_zones` shows the temperament's `gaze`,
 each entry's `look` and the matched touch's `reaction.look`. Setting `MARTLET_TOUCH_TEMPERAMENT_FIXTURE` to a text
 file before launching the desktop makes deciding read that file (read again
@@ -3100,10 +3141,10 @@ check. With `live: true` it also asks Ollama on this PC (the saved local Thinkin
 model, or `model`) two made-up turns with the saved persona: `live.turns`
 (`outcome`, `reply`, `ms`). Loopback only; reads no credentials.
 
-The Companion › Deep thinking page's `DeepThinkingPoolStatus` says how many
+The Companion › Thinking pool page's `DeepThinkingPoolStatus` says how many
 places think at once, and each paired computer's `DeepThinkingPool-<host>` box
-(*Think on diva too*, ticked or not) reads; ticking it saves
-`deep-thinking.json`, so it needs `--allow-ui-effects`.
+(*diva in the Thinking pool*, ticked or not) reads; changing it saves
+`thinking-pool.json`, so it needs `--allow-ui-effects`.
 
 `reminders_status` shows Martlet's [reminders](CONVERSATION.md#reminders)
 from a data directory's `shared-settings.json` (optional absolute
@@ -5096,7 +5137,10 @@ each paired computer's
 `DeepThinkingHost-<host ID>` (*diva: Its Deep thinking role runs qwen3-8b.*,
 *diva: Ollama runs gemma4:27b. Add the Deep thinking role ...*, *Thinks here
 (...)*, *Its Ollama (...) does Thinking for the conversation. Add the Deep
-thinking role there ...*) and, when Deep thinking there would share one
+thinking role there ...*; on Companion › Thinking pool also *In the pool,
+offline now: its 2 slots come back when it answers again.*, *... Kept out of
+the pool, because you unticked it. Tick In the Thinking pool to add it again.*
+and *... It joins the pool by itself at its next check.*) and, when Deep thinking there would share one
 graphics card with the computer's Thinking model,
 `DeepThinkingShare-<host ID>` (*diva: diva already runs a Thinking model
 (gemma4:e4b) on its only graphics card. ... We recommend one graphics card for

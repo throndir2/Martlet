@@ -23,6 +23,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
     private readonly GeneratedSpeechObserver observer = new();
     private IAvatarRenderer? renderer;
     private readonly Func<IAvatarRenderer> createRenderer;
+    // Renderers that draw the touch zones picture: never on screen, never animated.
+    private readonly Func<IAvatarRenderer> createStillRenderer;
     private readonly Func<AvatarRemoteHost, IAvatarHostLink?> openHost;
     private IAvatarHostLink? hostLink;
     private AvatarProfile? profile;
@@ -45,9 +47,11 @@ internal sealed partial class AvatarController : IAsyncDisposable
     internal event Action<string>? Requested;
 
     internal AvatarController(Func<IAvatarRenderer>? createRenderer = null, bool allowControlledClock = false,
-        Func<AvatarRemoteHost, IAvatarHostLink?>? openHost = null, TimeProvider? gazeClock = null)
+        Func<AvatarRemoteHost, IAvatarHostLink?>? openHost = null, TimeProvider? gazeClock = null,
+        Func<IAvatarRenderer>? createStillRenderer = null)
     {
         this.createRenderer = createRenderer ?? (() => new AvatarRendererProcess());
+        this.createStillRenderer = createStillRenderer ?? (() => new AvatarRendererProcess(still: true));
         this.allowControlledClock = allowControlledClock;
         this.openHost = openHost ?? GatewayAvatarHostLink.Open;
         Gaze = new(this, gazeClock);
