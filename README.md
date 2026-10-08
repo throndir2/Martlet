@@ -50,13 +50,13 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.55.0
+## 🆕 What's new in 0.56.0
 
-- 🧭 **Recommended setup for all your computers**: Home works out the best use of all your computers and sets them all up for you with **Reconfigure**. It also tells you what goes on when one of them is away.
-- 😍 **More faces for your character**: heart eyes, star eyes, dizzy swirls and five more emotes that fit each character's own eyes, three strengths of blush, and combos that show several at once.
-- 💬 **Fewer silent waits**: Martlet can say a quick "Hmm..." while a slow reply starts, ask a backup Thinking model, and hear you with Parakeet on this PC when the computer you listen with is away.
-- 🖱️ **Click-through character**: let your clicks pass through your character while you play, and its eyes still follow your mouse.
-- 🧍 **Natural VRM characters**: VRM characters stand relaxed, breathe and sway, and their touch zones react to the part you touch.
+- 🪟 **Knows the app you're using**: Martlet sees which app is in front and whether it's full screen, like a game or a video, and talks about what you do in it instead of your screen's menus and buttons.
+- 👆 **Answers your touches**: pokes, pats and strokes on any touch zone now get a few words out loud, and Martlet reacts when you drag your character somewhere new.
+- 😍 **Ready-made emote combos**: your character starts with combos such as lovestruck, flustered and starstruck that show several emotes at once.
+- 👄 **A mouth that follows the voice**: while Martlet speaks, its voice always moves your character's mouth, even during an emote, and Live2D face drawings stay in place when the head moves.
+- 🤫 **Natural Chatterbox whispers**: Chatterbox voices whisper only the way the voice model does, without Martlet's old whisper effect.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
