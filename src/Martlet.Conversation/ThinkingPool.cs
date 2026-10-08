@@ -5,8 +5,9 @@ using Martlet.Providers;
 namespace Martlet.Conversation;
 
 /// <summary>What a Thinking pool job is for. The kind sets its default <see cref="ThinkingPriority"/> and whether it is a fast
-/// kind (<see cref="ThinkingJobKinds.IsFast"/>) that may take the slot the pool keeps free.</summary>
-public enum ThinkingJobKind { BargeInJudge, EndOfTurnJudge, Digest, ThinkLonger, TouchZones, Memory, Naming, Research }
+/// kind (<see cref="ThinkingJobKinds.IsFast"/>) that may take the slot the pool keeps free. <see cref="CheckIn"/> is one of
+/// Martlet's check-ins (<see cref="CheckIns"/>): a short question about what lingers, at the helpers' priority.</summary>
+public enum ThinkingJobKind { BargeInJudge, EndOfTurnJudge, Digest, ThinkLonger, TouchZones, Memory, Naming, Research, CheckIn }
 
 /// <summary>Which job a free slot takes first: the highest value first, then the oldest.</summary>
 public enum ThinkingPriority
@@ -36,7 +37,7 @@ public static class ThinkingJobKinds
         ThinkingJobKind.Digest => ThinkingPriority.Digest,
         ThinkingJobKind.ThinkLonger => ThinkingPriority.ThinkLonger,
         ThinkingJobKind.TouchZones => ThinkingPriority.TouchZones,
-        ThinkingJobKind.Memory or ThinkingJobKind.Naming => ThinkingPriority.Helper,
+        ThinkingJobKind.Memory or ThinkingJobKind.Naming or ThinkingJobKind.CheckIn => ThinkingPriority.Helper,
         _ => ThinkingPriority.Research
     };
 
@@ -54,6 +55,7 @@ public static class ThinkingJobKinds
         ThinkingJobKind.TouchZones => "touch-zones",
         ThinkingJobKind.Memory => "memory",
         ThinkingJobKind.Naming => "naming",
+        ThinkingJobKind.CheckIn => "check-in",
         _ => "research"
     };
 }

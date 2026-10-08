@@ -105,19 +105,23 @@ internal static partial class VoiceNaming
         return new(current, others, companion);
     }
 
+    /// <param name="companion">The name of the persona the companion is: its lines in the excerpt carry it
+    /// (<see cref="MemoryCapture.Speaker"/>).</param>
     internal static VoiceNamingPrompt Prompt(VoiceNamingContext naming, string? earlierUser, string? earlierReply, string user, string reply,
-        PromptSettings? prompts = null)
+        PromptSettings? prompts = null, string? companion = null)
     {
+        var speaker = MemoryCapture.Speaker(companion);
         var text = new StringBuilder();
         AppendVoices(text, naming);
+        MemoryCapture.AppendCompanion(text, companion);
         if (earlierUser is not null || earlierReply is not null)
         {
             text.Append("\nEarlier in the conversation (context only):\n");
             if (earlierUser is not null) text.Append("User: ").Append(MemoryCapture.Clip(earlierUser, 300)).Append('\n');
-            if (earlierReply is not null) text.Append("Martlet: ").Append(MemoryCapture.Clip(earlierReply, 300)).Append('\n');
+            if (earlierReply is not null) text.Append(speaker).Append(MemoryCapture.Clip(earlierReply, 300)).Append('\n');
         }
         text.Append("\nLatest exchange:\n").Append(UserLabel(naming.Heard))
-            .Append(MemoryCapture.Clip(user, 1400)).Append("\nMartlet: ").Append(MemoryCapture.Clip(reply, 800));
+            .Append(MemoryCapture.Clip(user, 1400)).Append('\n').Append(speaker).Append(MemoryCapture.Clip(reply, 800));
         var input = new BoundedTextInput(text.ToString(), PromptSettings.Fill(prompts, PromptCatalog.VoiceNaming, ("nothing", Nothing)));
         if (input.Utf8Bytes > LiveConversationConfiguration.DefaultTextLimits.MaxInputBytes ||
             input.InputTokenReservation > LiveConversationConfiguration.DefaultTextLimits.MaxInputTokens)

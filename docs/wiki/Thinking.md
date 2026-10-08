@@ -34,6 +34,10 @@ Your paired computers with a Thinking model join the pool by themselves when Mar
 
 **Thinking longer** lets Martlet start background reasoning on a pool member and bring the result back later.
 
+## Check-ins
+
+Small models forget what they left on. **Companion › Check-ins** has the Thinking pool check on Martlet every few minutes, with only the facts each check needs. It turns off emotes a reply left on that no longer fit, takes the character's eyes back to their usual gaze, and reminds Martlet in its next reply when it promised something it never started or when its replies drift out of character. Turn each check-in on or off, choose how often it runs, and add your own (such as "if I've been at it for hours, suggest a break"); each of your own either reminds Martlet in its next reply or has Martlet bring it up on its own. Check-ins run only on pool members, never on your conversation model, so replies never wait for them, and they wait while you talk or are away from the PC.
+
 ## Tools and vision
 
 Use a model that supports function calling for tools and image input for Vision. If a model rejects tools, Martlet retries without them and stops offering tools to that model for a while.

@@ -1,6 +1,10 @@
+using System.IO;
 using System.Text.Json;
 using Martlet.Avatar.Hosting;
 using Martlet.Conversation;
+using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
+using Martlet.Core.Speakers;
 
 namespace Martlet.Mcp;
 
@@ -9,7 +13,8 @@ namespace Martlet.Mcp;
 /// summarized (zones crossed, pace, passes, which way) against the model's saved touch zones (or the rough zones before any were
 /// found) and worded as its whole path (<see cref="CharacterPhysicalWords.Stroke(StrokeSummary, IReadOnlyList{CharacterTouchZone})"/>),
 /// and it and simulated changes (RendererPhysical: moved, home, zoomed, zoom_reset, panned) are recorded in a touch ledger, which
-/// gives the plain line the next reply would carry. Contacts nothing.</summary>
+/// gives the plain line the next reply would carry and the talk window's note for a reply to them alone, by the name of the
+/// persona the data directory's settings use. Contacts nothing.</summary>
 internal static class PhysicalCheck
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
@@ -17,6 +22,8 @@ internal static class PhysicalCheck
     internal static object Run(string dataDirectory, string? modelId, string? stroke, string? changes, bool noticeAll)
     {
         var settings = modelId is null ? null : CharacterTouchZones.Load(dataDirectory, modelId);
+        // The talk window calls the character by the name of the persona Martlet uses, as it does.
+        var character = CompanionNames.Character(Persona(dataDirectory));
         var ledger = new TouchLedger();
         var at = TimeSpan.FromSeconds(1);
         object? summary = null;
@@ -58,6 +65,25 @@ internal static class PhysicalCheck
             }
         }
         var burst = ledger.Peek(at);
-        return new { stroke = summary, changes = said, line = burst?.Line, history = burst?.HistoryLine, startsTurn = burst?.StartsTurn ?? false };
+        return new
+        {
+            stroke = summary, changes = said, line = burst?.Line, history = burst?.HistoryLine, startsTurn = burst?.StartsTurn ?? false,
+            character, note = burst is { StartsTurn: true } ? burst.Note(character) : null
+        };
+    }
+
+    /// <summary>The name of the persona the data directory's settings use, or null (none saved, or unreadable).</summary>
+    private static string? Persona(string dataDirectory)
+    {
+        var path = Path.Combine(dataDirectory, "settings.json");
+        try
+        {
+            return File.Exists(path) && SettingsJson.Read(File.ReadAllBytes(path)).Companion is { } companion
+                ? companion.Personas.FirstOrDefault(persona => persona.Id == companion.ActivePersonaId)?.Name : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or ContractException)
+        {
+            return null;
+        }
     }
 }

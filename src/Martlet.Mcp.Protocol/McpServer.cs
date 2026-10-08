@@ -655,7 +655,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "times). changes is a JSON array of RendererPhysical {\"kind\":\"moved|home|zoomed|zoom_reset|panned\",\"dx\",\"dy\"," +
             "\"screenWidth\",\"fromScreen\",\"toScreen\",\"zoomFrom\",\"zoomTo\",\"focus\"}. Returns each change's ledger kind and words, " +
             "the plain line the next reply would carry (\"They slowly stroked your hair 4 times, then moved you to their other " +
-            "monitor.\"), the history line and whether it would start a reply on its own (touches, strokes and moves do). noticeAll " +
+            "monitor.\"), the history line, whether it would start a reply on its own (touches, strokes and moves do), character " +
+            "(what the talk window and the Thinking model call the character: the name of the persona dataDirectory's settings " +
+            "use, else Martlet) and note (the talk window's note for a reply to them alone, \"You touched Ivy (touch: hair " +
+            "stroke x4, moved)\", or null when they wouldn't start one). noticeAll " +
             "(default true) treats every zone as having Martlet notices on; false uses the zones' own setting.", new
         {
             dataDirectory = new { type = "string" }, modelId = new { type = "string" }, stroke = new { type = "string" },
@@ -1455,6 +1458,24 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "canceling one, who says a due reminder (both offer, the PC used most recently takes it, the other stays quiet), the " +
             "conversation's wording through BackgroundJobs (on its own as soon as Martlet is free, or in the notes of the next " +
             "message), a PC alone taking it at once and one far too late let go. No model, network or credentials.", new { }),
+        Tool("check_ins_status", "Martlet's check-ins (Companion › Check-ins; docs/CONVERSATION.md#check-ins: short questions the " +
+            "Thinking pool answers every few minutes, such as whether lingering emotes still fit), from a data directory: " +
+            "check-ins.json (each check-in on or off, how often it runs, what it does with its answer, the owner's own with their " +
+            "task and facts), check-ins-status.json written by the desktop on a companion PC (the pool member that can take them, " +
+            "why each waits, the one running, runs and actions since Martlet started and each last run's time, member, duration and " +
+            "result in a few words; never what was said, answered or reminded) and the fixed rules (pace, minimum age, quiet and idle " +
+            "waits, the job kind's priority and live floor rule). Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("check_ins_check", "Rehearse check-ins end to end with the production code, FIXTURE facts and canned answers (NOT AI): " +
+            "the check-in job kind's rules, check-ins.json saved and read back (and a bad pace refused), when each built-in check-in " +
+            "waits or runs (too young, hidden character, interval, you talking, nobody at the PC, nothing new, Check now), the " +
+            "message each sends, their runs on a production Thinking pool job board with a fixture member, reading answers (OFF " +
+            "tags, KEEP, USUAL, REMIND:, SAY:, OK, a <think> block, chatter), and what Martlet does: a reply's lingering emote off " +
+            "on a production HeldEmotes (never the owner's try), a reminder on a production context board that goes with exactly " +
+            "one request, and something to bring up worded as the check-in's own beside a due reminder. No model, network or " +
+            "credentials.", new { }),
         Tool("setup_run_status", "Applying the recommended setup to all your computers and the Configuring state (docs/CLUSTER.md), " +
             "from a data directory: every computer's published run (shared-settings.json, setup-run.<device>: who started it and when, " +
             "whether it is active, its summary, each computer's state Pending/Configuring/Done/Failed/NeedsAttention with its step " +
@@ -1733,6 +1754,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "PastConversations and HistoryPlatforms) on synthetic conversations in a disposable folder: recording exchanges into month files, a line " +
             "cut short by a crash skipped after a restart, an ordinary message recalling nothing, \"Do you remember...\" and " +
             "\"What did we talk about yesterday?\" bringing back the right exchanges (never the conversation going on), " +
+            "the replies in them under the persona's name (fixture persona Ivy; Martlet without one), " +
             "search_conversations by words and by time and its answers, deleting one conversation and everything, exchanges from " +
             "Telegram and Discord keeping their app, chat and message IDs (Discord never recalled in the talk window), what " +
             "deleting and editing one message asks of each app (48 hours on Telegram, never your DM messages on Discord, edited " +
@@ -1974,6 +1996,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalBool(arguments, "live") ?? false, cancellation),
                 "reminders_status" => await RemindersCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "reminders_check" => await RemindersCheck.RunAsync(cancellation),
+                "check_ins_status" => await CheckInsCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "check_ins_check" => await CheckInsCheck.RunAsync(cancellation),
                 "setup_run_status" => await SetupRunCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "setup_run_check" => await SetupRunCheck.RunAsync(cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),

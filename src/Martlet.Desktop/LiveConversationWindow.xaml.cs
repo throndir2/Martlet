@@ -304,6 +304,8 @@ public partial class LiveConversationWindow : ThemedWindow
         else if ((await worker.Completion).Loaded is { } loaded)
         {
             controller.Configure(loaded);
+            ShowCharacter(loaded.Settings?.Companion is { } companion
+                ? companion.Personas.FirstOrDefault(persona => persona.Id == companion.ActivePersonaId)?.Name : null);
             ready = loaded.Error is null;
             notice = loaded.Error?.Summary ?? (controller.Configuration is null
                 ? "Set up Thinking in Companion, then come back to talk." : null);
@@ -440,6 +442,23 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     // ---------- the history ----------
+
+    /// <summary>What the conversation calls the character: the name of the persona Martlet uses (Companion › Personality), or
+    /// Martlet without one. The title, the header, the message box and the history (each reply's label and notes such as "You
+    /// touched Ivy") say it. Status lines MCP reads (LiveStatus, Home's listening line, the touch lines) keep saying Martlet,
+    /// so MCP never returns the character's name.</summary>
+    internal string CharacterName { get; private set; } = Martlet.Core.Speakers.CompanionNames.Default;
+
+    /// <summary>Calls the character by <paramref name="persona"/>'s name from now on (each time the settings load). Messages
+    /// already in the history keep the name they were shown with.</summary>
+    private void ShowCharacter(string? persona)
+    {
+        CharacterName = Martlet.Core.Speakers.CompanionNames.Character(persona);
+        CharacterNameText.Text = CharacterName;
+        Placeholder.Text = "Message " + CharacterName;
+        AutomationProperties.SetName(InputText, Placeholder.Text);
+        EmptyTitle.Text = "Say hi to " + CharacterName;
+    }
 
     private ChatMessage Add(ChatRole role, string text, string label)
     {
@@ -657,6 +676,18 @@ public partial class LiveConversationWindow : ThemedWindow
         if (!begun) StartInBackground();
         var job = controller.Remind(label, text);
         if (job is not null) ErrorLog.Info($"Reminders: {job.Id} is due; Martlet brings it up as soon as it's free.");
+        RenderActions();
+        return job;
+    }
+
+    /// <summary>What a check-in said to bring up, for this conversation: it starts (hidden) when it hasn't yet, and Martlet
+    /// brings it up on its own as soon as it is free, or with what you say next.</summary>
+    internal BackgroundJob? BringUp(string label, string text)
+    {
+        if (closed) return null;
+        if (!begun) StartInBackground();
+        var job = controller.BringUp(label, text);
+        if (job is not null) ErrorLog.Info($"Check-ins: {job.Id} waits; Martlet brings it up as soon as it's free.");
         RenderActions();
         return job;
     }
@@ -1618,7 +1649,7 @@ public partial class LiveConversationWindow : ThemedWindow
                 // How the reply was acted out: its tone, the voice's sounds and the character's emotes.
                 if (ReplyTag.Note(acted) is { } how) reply.AddNote(how);
                 var refusal = done.Turn?.Content.Refusal?.Trim();
-                if (!string.IsNullOrEmpty(refusal) && reply.Text != refusal) reply.AddNote("Martlet declined: " + refusal);
+                if (!string.IsNullOrEmpty(refusal) && reply.Text != refusal) reply.AddNote($"{CharacterName} declined: {refusal}");
                 else if (done.Turn?.Snapshot.State is not (ConversationState.Completed or ConversationState.Refused)) reply.AddNote("Cut short.");
                 else if (done.Turn?.Snapshot is { SpeechFailed: true } voiceless)
                     reply.AddNote(voiceless.MayHavePlayed ? "The voice stopped partway, so only the beginning was spoken."
@@ -1646,7 +1677,7 @@ public partial class LiveConversationWindow : ThemedWindow
             var rejected = done.ScreenSent && done.Turn?.Snapshot.ImageRejected == true;
             var seenIt = done.ScreenSent && !rejected && done.Turn?.Snapshot.State == ConversationState.Completed;
             if (rejected) asked?.AddNote("Thinking couldn't take the picture of your screen, so it got your words only.");
-            else if (seenIt && done.Seen is { } seen) asked?.AddNote($"Martlet saw {seen.Source.Label}.");
+            else if (seenIt && done.Seen is { } seen) asked?.AddNote($"{CharacterName} saw {seen.Source.Label}.");
             if (rejected && watching && controller.Configuration is { } selected && selected.Vision() != VisionSupport.Supported)
                 StopWatching($"The Thinking model rejected the picture. {selected.VisionAdvice()}");
         }
@@ -1660,7 +1691,7 @@ public partial class LiveConversationWindow : ThemedWindow
             }
         if (done.Spoken && !continued)
         {
-            if (done.Passed) answering?.LastOrDefault(entry => !entry.Pc)?.Bubble.AddNote("Martlet stayed quiet.");
+            if (done.Passed) answering?.LastOrDefault(entry => !entry.Pc)?.Bubble.AddNote($"{CharacterName} stayed quiet.");
             answering = null;
             restarts = 0;
         }
@@ -2061,7 +2092,7 @@ public partial class LiveConversationWindow : ThemedWindow
     private void RefreshContext_Click(object sender, RoutedEventArgs e)
     {
         if (!controller.ForgetContext()) return;
-        AddNote("Context refreshed. Martlet's next reply starts fresh.");
+        AddNote($"Context refreshed. {CharacterName}'s next reply starts fresh.");
         RenderActions();
         InputText.Focus();
     }
@@ -2091,7 +2122,7 @@ public partial class LiveConversationWindow : ThemedWindow
         var refusal = content?.Refusal?.Trim() ?? "";
         // A reply to what always listening heard may be [pass]: nothing is shown until it clearly isn't.
         if (operation.Spoken && LiveConversationController.MaybeSilent(text)) text = "";
-        if (reply is null && (text.Length > 0 || refusal.Length > 0)) reply = lastReply = Add(ChatRole.Martlet, "", "Martlet");
+        if (reply is null && (text.Length > 0 || refusal.Length > 0)) reply = lastReply = Add(ChatRole.Martlet, "", CharacterName);
         if (reply is not null) reply.Text = text.Length > 0 ? text : refusal;
         var snapshot = operation.Turn?.Snapshot;
         if (Support is { } support)
@@ -2223,7 +2254,7 @@ public partial class LiveConversationWindow : ThemedWindow
         StopButton.IsEnabled = owned is { OwnershipReleased: false } || commentary is { OwnershipReleased: false } ||
             pendingText is not null || heardQueue.Count > 0 || watching || loading is not null || controller.Singing?.Playing == true;
         LevelMeter.Visibility = listening ? Visibility.Visible : Visibility.Collapsed;
-        Title = watching ? $"Talk with Martlet (watching {watchSource.Label})" : "Talk with Martlet";
+        Title = watching ? $"Talk with {CharacterName} (watching {watchSource.Label})" : $"Talk with {CharacterName}";
         ResultText.Text = notice ?? Activity();
         EmptyDetail.Text = !available ? "" : listening ? "Just start talking, or type below."
             : pushToTalk ? "Type below, or hold the talk button to speak."
@@ -2733,7 +2764,7 @@ public partial class LiveConversationWindow : ThemedWindow
         if (status.Code is "runtime.Completed")
         {
             pacer?.NoteLook(true);
-            if (done.Turn?.Content.Text.Trim() is { Length: > 0 } remark) Add(ChatRole.Martlet, remark, $"Martlet, about {watchSource.Label}");
+            if (done.Turn?.Content.Text.Trim() is { Length: > 0 } remark) Add(ChatRole.Martlet, remark, $"{CharacterName}, about {watchSource.Label}");
             lookNote = $"Last look {at}: commented.";
             return;
         }
@@ -2856,7 +2887,7 @@ public partial class LiveConversationWindow : ThemedWindow
         viewer.Show();
     }
 
-    // Raised off the dispatcher when Martlet shows a picture: it joins the history as Martlet's, with its title.
+    // Raised off the dispatcher when Martlet shows a picture: it joins the history as the character's, with its title.
     private void PictureShown(ShownPicture picture) => Dispatcher.BeginInvoke(() =>
     {
         if (closed) return;
@@ -2866,7 +2897,7 @@ public partial class LiveConversationWindow : ThemedWindow
             AddNote($"Couldn't show “{picture.Title}”.");
             return;
         }
-        Messages.Add(new ChatMessage(ChatRole.Martlet, picture.Title + (picture.Fixture ? " (FIXTURE - NOT AI)" : ""), $"Martlet · {DateTime.Now:t}")
+        Messages.Add(new ChatMessage(ChatRole.Martlet, picture.Title + (picture.Fixture ? " (FIXTURE - NOT AI)" : ""), $"{CharacterName} · {DateTime.Now:t}")
         {
             Picture = image
         });
@@ -2908,17 +2939,18 @@ public partial class LiveConversationWindow : ThemedWindow
         if (closed) return;
         pacer?.Retune(ChattinessNow);
         chattinessAt = DateTime.Now;
-        if (SavedChoice == ChattinessChoice.MartletDecides) AddNote(ChattinessSwitched(before, level));
+        if (SavedChoice == ChattinessChoice.MartletDecides) AddNote(ChattinessSwitched(before, level, CharacterName));
         RenderActions();
     });
 
-    /// <summary>The note the history gets when Martlet switches how chatty it is.</summary>
-    internal static string ChattinessSwitched(Chattiness before, Chattiness level) => level switch
+    /// <summary>The note the history gets when the character (<paramref name="character"/>, the persona's name) switches how
+    /// chatty it is.</summary>
+    internal static string ChattinessSwitched(Chattiness before, Chattiness level, string character = Martlet.Core.Speakers.CompanionNames.Default) => level switch
     {
-        Chattiness.Quiet => "Martlet went quiet about what it sees and hears. It speaks up only for something notable.",
-        Chattiness.Chatty => "Martlet got chattier about what it sees and hears.",
-        _ => before == Chattiness.Quiet ? "Martlet is less quiet again about what it sees and hears."
-            : "Martlet calmed down about what it sees and hears."
+        Chattiness.Quiet => $"{character} went quiet about what it sees and hears. It speaks up only for something notable.",
+        Chattiness.Chatty => $"{character} got chattier about what it sees and hears.",
+        _ => before == Chattiness.Quiet ? $"{character} is less quiet again about what it sees and hears."
+            : $"{character} calmed down about what it sees and hears."
     };
 
     private void Window_Closing(object? sender, CancelEventArgs e)

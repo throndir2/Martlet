@@ -1969,7 +1969,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             var pastCount = 0;
             if (own is not null && this.history is { } pastRecord && pastRecord.Active(configured.Memory))
             {
-                past = pastRecord.RecallNotes(own, conversation, sentHistory, configured.Prompts, out pastCount);
+                past = pastRecord.RecallNotes(own, conversation, sentHistory, configured.Prompts, out pastCount, configured.CharacterName);
                 if (past is not null) operation.LatencyTimeline?.Mark("past conversations");
             }
 
@@ -2507,7 +2507,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (configured.SupportsTools && dataDirectory is not null && PictureClient.IsSetUp(dataDirectory))
             own.Add((PictureTools.Definition, (call, token) => ValueTask.FromResult(DrawPicture(operation, configured, call))));
         if (configured.SupportsTools && history?.Searchable(configured.Memory) == true)
-            own.Add((PastConversations.Definition, (call, token) => SearchConversationsAsync(call, conversation, token)));
+            own.Add((PastConversations.Definition, (call, token) => SearchConversationsAsync(call, conversation, configured.CharacterName, token)));
         var kinds = Creations.Kinds;
         if (kinds.Count > 0 && configured.SupportsTools && dataDirectory is not null)
         {
@@ -2595,6 +2595,28 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         return start.Job;
     }
 
+    /// <summary>Brings what a check-in said to bring up into this conversation, like a due reminder (<see cref="CheckIns.SayKind"/>,
+    /// with the Check-in: brought up prompts). Null when the conversation is closing or too many wait.</summary>
+    internal BackgroundJob? BringUp(string label, string text)
+    {
+        var start = jobs.Start(CheckIns.SayKind, label.Length > 80 ? label[..80] + "…" : label,
+            (_, _) => Task.FromResult(BackgroundJobOutcome.Done(text)));
+        return start.Job;
+    }
+
+    /// <summary>The newest <paramref name="count"/> exchanges of this conversation (oldest first: what the user said and the reply)
+    /// and how many it has had in all, a count that only grows, for a check-in. In memory only.</summary>
+    internal (IReadOnlyList<CheckInExchange> Exchanges, long Total) RecentExchanges(int count)
+    {
+        lock (gate)
+        {
+            var messages = context.Snapshot();
+            var exchanges = new List<CheckInExchange>();
+            for (var i = 0; i + 1 < messages.Count; i += 2) exchanges.Add(new(messages[i].Text, messages[i + 1].Text));
+            return ([.. exchanges.Skip(Math.Max(0, exchanges.Count - count))], context.Start + context.Count);
+        }
+    }
+
     /// <summary>manage_memories: the model finds, adds, corrects, reassigns or forgets facts when the user asks. Changes are noted
     /// in the talk window like background remembering's.</summary>
     private async ValueTask<ConversationToolResult> ManageMemoriesAsync(LiveConversationOperation operation, Guid revision, TextToolCall call,
@@ -2627,10 +2649,12 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         return outcome.Result;
     }
 
-    /// <summary>search_conversations: searches the record of earlier conversations (not this one, which the model has).</summary>
-    private async ValueTask<ConversationToolResult> SearchConversationsAsync(TextToolCall call, Guid conversation, CancellationToken token)
+    /// <summary>search_conversations: searches the record of earlier conversations (not this one, which the model has), the
+    /// replies under <paramref name="companion"/>'s name.</summary>
+    private async ValueTask<ConversationToolResult> SearchConversationsAsync(TextToolCall call, Guid conversation, string companion,
+        CancellationToken token)
     {
-        var (result, outcome) = await history!.SearchAsync(call, conversation, token).ConfigureAwait(false);
+        var (result, outcome) = await history!.SearchAsync(call, conversation, token, companion).ConfigureAwait(false);
         tools?.Record("Martlet", PastConversations.ToolName, outcome, ConversationHistory.Preview(call.ArgumentsJson, 120), result.IsError);
         return result;
     }
@@ -3901,7 +3925,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 ? VoiceNaming.Context(job.Heard, voices.Roster, job.User, job.Configuration.CompanionNames) : null;
             var prompt = AfterReply.Prompt(remember ? known : null, naming, job.EarlierUser, job.EarlierReply, job.User, job.Reply,
                 job.Configuration.Prompts, job.Conversation, job.Configuration.FitsContext, remember ? job.Present : null,
-                remember ? MemoryPeople.Labels(known!, roster) : null);
+                remember ? MemoryPeople.Labels(known!, roster) : null, job.Configuration.CharacterName);
             var purpose = remember && job.Heard is not null ? "Remembering and learning names" : remember ? "Remembering" : "Learning names";
             // A Thinking pool member reads the short excerpt (it has no copy of this conversation in its cache); the conversation's
             // own model continues the reply's request as before, after the reply finished speaking.
@@ -3909,7 +3933,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             var (answer, failure, onPool) = await helpers.RunAsync(HelperJobKind.Memory, purpose, HelperCapability.Text,
                 () => (pooled = AfterReply.Prompt(remember ? known : null, naming, job.EarlierUser, job.EarlierReply, job.User, job.Reply,
                     job.Configuration.Prompts, null, null, remember ? job.Present : null,
-                    remember ? MemoryPeople.Labels(known!, roster) : null)).Input,
+                    remember ? MemoryPeople.Labels(known!, roster) : null, job.Configuration.CharacterName)).Input,
                 worker => AskAsync(purpose, job.Configuration, prompt.Input, worker), token).ConfigureAwait(false);
             if (onPool) prompt = pooled!;
             if (answer is null)

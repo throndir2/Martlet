@@ -2814,6 +2814,50 @@ public sealed class LiveConversationTests
         finally { window.Close(); }
     });
 
+    // The talk window calls the character by its persona's name (Companion › Personality): the header, the title, the message
+    // box, the empty conversation, each reply's label and the notes in the history, such as a touch reply's "You touched Ivy".
+    // Its accessible name stays "Talk with Martlet", so MCP's window list never carries the character's name.
+    [Fact]
+    public Task TheTalkWindowCallsTheCharacterByItsPersonasName() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        var loaded = await fixture.Store.LoadAsync();
+        var persona = loaded.Settings!.Companion!.ActivePersona;
+        await fixture.Save(loaded.Settings with { Companion = loaded.Settings.Companion.Update(persona.Id, "Ivy", persona.Text) });
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            Assert.Equal("Ivy", window.CharacterName);
+            Assert.Equal("Ivy", Control<TextBlock>(window, "CharacterNameText").Text);
+            Assert.Equal("Talk with Ivy", window.Title);
+            Assert.Equal("Message Ivy", Control<TextBlock>(window, "Placeholder").Text);
+            Assert.Equal("Message Ivy", AutomationProperties.GetName(Control<TextBox>(window, "InputText")));
+            Assert.Equal("Say hi to Ivy", Control<TextBlock>(window, "EmptyTitle").Text);
+            Assert.Equal("Talk with Martlet", AutomationProperties.GetName(window));
+
+            fixture.Answer("Hello there!");
+            Control<TextBox>(window, "InputText").Text = "Hi!";
+            Click(window, "SendButton");
+            await fixture.Finish();
+            await Until(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text == "Hello there!"));
+
+            // Touches on their own start a short reply of their own, noted with who was touched.
+            fixture.Answer("Hey, that tickles!");
+            window.Physical(new(PhysicalKind.Tap, fixture.Controller.TouchNow, "your left cheek", "left cheek"));
+            window.Physical(new(PhysicalKind.Tap, fixture.Controller.TouchNow, "your left cheek", "left cheek"));
+            await fixture.Advance(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text == "Hey, that tickles!") &&
+                window.Current is { OwnershipReleased: true });
+            Assert.Contains(window.Messages, m => m.IsNote && m.Text == "You touched Ivy (touch: left cheek poke x2)");
+            Assert.Equal(2, window.Messages.Count(m => m.Role == ChatRole.Martlet));
+            Assert.All(window.Messages.Where(m => m.Role == ChatRole.Martlet), m => Assert.StartsWith("Ivy · ", m.Caption));
+            Assert.DoesNotContain(window.Messages, m => (m.Caption + m.Text + m.Note).Contains("Martlet", StringComparison.Ordinal));
+            Assert.Equal("Ivy went quiet about what it sees and hears. It speaks up only for something notable.",
+                LiveConversationWindow.ChattinessSwitched(Chattiness.Normal, Chattiness.Quiet, window.CharacterName));
+        }
+        finally { window.Close(); }
+    });
+
     [Fact]
     public Task BackgroundTasksShowAsAChipThatOpensTheTaskList() => DispatcherTest(async () =>
     {
@@ -2903,6 +2947,30 @@ public sealed class LiveConversationTests
             Assert.Contains("do the dishes (they asked for it at 3:12 PM, for 4:12 PM)", body);
             Click(window, "TasksChip");
             await Until(() => Find<TextBlock>(window, "LiveJobState-" + job.Id)?.Text == "Martlet reminded you.");
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task WhatACheckInBringsUpComesUpOnItsOwnInItsOwnWords() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Answer("Hey, how about a quick stretch?");
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            var job = window.BringUp("Breaks", "Suggest a short stretch break, it has been hours.")!;
+            Assert.True(job.Kind.Notice);
+            Assert.Equal(CheckIns.SayKindName, job.Kind.Name);
+            await Until(() => job.Delivery == BackgroundDeliveryState.Delivered);
+            Assert.Equal(1, fixture.Llm.Calls);
+            var body = Encoding.UTF8.GetString(fixture.Llm.Body);
+            Assert.Contains("your own check-in came up with something to bring up", body);
+            Assert.Contains("Suggest a short stretch break, it has been hours.", body);
+            Assert.DoesNotContain("a reminder they asked you for is due now", body);
+            Click(window, "TasksChip");
+            await Until(() => Find<TextBlock>(window, "LiveJobState-" + job.Id)?.Text == "Martlet brought it up.");
         }
         finally { window.Close(); }
     });

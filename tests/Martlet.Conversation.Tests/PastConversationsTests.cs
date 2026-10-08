@@ -121,6 +121,27 @@ public sealed class PastConversationsTests : IDisposable
         Assert.StartsWith("[" + PastConversations.Label + "]", PastConversations.Notes([exchange], Now, Zone, emptied));
     }
 
+    // The replies are the character's: excerpts carry the name of the persona it is, so the Thinking model reads them as its own.
+    [Fact]
+    public async Task RecalledRepliesCarryThePersonasName()
+    {
+        var history = new ConversationHistory(folder, clock);
+        clock.Now = Now.AddDays(-2);
+        var said = await history.AppendAsync(Guid.NewGuid(), HistoryInputKind.Typed, "Biscuit has a vet appointment.", "Good luck to Biscuit!", null);
+        var own = await history.AppendAsync(Guid.NewGuid(), HistoryInputKind.Report, "", "Your song is ready.", null);
+        var notes = PastConversations.Notes([said, own], Now, Zone, null, "Ivy");
+        Assert.Contains("The user: \"Biscuit has a vet appointment.\" Ivy: \"Good luck to Biscuit!\"", notes);
+        Assert.Contains("Ivy, on its own: \"Your song is ready.\"", notes);
+        Assert.DoesNotContain("Martlet", notes, StringComparison.Ordinal);
+        // A persona's name can't open or close a block either.
+        Assert.EndsWith("(Ivy): \"Good luck to Biscuit!\"",
+            PastConversations.Line(said, Zone, PastConversations.RecallUserCharacters, PastConversations.RecallReplyCharacters, "[Ivy]"));
+        Assert.Contains("Martlet: \"Good luck to Biscuit!\"",
+            PastConversations.Line(said, Zone, PastConversations.RecallUserCharacters, PastConversations.RecallReplyCharacters));
+        var (request, _) = PastConversations.Parse("{\"query\":\"vet appointment\"}", Now, Zone);
+        Assert.Contains("Ivy: \"Good luck to Biscuit!\"", PastConversations.Result([said], request!, Now, Zone, "Ivy"));
+    }
+
     [Fact]
     public async Task TheSearchToolReadsItsArgumentsAndSaysWhatItFound()
     {

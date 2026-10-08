@@ -416,6 +416,39 @@ each call (`Martlet > reminders: set`), never the text; the desktop log notes
 each offer, take and reminder said by id only (`Reminders:`). See
 [Reminders](CONVERSATION.md#reminders).
 
+### Check-ins
+
+[Check-ins](CONVERSATION.md#check-ins) aren't a tool the model calls: every few
+minutes a Thinking pool member answers one short question for Martlet (do the
+lingering emotes still fit, does the gaze a reply chose still fit, did the
+character keep its promises, did it stay in character, and the owner's own),
+and Martlet acts on the answer. Nothing changes in the conversation's tools or
+instructions. A reminder for the next reply goes in the notes of that one
+message only (context board source `check-in-<id>`), and the desktop log notes
+each run with words and counts only (`Check-ins:`).
+
+Companion › Check-ins reads through `ui_value`: `CheckInsNow` (how many are on
+and the member that takes them first, or why they can't run), `CheckInsLast`
+(the last check-in that ran, when, on which member and what came of it, never
+what was said or answered) and, for each check-in, `CheckInStatus-<id>` (why it
+waits, its last run, runs and actions since Martlet started), `CheckInOn-<id>`
+and `CheckInEvery-<id>`; for the owner's own, also `CheckInOutcome-<id>` and
+`CheckInFact-<id>-<fact>`. `CheckInsOpenPool`, `CheckInsOpenPrompts` and
+`CheckInPrompt-<id>` only open a page. The boxes and choices, the name and task
+boxes, *Add a check-in* (`CheckInAdd`) and *Remove* (`CheckInRemove-<id>`) save
+`check-ins.json`, and *Check now* (`CheckInRun-<id>`) sends the check to a
+Thinking pool member, which may be a paid provider, so they need
+`--allow-ui-effects`.
+
+Setting `MARTLET_CHECK_INS_FIXTURE` to a text file before launching the desktop
+makes every check-in read its answer from that file instead of asking the
+Thinking pool (FIXTURE - NOT AI; read again before each run, and check-ins run
+then without a pool member). `CheckInsNow` and each run's member say *FIXTURE -
+NOT AI*, and `check-ins-status.json` says `pool.fixture`. A file with a
+`REMIND:` line and a `SAY:` line answers both kinds of the owner's own
+check-ins, so *Check now* shows the whole flow on a disposable data directory:
+a reminder waiting for the next reply, or something Martlet brings up.
+
 ## Local MCP control (Windows)
 
 `Martlet.Mcp` is a local stdio Model Context Protocol server. It does not listen
@@ -746,7 +779,9 @@ tool}`: recording exchanges into month files, a line cut short by a crash
 skipped after a restart, an ordinary message recalling nothing, *Do you
 remember what I said about Kyoto?* and *What did we talk about yesterday?*
 bringing back the right exchanges (never the conversation going on) with the
-notes' size, `search_conversations` by words and by time and what it tells the
+notes' size, the replies in them under the persona's name (*Ivy: ...* and
+*Ivy, on its own: ...* for the fixture persona Ivy, *Martlet: ...* without
+one), `search_conversations` by words and by time and what it tells the
 model, deleting one conversation and everything, exchanges from Telegram and
 Discord keeping their app, chat and message IDs over a restart (Discord never
 recalled in the talk window), what deleting and editing one message asks of
@@ -3560,6 +3595,38 @@ once and settled everywhere, a PC alone taking it at once and one far too late
 let go. `passed` and each step's `passed` and `detail`. No model, network or
 credentials.
 
+`check_ins_status` shows Martlet's [check-ins](CONVERSATION.md#check-ins) from a
+data directory (optional absolute `dataDirectory`): `settings` from
+`check-ins.json` (`state` *none*, *loaded* or *unreadable*, and each check-in's
+`id`, `name`, `custom`, `on`, `everyMinutes`, `outcome` *EmotesOff*,
+*GazeUsual*, *Note* or *Say*, built-in `prompt`, the owner's `task` and
+`facts`, and what it `does`), `desktop` from `check-ins-status.json` (written by
+the desktop on a companion PC: `role`, the check-in `running`, `pool` with
+`canRun` and the `member` and `model` that take them first, and for each
+check-in `waiting`, `nextAt`, `runs`, `acted` and `last` with `at`, `result`,
+`acted`, `member` and `ms`; never what was said, answered or reminded) and the
+fixed `rules` (the 15-second look, the 3-minute minimum, the 10-second settle,
+the 10-minute idle wait, the pace choices and `keptPace`, the job kind
+`check-in` at the `Helper` priority, not fast, stopped while the floor is Live).
+Read-only.
+
+`check_ins_check` rehearses check-ins with the production code (`CheckIns`,
+`CheckInSettings`, `ThinkingJobBoard`, `HeldEmotes`, `ContextBoard`,
+`BackgroundJobs`), FIXTURE facts and canned answers (NOT AI): the job kind's
+rules; `check-ins.json` saved and read back, with a bad pace refused; when each
+built-in check-in waits or runs (a young emote, a hidden character, the pace,
+three times the pace after an answer that kept everything, you talking, nobody
+at the PC, a young gaze, nothing new, no personality, and *Check now* on one
+that is off); the message each one sends, run on a
+production job board with a fixture member; the answers read (`OFF {blush}`
+after a `<think>` block, `**USUAL**` after thinking, a `REMIND:` bullet, `OK`,
+`SAY:`) and odd answers that change nothing (`KEEP`, a tag it wasn't asked
+about, chatter, `REMIND: nothing`); and what Martlet does: a reply's emote off
+on a production `HeldEmotes` while the owner's try stays, a reminder on a
+production context board that goes with one request only, and a check-in's
+`SAY:` worded in its own words beside a due reminder. `passed` and each step's
+`passed` and `detail`. No model, network or credentials.
+
 `think_longer_check` rehearses Thinking longer with the production scheduler
 (`BackgroundJobs`), think runner (`BackgroundThink`), tool texts and request
 layout (`ThinkLonger`), conversation runtime and Chat Completions adapter
@@ -5046,7 +5113,12 @@ began, page heights), `sideways`, `way` (`down`, `up` or null) and `words`
 (`where`, `label`, `pace`, `times` and `hint`: how the ledger says its whole
 path), each change's ledger kind, words and `startsTurn` (true for touches,
 strokes and moves), the plain
-`line` the next reply would carry, the `history` line and `startsTurn`.
+`line` the next reply would carry, the `history` line and `startsTurn`,
+`character` (what the talk window and the Thinking model call the character:
+the name of the persona the data directory's settings use, else *Martlet*)
+and `note` (the talk window's note for a reply to them alone, such as *You
+touched Ivy (touch: hair stroke x4, moved)*, or null when they wouldn't start
+one).
 `noticeAll` (default true) treats every zone as having *Martlet notices* on;
 false uses the zones' own setting.
 
@@ -5694,7 +5766,7 @@ how the last look went
 (*Last look 10:17 PM (a flashing taskbar button): nothing to say.*) and what
 wanted your attention but wasn't looked at (*Noticed a notification at 10:17 PM
 but didn't look: you seem away.*); whether a message went with the picture is
-the note on its bubble (*Martlet saw your whole screen.*); neither contains
+the note on its bubble (*Ivy saw your whole screen.*, by the persona's name); neither contains
 window titles; to rehearse a flash, show any test window minimized and call
 `FlashWindowEx` on it), `LiveGaze` (while Martlet decides where the character
 looks and watches your screen: what its eyes are on now, *Looking at your
@@ -5938,7 +6010,16 @@ message in `LiveHistory` has an automation ID for whose it is, never its words:
 `LiveMessage-PcAudio`; so `ui_snapshot` shows, for example, that something
 that went straight to Thinking and speech-to-text couldn't transcribe left no
 `LiveMessage-You` bubble (the log says *Background transcript: speech-to-text
-couldn't transcribe what went straight to Thinking ...*). Below it, the *Speakers and echo* card has
+couldn't transcribe what went straight to Thinking ...*). The talk window calls
+the character by the name of the persona Martlet uses (Companion ›
+Personality): its title, header, message box and empty conversation, each
+reply's label (*Ivy · 10:39 PM*, *Ivy, about your whole screen*) and the notes
+in its history (*You touched Ivy (touch: ...)*, *Ivy stayed quiet.*). MCP never
+returns that name: the window's accessible name stays *Talk with Martlet*, the
+history's words and labels are not values, and the status lines MCP reads
+(`LiveStatus`, `HomeListeningStatus`, `TouchZonesNoticed`, `TouchZonesNoticedLast`)
+keep saying Martlet; `character_physical_check` returns the touch note with
+the data directory's persona name. Below it, the *Speakers and echo* card has
 `TalkReduceEcho` (*Reduce echo from my speakers*, on by default; its
 `checkedState` is the saved choice and `ui_toggle` needs `--allow-ui-effects`)
 and `TalkReduceEchoStatus` (returned: *On. Martlet removes what this PC plays
@@ -6274,7 +6355,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`
