@@ -50,13 +50,13 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.59.0
+## 🆕 What's new in 0.60.0
 
-- 🤝 **Share hosts with friends from the app**: **Devices › Friends** shows who you share your hosts with, with **Share** and **Stop sharing**. A friend's Martlet uses a host you share without ever joining your network.
-- 🐾 **Touch zones that swing along**: a tail, wings, animal ears or a ponytail now gets a touch zone that follows it wherever it swings, on Live2D and VRM characters.
-- 🎀 **Zones for what makes your character special**: **Detect zones** now also adds zones for things like cat ears, a halo, a hat or a hair bow.
-- 🔍 **Zoom in to place zones precisely**: zoom the Touch zones picture up to 8 times to place small zones, such as an eye, exactly. A zone can now have several areas, too.
-- 🎯 **Touches land where you aim**: zones stay on the right part while your character moves, and a touch where zones overlap counts on each of them.
+- 👀 **See with a separate image model**: choose an image model in Companion › Vision, and Martlet describes your screen or camera in words, so even a Thinking model that reads only text knows what you see.
+- 👂 **Hear how you say things**: an audio model of your own (Companion › Listening) tells Thinking about your tone, a laugh or a sigh, and the sounds around you.
+- 🧩 **Use the model app you already run**: Companion › Thinking › This PC finds LM Studio, llama.cpp, KoboldCpp, Jan and other apps on your PC, lists their models and switches to one.
+- 🔑 **A free key in one click**: with no online key saved, **Get a free key** opens NVIDIA Build, so Martlet can still reply when your computers are offline or full.
+- 🗣️ **Always a voice**: when no computer has room for your voice engine, Martlet speaks with Chatterbox Nano, even without a graphics card. Windows voices are gone.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
