@@ -327,7 +327,7 @@ public partial class MainWindow
         intimate.Unchecked += (_, _) => Edited();
 
         // The snapshot with each zone as a colored, labeled box; drag a box to move it, its corner to resize it.
-        var canvas = new Canvas { Margin = new Thickness(0, 8, 0, 8), HorizontalAlignment = HorizontalAlignment.Left, ClipToBounds = true };
+        var canvas = new SeenCanvas { Margin = new Thickness(0, 8, 0, 8), HorizontalAlignment = HorizontalAlignment.Left, ClipToBounds = true };
         AutomationProperties.SetAutomationId(canvas, "TouchZonesPicture");
         AutomationProperties.SetName(canvas, "Touch zones on the character's picture");
         double width = 0, height = 0;
@@ -432,6 +432,20 @@ public partial class MainWindow
         characterTouchZones.Note($"Tried {zone.Name}: " + (plan.Count == 0 ? "nothing to play on this model" : "played " + string.Join(", ", plan.Select(s => s.Name))) +
                 CharacterTouchZoneService.Describe(reaction, 1) + "." +
                 (zone.Reaction.Notices ? " Martlet notices touches here" + (CharacterTouchZones.Narration(zone) is { } line ? $" (your words: \"{line}\")." : ".") : ""));
+    }
+
+    // The picture and each zone's box on it take part in UI Automation (a Canvas and a Border have no automation peer of their
+    // own), so Martlet's MCP sees the boxes (TouchZoneRect-<n>, with their bounds) on the picture (TouchZonesPicture).
+    private sealed class SeenCanvas : Canvas
+    {
+        protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer() =>
+            new System.Windows.Automation.Peers.FrameworkElementAutomationPeer(this);
+    }
+
+    private sealed class SeenBorder : Border
+    {
+        protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer() =>
+            new System.Windows.Automation.Peers.FrameworkElementAutomationPeer(this);
     }
 
     /// <summary>One zone's row: on, name, reaction (two picks), rest, box, Martlet notices and its hint, Try and Delete, and its box on
@@ -636,7 +650,7 @@ public partial class MainWindow
             };
             var inside = new Grid();
             inside.Children.Add(grip);
-            rectangle = new Border
+            rectangle = new SeenBorder
             {
                 BorderBrush = new SolidColorBrush(color), BorderThickness = new Thickness(1.5), Child = inside, Cursor = Cursors.SizeAll,
                 Background = new SolidColorBrush(Color.FromArgb(0x30, color.R, color.G, color.B)), ToolTip = zone.Name

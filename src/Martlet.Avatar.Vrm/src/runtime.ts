@@ -489,6 +489,9 @@ export class VrmRuntime {
   private hipsRest: number | undefined;
   private faceWidth = 0.14;
   private eyes: VrmEyes | undefined;
+  // Each new pose (update, reset, load) counts up; a hit test measures the skinned meshes' bounds again only in a new pose.
+  private poses = 0;
+  private measured = -1;
 
   get capabilities(): VrmCapabilities | undefined { return this.inspected; }
   get scene(): THREE.Group | undefined { return this.model?.scene; }
@@ -1004,6 +1007,7 @@ export class VrmRuntime {
   update(deltaSeconds: number): void {
     const model = this.loaded();
     finite(deltaSeconds, 0, 0.1, "deltaSeconds");
+    this.poses++;
     this.composedAge += deltaSeconds;
     if (this.identity && this.selection?.head) {
       model.humanoid.getNormalizedBoneNode("head")!.quaternion.fromArray(this.pose.head ?? [0, 0, 0, 1]);
@@ -1048,13 +1052,16 @@ export class VrmRuntime {
 
   stop(): void { this.loaded(); this.clearControls(); }
 
-  /** What of the posed model a ray hits first (see touch.ts), or undefined when it misses. */
+  /** What of the posed model a ray hits first (see touch.ts), or undefined when it misses. The skinned meshes' bounds are
+   *  measured again once per pose, so a batch of points (a stroke) measures them once. */
   hitTestRay(raycaster: THREE.Raycaster): VrmHit | undefined {
     const model = this.loaded();
     const humanoid = new Map<THREE.Object3D, string>();
     for (const [name, bone] of Object.entries(model.humanoid.rawHumanBones)) if (bone?.node) humanoid.set(bone.node, name);
     const springs = new Set<THREE.Object3D>([...model.springBoneManager?.joints ?? []].map(joint => joint.bone));
-    return hitTestVrm(model.scene, humanoid, raycaster, springs);
+    const measure = this.measured !== this.poses;
+    this.measured = this.poses;
+    return hitTestVrm(model.scene, humanoid, raycaster, springs, measure);
   }
 
   dispose(): void {
@@ -1070,6 +1077,7 @@ export class VrmRuntime {
     this.identity = undefined; this.sequence = -1; this.sampleOffset = -1; this.playbackOffset = -1; this.pose = {};
     this.composedAge = Number.POSITIVE_INFINITY;
     this.faceRestore.clear(); this.face = {};
+    this.poses++;
     if (this.model) {
       this.model.humanoid.resetNormalizedPose();
       this.model.humanoid.update();

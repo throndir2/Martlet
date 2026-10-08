@@ -535,12 +535,22 @@ Martlet knows that the model doesn't have yet, the breasts and the groin too.
   and the desktop log records each one (its step, size and type).
 - Martlet ties each zone to the model's own parts so it follows the character as
   it moves: the Live2D drawables mostly inside its box, or the VRM humanoid
-  bones inside it (hair follows the head's hair). A click is matched to the
-  topmost part it hit, then the bone, then the smallest box around the point
-  (where the point sits with the character framed whole, so zooming in or
-  panning doesn't move the boxes), then the rough part of the body (head, face,
-  body, arm, hand, leg, foot); before any zones are found, clicks use that rough
-  part.
+  bones of that part of the body whose joint is inside it or whose part (from
+  the joint to the next bone's) crosses it (a calf: the shin bone; the groin:
+  the hips, which move the pelvis down to the crotch). A VRM zone with no such
+  bone takes the bones of its part of the body that pass near it (a cheek: the
+  head; a breast: the chest). Hair follows the head's hair. A click is matched
+  to the topmost Live2D part it hit, then hair. On a
+  VRM it is then matched to the smallest zone on the part of the body the hit
+  bone moves (the head, the torso, an arm or a leg, on the same side) whose box
+  holds the point: one VRM bone moves a whole part, such as the head with its
+  cheeks, lips and ears. When no such box holds the point (the part has moved,
+  for example a hand raised to the face), the zone that holds that bone nearest
+  the point is used. Without a bone, the smallest box around the point is used.
+  Boxes are compared with where the point sits with the character framed whole,
+  so zooming in or panning doesn't move them. Last comes the rough part of the
+  body (head, face, body, arm, hand, leg, foot); before any zones are found,
+  clicks use that rough part.
 - Each zone plays its emotes and gestures (by default the model's own where it
   has them: a head pat leans in or tilts and smiles, a cheek blushes, an
   intimate zone blushes and flinches) and rests a few seconds before reacting

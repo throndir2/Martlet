@@ -44,13 +44,31 @@ function dominantNode(hit: THREE.Intersection): THREE.Object3D {
 }
 
 /**
+ * Measures each skinned mesh's bounds again in the pose it has now. three.js keeps a skinned mesh's bounds from when they were
+ * first measured (the framing measures them at load, in the model's T-pose) and its raycast skips a mesh whose bounds the ray
+ * misses: a sleeve or a glove drawn as a mesh of its own could never be hit once the arms were lowered.
+ */
+export function measurePosedBounds(root: THREE.Object3D): void {
+  root.updateWorldMatrix(true, true);
+  root.traverse(object => {
+    const mesh = object as THREE.SkinnedMesh;
+    if (!mesh.isSkinnedMesh) return;
+    mesh.computeBoundingBox();
+    mesh.computeBoundingSphere();
+  });
+}
+
+/**
  * What of a posed VRM a ray hits first: the mesh and material, the node the hit triangle moves with and its humanoid bone.
  * `humanoid` maps the raw humanoid bone nodes to their VRM names; `springs` are the spring-bone joints (hair is a spring-bone
- * joint, or named as hair, under the head). Undefined when the ray misses every visible mesh.
+ * joint, or named as hair, under the head). `measure` measures the skinned meshes' bounds in this pose first
+ * (measurePosedBounds); a caller that hit-tests one pose many times needs it only once. Undefined when the ray misses every
+ * visible mesh.
  */
 export function hitTestVrm(root: THREE.Object3D, humanoid: ReadonlyMap<THREE.Object3D, string>, raycaster: THREE.Raycaster,
-  springs: ReadonlySet<THREE.Object3D> = new Set()): VrmHit | undefined {
-  root.updateWorldMatrix(true, true);
+  springs: ReadonlySet<THREE.Object3D> = new Set(), measure = true): VrmHit | undefined {
+  if (measure) measurePosedBounds(root);
+  else root.updateWorldMatrix(true, true);
   const hit = raycaster.intersectObject(root, true).find(candidate =>
     (candidate.object as THREE.Mesh).isMesh && shown(candidate.object));
   if (!hit) return undefined;

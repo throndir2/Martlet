@@ -50,6 +50,18 @@ test("misses and hidden meshes return undefined", () => {
   assert.equal(hitTestVrm(root, humanoid, ray(-0.5, 1.5)), undefined);
 });
 
+test("a skinned part posed away from where its bounds were first measured is still hit", () => {
+  const { root, head, humanoid } = rig();
+  // The framing measures a skinned mesh's bounds once, at load, in the rest pose (a T-pose); then the part moves (an arm
+  // lowered into the idle pose).
+  new THREE.Box3().setFromObject(root);
+  head.position.y += 3;
+  assert.equal(hitTestVrm(root, humanoid, ray(-0.5, 4.5), new Set(), false), undefined,
+    "three.js's own raycast skips the part by the bounds it measured at rest");
+  assert.equal(hitTestVrm(root, humanoid, ray(-0.5, 4.5))?.bone, "head");
+  assert.equal(hitTestVrm(root, humanoid, ray(-0.5, 1.5)), undefined, "and nothing is left where it rested");
+});
+
 test("the runtime hit-tests a loaded VRM's posed meshes against its humanoid bones", async () => {
   const runtime = new VrmRuntime();
   await runtime.load(fixture());
