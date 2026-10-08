@@ -298,9 +298,11 @@ the Thinking model with whether it sees and hears, and for pictures and
 recordings the `path` (`Thinking`, `Described` or `None`), the model, `unknown`
 (Martlet can't tell whether that model sees or hears) and `why`. `oneModel`
 says both kinds use the same model of their own, and `allThinking` that
-neither has one. `desktop` is the desktop's `sense-models-status.json`: for
-each kind its path, model and why, `sharesConversation`, and its line (`busy`,
-`waiting`, `held` for a reply, `runs` and the `last` job's purpose, outcome,
+neither has one. `desktop` is the desktop's `sense-models-status.json`:
+`conversation` (whether a talk window loaded the settings; before that, a kind
+that goes to the text model says to set up Thinking), and for each kind its
+path, model and why, `sharesConversation`, and its line (`busy`, `waiting`,
+`held` for a reply, `runs` and the `last` job's purpose, outcome,
 milliseconds, model and problem; never what was sent or said).
 
 `sense_models_check` rehearses the production routing (`SenseRouting`) over
