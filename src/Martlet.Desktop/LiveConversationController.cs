@@ -2452,7 +2452,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             own.Add((definitions[1], (call, token) => ValueTask.FromResult(CancelThinking(call))));
             guidance = ThinkLonger.Instructions(settings, configured.Prompts);
         }
-        // research while Web research is on (Companion › Deep thinking, off by default) and Deep thinking can think.
+        // research while Web research is on (Companion › Deep thinking, on by default) and Deep thinking can think.
         if (OffersResearch(configured))
         {
             own.Add((WebResearch.Definition, (call, token) => ValueTask.FromResult(Research(operation, configured, call))));
