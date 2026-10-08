@@ -558,6 +558,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Settings › Your other computers (whether Martlet here runs commands your other computers send, and what it last did)
         // and a paired host's How Martlet reaches it (the saved route in words, and what each route means).
         "NodeAgentStatus", "HostReachNow", "HostReachHint",
+        // Settings › Your other computers: the minutes a computer may be away before Martlet looks for a better setup (choosing
+        // another with ui_select saves node-presence.txt, so it needs --allow-ui-effects) and its fixed explanation. The
+        // presence notices themselves are Home items: "HealthIssue-presence-missing-gpu-box" reads "Warning: Working with less:
+        // gpu-box isn't answering. ..." and "HealthIssue-presence-back-gpu-box" "Good to know: gpu-box is back. ...".
+        "PresenceAwayMinutes", "PresenceAwayStatus",
         // Companion › Smart home: the connection in words (address, name, version, whether the other computers use it; never the
         // token), the typed address, Find's result line, the setup form's target and outcome (never the password fields), the
         // one connection for all computers, the flexible-requests state, the devices check and the Home Assistant summary
@@ -955,12 +960,21 @@ internal sealed class DesktopAutomation(bool allowEffects)
         }
     }
 
-    internal async Task<object> ClickAsync(string id, string? window = null)
+    internal async Task<object> ClickAsync(string id, string? window = null, bool focus = false)
     {
         if (!allowEffects && !IsSafeClick(id))
             throw new InvalidOperationException("This control requires an operator to start MCP with --allow-ui-effects.");
         var element = Find(id, window);
         if (!element.Current.IsEnabled) throw new InvalidOperationException($"Control '{id}' is disabled.");
+        // As a mouse click does, the control takes the keyboard focus first (its window comes to the front).
+        if (focus)
+        {
+            try { element.SetFocus(); }
+            catch (Exception error) when (error is InvalidOperationException or COMException or ElementNotAvailableException)
+            {
+                throw new InvalidOperationException($"Control '{id}' can't take the keyboard focus: {error.Message}");
+            }
+        }
         // Navigation items select a page and sections expand or collapse; neither starts work.
         if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
         {

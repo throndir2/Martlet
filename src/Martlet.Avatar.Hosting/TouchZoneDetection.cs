@@ -28,20 +28,23 @@ public sealed record ZoneHints(IReadOnlyList<ZoneHintPoint> Bones, IReadOnlyList
     public bool Empty => Bones.Count == 0 && Areas.Count == 0;
 }
 
-/// <summary>How a detection goes: the longer side of each picture sent, how far a close-up may zoom in and how many check
-/// rounds each part gets.</summary>
+/// <summary>How a detection goes: the longer side of each picture sent, how far a close-up may zoom in, how many check rounds
+/// each part gets and the zones it must end with (asked for again on the whole character when the close-ups missed them, then
+/// worked out from the zones around them; with Include intimate zones on, <see cref="TouchZoneDetection.Erogenous"/>).</summary>
 public sealed record ZoneDetectionOptions
 {
     public int Edge { get; init; } = 1024;
     public double MaximumZoom { get; init; } = 4;
     public int Checks { get; init; } = 2;
+    public IReadOnlyList<string> Required { get; init; } = [];
 }
 
 /// <summary>A detection's progress: what it does now, the zones found so far (fractions of the snapshot) and the requests made.</summary>
 public sealed record ZoneDetectionProgress(string Text, IReadOnlyList<CharacterTouchZone> Zones, int Requests);
 
-/// <summary>What a detection found (fractions of the snapshot; null when nothing could be read), why it couldn't ask (when no
-/// request was answered), how many requests it made and one line per step.</summary>
+/// <summary>What a detection found (fractions of the snapshot; null when nothing could be read), why it stopped early (the
+/// failure of the request it stopped at, with the zones found until then; null when no request failed), how many requests it
+/// made and one line per step.</summary>
 public sealed record ZoneDetectionResult(IReadOnlyList<CharacterTouchZone>? Zones, string? Failure, int Requests, IReadOnlyList<string> Steps);
 
 /// <summary>A part of the character a close-up shows, and the zones found in it.</summary>
@@ -77,6 +80,17 @@ public static partial class TouchZoneDetection
 
     /// <summary>Zones found on the whole character with the parts: they can be anywhere.</summary>
     public static IReadOnlyList<string> Extras { get; } = ["tail", "wings", "held_item"];
+
+    /// <summary>The intimate (erogenous) zones a detection always ends with while Include intimate zones is on: asked for again on
+    /// the whole character when the close-ups missed them (or a model left them out), else worked out from the zones around them.</summary>
+    public static IReadOnlyList<string> Erogenous { get; } =
+    [
+        "neck", "lips", "ear_left", "ear_right", "chest", "breast_left", "breast_right", "waist", "hips", "groin", "buttocks",
+        "inner_thigh_left", "inner_thigh_right"
+    ];
+
+    /// <summary>The step that asks again, on the whole character, for zones that must be found and the close-ups missed.</summary>
+    public const string MissingStep = "missing";
 
     private static readonly (string Id, string What)[] Parts =
     [
@@ -128,6 +142,7 @@ public static partial class TouchZoneDetection
         "Read positions from the grid.";
     private const string Format = "Give each box as fractions of THIS picture, with two decimals: left and right as fractions of its width, " +
         "top and bottom as fractions of its height.";
+    private const string Covered = "A zone that clothing or hair covers is still there: box where that part of the body is under it.";
 
     /// <summary>Step 1, with the whole character: where its head, upper body and lower body are, and a tail, wings or a held item.</summary>
     public static string PartsInstructions =>
@@ -138,7 +153,7 @@ public static partial class TouchZoneDetection
     /// <summary>Step 2, with a close-up of one part: its zones.</summary>
     public static string ZonesInstructions =>
         "You find body zones on a close-up picture of part of a character (a 2D or 3D avatar), for a touch-reaction feature. " + Only + " " +
-        Sides + " " + Grid + " Give each zone you can see a tight box around just that zone. " + Format +
+        Sides + " " + Grid + " Give each zone you can see a tight box around just that zone. " + Covered + " " + Format +
         " Leave out zones you can't see. Answer with JSON only, no other text, in this form:\n" +
         "{\"zones\":[{\"id\":\"forehead\",\"left\":0.40,\"top\":0.18,\"right\":0.62,\"bottom\":0.27}]}";
 
@@ -147,10 +162,18 @@ public static partial class TouchZoneDetection
         "You check boxes that mark body zones on a picture of a character (a 2D or 3D avatar), for a touch-reaction feature. " + Only + " " +
         Sides + " " + Grid + " Each box is drawn in a color, with its number in a filled tag at one of its corners. A box is right when it " +
         "tightly covers its zone and little else. Answer ok true for a box that is right. For a box that is off, answer ok false with " +
-        "a corrected box. " + Format + " Answer visible false for a zone that isn't there. You may add a listed zone that has no box yet, " +
+        "a corrected box. " + Format + " " + Covered + " Answer visible false for a zone that isn't there. You may add a listed zone that has no box yet, " +
         "by its id. Answer with JSON only, no other text, in this form:\n" +
         "{\"zones\":[{\"n\":1,\"ok\":true},{\"n\":2,\"ok\":false,\"left\":0.41,\"top\":0.20,\"right\":0.60,\"bottom\":0.31}," +
         "{\"n\":3,\"visible\":false},{\"id\":\"ear_left\",\"left\":0.70,\"top\":0.30,\"right\":0.78,\"bottom\":0.42}]}";
+
+    /// <summary>After the close-ups, with the whole character again: only the zones that must be found (the intimate ones, with
+    /// Include intimate zones on) that the close-ups missed.</summary>
+    public static string MissingInstructions =>
+        "You find body zones on a picture of a whole character (a 2D or 3D avatar), for a touch-reaction feature. " + Only + " " + Sides +
+        " " + Grid + " Every zone listed is on this character: give each one a tight box. " + Covered + " Put a zone on the far side of the " +
+        "body (such as the buttocks of a character that faces you) where it would be. " + Format + " Answer with JSON only, no other text, " +
+        "in this form:\n{\"zones\":[{\"id\":\"hips\",\"left\":0.36,\"top\":0.47,\"right\":0.64,\"bottom\":0.55}]}";
 
     /// <summary>The message that goes with the whole character's picture.</summary>
     public static string PartsText(ZoneHints? hints) =>
@@ -160,6 +183,11 @@ public static partial class TouchZoneDetection
     public static string ZonesText(ZoneRegion region, ZoneHints? hints, TouchZoneBox crop) =>
         $"This close-up shows {region.What}.\nZones (id - what):\n" + string.Join("\n", region.Zones.Select(id => $"{id} - {Describe(id)}")) +
         HintsText(hints, crop);
+
+    /// <summary>The message that goes with the whole character when zones that must be found are <paramref name="missing"/>.</summary>
+    public static string MissingText(IEnumerable<string> missing, ZoneHints? hints) =>
+        "This picture shows the whole character.\nZones (id - what):\n" + string.Join("\n", missing.Select(id => $"{id} - {Describe(id)}")) +
+        HintsText(hints, new(0, 0, 1, 1));
 
     /// <summary>The message that goes with a check: the numbered boxes, the zones without one and what the CPU found wrong.</summary>
     public static string CheckText(string what, IReadOnlyList<ZoneMark> marks, IEnumerable<string> missing, IReadOnlyList<string> problems,

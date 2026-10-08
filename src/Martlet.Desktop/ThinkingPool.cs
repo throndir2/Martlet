@@ -47,7 +47,24 @@ internal sealed partial class LiveConversationController
     private readonly ConcurrentDictionary<string, ConcurrentBag<ThinkSlot>> poolSlots = new(StringComparer.Ordinal);
 
     /// <summary>The Thinking pool: post background model jobs here (<see cref="ThinkingPool.RunAsync"/>).</summary>
-    internal ThinkingPool ThinkingPool => pool ??= new(new ThinkingJobBoard(jobs.Places, PoolMembers, RunPoolJobAsync, clock));
+    internal ThinkingPool ThinkingPool => pool ??= NewThinkingPool();
+
+    private ThinkingPool NewThinkingPool()
+    {
+        var board = new ThinkingJobBoard(jobs.Places, PoolMembers, RunPoolJobAsync, clock);
+        board.Rested += PoolMemberRested;
+        return new(board);
+    }
+
+    // Said once when it starts, in plain words with the computer to update; thinking-pool-status.json shows it until it ends.
+    private void PoolMemberRested(ThinkingPoolRest rest)
+    {
+        var minutes = ThinkingJobBoard.RefusedRest.TotalMinutes;
+        ErrorLog.Warn($"Thinking pool: {rest.Name} refused this PC's request as invalid (request.invalid), so Martlet sends it no " +
+            $"Thinking pool jobs with {ThinkingJobResult.Describe(rest.Needs)} for {minutes:0} minutes. Update {rest.Name} and this PC " +
+            "to the same Martlet version.");
+        Task.Run(WritePoolStatus).Forget();
+    }
 
     private int poolRead;
 
@@ -253,6 +270,10 @@ internal sealed partial class LiveConversationController
             // The member's computer keeps its graphics card for a live turn: the job waits and goes on later, never a failure.
             if (outcome.Result is null && member.Place == DeepThinkingPlace.Host && HostLiveHolds.Since(member.HostId!, began))
                 return ThinkingAnswer.Held($"{place.Name} keeps its graphics card for a live conversation");
+            // The member's gateway refused the request itself (request.invalid): it refuses every such job until the two
+            // computers' Martlet versions agree, so the pool rests it for such jobs instead of asking it again and again.
+            if (outcome.Result is null && member.Place == DeepThinkingPlace.Host && terminal.ProviderFailure == ProviderFailureCode.RequestRejected)
+                return ThinkingAnswer.Rejected($"{place.Name} refused the request as invalid (request.invalid)");
             // Its computer didn't answer: offline at once, so the board's next try (and the next job) goes to another member.
             if (outcome.Result is null && terminal.ProviderFailure == ProviderFailureCode.Network)
                 NoteUnreachable(member, $"a {ThinkingJobKinds.Name(job.Kind)} job");
@@ -331,6 +352,8 @@ internal sealed partial class LiveConversationController
             // The live floor: its level, jobs waiting only for the conversation (held), and jobs it stopped this turn and in all.
             floor = status.Floor, waitingForConversation = status.Held, stoppedThisTurn = status.StoppedNow, stopped = status.Stopped,
             sharesLive = status.SharesLive,
+            // Members whose computer refused a request as invalid: no such jobs go there until the time shown.
+            resting = status.Resting.Select(r => new { id = r.Id, name = r.Name, needs = ThinkingJobResult.Describe(r.Needs), until = r.Until }),
             warnings = ThinkingPoolWarnings.For(plan, Configuration?.Routes ?? []),
             // Backup Thinking: its choices, the automatic delay from recent replies and how it ended lately (never what was said).
             backup = BackupStatus(settings)

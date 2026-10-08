@@ -108,9 +108,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("ui_click", "Invoke an automation-ID control. Only safe navigation controls work without --allow-ui-effects. With " +
             "several windows that have the control (side-by-side run windows each have HostRunCancel), window names the one to use: " +
-            "its title as ui_snapshot lists it (for example \"Martlet - Start Docker Desktop\").", new
+            "its title as ui_snapshot lists it (for example \"Martlet - Start Docker Desktop\"). With focus true the control takes the " +
+            "keyboard focus first, as a mouse click gives it (its window comes to the front).", new
         {
-            id = new { type = "string" }, window = new { type = "string" }
+            id = new { type = "string" }, window = new { type = "string" }, focus = new { type = "boolean" }
         }, ["id"]),
         Tool("ui_select", "Select a named option from a combo box. Requires --allow-ui-effects.", new
         {
@@ -498,7 +499,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "simulated desktop using the desktop's paired client. Checks both routes and their models are advertised, Thinking's advertised route saves as the " +
             "desktop's job route (handing Thinking to the host), a think on the Deep thinking route runs " +
             "while a reply streams on Thinking's route (the reply finishes first), each request reaches its own Ollama (the think " +
-            "with Thinking steps on), two thinks run at once on the role's two slots (advertised as the route's maximum_concurrency) " +
+            "with Thinking steps on), a Thinking pool job's request (the role's largest context window above the job's own budget) " +
+            "is accepted, two thinks run at once on the role's two slots (advertised as the route's maximum_concurrency) " +
             "while a reply streams and a third gets job.busy, and that the chat client refuses a mismatched route. Loopback only; writes nothing to disk or " +
             "the credential vault.", new { }),
         Tool("gpu_priority_status", "Read GPU priority (live turn first) on every Martlet host paired in a desktop data directory " +
@@ -604,7 +606,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\",\"wholeX\",\"wholeY\"}) the zone it lands in, how it was found, what it " +
             "plays and what it tells the character. detect runs the production detection on snapshotPath (a PNG of the character, transparent " +
             "around it), composing and encoding every picture it would send (previewDirectory keeps them), with a FIXTURE - NOT AI stand-in " +
-            "that answers from answer's zones (guess, a wrong first answer, makes the checks correct it; checks sets the rounds, 0 to 5); it " +
+            "that answers from answer's zones (guess, a wrong first answer, makes the checks correct it; checks sets the rounds, 0 to 5; " +
+            "failAt makes that request fail, as a model that stopped answering); with includeIntimate on (the default) the intimate zones " +
+            "must be found: asked for again on the whole character, then worked out from the zones around them; it " +
             "reports each request, the steps and how far the found boxes are from answer's. save writes the parsed (or detected) zones (and " +
             "snapshotPath as their picture, and with detect the pictures sent; includeIntimate sets Include intimate zones) into an explicit, " +
             "disposable dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
@@ -619,7 +623,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             save = new { type = "boolean" }, includeIntimate = new { type = "boolean" }, snapshotPath = new { type = "string" },
             temperament = new { type = "string" }, personaId = new { type = "string" }, personality = new { type = "string" },
             repeats = new { type = "integer", minimum = 1 }, detect = new { type = "boolean" }, guess = new { type = "string" },
-            previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 }
+            previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 },
+            failAt = new { type = "integer", minimum = 1 }
         }),
         Tool("character_gaze", "Where the character looks (Companion > Character > Where the character looks, the overlay's Eyes " +
             "menu and Companion > Vision > Glances at your screen; docs/SCREEN_COMMENTARY.md \"Where the character looks\"): usual " +
@@ -1516,6 +1521,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "first, four segments at once spread over both, a computer kept for one companion PC or unticked for a job left out, " +
             "an unanswering computer skipped, Deep thinking leaving out a kept computer, and the shared setting's round trip. " +
             "In-process; reads nothing.", new { }),
+        Tool("node_presence_status", "When your other computers go away or come back, from a data directory: the per-PC away time " +
+            "(node-presence.txt; Settings > Your other computers, default 10 minutes), the rules (missing after 30 seconds without " +
+            "an answer, back after 30 seconds of answers, the back notice shown 10 minutes) and the report the desktop writes when " +
+            "a computer's state changes (node-presence.json: each paired computer's state Answering, NotAnswering, Missing, Away, " +
+            "Returning or Back, since when, and the notices Home shows, such as \"Working with less: gpu-box isn't answering\"). " +
+            "Host IDs, computer names and times only. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("node_presence_check", "Rehearse the presence notices and events with the production rules (PresenceWatch, " +
+            "NodePresenceNotices, NodePresenceSettings, NodePresenceReport) on scripted timelines: a check every 15 seconds with " +
+            "the desktop's presence rule and a 5-second tick, NOT real hosts. One flaky miss says nothing; 30 seconds without an " +
+            "answer goes missing once with a notice that names the failover move, the job that waits and the pools; still missing " +
+            "after 10 minutes stays away once; 30 seconds of answers comes back once and the notice clears after 10 minutes or " +
+            "when dismissed; a flapping computer stays one absence; the away time follows the per-PC choice; the report round trip; " +
+            "an unpaired computer is forgotten. In-process; writes only a temporary folder.", new { }),
         Tool("research_check", "Rehearse web research (the research tool: Companion > Deep thinking > Web research, off by default) " +
             "end to end with Martlet's own tool texts and job kind (WebResearch: one at a time, 4 an hour, 12 minutes, offered when " +
             "done), background-job scheduler, web client (WebAccess: DuckDuckGo results parser with ads left out and redirect links " +
@@ -1657,7 +1678,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false, OptionalString(arguments, "idPrefix")),
-                "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id"), OptionalString(arguments, "window")),
+                "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id"), OptionalString(arguments, "window"),
+                    OptionalBool(arguments, "focus") ?? false),
                 "ui_select" => desktop.Select(RequiredString(arguments, "id"), RequiredString(arguments, "item")),
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"),
                     OptionalString(arguments, "text") ?? throw new ArgumentException("Missing string 'text'.")),
@@ -1719,7 +1741,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalBool(arguments, "save") ?? false, OptionalBool(arguments, "includeIntimate"), OptionalString(arguments, "snapshotPath"),
                     cancellation, OptionalString(arguments, "temperament"), OptionalString(arguments, "personaId"), OptionalString(arguments, "personality"),
                     OptionalInt(arguments, "repeats"), OptionalBool(arguments, "detect") ?? false, OptionalString(arguments, "guess"),
-                    OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks")),
+                    OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt")),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
@@ -1813,6 +1835,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),
                 "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),
                 "work_sharing_check" => await WorkSharingCheck.RunAsync(cancellation),
+                "node_presence_status" => NodePresenceCheck.Status(DataDirectory(arguments)),
+                "node_presence_check" => NodePresenceCheck.Run(),
                 "discord_reply_status" => DiscordReplyCheck.Status(DataDirectory(arguments)),
                 "discord_reply_check" => await DiscordReplyCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),
