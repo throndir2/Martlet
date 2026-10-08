@@ -677,8 +677,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             changes = new { type = "string" }, noticeAll = new { type = "boolean" }
         }),
         Tool("character_touch_zones", "Companion > Character > Touch zones (Martlet.Avatar.Hosting CharacterTouchZones and TouchZoneDetection; " +
-            "docs/AVATARS.md \"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate), the step-by-step vision " +
-            "requests (parts on the whole character, zones on each close-up, checks of the numbered boxes), what the production parser makes " +
+            "docs/AVATARS.md \"Touch zones\") with NO vision request: the zones Martlet knows (which are intimate, and the defaults Detect " +
+            "zones looks for), the step-by-step vision requests for the model (parts on the whole character, zones on each close-up, " +
+            "checks of the numbered boxes; wanted: the default zones and the ones the owner added, required: the ones it must end with), " +
+            "what the production parser makes " +
             "of answer (a simulated vision reply about the whole picture: JSON boxes as fractions or named edges, pixels of a width x height " +
             "picture or Qwen-style 0..1000 bbox_2d grounding) bound to probe (a simulated renderer zones probe: {\"drawables\":[{\"id\",\"left\"," +
             "\"top\",\"right\",\"bottom\",\"part\"}],\"bones\":[{\"bone\",\"x\",\"y\"}],\"parts\":[{\"id\",\"name\",\"parent\"}]} in page fractions, " +
@@ -693,7 +695,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "that answers from answer's zones (guess, a wrong first answer, makes the checks correct it; checks sets the rounds, 0 to 5; " +
             "failAt makes that request fail, as a model that stopped answering); with includeIntimate on (the default) the intimate zones " +
             "must be found: asked for again on the whole character, then worked out from the zones around them; it " +
-            "reports each request, the steps and how far the found boxes are from answer's. save writes the parsed (or detected) zones (and " +
+            "reports each request, the steps and how far the found boxes are from answer's. add (zone IDs, comma-separated, such as " +
+            "\"hand_left,tail\") adds zones as the owner does with Add zone (added, in the middle of the picture; one the model has is " +
+            "marked added): detect then looks for them too and must end with them, and one it can't place stays where it was. save writes " +
+            "the parsed (or detected) zones (or, with add alone, the zones with the ones added) (and " +
             "snapshotPath as their picture, and with detect the pictures sent; includeIntimate sets Include intimate zones) into an explicit, " +
             "disposable dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
             "{\"attitude\":2,\"reactions\":[\"hearts\",\"blush\"],\"linger\":3}},\"zones\":{...},\"escalation\":{\"after\":3,...}}) or " +
@@ -710,7 +715,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             temperament = new { type = "string" }, personaId = new { type = "string" }, personality = new { type = "string" },
             repeats = new { type = "integer", minimum = 1 }, detect = new { type = "boolean" }, guess = new { type = "string" },
             previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 },
-            failAt = new { type = "integer", minimum = 1 }, probePath = new { type = "string" }
+            failAt = new { type = "integer", minimum = 1 }, probePath = new { type = "string" }, add = new { type = "string" }
         }),
         Tool("character_eyes", "Companion > Character > Touch zones > Eyes (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
             "with NO vision request: the request the vision model gets (a close-up of the face, 1.6 face widths square, about 768 pixels " +
@@ -1290,6 +1295,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "when this PC plays it back, on fixed samples. Reads no credentials and contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
+        }),
+        Tool("pc_activity_check", "Hear what this PC plays: which app plays what Martlet hears and what kind of thing it is (a YouTube " +
+            "video in a browser, a show or movie in Plex or a player, a game, a voice chat in Discord, a call, music), told apart " +
+            "deterministically from the app, the site its browser window shows, where its program is installed (a game library), " +
+            "the window in front and full screen, and how busy it keeps the graphics card. live: the production PcActivityMonitor and " +
+            "WindowsPcActivitySource on this PC for seconds (default 3): every app with an audio session (the volume mixer's meters " +
+            "only; nothing is recorded, played, kept or sent; raw window titles are never returned) with its kind and label, the " +
+            "average tick cost, the summary and the note a reply reads (the context board's activity note). rehearsal (FIXTURE apps, " +
+            "levels and lines on a simulated clock): the classifier on fixed apps, where fixture lines came from as their " +
+            "[PC audio] From ...: labels, the note, the speakers check (PcEcho.Speakers on a simulated clock: a line the microphone " +
+            "heard at the same moment as what only a video, show, game or music played is the speakers; never earlier words, a voice " +
+            "chat, a voice changer or your own voice played back) and the " +
+            "built-in What this PC plays and Always listening prompts. Reads no credentials and contacts nothing.", new
+        {
+            seconds = new { type = "integer", minimum = 1, maximum = 20 }
         }),
         Tool("sound_digest_check", "Companion > Listening > Describe PC sounds (on by default while Hear what this PC plays is on): the " +
             "saved choices, the desktop's sound-digest.json (on, the active judge: a Thinking pool model that hears or the CPU sound " +
@@ -1921,7 +1941,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     cancellation, OptionalString(arguments, "temperament"), OptionalString(arguments, "personaId"), OptionalString(arguments, "personality"),
                     OptionalInt(arguments, "repeats"), OptionalBool(arguments, "detect") ?? false, OptionalString(arguments, "guess"),
                     OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt"),
-                    OptionalString(arguments, "probePath")),
+                    OptionalString(arguments, "probePath"), OptionalString(arguments, "add")),
                 "character_eyes" => await CharacterEyesCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "dataDirectory") is not null,
                     OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"), OptionalString(arguments, "answer"),
                     OptionalString(arguments, "second"), OptionalString(arguments, "snapshotPath"), OptionalString(arguments, "face"),
@@ -1984,6 +2004,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     SpeechDirectory(arguments), cancellation),
                 "barge_in_check" => await BargeInCheck.RunAsync(arguments, DataDirectory(arguments), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
+                "pc_activity_check" => await PcActivityCheck.RunAsync(OptionalInt(arguments, "seconds"), cancellation),
                 "sound_digest_check" => await SoundDigestCheck.RunAsync(DataDirectory(arguments), MartletDirectory(arguments),
                     OptionalString(arguments, "wavFile"), cancellation),
                 "discord_call_check" => await DiscordCallCheck.RunAsync(DataDirectory(arguments), cancellation),

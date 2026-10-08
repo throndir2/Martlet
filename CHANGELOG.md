@@ -9,13 +9,16 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- While Martlet hears what this PC plays, it now knows where each line comes from (a YouTube video in Chrome, a show or movie in Plex, a game, a voice chat in Discord, music in Spotify) and what you seem to be doing, even several things at once. So it no longer answers a video, a game or the people in your voice chat as if you had said it, and each *Playing on this PC* bubble says where it came from. ([#607](https://github.com/throndir2/Martlet/pull/607))
 - New in Companion › Check-ins: every few minutes your Thinking pool checks on Martlet and fixes what a small model forgets. It turns off emotes a reply left on that no longer fit (a blush long after the compliment), takes the character's eyes back to their usual gaze, and reminds Martlet in its next reply of a promise it never kept ("I'll remind you in 10 minutes!") or when its replies drift out of character. Add your own check-ins too, such as suggesting a break after hours at the PC: choose what each one gets to know, how often it runs, and whether it reminds Martlet or Martlet brings it up on its own. Check-ins run only on your Thinking pool, never on your conversation model, so replies never wait for them. ([#604](https://github.com/throndir2/Martlet/pull/604))
 
 ### Changed
+- Your character now gets fewer, clearer touch zones: **Detect zones** finds only the hair, eyes, ears, nose, mouth, neck, breasts, upper arms, forearms, stomach, hips, groin, thighs, calves and feet, with a left and a right one where there are two. Add any other zone with **Add zone** in Companion › Character › Touch zones, and **Detect again** looks for it too, or leaves it where you put it when it can't find it. Press **Detect again** to move a character you set up before to the shorter list. ([#605](https://github.com/throndir2/Martlet/pull/605))
 - The talk window now calls your character by its personality's name instead of "Martlet": in its title, at the top, in the message box and in the conversation, such as *You touched Ivy* or *Ivy, about your whole screen*. Your Thinking model sees that name on your character's own lines when it recalls earlier conversations or remembers things, and the songs it writes are for your character to sing. ([#606](https://github.com/throndir2/Martlet/pull/606))
 
 ### Fixed
 - **Eyes › Watch the window you're using** now really watches what you do: your character's eyes follow where you move the mouse or type in the window you're using, instead of staring at the middle of it (which, for most windows, looked like staring off to one side). ([#608](https://github.com/throndir2/Martlet/pull/608))
+- When your microphone picks up a video, show, game or music from your speakers while Martlet hears what this PC plays, Martlet no longer takes those words for yours: it shows them as a faded note and hears them only as what the PC played. ([#607](https://github.com/throndir2/Martlet/pull/607))
 
 ## [0.56.0] - 2026-10-07
 

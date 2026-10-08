@@ -22,7 +22,7 @@ public static partial class TouchZoneDetection
                     var boxes = region.Zones.Where(known.ContainsKey).Select(id => known[id]).ToArray();
                     if (boxes.Length > 0 && Seen(Union(boxes)) is { } seen) entries.Add(Entry("id", region.Id, seen));
                 }
-                foreach (var extra in Extras)
+                foreach (var extra in Extras.Where(ask.Ids.Contains))
                     if (known.TryGetValue(extra, out var box) && Seen(box) is { } seen) entries.Add(Entry("id", extra, seen));
                 return "{\"parts\":[" + string.Join(",", entries) + "]}";
             case ZoneAskKind.Zones:
