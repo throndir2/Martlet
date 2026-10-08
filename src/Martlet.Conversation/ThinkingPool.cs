@@ -394,7 +394,8 @@ public sealed class ThinkingJobBoard
             notes.Add($"Every Thinking pool computer is offline ({Names(away)}): thinking longer and research use the conversation model " +
                 "when that is allowed, and screen and sound summaries and the judges use their own simple rules until one answers again.");
         else if (slots == 1)
-            notes.Add("1 slot: long thinking can delay screen and sound summaries; add a second slot for the full experience.");
+            notes.Add(away.Length > 0 ? "1 slot answers now: long thinking can delay screen and sound summaries until more answer."
+                : "1 slot: long thinking can delay screen and sound summaries; add a second slot for the full experience.");
         else
             notes.Add($"{slots} slots: one stays free for quick jobs (judges and summaries) while long thinking runs.");
         if (online.Length > 0 && away.Length > 0)

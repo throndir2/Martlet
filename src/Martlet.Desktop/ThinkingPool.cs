@@ -313,6 +313,8 @@ internal sealed partial class LiveConversationController
         {
             schemaVersion = 1, updated = clock.GetUtcNow(),
             useConversationModelWhenEmpty = settings.UseConversationModelWhenEmpty,
+            // The paired computers the owner keeps out of the pool (host IDs only); they never join by themselves.
+            leftByOwner = settings.LeftByOwner,
             members = status.Members.Select(m => new
             {
                 id = m.Id, name = m.Name, model = members.FirstOrDefault(p => p.Id == m.Id)?.Model,

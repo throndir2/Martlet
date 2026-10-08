@@ -1398,7 +1398,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "code) with simulated members, NOT models: an empty pool answering no member at once, a picture going to the member " +
             "that sees and a recording finding none, two slots where a second long job waits while a judge takes the last free " +
             "slot, one slot where waiting jobs run highest priority first (barge-in judge, digest, research), a busy member passed " +
-            "over for the next, a stale judge dropped, deep-thinking.json read once into thinking-pool.json, and presence: a " +
+            "over for the next, a stale judge dropped, deep-thinking.json read once into thinking-pool.json, paired hosts joining " +
+            "the pool by themselves (ThinkingPoolAutoJoin, sample hosts), and presence: a " +
             "member's computer going offline (its slots leave the pool, jobs go to the others and wait for it, the last-free-slot " +
             "rule counts only computers that answer, every computer offline lets the conversation model stand in) and answering " +
             "again (its slots come back and a job waiting in line starts there), while the think_longer tool text stays " +

@@ -158,6 +158,7 @@ public sealed class ThinkingPoolTests
         var status = board.Status();
         Assert.Equal((1, 1, 3), (status.Slots, status.Free, status.ConfiguredSlots));
         Assert.Equal([false, true], status.Members.Select(m => m.Online));
+        Assert.Equal("1 slot answers now: long thinking can delay screen and sound summaries until more answer.", status.Guidance[0]);
         Assert.Contains(status.Guidance, g => g.StartsWith("diva is offline: 1 of 3 slots answer now", StringComparison.Ordinal));
         Assert.Contains(status.Guidance, g => g.StartsWith("No member that answers now sees pictures", StringComparison.Ordinal));
         // Text goes to ripley; pictures only diva sees, and diva is offline: callers use their fallback.
