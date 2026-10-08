@@ -44,6 +44,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "CharacterCombosAdd",
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
+        // Companion › Check-ins: Open Thinking pool and Edit their prompts only open those pages (so does each check-in's Edit
+        // its prompt, CheckInPrompt-<id>). Each check-in's On box, Every and Its answer choices, the fact boxes, the name and
+        // task boxes, Add a check-in and Remove save check-ins.json, and Check now (CheckInRun-<id>) sends the check to a
+        // Thinking pool member, which may be a paid provider, so they need --allow-ui-effects.
+        "CheckInsOpenPool", "CheckInsOpenPrompts",
         // Companion › Pictures' Check only asks the saved place whether it can draw now (a cloud provider: only whether a key is
         // there); Connect only reads the typed ComfyUI's status and models. Neither saves or draws. Draw a test picture, Set up
         // and the Draw with/Turn off buttons need --allow-ui-effects.
@@ -168,6 +173,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Deep thinking's "Where it thinks" options ("DeepPlace-Computer", "DeepPlace-Off") only show that place's
         // card; its own Use and Turn off buttons commit (and need --allow-ui-effects).
         "DeepPlace-",
+        // Companion › Check-ins: a check-in's Edit its prompt ("CheckInPrompt-emotes") only opens Prompts.
+        "CheckInPrompt-",
         // Companion › Pictures' "Where it draws" options ("PicturesPlace-Host", "PicturesPlace-ComfyUi") and its computer pills
         // ("PicturesHost-this-pc") only show that place's card; its own buttons commit.
         "PicturesPlace-", "PicturesHost-",
@@ -539,6 +546,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // can't yet, and its fixed disclosure of what leaves this PC. The WebResearchOn check box saves the reply settings, so it
         // needs --allow-ui-effects.
         "WebResearchStatus", "WebResearchDisclosure",
+        // Companion › Check-ins: how many check-ins are on and the Thinking pool member that takes them first, or why they can't
+        // run ("CheckInsNow"), and the last check-in that ran, when, on which member and what came of it in a few words
+        // ("CheckInsLast"; never what was said or answered). Each check-in's line reads through CheckInStatus- below.
+        "CheckInsNow", "CheckInsLast",
         // Companion › Prompts: how many internal prompts are edited or emptied, and the estimated tokens of all prompts together
         // as typed (counts only, never the prompt text).
         "PromptsNow", "PromptsTokens",
@@ -770,6 +781,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The talk window's task list: each background task's status ("LiveJobState-think-1" reads "Checking it fits beside
         // Thinking." or "Done after 1:02. Martlet brought it up."; never what the task is about or what it found).
         "LiveJobState-",
+        // Companion › Check-ins: each check-in's line ("CheckInStatus-emotes" reads "Waits: next in 3 min. Last at 10:31 PM on
+        // diva (qwen3:8b): turned off {blush}. 2 runs since Martlet started, 1 acted on."), its On box and Every choice
+        // ("CheckInOn-emotes", "CheckInEvery-emotes"), and for the owner's own its Its answer choice and fact boxes
+        // ("CheckInOutcome-c1", "CheckInFact-c1-Conversation"). Changing any of them saves check-ins.json, so it needs
+        // --allow-ui-effects; the name and task boxes (the owner's own words) aren't read here.
+        "CheckInStatus-", "CheckInOn-", "CheckInEvery-", "CheckInOutcome-", "CheckInFact-",
         // Companion › Deep thinking: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs gemma4:27b.")
         // and, for one without the Deep thinking role, its Add button's name ("DeepThinkingAddRole-diva" reads "Add Deep thinking
         // on diva"; clicking it installs the role, so it needs --allow-ui-effects); for one with it, its Change model button's

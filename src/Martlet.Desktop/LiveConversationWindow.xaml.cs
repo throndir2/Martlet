@@ -661,6 +661,18 @@ public partial class LiveConversationWindow : ThemedWindow
         return job;
     }
 
+    /// <summary>What a check-in said to bring up, for this conversation: it starts (hidden) when it hasn't yet, and Martlet
+    /// brings it up on its own as soon as it is free, or with what you say next.</summary>
+    internal BackgroundJob? BringUp(string label, string text)
+    {
+        if (closed) return null;
+        if (!begun) StartInBackground();
+        var job = controller.BringUp(label, text);
+        if (job is not null) ErrorLog.Info($"Check-ins: {job.Id} waits; Martlet brings it up as soon as it's free.");
+        RenderActions();
+        return job;
+    }
+
     /// <summary>Brings up finished background work on Martlet's own, as soon as it is free: Thinking longer shares results as
     /// soon as Martlet is free (the default), something finished that the user didn't stop, nobody is talking or about to be
     /// answered, no reply, look or other work owns Martlet, Martlet isn't paused or singing, and the conversation has been quiet

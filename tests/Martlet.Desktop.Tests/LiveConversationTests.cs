@@ -2908,6 +2908,30 @@ public sealed class LiveConversationTests
     });
 
     [Fact]
+    public Task WhatACheckInBringsUpComesUpOnItsOwnInItsOwnWords() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Answer("Hey, how about a quick stretch?");
+        var window = fixture.Open();
+        try
+        {
+            await Loaded(window);
+            var job = window.BringUp("Breaks", "Suggest a short stretch break, it has been hours.")!;
+            Assert.True(job.Kind.Notice);
+            Assert.Equal(CheckIns.SayKindName, job.Kind.Name);
+            await Until(() => job.Delivery == BackgroundDeliveryState.Delivered);
+            Assert.Equal(1, fixture.Llm.Calls);
+            var body = Encoding.UTF8.GetString(fixture.Llm.Body);
+            Assert.Contains("your own check-in came up with something to bring up", body);
+            Assert.Contains("Suggest a short stretch break, it has been hours.", body);
+            Assert.DoesNotContain("a reminder they asked you for is due now", body);
+            Click(window, "TasksChip");
+            await Until(() => Find<TextBlock>(window, "LiveJobState-" + job.Id)?.Text == "Martlet brought it up.");
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
     public void TheTaskChipCountsRunningReadyAndDoneTasks()
     {
         Assert.Equal("2 running", LiveConversationWindow.TasksChipLine(2, 0, 3));
