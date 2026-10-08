@@ -695,6 +695,18 @@ default; turn it off to leave them out. The check box names each of these parts.
   so zooming in or panning doesn't move them. Last comes the rough part of the
   body (head, face, body, arm, hand, leg, foot); before any zones are found,
   clicks use that rough part.
+- **Zones that overlap**: zone boxes can overlap, for example where the groin
+  meets a thigh. A click where boxes overlap touches each of those zones. The
+  matched zone (above) plays its reaction and rests. Martlet hears every one
+  of those zones that it notices, in one line: *They poked your groin and your
+  left thigh once.* Only zones on the same part of the body count: the part
+  the hit VRM bone moves, else the matched zone's part. So a hand held in
+  front of the hips, or raised to the face, touches only the hand. A zone
+  whose box frames a smaller touched zone (holds most of it, such as the
+  hair's box around an eye) is left out, because the smaller zone tells better
+  where the click landed. A stroke across zones that overlap crosses each of
+  them, and Martlet hears them all on the stroke's path. The last-touch line
+  names the other zones: *Groin (box), with Left thigh, at ...*.
 - Each zone plays its emotes and gestures (by default the model's own where it
   has them: a head pat leans in or tilts and smiles, a cheek blushes, an
   intimate zone blushes and flinches) and rests a few seconds before reacting

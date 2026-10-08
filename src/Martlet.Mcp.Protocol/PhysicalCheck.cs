@@ -44,13 +44,14 @@ internal static class PhysicalCheck
         {
             var given = JsonSerializer.Deserialize<CharacterStroke>(stroke, Web) ?? throw new ArgumentException("stroke must be a CharacterStroke object.");
             var zones = new Dictionary<string, CharacterTouchZone>(StringComparer.Ordinal);
-            string? ZoneOf(CharacterTouch touch)
+            // Every zone a sample is on, as the desktop does: zones can overlap.
+            IReadOnlyList<string> ZonesOf(CharacterTouch touch)
             {
-                if (CharacterTouchZones.Match(settings, touch) is not { } match) return null;
-                zones[match.Zone.Id] = match.Zone;
-                return match.Zone.Id;
+                var touched = CharacterTouchZones.Touched(settings, touch, CharacterTouchZones.Match(settings, touch));
+                foreach (var zone in touched) zones[zone.Id] = zone;
+                return [.. touched.Select(z => z.Id)];
             }
-            var result = CharacterStrokes.Summarize(given.Samples, given.Aspect, ZoneOf);
+            var result = CharacterStrokes.Summarize(given.Samples, given.Aspect, ZonesOf);
             var noticed = result.Distinct.Select(id => zones[id]).Where(z => noticeAll || z.Reaction.Notices).ToArray();
             var words = CharacterPhysicalWords.Stroke(result, noticed);
             var feeling = CharacterTouchTemperaments.Feeling(temperament, noticed);

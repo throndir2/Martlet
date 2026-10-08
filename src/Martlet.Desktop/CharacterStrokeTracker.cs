@@ -18,7 +18,13 @@ internal sealed class CharacterStrokeTracker
     /// <summary>Adds a batch. <paramref name="zoneOf"/> names the zone a touch is in (null: none). Returns the touches that
     /// entered another zone than the hit before them, and the summary when this batch ended the stroke.</summary>
     internal (IReadOnlyList<(CharacterTouch Touch, string Zone)> Entered, StrokeSummary? Ended) Add(CharacterStroke batch,
-        Func<CharacterTouch, string?> zoneOf)
+        Func<CharacterTouch, string?> zoneOf) => Add(batch, touch => zoneOf(touch) is { Length: > 0 } zone ? [zone] : []);
+
+    /// <summary>Adds a batch. <paramref name="zonesOf"/> names every zone a touch is on, the matched one first (zones can
+    /// overlap; none: no zone). Returns the touches whose matched zone isn't the hit's before them (each starts that zone's
+    /// reaction), and the summary when this batch ended the stroke, with every zone the stroke was on.</summary>
+    internal (IReadOnlyList<(CharacterTouch Touch, string Zone)> Entered, StrokeSummary? Ended) Add(CharacterStroke batch,
+        Func<CharacterTouch, IReadOnlyList<string>> zonesOf)
     {
         if (batch.Id == ended) return ([], null);
         if (batch.Id != id)
@@ -32,12 +38,12 @@ internal sealed class CharacterStrokeTracker
         foreach (var sample in batch.Samples)
         {
             if (samples.Count < CharacterStroke.MaximumSamples) samples.Add(sample);
-            if (sample.Touch is not { } touch || zoneOf(touch) is not { Length: > 0 } name || name == zone) continue;
+            if (sample.Touch is not { } touch || zonesOf(touch) is not [{ Length: > 0 } name, ..] || name == zone) continue;
             zone = name;
             entered.Add((touch, name));
         }
         if (batch.Phase != "end") return (entered, null);
-        var summary = CharacterStrokes.Summarize(samples, aspect, zoneOf);
+        var summary = CharacterStrokes.Summarize(samples, aspect, zonesOf);
         ended = id;
         id = 0;
         samples.Clear();

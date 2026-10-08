@@ -174,7 +174,26 @@ public static class CharacterPhysicalWords
 
     private static string List(IReadOnlyList<string> items) =>
         items.Count == 1 ? items[0] : string.Join(", ", items.Take(items.Count - 1)) + " and " + items[^1];
+
+    /// <summary>How a touch on <paramref name="zones"/> is said: the zones Martlet notices that it landed in, the matched one first
+    /// (zones can overlap, <see cref="CharacterTouchZones.Touched"/>). Where, as the character hears it ("your groin and your
+    /// left thigh"; a left and a right zone of one kind next to each other are said together, "your breasts"), the short names
+    /// for the conversation's history ("groin + left thigh"), the owner's own words for them and whether it is a pat (the first
+    /// zone is the top of the head, the hair or animal ears). Null when there are none.</summary>
+    public static TouchWords? Touch(IReadOnlyList<CharacterTouchZone> zones)
+    {
+        var places = Places(zones.DistinctBy(z => z.Id).ToArray());
+        if (places.Count == 0) return null;
+        var hints = zones.Select(CharacterTouchZones.Narration).OfType<string>().Distinct(StringComparer.Ordinal).ToArray();
+        return new(List([.. places.Select(p => p.Part)]), string.Join(" + ", places.Select(p => p.Label)),
+            hints.Length == 0 ? null : string.Join(" ", hints), CharacterTouchZones.Pats(zones[0]));
+    }
 }
+
+/// <summary>How a touch is said (<see cref="CharacterPhysicalWords.Touch"/>): <paramref name="Where"/> for the character ("your
+/// groin and your left thigh"), <paramref name="Label"/> for the conversation's history ("groin + left thigh"), the owner's own
+/// words for the zones (<paramref name="Hint"/>) and whether a quick tap there is a pat (<paramref name="Pat"/>).</summary>
+public sealed record TouchWords(string Where, string Label, string? Hint, bool Pat);
 
 /// <summary>How a stroke is said (<see cref="CharacterPhysicalWords.Stroke(StrokeSummary, IReadOnlyList{CharacterTouchZone})"/>):
 /// <paramref name="Where"/> for the character ("down from your chest over your stomach to your thighs"), <paramref name="Label"/>

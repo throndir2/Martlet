@@ -158,13 +158,18 @@ internal static class TouchZonesCheck
             // The point the boxes compare with: where the touched point was in the rest pose when the touch carries it.
             var (atX, atY, traced) = CharacterTouchZones.TouchPoint(settings, given);
             var compared = new { x = Math.Round(atX, 4), y = Math.Round(atY, 4), rest = traced };
-            match = found is null ? new { zone = (string?)null, how = (string?)null, traced = false, at = compared, coarse = given.CoarseZone, plays = Array.Empty<string>(), notices = false, noticed = (string?)null }
+            // Every zone the touch landed in (zones can overlap), the matched one first: Martlet hears each one it notices.
+            var touched = CharacterTouchZones.Touched(settings, given, found);
+            match = found is null ? new { zone = (string?)null, how = (string?)null, traced = false, at = compared, touched = Array.Empty<string>(),
+                    coarse = given.CoarseZone, plays = Array.Empty<string>(), notices = false, noticed = (string?)null }
                 : new
                 {
-                    zone = found.Zone.Id, name = found.Zone.Name, how = found.How, traced = found.Traced, at = compared, coarse = given.CoarseZone,
+                    zone = found.Zone.Id, name = found.Zone.Name, how = found.How, traced = found.Traced, at = compared,
+                    touched = touched.Select(z => z.Id).ToArray(), coarse = given.CoarseZone,
                     plays = CharacterTouchZones.React(found.Zone, catalog, temperament, touches).Actions.Select(s => $"{s.Kind}: {s.Name}").ToArray(),
                     reaction = Reaction(CharacterTouchZones.React(found.Zone, catalog, temperament, touches)), repeats = touches,
-                    notices = found.Zone.Reaction.Notices, noticed = Noticed(found.Zone, given), rests = found.Zone.Reaction.CooldownSeconds
+                    notices = found.Zone.Reaction.Notices, noticing = touched.Where(z => z.Reaction.Notices).Select(z => z.Id).ToArray(),
+                    noticed = Noticed(touched, given, temperament), rests = found.Zone.Reaction.CooldownSeconds
                 };
         }
         return new
@@ -343,14 +348,17 @@ internal static class TouchZonesCheck
     private static object Reaction(TouchReactionPlan plan) =>
         new { from = plan.From, attitude = plan.Attitude, escalated = plan.Escalated, linger = plan.LingerSeconds, look = plan.LookSeconds };
 
-    // What the Thinking model hears about this one touch when Martlet notices the zone (the ledger's line), or null.
-    private static string? Noticed(CharacterTouchZone zone, CharacterTouch touch)
+    // What the Thinking model hears about this one touch on the zones it landed in that Martlet notices (the ledger's line, as the
+    // desktop records it), or null.
+    private static string? Noticed(IReadOnlyList<CharacterTouchZone> touched, CharacterTouch touch, CharacterTouchTemperament? temperament)
     {
-        if (!zone.Reaction.Notices) return null;
+        var heard = touched.Where(z => z.Reaction.Notices).ToArray();
+        if (CharacterPhysicalWords.Touch(heard) is not { } words) return null;
         var ledger = new Martlet.Conversation.TouchLedger();
-        ledger.Record(new(touch.Held ? Martlet.Conversation.PhysicalKind.Hold : CharacterTouchZones.Pats(zone) ? Martlet.Conversation.PhysicalKind.Pat
-            : Martlet.Conversation.PhysicalKind.Tap, TimeSpan.Zero, CharacterTouchZones.Part(zone), zone.Name.ToLowerInvariant(),
-            Hint: CharacterTouchZones.Narration(zone)));
+        ledger.Record(new(touch.Held ? Martlet.Conversation.PhysicalKind.Hold : words.Pat ? Martlet.Conversation.PhysicalKind.Pat
+            : Martlet.Conversation.PhysicalKind.Tap, TimeSpan.Zero, words.Where, words.Label, Hint: words.Hint,
+            Zones: [.. heard.Select(CharacterTouchZones.Part)], Intimate: heard.Any(z => CharacterTouchZones.Kind(z.Id)?.Intimate == true),
+            Feeling: CharacterTouchTemperaments.Feeling(temperament, heard)));
         return ledger.Drain(TimeSpan.Zero)?.Line;
     }
 

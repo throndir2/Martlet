@@ -685,7 +685,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "(Martlet.Avatar.Hosting CharacterStrokes and CharacterPhysicalWords with Martlet.Conversation's TouchLedger), headless, " +
             "with no desktop and no model request. stroke is a JSON CharacterStroke {\"id\",\"phase\":\"end\",\"aspect\",\"samples\":" +
             "[{\"x\",\"y\",\"ms\",\"touch\":CharacterTouch or null}]} summarized against the touch zones saved for modelId in dataDirectory " +
-            "(or the rough zones before any were found): zones crossed, main zone, ms, length, speed, pace (slow, steady or quick), " +
+            "(or the rough zones before any were found): zones crossed (where zones overlap, each one it was on), main zone, ms, length, speed, pace (slow, steady or quick), " +
             "passes, dx and dy (where it ended from where it began, page heights), sideways and way (down, up or null), and words: how " +
             "the ledger says its whole path (where, such as \"down from your chest over your stomach to your thighs\", label, pace, " +
             "times). changes is a JSON array of RendererPhysical {\"kind\":\"moved|home|zoomed|zoom_reset|panned\",\"dx\",\"dy\"," +
@@ -724,8 +724,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "character-touch-zones.json with what its last detection sent, and with touch (a CharacterTouch: {\"x\",\"y\",\"hitAreas\"," +
             "\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\",\"wholeX\",\"wholeY\",\"restX\",\"restY\",\"restWholeX\"," +
             "\"restWholeY\"}; rest* is where the touched point was in the rest pose, which the boxes compare with when given) the zone " +
-            "it lands in, how it was found, whether it was traced to the rest pose (traced), the point compared (at), what it " +
-            "plays and what it tells the character. detect runs the production detection on snapshotPath (a PNG of the character, transparent " +
+            "it lands in, how it was found, whether it was traced to the rest pose (traced), the point compared (at), touched (every " +
+            "zone it lands in, that one first: where zones overlap, each other zone in use whose box holds the point, on the same " +
+            "part of the body as the touch, leaving out a zone whose box frames a smaller one there), what it plays (the matched " +
+            "zone's reaction), noticing (the touched zones Martlet notices) and noticed (the line Martlet hears for them all, such as " +
+            "\"They poked your groin and your left thigh once.\"). detect runs the production detection on snapshotPath (a PNG of the character, transparent " +
             "around it), composing and encoding every picture it would send (previewDirectory keeps them), with a FIXTURE - NOT AI stand-in " +
             "that answers from answer's zones (guess, a wrong first answer, makes the checks correct it; checks sets the rounds, 0 to 5; " +
             "failAt makes that request fail, as a model that stopped answering); with includeIntimate on (the default) the intimate zones " +
