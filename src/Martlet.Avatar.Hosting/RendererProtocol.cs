@@ -242,6 +242,46 @@ public sealed record RendererEyesFrom(string? EyesFrom)
         word is { Length: > 0 and <= 16 } && word.All(c => c is >= 'a' and <= 'z' or '-') ? word : null;
 }
 public sealed record RendererMapping(string Target, string Aspect);
+/// <summary>One area of a touch zone of the showing character (<see cref="RendererZoneView"/>): its zone's ID and name, which of the
+/// zone's areas it is (0 for the first), the color it is drawn in (#RRGGBB), the Live2D drawables, VRM humanoid bones and VRM
+/// nodes it follows, and its box with the character framed whole (fractions of the page, <see cref="CharacterTouch.WholeX"/>),
+/// where it is when it follows nothing the renderer can find.</summary>
+public sealed record RendererZoneArea(string Zone, string Name, int Area, string Color, string[] Drawables, string[] Bones, string[] Nodes,
+    double Left, double Top, double Right, double Bottom)
+{
+    [JsonIgnore]
+    public bool IsValid => Zone is { Length: > 0 and <= 64 } && Name is { Length: > 0 and <= 64 } && Area is >= 0 and < 64 &&
+        Color is { Length: 7 } && Color[0] == '#' && Color.Skip(1).All(char.IsAsciiHexDigit) &&
+        new[] { Drawables, Bones, Nodes }.All(list => list is { Length: <= 256 } && list.All(id => id is { Length: > 0 and <= 256 })) &&
+        new[] { Left, Top, Right, Bottom }.All(v => double.IsFinite(v) && Math.Abs(v) < 100) && Right > Left && Bottom > Top;
+}
+/// <summary>The touch zones of the showing character ("zoneview"): each zone's areas, and whether the character draws them over
+/// itself (Touch zones › Show the zones on the character), each where its parts are as they move. Drawn or not, the renderer
+/// reads where each area is now for Martlet's MCP (character_zones). Replied to with "ok".</summary>
+public sealed record RendererZoneView(bool Draw, RendererZoneArea[] Areas)
+{
+    public const int MaximumAreas = 512;
+
+    [JsonIgnore] public bool IsValid => Areas is { Length: <= MaximumAreas } && Areas.All(a => a is { IsValid: true });
+
+    /// <summary>The view of <paramref name="settings"/>' zones in use (their areas in <paramref name="colors"/>, one per zone in
+    /// turn), drawn when <paramref name="draw"/>; no areas without zones or a snapshot framed whole.</summary>
+    public static RendererZoneView Of(CharacterTouchZoneSettings? settings, bool draw, IReadOnlyList<string> colors)
+    {
+        if (settings is not { Whole: true, Crop: { } crop } || colors.Count == 0) return new(draw, []);
+        var areas = new List<RendererZoneArea>();
+        foreach (var (zone, number) in settings.Zones.Select((z, i) => (z, i)).Where(z => settings.Active(z.z)))
+            foreach (var (area, index) in zone.AllAreas.Select((a, i) => (a, i)))
+            {
+                var page = area.Box.Within(crop);
+                areas.Add(new(zone.Id, zone.Name.Length <= 64 ? zone.Name : zone.Name[..64], index, colors[number % colors.Count],
+                    [.. area.Drawables.Take(256)], [.. area.Bones.Take(256)], [.. area.Nodes.Take(256)],
+                    page.X, page.Y, page.X + page.Width, page.Y + page.Height));
+                if (areas.Count >= MaximumAreas) return new(draw, [.. areas]);
+            }
+        return new(draw, [.. areas]);
+    }
+}
 public sealed record RendererConfiguration(string SourceId, string ModelRevision, string MappingRevision, RendererMapping[] Targets);
 public sealed record RendererIdentity(Guid SessionId, Guid TurnId, Guid RequestId, string SourceId, long Epoch, int SampleRate);
 public sealed record RendererParameters(RendererIdentity Identity, long Sequence, long SampleOffset,

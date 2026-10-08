@@ -112,7 +112,7 @@ public static partial class TouchZoneDetection
         foreach (var (id, (what, side)) in meaning.ToArray())
             if (what == "torso" && reach.TryGetValue(id, out var extent) && extent.Height > (heads is null ? 0.6 * figure.Height : 3 * heads.Height))
                 meaning[id] = (null, side);
-        var found = new List<(TouchZoneBox Box, List<string> Parts, int Side)>();
+        var found = new List<(TouchZoneBox Box, List<string> Parts, int Side, string Id)>();
         foreach (var drawable in placed)
         {
             var keys = new List<string>();
@@ -123,7 +123,7 @@ public static partial class TouchZoneDetection
                 if (what is not null && !keys.Contains(what)) keys.Add(what);
                 if (side == 0) side = says;
             }
-            if (keys.Count > 0) found.Add((Box(drawable), keys, side));
+            if (keys.Count > 0) found.Add((Box(drawable), keys, side, drawable.Id));
         }
         if (found.Count == 0) return ([], [], null, parts.Count, named);
 
@@ -149,7 +149,7 @@ public static partial class TouchZoneDetection
                 sides[i] = picture == 0 ? null : (picture > 0) == faces ? "left" : "right";
             }
         }
-        var pieces = found.Select((p, i) => new ZoneHintPiece(p.Box, p.Parts, sides[i])).ToList();
+        var pieces = found.Select((p, i) => new ZoneHintPiece(p.Box, p.Parts, sides[i], p.Id)).ToList();
         var areas = new List<ZoneHintArea>();
         foreach (var (key, _) in PartWords)
         {

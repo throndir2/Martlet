@@ -132,13 +132,17 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
             var crop = new TouchZoneBox(shot.Picture.CropLeft, shot.Picture.CropTop, shot.Picture.CropWidth, shot.Picture.CropHeight);
             var hints = TouchZoneDetection.Hints(shot.Probe, crop);
             var before = Current;
-            var result = await Task.Run(() => TouchZoneDetection.Estimate(snapshot, hints, TouchZoneDetection.For(before)), token);
+            var result = await Task.Run(() => TouchZoneDetection.Estimate(snapshot, hints, TouchZoneDetection.For(before, hints: hints)), token);
             foreach (var step in result.Steps) ErrorLog.Info($"First touch zones: {step}.");
             // Another model loaded, or zones made, while the picture was taken: those stay as they are.
             if (ModelId != id || Current is { Zones.Count: > 0 }) return Detection ?? "";
             if (result.Zones is not { Count: > 0 } zones)
                 return Report("Martlet couldn't place any zones on the character's picture. Press Detect zones to have your Thinking model find them.");
-            try { await CharacterTouchZones.SaveSnapshotAsync(dataDirectory, id, shot.Png, token); }
+            try
+            {
+                await CharacterTouchZones.SaveSnapshotAsync(dataDirectory, id, shot.Png, token);
+                await CharacterTouchZones.SaveSnapshotProbeAsync(dataDirectory, id, shot.Probe is { } probe ? new(crop, probe) : null, token);
+            }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
                 return Report($"Martlet couldn't keep the character's picture for its first zones: {error.Message}");
@@ -146,9 +150,9 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
             if (await SaveAsync(CharacterTouchZones.Estimated(before, id, zones, crop, shot.Probe, DateTimeOffset.Now), token) is { } why)
                 return Report("The first zones were placed but couldn't be saved: " + why);
             var bound = Current?.Zones.Count(z => z.Drawables.Count > 0 || z.Bones.Count > 0) ?? 0;
-            ErrorLog.Info($"Placed a first guess at {zones.Count} touch zones with no AI ({bound} bound to the model's parts).");
+            ErrorLog.Info($"Placed a first guess at {zones.Count} touch zones with no AI ({bound} bound to the model's parts{Following(Current)}).");
             return Report($"First zones: Martlet placed {Zones(zones.Count)} at {DateTime.Now:t} from the character's own parts and shape, with no AI " +
-                "and nothing sent. Move a box into place, or press Detect zones and your Thinking model finds them.");
+                "and nothing sent." + FollowingText(Current) + " Move a box into place, or press Detect zones and your Thinking model finds them.");
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { return Detection ?? ""; }
         finally
@@ -199,8 +203,9 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
             var crop = new TouchZoneBox(shot.Picture.CropLeft, shot.Picture.CropTop, shot.Picture.CropWidth, shot.Picture.CropHeight);
             var hints = TouchZoneDetection.Hints(shot.Probe, crop);
             var before = Current;
-            // The picture the zones from before were found in: it goes back with them when this detection fails part way.
+            // The picture the zones from before were found in, and its probe: they go back with them when this detection fails part way.
             var earlierPicture = before is { Zones.Count: > 0 } && SnapshotPath is { } earlierPath ? await ReadAsync(earlierPath, token) : null;
+            var earlierProbe = earlierPicture is not null && dataDirectory is not null ? CharacterTouchZones.LoadSnapshotProbe(dataDirectory, id) : null;
             var folder = dataDirectory is null ? null : CharacterTouchZones.ClearSent(dataDirectory, id);
             // What the model told of its parts goes with the pictures, so MCP can replay this detection on the same picture.
             if (folder is not null && shot.Probe is { } probe)
@@ -238,9 +243,9 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
                 return await ask($"Finding touch zones ({zoneAsk.Step})", zoneAsk.Instructions, zoneAsk.Text, image, cancel);
             }
 
-            // It looks for the default zones and the ones the owner added; with Include intimate zones on (it is unless the owner
-            // turned it off), the intimate ones must be found, and so must the ones the owner added.
-            var options = TouchZoneDetection.For(before);
+            // It looks for the default zones, the ones the owner added and a tail or wings the model's own parts name; with Include
+            // intimate zones on (it is unless the owner turned it off), the intimate ones must be found, and so must the others.
+            var options = TouchZoneDetection.For(before, hints: hints);
             var result = await Task.Run(() => TouchZoneDetection.RunAsync(snapshot, hints, AskAsync, progress =>
             {
                 latest = progress.Zones;
@@ -256,7 +261,7 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
                 if (before is { Zones.Count: > 0 } earlier)
                 {
                     // The zones found so far were saved over the earlier ones as they came: those, and their picture, go back.
-                    if (pictureKept && await RestoreAsync(earlier, earlierPicture) is { } lost)
+                    if (pictureKept && await RestoreAsync(earlier, earlierPicture, earlierProbe) is { } lost)
                         return Report(stopped + " The zones from before couldn't be put back: " + lost);
                     pictureKept = false;
                     var n = earlier.Zones.Count;
@@ -279,9 +284,10 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
             var settings = Current!;
             var bound = settings.Zones.Count(z => z.Drawables.Count > 0 || z.Bones.Count > 0);
             var checks = pictures.Count(p => p.Kind == nameof(ZoneAskKind.Check));
-            ErrorLog.Info($"The Thinking model found {result.Zones.Count} touch zones in {requests} requests ({bound} bound to the model's parts).");
+            ErrorLog.Info($"The Thinking model found {result.Zones.Count} touch zones in {requests} requests ({bound} bound to the model's parts{Following(settings)}).");
             return Report(tag + $"Found {result.Zones.Count} zone{(result.Zones.Count == 1 ? "" : "s")} at {DateTime.Now:t} in {requests} " +
-                $"request{(requests == 1 ? "" : "s")} ({checks} check{(checks == 1 ? "" : "s")} of the boxes); {bound} follow the model's parts as it moves.");
+                $"request{(requests == 1 ? "" : "s")} ({checks} check{(checks == 1 ? "" : "s")} of the boxes); {bound} follow the model's parts as it moves." +
+                FollowingText(settings));
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -302,30 +308,66 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
     }
 
     // Saves zones found (so far) in the snapshot, with the owner's choices for each zone from before this detection, and the
-    // snapshot they belong to. While the detection runs (partial) over a first guess, the first guess's zones not found yet stay.
-    // Returns why they couldn't be saved, or null.
+    // snapshot they belong to with its probe. While the detection runs (partial) over a first guess, the first guess's zones not
+    // found yet stay. Returns why they couldn't be saved, or null.
     private async Task<string?> KeepAsync(string id, CharacterTouchZoneSettings? before, IReadOnlyList<CharacterTouchZone> zones, byte[]? png,
         TouchZoneBox crop, RendererZoneProbe? probe, CancellationToken token, bool partial = false)
     {
         if (dataDirectory is not null && png is not null)
         {
-            try { await CharacterTouchZones.SaveSnapshotAsync(dataDirectory, id, png, token); }
+            try
+            {
+                await CharacterTouchZones.SaveSnapshotAsync(dataDirectory, id, png, token);
+                await CharacterTouchZones.SaveSnapshotProbeAsync(dataDirectory, id, probe is null ? null : new(crop, probe), token);
+            }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { ErrorLog.Warn($"Couldn't keep the touch zones' picture: {error.Message}"); }
         }
         return await SaveAsync(CharacterTouchZones.Detected(before, id, zones, crop, probe, DateTimeOffset.Now, whole: true,
             keepUnfound: partial && before?.DetectedBy == CharacterTouchZoneSettings.ByEstimate), token);
     }
 
-    // Puts the zones from before a detection back, with the picture they were found in. Returns why they couldn't be, or null.
-    private async Task<string?> RestoreAsync(CharacterTouchZoneSettings earlier, byte[]? picture)
+    // Puts the zones from before a detection back, with the picture they were found in and its probe. Returns why they couldn't
+    // be, or null.
+    private async Task<string?> RestoreAsync(CharacterTouchZoneSettings earlier, byte[]? picture, TouchZoneProbeFile? probe)
     {
         if (dataDirectory is not null && picture is not null)
         {
-            try { await CharacterTouchZones.SaveSnapshotAsync(dataDirectory, earlier.ModelId, picture, CancellationToken.None); }
+            try
+            {
+                await CharacterTouchZones.SaveSnapshotAsync(dataDirectory, earlier.ModelId, picture, CancellationToken.None);
+                await CharacterTouchZones.SaveSnapshotProbeAsync(dataDirectory, earlier.ModelId, probe, CancellationToken.None);
+            }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { ErrorLog.Warn($"Couldn't put back the touch zones' picture: {error.Message}"); }
         }
         return await SaveAsync(earlier, CancellationToken.None);
     }
+
+    /// <summary>Saves the owner's edits to the loaded model's zones (a box moved, a zone or an area added), bound again to the model
+    /// with the probe of their picture (<see cref="CharacterTouchZones.Rebind"/>), so each area takes what its box holds and a
+    /// zone on a tail follows all of it. Returns why they couldn't be saved (or null), and whether binding changed the zones'
+    /// areas, so the page shows them again.</summary>
+    internal async Task<(string? Why, bool Reshaped)> SaveEditedAsync(CharacterTouchZoneSettings settings, CancellationToken token)
+    {
+        var bound = dataDirectory is null ? settings : await Task.Run(() =>
+            CharacterTouchZones.Rebind(settings, CharacterTouchZones.LoadSnapshotProbe(dataDirectory, settings.ModelId)), token);
+        var reshaped = !ReferenceEquals(bound, settings) && bound.Zones.Zip(settings.Zones).Any(pair =>
+            pair.First.AllAreas.Count != pair.Second.AllAreas.Count || pair.First.Follows != pair.Second.Follows ||
+            pair.First.AllAreas.Zip(pair.Second.AllAreas).Any(areas => areas.First.Box != areas.Second.Box));
+        return (await SaveAsync(bound, token), reshaped);
+    }
+
+    // " (the tail follows the model's 尾巴 in 6 areas)" for the log, or "".
+    private static string Following(CharacterTouchZoneSettings? settings) =>
+        settings?.Zones.Where(z => z.Follows is not null).Select(z => $"{z.Name.ToLowerInvariant()} follows the model's {z.Follows} in {z.AllAreas.Count} areas")
+            .ToArray() is { Length: > 0 } following ? "; " + string.Join(", ", following) : "";
+
+    /// <summary>" Tail follows the model's own 尾巴 wherever it moves, in 6 areas." for the page, or "".</summary>
+    internal static string FollowingText(CharacterTouchZoneSettings? settings) =>
+        string.Concat(settings?.Zones.Where(z => z.Follows is not null)
+            .Select(z => $" {z.Name} follows the model's own {z.Follows} wherever it moves, in {z.AllAreas.Count} area{(z.AllAreas.Count == 1 ? "" : "s")}.") ?? []);
+
+    // ", area 3 of 6" for a touch on one area of a zone with several, or "".
+    private static string AreaText(TouchZoneMatch match) => match.Area is { } area ? $", area {area + 1} of {match.Zone.AllAreas.Count}" : "";
 
     private static async Task<byte[]?> ReadAsync(string path, CancellationToken token)
     {
@@ -360,7 +402,7 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         {
             if (rested.TryGetValue(zone.Id, out var until) && now < until)
             {
-                Volatile.Write(ref lastMatch, $"{zone.Name} ({match.How}) at {when}: resting, so nothing played" +
+                Volatile.Write(ref lastMatch, $"{zone.Name} ({match.How}{AreaText(match)}) at {when}: resting, so nothing played" +
                     (noticed ? ", but Martlet noticed it." : "."));
                 Changed?.Invoke();
                 return match;
@@ -372,10 +414,10 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         var plan = reaction.Actions;
         for (var i = 0; i < plan.Count; i++) play(plan[i], $"a {kind} on {zone.Name.ToLowerInvariant()}", i == 0 ? reaction.LingerSeconds : 0).Forget();
         if (reaction.LookSeconds > 0) look?.Invoke(reaction.LookSeconds, $"a {kind} on {zone.Name.ToLowerInvariant()}");
-        Volatile.Write(ref lastMatch, (kind == "stroke" ? "Stroke: " : "") + $"{zone.Name} ({match.How}) at {when}: " +
+        Volatile.Write(ref lastMatch, (kind == "stroke" ? "Stroke: " : "") + $"{zone.Name} ({match.How}{AreaText(match)}) at {when}: " +
             (plan.Count == 0 ? "nothing to play" : "played " + string.Join(", ", plan.Select(s => s.Name))) + Describe(reaction, repeats) +
             (noticed ? ", and Martlet noticed it." : "."));
-        ErrorLog.Info($"{(kind == "stroke" ? "Stroke" : "Touch")} on {zone.Id} ({match.How}{(touch.Held ? ", held" : "")}): {plan.Count} played from {reaction.From}{(reaction.Escalated ? " (escalated)" : "")}" +
+        ErrorLog.Info($"{(kind == "stroke" ? "Stroke" : "Touch")} on {zone.Id} ({match.How}{AreaText(match)}{(touch.Held ? ", held" : "")}): {plan.Count} played from {reaction.From}{(reaction.Escalated ? " (escalated)" : "")}" +
             $"{(noticed ? ", Martlet noticed it" : "")}.");
         Changed?.Invoke();
         return match;

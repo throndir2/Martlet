@@ -391,10 +391,14 @@ public partial class MainWindow
                 IncludeIntimate = intimate.IsChecked == true,
                 Zones = rows.Where(r => !r.Deleted).Select(r => r.Read()).ToArray()
             };
-            var why = await characterTouchZones.SaveAsync(next, lifetime.Token);
+            // Bound again to the model: each area takes what its box holds now, and a zone on a tail follows all of it.
+            var (why, reshaped) = await characterTouchZones.SaveEditedAsync(next, lifetime.Token);
             saveState.Text = why is null ? "All changes saved." : "Not saved: " + why;
             saveState.SetResourceReference(TextBlock.ForegroundProperty, why is null ? "MutedBrush" : "WarningBrush");
             if (why is null) { tabEdited = false; status.Text = TouchZonesStatusText(characterTouchZones.Current); }
+            // Binding changed a zone's areas (a box moved onto a tail now follows all of it): the page shows them, once the box
+            // isn't being dragged.
+            if (why is null && reshaped && Mouse.LeftButton != MouseButtonState.Pressed && openTab == CompanionTab.Touch) RenderTab();
             return true;
         });
         void Edited()
@@ -506,7 +510,7 @@ public partial class MainWindow
 
         async void SaveAndRender(CharacterTouchZoneSettings next)
         {
-            var why = await characterTouchZones.SaveAsync(next, lifetime.Token);
+            var (why, _) = await characterTouchZones.SaveEditedAsync(next, lifetime.Token);
             tabEdited = false;
             if (why is not null) saveState.Text = "Not saved: " + why;
             else if (openTab == CompanionTab.Touch) RenderTab();
@@ -548,8 +552,11 @@ public partial class MainWindow
             new System.Windows.Automation.Peers.FrameworkElementAutomationPeer(this);
     }
 
-    /// <summary>One zone's row: on, name, reaction (two picks), rest, box, Martlet notices and its hint, Try and Delete, and its box on
-    /// the picture. The fields sit in compact groups that wrap under the name; the hint shows while Martlet notices the zone.</summary>
+    /// <summary>One zone's row: on, name, reaction (two picks), rest, box, Martlet notices and its hint, Try and Delete, and its areas
+    /// on the picture. The fields sit in compact groups that wrap under the name; the hint shows while Martlet notices the zone. A
+    /// zone has one box, or several areas (separated by | in its box field); Add area and Remove area add one or take the last
+    /// away. A zone that follows the model's own part (a tail) shows that part's areas: moving one of them places the zone there
+    /// again, and Martlet finds what of the model it follows from there.</summary>
     private sealed class ZoneRow
     {
         private const string DefaultChoice = "(default)", NothingChoice = "(nothing)", NoSecond = "(nothing else)";
@@ -557,8 +564,14 @@ public partial class MainWindow
         private readonly CheckBox on, notices;
         private readonly TextBox name, narration, rest, box;
         private readonly ComboBox first, second;
+        private readonly Button? addArea, removeArea;
         private readonly IReadOnlyList<(string Id, string Label)> items;
         private readonly Action edited;
+        // The box field as the row showed it first: while it reads the same, the zone keeps its areas exactly as saved.
+        private readonly string shown;
+        // Its areas follow the model's own part; the area the owner moved last places the zone again.
+        private readonly bool follows;
+        private int moved = -1;
         internal int Number { get; }
         internal bool Deleted { get; private set; }
         internal StackPanel View { get; } = new() { Margin = new Thickness(0, 14, 0, 0) };
@@ -570,6 +583,7 @@ public partial class MainWindow
             this.zone = zone;
             this.items = items;
             this.edited = edited;
+            follows = zone.Follows is not null;
             Number = number;
             var kind = CharacterTouchZones.Kind(zone.Id);
             on = RowSwitch(zone.Enabled);
@@ -581,7 +595,7 @@ public partial class MainWindow
             var state = new TextBlock
             {
                 Text = Describe(zone, settings, CharacterTouchZones.React(zone with { Reaction = zone.Reaction with { Actions = null } }, catalog, temperament, 1)),
-                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 8, 0), FontSize = 13
+                VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 8, 0), FontSize = 13, TextWrapping = TextWrapping.Wrap
             };
             state.SetResourceReference(StyleProperty, "Muted");
             AutomationProperties.SetAutomationId(state, $"TouchZoneState-{number}");
@@ -591,8 +605,11 @@ public partial class MainWindow
             {
                 Deleted = true;
                 View.Visibility = Visibility.Collapsed;
-                rectangle?.SetValue(UIElement.VisibilityProperty, Visibility.Collapsed);
-                label?.SetValue(UIElement.VisibilityProperty, Visibility.Collapsed);
+                foreach (var (rectangle, label) in drawn)
+                {
+                    rectangle.Visibility = Visibility.Collapsed;
+                    if (label is not null) label.Visibility = Visibility.Collapsed;
+                }
                 edited();
             }, id: $"TouchZoneDelete-{number}"));
             delete.Margin = new Thickness(6, 0, 0, 0);
@@ -643,10 +660,33 @@ public partial class MainWindow
             rest = Compact(new TextBox { Text = zone.Reaction.CooldownSeconds.ToString("0.#", CultureInfo.CurrentCulture), Width = 48 });
             AutomationProperties.SetName(rest, $"Seconds {zone.Name} rests after a touch");
             AutomationProperties.SetAutomationId(rest, $"TouchZoneCooldown-{number}");
-            box = Compact(new TextBox { Text = BoxText(zone.Box), Width = 120 });
-            AutomationProperties.SetName(box, $"Box of {zone.Name}: left, top, width, height in percent of the picture");
+            shown = BoxesText(zone.AllAreas.Select(a => a.Box));
+            box = Compact(new TextBox { Text = shown, MinWidth = 120, MaxWidth = 420 });
+            AutomationProperties.SetName(box, $"Box of {zone.Name}: left, top, width, height in percent of the picture, each area after a |");
             AutomationProperties.SetAutomationId(box, $"TouchZoneBox-{number}");
-            box.ToolTip = "Left, top, width and height, in percent of the picture. Or drag the box on the picture, or its corner to resize it.";
+            box.ToolTip = follows
+                ? $"Each area of the model's own {zone.Follows}, where it was in the picture. The zone follows them wherever they move; " +
+                  "move one onto another part to place the zone there instead."
+                : "Left, top, width and height, in percent of the picture; several areas are separated by |. Or drag a box on the picture, " +
+                  "or its corner to resize it.";
+            if (!follows)
+            {
+                // An area starts beside the last one; move it into place.
+                addArea = Compact(PageButton("Add area", () =>
+                {
+                    if (ParsedBoxes() is not { } boxes || boxes.Count >= CharacterTouchZones.MaximumAreas) return;
+                    var last = boxes[^1];
+                    var x = last.X + last.Width + 0.01 + Math.Min(last.Width, 0.2) <= 1 ? last.X + last.Width + 0.01 : Math.Max(0, last.X - Math.Min(last.Width, 0.2) - 0.01);
+                    box.Text = BoxesText([.. boxes, new TouchZoneBox(x, last.Y, Math.Min(last.Width, 0.2), Math.Min(last.Height, 0.2)).Clamped()]);
+                }, id: $"TouchZoneAddArea-{number}"));
+                AutomationProperties.SetHelpText(addArea, "Adds another box to this zone, beside its last one. A touch in any of its boxes is a touch on the zone.");
+                removeArea = Compact(PageButton("Remove area", () =>
+                {
+                    if (ParsedBoxes() is { Count: > 1 } boxes) box.Text = BoxesText(boxes.Take(boxes.Count - 1));
+                }, id: $"TouchZoneRemoveArea-{number}"));
+                AutomationProperties.SetHelpText(removeArea, "Takes this zone's last box away.");
+                removeArea.Margin = new Thickness(6, 0, 0, 0);
+            }
 
             on.Checked += (_, _) => edited();
             on.Unchecked += (_, _) => edited();
@@ -667,11 +707,19 @@ public partial class MainWindow
             fields.Children.Add(plays);
             fields.Children.Add(RowGroup(RowLabel("and", second, 8), second));
             fields.Children.Add(RowGroup(RowLabel("Rests", rest), rest, RowLabel("seconds", rest, 6, 0)));
-            fields.Children.Add(RowGroup(RowLabel("Box", box, width: 44), box));
+            fields.Children.Add(addArea is null ? RowGroup(RowLabel("Box", box, width: 44), box)
+                : RowGroup(RowLabel("Box", box, width: 44), box, Spaced(addArea), removeArea!));
             fields.Children.Add(notices);
             fields.Children.Add(words);
             View.Children.Add(header);
             View.Children.Add(fields);
+            ShowAreaButtons();
+        }
+
+        private static Button Spaced(Button button)
+        {
+            button.Margin = new Thickness(8, 0, 0, 0);
+            return button;
         }
 
         private int IndexOf(string id)
@@ -685,7 +733,10 @@ public partial class MainWindow
             var kind = CharacterTouchZones.Kind(zone.Id);
             var parts = zone.Drawables.Count > 0 ? $"{zone.Drawables.Count} part{(zone.Drawables.Count == 1 ? "" : "s")}"
                 : zone.Bones.Count > 0 ? string.Join(", ", zone.Bones.Take(3)) : "box only";
-            return $"{zone.Id}  \u00b7  {parts}" + (zone.Added ? "  \u00b7  added by you" : "") +
+            var areas = zone.AllAreas.Count;
+            var shape = zone.Follows is { } part ? $"follows the model's own {part} wherever it moves: {parts} in {areas} area{(areas == 1 ? "" : "s")}"
+                : areas > 1 ? $"{areas} areas, {parts}" : parts;
+            return $"{zone.Id}  \u00b7  {shape}" + (zone.Added ? "  \u00b7  added by you" : "") +
                 (kind?.Intimate == true && !settings.IncludeIntimate ? "  \u00b7  intimate, off" : "") +
                 (defaults.From == TouchReactionPlan.FromTemperament ? $"  \u00b7  temperament ({defaults.Attitude}): " : "  \u00b7  default: ") +
                 (defaults.Actions.Count == 0 ? "nothing" : string.Join(" + ", defaults.Actions.Select(s => s.Name)));
@@ -694,16 +745,30 @@ public partial class MainWindow
         private static string BoxText(TouchZoneBox b) => string.Join(", ", new[] { b.X, b.Y, b.Width, b.Height }
             .Select(v => (v * 100).ToString("0.#", CultureInfo.CurrentCulture)));
 
-        private TouchZoneBox? ParsedBox()
+        private static string BoxesText(IEnumerable<TouchZoneBox> boxes) => string.Join(" | ", boxes.Select(BoxText));
+
+        private static TouchZoneBox? ParsedBox(string text)
         {
-            var values = box.Text.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries)
+            var values = text.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries)
                 .Select(t => double.TryParse(t, NumberStyles.Float, CultureInfo.CurrentCulture, out var v) ? v / 100 : double.NaN).ToArray();
             if (values.Length != 4 || values.Any(v => !double.IsFinite(v))) return null;
             var parsed = new TouchZoneBox(values[0], values[1], values[2], values[3]);
             return parsed.Valid ? parsed : null;
         }
 
-        /// <summary>The zone as the row shows it now (an unreadable box or rest keeps the saved one).</summary>
+        /// <summary>Each area's box as the field reads now (one to <see cref="CharacterTouchZones.MaximumAreas"/>), or null when one of
+        /// them can't be read.</summary>
+        private List<TouchZoneBox>? ParsedBoxes()
+        {
+            var parts = box.Text.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length is 0 or > CharacterTouchZones.MaximumAreas) return null;
+            var boxes = parts.Select(ParsedBox).ToList();
+            return boxes.All(b => b is not null) ? [.. boxes.Select(b => b!)] : null;
+        }
+
+        /// <summary>The zone as the row shows it now (an unreadable box or rest keeps the saved one). A zone that follows the model's
+        /// own part keeps its areas until the owner moves one: the zone is then that one box, and saving finds what it follows
+        /// from there.</summary>
         internal CharacterTouchZone Read()
         {
             IReadOnlyList<string>? actions = first.SelectedIndex switch
@@ -715,11 +780,22 @@ public partial class MainWindow
             };
             var given = name.Text.Trim();
             var line = narration.Text.Trim();
-            return zone with
+            var shaped = zone;
+            if (box.Text != shown && ParsedBoxes() is { } boxes)
+            {
+                if (follows)
+                {
+                    var place = boxes[moved >= 0 && moved < boxes.Count ? moved : 0];
+                    shaped = zone with { Box = place, Areas = null, Follows = null, Drawables = [], Bones = [] };
+                }
+                else if (boxes.Count == 1) shaped = zone with { Box = boxes[0], Areas = null };
+                else shaped = CharacterTouchZones.Compose(zone, [.. boxes.Select((b, i) =>
+                    (zone.Areas is { } had && i < had.Count ? had[i] : new() { Box = b }) with { Box = b, FromModel = false })], null);
+            }
+            return shaped with
             {
                 Enabled = on.IsChecked == true,
                 Label = given.Length == 0 || given == CharacterTouchZones.Kind(zone.Id)?.Label ? null : given,
-                Box = ParsedBox() ?? zone.Box,
                 Reaction = new()
                 {
                     Actions = actions, Notices = notices.IsChecked == true,
@@ -730,20 +806,22 @@ public partial class MainWindow
             };
         }
 
-        private Border? rectangle;
-        private TextBlock? label;
+        // Each area's box on the picture, and its name tag (on the first area only).
+        private readonly List<(Border Rectangle, TextBlock? Label)> drawn = [];
+        private Canvas? picture;
+        private Color color;
         private double pictureWidth, pictureHeight;
 
-        /// <summary>Draws the zone's box on the picture; dragging it moves the box, dragging its corner resizes it.</summary>
+        /// <summary>Draws the zone's areas on the picture; dragging one moves it, dragging its corner resizes it.</summary>
         internal void Draw(Canvas canvas, double width, double height, Color color)
         {
-            (pictureWidth, pictureHeight) = (width, height);
-            label = new TextBlock
-            {
-                Text = zone.Name, Foreground = Brushes.White, FontSize = 10, Padding = new Thickness(2, 0, 2, 0), TextWrapping = TextWrapping.NoWrap,
-                Background = new SolidColorBrush(Color.FromArgb(0xC0, color.R, color.G, color.B)), VerticalAlignment = VerticalAlignment.Top,
-                HorizontalAlignment = HorizontalAlignment.Left, IsHitTestVisible = false
-            };
+            (picture, pictureWidth, pictureHeight, this.color) = (canvas, width, height, color);
+            Place();
+        }
+
+        // One area's box on the picture: the first holds the zone's name; an area that follows the model's own part is drawn lighter.
+        private (Border Rectangle, TextBlock? Label) AreaBox(int index)
+        {
             var grip = new Rectangle
             {
                 Width = 8, Height = 8, Fill = new SolidColorBrush(color), HorizontalAlignment = HorizontalAlignment.Right,
@@ -751,36 +829,49 @@ public partial class MainWindow
             };
             var inside = new Grid();
             inside.Children.Add(grip);
-            rectangle = new SeenBorder
+            var areas = zone.AllAreas.Count;
+            var rectangle = new SeenBorder
             {
-                BorderBrush = new SolidColorBrush(color), BorderThickness = new Thickness(1.5), Child = inside, Cursor = Cursors.SizeAll,
-                Background = new SolidColorBrush(Color.FromArgb(0x30, color.R, color.G, color.B)), ToolTip = zone.Name
+                BorderBrush = new SolidColorBrush(color), BorderThickness = new Thickness(follows ? 1 : 1.5), Child = inside, Cursor = Cursors.SizeAll,
+                Background = new SolidColorBrush(Color.FromArgb(follows ? (byte)0x1C : (byte)0x30, color.R, color.G, color.B)),
+                ToolTip = index == 0 && areas <= 1 ? zone.Name : $"{zone.Name}, area {index + 1}" + (follows ? $" of the model's own {zone.Follows}" : "")
             };
-            AutomationProperties.SetAutomationId(rectangle, $"TouchZoneRect-{Number}");
-            AutomationProperties.SetName(rectangle, zone.Name);
-            canvas.Children.Add(rectangle);
-            canvas.Children.Add(label);
-            Place();
+            AutomationProperties.SetAutomationId(rectangle, index == 0 ? $"TouchZoneRect-{Number}" : $"TouchZoneRect-{Number}-{index + 1}");
+            AutomationProperties.SetName(rectangle, index == 0 ? zone.Name : $"{zone.Name} {index + 1}");
+            TextBlock? label = null;
+            if (index == 0)
+            {
+                label = new TextBlock
+                {
+                    Text = zone.Name, Foreground = Brushes.White, FontSize = 10, Padding = new Thickness(2, 0, 2, 0), TextWrapping = TextWrapping.NoWrap,
+                    Background = new SolidColorBrush(Color.FromArgb(0xC0, color.R, color.G, color.B)), VerticalAlignment = VerticalAlignment.Top,
+                    HorizontalAlignment = HorizontalAlignment.Left, IsHitTestVisible = false
+                };
+            }
+            picture!.Children.Add(rectangle);
+            if (label is not null) picture.Children.Add(label);
             Point? from = null;
             var resizing = false;
-            TouchZoneBox start = zone.Box;
+            var start = new TouchZoneBox(0, 0, 0.1, 0.1);
             rectangle.MouseLeftButtonDown += (_, e) =>
             {
-                from = e.GetPosition(canvas);
+                if (ParsedBoxes() is not { } boxes || index >= boxes.Count) return;
+                from = e.GetPosition(picture);
                 resizing = ReferenceEquals(e.OriginalSource, grip);
-                start = ParsedBox() ?? zone.Box;
+                start = boxes[index];
                 rectangle.CaptureMouse();
                 e.Handled = true;
             };
             rectangle.MouseMove += (_, e) =>
             {
-                if (from is not { } origin) return;
-                var at = e.GetPosition(canvas);
+                if (from is not { } origin || ParsedBoxes() is not { } boxes || index >= boxes.Count) return;
+                var at = e.GetPosition(picture);
                 double dx = (at.X - origin.X) / pictureWidth, dy = (at.Y - origin.Y) / pictureHeight;
-                var moved = resizing
+                boxes[index] = resizing
                     ? start with { Width = Math.Clamp(start.Width + dx, 0.02, 1 - start.X), Height = Math.Clamp(start.Height + dy, 0.02, 1 - start.Y) }
                     : start with { X = Math.Clamp(start.X + dx, 0, 1 - start.Width), Y = Math.Clamp(start.Y + dy, 0, 1 - start.Height) };
-                box.Text = BoxText(moved);
+                moved = index;
+                box.Text = BoxesText(boxes);
             };
             rectangle.MouseLeftButtonUp += (_, e) =>
             {
@@ -788,18 +879,39 @@ public partial class MainWindow
                 rectangle.ReleaseMouseCapture();
                 e.Handled = true;
             };
+            return (rectangle, label);
         }
 
+        // Puts each area's box where the field says, adding the boxes of areas added and hiding those taken away.
         private void Place()
         {
-            if (rectangle is null || pictureWidth <= 0 || ParsedBox() is not { } b) return;
-            Canvas.SetLeft(rectangle, b.X * pictureWidth);
-            Canvas.SetTop(rectangle, b.Y * pictureHeight);
-            rectangle.Width = Math.Max(4, b.Width * pictureWidth);
-            rectangle.Height = Math.Max(4, b.Height * pictureHeight);
-            if (label is null) return;
-            Canvas.SetLeft(label, b.X * pictureWidth + 1);
-            Canvas.SetTop(label, b.Y * pictureHeight + 1);
+            ShowAreaButtons();
+            if (picture is null || pictureWidth <= 0 || ParsedBoxes() is not { } boxes) return;
+            while (drawn.Count < boxes.Count) drawn.Add(AreaBox(drawn.Count));
+            for (var i = 0; i < drawn.Count; i++)
+            {
+                var (rectangle, label) = drawn[i];
+                var visible = i < boxes.Count && !Deleted;
+                rectangle.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+                if (label is not null) label.Visibility = rectangle.Visibility;
+                if (!visible) continue;
+                var b = boxes[i];
+                Canvas.SetLeft(rectangle, b.X * pictureWidth);
+                Canvas.SetTop(rectangle, b.Y * pictureHeight);
+                rectangle.Width = Math.Max(4, b.Width * pictureWidth);
+                rectangle.Height = Math.Max(4, b.Height * pictureHeight);
+                if (label is null) continue;
+                Canvas.SetLeft(label, b.X * pictureWidth + 1);
+                Canvas.SetTop(label, b.Y * pictureHeight + 1);
+            }
+        }
+
+        // Add area shows while the zone has room for one more, Remove area while it has more than one.
+        private void ShowAreaButtons()
+        {
+            var count = ParsedBoxes()?.Count ?? 1;
+            if (addArea is not null) addArea.Visibility = count < CharacterTouchZones.MaximumAreas ? Visibility.Visible : Visibility.Collapsed;
+            if (removeArea is not null) removeArea.Visibility = count > 1 ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 }

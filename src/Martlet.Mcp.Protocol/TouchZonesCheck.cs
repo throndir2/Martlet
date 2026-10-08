@@ -88,7 +88,7 @@ internal static class TouchZonesCheck
             };
         }
         // How Detect zones goes for this model: the zones it looks for and the ones it must end with.
-        var asks = TouchZoneDetection.For(saved, includeIntimate) with { Checks = Math.Clamp(checks ?? 2, 0, 5) };
+        var asks = TouchZoneDetection.For(saved, includeIntimate, hints) with { Checks = Math.Clamp(checks ?? 2, 0, 5) };
         CharacterTouchZoneSettings? detected = parsed is null ? null : CharacterTouchZones.Detected(saved, id, parsed, cropBox, probed, DateTimeOffset.Now);
         object? detection = null;
         (TouchZoneSent Sent, List<(string File, byte[] Bytes)> Pictures)? sent = null;
@@ -130,7 +130,12 @@ internal static class TouchZonesCheck
             if (!explicitDirectory) throw new ArgumentException("save needs an explicit (disposable) dataDirectory.");
             if ((detected ?? adds) is not { } writing) throw new ArgumentException(detect || estimate ? "save found no zones to save." : "save needs an answer the parser can read, or add.");
             saved = await CharacterTouchZones.SaveAsync(dataDirectory, writing, DateTimeOffset.Now, cancellation);
-            if (snapshotPath is not null) await CharacterTouchZones.SaveSnapshotAsync(dataDirectory, id, await File.ReadAllBytesAsync(snapshotPath, cancellation), cancellation);
+            if (snapshotPath is not null)
+            {
+                await CharacterTouchZones.SaveSnapshotAsync(dataDirectory, id, await File.ReadAllBytesAsync(snapshotPath, cancellation), cancellation);
+                // The picture's probe goes with it, so the desktop binds the zones again when the owner moves one.
+                await CharacterTouchZones.SaveSnapshotProbeAsync(dataDirectory, id, probed is null ? null : new(cropBox, probed), cancellation);
+            }
             if (sent is { } pictures)
             {
                 var folder = CharacterTouchZones.ClearSent(dataDirectory, id);
@@ -159,6 +164,7 @@ internal static class TouchZonesCheck
                 : new
                 {
                     zone = found.Zone.Id, name = found.Zone.Name, how = found.How, coarse = given.CoarseZone,
+                    area = found.Area, areas = found.Zone.AllAreas.Count, follows = found.Zone.Follows,
                     plays = CharacterTouchZones.React(found.Zone, catalog, temperament, touches).Actions.Select(s => $"{s.Kind}: {s.Name}").ToArray(),
                     reaction = Reaction(CharacterTouchZones.React(found.Zone, catalog, temperament, touches)), repeats = touches,
                     notices = found.Zone.Reaction.Notices, noticed = Noticed(found.Zone, given), rests = found.Zone.Reaction.CooldownSeconds
@@ -200,7 +206,7 @@ internal static class TouchZonesCheck
                 extras = TouchZoneDetection.Extras.Where(z => asks.Zones.Contains(z) || asks.Required.Contains(z)).ToArray()
             },
             parsed = answer is null ? null : parsed?.Select(Describe).ToArray() ?? [],
-            hints = DescribeHints(hints),
+            hints = DescribeHints(hints, probed),
             detection,
             estimate = estimation,
             detected = detected is null ? null : detected.Zones.Select(Describe).ToArray(),
@@ -211,15 +217,19 @@ internal static class TouchZonesCheck
                 crop = settings.Crop is { } at ? new { left = Math.Round(at.X, 4), top = Math.Round(at.Y, 4), width = Math.Round(at.Width, 4),
                     height = Math.Round(at.Height, 4) } : null,
                 snapshot = File.Exists(CharacterTouchZones.SnapshotPath(dataDirectory, id)),
+                // The probe kept with the snapshot, which binds the zones again when the owner moves one.
+                snapshotProbe = CharacterTouchZones.LoadSnapshotProbe(dataDirectory, id) is { } snapshotProbe
+                    ? new { chains = snapshotProbe.Probe.Chains?.Length ?? 0, springs = snapshotProbe.Probe.Springs?.Length ?? 0 } : null,
                 sent = CharacterTouchZones.LoadSent(dataDirectory, id) is { } last
                     ? new
                     {
                         line = last.Describe(), last.Requests, pictures = last.Pictures.Count, last.Fixture, last.Steps,
-                        probe = CharacterTouchZones.LoadProbe(dataDirectory, id) is { } kept ? DescribeHints(TouchZoneDetection.Hints(kept.Probe, kept.Crop)) : null
+                        probe = CharacterTouchZones.LoadProbe(dataDirectory, id) is { } kept ? DescribeHints(TouchZoneDetection.Hints(kept.Probe, kept.Crop), kept.Probe) : null
                     } : null,
                 each = settings.Zones.Select(z => new
                 {
                     z.Id, z.Name, z.Enabled, active = settings.Active(z), z.Added, drawables = z.Drawables.Count, z.Bones,
+                    areas = z.AllAreas.Count, z.Follows,
                     plays = CharacterTouchZones.React(z, catalog, temperament, 1) is var r && r.From == TouchReactionPlan.FromOwner
                         ? string.Join(" + ", r.Actions.Select(s => s.Name)) : r.From + ": " + string.Join(" + ", r.Actions.Select(s => s.Name)),
                     notices = z.Reaction.Notices, hint = CharacterTouchZones.Narration(z)
@@ -354,20 +364,34 @@ internal static class TouchZonesCheck
     private static object Describe(CharacterTouchZone zone) => new
     {
         zone.Id, zone.Name, box = new[] { zone.Box.X, zone.Box.Y, zone.Box.Width, zone.Box.Height }.Select(v => Math.Round(v, 4)).ToArray(),
-        zone.Drawables, zone.Bones, zone.Added
+        zone.Drawables, zone.Bones, zone.Added, zone.Follows,
+        // Each area when the zone has several (or follows the model's own parts): its box (left, top, right, bottom), what it holds,
+        // and whether its parts come from the model itself.
+        areas = zone.Areas?.Select(a => new { box = Edges(a.Box), a.Drawables, a.Bones, a.Nodes, a.FromModel }).ToArray()
     };
 
     // A box as its left, top, right and bottom edges (fractions of the snapshot), rounded.
     private static double[] Edges(TouchZoneBox box) => [.. new[] { box.X, box.Y, box.X + box.Width, box.Y + box.Height }.Select(v => Math.Round(v, 4))];
 
     // What the probe tells of the model's own parts: how many it has and names, the body parts its names place (with the side,
-    // the character's own, for a part that comes in pairs) and the close-ups' windows they give, as edges in the snapshot.
-    private static object? DescribeHints(ZoneHints? hints) => hints is null ? null : new
+    // the character's own, for a part that comes in pairs), the close-ups' windows they give, as edges in the snapshot, and the
+    // parts it swings on its own (a Live2D model's physics chains and a VRM's spring-bone chains: each name, how many drawables or
+    // joints and the body part its names say).
+    private static object? DescribeHints(ZoneHints? hints, RendererZoneProbe? probe = null) => hints is null ? null : new
     {
         bones = hints.Bones.Count, hints.ModelParts, hints.NamedModelParts, hints.NamedParts, named = hints.Named,
         middle = hints.Middle is { } middle ? Math.Round(middle, 4) : (double?)null,
         areas = hints.Areas.Select(a => new { a.Part, a.Side, a.Drawables, box = Edges(a.Box) }).ToArray(),
-        regions = TouchZoneDetection.Regions.ToDictionary(r => r.Id, r => TouchZoneDetection.NamedRegion(r.Id, hints) is { } box ? Edges(box) : null)
+        regions = TouchZoneDetection.Regions.ToDictionary(r => r.Id, r => TouchZoneDetection.NamedRegion(r.Id, hints) is { } box ? Edges(box) : null),
+        extras = TouchZoneDetection.Named(hints),
+        chains = probe?.Chains?.Where(c => c is { IsValid: true }).Select(c => new
+        {
+            c.Name, drawables = c.Drawables.Length, part = TouchZoneDetection.PartName(c.Name).Part, root = c.Drawables[0], tip = c.Drawables[^1]
+        }).ToArray(),
+        springs = probe?.Springs?.Where(s => s is { IsValid: true }).Select(s => new
+        {
+            s.Name, joints = s.Joints.Length, part = TouchZoneDetection.PartName(s.Name).Part
+        }).ToArray()
     };
 
     private static TouchZoneBox Box(string text)

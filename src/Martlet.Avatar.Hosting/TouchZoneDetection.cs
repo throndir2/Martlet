@@ -24,9 +24,9 @@ public sealed record ZoneHintArea(string Part, TouchZoneBox Box, int Drawables, 
 
 /// <summary>A drawable of a Live2D model in parts the model's own part names call body parts (from its DisplayInfo file, else the
 /// part IDs), as fractions of the snapshot: its box, those body parts (nearest part first: an eye's drawable in 左眼 inside 头 is
-/// eyes, then head) and, for a part that comes in pairs, its side, the character's own "left" or "right", told by where it lies
-/// and which way the character faces (a name's 左 or L only groups a limb's drawables; null in the middle).</summary>
-public sealed record ZoneHintPiece(TouchZoneBox Box, IReadOnlyList<string> Parts, string? Side);
+/// eyes, then head), for a part that comes in pairs its side, the character's own "left" or "right", told by where it lies
+/// and which way the character faces (a name's 左 or L only groups a limb's drawables; null in the middle), and its ID.</summary>
+public sealed record ZoneHintPiece(TouchZoneBox Box, IReadOnlyList<string> Parts, string? Side, string? Id = null);
 
 /// <summary>Where the renderer's face anchor put the face in the snapshot: the middle of its eye line (fractions of the snapshot)
 /// and its width (a fraction of the snapshot's width).</summary>
@@ -135,12 +135,13 @@ public static partial class TouchZoneDetection
     public static IReadOnlyList<string> Erogenous { get; } = [.. CharacterTouchZones.Kinds.Where(k => k.Intimate).Select(k => k.Id)];
 
     /// <summary>How Detect zones (and Detect again) goes for the model of <paramref name="saved"/>: it looks for
-    /// <see cref="Defaults"/> and every zone the owner added (<see cref="CharacterTouchZone.Added"/>), and must end with the zones
-    /// the owner added and, with Include intimate zones on (<paramref name="includeIntimate"/>, else the saved choice, on by
-    /// default), the intimate ones it looks for.</summary>
-    public static ZoneDetectionOptions For(CharacterTouchZoneSettings? saved, bool? includeIntimate = null)
+    /// <see cref="Defaults"/>, every zone the owner added (<see cref="CharacterTouchZone.Added"/>) and a tail or wings the model's
+    /// own part names place (<paramref name="hints"/>), and must end with those it looks for beyond the defaults and, with Include
+    /// intimate zones on (<paramref name="includeIntimate"/>, else the saved choice, on by default), the intimate ones it looks
+    /// for.</summary>
+    public static ZoneDetectionOptions For(CharacterTouchZoneSettings? saved, bool? includeIntimate = null, ZoneHints? hints = null)
     {
-        var added = saved?.Zones.Where(z => z.Added).Select(z => z.Id).Distinct(StringComparer.Ordinal).ToArray() ?? [];
+        var added = saved?.Zones.Where(z => z.Added).Select(z => z.Id).Concat(Named(hints)).Distinct(StringComparer.Ordinal).ToArray() ?? Named(hints);
         var zones = Defaults.Concat(added).Distinct(StringComparer.Ordinal).ToArray();
         var intimate = includeIntimate ?? saved?.IncludeIntimate ?? true;
         return new()
@@ -149,6 +150,10 @@ public static partial class TouchZoneDetection
             Required = [.. zones.Where(id => added.Contains(id, StringComparer.Ordinal) || intimate && CharacterTouchZones.Kind(id)?.Intimate == true)]
         };
     }
+
+    /// <summary>The extras (a tail, wings) the model's own part names place, so Detect zones and the first guess look for them
+    /// without the owner adding them.</summary>
+    public static string[] Named(ZoneHints? hints) => hints is { Named: true } ? [.. Extras.Where(id => id != "held_item" && NamedPlace(id, hints) is not null)] : [];
 
     /// <summary>The step that asks again, on the whole character, for zones that must be found and the close-ups missed.</summary>
     public const string MissingStep = "missing";

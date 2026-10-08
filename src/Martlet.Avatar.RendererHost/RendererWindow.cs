@@ -142,6 +142,7 @@ internal sealed partial class RendererWindow : Window
         viewport.ReadMouth = ReadMouth;
         viewport.PlayVoice = PlayVoice;
         viewport.ReadLook = ReadLook;
+        viewport.ReadZones = ReadZones;
         viewport.LostMouseCapture += (_, _) =>
         {
             if (stroke is { } lost && !strokeReleasing) EndStroke(lost.Last, Environment.TickCount64);
@@ -1157,6 +1158,51 @@ internal sealed partial class RendererWindow : Window
     private int mouthId;
     private int? mouthPending;
 
+    private int zonesId;
+    private int? zonesPending;
+
+    /// <summary>Asks the page where each area of the character's touch zones is now, as Martlet last gave them ("zoneview";
+    /// Martlet's MCP character_zones, through UI Automation). Its answer arrives unprompted (see <see cref="ZonesAnswered"/>).
+    /// Reading it changes nothing on the character.</summary>
+    private void ReadZones()
+    {
+        if (browser.CoreWebView2 is null || failure.Failed || closed) return;
+        var id = ++zonesId;
+        zonesPending = id;
+        try
+        {
+            browser.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { kind = "zonesRead", data = new { id } }, RendererProtocol.Json));
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
+    }
+
+    /// <summary>The page's reading of the touch zones, remembered for UI Automation; a stale or malformed one is ignored and never
+    /// fails the renderer.</summary>
+    private void ZonesAnswered(JsonElement answer)
+    {
+        if (zonesPending is not { } pending || answer.ValueKind != JsonValueKind.Object || !answer.TryGetProperty("id", out var id) ||
+            id.ValueKind != JsonValueKind.Number || !id.TryGetInt32(out var number) || number != pending) return;
+        zonesPending = null;
+        // Only what the page measured, bounded: never more than the areas Martlet gave it.
+        var text = answer.GetRawText();
+        viewport.LastZones = text.Length <= 256 * 1024 ? text : JsonSerializer.Serialize(new { n = number, error = "The reading was too large." }, RendererProtocol.Json);
+    }
+
+    /// <summary>Gives the page the character's touch zones (<see cref="RendererZoneView"/>; one that isn't valid clears them) and
+    /// whether to draw them over the character. The page takes them beside the touch and face readings, so zones it can't use
+    /// never fail the character.</summary>
+    private async Task<object> ZoneViewAsync(RendererMessage message)
+    {
+        var view = message.Data.ValueKind == JsonValueKind.Object ? RendererProtocol.Data<RendererZoneView>(message) : new RendererZoneView(false, []);
+        if (!view.IsValid)
+        {
+            ErrorLog.Warn("Martlet sent touch zones that aren't valid; the character shows none.");
+            view = new(false, []);
+        }
+        await BrowserAsync("zoneview", view);
+        return new { areas = view.Areas.Length, draw = view.Draw };
+    }
+
     /// <summary>Asks the page who moves the character's mouth now: the voice or its emotes (Martlet's MCP character_mouth,
     /// through UI Automation). Its answer arrives unprompted (see <see cref="MouthAnswered"/>). Reading it changes nothing on
     /// the character.</summary>
@@ -1561,6 +1607,12 @@ internal sealed partial class RendererWindow : Window
                         MouthAnswered(mouthReading);
                         return;
                     }
+                    if (document.RootElement.TryGetProperty("zonesReading", out var zonesReading))
+                    {
+                        // Unsolicited answer to a reading of the touch zones (MCP's character_zones); never a command reply.
+                        ZonesAnswered(zonesReading);
+                        return;
+                    }
                     failure.ThrowIfFailed();
                     response?.TrySetResult(document.RootElement.Clone());
                 }
@@ -1593,11 +1645,16 @@ internal sealed partial class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "click-through" or "voice" or "gaze" or "where" or "place" or "camera" or "snapshot" or "zones" or "eyes"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "click-through" or "voice" or "gaze" or "where" or "place" or "camera" or "snapshot" or "zones" or "eyes" or "zoneview"))
                     throw new InvalidDataException("Renderer command is invalid.");
                 if (message.Kind == "eyes")
                 {
                     await ReplyAsync("eyes", await EyesAsync(message));
+                    continue;
+                }
+                if (message.Kind == "zoneview")
+                {
+                    await ReplyAsync("ok", await ZoneViewAsync(message));
                     continue;
                 }
                 if (message.Kind == "camera")
@@ -1761,14 +1818,15 @@ internal sealed partial class RendererWindow : Window
         PageCapture shot;
         if (request.Whole)
         {
-            (shot, probe) = await PictureAsync(zoom, panX, panY);
+            (shot, probe) = await PictureAsync(zoom, panX, panY, chains: true);
             // Parts drawn past the model's canvas (legs below it, say) are cut off at the page's edge: zoom out until all shows.
+            // The swinging parts were measured at the first framing, the whole one; they come along.
             if (probe?.Drawables is { Length: > 0 } drawables &&
                 WholeFraming.Fit(shot.Seen, shot.Cut, drawables, FrameFraction) is var fit && fit != (1, 0, 0))
             {
                 (zoom, panX, panY) = fit;
-                (shot, var framed) = await PictureAsync(zoom, panX, panY);
-                probe = framed is null ? probe : WholeFraming.Unframed(framed, zoom, panX, panY, FrameFraction);
+                (shot, var framed) = await PictureAsync(zoom, panX, panY, chains: false);
+                probe = framed is null ? probe : WholeFraming.Unframed(framed, zoom, panX, panY, FrameFraction) with { Chains = probe.Chains };
             }
         }
         else shot = await CaptureAsync();
@@ -1839,11 +1897,12 @@ internal sealed partial class RendererWindow : Window
     /// <summary>The page draws the character on its canvas, PictureWidth by PictureHeight pixels in the framing
     /// <paramref name="zoom"/>, <paramref name="x"/>, <paramref name="y"/>, and reads it back in the same step, so it never shows
     /// on screen (in a still renderer, in the model's rest pose). Also where its drawables or bones and its face are in that
-    /// picture, as fractions of it (null when the page can't say).</summary>
-    private async Task<(PageCapture Shot, RendererZoneProbe? Probe)> PictureAsync(double zoom, double x, double y)
+    /// picture, as fractions of it (null when the page can't say), and with <paramref name="chains"/> the parts of it that swing
+    /// on their own (measured by moving each physics setting, so only once per picture of the character).</summary>
+    private async Task<(PageCapture Shot, RendererZoneProbe? Probe)> PictureAsync(double zoom, double x, double y, bool chains)
     {
         const string Prefix = "data:image/png;base64,";
-        var drawn = await BrowserAsync("picture", new { width = PictureWidth, height = PictureHeight, zoom, x, y, frame = FrameFraction });
+        var drawn = await BrowserAsync("picture", new { width = PictureWidth, height = PictureHeight, zoom, x, y, frame = FrameFraction, chains });
         if (!drawn.TryGetProperty("png", out var png) || png.ValueKind != JsonValueKind.String || png.GetString() is not { } url ||
             !url.StartsWith(Prefix, StringComparison.Ordinal))
             throw new InvalidDataException("The page couldn't draw the character's picture.");
@@ -1857,6 +1916,21 @@ internal sealed partial class RendererWindow : Window
                 drawn.TryGetProperty("parts", out var parts) ? parts.Deserialize<RendererModelPart[]>(RendererProtocol.Json) : null);
         }
         catch (JsonException error) { ErrorLog.Warn($"Couldn't read where the character's parts are: {error.Message}"); }
+        // The parts that swing on their own come apart, so a chain the page can't describe never loses the rest.
+        try
+        {
+            if (probe is not null && drawn.TryGetProperty("chains", out var swinging) && swinging.ValueKind == JsonValueKind.Array)
+                probe = probe with
+                {
+                    Chains = [.. (swinging.Deserialize<RendererChain[]>(RendererProtocol.Json) ?? []).Where(c => c is { IsValid: true }).Take(RendererChain.MaximumChains)]
+                };
+            if (probe is not null && drawn.TryGetProperty("springs", out var springs) && springs.ValueKind == JsonValueKind.Array)
+                probe = probe with
+                {
+                    Springs = [.. (springs.Deserialize<RendererSpring[]>(RendererProtocol.Json) ?? []).Where(s => s is { IsValid: true }).Take(RendererSpring.MaximumSprings)]
+                };
+        }
+        catch (JsonException error) { ErrorLog.Warn($"Couldn't read which parts of the character swing on their own: {error.Message}"); }
         return (Decode(bytes), probe);
     }
 

@@ -17,6 +17,10 @@ export const LIMITS = Object.freeze({
   /** At most this many of a model's parts are reported for touch zones, each name cut to `partName` characters. */
   parts: 1024,
   partName: 64,
+  /** At most this many physics settings are read for touch zones' swinging chains, each with at most `physicsOutputs`
+   *  parameters it drives. */
+  physicsSettings: 128,
+  physicsOutputs: 64,
   vertices: 250_000,
   indices: 750_000,
   canvasDimension: 2048,
@@ -306,6 +310,52 @@ export class LocalModelBundle {
       // A DisplayInfo file that can't be read only names no parts.
     }
     return names;
+  }
+
+  /** The model's physics settings (its physics3.json), for touch zones' swinging chains: each setting's name from the file's
+   *  PhysicsDictionary (尾巴, Hair Front..., when it has one), the parameters it drives and the ones it reads. At most
+   *  `LIMITS.physicsSettings`, each with at most `LIMITS.physicsOutputs` of each. Empty without a physics file or when it can't
+   *  be read; only data. */
+  physicsSettings(): readonly { readonly name?: string; readonly outputs: readonly string[]; readonly inputs: readonly string[] }[] {
+    if (!this.description.physics) return [];
+    try {
+      const root: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(this.read(this.description.physics)));
+      if (root === null || typeof root !== "object") return [];
+      const names = new Map<string, string>();
+      const meta: unknown = Reflect.get(root, "Meta");
+      const dictionary: unknown = meta !== null && typeof meta === "object" ? Reflect.get(meta, "PhysicsDictionary") : undefined;
+      if (Array.isArray(dictionary))
+        for (const entry of dictionary.slice(0, LIMITS.physicsSettings)) {
+          if (entry === null || typeof entry !== "object") continue;
+          const id: unknown = Reflect.get(entry, "Id"), name: unknown = Reflect.get(entry, "Name");
+          if (typeof id !== "string" || id.length === 0 || id.length > 256 || typeof name !== "string") continue;
+          const text = name.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, LIMITS.partName);
+          if (text) names.set(id, text);
+        }
+      const settings: unknown = Reflect.get(root, "PhysicsSettings");
+      if (!Array.isArray(settings)) return [];
+      return settings.slice(0, LIMITS.physicsSettings).flatMap(setting => {
+        if (setting === null || typeof setting !== "object") return [];
+        const id: unknown = Reflect.get(setting, "Id"), output: unknown = Reflect.get(setting, "Output");
+        if (!Array.isArray(output)) return [];
+        const outputs = [...new Set(output.slice(0, LIMITS.physicsOutputs).flatMap(entry => {
+          const destination: unknown = entry !== null && typeof entry === "object" ? Reflect.get(entry, "Destination") : undefined;
+          const target: unknown = destination !== null && typeof destination === "object" ? Reflect.get(destination, "Id") : undefined;
+          return typeof target === "string" && target.length > 0 && target.length <= 256 ? [target] : [];
+        }))];
+        const name = typeof id === "string" ? names.get(id) : undefined;
+        const input: unknown = Reflect.get(setting, "Input");
+        const inputs = Array.isArray(input) ? [...new Set(input.slice(0, LIMITS.physicsOutputs).flatMap(entry => {
+          const source: unknown = entry !== null && typeof entry === "object" ? Reflect.get(entry, "Source") : undefined;
+          const from: unknown = source !== null && typeof source === "object" ? Reflect.get(source, "Id") : undefined;
+          return typeof from === "string" && from.length > 0 && from.length <= 256 ? [from] : [];
+        }))] : [];
+        return outputs.length === 0 ? [] : [Object.freeze({ ...(name ? { name } : {}), outputs: Object.freeze(outputs), inputs: Object.freeze(inputs) })];
+      });
+    } catch {
+      // A physics file that can't be read only gives no chains; the animator reports its own problems.
+      return [];
+    }
   }
 
   read(name: string): Uint8Array<ArrayBuffer> {

@@ -3,9 +3,11 @@ import { VrmAvatarAdapter } from "../../Martlet.Avatar.Vrm/src/index.ts";
 import { activeOverlays, attachOverlay, BLUSH_LEVELS, clearOverlays, hasOverlay, heldOverlays, insideEyeShape, registerBlush,
   registerOverlay, renderOverlay, startOverlay, stopOverlay, toCssAnchor } from "./overlay.js";
 import { registerManpu } from "./effects/manpu.mjs";
+import { attachZones, renderZones, setZoneView, zoneAreas, zoneBoxes, zonesDrawn } from "./zones.js";
 
 const canvas = document.getElementById("avatar");
 attachOverlay(document.getElementById("overlay"));
+attachZones(document.getElementById("zones"));
 registerBlush();
 registerManpu(registerOverlay);
 let adapter, renderer, revision, configurationId, active = false, last = 0, failed = false, reportedTop, expression;
@@ -120,6 +122,24 @@ function mouthReading(id) {
     voice: round(mouth.voice), speaking: mouth.speaking === true, level: round(mouth.level), emote: round(mouth.emote),
     open: round(mouth.open), ...(typeof mouth.blocked === "number" ? { blocked: round(mouth.blocked) } : {}) };
 }
+// Where each area of the touch zones is now (see zones.js), as fractions of the page: Live2D drawables as they are drawn now,
+// VRM bones (and nodes, when the renderer can place them) where they are now, and the view's zoom and pan.
+function zonePlaces() {
+  return zoneBoxes({
+    drawables: () => renderer === "Live2D" ? new Map(adapter.drawableBounds().map(d => [d.id, d])) : new Map(),
+    points: () => renderer === "Vrm"
+      ? new Map([...adapter.bonePoints().map(b => [b.bone, b]), ...(adapter.nodePoints?.() ?? []).map(n => [n.node, n])]) : new Map(),
+    frame: view,
+  });
+}
+// The touch zones for Martlet's MCP (character_zones): whether there are any, whether they are drawn, and each area's zone, its
+// place among the zone's areas, what placed it and its box now (fractions of the page, +y down).
+function zonesReading(id) {
+  const round = value => Math.round(value * 10000) / 10000;
+  if (zoneAreas() === 0) return { id, found: false, renderer: renderer ?? null, draw: false, areas: [] };
+  return { id, found: true, renderer, draw: zonesDrawn(), areas: zonePlaces().map(box => ({ zone: box.zone, area: box.area, from: box.from,
+    left: round(box.left), top: round(box.top), right: round(box.right), bottom: round(box.bottom) })) };
+}
 // Loudness levels MCP's character_mouth plays on the mouth the way Martlet's voice moves it, without a sound: each with when it
 // is due after the first (ms), applied as frames are drawn (see playVoice).
 let voiceLevels = [], voiceStart;
@@ -150,15 +170,24 @@ function poseReading(id) {
 // screen: `width` by `height` pixels in the framing `zoom`, `x`, `y` of a frame `frame` of its width (see setView), in the
 // pose the model has now (its rest pose in a still renderer). The PNG (a data URL), where the drawables (Live2D, each with the
 // ID of its part) or the humanoid bones (VRM) are in it, with a Live2D model's own parts (their names from its DisplayInfo file,
-// and their parents; none when they can't be read), and where the face anchor puts the face (`face`: its middle, its width as a
-// fraction of the picture's width and its roll; Martlet's eye measurement crops around it), as fractions of the picture;
-// nothing when it can't be drawn. The canvas then goes back to its own size and framing, drawn again at once, so a showing
-// character never changes.
-function picture({ width, height, zoom, x, y, frame }) {
+// and their parents; none when they can't be read), with `chains` its parts that swing on their own (a tail, a ponytail: the
+// drawables each physics setting moves, root first, and where they can reach; see the adapter's swingingChains), and where
+// the face anchor puts the face (`face`: its middle, its width as a fraction of the picture's width and its roll; Martlet's
+// eye measurement crops around it), as fractions of the picture; nothing when it can't be drawn. The canvas then goes back to
+// its own size and framing, drawn again at once, so a showing character never changes.
+function picture({ width, height, zoom, x, y, frame, chains: measure }) {
   const size = [canvas.width, canvas.height];
   const resize = (w, h) => { if (renderer === "Vrm") adapter.resize(w, h); else { canvas.width = w; canvas.height = h; } };
   const round = value => Math.round(value * 10000) / 10000;
   const parts = () => { try { return adapter.modelParts?.() ?? []; } catch { return []; } };
+  // Measured only when asked (once per picture of the character); a model whose physics can't be measured swings nothing.
+  const chains = () => {
+    if (measure === false) return [];
+    try {
+      return (adapter.swingingChains?.() ?? []).map(c => ({ ...(c.name ? { name: c.name } : {}), drawables: [...c.drawables],
+        left: round(c.left), top: round(c.top), right: round(c.right), bottom: round(c.bottom) }));
+    } catch { return []; }
+  };
   try {
     resize(Number(width), Number(height));
     adapter.setView(Number(zoom), Number(x), Number(y), Number(frame));
@@ -173,7 +202,7 @@ function picture({ width, height, zoom, x, y, frame }) {
     } catch { face = undefined; }
     return renderer === "Live2D"
       ? { png, drawables: adapter.drawableBounds().map(d => ({ id: d.id, left: round(d.left), top: round(d.top), right: round(d.right),
-          bottom: round(d.bottom), ...(d.part ? { part: d.part } : {}) })), parts: parts(), ...(face ? { face } : {}) }
+          bottom: round(d.bottom), ...(d.part ? { part: d.part } : {}) })), parts: parts(), chains: chains(), ...(face ? { face } : {}) }
       : { png, bones: adapter.bonePoints().map(b => ({ bone: b.bone, x: round(b.x), y: round(b.y) })), ...(face ? { face } : {}) };
   } catch { return {}; }
   finally {
@@ -244,6 +273,23 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
     let reading = { id, found: false };
     try { if (active && !failed) reading = mouthReading(id); } catch { }
     post({ mouthReading: reading });
+    return;
+  }
+  if (message.kind === "zoneview") {
+    // The touch zones Martlet gives (see zones.js) and whether to draw them; answered with how many areas were taken. Zones
+    // that can't be used are only none, and never fail the renderer.
+    let shown = 0;
+    try { shown = setZoneView(message.data); } catch { setZoneView(null); }
+    post({ shown });
+    return;
+  }
+  if (message.kind === "zonesRead") {
+    // Where each area of the touch zones is now (see zonesReading), answered unprompted with {zonesReading}, never as a command
+    // reply; a reading that fails is only "not found" and never fails the renderer.
+    const { id } = message.data;
+    let reading = { id, found: false };
+    try { if (active && !failed) reading = zonesReading(id); } catch { }
+    post({ zonesReading: reading });
     return;
   }
   if (message.kind === "voiceLevels") {
@@ -389,6 +435,9 @@ function draw(now) {
     // Martlet's drawings over the face; only looks for the face while one shows.
     try { if (!failed) renderOverlay(activeOverlays().length ? face() : undefined, Math.min(0.1, last ? (now - last) / 1000 : 0)); }
     catch { clearOverlays(); }
+    // The touch zones over the character, where their parts are now, while Martlet has them drawn.
+    try { if (!failed) renderZones(zonesDrawn() ? zonePlaces() : []); }
+    catch { setZoneView(null); }
     // Unsolicited, fire-and-forget: where the top of the head sits, so the host's zoom keeps it in view.
     try {
       const top = adapter.contentTop;
