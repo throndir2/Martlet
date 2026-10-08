@@ -243,27 +243,42 @@ public sealed class QuickSoundTests
             Role = SetupRole.Tts, RouteType = type, ProviderAlias = "fixture", Origin = "https://example.invalid/",
             ModelId = "fixture-voice", VoiceId = voice, ConfigurationRevision = Guid.NewGuid()
         };
-        var windows = QuickSoundLibrary.Voice(Route(SetupRouteType.LocalWindowsTts, "TTS_MS_EN-US_ZIRA_11.0"))!.Value;
+        var host = QuickSoundLibrary.Voice(Route(SetupRouteType.GatewayF5, null) with
+        {
+            Gateway = new()
+            {
+                SchemaVersion = 1, Origin = "https://192.168.1.20:9443", HostId = "diva",
+                SpkiFingerprint = "sha256:" + new string('a', 64), DeviceRole = SelfHostSetup.GatewayRole
+            },
+            Reference = new()
+            {
+                SchemaVersion = 1, PresetId = Guid.NewGuid(), PresetName = "Wren", ReferenceRevision = "r1", AudioSha256 = new string('b', 64),
+                TranscriptRevision = "t1", StoreRevision = 1, ProcessingDestinationId = "diva", RightsAcknowledgementId = Guid.NewGuid(),
+                RightsStatementVersion = "1", AppliedAtUtc = DateTimeOffset.UnixEpoch, ApplyRevision = Guid.NewGuid()
+            }
+        })!.Value;
         var cloud = QuickSoundLibrary.Voice(Route(SetupRouteType.OpenAi, "coral"))!.Value;
-        Assert.False(windows.Paid);
+        Assert.False(host.Paid);
+        // A saved Windows voice from an older Martlet has no quick sounds: Martlet no longer speaks with Windows voices.
+        Assert.Null(QuickSoundLibrary.Voice(Route(SetupRouteType.LocalWindowsTts, "TTS_MS_EN-US_ZIRA_11.0")));
         Assert.True(cloud.Paid);
         Assert.Null(QuickSoundLibrary.Voice(Route(SetupRouteType.GatewayF5, null)));
         Assert.Null(QuickSoundLibrary.Voice(null));
         var persona = Guid.NewGuid();
-        var key = QuickSoundLibrary.Key(windows.Identity, QuickSoundLibrary.Character(persona));
-        Assert.NotEqual(key, QuickSoundLibrary.Key(windows.Identity, QuickSoundLibrary.Character(Guid.NewGuid())));
+        var key = QuickSoundLibrary.Key(host.Identity, QuickSoundLibrary.Character(persona));
+        Assert.NotEqual(key, QuickSoundLibrary.Key(host.Identity, QuickSoundLibrary.Character(Guid.NewGuid())));
         Assert.NotEqual(key, QuickSoundLibrary.Key(cloud.Identity, QuickSoundLibrary.Character(persona)));
         Assert.Equal("none", QuickSoundLibrary.Character(null));
 
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.QuickSounds." + Guid.NewGuid().ToString("N"));
         try
         {
-            var set = new QuickSoundSet(key, windows.Words, DateTimeOffset.UnixEpoch, [new("Mm,", Tone(300)), new("Hmm...", Tone(500, 2000))]);
+            var set = new QuickSoundSet(key, host.Words, DateTimeOffset.UnixEpoch, [new("Mm,", Tone(300)), new("Hmm...", Tone(500, 2000))]);
             Assert.True(QuickSoundLibrary.Save(directory, set));
             var read = QuickSoundLibrary.Load(directory, key)!;
             Assert.Equal(["Mm,", "Hmm..."], read.Clips.Select(c => c.Text));
             Assert.True(read.Clips[1].Pcm.Span.SequenceEqual(set.Clips[1].Pcm.Span));
-            Assert.Equal(windows.Words, read.Voice);
+            Assert.Equal(host.Words, read.Voice);
             Assert.Null(QuickSoundLibrary.Load(directory, QuickSoundLibrary.Key(cloud.Identity, "none")));
             Assert.Single(QuickSoundLibrary.All(directory));
             // A clip that grew past the limit on disk isn't trusted.

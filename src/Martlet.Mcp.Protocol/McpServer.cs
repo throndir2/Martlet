@@ -413,7 +413,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "Turbo, the default; F5-TTS; XTTS-v2; GPT-SoVITS; Dia: host role, gateway route, model, weights licence, GPU memory, reference " +
             "length bounds, tag catalog, summary, languages, whether it learns from several recordings, the feature chips Companion > " +
             "Voice > Voice engine shows, its rundown (voice cloning, laughs & sighs, emotions: yes, partly or no) and where it runs " +
-            "(GPU with its typical and peak graphics memory, CPU or online); the same rundown for the Windows and OpenAI voices; each " +
+            "(GPU with its typical and peak graphics memory, CPU or online); the same rundown for the OpenAI voice; each " +
             "starter voice lists the engines that can clone it and its language) with the one chosen on this desktop " +
             "(never own voices' names, transcripts or audio). Plays nothing and contacts nothing.", new
         {
@@ -930,7 +930,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "desktop's paired client, sync engine and settings sections. Walks the owner's case (a PC on OpenRouter becomes a host, the " +
             "other PC still on NVIDIA Build becomes the companion and takes OpenRouter, its model and key), model and key changes, offline " +
             "edits on both sides (different and the same setting; the later edit wins), a host that missed a change, a stale copy, a " +
-            "newer Martlet's setting, a Windows voice a new computer lacks, a new computer, the Thinking fallback and its key, lorebooks, " +
+            "newer Martlet's setting, a Parakeet model a new computer lacks, a new computer, the Thinking fallback and its key, lorebooks, " +
             "no keys in desktop files and an unsigned request refused. Loopback only; the folder is deleted and the vault untouched.", new { }),
         Tool("audio2face_check", "Animate a short synthesized speech-like test signal (generated here; no microphone, nothing played) " +
             "with an Audio2Face service on a numeric loopback endpoint (default http://127.0.0.1:52000) through Martlet's production " +
@@ -3633,12 +3633,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
         // The other ways Martlet speaks, with the same rundown Companion › Voice shows (VoiceEngineAbilities-<key>,
         // VoiceEngineRunsOn-<key>).
         var catalog = Martlet.Core.Planning.FootprintCatalog.Default;
-        var windowsVoice = catalog.Find(Martlet.Core.Planning.FootprintCatalog.WindowsVoiceId);
         var openAiVoice = catalog.Find(Martlet.Core.Planning.FootprintCatalog.OpenAiVoiceId);
         var otherVoices = new[]
         {
-            new { key = "windows", name = "Windows voice", abilities = Abilities(Martlet.Core.Settings.VoiceAbilities.WindowsVoice, []),
-                runsOn = RunsOn(windowsVoice, windowsVoice?.WhereItRuns ?? "") },
             new { key = "openai", name = "OpenAI voice", abilities = Abilities(Martlet.Core.Settings.VoiceAbilities.OpenAiVoice, []),
                 runsOn = RunsOn(openAiVoice, openAiVoice?.WhereItRuns ?? "") }
         };

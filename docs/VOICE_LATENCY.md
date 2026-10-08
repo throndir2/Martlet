@@ -864,7 +864,7 @@ still comes sooner than the reply's first words would on a slow turn.
 voice through the same path and one-use permission as a reply's pieces
 (`ConversationRuntime.SynthesizeAsync`), never beside a reply, and kept in
 `quick-sounds\<key>\` in the data folder (the silence around them cut, at most
-1.2 s each). A Windows voice or a paired host's voice makes them as soon as the
+1.2 s each). A paired host's voice makes them as soon as the
 choice is on or the voice changes; a paid cloud voice (OpenAI's) makes them
 only when you press *Make quick sounds now* (one short request each).
 

@@ -430,12 +430,6 @@ public static class PlatformCatalog
             Impossible(Win, Host, "MLX runs only on Apple silicon"), Impossible(Linux, Host, "MLX runs only on Apple silicon"),
             Impossible(Linux, You, "MLX runs only on Apple silicon")
         ]),
-        new("windows-voices", ClusterJobs.Speaking, "Windows voices",
-        [
-            Planned(Win, You, "PL02", "they can be saved in Setup, but conversations don't use them yet"),
-            Impossible(Mac, You, "Windows voices exist only on Windows"), Impossible(Ios, You, "Windows voices exist only on Windows"),
-            Impossible(Android, You, "Windows voices exist only on Windows"), Impossible(Linux, You, "Windows voices exist only on Windows")
-        ]),
         new("apple-voices", ClusterJobs.Speaking, "Apple voices",
         [
             Planned(Ios, You, "IO05"), Planned(Ios, Host, "IO04", "served to your other computers"),

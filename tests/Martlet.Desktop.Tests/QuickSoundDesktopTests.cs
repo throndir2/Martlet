@@ -82,44 +82,6 @@ public sealed class QuickSoundDesktopTests
     }
 
     [Fact]
-    public async Task A_free_voice_on_this_pc_makes_its_quick_sounds_as_soon_as_they_are_turned_on()
-    {
-        var voice = new ToneVoice();
-        await using var fixture = await LiveFixture.Create(windowsVoice: voice);
-        var controller = fixture.Controller;
-        Assert.Equal(0, voice.Calls);
-        controller.QuickSounds = QuickSoundOptions.Of(true, 700);
-        // No click needed: a Windows voice costs nothing and stays on this PC.
-        await fixture.Advance(() => controller.QuickSoundStatus.State is QuickSoundState.Ready or QuickSoundState.Failed);
-        var ready = controller.QuickSoundStatus;
-        Assert.Equal(QuickSoundState.Ready, ready.State);
-        Assert.Equal($"the Windows voice {LiveFixture.FixtureWindowsVoice}", ready.Voice);
-        Assert.Equal(QuickSoundPhrases.Base, voice.Said);
-        Assert.Equal(QuickSoundPhrases.Base.Count, ready.Clips);
-        Assert.Equal(0, fixture.Tts.Calls);
-        Assert.Equal(0, fixture.Output.Opens);
-    }
-
-    // FIXTURE, NOT A VOICE: a quarter second of a quiet tone for each thing it is asked to say.
-    private sealed class ToneVoice : Martlet.Providers.IWindowsVoiceClient
-    {
-        private readonly List<string> said = [];
-        internal int Calls { get { lock (said) return said.Count; } }
-        internal string[] Said { get { lock (said) return [.. said]; } }
-
-        public async IAsyncEnumerable<byte[]> StreamAsync(Martlet.Providers.WindowsVoiceTarget target, Martlet.Providers.BoundedSpeechInput input,
-            Martlet.Providers.SpeechSynthesisLimits limits, DateTimeOffset deadline,
-            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            lock (said) said.Add(input.Text);
-            await Task.Yield();
-            var pcm = new byte[6_000 * 2];
-            for (var i = 0; i < pcm.Length / 2; i++) BitConverter.TryWriteBytes(pcm.AsSpan(i * 2), (short)(i / 30 % 2 == 0 ? 2000 : -2000));
-            yield return pcm;
-        }
-    }
-
-    [Fact]
     public void Quick_sound_choices_are_saved_on_this_pc_and_a_strange_delay_reads_as_the_default()
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.Talk." + Guid.NewGuid().ToString("N"));

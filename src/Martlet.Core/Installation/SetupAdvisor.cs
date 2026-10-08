@@ -224,7 +224,7 @@ public static class SetupAdvisor
         }
 
         // Speech-to-text role.
-        var windowsSpeech = false;
+        var voiceOnCpu = false;
         if (answers.VoiceInput)
         {
             if (whisperMachine is not null)
@@ -276,14 +276,15 @@ public static class SetupAdvisor
             }
             else if (localLlm)
             {
-                pc.Runs.Add("Voice (Windows voices)");
-                windowsSpeech = true;
-                roles.Add(new("Voice (text-to-speech)", "Windows installed voices", "This PC (CPU)", TtsWhat,
+                pc.Runs.Add("Voice (Chatterbox Nano, CPU)");
+                voiceOnCpu = true;
+                roles.Add(new("Voice (text-to-speech)", $"A natural local voice with {Settings.SpeechEngines.ChatterboxNano.Name} on the processor",
+                    "This PC (CPU)", TtsWhat,
                     goal == AdvisorGoal.Fastest
-                        ? "Starts speaking almost instantly but sounds robotic. OpenAI voices sound better but need an internet connection."
-                        : "Free and offline, but sounds robotic. An NVIDIA GPU with more free memory would allow a natural local voice.",
+                        ? "Its first word comes about 1.5 s after a reply starts. An NVIDIA GPU with 4 GB free would make it about 1 s faster."
+                        : "Free and offline, and it can copy your voice. It needs about 8 free processor threads.",
                     AdvisorAvailability.Available, null, "Stays on this PC.",
-                    "In Companion > Voice > Voice engine, choose Windows voices on this PC."));
+                    $"In Companion > Voice > Voice engine, choose {Settings.SpeechEngines.ChatterboxNano.Name} on this PC. It sets up in Docker Desktop."));
             }
             else
             {
@@ -293,7 +294,9 @@ public static class SetupAdvisor
                     "Reply text goes to OpenAI. Each request may cost money.", OpenAiHow));
             }
             if (answers.CustomVoice && voiceMachine is null)
-                notes.Add("A custom voice needs a free NVIDIA GPU during conversations. Until then, use a built-in voice.");
+                notes.Add(voiceOnCpu
+                    ? "Chatterbox Nano copies your voice on the processor too. A free NVIDIA GPU makes it about 1 s quicker to start."
+                    : "A custom voice needs a free NVIDIA GPU during conversations. Until then, use a built-in voice.");
         }
 
         // Character and lip-sync.
@@ -368,17 +371,15 @@ public static class SetupAdvisor
             notes.Add("\"Being built\" and \"Planned\" parts are not ready yet. Each role shows what to use for now.");
         notes.Add("Model sizes and GPU memory are rough estimates.");
 
-        // Windows offline speech is still being wired in, so only the private plan asks for its language packs now.
         var installs = new List<AdvisorInstall>();
-        if (windowsSpeech && goal == AdvisorGoal.Private) installs.Add(AdvisorInstall.WindowsSpeech);
         if (llmMachine == pc || llmOnCpu) installs.Add(AdvisorInstall.Ollama);
-        if (faceMachine == pc || voiceMachine == pc) installs.Add(AdvisorInstall.DockerDesktop);
+        if (faceMachine == pc || voiceMachine == pc || voiceOnCpu) installs.Add(AdvisorInstall.DockerDesktop);
 
         var steps = new List<AdvisorNextStep>();
         if (installs.Count > 0) steps.Add(AdvisorNextStep.Prerequisites);
         steps.Add(AdvisorNextStep.Setup);
         if (answers.VoiceInput || answers.SpokenReplies) steps.Add(AdvisorNextStep.AudioSetup);
-        if (hostsInUse || faceMachine == pc || voiceMachine == pc) steps.Add(AdvisorNextStep.Hosts);
+        if (hostsInUse || faceMachine == pc || voiceMachine == pc || voiceOnCpu) steps.Add(AdvisorNextStep.Hosts);
         if (answers.CustomVoice) steps.Add(AdvisorNextStep.VoiceLibrary);
         if (answers.Character) steps.Add(AdvisorNextStep.Character);
 

@@ -72,8 +72,8 @@ public sealed record TextFallback(ChatCompletionsTarget Chat, TextModelSelection
 
 // A new instance is explicit input, not a stored provider thread or automatic conversation history.
 // Host selects a paired Martlet host's own conversation model (Ollama) instead of a cloud destination;
-// HostSpeech selects a paired host's own F5 voice for the spoken reply and WindowsVoice an installed Windows voice on
-// this PC. SilentReply is a word the model may answer with to stay quiet (unprompted screen commentary); a sentence that
+// HostSpeech selects a paired host's own voice engine for the spoken reply. SilentReply is a word the model may answer
+// with to stay quiet (unprompted screen commentary); a sentence that
 // is only that word is never spoken. Generation carries the persona's optional sampling settings; it changes how the
 // model samples, never what is disclosed, so it is not part of the text authorization (the reply token budget is, through
 // TextLimits). Tools runs the calls a model makes when the input offers tools. ImageOptional: the input's picture is context sent
@@ -91,7 +91,7 @@ public sealed record TextFallback(ChatCompletionsTarget Chat, TextModelSelection
 public sealed class ConversationRequest(
     BoundedTextInput input, TextModelSelection model, TextGenerationLimits textLimits,
     ConversationLimits limits, SpeechOutput? speech = null, ChatCompletionsTarget? chat = null, HostTextTarget? host = null,
-    HostSpeechTarget? hostSpeech = null, string? silentReply = null, WindowsVoiceTarget? windowsVoice = null,
+    HostSpeechTarget? hostSpeech = null, string? silentReply = null,
     GenerationSettings? generation = null, IConversationToolHost? tools = null, TextFallback? fallback = null,
     bool imageOptional = false, IReadOnlyList<string>? characterTags = null, SpeechBreaks? speechBreaks = null,
     IReadOnlyList<string>? controlTags = null, Func<CancellationToken, Task<string?>>? spokenWords = null)
@@ -104,7 +104,6 @@ public sealed class ConversationRequest(
     public ChatCompletionsTarget? Chat { get; } = chat;
     [JsonIgnore] public HostTextTarget? Host { get; } = host;
     [JsonIgnore] public HostSpeechTarget? HostSpeech { get; } = hostSpeech;
-    [JsonIgnore] public WindowsVoiceTarget? WindowsVoice { get; } = windowsVoice;
     [JsonIgnore] public string? SilentReply { get; } = silentReply;
     public GenerationSettings? Generation { get; } = generation;
     [JsonIgnore] public IConversationToolHost? Tools { get; } = tools;
@@ -192,15 +191,9 @@ public sealed class ConversationRequest(
             voice.Output.Validate();
             voice.Limits.Validate();
             ContractRules.Identifier(voice.Selection.ModelAlias);
-            ContractRules.Require(new object?[] { HostSpeech, WindowsVoice, ElevenLabsVoice }.Count(target => target is not null) <= 1,
+            ContractRules.Require(HostSpeech is null || ElevenLabsVoice is null,
                 "Choose one voice for the spoken reply.", ErrorCode.ProviderCapability);
-            if (WindowsVoice is { } windowsVoice)
-            {
-                WindowsSpeechSetup.InstalledId(windowsVoice.VoiceId);
-                ContractRules.Require(voice.Selection == WindowsVoiceSynthesisStream.Selection(windowsVoice),
-                    "A Windows voice requires its own alias, installed-voice model and exact voice.", ErrorCode.ProviderCapability);
-            }
-            else if (ElevenLabsVoice is { } elevenLabs)
+            if (ElevenLabsVoice is { } elevenLabs)
                 ContractRules.Require(ElevenLabsSpeechCatalog.SupportsModel(elevenLabs.ModelId) && ElevenLabsSetup.IsVoiceId(elevenLabs.VoiceId) &&
                     voice.Selection == ElevenLabsSpeechSynthesisStream.Selection(elevenLabs),
                     "An ElevenLabs voice requires its own alias, a supported model and the cloned voice.", ErrorCode.ProviderCapability);

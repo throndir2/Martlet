@@ -74,7 +74,7 @@ mechanism; **Partial** = planned with a stated limit; **No** = not planned.
 | Thinking: Apple Private Cloud Compute | - | Not planned: needs Apple's entitlement and a paid team | Not planned | `PrivateCloudComputeLanguageModel` | - |
 | Thinking: paired host Ollama | Yes | Yes | - | Gateway client | IO09 |
 | Speaking: OpenAI TTS | Yes | Yes | - | Streaming PCM | IO05 |
-| Speaking: on-device voices | Windows voices | **Yes: Apple voices and Personal Voice** | **Yes: new generic speech route** | `AVSpeechSynthesizer.write(_:toBufferCallback:)`, Personal Voice authorization | IO04, IO05 |
+| Speaking: on-device voices | None: Windows voices were removed | **Yes: Apple voices and Personal Voice** | **Yes: new generic speech route** | `AVSpeechSynthesizer.write(_:toBufferCallback:)`, Personal Voice authorization | IO04, IO05 |
 | Speaking: F5 voice cloning | Paired host | Yes via paired host | Mac only (MLX F5, existing F5 route) | f5-tts-swift (MLX) | IO09, IO11 |
 | Voice ID (only respond to me) | Yes | Yes (port GE2E encoder) | - | Accelerate | IO09 |
 | Persona, participation policy | Yes | Yes (port) | - | Swift port | IO05 |

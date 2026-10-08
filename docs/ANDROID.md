@@ -86,7 +86,7 @@ Per-engine detail by Android version is in the
 | Thinking: on-device | Loopback Ollama/LM Studio | **Partial: small models (LiteRT-LM, llama.cpp); Gemini Nano only while Martlet is in front** | **Yes: serves the existing chat route** | LiteRT-LM, llama.cpp, ML Kit GenAI Prompt API | AN04, AN07 |
 | Thinking: paired host Ollama | Yes | Yes | - | Gateway client | AN10 |
 | Speaking: OpenAI TTS | Yes | Yes | - | Streaming PCM | AN07 |
-| Speaking: on-device voices | Windows voices | **Yes: installed Android voices** | **Yes: new generic speech route** | `TextToSpeech.synthesizeToFile` | AN05, AN07 |
+| Speaking: on-device voices | None: Windows voices were removed | **Yes: installed Android voices** | **Yes: new generic speech route** | `TextToSpeech.synthesizeToFile` | AN05, AN07 |
 | Speaking: F5 voice cloning | Paired host | Yes via paired NVIDIA host | **No** (NVIDIA only) | Gateway client | AN10 |
 | Voice ID (only respond to me) | Yes | Yes (port of the GE2E encoder) | - | Kotlin port checked against C# vectors | AN10 |
 | Persona, participation policy | Yes | Yes (port) | - | Kotlin port | AN07 |

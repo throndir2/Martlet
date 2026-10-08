@@ -35,7 +35,6 @@ public sealed class ElevenLabsVoiceTests
         Assert.Equal((VoiceId, ElevenLabsSetup.V4Turbo), (target.VoiceId, target.ModelId));
         Assert.Equal(ElevenLabsSpeechSynthesisStream.Selection(target), configuration.SpeechSelection());
         Assert.Null(configuration.HostSpeechTarget());
-        Assert.Null(configuration.WindowsVoiceTarget());
         Assert.Same(SpeechEngines.ElevenLabs, configuration.SpeakingEngine());
         Assert.Contains("[whispers] - whispered", configuration.VoiceTagInstructions());
         Assert.Contains("Reply text goes to ElevenLabs", configuration.Disclosure(true));

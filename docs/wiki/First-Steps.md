@@ -19,7 +19,7 @@ Martlet reads this PC's graphics card, memory and processor, then asks whether t
 | Job | Typically |
 | --- | --- |
 | **Thinking** | Gemma 4 E2B in Ollama on the graphics card; with free online services, NVIDIA Build (the wizard walks you through the free key). |
-| **Voice** | Chatterbox Turbo on an NVIDIA graphics card with room, otherwise a Windows voice. |
+| **Voice** | Chatterbox Turbo on an NVIDIA graphics card with room, otherwise Chatterbox Nano (on the card when it has room, else on the processor). |
 | **Listening** | Your default microphone with Parakeet on the processor, or Whisper on a card with room to spare. |
 | **Lip-sync** | Audio2Face on a big NVIDIA card, otherwise the mouth follows the voice's loudness. |
 

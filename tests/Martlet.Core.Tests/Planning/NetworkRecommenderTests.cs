@@ -213,14 +213,15 @@ public sealed class NetworkRecommenderTests
     [Fact]
     public void NewRolesNeverPushTodaysThinkingOffItsCard()
     {
-        // Thinking runs on h1's 8 GB card. The voice engine (planned first) has no room beside it, so Thinking stays and the
-        // Windows voice stands in, instead of Thinking moving to a hosted provider the owner never chose.
+        // Thinking runs on h1's 8 GB card. The voice engine (planned first) has no room beside it, so Thinking stays and
+        // Chatterbox Nano stands in, instead of Thinking moving to a hosted provider the owner never chose. Speaking names the
+        // retired Windows voices option, as an older plan can.
         var request = Network(Companion("c1"), Host("h1", Nvidia(8)) with { Roles = [Role("ollama", "gemma4:e2b")] }) with
         {
             CurrentJobs =
             [
                 new JobPlan(ClusterJobs.Thinking, "h1", OptionId: "gemma4:e2b"),
-                new JobPlan(ClusterJobs.Speaking, null, OptionId: FootprintCatalog.WindowsVoiceId)
+                new JobPlan(ClusterJobs.Speaking, null, OptionId: "windows-voices")
             ],
             Wanted = [PlanComponent.Thinking, PlanComponent.Voice]
         };
@@ -240,7 +241,7 @@ public sealed class NetworkRecommenderTests
             CurrentJobs =
             [
                 new JobPlan(ClusterJobs.Thinking, null, OptionId: "gemma4:e2b"),
-                new JobPlan(ClusterJobs.Speaking, null, OptionId: FootprintCatalog.WindowsVoiceId)
+                new JobPlan(ClusterJobs.Speaking, null, OptionId: "windows-voices")
             ],
             Wanted = [PlanComponent.Thinking, PlanComponent.Voice]
         };
@@ -273,7 +274,7 @@ public sealed class NetworkRecommenderTests
     }
 
     [Fact]
-    public void KeepingEverythingLocalBesideAWindowsVoiceIsStable()
+    public void KeepingEverythingLocalBesideAWindowsHostIsStable()
     {
         var request = Network(Companion("c1"), WindowsHost("win-box", Nvidia(12)), Host("amd-box", new MachineGpu("RX 7800 XT", GpuVendor.Amd, 16))) with
         {
@@ -315,7 +316,7 @@ public sealed class NetworkRecommenderTests
             CurrentJobs =
             [
                 new JobPlan(ClusterJobs.Thinking, null, OptionId: "gemma4:e2b"),
-                new JobPlan(ClusterJobs.Speaking, null, OptionId: FootprintCatalog.WindowsVoiceId)
+                new JobPlan(ClusterJobs.Speaking, null, OptionId: "windows-voices")
             ],
             Wanted = [PlanComponent.Thinking, PlanComponent.Voice]
         };
@@ -517,6 +518,61 @@ public sealed class NetworkRecommenderTests
         };
 
         Assert.True(NetworkRecommender.Recommend(request).AlreadyOptimal);
+    }
+
+    private static NetworkSetupRequest LoneVoice(bool hostService, params MachineGpu[] gpus) =>
+        Network(Companion("desk-1", hostService, gpus)) with { Wanted = [PlanComponent.Voice] };
+
+    [Fact]
+    public void ChatterboxNanoSpeaksOnACardWithNoRoomForTheOwnersEngineAndStaysWhenApplied()
+    {
+        var request = LoneVoice(true, Nvidia(4, "GTX 1650"));
+        var plan = NetworkRecommender.Recommend(request);
+
+        var speaking = plan.Target.Job(ClusterJobs.Speaking)!;
+        Assert.Equal("desk-1", speaking.HostId);
+        Assert.Equal(FootprintCatalog.FallbackVoiceKind, speaking.OptionId);
+        Assert.Contains(plan.Notes, n => n.StartsWith("No computer has room for Chatterbox Turbo: Martlet speaks with Chatterbox Nano",
+            StringComparison.Ordinal));
+        Assert.DoesNotContain(plan.Changes, c => c.Summary.Contains("Windows", StringComparison.Ordinal));
+        Assert.True(NetworkRecommender.Recommend(Apply(request, plan)).AlreadyOptimal);
+    }
+
+    [Fact]
+    public void ChatterboxNanoSpeaksOnTheProcessorWhenNoComputerHasACard()
+    {
+        var plan = NetworkRecommender.Recommend(LoneVoice(true));
+
+        var speaking = plan.Target.Job(ClusterJobs.Speaking)!;
+        Assert.Equal("desk-1", speaking.HostId);
+        Assert.Equal("chatterbox-nano-cpu", speaking.OptionId);
+        Assert.Contains(plan.Changes, c => c.Kind == SetupChangeKind.AddRole && c.Summary.Contains("desk-1's processor", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AHostedVoiceSpeaksOnlyWithASavedKeyAndOtherwiseANoteSaysHowToGiveMartletAVoice()
+    {
+        var keyed = NetworkRecommender.Recommend(LoneVoice(false) with { ConfiguredProviders = ["openai"] });
+        Assert.Equal(FootprintCatalog.OpenAiVoiceId, keyed.Target.Job(ClusterJobs.Speaking)!.OptionId);
+
+        var mute = NetworkRecommender.Recommend(LoneVoice(false));
+        Assert.Null(mute.Target.Job(ClusterJobs.Speaking)?.OptionId);
+        Assert.Contains(mute.Notes, n => n.StartsWith("Martlet can't speak yet", StringComparison.Ordinal) &&
+            n.Contains("host service", StringComparison.Ordinal) && n.Contains("Chatterbox Nano", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TheOwnersVoiceEngineComesBackWhenAComputerHasRoomForItAgain()
+    {
+        var small = LoneVoice(true, Nvidia(4, "GTX 1650"));
+        var applied = Apply(small, NetworkRecommender.Recommend(small));
+        var desk = applied.Machines.Single();
+        var upgraded = applied with { Machines = [desk with { Specs = desk.Specs with { Gpus = [Nvidia(12)] } }] };
+
+        var plan = NetworkRecommender.Recommend(upgraded);
+
+        Assert.Equal("chatterbox-turbo", plan.Target.Job(ClusterJobs.Speaking)!.OptionId);
+        Assert.DoesNotContain(plan.Target.Machine("desk-1")!.Roles, r => r.Kind == FootprintCatalog.FallbackVoiceKind);
     }
 
     [Fact]

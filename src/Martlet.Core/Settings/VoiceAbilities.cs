@@ -31,15 +31,12 @@ public sealed record VoiceAbility(string Name, AbilityLevel Level, string? Note,
         $"{Name}: {Note ?? (Level == AbilityLevel.Yes ? "yes" : Level == AbilityLevel.No ? "no" : "partly")}";
 }
 
-/// <summary>What a way of speaking can do: the quick rundown Companion › Voice shows for every voice engine, the Windows voice and
+/// <summary>What a way of speaking can do: the quick rundown Companion › Voice shows for every voice engine and
 /// the cloud voice. <see cref="Cloning"/>: it copies a voice from your recordings. <see cref="Sounds"/>: it makes non-word sounds
 /// such as laughs and sighs where the reply writes a tag for them (paralinguistic tags). <see cref="Emotions"/>: how far it
 /// speaks angrily, sadly and so on.</summary>
 public sealed record VoiceAbilities(bool Cloning, bool Sounds, EmotionSupport Emotions)
 {
-    /// <summary>A Windows voice: only the voices installed in Windows, words only, one tone.</summary>
-    public static VoiceAbilities WindowsVoice { get; } = new(false, false, EmotionSupport.None);
-
     /// <summary>OpenAI's voice (gpt-4o-mini-tts): only OpenAI's built-in voices, words only. The model can follow tone
     /// instructions, but Martlet sends none, so the reply doesn't change its tone.</summary>
     public static VoiceAbilities OpenAiVoice { get; } = new(false, false, EmotionSupport.None);

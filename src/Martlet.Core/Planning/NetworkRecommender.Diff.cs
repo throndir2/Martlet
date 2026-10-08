@@ -126,7 +126,7 @@ public static partial class NetworkRecommender
         {
             var before = (today?.Pool ?? []).Where(p => p is not null).ToList();
             var verb = job == ClusterJobs.Speaking ? "speaks" : "hears";
-            var kind = job == ClusterJobs.Speaking ? engine : ListeningRole;
+            var kind = job == ClusterJobs.Speaking ? voice : ListeningRole;
             foreach (var member in decision.Pool.Where(m => !before.Contains(m)))
                 changes.Add(new SetupChange(SetupChangeKind.JoinPool, member, $"{NameOf(member)} joins the {Title(job)} pool.",
                     $"When {NameOf(decision.HostId)} is busy, {NameOf(member)} {verb} for another companion PC instead of making it wait.")

@@ -15,7 +15,8 @@ namespace Martlet.Core.Planning;
 /// role is pinned to its own card (deploy/host/README.md, choice.gpu and MARTLET_GPU; docs/CLUSTER.md, "Live turn first on a
 /// shared graphics card").</item>
 /// <item>One voice engine per card and per host (role.conf exclusive=voice; docs/VOICE_LATENCY.md, "Keep one voice engine per
-/// GPU"), and the whole network uses the owner's voice engine, because Speaking's pool needs the same engine on every
+/// GPU"), and the whole network uses the owner's voice engine (Chatterbox Nano, on a card or the processor, while no computer
+/// has room for it), because Speaking's pool needs the same engine on every
 /// computer (docs/CLUSTER.md, "Sharing work between your computers").</item>
 /// <item>On a Windows host (Martlet.Core.Installation.SharedGpu.OnWindows) the voice gets a card of its own when another
 /// place exists: Windows pages a full card's memory into main memory and the voice starts late

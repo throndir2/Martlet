@@ -217,9 +217,10 @@ volume, `martlet-chatterbox-nano-models`.
   warming up (the first conditionals, about 3-18 s for librosa's first run, and
   the first piece) is done before the role reports ready; after that a new
   voice takes about 0.37 s.
-- The welcome wizard never suggests Nano, and on a computer without an NVIDIA
-  GPU Companion > Voice keeps recommending a Windows voice; Nano is there for
-  the owner to choose.
+- Windows voices were removed, so Nano is Martlet's fallback voice. *Set it
+  all up for me* and the recommended setup pick it, on the card or else on the
+  processor, when no computer has room for the owner's voice engine. On a
+  computer without an NVIDIA GPU, Companion > Voice recommends it.
 
 ## Chatterbox Original: General and Expressive
 

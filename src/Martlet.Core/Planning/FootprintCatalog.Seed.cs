@@ -9,7 +9,6 @@ public sealed partial class FootprintCatalog
 {
     private const string Doc = "docs/RESOURCE_FOOTPRINTS.md";
     private static readonly string[] DockerNvidia = ["windows", "linux"];
-    private static readonly string[] WindowsOnly = ["windows"];
 
     /// <summary>A Thinking model in Ollama on a graphics card (8,192-token context, the KV cache included in VRAM).</summary>
     private static ComponentOption Ollama(string id, string name, ResourceUse steady, ResourceUse peak, int tier, int firstWordMs,
@@ -120,14 +119,8 @@ public sealed partial class FootprintCatalog
             Steady = new(2.6, 2.5, 1, 9.9), Peak = new(3.1, 3, 1.5, 9.9), QualityTier = 3, FirstWordMs = 450,
             Source = $"Estimate: 1.9 GB of pinned weights (t3_nano_v1, s3gen_meanflow, ve) plus Turbo's measured overhead; image as Turbo's ({Doc})"
         },
-        new()
-        {
-            Id = WindowsVoiceId, Component = PlanComponent.Voice, DisplayName = "Windows voices", RunsInApp = true, Platforms = WindowsOnly,
-            Steady = new(0, 0.1, 0.9, 0), Peak = new(0, 0.2, 1, 0), QualityTier = 1, FirstWordMs = 50, Evidence = FootprintEvidence.Measured,
-            Source = $"Measured: System.Speech on an i7-13700K, 0.17 GB with its PowerShell host, 0.9 threads while speaking ({Doc})"
-        },
-        // After the Windows voices and no higher: on the processor Nano needs about 8 free threads to speak faster than real time
-        // (and pauses when other work takes them), so the planner never picks it over them; the owner chooses it in Companion › Voice.
+        // The voice when no card has room for a voice engine: on the processor Nano needs about 8 free threads to speak faster
+        // than real time (and pauses when other work takes them), so it is the last local choice, after every engine on a card.
         new()
         {
             Id = "chatterbox-nano-cpu", Component = PlanComponent.Voice, DisplayName = "Chatterbox Nano on the processor",

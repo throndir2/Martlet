@@ -50,7 +50,7 @@ public sealed class ConfiguringStateTests
             Role = role, RouteType = type, ProviderAlias = "test", Origin = origin, ModelId = model, ConfigurationRevision = Guid.NewGuid()
         };
         var openAi = Route(Martlet.Core.Settings.SetupRole.Llm, Martlet.Core.Settings.SetupRouteType.OpenAi, "https://api.openai.com/v1", "gpt-5");
-        var facts = new SetupRouteFacts(false, openAi, OllamaMissing: false, ParakeetInstalled: _ => false, WindowsVoice: "Microsoft Zira");
+        var facts = new SetupRouteFacts(false, openAi, OllamaMissing: false, ParakeetInstalled: _ => false);
 
         // Thinking: from OpenAI to Gemma 4 E2B in this PC's Ollama, with the download's terms; nothing to do when it already runs.
         var local = SetupRoutes.Read("thinking", "gemma4:e2b", facts);
@@ -67,14 +67,15 @@ public sealed class ConfiguringStateTests
         Assert.Equal(SetupStepVerdict.NeedsOwner, nvidia.Verdict);
         Assert.Contains("Companion › Thinking", nvidia.Text);
 
-        // Listening with Parakeet (the catalog's v3 is the int8 download), and a Windows voice.
+        // Listening with Parakeet (the catalog's v3 is the int8 download), and Chatterbox Nano on the processor.
         var parakeet = SetupRoutes.Read("listening", "parakeet-tdt-0.6b-v3-cpu", facts with { Route = null });
         Assert.Equal(SetupStepVerdict.Ready, parakeet.Verdict);
         Assert.Contains("CC BY 4.0", parakeet.Terms);
         Assert.Null(SetupRoutes.Read("listening", "parakeet-tdt-0.6b-v3-cpu", facts with { Route = null, ParakeetInstalled = _ => true }).Terms);
         Assert.Equal(SetupStepVerdict.CannotApply, SetupRoutes.Read("listening", "parakeet-tdt-0.6b-v3-cpu", facts with { ParakeetInstalled = null }).Verdict);
-        Assert.Contains("Microsoft Zira", SetupRoutes.Read("speaking", "windows-speech", facts with { Route = null }).Text);
-        Assert.Equal(SetupStepVerdict.NeedsOwner, SetupRoutes.Read("speaking", "windows-speech", facts with { Route = null, WindowsVoice = null }).Verdict);
+        var nano = SetupRoutes.Read("speaking", "chatterbox-nano-cpu", facts with { Route = null });
+        Assert.Equal(SetupStepVerdict.NeedsOwner, nano.Verdict);
+        Assert.Contains("Companion › Voice", nano.Text);
         Assert.Contains("Companion › Voice", SetupRoutes.Read("speaking", "hosted:openai-tts", facts with { Route = null }).Text);
 
         // A host PC uses no jobs.

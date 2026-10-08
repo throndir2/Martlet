@@ -217,8 +217,6 @@ internal sealed class ConversationAuthorization : IConversationAuthorizationSour
             return LocalTranscriptionAdapter.Binding(route.ModelId);
         if (role == SetupRole.Tts && Configuration.HostSpeechTarget() is { } voiceHost)
             return HostSpeechSynthesisStream.Binding(voiceHost);
-        if (role == SetupRole.Tts && Configuration.WindowsVoiceTarget() is { } windowsVoice)
-            return WindowsVoiceSynthesisStream.Binding(windowsVoice);
         // An ElevenLabs key is bound to api.elevenlabs.io and the chosen model.
         if (role == SetupRole.Tts && Configuration.ElevenLabsVoiceTarget() is { } cloned)
             return ElevenLabsSpeechSynthesisStream.Binding(cloned);

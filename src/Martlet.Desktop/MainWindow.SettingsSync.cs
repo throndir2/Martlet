@@ -575,18 +575,12 @@ public partial class MainWindow
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
     }
 
-    /// <summary>Why this PC can't use a shared route yet: a Windows voice it doesn't have, Parakeet not downloaded, or Ollama
-    /// without the model. Null when it can.</summary>
+    /// <summary>Why this PC can't use a shared route yet: Parakeet not downloaded, or Ollama without the model. Null when it
+    /// can.</summary>
     private async Task<string?> RouteAvailableAsync(SetupRole role, SharedRoute route, CancellationToken token)
     {
         switch (route.Type)
         {
-            case SharedRoute.WindowsTts:
-                IReadOnlyList<WindowsVoice> voices;
-                try { voices = await WindowsVoices.ListAsync(token); }
-                catch (InvalidOperationException error) { return error.Message; }
-                return voices.Any(v => v.Id == route.Voice) ? null
-                    : $"The Windows voice {WindowsVoices.DisplayName(route.Voice)} isn't installed on this PC. Add it in Windows Settings › Time & language › Speech, or choose a voice in Companion › Voice.";
             case SharedRoute.Parakeet:
                 return SharedParakeetWaiting(route.Model, model => parakeet?.Installed(model) == true);
             case SharedRoute.ChatCompletions when route.Origin == LocalOllamaBaseUrl:

@@ -371,9 +371,9 @@ internal sealed record DiscordVoiceStatus(bool Connected, string? Guild, string?
 
 /// <summary>Discord voice's speech-to-text and voice, from Martlet's own setup and never the cloud: other people's voices are
 /// transcribed only by Parakeet on this PC or the paired computer that Listening uses (as Add a voice does), and replies are
-/// spoken by a paired host's voice or a Windows voice (the Windows voice in Its voice, or Windows' recommended voice when Its
-/// voice is a cloud voice). While the local conversation is replying, transcription waits for it, so Discord never holds the
-/// shared speech model when the owner is talking to Martlet here.</summary>
+/// spoken by the voice engine of Its voice on a paired host (Chatterbox Nano can run it on a processor). With a cloud voice
+/// or no voice, Discord voice says so instead of speaking. While the local conversation is replying, transcription waits for
+/// it, so Discord never holds the shared speech model when the owner is talking to Martlet here.</summary>
 internal sealed class DiscordSpeech(Func<IReadOnlyList<SetupRoute>?> routes, ParakeetListener? parakeet, string? dataDirectory,
     Func<bool> localBusy) : IDiscordSpeech, IDisposable
 {
@@ -381,12 +381,17 @@ internal sealed class DiscordSpeech(Func<IReadOnlyList<SetupRoute>?> routes, Par
     private readonly Lock gate = new();
     private RecordingTranscriber? transcriber;
     private string? transcriberKey;
-    private string? windowsVoice;
 
     public string? ListenProblem => Transcriber() is null
         ? "Discord voice transcribes on this PC or a paired computer: download Parakeet in Companion › Listening." : null;
 
-    public string? SpeakProblem => null;
+    public string? SpeakProblem => HostVoice() is null
+        ? "Discord voice speaks with a voice engine on this PC or a paired computer: choose one in Companion › Voice " +
+          "(Chatterbox Nano runs on the processor too)." : null;
+
+    private HostSpeechTarget? HostVoice() =>
+        routes()?.FirstOrDefault(route => route.Role == SetupRole.Tts) is { Enabled: true } tts && tts.Consent == tts.Selection() &&
+        dataDirectory is not null ? LiveConversationConfiguration.HostSpeechTargetOf(tts) : null;
 
     public async Task<string> TranscribeAsync(ReadOnlyMemory<byte> pcm16kMono, CancellationToken token)
     {
@@ -402,30 +407,12 @@ internal sealed class DiscordSpeech(Func<IReadOnlyList<SetupRoute>?> routes, Par
 
     public async IAsyncEnumerable<DiscordSpeechAudio> SpeakAsync(string text, [EnumeratorCancellation] CancellationToken token)
     {
-        var tts = routes()?.FirstOrDefault(route => route.Role == SetupRole.Tts);
+        var host = HostVoice() ?? throw new InvalidOperationException(SpeakProblem);
         var input = new BoundedSpeechInput(text.Length > 1000 ? text[..1000] : text);
-        if (tts is { Enabled: true } && tts.Consent == tts.Selection() && dataDirectory is not null &&
-            LiveConversationConfiguration.HostSpeechTargetOf(tts) is { } host)
-        {
-            var ids = new CorrelationIds { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
-            await foreach (var chunk in new HostSpeechClient(dataDirectory).StreamAsync(host, input, ids, 0,
-                               DateTimeOffset.UtcNow.AddSeconds(30), token).ConfigureAwait(false))
-                yield return new(24_000, chunk);
-            yield break;
-        }
-        var voice = LiveConversationConfiguration.WindowsVoiceTargetOf(tts)?.VoiceId ?? await WindowsVoiceAsync(token).ConfigureAwait(false);
-        var pcm = await Task.Run(() => WindowsVoices.Synthesize(voice, input.Text, DateTimeOffset.UtcNow.AddSeconds(30), token), token)
-            .ConfigureAwait(false);
-        yield return new(24_000, pcm);
-    }
-
-    private async Task<string> WindowsVoiceAsync(CancellationToken token)
-    {
-        lock (gate) if (windowsVoice is not null) return windowsVoice;
-        var chosen = WindowsVoices.Recommended(await WindowsVoices.ListAsync(token).ConfigureAwait(false))?.Id ??
-            throw new InvalidOperationException("No Windows voice is installed for Discord voice.");
-        lock (gate) windowsVoice = chosen;
-        return chosen;
+        var ids = new CorrelationIds { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
+        await foreach (var chunk in new HostSpeechClient(dataDirectory!).StreamAsync(host, input, ids, 0,
+                           DateTimeOffset.UtcNow.AddSeconds(30), token).ConfigureAwait(false))
+            yield return new(24_000, chunk);
     }
 
     private RecordingTranscriber? Transcriber()

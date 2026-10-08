@@ -3381,7 +3381,7 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal LiveConversationController Controller { get; }
     internal LiveFixture(ControlledDevice? output = null, VoiceIdentity? voiceIdentity = null,
         IPcAudioSourceFactory? pcAudio = null, bool voices = false, bool history = false, bool tools = false, bool echo = false,
-        ILocalTranscriber? localListener = null, IEndOfTurnJudge? turnJudge = null, IWindowsVoiceClient? windowsVoice = null,
+        ILocalTranscriber? localListener = null, IEndOfTurnJudge? turnJudge = null,
         Func<SetupRoute, string?>? listeningStandIn = null, Func<TimeProvider, PcActivityMonitor>? pcActivity = null, bool data = false)
     {
         Store = new(DirectoryPath);
@@ -3397,7 +3397,7 @@ internal sealed class LiveFixture : IAsyncDisposable
                 OpenAiTextGenerationAdapter.CreateForFixture(Llm, credentials, clock),
                 OpenAiSpeechSynthesisAdapter.CreateForFixture(Tts, credentials, clock), Output, new(), clock,
                 chat: target => ChatCompletionsTextGenerationAdapter.CreateForFixture(target.BaseUrl, Chat,
-                    target.Keyless ? null : credentials, clock), windowsVoice: windowsVoice),
+                    target.Keyless ? null : credentials, clock)),
             (credentials, clock) => OpenAiTranscriptionAdapter.CreateForFixture(Stt, credentials, clock),
             memory: Memory, voiceIdentity: voiceIdentity, voices: Voices,
             pcAudio: pcAudio is null ? null : new PcAudioCaptureFactory(pcAudio, Clock), tools: ToolService, history: History,
@@ -3417,11 +3417,11 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal static async Task<LiveFixture> Create(ControlledDevice? output = null,
         bool legacy = false, VoiceIdentity? voiceIdentity = null, IPcAudioSourceFactory? pcAudio = null, bool voices = false,
         bool history = false, bool tools = false, bool echo = false, ILocalTranscriber? localListener = null,
-        IEndOfTurnJudge? turnJudge = null, IWindowsVoiceClient? windowsVoice = null, Func<SetupRoute, string?>? listeningStandIn = null,
+        IEndOfTurnJudge? turnJudge = null, Func<SetupRoute, string?>? listeningStandIn = null,
         Func<TimeProvider, PcActivityMonitor>? pcActivity = null, bool data = false)
     {
         var fixture = new LiveFixture(output, voiceIdentity, pcAudio, voices, history, tools, echo, localListener, turnJudge,
-            windowsVoice, listeningStandIn, pcActivity, data);
+            listeningStandIn, pcActivity, data);
         var settings = SetupSettings.Begin(null);
         settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api },
             Audio = AudioSettings.Create() };
@@ -3447,13 +3447,9 @@ internal sealed class LiveFixture : IAsyncDisposable
                 SchemaVersion = 2, Companion = null, Memory = null,
                 Setup = settings.Setup!.DowngradeOpenAiForHistoricalSettings()
             };
-        // With a Windows voice client, Martlet speaks with an installed Windows voice instead of OpenAI's (free, on this PC).
-        if (windowsVoice is not null)
-            settings = SetupSettings.SetRouteEnabled(WindowsSpeechSetup.SelectTts(settings, FixtureWindowsVoice), SetupRole.Tts, true, true);
         await fixture.Save(settings);
         return fixture;
     }
-    internal const string FixtureWindowsVoice = "TTS_MS_EN-US_ZIRA_11.0";
     internal async Task Save(AppSettings settings)
     {
         var prior = await Store.LoadAsync();

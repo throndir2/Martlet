@@ -6,13 +6,19 @@ namespace Martlet.Desktop;
 
 /// <summary>What Set it all up for me sets up on this PC, as the placement engine (<see cref="PlacementEngine"/>) planned it:
 /// Thinking in Ollama here (<paramref name="ThinkingOnGpu"/>: on the graphics card, otherwise on the processor) unless it is
-/// hosted or set up already; a voice engine on the NVIDIA card when it has room, otherwise a Windows voice; listening on the
+/// hosted or set up already; a voice engine on the NVIDIA card when it has room, otherwise Chatterbox Nano on the processor
+/// (null <paramref name="Voice"/>: neither fits, and Martlet can't speak until a voice is set up); listening on the
 /// Windows default microphone with Parakeet on the processor, or Whisper on the card (<paramref name="Listening"/>'s GPU
 /// model) when <paramref name="ListenOnGpu"/>; and lip-sync by Audio2Face on the card when <paramref name="LipSyncOnGpu"/>,
 /// otherwise by the voice's loudness.</summary>
 internal sealed record DefaultSetupPlan(LocalChatModel Thinking, bool ThinkingOnGpu, SpeechEngine? Voice, bool ListenOnGpu,
-    ListeningAdvice Listening, string ParakeetModel, string Gpu, bool LipSyncOnGpu = false)
+    ListeningAdvice Listening, string ParakeetModel, string Gpu, bool LipSyncOnGpu = false, bool VoiceOnGpu = true)
 {
+    /// <summary>What the confirmation and the status say when no voice fits this PC.</summary>
+    internal const string NoVoice = "Voice: not set up. This PC has no room for a voice engine: Chatterbox Nano needs an NVIDIA " +
+        "graphics card with 4 GB or more, or about 8 free processor threads and 4.5 GB of free memory. Free some room, or set up " +
+        "a voice on another computer in Companion › Voice.";
+
     /// <summary>One line per job, as the confirmation shows them.</summary>
     internal string Describe(bool thinking = true, bool listening = true, bool voice = true)
     {
@@ -21,13 +27,14 @@ internal sealed record DefaultSetupPlan(LocalChatModel Thinking, bool ThinkingOn
             lines.Add($"Thinking: {Thinking.Id} in Ollama on this PC ({Thinking.Size}{(ThinkingOnGpu ? ", on the graphics card" : ", on the processor")}). " +
                 (Thinking.Hears ? "It's the fastest model that also hears your voice." : "It's the fastest model that fits."));
         if (voice)
-            lines.Add(Voice is { } engine
-                ? $"Voice: {engine.Name} on the graphics card. Martlet speaks with a Windows voice until it's ready."
-                : "Voice: a Windows voice on the processor, since the graphics card has no room for a voice engine.");
+            lines.Add(Voice is not { } engine ? NoVoice
+                : VoiceOnGpu ? $"Voice: {engine.Name} on the graphics card. Martlet speaks once it's ready."
+                : $"Voice: {engine.Name} on the processor, since the graphics card has no room for a voice engine. " +
+                  "Its first word comes about 1.5 seconds after Thinking's. Martlet speaks once it's ready.");
         if (listening)
             lines.Add(ListenOnGpu
                 ? $"Listening: your Windows default microphone, with Whisper ({Listening.GpuModel}) on the graphics card. Parakeet on the processor listens until it's ready."
-                : $"Listening: your Windows default microphone, with Parakeet on the processor{(Voice is null ? "" : ", leaving the graphics card to the voice")}.");
+                : $"Listening: your Windows default microphone, with Parakeet on the processor{(Voice is null || !VoiceOnGpu ? "" : ", leaving the graphics card to the voice")}.");
         return string.Join("\n", lines);
     }
 }
@@ -75,18 +82,17 @@ internal static class DefaultSetup
     }
 
     /// <summary>What the first-run setup can set up by itself: the default voice engine (the others need a voice recording
-    /// or a licence choice first, in Companion › Voice) or a Windows voice, Parakeet or Whisper on the graphics card for
+    /// or a licence choice first, in Companion › Voice) or Chatterbox Nano, on the card or the processor, Parakeet or Whisper on the graphics card for
     /// listening, and on this PC jobs that need an NVIDIA card only when nvidia-smi answers (Martlet checks the driver through
     /// it), with Whisper only on a driver for CUDA 13. <paramref name="gpus"/> null: another computer's jobs, no driver check.</summary>
     internal static FootprintCatalog Catalog(IReadOnlyList<GpuNow>? gpus)
     {
         var card = gpus?.MaxBy(g => g.TotalGb);
         var oldDriver = card?.DriverMajor is < ListeningAdvisor.MinimumDriver;
-        var defaultVoice = FootprintCatalog.Default.For(PlanComponent.Voice)
-            .FirstOrDefault(o => o.HostRoleKind == SpeechEngines.Default.HostRoleKind)?.Id;
-        // Of the voice engines only the default is set up here, on the card or (Chatterbox Nano) on the processor alike.
+        // Of the voice engines only the default and the fallback (Chatterbox Nano, on the card or the processor) are set up here.
         return new(FootprintCatalog.Default.Options.Where(o =>
-            !(o.IsLocal && o.Component == PlanComponent.Voice && o.HostRoleKind is not null && o.Id != defaultVoice) &&
+            !(o.IsLocal && o.Component == PlanComponent.Voice && o.HostRoleKind is not null &&
+              o.HostRoleKind != SpeechEngines.Default.HostRoleKind && o.HostRoleKind != FootprintCatalog.FallbackVoiceKind) &&
             !(o.IsLocal && o.Component == PlanComponent.Listening && o.HostRoleKind is not null && !o.UsesGpu) &&
             !(gpus is not null && o.IsLocal && o.Gpu == GpuRequirement.Nvidia && (card is null || oldDriver && o.Component == PlanComponent.Listening))));
     }
@@ -99,17 +105,19 @@ internal static class DefaultSetup
         var thinking = plan.Primary(PlanComponent.Thinking) is { MachineId: ThisPc, Option: { } local }
             ? MainWindow.LocalChatModels.FirstOrDefault(m => m.Id == local.ModelId) is { } model ? (model, local.UsesGpu) : (SmallestHearingModel, local.UsesGpu)
             : (SmallestHearingModel, false);
-        var voice = plan.Primary(PlanComponent.Voice) is { MachineId: ThisPc, Option.HostRoleKind: { } role }
-            ? SpeechEngines.All.FirstOrDefault(e => e.HostRoleKind == role) : null;
+        var voiceAssignment = plan.Primary(PlanComponent.Voice) is { MachineId: ThisPc, Option.HostRoleKind: not null } placed ? placed : null;
+        var voice = voiceAssignment is { Option.HostRoleKind: { } role } ? SpeechEngines.All.FirstOrDefault(e => e.HostRoleKind == role) : null;
         var card = gpus.MaxBy(g => g.TotalGb);
         var listening = ListeningAdvisor.Advise(gpus, windowsGpu, [], threads, null);
         var whisper = plan.Primary(PlanComponent.Listening) is { MachineId: ThisPc, Option: { UsesGpu: true } stt } ? stt : null;
+        // Whisper shares the host service the voice engine sets up; Nano on the processor sets it up too.
         var listenOnGpu = whisper is not null && voice is not null && card is not null && card.DriverMajor is not < ListeningAdvisor.MinimumDriver;
         if (listenOnGpu) listening = listening with { UseGpu = true, GpuModel = whisper!.ModelId ?? listening.GpuModel };
         var lipSync = plan.Primary(PlanComponent.LipSync) is { MachineId: ThisPc, Option.UsesGpu: true };
         var gpu = card is not null ? $"{card.Name} ({card.TotalGb.ToString("0.#", CultureInfo.InvariantCulture)} GB)"
             : windowsGpu?.Describe() ?? "no dedicated graphics card";
-        return new(thinking.Item1, thinking.Item2, voice, listenOnGpu, listening, LocalSpeechSetup.RecommendedParakeetModel(language), gpu, lipSync);
+        return new(thinking.Item1, thinking.Item2, voice, listenOnGpu, listening, LocalSpeechSetup.RecommendedParakeetModel(language), gpu, lipSync,
+            voiceAssignment?.Option.UsesGpu ?? true);
     }
 
     /// <summary>The hosted providers (planner provider ids: the preset ids "nvidia-build", "openrouter", "google-gemini", and

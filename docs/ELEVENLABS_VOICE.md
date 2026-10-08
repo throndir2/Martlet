@@ -58,7 +58,7 @@ key again.
 Saving settings, opening the page or starting Martlet sends nothing. Quick
 sounds (Companion › Voice) use ElevenLabs only when you press **Make quick
 sounds now**, because each clip costs money. Discord voice calls do not use
-ElevenLabs; they keep the Windows voice.
+ElevenLabs; they speak only with a voice engine on a host.
 
 ## Models
 

@@ -115,7 +115,7 @@ flowchart TD
 6. **Apply.** *Use these suggestions* (or saving the key) closes the wizard on
    Home and asks the one *Set it all up for me* confirmation, which now also
    names lip-sync and whether Thinking is online. It sets up what the plan puts
-   on this PC (Ollama and the model, a Windows voice then the voice engine,
+   on this PC (Ollama and the model, the voice engine,
    Parakeet then Whisper), skips jobs that are already set up or that another
    computer or online service does, and sets lip-sync: Audio2Face on this PC's
    host service when the plan placed it on the card, on the host the plan chose

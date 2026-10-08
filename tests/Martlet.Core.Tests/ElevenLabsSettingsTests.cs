@@ -87,8 +87,8 @@ public sealed class ElevenLabsSettingsTests
         Assert.Equal(SetupRouteType.ElevenLabs, binding.RouteType);
         Assert.Throws<ContractException>(() => (binding with { Role = SetupRole.Llm }).Validate());
 
-        // Voice moves to a Windows voice: the ElevenLabs key is listed for removal with its own scope, never orphaned.
-        var windows = SetupSettings.QueueReplacedCredential(WindowsSpeechSetup.SelectTts(keyed, "installed voice"), route);
+        // Voice moves to OpenAI: the ElevenLabs key is listed for removal with its own scope, never orphaned.
+        var windows = SetupSettings.QueueReplacedCredential(SetupSettings.SelectRoute(keyed, SetupRole.Tts, "gpt-4o-mini-tts-2025-12-15", "coral"), route);
         var removal = Assert.Single(SetupSettings.SetAsideElevenLabsCredentials(windows));
         Assert.Equal(SetupRouteType.ElevenLabs, removal.Scope!.RouteType);
         Assert.Empty(SetupSettings.SetAsideCredentials(windows, SetupRole.Tts, null));

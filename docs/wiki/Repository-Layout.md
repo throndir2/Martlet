@@ -19,7 +19,7 @@
 | `Martlet.Core` | Shared settings/domain logic. |
 | `Martlet.Conversation` | Conversation runtime and background jobs. |
 | `Martlet.Providers` | Provider adapters. |
-| `Martlet.Audio`, `Speech.Windows`, `Stt.Windows`, `Sherpa`, `LocalStt`, `VoiceActivity` | Audio, speech and listening foundations. |
+| `Martlet.Audio`, `Stt.Windows`, `Sherpa`, `LocalStt`, `VoiceActivity` | Audio, speech and listening foundations. |
 | `Martlet.Memory` | Local fact store and retrieval. |
 | `Martlet.Discord`, `Martlet.Messaging`, `Martlet.Home` | Discord, Telegram/WhatsApp and Home Assistant. |
 | `Martlet.Avatars`, `Martlet.Avatar.*` | Avatar contracts, Live2D/VRM renderer and Audio2Face. |
