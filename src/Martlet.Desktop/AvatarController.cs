@@ -251,7 +251,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
     }
 
     /// <summary>", drawn by Martlet over the face at x, y (n pixels wide, tilted d°, how it follows the face)" when the renderer
-    /// drew the action itself (an overlay such as the blush glow, for a model without its own), or null. The tilt is the head's
+    /// drew the action itself (an overlay such as the blush glow, for a model without its own, or a stronger blush level), or null. The tilt is the head's
     /// roll, clockwise; the face is pinned to a Live2D model's own face meshes, follows a VRM's head bone, or is estimated
     /// from a Live2D model's head angles when it has no face meshes to pin to.</summary>
     internal static string? Drawn(System.Text.Json.JsonElement data)
