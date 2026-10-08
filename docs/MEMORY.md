@@ -391,7 +391,13 @@ everyone's (about no one in particular), as every fact was before voices.
   or several (Ctrl or Shift) to delete them together. *Delete all shown* deletes
   every fact listed now (one person's facts, or what the search found), and
   *Delete everything* forgets all facts; each asks first. Storage and export
-  are folded away below.
+  are folded away below. The window shows the facts the moment it opens, even
+  while Martlet is replying (it reads them directly, not on the setup slot a
+  reply holds), and keeps up on its own: whatever adds, changes or forgets
+  facts while it is open (remembering after a reply, `manage_memories`, its own
+  actions) makes it read them again, with no *Refresh* needed. A read that finds
+  the same store version changes nothing, and a refresh never changes the
+  fact you are writing or changing, its *Belongs to* choice or the selection.
   *Belongs to* chooses whose a fact is when you add or update
   it: *Everyone*, or a voice Martlet knows. A new fact is yours (the voice marked
   *This is me* on People) unless *Show* lists one voice's facts; then it is
