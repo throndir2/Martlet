@@ -365,8 +365,8 @@ waist, hips, groin, buttocks and inner thighs) react too while
   touches wait for the next turn. The conversation keeps a short line such as
   *(touch: top of head pat x3)*, the talk window shows a touch-only reply as a
   note, and the two prompts are on Companion › Prompts (*Touched* and
-  *Touched, with your message*). The optional text beside the switch is your
-  own words for the touch, sent as a hint. Rename, turn off, move or resize
+  *Touched, with your message*). While the switch is on, a box beside it takes your
+  own words for the touch (optional), sent as a hint. Rename, turn off, move or resize
   (drag the box or its corner on the picture, or type it), delete or add zones;
   **Try** plays one. Zones are saved per model in `character-touch-zones.json`,
   with the picture in `character-touch-zones\`.

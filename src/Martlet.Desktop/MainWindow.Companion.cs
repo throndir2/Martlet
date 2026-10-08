@@ -1923,4 +1923,64 @@ public partial class MainWindow
         button.Click += (_, _) => run();
         return button;
     }
+
+    // ---------- dense editor rows (Companion › Character's touch zones, touch temperament and emotes) ----------
+
+    /// <summary>Where a dense row's fields start, under its name: an empty check box is 29 pixels wide (its box and the gap its
+    /// template keeps before content), then a 6-pixel gap.</summary>
+    private const double RowIndent = 35;
+
+    /// <summary>The check box that turns a dense row on, before its name.</summary>
+    private static CheckBox RowSwitch(bool on) =>
+        new() { IsChecked = on, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, RowIndent - 29, 0) };
+
+    /// <summary>Makes a text box, choice or button one of a dense row's compact controls: 32 pixels tall, on the row's centre line.</summary>
+    private static T Compact<T>(T control) where T : Control
+    {
+        control.SetResourceReference(StyleProperty, control switch
+        {
+            TextBox => "CompactTextBox", ComboBox => "CompactComboBox", _ => "CompactButton"
+        });
+        if (control is Button) control.MinWidth = 56;
+        return control;
+    }
+
+    /// <summary>A short muted label in a dense row, on the centre line of the control it names. Labels that start a row's lines get
+    /// the same <paramref name="width"/>, so the boxes after them line up.</summary>
+    private static Label RowLabel(string text, UIElement target, double left = 0, double right = 6, double width = 0)
+    {
+        var label = new Label
+        {
+            Content = text, Target = target, Padding = new Thickness(left, 0, right, 0), VerticalAlignment = VerticalAlignment.Center,
+            MinWidth = width
+        };
+        label.SetResourceReference(ForegroundProperty, "MutedBrush");
+        return label;
+    }
+
+    /// <summary>Items of a dense row that stay together when the row wraps, such as a label and its box.</summary>
+    private static StackPanel RowGroup(params UIElement[] items)
+    {
+        var group = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 18, 6) };
+        foreach (var item in items) group.Children.Add(item);
+        return group;
+    }
+
+    /// <summary>A text box with a grey <paramref name="hint"/> over it while it is empty.</summary>
+    private static Grid WithHint(TextBox box, string hint, string? id = null)
+    {
+        var shown = new TextBlock
+        {
+            Text = hint, IsHitTestVisible = false, TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap,
+            VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(box.Padding.Left + 1, 0, box.Padding.Right + 1, 0),
+            Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed
+        };
+        shown.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
+        if (id is not null) AutomationProperties.SetAutomationId(shown, id);
+        box.TextChanged += (_, _) => shown.Visibility = box.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        var grid = new Grid { VerticalAlignment = VerticalAlignment.Center };
+        grid.Children.Add(box);
+        grid.Children.Add(shown);
+        return grid;
+    }
 }
