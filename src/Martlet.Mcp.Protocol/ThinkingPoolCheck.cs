@@ -340,6 +340,33 @@ internal static class ThinkingPoolCheck
                 ThinkLonger.Description(new ThinkLongerSettings(), ThinkLonger.Slots(ThinkLonger.Places(settings.Plan(routes)))));
         }
 
+        // 10. A member whose computer refused a request as invalid (a paired computer's gateway: request.invalid) rests: the board
+        // gives it no job that needs as much for ThinkingJobBoard.RefusedRest, so it never gets request after request it refuses.
+        {
+            const ThinkingCapability Sees = ThinkingCapability.Text | ThinkingCapability.Vision;
+            BackgroundPlace old = new("host:old", "old-host") { Slots = 1, Can = Sees };
+            var asked = 0;
+            ThinkingPoolRest? rested = null;
+            var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [old], (_, job, _) =>
+            {
+                Interlocked.Increment(ref asked);
+                return Task.FromResult(job.Required.HasFlag(ThinkingCapability.Vision)
+                    ? ThinkingAnswer.Rejected("old-host refused the request as invalid (request.invalid)") : ThinkingAnswer.Done("noted"));
+            });
+            board.Rested += rest => rested = rest;
+            var started = DateTimeOffset.UtcNow;
+            var first = await board.RunAsync(Job(ThinkingJobKind.Digest, Sees), cancellation);
+            var again = await board.RunAsync(Job(ThinkingJobKind.Digest, Sees), cancellation);
+            var text = await board.RunAsync(Job(ThinkingJobKind.Memory), cancellation);
+            var resting = board.Status().Resting;
+            Check("refused as invalid: the member rests for such jobs and still takes the others",
+                first.Outcome == ThinkingJobOutcome.Failed && again.Outcome == ThinkingJobOutcome.NoMember && text.Succeeded && asked == 2 &&
+                !board.CanRun(ThinkingJobKind.Digest, Sees) && board.CanRun(ThinkingJobKind.Memory) && resting.Count == 1 &&
+                rested is { Needs: Sees } rest && rest.Until - started >= ThinkingJobBoard.RefusedRest - TimeSpan.FromMinutes(1),
+                $"first {first.Outcome} ({first.Problem}); next picture job {again.Outcome} ({again.Problem}) without a request; text job " +
+                $"{text.Outcome}; {asked} requests in all; resting {string.Join(", ", resting.Select(r => $"{r.Name} for {ThinkingJobResult.Describe(r.Needs)} until {r.Until:HH:mm:ss}"))}");
+        }
+
         return new
         {
             passed = steps.All(s => s.Passed), elapsedMs = watch.ElapsedMilliseconds,

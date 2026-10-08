@@ -104,6 +104,14 @@ if (args is ["logs"])
     Console.WriteLine(JsonSerializer.Serialize(logsReport));
     return logsOk ? 0 : 1;
 }
+// With "host-connections" it rehearses kept connections to a host and its status as a host goes and comes back
+// (HostConnectionRehearsal).
+if (args is ["host-connections"])
+{
+    var (connectionsOk, connectionsReport) = await Martlet.NodeLinkCheck.HostConnectionRehearsal.RunAsync(CancellationToken.None);
+    Console.WriteLine(JsonSerializer.Serialize(connectionsReport));
+    return connectionsOk ? 0 : 1;
+}
 // With "voice-engine <engine> <endpoint> [text|-] [data directory]" it speaks one sentence with a live voice engine's loopback
 // service through the engine's real relay and gateway (VoiceEngineCheck) and prints its report; Chatterbox Original uses the
 // style saved in the data directory (chatterbox-style.json), else Resemble's suggestions.

@@ -521,9 +521,17 @@ thinks and research count against the same slots:
    for the next capable member. Each member is tried once. A member whose
    computer is offline gets no job
    ([Computers that go offline](#computers-that-go-offline)).
-3. When every capable slot is busy, the job waits in line. A freed slot goes
+3. A member whose computer refuses the request itself as invalid (a paired
+   computer's gateway answers `request.invalid`, for example when the two
+   computers run Martlet versions that don't agree) rests for 10 minutes
+   (`ThinkingJobBoard.RefusedRest`). In that time the board gives it no job that
+   needs at least what the refused job needed, and `CanRun` and `Find` pass it
+   over, so callers use their fallback without a request. The desktop log says
+   once which computer to update, and `thinking-pool-status.json` lists it
+   under `resting`.
+4. When every capable slot is busy, the job waits in line. A freed slot goes
    to the highest priority first, then the oldest.
-4. Long kinds never take the pool's last free slot while the pool has two or
+5. Long kinds never take the pool's last free slot while the pool has two or
    more slots: that slot stays for fast kinds (`BargeInJudge`,
    `EndOfTurnJudge`, `Digest`). With exactly one slot, long kinds may take it,
    and fast jobs wait until their deadline. Only the
@@ -583,8 +591,8 @@ a place as `ThinkLonger`).
 
 **Status.** The desktop writes `thinking-pool-status.json` (members with
 whether each one's computer answers now, the slots of the members that answer
-and of every member, running and waiting jobs by kind, guidance and warnings;
-never a job's text).
+and of every member, running and waiting jobs by kind, resting members,
+guidance and warnings; never a job's text).
 MCP's `thinking_pool_status` reads it with the settings and plan, and
 `thinking_pool_check` rehearses the board ([MCP](MCP.md)).
 
