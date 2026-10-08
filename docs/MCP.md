@@ -1353,11 +1353,14 @@ it under the boxes, `TouchZonesSentOpen` opens the folder of pictures in
 Explorer, `TouchZoneTry-<n>` plays on the character, and
 `TouchZonesIntimate`, `TouchZonesAdd`/`TouchZonesAddKind` and each zone's
 `TouchZoneOn-`, `TouchZoneName-`, `TouchZoneReaction-`, `TouchZoneReaction2-`,
-`TouchZoneNotices-` (*Martlet notices*; its checked state reads in `ui_snapshot`), `TouchZoneNarration-` (the owner's optional hint), `TouchZoneCooldown-`, `TouchZoneBox-`,
+`TouchZoneNotices-` (*Martlet notices*; its checked state reads in `ui_snapshot`), `TouchZoneNarration-` (the owner's optional hint; it shows only while *Martlet notices* is on), `TouchZoneCooldown-`, `TouchZoneBox-`,
 `TouchZoneDelete-` and its box on the picture (`TouchZoneRect-<n>`, inside
 `TouchZonesPicture`) save, so they all (except Stop) need `--allow-ui-effects`.
 The Character page lists more than `ui_snapshot`'s 200 controls; read the
-section with `{"idPrefix":"TouchZone"}`. Setting
+section with `{"idPrefix":"TouchZone"}`. With `"layout":true`, each row's text
+boxes, choices and buttons in Touch zones, Touch temperament and Emotes and
+motions read 32 pixels tall in `bounds`, with their check boxes and labels on
+the same centre line. Setting
 `MARTLET_TOUCH_ZONES_FIXTURE` to a text file before launching the desktop makes
 a FIXTURE - NOT AI stand-in answer every request of *Detect zones* from that
 file's zones (JSON about the whole snapshot, as `answer` above; shown in

@@ -116,16 +116,16 @@ public partial class MainWindow
         if (persona is null) return Card([.. stack]);
 
         var rows = new List<TemperamentRow>();
-        var after = new TextBox { Text = (temperament?.Escalation.After ?? new TouchEscalation().After).ToString(CultureInfo.CurrentCulture), Width = 60 };
+        var after = Compact(new TextBox { Text = (temperament?.Escalation.After ?? new TouchEscalation().After).ToString(CultureInfo.CurrentCulture), Width = 60 });
         AutomationProperties.SetName(after, "Touches in a row before the reaction escalates");
         AutomationProperties.SetAutomationId(after, "TouchTemperamentAfter");
         // Where the character's eyes usually go (Where the character looks › As the personality decides uses it).
         var gazeChoices = new[] { NotDecided }.Concat(CharacterGaze.Modes.Select(m => m.Label)).ToArray();
-        var gaze = new ComboBox
+        var gaze = Compact(new ComboBox
         {
-            ItemsSource = gazeChoices, MinWidth = 260, MinHeight = 26,
+            ItemsSource = gazeChoices, MinWidth = 260,
             SelectedIndex = temperament?.Gaze is { } decidedGaze ? 1 + CharacterGaze.Modes.ToList().FindIndex(m => m.Mode == decidedGaze) : 0
-        };
+        });
         AutomationProperties.SetName(gaze, "Where the character's eyes usually go");
         AutomationProperties.SetAutomationId(gaze, "TouchTemperamentGaze");
         var autoSave = new AutoSave(async () =>
@@ -168,7 +168,10 @@ public partial class MainWindow
         after.TextChanged += (_, _) => Edited();
         gaze.SelectionChanged += (_, _) => Edited();
         var gazeRow = new WrapPanel { Margin = new Thickness(0, 4, 0, 4) };
-        gazeRow.Children.Add(new Label { Content = "Eyes usually", Target = gaze, Padding = new Thickness(0, 4, 6, 4), Width = 170 });
+        gazeRow.Children.Add(new Label
+        {
+            Content = "Eyes usually", Target = gaze, Padding = new Thickness(0, 0, 6, 0), Width = 170, VerticalAlignment = VerticalAlignment.Center
+        });
         gazeRow.Children.Add(gaze);
         stack.Add(gazeRow);
 
@@ -189,11 +192,11 @@ public partial class MainWindow
         var missing = CharacterTouchZones.Kinds.Where(k => temperament?.Zones.ContainsKey(k.Id) != true).ToArray();
         if (missing.Length > 0)
         {
-            var kinds = new ComboBox { ItemsSource = missing.Select(k => k.Label).ToArray(), SelectedIndex = 0, MinWidth = 180, MinHeight = 26 };
+            var kinds = Compact(new ComboBox { ItemsSource = missing.Select(k => k.Label).ToArray(), SelectedIndex = 0, MinWidth = 180 });
             AutomationProperties.SetName(kinds, "Part to give its own reaction");
             AutomationProperties.SetAutomationId(kinds, "TouchTemperamentAddKind");
             var addPanel = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
-            var add = PageButton("Add part", () =>
+            var add = Compact(PageButton("Add part", () =>
             {
                 var kind = missing[Math.Max(0, kinds.SelectedIndex)];
                 if (rows.Any(r => r.Id == kind.Id && !r.Removed)) return;
@@ -202,14 +205,17 @@ public partial class MainWindow
                 rows.Add(row);
                 if (addPanel.Parent is Panel panel) panel.Children.Insert(panel.Children.IndexOf(addPanel), row.View);
                 Edited();
-            }, id: "TouchTemperamentAdd");
+            }, id: "TouchTemperamentAdd"));
             addPanel.Children.Add(kinds);
             add.Margin = new Thickness(8, 0, 0, 0);
             addPanel.Children.Add(add);
             stack.Add(addPanel);
         }
         var escalationRow = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
-        escalationRow.Children.Add(new Label { Content = "Repeated touches escalate after", Target = after, Padding = new Thickness(0, 4, 6, 4) });
+        escalationRow.Children.Add(new Label
+        {
+            Content = "Repeated touches escalate after", Target = after, Padding = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center
+        });
         escalationRow.Children.Add(after);
         escalationRow.Children.Add(new TextBlock
         {
@@ -243,16 +249,16 @@ public partial class MainWindow
             IsGroup = isGroup;
             var words = CharacterTouchTemperaments.Vocabulary;
             View.Children.Add(new TextBlock { Text = label, Width = 170, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap });
-            attitude = new ComboBox
+            attitude = Compact(new ComboBox
             {
-                ItemsSource = (isGroup ? new[] { BuiltIn } : []).Concat(CharacterTouchTemperaments.AttitudeWords).ToArray(), MinWidth = 140, MinHeight = 26
-            };
+                ItemsSource = (isGroup ? new[] { BuiltIn } : []).Concat(CharacterTouchTemperaments.AttitudeWords).ToArray(), MinWidth = 140
+            });
             var offset = isGroup ? 1 : 0;
             attitude.SelectedIndex = entry is null ? 0 : entry.Attitude - CharacterTouchTemperaments.MinimumAttitude + offset;
             AutomationProperties.SetName(attitude, $"How the character feels about a touch on: {label}");
             AutomationProperties.SetAutomationId(attitude, $"TouchTemperamentAttitude-{id}");
             // First choices: the attitude's own reactions, no reaction at all, then each reaction.
-            first = new ComboBox { ItemsSource = new[] { AttitudeOwn, NoReaction }.Concat(words).ToArray(), MinWidth = 150, MinHeight = 26, Margin = new Thickness(6, 0, 0, 0) };
+            first = Compact(new ComboBox { ItemsSource = new[] { AttitudeOwn, NoReaction }.Concat(words).ToArray(), MinWidth = 150, Margin = new Thickness(6, 0, 0, 0) });
             first.SelectedIndex = entry?.Reactions switch
             {
                 { Count: 0 } => 1,
@@ -261,14 +267,14 @@ public partial class MainWindow
             };
             AutomationProperties.SetName(first, $"First reaction to a touch on: {label}");
             AutomationProperties.SetAutomationId(first, $"TouchTemperamentReaction-{id}");
-            second = new ComboBox { ItemsSource = new[] { NothingElse }.Concat(words).ToArray(), MinWidth = 140, MinHeight = 26, Margin = new Thickness(6, 0, 0, 0) };
+            second = Compact(new ComboBox { ItemsSource = new[] { NothingElse }.Concat(words).ToArray(), MinWidth = 140, Margin = new Thickness(6, 0, 0, 0) });
             second.SelectedIndex = entry?.Reactions is { Count: > 1 } r2 ? Math.Max(0, IndexOf(words, r2[1]) + 1) : 0;
             AutomationProperties.SetName(second, $"Second reaction to a touch on: {label}");
             AutomationProperties.SetAutomationId(second, $"TouchTemperamentReaction2-{id}");
-            linger = new TextBox { Text = (entry?.LingerSeconds ?? 0).ToString("0.#", CultureInfo.CurrentCulture), Width = 50, Margin = new Thickness(6, 0, 0, 0) };
+            linger = Compact(new TextBox { Text = (entry?.LingerSeconds ?? 0).ToString("0.#", CultureInfo.CurrentCulture), Width = 50, Margin = new Thickness(6, 0, 0, 0) });
             AutomationProperties.SetName(linger, $"Seconds the first reaction to {label} stays on");
             AutomationProperties.SetAutomationId(linger, $"TouchTemperamentLinger-{id}");
-            look = new TextBox { Text = (entry?.LookSeconds ?? 0).ToString("0.#", CultureInfo.CurrentCulture), Width = 50, Margin = new Thickness(6, 0, 0, 0) };
+            look = Compact(new TextBox { Text = (entry?.LookSeconds ?? 0).ToString("0.#", CultureInfo.CurrentCulture), Width = 50, Margin = new Thickness(6, 0, 0, 0) });
             AutomationProperties.SetName(look, $"Seconds the character looks at your mouse after a touch on {label}");
             AutomationProperties.SetAutomationId(look, $"TouchTemperamentLook-{id}");
             void Enable()
@@ -292,12 +298,12 @@ public partial class MainWindow
             View.Children.Add(new TextBlock { Text = "looks at your mouse (s)", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
             View.Children.Add(look);
             if (isGroup) return;
-            var remove = PageButton("Remove", () =>
+            var remove = Compact(PageButton("Remove", () =>
             {
                 Removed = true;
                 View.Visibility = Visibility.Collapsed;
                 edited();
-            }, id: $"TouchTemperamentRemove-{id}");
+            }, id: $"TouchTemperamentRemove-{id}"));
             remove.Margin = new Thickness(8, 0, 0, 0);
             View.Children.Add(remove);
         }

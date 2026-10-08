@@ -15,6 +15,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 - Web research is now on by default, so asking Martlet to look something up just works, and it researches much more thoroughly, the way a careful person would: up to 30 searches and 60 pages for each thing you ask, taking notes as it reads, with no time limit and no hourly limit (one at a time; Cancel in the talk window stops it). If the model stops partway, you still get its notes and sources. Turn it off in Companion › Thinking pool › **Web research**. ([#564](https://github.com/throndir2/Martlet/pull/564))
+- Companion › Character's **Touch zones**, **Touch temperament** and **Emotes and motions** lists are tidier and take much less room: their boxes, choices and buttons are slimmer and line up, each label sits beside what it names, and a zone's box for your own words shows only while **Martlet notices** is on. Text boxes all over Martlet are slimmer too, as tall as the choices beside them. ([#565](https://github.com/throndir2/Martlet/pull/565))
 
 ### Fixed
 - **Show character** no longer says *Couldn't show the character: A task was canceled.* when the Martlet host you picked for lip-sync doesn't answer. The character shows as before, Martlet tells you the host isn't ready, and the mouth follows Martlet's voice until the host answers again. ([#561](https://github.com/throndir2/Martlet/pull/561))
