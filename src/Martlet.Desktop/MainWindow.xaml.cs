@@ -189,6 +189,7 @@ public partial class MainWindow : ThemedWindow
         InitializeSettingsSync();
         InitializeReminders();
         InitializeRecommendedSetup();
+        InitializeConfiguring();
         InitializeMemorySync();
         InitializeNetwork();
         InitializeApiKeys();
@@ -647,10 +648,10 @@ public partial class MainWindow : ThemedWindow
             UpdateCharacterButton();
             if (characterPlacementNote is { } note) note.Text = CharacterPlacementText();
         }
-        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
-            OperationCanceledException or ObjectDisposedException or System.IO.InvalidDataException or System.Text.Json.JsonException)
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception error) when (RendererFailures.Is(error, lifetime.Token))
         {
-            if (!closing) ErrorLog.Warn("The character's new position couldn't be read to save it.", error);
+            if (!closing) RendererFailures.Log("The character's new position couldn't be read to save it", error);
         }
     }
 
@@ -794,9 +795,8 @@ public partial class MainWindow : ThemedWindow
             characterCleanupProblem = null;
             ActionText.Text = avatar.Status;
         }
-        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
-            UnauthorizedAccessException or System.ComponentModel.Win32Exception or Martlet.Core.Contracts.ContractException or
-            OperationCanceledException)
+        catch (Exception error) when (error is UnauthorizedAccessException or System.ComponentModel.Win32Exception or
+            Martlet.Core.Contracts.ContractException or OperationCanceledException || RendererFailures.Is(error, lifetime.Token))
         {
             if (closing) return;
             ErrorLog.Warn("The character couldn't be shown.", error);
@@ -849,8 +849,8 @@ public partial class MainWindow : ThemedWindow
             characterCleanupProblem = null;
             return true;
         }
-        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
-            System.ComponentModel.Win32Exception or UnauthorizedAccessException)
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or UnauthorizedAccessException ||
+            RendererFailures.Is(error, CancellationToken.None))
         {
             ErrorLog.Warn("The character could not be stopped cleanly.", error);
             characterCleanupProblem = "The character didn't close cleanly. Press Hide or Show character to try again.";

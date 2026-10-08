@@ -327,15 +327,13 @@ internal sealed class ConversationSinging : IAsyncDisposable
                         loop.Token).ConfigureAwait(false);
                 }
             }
-            catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
-                InvalidDataException or TimeoutException)
+            catch (Exception error) when (error is OperationCanceledException || RendererFailures.Is(error, loop.Token))
             {
-                if (error is not OperationCanceledException) ErrorLog.Warn($"Singing: the character's mouth stopped following the song ({error.GetType().Name}).");
+                if (RendererFailures.Is(error, loop.Token)) RendererFailures.Log("Singing: the character's mouth stopped following the song", error);
             }
             if (!loop.IsCancellationRequested)
                 try { await face.RestAsync(CancellationToken.None).ConfigureAwait(false); }
-                catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
-                    InvalidDataException or TimeoutException) { }
+                catch (Exception error) when (RendererFailures.Is(error, CancellationToken.None)) { }
         });
     }
 

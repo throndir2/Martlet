@@ -10,35 +10,41 @@ type BoneName = Parameters<VRM["humanoid"]["getNormalizedBoneNode"]>[0];
 /** Martlet's own gestures, played on any VRM that has the humanoid bones they move. After the reply gestures come the voice
  *  emotes, played when the voice makes their sound or tone (laugh, sigh, gasp...), then the touch and mood gestures (wink,
  *  pout, shy...), which also use the model's preset expressions (blinkLeft, relaxed, happy...) when it has them, then the
- *  held face parts (eyes_up turns the eye bones, mouth_open the oh or aa mouth expression). */
+ *  held face parts (eyes_up turns the eye bones, mouth_open the oh or aa mouth expression), and last the stronger blush
+ *  levels (see VRM_BLUSH_LEVELS). */
 export const VRM_GESTURES = Object.freeze(["nod", "shake", "tilt", "bow", "sway", "wave", "shrug", "bounce", "blush",
   "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat", "groan", "sniff", "shush", "inhale", "exhale", "mumble", "hum",
   "sneeze", "whistle", "happy", "sarcastic", "angry", "fear", "crying", "whispering", "dramatic",
   "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy",
-  "eyes_up", "mouth_open"] as const);
+  "eyes_up", "mouth_open", "blush_deep", "blush_fierce"] as const);
 export type VrmGesture = typeof VRM_GESTURES[number];
 /** The gestures that can be held (an action with `hold: true`): eased into and kept, gently alive, until ended. The model's
- *  own blush can be held too (see `playGesture`). */
+ *  own blush can be held too, at every blush level (see `playGesture`). */
 export const VRM_HOLDABLE_GESTURES = Object.freeze(["pout", "shy", "look_away", "drowsy", "eyes_up", "mouth_open"] as const);
 type HoldableGesture = typeof VRM_HOLDABLE_GESTURES[number];
 const holdable = (name: string): name is HoldableGesture => (VRM_HOLDABLE_GESTURES as readonly string[]).includes(name);
+/** Martlet's blush levels, faintest first. Each shows the model's own blush or cheek expression fully (for 4 seconds, or
+ *  held); the renderer page draws the stronger ones over it, and draws every level on a model without one. */
+export const VRM_BLUSH_LEVELS = Object.freeze(["blush", "blush_deep", "blush_fierce"] as const);
+type BlushLevel = typeof VRM_BLUSH_LEVELS[number];
+const blushLevel = (name: string): name is BlushLevel => (VRM_BLUSH_LEVELS as readonly string[]).includes(name);
 /** A part of the face or body a held gesture moves. */
 export type VrmGesturePart = "eyes" | "mouth" | "cheeks" | "brows" | "head";
-/** The parts each held gesture moves (the head part includes the body; the model's own blush is the cheeks). Held gestures
- *  layer: holding one lets go only of the held gestures that move a part it moves too. */
-export const VRM_HOLD_PARTS: Readonly<Record<HoldableGesture | "blush", readonly VrmGesturePart[]>> = Object.freeze({
+/** The parts each held gesture moves (the head part includes the body; the model's own blush, at every level, is the
+ *  cheeks). Held gestures layer: holding one lets go only of the held gestures that move a part it moves too. */
+export const VRM_HOLD_PARTS: Readonly<Record<HoldableGesture | BlushLevel, readonly VrmGesturePart[]>> = Object.freeze({
   pout: ["mouth", "brows", "head"], shy: ["eyes", "mouth", "head"], look_away: ["eyes", "head"], drowsy: ["eyes", "head"],
-  blush: ["cheeks"], eyes_up: ["eyes"], mouth_open: ["mouth"],
+  blush: ["cheeks"], eyes_up: ["eyes"], mouth_open: ["mouth"], blush_deep: ["cheeks"], blush_fierce: ["cheeks"],
 });
-const sharePart = (a: HoldableGesture | "blush", b: HoldableGesture | "blush") =>
+const sharePart = (a: HoldableGesture | BlushLevel, b: HoldableGesture | BlushLevel) =>
   VRM_HOLD_PARTS[a].some(part => VRM_HOLD_PARTS[b].includes(part));
 const head: readonly BoneName[] = ["head"], headSpine: readonly BoneName[] = ["head", "spine"];
 const GESTURE_BONES: Readonly<Record<VrmGesture, readonly BoneName[]>> = Object.freeze({
   nod: head, shake: head, tilt: head, bow: ["spine"], sway: ["spine"],
   wave: ["rightUpperArm", "rightLowerArm"], shrug: ["leftUpperArm", "rightUpperArm", "leftLowerArm", "rightLowerArm"], bounce: ["hips"],
   // An authored blush or cheek expression when the model has one; otherwise the page draws a glow on the cheeks, found
-  // from the head (see faceAnchor).
-  blush: head,
+  // from the head (see faceAnchor). So do the stronger blush levels.
+  blush: head, blush_deep: head, blush_fierce: head,
   laugh: headSpine, chuckle: head, sigh: headSpine, gasp: headSpine, cough: headSpine, clear_throat: head, groan: head, sniff: head,
   shush: headSpine, inhale: headSpine, exhale: headSpine, mumble: head, hum: head, sneeze: headSpine, whistle: head,
   happy: headSpine, sarcastic: head, angry: headSpine, fear: headSpine, crying: headSpine, whispering: headSpine,
@@ -54,7 +60,7 @@ const GESTURE_SECONDS: Readonly<Record<VrmGesture, number>> = Object.freeze({
   exhale: 1.8, mumble: 2, hum: 2.6, sneeze: 1.6, whistle: 2, happy: 2.4, sarcastic: 1.8, angry: 2.4, fear: 2, crying: 3,
   whispering: 2.2, dramatic: 2.4,
   wink: 1.1, pout: 2.6, shy: 3.5, giggle: 1.6, flinch: 1.4, lean_in: 2.8, look_away: 2.4, think: 2.8, eye_roll: 1.8, drowsy: 4.5,
-  eyes_up: 3, mouth_open: 2.6,
+  eyes_up: 3, mouth_open: 2.6, blush_deep: 4, blush_fierce: 4,
 });
 const GESTURE_FADE: Partial<Record<VrmGesture, number>> = { bounce: 0.15, gasp: 0.12, fear: 0.15, cough: 0.1, sniff: 0.1, sneeze: 0.1,
   wink: 0.12, giggle: 0.15, flinch: 0.05, eye_roll: 0.2 };
@@ -429,7 +435,7 @@ export class VrmRuntime {
   /** Expressions held on (lingering emotes) until turned off. */
   private readonly heldExpressions = new Set<string>();
   private gesture: { name: VrmGesture; seconds: number } | undefined;
-  private blush: { name: string; seconds: number; hold: boolean } | undefined;
+  private blush: { name: string; level: BlushLevel; seconds: number; hold: boolean } | undefined;
   private held: { name: HoldableGesture; seconds: number; progress: number; on: boolean }[] = [];
   // 0 to 1: how much the voice moves the mouth now (eased), so a held open mouth makes room for lip-sync.
   private talk = 0;
@@ -498,20 +504,20 @@ export class VrmRuntime {
    *  a shrug, an excited bounce, a voice emote (a laugh, a sigh, a gasp...) or a touch or mood gesture (a wink, a flinch...).
    *  With `hold`, a holdable one (VRM_HOLDABLE_GESTURES) eases in and stays until `endGesture`. Held gestures layer: holding
    *  one lets go only of the held ones that move a part it moves too (VRM_HOLD_PARTS), crossfading from them. A gesture
-   *  played meanwhile plays on top, the held poses easing back partway and resuming after. A blush shows the model's own
-   *  blush or cheek expression (4 seconds, or held: the cheeks); false when it has none (the page draws one). */
+   *  played meanwhile plays on top, the held poses easing back partway and resuming after. A blush level shows the model's
+   *  own blush or cheek expression (4 seconds, or held: the cheeks); false when it has none (the page draws one). */
   playGesture(name: string, hold = false): boolean {
     const model = this.loaded();
     if (!(this.gestures as readonly string[]).includes(name)) return false;
-    if (name === "blush") {
+    if (blushLevel(name)) {
       const reserved: readonly string[] = [...mouthPresets, ...blinkPresets, ...gazePresets];
       const own = model.expressionManager?.expressions.map(e => e.expressionName)
         .find(n => !reserved.includes(n) && BLUSH_EXPRESSION.test(n));
       // Played once while it is held, it stays held, as the other held gestures do; held, passing emotes leave it on.
       const keep = hold || this.blush?.hold === true;
       if (!own || !this.setAction(own, true, keep)) return false;
-      if (hold) this.letGo("blush");
-      this.blush = { name: own, seconds: 0, hold: keep };
+      if (hold) this.letGo(name);
+      this.blush = { name: own, level: name, seconds: 0, hold: keep };
       return true;
     }
     if (hold && holdable(name)) {
@@ -527,21 +533,21 @@ export class VrmRuntime {
   }
 
   /** Lets go of the held gestures (the held blush included) that move a part `name` moves too. */
-  private letGo(name: HoldableGesture | "blush"): void {
+  private letGo(name: HoldableGesture | BlushLevel): void {
     for (const held of this.held) if (held.name !== name && sharePart(held.name, name)) held.on = false;
-    if (name !== "blush" && this.blush?.hold && sharePart("blush", name)) this.endGesture("blush");
+    if (!blushLevel(name) && this.blush?.hold && sharePart(this.blush.level, name)) this.endGesture(this.blush.level);
   }
 
   /** Lets a held gesture go (eased out); one playing once just finishes. */
   endGesture(name: string): void {
     for (const held of this.held) if (held.name === name) held.on = false;
-    if (name === "blush" && this.blush) { this.setAction(this.blush.name, false, this.blush.hold); this.blush = undefined; }
+    if (this.blush?.level === name) { this.setAction(this.blush.name, false, this.blush.hold); this.blush = undefined; }
   }
 
-  /** The gesture playing once, if any, and every gesture held. */
-  get gestureState(): { readonly playing?: VrmGesture; readonly held: readonly (HoldableGesture | "blush")[] } {
-    const held: (HoldableGesture | "blush")[] = this.held.filter(h => h.on).map(h => h.name);
-    if (this.blush?.hold) held.push("blush");
+  /** The gesture playing once, if any, and every gesture held (a held blush by its level). */
+  get gestureState(): { readonly playing?: VrmGesture; readonly held: readonly (HoldableGesture | BlushLevel)[] } {
+    const held: (HoldableGesture | BlushLevel)[] = this.held.filter(h => h.on).map(h => h.name);
+    if (this.blush?.hold) held.push(this.blush.level);
     return Object.freeze({ ...(this.gesture ? { playing: this.gesture.name } : {}), held: Object.freeze(held) });
   }
 
@@ -635,7 +641,7 @@ export class VrmRuntime {
 
   private updateActions(model: VRM, deltaSeconds: number): void {
     const blush = this.blush;
-    if (blush && !blush.hold && (blush.seconds += deltaSeconds) >= GESTURE_SECONDS.blush - 0.6) this.endGesture("blush");
+    if (blush && !blush.hold && (blush.seconds += deltaSeconds) >= GESTURE_SECONDS[blush.level] - 0.6) this.endGesture(blush.level);
     const expressions = model.expressionManager;
     if (!expressions) return;
     for (const [name, state] of this.actions) {

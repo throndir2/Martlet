@@ -209,9 +209,13 @@ priority, whether it is fast and whether a member can run it (`canRun`);
 guidance and likely-slowdown warnings; and the desktop's
 `thinking-pool-status.json` (`leftByOwner`, running and waiting jobs by kind, the live floor's
 level, the jobs waiting for the conversation and the ones it stopped this turn
-and in all, never a job's text). `thinking_pool_check` rehearses the production job board with simulated
+and in all, `resting`: each member whose computer refused a request as invalid
+with what such jobs need and when it gets them again, never a job's text).
+`thinking_pool_check` rehearses the production job board with simulated
 members (NOT models): no member, capabilities, the fast slot, priorities, retry
-on another member, a stale job dropped and the migration. Its `auto-join` steps
+on another member, a stale job dropped, the migration, and a member that
+refused a request as invalid resting for such jobs while it still takes the
+others. Its `auto-join` steps
 run the production rule (`ThinkingPoolAutoJoin`) on sample hosts: a host with
 the Thinking pool role joins with its slots, an Ollama-only host joins unless it
 does this PC's Thinking, a member on Ollama moves to the role, and a computer
@@ -1081,7 +1085,11 @@ bound fits the saved settings; a think on the
 Deep thinking route is held mid-answer while a reply streams on Thinking's
 route, and the reply finishes first (parallel, never queued); each request
 reached its own Ollama (the think with `"think":true`, its own model and a
-32,768-token context, the reply without Thinking steps); two thinks run at once
+32,768-token context, the reply without Thinking steps); a Thinking pool job's
+request (remembering: a budget of 25,600 tokens, the role's largest 32,768-token
+window and Thinking steps off) is accepted and loads that window (Martlet 0.54.0
+sent the budget as `maximum_context_tokens` below `context_tokens`, and the
+gateway refused it with `request.invalid`); two thinks run at once
 on the Deep thinking role's two slots (`OllamaRelayWorker.DeepThinking` with
 `slots: 2`, advertised as the route's `maximum_concurrency` and read as
 `HostRoute.MaximumConcurrency`) while a reply streams, a third is turned away
@@ -1289,7 +1297,10 @@ Martlet's own hint while `use` is null), `enabled`, `mode` (`brief`, or
 is the default), `vtsToggle` (a VTube Studio ToggleExpression hotkey turns it
 on) and whether replies
 are `offered` it for `engine`, a voice engine key, `none` or absent for a voice
-without tags), `replyPrompt` and `replyTags` (what replies get while the
+without tags), `blushLevels` (the model's blush levels, faintest first: `level`
+1 to 3 for `blush`, `blush_deep` and `blush_fierce`, with the row's `n`, `id`,
+`kind`, `name`, `tag`, `mode` and `offered`; the first is the model's own emote
+tagged `blush` when that replaces Martlet's blush), `replyPrompt` and `replyTags` (what replies get while the
 character shows; lingering emotes add their `{/tag}` off tags) and `namingPrompt` (`instructions` and the numbered `list` the
 Thinking model is sent). With `showing`, the lingering emotes the character
 would show now (`["glasses", "blush:12"]`, minutes after the colon),
@@ -1344,10 +1355,19 @@ numbered boxes; `previewDirectory` keeps them as files to look at) while a
 FIXTURE - NOT AI stand-in answers each request from `answer`'s zones (fractions
 of the snapshot). `guess`, a wrong first answer in the same form, answers the
 close-ups instead, so the checks have something to correct; `checks` sets the
-rounds per part (0 to 5, 2 by default). `detection` then reports each request
-(`asked`: its `step`, `kind`, picture size and type, `marks`, the message and
-the stand-in's answer), the `steps` (what each found, swapped, moved, removed
-or added), `requestCount`, what it `missed` and how far the found boxes are
+rounds per part (0 to 5, 2 by default); `failAt` makes that request (1 for the
+first) fail instead of answering, as a model whose computer stopped answering,
+so the detection stops there. With Include intimate zones on (`includeIntimate`,
+on unless it or the saved zones turn it off) the intimate zones
+(`TouchZoneDetection.Erogenous`: neck, lips, ears, chest, breasts, waist, hips,
+groin, buttocks and inner thighs) must be found: the ones the close-ups miss are
+asked for again on the whole character (the `missing` step), then worked out
+from the zones around them. `detection` then reports each request
+(`asked`: its `step`, `kind`, picture size and type, `marks`, the message,
+the stand-in's answer and whether it `failed`), the `steps` (what each found,
+swapped, moved, removed, added or worked out), `requestCount`, the `failure` it
+stopped at (null when none), what it `missed`, the `required` zones and those
+still missing (`requiredMissing`), and how far the found boxes are
 from `answer`'s (`worstEdge`, `meanEdge`).
 The model is `modelPath`, `modelId` or the one the `dataDirectory`'s
 `avatar.json` shows. `save` (an explicit, disposable `dataDirectory` only)
@@ -1377,8 +1397,16 @@ setup, so it is right before the talk window opens), `TouchZonesDetectNote`
 Thinking model is text-only...*), `TouchZonesDetection`
 (how *Detect zones* went, and each step while it runs: *Step 2: finding the
 zones of the character's head in a close-up...*, *Checking the zones of ...,
-round 1 of 2...*), `TouchZonesSent` (what the last detection sent: how many
-pictures, how large and what they showed, or *FIXTURE - NOT AI answered
+round 1 of 2...*, *Step 5: asking again for 3 zones the close-ups missed, on
+the whole character...*; it shows *Taking a picture of the character...* at
+once, even when the click left the keyboard focus on `TouchZonesDetect`. When a
+request fails it reads *Finding zones stopped at request 4: couldn't ask the
+Thinking model (ResponseTruncated). Your 38 zones from before are kept. Try
+again when it answers.*: the zones from before and their picture stay, or, with
+none before, *The 5 zones found until then are kept. Press Detect again to find
+the rest.*), `TouchZonesSent` (what the last detection sent: how many
+pictures, how large and what they showed, such as *..., and the whole character
+again for the zones the close-ups missed*, or *FIXTURE - NOT AI answered
 these.*), `TouchZonesLast` (the zone the last click landed in,
 how it was found and what it played or that it was resting, and whether Martlet
 noticed it), `TouchZonesNoticed` (what Martlet noticed that waits for a reply,
@@ -1422,7 +1450,11 @@ file's zones (JSON about the whole snapshot, as `answer` above; shown in
 `TouchZonesVision`, `TouchZonesDetection` and `TouchZonesSent`) after taking the real snapshot,
 composing and keeping every picture and probing the showing model's drawables
 or bones, so the whole detection runs with no vision request (and *Detect
-zones* is on without a model that can see).
+zones* is on without a model that can see). With it, setting
+`MARTLET_TOUCH_ZONES_FIXTURE_FAIL_AT` to a request number (1 for the first)
+makes the stand-in fail that request instead of answering, as a model whose
+computer stopped answering: *Detect zones* then stops there and keeps the zones
+from before (FIXTURE - NOT AI in `TouchZonesDetection`).
 
 Touch temperament (below Touch zones) reads through `TouchTemperamentStatus`
 (for which persona and who decided it: built-in reactions, the Thinking model,
@@ -3278,6 +3310,47 @@ from a data directory's `shared-settings.json` (optional absolute
 *Done*, *Cancel* or *Missed*, `by` and `at`), plus the `reminders` `tool`
 exactly as the model gets it. Read-only.
 
+`setup_run_status` shows how applying the recommended setup to all your
+computers stands ([Applying the recommended setup](CLUSTER.md#applying-the-recommended-setup),
+[Configuring](CLUSTER.md#configuring)), from a data directory (optional
+absolute `dataDirectory`): `state` (*none* without `shared-settings.json`,
+*no-runs*, *loaded*), every computer's published run (`setup-run.<device>`
+entries: `runId`, `startedBy`, `startedAt`, `updatedAt`, `finishedAt`,
+`active`, `shown`, `summary` and each computer's `machineId`, `state`
+*Pending*, *Configuring*, *Done*, *Failed* or *NeedsAttention*, `step`, `done`
+and `steps`; an entry a newer Martlet wrote is `readable: false`), `plan` (who
+does each job in `cluster.json`, with `failover` and `movedFrom`) and `sharing`
+(Sharing work: each job's `shares`, `order` and `never`). Machine IDs, role
+names and counts only. Read-only.
+
+`setup_run_check` rehearses applying a recommended setup with the production
+executor (`SetupExecutor`) on a fixture recommendation against simulated
+computers (FIXTURE, NOT real hosts): gpu-box with two NVIDIA cards (through
+Martlet there), desk-host (this PC's own host service), linux-box (SSH),
+old-box (Martlet can't reach it) and laptop (no host service). The preflight:
+Chatterbox Turbo's terms with the RTX 4090 by UUID, Parakeet chosen as the stt
+variant with that variant's terms only, moving Thinking keeping its model, Audio2Face
+showing and sending its default engine's terms, an NGC key the owner enters, old-box needing someone there, laptop unable to run
+host roles, the Thinking pool joining by itself and the downloads added up.
+The run: the host commands in order with their arguments (nothing for skipped
+changes), the key only to Audio2Face and never in text, the terms recorded as
+accepted, speaking on gpu-box with failover and thinking back to each PC's
+choice in the plan, Sharing work, one cluster check, a failed removal that
+doesn't stop the others, a job this PC can't follow yet reported, the run
+record (all waiting, then *Configuring* with the step and its count, then how
+each computer ended) read back from the shared settings as
+`setup-run.<device>`, a per-computer entry, and a change missing from the
+review skipped. `passed` and each step's `passed` and `detail`. In-process; no
+network, model or credential.
+
+Home's `HomeConfiguring` (on a host PC `HostConfiguring`; passive: it opens
+the Devices map) and `HomeConfiguringStatus` (`HostConfiguringStatus`) show
+the newest run from any computer, for example *Configuring your computers: 1
+of 3 finished. gpu-box: Installing Chatterbox Turbo (2 of 4). Started on
+desk-b.*, then for ten minutes how it ended (*Your computers were reconfigured
+at 6:30 PM: 2 done, 1 needs you.*), or a host role this PC changes now.
+Hidden when nothing is configured.
+
 `reminders_check` rehearses reminders with the production code (`Reminders`,
 `ReminderBoard`, `BackgroundJobs`, `SharedSettings`) on two simulated companion
 PCs whose entries merge through the shared settings: set in minutes and at a
@@ -3748,6 +3821,24 @@ comes back from a power cut without its newest lines (it restarts from an older
 saved `logs.json`) is read from the start again and gets them back; an unsigned
 request is refused. Synthetic lines; loopback only; the folder is deleted.
 
+`host_connections_selftest` (no arguments) rehearses how the desktop connects
+to a paired host and reports its status (`src\Martlet.NodeLinkCheck`, mode
+`host-connections`, `HostConnectionRehearsal.cs`; returns `{exitCode, report}`).
+One real gateway (`lab-connections`; Kestrel, pinned TLS, signed requests) runs
+on 127.0.0.1 behind a loopback TCP forwarder that the check stops and starts at
+the same address. A simulated desktop checks the host as the 15-second sync does
+(a new `Audio2FaceHostConnection` per check: routes, then the plan copy) and
+logs through the desktop's status tracker (`HostAnswers`). Its steps: twelve
+checks share one kept TCP and TLS connection (`HostRoutes` connections dialed
+and connections the forwarder accepted are both 0 after the first); the host
+stops and one missed check logs nothing, the second logs `Host lab-connections
+stopped answering: ...` once, later misses log nothing, and the route status
+says the home address didn't answer (refused); the host comes back and the next
+check logs `Host lab-connections answers again.` once over one new connection;
+a host that misses every other check logs nothing. The report's `log` holds the
+lines. Loopback only; writes nothing. Windows running out of ports
+(`NoBufferSpaceAvailable`) is not simulated; unit tests check its wording.
+
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
@@ -3806,7 +3897,10 @@ passive and `ProblemOpenLogs` opens Explorer (`--allow-ui-effects`).
 `ui_connect` also attaches to a Martlet that shows only its problem dialog.
 Status fields include `VisionNow` (Companion › Vision's *Now* line: *On. Martlet looks at your whole screen occasionally. Comments: Normal.* by default, or *Off. ...* once turned off; a saved `talk-preferences.json` keeps its choices, and nothing is captured until Start watching), `VisionToggle` (*Turn vision off* while vision is on, *Turn vision on* otherwise; clicking it saves `talk-preferences.json`, so it needs `--allow-ui-effects`; the `VisionSource-ActiveWindow`, `-ActiveScreen`, `-Camera` and `-Url` choices report `selected`, `-ActiveScreen` by default), `VisionStatus` (Companion › Vision: whether the Thinking model can see, or has been retired, and the fix), `VisionDisclosure` (Companion › Vision: exactly what vision captures and sends and where, including that what you type or say goes with the newest picture and, for the whole screen, the looks at notifications and flashing taskbar buttons), `VisionGazeStatus` (Companion › Vision › Glances at your screen: the character's usual gaze, such as *The character follows your mouse.*, why Martlet can't decide yet (vision off, a camera, the character hidden, not watching yet) or what the eyes are on now; its `VisionGaze-Mouse` (*Keep its usual gaze*) and `VisionGaze-Martlet` choices save `talk-preferences.json`, so they need `--allow-ui-effects`, and `character_gaze` reads the saved choice as `saved`), `FallbackNow` (Companion › Thinking › If Thinking fails: the saved fallback endpoint and model and whether it has its own key, uses Thinking's or none; never the key), `FallbackKeyStatus` (what the fallback's key box will do; its fields `FallbackProvider`, `FallbackBaseUrl`, `FallbackModel`, `FallbackKey`, `FallbackConsent` and its `FallbackSave`/`FallbackOff` buttons write settings or a key, so they need `--allow-ui-effects`; `logs_tail` shows each use as *Thinking failed (...) ... the Thinking fallback ... answered instead*, and a rate-limited glance shows in `LiveVisionStatus`'s `help` as *Last look 10:17 PM: the provider is limiting requests. Looking again in 1 minute.*), `RepliesNow` (Companion › Replies: that Martlet asks for replies of one or two sentences, the max reply length ceiling in effect, 4096 tokens including any hidden thinking on a Chat Completions or paired-host Ollama route unless set, whether Thinking steps are off (the default) or on, and the other saved settings), `RepliesThinking` (Companion › Replies › Thinking steps: *Off*, the default, or *On*; choosing one with `ui_select` saves it, so it needs `--allow-ui-effects`) and `RepliesThinkingStatus` (how the Thinking route takes it: *Used by Ollama on this PC.*, *Depends on the model at ...* for servers where it depends on the model, or not used on the OpenAI route), `SetupCloudHint-Thinking` (the cloud provider's recommended Thinking model, or a retired-model warning), `SetupJobNow-Thinking`, `SetupJobNow-Voice` and `SetupJobNow-Listening` (the job's *Now* line: where it runs and the model, such as *Ollama on this PC: gemma4:12b*), `SetupJobNetwork-Thinking`, `-Voice` and `-Listening` (shown when a host does the job for your Martlet network: *Your Martlet network does thinking on diva-host, as chosen on desktop-diva. This PC switches to it as soon as it can: pair diva-host with this PC first.*, or *Your other computers use this PC for thinking, through diva-host.*; a computer that hasn't chosen yet then selects `Place-Thinking-Computer` and its *Now* line reads *Not set up on this PC yet.*), `SetupCloudKeyStatus-Thinking`, `-Voice` and `-Listening` (under *A cloud provider*, what the key field does for the chosen provider: keep the saved key, use again *Your OpenRouter key from before*, set aside when the job left that provider, or ask for one; never the key; `SetupCloudSave-<page>` and `SetupUseLocalThinking` save the route, so they need `--allow-ui-effects`, and keys set aside never block them), `SetupOldKey-Thinking-<n>`, `-Voice-<n>` and `-Listening-<n>` (the page's *Keys from before*, shown only while the job has a key Martlet set aside when it stopped using it, newest first: *Your OpenRouter key* or *The pairing key for diva-host*; never the key; each `SetupOldKeyRemove-<page>-<n>` button reads *Remove your OpenRouter key* and first asks `OldKeyRemoveQuestion`, *Remove your OpenRouter key from this PC? You can't undo this.*, where `ConfirmationYes` deletes the key from Windows Credential Manager, so it needs `--allow-ui-effects`; `Invoke-MartletMcp.ps1 -LabCredentials` keeps such keys in the disposable data directory instead), `SetupLocalRecommendation` (the local Ollama model recommended for this PC: the fastest, Gemma 4 E2B, on every graphics card, and the largest that fits this card as the smarter, slower choice, each leaving about 5 GB for a game and Martlet's character), `SetupLocalModelPicks` (the suggestion picked from the list: its size, the card it fits, whether it *hears your voice* or *gets the transcript*, and *fastest, recommended* or *smartest that fits here*; choosing one with `ui_select` only fills `SetupLocalModel`, the model name, and saves nothing, but needs `--allow-ui-effects`), `AdvisorStep`, `AdvisorSummary` and `AdvisorChoice-<n>` (the setup advisor that Home's `OpenSetupAdvisor` opens: which step it shows, its plan's summary and each role's pick and status, such as *Speech-to-text: Parakeet speech recognition (Available)*; `GoalFastest` and the other goals, `AdvisorNext`, `AdvisorBack` and `AdvisorClose` only change what it shows), `SetupOllamaStatus` (whether Ollama is installed or running and which models it has, read over loopback when the Thinking tab opens, and which one Thinking uses), `SetupLocalModelTest` (Thinking › This PC: the last *Test model* result for the model in the box, or that it isn't tested yet; a model that doesn't fit in the free graphics memory says so and names a smaller one), `AppUpdateStatus` (Settings › App updates: the installed version, the check schedule and the last check or download result), `OwnHostUpdateStatus` (Settings › App updates, only on a PC running its own host service: where keeping it on this app's version stands), `AppCurrentVersion` (Settings › App updates: always-visible *Current version: Martlet x.y.z*). On Companion › Voice › Voice engine, `VoiceEngineUse-<engine key>` under This PC asks one confirmation (what it installs, the engine it replaces and its model's licence; installing Docker Desktop still asks for its own terms) and then sets up and switches in a run window, so it needs `--allow-ui-effects`. `SetupTestLocalModel` (Thinking › This PC's *Test model*) starts Ollama if needed, loads the model in the box and sends it one short loopback chat request in a run window, so it needs `--allow-ui-effects` too; read the outcome from `HostRunStatus` and `SetupLocalModelTest`. `SetupUseLocalThinking` (*Use Ollama on this PC*, `--allow-ui-effects`) gets the model in `SetupLocalModel` ready before Thinking switches: for a model Ollama doesn't have it first asks `LocalModelDownloadQuestion` (the tag, its size when Martlet knows it and what Thinking keeps using until then; `ConfirmationYes` downloads, `ConfirmationNo` logs *Status: Thinking didn't change.*), then a run window titled *Switch Thinking to <model>* downloads (when needed) and loads it, ending with `HostRunStatus` *<model> is loaded (n s). Thinking switches to it now.*, and only then does `SetupOllamaStatus` say *Thinking uses <model>*. An open talk window follows any saved job change between replies and logs *The open conversation follows the changed setup between replies: Llm ChatCompletions <model>, ...* (`logs_tail` `contains` `open conversation follows`). A run window (`HostRunWindow`, titled `Martlet - <run>`) returns its status line as `HostRunStatus` (for example *Waiting for Docker Desktop to start...* or why it stopped); its output (`HostRunOutput`, which can show a one-use pairing code) is not returned, so read it with `logs_tail` `host-runs`, which also records each status change. `HostRunHide` (*Hide*, also Esc and the window's close button) only hides a running run, which keeps going in Background tasks, and closes the window once the run has finished; `HostRunHideHint` says so while it runs. `HostRunCancel` (*Cancel task...*) asks first (`CancelTaskQuestion`; `ConfirmationYes` cancels, `ConfirmationNo` keeps it running), so it needs `--allow-ui-effects`. A fresh data directory needs no saved settings first: pairing, setting up this PC's host service and a voice engine's setup all work before Setup. Setting `DOCKER_HOST` (for example to a local test named pipe) before launching the desktop points its Docker checks away from the real engine. `ui_click` invokes a control by automation ID and `ui_select` selects a named combo-box
 option. By default only passive navigation and
-diagnostics controls can be clicked. The main window is split into pages, and a
+diagnostics controls can be clicked. `ui_click` with `"focus": true` gives the
+control the keyboard focus first, as a mouse click does (its window comes to
+the front when Windows lets it): use it to check a page that updates while a
+button it just started still has the focus, such as *Detect zones*. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
 `NavDevices`, `NavCompanion`, `NavCreations`, `NavTasks`, `NavDiagnostics` or `NavSettings` first (for example
 `NavCompanion` before `CompanionTab-Listening`). On Settings, click `DiagnosticsSection` to
@@ -3900,7 +3994,14 @@ or `DIVA, desktop-diva · diva-host. Connected. Runs: Martlet host PC, Speaking,
 so one snapshot shows the whole map. The map fits up to six devices on each
 side of This PC; the rest fold into a `Node-more:computers` (or
 `Node-more:services`) card, *44 more computers* with how many need attention,
-whose click opens the list. `DevicesViewMap` and `DevicesViewList` switch
+whose click opens the list.
+A device that Martlet changes now (a recommended setup applied from any of
+your computers, a host role this PC changes, a host PC running a role command
+from another computer, this PC following a plan change) shows the status
+*Configuring: <step>* on its card and in `SelectedDeviceHealth`, for example
+*Configuring: Installing Chatterbox Turbo (2 of 4)*
+([Configuring](CLUSTER.md#configuring)).
+`DevicesViewMap` and `DevicesViewList` switch
 between the map and the list (passive); the list shows by itself once the map
 can't fit every device. The list shows every device as a `Node-<id>` card (This
 PC, then those needing attention, then by name) with `DeviceFilter-all`,
@@ -4557,8 +4658,9 @@ the coarse `zones` crossed) and `physical`. Without `points` it only reads.
 Companion › Character › Touch zones' `CharacterPhysicalLast` shows Martlet's
 summary.
 
-**Where Martlet draws over the face**: the blush glow (on a model without a
-blush of its own) and the overlay emotes are drawn around the face each time
+**Where Martlet draws over the face**: the blush levels (the blush on a model
+without a blush of its own, and `blush_deep` and `blush_fierce` on every model,
+over its own blush) and the overlay emotes are drawn around the face each time
 the renderer page draws a frame. A Live2D model's face is pinned to its own
 face meshes. When the model loads, the page moves each head angle
 (`ParamAngleX`, `ParamAngleY`, `ParamAngleZ`) to find the mesh vertices that
@@ -4578,7 +4680,8 @@ has `n`, `found`, `tracking` (`mesh`, `bones` or `estimate`), `x`, `y` and
 `width` (fractions of the overlay's drawing, +y down), `tilt` (degrees,
 clockwise), `cheekLeft` and `cheekRight` (`x`, `y`, `visible` from 0 to 1,
 `across`, the cheek's width against the face's width, and the hit test there:
-`hit`, `drawables`, `bone`, `mesh`), `overlays` (the overlays showing) and
+`hit`, `drawables`, `bone`, `mesh`), `overlays` (the overlays showing, such as
+`["blush_deep"]`; one fading out is listed until it is gone) and
 `pinned` (Live2D: `carriers`, how many mesh vertices the face rides on, and
 `milliseconds`, how long finding them took at load). `summary` gives the
 `tracking` used, how far the face `moved` (`x`, `y`, `width`, `tilt`) and, for
@@ -4681,6 +4784,29 @@ show while the character shows or a place is saved: showing, they move it to
 the lower-right of the main screen even when locked (it stays locked there)
 and save that; hidden, they forget the saved place so it next shows at its
 default spot, unlocked (`placement.state` `none`).
+
+**When the character's renderer fails a command** (its pipe breaks, it sends
+something unreadable or it runs out of time): only the work that draws the
+character ends. A sentence's lip-sync (loudness mouth or Audio2Face frames), a
+song's mouth, a gaze, an emote or saving where the character is stops, and the
+voice goes on. `ToggleCharacter` (*Hide character*) always finishes, and no
+*Martlet recovered from an unexpected error* dialog shows. Each kind of failure
+gets one short desktop log line a minute, without a stack trace, for example
+*The character's new position couldn't be read to save it: Renderer message
+length is invalid (InvalidDataException).*; the next line for the same failure
+adds *(N more like it in the minute before weren't logged.)*. To check this
+without a broken renderer, set `MARTLET_SIMULATE_RENDERER_FAILURE` to the
+renderer commands to fail, comma-separated (for example `where,lock,zoom`),
+before launching the desktop (`-Desktop` passes the environment on). FIXTURE,
+never a real failure: the shown character's renderer fails those commands the
+way a broken pipe does (*Renderer message length is invalid (simulated by
+MARTLET_SIMULATE_RENDERER_FAILURE).*), and the desktop log says so each time
+the character shows (*FIXTURE: the character renderer fails its ... commands*).
+The renderer still starts, draws and closes normally. Commands include `where`
+(saving its place after `ui_move`), `lock` (`ToggleCharacterLock`), `zoom`
+(`ResetCharacterZoom`), `home` (`ResetCharacterPosition`), `mouth` (the
+loudness mouth), `reset` and `apply` (Audio2Face frames), `gaze`, `action`
+(emotes and motions), `say` (speech bubbles), `theme` and `camera`.
 
 The same page's *Speech bubbles and subtitles* card has the checkboxes
 `SetupCharacterSpeechBubbles` (on by default) and `SetupCharacterSubtitles`
@@ -4809,7 +4935,8 @@ tags replies get with the voice chosen now and which follow the voice's cues;
 and drawing it holds, *Gestures now: wink playing, eyes_up, mouth_open, blush,
 hearts held.* (held gestures layer; see
 [Layers](AVATARS.md#emotes-and-motions)); an emote Martlet drew over the face itself, such
-as the blush glow on a model without a blush of its own, adds *drawn by Martlet
+as the blush glow on a model without a blush of its own, or `blush_deep` and
+`blush_fierce` on any model, adds *drawn by Martlet
 over the face at 414, 88 (50 pixels wide, tilted 3°, pinned to the face's meshes)* with the face's middle and
 width in the overlay's page pixels, the head's roll (clockwise) and how the face is followed (*pinned to the
 face's meshes* for Live2D, *following the head bone* for VRM, or *estimated from the head's angles* for a

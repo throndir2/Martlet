@@ -342,8 +342,7 @@ public partial class MainWindow
                 await avatar.PlayActionAsync(source, "a try", null, lifetime.Token,
                     hold: characterActions.For(avatar.InspectedProfile?.ModelPath)?.Lingers(source) == true);
         }
-        catch (Exception error) when (error is OperationCanceledException or System.IO.IOException or InvalidOperationException or
-            System.IO.InvalidDataException or TimeoutException)
+        catch (Exception error) when (error is OperationCanceledException || RendererFailures.Is(error, lifetime.Token))
         {
             if (characterActionsLast is not null) characterActionsLast.Text = $"The character couldn't play \"{source.Name}\" right now.";
         }

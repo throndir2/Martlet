@@ -26,6 +26,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "OpenPeople", "OpenPrompts", "DeviceFactsSection", "DeviceReachSection", "DeviceRolesSection", "HealthRecheck", "LogsRefresh",
         // Devices' Map and List only switch how the devices show.
         "DevicesViewMap", "DevicesViewList",
+        // Home's Configuring indicators (companion and host PC) only open the Devices map.
+        "HomeConfiguring", "HostConfiguring",
         // The MCP directory's Close and its optional-settings section only close or expand; opening it, searching and Load more
         // send a request to the directory, and Install writes mcp.json and starts a server, so those need --allow-ui-effects.
         "McpDirectoryClose", "McpDirectoryOptional",
@@ -212,6 +214,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // talking.", "Hearing you…", "Not listening" or why Martlet can't listen), and its Start watching / Stop watching button
         // and watching indicator ("Watching your active window.", "Taking a look…", "Not watching" or why Martlet can't see).
         "OpenLiveConversation", "HomeListen", "HomeListeningStatus", "HomeWatch", "HomeWatchingStatus",
+        // Home's Configuring indicator (companion Home, and HostConfiguring on a host PC's Home): a run applying the recommended
+        // setup ("Configuring your computers: 1 of 3 finished. gpu-box: Installing Chatterbox Turbo (2 of 4).", or how it
+        // ended), a host role this PC changes or this PC following a plan change. Machine IDs, role names and counts only.
+        "HomeConfiguring", "HomeConfiguringStatus", "HostConfiguring", "HostConfiguringStatus",
         "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "ListenParakeetStatus", "SetupCharacterView", "SetupCharacterSpeechDisplay",
         // Where the character's speech bubble goes: following the character or in one place, and its pixel offsets.
         "SetupCharacterBubblePlacement", "SetupCharacterBubbleOffsetX", "SetupCharacterBubbleOffsetY",
@@ -974,12 +980,21 @@ internal sealed class DesktopAutomation(bool allowEffects)
         }
     }
 
-    internal async Task<object> ClickAsync(string id, string? window = null)
+    internal async Task<object> ClickAsync(string id, string? window = null, bool focus = false)
     {
         if (!allowEffects && !IsSafeClick(id))
             throw new InvalidOperationException("This control requires an operator to start MCP with --allow-ui-effects.");
         var element = Find(id, window);
         if (!element.Current.IsEnabled) throw new InvalidOperationException($"Control '{id}' is disabled.");
+        // As a mouse click does, the control takes the keyboard focus first (its window comes to the front).
+        if (focus)
+        {
+            try { element.SetFocus(); }
+            catch (Exception error) when (error is InvalidOperationException or COMException or ElementNotAvailableException)
+            {
+                throw new InvalidOperationException($"Control '{id}' can't take the keyboard focus: {error.Message}");
+            }
+        }
         // Navigation items select a page and sections expand or collapse; neither starts work.
         if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
         {
@@ -1162,7 +1177,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
 
     internal const int MaximumFaceSamples = 60;
 
-    /// <summary>Reads where Martlet draws over the showing character's face (the blush glow and overlay emotes)
+    /// <summary>Reads where Martlet draws over the showing character's face (the blush levels and overlay emotes)
     /// <paramref name="samples"/> times, <paramref name="gapMs"/> apart, through MoveAvatar's UI Automation value ("face"). It
     /// changes nothing, so it needs no --allow-ui-effects. Returns each reading (fractions of the overlay's drawing, +y down)
     /// and a summary: how the face is followed, how far it moved, turned and tilted, and what of the character is under each

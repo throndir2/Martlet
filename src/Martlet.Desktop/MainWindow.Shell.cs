@@ -1009,7 +1009,7 @@ public partial class MainWindow
 
     private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
         HardwareStore?.Load() ?? [], homeHosts, hostUpdates.Notes, HostUsers(), clusterEnabled ? clusterPlan : null, OtherComputers(),
-        DeepThinkingHosts(), HostOutsideFacts(), OwnHostTrouble(), ThinkingPoolLeft(), PresenceAway());
+        DeepThinkingHosts(), HostOutsideFacts(), OwnHostTrouble(), ThinkingPoolLeft(), PresenceAway(), ConfiguringMachines());
 
     /// <summary>The paired computers the owner keeps out of the Thinking pool (unticked), or null.</summary>
     private IReadOnlyCollection<string>? ThinkingPoolLeft() =>
@@ -1683,6 +1683,7 @@ public partial class MainWindow
         {
             NodeHealth.Ready => "SuccessBrush",
             NodeHealth.Attention => "WarningBrush",
+            NodeHealth.Configuring => "AccentBrush",
             _ => "MutedBrush"
         });
         return dot;
