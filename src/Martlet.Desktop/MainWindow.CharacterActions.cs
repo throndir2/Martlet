@@ -48,6 +48,7 @@ public partial class MainWindow
                 button.Content = label;
                 AutomationProperties.SetName(button, label);
             }
+            RefreshComboTries();
         });
         characterActions.Changed += () =>
         {
@@ -186,26 +187,31 @@ public partial class MainWindow
 
         var showing = avatar.IsShowing && characterActions.For(avatar.InspectedProfile?.ModelPath) is not null;
         var rows = new List<(CharacterActionSource Source, CheckBox On, TextBox Tag, ComboBox Cue, TextBox Use, CheckBox Stays)>();
+        var comboRows = new List<ComboRow>();
         characterActionTries.Clear();
+        // The emotes as their rows show them now: what is saved, and what the combos' parts name.
+        IReadOnlyList<CharacterAction> CurrentActions() => [.. rows.Select(r => new CharacterAction
+        {
+            Id = r.Source.Id, Enabled = r.On.IsChecked == true,
+            Tag = r.Tag.Text.Trim().Trim('{', '}').Trim().ToLowerInvariant() is { Length: > 0 } tag ? tag : null,
+            Use = r.Use.Text.Trim() is { Length: > 0 } use ? use : null,
+            Cue = r.Cue.SelectedItem as string is { } cue && cue != NoCue ? cue : null,
+            Mode = r.Stays.IsChecked == true ? CharacterActions.Lingering : CharacterActions.Brief
+        })];
         var autoSave = new AutoSave(async () =>
         {
             var current = characterActions.Current;
             if (current is null || !ReferenceEquals(current.Inventory, catalog.Inventory)) return true;
-            var settings = current.Settings with
-            {
-                Actions = rows.Select(r => new CharacterAction
-                {
-                    Id = r.Source.Id, Enabled = r.On.IsChecked == true,
-                    Tag = r.Tag.Text.Trim().Trim('{', '}').Trim().ToLowerInvariant() is { Length: > 0 } tag ? tag : null,
-                    Use = r.Use.Text.Trim() is { Length: > 0 } use ? use : null,
-                    Cue = r.Cue.SelectedItem as string is { } cue && cue != NoCue ? cue : null,
-                    Mode = r.Stays.IsChecked == true ? CharacterActions.Lingering : CharacterActions.Brief
-                }).ToArray()
-            };
-            var why = await characterActions.SaveAsync(settings, lifetime.Token);
+            var actions = CurrentActions();
+            var combos = ReadCombos(comboRows, actions, out var comboProblem);
+            var why = comboProblem ?? await characterActions.SaveAsync(current.Settings with { Actions = actions, Combos = combos }, lifetime.Token);
             saveState.Text = why is null ? "All changes saved." : "Not saved: " + why;
             saveState.SetResourceReference(TextBlock.ForegroundProperty, why is null ? "MutedBrush" : "WarningBrush");
-            if (why is null) offered.Text = Offered(characterActions.Current ?? catalog);
+            if (why is null)
+            {
+                offered.Text = Offered(characterActions.Current ?? catalog);
+                if (characterCombosStatus is not null) characterCombosStatus.Text = CombosStatus(characterActions.Current ?? catalog);
+            }
             return true;
         });
         tabAutoSave = autoSave;
@@ -214,6 +220,8 @@ public partial class MainWindow
             tabEdited = true;
             saveState.Text = "Saving...";
             autoSave.Changed();
+            // A combo's line follows its parts' rows (turned off, stays on, a new tag).
+            foreach (var combo in comboRows) combo.Refresh();
         }
         var cues = new[] { NoCue }.Concat(VoiceTags.Cues).ToArray();
         var index = 0;
@@ -295,6 +303,8 @@ public partial class MainWindow
             stack.Add(header);
             stack.Add(fields);
         }
+        // The owner's combos of these emotes, after them (MainWindow.CharacterCombos.cs).
+        stack.Add(CharacterCombosSection(catalog, comboRows, CurrentActions, Edited, showing));
         return Card([.. stack]);
     }
 

@@ -25,7 +25,9 @@ public sealed record CharacterAction
 }
 
 /// <summary>One model's emote and motion settings (Companion › Character › Emotes and motions). <see cref="DetectedBy"/> is
-/// <c>thinking</c> once the Thinking model named them, otherwise <c>names</c> (made from the model's own names).</summary>
+/// <c>thinking</c> once the Thinking model named them, otherwise <c>names</c> (made from the model's own names).
+/// <see cref="Combos"/> are the owner's combos of its emotes and motions, or null for none (so a file without combos reads and
+/// writes as before).</summary>
 public sealed record CharacterActionSettings
 {
     public const string ByNames = "names", ByThinking = "thinking";
@@ -34,13 +36,14 @@ public sealed record CharacterActionSettings
     public DateTimeOffset? DetectedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
     public required IReadOnlyList<CharacterAction> Actions { get; init; }
+    public IReadOnlyList<CharacterCombo>? Combos { get; init; }
 
     public CharacterAction? Find(string id) => Actions.FirstOrDefault(a => a.Id == id);
 }
 
 /// <summary>A model's emotes and motions with how Martlet uses them: what the reply model is offered, what a reply's tags and
-/// the voice's cues set off, and what the owner sees.</summary>
-public sealed record CharacterActionCatalog(CharacterActionInventory Inventory, CharacterActionSettings Settings)
+/// the voice's cues set off, and what the owner sees. The owner's combos of them are in CharacterCombos.cs.</summary>
+public sealed partial record CharacterActionCatalog(CharacterActionInventory Inventory, CharacterActionSettings Settings)
 {
     public const int MaximumTagLength = 24;
     public const int MaximumUseLength = 120;
@@ -58,14 +61,16 @@ public sealed record CharacterActionCatalog(CharacterActionInventory Inventory, 
                 CharacterActionInventory.Gesture(e.Source.Id) is { VoiceOnly: true }))).ToArray();
 
     /// <summary>What a reply's tag (<c>{blush}</c>, or a voice tag such as <c>[laugh]</c> through its cue) sets off. A cue
-    /// several emotes follow plays one of its expressions and one of its motions, picked at random, and its gestures.</summary>
+    /// several emotes follow plays one of its expressions and one of its motions, picked at random, and its gestures. A combo's
+    /// tag (<c>{flustered}</c>) sets off each of its parts that is turned on.</summary>
     public IReadOnlyList<CharacterActionSource> For(string tag)
     {
         if (tag.Length > 2 && tag[0] == '{' && tag[^1] == '}')
         {
             var name = tag[1..^1];
-            return Entries.Where(e => e.Action is { Enabled: true } && string.Equals(e.Action.Tag, name, StringComparison.OrdinalIgnoreCase))
+            var found = Entries.Where(e => e.Action is { Enabled: true } && string.Equals(e.Action.Tag, name, StringComparison.OrdinalIgnoreCase))
                 .Select(e => e.Source).Take(1).ToArray();
+            return found.Length > 0 || Named(name) is not { } combo ? found : [.. Parts(combo).Select(p => p.Source)];
         }
         var cue = VoiceTags.CueOf(tag);
         if (cue is null) return [];
@@ -79,38 +84,48 @@ public sealed record CharacterActionCatalog(CharacterActionInventory Inventory, 
     public bool Lingers(CharacterActionSource source) =>
         Entries.FirstOrDefault(e => e.Source.Id == source.Id) is { Action: { Enabled: true } } entry && CharacterActions.Lingers(entry.Source, entry.Action);
 
-    /// <summary>The lingering emote a reply's off tag (<c>{/blush}</c>) turns off, or null.</summary>
-    public CharacterActionSource? Off(string tag) =>
-        CharacterActions.OffTagName(tag) is { } name
-            ? Entries.Where(e => e.Action is { Enabled: true } && string.Equals(e.Action.Tag, name, StringComparison.OrdinalIgnoreCase) &&
-                CharacterActions.Lingers(e.Source, e.Action)).Select(e => e.Source).FirstOrDefault()
-            : null;
+    /// <summary>The lingering emotes a reply's off tag turns off: the one with that tag (<c>{/blush}</c>), or the lingering parts
+    /// of a combo (<c>{/flustered}</c>); empty for any other text.</summary>
+    public IReadOnlyList<CharacterActionSource> Off(string tag)
+    {
+        if (CharacterActions.OffTagName(tag) is not { } name) return [];
+        var found = Entries.Where(e => e.Action is { Enabled: true } && string.Equals(e.Action.Tag, name, StringComparison.OrdinalIgnoreCase) &&
+            CharacterActions.Lingers(e.Source, e.Action)).Select(e => e.Source).Take(1).ToArray();
+        return found.Length > 0 || Named(name) is not { } combo ? found
+            : [.. Parts(combo).Where(p => CharacterActions.Lingers(p.Source, p.Action)).Select(p => p.Source)];
+    }
 
     /// <summary>The most character tags one reply may be given (the conversation's limit).</summary>
     public const int MaximumTags = 128;
 
     /// <summary>The reply instructions (Companion › Prompts › Character emotes and motions) and the tags they offer, or null
     /// when none are offered or the owner emptied the prompt. A lingering emote's line says it stays on until its off tag
-    /// (<c>{/blush}</c>), which is offered too. <paramref name="showing"/> are the lingering emotes the character shows now: they
-    /// become <see cref="CharacterActionPrompt.Showing"/>, a short note for the newest message (never the instructions, so the
-    /// request's start stays the same and prompt caches keep working).</summary>
+    /// (<c>{/blush}</c>), which is offered too. The owner's combos come after the emotes' lines (so those, and prompt caches, stay
+    /// the same), as many as the tags a request may carry allow. <paramref name="showing"/> are the lingering emotes the character
+    /// shows now: they become <see cref="CharacterActionPrompt.Showing"/>, a short note for the newest message (never the
+    /// instructions, so the request's start stays the same and prompt caches keep working).</summary>
     public CharacterActionPrompt? Prompt(SpeechEngine? engine, PromptSettings? prompts, IReadOnlyList<HeldEmote>? showing = null,
         DateTimeOffset now = default)
     {
         var offered = Offered(engine);
-        if (offered.Count == 0) return null;
-        var tags = offered.Select(e => "{" + e.Action.Tag + "}").ToList();
+        var lingering = offered.Where(e => CharacterActions.Lingers(e.Source, e.Action)).ToArray();
+        var combos = PromptCombos(MaximumTags - offered.Count -
+            lingering.Select(e => e.Action.Tag!).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        if (offered.Count == 0 && combos.Count == 0) return null;
+        var tags = offered.Select(e => "{" + e.Action.Tag + "}").Concat(combos.Select(c => "{" + c.Combo.Tag + "}")).ToList();
         var example = tags[0];
         var lines = offered.Select(e => $"{{{e.Action.Tag}}} - {CharacterActions.Hint(e.Source, e.Action)}" +
-            (CharacterActions.Lingers(e.Source, e.Action) ? $" (stays on until you write {{/{e.Action.Tag}}})" : ""));
+            (CharacterActions.Lingers(e.Source, e.Action) ? $" (stays on until you write {{/{e.Action.Tag}}})" : ""))
+            .Concat(combos.Select(c => c.Line));
         var text = PromptSettings.Fill(prompts, PromptCatalog.CharacterActions, ("tags", string.Join("\n", lines)), ("example", example));
         if (text is null) return null;
-        var lingering = offered.Where(e => CharacterActions.Lingers(e.Source, e.Action)).ToArray();
         var held = (showing ?? []).Select(h => (Held: h, Tag: lingering.FirstOrDefault(e => e.Source.Id == h.Source.Id).Action?.Tag))
             .Where(h => h.Tag is not null).ToArray();
         // The off tags of what shows now come first, so they always fit.
         foreach (var tag in held.Select(h => h.Tag!).Concat(lingering.Select(e => e.Action.Tag!)).Distinct(StringComparer.OrdinalIgnoreCase))
             if (tags.Count < MaximumTags) tags.Add("{/" + tag + "}");
+        // Then the off tags of combos with a lingering part, which have room kept for them.
+        tags.AddRange(combos.Where(c => c.Lingers).Select(c => "{/" + c.Combo.Tag + "}"));
         var note = held.Length == 0 ? null : PromptSettings.Fill(prompts, PromptCatalog.CharacterShowing,
             ("showing", string.Join(", ", held.Select(h => $"{{{h.Tag}}} ({CharacterActions.Age(now - h.Held.Since)})"))),
             ("example", "{/" + held[0].Tag + "}"));
@@ -278,11 +293,13 @@ public static partial class CharacterActions
         inventory.Sources.Where(s => s.Kind == source.Kind).TakeWhile(s => s.Id != source.Id).Count() + 1;
 
     /// <summary>Settings for every emote and motion in <paramref name="inventory"/>: the saved ones as they were, defaults
-    /// for the rest, tags made unique.</summary>
+    /// for the rest, tags made unique. The saved combos stay (those the model can still play), and an emote never takes a combo's
+    /// tag.</summary>
     public static CharacterActionSettings Merge(CharacterActionInventory inventory, CharacterActionSettings? saved)
     {
         var actions = new List<CharacterAction>();
-        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var combos = MergeCombos(inventory, saved?.Combos);
+        var taken = new HashSet<string>(combos?.Select(c => c.Tag) ?? [], StringComparer.OrdinalIgnoreCase);
         foreach (var source in inventory.Sources)
         {
             var action = saved?.Find(source.Id) ?? Default(source, Number(inventory, source));
@@ -298,7 +315,7 @@ public static partial class CharacterActions
         return new()
         {
             ModelId = inventory.ModelId, DetectedBy = saved?.DetectedBy ?? CharacterActionSettings.ByNames, DetectedAt = saved?.DetectedAt,
-            UpdatedAt = saved?.UpdatedAt ?? default, Actions = actions
+            UpdatedAt = saved?.UpdatedAt ?? default, Actions = actions, Combos = combos
         };
     }
 
@@ -319,7 +336,7 @@ public static partial class CharacterActions
             if (action.Cue is { } cue && !VoiceTags.Cues.Contains(cue)) return $"\"{cue}\" isn't a voice sound or tone.";
             if (action.Mode is not (null or Brief or Lingering)) return $"\"{action.Mode}\" isn't a mode: use {Brief} or {Lingering}.";
         }
-        return null;
+        return ComboProblem(settings);
     }
 
     private static bool CharacterModelId(string id) => Martlet.Core.Characters.CharacterModelLibrary.IsSha256(id);
