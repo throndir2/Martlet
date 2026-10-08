@@ -37,6 +37,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Character › Touch zones' Stop only stops finding zones; it sends nothing (the zones found until then were
         // already saved).
         "TouchZonesStop",
+        // Companion › Character › Emotes and motions › Combos: Add a combo only adds an empty row. Nothing saves until the row has
+        // a tag and parts, and typing them needs --allow-ui-effects.
+        "CharacterCombosAdd",
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
         // Companion › Pictures' Check only asks the saved place whether it can draw now (a cloud provider: only whether a key is
@@ -63,8 +66,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The character overlay (drawn by Martlet's own renderer process, whose windows ui_snapshot includes): MoveAvatar only opens
         // or closes the character's right-click menu; its Talk to Martlet, Open Martlet and Character settings only show a window
         // or page, like TrayTalk and TrayOpen, and Eyes (CharacterEyes) only opens its submenu. Eyes' choices (CharacterEyes-<choice>,
-        // their checkedState says which applies) save talk-preferences.json, and the zoom, position, Keep on top and Hide character
-        // items need --allow-ui-effects.
+        // their checkedState says which applies) save talk-preferences.json, and the zoom, position, Let clicks pass through
+        // (CharacterClickThrough), Keep on top and Hide character items need --allow-ui-effects.
         "MoveAvatar", "CharacterTalk", "CharacterOpenMartlet", "CharacterSettings", "CharacterEyes",
         // Martlet on your network: Find again only sends Martlet's own discovery query (port 9444) on the local network and
         // lists who answers; Stop asking only withdraws this PC's own request. Connect, Allow and Deny do the work.
@@ -217,6 +220,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // CharacterLockPosition ("Lock position" / "Unlock position"). Clicking any of them saves
         // character-placement.json, so it needs --allow-ui-effects.
         "SetupCharacterPlacement", "ToggleCharacterLock", "SetupCharacterLock", "CharacterLockPosition",
+        // Whether clicks pass through the character (Companion › Character's note), and the click-through buttons' labels, which
+        // carry the state: Home's ToggleCharacterClickThrough and Companion's SetupCharacterClickThrough ("Turn on click-through" /
+        // "Turn off click-through") and the overlay menu's CharacterClickThrough ("Let clicks pass through" / "Stop letting clicks
+        // pass through"). Clicking any of them (or the icon menu's TrayCharacterClickThrough) saves character-click-through.json,
+        // so it needs --allow-ui-effects.
+        "SetupCharacterClickThroughNote", "ToggleCharacterClickThrough", "SetupCharacterClickThrough", "CharacterClickThrough",
         // The overlay menu's CharacterMuteVoice, whose label carries whether Martlet's voice is muted ("Mute voice" / "Unmute
         // voice"). Clicking it saves talk-preferences.json (Speak Martlet's replies aloud), so it needs --allow-ui-effects.
         "CharacterMuteVoice",
@@ -360,6 +369,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // the character shows, so they need --allow-ui-effects.
         "CharacterActionsStatus", "CharacterActionsNaming", "CharacterActionsOffered", "CharacterActionsLast", "CharacterActionsSaveState",
         "CharacterActionsHeld",
+        // Emotes and motions › Combos: how many combos the model has and the combo tags replies get ("2 combos. Replies can use 1:
+        // {flustered}." or "No combos yet."). Each combo's title (CharacterComboName-<n>: "{flustered}  ·  combo", or "New combo"),
+        // what it sets off (CharacterComboState-<n>: "Turns on "hearts" until {/flustered}; plays "blush" and "nod" once.", or why
+        // its parts can't be read), the grey hint in its empty When to use box (CharacterComboHint-<n>: "a combination of {blush},
+        // {hearts} and {nod}") and its Try button's label (CharacterComboTry-<n>: "Try", or "Turn off" while one of its lingering
+        // parts is on); all four read through SafeValuePrefixes. Typing a combo's tag, parts or When to use, its on box and Remove
+        // save, and Try and Turn off change what the character shows, so they need --allow-ui-effects.
+        "CharacterCombosStatus",
         // Companion › Character › Touch zones: how many zones the shown model has, how many are in use and who found them, whether
         // the Thinking model can see (and where pictures go), how Detect zones went (each step while it runs), what the last
         // detection sent (how many pictures, how large, what they showed), which zone the last touch landed in and what it
@@ -520,6 +537,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // SetupListenStandInDownload button downloads that model, so it needs --allow-ui-effects.
         "SetupJobStandIn-Listening",
         "SetupCloudKeyStatus-Thinking", "SetupCloudKeyStatus-Voice", "SetupCloudKeyStatus-Listening",
+        // Companion › Voice › A cloud provider › ElevenLabs (the owner's cloned voice with tones): whether it is in use, its model,
+        // on and confirmed, whether a key is saved and whether ElevenLabs asked to verify the voice (never the voice's name, its
+        // voice ID or the key); what the key field will do; and the chosen model ("Eleven v4 Turbo (real time, recommended)").
+        // Its abilities and where it runs read through the VoiceEngine prefix (VoiceEngineAbilities-elevenlabs,
+        // VoiceEngineRunsOn-elevenlabs). The voice choice (ElevenLabsVoice) holds the owner's voice names, so it is not readable;
+        // ElevenLabsSave uploads a recording and saves the route, so it needs --allow-ui-effects (and spends money on ElevenLabs).
+        "ElevenLabsStatus", "ElevenLabsKeyStatus", "ElevenLabsModel",
         "StageTitle", "StageText", "HealthTitle", "HealthSummary", "HealthAllClear",
         "LogSummary", "LogShareStatus", "LogDetail",
         "HostStatus", "PairedHost", "PairCodeHelp", "DockerState", "RolesSummaryText", "HostRunPairAddress", "NetworkStatus",
@@ -683,7 +707,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// click; never the text it copies).</summary>
     // People's "Hear them (3):" per voice ("PeopleClips-2") counts the clips kept of a voice not named yet; playing one
     // ("PeopleClip-2-0") plays audio, so it needs --allow-ui-effects.
-    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
+    private static readonly string[] SafeValuePrefixes = ["PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default
@@ -812,7 +836,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
                     ["minimizable"] = (style & MinimizeBox) != 0,
                     ["maximizable"] = (style & MaximizeBox) != 0,
                     ["minimized"] = IsIconic(handle),
-                    ["foreground"] = GetForegroundWindow() == handle
+                    ["foreground"] = GetForegroundWindow() == handle,
+                    // The mouse passes through the window to the one under it (WS_EX_TRANSPARENT): the character overlay while
+                    // click-through is on.
+                    ["clickThrough"] = (GetWindowLongPtrW(handle, ExtendedStyleIndex) & TransparentStyle) != 0
                 };
                 if (layout) (state["bounds"], state["workArea"]) = Placement(handle);
                 return state;
@@ -872,8 +899,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         rect.IsEmpty || rect.Width <= 0 || rect.Height <= 0 ? null
             : [(int)Math.Round(rect.X), (int)Math.Round(rect.Y), (int)Math.Round(rect.Width), (int)Math.Round(rect.Height)];
 
-    private const int WindowStyleIndex = -16;
-    private const nint ThickFrame = 0x40000, MinimizeBox = 0x20000, MaximizeBox = 0x10000;
+    private const int WindowStyleIndex = -16, ExtendedStyleIndex = -20;
+    private const nint ThickFrame = 0x40000, MinimizeBox = 0x20000, MaximizeBox = 0x10000, TransparentStyle = 0x20;
     private static readonly nint PerMonitorAwareV2 = -4;
 
     /// <summary>A top-level window's frame and its monitor's work area as [x, y, width, height] in physical screen pixels, like

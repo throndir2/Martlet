@@ -297,7 +297,8 @@ export class Live2DAdapter {
   }
 
   /** Starts one of Martlet's gestures (see `gestures`), replacing one already playing, or with `hold` keeps a holdable one
-   *  (shy, drowsy, pout, look_away, blush) until `endGesture`; a gesture played meanwhile plays on top of it. */
+   *  (shy, drowsy, pout, look_away, blush, eyes_up, mouth_open) until `endGesture`; a gesture played meanwhile plays on top of
+   *  it. Held gestures layer: holding one lets go only of those that move a part it moves too (`HOLD_PARTS`). */
   gesture(name: string, hold = false): boolean {
     this.#ready();
     if (!isGesture(name) || !this.gestures.includes(name)) return false;
@@ -310,7 +311,7 @@ export class Live2DAdapter {
   /** Lets a held gesture go (eased out); one playing once just finishes. */
   endGesture(name: string): void { this.#gestures.end(name); }
 
-  /** The gesture playing once and the one held, if any. */
+  /** The gesture playing once, if any, and every gesture held. */
   get gestureState(): GestureState { return this.#gestures.state; }
 
   /**
@@ -607,7 +608,8 @@ export class Live2DAdapter {
       const follow = Math.min(1, deltaSeconds * 5);
       this.#look = { x: this.#look.x + (this.#lookTarget.x - this.#look.x) * follow,
         y: this.#look.y + (this.#lookTarget.y - this.#look.y) * follow };
-      const gesture = this.#gestures.advance(deltaSeconds);
+      // A gesture holding the eyes keeps the look out of them; a held open mouth eases back while lip-sync moves it.
+      const gesture = this.#gestures.advance(deltaSeconds, this.#look, this.#hasFrame || this.#lipSyncAge <= 0.3);
       animator.update(deltaSeconds, { lookX: this.#look.x + (gesture?.look.x ?? 0), lookY: this.#look.y + (gesture?.look.y ?? 0),
         lipSync: this.#hasFrame ? 0 : this.#lipSync, overrides: apply, ...(gesture ? { gesture: gesture.parameters } : {}) });
     } else {

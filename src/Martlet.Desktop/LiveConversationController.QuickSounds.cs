@@ -138,7 +138,7 @@ internal sealed partial class LiveConversationController
             {
                 while (Replying) await Task.Delay(TimeSpan.FromMilliseconds(200), clock, token).ConfigureAwait(false);
                 var pcm = await QuickRuntime().SynthesizeAsync(output, configured.HostSpeechTarget(), configured.WindowsVoiceTarget(),
-                    phrase, ++segment, authorization, token).ConfigureAwait(false);
+                    phrase, ++segment, authorization, token, configured.ElevenLabsVoiceTarget()).ConfigureAwait(false);
                 if (QuickSoundAudio.Prepare(pcm) is { Length: > 0 } clip) clips.Add(new(phrase, clip));
             }
             if (clips.Count == 0) throw new InvalidOperationException("the voice said nothing that could be kept");

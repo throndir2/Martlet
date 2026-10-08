@@ -233,6 +233,24 @@ now*, *Kept out of the pool*, or what joins at its next check). The
 pool*: unticking keeps the computer out, ticking adds it again) save
 `thinking-pool.json`, so they need `--allow-ui-effects`.
 
+The pool follows which computers answer
+([Computers that go offline](CONVERSATION.md#computers-that-go-offline)).
+`thinking-pool-status.json` gives each member `online` (whether its computer
+answers now) and `offlineSince`, and the pool `slots` and `free` (members that
+answer now), `configuredSlots` (every member) and `conversationModelStandsIn`
+(every member that would run is offline, so thinking longer and research use the
+conversation model). The desktop writes the file again on each change.
+`thinking_pool_status` copies this into each member's `online` and
+`offlineSince` and into `presence` (`slots`, `free`, `configuredSlots`, the
+`offline` names); both stay null until the desktop has written the file. The
+`presence` steps of `thinking_pool_check` take a member offline and back with
+the production broker and plan. They check that its slots leave and come back,
+jobs go to the other members, a job waiting in line starts on the member that
+answers again, and the conversation model stands in when every member is
+offline. They also check that the `think_longer` tool text stays byte-identical
+during all of this. The member list in `background-jobs.json` (`places`) gives
+each place `offline`.
+
 ```powershell
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"thinking_pool_check"},{"name":"thinking_pool_status"}]'
 ```
@@ -1287,7 +1305,15 @@ would show now (`["glasses", "blush:12"]`, minutes after the colon),
 showing {blush} (12 min), ...*); it never goes in the instructions. With `voiceTag`, a voice's tag such as `[laugh]` or
 `(sighs)` or a reply tag such as `{nod}` or `{/blush}`, `setsOff` lists what it sets off
 (`kind`, `name` and `holds`, whether it lingers, such as the `laugh` voice emote; one expression and one
-motion picked at random when several share a cue) and `turnsOff` the lingering emote an off tag turns off. With `answer`, a simulated Thinking reply such as
+motion picked at random when several share a cue; for a combo's tag such as `{flustered}`, each of its parts that is on)
+and `turnsOff` lists what an off tag turns off (the lingering emote, or a combo's lingering parts); `combo` is the combo
+the tag names, or null. `combos` lists the owner's [combos](AVATARS.md#emotes-and-motions) for the model: each one's `n`
+as in `CharacterComboTag-<n>`, `tag`, `parts` (each part's `id`, `kind`, `name`, `tag`, `enabled` and `mode`; `kind`
+is `missing` for a part the model doesn't have), `use`, `hint` (what replies get next to the tag), `enabled`, `lingers`
+(a part that is on lingers, so `{/tag}` is offered too) and `offered`. With `combos`, strings such as
+`flustered: blush hearts nod | when flattered` read the way the Combos section's boxes are read, those combos replace
+the saved ones; when they can't be saved, `combosProblem` says why (such as *no emote has the tag 'wave'.*) and the
+saved ones stay. With `answer`, a simulated Thinking reply such as
 `1: blush | - | stays | when shy` (the mode may be left out), `parsed` shows what the production parser makes of
 it (`read`, `problem`, `actions`, `prompt`). Model-authored names only, never
 the model's path; it reads and contacts nothing else.
@@ -1830,10 +1856,13 @@ Original's sent style in words, else null), `statusBefore` and
 its torch, torchaudio and CUDA versions, `decoderSteps` (the decoder steps
 each decoding takes on Chatterbox Turbo or Nano: 1 on the CPU, 2 on a GPU),
 `streaming` (Turbo and Nano: `on`, whether pieces are spoken as they are made;
-on the CPU also `first_tokens`, the speech tokens before a piece's first chunk
-(55, 0 for whole pieces), and what the service measured to time its chunks:
-`token_ms`, T3's time for a speech token, and `decoding_scale`, decoding times
-against the expected shape; null on a GPU), `cpu`
+`hold_tokens`, the most speech tokens each chunk but the last keeps back for
+the next decoding: 8 on the CPU, which keeps back fewer when a piece's timing
+needs it, and 3 on a GPU; on the CPU also `first_tokens`, the speech tokens
+before a piece's first chunk (55, 0 for whole pieces), and what the service
+measured to time its chunks: `token_ms`, T3's time for a speech token, and
+`decoding_scale`, decoding times against the expected shape; null on a GPU),
+`cpu`
 on the CPU (`threads`, PyTorch's threads, at most 8 and never more than the
 performance cores, and `pinned_cpus`, the CPUs of the performance cores it is
 pinned to on native Linux, empty when not pinned, as always on Docker Desktop; null on a GPU)
@@ -2218,7 +2247,10 @@ instructions), `character` (from `avatar.json`: `model` `built-in` with
 saved (the character shows at its default spot), or `loaded` with `locked`,
 `left`, `top`, `width` and `height` in device-independent pixels, and
 `screen` (the monitor's device name, such as `\\.\DISPLAY2`), `screenLeft` and
-`screenTop` (its spot on that monitor's work area); see the character overlay below), `voice`
+`screenTop` (its spot on that monitor's work area); see the character overlay below), `clickThrough`
+(from `character-click-through.json`, this PC only: `state` `none`, `loaded`
+or `unreadable` and `on`, whether clicks pass through the character; see the
+character overlay below), `voice`
 (from `talk-preferences.json`: `state` `none`, `loaded` or `unreadable`,
 `speakReplies`, Companion › Voice's *Speak Martlet's replies aloud*, on unless
 saved off, `muted`, its opposite, which the overlay menu's *Mute voice* and
@@ -2710,6 +2742,69 @@ reads like *Voice: in General (My server) · 2 speakers heard, 3 utterances
 transcribed, 2 replies spoken · DAVE on · libdave loaded (DAVE v1) · Last
 problem: ...* (counts only, never what was said). The live bot logs *Discord
 voice: joined a channel (2 people there).*
+
+### ElevenLabs voice
+
+`elevenlabs_check` rehearses [ElevenLabs as the Voice](ELEVENLABS_VOICE.md)
+(the owner's cloned voice with tones) end to end against `ElevenLabsFixture`, a
+local stand-in on 127.0.0.1 that follows ElevenLabs' documented protocol.
+FIXTURE, NOT ElevenLabs, NOT AI: its voice is a quiet tone, and its first audio
+waits 100 ms to stand in for model latency (not a measurement). It runs three
+steps:
+
+1. **Cloning.** Instant Voice Cloning with a synthetic WAV. `clone.sent` shows
+   the form Martlet sent (`name`, `fileName` `voice.wav`, `contentType`
+   `audio/wav`, `wave`, `removeBackgroundNoise` `false`, `description`) and
+   whether the key matched.
+2. **One piece** straight through `ElevenLabsDialogueClient`. `segment` gives
+   its `audioBytes`, any `failure` and `detail`, and the fixture timings
+   `connectMs`, `firstAudioMs` and `totalMs`.
+3. **A whole spoken reply** through the production conversation runtime. A
+   fixture Chat Completions endpoint streams `reply` a word at a time (by
+   default one with `[laughs]`, `[whispers]` and `[happy]`), and a fixture
+   speaker plays nothing.
+
+`ok` needs all of these:
+
+- `thinkingPrompt.listsElevenLabsTags`: the Thinking prompt lists ElevenLabs'
+  own tags (`tags` gives each tag, its kind and its cue).
+- `tags.reachedElevenLabs`: every tag the reply wrote reaches ElevenLabs as
+  written.
+- `tags.chatClean` and `tags.captionsClean`: the chat text and every caption
+  show no tag.
+- `protocol.ok`: each connection carries `model_id`, `output_format=pcm_24000`,
+  the key in the `xi-api-key` header (`keyInHeader`, never `keyInBody`), the
+  one cloned voice and `close_socket`.
+
+`scenario` is `reply` (default), `model-refused` or `bad-key`. With
+`model-refused`, the WebSocket refuses the model with `param: model_id`, as its
+API reference describes. The voice then fails as `ModelUnsupported`, and
+`segment.detail` says to choose Eleven v3 Conversational. The text still
+completes. With `bad-key`, cloning and speech fail as `Authentication`. `model`
+is `eleven_v4_turbo` (default) or `eleven_v3_conversational`. With
+`dataDirectory`, `saved` reports the saved ElevenLabs choice: `voiceRoute`,
+`usesElevenLabs`, `model`, `enabled`, `confirmed`, `keySaved`, `clonedVoice`,
+`requiresVerification` and `keysFromBefore`. It never gives the key, the voice
+ID or the voice's name. Nothing is sent to ElevenLabs: `live` is always NOT
+RUN, because there is no ElevenLabs account or key.
+
+```powershell
+.\scripts\Invoke-MartletMcp.ps1 -Build -Calls '[
+  {"name":"elevenlabs_check"},
+  {"name":"elevenlabs_check","arguments":{"scenario":"model-refused"}},
+  {"name":"elevenlabs_check","arguments":{"scenario":"bad-key"}}]'
+```
+
+On Companion › Voice › *A cloud provider*, the ElevenLabs card's status is
+readable: `ElevenLabsStatus` (*Not in use...* or *In use: Eleven v4 Turbo with
+your cloned voice. Key saved.*, and whether ElevenLabs asked to verify the
+voice; never the voice's name), `ElevenLabsKeyStatus` (what the key field will
+do; never the key) and `ElevenLabsModel` (the chosen model). The card's
+abilities and where it runs read through `VoiceEngineAbilities-elevenlabs` and
+`VoiceEngineRunsOn-elevenlabs`. `ElevenLabsVoice` holds the owner's voice names,
+so it is not readable. `ElevenLabsKey` and `ElevenLabsConsent` are inputs.
+`ElevenLabsSave` uploads a recording and saves the route, so it needs
+`--allow-ui-effects`. Never press it in a check: it would contact ElevenLabs.
 
 ### Latency
 
@@ -3589,7 +3684,9 @@ alignment can be checked: in the talk window, the empty box's hint
 text typed into `LiveInput`.
 `windowStates` lists each window's `name`, automation `id`, `enabled`, and
 whether its frame is `resizable`, `minimizable` and `maximizable`, whether it is
-`minimized` and whether it is the `foreground` window (has the focus); with
+`minimized`, whether it is the `foreground` window (has the focus) and whether
+it is `clickThrough` (the mouse passes through it to the window under it,
+`WS_EX_TRANSPARENT`: the character overlay while click-through is on); with
 `layout` it adds the window's `bounds` and its monitor's `workArea` (the screen
 minus the taskbar), both in physical screen pixels. Every Martlet window opens
 within that work area at any display scale: no larger than it (minimum sizes
@@ -4245,7 +4342,8 @@ choosing one goes through Martlet (*The character's menu chose
 Character › Where the character looks (`character_gaze` `usual`), so they need
 `--allow-ui-effects`;
 then `CharacterZoomIn`, `CharacterZoomOut`, `CharacterResetZoom` (disabled at
-the default zoom), `CharacterResetPosition`, `CharacterLockPosition`, the checkable `CharacterOnTop`
+the default zoom), `CharacterResetPosition`, `CharacterLockPosition`,
+`CharacterClickThrough` (*Let clicks pass through*; see below), the checkable `CharacterOnTop`
 (*Keep on top*, on by default; its `checkedState` is the current choice for
 this showing) and `CharacterHide` (*Hide character*; Esc on the overlay does
 the same), which need `--allow-ui-effects`. Talk, Mute, Open, Settings and Hide are
@@ -4453,6 +4551,37 @@ spot, still locked, if that place is no longer on a screen); the desktop log
 records *Character position locked at ...* and *Character position unlocked.*,
 and `avatar-renderer` *The character's position is locked.*
 
+**Letting clicks pass through the character**: the overlay menu's
+`CharacterClickThrough` (*Let clicks pass through*, carried out by Martlet:
+*The character's menu chose 'click-through-on'.*), Home's
+`ToggleCharacterClickThrough` (*Turn on click-through*, shown while the
+character shows or click-through is on), Companion › Character's
+`SetupCharacterClickThrough` (*Turn on click-through*) and the notification-area
+menu's checkable `TrayCharacterClickThrough` (*Let clicks pass through the
+character*, listed while the character shows or click-through is on) turn it
+on; all need `--allow-ui-effects` because they save
+`character-click-through.json` on this PC (`character_status`'s
+`clickThrough`; never shared, and Reset position leaves it alone). On, the
+overlay window (and its speech bubble) gets `WS_EX_TRANSPARENT`, so every
+click, the wheel and right-click go to the window under it: `ui_snapshot`'s
+`windowStates` reads `clickThrough` true for *Martlet character overlay*, and
+the character can't be dragged, zoomed, tapped, stroked or right-clicked with
+the mouse (its eyes still follow the mouse, and it still talks and moves).
+The mouse can't reach the character's menu then, so it is turned off in
+Martlet: `ToggleCharacterClickThrough` and `SetupCharacterClickThrough` read
+*Turn off click-through* (also while the character is hidden),
+`TrayCharacterClickThrough`'s `checkedState` is `On`, and clicking any of them
+turns it off (opened through UI Automation, the overlay menu's
+`CharacterClickThrough` reads *Stop letting clicks pass through* and does the
+same). `SetupCharacterClickThroughNote` says whether it is on, and
+`SetupCharacterView` ends with *Clicks pass through.* when the overlay reports
+it. A newly shown character starts click-through when it is on (after a
+Hide/Show or a restart). The camera view always catches clicks and applies
+click-through again when it closes. The desktop log records *Click-through
+turned on: clicks pass through the character.* (or *... turned off ...*) and
+`avatar-renderer` *Clicks pass through the character.* or *The character
+catches clicks again.*
+
 **Remembering where the character is**: whenever the character is dragged,
 nudged, resized, zoomed or sent home (`ui_move` included), the overlay asks
 Martlet (request `placed`, never logged as a menu choice) to read its place
@@ -4593,8 +4722,10 @@ couldn't, such as *Thinking isn't set up yet*); `CharacterActionsOffered` the
 tags replies get with the voice chosen now and which follow the voice's cues;
 `CharacterActionsLast` the last one played (*Played the expression "脸红" for
 {blush} at 3:14:05 PM.*, *... for a try ...*, or *The character couldn't play
-...*; for a gesture followed by what the renderer now plays and holds, *Gestures
-now: wink playing, shy held.*; an emote Martlet drew over the face itself, such
+...*; for a gesture followed by what the renderer now plays and every gesture
+and drawing it holds, *Gestures now: wink playing, eyes_up, mouth_open, blush,
+hearts held.* (held gestures layer; see
+[Layers](AVATARS.md#emotes-and-motions)); an emote Martlet drew over the face itself, such
 as the blush glow on a model without a blush of its own, adds *drawn by Martlet
 over the face at 414, 88 (50 pixels wide, tilted 3°, pinned to the face's meshes)* with the face's middle and
 width in the overlay's page pixels, the head's roll (clockwise) and how the face is followed (*pinned to the
@@ -4603,7 +4734,8 @@ Live2D model without face meshes to pin to; a Live2D estimate's roll is a damped
 most 12°; see *Where Martlet draws over the face* and `character_face`), or *(not in view now)* when the face can't be found
 or faces away), also in `logs_tail` `desktop` as *Character expression '脸红'
 played for {blush}.* (*Character gesture 'blush' played for a try, drawn by
-Martlet over the face at ...*); and `CharacterActionsSaveState` *All changes saved.* or *Not saved:
+Martlet over the face at ...*, a gesture's line ending with the same *Gestures
+now: ...*); and `CharacterActionsSaveState` *All changes saved.* or *Not saved:
 <why>*. Row `<n>` (as in `character_actions`) has `CharacterActionName-<n>`
 (its name and kind; a status field), `CharacterActionOn-<n>` (check box),
 `CharacterActionTag-<n>` (an English tag; a tag in another script reads *Not
@@ -4617,16 +4749,43 @@ box has text), `CharacterActionMode-<n>` (the
 (plays it on the showing character, or turns a lingering one on; its label, a
 status field, reads *Turn off* while that lingering emote is on, and clicking it
 then turns it off; disabled while it is hidden). `CharacterActionsHeld` reads
-the lingering emotes on now (*On now: Glasses (12 min), Blushing (just now).
+the lingering emotes on now, all of them, held gestures and drawings included
+(*On now: Glasses (12 min), Blushing (just now).
 Clear emotes on the character's menu turns them off.* or *No lingering emotes
 are on.*); `CharacterActionsLast` then reads *Turned on the expression ...* or
-*Turned off ...*, and `logs_tail` `desktop` *Character expression 'Glasses' held
+*Turned off ...* (for a gesture with the renderer's *Gestures now: ...*, which
+shows the others still held), and `logs_tail` `desktop` *Character expression 'Glasses' held
 for a try.* `CharacterActionsClear` (*Clear emotes*) and the character overlay
 menu's `CharacterClearEmotes` turn every lingering emote off (*Cleared 2
-lingering emotes for Clear emotes ...*). Editing a row
-saves `character-actions.json`, `CharacterActionsDetect` (*Name them with
+lingering emotes for Clear emotes ...*).
+
+The card ends with **Combos**. `CharacterCombosStatus` reads how many combos
+the model has and which tags replies get (*1 combo. Replies can use 1:
+{flustered}.* or *No combos yet.*). `CharacterCombosAdd` (*Add a combo*,
+passive) adds an empty row; nothing is saved until the row has a tag and parts.
+Row `<n>` (as in `character_actions`' `combos`) has `CharacterComboOn-<n>`
+(check box), `CharacterComboName-<n>` (*{flustered} · combo*, or *New combo*;
+a status field), `CharacterComboState-<n>` (a status field: what it sets off,
+such as *Turns on "hearts" until {/flustered}; plays "blush" and "nod" once.*,
+or why its parts can't be read, such as *No emote has the tag 'wave'.*),
+`CharacterComboTag-<n>`, `CharacterComboParts-<n>` (the parts' tags, such as
+`blush hearts nod`), `CharacterComboUse-<n>` (the When to use box),
+`CharacterComboHint-<n>` (the grey hint in that box while it is empty, such as
+*a combination of {blush}, {hearts} and {nod}*), `CharacterComboTry-<n>` (its
+label, a status field, reads *Turn off* while one of its lingering parts is
+on) and `CharacterComboRemove-<n>`. A part's tag that names no emote reads
+*Not saved: no emote has the tag 'wave'.* in `CharacterActionsSaveState`. After
+Try, `CharacterActionsLast` reads *Combo {flustered} for a try at 6:22:47 PM:
+turned on "hearts"; played "blush" and "nod".* (*Combo {/flustered} for a try
+...: turned off "hearts".* after Turn off, and *for a reply* when a reply's tag
+set it off), and `logs_tail` `desktop` has a line for each part and *Character
+combo {flustered} for a try: 1 turned on, 0 kept on, 2 played, 0 failed.* Typing
+in a combo's boxes, its check box and Remove save, and Try and Turn off change
+the overlay, so they need `--allow-ui-effects`.
+
+Editing an emote's row saves `character-actions.json`, `CharacterActionsDetect` (*Name them with
 Thinking*) sends the model's emote and motion names and details to the Thinking
-model, `CharacterActionsReset` goes back to the model's own names, and Try,
+model, `CharacterActionsReset` goes back to the model's own names (the combos stay), and Try,
 Turn off and Clear emotes change the overlay, so all of them need `--allow-ui-effects`. The first time a model
 shows with a Thinking model set up, Martlet names its emotes once on its own.
 `character_actions` reads the same settings headlessly.
@@ -5370,6 +5529,8 @@ it, so it needs `--allow-ui-effects`. While the menu is open `ui_snapshot` lists
 talk window open*), `TrayOpen`, `TrayTalk` (*Talk to Martlet*, or *Show the
 talk window* while it is open), and while the talk window is open `TrayPause` or
 `TrayResume` and `TrayEndTalk`, then `TrayCharacter`, the checkable
+`TrayCharacterClickThrough` (while the character shows or click-through is on;
+see the character overlay above), the checkable
 `TrayCloseToTray` and `TrayStartWithWindows` (their `checkedState` is the
 current choice) and `TrayExit`. The menu, like text boxes' Cut/Copy/Paste
 menus, is drawn in Martlet's palette (Themes\Controls.xaml), with no light icon
@@ -5395,7 +5556,7 @@ working without the other. `TrayOpen`, `TrayTalk` (like
 `OpenLiveConversation`), `TrayPause` (it only stops work), `TrayStopListening`,
 `TrayStopWatching` (they only stop listening or watching) and `TrayEndTalk`
 (like `CloseLive`) are passive clicks; `TrayStartListening`, `TrayStartWatching`,
-`TrayResume`, `TrayCharacter`, the two
+`TrayResume`, `TrayCharacter`, `TrayCharacterClickThrough`, the two
 choices and `TrayExit` need `--allow-ui-effects`. The menu's status line reads
 *Martlet is listening and watching* when both run. While another Martlet dialog
 (Setup, Companion...) is open, `TrayTalk` and `TrayCharacter` are disabled and

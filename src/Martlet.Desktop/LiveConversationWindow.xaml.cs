@@ -3042,6 +3042,8 @@ public partial class LiveConversationWindow : ThemedWindow
             _ => configuration?.HostTarget()?.HostId
         };
         if (host is not null && HostRemedy(code, host, job ?? ProviderRole.Llm) is { } hosted) return hosted;
+        if (job == ProviderRole.Tts && configuration?.ElevenLabsVoiceTarget() is { } cloned && ElevenLabsRemedy(code, cloned.ModelId) is { } eleven)
+            return "Martlet couldn't speak. " + eleven;
         if (job != ProviderRole.Tts && configuration is { LocalOllama: true } local && LocalOllamaRemedy(code, local) is { } remedy) return remedy;
         return job switch
         {
@@ -3052,6 +3054,21 @@ public partial class LiveConversationWindow : ThemedWindow
             _ => ProviderRemedy(code)
         };
     }
+
+    /// <summary>What to do when ElevenLabs couldn't speak a reply with <paramref name="model"/>, or null for the usual remedy. A
+    /// model ElevenLabs refuses (its WebSocket's API reference names only eleven_v3 models) names the other model to choose.</summary>
+    internal static string? ElevenLabsRemedy(ProviderFailureCode code, string model) => code switch
+    {
+        ProviderFailureCode.ModelUnsupported or ProviderFailureCode.ModelNotFound =>
+            $"ElevenLabs refused {ElevenLabsSetup.ModelName(model)}. Choose " +
+            $"{ElevenLabsSetup.ModelName(model == ElevenLabsSetup.V4Turbo ? ElevenLabsSetup.V3Conversational : ElevenLabsSetup.V4Turbo)} in Companion › Voice.",
+        ProviderFailureCode.VoiceUnsupported =>
+            "ElevenLabs couldn't use your cloned voice. If it asked you to verify the voice, verify it on elevenlabs.io; otherwise clone it again in Companion › Voice.",
+        ProviderFailureCode.CredentialUnavailable or ProviderFailureCode.Authentication or ProviderFailureCode.PermissionDenied =>
+            "ElevenLabs didn't accept your API key. Paste it again in Companion › Voice.",
+        ProviderFailureCode.QuotaExceeded => "Your ElevenLabs account is out of credits or its plan doesn't allow this. Check it on elevenlabs.io.",
+        _ => null
+    };
 
     /// <summary>The job's process on that computer, not a provider account, is at fault when a paired Martlet host fails:
     /// the gateway answers that the worker is unavailable (stopped, still starting, or cut off from the gateway) as ModelNotFound.</summary>

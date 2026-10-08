@@ -107,11 +107,15 @@ public sealed class BackgroundJob
     /// <summary>What a job says while it waits for the live conversation to let its place go (state Paused).</summary>
     public const string WaitingForConversation = "waiting for the conversation";
 
-    // Lets the place go (the live floor stopped the job there), so it can wait in line for the next one.
-    internal void Unseat()
+    /// <summary>What a job says while it waits for another place because its computer stopped answering (state Paused).</summary>
+    public const string ComputerLost = "its computer stopped answering, so it goes on on another";
+
+    // Lets the place go (the live floor stopped the job there, or its computer stopped answering), so it can wait in line for the
+    // next one. Only a stop for the conversation counts as one.
+    internal void Unseat(bool preempted = true)
     {
         Interlocked.Exchange(ref lease, null)?.Dispose();
-        Interlocked.Increment(ref preemptions);
+        if (preempted) Interlocked.Increment(ref preemptions);
     }
 
     // The place it waited for, taken; false when the job already finished (the place goes straight back).
@@ -479,14 +483,15 @@ public sealed class BackgroundJobs : IDisposable
     /// <summary>The live floor stopped <paramref name="job"/> on its place (<see cref="BackgroundJob.Stopping"/>) and its runner
     /// stopped: this lets that place go, says Paused (<see cref="BackgroundJob.WaitingForConversation"/>) and waits in line for
     /// the best place of the job's pool the floor allows (a place the live conversation doesn't use first), then says Running.
-    /// The job's time limit keeps running meanwhile. Canceling <paramref name="token"/> (or the job) throws
-    /// <see cref="OperationCanceledException"/>.</summary>
-    public async Task ReseatAsync(BackgroundJob job, CancellationToken token)
+    /// The job's time limit keeps running meanwhile. <paramref name="why"/>: another reason it lets the place go (such as
+    /// <see cref="BackgroundJob.ComputerLost"/>), said while it waits and not counted as a stop for the conversation. Canceling
+    /// <paramref name="token"/> (or the job) throws <see cref="OperationCanceledException"/>.</summary>
+    public async Task ReseatAsync(BackgroundJob job, CancellationToken token, string? why = null)
     {
         ArgumentNullException.ThrowIfNull(job);
         var pool = job.Pool ?? throw new InvalidOperationException("The job wasn't started on a pool of places.");
-        job.Report(BackgroundJobState.Paused, BackgroundJob.WaitingForConversation);
-        job.Unseat();
+        job.Report(BackgroundJobState.Paused, why ?? BackgroundJob.WaitingForConversation);
+        job.Unseat(preempted: why is null);
         Notify();
         var lease = await Places.AcquireAsync(pool, job.Id, token, job.Kind.Demand(pool), job.Kind.Yields).ConfigureAwait(false);
         if (!job.Seat(lease)) throw new OperationCanceledException(token);

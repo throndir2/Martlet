@@ -72,13 +72,15 @@ public sealed class CharacterGestureTests
 
         Assert.Equal(["nod", "shake", "tilt", "bow", "sway", "blush", "wave", "bounce", "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat",
             "groan", "sniff", "shush", "inhale", "exhale", "mumble", "hum", "sneeze", "whistle", "sarcastic", "angry", "fear", "crying",
-            "whispering", "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy", .. Overlays], Gestures(inventory));
+            "whispering", "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy", .. Overlays,
+            "mouth_open"], Gestures(inventory));
         var prompt = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null)).Prompt(null, null);
         Assert.NotNull(prompt);
         Assert.Contains("{wave}", prompt.Tags);
         Assert.Contains("{happy}", prompt.Tags);
         Assert.Contains("{blush}", prompt.Tags);
         Assert.Contains("draws a pink glow on the cheeks, following the head bone", inventory.Find("gesture:blush")!.Detail);
+        Assert.Contains("(sets the oh mouth expression, or aa)", inventory.Find("gesture:mouth_open")!.Detail);
         Assert.DoesNotContain("{shrug}", prompt.Tags);
         Assert.Contains("rightUpperArm", inventory.Find("gesture:wave")!.Detail);
     }
@@ -141,8 +143,9 @@ public sealed class CharacterGestureTests
     {
         var names = CharacterActionInventory.AllGestures.Select(g => g.Name).ToArray();
         string[] added = ["wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy"];
-        Assert.Equal(added, names.Where(n => !Overlays.Contains(n)).ToArray()[^added.Length..]);
-        Assert.Equal(["pout", "shy", "look_away", "drowsy", "sweat", "hearts", "gloom", "sleepy"], CharacterActionInventory.AllGestures.Where(g => g.Holdable).Select(g => g.Name));
+        Assert.Equal(added, names.Where(n => !Overlays.Contains(n) && !FaceParts.Contains(n)).ToArray()[^added.Length..]);
+        Assert.Equal(["pout", "shy", "look_away", "drowsy", "sweat", "hearts", "gloom", "sleepy", .. FaceParts],
+            CharacterActionInventory.AllGestures.Where(g => g.Holdable).Select(g => g.Name));
         Assert.All(CharacterActionInventory.AllGestures, g => Assert.True(CharacterActions.IsTag(g.Tag) &&
             g.Use.Length <= CharacterActionCatalog.MaximumUseLength, g.Name));
         Assert.Equal(names.Length, names.Distinct().Count());
@@ -151,15 +154,61 @@ public sealed class CharacterGestureTests
         var model = Encoding.UTF8.GetBytes("{\"Version\":3,\"FileReferences\":{\"Moc\":\"m.moc3\",\"Textures\":[]}}");
         var inventory = CharacterActionInventory.From(AvatarRenderer.Live2D, "m.model3.json",
             [new("m.model3.json", model, "application/json"), new("m.moc3", moc, "application/octet-stream")]);
-        Assert.Equal(["blush", "wink", "pout", "eye_roll", "drowsy", .. Overlays], Gestures(inventory));
+        Assert.Equal(["blush", "wink", "pout", "eye_roll", "drowsy", .. Overlays, "eyes_up"], Gestures(inventory));
+    }
+
+    private static readonly string[] FaceParts = ["eyes_up", "mouth_open"];
+
+    [Fact]
+    public void TheHeldFacePartsComeLastLingerAndGoToModelsWithTheirParameterOrEyeBones()
+    {
+        // Last of all, so the reply instructions' earlier lines (and prompt caches) stay the same.
+        var names = CharacterActionInventory.AllGestures.Select(g => g.Name).ToArray();
+        Assert.Equal([.. Overlays, .. FaceParts], names[^(Overlays.Length + FaceParts.Length)..]);
+        Assert.All(FaceParts.Select(n => CharacterActionInventory.Gesture("gesture:" + n)!), g =>
+        {
+            Assert.True(g.Holdable);
+            Assert.False(g.Overlay || g.VoiceOnly);
+            Assert.Null(g.Cue);
+            Assert.Equal(g.Name, g.Tag);
+            Assert.Equal(CharacterActions.Lingering, CharacterActions.DefaultMode(new(g.Id, CharacterActionKind.Gesture, g.Name, ""), g.Tag));
+        });
+
+        var model = Encoding.UTF8.GetBytes("{\"Version\":3,\"FileReferences\":{\"Moc\":\"m.moc3\",\"Textures\":[]}}");
+        var live2D = CharacterActionInventory.From(AvatarRenderer.Live2D, "m.model3.json",
+            [new("m.model3.json", model, "application/json"), new("m.moc3", Moc("ParamEyeBallY", "ParamMouthOpenY"), "application/octet-stream")]);
+        Assert.Equal(["blush", .. Overlays, .. FaceParts], Gestures(live2D));
+        Assert.Contains("(moves ParamEyeBallY)", live2D.Find("gesture:eyes_up")!.Detail);
+        Assert.Contains("(moves ParamMouthOpenY)", live2D.Find("gesture:mouth_open")!.Detail);
+        var prompt = new CharacterActionCatalog(live2D, CharacterActions.Merge(live2D, null)).Prompt(null, null)!;
+        Assert.Equal(["{blush}", .. Overlays.Select(o => "{" + o + "}"), "{eyes_up}", "{mouth_open}", .. HeldOverlays, "{/eyes_up}", "{/mouth_open}"],
+            prompt.Tags);
+        Assert.Contains("{eyes_up} - turn just your eyes up, for daydreaming, exasperation or being dazed (stays on until you write {/eyes_up})",
+            prompt.Instructions);
+        Assert.True(prompt.Instructions.IndexOf("{mouth_open} - ", StringComparison.Ordinal) >
+            prompt.Instructions.IndexOf("{music} - ", StringComparison.Ordinal), "their lines come after the others");
+
+        // A VRM turns its eye bones up and opens its oh (or aa) mouth; without eye bones it keeps only the mouth.
+        string Vrm(params string[] bones) => "{\"asset\":{\"version\":\"2.0\"},\"extensions\":{\"VRMC_vrm\":{\"specVersion\":\"1.0\",\"humanoid\":" +
+            "{\"humanBones\":{" + string.Join(",", bones.Select((b, i) => $"\"{b}\":{{\"node\":{i}}}")) + "}}}}}";
+        var eyes = CharacterActionInventory.From(AvatarRenderer.Vrm, "m.vrm", [new("m.vrm", Glb(Vrm("head", "leftEye", "rightEye")), "model/gltf-binary")]);
+        Assert.Equal(FaceParts, Gestures(eyes).Intersect(FaceParts));
+        Assert.Contains("(moves the leftEye, rightEye bones)", eyes.Find("gesture:eyes_up")!.Detail);
+        Assert.Contains("(sets the oh mouth expression, or aa)", eyes.Find("gesture:mouth_open")!.Detail);
+        var noEyes = CharacterActionInventory.From(AvatarRenderer.Vrm, "m.vrm", [new("m.vrm", Glb(Vrm("head")), "model/gltf-binary")]);
+        Assert.Equal(["mouth_open"], Gestures(noEyes).Intersect(FaceParts));
     }
 
     [Fact]
-    public void TheLastActionSaysWhichGesturePlaysAndWhichIsHeld()
+    public void TheLastActionSaysWhichGesturePlaysAndEveryOneHeld()
     {
         static System.Text.Json.JsonElement Reply(string json) => System.Text.Json.JsonDocument.Parse(json).RootElement;
-        Assert.Equal(" Gestures now: wink playing, shy held.",
-            AvatarController.GestureState(Reply("{\"started\":true,\"gesture\":{\"playing\":\"wink\",\"held\":\"shy\"}}")));
+        Assert.Equal(" Gestures now: wink playing, eyes_up, mouth_open, blush, hearts held.",
+            AvatarController.GestureState(Reply("{\"started\":true,\"gesture\":{\"playing\":\"wink\",\"held\":[\"eyes_up\",\"mouth_open\",\"blush\",\"hearts\"]}}")));
+        Assert.Equal(" Gestures now: none playing, shy held.", AvatarController.GestureState(Reply("{\"started\":true,\"gesture\":{\"held\":[\"shy\"]}}")));
+        Assert.Equal(" Gestures now: none playing, sweat held.",
+            AvatarController.GestureState(Reply("{\"started\":true,\"gesture\":{\"held\":[\"Not a tag!\",3,\"sweat\"]}}")));
+        Assert.Equal(" Gestures now: none playing, none held.", AvatarController.GestureState(Reply("{\"started\":true,\"gesture\":{\"held\":[]}}")));
         Assert.Equal(" Gestures now: none playing, none held.", AvatarController.GestureState(Reply("{\"started\":true,\"gesture\":{}}")));
         Assert.Equal("", AvatarController.GestureState(Reply("{\"started\":true}")));
     }
