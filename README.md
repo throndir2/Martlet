@@ -50,13 +50,11 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.60.0
+## 🆕 What's new in 0.60.1
 
-- 👀 **See with a separate image model**: choose an image model in Companion › Vision, and Martlet describes your screen or camera in words, so even a Thinking model that reads only text knows what you see.
-- 👂 **Hear how you say things**: an audio model of your own (Companion › Listening) tells Thinking about your tone, a laugh or a sigh, and the sounds around you.
-- 🧩 **Use the model app you already run**: Companion › Thinking › This PC finds LM Studio, llama.cpp, KoboldCpp, Jan and other apps on your PC, lists their models and switches to one.
-- 🔑 **A free key in one click**: with no online key saved, **Get a free key** opens NVIDIA Build, so Martlet can still reply when your computers are offline or full.
-- 🗣️ **Always a voice**: when no computer has room for your voice engine, Martlet speaks with Chatterbox Nano, even without a graphics card. Windows voices are gone.
+- 🖥️ **Recommended setup leaves out computers that are off**: turn your other computers off, and the PC you use gets a setup of its own right away, with thinking, the voice and the face moving to it.
+- 🧠 **Your Thinking model comes with it**: the model your host used for Thinking now moves to your PC.
+- 📋 **A clearer review**: a computer that isn't answering shows *left out while it isn't answering*, and Martlet still checks again by itself when it stays away or comes back.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 

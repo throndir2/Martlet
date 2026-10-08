@@ -8,6 +8,8 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+## [0.60.1] - 2026-10-08
+
 ### Fixed
 
 - Recommended setup no longer counts a computer that isn't answering: turn your other computers off and it plans for the PC you use right away, instead of keeping their jobs for 10 minutes. A Thinking model a host names like `gemma4-e4b` is now known, so it moves to your PC properly. ([#649](https://github.com/throndir2/Martlet/pull/649))
