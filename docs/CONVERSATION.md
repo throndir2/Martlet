@@ -401,12 +401,34 @@ pool jobs never use that route, except the empty-pool fallback below.
 **Members.** A member is one place with a slot count (how many jobs it runs at
 once, 1 to 8):
 
-- A paired Martlet host joins only when this PC's owner ticks *Join the
-  Thinking pool* for it (`DeepThinkingPool-<host>`). It works on the host's
+- A paired Martlet host with a Thinking model joins by itself
+  (`ThinkingPoolAutoJoin`, Martlet.Core). Each time a check sees it answer (the
+  cluster sync every 15 s while *Keep in sync* is on, *Check computers*, any
+  other check of all hosts and the host update check), a host that offers its
   Thinking pool role (a second Ollama server of its own, route
-  `martlet.gateway.deep-thinking-chat.v1`; its slots are the role's
-  `OLLAMA_NUM_PARALLEL`, advertised as `maximum_concurrency`). The host that
-  runs the conversation may join too.
+  `martlet.gateway.deep-thinking-chat.v1`) joins on that role with its slots
+  (the role's `OLLAMA_NUM_PARALLEL`, advertised as `maximum_concurrency`, at
+  most 8). A host that offers only its Ollama joins on it when it doesn't do
+  this PC's conversation Thinking. A member on a host's Ollama moves to the
+  host's Thinking pool role once it has one, and a member on the role follows
+  the role's slot count. The host that runs the conversation may join with its
+  role too. Martlet writes `thinking-pool.json` only when something changes,
+  never over a file it can't read, and says it once in the status line and
+  the desktop log (*diva joined the Thinking pool by itself (its Thinking pool
+  role, qwen3:8b, 2 slots). Untick it in Companion › Thinking pool to keep it
+  out.*). A member whose computer stops answering stays a member; its line
+  says *In the pool, offline now* and its slots come back when it answers
+  (see *Computers that go offline* below).
+  A computer never joins by itself when the owner took it out (`LeftByOwner`,
+  below), Devices › Sharing work says the Thinking pool never uses it or keeps
+  it for other companion PCs, the pool already has 8 members, or this PC is a
+  host PC.
+- *In the Thinking pool* (`DeepThinkingPool-<host>`) is the owner's opt-out.
+  Unticking it, or *Remove* on the computer's member, takes the computer out
+  and adds its host ID to `LeftByOwner` in `thinking-pool.json` (a file saved
+  before this list existed reads as empty), so it doesn't join again. Ticking
+  it clears that and adds the computer at once. `DeepThinkingAutoJoin` states
+  the rule and names the computers kept out.
 - A model in Ollama on this PC, beside Thinking's (checked to fit on the
   graphics card before each job).
 - An OpenAI-compatible endpoint (a cloud provider or another server).
@@ -435,6 +457,57 @@ warnings (`ThinkingPoolWarnings`) for a member on the same computer, graphics
 card or Ollama server as the conversation's Thinking model, or on the same
 computer as the voice.
 
+### Computers that go offline
+
+The pool follows which of your computers answer, with no setting to change.
+`HostPresence` (Martlet.Desktop) records which paired computers answer now. Three
+things feed it:
+
+- The device sync check of every paired host (every 15 s while *Keep in sync*
+  is on). One failed check marks the computer offline, and the next check that
+  reaches it marks it online again.
+- *Check all hosts* (Devices), and the other checks of all hosts.
+- A pool job, think or research step that can't reach its member's computer (a
+  network failure, never a model's). This marks the computer offline at once,
+  so the next job goes to another member.
+
+While a member's computer is offline, Martlet asks it again every 15 s, also
+when *Keep in sync* is off. A computer that was never checked counts as online.
+
+When a member's computer goes offline:
+
+1. Its slots leave the pool. The broker (`BackgroundPlaces.Reachable`) puts no
+   new work on it, and its slots don't count as free for the last-free-slot
+   rule. `CanRun`, `Find` and the status count only the members that answer.
+2. Work already running there ends through the normal path. A pool job tries
+   the next member. A think or a research step that failed because its computer
+   stopped answering keeps what it wrote and goes on on another member of its
+   pool (*Paused. Its computer stopped answering, so it goes on on another*),
+   at most 3 times. This is not counted as a stop for the conversation.
+3. When every member that would run is offline, `think_longer` and research use
+   the conversation model, as with an empty pool, when *Use the conversation
+   model when the pool is empty* is on and that model can think in parallel.
+   Otherwise they say *Every Thinking pool computer is offline (diva and
+   ripley); their slots come back when they answer again.* Other job kinds get
+   `NoMember` (*every Thinking pool member that can do text is offline*) and use
+   their own fallback.
+
+When the computer answers again, its slots come back at once, and a job waiting
+in line starts there (`BackgroundPlaces.Reconsider`). The desktop log says each
+change in plain words, for example *Thinking pool: diva went offline; the pool
+has 3 slots on 2 members now (5 when all answer).* and *Thinking pool: diva
+answers again; 5 slots.* The desktop also writes `thinking-pool-status.json`
+again (`online`, `offlineSince`, `slots`, `configuredSlots`).
+
+**The tools stay the same.** Whether `think_longer` and research are offered,
+and the *Up to N at once* text, come from the configured members alone, with
+every computer counted as online (`LiveConversationController.ReplyThinkTools`).
+So the start of every Thinking request stays the same for prompt caches while
+computers come and go. Only placement, `CanRun`, `Find`, the status files and
+the log use the presence-aware plan (`ThinkingPoolSettings.Plan` with the
+offline host IDs, which gives an offline member a `DeepThinkingPlan` with
+`Offline` set).
+
 ### Job board
 
 One in-process board (`ThinkingJobBoard`, Martlet.Conversation) over the same
@@ -445,10 +518,20 @@ thinks and research count against the same slots:
    needs (text, vision, audio), the member that shares least with the
    conversation first.
 2. A member that fails, is busy (`job.busy`) or is unavailable is passed over
-   for the next capable member. Each member is tried once.
-3. When every capable slot is busy, the job waits in line. A freed slot goes
+   for the next capable member. Each member is tried once. A member whose
+   computer is offline gets no job
+   ([Computers that go offline](#computers-that-go-offline)).
+3. A member whose computer refuses the request itself as invalid (a paired
+   computer's gateway answers `request.invalid`, for example when the two
+   computers run Martlet versions that don't agree) rests for 10 minutes
+   (`ThinkingJobBoard.RefusedRest`). In that time the board gives it no job that
+   needs at least what the refused job needed, and `CanRun` and `Find` pass it
+   over, so callers use their fallback without a request. The desktop log says
+   once which computer to update, and `thinking-pool-status.json` lists it
+   under `resting`.
+4. When every capable slot is busy, the job waits in line. A freed slot goes
    to the highest priority first, then the oldest.
-4. Long kinds never take the pool's last free slot while the pool has two or
+5. Long kinds never take the pool's last free slot while the pool has two or
    more slots: that slot stays for fast kinds (`BargeInJudge`,
    `EndOfTurnJudge`, `Digest`). With exactly one slot, long kinds may take it,
    and fast jobs wait until their deadline. Only the
@@ -506,8 +589,10 @@ jobs on the job list use the same rules through `BackgroundJobKind.PoolKind`
 (`think_longer` is `ThinkLonger`, research is `Research`, a song's lyrics take
 a place as `ThinkLonger`).
 
-**Status.** The desktop writes `thinking-pool-status.json` (members, slots,
-running and waiting jobs by kind, guidance and warnings; never a job's text).
+**Status.** The desktop writes `thinking-pool-status.json` (members with
+whether each one's computer answers now, the slots of the members that answer
+and of every member, running and waiting jobs by kind, resting members,
+guidance and warnings; never a job's text).
 MCP's `thinking_pool_status` reads it with the settings and plan, and
 `thinking_pool_check` rehearses the board ([MCP](MCP.md)).
 
@@ -795,21 +880,21 @@ which machine is free to think depends on the computer you talk to):
   Windows Credential Manager, Thinking's key for the same base URL, or none. The
   conversation that fits the model's context and the task go there, no tools.
 
-**Several computers at once.** Each paired computer on *Another of your
-computers* has *Join the Thinking pool* (`DeepThinkingPool-<host>`): ticked, Deep
-thinking thinks there as well as where it is set to think, so several thinks
-run at once, one on each place (`DeepThinkingPool`, up to 8 places; saved as
-`Pool` in `deep-thinking.json`, which a file saved before it existed simply
-lacks, so the old choice reads unchanged). *Use it*, *Same as Thinking*, *Ollama
-on this PC* and a cloud provider change the first place and keep the ticked
-computers; unticking the first place's computer makes the next one first.
-`think_longer` may then run several thinks at once: one fewer than the usable
+**Several computers at once.** Your paired computers with a Thinking model join
+the pool by themselves (see Members above); each one on *One of your computers*
+has *In the Thinking pool* (`DeepThinkingPool-<host>`): ticked, the pool thinks
+there as well as on its other members, so several thinks run at once, one on
+each place (up to 8 places). Untick a computer to keep it out; tick it again to
+add it back. `think_longer` may then run several thinks at once: one fewer than the usable
 places' slots in all. A long job never takes the pool's last free slot while
 the pool has two or more slots, because that slot stays free for quick jobs
 (judges and summaries); with one slot in all, one think runs at a time. The
 tool's description says how many (*Up to 2 at once; more wait in line* for
 three slots, *One at a time; more wait in line* for one or two). It comes from
-the settings only, so the request start changes only when the slots change.
+the settings only, so the request start changes only when the slots change, never
+when a computer goes offline or answers again. A member whose computer is offline
+gets no new think until it answers again, and a think waiting in line starts on
+it then ([Computers that go offline](#computers-that-go-offline)).
 Each new think goes to a free place: the one that
 shares least with the conversation first (its plan's `Rank`: 0 does none of the
 conversation's jobs, 1 shares a computer with the voice or listening, or is a
@@ -1967,6 +2052,12 @@ default self-hosted engine, has `[laugh]`, `[chuckle]`, `[sigh]`, `[gasp]`,
 `[whispering]`, `[dramatic]`. Another engine registers its own with one
 `SpeechEngines.Register(new SpeechEngine(..., TagCatalog: [new("(laughs)",
 VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
+[ElevenLabs](ELEVENLABS_VOICE.md#tags), a cloud voice that speaks with a
+voice cloned from yours, has its own catalog (`SpeechEngines.ElevenLabsTags`:
+`[laughs]`, `[sighs]`, `[whispers]`, `[happy]`, `[sad]`...) in
+`SpeechEngines.CloudVoices`. Cloud voices are not host engines, so they are not
+in `SpeechEngines.All`, but their tags work the same way below and are
+stripped from the chat for every voice.
 
 - **Thinking prompt.** When a spoken reply's voice has tags, Companion ›
   Prompts › *Voice sounds and tones* is added to its instructions with exactly
@@ -2032,7 +2123,8 @@ VoiceTagKind.Sound, "a laugh"), ...]))` call; nothing else changes.
 `voice_tags` in [Martlet MCP](MCP.md) shows all of these for any engine (with
 `characterTags`, the character cues too, plus `acted` and `note`), and
 `spoken_reply_check` with `characterTags` runs them through the production
-runtime.
+runtime. `elevenlabs_check` runs ElevenLabs' tags through the production
+runtime against a local ElevenLabs protocol fixture.
 
 ## Hands-free voice activity and Voice ID
 

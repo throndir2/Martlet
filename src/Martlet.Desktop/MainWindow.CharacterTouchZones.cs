@@ -141,6 +141,9 @@ public partial class MainWindow
         detectingTouchZones = true;
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         detectTouchZones = stop;
+        // Detecting... and Stop show at once. A click leaves the keyboard focus on Detect zones, and the page holds back its updates
+        // while the focus is in it; rendering it again takes the focus off the old button, so each step's progress shows too.
+        if (!closing && openTab == CompanionTab.Character) RenderTab();
         try
         {
             // The picture is drawn off screen by a renderer of its own, in the character's rest pose: the character needn't show,

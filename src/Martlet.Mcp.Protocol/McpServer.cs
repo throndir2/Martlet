@@ -108,9 +108,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }),
         Tool("ui_click", "Invoke an automation-ID control. Only safe navigation controls work without --allow-ui-effects. With " +
             "several windows that have the control (side-by-side run windows each have HostRunCancel), window names the one to use: " +
-            "its title as ui_snapshot lists it (for example \"Martlet - Start Docker Desktop\").", new
+            "its title as ui_snapshot lists it (for example \"Martlet - Start Docker Desktop\"). With focus true the control takes the " +
+            "keyboard focus first, as a mouse click gives it (its window comes to the front).", new
         {
-            id = new { type = "string" }, window = new { type = "string" }
+            id = new { type = "string" }, window = new { type = "string" }, focus = new { type = "boolean" }
         }, ["id"]),
         Tool("ui_select", "Select a named option from a combo box. Requires --allow-ui-effects.", new
         {
@@ -498,7 +499,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "simulated desktop using the desktop's paired client. Checks both routes and their models are advertised, Thinking's advertised route saves as the " +
             "desktop's job route (handing Thinking to the host), a think on the Deep thinking route runs " +
             "while a reply streams on Thinking's route (the reply finishes first), each request reaches its own Ollama (the think " +
-            "with Thinking steps on), two thinks run at once on the role's two slots (advertised as the route's maximum_concurrency) " +
+            "with Thinking steps on), a Thinking pool job's request (the role's largest context window above the job's own budget) " +
+            "is accepted, two thinks run at once on the role's two slots (advertised as the route's maximum_concurrency) " +
             "while a reply streams and a third gets job.busy, and that the chat client refuses a mismatched route. Loopback only; writes nothing to disk or " +
             "the credential vault.", new { }),
         Tool("gpu_priority_status", "Read GPU priority (live turn first) on every Martlet host paired in a desktop data directory " +
@@ -553,20 +555,28 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "as a glow on the cheeks when the model has no ParamCheek or blush expression; Live2D smile, surprise; VRM wave, shrug, bounce; " +
             "and the voice emotes linked to every voice sound and tone: laugh, chuckle, sigh, gasp, cough, clear_throat, groan, sniff, shush, inhale, exhale, " +
             "mumble, hum, sneeze, whistle, happy, sarcastic, angry, fear, crying, whispering, dramatic; and the overlay emotes drawn over the face of any " +
-            "Live2D model or VRM with a head: sweat, anger, hearts, sparkles, tears, gloom, question, exclaim, sleepy, music) with what it changes, its tag, voice cue, when to use it (use: the owner's or the Thinking model's text, null when empty; hint: what the reply prompt says, which is Martlet's own hint while use is null), whether " +
+            "Live2D model or VRM with a head: sweat, anger, hearts, sparkles, tears, gloom, question, exclaim, sleepy, music; then the held face parts " +
+            "eyes_up (Live2D ParamEyeBallY, VRM eye bones) and mouth_open (Live2D ParamMouthOpenY, a VRM's oh or aa mouth), which stay on with held " +
+            "gestures that move other parts of the face) with what it changes, its tag, voice cue, when to use it (use: the owner's or the Thinking model's text, null when empty; hint: what the reply prompt says, which is Martlet's own hint while use is null), whether " +
             "it is on, its mode (brief, or lingering: stays on after {tag} until {/tag}; modeSaved false when it is the default, " +
             "vtsToggle when a VTube Studio ToggleExpression hotkey turns it on) and whether replies are offered it for engine (a voice engine key; \"none\" or absent: a voice without tags); the " +
             "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; the reply prompt and tags " +
             "(lingering emotes add their {/tag} off tags); with showing (tags the character would show now, as \"glasses\" or " +
             "\"glasses:12\" for 12 minutes) also showingNote, the line the newest message's notes get; " +
             "and the Thinking naming prompt. With voiceTag (a voice's tag such as \"[laugh]\" or \"(sighs)\", or a reply tag such as " +
-            "\"{nod}\" or \"{/glasses}\"), also what it sets off (setsOff: kind, name and whether it holds; with several expressions or motions " +
-            "on one cue, one picked at random) or turns off (turnsOff). " +
+            "\"{nod}\", \"{/glasses}\" or a combo's \"{flustered}\" or \"{/flustered}\"), also what it sets off (setsOff: kind, name and " +
+            "whether it holds; with several expressions or motions on one cue, one picked at random; a combo's parts that are on) or " +
+            "turns off (turnsOff: the lingering emote, or a combo's lingering parts) and the combo it names (combo). " +
+            "Also the owner's combos for the model (combos: n as in CharacterComboTag-<n>, tag, each part's id, kind, name, tag, " +
+            "whether it is on and its mode, use, hint, whether it is on, whether it has a lingering part and whether replies are " +
+            "offered it); with combos (strings such as \"flustered: blush hearts nod | when flattered\", parsed as the Combos " +
+            "section's boxes are) those replace the saved ones, or combosProblem says why they can't be saved. " +
             "With answer (a simulated Thinking reply such as \"1: blush | - | when shy\"), also what the " +
             "production parser makes of it. Reads only; contacts nothing and never returns the model's path.", new
         {
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, engine = new { type = "string" },
-            answer = new { type = "string" }, voiceTag = new { type = "string" }, showing = new { type = "array", items = new { type = "string" } }
+            answer = new { type = "string" }, voiceTag = new { type = "string" }, showing = new { type = "array", items = new { type = "string" } },
+            combos = new { type = "array", items = new { type = "string" } }
         }),
         Tool("character_physical_check", "What Martlet makes of a stroke across the locked character and of moves and zooms " +
             "(Martlet.Avatar.Hosting CharacterStrokes and CharacterPhysicalWords with Martlet.Conversation's TouchLedger), headless, " +
@@ -593,7 +603,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\",\"wholeX\",\"wholeY\"}) the zone it lands in, how it was found, what it " +
             "plays and what it tells the character. detect runs the production detection on snapshotPath (a PNG of the character, transparent " +
             "around it), composing and encoding every picture it would send (previewDirectory keeps them), with a FIXTURE - NOT AI stand-in " +
-            "that answers from answer's zones (guess, a wrong first answer, makes the checks correct it; checks sets the rounds, 0 to 5); it " +
+            "that answers from answer's zones (guess, a wrong first answer, makes the checks correct it; checks sets the rounds, 0 to 5; " +
+            "failAt makes that request fail, as a model that stopped answering); with includeIntimate on (the default) the intimate zones " +
+            "must be found: asked for again on the whole character, then worked out from the zones around them; it " +
             "reports each request, the steps and how far the found boxes are from answer's. save writes the parsed (or detected) zones (and " +
             "snapshotPath as their picture, and with detect the pictures sent; includeIntimate sets Include intimate zones) into an explicit, " +
             "disposable dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
@@ -608,7 +620,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             save = new { type = "boolean" }, includeIntimate = new { type = "boolean" }, snapshotPath = new { type = "string" },
             temperament = new { type = "string" }, personaId = new { type = "string" }, personality = new { type = "string" },
             repeats = new { type = "integer", minimum = 1 }, detect = new { type = "boolean" }, guess = new { type = "string" },
-            previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 }
+            previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 },
+            failAt = new { type = "integer", minimum = 1 }
         }),
         Tool("character_gaze", "Where the character looks (Companion > Character > Where the character looks, the overlay's Eyes " +
             "menu and Companion > Vision > Glances at your screen; docs/SCREEN_COMMENTARY.md \"Where the character looks\"): usual " +
@@ -878,7 +891,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "with no Save button): the personas (name, whether Martlet uses it, speech breaks, instruction " +
             "length; never the instructions), the character model (built-in character name or the own model's file type, never its " +
             "path; renderer, lip-sync mode, show at startup, the lip-sync host's ID), whether the character's position is locked on " +
-            "this PC and where (placement), whether Martlet's voice is muted (voice: Speak Martlet's replies aloud, which the " +
+            "this PC and where (placement), whether clicks pass through the character on this PC (clickThrough), whether Martlet's " +
+            "voice is muted (voice: Speak Martlet's replies aloud, which the " +
             "character's Mute voice / Unmute voice menu item changes) and the lorebooks (counts only). Read-only.", new
         {
             dataDirectory = new { type = "string" }
@@ -1403,7 +1417,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "Backup Thinking's choices (on or off, the delay or automatic, each member's May answer for the conversation and whether " +
             "it is a paid cloud provider) and the member it would ask now for a reply that is taken; " +
             "and the desktop's thinking-pool-status.json (running and waiting jobs by kind, never a job's text; Backup Thinking's " +
-            "automatic delay, recent replies and how it ended lately). Read-only.", new
+            "automatic delay, recent replies and how it ended lately). From that file, each member's online state (whether its " +
+            "computer answers now, and since when it doesn't) and the pool's slots now against its slots when every computer " +
+            "answers (presence). Read-only.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -1411,8 +1427,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "code) with simulated members, NOT models: an empty pool answering no member at once, a picture going to the member " +
             "that sees and a recording finding none, two slots where a second long job waits while a judge takes the last free " +
             "slot, one slot where waiting jobs run highest priority first (barge-in judge, digest, research), a busy member passed " +
-            "over for the next, a stale judge dropped, and deep-thinking.json read once into thinking-pool.json. In-process; " +
-            "reads nothing.", new { }),
+            "over for the next, a stale judge dropped, deep-thinking.json read once into thinking-pool.json, paired hosts joining " +
+            "the pool by themselves (ThinkingPoolAutoJoin, sample hosts), and presence: a " +
+            "member's computer going offline (its slots leave the pool, jobs go to the others and wait for it, the last-free-slot " +
+            "rule counts only computers that answer, every computer offline lets the conversation model stand in) and answering " +
+            "again (its slots come back and a job waiting in line starts there), while the think_longer tool text stays " +
+            "byte-identical. In-process; reads nothing.", new { }),
         Tool("backup_thinking_check", "Rehearse Backup Thinking (Companion > Thinking pool, a hedged request: when the " +
             "conversation's Thinking model has no first words after the delay, the same request also goes to a pool member that " +
             "may answer for the conversation, and whichever starts first gives the reply) with the production race in " +
@@ -1453,6 +1473,27 @@ internal sealed class McpServer(DesktopAutomation desktop)
             scenario = new { type = "string", @enum = QuickSoundCheck.Scenarios },
             delayMs = new { type = "integer", @enum = new[] { 500, 700, 1000, 1500 } }
         }),
+        Tool("elevenlabs_check", "Rehearse ElevenLabs as the Voice (the owner's cloned voice with tones) end to end against a local " +
+            "fixture on 127.0.0.1 that follows ElevenLabs' documented protocol (FIXTURE, NOT ElevenLabs, NOT AI: its voice is a quiet " +
+            "tone): Instant Voice Cloning (POST /v1/voices/add with a synthetic WAV; clone.sent shows the form Martlet sent), one " +
+            "segment straight through the Text to Dialogue WebSocket client (segment: its audio and fixture timings), and a whole " +
+            "spoken reply through the production conversation runtime (a fixture Chat Completions endpoint streams reply, by default " +
+            "one with [laughs], [whispers] and [happy], a word at a time; a fixture speaker plays nothing). ok needs the Thinking " +
+            "prompt to list ElevenLabs' own tags (thinkingPrompt), every tag the reply wrote to reach ElevenLabs as written " +
+            "(tags.reachedElevenLabs), the chat text and every caption to show none (tags.chatClean, tags.captionsClean), and each " +
+            "connection to carry model_id, output_format=pcm_24000, the key in the xi-api-key header (never the body), the one cloned " +
+            "voice and close_socket (protocol). scenario: reply (default), model-refused (the WebSocket refuses the model with " +
+            "param model_id, as its API reference describes: the voice fails as ModelUnsupported and segment.detail says to choose " +
+            "Eleven v3 Conversational; the text still completes) or bad-key (a wrong key: cloning and speech fail as Authentication). " +
+            "model is eleven_v4_turbo (default) or eleven_v3_conversational. With dataDirectory, saved reports the saved ElevenLabs " +
+            "choice (route, model, on, confirmed, key saved, cloned voice saved, verification asked, keys from before; never the key, " +
+            "voice ID or voice name). Nothing is sent to ElevenLabs: live is always NOT RUN.", new
+        {
+            scenario = new { type = "string", @enum = ElevenLabsCheck.Scenarios },
+            model = new { type = "string", @enum = Martlet.Core.Settings.ElevenLabsSetup.ModelIds },
+            reply = new { type = "string", maxLength = 1024 },
+            dataDirectory = new { type = "string" }
+        }),
         Tool("live_floor_status", "The live floor (the live conversation turn comes before all background work) from a data directory: " +
             "what the conversation runs on (its Thinking, voice and listening routes, each on this PC, a computer on the home network " +
             "or a cloud provider, with the paired hosts and routes the floor holds while you talk), which Thinking pool members share " +
@@ -1492,6 +1533,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "first, four segments at once spread over both, a computer kept for one companion PC or unticked for a job left out, " +
             "an unanswering computer skipped, Deep thinking leaving out a kept computer, and the shared setting's round trip. " +
             "In-process; reads nothing.", new { }),
+        Tool("node_presence_status", "When your other computers go away or come back, from a data directory: the per-PC away time " +
+            "(node-presence.txt; Settings > Your other computers, default 10 minutes), the rules (missing after 30 seconds without " +
+            "an answer, back after 30 seconds of answers, the back notice shown 10 minutes) and the report the desktop writes when " +
+            "a computer's state changes (node-presence.json: each paired computer's state Answering, NotAnswering, Missing, Away, " +
+            "Returning or Back, since when, and the notices Home shows, such as \"Working with less: gpu-box isn't answering\"). " +
+            "Host IDs, computer names and times only. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("node_presence_check", "Rehearse the presence notices and events with the production rules (PresenceWatch, " +
+            "NodePresenceNotices, NodePresenceSettings, NodePresenceReport) on scripted timelines: a check every 15 seconds with " +
+            "the desktop's presence rule and a 5-second tick, NOT real hosts. One flaky miss says nothing; 30 seconds without an " +
+            "answer goes missing once with a notice that names the failover move, the job that waits and the pools; still missing " +
+            "after 10 minutes stays away once; 30 seconds of answers comes back once and the notice clears after 10 minutes or " +
+            "when dismissed; a flapping computer stays one absence; the away time follows the per-PC choice; the report round trip; " +
+            "an unpaired computer is forgotten. In-process; writes only a temporary folder.", new { }),
         Tool("research_check", "Rehearse web research (the research tool: Companion > Deep thinking > Web research, off by default) " +
             "end to end with Martlet's own tool texts and job kind (WebResearch: one at a time, 4 an hour, 12 minutes, offered when " +
             "done), background-job scheduler, web client (WebAccess: DuckDuckGo results parser with ads left out and redirect links " +
@@ -1633,7 +1690,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
                 "ui_snapshot" => desktop.Snapshot(OptionalBool(arguments, "layout") ?? false, OptionalString(arguments, "idPrefix")),
-                "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id"), OptionalString(arguments, "window")),
+                "ui_click" => await desktop.ClickAsync(RequiredString(arguments, "id"), OptionalString(arguments, "window"),
+                    OptionalBool(arguments, "focus") ?? false),
                 "ui_select" => desktop.Select(RequiredString(arguments, "id"), RequiredString(arguments, "item")),
                 "ui_set_text" => desktop.SetText(RequiredString(arguments, "id"),
                     OptionalString(arguments, "text") ?? throw new ArgumentException("Missing string 'text'.")),
@@ -1695,7 +1753,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalBool(arguments, "save") ?? false, OptionalBool(arguments, "includeIntimate"), OptionalString(arguments, "snapshotPath"),
                     cancellation, OptionalString(arguments, "temperament"), OptionalString(arguments, "personaId"), OptionalString(arguments, "personality"),
                     OptionalInt(arguments, "repeats"), OptionalBool(arguments, "detect") ?? false, OptionalString(arguments, "guess"),
-                    OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks")),
+                    OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt")),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
@@ -1783,12 +1841,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "thinking_pool_status" => await ThinkingPoolCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "quick_sounds_status" => QuickSoundCheck.Status(DataDirectory(arguments)),
                 "quick_sounds_check" => await QuickSoundCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),
+                "elevenlabs_check" => await ElevenLabsCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalString(arguments, "model"),
+                    OptionalString(arguments, "reply"), OptionalString(arguments, "dataDirectory") is null ? null : DataDirectory(arguments), cancellation),
                 "thinking_pool_check" => await ThinkingPoolCheck.RunAsync(cancellation),
                 "backup_thinking_check" => await BackupThinkingCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),
                 "live_floor_status" => await LiveFloorCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),
                 "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),
                 "work_sharing_check" => await WorkSharingCheck.RunAsync(cancellation),
+                "node_presence_status" => NodePresenceCheck.Status(DataDirectory(arguments)),
+                "node_presence_check" => NodePresenceCheck.Run(),
                 "discord_reply_status" => DiscordReplyCheck.Status(DataDirectory(arguments)),
                 "discord_reply_check" => await DiscordReplyCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "model"),
                     OptionalBool(arguments, "live") ?? false, cancellation),
@@ -2522,6 +2584,33 @@ internal sealed class McpServer(DesktopAutomation desktop)
             prompts = Martlet.Core.Settings.SettingsJson.Read(File.ReadAllBytes(Path.Combine(directory, "settings.json"))).Prompts;
         var saved = directory is null ? null : Martlet.Avatar.Hosting.CharacterActions.Load(directory, inventory.ModelId);
         var catalog = new Martlet.Avatar.Hosting.CharacterActionCatalog(inventory, Martlet.Avatar.Hosting.CharacterActions.Merge(inventory, saved));
+        // Combos to rehearse ("flustered: blush hearts nod | when flattered"), read as the Combos section's boxes are; they replace
+        // the saved combos when they could be saved.
+        string? combosProblem = null;
+        if (OptionalStrings(arguments, "combos") is { } comboLines)
+        {
+            var written = new List<Martlet.Avatar.Hosting.CharacterCombo>();
+            foreach (var line in comboLines)
+            {
+                var halves = line.Split('|', 2);
+                var colon = halves[0].IndexOf(':');
+                var ids = Martlet.Avatar.Hosting.CharacterActions.ParseParts(colon < 0 ? "" : halves[0][(colon + 1)..], catalog.Settings.Actions,
+                    out var why);
+                if (ids is null)
+                {
+                    combosProblem ??= why;
+                    continue;
+                }
+                written.Add(new()
+                {
+                    Tag = (colon < 0 ? halves[0] : halves[0][..colon]).Trim().Trim('{', '}').Trim().ToLowerInvariant(), Parts = ids,
+                    Use = halves.Length > 1 && halves[1].Trim() is { Length: > 0 } use ? use : null
+                });
+            }
+            var rehearsed = catalog.Settings with { Combos = written.Count == 0 ? null : written };
+            combosProblem ??= Martlet.Avatar.Hosting.CharacterActions.Problem(rehearsed);
+            if (combosProblem is null) catalog = catalog with { Settings = rehearsed };
+        }
         var key = OptionalString(arguments, "engine");
         var engine = key is null or "none" ? null
             : Martlet.Core.Settings.SpeechEngines.ForKey(key) ?? throw new ArgumentException($"Unknown voice engine '{key}'.");
@@ -2576,12 +2665,28 @@ internal sealed class McpServer(DesktopAutomation desktop)
             engine = engine?.Key, actions = Describe(catalog),
             replyPrompt = reply?.Instructions, replyTags = reply?.Tags, showingNote = reply?.Showing,
             namingPrompt = naming is { } ask ? new { instructions = ask.Instructions, list = ask.List } : null,
+            combos = catalog.Combos.Select((c, n) => new
+            {
+                n, tag = c.Tag,
+                parts = c.Parts.Select(id => catalog.Entries.FirstOrDefault(e => e.Source.Id == id) is { Source: { } source } part
+                    ? new
+                    {
+                        id, kind = source.Kind.ToString().ToLowerInvariant(), name = source.Name, tag = part.Action.Tag, enabled = part.Action.Enabled,
+                        mode = part.Action.Mode ?? Martlet.Avatar.Hosting.CharacterActions.DefaultMode(source, part.Action.Tag)
+                    }
+                    : new { id, kind = "missing", name = id, tag = (string?)null, enabled = false, mode = "" }).ToArray(),
+                use = c.Use, hint = catalog.Hint(c), enabled = c.Enabled, lingers = catalog.Lingers(c),
+                offered = reply?.Tags.Contains("{" + c.Tag + "}") == true
+            }).ToArray(),
+            combosProblem,
             voiceTag, setsOff = voiceTag is null ? null
                 : catalog.For(voiceTag).Select(s => new
                 {
                     kind = s.Kind.ToString().ToLowerInvariant(), name = s.Name, holds = voiceTag.StartsWith('{') && catalog.Lingers(s)
                 }).ToArray(),
-            turnsOff = voiceTag is not null && catalog.Off(voiceTag) is { } off ? new { kind = off.Kind.ToString().ToLowerInvariant(), name = off.Name } : null,
+            turnsOff = voiceTag is null ? null : catalog.Off(voiceTag).Select(off => new { kind = off.Kind.ToString().ToLowerInvariant(), name = off.Name })
+                .ToArray(),
+            combo = voiceTag is not null && catalog.Combo(voiceTag) is { } voiceCombo ? voiceCombo.Tag : null,
             parsed
         };
     }
@@ -3489,7 +3594,30 @@ internal sealed class McpServer(DesktopAutomation desktop)
             on = lore.Library.Books.Count(book => book.Activation != Martlet.Core.Lorebooks.LorebookActivation.Off),
             entries = lore.Library.Books.Sum(book => book.Entries.Count)
         };
-        return new { personality, character, placement = CharacterPlacement(directory), voice = CharacterVoice(directory), lorebooks };
+        return new { personality, character, placement = CharacterPlacement(directory), clickThrough = CharacterClickThrough(directory),
+            voice = CharacterVoice(directory), lorebooks };
+    }
+
+    /// <summary>character-click-through.json in a data directory (Martlet.Desktop's CharacterClickThroughStore): whether clicks
+    /// pass through the character on this PC. No file means it catches clicks.</summary>
+    private static object CharacterClickThrough(string directory)
+    {
+        var path = Path.Combine(directory, "character-click-through.json");
+        if (!File.Exists(path)) return new { state = "none", on = false };
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return new { state = "unreadable", on = false, problem = "NotAnObject" };
+            return new
+            {
+                state = "loaded",
+                on = document.RootElement.TryGetProperty("ClickThrough", out var on) && on.ValueKind == JsonValueKind.True
+            };
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return new { state = "unreadable", on = false, problem = error.GetType().Name };
+        }
     }
 
     /// <summary>Whether Martlet's voice is muted and how loud it is, from talk-preferences.json in a data directory

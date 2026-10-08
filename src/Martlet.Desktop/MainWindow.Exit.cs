@@ -174,6 +174,7 @@ public partial class MainWindow
             characterTimer.Stop();
             updateTimer.Stop();
             clusterTimer.Stop();
+            StopNodePresence();
             settingsTimer.Stop();
             networkTimer.Stop();
             apiKeysTimer.Stop();
