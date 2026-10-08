@@ -61,7 +61,8 @@ public sealed record SetupPreflightItem(int Index, SetupChange Change, SetupStep
     /// <summary>The <c>choice.VAR</c> arguments the role is installed or changed with (<c>choice.gpu</c> is the card's UUID).</summary>
     public IReadOnlyDictionary<string, string> Arguments { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
     public double? DownloadGb => Change.DownloadGb;
-    public bool Applies => Verdict is SetupStepVerdict.Ready or SetupStepVerdict.NeedsOwner;
+    /// <summary>Reconfigure makes it: it is ready, or it only waits for secrets the owner enters in the review.</summary>
+    public bool Applies => Verdict == SetupStepVerdict.Ready || Verdict == SetupStepVerdict.NeedsOwner && Secrets.Count > 0;
 }
 
 /// <summary>Everything the owner must see or accept before Reconfigure: one item per change, in the recommendation's order.
@@ -163,6 +164,16 @@ public sealed record SetupStepResult(SetupMachineState State, string Text)
     public static SetupStepResult Attention(string text) => new(SetupMachineState.NeedsAttention, text);
 }
 
+/// <summary>Whether this PC can make a job that no host does next use one way of doing it (a FootprintCatalog option such as
+/// "gemma4:e2b" in this PC's Ollama, Parakeet, a Windows voice or a hosted provider), through the Companion page's own path.
+/// Ready: Martlet switches it (<see cref="Terms"/>: a download or license the owner accepts with Reconfigure). NeedsOwner or
+/// CannotApply: <see cref="Text"/> says where the owner chooses it. <see cref="InUse"/>: this PC already uses it.</summary>
+public sealed record SetupRouteReading(SetupStepVerdict Verdict, string Text)
+{
+    public string? Terms { get; init; }
+    public bool InUse { get; init; }
+}
+
 /// <summary>The computers and choices a run changes, through Martlet's existing paths: host commands (through Martlet on that
 /// computer, this PC's own host service, or SSH), the shared cluster plan (who does each job, failover on), Devices › Sharing
 /// work, the cluster check and the published run. The desktop implements it; tests and the MCP self-test use fakes.</summary>
@@ -193,6 +204,15 @@ public interface ISetupTargets
     /// <summary>Lets <paramref name="machineId"/> take <paramref name="job"/>'s requests when the computer doing it is busy
     /// (Devices › Sharing work), or stops it.</summary>
     Task<SetupStepResult> ShareAsync(string job, string machineId, bool join, CancellationToken cancel);
+
+    /// <summary>Whether this PC can make <paramref name="job"/> use <paramref name="optionId"/> when no host does it next.
+    /// Reads only; changes nothing.</summary>
+    Task<SetupRouteReading> ReadRouteAsync(string job, string optionId, CancellationToken cancel);
+
+    /// <summary>Makes <paramref name="job"/> use <paramref name="optionId"/> on this PC through the Companion page's own path
+    /// (which also records in the shared plan that no host does it), or, when this PC uses it already, only records that.
+    /// Your other companion PCs follow it through the shared settings.</summary>
+    Task<SetupStepResult> UseRouteAsync(string job, string optionId, CancellationToken cancel);
 
     /// <summary>Checks every host once (Check hosts), so this PC and every companion PC follow the plan within one check.
     /// Returns, by job, why this PC can't follow it yet.</summary>
@@ -228,13 +248,64 @@ public static class SetupExecutor
         for (var index = 0; index < recommendation.Changes.Count; index++)
         {
             cancel.ThrowIfCancellationRequested();
-            items.Add(await PrepareOneAsync(index, recommendation.Changes[index], targets, described, cancel));
+            items.Add(await PrepareOneAsync(index, recommendation.Changes[index], recommendation, targets, described, cancel));
         }
+        // Make before break: a role stays while the job it serves can't move off that computer.
+        for (var index = 0; index < items.Count; index++)
+            if (items[index] is { Verdict: SetupStepVerdict.Ready, Change.Kind: SetupChangeKind.RemoveRole } removal &&
+                Holding(removal.Change, items.Where(i => !i.Applies).Select(i => i.Change), recommendation) is { } job)
+                items[index] = removal with
+                {
+                    Verdict = SetupStepVerdict.NeedsOwner,
+                    Text = $"{removal.Change.Summary} It stays until {Job(job)} moves off {removal.Change.MachineId} (see the change for {Job(job)})."
+                };
         return new(recommendation.Fingerprint, items);
     }
 
-    private static async Task<SetupPreflightItem> PrepareOneAsync(int index, SetupChange change, ISetupTargets targets,
-        Dictionary<(string, string), Task<SetupRoleNeeds>> described, CancellationToken cancel)
+    /// <summary>A job's handover: the computer that does it next (null: none), whether lip-sync is off, and the way it is done
+    /// (the target plan's FootprintCatalog option).</summary>
+    private static (string? Host, bool Off, string? Option) Handover(SetupChange change, NetworkRecommendation recommendation)
+    {
+        var plan = recommendation.Target.Job(change.Job!);
+        var option = plan?.OptionId;
+        var host = plan is null ? change.MachineId.Length > 0 ? change.MachineId : null : plan.HostId;
+        return (host, plan?.Off == true || host is null && option == LoudnessLipSync, option);
+    }
+
+    private const string LoudnessLipSync = "loudness-lipsync";
+
+    /// <summary>A job no host does next that this PC switches itself (its route, through the Companion page).</summary>
+    private static bool OwnRoute(SetupChange change, NetworkRecommendation recommendation) =>
+        change.Job is not ClusterJobs.LipSync && Handover(change, recommendation) is { Host: null, Off: false, Option: not null };
+
+    /// <summary>The job <paramref name="removal"/>'s role still serves on its computer because the change that moves the job off
+    /// it (<paramref name="unmoved"/>: handovers that weren't or won't be made) didn't happen; null when none.</summary>
+    private static string? Holding(SetupChange removal, IEnumerable<SetupChange> unmoved, NetworkRecommendation recommendation)
+    {
+        foreach (var change in unmoved.Where(c => c.Kind == SetupChangeKind.AssignJob && c.Job is not null))
+        {
+            var from = change.FromMachineId ?? recommendation.Current.Job(change.Job!)?.HostId;
+            if (from == removal.MachineId && Serves(removal.RoleKind, change.Job!)) return change.Job;
+        }
+        return null;
+    }
+
+    /// <summary>Whether a host role kind does a job (by the FootprintCatalog's options).</summary>
+    private static bool Serves(string? kind, string job)
+    {
+        var component = job switch
+        {
+            ClusterJobs.Thinking => PlanComponent.Thinking,
+            ClusterJobs.Listening => PlanComponent.Listening,
+            ClusterJobs.Speaking => PlanComponent.Voice,
+            ClusterJobs.LipSync => PlanComponent.LipSync,
+            _ => (PlanComponent?)null
+        };
+        return kind is not null && component is { } c && FootprintCatalog.Default.Options.Any(o => o.Component == c && o.HostRoleKind == kind);
+    }
+
+    private static async Task<SetupPreflightItem> PrepareOneAsync(int index, SetupChange change, NetworkRecommendation recommendation,
+        ISetupTargets targets, Dictionary<(string, string), Task<SetupRoleNeeds>> described, CancellationToken cancel)
     {
         SetupPreflightItem Item(SetupStepVerdict verdict, string text) => new(index, change, verdict, text);
         var machine = change.MachineId;
@@ -249,9 +320,22 @@ public static class SetupExecutor
                     : $"Devices › Sharing work: {machine} no longer takes {Job(change.Job)}.")
                 : Item(SetupStepVerdict.CannotApply, $"Martlet doesn't share \"{change.Job}\" between computers.");
         if (change.Kind == SetupChangeKind.AssignJob)
-            return change.Job is { } job && ClusterJobs.All.Contains(job)
-                ? Item(SetupStepVerdict.Ready, change.Summary)
-                : Item(SetupStepVerdict.CannotApply, $"\"{change.Job}\" isn't a job your computers share.");
+        {
+            if (change.Job is not { } job || !ClusterJobs.All.Contains(job))
+                return Item(SetupStepVerdict.CannotApply, $"\"{change.Job}\" isn't a job your computers share.");
+            if (!OwnRoute(change, recommendation)) return Item(SetupStepVerdict.Ready, change.Summary);
+            // No host does it next: this PC switches its own route the way its Companion page does, or says where to choose it.
+            try
+            {
+                var reading = await targets.ReadRouteAsync(job, Handover(change, recommendation).Option!, cancel);
+                return Item(reading.Verdict, reading.Text) with { Terms = reading.Verdict == SetupStepVerdict.Ready ? reading.Terms : null };
+            }
+            catch (OperationCanceledException) when (cancel.IsCancellationRequested) { throw; }
+            catch (Exception error)
+            {
+                return Item(SetupStepVerdict.CannotApply, $"Couldn't check how this PC does {Job(job)}: {error.Message}");
+            }
+        }
         if (!RoleChange(change.Kind) || !NodeCommandRules.IsRole(change.RoleKind))
             return Item(SetupStepVerdict.CannotApply, "This change names no host role Martlet knows.");
         if (change.NeedsSomeoneThere)
@@ -432,6 +516,10 @@ public static class SetupExecutor
             var total = totals[machine];
             SetupStepResult result;
             if (cancel.IsCancellationRequested) result = SetupStepResult.Attention("Stopped before it ran.");
+            else if (change.Kind == SetupChangeKind.RemoveRole && Holding(change,
+                         outcomes.Where(o => o.State != SetupMachineState.Done).Select(o => o.Change), recommendation) is { } held)
+                result = SetupStepResult.Attention($"Kept {targets.RoleName(change.RoleKind!)} on {change.MachineId}: {Job(held)} still " +
+                    $"uses it, because the change that moves {Job(held)} wasn't made.");
             else
             {
                 await Publish(run.With(machine, SetupMachineState.Configuring, $"{Doing(change, targets)} ({step} of {total})",
@@ -512,6 +600,8 @@ public static class SetupExecutor
         {
             case SetupStepVerdict.Automatic: return SetupStepResult.Done(item.Text);
             case SetupStepVerdict.NeedsSomeoneThere or SetupStepVerdict.CannotApply: return SetupStepResult.Attention(item.Text);
+            // The owner makes it elsewhere (a provider chosen in Companion): never reported as done here.
+            case SetupStepVerdict.NeedsOwner when item.Secrets.Count == 0: return SetupStepResult.Attention(item.Text);
             case SetupStepVerdict.NeedsOwner when item.Secrets.Any(s => !preflight.Answered(s)):
                 return SetupStepResult.Attention($"It needs {string.Join(" and ", item.Secrets.Where(s => !preflight.Answered(s)).Select(s => s.Prompt))}. " +
                     $"Enter it in the review and Reconfigure again, or install {targets.RoleName(change.RoleKind!)} on {change.MachineId} from the Devices map.");
@@ -525,10 +615,12 @@ public static class SetupExecutor
                     if (add && item.Terms is not null) targets.Accepted(item);
                     return await targets.ChangeRoleAsync(new(change.MachineId, change.RoleKind!, add, add ? item.Arguments : new Dictionary<string, string>(),
                         add ? preflight.SecretsFor(index) : new Dictionary<string, string>()), new Progress<string>(), cancel);
+                case SetupChangeKind.AssignJob when OwnRoute(change, recommendation):
+                    if (item.Terms is not null) targets.Accepted(item);
+                    return await targets.UseRouteAsync(change.Job!, Handover(change, recommendation).Option!, cancel);
                 case SetupChangeKind.AssignJob:
-                    var plan = recommendation.Target.Job(change.Job!);
-                    var host = plan is null ? change.MachineId.Length > 0 ? change.MachineId : null : plan.HostId;
-                    return await targets.AssignJobAsync(change.Job!, host, plan?.Off ?? false, cancel);
+                    var (host, off, _) = Handover(change, recommendation);
+                    return await targets.AssignJobAsync(change.Job!, host, off, cancel);
                 default:
                     return await targets.ShareAsync(change.Job!, change.MachineId, change.Kind == SetupChangeKind.JoinPool, cancel);
             }
