@@ -45,14 +45,18 @@ the standard parameters for (`gestures`: `nod`, `shake`, `tilt`, `bow`, `sway`,
 `mumble`, `hum`, `sneeze`, `whistle`, `happy`, `sarcastic`, `angry`, `fear`,
 `crying`, `whispering`, `dramatic`, then `wink`, `pout`, `shy`, `giggle`, `flinch`,
 `lean_in`, `look_away`, `think`, `eye_roll`, `drowsy`, then the held face parts
-`eyes_up` and `mouth_open`), added to the look-at angles and those parameters
+`eyes_up` and `mouth_open`, and last the stronger blush levels `blush_deep` and
+`blush_fierce`), added to the look-at angles and those parameters
 (`lib/gestures.ts`). `gesture(name, true)` holds `pout`, `shy`, `look_away`,
-`drowsy`, `blush`, `eyes_up` or `mouth_open` until `endGesture(name)`. Held
+`drowsy`, a blush level, `eyes_up` or `mouth_open` until `endGesture(name)`. Held
 gestures layer: holding one lets go only of the held ones that move a part it
-moves too (`HOLD_PARTS`: eyes, mouth, cheeks, brows, head). A gesture played
+moves too (`HOLD_PARTS`: eyes, mouth, cheeks, brows, head; every blush level is
+the cheeks). A gesture played
 meanwhile plays on top, and `gestureState` says which plays once and every one
 held (`held` is a list). A held `eyes_up` keeps the look out of the eyeballs,
-and a held open mouth eases back while lip-sync moves the mouth.
+and a held open mouth eases back while lip-sync moves the mouth. Every blush
+level (`BLUSH_LEVELS`) moves `ParamCheek` fully; without it `gesture` returns
+false and the renderer page draws the level over the face instead.
 
 `faceAnchor()` says where the face is now, for Martlet's drawings over it
 (`lib/face.ts`). At load the adapter finds the face at rest, then pins its
@@ -65,6 +69,27 @@ the pinned points follow those vertices as Core deformed them (moving least
 squares), with each cheek's surface (`cheekLeftFrame`, `cheekRightFrame`), and
 `tracking` is `"mesh"`. Without enough such vertices, `tracking` is
 `"estimate"`: the face moved with the head angles, as before.
+
+`faceAnchor()` also gives each eye's iris and its visible opening, for drawings
+over the eyes (`lib/eyes.ts`). At load, after the face is pinned, the adapter
+moves `ParamEyeBallX` and `ParamEyeBallY` to their far ends in turn and puts
+them back. The visible drawables near the face that move as a whole are the
+irises and their highlights; the largest in each eye is its iris. The iris's
+clipping masks (`getDrawableMasks()` and `getDrawableMaskCounts()`, in the
+structural port in `lib/sdk.ts`) are its eye white. Each frame the iris is the
+box of its drawable's vertices across and down the face. The opening is the eye
+white's triangles, which close as the model blinks; a mask hidden now that
+showed at rest gives an empty opening. Each eye's middle is pinned to the face
+like its other features. An eye is dropped when its iris has no masks or isn't
+plausible for the face's width. `setEyeHint(hint)` gives eyes measured by vision
+(face widths from the face's middle, rest pose) for an eye the meshes can't
+give: its iris moves with `ParamEyeBallX`/`Y` through the room the eye leaves
+around it, and its outline closes with `ParamEyeLOpen` or `ParamEyeROpen`
+(`ParamEyeLOpen` is the character's left eye, on the viewer's right).
+`eyesFrom` is `"mesh"` when the meshes give both eyes, `"vision"` when the hint
+fills the rest, otherwise `"estimate"`. `faceTracking.eyeMilliseconds` says how
+long finding the eyes took (about 8 ms for the bundled Hiyori, which gets
+`"mesh"`).
 
 Licenses: Core is under the Live2D Proprietary Software License (redistributable
 file only, inside Martlet), the Framework under the Live2D Open Software License,

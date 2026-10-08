@@ -35,7 +35,9 @@ Right-click the character and open **Eyes**, or use **Companion › Character �
 
 ## Touch temperament
 
-When you save a personality, Thinking decides how the character reacts to touches on each part of its body, and where its eyes usually go. A shy, passive character can ignore your mouse and most touches, then blush and look at your mouse when you touch it somewhere it cares about. Edit it under **Companion › Character › Touch temperament**.
+When you save a personality, Thinking decides how the character reacts to touches on each part of its body, and where its eyes usually go. A shy, passive character can ignore your mouse and most touches, then blush and look at your mouse when you touch it somewhere it cares about. Edit it under **Companion › Character › Touch temperament**. Each body area is a category that lists its parts, and intimate parts (lips, ears, neck, chest and breasts, waist, hips, groin, buttocks and inner thighs) have a category of their own.
+
+You can also make your own custom temperaments: name one, change it as you like, and choose it under **Uses** for any persona. Changing a custom temperament changes it for every persona that uses it.
 
 ## Profiles
 

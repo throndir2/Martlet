@@ -171,7 +171,7 @@ public sealed record RendererView(double Width, double Height, double? ScreenTop
 /// when the PNG would not fit one renderer message). With <paramref name="Whole"/> (touch zones) the page draws the character
 /// itself, never on screen: framed whole (no zoom, no pan; zoomed out further when the model draws past its own canvas, so all
 /// of it shows) on a page of the overlay's shape, in the pose it has (the rest pose in a still renderer, which Martlet starts
-/// for this picture), and the reply also carries where its drawables or bones are. Replied to with
+/// for this picture), and the reply also carries where its drawables or bones and its face are. Replied to with
 /// <see cref="RendererPicture"/>.</summary>
 public sealed record RendererSnapshot(bool Portrait, int Edge = 512, bool Whole = false)
 {
@@ -180,11 +180,65 @@ public sealed record RendererSnapshot(bool Portrait, int Edge = 512, bool Whole 
 /// <summary>A PNG of the character (base64, small enough for one renderer message) and its size in pixels. <paramref name="CropLeft"/>,
 /// <paramref name="CropTop"/>, <paramref name="CropWidth"/> and <paramref name="CropHeight"/> say where the picture sat on the
 /// renderer page, as fractions of the page (touch zones compare it with touches). <paramref name="Probe"/>: for a
-/// <see cref="RendererSnapshot.Whole"/> picture, where the model's drawables or bones were. For a whole picture both are given
+/// <see cref="RendererSnapshot.Whole"/> picture, where the model's drawables or bones and its face were. For a whole picture both are given
 /// with the character framed whole (zoom 1, no pan; <see cref="WholeFraming"/>), so they can reach past 0..1 when
 /// <paramref name="Zoom"/>, the zoom the picture was taken at, is below 1 to show parts drawn past the model's canvas.</summary>
 public sealed record RendererPicture(string Png, int Width, int Height, double CropLeft = 0, double CropTop = 0, double CropWidth = 1,
     double CropHeight = 1, RendererZoneProbe? Probe = null, double Zoom = 1);
+/// <summary>Where the face was in a whole picture (a touch zones snapshot's probe), as the renderer's face anchor read it
+/// while it drew the picture: its middle (<paramref name="X"/>, <paramref name="Y"/>, fractions of the page), its width
+/// (<paramref name="Width"/>, a fraction of the page's width) and its roll (<paramref name="Angle"/>, radians, clockwise on
+/// screen). <paramref name="Tracking"/> says how the anchor follows the face: "mesh", "bones" or "estimate".</summary>
+public sealed record RendererFace(double X, double Y, double Width, double Angle = 0, string? Tracking = null)
+{
+    [JsonIgnore]
+    public bool IsValid => double.IsFinite(X) && double.IsFinite(Y) && double.IsFinite(Width) && double.IsFinite(Angle) &&
+        Math.Abs(X) < 100 && Math.Abs(Y) < 100 && Width is > 0 and < 100 && Math.Abs(Angle) <= 2 * Math.PI &&
+        (Tracking is null || Tracking.Length is > 0 and <= 16 && Tracking.All(c => c is >= 'a' and <= 'z'));
+}
+/// <summary>An iris of the eye hint: its middle and radius.</summary>
+public sealed record RendererIris(double X, double Y, double R);
+/// <summary>An eye opening of the eye hint (the white and the iris that show between the eyelids) as an ellipse: its middle,
+/// half width and half height.</summary>
+public sealed record RendererEyeShape(double X, double Y, double Rx, double Ry);
+/// <summary>One eye of the eye hint: its iris and its opening.</summary>
+public sealed record RendererEye(RendererIris Iris, RendererEyeShape Eye)
+{
+    [JsonIgnore]
+    public bool IsValid => Iris is not null && Eye is not null &&
+        new[] { Iris.X, Iris.Y, Eye.X, Eye.Y }.All(v => double.IsFinite(v) && Math.Abs(v) <= RendererEyes.Farthest) &&
+        new[] { Iris.R, Eye.Rx, Eye.Ry }.All(v => double.IsFinite(v) && v is > 0 and <= RendererEyes.Largest);
+}
+/// <summary>
+/// The eye hint ("eyes"): where vision measured the character's eyes in its rest pose (eyes open, looking straight ahead),
+/// so that drawings over the eyes (heart_eyes, star_eyes, the dizzy swirls) cover only the iris and stay inside the eye. Each
+/// eye is in face widths from the face anchor's middle, x toward the viewer's right and y down, in the face's own frame before
+/// its roll; <paramref name="Left"/> and <paramref name="Right"/> are as the viewer sees them. Without both eyes it clears the
+/// hint (the page gets <c>data: null</c>). The model's own data (Live2D iris meshes, VRM eye bones and meshes) comes before
+/// the hint. Replied to with <see cref="RendererEyesFrom"/>.
+/// </summary>
+public sealed record RendererEyes(RendererEye? Left = null, RendererEye? Right = null)
+{
+    /// <summary>The farthest an eye's middle may be from the face's middle, and the largest radius, in face widths.</summary>
+    public const double Farthest = 2, Largest = 1;
+
+    /// <summary>Whether this clears the hint (it doesn't give both eyes).</summary>
+    [JsonIgnore] public bool Clears => Left is null || Right is null;
+
+    [JsonIgnore] public bool IsValid => (Left is null || Left.IsValid) && (Right is null || Right.IsValid);
+}
+/// <summary>What the showing character's eyes use now, after an eye hint: <see cref="Mesh"/> (a Live2D model's own iris
+/// meshes), <see cref="Bones"/> (a VRM's own eye bones and meshes), <see cref="Vision"/> (the hint fills what the model lacks)
+/// or <see cref="Estimate"/> (an eye still lacks its iris size or shape, so it is worth measuring); null when no model shows
+/// or the page couldn't say.</summary>
+public sealed record RendererEyesFrom(string? EyesFrom)
+{
+    public const string Mesh = "mesh", Bones = "bones", Vision = "vision", Estimate = "estimate";
+
+    /// <summary>A page's word for where the eyes come from, or null when it isn't one (a short lowercase word).</summary>
+    public static string? Read(string? word) =>
+        word is { Length: > 0 and <= 16 } && word.All(c => c is >= 'a' and <= 'z' or '-') ? word : null;
+}
 public sealed record RendererMapping(string Target, string Aspect);
 public sealed record RendererConfiguration(string SourceId, string ModelRevision, string MappingRevision, RendererMapping[] Targets);
 public sealed record RendererIdentity(Guid SessionId, Guid TurnId, Guid RequestId, string SourceId, long Epoch, int SampleRate);
@@ -208,17 +262,34 @@ public static class RendererProtocol
     public static T Data<T>(RendererMessage message) =>
         message.Data.Deserialize<T>(Json) ?? throw new InvalidDataException("Renderer payload is missing.");
 
-    public static async Task WriteAsync(Stream pipe, RendererMessage message, CancellationToken token)
+    /// <summary>One whole message as it goes on the pipe: its length (4 bytes, little-endian) and then its JSON.</summary>
+    /// <exception cref="InvalidDataException">The message exceeds <see cref="MaximumMessageBytes"/>.</exception>
+    public static byte[] Frame(RendererMessage message)
     {
         var bytes = JsonSerializer.SerializeToUtf8Bytes(message, Json);
         if (bytes.Length > MaximumMessageBytes) throw new InvalidDataException("Renderer message exceeds its limit.");
-        byte[] header = new byte[4];
-        BinaryPrimitives.WriteInt32LittleEndian(header, bytes.Length);
-        await pipe.WriteAsync(header, token);
-        await pipe.WriteAsync(bytes, token);
+        var frame = new byte[4 + bytes.Length];
+        BinaryPrimitives.WriteInt32LittleEndian(frame, bytes.Length);
+        bytes.CopyTo(frame, 4);
+        return frame;
+    }
+
+    /// <summary>
+    /// Writes one message in one write. On an anonymous pipe a cancelled write can stop part way and leave the reader out of
+    /// step for good, so give a pipe only a token that is cancelled when the pipe is no longer used, or write through
+    /// <see cref="RendererPipeWriter"/>.
+    /// </summary>
+    public static async Task WriteAsync(Stream pipe, RendererMessage message, CancellationToken token)
+    {
+        var frame = Frame(message);
+        await pipe.WriteAsync(frame, token);
         await pipe.FlushAsync(token);
     }
 
+    /// <summary>
+    /// Reads one whole message. On an anonymous pipe a cancelled read can stop part way and leave the rest of the message in
+    /// the pipe, so give a pipe only a token that is cancelled when the pipe is no longer used.
+    /// </summary>
     public static async Task<RendererMessage> ReadAsync(Stream pipe, CancellationToken token)
     {
         byte[] header = new byte[4];

@@ -103,6 +103,28 @@ test("blush uses ParamCheek when the model has it and can be held until released
   assert.equal(held.gestures.at(-1), undefined, "released, it fades out and ends");
 });
 
+test("every blush level moves ParamCheek fully when the model has it; without it the page draws them", async t => {
+  const env = environment();
+  const { adapter } = await adapterWith(env, {}, t);
+  for (const level of ["blush", "blush_deep", "blush_fierce"]) {
+    assert.ok(adapter.gestures.includes(level), level);
+    assert.equal(adapter.gesture(level, true), false, `${level}: no ParamCheek, the page draws it`);
+  }
+  adapter.dispose();
+
+  const withCheek = environment();
+  withCheek.parameters.push(["ParamCheek", 0, 1, 0]);
+  withCheek.values.push(0);
+  const held = await adapterWith(withCheek, {}, t);
+  assert.equal(held.adapter.gesture("blush_fierce", true), true);
+  for (let i = 0; i < 20; i++) held.adapter.update(0.1);
+  assert.equal(held.gestures.at(-1).ParamCheek, 1, "the model's own blush, fully, under Martlet's drawing");
+  assert.deepEqual(held.adapter.gestureState, { held: ["blush_fierce"] });
+  held.adapter.endGesture("blush_fierce");
+  for (let i = 0; i < 10; i++) held.adapter.update(0.1);
+  assert.equal(held.gestures.at(-1), undefined, "turned off, it fades out and ends");
+});
+
 const near = (a, b, tolerance = 1e-3) => Math.hypot(a.x - b.x, a.y - b.y) < tolerance;
 
 test("a face pinned to mesh vertices follows them however they move, turn, tilt and squash", () => {
@@ -137,11 +159,12 @@ test("a face pinned to mesh vertices follows them however they move, turn, tilt 
 // nod with ParamAngleY and tilt about the neck with ParamAngleZ, and the whole upper body sways with ParamBodyAngleZ; the
 // hair also swings with ParamHairFront (physics), the mouth opens with ParamMouthOpenY and the eyelid closes with
 // ParamEyeLOpen. Model units, y up, on the fixture's 2 by 4 canvas.
-function rig({ headShift = false } = {}) {
+function rig({ headShift = false, eyes } = {}) {
   const env = environment();
   for (const parameter of [["ParamAngleX", -30, 30, 0], ["ParamAngleY", -30, 30, 0], ["ParamAngleZ", -30, 30, 0],
     ["ParamBodyAngleZ", -10, 10, 0], ["ParamHairFront", -1, 1, 0], ["ParamMouthOpenY", 0, 1, 0], ["ParamEyeLOpen", 0, 1, 1],
-    ...headShift ? [["ParamHeadShift", -1, 1, 0]] : []]) {
+    ...headShift ? [["ParamHeadShift", -1, 1, 0]] : [],
+    ...eyes ? [["ParamEyeROpen", 0, 1, 1], ["ParamEyeBallX", -1, 1, 0], ["ParamEyeBallY", -1, 1, 0]] : []]) {
     env.parameters.push(parameter);
     env.values.push(parameter[3]);
   }
@@ -152,6 +175,15 @@ function rig({ headShift = false } = {}) {
       points.push(x0 + (x1 - x0) * i / (columns - 1), y0 + (y1 - y0) * j / (rows - 1));
     return new Float32Array(points);
   };
+  // Two triangles for each cell of a grid made by `grid`.
+  const cells = (columns, rows) => {
+    const indices = [];
+    for (let i = 0; i + 1 < columns; i++) for (let j = 0; j + 1 < rows; j++) {
+      const a = i * rows + j, b = (i + 1) * rows + j;
+      indices.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+    return new Uint16Array(indices);
+  };
   const meshes = [
     { id: "D_FACE_00", rest: grid(-0.3, 0.3, 0.85, 1.55, 7, 8), head: true },
     { id: "D_HAIR_FRONT", rest: new Float32Array([-0.32, 0.9, -0.32, 1.2, -0.3, 1.5, 0.32, 0.9, 0.32, 1.2, 0.3, 1.5, -0.2, 1.62, 0, 1.66, 0.2, 1.62]),
@@ -160,6 +192,19 @@ function rig({ headShift = false } = {}) {
     { id: "D_EYELID_L", rest: grid(-0.18, -0.06, 1.24, 1.3, 3, 2), head: true, local: (x, y) => [x, y - 0.03 * (1 - value("ParamEyeLOpen"))] },
     { id: "D_BODY", rest: grid(-0.6, 0.6, -1.8, 0.8, 7, 9), head: false },
   ];
+  // Each eye (the viewer's left at x -0.12, the right at 0.12): an eye white 0.16 by 0.12 that closes toward 1.24 with its
+  // open parameter (ParamEyeROpen is the character's right eye, on the viewer's left), clipping an iris 0.08 by 0.1 and a
+  // small highlight, which ParamEyeBallX and ParamEyeBallY move 0.03 across and 0.02 up.
+  if (eyes === "mesh") for (const [side, x, open] of [["L", -0.12, "ParamEyeROpen"], ["R", 0.12, "ParamEyeLOpen"]]) {
+    const white = meshes.length, ball = (px, py) => [px + 0.03 * value("ParamEyeBallX"), py + 0.02 * value("ParamEyeBallY")];
+    meshes.push({ id: `D_EYE_WHITE_${side}`, rest: grid(x - 0.08, x + 0.08, 1.21, 1.33, 4, 3), indices: cells(4, 3), head: true,
+      local: (px, py) => [px, 1.24 + (py - 1.24) * value(open)] });
+    meshes.push({ id: `D_IRIS_${side}`, rest: grid(x - 0.04, x + 0.04, 1.22, 1.32, 3, 3), indices: cells(3, 3), head: true,
+      masks: [white], local: ball });
+    meshes.push({ id: `D_HIGHLIGHT_${side}`, rest: grid(x - 0.02, x, 1.29, 1.31, 2, 2), indices: cells(2, 2), head: true,
+      masks: [white], local: ball });
+  }
+  const hidden = new Set();
   const turn = (x, y, angle, px, py) => [px + (x - px) * Math.cos(angle) - (y - py) * Math.sin(angle),
     py + (x - px) * Math.sin(angle) + (y - py) * Math.cos(angle)];
   // Where a rest point of the head (or the body) is in the pose the parameters set now.
@@ -175,11 +220,12 @@ function rig({ headShift = false } = {}) {
   Object.assign(env.model, {
     getDrawableCount: () => meshes.length,
     getDrawableVertexCount: i => meshes[i].rest.length / 2,
-    getDrawableVertexIndexCount: () => 3,
-    getDrawableVertexIndices: () => new Uint16Array([0, 1, 2]),
+    getDrawableVertexIndexCount: i => meshes[i].indices?.length ?? 3,
+    getDrawableVertexIndices: i => meshes[i].indices ?? new Uint16Array([0, 1, 2]),
     getDrawableRenderOrders: () => Int32Array.from(meshes.keys()),
     getDrawableId: i => ({ getString: () => ({ s: meshes[i].id }) }),
     getDrawableVertices: i => current[i],
+    getDrawableDynamicFlagIsVisible: i => !hidden.has(meshes[i].id),
     getParameterValueByIndex: i => env.values[i],
     update: () => meshes.forEach((mesh, m) => {
       for (let v = 0; v < mesh.rest.length; v += 2) {
@@ -187,9 +233,13 @@ function rig({ headShift = false } = {}) {
         [current[m][v], current[m][v + 1]] = pose(x, y, mesh.head);
       }
     }),
+    ...eyes === "mesh" ? {
+      getDrawableMasks: () => meshes.map(mesh => Int32Array.from(mesh.masks ?? [])),
+      getDrawableMaskCounts: () => Int32Array.from(meshes, mesh => mesh.masks?.length ?? 0),
+    } : {},
   });
   const set = values => { for (const [id, v] of Object.entries(values)) env.values[env.parameters.findIndex(p => p[0] === id)] = v; env.model.update(); };
-  return { env, set, pose: (p, head = true) => { const [x, y] = pose(p.x, p.y, head); return { x, y }; } };
+  return { env, set, hidden, meshes, pose: (p, head = true) => { const [x, y] = pose(p.x, p.y, head); return { x, y }; } };
 }
 
 test("a Live2D face is pinned to the meshes that ride the head, so the blush follows the head and body as drawn", async t => {
@@ -257,4 +307,148 @@ test("a face found by vision is pinned where the meshes are drawn now, then foll
   const upright = adapter.faceAnchor(), back = -10 * Math.PI / 180;
   assert.ok(near(upright, toCanvas({ x: -0.4 * Math.sin(back), y: 0.8 + 0.4 * Math.cos(back) })), JSON.stringify(upright));
   assert.ok(Math.abs(upright.angle - 10 * Math.PI / 180) < 1e-4, String(upright.angle));
+});
+
+// Canvas pixels (the fixture's 640 by 480 canvas, fitting the model's 4-unit height) from model units, and back.
+const toCanvas = p => ({ x: (p.x * 0.375 + 1) * 320, y: (1 - 0.5 * p.y) * 240 });
+const inShape = (shape, point) => {
+  for (let k = 0; k + 2 < shape.triangles.length; k += 3) {
+    const [a, b, c] = [0, 1, 2].map(n => shape.points[shape.triangles[k + n]]);
+    const side = (p, q) => (q.x - p.x) * (point.y - p.y) - (q.y - p.y) * (point.x - p.x);
+    const s = [side(a, b), side(b, c), side(c, a)];
+    if (s.every(v => v >= 0) || s.every(v => v <= 0)) return true;
+  }
+  return false;
+};
+const spread = (points, key) => Math.max(...points.map(p => p[key])) - Math.min(...points.map(p => p[key]));
+
+async function loaded(t, options) {
+  const made = rig(options);
+  const adapter = new Live2DAdapter(made.env.canvas, { sdk: made.env.sdk, services: made.env.services, onDiagnostic: () => {} });
+  t.after(() => adapter.dispose());
+  await adapter.load(new LocalModelBundle(files(), "avatar.model3.json"));
+  return { ...made, adapter };
+}
+
+test("each eye's iris and opening come from the model's meshes: the eyeballs move the iris, the blink closes its eye white", async t => {
+  const { adapter, set, hidden } = await loaded(t, { eyes: "mesh" });
+  assert.equal(adapter.eyesFrom, "mesh");
+  assert.equal(adapter.faceTracking.carriers, 56, "the eyes deform on their own, so they carry nothing");
+  const rest = adapter.faceAnchor();
+  assert.equal(rest.eyesFrom, "mesh");
+  for (const [side, x] of [["Left", -0.12], ["Right", 0.12]]) {
+    const iris = rest[`iris${side}`], shape = rest[`eye${side}Shape`];
+    assert.ok(near(iris, toCanvas({ x, y: 1.27 })) && Math.abs(iris.rx - 4.8) < 1e-3 && Math.abs(iris.ry - 6) < 1e-3,
+      `${side}: the iris drawable's box, not its highlight's: ${JSON.stringify(iris)}`);
+    assert.equal(shape.points.length, 12);
+    assert.equal(shape.triangles.length, 36, "the eye white's triangles");
+    assert.ok(inShape(shape, iris));
+    assert.ok(near(rest[`eye${side}`], toCanvas({ x, y: 1.27 })), "the eye's middle is its eye white's middle");
+  }
+
+  set({ ParamEyeBallX: 1, ParamEyeBallY: -1 });
+  const looking = adapter.faceAnchor();
+  assert.ok(near(looking.irisLeft, toCanvas({ x: -0.09, y: 1.25 })), "looking right and down, the iris goes with it");
+  assert.ok(near(looking.eyeLeft, rest.eyeLeft), "the eye's middle doesn't");
+
+  set({ ParamEyeBallX: 0, ParamEyeBallY: 0, ParamEyeLOpen: 0.25 });
+  const blinking = adapter.faceAnchor();
+  assert.ok(Math.abs(spread(blinking.eyeRightShape.points, "y") - 0.25 * spread(rest.eyeRightShape.points, "y")) < 1e-3,
+    "ParamEyeLOpen closes the character's left eye: the one on the viewer's right");
+  assert.ok(Math.abs(spread(blinking.eyeLeftShape.points, "y") - spread(rest.eyeLeftShape.points, "y")) < 1e-3);
+
+  // A tilted head: the iris's radii stay across and down the face.
+  set({ ParamEyeLOpen: 1, ParamAngleZ: 30 });
+  const tilted = adapter.faceAnchor();
+  assert.ok(Math.abs(tilted.irisRight.rx - 4.8) < 1e-3 && Math.abs(tilted.irisRight.ry - 6) < 1e-3, JSON.stringify(tilted.irisRight));
+  assert.ok(inShape(tilted.eyeRightShape, tilted.irisRight));
+
+  // An eye white that showed at rest and is hidden now (a closed-eye swap) empties that eye.
+  hidden.add("D_EYE_WHITE_R");
+  const swapped = adapter.faceAnchor();
+  assert.deepEqual([swapped.eyeRightShape.points.length, swapped.eyeRightShape.triangles.length], [0, 0]);
+  assert.equal(swapped.eyeLeftShape.points.length, 12);
+});
+
+test("eyes the meshes can't give plausibly are left to the drawings' own estimate", async t => {
+  // Irises wider than the face, or without an eye white to clip them, are not irises Martlet can use.
+  const widen = made => made.meshes.filter(m => m.id.startsWith("D_IRIS")).forEach(m => {
+    const middle = (m.rest[0] + m.rest[m.rest.length - 2]) / 2;
+    for (let v = 0; v < m.rest.length; v += 2) m.rest[v] = middle + 8 * (m.rest[v] - middle);
+  });
+  for (const spoil of [widen, made => made.meshes.forEach(m => { delete m.masks; })]) {
+    const made = rig({ eyes: "mesh" });
+    spoil(made);
+    made.env.model.update();
+    const adapter = new Live2DAdapter(made.env.canvas, { sdk: made.env.sdk, services: made.env.services, onDiagnostic: () => {} });
+    t.after(() => adapter.dispose());
+    await adapter.load(new LocalModelBundle(files(), "avatar.model3.json"));
+    assert.equal(adapter.eyesFrom, "estimate");
+    const anchor = adapter.faceAnchor();
+    assert.equal(anchor.eyesFrom, "estimate");
+    for (const key of ["irisLeft", "irisRight", "eyeLeftShape", "eyeRightShape"]) assert.equal(anchor[key], undefined, key);
+    adapter.dispose();
+  }
+});
+
+const hint = { left: { iris: { x: -0.2, y: 0, r: 0.06 }, eye: { x: -0.2, y: 0, rx: 0.12, ry: 0.08 } },
+  right: { iris: { x: 0.2, y: 0.01, r: 0.06 }, eye: { x: 0.2, y: 0, rx: 0.12, ry: 0.08 } } };
+
+test("eyes measured by vision follow the face, the gaze and the blink when the meshes can't give them", async t => {
+  const { adapter, set } = await loaded(t, { eyes: "params" });
+  assert.equal(adapter.eyesFrom, "estimate");
+  assert.equal(adapter.setEyeHint({ left: { iris: { x: 9, y: 0, r: 0.1 }, eye: { x: 0, y: 0, rx: 0.1, ry: 0.1 } } }), "estimate",
+    "an eye 9 face widths away is ignored");
+  assert.equal(adapter.setEyeHint(hint), "vision");
+  // The face (the skin's box) is 0.6 units wide with its middle at (0, 1.235): 72 canvas pixels wide.
+  const rest = adapter.faceAnchor();
+  assert.equal(rest.eyesFrom, "vision");
+  assert.ok(near(rest.eyeLeft, toCanvas({ x: -0.12, y: 1.235 })), JSON.stringify(rest.eyeLeft));
+  assert.ok(near(rest.irisRight, toCanvas({ x: 0.12, y: 1.235 - 0.006 })), "the iris sits where vision saw it");
+  assert.ok(Math.abs(rest.irisLeft.rx - 0.06 * 72) < 1e-3 && Math.abs(rest.irisLeft.ry - 0.06 * 72) < 1e-3);
+  assert.equal(rest.eyeLeftShape.points.length, 24);
+  assert.equal(rest.eyeLeftShape.triangles, undefined, "a closed outline");
+  assert.ok(Math.abs(spread(rest.eyeLeftShape.points, "x") - 2 * 0.12 * 72) < 0.1 &&
+    Math.abs(spread(rest.eyeLeftShape.points, "y") - 2 * 0.08 * 72) < 0.1);
+
+  // Looking right, the iris moves through the room its eye leaves around it (0.12 - 0.06 face widths).
+  set({ ParamEyeBallX: 1 });
+  assert.ok(near(adapter.faceAnchor().irisLeft, { x: rest.irisLeft.x + 0.06 * 72, y: rest.irisLeft.y }));
+  // The character's right eye (on the viewer's left) closes with ParamEyeROpen.
+  set({ ParamEyeBallX: 0, ParamEyeROpen: 0.5 });
+  const half = adapter.faceAnchor();
+  assert.ok(Math.abs(spread(half.eyeLeftShape.points, "y") - 0.5 * spread(rest.eyeLeftShape.points, "y")) < 0.1);
+  assert.ok(Math.abs(spread(half.eyeRightShape.points, "y") - spread(rest.eyeRightShape.points, "y")) < 0.1);
+  // Tilted with the head, pinned to the face like its other features.
+  set({ ParamEyeROpen: 1, ParamAngleZ: 30 });
+  const tilted = adapter.faceAnchor();
+  const roll = 10 * Math.PI / 180, around = (p, c) => ({ x: c.x + (p.x - c.x) * Math.cos(roll) - (p.y - c.y) * Math.sin(roll),
+    y: c.y + (p.x - c.x) * Math.sin(roll) + (p.y - c.y) * Math.cos(roll) });
+  assert.ok(near(tilted.eyeLeft, toCanvas(around({ x: -0.12, y: 1.235 }, { x: 0, y: 0.8 }))), JSON.stringify(tilted.eyeLeft));
+
+  assert.equal(adapter.setEyeHint(undefined), "estimate");
+  assert.equal(adapter.faceAnchor().irisLeft, undefined);
+});
+
+test("the meshes win over the hint for each eye, and one eye left without either keeps the source at estimate", async t => {
+  const { adapter } = await loaded(t, { eyes: "mesh" });
+  assert.equal(adapter.setEyeHint(hint), "mesh", "both eyes come from the meshes");
+  const anchor = adapter.faceAnchor();
+  assert.ok(Math.abs(anchor.irisLeft.rx - 4.8) < 1e-3, "the mesh's iris, not the hint's");
+  adapter.dispose();
+
+  const made = rig({ eyes: "mesh" });
+  // Only the viewer's left eye has an iris the eyeballs move.
+  made.meshes.find(m => m.id === "D_IRIS_R").local = undefined;
+  made.meshes.find(m => m.id === "D_HIGHLIGHT_R").local = undefined;
+  const one = new Live2DAdapter(made.env.canvas, { sdk: made.env.sdk, services: made.env.services, onDiagnostic: () => {} });
+  t.after(() => one.dispose());
+  await one.load(new LocalModelBundle(files(), "avatar.model3.json"));
+  assert.equal(one.eyesFrom, "estimate");
+  const half = one.faceAnchor();
+  assert.ok(half.irisLeft && half.eyeLeftShape.triangles.length === 36, "the meshes still give the eye they draw");
+  assert.equal(half.irisRight, undefined);
+  assert.equal(one.setEyeHint({ right: hint.right }), "vision");
+  const both = one.faceAnchor();
+  assert.ok(Math.abs(both.irisLeft.rx - 4.8) < 1e-3 && both.eyeRightShape.points.length === 24);
 });

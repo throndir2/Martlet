@@ -83,6 +83,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "host that was down catching up, a host that lost its newest lines in a power cut getting them back, the copy of everyone's " +
             "lines surviving a restart, Save logs to share holding every computer " +
             "and an unsigned request refused. Synthetic lines only; loopback only; the folder is deleted.", new { }),
+        Tool("host_connections_selftest", "Rehearse how the desktop connects to a paired host and reports its status, with the " +
+            "production code: one real gateway on 127.0.0.1 (pinned TLS, signed requests) behind a loopback TCP forwarder stopped and " +
+            "started at the same address, and a simulated desktop checking it as the 15-second sync does (a new paired connection per " +
+            "check) and logging through the desktop's status tracker. Checks that twelve checks share one kept TCP and TLS connection " +
+            "(connections dialed and accepted are counted), that one missed check is not reported, that a host that stops is logged " +
+            "once as stopped answering with the refused address named, and once as answering again when it is back, and that a host " +
+            "missing every other check is never reported. Returns the log lines. Loopback only; writes nothing.", new { }),
         Tool("latency_report", "Summarize voice latency from the desktop log's reply latency lines: for the newest replies, how long " +
             "from when you stopped talking (or sent your message) to the first audio, each step's milliseconds (end of speech, " +
             "speech-to-text, preparing, Thinking connection, hidden reasoning, first sentence, voice synthesis, speakers...), the " +
@@ -184,20 +191,41 @@ internal sealed class McpServer(DesktopAutomation desktop)
             points = new { type = "array", items = new { type = "array", items = new { type = "number", minimum = 0, maximum = 1 }, minItems = 2, maxItems = 2 } },
             stepMs = new { type = "integer", minimum = 10, maximum = 2000 }
         }),
-        Tool("character_face", "Read where Martlet draws over the showing character's face (its own blush glow and overlay emotes " +
+        Tool("character_face", "Read where Martlet draws over the showing character's face (its blush levels blush, blush_deep and blush_fierce, and overlay emotes " +
             "such as hearts or a sweat drop), samples times (1 to 60, default 1) gapMs apart (0 to 5000, default 250), as each frame " +
             "is drawn. Each reading (faces) has n, found, tracking (mesh: pinned to the Live2D model's own face meshes; bones: a " +
             "VRM's head bone; estimate: a Live2D model's head angles, when no face meshes were found), x, y and width (fractions of " +
             "the character overlay's drawing, +y down), tilt (degrees, clockwise), cheekLeft and cheekRight (x, y; visible, 0 to " +
             "1 as the cheek turns away; across, the cheek's width against the face's, below 1 on a turned head's far cheek; and " +
-            "the renderer's hit test there: hit, drawables, bone, mesh), the overlays showing and pinned (Live2D: carriers, the " +
-            "mesh vertices the face rides on, and milliseconds, how long finding them took at load). summary says which tracking " +
-            "was used, how far the face moved (x, y, width, tilt) and, per cheek, the share of readings over the character, " +
-            "what it was mostly over and for what share, the least it showed and its across range. Reading changes nothing, so " +
-            "it needs no --allow-ui-effects.", new
+            "the renderer's hit test there: hit, drawables, bone, mesh), eyeLeft, eyeRight, mouth and top (x, y: the eye and mouth " +
+            "points the overlay emotes such as tears or tongue_out are drawn from, and the top of the head; an eye with a known " +
+            "iris has its point at the eye's middle), the eyes for drawings over them: eyesFrom (mesh: a Live2D " +
+            "model's iris and eye-white meshes; bones: a VRM's eye bones with its iris and eye-white meshes; vision: eyes measured " +
+            "by vision fill what the model can't give; estimate: an eye has neither, so its iris and opening are left out), " +
+            "irisLeft and irisRight (x, y, rx, ry: the iris's middle and radii, x and rx fractions of the drawing's width, y and ry " +
+            "of its height; null when unknown) and eyeLeftShape and eyeRightShape (the eye's visible opening now: points, " +
+            "triangles (null for an outline), its box left, top, right, bottom, and irisInside, whether the iris's middle is in " +
+            "it; 0 points when the eye is closed or hidden), the overlays showing and pinned (Live2D: carriers, the mesh vertices " +
+            "the face rides on, milliseconds, how long finding them took at load, and eyeMilliseconds, how long finding the eyes' " +
+            "meshes took). summary says which tracking was used, how far the face moved (x, y, width, tilt), per cheek the share " +
+            "of readings over the character, what it was mostly over and for what share, the least it showed and its across " +
+            "range, eyesFrom (the sources seen) and per eye (eyeLeft, eyeRight) the share of readings with an iris, how far the " +
+            "iris moved (irisMoved x, y), the share of open readings with the iris inside its opening, the opening's least and " +
+            "most height (a blink closes it) and the share of readings it was closed. Reading changes nothing, so it needs no " +
+            "--allow-ui-effects.", new
         {
             samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumFaceSamples },
             gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
+        }),
+        Tool("character_picture", "Take a picture of the showing character as it shows now: the renderer's own capture of the " +
+            "overlay's page (WebView2), so Martlet's drawings over the face (its blush glow and overlay emotes such as heart eyes) " +
+            "are in it, cropped to the character with a little room. Zoom the character first (SetupCharacterZoomIn) to see small " +
+            "parts such as the eyes larger. Returns taken, picture (n, path: the renderer's PNG file in the temp folder, replaced " +
+            "each time; width and height in pixels; left, top, cropWidth and cropHeight: where it sits on the overlay's drawing, " +
+            "as fractions like character_face's positions; or error) and saved, the copy at outputPath (a full path to a .png " +
+            "file) when given. Taking it changes nothing on the character, so it needs no --allow-ui-effects.", new
+        {
+            outputPath = new { type = "string" }
         }),
         Tool("ui_tray", "Martlet's notification-area icon. \"status\" (default) reads whether the icon is shown, whether the main " +
             "window is visible or hidden in the notification area, whether its menu is open (menuOpen, with the menu's menuBounds " +
@@ -551,16 +579,20 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "them (Martlet.Avatar.Hosting, docs/AVATARS.md \"Emotes and motions\"): modelPath (a .model3.json or .vrm on this PC) or the " +
             "model dataDirectory's avatar.json shows. Returns the renderer, the model's key, how many files the renderer reads (a VTube " +
             "Studio model's .vtube.json and loose .exp3/.motion3 files included) and what came from VTube Studio's settings, then each " +
-            "expression, motion group and Martlet gesture the model's rig supports (nod, shake, tilt, bow, sway; blush on every model, drawn by Martlet " +
-            "as a glow on the cheeks when the model has no ParamCheek or blush expression; Live2D smile, surprise; VRM wave, shrug, bounce; " +
+            "expression, motion group and Martlet gesture the model's rig supports (nod, shake, tilt, bow, sway; the blush levels on every model, " +
+            "faintest first: blush, blush_deep and blush_fierce, one showing at a time; the blush is the model's own ParamCheek or blush expression, " +
+            "or a glow Martlet draws on the cheeks when it has neither, and Martlet draws the stronger levels over the model's own blush; " +
+            "Live2D smile, surprise; VRM wave, shrug, bounce; " +
             "and the voice emotes linked to every voice sound and tone: laugh, chuckle, sigh, gasp, cough, clear_throat, groan, sniff, shush, inhale, exhale, " +
             "mumble, hum, sneeze, whistle, happy, sarcastic, angry, fear, crying, whispering, dramatic; and the overlay emotes drawn over the face of any " +
             "Live2D model or VRM with a head: sweat, anger, hearts, sparkles, tears, gloom, question, exclaim, sleepy, music; then the held face parts " +
             "eyes_up (Live2D ParamEyeBallY, VRM eye bones) and mouth_open (Live2D ParamMouthOpenY, a VRM's oh or aa mouth), which stay on with held " +
-            "gestures that move other parts of the face) with what it changes, its tag, voice cue, when to use it (use: the owner's or the Thinking model's text, null when empty; hint: what the reply prompt says, which is Martlet's own hint while use is null), whether " +
+            "gestures that move other parts of the face; and last more overlay emotes: heart_eyes, star_eyes, tongue_out, drool, steam, dizzy, idea, " +
+            "ellipsis) with what it changes, its tag, voice cue, when to use it (use: the owner's or the Thinking model's text, null when empty; hint: what the reply prompt says, which is Martlet's own hint while use is null), whether " +
             "it is on, its mode (brief, or lingering: stays on after {tag} until {/tag}; modeSaved false when it is the default, " +
             "vtsToggle when a VTube Studio ToggleExpression hotkey turns it on) and whether replies are offered it for engine (a voice engine key; \"none\" or absent: a voice without tags); the " +
-            "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; the reply prompt and tags " +
+            "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; " +
+            "blushLevels (the model's blush levels, faintest first: level, n, id, kind, name, tag, mode and offered); the reply prompt and tags " +
             "(lingering emotes add their {/tag} off tags); with showing (tags the character would show now, as \"glasses\" or " +
             "\"glasses:12\" for 12 minutes) also showingNote, the line the newest message's notes get; " +
             "and the Thinking naming prompt. With voiceTag (a voice's tag such as \"[laugh]\" or \"(sighs)\", or a reply tag such as " +
@@ -613,9 +645,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "snapshotPath as their picture, and with detect the pictures sent; includeIntimate sets Include intimate zones) into an explicit, " +
             "disposable dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
             "{\"attitude\":2,\"reactions\":[\"hearts\",\"blush\"],\"linger\":3}},\"zones\":{...},\"escalation\":{\"after\":3,...}}) or " +
-            "personaId (the temperament saved in the dataDirectory's character-temperaments.json) decides what the touch plays when the " +
-            "zone has no pick of its own, with repeats (touches in a row, for escalation); personality shows the request Thinking gets. " +
-            "Contacts nothing; never returns the model's path.", new
+            "personaId (the temperament that persona uses in the dataDirectory's character-temperaments.json: its own, the built-in " +
+            "reactions or a custom one) decides what the touch plays when the zone has no pick of its own, with repeats (touches in a " +
+            "row, for escalation); personality shows the request Thinking gets. The result's temperament also lists the categories with " +
+            "the zone kinds each covers (intimate holds every intimate kind), the custom temperaments and which temperament each persona " +
+            "uses. Contacts nothing; never returns the model's path.", new
         {
             dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, modelId = new { type = "string" },
             answer = new { type = "string" }, width = new { type = "integer" }, height = new { type = "integer" },
@@ -626,11 +660,31 @@ internal sealed class McpServer(DesktopAutomation desktop)
             previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 },
             failAt = new { type = "integer", minimum = 1 }, probePath = new { type = "string" }
         }),
+        Tool("character_eyes", "Companion > Character > Touch zones > Eyes (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
+            "with NO vision request: the request the vision model gets (a close-up of the face, 1.6 face widths square, about 768 pixels " +
+            "with a grid; its instructions, message, the check message and the message after an unreadable answer), what the production " +
+            "parser, checks and conversion make of answer (a simulated vision reply about the close-up: {\"left\":{\"iris\":{\"left\",\"top\"," +
+            "\"right\",\"bottom\"},\"eye\":{...}},\"right\":{...}} as fractions, pixels or 0..1000, or flat keys such as left_iris) and, when it " +
+            "fails, of second (the answer to the check with its boxes drawn and numbered, or to the question again): the steps, the four " +
+            "boxes, the problems Martlet's checks found and the renderer's eye hint (each eye's iris {x,y,r} and opening {x,y,rx,ry} in " +
+            "face widths from the face's middle, roll removed). Without snapshotPath the close-up is exactly 1.6 face widths around an " +
+            "upright face; with snapshotPath (a PNG of the character, transparent around it) and face (\"x,y,width[,rollDegrees]\", the " +
+            "face's middle and width as fractions of the snapshot) the production close-up is composed and encoded as the desktop sends " +
+            "it (previewDirectory keeps the pictures). save writes the measurement (with the pictures and the picture of its boxes) for " +
+            "the model (modelPath, modelId or the model dataDirectory's avatar.json shows) into an explicit, disposable dataDirectory, as " +
+            "Measure the eyes would (marked FIXTURE - NOT AI); forget removes it. eyesFrom (mesh, bones, vision or estimate: what the " +
+            "renderer says the eyes use) shows the status line the section shows. Contacts nothing; never returns the model's path.", new
+        {
+            dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, modelId = new { type = "string" },
+            answer = new { type = "string" }, second = new { type = "string" }, snapshotPath = new { type = "string" }, face = new { type = "string" },
+            previewDirectory = new { type = "string" }, save = new { type = "boolean" }, forget = new { type = "boolean" },
+            eyesFrom = new { type = "string", @enum = new[] { "mesh", "bones", "vision", "estimate" } }
+        }),
         Tool("character_gaze", "Where the character looks (Companion > Character > Where the character looks, the overlay's Eyes " +
             "menu and Companion > Vision > Glances at your screen; docs/SCREEN_COMMENTARY.md \"Where the character looks\"): usual " +
             "is the usual gaze saved in a data directory's talk-preferences.json (GazeUsual: personality, mouse, near, ahead or " +
-            "window; GazeFree: whether the character may change it in replies), the persona's gaze from character-temperaments.json " +
-            "(the active persona, or personaId), the gaze that applies and who set it, what every reply is told about it and the " +
+            "window; GazeFree: whether the character may change it in replies), the gaze of the touch temperament the persona uses in " +
+            "character-temperaments.json (its own or a custom one; the active persona, or personaId), the gaze that applies and who set it, what every reply is told about it and the " +
             "note while its own choice holds the eyes. aim rehearses the production CharacterGaze.Aim the overlay runs for each " +
             "gaze (a mouse far from and near the character, a window, a touch's look at the mouse, a glance). saved is the glances " +
             "choice (DecideGaze: usual gaze unless Martlet decides), then a rehearsal of the production decision " +
@@ -1347,6 +1401,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "canceling one, who says a due reminder (both offer, the PC used most recently takes it, the other stays quiet), the " +
             "conversation's wording through BackgroundJobs (on its own as soon as Martlet is free, or in the notes of the next " +
             "message), a PC alone taking it at once and one far too late let go. No model, network or credentials.", new { }),
+        Tool("setup_run_status", "Applying the recommended setup to all your computers and the Configuring state (docs/CLUSTER.md), " +
+            "from a data directory: every computer's published run (shared-settings.json, setup-run.<device>: who started it and when, " +
+            "whether it is active, its summary, each computer's state Pending/Configuring/Done/Failed/NeedsAttention with its step " +
+            "and step count, when it finished), who does each job in cluster.json (with failover) and Sharing work (work-sharing.json). " +
+            "Machine IDs, role names and counts only. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("setup_run_check", "Rehearse applying a recommended setup with the production executor (SetupExecutor) on a fixture " +
+            "recommendation against simulated computers (FIXTURE, NOT real hosts): the preflight (a role's terms and variant terms, " +
+            "a graphics card by UUID, an NGC key the owner enters, a change that needs someone there, a computer without a host " +
+            "service, the Thinking pool joining by itself, downloads), then the run: the host commands sent in order with their " +
+            "arguments and the secret only to its role, terms recorded as accepted, the plan assignments with failover, Sharing work, " +
+            "one cluster check, a failed step that doesn't stop the others, a change missing from the review skipped, and the run " +
+            "record's states as every computer reads it from the shared settings. In-process; no network, model or credential.", new { }),
         Tool("helper_jobs_status", "Where Martlet's helper jobs ran last, from a data directory's helper-jobs.json (written by the " +
             "desktop): for each kind (memory: remembering and learning names after a reply; action_naming: naming a character's " +
             "emotes; touch_zones: finding its touch zones in one picture) its priority, whether it ran on a Thinking pool member " +
@@ -1521,6 +1590,24 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "first, four segments at once spread over both, a computer kept for one companion PC or unticked for a job left out, " +
             "an unanswering computer skipped, Deep thinking leaving out a kept computer, and the shared setting's round trip. " +
             "In-process; reads nothing.", new { }),
+        Tool("recommended_setup_status", "Home's Recommended setup without the desktop: builds the network recommender's request with " +
+            "the desktop's own builder from a data directory (hosts.json, host-hardware.json, cluster.json, settings.json, " +
+            "work-sharing.json, thinking-pool.json, speaking-engine.txt; every host counts as online, roles are the shared plan's " +
+            "record) or, with fixture \"network\", from a built-in four-computer network (NOT real computers), runs the production " +
+            "recommender (NetworkRecommender) and lists the computers (kind, planned or left as they are, manageable), today's jobs " +
+            "and Thinking pool, the recommended changes (summary, why, benefit, downloads, someone needed at the computer), each " +
+            "computer's recommended roles and load, and whether a companion PC in use would ask (declined setups in " +
+            "recommended-setup.json count). Read-only; contacts nothing and reads no keys.", new
+        {
+            dataDirectory = new { type = "string" },
+            fixture = new { type = "string", @enum = new[] { "network" } }
+        }),
+        Tool("network_recommendation_check", "Rehearse Home's Recommended setup for all your computers with the production network " +
+            "recommender (NetworkRecommender) on built-in fixture networks, NOT real computers: two companion PCs and two hosts with " +
+            "nothing set up, a host with two NVIDIA cards, a Windows host whose voice shares its card, a crowded network, Deep " +
+            "thinking beside the voice, heavy roles on a companion PC, Thinking with only a processor host, hosted Thinking the owner " +
+            "chose, a host left out of the Thinking pool, the voice host away 4 and 25 minutes, and the applied recommendation. Each " +
+            "step names its rule (1-12), passed and the change list, target roles, jobs, pools and notes. In-process; reads nothing.", new { }),
         Tool("node_presence_status", "When your other computers go away or come back, from a data directory: the per-PC away time " +
             "(node-presence.txt; Settings > Your other computers, default 10 minutes), the rules (missing after 30 seconds without " +
             "an answer, back after 30 seconds of answers, the back notice shown 10 minutes) and the report the desktop writes when " +
@@ -1674,6 +1761,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "source")),
                 "logs_export" => LogTimeline.Export(OptionalString(arguments, "dataDirectory"), RequiredString(arguments, "outputPath")),
                 "logs_share_selftest" => await NodeLinkCheckAsync(cancellation, "logs"),
+                "host_connections_selftest" => await NodeLinkCheckAsync(cancellation, "host-connections"),
                 "latency_report" => LatencyReport.Read(OptionalString(arguments, "dataDirectory"), OptionalInt(arguments, "replies")),
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
@@ -1691,6 +1779,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 OptionalInt(arguments, "settleMs")),
                 "character_stroke" => await desktop.StrokeCharacterAsync(StrokePoints(arguments), OptionalInt(arguments, "stepMs") ?? 40),
                 "character_face" => await desktop.FaceCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
+                "character_picture" => await desktop.PictureCharacterAsync(OptionalString(arguments, "outputPath")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
                 "turn_judge_check" => await TurnJudgeCheck.RunAsync(arguments, MartletDirectory(arguments), cancellation),
@@ -1743,6 +1832,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalInt(arguments, "repeats"), OptionalBool(arguments, "detect") ?? false, OptionalString(arguments, "guess"),
                     OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt"),
                     OptionalString(arguments, "probePath")),
+                "character_eyes" => await CharacterEyesCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "dataDirectory") is not null,
+                    OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"), OptionalString(arguments, "answer"),
+                    OptionalString(arguments, "second"), OptionalString(arguments, "snapshotPath"), OptionalString(arguments, "face"),
+                    OptionalString(arguments, "previewDirectory"), OptionalBool(arguments, "save") ?? false, OptionalBool(arguments, "forget") ?? false,
+                    OptionalString(arguments, "eyesFrom"), cancellation),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),
@@ -1822,6 +1916,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalBool(arguments, "live") ?? false, cancellation),
                 "reminders_status" => await RemindersCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "reminders_check" => await RemindersCheck.RunAsync(cancellation),
+                "setup_run_status" => await SetupRunCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "setup_run_check" => await SetupRunCheck.RunAsync(cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "helper_jobs_status" => HelperJobsCheck.Status(DataDirectory(arguments)),
                 "helper_jobs_check" => await HelperJobsCheck.RunAsync(cancellation),
@@ -1836,6 +1932,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "live_floor_check" => await LiveFloorCheck.RunAsync(OptionalStrings(arguments, "said")?.Take(32).ToArray(), cancellation),
                 "work_sharing_status" => await WorkSharingCheck.StatusAsync(DataDirectory(arguments), OptionalString(arguments, "deviceId"), cancellation),
                 "work_sharing_check" => await WorkSharingCheck.RunAsync(cancellation),
+                "recommended_setup_status" => OptionalString(arguments, "fixture") is { } setupFixture
+                    ? await RecommendedSetupStatus.RunAsync(null, setupFixture, cancellation)
+                    : await RecommendedSetupStatus.RunAsync(DataDirectory(arguments), null, cancellation),
+                "network_recommendation_check" => NetworkRecommendationCheck.Run(),
                 "node_presence_status" => NodePresenceCheck.Status(DataDirectory(arguments)),
                 "node_presence_check" => NodePresenceCheck.Run(),
                 "discord_reply_status" => DiscordReplyCheck.Status(DataDirectory(arguments)),
@@ -2638,6 +2738,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
         }
         var extras = vrm ? null : Martlet.Avatar.Hosting.LocalAvatarFiles.Extras(assets, Path.GetFileName(path));
         var voiceTag = OptionalString(arguments, "voiceTag");
+        // Each blush level the model has, faintest first: Martlet's gesture, or for the blush the model's own emote tagged blush
+        // when it replaces the gesture.
+        var offeredNow = catalog.Offered(engine).Select(e => e.Source.Id).ToHashSet(StringComparer.Ordinal);
+        var rows = catalog.Entries.Select((e, n) => (e.Source, e.Action, N: n)).ToArray();
+        var blushLevels = Martlet.Avatar.Hosting.CharacterActionInventory.BlushLevels.Select((level, i) =>
+        {
+            var row = rows.FirstOrDefault(r => r.Source.Id == "gesture:" + level);
+            if (row.Source is null) row = rows.FirstOrDefault(r => string.Equals(r.Action.Tag, level, StringComparison.OrdinalIgnoreCase));
+            return row.Source is null ? null : new
+            {
+                level = i + 1, n = row.N, id = row.Source.Id, kind = row.Source.Kind.ToString().ToLowerInvariant(), name = row.Source.Name,
+                tag = row.Action.Tag, mode = row.Action.Mode ?? Martlet.Avatar.Hosting.CharacterActions.DefaultMode(row.Source, row.Action.Tag),
+                offered = offeredNow.Contains(row.Source.Id)
+            };
+        }).Where(level => level is not null).ToArray();
         return new
         {
             renderer = avatarRenderer.ToString(), key = inventory.ModelId[..16], files = assets.Count,
@@ -2649,7 +2764,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 expressions = extras.Expressions.Select(e => new { e.Name, e.File }), motions = extras.Motions.Select(m => new { m.Group, m.File })
             },
             saved = saved is not null, detectedBy = catalog.Settings.DetectedBy, detectedAt = catalog.Settings.DetectedAt,
-            engine = engine?.Key, actions = Describe(catalog),
+            engine = engine?.Key, actions = Describe(catalog), blushLevels,
             replyPrompt = reply?.Instructions, replyTags = reply?.Tags, showingNote = reply?.Showing,
             namingPrompt = naming is { } ask ? new { instructions = ask.Instructions, list = ask.List } : null,
             combos = catalog.Combos.Select((c, n) => new

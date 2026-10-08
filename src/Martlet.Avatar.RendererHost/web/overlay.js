@@ -3,12 +3,22 @@
 // reports; the layer fades it in and out and redraws every frame.
 //
 // anchor: { x, y, width, angle, cheekLeft:{x,y}, cheekRight:{x,y}, eyeLeft?, eyeRight?, mouth?, top?, tracking?,
-// cheekLeftFrame?, cheekRightFrame? } in CSS pixels of the page; x/y is the face's middle, width the face's width (zoom
-// included), angle its roll in radians (clockwise on screen), Left/Right the viewer's left and right. The adapters read it
-// from what they draw each frame (`tracking`: "mesh" when pinned to a Live2D model's own meshes, "bones" from a VRM's head
-// bone, "estimate" from Live2D's head angles), so it follows every move of the head. A cheek's frame is how its surface
-// shows now: `right` and `down`, the steps for one face width across and down it (a turned head squashes the far cheek), and
-// `visible`, 0 to 1 as it turns away.
+// cheekLeftFrame?, cheekRightFrame?, irisLeft?, irisRight?, eyeLeftShape?, eyeRightShape?, eyesFrom? } in CSS pixels of the
+// page; x/y is the face's middle, width the face's width (zoom included), angle its roll in radians (clockwise on screen),
+// Left/Right the viewer's left and right. The adapters read it from what they draw each frame (`tracking`: "mesh" when pinned
+// to a Live2D model's own meshes, "bones" from a VRM's head bone, "estimate" from Live2D's head angles), so it follows every
+// move of the head. A cheek's frame is how its surface shows now: `right` and `down`, the steps for one face width across and
+// down it (a turned head squashes the far cheek), and `visible`, 0 to 1 as it turns away.
+//
+// The eyes: `irisLeft`/`irisRight` ({x, y, rx, ry}) is an eye's iris now (the coloured part with the pupil): its middle and
+// its radii across and down the face. `eyeLeftShape`/`eyeRightShape` ({points: [{x, y}...], triangles?}) is the eye's visible
+// opening between the eyelids now, following blinks and the head: the union of `triangles` (three indices into `points` for
+// each), or without them the closed outline through `points`; no points when the eye is closed or hidden. At most
+// EYE_SHAPE_POINTS points and EYE_SHAPE_TRIANGLES triangles; a shape over them, or with a number that isn't finite, is
+// dropped. `eyesFrom` says where they came from, for both eyes the weakest: "mesh" (a Live2D model's iris and eye-white
+// meshes), "bones" (a VRM's eye bones with its iris and eye-white meshes), "vision" (the eyes measured by vision fill what
+// the model can't give) or "estimate" (an eye has neither: its iris and shape are left out, and drawings over the eyes use
+// their own estimate around `eyeLeft`/`eyeRight`). An eye with an iris also has `eyeLeft`/`eyeRight` at its middle.
 
 const registry = new Map();
 const active = new Map();
@@ -110,52 +120,188 @@ export function toCssAnchor(face, scaleX, scaleY) {
         visible: Number.isFinite(frame.visible) ? Math.max(0, Math.min(1, frame.visible)) : 1 };
   }
   if (typeof face.tracking === "string") anchor.tracking = face.tracking;
+  addEyes(anchor, face, scaleX, scaleY);
   return [anchor.x, anchor.y, anchor.width].every(Number.isFinite) && anchor.width > 0 ? anchor : undefined;
+}
+
+/** The most points and triangles of one eye's shape (see the header). */
+export const EYE_SHAPE_POINTS = 512, EYE_SHAPE_TRIANGLES = 1024;
+const EYES_FROM = new Set(["mesh", "bones", "vision", "estimate"]);
+
+/** Copies the eye fields (see the header) of adapter anchor `face` onto `anchor` in CSS pixels, dropping any that aren't
+ *  finite or break the caps. */
+function addEyes(anchor, face, scaleX, scaleY) {
+  for (const key of ["irisLeft", "irisRight"]) {
+    const iris = face[key];
+    if (iris && [iris.x, iris.y, iris.rx, iris.ry].every(Number.isFinite) && iris.rx > 0 && iris.ry > 0)
+      anchor[key] = { x: iris.x * scaleX, y: iris.y * scaleY, rx: iris.rx * scaleX, ry: iris.ry * scaleY };
+  }
+  for (const key of ["eyeLeftShape", "eyeRightShape"]) {
+    const shape = cssShape(face[key], scaleX, scaleY);
+    if (shape) anchor[key] = shape;
+  }
+  if (EYES_FROM.has(face.eyesFrom)) anchor.eyesFrom = face.eyesFrom;
+}
+
+function cssShape(shape, scaleX, scaleY) {
+  const points = shape?.points;
+  if (!Array.isArray(points) || points.length > EYE_SHAPE_POINTS) return undefined;
+  const css = new Array(points.length);
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return undefined;
+    css[i] = { x: p.x * scaleX, y: p.y * scaleY };
+  }
+  const triangles = shape.triangles;
+  if (triangles === undefined) return { points: css };
+  if (!Array.isArray(triangles) || triangles.length % 3 !== 0 || triangles.length > 3 * EYE_SHAPE_TRIANGLES) return undefined;
+  for (let i = 0; i < triangles.length; i++)
+    if (!Number.isInteger(triangles[i]) || triangles[i] < 0 || triangles[i] >= css.length) return undefined;
+  return { points: css, triangles };
+}
+
+/** Whether `point` lies inside an eye's shape (see the header): in one of its triangles or inside its outline. */
+export function insideEyeShape(shape, point) {
+  const points = shape?.points;
+  if (!point || !Array.isArray(points) || points.length < 3) return false;
+  const side = (a, b) => (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
+  if (shape.triangles) {
+    for (let k = 0; k + 2 < shape.triangles.length; k += 3) {
+      const a = points[shape.triangles[k]], b = points[shape.triangles[k + 1]], c = points[shape.triangles[k + 2]];
+      const s1 = side(a, b), s2 = side(b, c), s3 = side(c, a);
+      if ((s1 >= 0 && s2 >= 0 && s3 >= 0) || (s1 <= 0 && s2 <= 0 && s3 <= 0)) return true;
+    }
+    return false;
+  }
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const a = points[i], b = points[j];
+    if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
 }
 
 // ---------- the blush ----------
 
-/** Soft pink glows on both cheeks with a few faint diagonal strokes, anime style; the fallback for models without a blush
- *  of their own. Each glow is laid on its cheek's surface (its frame), so it turns, tilts and squashes with the face and
- *  fades as the cheek turns away; without a frame it turns with the face's roll. */
-export function drawBlush(ctx, anchor, _t, weight) {
-  const radius = anchor.width * 0.17;
+/** Martlet's blush levels, faintest first: the blush, a deep blush and a fierce flush. One shows at a time, so a new level
+ *  lets the one before go. A model with a blush of its own shows it for every level, and Martlet draws the stronger levels
+ *  over it, so each level looks different on every model. */
+export const BLUSH_LEVELS = Object.freeze(["blush", "blush_deep", "blush_fierce"]);
+
+// How each level looks, for one face width: the glow's radius, height (squash), strength (alpha) and colors from the middle
+// out, and its strokes (how many, how far apart, how long, their color). The fierce flush also crosses the nose (bridge) and
+// its glow pulses slowly (seconds a pulse).
+const LOOKS = Object.freeze({
+  blush: { radius: 0.17, squash: 0.62, alpha: 0.5, glow: ["rgba(255, 92, 128, 0.85)", "rgba(255, 110, 140, 0.45)", "rgba(255, 130, 150, 0)"],
+    strokes: 3, step: 0.32, length: 0.32, color: "rgba(225, 60, 95, 0.55)" },
+  blush_deep: { radius: 0.2, squash: 0.66, alpha: 0.64, glow: ["rgba(238, 46, 84, 0.9)", "rgba(244, 68, 100, 0.55)", "rgba(250, 96, 122, 0)"],
+    strokes: 5, step: 0.25, length: 0.36, color: "rgba(196, 26, 62, 0.68)" },
+  blush_fierce: { radius: 0.23, squash: 0.7, alpha: 0.76, glow: ["rgba(214, 14, 50, 0.95)", "rgba(226, 30, 64, 0.62)", "rgba(236, 56, 86, 0)"],
+    strokes: 7, step: 0.2, length: 0.4, color: "rgba(160, 8, 40, 0.75)", bridge: true, pulse: 1.6 },
+});
+
+// A soft glow around the origin, `radius` wide and squashed to the look's height.
+function glow(ctx, look, radius) {
+  ctx.scale(1, look.squash);
+  const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+  gradient.addColorStop(0, look.glow[0]);
+  gradient.addColorStop(0.55, look.glow[1]);
+  gradient.addColorStop(1, look.glow[2]);
+  ctx.fillStyle = gradient;
+  ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
+}
+
+// `count` short diagonal strokes side by side around the origin, anime style.
+function hatch(ctx, look, radius, count, scale = 1) {
+  ctx.strokeStyle = look.color;
+  ctx.lineCap = "round";
+  ctx.lineWidth = Math.max(0.75, radius * 0.07);
+  const step = radius * look.step, length = radius * look.length * scale;
+  for (let i = 0; i < count; i++) {
+    const x = (i - (count - 1) / 2) * step;
+    ctx.beginPath();
+    ctx.moveTo(x - length * 0.35, length * 0.5);
+    ctx.lineTo(x + length * 0.35, -length * 0.5);
+    ctx.stroke();
+  }
+}
+
+// Draws one blush level. Each cheek's glow and strokes are laid on its surface (its frame), so they turn, tilt and squash
+// with the face and fade as the cheek turns away; without a frame they turn with the face's roll. A cheek squashed by a
+// turned head keeps fewer of a stronger level's strokes (at least the blush's three). The fierce flush's band over the nose
+// runs between the cheeks, bowed a little toward the eyes, each end as strong as its cheek shows.
+function drawLevel(look, ctx, anchor, t, weight) {
+  const radius = anchor.width * look.radius;
   const c = Math.cos(anchor.angle || 0), s = Math.sin(anchor.angle || 0);
-  for (const [cheek, frame] of [[anchor.cheekLeft, anchor.cheekLeftFrame], [anchor.cheekRight, anchor.cheekRightFrame]]) {
-    if (!cheek) continue;
-    const shown = frame ? frame.visible ?? 1 : 1;
-    if (!(shown > 0.01)) continue;
+  const pulse = look.pulse ? 0.93 + 0.07 * Math.cos(2 * Math.PI * t / look.pulse) : 1;
+  const sides = [[anchor.cheekLeft, anchor.cheekLeftFrame], [anchor.cheekRight, anchor.cheekRightFrame]].map(([cheek, frame]) => cheek && {
+    cheek, shown: Math.min(1, frame ? frame.visible ?? 1 : 1),
     // The cheek's steps across and down for one pixel of face width.
-    const across = frame ? { x: frame.right.x / anchor.width, y: frame.right.y / anchor.width } : { x: c, y: s };
-    const down = frame ? { x: frame.down.x / anchor.width, y: frame.down.y / anchor.width } : { x: -s, y: c };
+    across: frame ? { x: frame.right.x / anchor.width, y: frame.right.y / anchor.width } : { x: c, y: s },
+    down: frame ? { x: frame.down.x / anchor.width, y: frame.down.y / anchor.width } : { x: -s, y: c } });
+  for (const side of sides) {
+    if (!side || !(side.shown > 0.01)) continue;
+    const { cheek, across, down } = side;
     const onCheek = () => { ctx.translate(cheek.x, cheek.y); ctx.transform(across.x, across.y, down.x, down.y, 0, 0); };
-    ctx.globalAlpha = 0.5 * weight * Math.min(1, shown);
+    ctx.globalAlpha = look.alpha * weight * side.shown;
     ctx.save();
     onCheek();
-    ctx.scale(1, 0.62);
-    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
-    glow.addColorStop(0, "rgba(255, 92, 128, 0.85)");
-    glow.addColorStop(0.55, "rgba(255, 110, 140, 0.45)");
-    glow.addColorStop(1, "rgba(255, 130, 150, 0)");
-    ctx.fillStyle = glow;
-    ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
+    if (look.pulse) ctx.globalAlpha *= pulse;
+    glow(ctx, look, radius);
     ctx.restore();
     ctx.save();
     onCheek();
-    ctx.strokeStyle = "rgba(225, 60, 95, 0.55)";
-    ctx.lineCap = "round";
-    ctx.lineWidth = Math.max(0.75, radius * 0.07);
-    const step = radius * 0.32, length = radius * 0.32;
-    for (let i = -1; i <= 1; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * step - length * 0.35, length * 0.5);
-      ctx.lineTo(i * step + length * 0.35, -length * 0.5);
-      ctx.stroke();
-    }
+    hatch(ctx, look, radius, look.strokes > 3 ? Math.max(3, Math.round(look.strokes * Math.min(1, Math.hypot(across.x, across.y))))
+      : look.strokes);
+    ctx.restore();
+  }
+  const [left, right] = sides;
+  if (!look.bridge || !left || !right || !(Math.max(left.shown, right.shown) > 0.01)) return;
+  const dx = right.cheek.x - left.cheek.x, dy = right.cheek.y - left.cheek.y, span = Math.hypot(dx, dy);
+  if (!(span > 1e-6)) return;
+  const along = { x: dx / span, y: dy / span };
+  const eyes = anchor.eyeLeft && anchor.eyeRight
+    ? { x: (anchor.eyeLeft.x + anchor.eyeRight.x) / 2, y: (anchor.eyeLeft.y + anchor.eyeRight.y) / 2 } : { x: anchor.x, y: anchor.y };
+  const lift = { x: 0.15 * (eyes.x - (left.cheek.x + right.cheek.x) / 2), y: 0.15 * (eyes.y - (left.cheek.y + right.cheek.y) / 2) };
+  // A point `f` of the way from the left cheek to the right one, on the band, and how strongly it shows there.
+  const at = f => ({ x: left.cheek.x + dx * f + lift.x * Math.sin(Math.PI * f), y: left.cheek.y + dy * f + lift.y * Math.sin(Math.PI * f),
+    shown: left.shown + (right.shown - left.shown) * f });
+  const onBand = point => { ctx.translate(point.x, point.y); ctx.transform(along.x, along.y, -along.y, along.x, 0, 0); };
+  for (const f of [0.2, 0.35, 0.5, 0.65, 0.8]) {
+    const point = at(f);
+    if (!(point.shown > 0.01)) continue;
+    ctx.save();
+    ctx.globalAlpha = 0.6 * look.alpha * weight * point.shown * pulse;
+    onBand(point);
+    glow(ctx, look, radius * 0.55);
+    ctx.restore();
+  }
+  // Strokes over the nose, as far apart as the cheeks' strokes, so the hatching runs across the face.
+  const step = radius * look.step / span;
+  for (const k of [-1.5, -0.5, 0.5, 1.5]) {
+    const point = at(0.5 + k * step);
+    if (!(point.shown > 0.01)) continue;
+    ctx.save();
+    ctx.globalAlpha = look.alpha * weight * point.shown;
+    onBand(point);
+    hatch(ctx, look, radius, 1, 0.85);
     ctx.restore();
   }
 }
 
+/** Soft pink glows on both cheeks with a few faint diagonal strokes, anime style: the blush, drawn for models without a
+ *  blush of their own. */
+export function drawBlush(ctx, anchor, t, weight) { drawLevel(LOOKS.blush, ctx, anchor, t, weight); }
+
+/** The draw function of a blush level (see BLUSH_LEVELS): the deep blush is redder and wider with more strokes; the fierce
+ *  flush is deep red across both cheeks and over the nose, densely hatched, its glow pulsing slowly. */
+export const blushDrawing = level => {
+  const look = Object.hasOwn(LOOKS, level) ? LOOKS[level] : undefined;
+  if (!look) throw new RangeError(`No blush level is named ${level}.`);
+  return (ctx, anchor, t, weight) => drawLevel(look, ctx, anchor, t, weight);
+};
+
 export function registerBlush(register = registerOverlay) {
   register("blush", { duration: 4, fadeIn: 0.6, fadeOut: 0.6, draw: drawBlush });
+  for (const level of BLUSH_LEVELS.slice(1)) register(level, { duration: 4, fadeIn: 0.6, fadeOut: 0.6, draw: blushDrawing(level) });
 }

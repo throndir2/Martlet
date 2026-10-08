@@ -54,6 +54,9 @@
     <Compile Include="..\Martlet.Desktop\HelperJobs.cs" Link="Shared\HelperJobs.cs" />
     <!-- character_touch_zones detect: the desktop's own snapshot decoding and the pictures the vision model is sent. -->
     <Compile Include="..\Martlet.Desktop\TouchZoneImages.cs" Link="Shared\TouchZoneImages.cs" />
+    <!-- recommended_setup_status: the desktop's own request builder for Home's Recommended setup and its decline memory. -->
+    <Compile Include="..\Martlet.Desktop\RecommendedSetupInputs.cs" Link="Shared\RecommendedSetupInputs.cs" />
+    <Compile Include="..\Martlet.Desktop\RecommendedSetupMemory.cs" Link="Shared\RecommendedSetupMemory.cs" />
     <Page Include="..\Martlet.Desktop\Themes\Controls.xaml" Link="Themes\Controls.xaml" />
     <Page Include="..\Martlet.Desktop\Themes\Motion.xaml" Link="Themes\Motion.xaml" />
   </ItemGroup>

@@ -8,8 +8,8 @@ Martlet measurements**; no GPU/driver/model tuple is qualified yet
 VRAM headroom and measure your own machine. Per-model numbers, with which are
 measured, sourced or estimated, are in [Resource footprints](RESOURCE_FOOTPRINTS.md).
 
-**In the app:** the welcome tour's **Recommend a setup for me**, or **Not sure
-what you need? Get a recommendation** on Home, opens the setup advisor. It asks for
+**In the app:** the welcome tour's **Recommend a setup for me**, or **Plan a
+setup from scratch** on Home, opens the setup advisor. It asks for
 your goal (balanced, smartest, fastest or private), features and computers. For
 computers it reads this PC's graphics card from Windows and fills in each paired
 Martlet host with the GPU it reported (see
@@ -23,6 +23,33 @@ one is missing, **Install on this PC** installs just those; otherwise it saves,
 installs and contacts nothing. The recommendations and availability labels live in
 [`SetupAdvisor.cs`](../src/Martlet.Core/Installation/SetupAdvisor.cs); update
 them when a route ships.
+
+**Recommended setup on Home (the computers you have now):** on a companion PC,
+**Recommended setup** plans all the computers in your Martlet network from what
+this PC already knows. It contacts nothing to plan. It uses each computer's
+hardware report, the roles its last check found, the shared "who does what"
+plan, Devices › Sharing work, the Thinking pool, your voice engine and your
+provider keys ([`RecommendedSetupInputs.cs`](../src/Martlet.Desktop/RecommendedSetupInputs.cs)).
+The network recommender (`NetworkRecommender`) then applies
+[its rules](#recommended-setup-for-all-your-computers). Companion PCs stay light because they often run games, and each graphics
+card runs at most one language model. A review window shows each computer
+today and in the recommended setup, with a resource bar like the Devices page.
+It also shows who does each job (Speaking, Listening, Thinking, lip-sync and the
+Thinking pool) and every change with why. It lists notes, downloads and what
+needs someone at a computer. **Reconfigure** applies the setup on every computer
+and shows its progress. **Not now** closes the review, and this PC doesn't ask
+about the same setup again. Nothing changes before Reconfigure. On a PC that is
+in no Martlet network, the button runs **Set it all up for me** instead: the same
+recommendation for one PC, with one confirmation. When a computer comes back,
+or stays away longer than the time chosen in Settings › Your other computers (10
+minutes by default), each companion PC checks again
+in the background. It never checks while Martlet replies or hears you. When the
+setup is already right, or only minor changes would help, nothing shows (one
+log line). Otherwise the companion PC someone used in the last 10 minutes shows
+**A better setup is ready for your computers** on Home, with **Review**. It
+also shows a notification while Martlet's window is hidden. A companion PC
+that nobody uses keeps the suggestion for an hour and asks when someone uses
+it. Setups declined on that PC are not asked about again.
 
 **Not in the installer:** setup asks no questions, so the advisor above is the
 single place these rules live. The installer only offers to start Martlet, whose
@@ -285,3 +312,82 @@ and Audio2Face. The recommended layouts need these pieces, smallest first:
 See [installation design](INSTALLATION_SUPPORT.md#feature-first-multi-machine-setup),
 [Martlet host](../deploy/host/README.md), [architecture](ARCHITECTURE.md#1-components-ownership-and-topology)
 and [Voice Studio](VOICE_STUDIO.md) for details.
+
+## Recommended setup for all your computers
+
+Home's recommended setup plans every computer in your
+[Martlet network](NETWORK.md) at once. The planner is
+`NetworkRecommender` in
+[`Martlet.Core/Planning`](../src/Martlet.Core/Planning/NetworkRecommender.cs).
+It reads each computer's kind (companion PC or host), its graphics cards,
+memory and processor, the host roles it runs, who does each job today and
+your choices. It gives the recommended setup and the list of changes that get
+there. It is pure: it reads no files and contacts no computer, and the same
+network always gives the same recommendation.
+
+The planner uses these rules, in this order of importance:
+
+1. **One language model per graphics card.** Thinking's model (the `ollama`
+   role) and a Thinking pool model (the `deep-thinking` role) never share a
+   card, and a host runs at most one of each. On a host with two or more
+   NVIDIA cards, every role is pinned to one card
+   ([`choice.gpu`](../deploy/host/README.md), `MARTLET_GPU`).
+2. **One voice engine per card and per computer** (`exclusive=voice`;
+   [Voice latency](VOICE_LATENCY.md)). Every computer uses your voice engine,
+   because the Speaking pool needs the same engine everywhere.
+3. **The voice gets its own card on Windows.** Windows moves a full card's
+   memory into main memory instead of failing, and then the voice starts late
+   ([Chatterbox](CHATTERBOX_VOICE.md#sharing-the-graphics-card)). When another
+   card has room, the voice and the other jobs do not share a Windows card.
+4. **Headroom.** Each card keeps 10% (at least 0.8 GB) free, and the planner
+   never fills a card past that. It counts each model at its peak with its
+   context, so every layer stays on the card
+   ([Resource footprints](RESOURCE_FOOTPRINTS.md)).
+5. **The live jobs come first.** A Thinking pool model goes on a card that no
+   live job (thinking, listening, the voice, lip-sync) uses, when one exists
+   ([Live turn first](CLUSTER.md#live-turn-first-on-a-shared-graphics-card)).
+6. **Companion PCs stay light.** They often run games, so they run only the
+   parts inside Martlet while a host can do the work. A companion PC takes a
+   job only when no host can do it and Martlet needs it (Thinking without a
+   hosted provider, your voice engine). Then the companion PC with the most
+   free hardware takes it. One companion PC alone uses its own card, as the
+   welcome setup does.
+7. **No added latency.** A live job never moves to a model with a later first
+   word or to a busier card than today's. The only exceptions are a computer
+   that stays away and a card that is too full. New jobs get the fastest
+   choices: a small model that hears (Gemma 4 E2B) on a card of its own.
+   Other new roles go beside Thinking's model only when no other card has
+   room.
+8. **Your choices stay.** The planner keeps a hosted Thinking provider that you
+   chose (unless you keep everything local), your voice engine, loudness
+   lip-sync and your hosting preference. It changes where things run, not
+   what runs.
+9. **Pools after the main jobs.** Your voice engine and listening go on more
+   hosts for the Speaking and Listening pools, up to one place for each
+   companion PC, least loaded first. Then each host with a free card gets a
+   Thinking pool model, the biggest that fits. A host joins the Thinking pool
+   by itself when it runs one, and hosts that you left out of the pool get
+   none. Thinking's own job has no pool: another computer would start your
+   conversation without its prompt cache.
+10. **Computers that are away.** A computer that is away for less than the
+    grace time (10 minutes) is planned as if it were back, with no changes
+    there. A computer that is away for longer is planned without, and its jobs
+    and pool places move (Required). A computer without a hardware report stays
+    as it is.
+11. **Stability.** What runs stays where it runs unless the change helps. Each
+    change is *Required* (something is missing, too full or on a computer that
+    stays away), an *Improvement* (sooner replies, lighter companion PCs, more
+    computers sharing the work) or *Minor* (a tidy-up). Automatic checks ask
+    only about Required changes and Improvements. When today's setup is the
+    recommended one, there are no changes. The fingerprint of the recommended
+    setup does not change while the recommendation stays the same, so Martlet
+    does not ask again about a recommendation that you declined.
+12. **Make before break.** The changes pin roles to cards, add roles, give jobs
+    and pool places to their new computers, and only then remove old roles.
+    So Martlet keeps working while the computers change. A change on a
+    computer that Martlet cannot change from here says that someone must make
+    it at that computer.
+
+**Qualification:** `NetworkRecommenderTests` and the MCP tool
+`network_recommendation_check` run the planner on fixture networks
+([MCP](MCP.md)). They do not use real computers.

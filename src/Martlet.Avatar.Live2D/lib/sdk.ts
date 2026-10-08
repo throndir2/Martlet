@@ -24,6 +24,9 @@ export interface CubismModel {
   getDrawableId(index: number): { getString(): { s: string } };
   getDrawableVertexIndices(index: number): Uint16Array;
   getDrawableRenderOrders(): Int32Array;
+  /** Each drawable's clipping masks (drawable indices; the first `getDrawableMaskCounts()[i]` of them count). */
+  getDrawableMasks?(): Int32Array[];
+  getDrawableMaskCounts?(): Int32Array;
   getParameterValueByIndex?(index: number): number;
   /** The index of the part a drawable belongs to, or -1. */
   getDrawableParentPartIndex?(index: number): number;

@@ -1297,7 +1297,10 @@ Martlet's own hint while `use` is null), `enabled`, `mode` (`brief`, or
 is the default), `vtsToggle` (a VTube Studio ToggleExpression hotkey turns it
 on) and whether replies
 are `offered` it for `engine`, a voice engine key, `none` or absent for a voice
-without tags), `replyPrompt` and `replyTags` (what replies get while the
+without tags), `blushLevels` (the model's blush levels, faintest first: `level`
+1 to 3 for `blush`, `blush_deep` and `blush_fierce`, with the row's `n`, `id`,
+`kind`, `name`, `tag`, `mode` and `offered`; the first is the model's own emote
+tagged `blush` when that replaces Martlet's blush), `replyPrompt` and `replyTags` (what replies get while the
 character shows; lingering emotes add their `{/tag}` off tags) and `namingPrompt` (`instructions` and the numbered `list` the
 Thinking model is sent). With `showing`, the lingering emotes the character
 would show now (`["glasses", "blush:12"]`, minutes after the colon),
@@ -1389,15 +1392,24 @@ as their picture and `includeIntimate` setting the switch, so the section can
 be checked with `-Desktop`. With `temperament` (a simulated Thinking answer
 for [Touch temperament](AVATARS.md#touch-temperament), such as
 `{"groups":{"head":{"attitude":2,"reactions":["hearts","blush"]}}}`) or
-`personaId` (the temperament saved for that persona in the `dataDirectory`'s
-`character-temperaments.json`), `match` plays what the temperament decides
+`personaId` (the temperament that persona uses in the `dataDirectory`'s
+`character-temperaments.json`: its own, the built-in reactions or a custom
+one), `match` plays what the temperament decides
 when the zone has no pick of its own, and its `reaction` tells `from`
 (`owner`, `temperament` or `default`), the `attitude` word, whether it
 `escalated` (with `repeats`, the touches in a row) and how long it `linger`s.
 `temperament` in the result shows the request Thinking gets (with
-`personality`, its text), the `vocabulary` and `attitudes` allowed, whether the
-answer was `read`, and what is `used` (who decided it, a `summary`, each group
-and zone and the escalation). Never the model's path; it contacts nothing.
+`personality`, its text), the `vocabulary` and `attitudes` allowed, the six
+`categories` (each `Id`, `Label` and the zone kinds it covers, `parts`; every
+zone kind is in exactly one, and `intimate` holds the intimate ones), whether the
+answer was `read`, and what is `used` (who decided it, or `custom` with
+`custom` naming the custom temperament, a `summary`, each category and zone
+and the escalation). `personas` lists each persona of `settings.json` (and any
+other the file names): its `personaId`, `name`, whether it is `active`, what it
+`uses` (`own`, `built-in` or `custom`), the `custom` temperament's name and its
+`own` temperament's source and summary. `custom` lists the custom temperaments:
+`Id`, `Name`, `summary`, `groups`, `zones` and the personas that use it
+(`usedBy`). Never the model's path; it contacts nothing.
 
 The section's status fields are `TouchZonesStatus` (how many zones, how many in
 use and who found them, or that none are found yet), `TouchZonesVision`
@@ -1449,7 +1461,9 @@ stops it and keeps the zones found until then, `TouchZonesSentView` (*Show the
 picture Thinking saw*, a check box) shows the whole character as Thinking saw
 it under the boxes, `TouchZonesSentOpen` opens the folder of pictures in
 Explorer, `TouchZoneTry-<n>` plays on the character, and
-`TouchZonesIntimate`, `TouchZonesAdd`/`TouchZonesAddKind` and each zone's
+`TouchZonesIntimate` (its value is its label, which names every intimate part,
+the breasts and the groin too), `TouchZonesAdd`/`TouchZonesAddKind` (its value
+is the zone chosen to add; it offers every zone the model doesn't have yet) and each zone's
 `TouchZoneOn-`, `TouchZoneName-`, `TouchZoneReaction-`, `TouchZoneReaction2-`,
 `TouchZoneNotices-` (*Martlet notices*; its checked state reads in `ui_snapshot`), `TouchZoneNarration-` (the owner's optional hint; it shows only while *Martlet notices* is on), `TouchZoneCooldown-`, `TouchZoneBox-`,
 `TouchZoneDelete-` and its box on the picture (`TouchZoneRect-<n>`, inside
@@ -1471,39 +1485,125 @@ makes the stand-in fail that request instead of answering, as a model whose
 computer stopped answering: *Detect zones* then stops there and keeps the zones
 from before (FIXTURE - NOT AI in `TouchZonesDetection`).
 
+`character_eyes` rehearses Companion › Character › Touch zones › [Eyes](AVATARS.md#eyes)
+with no vision request: `request` (the close-up's `edge`, 768 pixels, and its
+width in `faceWidths`, 1.6, with the `instructions`, the first `text`, the
+`check` message that goes with the boxes drawn and numbered, and the `again`
+message after an answer Martlet couldn't use), `closeUp` (the picture's
+`width` and `height`, the `area` it cuts from the snapshot and the `face` in
+the snapshot's pixels with its `rollDegrees`), `measurement` (with `answer`, a
+simulated vision reply about the close-up such as
+`{"left":{"iris":{"left":0.34,"top":0.46,"right":0.41,"bottom":0.52},"eye":{...}},"right":{...}}`,
+as fractions, pixels or the 0..1000 grid, or flat keys such as `left_iris`;
+and `second`, the answer to the second request when the first can't be read
+or fails Martlet's checks: the `steps`, each request `asked` (its `step`,
+`kind` `Eyes`, `Check` or `Again`, picture, `marks`, message and answer), the
+four `boxes` as fractions of the close-up, the `problems` the checks found,
+the `failure`, and the `hint` the renderer gets: each eye's `iris` (`x`, `y`,
+`r`) and opening (`eye`: `x`, `y`, `rx`, `ry`) in face widths from the face's
+middle, roll removed), `checks` (the limits the checks use, in face widths),
+`saved` (the model's measurement in `character-eyes.json`: who measured it,
+when, the `hint`, the pictures kept, whether the picture of its boxes is kept
+and its plain `line`) and, with `eyesFrom` (`mesh`, `bones`, `vision` or
+`estimate`, what the renderer says the eyes use), the `status` line the
+section shows. Without `snapshotPath` the close-up is exactly 1.6 face widths
+around an upright face; with `snapshotPath` (a PNG of the character,
+transparent around it) and `face` (`"x,y,width[,rollDegrees]"`, the face's
+middle and width as fractions of the snapshot) the production close-up is
+composed and encoded as the desktop sends it (`previewDirectory` keeps the
+pictures). `save` (an explicit, disposable `dataDirectory` only) writes the
+measurement for the model (`modelPath`, `modelId` or the one the
+`dataDirectory`'s `avatar.json` shows) with its pictures, marked FIXTURE - NOT
+AI, as *Measure the eyes* would; `forget` removes it. Never the model's path;
+it contacts nothing.
+
+The Eyes rows (in the Touch zones card) read through `CharacterEyesStatus`
+(where the shown model's eyes come from: *From the model's own meshes.*,
+*From the model's own eye bones and meshes.*, *Measured with vision at 3:12
+PM.* or *Estimated: Martlet guesses where the eyes are from the face...*; while
+the character is hidden, the saved measurement or *Show the character to see
+where its eyes come from.*), `CharacterEyesProgress` (how measuring goes or
+went: each step while it runs, the result or why it failed, such as *Couldn't
+ask the Thinking model (...)* or *The Thinking model's eyes didn't pass
+Martlet's checks: ...*) and `CharacterEyesNote` (shown only when no model can
+see pictures: *Measure the eyes is off: ...*). `CharacterEyesMeasure` (*Measure
+the eyes*) sends a close-up of the character's face to Thinking and
+`CharacterEyesForget` (*Forget the measurement*) deletes it, so both need
+`--allow-ui-effects`; `CharacterEyesPicture` is the close-up Thinking saw with
+its four numbered boxes. The measurement uses the same off-screen still
+renderer as *Detect zones*, whose picture now also carries the face anchor; the
+desktop log records *Measuring the eyes: a ... picture of the character in its
+rest pose, drawn off screen, with its face ... pixels wide*, each picture sent
+and each step. When a renderer reports `eyesFrom` `estimate` and a model that
+can see is set up, the desktop measures the model once on its own (once per
+model each time Martlet starts, and never again after *Forget the
+measurement* until it starts again). The hint goes to the renderer (`eyes`)
+after each model load and after each measurement; the desktop log records
+*The character's eyes got Martlet's vision measurement; they use ...*.
+Setting `MARTLET_EYES_FIXTURE` to a text file before launching the desktop
+makes a FIXTURE - NOT AI stand-in answer every request of the measurement with
+that file's text (JSON about the close-up, as `answer` above; shown in
+`CharacterEyesProgress` and `CharacterEyesStatus`, and saved with `by`
+`fixture`) after taking the real snapshot and composing and keeping every
+picture, so the whole path runs with no vision request (and *Measure the eyes*
+is on without a model that can see).
+
 Touch temperament (below Touch zones) reads through `TouchTemperamentStatus`
 (for which persona and who decided it: built-in reactions, the Thinking model,
-`FIXTURE - NOT AI` or your own choices; its `help` is the whole temperament in
-words: the attitude per group and zone, such as *head loves, torso neutral (no
-reaction), ...*, the eyes (*eyes: look straight ahead*), the parts whose touch
-turns them to your mouse and after how many touches it escalates),
+`FIXTURE - NOT AI` or your own choices; or what it uses instead: *built-in
+reactions, as you chose* or *your custom temperament "Shy cat"*; its `help` is
+the whole temperament in words: the attitude per category and zone, such as
+*head loves, torso neutral (no reaction), ..., intimate hates*, or *intimate as
+body groups* for a temperament without an intimate line, the eyes (*eyes: look
+straight ahead*), the parts whose touch turns them to your mouse and after how
+many touches it escalates),
 `TouchTemperamentDecision` (how deciding went, or that a personality change
 left your own choices in place; shown until you change something yourself),
-`TouchTemperamentSaveState` (both only while they have something to say),
+`TouchTemperamentSaveState` (whether table edits saved),
+`TouchTemperamentUseState` (what the last *Uses*, *Create*, *Rename* or
+*Delete* did, or why not, such as *Not saved: "Built-in reactions" is already
+a choice...*; these three only while they have something to say),
+`TouchTemperamentUse` (*Uses*: *Decided from its personality*, *Built-in
+reactions* or a custom temperament's name), `TouchTemperamentNewName` (the
+name typed for a new custom temperament), `TouchTemperamentName` and
+`TouchTemperamentCustomUsers` (shown while the persona uses a custom
+temperament: its name and *Used by Mira and Aki...*),
 `TouchTemperamentGaze` (*Eyes usually*: a gaze's label or *(not decided:
 follow your mouse)*), `TouchTemperamentAfter` (touches in a row before it
-escalates) and each table line's `TouchTemperamentAttitude-<group or zone
-ID>` (an attitude word or *(built-in)*), `TouchTemperamentReaction-` (*(default)*,
-the feeling's usual reactions, *(nothing)* or a reaction such as *look away*),
-`TouchTemperamentReaction2-` (*(nothing)* or a reaction),
-`TouchTemperamentLinger-` and `TouchTemperamentLook-<group or zone ID>` (the
-seconds the first reaction stays on and the eyes look at your mouse after a
-touch there). A line shows only the controls that apply: a group at
+escalates), each table line's `TouchTemperamentAttitude-<category or zone
+ID>` (an attitude word, *(built-in)*, or for `intimate` *(as the body)*),
+`TouchTemperamentReaction-` (*(default)*, the feeling's usual reactions,
+*(nothing)* or a reaction such as *look away*), `TouchTemperamentReaction2-`
+(*(nothing)* or a reaction), `TouchTemperamentLinger-` and
+`TouchTemperamentLook-<category or zone ID>` (the seconds the first reaction
+stays on and the eyes look at your mouse after a touch there), each category's
+`TouchTemperamentParts-<category ID>` (*Parts:* and the zones it covers; the six
+categories are `head`, `torso`, `arms`, `lower_body`, `extras` and
+`intimate`, and `TouchTemperamentParts-intimate` names the breasts and the
+groin) and `TouchTemperamentAddKind` (the part chosen to give its own line;
+it offers every zone). A line shows only the controls that apply: a category at
 *(built-in)* shows only its attitude, `TouchTemperamentReaction2-` shows after
 a chosen first reaction and `TouchTemperamentLinger-` not after *(nothing)*,
 so the others are not in `ui_snapshot` until then.
 `TouchZonesLast` and `TouchZoneState-<n>` also name the attitude, whether the
 reaction came from the temperament and how long it looks at your mouse.
 `TouchTemperamentDecide` (*Decide from personality* before anything is
-decided, then *Re-decide from personality*) sends the personality to Thinking,
-and `TouchTemperamentReset`, `TouchTemperamentGaze`, `TouchTemperamentAttitude-`,
+decided, then *Re-decide from personality*) sends the personality to Thinking
+(and the persona then uses its own decided temperament),
+and `TouchTemperamentUse`, `TouchTemperamentNewName`, `TouchTemperamentNew`
+(*Create*: a custom temperament copied from what the persona uses now, which
+it then uses), `TouchTemperamentName`, `TouchTemperamentRename`,
+`TouchTemperamentDelete` (the personas that used it use their own again),
+`TouchTemperamentGaze`, `TouchTemperamentAttitude-`,
 `TouchTemperamentReaction-`, `TouchTemperamentReaction2-`,
 `TouchTemperamentLinger-`, `TouchTemperamentLook-`, `TouchTemperamentAfter`, `TouchTemperamentAddKind`,
 `TouchTemperamentAdd` and `TouchTemperamentRemove-<zone ID>` (the small ✕ by a
 part's name) save, so they all need
-`--allow-ui-effects`. `character_touch_zones` shows the temperament's `gaze`,
-each entry's `look` and the matched touch's `reaction.look`. Setting `MARTLET_TOUCH_TEMPERAMENT_FIXTURE` to a text
-file before launching the desktop makes deciding read that file (read again
+`--allow-ui-effects`. While the persona uses a custom temperament, the table
+edits that custom temperament for every persona that uses it; with *Built-in
+reactions* the table is hidden. `character_touch_zones` shows the temperament's `gaze`,
+each entry's `look`, the matched touch's `reaction.look`, the categories, the
+custom temperaments and which persona uses which. Setting `MARTLET_TOUCH_TEMPERAMENT_FIXTURE` to a textfile before launching the desktop makes deciding read that file (read again
 each time) as the Thinking model's answer (FIXTURE - NOT AI, shown in
 `TouchTemperamentStatus` and `TouchTemperamentDecision`, and saved with the
 source `fixture`). Saving a changed personality (`OpenCompanion`,
@@ -1515,8 +1615,9 @@ path with no model.
 (Companion › Character › Where the character looks and the overlay's Eyes
 menu): `choice` (`personality`, the default, `mouse`, `near`, `ahead` or
 `window`; `GazeUsual`), `free` (whether replies may change it; `GazeFree`),
-`personality` (the gaze in `character-temperaments.json` for the active
-persona of `settings.json`, or `personaId`), `personaId`, `gaze` (the gaze
+`personality` (the gaze of the temperament that the active persona of
+`settings.json`, or `personaId`, uses in `character-temperaments.json`: its own
+or a custom one), `personaId`, `gaze` (the gaze
 that applies) and `from` (`owner`, `personality` or `default`), `prompt`
 (what every reply is told: `instructions`, with the data directory's edited
 prompts, and `tags`; null when the character may not change it or *Where you
@@ -3126,6 +3227,84 @@ and every `WorkSharing*` control on the Devices page: `WorkSharingJob-<job>`,
 `WorkSharingUp/Down-<job>-<host>` and `WorkSharingKeep-<host>` controls, which
 save `work-sharing.json` and so need `--allow-ui-effects`.
 
+`recommended_setup_status` shows Home's **Recommended setup** without the
+desktop. It builds the network recommender's request with the desktop's own
+builder (`RecommendedSetupInputs`) and runs the production recommender
+(`NetworkRecommender`). Give an absolute `dataDirectory` (default the current
+user's; the script gives a disposable one) to plan from that directory's
+`hosts.json`, `host-hardware.json`, `cluster.json`, `settings.json`,
+`work-sharing.json`, `thinking-pool.json` and `speaking-engine.txt`. A data
+directory has no live host checks: every host counts as online, and its roles
+are the shared plan's record. This PC's hardware is its own host service's
+report (the desktop reads this PC live). Give `fixture: "network"` to plan the
+built-in four-computer network instead (**NOT real computers**): this PC, a
+companion PC with an RTX 4080 that runs Thinking, Speaking and Listening on its
+own host service; `gpu-box`, a Linux host PC with an RTX 4090 and nothing
+installed; `DIVA`, a companion PC whose host service runs Deep thinking; and
+`old-box`, a host without a hardware report. The result has:
+
+- `source` and `computers`: each computer's `id` (the cluster plan's host ID,
+  else the device ID), `name`, `kind` (`Companion` or `Host`), `thisPc`,
+  `hasHostService`, `manageable`, `online`, `planned` (false: left as it is),
+  `hardware` and `roles` (`kind=model`).
+- `notes`: why a computer is left as it is.
+- `today`: each job's `host`, `off`, `option` and `pool` (the other computers
+  that take its requests when the one in charge is busy, in Sharing work
+  order), `thinkingPool`, `thinkingPoolOptOut`, `voiceEngine`, `preference` and
+  `offlineGraceMinutes`.
+- `recommendation`: `alreadyOptimal`, `worthAsking`, `fingerprint`, the
+  `changes` (`kind`, `computer`, `summary`, `why`, `benefit`, `roleKind`,
+  `model`, `job`, `needsSomeoneThere`, `downloadGb`), each computer's
+  recommended `roles`, `why` and `load` (percent of graphics memory, memory and
+  processor), the `jobs`, the `thinkingPool` and `notes`.
+- `companionInUseAsks`: what a companion PC someone uses would do after an
+  automatic check (`Ask`, `Wait` or `Nothing`, and why), with `declinedHere`
+  (this setup is in the directory's `recommended-setup.json`).
+
+It is read-only, contacts nothing and reads no keys. On the desktop, Home's
+`HomeRecommendedSetup` is in `SafeClicks`. In a Martlet network it opens the
+review window (`RecommendedSetupWindow`). On a PC alone, it opens Set it all up
+for me's question (`DefaultSetupQuestion`). In the review, `ui_snapshot` reads
+every `RecommendedSetup*` text: `RecommendedSetupTitle`,
+`RecommendedSetupSummary`, `RecommendedSetupChange-<n>` (its name is the
+benefit, the summary and why), `RecommendedSetupComputer-<n>`,
+`RecommendedSetupComputerKind-<n>`, `RecommendedSetupToday-<n>`,
+`RecommendedSetupTarget-<n>`, `RecommendedSetupLoad-<n>`,
+`RecommendedSetupBar-<n>-<vram|ram|cpu>`, `RecommendedSetupJob-<n>`,
+`RecommendedSetupManual-<n>`, `RecommendedSetupDownloads`,
+`RecommendedSetupPreflight-<n>`, `RecommendedSetupTerms-<n>`,
+`RecommendedSetupSecret-<n>` (the label only; the key box `SetupSecretInput-<n>`
+is never read), `RecommendedSetupNote-<n>` and `RecommendedSetupStatus` (the
+preflight state, the progress while it reconfigures and the outcome).
+`RecommendedSetupClose` only closes the window. `RecommendedSetupApply`
+(Reconfigure: it changes every computer) and `RecommendedSetupCancel` (Not now:
+it saves `recommended-setup.json`) need `--allow-ui-effects`. When an automatic
+check finds a better setup, Home shows `HealthIssue-recommended-setup`. Its
+Review (`HealthOpen-recommended-setup-review`) opens the review, and its Not now
+(`HealthFix-recommended-setup-decline`) saves `recommended-setup.json`, so it
+needs `--allow-ui-effects`.
+
+`network_recommendation_check` runs the production network recommender
+(`NetworkRecommender`, Home's
+[recommended setup for all your computers](RECOMMENDED_SETUPS.md#recommended-setup-for-all-your-computers))
+on built-in fixture networks, **NOT real computers**. It takes no arguments
+and reads nothing. Each step names its rule (1 to 12) and reports `passed` and
+its detail: the change list (kind, computer, benefit, summary and why), the
+target roles, jobs, pools, Thinking pool and notes. The steps are: two
+companion PCs and two hosts with nothing set up (companion PCs run no host
+roles; Thinking gets Gemma 4 E2B on a card of its own; one more voice for the
+second companion PC; no Thinking pool change); make before break; a host with
+two NVIDIA cards (Thinking and Deep thinking pinned to cards of their own); a
+Windows host whose voice shares its card (the voice moves to a card of its
+own); a crowded network (no card over its capacity); Deep thinking beside the
+voice (it moves to the card no live job uses); heavy roles on a companion PC
+(they move to the host, Improvement); Thinking on a companion PC's card with
+only a processor host (it stays: no added latency); hosted Thinking that the
+owner chose (it stays, unless everything is kept local); a host left out of
+the Thinking pool; the voice host away 4 and 25 minutes (no change, then
+Speaking moves as Required); and the applied recommendation (no changes and the
+same fingerprint in any order). `ok` is true when every step passed.
+
 `node_presence_status` shows when your other computers go away or come back
 ([CLUSTER](CLUSTER.md#when-a-computer-goes-away-or-comes-back); optional
 absolute `dataDirectory`, default the current user's): `awayMinutes` (Settings
@@ -3165,14 +3344,15 @@ back notice's Dismiss (`HealthOpen-presence-back-<hostId>-dismiss`) is passive.
 user's) reads the desktop's `helper-jobs.json`: for each helper job kind
 (`memory`: remembering and learning names after a reply; `action_naming`:
 naming a character's emotes; `temperament`: deciding its touch temperament;
-`touch_zones`: finding its touch zones) the last
+`touch_zones`: finding its touch zones; `eyes`: measuring its eyes) the last
 `route` (`pool` with the `member` that ran it and its model, or `fallback`: the
 conversation's own Thinking model after the reply finished speaking),
 `priority`, `outcome` (`answered`, `no answer` or `failed: <why>`), `at` and
 `waitedMs` (how long the fallback waited for the reply). It never holds a prompt
 or an answer. `state` is `none` until the desktop runs a helper job with that
 data directory. The jobs go to the [Thinking pool](CONVERSATION.md#the-thinking-pool) as its
-Memory, Naming and TouchZones kinds; `thinking_pool_status` shows the pool itself.
+Memory, Naming and TouchZones kinds (the eyes as a TouchZones job at the helpers'
+low priority); `thinking_pool_status` shows the pool itself.
 `helper_jobs_check` (no arguments) rehearses the desktop's production router
 (`HelperJobs`) with a fixture pool and fixture answers (NOT AI): memory and
 naming go to a free text member, touch zones wait for a running reply and fall
@@ -3268,6 +3448,52 @@ from a data directory's `shared-settings.json` (optional absolute
 `settledAt`, `dueIn` and `marks` (`kind` *Bid* with `idleSeconds`, *Claim*,
 *Done*, *Cancel* or *Missed*, `by` and `at`), plus the `reminders` `tool`
 exactly as the model gets it. Read-only.
+
+`setup_run_status` shows how applying the recommended setup to all your
+computers stands ([Applying the recommended setup](CLUSTER.md#applying-the-recommended-setup),
+[Configuring](CLUSTER.md#configuring)), from a data directory (optional
+absolute `dataDirectory`): `state` (*none* without `shared-settings.json`,
+*no-runs*, *loaded*), every computer's published run (`setup-run.<device>`
+entries: `runId`, `startedBy`, `startedAt`, `updatedAt`, `finishedAt`,
+`active`, `shown`, `summary` and each computer's `machineId`, `state`
+*Pending*, *Configuring*, *Done*, *Failed* or *NeedsAttention*, `step`, `done`
+and `steps`; an entry a newer Martlet wrote is `readable: false`), `plan` (who
+does each job in `cluster.json`, with `failover` and `movedFrom`) and `sharing`
+(Sharing work: each job's `shares`, `order` and `never`). Machine IDs, role
+names and counts only. Read-only.
+
+`setup_run_check` rehearses applying a recommended setup with the production
+executor (`SetupExecutor`) on a fixture recommendation against simulated
+computers (FIXTURE, NOT real hosts): gpu-box with two NVIDIA cards (through
+Martlet there), desk-host (this PC's own host service), linux-box (SSH),
+old-box (Martlet can't reach it) and laptop (no host service). The preflight:
+Chatterbox Turbo's terms with the RTX 4090 by UUID, Parakeet chosen as the stt
+variant with that variant's terms only, moving Thinking keeping its model, Audio2Face
+showing and sending its default engine's terms, an NGC key the owner enters, old-box needing someone there, laptop unable to run
+host roles, the Thinking pool joining by itself, thinking moving to each companion
+PC's own Ollama (ready, with the download's terms), a hosted provider the owner
+must choose in Companion (never made here) and the role still doing that job
+kept until it moves, and the downloads added up.
+The run: the host commands in order with their arguments (nothing for skipped
+changes), the key only to Audio2Face and never in text, the terms recorded as
+accepted, speaking on gpu-box with failover and thinking back to each PC's
+choice in the plan, thinking switched through the Companion path, the hosted
+provider reported as needing the owner with its plan unchanged, loudness
+lip-sync off in the plan, the role whose job didn't move kept, Sharing work, one cluster check, a failed removal that
+doesn't stop the others, a job this PC can't follow yet reported, the run
+record (all waiting, then *Configuring* with the step and its count, then how
+each computer ended) read back from the shared settings as
+`setup-run.<device>`, a per-computer entry, and a change missing from the
+review skipped. `passed` and each step's `passed` and `detail`. In-process; no
+network, model or credential.
+
+Home's `HomeConfiguring` (on a host PC `HostConfiguring`; passive: it opens
+the Devices map) and `HomeConfiguringStatus` (`HostConfiguringStatus`) show
+the newest run from any computer, for example *Configuring your computers: 1
+of 3 finished. gpu-box: Installing Chatterbox Turbo (2 of 4). Started on
+desk-b.*, then for ten minutes how it ended (*Your computers were reconfigured
+at 6:30 PM: 2 done, 1 needs you.*), or a host role this PC changes now.
+Hidden when nothing is configured.
 
 `reminders_check` rehearses reminders with the production code (`Reminders`,
 `ReminderBoard`, `BackgroundJobs`, `SharedSettings`) on two simulated companion
@@ -3739,6 +3965,24 @@ comes back from a power cut without its newest lines (it restarts from an older
 saved `logs.json`) is read from the start again and gets them back; an unsigned
 request is refused. Synthetic lines; loopback only; the folder is deleted.
 
+`host_connections_selftest` (no arguments) rehearses how the desktop connects
+to a paired host and reports its status (`src\Martlet.NodeLinkCheck`, mode
+`host-connections`, `HostConnectionRehearsal.cs`; returns `{exitCode, report}`).
+One real gateway (`lab-connections`; Kestrel, pinned TLS, signed requests) runs
+on 127.0.0.1 behind a loopback TCP forwarder that the check stops and starts at
+the same address. A simulated desktop checks the host as the 15-second sync does
+(a new `Audio2FaceHostConnection` per check: routes, then the plan copy) and
+logs through the desktop's status tracker (`HostAnswers`). Its steps: twelve
+checks share one kept TCP and TLS connection (`HostRoutes` connections dialed
+and connections the forwarder accepted are both 0 after the first); the host
+stops and one missed check logs nothing, the second logs `Host lab-connections
+stopped answering: ...` once, later misses log nothing, and the route status
+says the home address didn't answer (refused); the host comes back and the next
+check logs `Host lab-connections answers again.` once over one new connection;
+a host that misses every other check logs nothing. The report's `log` holds the
+lines. Loopback only; writes nothing. Windows running out of ports
+(`NoBufferSpaceAvailable`) is not simulated; unit tests check its wording.
+
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
@@ -3894,7 +4138,14 @@ or `DIVA, desktop-diva · diva-host. Connected. Runs: Martlet host PC, Speaking,
 so one snapshot shows the whole map. The map fits up to six devices on each
 side of This PC; the rest fold into a `Node-more:computers` (or
 `Node-more:services`) card, *44 more computers* with how many need attention,
-whose click opens the list. `DevicesViewMap` and `DevicesViewList` switch
+whose click opens the list.
+A device that Martlet changes now (a recommended setup applied from any of
+your computers, a host role this PC changes, a host PC running a role command
+from another computer, this PC following a plan change) shows the status
+*Configuring: <step>* on its card and in `SelectedDeviceHealth`, for example
+*Configuring: Installing Chatterbox Turbo (2 of 4)*
+([Configuring](CLUSTER.md#configuring)).
+`DevicesViewMap` and `DevicesViewList` switch
 between the map and the list (passive); the list shows by itself once the map
 can't fit every device. The list shows every device as a `Node-<id>` card (This
 PC, then those needing attention, then by name) with `DeviceFilter-all`,
@@ -4364,8 +4615,9 @@ and `HealthOpen-crash-diagnostics` open this page.
 
 `ui_snapshot` reports `selected` (true or false) for controls that are chosen
 rather than ticked (navigation, Companion's side list, radio buttons and
-filter pills, list items), and a combo box in the status fields reads as its
-chosen option.
+filter pills, list items), a combo box in the status fields reads as its
+chosen option, and a check box in the status fields reads as its label (its
+`checkedState` says whether it is ticked).
 
 For the desktop character, open `CompanionTab-Character`; with
 `--allow-ui-effects`, `SetupCharacterToggle` shows or hides it and
@@ -4427,6 +4679,21 @@ the same), which need `--allow-ui-effects`. Talk, Mute, Open, Settings and Hide 
 carried out by Martlet itself, so the desktop log records *The character's menu
 chose 'hide'.* (and so on), and a hide is followed by *Avatar renderer stopped
 by Martlet.* and `SetupCharacterNow` reading *hidden*.
+
+**Renderer health** shows in the logs (`logs_tail`). Martlet and the renderer
+send only whole messages, so a slow reply or a timeout never puts later
+commands out of step; a reply that comes after its caller stopped waiting is
+dropped. When the renderer's messages break (an unreadable message, a reply
+when nothing was asked, a failed write) or it answers nothing for 90 seconds,
+Martlet ends it and the character counts as stopped. Then `desktop` records
+*Martlet ended the character renderer because it stopped answering properly:
+...* and *Avatar renderer ended by Martlet (code 0x00000001) ...*. When the
+renderer closes by itself, `avatar-renderer` records why: *The character
+overlay closed: its window was closed (not by Martlet).* or *The character
+renderer stopped after an error; it tells Martlet and closes.* with the error.
+Then `desktop` records the warning *Avatar renderer closed itself ...* (with
+the error code when it sent one). Only another exit code (a crash or a kill)
+is an error: *Avatar renderer exited unexpectedly with code ...*.
 
 **Muting Martlet's voice**: the overlay menu's `CharacterMuteVoice` (in
 `SafeValues`: its name, *Mute voice* or *Unmute voice*, carries the state)
@@ -4551,8 +4818,9 @@ the coarse `zones` crossed) and `physical`. Without `points` it only reads.
 Companion › Character › Touch zones' `CharacterPhysicalLast` shows Martlet's
 summary.
 
-**Where Martlet draws over the face**: the blush glow (on a model without a
-blush of its own) and the overlay emotes are drawn around the face each time
+**Where Martlet draws over the face**: the blush levels (the blush on a model
+without a blush of its own, and `blush_deep` and `blush_fierce` on every model,
+over its own blush) and the overlay emotes are drawn around the face each time
 the renderer page draws a frame. A Live2D model's face is pinned to its own
 face meshes. When the model loads, the page moves each head angle
 (`ParamAngleX`, `ParamAngleY`, `ParamAngleZ`) to find the mesh vertices that
@@ -4572,15 +4840,52 @@ has `n`, `found`, `tracking` (`mesh`, `bones` or `estimate`), `x`, `y` and
 `width` (fractions of the overlay's drawing, +y down), `tilt` (degrees,
 clockwise), `cheekLeft` and `cheekRight` (`x`, `y`, `visible` from 0 to 1,
 `across`, the cheek's width against the face's width, and the hit test there:
-`hit`, `drawables`, `bone`, `mesh`), `overlays` (the overlays showing) and
-`pinned` (Live2D: `carriers`, how many mesh vertices the face rides on, and
-`milliseconds`, how long finding them took at load). `summary` gives the
+`hit`, `drawables`, `bone`, `mesh`), `eyeLeft`, `eyeRight`, `mouth` and `top`
+(`x`, `y`: the eye and mouth points the overlay emotes such as `tears` or
+`tongue_out` are drawn from, and the top of the head; left out when the
+renderer has none; an eye with a known iris has its point at the eye's
+middle), `overlays` (the overlays showing, such as
+`["blush_deep"]`; one fading out is listed until it is gone) and
+`pinned` (Live2D: `carriers`, how many mesh vertices the face rides on,
+`milliseconds`, how long finding them took at load, and `eyeMilliseconds`, how
+long finding the eyes' meshes took). The eyes for drawings over them come with
+each reading: `eyesFrom` (`mesh`: a Live2D model's iris and eye-white meshes;
+`bones`: a VRM's eye bones with its iris and eye-white meshes; `vision`: eyes
+measured by vision fill what the model can't give; `estimate`: an eye has
+neither, so its iris and opening are left out), `irisLeft` and `irisRight`
+(`x`, `y`, `rx`, `ry`: the iris's middle and radii across and down the face;
+`x` and `rx` are fractions of the drawing's width, `y` and `ry` of its height;
+`null` when unknown), and `eyeLeftShape` and `eyeRightShape` (the eye's visible
+opening now: `points`, `triangles`, `null` for an outline, its box `left`,
+`top`, `right`, `bottom`, and `irisInside`, whether the iris's middle is in
+it; 0 `points` when the eye is closed or hidden). `summary` gives the
 `tracking` used, how far the face `moved` (`x`, `y`, `width`, `tilt`) and, for
 each cheek, `onCharacter` (the share of readings over the character),
 `mostlyOver` and `mostlyOverShare` (the topmost drawable, mesh or bone there
 most often, and for what share of readings), `visibleLeast` and `across`
-(`least`, `most`). `MoveAvatar`'s value in `ui_snapshot` shows the last
-reading as `face`.
+(`least`, `most`). It also gives `eyesFrom` (the sources seen) and, for
+`eyeLeft` and `eyeRight`, `iris` (the share of readings with an iris),
+`irisMoved` (`x`, `y`: how far the iris's middle moved), `irisInside` (the
+share of open readings with the iris inside its opening), `opening` (`least`,
+`most`: the opening's height, which a blink closes) and `closed` (the share of
+readings with no opening). Sample several times to see the irises follow the
+gaze and the openings close on a blink. `MoveAvatar`'s value in `ui_snapshot`
+shows the last reading as `face`.
+
+`character_picture` takes a picture of the showing character as it shows now
+(`MoveAvatar`'s value `"picture"`). It is the renderer's own capture of the
+overlay's page, so Martlet's drawings over the face are in it, such as the
+blush glow and overlay emotes like heart eyes. It is cropped to the character
+with a little room. Zoom the character first (`SetupCharacterZoomIn`) to see
+small parts such as the eyes larger. It returns `taken`, `picture` and `saved`.
+`picture` has `n`, `path` (the renderer's PNG file in the temp folder, replaced
+each time), `width` and `height` in pixels, and `left`, `top`, `cropWidth` and
+`cropHeight`: where it sits on the overlay's drawing, as fractions like
+`character_face`'s positions. When the picture can't be taken, `picture` has
+`error`. `saved` is the copy at `outputPath` (a full path to a `.png` file)
+when given. It changes nothing on the character, so it needs no
+`--allow-ui-effects`. `MoveAvatar`'s value then shows the last picture as
+`picture`.
 
 **Moves, zooms and other changes Martlet hears about**: the overlay notes each
 drag, arrow-key nudge, `ui_move`, zoom (wheel, menu, keys or Martlet's zoom
@@ -4675,6 +4980,29 @@ show while the character shows or a place is saved: showing, they move it to
 the lower-right of the main screen even when locked (it stays locked there)
 and save that; hidden, they forget the saved place so it next shows at its
 default spot, unlocked (`placement.state` `none`).
+
+**When the character's renderer fails a command** (its pipe breaks, it sends
+something unreadable or it runs out of time): only the work that draws the
+character ends. A sentence's lip-sync (loudness mouth or Audio2Face frames), a
+song's mouth, a gaze, an emote or saving where the character is stops, and the
+voice goes on. `ToggleCharacter` (*Hide character*) always finishes, and no
+*Martlet recovered from an unexpected error* dialog shows. Each kind of failure
+gets one short desktop log line a minute, without a stack trace, for example
+*The character's new position couldn't be read to save it: Renderer message
+length is invalid (InvalidDataException).*; the next line for the same failure
+adds *(N more like it in the minute before weren't logged.)*. To check this
+without a broken renderer, set `MARTLET_SIMULATE_RENDERER_FAILURE` to the
+renderer commands to fail, comma-separated (for example `where,lock,zoom`),
+before launching the desktop (`-Desktop` passes the environment on). FIXTURE,
+never a real failure: the shown character's renderer fails those commands the
+way a broken pipe does (*Renderer message length is invalid (simulated by
+MARTLET_SIMULATE_RENDERER_FAILURE).*), and the desktop log says so each time
+the character shows (*FIXTURE: the character renderer fails its ... commands*).
+The renderer still starts, draws and closes normally. Commands include `where`
+(saving its place after `ui_move`), `lock` (`ToggleCharacterLock`), `zoom`
+(`ResetCharacterZoom`), `home` (`ResetCharacterPosition`), `mouth` (the
+loudness mouth), `reset` and `apply` (Audio2Face frames), `gaze`, `action`
+(emotes and motions), `say` (speech bubbles), `theme` and `camera`.
 
 The same page's *Speech bubbles and subtitles* card has the checkboxes
 `SetupCharacterSpeechBubbles` (on by default) and `SetupCharacterSubtitles`
@@ -4803,7 +5131,8 @@ tags replies get with the voice chosen now and which follow the voice's cues;
 and drawing it holds, *Gestures now: wink playing, eyes_up, mouth_open, blush,
 hearts held.* (held gestures layer; see
 [Layers](AVATARS.md#emotes-and-motions)); an emote Martlet drew over the face itself, such
-as the blush glow on a model without a blush of its own, adds *drawn by Martlet
+as the blush glow on a model without a blush of its own, or `blush_deep` and
+`blush_fierce` on any model, adds *drawn by Martlet
 over the face at 414, 88 (50 pixels wide, tilted 3°, pinned to the face's meshes)* with the face's middle and
 width in the overlay's page pixels, the head's roll (clockwise) and how the face is followed (*pinned to the
 face's meshes* for Live2D, *following the head bone* for VRM, or *estimated from the head's angles* for a
@@ -5801,7 +6130,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

@@ -44,6 +44,7 @@ public partial class MainWindow
         });
         avatar.TouchRouter = OnCharacterTouched;
         WireCharacterTemperament();
+        WireCharacterEyes();
     }
 
     private string? renderedZonesModel;
@@ -90,8 +91,7 @@ public partial class MainWindow
             await Task.Delay(TimeSpan.FromSeconds(lingerSeconds), lifetime.Token);
             await avatar.StopActionAsync(source, reason + " (lingered)", lifetime.Token);
         }
-        catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
-            InvalidDataException or TimeoutException or ObjectDisposedException) { }
+        catch (Exception error) when (error is OperationCanceledException || RendererFailures.Is(error, lifetime.Token)) { }
     }
 
     private const string TouchZonesNoticedIdle = "Nothing waits for Martlet.";
@@ -290,12 +290,13 @@ public partial class MainWindow
                 stack.Add(Row(open));
             }
         }
+        AddCharacterEyes(stack, catalog);
         if (catalog is null) return Card([.. stack]);
 
         var modelId = catalog.Inventory.ModelId;
         var intimate = new CheckBox
         {
-            Content = "Include intimate zones (lips, neck, ears, chest, waist, hips and below)", IsChecked = settings?.IncludeIntimate != false,
+            Content = $"Include intimate zones ({CharacterTouchZones.IntimateParts})", IsChecked = settings?.IncludeIntimate != false,
             Margin = new Thickness(0, 4, 0, 4)
         };
         AutomationProperties.SetAutomationId(intimate, "TouchZonesIntimate");

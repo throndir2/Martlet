@@ -113,9 +113,11 @@ public sealed record RendererBonePoint(string Bone, double X, double Y);
 /// <summary>A Live2D model's own part (a group of drawables and parts): its ID, the name its DisplayInfo file (*.cdi3.json) gives
 /// it, in any language (null when it gives none), and the ID of the part it belongs to (null for a top part).</summary>
 public sealed record RendererModelPart(string Id, string? Name = null, string? Parent = null);
-/// <summary>The zones probe's reply: where the showing model's drawables (Live2D) or humanoid bones (VRM) are now, and the Live2D
-/// model's own parts (with a whole picture), so its part names can find and check zones.</summary>
-public sealed record RendererZoneProbe(RendererDrawableBox[]? Drawables = null, RendererBonePoint[]? Bones = null, RendererModelPart[]? Parts = null);
+/// <summary>The zones probe's reply: where the showing model's drawables (Live2D) or humanoid bones (VRM) are now. A whole
+/// picture's probe also says where the face was in it (<see cref="Face"/>, from the renderer's face anchor), which the eye
+/// measurement crops around, and a Live2D model's own parts (<see cref="Parts"/>), so its part names can find and check zones.</summary>
+public sealed record RendererZoneProbe(RendererDrawableBox[]? Drawables = null, RendererBonePoint[]? Bones = null, RendererFace? Face = null,
+    RendererModelPart[]? Parts = null);
 
 /// <summary>Which zone a touch landed in and how it was found ("drawable", "bone", "hair", "box" or "coarse").</summary>
 public sealed record TouchZoneMatch(CharacterTouchZone Zone, string How);
@@ -131,6 +133,9 @@ public static class CharacterTouchZones
     public const int MaximumNarrationLength = 160, MaximumLabelLength = 40;
     // A drawable belongs to a zone when this much of its bounds lies inside the zone's box.
     public const double MostlyInside = 0.6;
+    /// <summary>Every intimate zone kind in plain words, left and right together (Include intimate zones and the touch
+    /// temperament's Intimate parts name them so).</summary>
+    public const string IntimateParts = "lips, ears, neck, chest and breasts, waist and sides, hips, groin, buttocks and inner thighs";
 
     private static readonly string[][] HeadPat = [["lean_in", "tilt"], ["smile", "happy"]];
     private static readonly string[][] Face = [["tilt", "nod"], ["smile", "happy"]];

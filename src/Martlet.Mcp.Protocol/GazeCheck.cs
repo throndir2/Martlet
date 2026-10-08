@@ -40,7 +40,7 @@ internal static class GazeCheck
         var (aim, aimOk) = Aims();
         var (owner, free) = Usual(dataDirectory);
         var persona = Guid.TryParse(personaId, out var id) ? id : settings?.Companion?.ActivePersonaId;
-        var temperament = persona is { } chosenPersona ? CharacterTouchTemperaments.Load(dataDirectory, chosenPersona) : null;
+        var temperament = persona is { } chosenPersona ? CharacterTouchTemperaments.Used(dataDirectory, chosenPersona) : null;
         var gaze = new GazeSettings(owner, temperament?.Gaze, free);
         var reply = free ? CharacterGaze.ReplyPrompt(settings?.Prompts, gaze.Usual) : null;
         var other = CharacterGaze.Modes.First(m => m.Mode != gaze.Usual).Mode;

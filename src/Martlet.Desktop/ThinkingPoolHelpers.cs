@@ -3,9 +3,9 @@ using Martlet.Conversation;
 namespace Martlet.Desktop;
 
 /// <summary>Helper jobs (<see cref="HelperJobs"/>) on the Thinking pool: memory goes as a Memory job, emote naming as a Naming job
-/// and touch zones as a TouchZones job (needs vision), each with the pool's priority for its kind. A job the pool can't finish
-/// (no member, none free in time, failed or timed out) returns null, so the conversation's own Thinking model does it after
-/// the reply, as before.</summary>
+/// and touch zones as a TouchZones job (needs vision), each with the pool's priority for its kind. Measuring the eyes needs vision
+/// too, so it goes as a TouchZones job, but at the helpers' low priority. A job the pool can't finish (no member, none free in
+/// time, failed or timed out) returns null, so the conversation's own Thinking model does it after the reply, as before.</summary>
 internal sealed class ThinkingPoolHelpers(Func<ThinkingPool> pool) : IHelperJobPool
 {
     internal static ThinkingJobKind Kind(HelperJobKind kind) => kind switch
@@ -14,6 +14,9 @@ internal sealed class ThinkingPoolHelpers(Func<ThinkingPool> pool) : IHelperJobP
         HelperJobKind.ActionNaming or HelperJobKind.Temperament => ThinkingJobKind.Naming,
         _ => ThinkingJobKind.TouchZones
     };
+
+    /// <summary>The pool priority of a helper kind when it isn't its pool kind's own: the eyes wait like the other helpers.</summary>
+    internal static ThinkingPriority? Priority(HelperJobKind kind) => kind == HelperJobKind.Eyes ? ThinkingPriority.Helper : null;
 
     internal static ThinkingCapability Needs(HelperCapability capability) =>
         capability == HelperCapability.Vision ? ThinkingCapability.Text | ThinkingCapability.Vision : ThinkingCapability.Text;
@@ -27,6 +30,7 @@ internal sealed class ThinkingPoolHelpers(Func<ThinkingPool> pool) : IHelperJobP
         var result = await pool().RunAsync(new ThinkingJob
         {
             Kind = Kind(job.Kind),
+            Priority = Priority(job.Kind),
             Instructions = job.Input.Personality ?? "",
             Text = job.Input.UserText,
             Image = job.Input.Image,

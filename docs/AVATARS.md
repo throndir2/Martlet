@@ -134,9 +134,11 @@ what each one is.
     blush, an angry or sad face, tears, a dark face, an outfit or accessory).
 
   Martlet's holdable gestures (pout, shy, look_away, drowsy, eyes_up and
-  mouth_open, and the overlay emotes sweat, hearts, gloom and sleepy) also stay
-  on by default. Held gestures layer (see *Layers*). A gesture that the
-  renderer cannot hold plays once.
+  mouth_open, the overlay emotes sweat, hearts, gloom, sleepy, heart_eyes,
+  star_eyes, tongue_out, drool, steam and dizzy, and the blush levels
+  blush_deep and blush_fierce) also stay on by default. Held gestures layer
+  (see *Layers*); every blush level is the cheeks, so a new level
+  replaces the one before. A gesture that the renderer cannot hold plays once.
   Motions and the other gestures are brief by default. The Thinking model's
   naming also gives `stays` or `brief` for each item.
 - **Tags for lingering emotes**: a reply writes `{glasses}` to turn the emote
@@ -153,16 +155,17 @@ what each one is.
   blush, with hearts drawn over them. Each holdable gesture moves some parts of
   the face. A new held gesture lets go only of the held gestures that move a
   part it moves too, and they ease out as it eases in. Held overlay emotes
-  (sweat, hearts, gloom, sleepy and the blush that Martlet draws) have no parts:
-  they all show together, on top of whatever the model holds. A gesture played
-  once plays on top of the held ones.
+  (sweat, hearts, gloom and sleepy) have no parts: they all show together, on
+  top of whatever the model holds. The blush levels are the exception: drawn by
+  Martlet or the model's own, each one is the cheeks, so only one level shows
+  at a time. A gesture played once plays on top of the held ones.
 
   | Held gesture | Parts it moves |
   | --- | --- |
   | `pout` | mouth, brows, head |
   | `shy` | eyes, mouth, head |
   | `look_away`, `drowsy` | eyes, head |
-  | `blush` (the model's own: Live2D `ParamCheek`, a VRM's blush expression) | cheeks |
+  | `blush`, `blush_deep`, `blush_fierce` (the model's own: Live2D `ParamCheek`, a VRM's blush expression; or drawn by Martlet) | cheeks |
   | `eyes_up` | eyes |
   | `mouth_open` | mouth |
 
@@ -225,22 +228,32 @@ what each one is.
   | bow (`bow`) | `ParamAngleY` | `spine` bone |
   | sway (`sway`) | `ParamBodyAngleZ` | `spine` bone |
   | smile (`smile`), surprise (`surprised`) | `ParamEyeLSmile`/`ParamEyeRSmile`, `ParamBrowLY`/`ParamBrowRY` | not offered (VRM uses its own emotion presets) |
-  | blush (`blush`) | nothing (see below) | `head` bone |
+  | blush (`blush`), deep blush (`blush_deep`), fierce flush (`blush_fierce`) | nothing (see below) | `head` bone |
   | wave (`wave`), shrug (`shrug`), bounce (`bounce`) | not offered (no standard arm or position parameters) | right arm, both arms, `hips` bones |
 
   Live2D parameters are read from the model's `.moc3`, VRM bones from its
   humanoid. A gesture is left out when the model's own emote or motion already
   has its tag (a model with its own `smile` keeps that one).
 
-  **Every model blushes.** The blush uses, in order: the model's own blush emote
+  **Every model blushes, at three levels.** The blush levels are, faintest
+  first, `blush`, `blush_deep` (a deep blush: redder and wider, with more
+  lines) and `blush_fierce` (a fierce flush: deep red across both cheeks and
+  over the bridge of the nose, densely lined, with a slow pulse). They come
+  after all other gestures, so the start of the reply instructions stays the
+  same. One level shows at a time: a new level replaces the one before, also
+  when it is fainter. The blush uses, in order: the model's own blush emote
   (an expression named like `blush`, `脸红` or `照れ`, which then replaces the
   gesture), a Live2D model's `ParamCheek`, a VRM's custom expression named like
   `blush` or `cheek`, and otherwise a soft pink glow with a few faint strokes
-  that Martlet draws on the cheeks over the character. It fades in and out over
-  0.6 seconds and lasts 4 seconds, or stays while held (the renderer action's
-  `hold`) until turned off.
+  that Martlet draws on the cheeks over the character. The stronger levels
+  also use the model's `ParamCheek` or blush expression, at full strength, and
+  Martlet always draws the level over it, so each level looks different on
+  every model. Each level fades in and out over 0.6 seconds and lasts 4
+  seconds, or stays while held (the renderer action's `hold`) until turned
+  off. `blush` is brief by default; `blush_deep` and `blush_fierce` linger by
+  default (`{/blush_deep}` turns the deep blush off).
 - **Drawings over the character**: the renderer page draws Martlet's own
-  effects (the blush glow, and others built on it) on a second canvas laid
+  effects (the blush levels, and others built on them) on a second canvas laid
   exactly over the model, following zoom, pan and the display's scale, so they
   also show in pictures of the character. They are placed around the face as
   the model draws it in each frame, so they follow everything that moves the
@@ -254,11 +267,31 @@ what each one is.
   vertices that turn with the head, and moves the other parameters to drop the
   ones that change shape on their own (hair physics, eyelids, eyes, mouth,
   brows). A model without those angles, or without enough such vertices, uses
-  the earlier estimate moved with `ParamAngleX`/`Y`/`Z`. Each blush lies on its
+  the earlier estimate moved with `ParamAngleX`/`Y`/`Z`. Each blush level lies on its
   cheek's surface, so a turned head shows the near cheek's blush wider and the
-  far one narrower, fading out as that cheek turns away. The Live2D adapter's
+  far one narrower (with fewer of a stronger level's lines), fading out as that
+  cheek turns away; the fierce flush's band over the nose fades toward that
+  cheek too. The Live2D adapter's
   `setFaceHint` lets a face found by vision refine the estimate, pinned the
   same way. Martlet's MCP `character_face` reads where they are drawn.
+
+  **The eyes.** Drawings over the eyes (such as heart eyes) cover only each
+  iris and stay inside the eye. For them the face also has each eye's iris (its
+  middle and size) and its visible opening between the eyelids, as the model
+  draws them in each frame. A Live2D model gives them from its own meshes. When
+  it loads, Martlet moves `ParamEyeBallX` and `ParamEyeBallY` to find the
+  drawables they move: the largest in each eye is its iris, the smaller ones its
+  highlights. The iris's clipping mask is the eye white, and its triangles are
+  the opening, which closes as the model blinks. A VRM's eye bones place each
+  eye, and the iris turns with its bone. The model's iris and eye-white meshes
+  give the iris's size and the opening: VRoid's `EyeIris` and `EyeWhite`
+  materials, or names with iris, pupil, hitomi, 瞳 or 白目. For an eye the model
+  can't give, eyes measured by vision give a sized iris that follows the gaze
+  and an outline that closes on a blink. `eyesFrom` says where they came from:
+  `mesh` (Live2D meshes), `bones` (VRM bones and meshes), `vision`, or
+  `estimate` while an eye has neither. Then that eye's iris and opening are left
+  out, and drawings over the eyes use their own estimate. The bundled Hiyori
+  gets `mesh`.
 - **Voice emotes**: every sound and tone a voice engine makes has a global emote
   of its own, linked to that voice cue from the start, so any character reacts
   when the voice laughs, sighs or turns angry, even before it is named. The
@@ -281,10 +314,19 @@ what each one is.
   the overlay layer (`web/effects/manpu.mjs` in `Martlet.Avatar.RendererHost`),
   so every Live2D model gets them and every VRM with a `head` bone. They follow
   the face (its position, size, zoom and head tilt), pop in with a little bounce
-  and fade out after 2 to 4 seconds; sweat, hearts, gloom and sleepy linger
-  (keep going until `{/tag}`) by default.
+  and fade out after 2 to 4 seconds; sweat, hearts, gloom, sleepy, heart_eyes,
+  star_eyes, tongue_out, drool, steam and dizzy linger (keep going until
+  `{/tag}`) by default.
   Their colours are fixed and outlined, so they read on any desktop. The tag is
-  the name; a model's own emote with the same tag replaces it:
+  the name; a model's own emote with the same tag replaces it (a model's
+  `爱心眼` expression becomes its own `heart_eyes`). Tears fall from the eye
+  points, and tongue_out and drool hang from the mouth point. The hearts, stars
+  and swirls of heart_eyes, star_eyes and dizzy sit on each iris, sized to fit
+  inside it, and are clipped to the eye's visible opening, so they never go
+  outside the eye and the eyelid cuts them as it closes. They use the iris and
+  the eye opening the renderer finds, and nothing shows on an eye it reports as
+  closed or hidden; without them, they are iris-sized at the eye points and
+  clipped to an eye-sized ellipse:
 
   | Overlay emote (tag) | What it draws | When to use |
   | --- | --- | --- |
@@ -298,6 +340,14 @@ what each one is.
   | `exclaim` | an exclamation mark popping up | startled, realizing |
   | `sleepy` | a floating Zzz | sleepy, bored |
   | `music` | music notes floating up | humming, happy |
+  | `heart_eyes` | pink hearts pulsing in the eyes | smitten, adoring |
+  | `star_eyes` | twinkling stars in the eyes | starstruck, thrilled |
+  | `tongue_out` | a little tongue poking out below the mouth | a playful tease |
+  | `drool` | a drop of drool running from a corner of the mouth | craving something tasty, dozing off |
+  | `steam` | puffs of steam blowing out from the head | fuming, overheated |
+  | `dizzy` | swirls spinning in the eyes, little stars circling the head | dizzy, dazed |
+  | `idea` | a light bulb lighting up above the head | a sudden idea |
+  | `ellipsis` | three dots appearing one by one beside the head | speechless, an awkward silence |
 
   A voice emote plays when the voice speaks its tag (Chatterbox Turbo's
   `[laugh]`, Dia's `(laughs)`), alongside any of the model's own emotes on the
@@ -365,9 +415,11 @@ Click the character (a left click, not a drag) and it reacts to where you
 touched it. Companion › Character › **Touch zones** lists the zones of the
 model it shows: the top of the head (a head pat), hair, forehead, face, cheeks,
 nose, chin, shoulders, arms, hands, stomach, legs and feet, and extras such as
-animal ears, a tail or wings. Intimate zones (lips, ears, neck, chest,
-waist, hips, groin, buttocks and inner thighs) react too while
+animal ears, a tail or wings. Intimate zones (lips, ears, neck, chest and
+breasts, waist and sides, hips, groin, buttocks and inner thighs) react too while
 **Include intimate zones** is on, which it is by default; turn it off to leave them out.
+The check box names each of these parts, and **Add zone** offers every zone
+Martlet knows that the model doesn't have yet, the breasts and the groin too.
 
 - **Detect zones** shows the Thinking model pictures of the character (never the
   model's files); a model must be able to see (Companion › Vision says whether
@@ -508,22 +560,65 @@ waist, hips, groin, buttocks and inner thighs) react too while
   your face*. These go with your next message; only touches and strokes can
   start a reply of their own.
 
+### Eyes
+
+Some overlay emotes are drawn over the eyes (heart eyes, star eyes, the dizzy
+swirls). They should cover only the iris and never go outside the eye, so the
+renderer must know where each eye is. A model's own data says so when it can:
+a Live2D model's iris meshes, or a VRM's eye bones and meshes. For a model
+without that data, the Thinking model measures the eyes once with its vision.
+Companion › Character › Touch zones › **Eyes** says where the shown model's
+eyes come from: *From the model's own meshes.*, *From the model's own eye
+bones and meshes.*, *Measured with vision at 3:12 PM.* or *Estimated: ...*.
+
+- **Measure the eyes** draws the character off screen in its rest pose, in the
+  same still renderer as **Detect zones** (no idle motion, so no blink: the
+  eyes are open and look straight ahead, and no emote shows). The renderer
+  also says where its face anchor puts the face in that picture. Martlet cuts a
+  square about 1.6 face widths wide around the face, enlarges it to about 768
+  pixels on a plain backdrop with a grid of tenths, and asks the Thinking model
+  for two boxes per eye, as the viewer sees them: the iris (the colored part
+  with the pupil) and the eye's opening (the white and the iris between the
+  eyelids). The picture goes to a free Thinking pool member that can see, else
+  to the Thinking model after any reply, as a low-priority
+  [helper job](MEMORY.md#helper-jobs-on-the-thinking-pool). It is never on a
+  reply's path, and nothing is sent until a model that can see is set up.
+- Martlet then checks the boxes: both eyes are there, each iris lies mostly
+  inside its eye, the sizes fit the face, the eyes are open, apart and level.
+  It puts left and right back the right way round by where the eyes are. When
+  the first answer can't be read or fails a check, Martlet asks once more: with
+  the four boxes drawn and numbered on the close-up and the problems listed, or
+  with the question again. Two failed answers save nothing.
+- The boxes become the eye hint: each iris's middle and radius, and each
+  opening's middle, half width and half height, in face widths from the face
+  anchor's middle (x toward the viewer's right, y down, with the face's roll
+  taken out). It is saved per model in `character-eyes.json`, with the pictures
+  sent and the close-up with its boxes in `character-eyes\<model>\` (shown
+  under the buttons). The renderer gets it after each model load and after each
+  measurement, and replies with what the eyes use. The model's own data always
+  comes first.
+- Martlet measures a model on its own, once each time it starts, when the
+  renderer says its eyes are only estimated and a model that can see is set up.
+  **Forget the measurement** deletes the measurement and its pictures; Martlet
+  then doesn't measure that model on its own until it starts again.
+
 ### Touch temperament
 
 The personality decides how the character acts when it is touched, and where
 its eyes usually go. Companion › Character › **Touch temperament** shows, for
-the persona in use, one table with a line for each part of its body (head and
-face, neck and torso, arms and hands, hips and legs, extras) and for each part
-that reacts differently from its group. **Feels** is how it feels about a
-touch there: hates, dislikes, neutral, likes, loves or craves (*(built-in)*
-leaves a group's parts to their built-in reactions). **Plays** and **Then** are
+the persona in use, one table with a line for each category of its body (head
+and face, shoulders and torso, arms and hands, legs and feet, extras, and
+intimate parts) and for each part that reacts differently from its category.
+**Feels** is how it feels about a touch there: hates, dislikes, neutral, likes,
+loves or craves (*(built-in)* leaves a category's parts to their built-in
+reactions). **Plays** and **Then** are
 what it plays: up to two of Martlet's reactions, such as a smile, a blush,
 hearts, leaning in, a pout, a sweat drop, an anger vein, a flinch or looking
 away; *(default)* plays what the feeling usually plays, and *(nothing)* is for a
 part the character ignores. **Lingers (s)** is how long the first reaction
 stays on, and **Looks at mouse (s)** turns its eyes to your mouse pointer for
 that many seconds after a touch there (up to 15), as if to see who did it. A
-line shows only what applies, so a group at *(built-in)* shows only its
+line shows only what applies, so a category at *(built-in)* shows only its
 feeling, and on a narrow window a line's boxes wrap onto a second line beside
 its name. **Eyes usually** is the persona's usual gaze, which
 [Where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks)
@@ -534,34 +629,80 @@ For example, a passive character can look straight ahead, ignore the mouse and
 not react to a head pat, but blush and look at your mouse when you touch it
 somewhere it cares about.
 
+The temperament has six categories, and each zone is in exactly one of them.
+Under each category's line, *Parts:* names the zones it covers:
+
+| Category | Parts |
+| --- | --- |
+| Head and face | top of head, hair, forehead, face and eyes, cheeks, nose, chin |
+| Shoulders and torso | shoulders, collarbone, stomach, navel, lower back |
+| Arms and hands | upper arms, forearms, hands |
+| Legs and feet | thighs, knees, calves, feet |
+| Extras (animal ears, tail, wings...) | animal ears, tail, horns, wings, glasses or hat, skirt hem, held item |
+| Intimate parts | lips, ears, neck, chest and breasts, waist and sides, hips, groin, buttocks, inner thighs |
+
+Give one part its own line under *Parts that react differently from their
+category*; **Add part** offers every zone, the breasts and the groin too.
+
 - When you save a personality with a meaningful change (not only spacing,
   case or punctuation), Martlet asks the Thinking model in the background. It
   waits a few seconds and never asks while Martlet replies. The answer is
   compact JSON: the usual `gaze` (`mouse`, `near`, `ahead` or `window`), an
-  attitude and reactions per zone group (head, torso, arms, lower body,
-  extras; `["none"]` for no reaction), per zone kind where one differs, how
-  long the first reaction lingers, how long the eyes `look` at the mouse after
-  a touch, and an escalation. Unknown actions are dropped and values are
+  attitude and reactions for each of the six categories (`head`, `torso`,
+  `arms`, `lower_body`, `extras` and `intimate`; `["none"]` for no reaction),
+  per zone kind where one differs, how long the first reaction lingers, how
+  long the eyes `look` at the mouse after a touch, and an escalation. The
+  request lists each zone under its category. Martlet also reads `intimate`
+  when the model writes `intimate_parts`, `erogenous`, `erogenous_zones`,
+  `private` or `sensitive`. Unknown actions are dropped and values are
   clamped. When asking fails, the previous temperament stays.
 - **Re-decide from personality** (**Decide from personality** before anything
-  is decided) asks again. Change the eyes, an attitude, a reaction, the linger
-  or look time or the escalation, or give one part its own line with **Add
-  part** (the ✕ by its name removes it again), and your choices win: a later
-  personality change does not replace them until you re-decide. **Use
-  built-in reactions** goes back to the zones' defaults.
+  is decided) asks again, and the persona then uses its own decided
+  temperament, even when it used a custom one or the built-in reactions.
+  Change the eyes, an attitude, a reaction, the linger or look time or the
+  escalation, or give one part its own line with **Add part** (the ✕ by its
+  name removes it again), and your choices win: a later personality change
+  does not replace them until you re-decide.
+- **Uses** chooses the temperament the persona uses: *Decided from its
+  personality* (its own temperament; the default), *Built-in reactions* (each
+  zone's built-in reaction; its own temperament stays for later) or one of your
+  custom temperaments. A personality change still decides the persona's own
+  temperament in the background, but doesn't change what it uses.
+- **Custom temperaments**: type a name under **New custom temperament** (at
+  most 40 characters, different from the other names) and press **Create**.
+  The new temperament starts as a copy of what the persona uses now, and the
+  persona then uses it. Choose it under **Uses** for other personas too. While
+  a persona uses a custom temperament, the table changes that custom
+  temperament for each persona that uses it (*Used by ...* names them).
+  **Rename** and **Delete** are beside its name; when you delete it, each
+  persona that used it uses its own temperament again. A line under them says
+  what the last change did, or why it couldn't. A custom temperament never goes
+  to the Thinking model; only Re-decide sends the personality.
 - Repeated touches escalate: from the third touch in a row of a disliked part
   (each within 30 seconds), it plays the escalation first, such as an anger
   vein; a loved part plays hearts.
 - A reaction resolves on the model shown: the model's own expression or motion
   with a matching name (Angry, Love, Blush...) comes first, else Martlet's
   gesture or overlay.
-- What a touch plays: a zone's own pick under Touch zones, then the
-  temperament for that zone kind or its group, then the zone's built-in
-  reaction. How long the eyes then look at your mouse always comes from the
-  temperament. Intimate parts are covered like the others and react only with
-  **Include intimate zones** on.
-- Temperaments are saved per persona in `character-temperaments.json` and
-  travel with the shared settings, like the personas.
+- What a touch plays: a zone's own pick under Touch zones, then the part's own
+  line in the temperament the persona uses, then its category, then the zone's
+  built-in reaction. How long the eyes then look at your mouse always comes
+  from the temperament. Intimate parts react only with **Include intimate
+  zones** on.
+- A temperament decided before the Intimate parts category has no intimate
+  line. Its *Intimate parts* line then reads *(as the body)*: each
+  intimate part reacts as before, as the category of the body around it. The
+  lips and ears react as Head and face; the neck, chest, breasts and waist as
+  Shoulders and torso; the hips, groin, buttocks and inner thighs as Legs and
+  feet.
+- The personas' own temperaments, the custom temperaments and which one each
+  persona uses are saved in `character-temperaments.json`. They travel with the
+  shared settings, like the personas, and the newest change wins. Martlet
+  writes version 2 of the file only when a custom temperament, a choice under
+  **Uses** or an *Intimate parts* line needs it. Until then it writes version
+  1, as before, so updating Martlet changes nothing that your computers share.
+  An older Martlet that gets version 2 from another computer says that a newer
+  Martlet saved it, instead of dropping temperaments it can't read.
 
 ## 1. Choose a renderer, analyzer and feature owners separately
 

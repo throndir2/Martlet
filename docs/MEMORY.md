@@ -302,11 +302,11 @@ above, but only after the reply finishes speaking and while no other reply runs.
 
 <a id="helper-jobs-on-the-thinking-pool"></a>
 **Helper jobs on the Thinking pool.** Remembering, naming a character's emotes,
-deciding its touch temperament and finding its touch zones are helper jobs. Each
-one goes first to a free [Thinking pool](CONVERSATION.md#the-thinking-pool)
-member that can take it (text, or vision for touch zones), so it does not
-compete with the reply or its prompt cache. Memory, naming and temperament are
-low priority; touch zones are higher, because you wait for them. When no member
+deciding its touch temperament, finding its touch zones and measuring its eyes
+are helper jobs. Each one goes first to a free [Thinking pool](CONVERSATION.md#the-thinking-pool)
+member that can take it (text, or vision for touch zones and the eyes), so it does not
+compete with the reply or its prompt cache. Memory, naming, temperament and the
+eyes are low priority; touch zones are higher, because you wait for them. When no member
 can take a job, or the pool can't finish it, Martlet uses the conversation's
 Thinking model, after the reply finishes speaking. The desktop log names the
 route of each job, and MCP's `helper_jobs_status` shows the last route of each

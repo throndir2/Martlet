@@ -22,7 +22,11 @@ internal sealed partial class RendererWindow : Window
     // Menu choices Martlet itself carries out (hide, open, talk, settings, lock, mute and unmute, click-through, where the eyes
     // go); null when started without it (tests).
     private readonly Stream? requests;
-    private readonly SemaphoreSlim requesting = new(1, 1);
+    // Every message to Martlet goes whole and in order: a write is never cut part way (see RendererPipeWriter).
+    private readonly RendererPipeWriter replyWriter;
+    private readonly RendererPipeWriter? requestWriter;
+    // Why the overlay closes by itself, for avatar-renderer.log (Martlet ends the renderer without closing it).
+    private string? closeReason;
     private readonly CancellationTokenSource lifetime = new();
     private readonly Dictionary<string, AvatarAsset> resources = new(StringComparer.Ordinal);
     // Composition avoids the child-HWND airspace/opacity of the ordinary WPF WebView2.
@@ -71,6 +75,8 @@ internal sealed partial class RendererWindow : Window
         this.input = input;
         this.output = output;
         this.requests = requests;
+        replyWriter = new RendererPipeWriter(output, capacity: 4);
+        if (requests is not null) requestWriter = new RendererPipeWriter(requests);
         this.still = still;
         Resources.MergedDictionaries.Add(new ResourceDictionary
         {
@@ -131,6 +137,7 @@ internal sealed partial class RendererWindow : Window
         viewport.MouseLeftButtonUp += (_, e) => EndStroke(e.GetPosition(viewport), Environment.TickCount64);
         viewport.StrokeAlong = StrokeAlong;
         viewport.ReadFace = ReadFace;
+        viewport.TakePicture = TakePicture;
         viewport.LostMouseCapture += (_, _) =>
         {
             if (stroke is { } lost && !strokeReleasing) EndStroke(lost.Last, Environment.TickCount64);
@@ -177,6 +184,7 @@ internal sealed partial class RendererWindow : Window
         Closed += (_, _) =>
         {
             closed = true;
+            ErrorLog.Info($"The character overlay closed: {closeReason ?? "its window was closed (not by Martlet)"}.");
             SystemParameters.StaticPropertyChanged -= SystemAppearanceChanged;
             lifetime.Cancel();
             input.Dispose();
@@ -891,24 +899,36 @@ internal sealed partial class RendererWindow : Window
     {
         if (!CanRequest)
         {
-            if (action == "hide") Close();
+            if (action == "hide") CloseBecause("Hide character was chosen and Martlet couldn't be asked to hide it");
             return;
         }
+        if (!await SendRequestAsync("request", new RendererRequest(action), $"The character's '{action}' choice") &&
+            action == "hide" && !closed)
+            CloseBecause("Hide character was chosen and Martlet didn't take the request in time");
+    }
+
+    /// <summary>Sends one unprompted message to Martlet on the request pipe, whole and in order. Waits at most 2 seconds for it
+    /// to go out (after that it still goes out whole, later); returns whether it went out in time.</summary>
+    private async Task<bool> SendRequestAsync<T>(string kind, T data, string what)
+    {
         try
         {
-            await requesting.WaitAsync(lifetime.Token);
-            try
-            {
-                await RendererProtocol.WriteAsync(requests!, RendererProtocol.Message("request", activation, new RendererRequest(action)),
-                    lifetime.Token).WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
-            }
-            finally { requesting.Release(); }
+            await requestWriter!.WriteAsync(RendererProtocol.Message(kind, activation, data))
+                .WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
+            return true;
         }
-        catch (Exception error) when (error is IOException or ObjectDisposedException or OperationCanceledException or TimeoutException)
+        catch (Exception error) when (error is IOException or ObjectDisposedException or OperationCanceledException or
+            TimeoutException or InvalidDataException)
         {
-            ErrorLog.Warn($"The character's '{action}' choice couldn't reach Martlet.", error);
-            if (action == "hide" && !closed) Close();
+            ErrorLog.Warn($"{what} couldn't reach Martlet.", error);
+            return false;
         }
+    }
+
+    private void CloseBecause(string reason)
+    {
+        closeReason ??= reason;
+        Close();
     }
 
     private void DragCharacter(object sender, MouseButtonEventArgs e)
@@ -1042,6 +1062,38 @@ internal sealed partial class RendererWindow : Window
         viewport.LastFace = CharacterFaceReading.From(answer, number);
     }
 
+    private int pictureId;
+
+    /// <summary>Takes a picture of the character as it shows now for Martlet's MCP character_picture, through UI Automation:
+    /// WebView2's capture of the page, so Martlet's drawings over the face are in it, cropped to the character. The PNG goes
+    /// to this renderer's file in the temp folder (replaced each time) and its reading to the viewport's LastPicture. A picture
+    /// that can't be taken is only reported; it changes nothing on the character and never fails the renderer.</summary>
+    private async void TakePicture()
+    {
+        if (browser.CoreWebView2 is null || failure.Failed || closed) return;
+        var id = ++pictureId;
+        try
+        {
+            var picture = await SnapshotAsync(new RendererSnapshot(Portrait: false, Edge: RendererSnapshot.MaximumEdge));
+            var folder = Path.Combine(Path.GetTempPath(), "Martlet.CharacterPictures");
+            Directory.CreateDirectory(folder);
+            var file = Path.Combine(folder, $"overlay-{Environment.ProcessId}.png");
+            await File.WriteAllBytesAsync(file, Convert.FromBase64String(picture.Png));
+            viewport.LastPicture = JsonSerializer.Serialize(new
+            {
+                n = id, path = file, width = picture.Width, height = picture.Height, left = Math.Round(picture.CropLeft, 4),
+                top = Math.Round(picture.CropTop, 4), cropWidth = Math.Round(picture.CropWidth, 4), cropHeight = Math.Round(picture.CropHeight, 4)
+            }, RendererProtocol.Json);
+        }
+        catch (Exception error) when (error is IOException or NotSupportedException or ArgumentException or InvalidDataException or
+            FileFormatException or InvalidOperationException or UnauthorizedAccessException or FormatException or
+            System.Runtime.InteropServices.COMException)
+        {
+            ErrorLog.Warn($"Couldn't take a picture of the character for Martlet's MCP: {error.Message}");
+            viewport.LastPicture = JsonSerializer.Serialize(new { n = id, error = "The picture couldn't be taken." }, RendererProtocol.Json);
+        }
+    }
+
     /// <summary>The page's hit test for the last tap: remembered for UI Automation and, when it found the character, sent to
     /// Martlet on the request pipe. A malformed or stale answer is ignored; it never fails the renderer.</summary>
     private void Touched(JsonElement answer)
@@ -1086,20 +1138,7 @@ internal sealed partial class RendererWindow : Window
     private async void SendTouch(CharacterTouch touch)
     {
         if (!CanRequest) return;
-        try
-        {
-            await requesting.WaitAsync(lifetime.Token);
-            try
-            {
-                await RendererProtocol.WriteAsync(requests!, RendererProtocol.Message("touch", activation, touch), lifetime.Token)
-                    .WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
-            }
-            finally { requesting.Release(); }
-        }
-        catch (Exception error) when (error is IOException or ObjectDisposedException or OperationCanceledException or TimeoutException)
-        {
-            ErrorLog.Warn("A tap on the character couldn't reach Martlet.", error);
-        }
+        await SendRequestAsync("touch", touch, "A tap on the character");
     }
 
     private const double BubbleRadius = 16, BubblePadX = 16, BubblePadY = 10, TailLength = 22, TailHalfBase = 9,
@@ -1440,8 +1479,13 @@ internal sealed partial class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "click-through" or "voice" or "gaze" or "where" or "camera" or "snapshot" or "zones"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "click-through" or "voice" or "gaze" or "where" or "camera" or "snapshot" or "zones" or "eyes"))
                     throw new InvalidDataException("Renderer command is invalid.");
+                if (message.Kind == "eyes")
+                {
+                    await ReplyAsync("eyes", await EyesAsync(message));
+                    continue;
+                }
                 if (message.Kind == "camera")
                 {
                     UseCamera(RendererProtocol.Data<RendererCamera>(message));
@@ -1535,13 +1579,17 @@ internal sealed partial class RendererWindow : Window
             System.Runtime.InteropServices.COMException or TimeoutException or JsonException or InvalidDataException or
             Martlet.Core.Contracts.ContractException or OperationCanceledException)
         {
+            // Without this line the log only says the renderer exited cleanly, and Martlet sees a character that just went away.
+            closeReason ??= $"it stopped after an error ({error.GetType().Name}: {error.Message})";
+            ErrorLog.Warn("The character renderer stopped after an error; it tells Martlet and closes.", error);
             try
             {
+                // After any reply still going out, never into it.
                 if (activation != Guid.Empty)
-                    await RendererProtocol.WriteAsync(output, RendererProtocol.Message("error", activation, modelRejection is { Length: > 0 } rejected
+                    await replyWriter.WriteAsync(RendererProtocol.Message("error", activation, modelRejection is { Length: > 0 } rejected
                         ? new { code = "avatar.model_rejected", message = $"This model can't be shown: {rejected}" }
-                        : new { code = "avatar.renderer_unavailable", message = "Renderer/runtime/resource operation failed. Inspect local prerequisites and retry explicitly." }),
-                        CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(1));
+                        : new { code = "avatar.renderer_unavailable", message = "Renderer/runtime/resource operation failed. Inspect local prerequisites and retry explicitly." }))
+                        .WaitAsync(TimeSpan.FromSeconds(1));
             }
             catch (Exception failure) when (failure is IOException or ObjectDisposedException or TimeoutException) { }
         }
@@ -1557,6 +1605,21 @@ internal sealed partial class RendererWindow : Window
         failure.ThrowIfFailed();
         if (result.TryGetProperty("error", out _)) throw new InvalidDataException("Browser rejected the selected resource or controls.");
         return result;
+    }
+
+    /// <summary>Gives the page the eye hint (<see cref="RendererEyes"/>; without both eyes it clears it) and says what the eyes
+    /// use now. The page takes it beside the touch and face readings, so a hint it can't use never fails the character; a
+    /// hint that isn't valid clears it.</summary>
+    private async Task<RendererEyesFrom> EyesAsync(RendererMessage message)
+    {
+        var hint = message.Data.ValueKind == JsonValueKind.Object ? RendererProtocol.Data<RendererEyes>(message) : new RendererEyes();
+        if (!hint.IsValid)
+        {
+            ErrorLog.Warn("Martlet sent an eye hint that isn't valid; the character's eyes use the model's own data or an estimate.");
+            hint = new();
+        }
+        var answer = await BrowserAsync<object?>("eyes", hint.Clears ? null : new { left = hint.Left, right = hint.Right });
+        return new(answer.TryGetProperty("eyesFrom", out var from) && from.ValueKind == JsonValueKind.String ? RendererEyesFrom.Read(from.GetString()) : null);
     }
 
     /// <summary>A picture of the character, cropped to its opaque pixels (a head-and-shoulders square for a portrait), scaled
@@ -1652,8 +1715,8 @@ internal sealed partial class RendererWindow : Window
 
     /// <summary>The page draws the character on its canvas, PictureWidth by PictureHeight pixels in the framing
     /// <paramref name="zoom"/>, <paramref name="x"/>, <paramref name="y"/>, and reads it back in the same step, so it never shows
-    /// on screen (in a still renderer, in the model's rest pose). Also where its drawables or bones are in that picture, as
-    /// fractions of it (null when the page can't say).</summary>
+    /// on screen (in a still renderer, in the model's rest pose). Also where its drawables or bones and its face are in that
+    /// picture, as fractions of it (null when the page can't say).</summary>
     private async Task<(PageCapture Shot, RendererZoneProbe? Probe)> PictureAsync(double zoom, double x, double y)
     {
         const string Prefix = "data:image/png;base64,";
@@ -1667,10 +1730,21 @@ internal sealed partial class RendererWindow : Window
         {
             probe = new(drawn.TryGetProperty("drawables", out var drawables) ? drawables.Deserialize<RendererDrawableBox[]>(RendererProtocol.Json) : null,
                 drawn.TryGetProperty("bones", out var bones) ? bones.Deserialize<RendererBonePoint[]>(RendererProtocol.Json) : null,
+                drawn.TryGetProperty("face", out var face) ? Face(face) : null,
                 drawn.TryGetProperty("parts", out var parts) ? parts.Deserialize<RendererModelPart[]>(RendererProtocol.Json) : null);
         }
         catch (JsonException error) { ErrorLog.Warn($"Couldn't read where the character's parts are: {error.Message}"); }
         return (Decode(bytes), probe);
+    }
+
+    // The face anchor the page read while drawing a picture (fractions of it), or null when it isn't one.
+    private static RendererFace? Face(JsonElement face)
+    {
+        double? Number(string name) => face.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number ? value.GetDouble() : null;
+        if (face.ValueKind != JsonValueKind.Object || Number("x") is not { } x || Number("y") is not { } y || Number("width") is not { } width) return null;
+        var read = new RendererFace(x, y, width, Number("angle") ?? 0,
+            face.TryGetProperty("tracking", out var tracking) && tracking.ValueKind == JsonValueKind.String ? tracking.GetString() : null);
+        return read.IsValid ? read : read with { Tracking = null } is { IsValid: true } plain ? plain : null;
     }
 
     // A picture of the page as Bgra32 pixels, with the box of the character's opaque pixels in it.
@@ -1912,5 +1986,5 @@ internal sealed partial class RendererWindow : Window
     }
 
     private Task ReplyAsync<T>(string kind, T data) =>
-        RendererProtocol.WriteAsync(output, RendererProtocol.Message(kind, activation, data), lifetime.Token);
+        replyWriter.WriteAsync(RendererProtocol.Message(kind, activation, data)).WaitAsync(lifetime.Token);
 }
