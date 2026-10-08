@@ -16,7 +16,7 @@ Each release's section here is also its notes on GitHub.
 - When you switch another computer between companion and host PC, the computer you are at now tells you when it has switched. A host PC that has no host service yet now says so, instead of looking like it works for your other computers. ([#612](https://github.com/throndir2/Martlet/pull/612))
 
 ### Fixed
-- **Manage memory** now shows what Martlet remembers the moment it opens, even while Martlet is answering you, and it keeps up on its own: facts Martlet remembers, changes or forgets while it's open show up right away, with no need to press **Refresh**. ([#613](https://github.com/throndir2/Martlet/pull/613))
+- **Manage memory** now shows what Martlet remembers the moment it opens, even while Martlet is answering you, and it keeps up on its own: facts Martlet remembers, changes or forgets while it's open show up right away, with no need to press **Refresh**. ([#614](https://github.com/throndir2/Martlet/pull/614))
 
 ## [0.57.0] - 2026-10-07
 
