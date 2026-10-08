@@ -2348,6 +2348,45 @@ public sealed class LiveConversationTests
     }
 
     [Fact]
+    public void AlwaysListeningWaitsLongerAfterEachMicrophoneFailureInARow() =>
+        Assert.Equal([1, 1, 5, 10, 20, 30, 30, 30],
+            new[] { 0, 1, 2, 3, 4, 5, 6, 100 }.Select(failures => LiveConversationController.MicrophoneRetry(failures).TotalSeconds));
+
+    [Fact]
+    public Task AlwaysListeningBacksOffAMicrophoneThatKeepsFailingAndSaysHowOftenItTries() => DispatcherTest(async () =>
+    {
+        await using var fixture = await LiveFixture.Create();
+        fixture.Answer("Heard you.");
+        fixture.Capture.OpenFailure = new CaptureDeviceException(ErrorCode.AudioDeviceChanged);
+        var window = fixture.Open(new TalkPreferences(SpeakReplies: false));
+        try
+        {
+            await Loaded(window);
+            Click(window, "MicChip");
+            // Soon after the first failure, then longer with each one in a row; the microphone stays closed for each wait.
+            foreach (var (opens, wait) in new[] { (1, 1), (2, 5), (3, 10) })
+            {
+                var status = $"Martlet can't open the microphone. Check that it is connected and enabled. Martlet keeps trying every {wait} s.";
+                await fixture.Advance(() => fixture.Capture.Opens == opens && window.Listener?.Retry == TimeSpan.FromSeconds(wait));
+                await Task.Delay(50);
+                fixture.Clock.Advance(TimeSpan.FromSeconds(wait) - TimeSpan.FromMilliseconds(200));
+                // The talk window shows it on its own (real-time) tick; the fixture clock stays where it is meanwhile.
+                await Until(() => window.ListeningStatus == (status, true));
+                Assert.Equal(opens, fixture.Capture.Opens);
+            }
+            // It works again: the next utterance is heard and answered, and the failures in a row are over.
+            fixture.Capture.OpenFailure = null;
+            EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 15);
+            await fixture.Advance(() => window.Messages.Any(m => m.Role == ChatRole.Martlet && m.Text.Contains("Heard you.", StringComparison.Ordinal)));
+            Assert.True(fixture.Capture.Opens >= 4);
+            Assert.Null(window.Listener!.Retry);
+            Assert.False(window.ListeningStatus.Problem);
+            Assert.Equal(1, fixture.Stt.Calls);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
     public async Task TranscriptIntentStartsAtActualReceiptWithoutRenewingAnOldPermit()
     {
         await using var fixture = await LiveFixture.Create();

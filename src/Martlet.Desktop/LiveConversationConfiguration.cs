@@ -332,6 +332,7 @@ internal sealed class LiveConversationConfiguration
         : !IsChat(route) ? "OpenAI" :
         ChatCompletionsEndpointCatalog.Named(route.Origin) is { } named
             ? $"{named.Name} ({route.Origin})"
+            : LocalModelServers.IsOnThisComputer(route.Origin) ? $"{LocalModelServers.Name(route.Origin)} on this PC ({route.Origin})"
             : $"the endpoint at {route.Origin}";
 
     internal string? Unavailable(bool voice, bool microphone)
@@ -423,6 +424,8 @@ internal sealed class LiveConversationConfiguration
             lines.Add("That host's owner controls its logs.");
         else if (chat && llm!.Origin == ChatCompletionsEndpointCatalog.OpenRouterBaseUrl)
             lines.Add("OpenRouter may forward requests to a model provider. Privacy and pricing depend on that provider.");
+        else if (chat && !LocalOllama && LocalModelServers.IsOnThisComputer(llm!.Origin))
+            lines.Add("That app decides what it keeps, and whether anything leaves this PC.");
         else if (chat)
             lines.Add("The endpoint operator controls processing, retention and costs.");
 
@@ -820,7 +823,7 @@ internal sealed class LiveConversationConfiguration
             "On: your voice stays on this PC (Thinking runs here), so Thinking hears it unless you turn this off.",
         _ when thinking is null => "Off until you tick it.",
         _ when Uri.TryCreate(thinking.Origin, UriKind.Absolute, out var uri) && (uri.IsLoopback || ModelContextProbe.IsLoopback(uri)) =>
-            $"Off until you tick it: your recording would go to {LlmDestinationName(thinking)}, a server on this PC that may pass it on " +
+            $"Off until you tick it: your recording would go to {LlmDestinationName(thinking)}, an app that may pass it on " +
             "(only Ollama on this PC hears you without the tick).",
         _ => $"Off until you tick it: your recording would leave this PC for {LlmDestinationName(thinking)}."
     };

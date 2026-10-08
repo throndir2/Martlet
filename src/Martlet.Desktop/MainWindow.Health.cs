@@ -39,6 +39,8 @@ public partial class MainWindow
     private SettingsLoadState? homeSettingsState;
     private string? homeSettingsProblem;
     private LocalOllamaState ollamaState;
+    /// <summary>Why the model app on this PC that Thinking uses can't answer (see <see cref="LocalServerHealth"/>), or null.</summary>
+    private string? localServerProblem;
     private bool webView2Missing, microphoneBlocked, localCheckAgain;
     private Task? localCheck;
     private string? localCheckKey;
@@ -119,8 +121,25 @@ public partial class MainWindow
         if (key == localCheckKey) return;
         localCheckKey = key;
         ollamaState = LocalOllamaState.NotUsed;
+        localServerProblem = null;
         CheckLocalServicesAsync().Forget();
     }
+
+    /// <summary>Why the model app on this PC that Thinking uses can't answer, from what it said when asked for its models, or
+    /// null when it can. Asked without the key: an app that wants one is fine when the route has one saved.</summary>
+    internal static string? LocalServerHealth(SetupRoute route, LocalServerAnswer answer, string name) => answer.Kind switch
+    {
+        LocalServerAnswerKind.NoAnswer => $"Thinking uses {route.ModelId} in {name} on this PC, but nothing answers at {route.Origin}. " +
+            $"Start {(LocalModelServers.AppAt(route.Origin) is { } app ? app.Name + "'s" : "the app's")} server, or choose another way to think.",
+        LocalServerAnswerKind.NotAModelServer => $"Thinking uses {route.ModelId} in {name} on this PC, but {route.Origin} doesn't answer like a model app. " +
+            "Another program may be using its port.",
+        LocalServerAnswerKind.NeedsKey when route.CredentialId is null =>
+            $"{char.ToUpperInvariant(name[0])}{name[1..]} asks for an API key. Enter the key you set in the app in Companion › Thinking › This PC.",
+        LocalServerAnswerKind.Models when answer.Models.Count > 0 && !answer.Models.Contains(route.ModelId, StringComparer.Ordinal) =>
+            $"Thinking uses {route.ModelId}, but {name} on this PC doesn't list it now (it lists {string.Join(", ", answer.Models.Take(4))}). " +
+            "Load it in the app, or choose another model.",
+        _ => null
+    };
 
     private async Task RunLocalChecksAsync()
     {
@@ -141,8 +160,17 @@ public partial class MainWindow
                     ? Prerequisites.IsMissing(Prerequisites.Ollama) ? LocalOllamaState.NotInstalled : LocalOllamaState.NotRunning
                     : LocalOllama.Serves(models, thinking.ModelId) ? LocalOllamaState.Ready : LocalOllamaState.ModelMissing;
             }
+            string? serverProblem = null;
+            if (IsLocalServer(thinking) && thinking!.Enabled != false)
+            {
+                LocalServerAnswer answer;
+                try { answer = await LocalModelServers.AskAsync(thinking.Origin, null, timeout: TimeSpan.FromSeconds(3), cancellationToken: lifetime.Token); }
+                catch (OperationCanceledException) { return; }
+                serverProblem = LocalServerHealth(thinking, answer, LocalServerName(thinking.Origin));
+            }
             if (closing) return;
             ollamaState = state;
+            localServerProblem = serverProblem;
         } while (localCheckAgain);
         RenderHealth();
     }
@@ -293,6 +321,10 @@ public partial class MainWindow
                         "Martlet can't reply right now");
                     break;
             }
+            if (localServerProblem is { } serverProblem && IsLocalServer(llm))
+                Add("local-model-app", HealthLevel.Problem, $"{Capitalized(LocalServerName(llm.Origin))} isn't ready on this PC", serverProblem,
+                    [new("recheck", "Check again", () => CheckLocalServicesAsync().Forget()), Open(CompanionTab.Thinking, "Change thinking")],
+                    "Martlet can't reply right now");
         }
 
         // Jobs that were chosen but don't work: from coverage (hosts, keys, consent, unsupported routes). Jobs this PC's own

@@ -38,15 +38,24 @@ For Thinking, **Provider** selects one of (the recommended model is prefilled):
 | OpenAI (Responses API) | `https://api.openai.com` | `gpt-4.1-mini-2025-04-14` | Required |
 | OpenRouter | `https://openrouter.ai/api/v1` | `google/gemma-4-26b-a4b-it` (talks, sees, calls tools) | Required (OpenRouter key) |
 | NVIDIA Build | `https://integrate.api.nvidia.com/v1` | `google/diffusiongemma-26b-a4b-it` (a fast Free Endpoint that talks, sees and calls tools) | Required (`nvapi-...` key from build.nvidia.com) |
-| Custom OpenAI-compatible endpoint | Any canonical HTTPS base such as `https://api.groq.com/openai/v1`, or a loopback server such as `http://127.0.0.1:1234/v1` (LM Studio), `http://127.0.0.1:8080/v1` (llama.cpp) or `http://127.0.0.1:11434/v1` (Ollama) | none (enter the model your server serves) | Optional |
+| Custom OpenAI-compatible endpoint | Any canonical HTTPS base such as `https://api.groq.com/openai/v1` | none (enter the model your server serves) | Optional |
+
+A model app on this PC (LM Studio, llama.cpp, KoboldCpp, Jan, vLLM and others)
+belongs under **This PC › A model app you already use**, not under a cloud
+provider. Martlet finds it on its default port, lists its models, tests one and
+accepts what the app shows (`localhost:1234`); see
+[Local model apps](LOCAL_MODEL_APPS.md). The custom endpoint still accepts a
+loopback address typed exactly, and Thinking then shows it under This PC.
 
 Listening prefills `gpt-4o-mini-transcribe`; Speaking prefills
 `gpt-4o-mini-tts-2025-12-15` with voice `alloy`. Switching provider replaces a
 prefilled default with the new provider's default but keeps a model you typed.
 The Chat Completions providers accept any exact model ID (for example
 `openai/gpt-4o-mini` or a `:free` variant on OpenRouter); there is no model
-catalog or discovery. Martlet appends `/chat/completions`. HTTP is allowed only for a
-literal loopback IP (`localhost` is rejected). Keys are bound to the exact base
+catalog or discovery for cloud providers (a model app on this PC lists its
+models). Martlet appends `/chat/completions`. HTTP is allowed only for a
+literal loopback IP (in the custom endpoint field `localhost` is rejected; This
+PC › *A model app you already use* turns it into `127.0.0.1`). Keys are bound to the exact base
 URL. Switching the LLM to another destination sets the previous key aside: it
 stays in Windows Credential Manager, listed for explicit removal under *Keys
 from before* on the job's Companion page, and is never deleted on its own. Keys set aside
