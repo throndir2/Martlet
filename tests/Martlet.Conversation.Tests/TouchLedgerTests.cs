@@ -25,6 +25,20 @@ public sealed class TouchLedgerTests
         Assert.Null(ledger.Drain(S(13)));
     }
 
+    // The talk window's note for a reply to touches alone names the character as the persona it is ("Martlet" without one).
+    [Fact]
+    public void TheTalkWindowsNoteNamesThePersonaThatWasTouched()
+    {
+        var ledger = new TouchLedger();
+        ledger.Record(Pat(1));
+        ledger.Record(Poke(2));
+        var burst = ledger.Peek(S(2))!;
+        Assert.Equal("You touched Ivy (touch: top of head pat, left cheek poke)", burst.Note("Ivy"));
+        Assert.Equal("You touched Jane Doe (sarcastic) (touch: top of head pat, left cheek poke)", burst.Note(" Jane Doe (sarcastic) "));
+        Assert.Equal("You touched Martlet (touch: top of head pat, left cheek poke)", burst.Note(null));
+        Assert.Equal("You touched Martlet (touch: top of head pat, left cheek poke)", TouchWording.Note("  ", burst.Entries));
+    }
+
     [Fact]
     public void StrokesAndMovesReadPlainly()
     {

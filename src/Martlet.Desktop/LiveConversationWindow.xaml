@@ -9,7 +9,9 @@
         AutomationProperties.Name="Talk with Martlet">
     <!-- The talk window is only the conversation: its history and the message box. It doesn't block the rest of Martlet.
          How Martlet listens, speaks and sees is chosen in Companion; Start listening and Start watching turn always listening and
-         watching on here (both are off when the window opens), and each stops from its own button. -->
+         watching on here (both are off when the window opens), and each stops from its own button.
+         It calls the character by the name of the persona Martlet uses (CharacterName): the title, the header, the message box
+         and the history say it. Its accessible name stays "Talk with Martlet", so MCP's window list never carries that name. -->
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="{DynamicResource SoftBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="18,12">
             <DockPanel>
@@ -52,7 +54,7 @@
                 </StackPanel>
                 <Image x:Name="TalkMascot" Style="{DynamicResource Mascot}" DockPanel.Dock="Left" Width="40" Height="40" Margin="0,0,12,0"/>
                 <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="Martlet" FontSize="19" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="CharacterNameText" Text="Martlet" FontSize="19" FontWeight="SemiBold"/>
                     <!-- No fixed accessible name: the status text itself is what screen readers announce (and MCP reads). -->
                     <TextBlock x:Name="ResultText" Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap"
                                AutomationProperties.LiveSetting="Polite" AutomationProperties.AutomationId="LiveStatus"/>
@@ -262,7 +264,7 @@
             </ScrollViewer>
             <StackPanel x:Name="EmptyHint" VerticalAlignment="Center" HorizontalAlignment="Center" IsHitTestVisible="False" MaxWidth="380" Margin="24">
                 <Image Style="{DynamicResource Mascot}" Width="72" Height="72" Margin="0,0,0,12"/>
-                <TextBlock Text="Say hi to Martlet" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center" TextAlignment="Center"/>
+                <TextBlock x:Name="EmptyTitle" Text="Say hi to Martlet" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center" TextAlignment="Center"/>
                 <TextBlock x:Name="EmptyDetail" Style="{DynamicResource Muted}" TextAlignment="Center" Margin="0,4,0,0"/>
             </StackPanel>
             <!-- Background tasks (the header's LiveTasks opens it): every task Martlet runs or ran in this conversation, newest

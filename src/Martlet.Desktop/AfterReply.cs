@@ -36,9 +36,11 @@ internal static class AfterReply
     /// <param name="present">The voices heard in the message being remembered, to say whose new facts are (the speaker's unless
     /// the model names another); the ones <paramref name="naming"/> heard when null.</param>
     /// <param name="people">The label of each voice the known facts belong to (<see cref="MemoryPeople.Labels"/>).</param>
+    /// <param name="companion">The name of the persona the companion is: its lines in an excerpt carry it
+    /// (<see cref="MemoryCapture.Speaker"/>).</param>
     internal static AfterReplyPrompt Prompt(IReadOnlyList<MemoryFact>? known, VoiceNamingContext? naming, string? earlierUser, string? earlierReply,
         string user, string reply, PromptSettings? prompts, BoundedTextInput? conversation = null, Func<BoundedTextInput, bool>? fits = null,
-        HeardVoices? present = null, IReadOnlyDictionary<string, string>? people = null)
+        HeardVoices? present = null, IReadOnlyDictionary<string, string>? people = null, string? companion = null)
     {
         ContractRules.Require(known is not null || naming is not null, "Remembering or learning names is required.");
         present ??= naming?.Heard;
@@ -51,14 +53,15 @@ internal static class AfterReply
             return continued with { Voices = voices };
         if (naming is null)
         {
-            var memory = MemoryCapture.Prompt(earlierUser, earlierReply, user, reply, known!, prompts, present, people);
+            var memory = MemoryCapture.Prompt(earlierUser, earlierReply, user, reply, known!, prompts, present, people, companion);
             return new(memory.Input, memory.ShownFacts, voices, false);
         }
         if (known is null)
         {
-            var named = VoiceNaming.Prompt(naming, earlierUser, earlierReply, user, reply, prompts);
+            var named = VoiceNaming.Prompt(naming, earlierUser, earlierReply, user, reply, prompts, companion);
             return new(named.Input, 0, named.Voices, false);
         }
+        var speaker = MemoryCapture.Speaker(companion);
         // Both: drop context before the latest exchange if an unusually large excerpt would not fit the LLM input budget.
         foreach (var (earlier, shown) in new[] { (true, Math.Min(known.Count, MemoryCapture.MaximumShownFacts)), (false, Math.Min(known.Count, 4)), (false, 0) })
         {
@@ -67,14 +70,15 @@ internal static class AfterReply
             text.Append('\n');
             VoiceNaming.AppendVoices(text, naming);
             MemoryCapture.AppendWhose(text, naming.Heard);
+            MemoryCapture.AppendCompanion(text, companion);
             if (earlier && (earlierUser is not null || earlierReply is not null))
             {
                 text.Append("\nEarlier in the conversation (context only):\n");
                 if (earlierUser is not null) text.Append("User: ").Append(MemoryCapture.Clip(earlierUser, 300)).Append('\n');
-                if (earlierReply is not null) text.Append("Martlet: ").Append(MemoryCapture.Clip(earlierReply, 300)).Append('\n');
+                if (earlierReply is not null) text.Append(speaker).Append(MemoryCapture.Clip(earlierReply, 300)).Append('\n');
             }
             text.Append("\nLatest exchange:\n").Append(VoiceNaming.UserLabel(naming.Heard)).Append(MemoryCapture.Clip(user, 1400))
-                .Append("\nMartlet: ").Append(MemoryCapture.Clip(reply, 800));
+                .Append('\n').Append(speaker).Append(MemoryCapture.Clip(reply, 800));
             try
             {
                 var input = new BoundedTextInput(text.ToString(), instructions);

@@ -45,7 +45,7 @@ public partial class LiveConversationWindow
         if (closed) return;
         touchLast = $"{DateTime.Now:T}: " + (touchOnly ? "a touch reply started" : "went with your message") +
             $" ({burst.HistoryLine}). Martlet was told: {told ?? burst.Line}";
-        if (touchOnly) AddNote($"You touched Martlet {burst.HistoryLine}");
+        if (touchOnly) AddNote(burst.Note(CharacterName));
         RenderTouches();
     });
 
