@@ -32,10 +32,14 @@ plan, Devices › Sharing work, the Thinking pool, your voice engine and your
 provider keys ([`RecommendedSetupInputs.cs`](../src/Martlet.Desktop/RecommendedSetupInputs.cs)).
 The network recommender (`NetworkRecommender`) then applies
 [its rules](#recommended-setup-for-all-your-computers). Companion PCs stay light because they often run games, and each graphics
-card runs at most one language model. A review window shows each computer
-today and in the recommended setup, with a resource bar like the Devices page.
-It also shows who does each job (Speaking, Listening, Thinking, lip-sync and the
-Thinking pool) and every change with why. It lists notes, downloads and what
+card runs at most one language model. A review window first lists **every part,
+in priority order** ([the priority list](#the-priority-list)): where each part
+runs, or *Off* and why, with an **Off** choice for each optional part. Then it
+shows each computer today and in the recommended setup, with a resource bar
+like the Devices page, including what a companion PC does itself (Thinking in
+Ollama, Parakeet). It also shows who does each job (Speaking, Listening,
+Thinking, lip-sync and the Thinking pool) and every change with why, in the
+order Reconfigure makes them. It lists notes, downloads and what
 needs someone at a computer. **Reconfigure** applies the setup on every computer
 as a background task: its run window shows the progress, and Background tasks
 keeps it after you hide that window. **Not now** closes the review, and this PC doesn't ask
@@ -336,6 +340,57 @@ your choices. It gives the recommended setup and the list of changes that get
 there. It is pure: it reads no files and contacts no computer, and the same
 network always gives the same recommendation.
 
+### The priority list
+
+One list decides what gets resources first and what Reconfigure sets up first.
+It is `ComponentRanking` in
+[`PlanComponent.cs`](../src/Martlet.Core/Planning/PlanComponent.cs), and the
+placement engine, the network recommender, the setup advisor, the welcome tour
+and the Devices page all use it. The review window shows it as **Every part, in
+priority order**.
+
+| # | Part | Needed or optional | Off means |
+| --- | --- | --- | --- |
+| 1 | Thinking | Needed: Martlet can't reply without it | Can't be off |
+| 2 | Voice | Needed | Can't be off |
+| 3 | Listening | Needed | Can't be off |
+| 4 | Character | Needed (inside Martlet, needs very little) | Can't be off |
+| 5 | Lip-sync (advanced, Audio2Face) | Optional | The character's face follows the voice's loudness |
+| 6 | Deep thinking (the Thinking pool) | Optional | Martlet doesn't think things over in the background |
+| 7 | Singing | Optional | Martlet doesn't sing |
+| 8 | Pictures | Optional | Martlet doesn't draw pictures |
+
+- **Off is a normal state.** An optional part with no room, or with no
+  processor option (singing, pictures, Deep thinking), is off. The review shows
+  each part as *Off*, with why. You can also tick **Off** for an optional part
+  in the review: Martlet saves the choice on this PC (`recommended-setup.json`),
+  plans again without that part, and Reconfigure removes its roles.
+- **A companion PC's graphics card takes only Thinking and the voice.**
+  Thinking goes first. Then comes your voice engine (Chatterbox Turbo) if it
+  fits beside Thinking. If it doesn't fit, Chatterbox Nano goes on the card,
+  or else on the processor. Everything else runs on the processor
+  (Parakeet listening inside Martlet), or is off (advanced lip-sync then
+  follows the voice's loudness). What you already run on a companion PC's
+  card stays only while room is left after Thinking and the voice.
+- **Without an API key, Thinking runs on a graphics card first.** With no
+  saved provider key, nothing hosted can think, so a local model (Gemma 4 E2B,
+  or the model you used before, such as Gemma 4 E4B) takes a card before
+  anything else. With a saved key, the voice may take the card, and Thinking
+  then uses the hosted model when no card has room.
+- **Reconfigure follows the same list.** It first removes optional parts that
+  are going away (they free the card). Then it works job by job: Thinking first,
+  then the jobs that free graphics memory (listening moving to the processor),
+  then the rest in priority order. Each job is make before break: its new role,
+  the job's move, then the old role. New Thinking pool models come last.
+
+For example, one companion PC with a 12 GB RTX 4070, no API key and its hosts
+switched off gets: Gemma 4 E4B (Thinking) and Chatterbox Turbo on the card,
+Parakeet on the processor, lip-sync by the voice's loudness, and Deep thinking,
+singing and pictures off. Reconfigure removes singing first, then sets up
+Thinking, then listening, lip-sync and the voice.
+
+### The rules
+
 The planner uses these rules, in this order of importance:
 
 1. **One language model per graphics card.** Thinking's model (the `ollama`
@@ -372,11 +427,12 @@ The planner uses these rules, in this order of importance:
    parts inside Martlet while a host can do the work. A companion PC takes a
    job only when no host can do it and Martlet needs it (Thinking without a
    hosted provider, your voice engine). Then the companion PC with the most
-   free hardware takes it. One companion PC alone uses its own card, as the
-   welcome setup does. Computers that aren't answering don't count, so a
-   companion PC whose hosts are off plans like one alone:
-   Thinking in its own Ollama, then the voice and lip-sync on its card, and
-   listening in the app (on the card when room is left).
+   free hardware takes it. A companion PC's card takes only Thinking and the
+   voice ([the priority list](#the-priority-list)), also when it is alone.
+   Computers that aren't answering don't count, so a companion PC whose hosts
+   are off plans like one alone: Thinking in its own Ollama on its card, then
+   the voice on its card, listening in the app and lip-sync by the voice's
+   loudness.
 7. **No added latency.** A live job never moves to a model with a later first
    word or to a busier card than today's. The only exceptions are a computer
    that isn't answering and a card that is too full. New jobs get the fastest
@@ -424,11 +480,16 @@ The planner uses these rules, in this order of importance:
     recommended one, there are no changes. The fingerprint of the recommended
     setup does not change while the recommendation stays the same, so Martlet
     does not ask again about a recommendation that you declined.
-12. **Make before break.** The changes pin roles to cards, add roles, give jobs
-    and pool places to their new computers, and only then remove old roles.
-    So Martlet keeps working while the computers change. A change on a
-    computer that Martlet cannot change from here says that someone must make
-    it at that computer.
+12. **Setup order, make before break.** The changes follow the priority list
+    (see [The priority list](#the-priority-list)): optional parts that go are
+    removed first, then each job in turn, Thinking first. Within a job, its new
+    role comes first, then the job moves, then its old role goes. So Martlet
+    keeps working while the computers change, and a full card is emptied before
+    a new model loads. A change on a computer that Martlet cannot change from
+    here says that someone must make it at that computer.
+13. **Off is a state.** Optional parts can be off: with no room, with no
+    processor option, or because you ticked **Off** in the review. Their roles
+    go and the review says why each part is off.
 
 **Qualification:** `NetworkRecommenderTests` and the MCP tool
 `network_recommendation_check` run the planner on fixture networks

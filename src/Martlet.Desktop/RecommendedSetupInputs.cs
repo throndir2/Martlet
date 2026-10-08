@@ -49,6 +49,8 @@ internal sealed record SetupSources(IReadOnlyList<SetupComputer> Computers)
     /// <summary>The voice engine the owner chose, as a host role kind ("chatterbox").</summary>
     public string? VoiceEngine { get; init; }
     public IReadOnlyCollection<string> ConfiguredProviders { get; init; } = [];
+    /// <summary>The parts the owner turned off in the review (RecommendedSetupMemory.Off).</summary>
+    public IReadOnlyCollection<PlanComponent> Off { get; init; } = [];
 }
 
 /// <summary>The recommender's request and what the review says about computers the request leaves out.
@@ -121,7 +123,8 @@ internal static class RecommendedSetupInputs
             CurrentJobs = jobs,
             CurrentThinkingPool = [.. sources.ThinkingPool.Where(id => !sources.PoolOptOut.Contains(id, StringComparer.Ordinal)).Distinct(StringComparer.Ordinal)],
             ThinkingPoolOptOut = [.. sources.PoolOptOut.Distinct(StringComparer.Ordinal)],
-            VoiceEngine = sources.VoiceEngine
+            VoiceEngine = sources.VoiceEngine,
+            Off = [.. sources.Off.Where(ComponentRanking.CanBeOff).Distinct()]
         };
         return new(request, notes, names);
     }
@@ -247,7 +250,7 @@ internal static class RecommendedSetupInputs
     internal static SetupSources Sources(NetworkInputs inputs, IReadOnlyList<NetworkNode>? nodes, string device, string? ownHostId,
         double? diskFreeGb, Func<string, TimeSpan?>? offlineFor = null, WorkSharingSettings? sharing = null,
         IReadOnlyCollection<string>? thinkingPool = null, IReadOnlyCollection<string>? poolOptOut = null, string? voiceEngine = null,
-        IReadOnlyCollection<string>? configuredProviders = null)
+        IReadOnlyCollection<string>? configuredProviders = null, IReadOnlyCollection<PlanComponent>? off = null)
     {
         ArgumentNullException.ThrowIfNull(inputs);
         var computers = new List<SetupComputer>();
@@ -307,7 +310,7 @@ internal static class RecommendedSetupInputs
         {
             Plan = inputs.Plan, LocalJobs = jobs, JobOptions = options, Sharing = sharing ?? new(), Device = device,
             ThinkingPool = thinkingPool ?? [], PoolOptOut = poolOptOut ?? [], VoiceEngine = voiceEngine,
-            ConfiguredProviders = providers
+            ConfiguredProviders = providers, Off = off ?? []
         };
     }
 

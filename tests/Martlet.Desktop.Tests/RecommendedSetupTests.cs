@@ -212,8 +212,9 @@ public sealed class RecommendedSetupTests
         Assert.False(review.AlreadyOptimal);
         Assert.Equal("A better setup is ready for your computers", review.Title);
         Assert.StartsWith("4 changes on 3 computers.", review.Summary);
-        Assert.Equal(["Needed", "Improvement", "Improvement", "Tidier"], review.Changes.Select(c => c.Benefit));
-        Assert.Equal("Install Listening on lost-box.", review.Changes[0].Summary);
+        // In the order Reconfigure makes them (the recommender's setup order), each with how much it matters.
+        Assert.Equal(["Improvement", "Tidier", "Needed", "Improvement"], review.Changes.Select(c => c.Benefit));
+        Assert.Equal("gpu-box does Speaking.", review.Changes[0].Summary);
         Assert.Equal(["On lost-box: Install Listening on lost-box."], review.Manual);
         Assert.Equal("Downloads about 12 GB: lost-box 3.5 GB, gpu-box 8 GB.", review.Downloads);
         Assert.Equal(["gpu-box hasn't answered for 12 minutes.", "lost-box hasn't reported its hardware yet, so the recommendation leaves it as it is.",
@@ -400,6 +401,78 @@ public sealed class RecommendedSetupTests
         Assert.Equal("Recommended load: 46% graphics memory, 9% memory, 12% processor.", gpu.Load);
         Assert.Equal([CapacityResource.GraphicsMemory, CapacityResource.Memory, CapacityResource.Processor], gpu.Bars.Select(b => b.Resource));
         Assert.Equal(11, gpu.Bars[0].Planned);
+    }
+
+    // ---------- parts that are off, and the priority list ----------
+
+    [Fact]
+    public void Parts_turned_off_are_kept_on_this_PC_and_reach_the_request()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "martlet-recommended-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var memory = new RecommendedSetupMemory().WithOff(PlanComponent.Singing, true).WithOff(PlanComponent.LipSync, true)
+                .WithOff(PlanComponent.Thinking, true).Decline("abc", Now);
+            Assert.Equal([PlanComponent.LipSync, PlanComponent.Singing], memory.OffParts.Order());
+            Assert.True(memory.Save(directory));
+            var loaded = RecommendedSetupMemory.Load(directory);
+            Assert.Equal([PlanComponent.LipSync, PlanComponent.Singing], loaded.OffParts.Order());
+            Assert.True(loaded.WasDeclined("abc"));
+            Assert.Equal([PlanComponent.Singing], loaded.WithOff(PlanComponent.LipSync, false).OffParts);
+            // A name Martlet doesn't know, or a part that can't be off, is dropped.
+            File.WriteAllText(Path.Combine(directory, RecommendedSetupMemory.FileName), """{ "Off": ["Pictures", "Thinking", "Nonsense"] }""");
+            Assert.Equal([PlanComponent.Pictures], RecommendedSetupMemory.Load(directory).OffParts);
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+
+        var sources = RecommendedSetupInputs.Sources(Network(Plan()), null, "desktop-desk", "desk-host", 400, off: [PlanComponent.DeepThinking]);
+        Assert.Equal([PlanComponent.DeepThinking], RecommendedSetupInputs.Request(sources).Request.Off);
+    }
+
+    [Fact]
+    public void The_review_lists_every_part_in_priority_order_with_off_for_the_optional_ones()
+    {
+        var build = Build(Plan());
+        var recommendation = Recommendation(build) with
+        {
+            Components =
+            [
+                new ComponentStatus(PlanComponent.Thinking, 1, ComponentNecessity.Required, true, "Gemma 4 E2B in Ollama on This PC's RTX 4080", "Fast."),
+                new ComponentStatus(PlanComponent.Singing, 7, ComponentNecessity.Optional, false, "Off: Martlet doesn't sing.", "You turned singing off.") { OwnerOff = true }
+            ]
+        };
+
+        var parts = RecommendedSetupReview.From(recommendation, build).Parts;
+
+        Assert.Equal("1. Thinking (needed): Gemma 4 E2B in Ollama on This PC's RTX 4080.", parts[0].Text);
+        Assert.False(parts[0].CanBeOff);
+        Assert.Equal("7. Singing (optional): Off: Martlet doesn't sing.", parts[1].Text);
+        Assert.True(parts[1].CanBeOff);
+        Assert.True(parts[1].OwnerOff);
+        Assert.Equal("Singing", parts[1].Key);
+    }
+
+    [Fact]
+    public void A_companion_PC_card_says_what_it_does_itself()
+    {
+        var machine = new NetworkMachine(MachineSpecs.ThisPc([new MachineGpu("RTX 4070", GpuVendor.Nvidia, 12)], 32, 16), NetworkMachineKind.Companion)
+        {
+            HasHostService = true
+        };
+        JobPlan[] jobs =
+        [
+            new(ClusterJobs.Thinking, null, OptionId: "gemma4:e4b"),
+            new(ClusterJobs.Listening, null, OptionId: "parakeet-tdt-0.6b-v3-cpu"),
+            new(ClusterJobs.Speaking, "this-pc", OptionId: "chatterbox-turbo"),
+            new(ClusterJobs.LipSync, null, Off: true)
+        ];
+        Assert.Equal("Chatterbox Turbo; on the PC itself: Thinking (Gemma 4 E4B in Ollama), Listening (Parakeet on the processor)",
+            RecommendedSetupReview.Runs([new HostedRolePlacement("chatterbox", "chatterbox-turbo", null)], machine, jobs, FootprintCatalog.Default));
+        Assert.Equal("on the PC itself: Thinking (Gemma 4 E4B in Ollama), Listening (Parakeet on the processor)",
+            RecommendedSetupReview.Runs([], machine, jobs, FootprintCatalog.Default));
     }
 
     // ---------- declined setups and who asks ----------

@@ -6,9 +6,9 @@ public static partial class NetworkRecommender
 {
     private sealed partial class Planner
     {
-        /// <summary>The changes from today's setup to <paramref name="target"/>, make before break (rule 12): pin and switch
-        /// roles, add roles, assign jobs, join pools, then leave pools and remove roles. Nothing changes on a computer that isn't
-        /// answering, and the Thinking pool needs no change of its own (a host joins it once it runs Deep thinking).</summary>
+        /// <summary>The changes from today's setup to <paramref name="target"/> in setup order (<see cref="SetupOrder"/>). Nothing
+        /// changes on a computer that isn't answering, and the Thinking pool needs no change of its own (a host joins it once it
+        /// runs Deep thinking).</summary>
         private List<SetupChange> Diff(NetworkSetup target)
         {
             var changes = new List<SetupChange>();
@@ -37,9 +37,48 @@ public static partial class NetworkRecommender
                 }
                 if (job is ClusterJobs.Speaking or ClusterJobs.Listening) PoolChanges(job, decision, today, changes);
             }
-            return changes.OrderBy(c => Rank(c.Kind)).ThenBy(c => JobOrder(c.Job)).ThenBy(c => c.MachineId, StringComparer.Ordinal)
+            return SetupOrder(changes);
+        }
+
+        /// <summary>The order Reconfigure sets things up in, from the priority list (<see cref="ComponentRanking"/>):
+        /// <list type="number">
+        /// <item>Optional extras and Thinking pool models that go are removed first: nothing Martlet needs to talk uses them,
+        /// and their graphics memory is free for the jobs that do.</item>
+        /// <item>Then job by job, Thinking first (Martlet can't reply without it), then the jobs that free graphics memory
+        /// (listening moving to the processor, say), then the rest in priority order. Each job is make before break: its new
+        /// roles, the job's move, its pool, then the roles it leaves.</item>
+        /// <item>Last, what no job needs: new Thinking pool models and pinning other roles.</item>
+        /// </list></summary>
+        private List<SetupChange> SetupOrder(List<SetupChange> changes)
+        {
+            var net = ClusterJobs.All.ToDictionary(job => job, NetGpu, StringComparer.Ordinal);
+            int Phase(SetupChange c) => c.Kind == SetupChangeKind.RemoveRole && c.RoleKind is { } kind && (Extra(kind) || kind == DeepThinkingRole) ? 0
+                : JobOfChange(c) is not null ? 1 : 2;
+            return changes
+                .OrderBy(Phase)
+                .ThenBy(c => Phase(c) == 1 && JobOfChange(c) != ClusterJobs.Thinking ? 1 : 0)
+                .ThenBy(c => Phase(c) == 1 && JobOfChange(c) is { } job && net[job] > Epsilon ? 1 : 0)
+                .ThenBy(c => Phase(c) == 1 && JobOfChange(c) is { } job ? ComponentRanking.Of(ComponentOf(job)).Rank : 0)
+                .ThenBy(c => Rank(c.Kind)).ThenBy(c => JobOrder(c.Job)).ThenBy(c => c.MachineId, StringComparer.Ordinal)
                 .ThenBy(c => c.RoleKind, StringComparer.Ordinal).ToList();
         }
+
+        /// <summary>The job a change belongs to: its own for a job or pool change, the job its role does for a role change.</summary>
+        private string? JobOfChange(SetupChange change) => change.Kind is SetupChangeKind.AssignJob or SetupChangeKind.JoinPool or SetupChangeKind.LeavePool
+            ? change.Job is { } job && ClusterJobs.All.Contains(job) ? job : null
+            : change.RoleKind switch
+            {
+                ThinkingRole => ClusterJobs.Thinking,
+                ListeningRole => ClusterJobs.Listening,
+                LipSyncRole => ClusterJobs.LipSync,
+                { } kind when IsVoice(kind) => ClusterJobs.Speaking,
+                _ => null
+            };
+
+        /// <summary>How much graphics memory a job's roles take in the recommended setup minus today, on the computers that answer
+        /// (negative: the job frees memory, as when listening moves to the processor).</summary>
+        private double NetGpu(string job) => nodes.Where(n => n.Presence == Presence.Here)
+            .Sum(n => n.Roles.Where(r => MatchesJob(job, r.Kind)).Sum(r => r.Gb) - n.Today.Where(r => MatchesJob(job, r.Kind)).Sum(r => r.Gb));
 
         private static int Rank(SetupChangeKind kind) => kind switch
         {
@@ -62,6 +101,7 @@ public static partial class NetworkRecommender
             {
                 var was = today.FirstOrDefault(r => r.Kind == role.Kind);
                 int? gpu = node.Pinnable && role.Option is { UsesGpu: true } ? role.Card : null;
+                var processor = role.Option is { IsLocal: true, UsesGpu: false } && node.Spec.Gpus.Count > 0;
                 var name = Label(role.Option, role.Kind);
                 if (was is null)
                 {
@@ -69,7 +109,7 @@ public static partial class NetworkRecommender
                         (role.Kind == DeepThinkingRole ? $" {node.Name} then joins the Thinking pool by itself." : "");
                     changes.Add(RoleChange(SetupChangeKind.AddRole, node, role, summary, role.Benefit, role.Why) with
                     {
-                        Model = role.Model, GpuIndex = gpu, DownloadGb = Download(role)
+                        Model = role.Model, GpuIndex = gpu, DownloadGb = Download(role), OnProcessor = processor
                     });
                     continue;
                 }
@@ -78,7 +118,7 @@ public static partial class NetworkRecommender
                     var summary = $"Switch {node.Name}'s {KindName(role.Kind)} from {was.Model ?? "its model"} to {name}.";
                     changes.Add(RoleChange(SetupChangeKind.ChangeModel, node, role, summary, role.Benefit, role.Why) with
                     {
-                        Model = role.Model, FromModel = was.Model, DownloadGb = Download(role)
+                        Model = role.Model, FromModel = was.Model, DownloadGb = Download(role), OnProcessor = processor
                     });
                 }
                 if (gpu is { } card && card != was.GpuIndex)

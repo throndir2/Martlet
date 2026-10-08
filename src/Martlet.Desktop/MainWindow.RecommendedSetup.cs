@@ -87,14 +87,18 @@ public partial class MainWindow
     private SetupSources RecommendedSetupSources()
     {
         if (SimulatedRecommendedSetup.Active)
-            return SimulatedRecommendedSetup.Sources(DateTimeOffset.UtcNow) with { ConfiguredProviders = ConfiguredProviders() };
+            return SimulatedRecommendedSetup.Sources(DateTimeOffset.UtcNow) with
+            {
+                ConfiguredProviders = ConfiguredProviders(), Off = RecommendedSetupMemory.Load(store?.DataDirectory).OffParts
+            };
         var inputs = Inputs();
         var directory = store?.DataDirectory;
         var poolSettings = ThinkingPoolSettings.Load(directory);
         var pool = poolSettings.Places.Places.Where(p => p.OnHostRole && p.HostId is not null).Select(p => p.HostId!).ToArray();
         return RecommendedSetupInputs.Sources(inputs, NetworkMap.Build(inputs), ClusterDevice, OwnHostId(), ThisPcDiskFreeGb(),
             offlineFor: OfflineFor, sharing: directory is null ? null : WorkSharingSettings.Load(directory), thinkingPool: pool,
-            poolOptOut: poolSettings.LeftByOwner, voiceEngine: SpeakingEngineChoice.Current.HostRoleKind, configuredProviders: ConfiguredProviders());
+            poolOptOut: poolSettings.LeftByOwner, voiceEngine: SpeakingEngineChoice.Current.HostRoleKind, configuredProviders: ConfiguredProviders(),
+            off: RecommendedSetupMemory.Load(directory).OffParts);
     }
 
     private void ShowRecommendedSetup(SetupRequestBuild build, NetworkRecommendation recommendation)
@@ -103,6 +107,7 @@ public partial class MainWindow
         var window = new RecommendedSetupWindow(review, RecommendedPrepare(recommendation, build.Names), RecommendedApply(recommendation));
         if (IsVisible) window.Owner = this;
         window.Declined += DeclineRecommendedSetup;
+        window.PartOff += TurnRecommendedPartOff;
         window.OpenThinking += use => OpenFreeKey(use, fromReview: true);
         window.Closed += (_, _) =>
         {
@@ -247,6 +252,20 @@ public partial class MainWindow
             };
         }
         if (!recommendedTimer.IsEnabled) recommendedTimer.Start();
+    }
+
+    /// <summary>The review's Off for an optional part: saved on this PC (recommended-setup.json), then the review opens again
+    /// with a recommendation planned without it (or with it again).</summary>
+    private void TurnRecommendedPartOff(PlanComponent part, bool off)
+    {
+        var directory = store?.DataDirectory;
+        if (!RecommendedSetupMemory.Load(directory).WithOff(part, off).Save(directory))
+        {
+            ActionText.Text = "Martlet couldn't save that choice on this PC.";
+            return;
+        }
+        ErrorLog.Info($"Recommended setup: {ComponentRanking.Name(part)} is {(off ? "off" : "on again")} on this PC's recommendation.");
+        Dispatcher.BeginInvoke(() => OpenRecommendedSetupAsync().Forget());
     }
 
     /// <summary>Not now (in the review or on Home's notice): this PC doesn't ask about the same recommended setup again.</summary>

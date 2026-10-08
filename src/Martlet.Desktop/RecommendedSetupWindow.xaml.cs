@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using Martlet.Core.Planning;
 
 namespace Martlet.Desktop;
 
@@ -37,6 +38,9 @@ public partial class RecommendedSetupWindow : ThemedWindow
     /// <summary>The owner chose Not now: the review's fingerprint.</summary>
     internal event Action<string>? Declined;
 
+    /// <summary>The owner ticked or cleared an optional part's Off. The review closes; Martlet saves the choice and plans again.</summary>
+    internal event Action<PlanComponent, bool>? PartOff;
+
     /// <summary>Reconfigure started (it carries on in Background tasks), in words.</summary>
     internal string? Outcome { get; private set; }
 
@@ -60,6 +64,9 @@ public partial class RecommendedSetupWindow : ThemedWindow
         OfflineText.Text = review.Offline ?? "";
         OfflineText.Visibility = review.Offline is null ? Visibility.Collapsed : Visibility.Visible;
         RenderBanner();
+        PartsSection.Visibility = review.Parts.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        PartsPanel.Children.Clear();
+        foreach (var part in review.Parts) PartsPanel.Children.Add(PartRow(part));
         ChangesSection.Visibility = review.Changes.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         ChangesPanel.Children.Clear();
         for (var i = 0; i < review.Changes.Count; i++) ChangesPanel.Children.Add(ChangeRow(review.Changes[i], i));
@@ -205,6 +212,54 @@ public partial class RecommendedSetupWindow : ThemedWindow
         if (muted) line.SetResourceReference(StyleProperty, "Muted");
         AutomationProperties.SetAutomationId(line, id);
         return line;
+    }
+
+    /// <summary>One part of the priority list: its number, name and need, where it runs or that it is off, why, and for an
+    /// optional part its Off choice.</summary>
+    private FrameworkElement PartRow(ReviewPart part)
+    {
+        var row = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
+        if (part.CanBeOff)
+        {
+            var off = new CheckBox
+            {
+                Content = "Off", IsChecked = part.OwnerOff, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(12, 2, 0, 0),
+                ToolTip = $"Keep {part.Name.ToLowerInvariant()} off: Martlet removes it from your computers and plans without it."
+            };
+            AutomationProperties.SetAutomationId(off, $"RecommendedSetupOff-{part.Key}");
+            AutomationProperties.SetName(off, $"{part.Name} off");
+            // Checked and Unchecked (not Click): a keyboard, a screen reader and UI Automation's Toggle change IsChecked too.
+            void Changed(object sender, RoutedEventArgs e)
+            {
+                var now = off.IsChecked == true;
+                if (now == part.OwnerOff) return;
+                if (applying)
+                {
+                    off.IsChecked = part.OwnerOff;
+                    return;
+                }
+                PartOff?.Invoke(part.Component, now);
+                Close();
+            }
+            off.Checked += Changed;
+            off.Unchecked += Changed;
+            DockPanel.SetDock(off, Dock.Right);
+            row.Children.Add(off);
+        }
+        var body = new StackPanel();
+        var text = new TextBlock { Text = part.Text, TextWrapping = TextWrapping.Wrap, FontWeight = part.On ? FontWeights.SemiBold : FontWeights.Normal };
+        if (!part.On) text.SetResourceReference(StyleProperty, "Muted");
+        AutomationProperties.SetAutomationId(text, $"RecommendedSetupPart-{part.Key}");
+        AutomationProperties.SetName(text, $"{part.Text} {part.Why}".Trim());
+        body.Children.Add(text);
+        if (part.Why.Length > 0)
+        {
+            var why = new TextBlock { Text = part.Why, TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(16, 1, 0, 0) };
+            why.SetResourceReference(StyleProperty, "Muted");
+            body.Children.Add(why);
+        }
+        row.Children.Add(body);
+        return row;
     }
 
     private static FrameworkElement ChangeRow(ReviewChange change, int index)

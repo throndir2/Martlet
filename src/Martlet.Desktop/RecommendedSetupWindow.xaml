@@ -51,8 +51,18 @@
                 <TextBlock x:Name="OfflineText" TextWrapping="Wrap" Margin="0,-8,0,16" Visibility="Collapsed"
                            Foreground="{DynamicResource WarningBrush}" AutomationProperties.AutomationId="RecommendedSetupOffline"/>
 
+                <!-- Every part of Martlet in priority order (ComponentRanking): where it runs, or Off. Optional parts have an
+                     explicit Off choice; the review then plans again without them. -->
+                <StackPanel x:Name="PartsSection" Visibility="Collapsed">
+                    <TextBlock Text="Every part, in priority order" Style="{DynamicResource SectionHeading}"/>
+                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8"
+                               Text="Martlet sets up the parts at the top first. Needed parts make a conversation work. Optional parts can be off: tick Off to plan without one."/>
+                    <StackPanel x:Name="PartsPanel" Margin="0,0,0,16" AutomationProperties.Name="Every part, in priority order"
+                                AutomationProperties.AutomationId="RecommendedSetupParts"/>
+                </StackPanel>
+
                 <StackPanel x:Name="ChangesSection">
-                    <TextBlock Text="What changes" Style="{DynamicResource SectionHeading}"/>
+                    <TextBlock Text="What changes, in the order Reconfigure makes them" Style="{DynamicResource SectionHeading}"/>
                     <StackPanel x:Name="ChangesPanel" Margin="0,0,0,16" AutomationProperties.Name="What changes"
                                 AutomationProperties.AutomationId="RecommendedSetupChanges"/>
                 </StackPanel>

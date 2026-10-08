@@ -3886,12 +3886,19 @@ can't reply" problem. The result has:
 - `notes`: why a computer is left as it is.
 - `today`: each job's `host`, `off`, `option` and `pool` (the other computers
   that take its requests when the one in charge is busy, in Sharing work
-  order), `thinkingPool`, `thinkingPoolOptOut`, `voiceEngine` and
-  `preference`.
-- `recommendation`: `alreadyOptimal`, `worthAsking`, `fingerprint`, the
-  `changes` (`kind`, `computer`, `summary`, `why`, `away` (the sentence in
+  order), `thinkingPool`, `thinkingPoolOptOut`, `voiceEngine`, `preference` and
+  `off` (the optional parts turned off in the review on this PC, from
+  `recommended-setup.json`).
+- `recommendation`: `alreadyOptimal`, `worthAsking`, `fingerprint`,
+  `components` (every part in priority order: `rank`, `part`, `need`
+  (`needed` or `optional`), `on`, `where` (*Gemma 4 E4B in Ollama on This PC's
+  NVIDIA GeForce RTX 4070*, or *Off: Martlet doesn't sing.*), `why`, `canBeOff`
+  and `ownerOff`), the
+  `changes` in the order Reconfigure makes them (`kind`, `computer`, `summary`, `why`, `away` (the sentence in
   `why` about a computer that isn't answering, which the review leaves out),
-  `benefit`, `roleKind`, `model`, `job`, `needsSomeoneThere`, `downloadGb`),
+  `benefit`, `roleKind`, `model`, `job`, `needsSomeoneThere`, `downloadGb`,
+  `onProcessor` (the role installs its processor variant with
+  `choice.accelerator=cpu`, because its computer's card has no room for it)),
   each computer's recommended `roles`, `why` and `load` (percent of graphics
   memory, memory and processor), the `jobs`, the `thinkingPool`, `cannotReply`
   and `cannotReplyNote` (nobody does Thinking, and why, such as *No computer
@@ -3915,7 +3922,12 @@ every `RecommendedSetup*` text: `RecommendedSetupBannerTitle` and
 Martlet can't reply* when nobody does Thinking in the recommended setup, else
 *Add a free API key* while no hosted provider has a saved key; hidden
 otherwise), `RecommendedSetupTitle`,
-`RecommendedSetupSummary`, `RecommendedSetupOffline` (one sentence about the
+`RecommendedSetupSummary`, `RecommendedSetupPart-<Part>` (the priority list:
+`RecommendedSetupPart-Thinking` reads *1. Thinking (needed): Gemma 4 E4B in
+Ollama on This PC's NVIDIA GeForce RTX 4070.* and an optional part that is off
+*7. Singing (optional): Off: Martlet doesn't sing.*, with why; parts are
+`Thinking`, `Voice`, `Listening`, `Character`, `LipSync`, `DeepThinking`,
+`Singing` and `Pictures`), `RecommendedSetupOffline` (one sentence about the
 computers that aren't answering, such as *MIKU and IMOUTO haven't answered for 2
 hours, so Martlet plans without them.*; each change's why then leaves those
 words out; their `RecommendedSetupTarget-<n>` reads *Recommended: left out while
@@ -3941,8 +3953,11 @@ The status line (`Settings action result`) says which box to fill. Its `Recommen
 a free key*) opens NVIDIA Build in the browser, so it is not a safe click.
 After a key is saved, Home plans again and opens the review with the new setup
 when the review sent the owner there. `RecommendedSetupApply`
-(Reconfigure: it changes every computer) and `RecommendedSetupCancel` (Not now:
-it saves `recommended-setup.json`) need `--allow-ui-effects`. Reconfigure
+(Reconfigure: it changes every computer), `RecommendedSetupCancel` (Not now:
+it saves `recommended-setup.json`) and each optional part's Off checkbox
+`RecommendedSetupOff-<Part>` (`ui_toggle`: it saves the part as off, or on
+again, in `recommended-setup.json`, and the review opens again planned that
+way) need `--allow-ui-effects`. Reconfigure
 closes the review and starts the background task *Reconfigure your computers*
 in its run window: `HostRunStatus` and `TaskState-<id>` read the progress
 (*Configuring your computers: 0 of 2 finished. gpu-box: Installing Chatterbox
@@ -3989,17 +4004,21 @@ its detail: the change list (kind, computer, benefit, summary and why), the
 target roles, jobs, pools, Thinking pool and notes. The steps are: two
 companion PCs and two hosts with nothing set up (companion PCs run no host
 roles; Thinking gets Gemma 4 E2B on a card of its own; one more voice for the
-second companion PC; no Thinking pool change); make before break; a host with
+second companion PC; no Thinking pool change); a host with
 two NVIDIA cards (Thinking and Deep thinking pinned to cards of their own); a
 Windows host whose voice shares its card (the voice moves to a card of its
 own); a crowded network (no card over its capacity); Deep thinking beside the
 voice (it moves to the card no live job uses); a companion PC that runs
 Singing and a Listening pool place while both hosts are gone for 155 minutes
-(needed jobs first: with no provider key, Thinking runs on its own card, the
-voice and lip-sync join it, and Singing goes as Required because it is
-optional; with a saved free key on an 8 GB card, Thinking uses the free hosted
-model and the voice and lip-sync get the card); heavy roles on a companion PC
-(they move to the host, Improvement); Thinking on a companion PC's card with
+(needed jobs first: with no provider key, Thinking runs on its own card and the
+voice joins it, lip-sync follows the voice's loudness because a companion PC's
+card is only for Thinking and the voice, and Singing goes first as Required
+because it is optional; with a saved free key on an 8 GB card, Thinking uses
+the free hosted model and the voice gets the card); the parts the owner turned
+off (step 13: every part in priority order, and Singing, Deep thinking and
+advanced lip-sync off with their roles removed); heavy roles on a companion PC
+(they move to the host, Improvement); the setup order (step 12: job by job,
+Thinking first, each job make before break); Thinking on a companion PC's card with
 only a processor host (it stays: no added latency); hosted Thinking that the
 owner chose (it stays, unless everything is kept local); a host left out of
 the Thinking pool; the voice host not answering just now, for 4 and for 25

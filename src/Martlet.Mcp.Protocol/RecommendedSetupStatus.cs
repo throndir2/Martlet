@@ -75,15 +75,22 @@ internal static class RecommendedSetupStatus
                 thinkingPool = build.Request.CurrentThinkingPool,
                 thinkingPoolOptOut = build.Request.ThinkingPoolOptOut,
                 voiceEngine = build.Request.VoiceEngine,
-                preference = build.Request.Preference.ToString()
+                preference = build.Request.Preference.ToString(),
+                off = build.Request.Off.Select(p => p.ToString())
             },
             recommendation = new
             {
                 alreadyOptimal = recommendation.AlreadyOptimal, worthAsking = recommendation.WorthAsking, fingerprint = recommendation.Fingerprint,
+                components = recommendation.Components.Select(c => new
+                {
+                    rank = c.Rank, part = c.Name, need = c.CanBeOff ? "optional" : "needed", on = c.On, where = c.Where, why = c.Why,
+                    canBeOff = c.CanBeOff, ownerOff = c.OwnerOff
+                }),
                 changes = recommendation.Changes.Select(c => new
                 {
                     kind = c.Kind.ToString(), computer = Name(c.MachineId), summary = c.Summary, why = c.Why, away = c.Away, benefit = c.Benefit.ToString(),
-                    roleKind = c.RoleKind, model = c.Model, job = c.Job, needsSomeoneThere = c.NeedsSomeoneThere, downloadGb = c.DownloadGb
+                    roleKind = c.RoleKind, model = c.Model, job = c.Job, needsSomeoneThere = c.NeedsSomeoneThere, downloadGb = c.DownloadGb,
+                    onProcessor = c.OnProcessor
                 }),
                 machines = recommendation.Target.Machines.Select(m => new
                 {
@@ -158,7 +165,8 @@ internal static class RecommendedSetupStatus
         return new SetupSources(computers)
         {
             Plan = plan, LocalJobs = jobs, Sharing = WorkSharingSettings.Load(directory), Device = device, ThinkingPool = pool,
-            PoolOptOut = poolSettings.LeftByOwner, VoiceEngine = voice.HostRoleKind, ConfiguredProviders = providers
+            PoolOptOut = poolSettings.LeftByOwner, VoiceEngine = voice.HostRoleKind, ConfiguredProviders = providers,
+            Off = RecommendedSetupMemory.Load(directory).OffParts
         };
     }
 

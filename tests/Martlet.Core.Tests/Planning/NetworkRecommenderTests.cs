@@ -411,7 +411,7 @@ public sealed class NetworkRecommenderTests
             [
                 new JobPlan(ClusterJobs.Thinking, "miku-host"),
                 new JobPlan(ClusterJobs.Speaking, "miku-host"),
-                new JobPlan(ClusterJobs.Listening, "imouto-host"),
+                new JobPlan(ClusterJobs.Listening, "imouto-host") { Pool = ["diva-host"] },
                 new JobPlan(ClusterJobs.LipSync, "miku-host")
             ],
             CurrentThinkingPool = ["imouto-host"],
@@ -433,6 +433,30 @@ public sealed class NetworkRecommenderTests
         Assert.Contains(recommendation.Changes, c => c is { Kind: SetupChangeKind.AssignJob, Job: ClusterJobs.Speaking, Benefit: SetupChangeBenefit.Required });
         Assert.Contains(recommendation.Changes, c => c is { Kind: SetupChangeKind.AssignJob, Job: ClusterJobs.Listening, Benefit: SetupChangeBenefit.Required });
         Assert.Contains(RolesOf(recommendation, "diva-host"), r => r.Kind == "chatterbox");
+        // The priority list on one companion PC: Thinking on its card, then Chatterbox Turbo (it fits), the rest on the
+        // processor or off: no advanced lip-sync, no Thinking pool model and no singing on a companion PC's card.
+        Assert.DoesNotContain(RolesOf(recommendation, "diva-host"), r => r.Kind is "audio2face" or "deep-thinking" or "singing" or "stt");
+        Assert.True(recommendation.Target.Job(ClusterJobs.LipSync)!.Off);
+        Assert.StartsWith("parakeet", recommendation.Target.Job(ClusterJobs.Listening)!.OptionId, StringComparison.Ordinal);
+        // Setup order: Singing goes first (it frees the card), then Thinking, then listening (it frees Whisper's memory),
+        // lip-sync, and the voice last (it takes memory).
+        var order = recommendation.Changes.Select(c => c.Kind == SetupChangeKind.RemoveRole ? $"remove {c.RoleKind}" : c.Kind == SetupChangeKind.AddRole
+            ? $"add {c.RoleKind}" : $"{c.Kind} {c.Job}").ToList();
+        Assert.Equal(["remove singing", "AssignJob thinking", "AssignJob listening", "LeavePool listening", "remove stt", "AssignJob lip-sync",
+            "add chatterbox", "AssignJob speaking"], order);
+        var parts = recommendation.Components.ToDictionary(c => c.Component);
+        Assert.Equal(ComponentRanking.All.Select(i => i.Component), recommendation.Components.Select(c => c.Component));
+        Assert.True(parts[PlanComponent.Thinking].On);
+        Assert.Equal("Gemma 4 E4B in Ollama on diva-host's NVIDIA GeForce RTX 4070", parts[PlanComponent.Thinking].Where);
+        Assert.Equal("Chatterbox Turbo on diva-host's NVIDIA GeForce RTX 4070", parts[PlanComponent.Voice].Where);
+        Assert.Contains("processor", parts[PlanComponent.Listening].Where, StringComparison.Ordinal);
+        foreach (var off in new[] { PlanComponent.LipSync, PlanComponent.DeepThinking, PlanComponent.Singing, PlanComponent.Pictures })
+        {
+            Assert.False(parts[off].On, $"{off} is on");
+            Assert.True(parts[off].CanBeOff);
+            Assert.StartsWith("Off: ", parts[off].Where, StringComparison.Ordinal);
+        }
+        Assert.False(parts[PlanComponent.Thinking].CanBeOff);
         // Thinking moves to this PC with a model Martlet can set up (MIKU's route names it "gemma4-e4b", the tag gemma4:e4b).
         var thinking = recommendation.Target.Job(ClusterJobs.Thinking)!;
         Assert.Equal("gemma4:e4b", FootprintCatalog.Default.Find(thinking.OptionId!)?.ModelId);
@@ -461,6 +485,86 @@ public sealed class NetworkRecommenderTests
         var usage = today.Machine("h1")!.Usage!;
         Assert.Contains(usage.Items, i => i.OptionId == "gemma4:e4b");
         Assert.Contains(usage.Items, i => i.OptionId == "deep-thinking:gemma4:e2b");
+    }
+
+    [Fact]
+    public void ACompanionPcAloneWithASmallCardSpeaksWithChatterboxNanoAfterThinking()
+    {
+        // 8 GB: Thinking (Gemma 4 E4B, the owner's model) takes the card first; Chatterbox Turbo has no room beside it, nor
+        // Nano on the card, so Nano speaks on the processor (choice.accelerator=cpu) instead of nobody speaking.
+        var request = Network(Companion("pc", true, Nvidia(8)) with { OnWindows = true }) with
+        {
+            CurrentJobs = [new JobPlan(ClusterJobs.Thinking, null, OptionId: "gemma4:e4b")],
+            Preference = HostingPreference.PreferLocal
+        };
+
+        var recommendation = NetworkRecommender.Recommend(request);
+
+        Assert.Equal("gemma4:e4b", recommendation.Target.Job(ClusterJobs.Thinking)!.OptionId);
+        var speaking = recommendation.Target.Job(ClusterJobs.Speaking)!;
+        Assert.Equal("pc", speaking.HostId);
+        Assert.Equal("chatterbox-nano-cpu", speaking.OptionId);
+        var install = recommendation.Changes.Single(c => c.Kind == SetupChangeKind.AddRole && c.RoleKind == "chatterbox-nano");
+        Assert.True(install.OnProcessor);
+        Assert.Null(recommendation.CannotSpeakNote);
+        AssertWithinCapacity(recommendation);
+    }
+
+    [Fact]
+    public void PartsTheOwnerTurnedOffAreRemovedAndShownOff()
+    {
+        var request = Network(Companion("c1"), Host("h1", Nvidia(24)) with
+        {
+            Roles = [Role("ollama", "gemma4:e2b"), Role("chatterbox", "chatterbox-turbo"), Role("audio2face"), Role("singing", "ace-step-v15-soulx-svc"),
+                Role("deep-thinking", "gemma4:e2b", 0)]
+        }) with
+        {
+            CurrentJobs =
+            [
+                new JobPlan(ClusterJobs.Thinking, "h1", OptionId: "gemma4:e2b"),
+                new JobPlan(ClusterJobs.Speaking, "h1", OptionId: "chatterbox-turbo"),
+                new JobPlan(ClusterJobs.LipSync, "h1", OptionId: "audio2face-3d")
+            ],
+            CurrentThinkingPool = ["h1"]
+        };
+
+        var on = NetworkRecommender.Recommend(request);
+        Assert.Contains(RolesOf(on, "h1"), r => r.Kind == "singing");
+        Assert.True(on.Components.Single(c => c.Component == PlanComponent.Singing).On);
+
+        var off = NetworkRecommender.Recommend(request with { Off = [PlanComponent.LipSync, PlanComponent.DeepThinking, PlanComponent.Singing, PlanComponent.Thinking] });
+
+        Assert.DoesNotContain(RolesOf(off, "h1"), r => r.Kind is "audio2face" or "deep-thinking" or "singing");
+        Assert.Contains(RolesOf(off, "h1"), r => r.Kind == "ollama");
+        Assert.True(off.Target.Job(ClusterJobs.LipSync)!.Off);
+        Assert.Empty(off.Target.ThinkingPool);
+        foreach (var kind in new[] { "audio2face", "deep-thinking", "singing" })
+        {
+            var remove = off.Changes.Single(c => c.Kind == SetupChangeKind.RemoveRole && c.RoleKind == kind);
+            Assert.StartsWith("You turned", remove.Why, StringComparison.Ordinal);
+        }
+        var parts = off.Components.ToDictionary(c => c.Component);
+        Assert.True(parts[PlanComponent.Singing].OwnerOff);
+        Assert.False(parts[PlanComponent.Singing].On);
+        Assert.Equal("Off: Martlet doesn't sing.", parts[PlanComponent.Singing].Where);
+        Assert.Equal("Off: the character's face follows the voice's loudness.", parts[PlanComponent.LipSync].Where);
+        // Thinking can't be turned off.
+        Assert.False(parts[PlanComponent.Thinking].OwnerOff);
+        Assert.True(parts[PlanComponent.Thinking].On);
+        var offRequest = request with { Off = [PlanComponent.LipSync, PlanComponent.DeepThinking, PlanComponent.Singing] };
+        var again = NetworkRecommender.Recommend(Apply(offRequest, off));
+        Assert.True(again.AlreadyOptimal, string.Join("\n", again.Changes.Select(c => c.Summary)));
+    }
+
+    [Fact]
+    public void AProcessorInstallAsksTheHostForItsProcessorVariant()
+    {
+        var change = new SetupChange(SetupChangeKind.AddRole, "pc", "Install Chatterbox Nano on pc's processor.", "") { RoleKind = "chatterbox-nano", OnProcessor = true };
+        var needs = new SetupRoleNeeds("Chatterbox Nano", "MIT") { GpuOrCpu = true };
+        var (arguments, problem) = SetupExecutor.Arguments(change, needs, null);
+        Assert.Null(problem);
+        Assert.Equal("cpu", arguments["choice.accelerator"]);
+        Assert.False(SetupExecutor.Arguments(change with { OnProcessor = false }, needs, null).Arguments.ContainsKey("choice.accelerator"));
     }
 
     [Fact]
@@ -585,13 +689,26 @@ public sealed class NetworkRecommenderTests
         var changes = recommendation.Changes.ToList();
         Assert.All(changes.Where(c => c.MachineId == "c1"), c => Assert.Equal(SetupChangeKind.RemoveRole, c.Kind));
         Assert.All(changes, c => Assert.NotEqual(SetupChangeBenefit.Minor, c.Benefit));
-        // Make before break: the host's roles first, then the jobs, then the companion's roles go.
-        var lastAdd = changes.FindLastIndex(c => c.Kind == SetupChangeKind.AddRole);
-        var firstAssign = changes.FindIndex(c => c.Kind == SetupChangeKind.AssignJob);
-        var lastAssign = changes.FindLastIndex(c => c.Kind == SetupChangeKind.AssignJob);
-        var firstRemove = changes.FindIndex(c => c.Kind == SetupChangeKind.RemoveRole);
-        Assert.True(lastAdd < firstAssign && lastAssign < firstRemove);
+        // Make before break, job by job in priority order: Thinking's new role, its move, then its old role; then the voice's.
+        AssertMakeBeforeBreak(changes);
+        Assert.True(changes[0] is { Kind: SetupChangeKind.AddRole, RoleKind: "ollama", MachineId: "h1" }, "Thinking is set up first");
         Assert.Contains(changes, c => c.Kind == SetupChangeKind.AddRole && c.DownloadGb > 0);
+    }
+
+    /// <summary>For every job, its new roles come before its move, and its move before the roles it leaves.</summary>
+    private static void AssertMakeBeforeBreak(IReadOnlyList<SetupChange> changes)
+    {
+        string? JobOf(SetupChange c) => c.Kind is SetupChangeKind.AssignJob or SetupChangeKind.JoinPool or SetupChangeKind.LeavePool ? c.Job
+            : c.RoleKind switch { "ollama" => ClusterJobs.Thinking, "stt" => ClusterJobs.Listening, "audio2face" => ClusterJobs.LipSync, null => null, var kind => kind.Contains("chatterbox") ? ClusterJobs.Speaking : null };
+        foreach (var job in ClusterJobs.All)
+        {
+            var mine = changes.Select((c, i) => (c, i)).Where(x => JobOf(x.c) == job).ToList();
+            var lastAdd = mine.Where(x => x.c.Kind == SetupChangeKind.AddRole).Select(x => x.i).DefaultIfEmpty(-1).Max();
+            var assign = mine.Where(x => x.c.Kind == SetupChangeKind.AssignJob).Select(x => x.i).DefaultIfEmpty(-1).Max();
+            var firstRemove = mine.Where(x => x.c.Kind == SetupChangeKind.RemoveRole).Select(x => x.i).DefaultIfEmpty(int.MaxValue).Min();
+            if (assign >= 0) Assert.True(lastAdd < assign, $"{job}: a role is added after the job moves");
+            Assert.True(Math.Max(lastAdd, assign) < firstRemove, $"{job}: a role is removed before the job moves");
+        }
     }
 
     [Fact]
@@ -778,10 +895,11 @@ public sealed class NetworkRecommenderTests
     }
 
     [Fact]
-    public void ACompanionPcWhoseHostsAreGoneThinksItselfAndSingingYields()
+    public void ACompanionPcWhoseHostsAreGoneThinksOnItsCardAndRunsTheRestOnTheProcessor()
     {
-        // Needed jobs come before optional extras: Thinking first (in the PC's own Ollama, on its card), then the voice and
-        // lip-sync on the card, listening in the app; Singing (optional) has no room left and goes.
+        // The priority list: Thinking first (in the PC's own Ollama, on its card), then the voice on the card; listening in
+        // the app and lip-sync by the voice's loudness (only Thinking and the voice take a companion PC's card). Singing
+        // (optional) has no room left and goes first, so the card is free before Thinking loads.
         var request = HostsGoneForHours();
 
         var recommendation = NetworkRecommender.Recommend(request);
@@ -791,19 +909,19 @@ public sealed class NetworkRecommenderTests
         Assert.Equal("gemma4:e2b", thinking.OptionId);
         Assert.DoesNotContain(recommendation.Notes, n => n.Contains("No computer can run a Thinking model", StringComparison.Ordinal));
         Assert.Equal("this-pc", recommendation.Target.Job(ClusterJobs.Speaking)!.HostId);
-        Assert.Equal("this-pc", recommendation.Target.Job(ClusterJobs.LipSync)!.HostId);
-        Assert.False(recommendation.Target.Job(ClusterJobs.LipSync)!.Off);
+        Assert.True(recommendation.Target.Job(ClusterJobs.LipSync)!.Off);
         var listening = recommendation.Target.Job(ClusterJobs.Listening)!;
         Assert.Null(listening.HostId);
         Assert.StartsWith("parakeet", listening.OptionId, StringComparison.Ordinal);
         var roles = RolesOf(recommendation, "this-pc");
         Assert.Contains(roles, r => r.Kind == "chatterbox");
-        Assert.Contains(roles, r => r.Kind == "audio2face");
-        Assert.DoesNotContain(roles, r => r.Kind is "singing" or "stt");
+        Assert.DoesNotContain(roles, r => r.Kind is "singing" or "stt" or "audio2face");
         var singing = recommendation.Changes.Single(c => c.Kind == SetupChangeKind.RemoveRole && c.RoleKind == "singing");
         Assert.Equal("this-pc", singing.MachineId);
         Assert.Equal(SetupChangeBenefit.Required, singing.Benefit);
         Assert.Contains("optional", singing.Why, StringComparison.Ordinal);
+        Assert.Same(singing, recommendation.Changes[0]);
+        Assert.Equal(ClusterJobs.Thinking, recommendation.Changes[1].Job);
         // One companion PC alone: no "each companion PC" wording.
         Assert.DoesNotContain(recommendation.Changes, c => c.Summary.Contains("ach companion PC", StringComparison.Ordinal) ||
             c.Why.Contains("ach companion PC", StringComparison.Ordinal));
@@ -836,19 +954,21 @@ public sealed class NetworkRecommenderTests
             Preference = HostingPreference.Balanced, ConfiguredProviders = ["nvidia-build"]
         };
 
-        // 12 GB: the voice, lip-sync and a local model all fit; the local model stays, because its first word comes sooner.
+        // 12 GB: the voice and a local model fit; the local model stays, because its first word comes sooner. Lip-sync
+        // follows the voice's loudness: a companion PC's card is only for Thinking and the voice.
         var roomy = NetworkRecommender.Recommend(WithKey(12));
         Assert.Equal("gemma4:e2b", roomy.Target.Job(ClusterJobs.Thinking)!.OptionId);
         Assert.Null(roomy.Target.Job(ClusterJobs.Thinking)!.HostId);
+        Assert.True(roomy.Target.Job(ClusterJobs.LipSync)!.Off);
 
-        // 8 GB: the voice and lip-sync take the card, and Thinking uses the free hosted model the owner saved a key for.
+        // 8 GB: the voice takes the card first (a saved key: Balanced), and Thinking uses the free hosted model.
         var tight = NetworkRecommender.Recommend(WithKey(8));
         var thinking = tight.Target.Job(ClusterJobs.Thinking)!;
         Assert.Null(thinking.HostId);
         Assert.Equal("hosted:nvidia-build", thinking.OptionId);
         Assert.Equal("this-pc", tight.Target.Job(ClusterJobs.Speaking)!.HostId);
-        Assert.Equal("this-pc", tight.Target.Job(ClusterJobs.LipSync)!.HostId);
-        Assert.Contains(RolesOf(tight, "this-pc"), r => r.Kind == "audio2face");
+        Assert.True(tight.Target.Job(ClusterJobs.LipSync)!.Off);
+        Assert.DoesNotContain(RolesOf(tight, "this-pc"), r => r.Kind == "audio2face");
         Assert.DoesNotContain(tight.Notes, n => n.StartsWith("Sign up", StringComparison.Ordinal));
         AssertWithinCapacity(tight);
 
