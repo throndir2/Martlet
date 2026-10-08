@@ -629,8 +629,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "requests (parts on the whole character, zones on each close-up, checks of the numbered boxes), what the production parser makes " +
             "of answer (a simulated vision reply about the whole picture: JSON boxes as fractions or named edges, pixels of a width x height " +
             "picture or Qwen-style 0..1000 bbox_2d grounding) bound to probe (a simulated renderer zones probe: {\"drawables\":[{\"id\",\"left\"," +
-            "\"top\",\"right\",\"bottom\"}],\"bones\":[{\"bone\",\"x\",\"y\"}]} in page fractions) with crop (\"left,top,width,height\": where the " +
-            "snapshot sat on the page), the zones saved for the model (modelPath, modelId or the model dataDirectory's avatar.json shows) in " +
+            "\"top\",\"right\",\"bottom\",\"part\"}],\"bones\":[{\"bone\",\"x\",\"y\"}],\"parts\":[{\"id\",\"name\",\"parent\"}]} in page fractions, " +
+            "parts being a Live2D model's own parts with their DisplayInfo names, such as 头 or 右腿; or probePath, a probe.json as Detect zones " +
+            "keeps it with the pictures it sent, which also gives crop) with crop (\"left,top,width,height\": where the " +
+            "snapshot sat on the page); hints shows what the probe's part names place (areas, with the character's own side) and the " +
+            "close-ups' windows they give; the zones saved for the model (modelPath, modelId or the model dataDirectory's avatar.json shows) in " +
             "character-touch-zones.json with what its last detection sent, and with touch (a CharacterTouch: {\"x\",\"y\",\"hitAreas\"," +
             "\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\",\"wholeX\",\"wholeY\"}) the zone it lands in, how it was found, what it " +
             "plays and what it tells the character. detect runs the production detection on snapshotPath (a PNG of the character, transparent " +
@@ -655,7 +658,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             temperament = new { type = "string" }, personaId = new { type = "string" }, personality = new { type = "string" },
             repeats = new { type = "integer", minimum = 1 }, detect = new { type = "boolean" }, guess = new { type = "string" },
             previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 },
-            failAt = new { type = "integer", minimum = 1 }
+            failAt = new { type = "integer", minimum = 1 }, probePath = new { type = "string" }
         }),
         Tool("character_eyes", "Companion > Character > Touch zones > Eyes (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
             "with NO vision request: the request the vision model gets (a close-up of the face, 1.6 face widths square, about 768 pixels " +
@@ -1827,7 +1830,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalBool(arguments, "save") ?? false, OptionalBool(arguments, "includeIntimate"), OptionalString(arguments, "snapshotPath"),
                     cancellation, OptionalString(arguments, "temperament"), OptionalString(arguments, "personaId"), OptionalString(arguments, "personality"),
                     OptionalInt(arguments, "repeats"), OptionalBool(arguments, "detect") ?? false, OptionalString(arguments, "guess"),
-                    OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt")),
+                    OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt"),
+                    OptionalString(arguments, "probePath")),
                 "character_eyes" => await CharacterEyesCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "dataDirectory") is not null,
                     OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"), OptionalString(arguments, "answer"),
                     OptionalString(arguments, "second"), OptionalString(arguments, "snapshotPath"), OptionalString(arguments, "face"),

@@ -1332,9 +1332,18 @@ the whole picture: JSON boxes as fractions or named edges (`left`, `top`,
 `right`, `bottom`), pixels of a `width` × `height` picture, 400 × 800 by
 default, or Qwen-style 0..1000 `bbox_2d` grounding; an answer cut off part way
 keeps the zones it finished), `detected` (those zones
-bound to `probe`, a simulated renderer zones probe of Live2D `drawables` and
-VRM `bones` in page fractions, with `crop`, `"left,top,width,height"` where
-the snapshot sat on the page), `saved` (the model's zones in
+bound to `probe`, a simulated renderer zones probe of Live2D `drawables` (each
+with the `part` it belongs to) and VRM `bones` in page fractions, and a Live2D
+model's own `parts` (`id`, its DisplayInfo `name`, such as 头 or 右腿, and its
+`parent`), with `crop`, `"left,top,width,height"` where
+the snapshot sat on the page; `probePath` reads the `probe.json` that *Detect
+zones* keeps with the pictures it sent, crop and all, or a bare probe), `hints`
+(what the probe tells: how many parts the model has (`modelParts`) and names
+(`namedModelParts`), the body parts its names place (`namedParts`; each of
+`areas` with its `part`, the character's own `side` for one that comes in pairs
+and its `box` as left, top, right and bottom fractions of the snapshot) and the
+close-ups' windows they give (`regions`: head, upper_body and lower_body, or
+null), `saved` (the model's zones in
 `character-touch-zones.json`: how many, how many are `active`, who found them,
 whether they were found with the character framed `whole`, the `crop` (where
 the picture sat on the page with the character framed whole, as `left`, `top`,
@@ -1342,7 +1351,8 @@ the picture sat on the page with the character framed whole, as `left`, `top`,
 zoomed out to show parts the model draws past its own canvas, such as legs),
 whether a snapshot
 is kept, what the last detection `sent` (its plain `line`, `requests`,
-`pictures` and `steps`), and each zone's parts, `plays`, whether Martlet `notices` it and the owner's `hint`) and,
+`pictures`, `steps` and, from its `probe.json`, the `probe`'s hints as above) and
+each zone's parts, `plays`, whether Martlet `notices` it and the owner's `hint`) and,
 with `touch` (a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
 it lands with the character framed whole), `match`: the zone it lands
 in, `how` (`drawable`, `bone`, `hair`, `box` or `coarse`; with a VRM `bone`, the
@@ -1364,8 +1374,13 @@ on unless it or the saved zones turn it off) the intimate zones
 (`TouchZoneDetection.Erogenous`: neck, lips, ears, chest, breasts, waist, hips,
 groin, buttocks and inner thighs) must be found: the ones the close-ups miss are
 asked for again on the whole character (the `missing` step), then worked out
-from the zones around them. `detection` then reports each request
-(`asked`: its `step`, `kind`, picture size and type, `marks`, the message,
+from the zones around them. With a probe whose parts name body parts, the
+close-ups' windows come from them and boxes that clearly miss their named part
+are moved onto it (the `steps` say *took head, upper_body, lower_body from the
+model's own named parts* and *moved neck onto the model's own neck*).
+`detection` then reports each request
+(`asked`: its `step`, `kind`, picture size and type, its `region` in the
+snapshot, `marks`, the message,
 the stand-in's answer and whether it `failed`), the `steps` (what each found,
 swapped, moved, removed, added or worked out), `requestCount`, the `failure` it
 stopped at (null when none), what it `missed`, the `required` zones and those
@@ -1440,7 +1455,10 @@ rest pose and closes; the character on the desktop (`SetupCharacterNow`,
 loaded off screen for its touch zones picture* and *Finding touch zones: a ...
 picture of the character in its rest pose, drawn off screen*, with *zoomed out
 to 0.94x to show the parts drawn past the model's own canvas* when the model
-draws past its own canvas. `TouchZonesStop` (shown while it runs; a passive click)
+draws past its own canvas, and how many bones and named parts the model gives
+(*0 bones and 12 named parts from the model (39 of its 39 parts named in its
+DisplayInfo file, so the close-ups hold their parts and boxes that miss their
+part move onto it)*). `TouchZonesStop` (shown while it runs; a passive click)
 stops it and keeps the zones found until then, `TouchZonesSentView` (*Show the
 picture Thinking saw*, a check box) shows the whole character as Thinking saw
 it under the boxes, `TouchZonesSentOpen` opens the folder of pictures in

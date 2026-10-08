@@ -129,11 +129,19 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
             // The picture the zones from before were found in: it goes back with them when this detection fails part way.
             var earlierPicture = before is { Zones.Count: > 0 } && SnapshotPath is { } earlierPath ? await ReadAsync(earlierPath, token) : null;
             var folder = dataDirectory is null ? null : CharacterTouchZones.ClearSent(dataDirectory, id);
+            // What the model told of its parts goes with the pictures, so MCP can replay this detection on the same picture.
+            if (folder is not null && shot.Probe is { } probe)
+            {
+                try { await CharacterTouchZones.SaveProbeAsync(dataDirectory!, id, new(crop, probe), token); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { ErrorLog.Warn($"Couldn't keep where the character's parts are: {error.Message}"); }
+            }
             IReadOnlyList<CharacterTouchZone>? latest = null, shown = null;
             ErrorLog.Info($"Finding touch zones: a {snapshot.Width}x{snapshot.Height} picture of the character in its rest pose, drawn off screen " +
                 $"({shot.Png.Length / 1024} KB), " +
                 (shot.Picture.Zoom < 1 ? FormattableString.Invariant($"zoomed out to {shot.Picture.Zoom:0.##}x to show the parts drawn past the model's own canvas, ") : "") +
-                (hints is null ? "no probe" : $"{hints.Bones.Count} bones and {hints.Areas.Count} named parts from the model") + ".");
+                (hints is null ? "no probe" : $"{hints.Bones.Count} bones and {hints.NamedParts} named parts from the model" +
+                    (hints.ModelParts > 0 ? $" ({hints.NamedModelParts} of its {hints.ModelParts} parts named in its DisplayInfo file" +
+                        (hints.Named ? ", so the close-ups hold their parts and boxes that miss their part move onto it" : "") + ")" : "")) + ".");
 
             async Task<(string? Answer, string? Failure)> AskAsync(ZoneAsk zoneAsk, CancellationToken cancel)
             {

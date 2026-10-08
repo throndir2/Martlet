@@ -88,6 +88,13 @@ public static partial class TouchZoneDetection
         foreach (var (id, point) in Expected(hints))
             if (Marked(id) is { } mark && crop.Contains(point.X, point.Y) && !Grown(zones[id], 0.15).Contains(point.X, point.Y))
                 problems.Add($"{Name(mark)} misses where the model's own skeleton puts it, at {Point((point.X - crop.X) / crop.Width, (point.Y - crop.Y) / crop.Height)}");
+        foreach (var mark in marks)
+            if (NamedPlace(mark.Id, hints) is { } place && Clip(place.Box.Relative(crop)) is { } seen)
+            {
+                var at = $"{Point(seen.X, seen.Y)} to {Point(seen.X + seen.Width, seen.Y + seen.Height)}";
+                if (Misses(zones[mark.Id], place.Box)) problems.Add($"{Name(mark)} is off the model's own {place.What}, which lies at {at}");
+                else if (Overreaches(zones[mark.Id], place.Box)) problems.Add($"{Name(mark)} reaches well past the model's own {place.What}, which lies at {at}");
+            }
         return problems;
     }
 
@@ -126,8 +133,9 @@ public static partial class TouchZoneDetection
             if (point is { } at) yield return (id, at);
     }
 
-    // The last word: a box that still misses where the model's own skeleton puts its part moves there (keeping its size), and
-    // a box over almost none of the character, which no touch could land in, is dropped.
+    // The last word: a box that still misses where the model's own skeleton puts its part moves there (keeping its size), a box
+    // that misses where the model's own named parts put its zone moves there (one that reaches well past them is limited to
+    // them), and a box over almost none of the character, which no touch could land in, is dropped.
     private static string[] Finish(Dictionary<string, TouchZoneBox> zones, ZonePixels snapshot, ZoneHints? hints)
     {
         var notes = new List<string>();
@@ -136,6 +144,21 @@ public static partial class TouchZoneDetection
             {
                 zones[id] = new TouchZoneBox(point.X - box.Width / 2, point.Y - box.Height / 2, box.Width, box.Height).Clamped();
                 notes.Add($"moved {id} onto the model's own skeleton");
+            }
+        foreach (var id in zones.Keys.ToArray())
+            if (NamedPlace(id, hints) is { } place)
+            {
+                var box = zones[id];
+                if (Misses(box, place.Box))
+                {
+                    zones[id] = Fit(id, place.Box, snapshot);
+                    notes.Add($"moved {id} onto the model's own {place.What}");
+                }
+                else if (Overreaches(box, place.Box) && Overlap(box, Grown(place.Box, 0.25)) is { } inside)
+                {
+                    zones[id] = Fit(id, inside, snapshot);
+                    notes.Add($"limited {id} to the model's own {place.What}");
+                }
             }
         foreach (var id in zones.Keys.ToArray())
             if (TouchZonePictures.Opaque(snapshot, PixelRect.Of(zones[id], snapshot.Width, snapshot.Height)).Share < (Thin.Contains(id) ? 0.002 : 0.01))
@@ -152,7 +175,9 @@ public static partial class TouchZoneDetection
 
     // ---------- zones that must be found, worked out ----------
 
-    /// <summary>Works out each zone in <paramref name="required"/> that is still missing from the zones around it: the lips and
+    /// <summary>Works out each zone in <paramref name="required"/> that is still missing: where the model's own named parts put it
+    /// (<paramref name="hints"/>: the neck on its neck, the lips on its mouth, the hips between its upper body and its legs...),
+    /// else from the zones around it: the lips and
     /// ears from the face, the neck below the chin, the chest from the breasts (or between the neck and the stomach), the breasts
     /// from the chest, the waist at the navel, the hips over the thighs, the groin between the thighs, the buttocks low on the
     /// hips and each inner thigh from its thigh (one of a pair from the other, mirrored). Without those it uses the parts' windows
@@ -161,7 +186,7 @@ public static partial class TouchZoneDetection
     /// fitted to the character's pixels. Left and right are the character's own: facing the viewer (or unknown), its left is on
     /// the picture's right. Returns one note per zone worked out, saying from what.</summary>
     public static List<string> Derive(Dictionary<string, TouchZoneBox> zones, IReadOnlyCollection<string> required, ZonePixels snapshot,
-        bool? facesViewer, IReadOnlyDictionary<string, (TouchZoneBox Box, bool Found)> regions, TouchZoneBox figure)
+        bool? facesViewer, IReadOnlyDictionary<string, (TouchZoneBox Box, bool Found)> regions, TouchZoneBox figure, ZoneHints? hints = null)
     {
         var notes = new List<string>();
         if (required.All(zones.ContainsKey)) return notes;
@@ -178,6 +203,9 @@ public static partial class TouchZoneDetection
             zones[id] = Fit(id, box.Clamped(), snapshot);
             notes.Add($"{id} from {from}");
         }
+        // Where the model's own named parts put a zone comes first: it doesn't depend on the boxes the vision model got wrong.
+        foreach (var id in required)
+            if (NamedPlace(id, hints) is { } place) Put(id, place.Box, "the model's own " + place.What);
         static TouchZoneBox Edges(double left, double top, double right, double bottom) =>
             new(left, top, Math.Max(0.005, right - left), Math.Max(0.005, bottom - top));
         static TouchZoneBox Join(params TouchZoneBox[] boxes) =>
@@ -329,33 +357,54 @@ public static partial class TouchZoneDetection
 
     // ---------- what the model itself tells ----------
 
+    // The body parts a Live2D model's own names can say, in English, Chinese, Japanese and Korean rigging words. A drawable ID
+    // names every part one of its words names; a part's name names the part of its longest word, so 马尾 (a ponytail) is hair
+    // and 尾巴 a tail, 手臂 an arm and 手 a hand. Equal words go to the part listed first.
     private static readonly (string Part, string[] Words)[] PartWords =
     [
-        ("hair", ["hair", "bang", "ahoge", "ponytail", "twintail", "braid", "髪", "头发", "頭髮"]),
-        ("face", ["face", "顔", "脸", "臉"]),
-        ("eyes", ["eye", "目", "眼", "瞳"]),
-        ("mouth", ["mouth", "lip", "口", "嘴", "唇"]),
-        ("cheeks", ["cheek", "頬", "腮"]),
-        ("ears", ["ear", "耳"]),
-        ("neck", ["neck", "首", "脖"]),
-        ("arms", ["arm", "elbow", "sleeve", "腕", "臂", "袖"]),
-        ("hands", ["hand", "finger", "palm", "thumb", "手", "指"]),
-        ("legs", ["leg", "thigh", "knee", "calf", "stocking", "sock", "脚", "腿", "膝"]),
-        ("feet", ["foot", "feet", "toe", "shoe", "boot", "靴", "鞋"]),
-        ("tail", ["tail", "尻尾", "しっぽ", "尾"]),
-        ("wings", ["wing", "翼", "羽"]),
-        ("skirt", ["skirt", "スカート", "裙"])
+        ("hair", ["hair", "bang", "fringe", "ahoge", "ponytail", "twintail", "pigtail", "braid", "sideburn", "髪", "发", "髮", "头发", "頭髮",
+            "頭髪", "刘海", "劉海", "呆毛", "马尾", "馬尾", "辫", "辮", "鬓", "前髪", "後ろ髪", "横髪", "もみあげ", "アホ毛", "ポニーテール",
+            "ツインテール", "머리카락", "앞머리", "뒷머리", "옆머리"]),
+        ("animal_ears", ["cat ear", "animal ear", "fox ear", "dog ear", "wolf ear", "bunny ear", "rabbit ear", "catear", "kemomimi", "nekomimi",
+            "猫耳", "兽耳", "獣耳", "狐耳", "犬耳", "狼耳", "兔耳", "うさ耳", "ケモミミ", "けもみみ", "ネコミミ", "ウサミミ", "동물귀", "고양이귀"]),
+        ("ears", ["ear", "耳", "귀"]),
+        ("head", ["head", "頭", "头", "あたま", "머리"]),
+        ("face", ["face", "eyebrow", "brow", "顔", "脸", "臉", "面部", "輪郭", "眉", "かお", "얼굴", "눈썹"]),
+        ("eyes", ["eye", "iris", "pupil", "lash", "目", "眼", "瞳", "睫", "まつげ", "눈"]),
+        ("nose", ["nose", "鼻", "코"]),
+        ("mouth", ["mouth", "lip", "teeth", "tooth", "tongue", "口", "嘴", "唇", "牙", "齿", "歯", "舌", "嘴角", "くち", "입", "입술"]),
+        ("cheeks", ["cheek", "blush", "頬", "颊", "頰", "腮", "脸颊", "臉頰", "ほお", "볼"]),
+        ("neck", ["neck", "首", "脖", "颈", "頸", "목"]),
+        ("chest", ["chest", "breast", "bust", "boob", "oppai", "胸", "乳", "乳首", "おっぱい", "가슴"]),
+        ("waist", ["waist", "belly", "stomach", "navel", "abdomen", "腰", "腹", "肚", "へそ", "허리", "배꼽"]),
+        ("torso", ["body", "torso", "upperbody", "upper body", "shirt", "jacket", "coat", "blouse", "vest", "collar", "身体", "躯干", "軀幹",
+            "胴", "体", "身", "上半身", "上衣", "衣服", "外套", "衬衫", "夹克", "领带", "領帶", "领口", "領口", "领子", "衣领", "襟", "服",
+            "シャツ", "ジャケット", "ネクタイ", "몸", "상체", "상의"]),
+        ("arms", ["arm", "elbow", "sleeve", "shoulder", "腕", "臂", "肘", "袖", "肩", "胳膊", "手臂", "袖口", "二の腕", "팔", "어깨", "소매"]),
+        ("hands", ["hand", "finger", "palm", "thumb", "fist", "wrist", "glove", "手", "指", "掌", "拳", "手腕", "手首", "手袋", "手套", "손",
+            "손목", "장갑"]),
+        ("lower_body", ["lowerbody", "lower body", "下半身", "하체"]),
+        ("hips", ["hip", "butt", "pelvis", "crotch", "groin", "pants", "shorts", "trouser", "panties", "panty", "underwear", "臀", "屁股",
+            "胯", "裆", "裤", "褲", "尻", "お尻", "パンツ", "ズボン", "엉덩이", "바지"]),
+        ("legs", ["leg", "thigh", "knee", "calf", "shin", "stocking", "sock", "tights", "腿", "膝", "太もも", "太腿", "ふともも", "すね",
+            "ふくらはぎ", "袜", "靴下", "ニーソ", "タイツ", "다리", "허벅지", "무릎"]),
+        ("feet", ["foot", "feet", "toe", "shoe", "boot", "heel", "sandal", "足", "脚", "鞋", "靴", "足首", "つま先", "ブーツ", "발", "발목", "신발"]),
+        ("tail", ["tail", "尾", "尾巴", "尻尾", "しっぽ", "シッポ", "꼬리"]),
+        ("wings", ["wing", "翼", "翅", "羽", "날개"]),
+        ("skirt", ["skirt", "スカート", "裙", "치마", "스커트"])
     ];
 
     /// <summary>What the renderer's zones probe says, as fractions of the snapshot that sat at <paramref name="crop"/> on the page:
-    /// the VRM humanoid bones, the Live2D drawables whose IDs name a body part (merged per part) and which way the character
-    /// faces (from its shoulders, arms or legs). Null without a probe.</summary>
+    /// the VRM humanoid bones, the Live2D drawables whose IDs name a body part (merged per part), the drawables in the parts the
+    /// model's own part names call body parts (its DisplayInfo file's names, else the part IDs; <see cref="ZoneHints.Pieces"/>)
+    /// and which way the character faces (from its shoulders, arms or legs). Null without a probe.</summary>
     public static ZoneHints? Hints(RendererZoneProbe? probe, TouchZoneBox crop)
     {
         if (probe is null || !(crop.Width > 0) || !(crop.Height > 0)) return null;
         var bones = (probe.Bones ?? []).Where(b => double.IsFinite(b.X) && double.IsFinite(b.Y) && !string.IsNullOrEmpty(b.Bone))
             .Select(b => new ZoneHintPoint(b.Bone, (b.X - crop.X) / crop.Width, (b.Y - crop.Y) / crop.Height)).ToArray();
-        var drawables = (probe.Drawables ?? []).Where(d => d.Right > d.Left && d.Bottom > d.Top && !string.IsNullOrEmpty(d.Id)).ToArray();
+        var drawables = (probe.Drawables ?? []).Where(d => d.Right > d.Left && d.Bottom > d.Top && !string.IsNullOrEmpty(d.Id) &&
+            double.IsFinite(d.Left) && double.IsFinite(d.Top) && double.IsFinite(d.Right) && double.IsFinite(d.Bottom)).ToArray();
         var areas = new List<ZoneHintArea>();
         foreach (var (part, words) in PartWords)
         {
@@ -369,7 +418,13 @@ public static partial class TouchZoneDetection
             bones.FirstOrDefault(b => b.Name == left) is { } l && bones.FirstOrDefault(b => b.Name == right) is { } r ? l.X - r.X : null;
         bool? faces = (Apart("leftUpperArm", "rightUpperArm") ?? Apart("leftShoulder", "rightShoulder") ?? Apart("leftUpperLeg", "rightUpperLeg")) is { } dx &&
             Math.Abs(dx) > 0.02 ? dx > 0 : null;
-        return new(bones, areas, faces);
+        // A Live2D character faces the viewer (RunAsync reads it so too).
+        var parts = NamedParts(probe, drawables, crop, bones.Length > 0 ? faces ?? true : true);
+        // The part names place a body part better than drawable IDs do.
+        return new(bones, [.. parts.Areas, .. areas.Where(a => parts.Areas.All(n => n.Part != a.Part))], faces)
+        {
+            Pieces = parts.Pieces, Middle = parts.Middle, ModelParts = parts.Count, NamedModelParts = parts.Named
+        };
     }
 
     // Whether a drawable's ID names one of the words: a Latin word starts one of its words (HairBack, D_HAIR_FRONT_00, eyeL),

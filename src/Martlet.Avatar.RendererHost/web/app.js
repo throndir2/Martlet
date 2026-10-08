@@ -107,15 +107,17 @@ function gestureState() {
 }
 // A picture of the whole character for touch zones, drawn on the canvas and read back in the same task, so it never shows on
 // screen: `width` by `height` pixels in the framing `zoom`, `x`, `y` of a frame `frame` of its width (see setView), in the
-// pose the model has now (its rest pose in a still renderer). The PNG (a data URL), where the drawables (Live2D) or the
-// humanoid bones (VRM) are in it and where the face anchor puts the face (`face`: its middle, its width as a fraction of the
-// picture's width and its roll; Martlet's eye measurement crops around it), as fractions of the picture; nothing when it
-// can't be drawn. The canvas then goes back to its own size and framing, drawn again at once, so a showing character never
-// changes.
+// pose the model has now (its rest pose in a still renderer). The PNG (a data URL), where the drawables (Live2D, each with the
+// ID of its part) or the humanoid bones (VRM) are in it, with a Live2D model's own parts (their names from its DisplayInfo file,
+// and their parents; none when they can't be read), and where the face anchor puts the face (`face`: its middle, its width as a
+// fraction of the picture's width and its roll; Martlet's eye measurement crops around it), as fractions of the picture;
+// nothing when it can't be drawn. The canvas then goes back to its own size and framing, drawn again at once, so a showing
+// character never changes.
 function picture({ width, height, zoom, x, y, frame }) {
   const size = [canvas.width, canvas.height];
   const resize = (w, h) => { if (renderer === "Vrm") adapter.resize(w, h); else { canvas.width = w; canvas.height = h; } };
   const round = value => Math.round(value * 10000) / 10000;
+  const parts = () => { try { return adapter.modelParts?.() ?? []; } catch { return []; } };
   try {
     resize(Number(width), Number(height));
     adapter.setView(Number(zoom), Number(x), Number(y), Number(frame));
@@ -130,7 +132,7 @@ function picture({ width, height, zoom, x, y, frame }) {
     } catch { face = undefined; }
     return renderer === "Live2D"
       ? { png, drawables: adapter.drawableBounds().map(d => ({ id: d.id, left: round(d.left), top: round(d.top), right: round(d.right),
-          bottom: round(d.bottom) })), ...(face ? { face } : {}) }
+          bottom: round(d.bottom), ...(d.part ? { part: d.part } : {}) })), parts: parts(), ...(face ? { face } : {}) }
       : { png, bones: adapter.bonePoints().map(b => ({ bone: b.bone, x: round(b.x), y: round(b.y) })), ...(face ? { face } : {}) };
   } catch { return {}; }
   finally {
