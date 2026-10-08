@@ -401,12 +401,33 @@ pool jobs never use that route, except the empty-pool fallback below.
 **Members.** A member is one place with a slot count (how many jobs it runs at
 once, 1 to 8):
 
-- A paired Martlet host joins only when this PC's owner ticks *Join the
-  Thinking pool* for it (`DeepThinkingPool-<host>`). It works on the host's
+- A paired Martlet host with a Thinking model joins by itself
+  (`ThinkingPoolAutoJoin`, Martlet.Core). Each time a check sees it answer (the
+  cluster sync every 15 s while *Keep in sync* is on, *Check computers*, any
+  other check of all hosts and the host update check), a host that offers its
   Thinking pool role (a second Ollama server of its own, route
-  `martlet.gateway.deep-thinking-chat.v1`; its slots are the role's
-  `OLLAMA_NUM_PARALLEL`, advertised as `maximum_concurrency`). The host that
-  runs the conversation may join too.
+  `martlet.gateway.deep-thinking-chat.v1`) joins on that role with its slots
+  (the role's `OLLAMA_NUM_PARALLEL`, advertised as `maximum_concurrency`, at
+  most 8). A host that offers only its Ollama joins on it when it doesn't do
+  this PC's conversation Thinking. A member on a host's Ollama moves to the
+  host's Thinking pool role once it has one, and a member on the role follows
+  the role's slot count. The host that runs the conversation may join with its
+  role too. Martlet writes `thinking-pool.json` only when something changes,
+  never over a file it can't read, and says it once in the status line and
+  the desktop log (*diva joined the Thinking pool by itself (its Thinking pool
+  role, qwen3:8b, 2 slots). Untick it in Companion › Thinking pool to keep it
+  out.*). A member whose computer stops answering stays a member; its line
+  says *In the pool, offline now* and its slots come back when it answers.
+  A computer never joins by itself when the owner took it out (`LeftByOwner`,
+  below), Devices › Sharing work says the Thinking pool never uses it or keeps
+  it for other companion PCs, the pool already has 8 members, or this PC is a
+  host PC.
+- *In the Thinking pool* (`DeepThinkingPool-<host>`) is the owner's opt-out.
+  Unticking it, or *Remove* on the computer's member, takes the computer out
+  and adds its host ID to `LeftByOwner` in `thinking-pool.json` (a file saved
+  before this list existed reads as empty), so it doesn't join again. Ticking
+  it clears that and adds the computer at once. `DeepThinkingAutoJoin` states
+  the rule and names the computers kept out.
 - A model in Ollama on this PC, beside Thinking's (checked to fit on the
   graphics card before each job).
 - An OpenAI-compatible endpoint (a cloud provider or another server).
@@ -795,15 +816,12 @@ which machine is free to think depends on the computer you talk to):
   Windows Credential Manager, Thinking's key for the same base URL, or none. The
   conversation that fits the model's context and the task go there, no tools.
 
-**Several computers at once.** Each paired computer on *Another of your
-computers* has *Join the Thinking pool* (`DeepThinkingPool-<host>`): ticked, Deep
-thinking thinks there as well as where it is set to think, so several thinks
-run at once, one on each place (`DeepThinkingPool`, up to 8 places; saved as
-`Pool` in `deep-thinking.json`, which a file saved before it existed simply
-lacks, so the old choice reads unchanged). *Use it*, *Same as Thinking*, *Ollama
-on this PC* and a cloud provider change the first place and keep the ticked
-computers; unticking the first place's computer makes the next one first.
-`think_longer` may then run several thinks at once: one fewer than the usable
+**Several computers at once.** Your paired computers with a Thinking model join
+the pool by themselves (see Members above); each one on *One of your computers*
+has *In the Thinking pool* (`DeepThinkingPool-<host>`): ticked, the pool thinks
+there as well as on its other members, so several thinks run at once, one on
+each place (up to 8 places). Untick a computer to keep it out; tick it again to
+add it back. `think_longer` may then run several thinks at once: one fewer than the usable
 places' slots in all. A long job never takes the pool's last free slot while
 the pool has two or more slots, because that slot stays free for quick jobs
 (judges and summaries); with one slot in all, one think runs at a time. The

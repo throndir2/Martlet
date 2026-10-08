@@ -169,12 +169,15 @@ public sealed class CharacterTouchTemperamentTests
                 Id = Persona, ConfigurationRevision = Guid.NewGuid(), Name = "Mira", Text = "Mira adores head pats."
             };
             string? asked = null;
-            await service.DecideAsync(persona, (_, instructions, text, _) =>
+            var done = await service.DecideAsync(persona, (_, instructions, text, _) =>
             {
                 asked = text;
                 return Task.FromResult<(string?, string?)>(("{\"groups\":{\"head\":{\"attitude\":3}}}", null));
             }, CancellationToken.None);
             Assert.Contains("Mira adores head pats.", asked);
+            // Only that it worked: the card's table shows what was decided.
+            Assert.StartsWith("Decided how Mira reacts to touch at ", done);
+            Assert.DoesNotContain("head craves", done);
             var decided = service.For(Persona)!;
             Assert.Equal(CharacterTouchTemperament.ByThinking, decided.Source);
             Assert.Equal(CharacterTouchTemperaments.Digest(persona.Text), decided.PersonalityDigest);
@@ -185,6 +188,7 @@ public sealed class CharacterTouchTemperamentTests
 
             // The owner's own choices stay when the personality changes; only Re-decide replaces them.
             await service.SaveAsync(decided with { Source = CharacterTouchTemperament.ByOwner }, CancellationToken.None);
+            Assert.Null(service.Status);
             var calls = 0;
             service.PersonalitySaved(persona with { Text = "Mira hates being touched." }, () => false,
                 (_, _, _, _) => { calls++; return Task.FromResult<(string?, string?)>((null, null)); }, CancellationToken.None);

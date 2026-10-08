@@ -80,7 +80,7 @@ internal sealed record NetworkInputs(MachineInfo Machine, DeviceRole Role, AppSe
     IReadOnlyDictionary<string, IReadOnlyList<HostUser>>? HostUsers = null, ClusterPlan? Plan = null,
     IReadOnlyList<MartletComputer>? Computers = null, IReadOnlyCollection<string>? DeepThinkingHosts = null,
     IReadOnlyDictionary<string, string>? HostOutside = null, string? OwnHostTrouble = null,
-    IReadOnlyDictionary<string, TimeSpan>? HostAway = null);
+    IReadOnlyCollection<string>? ThinkingPoolLeft = null, IReadOnlyDictionary<string, TimeSpan>? HostAway = null);
 
 /// <summary>A computer paired with a host, in words ("IMOUTO (desktop-imouto), active now"); <paramref name="ThisPc"/> marks
 /// this PC itself.</summary>
@@ -467,11 +467,14 @@ internal static class NetworkMap
                 if (role.Kind == HostRoles.Audio2Face && inCharge)
                     target.Roles.Add(new(role.Chip, role.Name, (plan is not null ? "Handles lip-sync for your companion PCs. " : "Handles lip-sync. ") +
                         (check?.Text ?? "Use Check connection to see whether it's ready."), DeviceComponent.LipSync));
-                // Deep thinking is this PC's own choice (Companion > Deep thinking), not a job handed out here.
+                // The Thinking pool is this PC's own: a computer with its role joins by itself unless the owner keeps it out.
                 else if (role.Kind == HostRoles.DeepThinking && model is not null)
                     target.Roles.Add(new(role.Chip, role.Name, companion && inputs.DeepThinkingHosts?.Contains(paired.HostId) == true
                         ? $"Thinks things over in the background for this PC ({model})."
-                        : $"Ready ({model}). Tick Join the Thinking pool in Companion > Thinking pool to use it.", DeviceComponent.Standby(role.Kind)));
+                        : inputs.ThinkingPoolLeft?.Contains(paired.HostId) == true
+                        ? $"Ready ({model}). You keep it out of the Thinking pool: tick it in Companion > Thinking pool to add it again."
+                        : $"Ready ({model}). It joins the Thinking pool by itself unless you keep it out in Companion > Thinking pool.",
+                        DeviceComponent.Standby(role.Kind)));
                 // Thinking, listening and speaking are listed with their routes when this host does them.
                 else if (model is not null && !(role.Kind == HostRoles.Ollama && thinks) && !(role.Kind == HostRoles.Stt && listens) &&
                     !(role.Kind == speaking && speaks))
@@ -574,8 +577,8 @@ internal static class NetworkMap
                 target.Commands.Add(new(NodeAction.UseForSpeaking, local ? "Use this PC's host service for speaking" : "Use this computer for speaking",
                     check?.Offers?.ContainsKey(HostRoles.Speaking) == true, id, Ready(HostRoles.Speaking)));
             if (companion && inputs.DeepThinkingHosts?.Contains(id) != true && check?.Offers?.ContainsKey(HostRoles.DeepThinking) == true)
-                target.Commands.Add(new(NodeAction.Companion, "Add it to the Thinking pool", Argument: nameof(CompanionTab.DeepThinking),
-                    Component: Ready(HostRoles.DeepThinking)));
+                target.Commands.Add(new(NodeAction.Companion, inputs.ThinkingPoolLeft?.Contains(id) == true ? "Add it to the Thinking pool" : "Show the Thinking pool",
+                    Argument: nameof(CompanionTab.DeepThinking), Component: Ready(HostRoles.DeepThinking)));
             foreach (var role in HostRoles.All)
             {
                 var offered = check?.Offers?.ContainsKey(role.Kind) == true;
