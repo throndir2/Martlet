@@ -431,6 +431,9 @@ public static class YieldingThink
     /// <summary>How long a think waits before it asks again on a computer that kept its graphics card for a live turn.</summary>
     public static TimeSpan HeldRetry { get; } = TimeSpan.FromSeconds(2);
 
+    /// <summary>The most times one think goes on on another place because its computer stopped answering.</summary>
+    public const int MaxMoves = 3;
+
     /// <summary>Runs <paramref name="job"/> (a kind that <see cref="BackgroundJobKind.Yields"/>) on the place it holds: the think
     /// <paramref name="think"/> makes for that place and what it goes on from (null the first time). When the live floor needs the
     /// place (<see cref="BackgroundJob.Stopping"/>), the request stops, the job keeps what it wrote, waits for a place the floor
@@ -438,16 +441,21 @@ public static class YieldingThink
     /// <paramref name="inPlace"/> says the place's server continues an unfinished message, else again from the start with the
     /// text as context. When the place's computer refused or stopped it because another live turn holds its graphics card
     /// (<paramref name="held"/>, asked with the <see cref="System.Diagnostics.Stopwatch"/> time the request began), it waits
-    /// <see cref="HeldRetry"/> and goes on the same way. <paramref name="stopped"/> hears about each stop (for the desktop log).</summary>
+    /// <see cref="HeldRetry"/> and goes on the same way. When a request failed because the place's computer stopped answering
+    /// (<paramref name="gone"/>), it keeps what it wrote and goes on on another place of its pool the same way (waiting in line
+    /// for one that answers), at most <see cref="MaxMoves"/> times. <paramref name="stopped"/> hears about each stop (for the
+    /// desktop log).</summary>
     public static async Task<BackgroundJobOutcome> RunAsync(BackgroundJobs jobs, BackgroundJob job,
         Func<BackgroundPlace, ThinkResume?, BackgroundThink> think, Func<BackgroundPlace, bool> inPlace, CancellationToken token,
-        Action<BackgroundPlace, ThinkResume?>? stopped = null, Func<BackgroundPlace, long, bool>? held = null)
+        Action<BackgroundPlace, ThinkResume?>? stopped = null, Func<BackgroundPlace, long, bool>? held = null,
+        Func<BackgroundPlace, bool>? gone = null)
     {
         ArgumentNullException.ThrowIfNull(jobs);
         ArgumentNullException.ThrowIfNull(job);
         ArgumentNullException.ThrowIfNull(think);
         ArgumentNullException.ThrowIfNull(inPlace);
         ThinkResume? resume = null;
+        var moves = 0;
         while (true)
         {
             var place = job.Place ?? throw new InvalidOperationException("The job holds no place.");
@@ -473,6 +481,15 @@ public static class YieldingThink
                 await Task.Delay(HeldRetry, current.Clock, token).ConfigureAwait(false);
                 job.Report(BackgroundJobState.Running);
                 resume = Next(kept, inPlace(place));
+                continue;
+            }
+            if (outcome.Result is null && moves < MaxMoves && job.Pool is { Count: > 1 } && gone?.Invoke(place) == true)
+            {
+                // Its computer stopped answering: what it wrote goes on on another place of its pool.
+                moves++;
+                var kept = Kept(resume, current);
+                await jobs.ReseatAsync(job, token, BackgroundJob.ComputerLost).ConfigureAwait(false);
+                resume = Next(kept, inPlace(job.Place!));
                 continue;
             }
             return resume?.Combine(outcome, current.Partial) ?? outcome;

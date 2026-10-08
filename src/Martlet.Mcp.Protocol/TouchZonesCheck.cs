@@ -22,7 +22,7 @@ internal static class TouchZonesCheck
     internal static async Task<object> RunAsync(string dataDirectory, bool explicitDirectory, string? modelPath, string? modelId, string? answer,
         int? width, int? height, string? crop, string? probe, string? touch, bool save, bool? includeIntimate, string? snapshotPath,
         CancellationToken cancellation, string? temperamentAnswer = null, string? personaId = null, string? personality = null, int? repeats = null,
-        bool detect = false, string? guess = null, string? previewDirectory = null, int? checks = null)
+        bool detect = false, string? guess = null, string? previewDirectory = null, int? checks = null, int? failAt = null)
     {
         CharacterActionCatalog? catalog = null;
         string? problem = null;
@@ -69,7 +69,10 @@ internal static class TouchZonesCheck
             var truth = CharacterTouchZones.Parse(answer, snapshot.Width, snapshot.Height) ??
                 throw new ArgumentException("detect needs answer: the zones a perfect vision model would find, as JSON about the whole snapshot.");
             var first = guess is null ? null : CharacterTouchZones.Parse(guess, snapshot.Width, snapshot.Height);
-            (detection, var found, sent) = await DetectAsync(snapshot, truth, first, TouchZoneDetection.Hints(probed, cropBox), previewDirectory, checks, cancellation);
+            // Include intimate zones is on unless it is turned off, here or in the saved zones: then the intimate zones must be found.
+            var required = (includeIntimate ?? saved?.IncludeIntimate) == false ? [] : TouchZoneDetection.Erogenous;
+            (detection, var found, sent) = await DetectAsync(snapshot, truth, first, TouchZoneDetection.Hints(probed, cropBox), previewDirectory, checks,
+                required, failAt, cancellation);
             detected = found is null ? null : CharacterTouchZones.Detected(saved, id, found, cropBox, probed, DateTimeOffset.Now, whole: true);
         }
         if (detected is not null && includeIntimate is { } intimate) detected = detected with { IncludeIntimate = intimate };
@@ -138,6 +141,8 @@ internal static class TouchZonesCheck
             saved = settings is null ? null : new
             {
                 zones = settings.Zones.Count, active = settings.Zones.Count(settings.Active), settings.DetectedBy, settings.IncludeIntimate, settings.Whole,
+                crop = settings.Crop is { } at ? new { left = Math.Round(at.X, 4), top = Math.Round(at.Y, 4), width = Math.Round(at.Width, 4),
+                    height = Math.Round(at.Height, 4) } : null,
                 snapshot = File.Exists(CharacterTouchZones.SnapshotPath(dataDirectory, id)),
                 sent = CharacterTouchZones.LoadSent(dataDirectory, id) is { } last
                     ? new { line = last.Describe(), last.Requests, pictures = last.Pictures.Count, last.Fixture, last.Steps } : null,
@@ -172,10 +177,11 @@ internal static class TouchZonesCheck
     }
 
     // The production detection on a real snapshot, with a FIXTURE - NOT AI stand-in answering from truth (guess answers the
-    // close-ups first, so the checks have something to correct). Every picture is composed and encoded as the desktop sends it.
+    // close-ups first, so the checks have something to correct; at request failAt it fails instead, as a model that stopped
+    // answering). Every picture is composed and encoded as the desktop sends it.
     private static async Task<(object Report, IReadOnlyList<CharacterTouchZone>? Zones, (TouchZoneSent Sent, List<(string File, byte[] Bytes)> Pictures)? Sent)>
         DetectAsync(ZonePixels snapshot, IReadOnlyList<CharacterTouchZone> truth, IReadOnlyList<CharacterTouchZone>? guess, ZoneHints? hints,
-            string? previewDirectory, int? checks, CancellationToken cancellation)
+            string? previewDirectory, int? checks, IReadOnlyList<string> required, int? failAt, CancellationToken cancellation)
     {
         if (previewDirectory is not null) Directory.CreateDirectory(previewDirectory);
         var pictures = new List<(string File, byte[] Bytes)>();
@@ -189,22 +195,24 @@ internal static class TouchZonesCheck
             pictures.Add((file, bytes));
             sentPictures.Add(new(file, ask.Step, ask.Kind.ToString(), image.Width, image.Height, image.ByteCount, image.MimeType));
             if (previewDirectory is not null) await File.WriteAllBytesAsync(Path.Combine(previewDirectory, file), bytes, token);
-            var reply = TouchZoneDetection.Oracle(ask, truth, guess);
+            var fails = pictures.Count == failAt;
+            var reply = fails ? null : TouchZoneDetection.Oracle(ask, truth, guess);
             asked.Add(new
             {
                 ask.Step, kind = ask.Kind.ToString(), picture = $"{image.Width}x{image.Height} {image.MimeType}, {image.ByteCount / 1024} KB", file,
-                marks = ask.Marks.Count, text = ask.Text, answer = reply
+                marks = ask.Marks.Count, text = ask.Text, answer = reply, failed = fails ? "a simulated failure" : null
             });
-            return (reply, (string?)null);
-        }, null, cancellation, new ZoneDetectionOptions { Checks = Math.Clamp(checks ?? 2, 0, 5) });
+            return (reply, fails ? "a simulated failure" : (string?)null);
+        }, null, cancellation, new ZoneDetectionOptions { Checks = Math.Clamp(checks ?? 2, 0, 5), Required = required });
         var found = result.Zones ?? [];
         var errors = found.Select(z => truth.FirstOrDefault(t => t.Id == z.Id) is { } t ? TouchZoneDetection.Moved(z.Box, t.Box) : double.NaN)
             .Where(double.IsFinite).ToArray();
         var report = new
         {
             fixture = "FIXTURE - NOT AI: a stand-in answered from the given zones; no vision request was made",
-            snapshot = new { snapshot.Width, snapshot.Height }, requestCount = result.Requests, result.Steps, asked,
+            snapshot = new { snapshot.Width, snapshot.Height }, requestCount = result.Requests, failure = result.Failure, result.Steps, asked,
             found = found.Count, given = truth.Count, missed = truth.Where(t => found.All(z => z.Id != t.Id)).Select(t => t.Id).ToArray(),
+            required, requiredMissing = required.Where(id => found.All(z => z.Id != id)).ToArray(),
             worstEdge = errors.Length == 0 ? (double?)null : Math.Round(errors.Max(), 4),
             meanEdge = errors.Length == 0 ? (double?)null : Math.Round(errors.Average(), 4),
             zones = found.Select(Describe).ToArray()

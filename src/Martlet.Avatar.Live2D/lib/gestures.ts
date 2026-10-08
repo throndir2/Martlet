@@ -1,21 +1,45 @@
 /** Martlet's own gestures, played on any Live2D model that has the standard Cubism parameters they move: look offsets
  *  (x right, y up) added to the head direction and additive offsets to standard parameters. After the reply gestures come
  *  the voice emotes, played when the voice makes their sound or tone (laugh, sigh, gasp...), then the touch and mood
- *  gestures (wink, pout, shy...). */
+ *  gestures (wink, pout, shy...), then the held face parts (eyes_up, mouth_open) and last the stronger blush levels (see
+ *  BLUSH_LEVELS). */
 export const GESTURES = Object.freeze(["nod", "shake", "tilt", "bow", "sway", "smile", "blush", "surprise",
   "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat", "groan", "sniff", "shush", "inhale", "exhale", "mumble", "hum",
   "sneeze", "whistle", "happy", "sarcastic", "angry", "fear", "crying", "whispering", "dramatic",
-  "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy"] as const);
+  "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy",
+  "eyes_up", "mouth_open", "blush_deep", "blush_fierce"] as const);
 export type Gesture = typeof GESTURES[number];
 
 /** The gestures that can be held (a renderer action with `hold: true`): eased into and kept, gently alive, until ended. */
-export const HOLDABLE_GESTURES = Object.freeze(["pout", "shy", "look_away", "drowsy", "blush"] as const);
+export const HOLDABLE_GESTURES = Object.freeze(["pout", "shy", "look_away", "drowsy", "blush", "eyes_up", "mouth_open",
+  "blush_deep", "blush_fierce"] as const);
 export type HoldableGesture = typeof HOLDABLE_GESTURES[number];
 export const isHoldable = (name: string): name is HoldableGesture => (HOLDABLE_GESTURES as readonly string[]).includes(name);
+
+/** Martlet's blush levels, faintest first. Each moves the model's own blush (ParamCheek) fully; the renderer page draws the
+ *  stronger ones over it, and draws every level on a model without ParamCheek. */
+export const BLUSH_LEVELS = Object.freeze(["blush", "blush_deep", "blush_fierce"] as const);
+export const isBlush = (name: string): boolean => (BLUSH_LEVELS as readonly string[]).includes(name);
+
+/** A part of the face or body a held gesture moves. */
+export type GesturePart = "eyes" | "mouth" | "cheeks" | "brows" | "head";
+
+/** The parts each holdable gesture moves (the head part includes the body). Held gestures layer: holding one lets go only
+ *  of the held gestures that move a part it moves too, so the eyes turned up, an open mouth and a blush stay on together.
+ *  Every blush level is the cheeks, so a new level replaces the one before. */
+export const HOLD_PARTS: Readonly<Record<HoldableGesture, readonly GesturePart[]>> = Object.freeze({
+  pout: ["mouth", "brows", "head"], shy: ["eyes", "mouth", "head"], look_away: ["eyes", "head"], drowsy: ["eyes", "head"],
+  blush: ["cheeks"], eyes_up: ["eyes"], mouth_open: ["mouth"], blush_deep: ["cheeks"], blush_fierce: ["cheeks"],
+});
+
+/** Whether the held gestures `a` and `b` move a part in common, so holding one lets the other go. */
+export const sharePart = (a: HoldableGesture, b: HoldableGesture): boolean => HOLD_PARTS[a].some(part => HOLD_PARTS[b].includes(part));
 
 export interface GestureFrame {
   readonly look: { readonly x: number; readonly y: number };
   readonly parameters: Readonly<Record<string, number>>;
+  /** 0 to 1: how firmly the gesture holds the eyeballs (eyes_up), so the look turns only the head. */
+  readonly eyes?: number;
 }
 
 const angleX = ["ParamAngleX"], angleY = ["ParamAngleY"], angleZ = ["ParamAngleZ"];
@@ -29,7 +53,7 @@ export const GESTURE_REQUIREMENTS: Readonly<Record<Gesture, readonly string[]>> 
   sway: ["ParamBodyAngleZ"],
   smile: ["ParamEyeLSmile", "ParamEyeRSmile"],
   // Every model blushes: with ParamCheek when it has it, otherwise Martlet draws a glow on the cheeks (the renderer page's
-  // overlay; see BLUSH_PARAMETERS).
+  // overlay; see BLUSH_PARAMETERS). So do the stronger blush levels.
   blush: [],
   surprise: ["ParamBrowLY", "ParamBrowRY"],
   laugh: angleY, chuckle: angleY, sigh: angleY, gasp: angleY, cough: angleY, clear_throat: angleY, groan: angleZ, sniff: angleY,
@@ -39,6 +63,7 @@ export const GESTURE_REQUIREMENTS: Readonly<Record<Gesture, readonly string[]>> 
   wink: ["ParamEyeLOpen"], pout: ["ParamMouthForm"], shy: ["ParamAngleX", "ParamAngleY"], giggle: angleY, flinch: angleY,
   lean_in: angleZ, look_away: angleX, think: angleY, eye_roll: ["ParamEyeBallX", "ParamEyeBallY"],
   drowsy: ["ParamEyeLOpen", "ParamEyeROpen"],
+  eyes_up: ["ParamEyeBallY"], mouth_open: ["ParamMouthOpenY"], blush_deep: [], blush_fierce: [],
 });
 
 const DURATION: Readonly<Record<Gesture, number>> = Object.freeze({
@@ -47,6 +72,7 @@ const DURATION: Readonly<Record<Gesture, number>> = Object.freeze({
   exhale: 1.8, mumble: 2, hum: 2.6, sneeze: 1.6, whistle: 2, happy: 2.4, sarcastic: 1.8, angry: 2.4, fear: 2, crying: 3,
   whispering: 2.2, dramatic: 2.4,
   wink: 1.1, pout: 2.6, shy: 3.5, giggle: 1.6, flinch: 1.4, lean_in: 2.8, look_away: 2.4, think: 2.8, eye_roll: 1.8, drowsy: 4.5,
+  eyes_up: 3, mouth_open: 2.6, blush_deep: 4, blush_fierce: 4,
 });
 
 export function isGesture(name: string): name is Gesture {
@@ -108,7 +134,7 @@ export function gestureFrame(name: Gesture, seconds: number): GestureFrame | und
       const amount = envelope(t, total, 0.4);
       return { look: { x: 0, y: 0 }, parameters: { ParamEyeLSmile: amount, ParamEyeRSmile: amount, ParamMouthForm: amount } };
     }
-    case "blush":
+    case "blush": case "blush_deep": case "blush_fierce":
       return { look: { x: 0, y: 0 }, parameters: { ParamCheek: envelope(t, total, 0.6) } };
     case "surprise": {
       const amount = envelope(t, total, 0.15);
@@ -219,7 +245,7 @@ export function gestureFrame(name: Gesture, seconds: number): GestureFrame | und
         ParamEyeLOpen: -closed, ParamEyeLSmile: 0.8 * closed, ParamMouthForm: 0.5 * closed, ParamAngleZ: 6 * closed, ParamBrowLY: -0.2 * closed,
       } };
     }
-    case "pout": case "shy": case "look_away": case "drowsy":
+    case "pout": case "shy": case "look_away": case "drowsy": case "eyes_up": case "mouth_open":
       return moodFrame(name, t, envelope(t, total, 0.45, 0.6));
     case "giggle": {
       const amount = envelope(t, total, 0.15, 0.35), bounce = Math.abs(wave(t, 0.36));
@@ -269,7 +295,7 @@ export function drowse(t: number): number {
 }
 
 /** A holdable gesture's pose at strength `a`, kept alive by `t` (pout huffs, shy peeks back now and then, look_away glances
- *  back, drowsy nods off and catches itself), so a held pose never looks frozen. */
+ *  back, drowsy nods off and catches itself, raised eyes drift, an open mouth breathes), so a held pose never looks frozen. */
 function moodFrame(name: HoldableGesture, t: number, a: number): GestureFrame {
   switch (name) {
     case "pout": {
@@ -289,13 +315,18 @@ function moodFrame(name: HoldableGesture, t: number, a: number): GestureFrame {
       const glance = Math.max(0, wave(t - 2, 6)) ** 6;
       return { look: { x: (0.65 - 0.3 * glance) * a, y: 0.05 * a }, parameters: { ParamEyeBallX: (0.6 - 0.4 * glance) * a, ParamAngleZ: -4 * a } };
     }
-    case "blush": return { look: { x: 0, y: 0 }, parameters: { ParamCheek: a } };
+    case "blush": case "blush_deep": case "blush_fierce": return { look: { x: 0, y: 0 }, parameters: { ParamCheek: a } };
     case "drowsy": {
       const droop = drowse(t);
       return { look: { x: 0, y: -(0.25 + 0.3 * droop) * a }, parameters: {
         ...eyes(-(0.45 + 0.4 * droop) * a), ParamAngleZ: (4 + 6 * droop) * a, ParamBodyAngleY: -2 * a, ...brows(-0.15 * a),
       } };
     }
+    // Only the eyes turn up; holding them (eyes), the look turns only the head.
+    case "eyes_up":
+      return { look: { x: 0, y: 0 }, parameters: { ParamEyeBallY: (0.85 + 0.05 * wave(t, 4.7)) * a, ParamEyeBallX: 0.1 * wave(t, 7.3) * a },
+        eyes: a };
+    case "mouth_open": return { look: { x: 0, y: 0 }, parameters: { ParamMouthOpenY: (0.6 + 0.08 * wave(t, 2.8)) * a } };
   }
 }
 
@@ -304,33 +335,44 @@ export function heldFrame(name: HoldableGesture, seconds: number, weight: number
   return moodFrame(name, seconds, weight);
 }
 
-function combine(frames: readonly GestureFrame[]): GestureFrame {
-  const look = { x: 0, y: 0 }, parameters: Record<string, number> = {};
+/** The frames added up. A gesture holding the eyes takes `look` (the head direction the gestures' looks add to) out of the
+ *  eyeballs; while the voice speaks (`talk`, 0 to 1), a held open mouth eases back, so lip-sync still moves the mouth. */
+function combine(frames: readonly GestureFrame[], look: { readonly x: number; readonly y: number }, talk: number): GestureFrame {
+  const turn = { x: 0, y: 0 }, parameters: Record<string, number> = {};
+  let eyes = 0;
   for (const frame of frames) {
-    look.x += frame.look.x; look.y += frame.look.y;
+    turn.x += frame.look.x; turn.y += frame.look.y; eyes += frame.eyes ?? 0;
     for (const [id, value] of Object.entries(frame.parameters)) parameters[id] = (parameters[id] ?? 0) + value;
   }
-  return { look, parameters };
+  eyes = Math.min(1, eyes);
+  if (eyes > 0) {
+    parameters.ParamEyeBallX = (parameters.ParamEyeBallX ?? 0) - eyes * (look.x + turn.x);
+    parameters.ParamEyeBallY = (parameters.ParamEyeBallY ?? 0) - eyes * (look.y + turn.y);
+  }
+  if (parameters.ParamMouthOpenY) parameters.ParamMouthOpenY *= 1 - 0.7 * talk;
+  return { look: turn, parameters, ...(eyes > 0 ? { eyes } : {}) };
 }
 
-/** What a character is doing with Martlet's gestures: the one playing once and the one held, if any. */
-export interface GestureState { readonly playing?: Gesture; readonly held?: HoldableGesture }
+/** What a character is doing with Martlet's gestures: the one playing once, if any, and those held. */
+export interface GestureState { readonly playing?: Gesture; readonly held: readonly HoldableGesture[] }
 
 const HOLD_EASE = 0.8;
 
 /**
- * Plays Martlet's gestures: one at a time, a new one replacing the last, plus at most one held gesture (`hold`), eased in
- * over 0.8s and kept until `end`, then eased out. A gesture played while one is held plays on top, the held pose easing
- * back partway for it and resuming after; a new held gesture crossfades from the last.
+ * Plays Martlet's gestures: one at a time, a new one replacing the last, plus held gestures (`hold`), each eased in over
+ * 0.8s and kept until `end`, then eased out. Held gestures layer: holding one lets go only of the held gestures that move a
+ * part it moves too (`HOLD_PARTS`), crossfading from them. A gesture played while some are held plays on top, the held
+ * poses easing back partway and resuming after.
  */
 export class GesturePlayer {
   #playing: { name: Gesture; seconds: number } | undefined;
   #held: { name: HoldableGesture; seconds: number; progress: number; on: boolean }[] = [];
+  #talk = 0;
 
   /** Plays `name` once, or holds it when `hold` and it can be held (see `HOLDABLE_GESTURES`). */
   play(name: Gesture, hold = false): void {
     if (hold && isHoldable(name)) {
-      for (const held of this.#held) held.on = held.name === name;
+      for (const held of this.#held) held.on = held.name === name || held.on && !sharePart(held.name, name);
       if (!this.#held.some(held => held.name === name)) this.#held.push({ name, seconds: 0, progress: 0, on: true });
     } else this.#playing = { name, seconds: 0 };
   }
@@ -340,15 +382,18 @@ export class GesturePlayer {
     for (const held of this.#held) if (held.name === name) held.on = false;
   }
 
-  clear(): void { this.#playing = undefined; this.#held = []; }
+  clear(): void { this.#playing = undefined; this.#held = []; this.#talk = 0; }
 
   get state(): GestureState {
-    const held = this.#held.find(h => h.on)?.name;
-    return Object.freeze({ ...(this.#playing ? { playing: this.#playing.name } : {}), ...(held ? { held } : {}) });
+    return Object.freeze({ ...(this.#playing ? { playing: this.#playing.name } : {}),
+      held: Object.freeze(this.#held.filter(h => h.on).map(h => h.name)) });
   }
 
-  /** The combined frame `deltaSeconds` later, or undefined when nothing plays. */
-  advance(deltaSeconds: number): GestureFrame | undefined {
+  /** The combined frame `deltaSeconds` later, or undefined when nothing plays. `look` is where the head and eyes turn
+   *  without the gestures (the mouse, a point): a gesture holding the eyes (eyes_up) keeps it out of the eyeballs.
+   *  `speaking`: lip-sync moves the mouth now. */
+  advance(deltaSeconds: number, look: { readonly x: number; readonly y: number } = { x: 0, y: 0 }, speaking = false): GestureFrame | undefined {
+    this.#talk += ((speaking ? 1 : 0) - this.#talk) * Math.min(1, deltaSeconds * 5);
     const frames: GestureFrame[] = [];
     let duck = 0;
     if (this.#playing) {
@@ -364,6 +409,6 @@ export class GesturePlayer {
       frames.push(moodFrame(held.name, held.seconds, smooth(held.progress) * (1 - duck)));
     }
     this.#held = this.#held.filter(held => held.on || held.progress > 0);
-    return frames.length ? combine(frames) : undefined;
+    return frames.length ? combine(frames, look, this.#talk) : undefined;
   }
 }

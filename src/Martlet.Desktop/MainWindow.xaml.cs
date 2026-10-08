@@ -102,6 +102,7 @@ public partial class MainWindow : ThemedWindow
         captions = new(avatar, store?.DataDirectory);
         captions.Changed += () => ShowSpeechDisplay();
         avatar.Placement = CharacterPlacementStore.Load(store?.DataDirectory);
+        avatar.ClickThrough = CharacterClickThroughStore.Load(store?.DataDirectory);
         avatar.VoiceMuted = !Talk.SpeakReplies;
         avatar.Requested += action => Dispatcher.InvokeAsync(() => CharacterRequested(action));
         avatar.Gaze.Decides = Talk.DecideGaze;
@@ -184,8 +185,10 @@ public partial class MainWindow : ThemedWindow
         }
         InitializeShell();
         InitializeCluster();
+        InitializeNodePresence();
         InitializeSettingsSync();
         InitializeReminders();
+        InitializeConfiguring();
         InitializeMemorySync();
         InitializeNetwork();
         InitializeApiKeys();
@@ -238,6 +241,7 @@ public partial class MainWindow : ThemedWindow
         // An update Martlet just restarted into brings back the character, listening and watching that were on when it closed for it.
         if (!closing) await ResumeAfterUpdateAsync();
         StartCluster();
+        StartNodePresence();
         StartSettingsSync();
         StartReminders();
         StartMemorySync();
@@ -330,19 +334,6 @@ public partial class MainWindow : ThemedWindow
         finally { saving = false; }
         if (!closing)
             await RefreshAsync();
-    }
-
-    private Martlet.Core.Settings.SetupRole? nextSetupJob;
-
-    private async void Setup_Click(object sender, RoutedEventArgs e)
-    {
-        if (store is null || closing || saving || model?.IsRunning == true) return;
-        var characterWasShowing = avatar.IsShowing;
-        if (!await StopAvatarSafelyAsync()) return;
-        new SetupWindow(setupService!, setupOperations) { Owner = this, Troubleshooting = OpenTroubleshooting, ConfigurationRecovery = OpenRecovery, InitialRole = nextSetupJob }.ShowDialog();
-        nextSetupJob = null;
-        await RefreshAsync();
-        if (characterWasShowing) await ShowSavedCharacterAsync(onlyIfAutoShow: false);
     }
 
     private async void AudioSetup_Click(object sender, RoutedEventArgs e)
@@ -540,6 +531,15 @@ public partial class MainWindow : ThemedWindow
         AutomationProperties.SetName(LockCharacterButton, locked ? "Unlock character position" : "Lock character position");
         LockCharacterButton.ToolTip = locked ? "Let the character be dragged, moved and resized again"
             : "Keep the character where it is until you unlock it here or on its right-click menu";
+        // Turning click-through off also works while the character is hidden; it can't be turned off on the character itself.
+        var clickThrough = avatar.ClickThrough;
+        ClickThroughCharacterButton.Visibility = avatar.IsShowing || clickThrough ? Visibility.Visible : Visibility.Collapsed;
+        ClickThroughCharacterButton.IsEnabled = !changingCharacterClickThrough;
+        ClickThroughCharacterButton.Content = clickThrough ? "Turn off click-thro_ugh" : "Turn on click-thro_ugh";
+        AutomationProperties.SetName(ClickThroughCharacterButton, clickThrough ? "Turn off click-through" : "Turn on click-through");
+        ClickThroughCharacterButton.ToolTip = clickThrough
+            ? "Let the character catch clicks again, so you can drag it, zoom it and right-click it"
+            : "Let clicks pass through the character to the windows under it. Turn it off here, in Companion › Character or from Martlet's icon";
     }
 
     /// <summary>Carries out a choice from the character's own right-click menu (or Esc on it): hide the character, open
@@ -584,6 +584,12 @@ public partial class MainWindow : ThemedWindow
                 break;
             case "mute": SetVoiceMuted(true); break;
             case "unmute": SetVoiceMuted(false); break;
+            case Martlet.Avatar.Hosting.RendererRequest.ClickThroughOn:
+                if (!avatar.ClickThrough) SetCharacterClickThroughAsync(true).Forget();
+                break;
+            case Martlet.Avatar.Hosting.RendererRequest.ClickThroughOff:
+                if (avatar.ClickThrough) SetCharacterClickThroughAsync(false).Forget();
+                break;
             case "clear": ClearCharacterEmotesAsync().Forget(); break;
         }
     }
@@ -591,8 +597,42 @@ public partial class MainWindow : ThemedWindow
     private async void ResetCharacterZoom_Click(object sender, RoutedEventArgs e) => await ResetCharacterZoomAsync();
     private Task ResetCharacterZoomAsync() => ZoomCharacterAsync("reset");
     private void LockCharacter_Click(object sender, RoutedEventArgs e) => SetCharacterLockAsync(!avatar.PlacementLocked).Forget();
+    private void ClickThroughCharacter_Click(object sender, RoutedEventArgs e) => SetCharacterClickThroughAsync(!avatar.ClickThrough).Forget();
 
-    private bool changingCharacterLock;
+    private bool changingCharacterLock, changingCharacterClickThrough;
+
+    /// <summary>Lets clicks pass through the character (from here, Companion › Character, the notification-area menu or the
+    /// character's own menu) or makes it catch them again (only from Martlet: the mouse can't reach the character's menu then),
+    /// and saves that on this PC so the character shows the same way next time.</summary>
+    private async Task SetCharacterClickThroughAsync(bool on)
+    {
+        if (closing || changingCharacterClickThrough) return;
+        changingCharacterClickThrough = true;
+        UpdateCharacterButton();
+        try
+        {
+            await avatar.SetClickThroughAsync(on, lifetime.Token);
+            var saved = CharacterClickThroughStore.Save(store?.DataDirectory, on);
+            if (closing) return;
+            ErrorLog.Info(on ? "Click-through turned on: clicks pass through the character." : "Click-through turned off: the character catches clicks.");
+            ActionText.Text = (on
+                ? "Clicks now pass through the character to the windows under it. Turn this off here, in Companion › Character or from Martlet's icon in the notification area."
+                : "Click-through is off. You can drag, zoom and right-click the character again.") +
+                (saved ? "" : on ? " It couldn't be saved on this PC, so it turns off when Martlet restarts."
+                    : " It couldn't be saved on this PC, so it may turn on again when Martlet restarts.");
+        }
+        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
+            OperationCanceledException or ObjectDisposedException or System.IO.InvalidDataException or System.Text.Json.JsonException)
+        {
+            if (!closing) ActionText.Text = $"Couldn't turn click-through {(on ? "on" : "off")}: {error.Message}";
+        }
+        finally
+        {
+            changingCharacterClickThrough = false;
+            UpdateCharacterButton();
+            if (!closing) RenderHome();
+        }
+    }
 
     /// <summary>The character was moved or resized and has settled: saves where it is now (and on which monitor) on this PC,
     /// so it shows there again after Hide/Show, a restart, a shutdown or an update.</summary>
@@ -607,10 +647,10 @@ public partial class MainWindow : ThemedWindow
             UpdateCharacterButton();
             if (characterPlacementNote is { } note) note.Text = CharacterPlacementText();
         }
-        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
-            OperationCanceledException or ObjectDisposedException or System.IO.InvalidDataException or System.Text.Json.JsonException)
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception error) when (RendererFailures.Is(error, lifetime.Token))
         {
-            if (!closing) ErrorLog.Warn("The character's new position couldn't be read to save it.", error);
+            if (!closing) RendererFailures.Log("The character's new position couldn't be read to save it", error);
         }
     }
 
@@ -708,7 +748,7 @@ public partial class MainWindow : ThemedWindow
             null => "head position not available.",
             double below when below >= 0 => "head is in view.",
             _ => "head may be cropped."
-        } + (view.Locked == true ? " Position locked." : "");
+        } + (view.Locked == true ? " Position locked." : "") + (view.ClickThrough == true ? " Clicks pass through." : "");
     private async Task ResetCharacterPositionAsync()
     {
         try
@@ -748,26 +788,32 @@ public partial class MainWindow : ThemedWindow
         }
         try
         {
-            var loaded = await setupService.LoadAsync(lifetime.Token);
-            AvatarProfile? saved = null;
-            if (loaded.Settings is { } settings)
-                saved = (await new AvatarProfileStore(store.DataDirectory).LoadAsync(settings.Profile.Id, lifetime.Token)).Profile;
+            var (saved, profile) = await SavedCharacterAsync();
             if (onlyIfAutoShow && saved?.AutoShow != true) return;
-            // Without a completed Setup profile the bundled character still shows; its choices are simply not saved.
-            var profile = saved ?? AvatarProfile.BuiltIn(loaded.Settings?.Profile.Id ?? Guid.NewGuid());
             await avatar.ShowAsync(profile with { ResourceRevision = null }, lifetime.Token);
             characterCleanupProblem = null;
             ActionText.Text = avatar.Status;
         }
-        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
-            UnauthorizedAccessException or System.ComponentModel.Win32Exception or Martlet.Core.Contracts.ContractException or
-            OperationCanceledException)
+        catch (Exception error) when (error is UnauthorizedAccessException or System.ComponentModel.Win32Exception or
+            Martlet.Core.Contracts.ContractException or OperationCanceledException || RendererFailures.Is(error, lifetime.Token))
         {
             if (closing) return;
             ErrorLog.Warn("The character couldn't be shown.", error);
             ActionText.Text = $"Couldn't show the character: {error.Message}";
         }
         finally { UpdateCharacterButton(); }
+    }
+
+    /// <summary>The saved character profile (null when none is saved) and the character Martlet shows for it: that profile, or
+    /// the bundled default when there is none.</summary>
+    private async Task<(AvatarProfile? Saved, AvatarProfile Shown)> SavedCharacterAsync()
+    {
+        var loaded = await setupService!.LoadAsync(lifetime.Token);
+        AvatarProfile? saved = null;
+        if (loaded.Settings is { } settings)
+            saved = (await new AvatarProfileStore(store!.DataDirectory).LoadAsync(settings.Profile.Id, lifetime.Token)).Profile;
+        // Without a completed Setup profile the bundled character still shows; its choices are simply not saved.
+        return (saved, saved ?? AvatarProfile.BuiltIn(loaded.Settings?.Profile.Id ?? Guid.NewGuid()));
     }
     private void OpenAvatar(Window owner)
     {
@@ -802,8 +848,8 @@ public partial class MainWindow : ThemedWindow
             characterCleanupProblem = null;
             return true;
         }
-        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
-            System.ComponentModel.Win32Exception or UnauthorizedAccessException)
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or UnauthorizedAccessException ||
+            RendererFailures.Is(error, CancellationToken.None))
         {
             ErrorLog.Warn("The character could not be stopped cleanly.", error);
             characterCleanupProblem = "The character didn't close cleanly. Press Hide or Show character to try again.";

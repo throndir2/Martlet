@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { GESTURES, GesturePlayer, HOLDABLE_GESTURES, drowse, flinchJolt, gestureFrame, isGesture, isHoldable,
-  supportedGestures } from "../dist/index.js";
+import { BLUSH_LEVELS, GESTURES, GesturePlayer, HOLDABLE_GESTURES, HOLD_PARTS, drowse, flinchJolt, gestureFrame, isBlush, isGesture,
+  isHoldable, sharePart, supportedGestures } from "../dist/index.js";
 
 test("a model gets only the gestures whose standard parameters it has", () => {
   assert.deepEqual(supportedGestures(["ParamAngleX", "ParamAngleY"]), ["nod", "shake", "bow", "blush", "laugh", "chuckle", "sigh", "gasp",
     "cough", "clear_throat", "sniff", "shush", "inhale", "exhale", "mumble", "sneeze", "fear", "crying",
-    "shy", "giggle", "flinch", "look_away", "think"]);
+    "shy", "giggle", "flinch", "look_away", "think", "blush_deep", "blush_fierce"]);
   assert.deepEqual(supportedGestures(["ParamAngleX", "ParamAngleY", "ParamAngleZ", "ParamBodyAngleZ", "ParamEyeLSmile",
     "ParamEyeRSmile", "ParamCheek", "ParamBrowLY", "ParamBrowRY", "ParamEyeLOpen", "ParamEyeROpen", "ParamMouthForm",
-    "ParamEyeBallX", "ParamEyeBallY"]), [...GESTURES]);
-  assert.deepEqual(supportedGestures(["ParamEyeLSmile"]), ["blush"], "every model blushes (drawn when it has no ParamCheek)");
+    "ParamEyeBallX", "ParamEyeBallY", "ParamMouthOpenY"]), [...GESTURES]);
+  assert.deepEqual(supportedGestures(["ParamEyeLSmile"]), [...BLUSH_LEVELS], "every model blushes at every level (drawn when it has no ParamCheek)");
   assert.equal(isGesture("wave"), false);
   assert.equal(isGesture("laugh"), true);
 });
@@ -45,9 +45,10 @@ test("voice emotes move the head and face and settle back", () => {
 });
 
 test("touch and mood gestures need their standard parameters and move the face naturally", () => {
-  assert.deepEqual(supportedGestures(["ParamEyeLOpen"]), ["blush", "wink"]);
-  assert.deepEqual(supportedGestures(["ParamEyeLOpen", "ParamEyeROpen", "ParamMouthForm"]), ["blush", "wink", "pout", "drowsy"]);
-  assert.deepEqual(supportedGestures(["ParamEyeBallX", "ParamEyeBallY"]), ["blush", "eye_roll"]);
+  assert.deepEqual(supportedGestures(["ParamEyeLOpen"]), ["blush", "wink", "blush_deep", "blush_fierce"]);
+  assert.deepEqual(supportedGestures(["ParamEyeLOpen", "ParamEyeROpen", "ParamMouthForm"]), ["blush", "wink", "pout", "drowsy",
+    "blush_deep", "blush_fierce"]);
+  assert.deepEqual(supportedGestures(["ParamEyeBallX", "ParamEyeBallY"]), ["blush", "eye_roll", "eyes_up", "blush_deep", "blush_fierce"]);
   const wink = gestureFrame("wink", 0.5);
   assert.ok(wink.parameters.ParamEyeLOpen < -0.99 && !("ParamEyeROpen" in wink.parameters), "only the left eye closes");
   assert.ok(gestureFrame("pout", 1.3).parameters.ParamMouthForm < -0.99 && gestureFrame("pout", 1.3).parameters.ParamCheekPuff > 0.7);
@@ -69,12 +70,13 @@ test("touch and mood gestures need their standard parameters and move the face n
 });
 
 test("holdable gestures stay until ended and gestures played meanwhile play on top", () => {
-  assert.deepEqual([...HOLDABLE_GESTURES], ["pout", "shy", "look_away", "drowsy", "blush"]);
+  assert.deepEqual([...HOLDABLE_GESTURES], ["pout", "shy", "look_away", "drowsy", "blush", "eyes_up", "mouth_open", "blush_deep",
+    "blush_fierce"]);
   assert.ok(isHoldable("shy") && !isHoldable("wink"));
   const player = new GesturePlayer();
   assert.equal(player.advance(0.1), undefined);
   player.play("shy", true);
-  assert.deepEqual(player.state, { held: "shy" });
+  assert.deepEqual(player.state, { held: ["shy"] });
   let frame;
   for (let i = 0; i < 300; i++) frame = player.advance(0.05);
   assert.ok(frame.look.y < -0.2 && frame.parameters.ParamEyeLSmile > 0.49, "still shy after 15 seconds");
@@ -82,26 +84,114 @@ test("holdable gestures stay until ended and gestures played meanwhile play on t
   for (let i = 0; i < 40; i++) player.advance(0.05);
   assert.notEqual(player.advance(0.05).look.x, a, "a held pose stays alive");
   player.play("nod");
-  assert.deepEqual(player.state, { playing: "nod", held: "shy" });
+  assert.deepEqual(player.state, { playing: "nod", held: ["shy"] });
   for (let i = 0; i < 6; i++) frame = player.advance(0.05);
   assert.ok(frame.parameters.ParamEyeLSmile < 0.45, "the held pose eases back under the nod");
   for (let i = 0; i < 30; i++) frame = player.advance(0.05);
-  assert.deepEqual(player.state, { held: "shy" });
+  assert.deepEqual(player.state, { held: ["shy"] });
   assert.ok(frame.parameters.ParamEyeLSmile > 0.49, "and resumes after it");
   player.play("wink", true);
-  assert.deepEqual(player.state, { playing: "wink", held: "shy" }, "a gesture that can't be held plays once");
+  assert.deepEqual(player.state, { playing: "wink", held: ["shy"] }, "a gesture that can't be held plays once");
   player.play("drowsy", true);
-  assert.deepEqual(player.state.held, "drowsy", "a new held gesture replaces the last");
+  assert.deepEqual(player.state.held, ["drowsy"], "drowsy moves the eyes and head too, so shy lets go");
   for (let i = 0; i < 40; i++) frame = player.advance(0.05);
   assert.ok(!("ParamEyeLSmile" in frame.parameters) && frame.parameters.ParamEyeLOpen < -0.4, "crossfaded to drowsy");
   player.end("drowsy");
-  assert.deepEqual(player.state, {});
+  assert.deepEqual(player.state, { held: [] });
   frame = player.advance(0.05);
   assert.ok(frame.parameters.ParamEyeLOpen < -0.3, "eases out rather than snapping back");
   for (let i = 0; i < 20; i++) frame = player.advance(0.05);
   assert.equal(frame, undefined);
   player.play("pout");
-  assert.deepEqual(player.state, { playing: "pout" }, "without hold it plays once");
+  assert.deepEqual(player.state, { playing: "pout", held: [] }, "without hold it plays once");
   for (let i = 0; i < 60; i++) frame = player.advance(0.05);
   assert.equal(frame, undefined);
+});
+
+test("every blush level moves the model's own blush fully, once or held, is the cheeks and replaces another without a dip", () => {
+  assert.deepEqual([...BLUSH_LEVELS], ["blush", "blush_deep", "blush_fierce"]);
+  assert.ok(BLUSH_LEVELS.every(isBlush) && !isBlush("shy"));
+  assert.deepEqual(GESTURES.slice(-2), ["blush_deep", "blush_fierce"], "after the gestures before them");
+  for (const level of BLUSH_LEVELS) {
+    assert.ok(isHoldable(level), level);
+    assert.deepEqual(HOLD_PARTS[level], ["cheeks"], level);
+    assert.equal(gestureFrame(level, 2).parameters.ParamCheek, 1, level);
+    assert.equal(gestureFrame(level, 4), undefined, `${level} plays 4 seconds`);
+  }
+  const player = new GesturePlayer();
+  player.play("eyes_up", true);
+  player.play("blush_deep", true);
+  let frame;
+  for (let i = 0; i < 40; i++) frame = player.advance(0.05);
+  assert.deepEqual([player.state.held, frame.parameters.ParamCheek], [["eyes_up", "blush_deep"], 1], "a blush level layers with the eyes");
+  // A new level lets the one before go (both are the cheeks), and the cheeks stay fully flushed through the crossfade.
+  player.play("blush_fierce", true);
+  assert.deepEqual(player.state, { held: ["eyes_up", "blush_fierce"] });
+  for (let i = 0; i < 20; i++) {
+    frame = player.advance(0.05);
+    assert.ok(frame.parameters.ParamCheek > 0.99, String(frame.parameters.ParamCheek));
+  }
+});
+
+test("held gestures that move different parts layer; one that shares a part lets the other go", () => {
+  assert.deepEqual(HOLD_PARTS.eyes_up, ["eyes"]);
+  assert.deepEqual(HOLD_PARTS.mouth_open, ["mouth"]);
+  assert.deepEqual(HOLD_PARTS.blush, ["cheeks"]);
+  for (const name of HOLDABLE_GESTURES) assert.ok(HOLD_PARTS[name].length > 0, name);
+  assert.ok(!sharePart("eyes_up", "mouth_open") && !sharePart("eyes_up", "blush") && !sharePart("pout", "blush"));
+  assert.ok(sharePart("eyes_up", "shy") && sharePart("mouth_open", "pout") && sharePart("look_away", "drowsy"));
+  const player = new GesturePlayer();
+  for (const name of ["eyes_up", "mouth_open", "blush"]) player.play(name, true);
+  assert.deepEqual(player.state, { held: ["eyes_up", "mouth_open", "blush"] }, "the eyes, the mouth and the cheeks stay on together");
+  let frame;
+  for (let i = 0; i < 40; i++) frame = player.advance(0.05);
+  assert.ok(frame.parameters.ParamEyeBallY > 0.75 && frame.parameters.ParamMouthOpenY > 0.5 && frame.parameters.ParamCheek > 0.99,
+    "all three show at full strength");
+  assert.deepEqual(frame.look, { x: 0, y: 0 }, "the head doesn't move");
+  player.play("pout", true);
+  assert.deepEqual(player.state, { held: ["eyes_up", "blush", "pout"] }, "pout moves the mouth too, so mouth_open lets go");
+  for (let i = 0; i < 40; i++) frame = player.advance(0.05);
+  assert.ok(!frame.parameters.ParamMouthOpenY && frame.parameters.ParamMouthForm < -0.99 && frame.parameters.ParamEyeBallY > 0.75);
+  player.end("pout");
+  assert.deepEqual(player.state, { held: ["eyes_up", "blush"] }, "ending one leaves the others on");
+  player.play("look_away", true);
+  assert.deepEqual(player.state, { held: ["blush", "look_away"] }, "look_away turns the eyes, so eyes_up lets go");
+  player.play("look_away", true);
+  assert.deepEqual(player.state, { held: ["blush", "look_away"] }, "holding it again changes nothing");
+  player.play("blush");
+  assert.deepEqual(player.state, { playing: "blush", held: ["blush", "look_away"] }, "played once while held, it stays held");
+});
+
+test("raised eyes stay up whatever the look, and the look comes back when they are let go", () => {
+  const player = new GesturePlayer();
+  player.play("eyes_up", true);
+  let frame;
+  // The look adds itself to the eyeballs (ParamEyeBallX += look.x, ParamEyeBallY += look.y); held eyes take it out again.
+  for (const look of [{ x: 0.6, y: -0.8 }, { x: -0.5, y: 0.9 }, { x: 0, y: 0 }]) {
+    for (let i = 0; i < 40; i++) frame = player.advance(0.05, look);
+    assert.ok(look.y + frame.parameters.ParamEyeBallY > 0.75, `the eyes stay up: ${JSON.stringify(look)}`);
+    assert.ok(Math.abs(look.x + frame.parameters.ParamEyeBallX) < 0.16, `and don't follow the look sideways: ${JSON.stringify(look)}`);
+    assert.equal(frame.eyes, 1);
+    assert.deepEqual(frame.look, { x: 0, y: 0 }, "the head still follows the look");
+  }
+  player.end("eyes_up");
+  for (let i = 0; i < 20; i++) frame = player.advance(0.05, { x: 0.6, y: -0.8 });
+  assert.equal(frame, undefined, "let go, the eyes follow the look again");
+  assert.ok(gestureFrame("eyes_up", 1.5).parameters.ParamEyeBallY > 0.75 && gestureFrame("eyes_up", 2.99).parameters.ParamEyeBallY < 0.05,
+    "without hold the eyes go up for a few seconds");
+});
+
+test("a held open mouth eases back while the voice speaks, so lip-sync still moves it", () => {
+  const player = new GesturePlayer();
+  player.play("mouth_open", true);
+  let frame;
+  for (let i = 0; i < 40; i++) frame = player.advance(0.05);
+  const open = frame.parameters.ParamMouthOpenY;
+  assert.ok(open > 0.5, `open while quiet: ${open}`);
+  for (let i = 0; i < 20; i++) frame = player.advance(0.05, undefined, true);
+  assert.ok(frame.parameters.ParamMouthOpenY < 0.25, `eased back while speaking: ${frame.parameters.ParamMouthOpenY}`);
+  for (let i = 0; i < 20; i++) frame = player.advance(0.05);
+  assert.ok(frame.parameters.ParamMouthOpenY > 0.5, "open again when the voice stops");
+  assert.ok(gestureFrame("mouth_open", 1.3).parameters.ParamMouthOpenY > 0.5 && gestureFrame("mouth_open", 2.6) === undefined,
+    "without hold the mouth opens for a few seconds");
 });

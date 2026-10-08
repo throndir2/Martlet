@@ -9,7 +9,8 @@ public static partial class TouchZoneDetection
 {
     /// <summary>Finds the zones of the character in <paramref name="snapshot"/> (the renderer's picture, transparent around the
     /// character) with <paramref name="ask"/>, the vision model. Every request's picture is composed here; <paramref name="progress"/>
-    /// hears each step. Stops at once when the first request can't be made (no vision model, say).</summary>
+    /// hears each step. Stops at the first request that fails (no vision model, or the model or the computer it runs on stopped
+    /// answering), with the zones found until then and why; an answer with nothing usable in it is not a failure.</summary>
     public static async Task<ZoneDetectionResult> RunAsync(ZonePixels snapshot, ZoneHints? hints,
         Func<ZoneAsk, CancellationToken, Task<(string? Answer, string? Failure)>> ask, Action<ZoneDetectionProgress>? progress,
         CancellationToken token, ZoneDetectionOptions? options = null)
@@ -22,16 +23,20 @@ public static partial class TouchZoneDetection
         var faces = hints is { Bones.Count: > 0 } ? hints.FacesViewer : true;
         var zones = new Dictionary<string, TouchZoneBox>(StringComparer.Ordinal);
         var steps = new List<string>();
-        int requests = 0, answered = 0;
+        var requests = 0;
         string? failure = null;
 
+        // A failed request stops the detection: the next ones would most likely fail the same way, each after its own wait.
         async Task<string?> Ask(ZoneAsk zoneAsk)
         {
             token.ThrowIfCancellationRequested();
             requests++;
             var (answer, why) = await ask(zoneAsk, token).ConfigureAwait(false);
-            if (answer is not null) answered++;
-            else failure ??= why;
+            if (answer is null && why is not null)
+            {
+                failure = why;
+                steps.Add($"{zoneAsk.Step}: the request failed ({why}), so finding zones stopped");
+            }
             return answer;
         }
         void Report(string text) => progress?.Invoke(new(text, Zones(zones), requests));
@@ -42,7 +47,7 @@ public static partial class TouchZoneDetection
         Report("Step 1: asking the Thinking model where the head, body and legs are, on the whole character with a grid...");
         var picture = Compose(whole);
         var answer = await Ask(new(ZoneAskKind.Parts, "parts", PartsInstructions, PartsText(hints), picture, whole, PartIds, [])).ConfigureAwait(false);
-        if (answer is null && failure is not null) return new(null, failure, requests, [$"parts: {failure}"]);
+        if (failure is not null) return new(null, failure, requests, steps);
         var parts = ReadBoxes(answer, picture.Width, picture.Height, PartId);
         foreach (var extra in Extras)
             if (parts.TryGetValue(extra, out var box)) zones[extra] = box;
@@ -62,20 +67,46 @@ public static partial class TouchZoneDetection
             picture = Compose(crop);
             answer = await Ask(new(ZoneAskKind.Zones, region.Id, ZonesInstructions, ZonesText(region, hints, crop), picture, crop, region.Zones, []))
                 .ConfigureAwait(false);
+            if (failure is not null) break;
             var found = ReadBoxes(answer, picture.Width, picture.Height, CharacterTouchZones.Normalize).Where(z => region.Zones.Contains(z.Key)).ToArray();
             foreach (var (id, zone) in found) zones[id] = zone.Within(crop);
             tidy = Tidy(zones, snapshot, faces);
             steps.Add($"{region.Id}: " + (answer is null ? "no answer" : $"{found.Length} zones") + Notes(tidy));
             await CheckAsync(region.Id, region.What, region.Zones, crop).ConfigureAwait(false);
+            if (failure is not null) break;
         }
-        // 3. A tail, wings or a held item, on the whole character.
-        if (Extras.Any(zones.ContainsKey)) await CheckAsync("extras", "the whole character", Extras, whole).ConfigureAwait(false);
+        // 3. Zones that must be found (the intimate ones, with Include intimate zones on) that the close-ups missed, or a check
+        // removed: asked for once more, on the whole character.
+        if (failure is null && options.Required.Where(id => !zones.ContainsKey(id)).ToArray() is { Length: > 0 } missing)
+        {
+            number++;
+            Report($"Step {number}: asking again for {missing.Length} zone{(missing.Length == 1 ? "" : "s")} the close-ups missed, on the whole character...");
+            picture = Compose(whole);
+            answer = await Ask(new(ZoneAskKind.Zones, MissingStep, MissingInstructions, MissingText(missing, hints), picture, whole, missing, []))
+                .ConfigureAwait(false);
+            if (failure is null)
+            {
+                var again = ReadBoxes(answer, picture.Width, picture.Height, CharacterTouchZones.Normalize).Where(z => missing.Contains(z.Key)).ToArray();
+                foreach (var (id, zone) in again) zones[id] = zone;
+                tidy = Tidy(zones, snapshot, faces);
+                steps.Add($"{MissingStep}: asked again for {string.Join(", ", missing)}; " +
+                    (again.Length == 0 ? answer is null ? "no answer" : "it found none of them" : "it found " + string.Join(", ", again.Select(z => z.Key))) +
+                    Notes(tidy));
+            }
+        }
+        // 4. A tail, wings or a held item, on the whole character.
+        if (failure is null && Extras.Any(zones.ContainsKey)) await CheckAsync("extras", "the whole character", Extras, whole).ConfigureAwait(false);
 
         var finished = Finish(zones, snapshot, hints);
         if (finished.Length > 0) steps.Add("finally: " + string.Join("; ", finished));
+        // The zones that must be found and still aren't are worked out from the zones around them.
+        if (failure is null && Derive(zones, options.Required, snapshot, faces, regions.ToDictionary(r => r.Region.Id, r => (r.Box, r.Found)), figure)
+            is { Count: > 0 } derived)
+            steps.Add("worked out " + string.Join("; ", derived));
         var result = Zones(zones);
-        Report($"Done: {result.Count} zones after {requests} requests.");
-        return new(result.Count == 0 ? null : result, answered == 0 ? failure : null, requests, steps);
+        Report(failure is null ? $"Done: {result.Count} zones after {requests} requests."
+            : $"Stopped: request {requests} failed ({failure}); {result.Count} zones found until then.");
+        return new(result.Count == 0 ? null : result, failure, requests, steps);
 
         async Task CheckAsync(string step, string what, IReadOnlyList<string> ids, TouchZoneBox crop)
         {
@@ -91,6 +122,7 @@ public static partial class TouchZoneDetection
                 var checking = Compose(crop, drawn);
                 var reply = await Ask(new(ZoneAskKind.Check, $"{step} check {round}", CheckInstructions,
                     CheckText(what, marks, ids.Where(id => !zones.ContainsKey(id)), problems, hints, crop), checking, crop, ids, marks)).ConfigureAwait(false);
+                if (failure is not null) return;
                 var verdict = ReadCheck(reply, marks, ids, checking.Width, checking.Height);
                 if (verdict is null)
                 {

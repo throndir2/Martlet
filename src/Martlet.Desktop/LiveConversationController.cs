@@ -784,6 +784,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         policy = new(runtime.SessionId, new ParticipationConfiguration(), new ParticipationState(), this.clock);
         jobs = new(this.clock);
         StartLiveFloor();
+        StartPresence();
         helperPool = new ThinkingPoolHelpers(() => ThinkingPool);
         helpers = new(() => Volatile.Read(ref helperPool), () => Replying || ReplySpeaking(), dataDirectory) { Floor = floor };
         songCredentials = new(() => Volatile.Read(ref songAuthorization));
@@ -816,12 +817,18 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         if (dataDirectory is not null) Configuration?.UseAbilities(ModelAbilities.Load(dataDirectory));
     }
 
-    /// <summary>Whether the Thinking pool (or the conversation model while it is empty) can run a think, for <paramref name="configured"/>'s routes.</summary>
+    /// <summary>Whether the Thinking pool (or the conversation model while it is empty) can run a think, for <paramref name="configured"/>'s
+    /// routes, with every computer counted as online: what the reply's tools come from.</summary>
     private DeepThinkingPlan DeepPlan(LiveConversationConfiguration configured) => DeepPool(configured).Plan;
 
     /// <summary>Every Thinking pool member (or the conversation model while the pool is empty and that is allowed), each with
-    /// whether a think can run there.</summary>
+    /// whether a think can run there, with every computer counted as online. The tools a reply offers come from this, so they stay
+    /// the same while computers come and go (<see cref="LivePool"/> places the work).</summary>
     private DeepThinkingPool DeepPool(LiveConversationConfiguration configured) => PoolPlan(configured.Routes);
+
+    /// <summary>As <see cref="DeepPool"/>, but members whose computers are offline now can't run, and the conversation model
+    /// stands in when none can and that is allowed: whether a think, research or a song's lyrics can start now, and where.</summary>
+    private DeepThinkingPool LivePool(LiveConversationConfiguration configured) => PoolPlan(configured.Routes, live: true);
 
     internal void Configure(SettingsLoadResult loaded)
     {
@@ -2432,6 +2439,14 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
 
     // ---------- background work (think_longer) ----------
 
+    /// <summary>think_longer and cancel_thinking as a reply carries them while Thinking longer is on and the pool can think, else
+    /// none. How many think at once comes from the configured members alone (<see cref="DeepPool"/>: every computer counted as
+    /// online), never from what answers or is busy now, so the start of every request stays the same for prompt caches while
+    /// computers come and go.</summary>
+    internal IReadOnlyList<TextToolDefinition> ReplyThinkTools(LiveConversationConfiguration configured) =>
+        configured.OffersThinkLonger && DeepPool(configured) is { Plan.Available: true } pool
+            ? ThinkLonger.Definitions(configured.ThinkLonger, ThinkLonger.Slots(ThinkLonger.Places(pool))) : [];
+
     /// <summary>Martlet's own tools for one reply, always the same ones in the same order while their settings stay, so the start
     /// of every request stays the same: think_longer and cancel_thinking while Thinking longer is on (with the Thinking longer
     /// prompt), research while Web research is on too (with its prompt), then the song tools while singing is set up, then draw_picture while pictures are set up (Companion › Pictures),
@@ -2443,16 +2458,14 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     {
         var own = new List<(TextToolDefinition, Func<TextToolCall, CancellationToken, ValueTask<ConversationToolResult>>)>();
         string? guidance = null;
-        if (configured.OffersThinkLonger && DeepPool(configured) is { Plan.Available: true } pool)
+        if (ReplyThinkTools(configured) is { Count: > 0 } thinkTools)
         {
             var settings = configured.ThinkLonger;
-            // How many think at once comes from the settings alone (never what is busy), so the tools stay the same each reply.
-            var definitions = ThinkLonger.Definitions(settings, ThinkLonger.Slots(ThinkLonger.Places(pool)));
-            own.Add((definitions[0], (call, token) => ThinkLongerAsync(operation, configured, call)));
-            own.Add((definitions[1], (call, token) => ValueTask.FromResult(CancelThinking(call))));
+            own.Add((thinkTools[0], (call, token) => ThinkLongerAsync(operation, configured, call)));
+            own.Add((thinkTools[1], (call, token) => ValueTask.FromResult(CancelThinking(call))));
             guidance = ThinkLonger.Instructions(settings, configured.Prompts);
         }
-        // research while Web research is on (Companion › Deep thinking, on by default) and Deep thinking can think.
+        // research while Web research is on (Companion › Deep thinking, off by default) and Deep thinking can think.
         if (OffersResearch(configured))
         {
             own.Add((WebResearch.Definition, (call, token) => ValueTask.FromResult(Research(operation, configured, call))));
@@ -2637,10 +2650,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         }
         var settings = configured.ThinkLonger;
         if (!settings.On) return ValueTask.FromResult(new ConversationToolResult(ThinkLonger.TurnedOff, true));
-        // Where it thinks (Companion › Deep thinking, this PC's choice): every place it is set to think on that can run a think
-        // (a model of its own; a second model in Ollama on this PC only while both fit on the graphics card), one think each.
-        var pool = DeepPool(configured);
-        var plan = pool.Plan;
+        // Where it thinks (Companion › Thinking pool, this PC's choice): every member that can run a think (a model of its own; a
+        // second model in Ollama on this PC only while both fit on the graphics card) and whose computer answers now; the
+        // conversation model stands in while none answers, when that is allowed.
+        var live = LivePool(configured);
+        var plan = live.Plan;
         if (!plan.Available)
         {
             tools?.Record(server, ThinkLonger.Name, "not started: unavailable", ThinkLonger.Label(task!), false);
@@ -2650,6 +2664,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var toldUser = !string.IsNullOrWhiteSpace(operation.Turn?.Content.Text);
         var sent = operation.Sent;
         var thinkingModel = configured.Route(SetupRole.Llm).ModelId;
+        // Members that are offline now stay in the list: the broker passes over them, and a think waiting in line goes to one as
+        // soon as it answers again.
+        var pool = Placing(DeepPool(configured), live);
         var places = ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan, HostRouteGpus.For);
         var thinkingRoute = configured.Routes.SingleOrDefault(r => r.Role == SetupRole.Llm);
         var start = jobs.Start(ThinkLonger.Kind(settings, ThinkLonger.Slots(places)), ThinkLonger.Label(task!), async (job, token) =>
@@ -2678,6 +2695,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         {
                             if (here.Settings.Separate) ErrorLog.Warn($"Background thinking on {where} failed ({Describe(terminal)}).");
                             else LogReplyFailure("Background thinking", configured, terminal);
+                            // Its computer didn't answer: offline at once, so the think (and the next job) goes elsewhere.
+                            if (terminal.ProviderFailure == ProviderFailureCode.Network) NoteUnreachable(here.Settings, job.Id);
                         }
                     }
                 };
@@ -2711,7 +2730,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     at => pool.Find(at.Id) is { } next && ThinkLonger.ContinuesInPlace(next.Settings, thinkingRoute), guard.Token,
                     (at, kept) => ErrorLog.Info($"Background thinking: {job.Id} stopped on {at.Name} for the conversation" +
                         (kept is null ? "" : $", keeping the {kept.Partial.Length} characters it wrote") + "; it goes on later."),
-                    (at, began) => HeldOnHost(pool, at, began)).ConfigureAwait(false);
+                    (at, began) => HeldOnHost(pool, at, began), GoesOnElsewhere("Background thinking", job.Id)).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested && Volatile.Read(ref pushed) is { } pushedOut)
             {
@@ -2817,14 +2836,16 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // The lyrics are written where Deep thinking thinks, alongside the conversation (never on Thinking's own model, so
             // replies never wait): on the free place that shares least with the conversation, else the least busy one, held while
             // it writes. Without a Deep thinking place, the reply writes them itself.
-                var pool = DeepPool(configured);
-            var plan = pool.Plan;
+            var live = LivePool(configured);
+            var plan = live.Plan;
             if (!plan.Available)
             {
                 tools?.Record(server, SongTools.SingName, "not started: lyrics needed", label, false);
                 return new(SongTools.WriteLyricsYourself(plan.Why), true);
             }
             var thinkingModel = configured.Route(SetupRole.Llm).ModelId;
+            // Members that are offline now stay in the list: the broker passes over them until they answer again.
+            var pool = Placing(DeepPool(configured), live);
             var places = ThinkLonger.Places(pool, BackgroundDuties.Of(dataDirectory), PoolCan);
             where = places.Count == 1
                 ? pool.Usable[0].Settings is { Separate: true } only ? only.Describe() : thinkingModel
@@ -3404,7 +3425,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             attempts = pair.Value.Think.Attempts
         };
         var configured = Configuration;
-        var pool = configured is null ? null : DeepPool(configured);
+        // Whether each place can take a think now: a member whose computer is offline can't until it answers again.
+        var pool = configured is null ? null : LivePool(configured);
         return System.Text.Json.JsonSerializer.Serialize(new
         {
             updatedAt = clock.GetUtcNow(),
@@ -3418,7 +3440,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             places = pool?.Spots.Select(spot => new
             {
                 computer = spot.Computer, where = spot.Settings.Separate ? spot.Settings.Describe() : "the Thinking model",
-                available = spot.Plan.Available, rank = spot.Plan.Rank, slots = spot.Settings.ThinksAtOnce,
+                available = spot.Plan.Available, offline = spot.Plan.Offline, rank = spot.Plan.Rank, slots = spot.Settings.ThinksAtOnce,
                 heldBy = jobs.Places.Leases.Where(lease => lease.Place.Id == spot.Key).Select(lease => lease.Holder)
             }),
             maxThinks = pool is null ? 0 : ThinkLonger.Slots(ThinkLonger.Places(pool)),
@@ -4851,6 +4873,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         echoReducer?.Forget();
         soundDigest?.Dispose();
         // Background work ends with Martlet, and so does the live floor (a hold on a host's graphics cards is let go).
+        StopPresence();
         jobs.Dispose();
         ReleaseGpus();
         floorRules.Dispose();

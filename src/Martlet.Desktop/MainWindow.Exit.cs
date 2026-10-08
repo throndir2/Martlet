@@ -98,6 +98,8 @@ public partial class MainWindow
             busy.Add($"Downloading {Martlet.Sherpa.ParakeetModels.Find(downloading)?.Name ?? "Parakeet"} speech recognition");
         if (hostUpdatesRunning || hostUpdates.Running)
             busy.Add("Updating Martlet on your hosts");
+        if (setupApplying)
+            busy.Add("Reconfiguring your computers with the recommended setup");
         if (!asked)
             foreach (var command in NodeCommandsRunning)
                 busy.Add($"A command from another computer: {NodeCommandAgent.Describe(command)}");
@@ -172,6 +174,7 @@ public partial class MainWindow
             characterTimer.Stop();
             updateTimer.Stop();
             clusterTimer.Stop();
+            StopNodePresence();
             settingsTimer.Stop();
             networkTimer.Stop();
             apiKeysTimer.Stop();

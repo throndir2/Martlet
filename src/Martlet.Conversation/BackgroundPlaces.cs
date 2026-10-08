@@ -138,8 +138,8 @@ public interface IPlaceRules
 /// asked): a free slot on the place with the lowest <see cref="BackgroundPlace.Standing"/>, then the least busy, then the pool's
 /// order. Waiters are served highest priority first (<see cref="ThinkingDemand.Priority"/>), then first come, first served, each
 /// as soon as a place of its own pool frees up. A demand with <see cref="ThinkingDemand.KeepLastFree"/> never takes the last free
-/// slot of its pool while that pool has two or more slots (the Thinking pool's slot for fast jobs). The <see cref="Rules"/> (the
-/// live floor's) decide besides: what may start where, which places go last, and which preemptible work stops when the live
+/// slot of its pool while that pool has two or more slots (the Thinking pool's slot for fast jobs). A place whose computer doesn't
+/// answer now (<see cref="Reachable"/>) gets no new work. The <see cref="Rules"/> (the live floor's) decide besides: what may start where, which places go last, and which preemptible work stops when the live
 /// conversation needs its place (<see cref="Reconsider"/>). Thread-safe.</summary>
 public sealed class BackgroundPlaces
 {
@@ -167,6 +167,26 @@ public sealed class BackgroundPlaces
             Reconsider();
         }
     }
+
+    private Func<BackgroundPlace, bool>? reachable;
+
+    /// <summary>Whether a place's computer answers now (the desktop's host checks); null: every place does. Work is never placed
+    /// on a place that doesn't answer, and its slots don't count as free for the last-free-slot rule; work already running there
+    /// carries on until it ends by itself. Called under the broker's lock, so it must be quick and must not call back into the
+    /// broker. Setting it applies it at once; call <see cref="Reconsider"/> when a computer answers again, so work waiting in line
+    /// starts there.</summary>
+    public Func<BackgroundPlace, bool>? Reachable
+    {
+        get => Volatile.Read(ref reachable);
+        set
+        {
+            Volatile.Write(ref reachable, value);
+            Reconsider();
+        }
+    }
+
+    /// <summary>Whether <paramref name="place"/>'s computer answers now (<see cref="Reachable"/>).</summary>
+    public bool Answers(BackgroundPlace place) => Reachable?.Invoke(place) ?? true;
 
     /// <summary>Every place held now, oldest first.</summary>
     public IReadOnlyList<BackgroundPlaceLease> Leases { get { lock (gate) return [.. leases]; } }
@@ -353,15 +373,15 @@ public sealed class BackgroundPlaces
         return used;
     }
 
-    // The deterministic choice: a free slot the rules allow, on a place the rules don't avoid first, then the lowest standing,
-    // then the least busy, then the pool's order; with share and none free, the least busy place by its share of slots (a whole
-    // hold last). Called under the gate.
+    // The deterministic choice: a free slot the rules allow on a place that answers, on a place the rules don't avoid first, then
+    // the lowest standing, then the least busy, then the pool's order; with share and none free, the least busy place by its
+    // share of slots (a whole hold last). Called under the gate.
     private BackgroundPlace? Choose(IReadOnlyList<BackgroundPlace> pool, bool share, ThinkingDemand? demand = null, bool obey = true)
     {
         if (demand is { KeepLastFree: true } && !LeavesFastSlot(demand.Pool ?? pool)) return null;
         var current = obey ? Rules : null;
         var candidates = pool.Select((place, order) => (place, order, used: Used(place)))
-            .Where(c => current is null || current.MayStart(c.place, demand?.Kind)).ToArray();
+            .Where(c => Answers(c.place) && (current is null || current.MayStart(c.place, demand?.Kind))).ToArray();
         var free = candidates.Where(c => c.used < c.place.Slots)
             .OrderBy(c => current?.Avoid(c.place) == true ? 1 : 0)
             .ThenBy(c => c.place.Standing).ThenBy(c => c.used).ThenBy(c => c.order).Select(c => c.place).FirstOrDefault();
@@ -376,10 +396,11 @@ public sealed class BackgroundPlaces
         Rules is not null && Choose(pool, share: false, demand) is null && Choose(pool, share: false, demand, obey: false) is not null;
 
     // Whether a long job may take a slot of whole: always with one slot in all, else only while two or more are free (one stays
-    // free for fast jobs). Called under the gate.
+    // free for fast jobs). Only places that answer count: an offline place's slots are neither there nor free. Called under the
+    // gate.
     private bool LeavesFastSlot(IReadOnlyList<BackgroundPlace> whole)
     {
-        var distinct = whole.DistinctBy(place => place.Id).ToArray();
+        var distinct = whole.DistinctBy(place => place.Id).Where(Answers).ToArray();
         if (distinct.Sum(place => place.Slots) < 2) return true;
         return distinct.Sum(place => Math.Max(0, place.Slots - Used(place))) >= 2;
     }

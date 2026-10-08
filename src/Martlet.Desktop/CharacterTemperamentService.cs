@@ -57,6 +57,8 @@ internal sealed class CharacterTemperamentService(string? dataDirectory)
             lock (gate) cache[saved.PersonaId] = saved;
         }
         catch (Exception error) when (error is ContractException or IOException or UnauthorizedAccessException) { return error.Message; }
+        // The owner's own change makes the news of the last decision old.
+        if (temperament.Source == CharacterTouchTemperament.ByOwner) Volatile.Write(ref status, null);
         Changed?.Invoke();
         return null;
     }
@@ -133,7 +135,8 @@ internal sealed class CharacterTemperamentService(string? dataDirectory)
                     : $"Couldn't ask the Thinking model ({failure}), so {persona.Name}'s previous touch reactions stay."));
             if (await SaveAsync(decided, token) is { } why) return Report(label + "The touch reactions were decided but couldn't be saved: " + why);
             ErrorLog.Info($"Touch temperament decided for a persona ({decided.Source}): {CharacterTouchTemperaments.Summary(decided)}.");
-            return Report(label + $"Decided how {persona.Name} reacts to touch at {DateTime.Now:t}: {CharacterTouchTemperaments.Summary(decided)}.");
+            // The whole temperament is in the card's table and in its status line's tooltip, so this says only that it worked.
+            return Report(label + $"Decided how {persona.Name} reacts to touch at {DateTime.Now:t}.");
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { return Report("Deciding touch reactions was stopped."); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
