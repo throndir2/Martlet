@@ -194,6 +194,46 @@ internal static class RecommendedSetupInputs
         };
     }
 
+    /// <summary>FIXTURE, NOT real computers (recommended_setup_status's fixture "offline", and the desktop's
+    /// MARTLET_SIMULATE_RECOMMENDED_SETUP_NETWORK=offline): this PC, a small companion PC with no graphics card whose host
+    /// service only listens; MIKU, the host that thinks, speaks and moves the face; and IMOUTO, the host that listens. Both hosts
+    /// haven't answered for 155 minutes, so their jobs move and no computer that answers has room for a Thinking model.</summary>
+    internal static SetupSources OfflineFixture(DateTimeOffset now)
+    {
+        HostHardware Report(string id, string gpu, int vramGb) =>
+            new(id, $"https://{id}.lan:8443", now.AddMinutes(-155), now.AddMinutes(-155), "docker", "Windows 11",
+                "5.15.167.4-microsoft-standard-WSL2", "Fixture processor", 16, 32, "docker", "yes", [new HostGpu(gpu, "nvidia", vramGb * 1024, "570")])
+            { Platform = "windows" };
+        var plan = ClusterPlan.Empty
+            .Assign(ClusterJobs.Thinking, "miku-host", false, true, null, "fixture-desk", now)
+            .Assign(ClusterJobs.Speaking, "miku-host", false, true, null, "fixture-desk", now)
+            .Assign(ClusterJobs.Listening, "imouto-host", false, true, null, "fixture-desk", now)
+            .Assign(ClusterJobs.LipSync, "miku-host", false, true, null, "fixture-desk", now);
+        var away = TimeSpan.FromMinutes(155);
+        return new SetupSources(
+        [
+            new("desk-host", "This PC", NetworkMachineKind.Companion)
+            {
+                Specs = MachineSpecs.ThisPc([], 4, 4, diskFreeGb: 100),
+                HasHostService = true, Reachable = true, ThisPc = true,
+                Offers = new Dictionary<string, string> { ["stt"] = "whisper-large-v3-turbo" }
+            },
+            new("miku-host", "MIKU", NetworkMachineKind.Host)
+            {
+                Hardware = Report("miku-host", "NVIDIA GeForce RTX 4090", 24), HasHostService = true, Reachable = false, OfflineFor = away,
+                Offers = new Dictionary<string, string> { ["ollama"] = "gemma4:12b", ["chatterbox"] = "chatterbox-turbo", ["audio2face"] = "" }
+            },
+            new("imouto-host", "IMOUTO", NetworkMachineKind.Host)
+            {
+                Hardware = Report("imouto-host", "NVIDIA GeForce RTX 3060", 12), HasHostService = true, Reachable = false, OfflineFor = away,
+                Offers = new Dictionary<string, string> { ["stt"] = "whisper-large-v3-turbo" }
+            }
+        ])
+        {
+            Plan = plan, Device = "fixture-desk", VoiceEngine = SpeechEngines.Chatterbox.HostRoleKind
+        };
+    }
+
 #if !MARTLET_MCP
     /// <summary>The desktop's view of the owner's computers as recommender sources: this PC (its own host service's id when it
     /// runs one, else its device id), every paired host (a companion PC when your Martlet network says that computer is one)

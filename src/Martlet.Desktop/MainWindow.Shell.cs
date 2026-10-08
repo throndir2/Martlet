@@ -473,6 +473,7 @@ public partial class MainWindow
         RenderHost();
         RenderHomeCharacters();
         if (openTab is not null && !tabEdited) RenderTab();
+        FollowProviderKeys();
     }
 
     private void RenderSteps(Panel panel, IReadOnlyList<HomeStep> steps, bool numbered)

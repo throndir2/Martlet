@@ -250,6 +250,9 @@ public partial class MainWindow
         HealthFix Dismiss(string id) => new("dismiss", "Dismiss", () => { dismissedHealth.Add(id); RenderHealth(); }, Passive: true);
         HealthFix Logs() => new("logs", "Open logs", OpenLogsFolder);
         HealthFix DiagnosticsPage() => new("diagnostics", "Open Diagnostics", () => Navigate(NavDiagnostics), Passive: true);
+        // Add your key (FreeKeyPrompt): Companion › Thinking with NVIDIA Build ready for a free key.
+        HealthFix FreeKeyFix(FreeKeyUse use) => new("free-key", FreeKeyPrompt.AddLabel, () => OpenFreeKey(use, fromReview: false), Passive: true);
+        var offerKey = Role == DeviceRole.Companion && FreeKeyPrompt.Shows(ConfiguredProviders());
 
         var routes = homeSettings?.Setup?.Routes ?? [];
         SetupRoute? Route(SetupRole role) => routes.FirstOrDefault(r => r.Role == role);
@@ -287,10 +290,12 @@ public partial class MainWindow
             Add("thinking-setup", HealthLevel.Problem, "Set up thinking",
                 "Martlet needs a conversation model before it can reply. Everything else is optional." +
                 (alone ? " Set it all up for me picks Thinking, Listening and a voice that fit this PC." : "") +
-                (joinFirst ? " Already use Martlet on another computer? Connect to it first: this PC then uses your hosts and the same setup." : ""),
+                (joinFirst ? " Already use Martlet on another computer? Connect to it first: this PC then uses your hosts and the same setup." : "") +
+                (offerKey ? " " + FreeKeyPrompt.HealthHint : ""),
                 [.. alone ? [DefaultsFix()] : Array.Empty<HealthFix>(),
                  Open(CompanionTab.Thinking, "Set up thinking"),
                  .. joinFirst ? [ConnectComputersFix()] : Array.Empty<HealthFix>(),
+                 .. offerKey ? [FreeKeyFix(FreeKeyUse.Thinking)] : Array.Empty<HealthFix>(),
                  new("advisor", "Get a recommendation", () => Advisor_Click(this, new RoutedEventArgs()))],
                 nothingYet ? "Let's bring your companion to life" : "Set up thinking to start talking");
         }
@@ -336,9 +341,12 @@ public partial class MainWindow
             var thinking = job.Job == ClusterJobs.Thinking && job.State == CoverageState.Unavailable;
             var fixes = job.Fixes.Select(fix => new HealthFix(fix.ToString().ToLowerInvariant(), CoverageFixLabel(job, fix),
                 () => RunCoverageFix(job, fix), Passive: fix is CoverageFix.OpenSetup or CoverageFix.OpenDevices)).ToList();
+            // No hosted key yet: a free one answers through If Thinking fails while the computer that thinks is away.
+            if (thinking && offerKey) fixes.Add(FreeKeyFix(FreeKeyUse.Fallback));
             Add("job-" + job.Job.Replace(' ', '-'), thinking ? HealthLevel.Problem : HealthLevel.Warning,
                 job.State == CoverageState.Unavailable ? $"{job.Title} isn't working" : $"{job.Title} is working in a reduced way",
-                (job.Problem + " " + job.Effect).Trim(), fixes, thinking ? JobCoverageRules.Headline(coverage) : null);
+                (job.Problem + " " + job.Effect + (thinking && offerKey ? " " + FreeKeyPrompt.HealthHint : "")).Trim(), fixes,
+                thinking ? JobCoverageRules.Headline(coverage) : null);
         }
 
         // This PC's own host service (a companion PC that also hosts), checked as the host dashboard checks a host PC's:

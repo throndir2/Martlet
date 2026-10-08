@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Threading;
 using Martlet.Core.Cluster;
 using Martlet.Core.Planning;
@@ -23,6 +24,13 @@ public partial class MainWindow
     /// <summary>A suggestion found while nobody used this PC: asked about when someone does, within <see cref="SetupAskRule.Keep"/>.</summary>
     private (string Reason, DateTimeOffset At)? recommendedPending;
     private DispatcherTimer? recommendedTimer;
+    /// <summary>Add your key (FreeKeyPrompt): Companion › Thinking shows NVIDIA Build first where the key goes
+    /// (<see cref="freeKeyPreset"/>: A cloud provider or If Thinking fails) and puts the cursor in its key box once
+    /// (<see cref="freeKeyFocus"/>); <see cref="reviewAfterKey"/>: it came from the review, which opens again once a key is saved.
+    /// <see cref="knownProviders"/>: the providers with a saved key when Home last drew.</summary>
+    private FreeKeyUse freeKeyPreset;
+    private bool freeKeyFocus, reviewAfterKey;
+    private string? knownProviders;
 
     /// <summary>Checks again in the background when a computer comes back or stays away (going missing has its own notice).</summary>
     private void InitializeRecommendedSetup() => PresenceChanged += change =>
@@ -78,7 +86,8 @@ public partial class MainWindow
 
     private SetupSources RecommendedSetupSources()
     {
-        if (SimulatedRecommendedSetup.Active) return RecommendedSetupInputs.Fixture(DateTimeOffset.UtcNow);
+        if (SimulatedRecommendedSetup.Active)
+            return SimulatedRecommendedSetup.Sources(DateTimeOffset.UtcNow) with { ConfiguredProviders = ConfiguredProviders() };
         var inputs = Inputs();
         var directory = store?.DataDirectory;
         var poolSettings = ThinkingPoolSettings.Load(directory);
@@ -95,6 +104,7 @@ public partial class MainWindow
         var window = new RecommendedSetupWindow(review, RecommendedPrepare(recommendation, build.Names), RecommendedApply(recommendation));
         if (IsVisible) window.Owner = this;
         window.Declined += DeclineRecommendedSetup;
+        window.OpenThinking += use => OpenFreeKey(use, fromReview: true);
         window.Closed += (_, _) =>
         {
             if (ReferenceEquals(recommendedSetupWindow, window)) recommendedSetupWindow = null;
@@ -258,17 +268,105 @@ public partial class MainWindow
         RenderHealth();
     }
 
-    /// <summary>Home's notice while a better setup waits, or null.</summary>
+    /// <summary>Home's notice while a better setup waits, or null. When nobody can do Thinking in it, Martlet can't reply: the
+    /// notice is a warning and offers the free key (FreeKeyPrompt) when no hosted provider has one.</summary>
     private HealthIssue? RecommendedSetupIssue()
     {
         if (recommendedNotice is not { } notice) return null;
         var changes = notice.Recommendation.Changes;
         var needed = changes.Count(c => c.Benefit == SetupChangeBenefit.Required);
         var first = changes.OrderBy(c => c.Benefit).FirstOrDefault()?.Summary;
+        HealthFix review = new("review", "Review", () => OpenRecommendedSetupAsync().Forget(), Passive: true);
+        HealthFix decline = new("decline", "Not now", () => DeclineRecommendedSetup(notice.Recommendation.Fingerprint));
+        if (RecommendedSetupReview.CannotReplyIn(notice.Recommendation))
+        {
+            var offerKey = FreeKeyPrompt.Shows(ConfiguredProviders());
+            return new("recommended-setup", HealthLevel.Warning, FreeKeyPrompt.ProblemTitle,
+                $"{Sentence(notice.Reason)}. {FreeKeyPrompt.Problem(offerKey)}",
+                offerKey
+                    ? [new("free-key", FreeKeyPrompt.AddLabel, () => OpenFreeKey(FreeKeyUse.Thinking, fromReview: false), Passive: true),
+                       new("free-key-get", FreeKeyPrompt.GetLabel, () => OpenKeyPageFrom(null)), review, decline]
+                    : [new("thinking", FreeKeyPrompt.OpenThinkingLabel, () => OpenFreeKey(FreeKeyUse.None, fromReview: false), Passive: true),
+                       review, decline]);
+        }
         return new("recommended-setup", HealthLevel.Notice, "A better setup is ready for your computers",
             $"{Sentence(notice.Reason)}. Martlet found {changes.Count} change{(changes.Count == 1 ? "" : "s")}" +
             (needed > 0 ? $" ({needed} needed)" : "") + (first is null ? "." : $", such as: {first}") + " Nothing changes until you review it.",
-            [new("review", "Review", () => OpenRecommendedSetupAsync().Forget(), Passive: true),
-             new("decline", "Not now", () => DeclineRecommendedSetup(notice.Recommendation.Fingerprint))]);
+            [review, decline]);
+    }
+
+    // ---------- the free API key (FreeKeyPrompt) ----------
+
+    /// <summary>Companion › Thinking, ready for a free NVIDIA Build key the owner pastes: at A cloud provider for Thinking itself
+    /// (<see cref="FreeKeyUse.Thinking"/>), or at If Thinking fails (<see cref="FreeKeyUse.Fallback"/>). From the review
+    /// (<paramref name="fromReview"/>), the review opens again with the new setup once a key is saved.</summary>
+    private void OpenFreeKey(FreeKeyUse use, bool fromReview)
+    {
+        if (closing) return;
+        if (!IsVisible || WindowState == WindowState.Minimized) ShowFromTray();
+        OpenCompanion(CompanionTab.Thinking);
+        if (openTab != CompanionTab.Thinking) return;
+        if (use != FreeKeyUse.None)
+        {
+            if (use == FreeKeyUse.Thinking) tabPlace[CompanionTab.Thinking] = JobPlace.Cloud;
+            freeKeyPreset = use;
+            freeKeyFocus = true;
+            RenderTab();
+        }
+        reviewAfterKey = fromReview;
+        ActionText.Text = use switch
+        {
+            FreeKeyUse.Thinking => "Paste your NVIDIA Build key under A cloud provider, tick the box, then choose Use NVIDIA Build.",
+            FreeKeyUse.Fallback => "Paste your NVIDIA Build key under If Thinking fails, tick the box, then choose Use as fallback.",
+            _ => "Choose where Thinking runs in Companion › Thinking."
+        };
+    }
+
+    /// <summary>Get a free key: NVIDIA Build's key page in the browser; why it couldn't open shows in <paramref name="status"/>
+    /// (or Home's action line).</summary>
+    private void OpenKeyPageFrom(TextBlock? status)
+    {
+        var text = FreeKeyPrompt.OpenKeyPage() ?? FreeKeyPrompt.OpenedText;
+        if (status is not null) status.Text = text;
+        else ActionText.Text = text;
+    }
+
+    /// <summary>The key box Add your key leads to: the cursor goes there, and the page scrolls to it, once it shows.</summary>
+    private static void FocusWhenShown(Control box)
+    {
+        void Once(object sender, RoutedEventArgs e)
+        {
+            box.Loaded -= Once;
+            box.Focus();
+            box.BringIntoView();
+        }
+        box.Loaded += Once;
+    }
+
+    /// <summary>A hosted provider's key was saved or removed (Home draws again after every save): the recommended setup can change,
+    /// so plan again. The review opens again when the owner came from it, or when it is open; Home's notice follows the new setup.</summary>
+    private void FollowProviderKeys()
+    {
+        var now = string.Join(",", ConfiguredProviders().Order(StringComparer.Ordinal));
+        if (knownProviders is null || knownProviders == now)
+        {
+            knownProviders = now;
+            return;
+        }
+        knownProviders = now;
+        if (closing || Role != DeviceRole.Companion) return;
+        ErrorLog.Info("Recommended setup: your API keys changed, so Martlet plans again.");
+        if (reviewAfterKey || recommendedSetupWindow is { IsLoaded: true })
+        {
+            reviewAfterKey = false;
+            ReopenRecommendedSetupAsync().Forget();
+        }
+        else if (recommendedNotice is not null && InMartletNetwork()) AutoScanRecommendedSetupAsync("your API keys changed").Forget();
+    }
+
+    private async Task ReopenRecommendedSetupAsync()
+    {
+        recommendedSetupWindow?.Close();
+        await OpenRecommendedSetupAsync();
     }
 }
