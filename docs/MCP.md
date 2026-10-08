@@ -1461,14 +1461,17 @@ is kept, what the last detection `sent` (its plain `line`, `requests`,
 each zone's parts, `plays`, whether Martlet `notices` it, whether the owner
 `added` it and the owner's `hint`) and,
 with `touch` (a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
-it lands with the character framed whole, and `restX`, `restY`, `restWholeX` and
+it lands with the character framed whole, `restX`, `restY`, `restWholeX` and
 `restWholeY` where the touched point of the character was in its rest pose, now
-and framed whole, as the renderer traces it on the touched mesh), `match`: the zone it lands
+and framed whole, as the renderer traces it on the touched mesh, and `hair`
+whether the topmost drawable is hair), `match`: the zone it lands
 in, `how` (`drawable`, `bone`, `hair`, `box` or `coarse`; with a VRM `bone`, the
 smallest zone on the part of the body that bone moves whose box holds the
 point wins, and reads `bone` when it holds that bone, else `box`; a zone whose
 box holds the point inside the box of a zone that owns the touched drawable,
-with none of its own drawables under the touch, wins as its finer part and reads `box`), `traced`
+with none of its own drawables under the touch, wins as its finer part and reads `box`;
+without `hair`, a drawable lower in `drawables` that a smaller zone inside the
+top drawable's zones owns wins, as an overlay over that part), `traced`
 (whether the boxes were compared with the rest point), `at` (the point they were
 compared with: `x`, `y` and `rest`, true when it is the rest point), its rough `coarse`
 zone, what it `plays`, whether Martlet `notices` it, the line the Thinking model would get for that one touch (`noticed`, such as *They patted the top of your head once.*; a press of 600 ms or more in `heldMilliseconds` is a hold) and how long it `rests`.

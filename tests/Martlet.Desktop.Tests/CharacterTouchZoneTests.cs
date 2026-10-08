@@ -211,10 +211,13 @@ public sealed class CharacterTouchZoneTests
             Traced(0.5, 0.27, 0.56, 0.3, "FaceSkin") with { RestX = null, RestY = null, RestWholeX = null, RestWholeY = null })!;
         Assert.Equal(("nose", "box"), Of(untraced));
         Assert.False(untraced.Traced);
-        // The nose and an eye keep their own drawables wherever they are drawn; bangs over the eye are hair.
+        // The nose and an eye keep their own drawables wherever they are drawn. Bangs over the eye are hair when the model names
+        // them so; unnamed, they are an overlay on the eye, like a blush drawn over it.
         Assert.Equal(("nose", "drawable"), Of(CharacterTouchZones.Match(RestFace, Traced(0.45, 0.26, 0.5, 0.27, "Nose", "FaceSkin"))));
         Assert.Equal(("eye_left", "drawable"), Of(CharacterTouchZones.Match(RestFace, Traced(0.5, 0.21, 0.55, 0.22, "EyeL", "FaceSkin"))));
-        Assert.Equal(("hair", "drawable"), Of(CharacterTouchZones.Match(RestFace, Traced(0.5, 0.21, 0.55, 0.22, "Bangs", "EyeL", "FaceSkin"))));
+        var bangs = Traced(0.5, 0.21, 0.55, 0.22, "Bangs", "EyeL", "FaceSkin");
+        Assert.Equal(("hair", "drawable"), Of(CharacterTouchZones.Match(RestFace, bangs with { Hair = true })));
+        Assert.Equal(("eye_left", "drawable"), Of(CharacterTouchZones.Match(RestFace, bangs)));
         // The skin by the nose, inside its box but off its own drawable, is the nose too.
         Assert.Equal(("nose", "box"), Of(CharacterTouchZones.Match(RestFace, Traced(0.45, 0.28, 0.49, 0.28, "FaceSkin"))));
         // Skin where no finer zone lies stays with the zone that owns it.
@@ -285,6 +288,27 @@ public sealed class CharacterTouchZoneTests
     }
 
     [Fact]
+    public void APartTheModelNamesLendsOnlyToZonesOfWhatItNames()
+    {
+        // No cheek zone: the ear's box (from the model's own ear) takes in the cheek's edge, so by geometry alone the cheek's part
+        // looks like the ear's, and would lend its wide blush to the ear.
+        CharacterTouchZone[] zones = [new() { Id = "hair", Box = new(0.44, 0.03, 0.13, 0.21) }, new() { Id = "ear_right", Box = new(0.455, 0.184, 0.02, 0.033) }];
+        RendererZoneProbe Probe(string cheek, string ear, params RendererModelPart[] parts) => new(
+        [
+            new("EarR", 0.4549, 0.1840, 0.4750, 0.2171, ear), new("CheekEdge", 0.456, 0.19, 0.466, 0.21, cheek),
+            new("BlushR", 0.4571, 0.1828, 0.4974, 0.2200, cheek)
+        ], Parts: parts);
+        string[] Ear(RendererZoneProbe probe) => [.. CharacterTouchZones.Bind(zones, null, probe).Single(z => z.Id == "ear_right").Drawables.Order(StringComparer.Ordinal)];
+
+        // Named 頬 (or PartCheek), the cheek's part lends nothing to the ear.
+        Assert.Equal(["CheekEdge", "EarR"], Ear(Probe("PartCheek", "PartEar", new("PartCheek", "頬"), new("PartEar", "耳"))));
+        Assert.Equal(["CheekEdge", "EarR"], Ear(Probe("PartCheek", "PartEar")));
+        Assert.Equal(["CheekEdge", "EarR"], Ear(Probe("Part7", "Part8", new("Part7", "ほお"), new("Part8"))));
+        // Unnamed, only the geometry is known: the part's pieces go with the zone that holds them.
+        Assert.Equal(["BlushR", "CheekEdge", "EarR"], Ear(Probe("Part7", "Part8", new("Part7"), new("Part8"))));
+    }
+
+    [Fact]
     public void ATouchOnAPieceOfAFeatureLandsOnItsZoneAndHairDrawnOverItStaysHair()
     {
         var settings = new CharacterTouchZoneSettings { ModelId = "model-1", Zones = CharacterTouchZones.Bind(FaceBoxes, null, FaceProbe()) };
@@ -293,10 +317,14 @@ public sealed class CharacterTouchZoneTests
 
         // Her lash, traced to just above the tight eye box (she was looking down at the mouse), is the eye.
         Assert.Equal(("eye_right", "drawable"), Of(CharacterTouchZones.Match(settings, On(0.483, 0.161, "LashR", "EyeWhiteR", "Face"))));
-        // The edge of the wide blush, outside the cheek's box, is the cheek.
+        // The edge of the wide blush, outside the cheek's box, is the cheek; the top of the blush drawn over the eye's lower half
+        // is the eye under it.
         Assert.Equal(("cheek_right", "drawable"), Of(CharacterTouchZones.Match(settings, On(0.462, 0.19, "BlushR", "Face"))));
-        // Bangs drawn over the eye are hair, and so is the face's skin beside the eye, outside every smaller box.
-        Assert.Equal(("hair", "drawable"), Of(CharacterTouchZones.Match(settings, On(0.48, 0.175, "Bangs", "LashR", "EyeWhiteR", "Face"))));
+        Assert.Equal(("eye_right", "drawable"), Of(CharacterTouchZones.Match(settings, On(0.48, 0.19, "BlushR", "EyeWhiteR", "Face"))));
+        // Bangs drawn over the eye are hair (the model names them so), and so is the face's skin beside the eye, outside every
+        // smaller box.
+        Assert.Equal(("hair", "drawable"), Of(CharacterTouchZones.Match(settings,
+            On(0.48, 0.175, "Bangs", "LashR", "EyeWhiteR", "Face") with { Hair = true })));
         Assert.Equal(("hair", "drawable"), Of(CharacterTouchZones.Match(settings, On(0.46, 0.15, "Face"))));
         // Far from the eye, its piece no longer pulls the touch to it: the bigger box that holds the point wins.
         Assert.Equal(("hair", "drawable"), Of(CharacterTouchZones.Match(settings, On(0.45, 0.12, "LashR", "Face"))));

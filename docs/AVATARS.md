@@ -654,9 +654,11 @@ default; turn it off to leave them out. The check box names each of these parts.
   and a right one) when nearly all (90%) of its tied drawables' area is in that
   feature's zones: a stray lash tip in a cheek's box doesn't stop the eye's part
   lending its lashes, but a part that holds several features, such as the
-  whole head, lends nothing. The drawable's middle must lie within half the
-  zone's size of its box, and the drawable must be at most four times the
-  box's size.
+  whole head, lends nothing. A part whose own name (or ID) says what it is
+  lends only to zones of that: 頬 (the cheeks) never lends its blush to an ear
+  whose box takes in the edge of the cheek. The drawable's middle must lie
+  within half the zone's size of its box, and the drawable must be at most four
+  times the box's size.
 - A click is traced back to the rest pose before it is matched. The zones'
   boxes are drawn on a picture of the character at rest, but the character
   you click moves: its head turns and nods to follow the mouse, it breathes
@@ -668,17 +670,21 @@ default; turn it off to leave them out. The check box names each of these parts.
   face's skin. The last-touch line says *traced to the rest pose* when this
   happened.
 - A click is matched to the topmost Live2D part it hit that belongs to a zone
-  (with several zones, the smallest box that holds the point). A zone inside
+  (with several zones, the smallest box that holds the point). When the click
+  is not on hair, a part under it that a smaller zone inside one of those zones
+  has wins: the top of a blush drawn over the lower half of an eye is the eye,
+  not the hair that frames the face. A zone inside
   a bigger one that also has that part wins when the point is just outside its
   box (within half its size): a lash above a tight eye box is the eye. A smaller
-  zone also counts when its box holds the point and lies mostly inside that zone's
-  box, and none of its own parts is under the click: a cheek, or the skin by
+  zone inside the part's smallest zone also counts when its box holds the point,
+  and none of its own parts is under the click: a cheek, or the skin by
   the nose, lies on the face's skin that the hair's box takes in, so it wins as
-  the finer part. Bangs drawn over an eye stay hair. A click on hair (the
+  the finer part. A click on hair (the
   renderer says so when the model names the topmost part's group as hair, such
-  as 前髪 or PartHairSide) goes to such a smaller zone only when the zone has no
-  parts of its own, such as a forehead under the bangs; a lock hanging in front
-  of an ear stays hair. Then hair. On a
+  as 前髪 or PartHairSide) stays hair: bangs drawn over an eye, or a lock
+  hanging in front of an ear. It goes to such a smaller zone only when the zone
+  has no parts of its own, such as a forehead under the bangs. On a model that
+  doesn't name its hair, bangs over an eye count as an overlay on the eye. Then hair. On a
   VRM it is then matched to the smallest zone on the part of the body the hit
   bone moves (the head, the torso, an arm or a leg, on the same side) whose box
   holds the point: one VRM bone moves a whole part, such as the head with its
