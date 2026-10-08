@@ -6,12 +6,13 @@ namespace Martlet.Avatar.RendererHost;
 /// <summary>
 /// The page's reading of where Martlet draws over the face (Martlet's MCP character_face reads it): how the face is followed
 /// (mesh, bones or estimate), its middle, width and tilt, and at each cheek how much shows, how wide it is for the face's width
-/// and what of the character is there; with the overlays showing and, for Live2D, how many mesh vertices the face is pinned
-/// to. Positions are fractions of the character's surface (+y down), like a tap. Kept bounded and typed for UI Automation.
+/// and what of the character is there; the eyes (where they came from, each iris and its opening's box, size and whether the
+/// iris is inside it); with the overlays showing and, for Live2D, how many mesh vertices the face is pinned to. Positions are
+/// fractions of the character's surface (+y down), like a tap. Kept bounded and typed for UI Automation.
 /// </summary>
 internal static class CharacterFaceReading
 {
-    internal const int MaximumName = 128, MaximumOverlays = 16, MaximumDrawables = 3;
+    internal const int MaximumName = 128, MaximumOverlays = 16, MaximumDrawables = 3, MaximumShapePoints = 512;
 
     /// <summary>The reading as JSON, numbered <paramref name="number"/>.</summary>
     internal static string From(JsonElement answer, int number)
@@ -24,10 +25,38 @@ internal static class CharacterFaceReading
             if (Number(answer, key) is { } value) reading[key] = value;
         foreach (var key in new[] { "cheekLeft", "cheekRight" })
             if (answer.TryGetProperty(key, out var cheek) && cheek.ValueKind == JsonValueKind.Object) reading[key] = Cheek(cheek);
+        if (Name(answer, "eyesFrom") is "mesh" or "bones" or "vision" or "estimate") reading["eyesFrom"] = Name(answer, "eyesFrom");
+        foreach (var key in new[] { "irisLeft", "irisRight" })
+            if (answer.TryGetProperty(key, out var iris))
+                reading[key] = iris.ValueKind == JsonValueKind.Object ? Numbers(iris, "x", "y", "rx", "ry") : null;
+        foreach (var key in new[] { "eyeLeftShape", "eyeRightShape" })
+            if (answer.TryGetProperty(key, out var shape)) reading[key] = shape.ValueKind == JsonValueKind.Object ? Shape(shape) : null;
         reading["overlays"] = Names(answer, "overlays", MaximumOverlays);
         if (answer.TryGetProperty("pinned", out var pinned) && pinned.ValueKind == JsonValueKind.Object)
-            reading["pinned"] = new JsonObject { ["carriers"] = Count(pinned, "carriers"), ["milliseconds"] = Count(pinned, "milliseconds") };
+            reading["pinned"] = new JsonObject { ["carriers"] = Count(pinned, "carriers"), ["milliseconds"] = Count(pinned, "milliseconds"),
+                ["eyeMilliseconds"] = Count(pinned, "eyeMilliseconds") };
         return reading.ToJsonString();
+    }
+
+    private static JsonObject Numbers(JsonElement owner, params string[] keys)
+    {
+        var node = new JsonObject();
+        foreach (var key in keys)
+            if (Number(owner, key) is { } value) node[key] = value;
+        return node;
+    }
+
+    // An eye's opening: how many points and triangles (null for an outline), its box and whether its iris's middle is in it.
+    private static JsonObject Shape(JsonElement shape)
+    {
+        var node = new JsonObject { ["points"] = Math.Min(Count(shape, "points"), MaximumShapePoints) };
+        node["triangles"] = shape.TryGetProperty("triangles", out var triangles) && triangles.ValueKind == JsonValueKind.Number
+            ? Count(shape, "triangles") : null;
+        foreach (var key in new[] { "left", "top", "right", "bottom" })
+            if (Number(shape, key) is { } value) node[key] = value;
+        node["irisInside"] = shape.TryGetProperty("irisInside", out var inside) && inside.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? inside.GetBoolean() : null;
+        return node;
     }
 
     private static JsonObject Cheek(JsonElement cheek)

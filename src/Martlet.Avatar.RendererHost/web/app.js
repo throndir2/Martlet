@@ -1,7 +1,7 @@
 import { Live2DAdapter, LocalModelBundle } from "../../Martlet.Avatar.Live2D/lib/index.ts";
 import { VrmAvatarAdapter } from "../../Martlet.Avatar.Vrm/src/index.ts";
-import { activeOverlays, attachOverlay, clearOverlays, hasOverlay, heldOverlays, registerBlush, registerOverlay, renderOverlay,
-  startOverlay, stopOverlay, toCssAnchor } from "./overlay.js";
+import { activeOverlays, attachOverlay, clearOverlays, hasOverlay, heldOverlays, insideEyeShape, registerBlush, registerOverlay,
+  renderOverlay, startOverlay, stopOverlay, toCssAnchor } from "./overlay.js";
 import { registerManpu } from "./effects/manpu.mjs";
 
 const canvas = document.getElementById("avatar");
@@ -56,12 +56,13 @@ function actGesture(name, on, hold) {
 }
 // Where Martlet draws over the face now, as fractions of the canvas (+y down, like a tap) for Martlet's MCP: how the face is
 // followed, its middle, width and tilt, and at each cheek how much of it shows, how wide it is for its face width and what of
-// the character is there (the page's own hit test), with the overlays showing.
+// the character is there (the page's own hit test), with the overlays showing; and the eyes (see eyeReading).
 function faceReading(id) {
   const anchor = face(), overlays = activeOverlays();
   const width = Math.max(1, canvas.clientWidth), height = Math.max(1, canvas.clientHeight);
   const round = value => Math.round(value * 10000) / 10000;
-  const pinned = adapter?.faceTracking ? { carriers: adapter.faceTracking.carriers, milliseconds: adapter.faceTracking.milliseconds } : null;
+  const pinned = adapter?.faceTracking ? { carriers: adapter.faceTracking.carriers, milliseconds: adapter.faceTracking.milliseconds,
+    eyeMilliseconds: adapter.faceTracking.eyeMilliseconds ?? 0 } : null;
   if (!anchor) return { id, found: false, overlays, pinned };
   const cheek = (point, frame) => {
     let hit;
@@ -73,7 +74,24 @@ function faceReading(id) {
   return { id, found: true, tracking: anchor.tracking ?? "estimate", x: round(anchor.x / width), y: round(anchor.y / height),
     width: round(anchor.width / width), tilt: Math.round(anchor.angle * 1800 / Math.PI) / 10,
     cheekLeft: cheek(anchor.cheekLeft, anchor.cheekLeftFrame), cheekRight: cheek(anchor.cheekRight, anchor.cheekRightFrame),
-    overlays, pinned };
+    overlays, pinned, ...eyeReading(anchor, width, height, round) };
+}
+// The eyes in a face reading: where they came from, each iris (x, y, rx, ry as fractions of the canvas: rx of its width, ry
+// of its height) and each opening's box, how many points and triangles it has and whether its iris's middle is inside it
+// (not every point).
+function eyeReading(anchor, width, height, round) {
+  const reading = { eyesFrom: anchor.eyesFrom ?? "estimate" };
+  for (const [iris, shape] of [["irisLeft", "eyeLeftShape"], ["irisRight", "eyeRightShape"]]) {
+    const i = anchor[iris], s = anchor[shape];
+    reading[iris] = i ? { x: round(i.x / width), y: round(i.y / height), rx: round(i.rx / width), ry: round(i.ry / height) } : null;
+    if (!s) { reading[shape] = null; continue; }
+    const xs = s.points.map(p => p.x), ys = s.points.map(p => p.y);
+    reading[shape] = { points: s.points.length, triangles: s.triangles ? s.triangles.length / 3 : null,
+      ...(s.points.length ? { left: round(Math.min(...xs) / width), top: round(Math.min(...ys) / height),
+        right: round(Math.max(...xs) / width), bottom: round(Math.max(...ys) / height) } : {}),
+      irisInside: i ? insideEyeShape(s, i) : null };
+  }
+  return reading;
 }
 // Which gesture plays once and which is held, a held overlay included.
 function gestureState() {
@@ -150,6 +168,16 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
     let reading = { id, found: false };
     try { if (active && !failed) reading = faceReading(id); } catch { }
     post({ faceReading: reading });
+    return;
+  }
+  if (message.kind === "eyes") {
+    // The eyes measured by vision ({left, right}, see the adapters' setEyeHint) or null to clear them. Answered with where the
+    // eyes come from now ({eyesFrom}; null while no model shows); a hint the adapter can't use is ignored and never fails the
+    // renderer.
+    let eyesFrom = null;
+    try { if (active && !failed && adapter?.setEyeHint) eyesFrom = adapter.setEyeHint(message.data ?? undefined) ?? null; } catch { }
+    try { if (eyesFrom === null && active && !failed) eyesFrom = adapter?.eyesFrom ?? null; } catch { }
+    post({ eyesFrom });
     return;
   }
   try {

@@ -445,3 +445,151 @@ test("touch and mood gestures use the face presets and holdable ones stay until 
   assert.deepEqual(runtime.gestureState, { playing: "wink" }, "a gesture that can't be held plays once");
   runtime.dispose();
 });
+
+// The fixture with VRoid-style eyes: an iris quad (material EyeIris) in front of each eye bone, riding it, and both eye
+// whites (material EyeWhite) on the head, which the blink expression closes toward their lower part.
+function eyeFixture({ iris = true, white = true } = {}): ArrayBuffer {
+  const { document, bin } = fixtureDocument();
+  const doc = document as unknown as { nodes: Record<string, unknown>[]; meshes: unknown[]; accessors: unknown[]; bufferViews: unknown[];
+    buffers: { byteLength: number }[]; materials?: unknown[]; extensions: { VRMC_vrm: { expressions: { preset: Record<string, { morphTargetBinds: unknown[] }> } } } };
+  const quad = (x: number, y: number, z: number, rx: number, ry: number) => [x - rx, y - ry, z, x + rx, y - ry, z, x + rx, y + ry, z, x - rx, y + ry, z];
+  const irisQuad = quad(0, 0, 0, 0.012, 0.014);
+  const whites = [...quad(-0.04, 0, 0, 0.022, 0.016), ...quad(0.04, 0, 0, 0.022, 0.016)];
+  const closing = whites.map((value, i) => i % 3 === 1 ? -0.006 - value : 0);
+  const floats = new Float32Array([...irisQuad, ...whites, ...closing]);
+  const indices = new Uint16Array([0, 1, 2, 0, 2, 3, 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
+  const bytes = new Uint8Array(bin.length + floats.byteLength + indices.byteLength);
+  bytes.set(bin); bytes.set(new Uint8Array(floats.buffer), bin.length);
+  bytes.set(new Uint8Array(indices.buffer), bin.length + floats.byteLength);
+  doc.buffers[0]!.byteLength = bytes.length;
+  doc.bufferViews.push({ buffer: 0, byteOffset: bin.length, byteLength: floats.byteLength },
+    { buffer: 0, byteOffset: bin.length + floats.byteLength, byteLength: indices.byteLength });
+  const vec3 = (offset: number, count: number, values: number[]) => ({ bufferView: 1, byteOffset: offset, componentType: 5126, count, type: "VEC3",
+    min: [0, 1, 2].map(c => Math.min(...values.filter((_, i) => i % 3 === c))), max: [0, 1, 2].map(c => Math.max(...values.filter((_, i) => i % 3 === c))) });
+  const first = doc.accessors.length;
+  doc.accessors.push(vec3(0, 4, irisQuad), vec3(48, 8, whites), vec3(144, 8, closing),
+    { bufferView: 2, byteOffset: 0, componentType: 5123, count: 6, type: "SCALAR" },
+    { bufferView: 2, byteOffset: 12, componentType: 5123, count: 12, type: "SCALAR" });
+  // A wink of the character's right eye, for the hinted opening.
+  doc.extensions.VRMC_vrm.expressions.preset.blinkRight = { morphTargetBinds: [{ node: 17, index: 2, weight: 1 }] };
+  doc.materials = [{ name: "N00_000_00_EyeIris_00_EYE (Instance)" }, { name: "N00_000_00_EyeWhite_00_EYE (Instance)" }];
+  doc.meshes.push({ name: "Iris", primitives: [{ attributes: { POSITION: first }, indices: first + 3, material: 0 }] },
+    { name: "Whites", primitives: [{ attributes: { POSITION: first + 1 }, indices: first + 4, material: 1, targets: [{ POSITION: first + 2 }] }] });
+  // The character's right eye (node 16) is on the viewer's left.
+  if (iris) {
+    doc.nodes.push({ name: "IrisL", mesh: 1, translation: [0, 0, 0.012] }, { name: "IrisR", mesh: 1, translation: [0, 0, 0.012] });
+    ((doc.nodes[16]!.children ??= []) as number[]).push(doc.nodes.length - 2);
+    ((doc.nodes[15]!.children ??= []) as number[]).push(doc.nodes.length - 1);
+  }
+  if (white) {
+    doc.nodes.push({ name: "EyeWhites", mesh: 2, translation: [0, 0.05, 0.058] });
+    (doc.nodes[2]!.children as number[]).push(doc.nodes.length - 1);
+    doc.extensions.VRMC_vrm.expressions.preset.blink!.morphTargetBinds.push({ node: doc.nodes.length - 1, index: 0, weight: 1 });
+  }
+  return encodeGlb(document, bytes);
+}
+
+// A camera a metre in front of the face, drawing 500 by 500 pixels.
+function viewer(runtime: VrmRuntime) {
+  runtime.scene!.updateWorldMatrix(true, true);
+  const face = runtime.faceGeometry()!;
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.01, 100);
+  camera.position.set(face.center.x, face.center.y, face.center.z + 1);
+  camera.lookAt(face.center);
+  camera.updateMatrixWorld();
+  const project = (v: THREE.Vector3) => { const n = v.clone().project(camera); return { x: (n.x + 1) * 250, y: (1 - n.y) * 250 }; };
+  return { face, project, fields: () => { runtime.scene!.updateWorldMatrix(true, true); return runtime.eyeFields(runtime.faceGeometry()!, project); } };
+}
+const insideShape = (shape: { points: readonly { x: number; y: number }[]; triangles?: readonly number[] }, p: { x: number; y: number }) => {
+  const t = shape.triangles!;
+  for (let k = 0; k + 2 < t.length; k += 3) {
+    const [a, b, c] = [shape.points[t[k]!]!, shape.points[t[k + 1]!]!, shape.points[t[k + 2]!]!];
+    const side = (u: { x: number; y: number }, v: { x: number; y: number }) => (v.x - u.x) * (p.y - u.y) - (v.y - u.y) * (p.x - u.x);
+    const s = [side(a, b), side(b, c), side(c, a)];
+    if (s.every(v => v >= 0) || s.every(v => v <= 0)) return true;
+  }
+  return false;
+};
+const tall = (points: readonly { y: number }[]) => Math.max(...points.map(p => p.y)) - Math.min(...points.map(p => p.y));
+
+test("a VRM's eyes: the bones place each iris, the EyeIris mesh sizes it and the EyeWhite mesh is its opening, closing on a blink", async () => {
+  const runtime = new VrmRuntime(); await runtime.load(eyeFixture());
+  assert.equal(runtime.eyesFrom, "bones");
+  const { project, fields } = viewer(runtime);
+  const rest = fields();
+  assert.equal(rest.eyesFrom, "bones");
+  const leftIris = project(new THREE.Vector3(-0.04, 1.55, 0.062)), across = project(new THREE.Vector3(-0.028, 1.55, 0.062));
+  assert.ok(Math.hypot(rest.irisLeft!.x - leftIris.x, rest.irisLeft!.y - leftIris.y) < 1e-6, JSON.stringify(rest.irisLeft));
+  assert.ok(Math.abs(rest.irisLeft!.rx - (across.x - leftIris.x)) < 1e-3 && rest.irisLeft!.ry > rest.irisLeft!.rx, "sized by its mesh");
+  assert.ok(rest.irisRight!.x > rest.irisLeft!.x, "the character's left eye is on the viewer's right");
+  for (const [iris, shape] of [[rest.irisLeft!, rest.eyeLeftShape!], [rest.irisRight!, rest.eyeRightShape!]] as const) {
+    assert.deepEqual([shape.points.length, shape.triangles!.length], [4, 6]);
+    assert.ok(insideShape(shape, iris));
+  }
+  assert.ok(Math.hypot(rest.eyeLeft!.x - leftIris.x, rest.eyeLeft!.y - leftIris.y) < 1e-6, "the eye's middle is its iris at rest");
+
+  // A bone look-at turns the eye: the iris goes with it, the eye's middle doesn't.
+  const vrm = (runtime as unknown as { model: { humanoid: { getRawBoneNode(name: string): THREE.Object3D };
+    expressionManager: { setValue(name: string, value: number): void } } }).model;
+  vrm.humanoid.getRawBoneNode("rightEye").rotation.set(0, 0.3, 0);
+  const looking = fields();
+  assert.ok(looking.irisLeft!.x > rest.irisLeft!.x + 1, `turned toward the viewer's right: ${looking.irisLeft!.x} vs ${rest.irisLeft!.x}`);
+  assert.ok(Math.hypot(looking.eyeLeft!.x - rest.eyeLeft!.x, looking.eyeLeft!.y - rest.eyeLeft!.y) < 1e-6);
+  vrm.humanoid.getRawBoneNode("rightEye").rotation.set(0, 0, 0);
+
+  vrm.expressionManager.setValue("blink", 1);
+  runtime.update(0);
+  const closed = fields();
+  assert.ok(tall(closed.eyeLeftShape!.points) < 0.01 && tall(rest.eyeLeftShape!.points) > 10, "the blink closes the eye white");
+  runtime.dispose();
+});
+
+test("a VRM's eyes without iris or eye-white meshes come from vision, or are left to the drawings' own estimate", async () => {
+  const runtime = new VrmRuntime(); await runtime.load(eyeFixture({ iris: true, white: false }));
+  assert.equal(runtime.eyesFrom, "estimate", "the iris is known but not the opening");
+  const { fields } = viewer(runtime);
+  const partial = fields();
+  assert.ok(partial.irisLeft && partial.eyeLeftShape === undefined);
+  const hint = { left: { iris: { x: -0.22, y: 0.02, r: 0.07 }, eye: { x: -0.22, y: 0, rx: 0.12, ry: 0.09 } },
+    right: { iris: { x: 0.22, y: 0.02, r: 0.07 }, eye: { x: 0.22, y: 0, rx: 0.12, ry: 0.09 } } };
+  assert.equal(runtime.setEyeHint(hint), "vision");
+  const hinted = fields();
+  assert.equal(hinted.eyeLeftShape!.points.length, 24);
+  assert.ok(Math.abs(hinted.irisLeft!.rx - partial.irisLeft!.rx) < 1e-9, "the mesh's iris wins over the hint's");
+  const blinkRight = (runtime as unknown as { model: { expressionManager: { setValue(name: string, value: number): void } } }).model;
+  blinkRight.expressionManager.setValue("blinkRight", 1);
+  runtime.update(0);
+  const winking = fields();
+  assert.ok(tall(winking.eyeLeftShape!.points) < 0.01 && tall(winking.eyeRightShape!.points) > 5,
+    "blinkRight closes the character's right eye: the one on the viewer's left");
+  runtime.dispose();
+
+  const plain = new VrmRuntime(); await plain.load(fixture());
+  assert.equal(plain.eyesFrom, "estimate");
+  const bare = viewer(plain);
+  const none = bare.fields();
+  for (const key of ["irisLeft", "irisRight", "eyeLeftShape", "eyeRightShape", "eyeLeft"] as const) assert.equal(none[key], undefined, key);
+  assert.equal(plain.setEyeHint({ left: { iris: { x: 9, y: 0, r: 0.1 }, eye: { x: 0, y: 0, rx: 0.1, ry: 0.1 } } }), "estimate");
+  assert.equal(plain.setEyeHint(hint), "vision");
+  const seen = bare.fields();
+  // The iris sits 0.02 face widths below its eye's middle, the eye in front of its bone.
+  const width = bare.face.width, bone = bare.project(new THREE.Vector3(-0.04, 1.55, 0.05 + 0.2 * 0.08));
+  assert.ok(Math.hypot(seen.eyeLeft!.x - bone.x, seen.eyeLeft!.y - bone.y) < 1e-6, JSON.stringify(seen.eyeLeft));
+  const below = bare.project(new THREE.Vector3(-0.04, 1.55 - 0.02 * width, 0.05 + 0.2 * 0.08));
+  assert.ok(Math.hypot(seen.irisLeft!.x - below.x, seen.irisLeft!.y - below.y) < 1e-6, JSON.stringify(seen.irisLeft));
+  assert.equal(plain.setEyeHint(undefined), "estimate");
+  plain.dispose();
+
+  // Without eye bones the hint places the eyes on the face found from the head bone.
+  const { document, bin } = fixtureDocument();
+  const bones = document.extensions.VRMC_vrm.humanoid.humanBones as Record<string, unknown>;
+  delete bones.leftEye; delete bones.rightEye;
+  const boneless = new VrmRuntime(); await boneless.load(encodeGlb(document, bin));
+  assert.equal(boneless.eyesFrom, "estimate");
+  assert.equal(boneless.setEyeHint(hint), "vision");
+  const view = viewer(boneless), placed = view.fields();
+  const expected = view.project(view.face.center.clone().addScaledVector(view.face.side, -0.22 * view.face.width));
+  assert.ok(Math.hypot(placed.eyeLeft!.x - expected.x, placed.eyeLeft!.y - expected.y) < 1e-6, JSON.stringify(placed.eyeLeft));
+  assert.equal(placed.eyeRightShape!.points.length, 24);
+  boneless.dispose();
+});

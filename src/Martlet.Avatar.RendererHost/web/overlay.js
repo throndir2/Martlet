@@ -3,12 +3,22 @@
 // reports; the layer fades it in and out and redraws every frame.
 //
 // anchor: { x, y, width, angle, cheekLeft:{x,y}, cheekRight:{x,y}, eyeLeft?, eyeRight?, mouth?, top?, tracking?,
-// cheekLeftFrame?, cheekRightFrame? } in CSS pixels of the page; x/y is the face's middle, width the face's width (zoom
-// included), angle its roll in radians (clockwise on screen), Left/Right the viewer's left and right. The adapters read it
-// from what they draw each frame (`tracking`: "mesh" when pinned to a Live2D model's own meshes, "bones" from a VRM's head
-// bone, "estimate" from Live2D's head angles), so it follows every move of the head. A cheek's frame is how its surface
-// shows now: `right` and `down`, the steps for one face width across and down it (a turned head squashes the far cheek), and
-// `visible`, 0 to 1 as it turns away.
+// cheekLeftFrame?, cheekRightFrame?, irisLeft?, irisRight?, eyeLeftShape?, eyeRightShape?, eyesFrom? } in CSS pixels of the
+// page; x/y is the face's middle, width the face's width (zoom included), angle its roll in radians (clockwise on screen),
+// Left/Right the viewer's left and right. The adapters read it from what they draw each frame (`tracking`: "mesh" when pinned
+// to a Live2D model's own meshes, "bones" from a VRM's head bone, "estimate" from Live2D's head angles), so it follows every
+// move of the head. A cheek's frame is how its surface shows now: `right` and `down`, the steps for one face width across and
+// down it (a turned head squashes the far cheek), and `visible`, 0 to 1 as it turns away.
+//
+// The eyes: `irisLeft`/`irisRight` ({x, y, rx, ry}) is an eye's iris now (the coloured part with the pupil): its middle and
+// its radii across and down the face. `eyeLeftShape`/`eyeRightShape` ({points: [{x, y}...], triangles?}) is the eye's visible
+// opening between the eyelids now, following blinks and the head: the union of `triangles` (three indices into `points` for
+// each), or without them the closed outline through `points`; no points when the eye is closed or hidden. At most
+// EYE_SHAPE_POINTS points and EYE_SHAPE_TRIANGLES triangles; a shape over them, or with a number that isn't finite, is
+// dropped. `eyesFrom` says where they came from, for both eyes the weakest: "mesh" (a Live2D model's iris and eye-white
+// meshes), "bones" (a VRM's eye bones with its iris and eye-white meshes), "vision" (the eyes measured by vision fill what
+// the model can't give) or "estimate" (an eye has neither: its iris and shape are left out, and drawings over the eyes use
+// their own estimate around `eyeLeft`/`eyeRight`). An eye with an iris also has `eyeLeft`/`eyeRight` at its middle.
 
 const registry = new Map();
 const active = new Map();
@@ -109,7 +119,65 @@ export function toCssAnchor(face, scaleX, scaleY) {
         visible: Number.isFinite(frame.visible) ? Math.max(0, Math.min(1, frame.visible)) : 1 };
   }
   if (typeof face.tracking === "string") anchor.tracking = face.tracking;
+  addEyes(anchor, face, scaleX, scaleY);
   return [anchor.x, anchor.y, anchor.width].every(Number.isFinite) && anchor.width > 0 ? anchor : undefined;
+}
+
+/** The most points and triangles of one eye's shape (see the header). */
+export const EYE_SHAPE_POINTS = 512, EYE_SHAPE_TRIANGLES = 1024;
+const EYES_FROM = new Set(["mesh", "bones", "vision", "estimate"]);
+
+/** Copies the eye fields (see the header) of adapter anchor `face` onto `anchor` in CSS pixels, dropping any that aren't
+ *  finite or break the caps. */
+function addEyes(anchor, face, scaleX, scaleY) {
+  for (const key of ["irisLeft", "irisRight"]) {
+    const iris = face[key];
+    if (iris && [iris.x, iris.y, iris.rx, iris.ry].every(Number.isFinite) && iris.rx > 0 && iris.ry > 0)
+      anchor[key] = { x: iris.x * scaleX, y: iris.y * scaleY, rx: iris.rx * scaleX, ry: iris.ry * scaleY };
+  }
+  for (const key of ["eyeLeftShape", "eyeRightShape"]) {
+    const shape = cssShape(face[key], scaleX, scaleY);
+    if (shape) anchor[key] = shape;
+  }
+  if (EYES_FROM.has(face.eyesFrom)) anchor.eyesFrom = face.eyesFrom;
+}
+
+function cssShape(shape, scaleX, scaleY) {
+  const points = shape?.points;
+  if (!Array.isArray(points) || points.length > EYE_SHAPE_POINTS) return undefined;
+  const css = new Array(points.length);
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return undefined;
+    css[i] = { x: p.x * scaleX, y: p.y * scaleY };
+  }
+  const triangles = shape.triangles;
+  if (triangles === undefined) return { points: css };
+  if (!Array.isArray(triangles) || triangles.length % 3 !== 0 || triangles.length > 3 * EYE_SHAPE_TRIANGLES) return undefined;
+  for (let i = 0; i < triangles.length; i++)
+    if (!Number.isInteger(triangles[i]) || triangles[i] < 0 || triangles[i] >= css.length) return undefined;
+  return { points: css, triangles };
+}
+
+/** Whether `point` lies inside an eye's shape (see the header): in one of its triangles or inside its outline. */
+export function insideEyeShape(shape, point) {
+  const points = shape?.points;
+  if (!point || !Array.isArray(points) || points.length < 3) return false;
+  const side = (a, b) => (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
+  if (shape.triangles) {
+    for (let k = 0; k + 2 < shape.triangles.length; k += 3) {
+      const a = points[shape.triangles[k]], b = points[shape.triangles[k + 1]], c = points[shape.triangles[k + 2]];
+      const s1 = side(a, b), s2 = side(b, c), s3 = side(c, a);
+      if ((s1 >= 0 && s2 >= 0 && s3 >= 0) || (s1 <= 0 && s2 <= 0 && s3 <= 0)) return true;
+    }
+    return false;
+  }
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const a = points[i], b = points[j];
+    if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
 }
 
 // ---------- the blush ----------

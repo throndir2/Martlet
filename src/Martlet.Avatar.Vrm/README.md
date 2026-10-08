@@ -37,6 +37,21 @@ also use the model's preset expressions when it has them) on the idle pose.
 `endGesture(name)`; `gestureState` says which plays once and which is held. VRM files
 carry no motions.
 
+The renderer's `faceAnchor()` says where the face is now, for Martlet's drawings
+over it (`src/runtime.ts` `faceGeometry`). It also gives each eye's iris and its
+visible opening (`src/eyes.ts`), for drawings over the eyes. The eye bones place
+each eye. The iris's middle rides its eye bone, so it follows a bone look-at. The
+model's meshes give the iris's size and the opening when they can be found:
+VRoid's `EyeIris` and `EyeWhite` materials, or names with iris, pupil, hitomi, 瞳
+or 白目. They are measured at rest when the model loads. Each frame the opening's
+vertices are projected skinned and with their morph targets, so a blink closes it.
+`setEyeHint(hint)` uses eyes measured by vision for what the model can't give: a
+sized iris that moves with an expression look-at and an outline that closes with
+`blink`, `blinkLeft` or `blinkRight`. `eyesFrom` is `"bones"` when the bones and
+meshes give both eyes, `"vision"` when the hint fills the rest, otherwise
+`"estimate"`. An expression look-at doesn't move a mesh's iris: Martlet doesn't
+drive the look-at outside a composed turn's gaze.
+
 `dev` bundles all JavaScript locally to ignored `public/app.js`, then serves only
 three allowlisted static files at **http://127.0.0.1:4178**. It does not serve the
 repository, upload files, or accept network/model URLs. Dependencies must already

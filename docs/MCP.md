@@ -4369,14 +4369,31 @@ has `n`, `found`, `tracking` (`mesh`, `bones` or `estimate`), `x`, `y` and
 clockwise), `cheekLeft` and `cheekRight` (`x`, `y`, `visible` from 0 to 1,
 `across`, the cheek's width against the face's width, and the hit test there:
 `hit`, `drawables`, `bone`, `mesh`), `overlays` (the overlays showing) and
-`pinned` (Live2D: `carriers`, how many mesh vertices the face rides on, and
-`milliseconds`, how long finding them took at load). `summary` gives the
+`pinned` (Live2D: `carriers`, how many mesh vertices the face rides on,
+`milliseconds`, how long finding them took at load, and `eyeMilliseconds`, how
+long finding the eyes' meshes took). The eyes for drawings over them come with
+each reading: `eyesFrom` (`mesh`: a Live2D model's iris and eye-white meshes;
+`bones`: a VRM's eye bones with its iris and eye-white meshes; `vision`: eyes
+measured by vision fill what the model can't give; `estimate`: an eye has
+neither, so its iris and opening are left out), `irisLeft` and `irisRight`
+(`x`, `y`, `rx`, `ry`: the iris's middle and radii across and down the face;
+`x` and `rx` are fractions of the drawing's width, `y` and `ry` of its height;
+`null` when unknown), and `eyeLeftShape` and `eyeRightShape` (the eye's visible
+opening now: `points`, `triangles`, `null` for an outline, its box `left`,
+`top`, `right`, `bottom`, and `irisInside`, whether the iris's middle is in
+it; 0 `points` when the eye is closed or hidden). `summary` gives the
 `tracking` used, how far the face `moved` (`x`, `y`, `width`, `tilt`) and, for
 each cheek, `onCharacter` (the share of readings over the character),
 `mostlyOver` and `mostlyOverShare` (the topmost drawable, mesh or bone there
 most often, and for what share of readings), `visibleLeast` and `across`
-(`least`, `most`). `MoveAvatar`'s value in `ui_snapshot` shows the last
-reading as `face`.
+(`least`, `most`). It also gives `eyesFrom` (the sources seen) and, for
+`eyeLeft` and `eyeRight`, `iris` (the share of readings with an iris),
+`irisMoved` (`x`, `y`: how far the iris's middle moved), `irisInside` (the
+share of open readings with the iris inside its opening), `opening` (`least`,
+`most`: the opening's height, which a blink closes) and `closed` (the share of
+readings with no opening). Sample several times to see the irises follow the
+gaze and the openings close on a blink. `MoveAvatar`'s value in `ui_snapshot`
+shows the last reading as `face`.
 
 **Moves, zooms and other changes Martlet hears about**: the overlay notes each
 drag, arrow-key nudge, `ui_move`, zoom (wheel, menu, keys or Martlet's zoom

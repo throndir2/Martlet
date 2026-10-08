@@ -40,6 +40,36 @@ public sealed class CharacterFaceReadingTests
     }
 
     [Fact]
+    public void TheFaceReadingKeepsEachEyesIrisAndOpeningBoundedAndTyped()
+    {
+        var reading = Json(CharacterFaceReading.From(Json("""
+            {"id":6,"found":true,"tracking":"mesh","eyesFrom":"mesh",
+             "irisLeft":{"x":0.47,"y":0.2,"rx":0.012345678,"ry":"wide"},"irisRight":null,
+             "eyeLeftShape":{"points":28,"triangles":40,"left":0.45,"top":0.18,"right":0.49,"bottom":0.22,"irisInside":true,"extra":1},
+             "eyeRightShape":{"points":99999,"triangles":null,"irisInside":"yes"},
+             "pinned":{"carriers":291,"milliseconds":17,"eyeMilliseconds":8}}
+            """), 6));
+        Assert.Equal("mesh", reading.GetProperty("eyesFrom").GetString());
+        var iris = reading.GetProperty("irisLeft");
+        Assert.Equal(0.0123, iris.GetProperty("rx").GetDouble());
+        Assert.False(iris.TryGetProperty("ry", out _));
+        Assert.Equal(JsonValueKind.Null, reading.GetProperty("irisRight").ValueKind);
+        var left = reading.GetProperty("eyeLeftShape");
+        Assert.Equal(28, left.GetProperty("points").GetInt32());
+        Assert.Equal(40, left.GetProperty("triangles").GetInt32());
+        Assert.Equal(0.22, left.GetProperty("bottom").GetDouble());
+        Assert.True(left.GetProperty("irisInside").GetBoolean());
+        Assert.False(left.TryGetProperty("extra", out _));
+        var right = reading.GetProperty("eyeRightShape");
+        Assert.Equal(CharacterFaceReading.MaximumShapePoints, right.GetProperty("points").GetInt32());
+        Assert.Equal(JsonValueKind.Null, right.GetProperty("triangles").ValueKind);
+        Assert.Equal(JsonValueKind.Null, right.GetProperty("irisInside").ValueKind);
+        Assert.Equal(8, reading.GetProperty("pinned").GetProperty("eyeMilliseconds").GetInt32());
+        var guess = Json(CharacterFaceReading.From(Json("""{"id":7,"found":true,"eyesFrom":"guess"}"""), 7));
+        Assert.False(guess.TryGetProperty("eyesFrom", out _));
+    }
+
+    [Fact]
     public void TheOverlaySurfaceReadsTheLastFaceWithTheLastTap()
     {
         Exception? failure = null;
@@ -84,5 +114,31 @@ public sealed class CharacterFaceReadingTests
         var right = summary.GetProperty("cheekRight");
         Assert.Equal(0, right.GetProperty("onCharacter").GetDouble());
         Assert.Equal(0.5, right.GetProperty("visibleLeast").GetDouble());
+    }
+
+    [Fact]
+    public void TheFaceSummarySaysWhereTheEyesCameFromHowEachIrisMovedAndHowFarEachEyeClosed()
+    {
+        static string N(double value) => value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+        static JsonElement Face(double irisX, double top, int points, bool inside) => Json($$"""
+            {"n":1,"found":true,"tracking":"mesh","eyesFrom":"mesh","x":0.5,"y":0.2,"width":0.16,"tilt":0,
+             "irisLeft":{"x":{{N(irisX)}},"y":0.2,"rx":0.01,"ry":0.012},"irisRight":null,
+             "eyeLeftShape":{"points":{{points}},"triangles":40,"left":0.45,"top":{{N(top)}},"right":0.49,"bottom":0.22,"irisInside":{{(inside ? "true" : "false")}}},
+             "eyeRightShape":null}
+            """);
+        var summary = Json(JsonSerializer.Serialize(DesktopAutomation.FaceSummary(
+            [Face(0.47, 0.18, 28, true), Face(0.48, 0.21, 28, true), Face(0.475, 0.219, 2, false), Face(0.49, 0.18, 0, false)])));
+        Assert.Equal(["mesh"], summary.GetProperty("eyesFrom").EnumerateArray().Select(e => e.GetString()));
+        var left = summary.GetProperty("eyeLeft");
+        Assert.Equal(1, left.GetProperty("iris").GetDouble());
+        Assert.Equal(0.02, left.GetProperty("irisMoved").GetProperty("x").GetDouble());
+        Assert.Equal(1, left.GetProperty("irisInside").GetDouble());
+        Assert.Equal(0.001, left.GetProperty("opening").GetProperty("least").GetDouble());
+        Assert.Equal(0.04, left.GetProperty("opening").GetProperty("most").GetDouble());
+        Assert.Equal(0.25, left.GetProperty("closed").GetDouble());
+        var right = summary.GetProperty("eyeRight");
+        Assert.Equal(0, right.GetProperty("iris").GetDouble());
+        Assert.Equal(JsonValueKind.Null, right.GetProperty("irisInside").ValueKind);
+        Assert.Equal(JsonValueKind.Null, right.GetProperty("opening").ValueKind);
     }
 }
