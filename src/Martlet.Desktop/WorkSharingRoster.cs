@@ -116,9 +116,11 @@ internal static class WorkSharingRoster
     }
 
     /// <summary>What a refusal before a request's first answer means: busy (try the next, then wait), unavailable (try the next),
-    /// or preempted (the host keeps its graphics card for a live turn: pool work waits or goes elsewhere, never a failure).</summary>
+    /// preempted (the host keeps its graphics card for a live turn: pool work waits or goes elsewhere, never a failure) or owner
+    /// (a host a friend shares keeps its card for its owner's own work: try the next at once; background work goes on later).</summary>
     internal static WorkRefusal Classify(Exception error) => error switch
     {
+        Audio2FaceHostException { OwnerFirst: true } => WorkRefusal.Owner,
         Audio2FaceHostException { HeldForLive: true } => WorkRefusal.Preempted,
         Audio2FaceHostException { Code: "job.busy" or "worker.busy" } => WorkRefusal.Busy,
         Audio2FaceHostException { Code: "host.unreachable" or "host.redirect" or "worker.unavailable" or "worker.quarantined" } =>
@@ -127,6 +129,72 @@ internal static class WorkSharingRoster
         HttpRequestException or IOException => WorkRefusal.Unavailable,
         _ => WorkRefusal.None
     };
+
+    private static readonly Dictionary<string, long> OwnerNoticed = new(StringComparer.Ordinal);
+
+    /// <summary>Raised (host, job) the first time since Martlet started that a host a friend shares with this PC turned this PC
+    /// away for its owner's own work, so the owner of this PC hears it once, in plain words.</summary>
+    internal static event Action<string, string>? OwnerFirst;
+
+    /// <summary>A plain sentence for <see cref="OwnerFirst"/>.</summary>
+    internal static string OwnerFirstText(string hostId, string job) =>
+        $"{hostId} is busy with its owner's own work right now. A friend shares it with this PC, and their own work always comes first, " +
+        $"so Martlet used another of your computers for {job} if one runs it, or tries {hostId} again on the next request.";
+
+    /// <summary><paramref name="source"/>, a request to <paramref name="hostId"/>: when that is a host a friend shares and it turns
+    /// the request away for its owner's work (<c>job.busy</c> with detail owner, or <c>job.preempted</c>), the desktop log says so
+    /// (once a minute at most) and <see cref="OwnerFirst"/> is raised the first time. Before the first answer a stop there is the
+    /// owner's work too, so it reaches the queue as that host's owner refusal: the request moves on rather than waiting for it.</summary>
+    internal static async IAsyncEnumerable<T> Watched<T>(string hostId, string job, IAsyncEnumerable<T> source,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token = default)
+    {
+        await using var items = source.GetAsyncEnumerator(token);
+        var started = false;
+        while (true)
+        {
+            bool moved;
+            try { moved = await items.MoveNextAsync().ConfigureAwait(false); }
+            catch (Audio2FaceHostException error) when ((error.OwnerFirst || error.Code == "job.preempted") && IsShared(hostId))
+            {
+                NoteOwnerFirst(hostId, job);
+                if (started || error.OwnerFirst) throw;
+                throw new Audio2FaceHostException("job.busy", error.Message) { Detail = Audio2FaceHostException.OwnerDetail };
+            }
+            if (!moved) yield break;
+            started = true;
+            yield return items.Current;
+        }
+    }
+
+    /// <summary>Whether <paramref name="hostId"/> is a host a friend shares with this PC (hosts.json, read again only when it changed).</summary>
+    internal static bool IsShared(string hostId) =>
+        DataDirectory is { } directory && Hosts(directory).Any(h => h.HostId == hostId && h.Shared);
+
+    /// <summary>The one-answer form of <see cref="Watched{T}"/> (a transcription).</summary>
+    internal static async Task<T> WatchedOnce<T>(string hostId, string job, Task<T> answer)
+    {
+        try { return await answer.ConfigureAwait(false); }
+        catch (Audio2FaceHostException error) when ((error.OwnerFirst || error.Code == "job.preempted") && IsShared(hostId))
+        {
+            NoteOwnerFirst(hostId, job);
+            if (error.OwnerFirst) throw;
+            throw new Audio2FaceHostException("job.busy", error.Message) { Detail = Audio2FaceHostException.OwnerDetail };
+        }
+    }
+
+    private static void NoteOwnerFirst(string hostId, string job)
+    {
+        bool first;
+        lock (Gate)
+        {
+            var now = Environment.TickCount64;
+            first = !OwnerNoticed.TryGetValue(hostId, out var last);
+            if (!first && now - last < 60_000) return;
+            OwnerNoticed[hostId] = now;
+        }
+        ErrorLog.Info($"Shared hosts: {hostId} turned this PC's {job} request away for its owner's own work (a friend shares it; their work comes first).");
+        if (first) OwnerFirst?.Invoke(hostId, job);
+    }
 
     /// <summary>A paired computer as a host target.</summary>
     internal static HostTextTarget TextTarget(PairedHost host, string routeId) => new(host.Pairing.Origin, host.HostId,

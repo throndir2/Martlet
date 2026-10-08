@@ -453,10 +453,11 @@ public partial class MainWindow
         var users = new Dictionary<string, IReadOnlyList<HostUser>>(StringComparer.Ordinal);
         foreach (var (hostId, view) in networkViews)
             if (view.Devices is { } devices)
-                users[hostId] = devices.OrderBy(d => !IsThisDevice(d.DeviceId)).ThenBy(d => d.DisplayName, StringComparer.OrdinalIgnoreCase)
+                users[hostId] = devices.OrderBy(d => !IsThisDevice(d.DeviceId)).ThenBy(d => d.Friend).ThenBy(d => d.DisplayName, StringComparer.OrdinalIgnoreCase)
                     .Select(d => IsThisDevice(d.DeviceId)
                         ? new HostUser("This PC, " + Seen(d.LastSeen, now), true)
-                        : new HostUser((d.DisplayName == d.DeviceId ? d.DeviceId : $"{d.DisplayName} ({d.DeviceId})") + ", " + Seen(d.LastSeen, now), false))
+                        : new HostUser((d.DisplayName == d.DeviceId ? d.DeviceId : $"{d.DisplayName} ({d.DeviceId})") +
+                            (d.Friend ? ", a friend's computer (engines only)" : "") + ", " + Seen(d.LastSeen, now), false))
                     .ToArray();
         return users;
     }
@@ -491,9 +492,15 @@ public partial class MainWindow
         foreach (var join in networkJoins.Where(j => !IsThisDevice(j.DeviceId) && computers.All(c => c.DeviceId != j.DeviceId)))
             computers.Add(Computer(join.DeviceId, join.DisplayName, ComputerStanding.Asking, join.CheckNumber, join.HostId));
         foreach (var device in OutsideComputers(roster).Where(d => computers.All(c => c.DeviceId != d.DeviceId)))
-            computers.Add(Computer(device.DeviceId, device.DisplayName, ComputerStanding.Outside));
+            computers.Add(device.Friend
+                ? Computer(device.DeviceId, device.DisplayName, ComputerStanding.Friend, through: string.Join(", ", FriendHosts(device.DeviceId)))
+                : Computer(device.DeviceId, device.DisplayName, ComputerStanding.Outside));
         return computers;
     }
+
+    /// <summary>The hosts a friend's computer signed in to, as they reported it on the last network sync.</summary>
+    private IEnumerable<string> FriendHosts(string deviceId) => networkViews.Values
+        .Where(v => v.Devices?.Any(d => d.DeviceId == deviceId && d.Friend) == true).Select(v => v.HostId).Order(StringComparer.Ordinal);
 
     /// <summary>Changes when a computer pairs with or leaves a host, joins or leaves the network, asks to join, or becomes
     /// active or idle: then the Devices map is drawn again (not on every sync, so the map doesn't animate every 20 seconds).</summary>
@@ -537,7 +544,8 @@ public partial class MainWindow
             parts.Add($"{hostId} ({view.State}{(view.Bound ? " in " + view.Roster!.NetworkId : "")}) is paired with " + (view.Devices is not { } devices
                 ? "(not reported; it runs an older Martlet)"
                 : devices.Count == 0 ? "nobody"
-                : string.Join(", ", devices.Select(d => IsThisDevice(d.DeviceId) ? $"{d.DeviceId} (this PC)" : $"{d.DeviceId} ({d.DisplayName})"))));
+                : string.Join(", ", devices.Select(d => IsThisDevice(d.DeviceId) ? $"{d.DeviceId} (this PC)"
+                    : d.Friend ? $"{d.DeviceId} ({d.DisplayName}, a friend's computer)" : $"{d.DeviceId} ({d.DisplayName})"))));
         var picture = string.Join("; ", parts) + ".";
         if (picture != networkLogged)
         {
@@ -577,12 +585,13 @@ public partial class MainWindow
     }
 
     /// <summary>Each computer paired with one of this PC's hosts that is not a member of the network (or of any network, on a
-    /// host PC that only watches), not this PC and not already asking to join: its most recently active pairing.</summary>
+    /// host PC that only watches), not this PC and not already asking to join: its most recently active pairing. A friend's
+    /// computer (<see cref="HostPairedDevice.Friend"/>) is listed as one, never as a computer to let in.</summary>
     private IEnumerable<HostPairedDevice> OutsideComputers(NetworkRoster? roster) => networkViews.Values
         .SelectMany(v => v.Devices ?? [])
         .Where(d => !IsThisDevice(d.DeviceId) && roster?.Desktop(d.DeviceId) is not { Removed: false } && networkJoins.All(j => j.DeviceId != d.DeviceId))
         .GroupBy(d => d.DeviceId, StringComparer.Ordinal)
-        .Select(g => g.OrderByDescending(d => d.LastSeen ?? DateTimeOffset.MinValue).First())
+        .Select(g => g.OrderByDescending(d => d.Friend).ThenByDescending(d => d.LastSeen ?? DateTimeOffset.MinValue).First())
         .OrderBy(d => d.DisplayName, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Where a member computer was last active, from its hosts' reports ("active now on diva-host"), or null.</summary>
@@ -684,15 +693,20 @@ public partial class MainWindow
     }
 
     /// <summary>A computer that uses one of this PC's hosts but is not in the network: it can use the hosts it paired with, but
-    /// isn't paired with the network's other hosts by itself.</summary>
+    /// isn't paired with the network's other hosts by itself. A friend's computer says so: it uses those hosts' engines only and
+    /// never joins.</summary>
     private FrameworkElement PairedRow(HostPairedDevice device)
     {
         var row = NetworkRowFrame();
         var hosts = networkViews.Values.Where(v => v.Devices?.Any(d => d.DeviceId == device.DeviceId) == true).Select(v => v.HostId).Order(StringComparer.Ordinal);
-        var detail = $"Uses {string.Join(", ", hosts)}; {Seen(device.LastSeen, DateTimeOffset.UtcNow)}. " + (networkState.Roster is null
-            ? "It is paired with this PC's host service; this PC is in no Martlet network itself."
-            : "Not in your Martlet network, so it isn't paired with your other hosts by itself. It asks to join when it runs Martlet 0.18 or newer; allow it here then.");
-        row.Children.Add(NetworkRowText("NetworkPaired-" + device.DeviceId,
+        var detail = device.Friend
+            ? $"A friend's computer. It signed in to {string.Join(", ", FriendHosts(device.DeviceId))} as a friend and uses only " +
+              $"{(FriendHosts(device.DeviceId).Count() == 1 ? "that host's" : "those hosts'")} engines; {Seen(device.LastSeen, DateTimeOffset.UtcNow)}. " +
+              "It never joins your Martlet network, and your own work goes first. Stop sharing under Friends."
+            : $"Uses {string.Join(", ", hosts)}; {Seen(device.LastSeen, DateTimeOffset.UtcNow)}. " + (networkState.Roster is null
+                ? "It is paired with this PC's host service; this PC is in no Martlet network itself."
+                : "Not in your Martlet network, so it isn't paired with your other hosts by itself. It asks to join when it runs Martlet 0.18 or newer; allow it here then.");
+        row.Children.Add(NetworkRowText((device.Friend ? "NetworkFriend-" : "NetworkPaired-") + device.DeviceId,
             device.DisplayName != device.DeviceId ? $"{device.DisplayName} ({device.DeviceId})" : device.DeviceId, detail));
         return NetworkRowCard(row, warning: false);
     }

@@ -209,9 +209,11 @@ public static class WorkSharing
 /// <summary>What a computer's refusal means for a request that hasn't started: <see cref="Busy"/> (it does one job at a time
 /// and is doing another: try the next, then wait for whichever frees first), <see cref="Unavailable"/> (unreachable, or it
 /// doesn't run the engine now: try the next), <see cref="Preempted"/> (it keeps the graphics card free for a live conversation
-/// turn, its own or another companion PC's: pool work goes elsewhere or waits and continues later; never a failure), or
+/// turn, its own or another companion PC's: pool work goes elsewhere or waits and continues later; never a failure),
+/// <see cref="Owner"/> (a host a friend shares with this PC keeps its graphics card for its owner's own work: a live request
+/// tries the next computer at once and never waits for that one, and background work goes elsewhere or later) or
 /// <see cref="None"/> (a real failure: give up).</summary>
-public enum WorkRefusal { None, Busy, Unavailable, Preempted }
+public enum WorkRefusal { None, Busy, Unavailable, Preempted, Owner }
 
 /// <summary>Who a shared request is for: the live conversation turn (a reply, its voice, its transcript) or this PC's own
 /// background work on a live route (remembering after a reply, a think on the conversation model). Live requests go first: a
@@ -353,9 +355,10 @@ public sealed class WorkQueue
                         var refusal = classify(first.Error);
                         if (refusal == WorkRefusal.None) throw first.Error;
                         last = first.Error;
-                        if (refusal == WorkRefusal.Preempted && !live)
+                        if (refusal is WorkRefusal.Preempted or WorkRefusal.Owner && !live)
                         {
-                            // Background work goes elsewhere or later while a live turn holds this computer's graphics card.
+                            // Background work goes elsewhere or later while a live turn (or a shared host's owner) holds this
+                            // computer's graphics card.
                             held = true;
                             gone.Add(id);
                         }
@@ -368,6 +371,7 @@ public sealed class WorkQueue
                         }
                         else
                         {
+                            // Unreachable, or a shared host's owner needs it: a live request never waits for that computer.
                             unavailable++;
                             gone.Add(id);
                         }

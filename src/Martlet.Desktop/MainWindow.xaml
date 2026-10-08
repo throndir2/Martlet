@@ -400,6 +400,50 @@
                             <StackPanel x:Name="NetworkMembersPanel" AutomationProperties.Name="Computers in your network"/>
                         </StackPanel>
                     </Border>
+                    <!-- Friends: who your hosts' engines are shared with, per person, across your hosts (MainWindow.Friends.cs, docs/NETWORK.md) -->
+                    <Border x:Name="FriendsCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Friends" Visibility="Collapsed">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,12">
+                                <Button x:Name="FriendsCheckButton" DockPanel.Dock="Right" Content="Check now" Click="FriendsCheck_Click" VerticalAlignment="Top"
+                                        AutomationProperties.AutomationId="FriendsCheck" AutomationProperties.Name="Read who your hosts are shared with now"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                                    <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
+                                        <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE716;" Foreground="{DynamicResource AccentBrush}"/>
+                                    </Border>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Friends" FontSize="18" FontWeight="SemiBold"/>
+                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="Share a host's engines with a friend's Martlet. They sign in with their own account and never join your network."/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DockPanel>
+                            <TextBlock x:Name="FriendsStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="FriendsStatus" AutomationProperties.LiveSetting="Polite"/>
+                            <StackPanel x:Name="FriendsPanel" AutomationProperties.Name="Your friends and the hosts you share with them"/>
+                        </StackPanel>
+                    </Border>
+                    <!-- Hosts shared with this PC: friends' hosts this PC signed in to as a friend; their engines only (MainWindow.Friends.cs) -->
+                    <Border x:Name="SharedHostsCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Hosts shared with this PC" Visibility="Collapsed">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,12">
+                                <Button x:Name="SharedHostsCheckButton" DockPanel.Dock="Right" Content="Check now" Click="SharedHostsCheck_Click" VerticalAlignment="Top"
+                                        AutomationProperties.AutomationId="SharedHostsCheck" AutomationProperties.Name="Check the hosts friends share with this PC now"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                                    <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Top">
+                                        <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE72D;" Foreground="{DynamicResource AccentBrush}"/>
+                                    </Border>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Hosts shared with this PC" FontSize="18" FontWeight="SemiBold"/>
+                                        <TextBlock Style="{DynamicResource Muted}" Margin="0,2,0,0" TextWrapping="Wrap"
+                                                   Text="Friends' hosts you signed in to as a friend. This PC may use their engines; their owners' own work comes first."/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DockPanel>
+                            <TextBlock x:Name="SharedHostsStatusText" Style="{DynamicResource Muted}" TextWrapping="Wrap"
+                                       AutomationProperties.AutomationId="SharedHostsStatus" AutomationProperties.LiveSetting="Polite"/>
+                            <StackPanel x:Name="SharedHostsPanel" AutomationProperties.Name="Hosts friends share with this PC"/>
+                        </StackPanel>
+                    </Border>
                     <!-- Sharing work: which computers take a job when the one doing it is busy (MainWindow.WorkSharing.cs, docs/CLUSTER.md) -->
                     <Border x:Name="WorkSharingCard" Style="{DynamicResource CardStyle}" Padding="26,22" AutomationProperties.Name="Sharing work">
                         <StackPanel>

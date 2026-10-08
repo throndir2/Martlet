@@ -143,8 +143,17 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Sign-in from outside: Add a computer's Join with an invite and a paired host's Sign-in from outside only open their
         // windows (the settings window reads the host's sign-in settings, never a secret), and Close closes them. Connect
         // contacts the host named in a pasted invite, Sign in pairs, and the settings window's Make an authenticator secret,
-        // Save, recovery codes, Remove, Allow and Make invite change or reveal things, so they need --allow-ui-effects.
+        // Save, recovery codes, Remove, Allow (SignInAllow, SignInRefusedAllow, SignInRefusedAllowFriend), Make a friend or
+        // Make one of my computers (SignInAccess-<key>), Remove (SignInRemove-<key>) and Make invite change or reveal things,
+        // so they need --allow-ui-effects.
         "HostsJoinWithInvite", "SignInJoinClose", "HostSignInSettings", "SignInSettingsClose",
+        // Devices › Friends' Check now only reads each of your hosts' sign-in settings (never a secret) and keeps the non-secret
+        // summary in friends.json; Share and Stop sharing (FriendShare-<host>-<key>, FriendStop-<host>-<key>) change who may use
+        // a host, so they need --allow-ui-effects. Hosts shared with this PC's Check now (SharedHostsCheck, and each row's
+        // SharedHostCheck-<host>) reads what those hosts offer this PC and, like Check all hosts, follows a model their owner
+        // changed for a job of this PC there; it, Use for... (SharedHostUse-<host>-<job>) and Forget (SharedHostForget-<host>)
+        // need --allow-ui-effects. The card reads them by itself when the Devices page shows.
+        "FriendsCheck",
         // Companion › Discord › Martlet in your Discord calls › Check this PC only reads: it lists the playback devices' names,
         // looks for Discord's process and sets up a process loopback and closes it unstarted (nothing is recorded or played).
         // The mode's checkboxes, choices and Open camera view change things, so they need --allow-ui-effects.
@@ -208,10 +217,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // last reply's place kind (DM or server) and the last problem; never message text, names or IDs.
         "DiscordTextStatus",
         // Sign-in from outside: the join window's status line and the host it checked ("home-host at name:port, key checked"),
-        // and the settings window's status, owner account state (name and recovery codes left), allowed identities, providers
-        // and computers that signed in (device IDs, provider and subject; never a password, secret or recovery code).
+        // and the settings window's status, owner account state (name and recovery codes left), allowed identities (each one of
+        // your computers or a friend's), providers and computers that signed in (device IDs, provider, subject and whether a
+        // friend's; never a password, secret or recovery code).
         "SignInJoinStatus", "SignInHost", "SignInSettingsStatus", "SignInOwnerState", "SignInAllowedList", "SignInProvidersList",
         "SignInEnrolledList", "SignInRefusedList", "SignInRemovedList", "SignInOutsideWarning",
+        // Devices › Friends: how many hosts are shared with how many friends and who asked ("You share 1 host with 1 friend. ...
+        // Checked 14:02."), and Hosts shared with this PC: how many hosts friends share with this PC. Counts and fixed wording.
+        "FriendsStatus", "SharedHostsStatus",
         // Companion › Discord's voice line: where Martlet is in Discord voice, counts of speakers heard, utterances transcribed
         // and replies spoken (never what was said), whether DAVE is on, whether libdave loaded, and the last problem.
         "DiscordVoiceStatus",
@@ -783,6 +796,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // only; clicking one starts or sets up software, so it needs --allow-ui-effects.
         "HealthFix-host-service-",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "OtherRole-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
+        // Friends (MainWindow.Friends.cs): a friend's computer in Your Martlet network ("NetworkFriend-friend-pc" reads "FRIEND-PC
+        // (friend-pc). A friend's computer. It signed in to gpu-box as a friend and uses only that host's engines; ..."), each
+        // person on Devices › Friends ("Friend-authentik-lab-friend-7" reads "ana@example.net (authentik). Shares gpu-box: their
+        // engines only. Their computers: ...") and a host it couldn't read ("FriendsHost-gpu-box"), each host a friend shares
+        // with this PC ("SharedHost-gpu-box" reads "gpu-box. Shared by a friend; you signed in as ... Offers this PC: Thinking.
+        // This PC uses it for thinking."), and in Sign-in from outside each allowed identity ("SignInAllowed-authentik-lab-user-42"
+        // reads "me@example.net (authentik: lab-user-42): a friend. ..."). Names, providers, subjects, device and host IDs.
+        "NetworkFriend-", "Friend-", "FriendsHost-", "SharedHost-", "SignInAllowed-",
         "SmartHomeDevice-", "SmartHomeUpdate-", "DiscordRule-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-", "DeviceFilter-",
         // The selected device's resource bars ("DeviceResource-vram" reads "Graphics memory: 14 of 32 GB planned (44%), 15 GB
         // free for Martlet."; a range such as "11-14 of 32 GB planned (34-44%)" when jobs grow while they work, with ", tight: ..."

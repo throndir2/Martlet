@@ -46,9 +46,16 @@ public sealed class Audio2FaceHostException(string code, string message) : Excep
     /// <summary>The detail of a <c>job.busy</c> refusal of pool work while a live turn holds the graphics card.</summary>
     public const string LiveDetail = "live";
 
+    /// <summary>The detail of a <c>job.busy</c> refusal a host gives a friend's request while its owner's work uses the card.</summary>
+    public const string OwnerDetail = "owner";
+
     /// <summary>The host kept its graphics card for a live conversation turn: pool work waits and goes on later, never a failure
     /// (a <c>job.busy</c> with detail live before it started, or <c>job.preempted</c> while it ran).</summary>
     public bool HeldForLive => Code == "job.preempted" || Code == "job.busy" && Detail == LiveDetail;
+
+    /// <summary>A host a friend shares with this PC turned this PC's request away because its owner's own work uses the
+    /// graphics card (<c>job.busy</c> with detail owner): try another computer now, or this one later.</summary>
+    public bool OwnerFirst => Code == "job.busy" && Detail == OwnerDetail;
 }
 
 public sealed record Audio2FaceHostRoute(

@@ -77,7 +77,7 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
     {
         if (Environment.GetEnvironmentVariable(FixtureVariable) == "1") return true;
         if (SingingPreferences.Load(dataDirectory).Host is not { } host) return false;
-        try { return HostRegistry.Load(dataDirectory).Any(h => h.HostId == host); }
+        try { return HostRegistry.Load(dataDirectory).Any(h => h.HostId == host && !h.Shared); }
         catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException) { return false; }
     }
 
@@ -174,11 +174,11 @@ internal sealed class SongClient(string dataDirectory) : ISongMaker
     }
 
     /// <summary>The paired host whose gateway offers the singing route (the one the desktop last saw singing first), connected
-    /// (the caller disposes the connection), or null.</summary>
+    /// (the caller disposes the connection), or null. Singing is never shared with friends, so hosts they share are skipped.</summary>
     private async Task<(PairedHost Host, HostRoute Route, Audio2FaceHostConnection Connection)?> FindAsync(CancellationToken token)
     {
         var saved = SingingPreferences.Load(dataDirectory).Host;
-        foreach (var host in HostRegistry.Load(dataDirectory).OrderBy(h => h.HostId == saved ? 0 : 1))
+        foreach (var host in HostRegistry.Load(dataDirectory).Where(h => !h.Shared).OrderBy(h => h.HostId == saved ? 0 : 1))
         {
             Audio2FaceHostConnection? connection = null;
             try

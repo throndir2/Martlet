@@ -117,7 +117,9 @@ public partial class MainWindow
         var changed = false;
         foreach (var id in hostIds)
         {
-            if (closing || FindHost(id) is not { } host || hostChecks.GetValueOrDefault(id) is not { Reachable: true, Routes: { } routes })
+            // A host a friend shares with this PC is followed too: its owner may change the model it serves this PC.
+            if (closing || (FindHost(id) ?? FindSharedHost(id)) is not { } host ||
+                hostChecks.GetValueOrDefault(id) is not { Reachable: true, Routes: { } routes })
                 continue;
             foreach (var (saved, now) in HostModelFollow.Jobs(homeSettings, id, routes))
             {

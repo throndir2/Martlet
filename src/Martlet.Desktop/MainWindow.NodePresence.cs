@@ -148,7 +148,7 @@ public partial class MainWindow
     /// memory (not the hardware list the map reads), as it runs every 5 seconds while a computer doesn't answer.</summary>
     private HashSet<string> PresenceHosts()
     {
-        var hosts = NetworkMap.Hosts(new NetworkInputs(machine, Role, null, homeAvatar, false, hostChecks, Hosts: homeHosts));
+        var hosts = NetworkMap.Hosts(new NetworkInputs(machine, Role, null, homeAvatar, false, hostChecks, Hosts: homeHosts, SharedHosts: sharedHosts));
         var own = hosts.FirstOrDefault(h => h.Method == HostSetupMethod.ThisPcDocker)?.HostId
             ?? hosts.FirstOrDefault(h => machine.LanAddress is { } address && h.Address == address)?.HostId;
         return hosts.Select(h => h.HostId).Where(id => id != own).ToHashSet(StringComparer.Ordinal);

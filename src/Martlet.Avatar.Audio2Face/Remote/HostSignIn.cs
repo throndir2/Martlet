@@ -21,9 +21,26 @@ public sealed record HostSignInProvider(string Id, string Kind, string Name)
     public int? RedirectPort { get; init; }
 }
 
-/// <summary>Who a computer signed in as (shown to people; the host decides).</summary>
+/// <summary>What an allowed identity's computers get on a host: <see cref="Member"/> (one of the owner's own computers, which
+/// joins the owner's Martlet network) or <see cref="Friend"/> (a friend's computer: that host's engines only, never in the
+/// network). The host decides; the desktop only shows it and asks for it.</summary>
+public static class HostSignInAccess
+{
+    public const string Member = "member";
+    public const string Friend = "friend";
+
+    /// <summary>"friend" stays a friend; anything else (absent, "member", an unknown word from a newer host) is the owner's.</summary>
+    public static string Normalize(string? value) => value == Friend ? Friend : Member;
+}
+
+/// <summary>Who a computer signed in as (shown to people; the host decides), and the access that sign-in gave
+/// (<see cref="HostSignInAccess"/>).</summary>
 public sealed record HostSignInIdentity(string Provider, string Subject, string? Label)
 {
+    /// <summary>"member" (one of the owner's computers: it joins the network next) or "friend" (that host's engines only).</summary>
+    public string Access { get; init; } = HostSignInAccess.Member;
+    public bool Friend => Access == HostSignInAccess.Friend;
+
     public override string ToString() => Label is { Length: > 0 } ? $"{Label} ({Provider})" : $"{Subject} ({Provider})";
 }
 
@@ -141,8 +158,13 @@ public static class HostSignInClient
                 throw new Audio2FaceHostException("pairing.invalid", "The host returned an unexpected pairing; sign in again.");
             CryptographicOperations.ZeroMemory(raw);
             var signedIn = root.GetProperty("signed_in");
+            // A friend's sign-in gives that host's engines only; a host older than friends says nothing, and gave the owner's.
             var who = new HostSignInIdentity(signedIn.GetProperty("provider").GetString()!, signedIn.GetProperty("subject").GetString()!,
-                signedIn.TryGetProperty("label", out var label) ? Clean(label.GetString()) : null);
+                signedIn.TryGetProperty("label", out var label) ? Clean(label.GetString()) : null)
+            {
+                Access = HostSignInAccess.Normalize(root.TryGetProperty("access", out var access) && access.ValueKind == JsonValueKind.String
+                    ? access.GetString() : null)
+            };
             var pairing = new Audio2FaceHostPairing
             {
                 Origin = Audio2FaceHostClient.CanonicalOrigin(invite.Origin), HostId = invite.HostId, SpkiFingerprint = invite.SpkiFingerprint,
@@ -213,7 +235,14 @@ public static class HostSignInClient
                 "signin.invalid" => new Audio2FaceHostException(code,
                     "That sign-in didn't work. Check the account name, password and authenticator code; several wrong tries lock sign-in for a while."),
                 "signin.not_allowed" => new Audio2FaceHostException(code,
-                    "You signed in, but the host doesn't allow that account. At home, add it under the host's sign-in settings."),
+                    "You signed in, but the host doesn't allow that account yet. Its owner allows it in Martlet (Devices › Friends, or the " +
+                    "host's Sign-in from outside), then sign in again here."),
+                "signin.device_taken" => new Audio2FaceHostException(code,
+                    "The host already pairs this PC's device ID another way or with another account, so it refused this sign-in. Sign in " +
+                    "with the account you used before, or ask the host's owner to remove this PC there first."),
+                "signin.friends_full" => new Audio2FaceHostException(code,
+                    "The host already keeps as many friends' computers as it allows. Ask its owner to stop sharing it with a computer " +
+                    "that no longer uses it, then sign in again."),
                 "signin.unavailable" => new Audio2FaceHostException(code, "Signing in that way isn't set up on this host."),
                 "signin.expired" => new Audio2FaceHostException(code, "That sign-in took too long. Start again."),
                 "auth.throttled" or "auth.locked" or "auth.rate" => new Audio2FaceHostException(code,
@@ -288,6 +317,45 @@ public sealed record HostSignInSettings(string HostId, string? OwnerUser, int Re
             .Concat(action == "allow" && (string?)change["provider"] is { } provider ? [provider] : []);
         return owner || allowed.Any(providers.Contains);
     }
+
+    /// <summary>The identities allowed as friends (this host's engines only).</summary>
+    public IEnumerable<HostSignInAllowed> Friends => Allowed.Where(a => a.Friend);
+
+    /// <summary>Reads the host's <c>/martlet/v1/signin/settings</c> answer (never a secret). Throws <see cref="KeyNotFoundException"/>,
+    /// <see cref="InvalidOperationException"/> or <see cref="FormatException"/> when it isn't one, or names another host.</summary>
+    public static HostSignInSettings Parse(string hostId, JsonElement root)
+    {
+        if (root.GetProperty("host_id").GetString() != hostId) throw new FormatException();
+        string? Text(JsonElement element, string name) =>
+            element.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String ? HostSignInClient.Clean(item.GetString()) : null;
+        HostSignInEnrolled Enrolled(JsonElement e) => new(Text(e, "device_id")!, Text(e, "provider")!, e.GetProperty("subject").GetString()!,
+            Text(e, "label"), e.GetProperty("enrolled_at").GetDateTimeOffset())
+        {
+            Access = Text(e, "access") is { } access ? HostSignInAccess.Normalize(access) : null
+        };
+        var owner = root.TryGetProperty("owner", out var o) && o.ValueKind == JsonValueKind.Object ? o : (JsonElement?)null;
+        return new(hostId, owner is { } account ? Text(account, "user") : null,
+            owner is { } left ? left.GetProperty("recovery_codes_left").GetInt32() : 0,
+            root.GetProperty("providers").EnumerateArray().Take(16).Select(p => new HostSignInProviderSettings(Text(p, "id")!, Text(p, "kind")!,
+                Text(p, "name") ?? "", Text(p, "issuer"), Text(p, "client_id"), Text(p, "scopes"), p.GetProperty("has_client_secret").GetBoolean())
+            {
+                RedirectPort = p.TryGetProperty("redirect_port", out var port) && port.TryGetInt32(out var number) ? number : null
+            }).ToArray(),
+            root.GetProperty("allowed").EnumerateArray().Take(64).Select(a => new HostSignInAllowed(Text(a, "provider")!, a.GetProperty("subject").GetString()!,
+                Text(a, "label")) { Access = HostSignInAccess.Normalize(Text(a, "access")) }).ToArray(),
+            root.GetProperty("enrolled").EnumerateArray().Take(64).Select(Enrolled).ToArray(),
+            root.TryGetProperty("recovery_codes", out var codes) && codes.ValueKind == JsonValueKind.Array
+                ? codes.EnumerateArray().Select(c => c.GetString()!).ToArray() : null)
+        {
+            BlockedReason = root.TryGetProperty("blocked_reason", out var blocked) && blocked.ValueKind == JsonValueKind.String ? blocked.GetString() : null,
+            Refused = root.TryGetProperty("refused", out var refused) && refused.ValueKind == JsonValueKind.Array
+                ? refused.EnumerateArray().Take(16).Select(Enrolled).ToArray()
+                : [],
+            RemovedFromNetwork = root.TryGetProperty("removed_from_network", out var removed) && removed.ValueKind == JsonValueKind.Array
+                ? removed.EnumerateArray().Take(32).Select(Enrolled).ToArray()
+                : []
+        };
+    }
 }
 
 public sealed record HostSignInProviderSettings(string Id, string Kind, string Name, string? Issuer, string? ClientId, string? Scopes, bool HasClientSecret)
@@ -295,9 +363,21 @@ public sealed record HostSignInProviderSettings(string Id, string Kind, string N
     public int? RedirectPort { get; init; }
 }
 
-public sealed record HostSignInAllowed(string Provider, string Subject, string? Label);
+/// <summary>An identity the host allows (a provider set up there and the account's stable subject), with the access its
+/// computers get (<see cref="HostSignInAccess"/>).</summary>
+public sealed record HostSignInAllowed(string Provider, string Subject, string? Label)
+{
+    public string Access { get; init; } = HostSignInAccess.Member;
+    public bool Friend => Access == HostSignInAccess.Friend;
+}
 
-public sealed record HostSignInEnrolled(string DeviceId, string Provider, string Subject, string? Label, DateTimeOffset EnrolledAt);
+/// <summary>A computer that signed in (or, in <see cref="HostSignInSettings.Refused"/>, an identity that tried), with the access
+/// its sign-in gave: "member", "friend", or null where the host lists none (refused identities, removals).</summary>
+public sealed record HostSignInEnrolled(string DeviceId, string Provider, string Subject, string? Label, DateTimeOffset EnrolledAt)
+{
+    public string? Access { get; init; }
+    public bool Friend => Access == HostSignInAccess.Friend;
+}
 
 /// <summary>The host's sign-in settings, read and changed by a member desktop at home over its signed, pinned connection.</summary>
 public sealed partial class Audio2FaceHostConnection
@@ -312,7 +392,9 @@ public sealed partial class Audio2FaceHostConnection
     }
 
     /// <summary>Applies one change: <c>{"action":"owner","user","password","totp_secret","code"}</c>,
-    /// <c>"recovery-codes"</c>, <c>"remove-owner"</c>, <c>{"action":"allow","provider","subject","label"}</c>,
+    /// <c>"recovery-codes"</c>, <c>"remove-owner"</c>, <c>{"action":"allow","provider","subject","label","access"}</c> (access
+    /// "member", the default, for the owner's own computers, or "friend" for that host's engines only; allowing an identity again
+    /// replaces its entry, and a changed access revokes the computers it signed in with the old one),
     /// <c>{"action":"disallow","provider","subject"}</c>, <c>{"action":"provider","provider_config":{...}}</c> or
     /// <c>{"action":"remove-provider","id"}</c>. The answer carries new recovery codes once, when the change made some.</summary>
     public async Task<HostSignInSettings> ChangeSignInSettingsAsync(JsonObject change, CancellationToken cancellationToken = default)
@@ -349,37 +431,7 @@ public sealed partial class Audio2FaceHostConnection
                 _ => Audio2FaceHostClient.Remote(root)
             };
         }
-        try
-        {
-            if (root.GetProperty("host_id").GetString() != pairing.HostId) throw new FormatException();
-            string? Text(JsonElement element, string name) =>
-                element.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.String ? HostSignInClient.Clean(item.GetString()) : null;
-            var owner = root.TryGetProperty("owner", out var o) && o.ValueKind == JsonValueKind.Object ? o : (JsonElement?)null;
-            return new(pairing.HostId, owner is { } account ? Text(account, "user") : null,
-                owner is { } left ? left.GetProperty("recovery_codes_left").GetInt32() : 0,
-                root.GetProperty("providers").EnumerateArray().Take(16).Select(p => new HostSignInProviderSettings(Text(p, "id")!, Text(p, "kind")!,
-                    Text(p, "name") ?? "", Text(p, "issuer"), Text(p, "client_id"), Text(p, "scopes"), p.GetProperty("has_client_secret").GetBoolean())
-                {
-                    RedirectPort = p.TryGetProperty("redirect_port", out var port) && port.TryGetInt32(out var number) ? number : null
-                }).ToArray(),
-                root.GetProperty("allowed").EnumerateArray().Take(64).Select(a => new HostSignInAllowed(Text(a, "provider")!, a.GetProperty("subject").GetString()!,
-                    Text(a, "label"))).ToArray(),
-                root.GetProperty("enrolled").EnumerateArray().Take(64).Select(e => new HostSignInEnrolled(Text(e, "device_id")!, Text(e, "provider")!,
-                    e.GetProperty("subject").GetString()!, Text(e, "label"), e.GetProperty("enrolled_at").GetDateTimeOffset())).ToArray(),
-                root.TryGetProperty("recovery_codes", out var codes) && codes.ValueKind == JsonValueKind.Array
-                    ? codes.EnumerateArray().Select(c => c.GetString()!).ToArray() : null)
-            {
-                BlockedReason = root.TryGetProperty("blocked_reason", out var blocked) && blocked.ValueKind == JsonValueKind.String ? blocked.GetString() : null,
-                Refused = root.TryGetProperty("refused", out var refused) && refused.ValueKind == JsonValueKind.Array
-                    ? refused.EnumerateArray().Take(16).Select(e => new HostSignInEnrolled(Text(e, "device_id")!, Text(e, "provider")!,
-                        e.GetProperty("subject").GetString()!, Text(e, "label"), e.GetProperty("enrolled_at").GetDateTimeOffset())).ToArray()
-                    : [],
-                RemovedFromNetwork = root.TryGetProperty("removed_from_network", out var removed) && removed.ValueKind == JsonValueKind.Array
-                    ? removed.EnumerateArray().Take(32).Select(e => new HostSignInEnrolled(Text(e, "device_id")!, Text(e, "provider")!,
-                        e.GetProperty("subject").GetString()!, Text(e, "label"), e.GetProperty("enrolled_at").GetDateTimeOffset())).ToArray()
-                    : []
-            };
-        }
+        try { return HostSignInSettings.Parse(pairing.HostId, root); }
         catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException)
         {
             throw new Audio2FaceHostException("response.invalid", "The host's sign-in settings were invalid.");
