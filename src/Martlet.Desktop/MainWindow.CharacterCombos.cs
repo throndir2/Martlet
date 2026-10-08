@@ -124,17 +124,18 @@ public partial class MainWindow
     }
 
     /// <summary>One combo's row: on, its tag, its parts and When to use (with the hint replies get in grey while it is empty), a
-    /// line on what it sets off, Try and Remove. A saved combo keeps its parts while the Parts box is as it was, so renaming an
-    /// emote's tag never breaks it.</summary>
+    /// line on what it sets off, Try and Remove. The parts stay the emotes the Parts box named when it was drawn or last typed
+    /// while its text is unchanged, so renaming an emote's tag never breaks a combo or points it at another emote.</summary>
     private sealed class ComboRow
     {
         private readonly CharacterCombo? saved;
-        private readonly string savedParts;
         private readonly CharacterActionCatalog catalog;
         private readonly Func<IReadOnlyList<CharacterAction>> actions;
         private readonly CheckBox on;
         private readonly TextBox tag, parts, use;
         private readonly TextBlock title, state, hint;
+        // The Parts box's text and the parts it named then, against the emotes' tags of that moment.
+        private (string Text, IReadOnlyList<string> Ids) named;
         internal Button TryButton { get; }
         internal bool Removed { get; private set; }
         internal StackPanel View { get; } = new();
@@ -145,7 +146,7 @@ public partial class MainWindow
             saved = combo;
             this.catalog = catalog;
             this.actions = actions;
-            savedParts = combo is null ? "" : CharacterActions.PartsText(combo.Parts, catalog.Settings.Actions);
+            named = (combo is null ? "" : CharacterActions.PartsText(combo.Parts, catalog.Settings.Actions), combo?.Parts ?? []);
             on = RowSwitch(combo?.Enabled ?? true);
             AutomationProperties.SetName(on, $"Use combo {n + 1}");
             AutomationProperties.SetAutomationId(on, $"CharacterComboOn-{n}");
@@ -157,7 +158,7 @@ public partial class MainWindow
             tag = Compact(new TextBox { Text = combo?.Tag ?? "", Width = 120, MaxLength = CharacterActionCatalog.MaximumTagLength });
             AutomationProperties.SetName(tag, $"Tag for combo {n + 1}");
             AutomationProperties.SetAutomationId(tag, $"CharacterComboTag-{n}");
-            parts = Compact(new TextBox { Text = savedParts, MinWidth = 220, MaxLength = 200 });
+            parts = Compact(new TextBox { Text = named.Text, MinWidth = 220, MaxLength = 200 });
             AutomationProperties.SetName(parts, $"Parts of combo {n + 1}");
             AutomationProperties.SetAutomationId(parts, $"CharacterComboParts-{n}");
             const string partsHelp = "The tags of 2 to 6 emotes, motions or gestures, with spaces between, such as blush hearts nod.";
@@ -185,16 +186,21 @@ public partial class MainWindow
             on.Unchecked += (_, _) => edited();
             // The card's Edited brings every combo's line and hint up to date.
             tag.TextChanged += (_, _) => edited();
-            parts.TextChanged += (_, _) => edited();
+            parts.TextChanged += (_, _) =>
+            {
+                // Typed parts name the emotes with those tags now; later renames keep them.
+                if (CharacterActions.ParseParts(parts.Text, actions(), out _) is { } ids) named = (parts.Text, ids);
+                edited();
+            };
             use.TextChanged += (_, _) => edited();
             Refresh();
 
             // As an emote's row: the tag and what it sets off, then its fields; When to use takes the rest of the line.
-            var named = new DockPanel();
-            named.Children.Add(on);
-            named.Children.Add(title);
+            var titleLine = new DockPanel();
+            titleLine.Children.Add(on);
+            titleLine.Children.Add(title);
             var heading = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            heading.Children.Add(named);
+            heading.Children.Add(titleLine);
             heading.Children.Add(state);
             var header = new DockPanel { Margin = new Thickness(0, 14, 0, 0) };
             DockPanel.SetDock(remove, Dock.Right);
@@ -221,11 +227,11 @@ public partial class MainWindow
 
         internal void FocusTag() => tag.Focus();
 
-        // The parts' IDs: the saved ones while the Parts box is as it was, otherwise what its tags name now.
+        // The parts' IDs: those the Parts box named while its text is unchanged, otherwise what its tags name now.
         private IReadOnlyList<string>? PartIds(IReadOnlyList<CharacterAction> now, out string? problem)
         {
             problem = null;
-            return saved is not null && parts.Text == savedParts ? saved.Parts : CharacterActions.ParseParts(parts.Text, now, out problem);
+            return parts.Text == named.Text ? named.Ids : CharacterActions.ParseParts(parts.Text, now, out problem);
         }
 
         // The parts that resolve to an emote of the model, with their settings as the emotes' rows show them now.
