@@ -407,7 +407,8 @@ part the character ignores. **Lingers (s)** is how long the first reaction
 stays on, and **Looks at mouse (s)** turns its eyes to your mouse pointer for
 that many seconds after a touch there (up to 15), as if to see who did it. A
 line shows only what applies, so a group at *(built-in)* shows only its
-feeling. **Eyes usually** is the persona's usual gaze, which
+feeling, and on a narrow window a line's boxes wrap onto a second line beside
+its name. **Eyes usually** is the persona's usual gaze, which
 [Where the character looks](SCREEN_COMMENTARY.md#where-the-character-looks)
 uses while it is set to *As the personality decides*. It decides actions only,
 never words. Point at the status line to read the whole temperament in words.

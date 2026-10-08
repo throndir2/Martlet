@@ -66,8 +66,6 @@ public partial class MainWindow
         }
     }
 
-    private const double TemperamentPartWidth = 140, TemperamentNumberWidth = 60, TemperamentGap = 8;
-
     private Border CharacterTemperamentCard()
     {
         var persona = homeSettings?.Companion?.ActivePersona;
@@ -156,13 +154,7 @@ public partial class MainWindow
         }
 
         // One table: where the eyes usually go, then a line per group and per part with its own reaction, in aligned columns.
-        var table = new Grid { Margin = new Thickness(0, 12, 0, 0) };
-        table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(TemperamentPartWidth) });
-        table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.1, GridUnitType.Star), MinWidth = 96 + TemperamentGap, MaxWidth = 170 });
-        table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star), MinWidth = 104 + TemperamentGap, MaxWidth = 200 });
-        table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star), MinWidth = 104 + TemperamentGap, MaxWidth = 200 });
-        table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(TemperamentNumberWidth + TemperamentGap) });
-        table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(TemperamentNumberWidth + TemperamentGap) });
+        var table = new TemperamentTable();
 
         var rows = new List<TemperamentRow>();
         // The reaction columns' headings show once a line has a feeling of its own; until then those columns are empty.
@@ -170,12 +162,12 @@ public partial class MainWindow
         void ShowReactionHeads()
         {
             var any = rows.Any(r => r.On);
-            foreach (var head in reactionHeads) head.Visibility = any ? Visibility.Visible : Visibility.Hidden;
+            foreach (var head in reactionHeads) head.Visibility = any ? Visibility.Visible : Visibility.Collapsed;
         }
         var after = Compact(new TextBox
         {
             Text = (temperament?.Escalation.After ?? new TouchEscalation().After).ToString(CultureInfo.CurrentCulture),
-            Width = TemperamentNumberWidth, MaxLength = 2, TextAlignment = TextAlignment.Center
+            Width = 60, MaxLength = 2, TextAlignment = TextAlignment.Center
         });
         AutomationProperties.SetName(after, "Touches in a row before the reaction escalates");
         AutomationProperties.SetAutomationId(after, "TouchTemperamentAfter");
@@ -229,11 +221,8 @@ public partial class MainWindow
         after.TextChanged += (_, _) => Edited();
         gaze.SelectionChanged += (_, _) => Edited();
 
-        var gazeRow = TemperamentRow.AddRow(table);
-        TemperamentRow.Place(table, new Label { Content = "Eyes usually", Target = gaze, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Center },
-            gazeRow, 0);
-        TemperamentRow.Place(table, gaze, gazeRow, 1, 3);
-        var headRow = TemperamentRow.AddRow(table);
+        gaze.Margin = new Thickness(0, 3, 0, 3);
+        table.Line(new Label { Content = "Eyes usually", Target = gaze, Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Center }, gaze);
         string[] heads = ["Part", "Feels", "Plays", "Then", "Lingers (s)", "Looks at mouse (s)"];
         string?[] headHelp =
         [
@@ -244,29 +233,33 @@ public partial class MainWindow
             $"How many seconds the first reaction stays on (0: it plays once), up to {CharacterTouchTemperaments.MaximumLinger:0}.",
             $"How many seconds the eyes then look at your mouse pointer, as if to see who did it (0: they don't), up to {CharacterTouchTemperaments.MaximumLook:0}."
         ];
-        for (var column = 0; column < heads.Length; column++)
+        var headCells = heads.Select((text, column) =>
         {
             var head = new TextBlock
             {
-                Text = heads[column], FontSize = 12, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap,
+                Text = text, FontSize = 12, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap,
                 VerticalAlignment = VerticalAlignment.Bottom, ToolTip = headHelp[column]
             };
             head.SetResourceReference(TextBlock.ForegroundProperty, "MutedBrush");
-            TemperamentRow.Place(table, head, headRow, column).Margin = new Thickness(column == 0 ? 0 : TemperamentGap, 16, 0, 4);
             if (column >= 2) reactionHeads.Add(head);
-        }
-        var rule = new Border { Height = 1, Opacity = 0.8 };
+            return (FrameworkElement)head;
+        }).ToArray();
+        table.Add(headCells[0], headCells[1..]).Margin = new Thickness(0, 14, 0, 1);
+        var rule = new Border { Height = 1, Opacity = 0.8, Margin = new Thickness(0, 0, 0, 3) };
         rule.SetResourceReference(Border.BackgroundProperty, "BorderBrush");
-        TemperamentRow.Place(table, rule, TemperamentRow.AddRow(table), 0, heads.Length).Margin = new Thickness(0, 0, 0, 3);
+        table.View.Children.Add(rule);
 
         foreach (var (_, id, label) in CharacterTouchTemperaments.GroupIds)
             rows.Add(new TemperamentRow(table, id, label, true, temperament?.Groups.GetValueOrDefault(id), Edited));
-        var zonesHeading = new TextBlock { Text = "Parts that react differently from their group", FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
-        TemperamentRow.Place(table, zonesHeading, TemperamentRow.AddRow(table), 0, heads.Length).Margin = new Thickness(0, 16, 0, 2);
+        table.View.Children.Add(new TextBlock
+        {
+            Text = "Parts that react differently from their group", FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 16, 0, 2)
+        });
         foreach (var (id, entry) in (temperament?.Zones ?? new Dictionary<string, TouchTemperamentEntry>()).OrderBy(z => z.Key, StringComparer.Ordinal))
             rows.Add(new TemperamentRow(table, id, CharacterTouchZones.Kind(id)?.Label ?? id, false, entry, Edited));
         ShowReactionHeads();
-        stack.Add(table);
+        stack.Add(table.View);
 
         var missing = CharacterTouchZones.Kinds.Where(k => temperament?.Zones.ContainsKey(k.Id) != true).ToArray();
         if (missing.Length > 0)
@@ -317,16 +310,68 @@ public partial class MainWindow
         line.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
     }
 
+    /// <summary>The temperament's table: rows of a part's name and five cells (feels, plays, then, lingers, looks) whose columns
+    /// share one width. The three choices share what the card's width leaves, each up to a most; on a narrow window each row's
+    /// cells wrap under each other, all at the same places, to the right of the names, instead of being cut off.</summary>
+    internal sealed class TemperamentTable
+    {
+        private const double Part = 130, Number = 60, Gap = 8;
+        private static readonly (double Weight, double Least, double Most)[] Choices = [(1.1, 96, 170), (1.2, 104, 200), (1.2, 104, 200)];
+        private readonly List<FrameworkElement>[] columns = [[], [], [], [], []];
+        private readonly double[] widths = [96, 104, 104, Number, Number];
+        internal StackPanel View { get; } = new() { Margin = new Thickness(0, 12, 0, 0) };
+
+        internal TemperamentTable() => View.SizeChanged += (_, e) => { if (e.WidthChanged) Fit(e.NewSize.Width); };
+
+        /// <summary>Adds a row: the part's name, then a cell per column.</summary>
+        internal DockPanel Add(FrameworkElement part, params FrameworkElement[] cells)
+        {
+            var rest = new WrapPanel();
+            for (var column = 0; column < cells.Length; column++)
+            {
+                cells[column].Margin = new Thickness(0, 3, Gap, 3);
+                cells[column].Width = widths[column];
+                columns[column].Add(cells[column]);
+                rest.Children.Add(cells[column]);
+            }
+            return Line(part, rest);
+        }
+
+        /// <summary>Adds a row of the part's name and something outside the columns.</summary>
+        internal DockPanel Line(FrameworkElement part, FrameworkElement content)
+        {
+            part.Width = Part;
+            part.Margin = new Thickness(0, 3, Gap, 3);
+            DockPanel.SetDock(part, Dock.Left);
+            var row = new DockPanel();
+            row.Children.Add(part);
+            row.Children.Add(content);
+            View.Children.Add(row);
+            return row;
+        }
+
+        private void Fit(double width)
+        {
+            // Two pixels to spare, so rounding never pushes a row's last cell onto a line of its own.
+            var left = width - Part - 2 * Number - (columns.Length + 1) * Gap - 2;
+            var weight = Choices.Sum(c => c.Weight);
+            for (var i = 0; i < Choices.Length; i++)
+            {
+                widths[i] = Math.Clamp(left * Choices[i].Weight / weight, Choices[i].Least, Choices[i].Most);
+                foreach (var cell in columns[i]) cell.Width = widths[i];
+            }
+        }
+    }
     /// <summary>One group's or part's line of the temperament table: how the character feels about a touch there, up to two
     /// reactions (or none at all), how long the first lingers and how long the eyes then look at your mouse, and a part's
-    /// Remove. Controls that don't apply now (all but the feeling of a group left to its built-in reactions, a second reaction
-    /// after the feeling's default) are hidden, keeping the line's height.</summary>
+    /// Remove. Controls that don't apply now are hidden: all but the feeling of a group left to its built-in reactions, a
+    /// second reaction after the feeling's default, and the linger after no reaction.</summary>
     private sealed class TemperamentRow
     {
         private const string BuiltIn = "(built-in)", Default = "(default)", Nothing = "(nothing)";
         private readonly ComboBox attitude, first, second;
         private readonly TextBox linger, look;
-        private readonly List<FrameworkElement> cells = [];
+        private readonly DockPanel view;
         internal string Id { get; }
         internal bool IsGroup { get; }
         internal bool Removed { get; private set; }
@@ -336,23 +381,22 @@ public partial class MainWindow
         /// <summary>A choice shown on one line, cut short with an ellipsis when its box is narrow.</summary>
         internal static readonly DataTemplate OneLine = OneLineTemplate();
 
-        internal TemperamentRow(Grid table, string id, string label, bool isGroup, TouchTemperamentEntry? entry, Action edited)
+        internal TemperamentRow(TemperamentTable table, string id, string label, bool isGroup, TouchTemperamentEntry? entry, Action edited)
         {
             Id = id;
             IsGroup = isGroup;
-            var row = AddRow(table);
             var words = CharacterTouchTemperaments.Vocabulary;
             var shown = words.Select(Display).ToArray();
             var name = new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
-            if (isGroup) cells.Add(Place(table, name, row, 0));
-            else
+            FrameworkElement part = name;
+            if (!isGroup)
             {
                 var glyph = new TextBlock { Text = "\uE711", FontSize = 11 };
                 glyph.SetResourceReference(StyleProperty, "Icon");
                 var remove = PageButton("Remove", () =>
                 {
                     Removed = true;
-                    foreach (var cell in cells) cell.Visibility = Visibility.Collapsed;
+                    view!.Visibility = Visibility.Collapsed;
                     edited();
                 }, id: $"TouchTemperamentRemove-{id}");
                 remove.Content = glyph;
@@ -366,11 +410,11 @@ public partial class MainWindow
                 remove.SetResourceReference(ForegroundProperty, "MutedBrush");
                 remove.ToolTip = $"Remove {label}'s own line, so it reacts like its group";
                 AutomationProperties.SetName(remove, $"Remove {label}");
-                var part = new DockPanel();
+                var dock = new DockPanel();
                 DockPanel.SetDock(remove, Dock.Right);
-                part.Children.Add(remove);
-                part.Children.Add(name);
-                cells.Add(Place(table, part, row, 0));
+                dock.Children.Add(remove);
+                dock.Children.Add(name);
+                part = dock;
             }
             attitude = Combo((isGroup ? new[] { BuiltIn } : []).Concat(CharacterTouchTemperaments.AttitudeWords).ToArray());
             var offset = isGroup ? 1 : 0;
@@ -400,10 +444,11 @@ public partial class MainWindow
             void Apply()
             {
                 var on = !isGroup || attitude.SelectedIndex > 0;
-                Show(first, on);
-                Show(look, on);
-                Show(linger, on && first.SelectedIndex != 1);
-                Show(second, on && first.SelectedIndex > 1);
+                // A line without a feeling of its own ends after it; otherwise a gap keeps the cells after it in their columns.
+                var off = on ? Visibility.Hidden : Visibility.Collapsed;
+                first.Visibility = look.Visibility = on ? Visibility.Visible : off;
+                linger.Visibility = on && first.SelectedIndex != 1 ? Visibility.Visible : off;
+                second.Visibility = on && first.SelectedIndex > 1 ? Visibility.Visible : off;
                 // What (default) plays for the feeling chosen now.
                 var feeling = attitude.SelectedIndex - offset + CharacterTouchTemperaments.MinimumAttitude;
                 var help = $"(default) plays what {CharacterTouchTemperaments.AttitudeWord(feeling)} usually plays: " +
@@ -417,29 +462,8 @@ public partial class MainWindow
             second.SelectionChanged += (_, _) => edited();
             linger.TextChanged += (_, _) => edited();
             look.TextChanged += (_, _) => edited();
-            cells.Add(Place(table, attitude, row, 1));
-            cells.Add(Place(table, first, row, 2));
-            cells.Add(Place(table, second, row, 3));
-            cells.Add(Place(table, linger, row, 4));
-            cells.Add(Place(table, look, row, 5));
+            view = table.Add(part, attitude, first, second, linger, look);
         }
-
-        internal static int AddRow(Grid table)
-        {
-            table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            return table.RowDefinitions.Count - 1;
-        }
-
-        internal static T Place<T>(Grid table, T element, int row, int column, int span = 1) where T : FrameworkElement
-        {
-            element.Margin = new Thickness(column == 0 ? 0 : TemperamentGap, 3, 0, 3);
-            Grid.SetRow(element, row);
-            Grid.SetColumn(element, column);
-            Grid.SetColumnSpan(element, span);
-            table.Children.Add(element);
-            return element;
-        }
-
         /// <summary>Reactions in words: "anger and look away", "hearts, blush and lean in".</summary>
         internal static string Words(IReadOnlyList<string> words) => words.Count switch
         {
@@ -449,8 +473,6 @@ public partial class MainWindow
         };
 
         private static string Display(string word) => word.Replace('_', ' ');
-
-        private static void Show(UIElement element, bool shown) => element.Visibility = shown ? Visibility.Visible : Visibility.Hidden;
 
         private static ComboBox Combo(IReadOnlyList<string> items) => Compact(new ComboBox { ItemsSource = items, ItemTemplate = OneLine });
 
