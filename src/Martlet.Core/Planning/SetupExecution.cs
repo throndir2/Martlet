@@ -321,6 +321,14 @@ public static class SetupExecutor
         }
         if (change.Kind == SetupChangeKind.MoveToGpu && change.GpuIndex is null)
             return (arguments, $"The change names no graphics card for {role} on {change.MachineId}.");
+        // A choice that picks a variant (its terms, secrets, models or graphics card option) is sent explicitly, its default
+        // when the change doesn't pick one: the host installs exactly the variant whose terms the review showed.
+        var selectors = needs.Choices.Select(c => c.When?.Variable).Append(needs.GpuWhen?.Variable)
+            .Concat(needs.TermsWhen.Select(t => t.When.Variable)).Concat(needs.Secrets.Select(s => s.When?.Variable))
+            .OfType<string>().ToHashSet(StringComparer.Ordinal);
+        if (change.Kind != SetupChangeKind.RemoveRole)
+            foreach (var choice in needs.Choices.Where(c => c.When is null && selectors.Contains(c.Variable)))
+                arguments.TryAdd("choice." + choice.Variable, choice.Default);
         if (change.Kind is SetupChangeKind.AddRole or SetupChangeKind.MoveToGpu or SetupChangeKind.ChangeModel && change.GpuIndex is { } index)
         {
             var (card, problem) = Card(specs, index, needs.Gpus);
@@ -351,9 +359,15 @@ public static class SetupExecutor
         if (index < 0 || index >= gpus.Count) return (null, $"it has no graphics card {index + 1}.");
         var gpu = gpus[index];
         if (!gpu.IsNvidia) return (null, $"{gpu.Name} isn't an NVIDIA card, so a host role can't be pinned to it.");
-        static bool Same(string a, string b) => a.Contains(b, StringComparison.OrdinalIgnoreCase) || b.Contains(a, StringComparison.OrdinalIgnoreCase);
-        var alike = cards.Where(c => Same(c.Name, gpu.Name)).ToArray();
-        if (alike.Length > 0) return (alike[Math.Min(gpus.Take(index).Count(g => Same(g.Name, gpu.Name)), alike.Length - 1)], null);
+        // The same name first (case aside), so an "RTX 4070" never takes an "RTX 4070 Ti"; only without one a name that
+        // contains the other ("GeForce RTX 4090" and "NVIDIA GeForce RTX 4090").
+        static bool Exact(string a, string b) => string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+        static bool Contains(string a, string b) => a.Contains(b, StringComparison.OrdinalIgnoreCase) || b.Contains(a, StringComparison.OrdinalIgnoreCase);
+        foreach (var same in new Func<string, string, bool>[] { Exact, Contains })
+        {
+            var alike = cards.Where(c => same(c.Name, gpu.Name)).ToArray();
+            if (alike.Length > 0) return (alike[Math.Min(gpus.Take(index).Count(g => same(g.Name, gpu.Name)), alike.Length - 1)], null);
+        }
         var ordinal = gpus.Take(index).Count(g => g.IsNvidia);
         return ordinal < cards.Count ? (cards[ordinal], null) : (null, $"its host service doesn't see {gpu.Name}.");
     }

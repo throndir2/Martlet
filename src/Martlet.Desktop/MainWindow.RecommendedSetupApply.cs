@@ -139,7 +139,25 @@ public partial class MainWindow
     /// <summary>The map's Configuring states by computer, as last shown (see <see cref="ConfiguringNow"/>).</summary>
     private IReadOnlyDictionary<string, string> ConfiguringMachines() => configuringMachines;
 
-    private void InitializeConfiguring() => HostActivity.Changed += () => Dispatcher.InvokeAsync(ShowConfiguring, DispatcherPriority.Background);
+    private void InitializeConfiguring()
+    {
+        HostActivity.Changed += () => Dispatcher.InvokeAsync(ShowConfiguring, DispatcherPriority.Background);
+        // A run this PC started can't still be running when Martlet starts (it closed or stopped first): finish its entry, so no
+        // computer keeps showing it as Configuring.
+        if (settingsNode?.Document.Find(SetupRun.Key(ClusterDevice)) is { } own && own.UpdatedBy == ClusterDevice &&
+            SetupRun.Read(own.Value) is { Finished: false } left)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var ended = left.Interrupted(now, $"Martlet closed on {ClusterDevice} before this change was made. Check the recommended setup again.");
+            try { settingsNode.Put(own.Key, ended.Write(), now); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException)
+            {
+                ErrorLog.Warn("Couldn't finish the recommended setup run Martlet left when it closed.", error);
+            }
+            setupRun = ended;
+            ErrorLog.Info($"Recommended setup: the run {left.RunId} ended when Martlet closed; the changes not made need you.");
+        }
+    }
 
     // ---------- the paths a run takes ----------
 
@@ -296,13 +314,11 @@ public partial class MainWindow
             window.setupRun = run;
             if (window.settingsNode is { } node)
             {
-                // A sync replaces the copy it started from when it ends: write between syncs, as reminders do.
+                // A sync replaces the copy it started from when it ends: write between syncs, as reminders do. While Martlet
+                // closes no sync starts any more; the entry is still saved here and goes out with the next start's sync.
                 while (window.settingsBusy && !window.closing) await Task.Delay(100, cancel);
-                if (!window.closing)
-                {
-                    node.Put(SetupRun.Key(ClusterDevice), run.Write(), DateTimeOffset.UtcNow);
-                    window.QueueSettingsSync();
-                }
+                node.Put(SetupRun.Key(ClusterDevice), run.Write(), DateTimeOffset.UtcNow);
+                if (!window.closing) window.QueueSettingsSync();
             }
             window.ShowConfiguring();
         }

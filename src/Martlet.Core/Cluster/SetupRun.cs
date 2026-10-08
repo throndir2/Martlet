@@ -98,6 +98,16 @@ public sealed record SetupRun
 
     private DateTimeOffset Later(DateTimeOffset now) => now.ToUniversalTime() < UpdatedAt ? UpdatedAt : now.ToUniversalTime();
 
+    /// <summary>The run ended without finishing (Martlet closed on the computer running it): every computer that still waited or
+    /// worked needs the owner, with <paramref name="why"/>.</summary>
+    public SetupRun Interrupted(DateTimeOffset now, string why)
+    {
+        var run = this;
+        foreach (var machine in Machines.Where(m => m.State is SetupMachineState.Pending or SetupMachineState.Configuring && m.Done < m.Steps))
+            run = run.With(machine.MachineId, SetupMachineState.NeedsAttention, why, machine.Done, now);
+        return run.Finish(now);
+    }
+
     /// <summary>Whether it is still working: not finished, and it changed within <see cref="StaleAfter"/>.</summary>
     public bool Active(DateTimeOffset now) => FinishedAt is null && now - UpdatedAt < StaleAfter;
 

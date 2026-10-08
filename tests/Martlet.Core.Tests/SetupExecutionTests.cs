@@ -99,6 +99,34 @@ public sealed class SetupExecutionTests
     }
 
     [Fact]
+    public async Task A_role_installed_with_its_default_variant_shows_and_sends_that_variant()
+    {
+        // Audio2Face: its terms are only per engine, and the change names no engine.
+        var targets = new Targets
+        {
+            Needs = new SetupRoleNeeds("Audio2Face", "")
+            {
+                Choices = [new("A2F_ENGINE", ["local", "nim"], "local"), new("A2F_MODEL", ["claire", "mark"], "claire")],
+                TermsWhen = [new(new("A2F_ENGINE", "local"), "NVIDIA Open Model License."), new(new("A2F_ENGINE", "nim"), "NVIDIA AI Enterprise.")],
+                Secrets = [new("ngc_api_key", "your NGC API key", false, new("A2F_ENGINE", "nim"))]
+            }
+        };
+        SetupChange[] changes = [new(SetupChangeKind.AddRole, "gpu-box", "Install lip-sync on gpu-box.", "w") { RoleKind = "audio2face" }];
+        var recommendation = new NetworkRecommendation(new([], []), new([], []), changes);
+        var preflight = await SetupExecutor.PrepareAsync(recommendation, targets, default);
+        var item = preflight.Items.Single();
+        Assert.Equal(SetupStepVerdict.Ready, item.Verdict);
+        Assert.Equal("NVIDIA Open Model License.", item.Terms);
+        Assert.Equal("local", item.Arguments["choice.A2F_ENGINE"]);
+        Assert.False(item.Arguments.ContainsKey("choice.A2F_MODEL"));
+        Assert.Empty(item.Secrets);
+
+        await SetupExecutor.ApplyAsync(recommendation, preflight, targets, null, default);
+        Assert.Equal("Add audio2face on gpu-box (choice.A2F_ENGINE=local)", targets.Commands.Single().ToString());
+        Assert.Equal(["audio2face@gpu-box"], targets.Accepted);
+    }
+
+    [Fact]
     public void A_card_is_found_by_name_then_by_its_place_among_the_NVIDIA_cards()
     {
         var specs = new MachineSpecs("gpu-box", "gpu-box")
@@ -116,6 +144,29 @@ public sealed class SetupExecutionTests
         Assert.Contains("no graphics card 9", SetupExecutor.Card(specs, 8, cards).Problem);
         // One card or none: nothing to choose.
         Assert.Equal((null, null), SetupExecutor.Card(specs, 1, []));
+
+        // Windows and nvidia-smi may list cards in different orders: a 4070 never takes the 4070 Ti.
+        var mixed = new MachineSpecs("pc", "pc")
+        {
+            Gpus = [new("NVIDIA GeForce RTX 4070", GpuVendor.Nvidia, 12), new("NVIDIA GeForce RTX 4070 Ti", GpuVendor.Nvidia, 12)]
+        };
+        SetupRoleCard[] smi = [new("GPU-ti", "NVIDIA GeForce RTX 4070 Ti", 12282), new("GPU-plain", "NVIDIA GeForce RTX 4070", 12282)];
+        Assert.Equal("GPU-plain", SetupExecutor.Card(mixed, 0, smi).Card!.Id);
+        Assert.Equal("GPU-ti", SetupExecutor.Card(mixed, 1, smi).Card!.Id);
+    }
+
+    [Fact]
+    public void A_run_left_by_a_closed_Martlet_ends_with_what_still_needs_doing()
+    {
+        var run = SetupRun.Start("run-5", "desk-a", Now, [("gpu-box", 2), ("desk-host", 1), ("old-box", 1)])
+            .With("gpu-box", SetupMachineState.Configuring, "Installing Thinking (2 of 2)", 1, Now)
+            .With("desk-host", SetupMachineState.Done, "All 1 change made", 1, Now)
+            .With("old-box", SetupMachineState.Failed, "exit 1", 0, Now);
+        var ended = run.Interrupted(Now.AddMinutes(1), "Martlet closed first.");
+        Assert.True(ended.Finished);
+        Assert.Equal((SetupMachineState.NeedsAttention, "Martlet closed first."), (ended.Machine("gpu-box")!.State, ended.Machine("gpu-box")!.Step));
+        Assert.Equal(SetupMachineState.Done, ended.Machine("desk-host")!.State);
+        Assert.Equal(SetupMachineState.Failed, ended.Machine("old-box")!.State);
     }
 
     [Fact]
@@ -238,6 +289,8 @@ public sealed class SetupExecutionTests
         internal List<SetupRun> Published { get; } = [];
         internal int Checks { get; private set; }
         internal Action? OnCommand { get; set; }
+        /// <summary>What every role needs, instead of the defaults below.</summary>
+        internal SetupRoleNeeds? Needs { get; init; }
 
         public string Device => "desk-test";
 
@@ -252,7 +305,7 @@ public sealed class SetupExecutionTests
 
         public string RoleName(string kind) => kind switch { "f5" => "F5-TTS", "chatterbox" => "Chatterbox Turbo", _ => kind };
 
-        public Task<SetupRoleNeeds> DescribeAsync(string machineId, string roleKind, CancellationToken cancel) => Task.FromResult(roleKind switch
+        public Task<SetupRoleNeeds> DescribeAsync(string machineId, string roleKind, CancellationToken cancel) => Task.FromResult(Needs ?? roleKind switch
         {
             "chatterbox" => new SetupRoleNeeds("Chatterbox", "Chatterbox terms.")
                 { Choices = [new("CHATTERBOX_MODEL", ["chatterbox-turbo"], "chatterbox-turbo")], Stops = ["f5"] },

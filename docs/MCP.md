@@ -3090,8 +3090,8 @@ computers (FIXTURE, NOT real hosts): gpu-box with two NVIDIA cards (through
 Martlet there), desk-host (this PC's own host service), linux-box (SSH),
 old-box (Martlet can't reach it) and laptop (no host service). The preflight:
 Chatterbox Turbo's terms with the RTX 4090 by UUID, Parakeet chosen as the stt
-variant with that variant's terms only, moving Thinking keeping its model, an
-NGC key the owner enters, old-box needing someone there, laptop unable to run
+variant with that variant's terms only, moving Thinking keeping its model, Audio2Face
+showing and sending its default engine's terms, an NGC key the owner enters, old-box needing someone there, laptop unable to run
 host roles, the Thinking pool joining by itself and the downloads added up.
 The run: the host commands in order with their arguments (nothing for skipped
 changes), the key only to Audio2Face and never in text, the terms recorded as

@@ -885,11 +885,13 @@ remove roles). It uses only the paths that already exist:
 
 | Change | Path |
 | --- | --- |
-| Add a role, change its model, move it to a graphics card | `host.add-role` with `choice.<VAR>` answers through Martlet on that computer; this PC's own host engine; or the SSH runner without questions, as automatic host updates use it. The model selects its choice and its variant (`choice.STT_ENGINE=parakeet` for a Parakeet model). An installed role keeps what it runs with now. `choice.gpu` is the UUID of the card from the describe output, found by the card's name (or by its place among the NVIDIA cards). |
+| Add a role, change its model, move it to a graphics card | `host.add-role` with `choice.<VAR>` answers through Martlet on that computer; this PC's own host engine; or the SSH runner without questions, as automatic host updates use it. The model selects its choice and its variant (`choice.STT_ENGINE=parakeet` for a Parakeet model). A choice that selects a variant is always sent, with its default when the change names none, so the host installs the variant whose terms the review showed. An installed role keeps what it runs with now. `choice.gpu` is the UUID of the card from the describe output, found by the card's exact name (then a name that contains the other, then its place among the NVIDIA cards). |
 | Remove a role | `host.remove-role`, or `martlet-host remove` on this PC or over SSH |
 | Hand a job to a computer | The shared cluster plan, as *Use for ...* on the Devices map does, with failover on. Without a host, each companion PC uses its own choice again. |
 | Share speaking or listening | Devices › Sharing work (`work-sharing.json`, the `work-sharing` shared setting): the computer is no longer in the job's *never* list, and sharing is on. Leaving puts it on that list. |
 | Join or leave the Thinking pool | Nothing to do. A computer joins the Thinking pool by itself on its next check when it runs the deep-thinking role. Martlet never writes `thinking-pool.json` for this. |
+
+While the run works, Martlet does not install its own update, and closing Martlet asks first. If Martlet closes before the run ends, the next start ends the run record: the changes not made need you.
 
 A failed step does not stop the other steps. Each step keeps your other
 choices: a job that moves to a host keeps the previous route aside, as a

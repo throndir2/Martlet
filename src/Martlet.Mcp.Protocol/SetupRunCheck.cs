@@ -72,8 +72,10 @@ internal static class SetupRunCheck
         Step("preflight: moving Thinking keeps its model and names the RTX 3060",
             Item(0).Arguments.GetValueOrDefault("choice.OLLAMA_MODEL") == "gemma4:12b" && Item(0).Arguments.GetValueOrDefault("choice.gpu") == "GPU-bbb",
             Item(0).Arguments);
-        Step("preflight: Audio2Face needs the owner's NGC key", Item(4).Verdict == SetupStepVerdict.NeedsOwner &&
-            preflight.Unanswered.SingleOrDefault()?.Name == "ngc_api_key", preflight.Unanswered.Select(s => s.Prompt));
+        Step("preflight: Audio2Face shows its default engine's terms and needs the owner's NGC key", Item(4).Verdict == SetupStepVerdict.NeedsOwner &&
+            Item(4).Terms == "The local engine's models use the NVIDIA Open Model License." &&
+            Item(4).Arguments.GetValueOrDefault("choice.A2F_ENGINE") == "local" &&
+            preflight.Unanswered.SingleOrDefault()?.Name == "ngc_api_key", new { Item(4).Terms, unanswered = preflight.Unanswered.Select(s => s.Prompt) });
         Step("preflight: someone at old-box makes its change", Item(5).Verdict == SetupStepVerdict.NeedsSomeoneThere, Item(5).Text);
         Step("preflight: laptop runs no host service", Item(6).Verdict == SetupStepVerdict.CannotApply, Item(6).Text);
         Step("preflight: the Thinking pool joins by itself", Item(11).Verdict == SetupStepVerdict.Automatic, Item(11).Text);
@@ -91,7 +93,7 @@ internal static class SetupRunCheck
             "Add stt on desk-host (choice.STT_ENGINE=parakeet, choice.STT_MODEL=parakeet-tdt-110m-en)",
             "Add chatterbox on gpu-box (choice.CHATTERBOX_MODEL=chatterbox-turbo, choice.gpu=GPU-aaa)",
             "Add deep-thinking on linux-box (choice.OLLAMA_MODEL=gemma4:e4b)",
-            "Add audio2face on gpu-box (1 secret redacted)",
+            "Add audio2face on gpu-box (choice.A2F_ENGINE=local, 1 secret redacted)",
             "Remove f5 on desk-host",
             "Remove xtts on linux-box"
         ];
@@ -236,8 +238,14 @@ internal static class SetupRunCheck
                         new(new("STT_ENGINE", "parakeet"), "Parakeet runs on this host's CPU with sherpa-onnx.")],
                     GpuOrCpu = true, GpuWhen = new("STT_ENGINE", "whisper")
                 },
-                "audio2face" => new SetupRoleNeeds("Audio2Face-3D lip-sync", "NVIDIA's container terms apply.")
-                    { Secrets = [new("ngc_api_key", "your NGC API key", false)], Gpus = cards },
+                "audio2face" => new SetupRoleNeeds("Audio2Face-3D lip-sync", "")
+                {
+                    // As its role.conf: terms only per engine; the change names no engine, so the default's are shown and sent.
+                    Choices = [new("A2F_ENGINE", ["local", "nim"], "local")],
+                    TermsWhen = [new(new("A2F_ENGINE", "local"), "The local engine's models use the NVIDIA Open Model License."),
+                        new(new("A2F_ENGINE", "nim"), "The NIM engine uses NVIDIA AI Enterprise terms.")],
+                    Secrets = [new("ngc_api_key", "your NGC API key", false)], Gpus = cards
+                },
                 _ => new SetupRoleNeeds("Ollama", "Each model has its own license.")
                 {
                     Installed = machineId == "gpu-box", Current = machineId == "gpu-box" ? new Dictionary<string, string> { ["OLLAMA_MODEL"] = "gemma4:12b" }
