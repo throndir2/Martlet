@@ -81,4 +81,30 @@ public sealed class PromptSettingsTests
         Assert.DoesNotContain("short_first_sentence",
             System.Text.Encoding.UTF8.GetString(Martlet.Core.Contracts.ContractJson.Write(CompanionSettings.Begin(null))));
     }
+
+    [Fact]
+    public void ScreenGlancesReactToWhatTheUserDoesNotToTheirSetup()
+    {
+        var look = PromptSettings.Fill(null, PromptCatalog.CommentaryScreen, ("silent", "pass"))!;
+        // The model first guesses the user's activity from the picture and what it saw, heard and was told lately...
+        Assert.Contains("educated guess", look);
+        Assert.Contains("what they are doing right now", look);
+        foreach (var clue in new[] { "this picture", "your last looks", "what they said lately", "playing on their PC" })
+            Assert.Contains(clue, look);
+        // ...then remarks on that activity, never on the computer, its layout or how busy it looks.
+        Assert.Contains("talk about that activity", look);
+        Assert.Contains("Never comment on their computer or setup", look);
+        Assert.Contains("\"Wow, you have such a complicated setup!\"", look);
+        Assert.Contains("can't tie a remark to what they are doing or what just happened, reply [pass]", look);
+        Assert.DoesNotContain("{", look);
+
+        // The look's message, the kept [seen: ...] words, chatty moods and the screen summary all point the same way.
+        Assert.EndsWith("Reply [pass] or one short remark on what they're doing.)", PromptSettings.Fill(null, PromptCatalog.GlanceScreen,
+            ("title", "Boss fight"), ("remarks", ""), ("silent", "pass")));
+        Assert.Contains("mainly what the user is doing", PromptSettings.Fill(null, PromptCatalog.SeenTag, ("silent", "pass")));
+        Assert.Contains("never to their setup", PromptSettings.Fill(null, PromptCatalog.ChattinessChatty, ("silent", "pass")));
+        Assert.Contains("never to their setup", PromptCatalog.DefaultChattinessDecidesInstructions);
+        Assert.Contains("what the user did and what changed", PromptCatalog.Default(PromptCatalog.ScreenDigest));
+        Assert.Contains("skip their setup", PromptCatalog.Default(PromptCatalog.ScreenDigest));
+    }
 }

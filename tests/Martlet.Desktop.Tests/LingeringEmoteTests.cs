@@ -63,10 +63,10 @@ public sealed class LingeringEmoteTests
         Assert.Null(CharacterActions.OffTagName("{glasses}"));
         Assert.Null(CharacterActions.OffTagName("{/}"));
         Assert.Null(CharacterActions.OffTagName("[/glasses]"));
-        Assert.Equal("expression:Glasses", catalog.Off("{/glasses}")!.Id);
-        Assert.Equal("expression:Glasses", catalog.Off("{/Glasses}")!.Id);
-        Assert.Null(catalog.Off("{/smile}"));
-        Assert.Null(catalog.Off("{/nothing}"));
+        Assert.Equal("expression:Glasses", Assert.Single(catalog.Off("{/glasses}")).Id);
+        Assert.Equal("expression:Glasses", Assert.Single(catalog.Off("{/Glasses}")).Id);
+        Assert.Empty(catalog.Off("{/smile}"));
+        Assert.Empty(catalog.Off("{/nothing}"));
         Assert.Empty(catalog.For("{/glasses}"));
         Assert.Equal("expression:Glasses", Assert.Single(catalog.For("{glasses}")).Id);
     }
@@ -238,6 +238,7 @@ public sealed class LingeringEmoteTests
         {
             HasExited = false;
             Capabilities = new(revision.ToLowerInvariant(), [new("Jaw", -10, 10, 0, ["Mouth"])]);
+            lock (heldGestures) heldGestures.Clear();
             return Task.CompletedTask;
         }
         public Task<RendererMessage> SendAsync<T>(string kind, T data, CancellationToken token, TimeSpan? timeout = null)
@@ -245,13 +246,29 @@ public sealed class LingeringEmoteTests
             if (data is not RendererAction action) return Task.FromResult(RendererProtocol.Message("ok", activation, new { started = true }));
             Actions.Enqueue(action);
             if (action.Kind != "gesture") return Task.FromResult(RendererProtocol.Message("ok", activation, new { started = true }));
-            // As the renderer does: one holdable gesture held at a time; any other gesture plays once.
-            if (!action.On && heldGesture == action.Name) heldGesture = null;
-            else if (action.On && action.Hold && CharacterActionInventory.Gesture("gesture:" + action.Name) is { Holdable: true }) heldGesture = action.Name;
-            object state = heldGesture is null ? new { } : new { held = heldGesture };
-            return Task.FromResult(RendererProtocol.Message("ok", activation, new { started = true, gesture = state }));
+            // As the renderer does: held gestures layer, a new one letting go only of those that move a part of the face it moves
+            // too, and held drawings (no parts) show with everything; any other gesture plays once.
+            string[] held;
+            lock (heldGestures)
+            {
+                if (!action.On) heldGestures.Remove(action.Name);
+                else if (action.Hold && (Parts.ContainsKey(action.Name) || CharacterActionInventory.Gesture("gesture:" + action.Name) is { Holdable: true }))
+                {
+                    var parts = Parts.GetValueOrDefault(action.Name, []);
+                    heldGestures.RemoveAll(other => other != action.Name && Parts.GetValueOrDefault(other, []).Intersect(parts).Any());
+                    if (!heldGestures.Contains(action.Name)) heldGestures.Add(action.Name);
+                }
+                held = [.. heldGestures];
+            }
+            return Task.FromResult(RendererProtocol.Message("ok", activation, new { started = true, gesture = new { held } }));
         }
-        private string? heldGesture;
+        private readonly List<string> heldGestures = [];
+        // The parts of the face the renderers' held gestures move (Live2D's HOLD_PARTS, VRM's VRM_HOLD_PARTS).
+        private static readonly Dictionary<string, string[]> Parts = new()
+        {
+            ["pout"] = ["mouth", "brows", "head"], ["shy"] = ["eyes", "mouth", "head"], ["look_away"] = ["eyes", "head"],
+            ["drowsy"] = ["eyes", "head"], ["blush"] = ["cheeks"], ["eyes_up"] = ["eyes"], ["mouth_open"] = ["mouth"]
+        };
         public ValueTask DisposeAsync() { HasExited = true; return ValueTask.CompletedTask; }
     }
 
@@ -355,7 +372,7 @@ public sealed class LingeringEmoteTests
     [Fact]
     public void Holdable_gestures_linger_by_default_and_others_stay_brief()
     {
-        foreach (var name in new[] { "pout", "shy", "look_away", "drowsy" })
+        foreach (var name in new[] { "pout", "shy", "look_away", "drowsy", "eyes_up", "mouth_open" })
             Assert.Equal(CharacterActions.Lingering, CharacterActions.DefaultMode(Gesture(name), name));
         foreach (var name in new[] { "wink", "nod", "giggle", "blush" })
             Assert.Equal(CharacterActions.Brief, CharacterActions.DefaultMode(Gesture(name), name));
@@ -376,11 +393,58 @@ public sealed class LingeringEmoteTests
         Assert.True(await avatar.PlayActionAsync(Gesture("wink"), "a try", null, default, hold: true));
         Assert.False(avatar.Held.Holds("gesture:wink"));
         Assert.True(avatar.Held.Holds("gesture:pout"));
-        // The renderer holds one gesture at a time: shy replaces pout.
+        // Shy moves the mouth and the head as pout does, so the renderer lets pout go.
         Assert.True(await avatar.PlayActionAsync(Gesture("shy"), "a try", null, default, hold: true));
         Assert.Equal("gesture:shy", Assert.Single(avatar.Held.Current).Source.Id);
         Assert.True(await avatar.StopActionAsync(Gesture("shy"), "{/shy}", default));
         Assert.Equal(new RendererAction("gesture", "shy", false, true), renderer.Actions.Last());
         Assert.Empty(avatar.Held.Current);
+    }
+
+    [Fact]
+    public async Task Held_gestures_on_different_parts_and_drawings_stay_on_together_go_off_one_at_a_time_and_come_back_together()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var renderer = new Renderer();
+        await using var avatar = new AvatarController(createRenderer: () => renderer, allowControlledClock: true);
+        // A Live2D model that can turn its eyes up, open its mouth and blush (ParamCheek), with the blush set to stay on.
+        var moc = new byte[256];
+        foreach (var (id, at) in new[] { ("ParamEyeBallY", 64), ("ParamMouthOpenY", 128), ("ParamCheek", 192) }) Encoding.ASCII.GetBytes(id).CopyTo(moc, at);
+        var model = Encoding.UTF8.GetBytes("{\"Version\":3,\"FileReferences\":{\"Moc\":\"m.moc3\",\"Textures\":[]}}");
+        var inventory = CharacterActionInventory.From(AvatarRenderer.Live2D, "m.model3.json",
+            [new("m.model3.json", model, "application/json"), new("m.moc3", moc, "application/octet-stream")]);
+        var named = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null));
+        var catalog = named with { Settings = named.Settings with { Actions = named.Settings.Actions
+            .Select(a => a.Id == "gesture:blush" ? a with { Mode = CharacterActions.Lingering } : a).ToArray() } };
+        avatar.UseActions(_ => catalog);
+        var profile = scope.Profile() with { LipSync = AvatarLipSync.Loudness };
+        await avatar.ShowAsync(profile, default);
+        string[] Held() => [.. avatar.Held.Current.Select(h => h.Source.Name)];
+
+        foreach (var name in new[] { "eyes_up", "mouth_open", "blush", "hearts" })
+        {
+            var source = inventory.Find("gesture:" + name)!;
+            Assert.True(catalog.Lingers(source), name);
+            Assert.True(await avatar.PlayActionAsync(source, "a try", null, default, hold: true), name);
+        }
+        Assert.Equal(["eyes_up", "mouth_open", "blush", "hearts"], Held());
+        Assert.EndsWith(" Gestures now: none playing, eyes_up, mouth_open, blush, hearts held.", avatar.LastAction);
+        // Pout moves the mouth too: the renderer lets mouth_open go, and only that one.
+        Assert.True(await avatar.PlayActionAsync(Gesture("pout"), "a try", null, default, hold: true));
+        Assert.Equal(["eyes_up", "blush", "hearts", "pout"], Held());
+        Assert.EndsWith(" Gestures now: none playing, eyes_up, blush, hearts, pout held.", avatar.LastAction);
+        // Turning one off leaves the others on.
+        Assert.True(await avatar.StopActionAsync(Gesture("pout"), "{/pout}", default));
+        Assert.Equal(["eyes_up", "blush", "hearts"], Held());
+        Assert.StartsWith("Turned off the gesture \"pout\"", avatar.LastAction);
+        Assert.EndsWith(" Gestures now: none playing, eyes_up, blush, hearts held.", avatar.LastAction);
+
+        // Shown again, the same model gets every one of them back.
+        await avatar.StopAsync();
+        renderer.Actions.Clear();
+        await avatar.ShowAsync(profile, default);
+        Assert.Equal([new RendererAction("gesture", "eyes_up", true, true), new RendererAction("gesture", "blush", true, true),
+            new RendererAction("gesture", "hearts", true, true)], renderer.Actions.ToArray());
+        Assert.Equal(["eyes_up", "blush", "hearts"], Held());
     }
 }

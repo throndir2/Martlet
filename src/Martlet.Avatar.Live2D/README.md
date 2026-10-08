@@ -44,13 +44,19 @@ the standard parameters for (`gestures`: `nod`, `shake`, `tilt`, `bow`, `sway`,
 `gasp`, `cough`, `clear_throat`, `groan`, `sniff`, `shush`, `inhale`, `exhale`,
 `mumble`, `hum`, `sneeze`, `whistle`, `happy`, `sarcastic`, `angry`, `fear`,
 `crying`, `whispering`, `dramatic`, then `wink`, `pout`, `shy`, `giggle`, `flinch`,
-`lean_in`, `look_away`, `think`, `eye_roll`, `drowsy`, and last the stronger
-blush levels `blush_deep` and `blush_fierce`), added to the look-at angles and those parameters
+`lean_in`, `look_away`, `think`, `eye_roll`, `drowsy`, then the held face parts
+`eyes_up` and `mouth_open`, and last the stronger blush levels `blush_deep` and
+`blush_fierce`), added to the look-at angles and those parameters
 (`lib/gestures.ts`). `gesture(name, true)` holds `pout`, `shy`, `look_away`,
-`drowsy` or a blush level until `endGesture(name)`; a gesture played meanwhile plays on top, and
-`gestureState` says which plays once and which is held. Every blush level
-(`BLUSH_LEVELS`) moves `ParamCheek` fully; without it `gesture` returns false
-and the renderer page draws the level over the face instead.
+`drowsy`, a blush level, `eyes_up` or `mouth_open` until `endGesture(name)`. Held
+gestures layer: holding one lets go only of the held ones that move a part it
+moves too (`HOLD_PARTS`: eyes, mouth, cheeks, brows, head; every blush level is
+the cheeks). A gesture played
+meanwhile plays on top, and `gestureState` says which plays once and every one
+held (`held` is a list). A held `eyes_up` keeps the look out of the eyeballs,
+and a held open mouth eases back while lip-sync moves the mouth. Every blush
+level (`BLUSH_LEVELS`) moves `ParamCheek` fully; without it `gesture` returns
+false and the renderer page draws the level over the face instead.
 
 `faceAnchor()` says where the face is now, for Martlet's drawings over it
 (`lib/face.ts`). At load the adapter finds the face at rest, then pins its

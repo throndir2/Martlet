@@ -119,7 +119,7 @@ test("every blush level moves ParamCheek fully when the model has it; without it
   assert.equal(held.adapter.gesture("blush_fierce", true), true);
   for (let i = 0; i < 20; i++) held.adapter.update(0.1);
   assert.equal(held.gestures.at(-1).ParamCheek, 1, "the model's own blush, fully, under Martlet's drawing");
-  assert.deepEqual(held.adapter.gestureState, { held: "blush_fierce" });
+  assert.deepEqual(held.adapter.gestureState, { held: ["blush_fierce"] });
   held.adapter.endGesture("blush_fierce");
   for (let i = 0; i < 10; i++) held.adapter.update(0.1);
   assert.equal(held.gestures.at(-1), undefined, "turned off, it fades out and ends");

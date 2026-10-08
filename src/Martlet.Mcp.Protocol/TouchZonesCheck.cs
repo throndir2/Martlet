@@ -138,6 +138,8 @@ internal static class TouchZonesCheck
             saved = settings is null ? null : new
             {
                 zones = settings.Zones.Count, active = settings.Zones.Count(settings.Active), settings.DetectedBy, settings.IncludeIntimate, settings.Whole,
+                crop = settings.Crop is { } at ? new { left = Math.Round(at.X, 4), top = Math.Round(at.Y, 4), width = Math.Round(at.Width, 4),
+                    height = Math.Round(at.Height, 4) } : null,
                 snapshot = File.Exists(CharacterTouchZones.SnapshotPath(dataDirectory, id)),
                 sent = CharacterTouchZones.LoadSent(dataDirectory, id) is { } last
                     ? new { line = last.Describe(), last.Requests, pictures = last.Pictures.Count, last.Fixture, last.Steps } : null,

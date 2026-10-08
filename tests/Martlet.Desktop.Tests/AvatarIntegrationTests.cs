@@ -509,6 +509,51 @@ public sealed class AvatarIntegrationTests
     }
 
     [Fact]
+    public void Click_through_is_a_menu_choice_martlet_carries_out()
+    {
+        Assert.Contains(RendererRequest.ClickThroughOn, RendererRequest.Actions);
+        Assert.Contains(RendererRequest.ClickThroughOff, RendererRequest.Actions);
+        var command = RendererProtocol.Message("click-through", Guid.NewGuid(), new RendererClickThrough(true));
+        Assert.True(RendererProtocol.Data<RendererClickThrough>(command).On);
+        // Martlet reads it back from the overlay's view; older overlays leave it out.
+        var view = RendererProtocol.Message("view", Guid.NewGuid(), new { width = 420, height = 560, screenTop = 0, zoom = 1, headTop = 0.05, clickThrough = true });
+        Assert.True(RendererProtocol.Data<RendererView>(view).ClickThrough);
+        var older = RendererProtocol.Message("view", Guid.NewGuid(), new { width = 420, height = 560, screenTop = 0, zoom = 1, headTop = 0.05 });
+        Assert.Null(RendererProtocol.Data<RendererView>(older).ClickThrough);
+    }
+
+    [Fact]
+    public async Task Click_through_reaches_a_showing_character_at_once_and_a_hidden_one_when_it_shows()
+    {
+        using var scope = new AvatarHostingTests.Scope();
+        var renderers = new List<Renderer>();
+        await using var controller = new AvatarController(createRenderer: () =>
+        {
+            var next = new Renderer();
+            renderers.Add(next);
+            return next;
+        });
+        // Hidden, it only takes effect for the next showing.
+        await controller.SetClickThroughAsync(true, default);
+        Assert.True(controller.ClickThrough);
+        await controller.ShowAsync(scope.Profile() with { LipSync = AvatarLipSync.Loudness }, default);
+        var started = Assert.Single(Assert.Single(renderers).Messages, m => m.Kind == "click-through");
+        Assert.True(RendererProtocol.Data<RendererClickThrough>(started).On);
+
+        // Showing, the overlay is told at once.
+        await controller.SetClickThroughAsync(false, default);
+        Assert.False(controller.ClickThrough);
+        var told = renderers[0].Messages.Where(m => m.Kind == "click-through").ToArray();
+        Assert.Equal(2, told.Length);
+        Assert.False(RendererProtocol.Data<RendererClickThrough>(told[1]).On);
+
+        // Off, a newly shown character isn't told anything: it catches clicks as it always did.
+        await controller.StopAsync();
+        await controller.ShowAsync(scope.Profile() with { LipSync = AvatarLipSync.Loudness }, default);
+        Assert.DoesNotContain(renderers[1].Messages, m => m.Kind == "click-through");
+    }
+
+    [Fact]
     public void Mute_and_unmute_are_menu_choices_martlet_carries_out()
     {
         Assert.Contains("mute", RendererRequest.Actions);

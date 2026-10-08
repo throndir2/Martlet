@@ -86,9 +86,13 @@ internal sealed class CharacterActionService(string? dataDirectory)
         return null;
     }
 
-    /// <summary>Goes back to the names from the model's own files, forgetting the owner's edits and the Thinking model's names.</summary>
+    /// <summary>Goes back to the names from the model's own files, forgetting the owner's edits and the Thinking model's names.
+    /// The owner's combos stay.</summary>
     internal Task<string?> ResetAsync(CancellationToken token) => Current is { } current
-        ? SaveAsync(CharacterActions.Merge(current.Inventory, null), token)
+        ? SaveAsync(CharacterActions.Merge(current.Inventory, new CharacterActionSettings
+        {
+            ModelId = current.Inventory.ModelId, Actions = [], Combos = current.Settings.Combos
+        }), token)
         : Task.FromResult<string?>("No character is loaded.");
 
     /// <summary>Whether the loaded model should be named by the Thinking model on its own: never named by it and not tried
