@@ -17,7 +17,12 @@ public static partial class NetworkRecommender
             {
                 if (!decisions.TryGetValue(job, out var decision) || decision.Frozen) continue;
                 var today = TodayJob(job);
-                if (today?.HostId != decision.HostId || (today?.Off ?? false) != decision.Off)
+                // A job changes when another computer (or none) does it, or, with no host before or after, another option
+                // (a hosted provider or the app's own) does it; a job that wasn't set up changes when the plan gives it one.
+                var moved = today?.HostId != decision.HostId || (today?.Off ?? false) != decision.Off;
+                var switched = decision.HostId is null && today?.HostId is null && decision.OptionId is not null &&
+                    !string.Equals(today?.OptionId, decision.OptionId, StringComparison.Ordinal);
+                if (moved || switched)
                 {
                     var option = Find(decision.OptionId);
                     var summary = decision.Off ? "The character's face follows the voice's loudness on each companion PC."

@@ -20,6 +20,8 @@ public static partial class NetworkRecommender
         private readonly bool singlePc;
         private readonly int companions;
         private readonly Dictionary<string, Decision> decisions = new(StringComparer.Ordinal);
+        /// <summary>The jobs whose pool a step has decided.</summary>
+        private readonly HashSet<string> poolsDone = new(StringComparer.Ordinal);
         private readonly List<string> notes = [];
 
         public NetworkSetup Current { get; }
@@ -56,6 +58,7 @@ public static partial class NetworkRecommender
                 }
             }
             NewLipSync();
+            Separate();
             Pool(ClusterJobs.Speaking);
             Pool(ClusterJobs.Listening);
             SpareThinkingModels();
@@ -286,16 +289,19 @@ public static partial class NetworkRecommender
             if (card is { } c)
             {
                 var onCard = node.Roles.Where(r => r.Card == c).ToList();
-                if (node.Free(c) + Epsilon < option.GpuGb) return false;
+                var reserved = node.Pending.Where(r => r.Card == c && !(r.Kind == query.Kind && r.Native == query.Native) && Reserved(node, r)).ToList();
+                if (node.Free(c) - reserved.Sum(r => r.Gb) + Epsilon < option.GpuGb) return false;
                 if (onCard.Any(r => r.Option is { CanShareGpu: false }) || !option.CanShareGpu && onCard.Count > 0) return false;
-                if (query.Kind is ThinkingRole or DeepThinkingRole && onCard.Any(r => r.IsModel)) return false;
+                if (query.Kind is ThinkingRole or DeepThinkingRole && onCard.Concat(reserved).Any(r => r.IsModel)) return false;
                 if (IsVoice(query.Kind) && onCard.Any(r => IsVoice(r.Kind))) return false;
             }
             else if (option.UsesGpu) return false;
             else if (!query.Native && catalog.Options.Any(o => o.IsLocal && o.HostRoleKind == query.Kind && o.UsesGpu && node.Cards(o).Any()))
                 return false;
             var ram = option.Peak.RamGb + (card is { } u && node.Spec.Gpus[u].UnifiedMemory ? option.GpuGb : 0);
-            if (node.RamCapacity - node.RamUsed + Epsilon < ram) return false;
+            var reservedRam = node.Pending.Where(r => !(r.Kind == query.Kind && r.Native == query.Native) && Reserved(node, r))
+                .Sum(r => r.Option is { IsLocal: true } o ? o.Peak.RamGb : 0);
+            if (node.RamCapacity - node.RamUsed - reservedRam + Epsilon < ram) return false;
             if (node.CpuCapacity * PlacementEngine.CpuOversubscription - node.CpuUsed + Epsilon < option.Steady.CpuThreads) return false;
             var downloaded = node.Pending.Any(r => r.Kind == query.Kind && (r.Option == option || Same(r.Model, option.ModelId)));
             return downloaded || node.DiskCapacity <= 0 || node.DiskCapacity - node.DiskUsed + Epsilon >= option.Peak.DiskGb;
@@ -332,6 +338,26 @@ public static partial class NetworkRecommender
                 query.LeastLoaded ? node.Load : 0,
                 query.MostRoom ? -room : room
             ];
+        }
+
+        /// <summary>Today's role of a job or pool place keeps its room until the step that decides that job or pool (rule 11):
+        /// a new role never pushes it out first. Deep thinking, spare Thinking models and other voice engines don't.</summary>
+        private bool Reserved(Node node, Role role)
+        {
+            if (role.Leave is not null || !Useful(role) || role.Kind == DeepThinkingRole) return false;
+            foreach (var job in ClusterJobs.All)
+            {
+                if (!MatchesJob(job, role.Kind) || TodayJob(job) is not { } today) continue;
+                var decided = decisions.ContainsKey(job);
+                if (role.Native)
+                {
+                    if (today.HostId is null && !decided) return true;
+                    continue;
+                }
+                if (today.HostId == node.Id && !decided) return true;
+                if (today.Pool.Contains(node.Id) && !poolsDone.Contains(job)) return true;
+            }
+            return false;
         }
 
         /// <summary>Rule 7: the card of Thinking's model (placed, or where it runs today until the Thinking step decides), which

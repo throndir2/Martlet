@@ -44,7 +44,7 @@ public static partial class NetworkRecommender
                     Usage = n.Presence == Presence.Gone ? null : Usage(n, n.Today, InApp(n, jobs))
                 }).ToArray();
             var pool = nodes.Where(n => !optOut.Contains(n.Id) && (n.Presence == Presence.Here
-                    ? n.Roles.Any(r => r.Kind == DeepThinkingRole && r.Purpose == ThinkingPoolPlace)
+                    ? n.Roles.Any(r => r.Kind == DeepThinkingRole && (r.Purpose == ThinkingPoolPlace || r.Fixed))
                     : n.Presence == Presence.Away && n.Machine.Roles.Any(r => r.Kind == DeepThinkingRole)))
                 .Select(n => n.Id).ToArray();
             return new(machines, jobs) { ThinkingPool = pool };

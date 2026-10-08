@@ -11,6 +11,7 @@ public static partial class NetworkRecommender
         /// companion PC. A companion PC stays in it only when the job itself runs on a companion PC (rule 6).</summary>
         private void Pool(string job)
         {
+            poolsDone.Add(job);
             if (!decisions.TryGetValue(job, out var decision) || decision.Frozen) return;
             var kind = job == ClusterJobs.Speaking ? engine : ListeningRole;
             var primary = NodeOf(decision.HostId);

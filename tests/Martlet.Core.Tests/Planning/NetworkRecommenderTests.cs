@@ -211,6 +211,101 @@ public sealed class NetworkRecommenderTests
     }
 
     [Fact]
+    public void NewRolesNeverPushTodaysThinkingOffItsCard()
+    {
+        // Thinking runs on h1's 8 GB card. The voice engine (planned first) has no room beside it, so Thinking stays and the
+        // Windows voice stands in, instead of Thinking moving to a hosted provider the owner never chose.
+        var request = Network(Companion("c1"), Host("h1", Nvidia(8)) with { Roles = [Role("ollama", "gemma4:e2b")] }) with
+        {
+            CurrentJobs =
+            [
+                new JobPlan(ClusterJobs.Thinking, "h1", OptionId: "gemma4:e2b"),
+                new JobPlan(ClusterJobs.Speaking, null, OptionId: FootprintCatalog.WindowsVoiceId)
+            ],
+            Wanted = [PlanComponent.Thinking, PlanComponent.Voice]
+        };
+
+        var recommendation = NetworkRecommender.Recommend(request);
+
+        Assert.Equal("h1", recommendation.Target.Job(ClusterJobs.Thinking)!.HostId);
+        Assert.DoesNotContain(recommendation.Changes, c => c.Job == ClusterJobs.Thinking || c.RoleKind == "ollama");
+        Assert.Contains(recommendation.Notes, n => n.Contains("No computer has room for Chatterbox Turbo", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ThinkingInsideTheCompanionPcKeepsItsRoomOnTheCard()
+    {
+        var request = Network(Companion("this-pc", true, Nvidia(8))) with
+        {
+            CurrentJobs =
+            [
+                new JobPlan(ClusterJobs.Thinking, null, OptionId: "gemma4:e2b"),
+                new JobPlan(ClusterJobs.Speaking, null, OptionId: FootprintCatalog.WindowsVoiceId)
+            ],
+            Wanted = [PlanComponent.Thinking, PlanComponent.Voice]
+        };
+
+        var recommendation = NetworkRecommender.Recommend(request);
+
+        var card = recommendation.Target.Machine("this-pc")!.Usage!.Gpus[0];
+        Assert.True(card.Vram.Used <= card.Vram.Capacity, $"{card.Vram.Used} > {card.Vram.Capacity}");
+        Assert.Equal("gemma4:e2b", recommendation.Target.Job(ClusterJobs.Thinking)!.OptionId);
+    }
+
+    [Fact]
+    public void ANewOptionWithoutAHostIsAChange()
+    {
+        var request = Network(Companion("this-pc", true, Nvidia(12))) with
+        {
+            Preference = HostingPreference.PreferLocal,
+            CurrentJobs = [new JobPlan(ClusterJobs.Thinking, null, OptionId: "hosted:openai")],
+            Wanted = [PlanComponent.Thinking]
+        };
+
+        var recommendation = NetworkRecommender.Recommend(request);
+
+        var change = recommendation.Changes.Single(c => c.Kind == SetupChangeKind.AssignJob);
+        Assert.Equal("", change.MachineId);
+        Assert.Equal("gemma4:e2b", change.OptionId);
+        Assert.Null(change.FromMachineId);
+        Assert.True(recommendation.WorthAsking);
+        Assert.True(NetworkRecommender.Recommend(Apply(request, recommendation)).AlreadyOptimal);
+    }
+
+    [Fact]
+    public void KeepingEverythingLocalBesideAWindowsVoiceIsStable()
+    {
+        var request = Network(Companion("c1"), WindowsHost("win-box", Nvidia(12)), Host("amd-box", new MachineGpu("RX 7800 XT", GpuVendor.Amd, 16))) with
+        {
+            Preference = HostingPreference.PreferLocal,
+            Wanted = [PlanComponent.Thinking, PlanComponent.Voice]
+        };
+
+        var first = NetworkRecommender.Recommend(request);
+        var second = NetworkRecommender.Recommend(Apply(request, first));
+
+        Assert.Equal("amd-box", first.Target.Job(ClusterJobs.Thinking)!.HostId);
+        Assert.Equal("win-box", first.Target.Job(ClusterJobs.Speaking)!.HostId);
+        Assert.True(second.AlreadyOptimal, string.Join("\n", second.Changes.Select(c => c.Summary)));
+        Assert.Equal(first.Fingerprint, second.Fingerprint);
+    }
+
+    [Fact]
+    public void AThinkingPoolModelThatIsntPlannedStaysInThePool()
+    {
+        var request = Network(Companion("c1"), Host("h1", Nvidia(16)) with { Roles = [Role("deep-thinking", "gemma4:e4b")] }) with
+        {
+            CurrentThinkingPool = ["h1"],
+            Wanted = [PlanComponent.Voice]
+        };
+
+        var recommendation = NetworkRecommender.Recommend(request);
+
+        Assert.Equal(["h1"], recommendation.Target.ThinkingPool);
+        Assert.Contains(RolesOf(recommendation, "h1"), r => r.Kind == "deep-thinking");
+    }
+
+    [Fact]
     public void AComputerAwayWithinTheGracePeriodIsPlannedAsIfItWereBack()
     {
         var request = Network(Companion("c1"), Host("h1", Nvidia(12)) with

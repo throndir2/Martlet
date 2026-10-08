@@ -61,7 +61,14 @@ public static partial class NetworkRecommender
             decision.Pool.AddRange((today?.Pool ?? []).Where(p => p is not null));
             foreach (var node in nodes.Where(n => n.Presence == Presence.Here))
                 foreach (var role in node.Pending.Where(r => MatchesJob(job, r.Kind) && (!r.Native || today?.HostId is null)).ToList())
+                {
+                    if (role.Card is { } card && role.Option is { UsesGpu: true } && Fits(node, card, role) != Problem.None)
+                    {
+                        role.Leave = (SetupChangeBenefit.Required, $"{CardText(node, card)} has no room left for it beside the more important jobs.");
+                        continue;
+                    }
                     Commit(node, role, role.Card, node.Id == today?.HostId || role.Native ? job : Kept);
+                }
         }
 
         /// <summary>A live job whose host is here: keeps it there, moves it off a companion PC when a host can run the same
@@ -120,6 +127,7 @@ public static partial class NetworkRecommender
             if (voice ? others.Count == 0 : !others.Any(r => IsVoice(r.Kind))) return;
             var busy = Contention(node, role);
             Unplace(node, role);
+            busy = Math.Max(busy, Others(node, card, new Query(role.Kind)).Count(r => !OnDemand(r.Kind)) + (node.Companion ? CompanionLoad : 0));
             var slot = FindSlot(same, new Query(role.Kind)
             {
                 MaxMs = now.FirstWordMs, MaxContention = busy, StrictWindows = true, Prefer = node.Id,
@@ -134,9 +142,30 @@ public static partial class NetworkRecommender
                 ? $"{node.Name} runs on Windows, where a full graphics card quietly pages into main memory and the voice can start " +
                   $"seconds late: {CardText(slot)} gives {Plain(slot.Option)} a card of its own."
                 : $"{node.Name} runs on Windows, so the voice keeps its graphics card to itself: {Plain(slot.Option)} moves to {CardText(slot)}.";
-            Place(slot, role.Kind, job, SetupChangeBenefit.Improvement, why);
-            if (slot.Node != node) role.Leave = (SetupChangeBenefit.Improvement, why);
-            Decide(job, slot.Node.Id, slot.Option.Id, why, SetupChangeBenefit.Improvement);
+            // A role a step has just placed keeps its own benefit when that is stronger (a missing job is Required).
+            var benefit = role.Was is null && role.Benefit < SetupChangeBenefit.Improvement ? role.Benefit : SetupChangeBenefit.Improvement;
+            Place(slot, role.Kind, job, benefit, why);
+            if (slot.Node != node) role.Leave = (benefit, why);
+            Decide(job, slot.Node.Id, slot.Option.Id, why, benefit);
+        }
+
+        /// <summary>Rule 3 for what the steps placed new as well: on a Windows card with the voice, the other live jobs move to
+        /// a card as fast elsewhere, then the voice does, so applying a recommendation never leads to another.</summary>
+        private void Separate()
+        {
+            foreach (var node in nodes.Where(n => n.Presence == Presence.Here && n.OnWindows))
+                foreach (var voice in node.Roles.Where(r => IsVoice(r.Kind) && r.Card is not null && !r.Fixed && r.Purpose == ClusterJobs.Speaking).ToList())
+                {
+                    foreach (var role in node.Roles.Where(r => r != voice && r.Card == voice.Card && !r.Native && !r.Fixed && r.Option is not null &&
+                        r.Purpose is ClusterJobs.Thinking or ClusterJobs.Listening or ClusterJobs.LipSync).ToList())
+                        Isolate(role.Purpose, role, node, role.Option!, role.Purpose switch
+                        {
+                            ClusterJobs.Thinking => SameModel(role.Option, ThinkingRole),
+                            ClusterJobs.Listening => SameModel(role.Option, ListeningRole),
+                            _ => FaceOptions()
+                        });
+                    if (node.Roles.Contains(voice) && voice.Option is { } option) Isolate(ClusterJobs.Speaking, voice, node, option, EngineOptions());
+                }
         }
 
         // ---------- Thinking ----------
@@ -193,6 +222,13 @@ public static partial class NetworkRecommender
                     Decide(job, slot.Node.Id, slot.Option.Id, why, SetupChangeBenefit.Improvement);
                     return;
                 }
+            }
+            if (natives.FirstOrDefault(x => x.Role.Card is { } card && x.Role.Option is { UsesGpu: true } && Fits(x.Node, card, x.Role) != Problem.None) is
+                { Node: not null } full)
+            {
+                ChooseThinking((SetupChangeBenefit.Required,
+                    $"{CardText(full.Node, full.Role.Card)} has no room for {Plain(now)} beside the more important jobs.", true), now);
+                return;
             }
             foreach (var (node, role) in natives) Commit(node, role, role.Card, job);
             Decide(job, null, now.Id, $"{Plain(now)} in Ollama on {(singlePc ? "this PC" : "each companion PC")}{FirstWord(now)}.");
