@@ -920,12 +920,21 @@ internal sealed class DesktopAutomation(bool allowEffects)
         }
     }
 
-    internal async Task<object> ClickAsync(string id, string? window = null)
+    internal async Task<object> ClickAsync(string id, string? window = null, bool focus = false)
     {
         if (!allowEffects && !IsSafeClick(id))
             throw new InvalidOperationException("This control requires an operator to start MCP with --allow-ui-effects.");
         var element = Find(id, window);
         if (!element.Current.IsEnabled) throw new InvalidOperationException($"Control '{id}' is disabled.");
+        // As a mouse click does, the control takes the keyboard focus first (its window comes to the front).
+        if (focus)
+        {
+            try { element.SetFocus(); }
+            catch (Exception error) when (error is InvalidOperationException or COMException or ElementNotAvailableException)
+            {
+                throw new InvalidOperationException($"Control '{id}' can't take the keyboard focus: {error.Message}");
+            }
+        }
         // Navigation items select a page and sections expand or collapse; neither starts work.
         if (element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var selection))
         {
