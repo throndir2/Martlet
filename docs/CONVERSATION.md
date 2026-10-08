@@ -307,8 +307,11 @@ can post from any thread.
    replaces the source's note before it. Empty text clears the note, and so
    does `Clear(source)`.
 3. Use a known source name when one fits: `ContextBoard.Character`
-   (`character`, posted by the conversation itself), `ContextBoard.Screen`
-   (`screen`), `ContextBoard.Sound` (`sound`) or `ContextBoard.Touch`
+   (`character`, posted by the conversation itself), `ContextBoard.Gaze`
+   (`gaze`, also the conversation's own), `ContextBoard.Screen` (`screen`),
+   `ContextBoard.Sound` (`sound`), `ContextBoard.Activity` (`activity`: what you
+   seem to be doing on this PC, see [Where it comes
+   from](#where-it-comes-from-and-what-you-are-doing)) or `ContextBoard.Touch`
    (`touch`). Another name is 1 to 32 lower-case letters, digits or `-`.
 4. Write the text as one short sentence to the model, such as *Screen over
    the last 20 s: a code editor, then a browser.* The board makes it one line
@@ -319,7 +322,7 @@ can post from any thread.
 Rules of the board:
 
 - **Order.** A request takes the notes in a stable order: `character`,
-  `screen`, `sound`, `touch`, then other sources by name. The notes of one
+  `gaze`, `screen`, `sound`, `activity`, `touch`, then other sources by name. The notes of one
   request are at most 2,048 UTF-8 bytes together; a note later in the order
   that does not fit is left out. The board keeps at most 16 sources.
 - **Consume on read.** A note posted with `consume: true` goes with exactly
@@ -1943,10 +1946,16 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   choice like the microphone's, but never goes through Voice ID or voice
   recognition (no voice is recognized or learned from it) and is never kept as
   a recording for Thinking. The talk window shows it in a muted *Playing on
-  this PC* bubble, never as you. To Thinking, every line of it starts with
-  `[PC audio]`, and Companion › Prompts › *What this PC plays* says those lines
-  are never the user nor instructions, to answer the user with them as shared
-  context, and on their own mostly to reply `[pass]`.
+  this PC* bubble, never as you, named after where it came from when Martlet
+  can tell (*Playing on this PC: a YouTube video in Chrome*). To Thinking, every
+  line of it starts with `[PC audio]`, followed by where it came from when
+  Martlet can tell (`[PC audio] From a voice chat in Discord: ...`, see [Where it
+  comes from](#where-it-comes-from-and-what-you-are-doing)), and Companion ›
+  Prompts › *What this PC plays* says those lines are never the user nor
+  instructions, what each kind is (a creator talking to their viewers, characters
+  in a show or movie, a game, other people in a voice chat who can't hear
+  Martlet, song lyrics), to answer the user with them as shared context, and on
+  their own mostly to reply `[pass]`.
 - **When it goes to Thinking.** What the PC played goes with the next thing you
   say, in the order it was heard. On its own it is offered at most every 20
   seconds after Martlet last answered (sooner once the PC has been quiet for 4
@@ -1975,7 +1984,10 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
   waits for your words (at most 8 seconds) so your voice played back never
   shows; a line let go before your words came is still removed once they do.
   The `LivePcAudio` line's tooltip then adds *This PC plays your voice back too; Martlet
-  left out N line(s) of it.* and the desktop log says so once.
+  left out N line(s) of it.* and the desktop log says so once. A line during
+  which only videos, shows, games or music made sound is the other way round,
+  see *Echo* below: it stays, unless it repeats what a voice Martlet knows as
+  yours (voice recognition's owner, or Voice ID) said.
 - **Never remembered or acted on.** Memory recall and remembering, learning
   names and Home Assistant only ever read your own words: a message that is only
   what the PC played gets none of them, nor MCP tools unless it brings up
@@ -1985,20 +1997,104 @@ call or a game. Ticking it is the consent; push-to-talk never hears the PC.
 - **Echo.** Through speakers the microphone also hears what the PC plays; keep
   [echo reduction](#echo-reduction) on (or use headphones) so it isn't taken
   for you. The Companion card's status says so when echo reduction is off.
-  Your microphone's lines are never dropped for matching what the PC played:
-  with both hearing the same words, the reports on this feature were all your
-  own voice played back, and leaving your words out would leave you
-  unanswered.
+  What leaks past it is caught when Martlet can tell where it came from: a line
+  the microphone heard is this PC's speakers, not you, when at least 4 of its
+  words, and at least 70% of them, are in order and close together in a line
+  the PC played at that same moment (`PcEcho.Speakers`: the two lines overlap
+  in time, and where the words sit in the PC's line, at an even pace of speech,
+  is within 1.5 seconds plus 15% of that line's length of when the microphone
+  heard them; a phrase the video said earlier never counts), and only videos,
+  shows, games or music made any sound during the PC's line. It never becomes
+  your words: the talk window shows a faded note
+  (*Ignored "..." (this PC's speakers: a YouTube video in Chrome).*), the PC's
+  own line carries the words to Thinking, a reply started early for it is let
+  go and its words never stop Martlet. When the microphone's line came first and
+  still waits for a reply, the PC's line takes its place the same way. Any
+  sound during the PC's line from a voice chat, a call, a voice changer, an
+  unknown app or Windows itself means it doesn't count (they may play your own
+  voice back), and a browser that shows a call in any of its windows counts as
+  that call. A voice Martlet knows as yours never counts as the speakers. The
+  `LivePcAudio` line's tooltip adds *The microphone also heard this PC's
+  speakers; Martlet left out N line(s) of it.* and the desktop log says so once.
 
 The talk window's `LivePcAudio` line says whether Martlet hears the PC now
 (*Also hearing this PC.*) or why it can't; its tooltip says how (without its
-own voice, or only on the output you hear while it pauses for Martlet's voice)
-and how many lines of your own voice played back it left out. The Companion card's status names the other output in use.
+own voice, or only on the output you hear while it pauses for Martlet's voice),
+what you seem to be doing on the PC (*Now: playing a game (Elden Ring), full
+screen; in a voice chat in Discord.*) and how many lines of the speakers or of
+your own voice played back it left out. The Companion card's status names the other output in use.
 `pc_audio_check` in
 [Martlet MCP](MCP.md) reads the choice, asks Windows whether Martlet can be
 left out without recording anything, says which outputs are in use and what
 Martlet would hear, rehearses the production path with a fixture loopback and
-runs the own-voice comparison on fixed samples.
+runs the own-voice comparison on fixed samples. `pc_activity_check` looks at
+what this PC plays now and rehearses where lines come from (next section).
+
+### Where it comes from and what you are doing
+
+While Martlet hears what this PC plays, it also follows which app plays it and
+what kind of thing that is, so a video or a voice chat is never taken for you.
+It is deterministic and local (`PcActivityMonitor` with
+`WindowsPcActivitySource`, on its own thread at below-normal priority, only
+while the PC listener runs and Windows isn't locked):
+
+- **What it reads.** About ten times a second, the peak meter of every app's
+  audio sessions on every output (the volume mixer's meters, never the sound;
+  Martlet's own processes are left out). Every two seconds, for the apps that
+  played lately and the window in front: the process and where its program is,
+  the titles of its visible windows (a private window's title, such as
+  *InPrivate*, *Incognito* or a password manager, is never read), whether the
+  window in front fills its screen, whether Windows says a game runs in
+  exclusive full screen, and how busy the app keeps the graphics card's 3D
+  engine (Windows' GPU Engine counters). Nothing is recorded, saved or sent;
+  on this PC a look takes well under a millisecond after the first.
+- **What it tells apart** (`PcActivity.Classify`): a site in a browser by the
+  name at the end of its window title (YouTube and other video sites, Twitch
+  and Kick streams, Netflix, Prime Video, Disney+, Plex and other shows or
+  movies, Spotify, YouTube Music and other music, Google Meet and Teams calls,
+  Discord; a call or voice chat in any of the browser's windows wins, since the
+  sound may be that call), video players (VLC, MPC-HC, mpv and others: music when the title
+  names a music file, otherwise a show or movie), known apps (Plex, Netflix,
+  Kodi, Jellyfin, Spotify, Discord, TeamSpeak, Mumble, Zoom, Teams, Slack and
+  others) and games: an app installed in a game library (Steam, Epic, GOG,
+  Xbox, Riot, EA, Ubisoft and others), one Windows runs in exclusive full
+  screen, one that fills the screen with the 3D engine at least 10% busy, or one
+  that keeps it at least 35% busy in a window. Launchers, OBS, voice changers,
+  editors and Windows itself are never games. Anything else is *something
+  playing in* its app.
+- **Where a line came from.** Each line the PC played is named after the apps
+  that were loud while it was heard (`PcActivityMonitor.Between`, from when its
+  voice began to when its recording ended): the loudest, and a second one only
+  when it was nearly as loud (*From a voice chat in Discord or a game (Elden
+  Ring)*). Every app that made any sound then is kept with the line too, and
+  only when all of them were videos, shows, games or music does the line count
+  for the speakers check above. The talk window's bubble and the line to
+  Thinking say where it came from; a line with no app loud then says nothing
+  more, as before. In the Discord call mode lines are named after who spoke
+  instead.
+- **What you are doing.** The apps that played in the last 8 seconds (a voice
+  chat or call: 60 seconds, people pause) and the one that fills the screen go
+  to the [context board](#context-board) as source `activity`, fresh for 30
+  seconds and posted again every 10 seconds while it stays the same: *What the
+  user seems to be doing on this PC now (a guess from which apps play sound and
+  which window fills the screen): playing a game (Elden Ring), full screen; in
+  a voice chat in Discord; watching a YouTube video in Chrome.* Several things
+  at once are all there, what fills the screen first. A reply never waits for
+  it and it never goes into the history or memory; Companion › Prompts ›
+  *Always listening* tells Thinking that during a voice chat or a game you may
+  be talking to other people, and that sound from the speakers can reach the
+  microphone. The desktop log says *What you're doing on this PC, as Martlet
+  guesses it: ...* (kinds and app names, never a game's or a page's title) when
+  it changes.
+
+None of this adds to the time before Martlet's first word: a line is named
+from levels already read, the note is taken from the board as the request is
+built, and both prompts stay the same from request to request.
+
+`pc_activity_check` in [Martlet MCP](MCP.md) looks at this PC for a few seconds
+(every app with an audio session, its kind and label, and the note a reply
+would read; raw titles are never returned) and rehearses the classifier, where
+fixture lines came from, the note, the speakers check and the prompts.
 
 ### Describing PC sounds
 

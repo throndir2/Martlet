@@ -1645,6 +1645,125 @@ public sealed class LiveConversationTests
                 ("Rain all week.", true)]));
 
     [Fact]
+    public void PcLinesSayWhereTheyCameFromWhenMartletCanTell()
+    {
+        IReadOnlyList<PcSource> youtube = [new(PcActivityKind.Video, "Chrome", "YouTube")];
+        IReadOnlyList<PcSource> call = [new(PcActivityKind.VoiceChat, "Discord"), new(PcActivityKind.Game, "ELDEN RING")];
+        Assert.Equal("[PC audio] From a YouTube video in Chrome: And now the weather.\nWhat did he say?\n" +
+            "[PC audio] From a voice chat in Discord or a game (ELDEN RING): Push left!\n[PC audio] Unknown.",
+            LiveConversationWindow.PcMessage([("And now the weather.", true, youtube), ("What did he say?", false, null),
+                ("Push left!", true, call), ("Unknown.", true, [])]));
+    }
+
+    [Fact]
+    public Task APcLineSaysWhereItCameFromAndRepliesKnowWhatYouAreDoing() => DispatcherTest(async () =>
+    {
+        var pc = new PcSourceFixture();
+        await using var fixture = await LiveFixture.Create(pcAudio: pc,
+            pcActivity: clock => new PcActivityMonitor(() => new AppsFixture(), clock, manual: true));
+        fixture.Answer("Ha, good one.");
+        var window = fixture.Open(new TalkPreferences(SpeakReplies: false, HearPc: true));
+        var activity = fixture.Controller.PcActivity!;
+        try
+        {
+            await Loaded(window);
+            Click(window, "MicChip");
+            // The talk window follows what plays on this PC while it hears the PC; then a YouTube video in Chrome talks.
+            await Follow(fixture, activity, () => activity.On);
+            pc.Enqueue(quiet: 3, speech: 25);
+            await Follow(fixture, activity, () => window.Messages.Any(m => m.Role == ChatRole.Martlet));
+            var heard = Assert.Single(window.Messages, m => m.IsPcAudio);
+            Assert.StartsWith("Playing on this PC: a YouTube video in Chrome · ", heard.Caption);
+            Assert.Equal("Synthetic fixture transcript.", heard.Text);
+            var body = Encoding.UTF8.GetString(fixture.Llm.Body);
+            Assert.Contains("[PC audio] From a YouTube video in Chrome: Synthetic fixture transcript.", body, StringComparison.Ordinal);
+            Assert.Contains("What the user seems to be doing on this PC now (a guess from which apps play sound and which window fills " +
+                "the screen): watching a YouTube video in Chrome.", body, StringComparison.Ordinal);
+            Assert.Contains("a voice chat or call (Discord, TeamSpeak, Zoom, Teams)", body, StringComparison.Ordinal);
+            // The line under the status says what you seem to be doing (MCP reads it as LivePcAudio's help).
+            var pcLine = Control<TextBlock>(window, "PcAudioText");
+            await Follow(fixture, activity, () => AutomationProperties.GetHelpText(pcLine).Contains("Now: watching a YouTube video in Chrome."));
+            // Stopping listening stops following the PC, and its note leaves the context board.
+            Assert.Contains(ContextBoard.Activity, fixture.Controller.Board.Snapshot(fixture.Clock.GetLocalNow()).Sources);
+            Click(window, "MicChip");
+            await Follow(fixture, activity, () => !activity.On);
+            Assert.DoesNotContain(ContextBoard.Activity, fixture.Controller.Board.Snapshot(fixture.Clock.GetLocalNow()).Sources);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public Task TheMicrophoneHearingAVideoOnTheSpeakersIsNotYou() => DispatcherTest(async () =>
+    {
+        const string Weather = "And now the weather for the weekend.";
+        var pc = new PcSourceFixture();
+        await using var fixture = await LiveFixture.Create(pcAudio: pc,
+            pcActivity: clock => new PcActivityMonitor(() => new AppsFixture(), clock, manual: true));
+        fixture.Stt.Respond = (_, _) => Task.FromResult(ProviderFixtures.Json($$"""{"text":"{{Weather}}"}"""));
+        fixture.Answer("Ha.");
+        var window = fixture.Open(new TalkPreferences(SpeakReplies: false, HearPc: true));
+        var activity = fixture.Controller.PcActivity!;
+        try
+        {
+            await Loaded(window);
+            Click(window, "MicChip");
+            await Follow(fixture, activity, () => activity.On);
+            // A YouTube video plays on the speakers: the PC and the microphone hear the same words at the same moment. The PC's
+            // line is ready first (it waits for the microphone, which still hears the room), then the microphone's.
+            pc.Enqueue(quiet: 5, speech: 25);
+            EnqueueUtterance(fixture.Capture, quietBefore: 5, speech: 25, quietAfter: 0);
+            await Follow(fixture, activity, () => fixture.Stt.Calls >= 1);
+            for (var i = 0; i < 10; i++)
+            {
+                activity.Tick();
+                fixture.Clock.Advance(TimeSpan.FromMilliseconds(50));
+                await Task.Delay(1);
+            }
+            EnqueueUtterance(fixture.Capture, quietBefore: 15, speech: 0, quietAfter: 0);
+            await Follow(fixture, activity, () => window.Messages.Any(m => m.Role == ChatRole.Martlet));
+            for (var i = 0; i < 100; i++)
+            {
+                activity.Tick();
+                fixture.Clock.Advance(TimeSpan.FromMilliseconds(50));
+                await Task.Delay(1);
+            }
+            // Both heard it; Martlet answered once, as what the PC played. The microphone's copy is a faded note, never your words.
+            Assert.Equal(2, fixture.Stt.Calls);
+            Assert.Equal(1, fixture.Llm.Calls);
+            Assert.DoesNotContain(window.Messages, m => m.IsUser);
+            Assert.Equal(Weather, Assert.Single(window.Messages, m => m.IsPcAudio).Text);
+            Assert.Contains(window.Messages, m => m.IsNote && m.Text.Contains("this PC's speakers: a YouTube video in Chrome", StringComparison.Ordinal));
+            var body = Encoding.UTF8.GetString(fixture.Llm.Body);
+            Assert.Contains($"[PC audio] From a YouTube video in Chrome: {Weather}", body, StringComparison.Ordinal);
+            Assert.Single(System.Text.RegularExpressions.Regex.Matches(body, "the weather for the weekend"));
+            var pcLine = Control<TextBlock>(window, "PcAudioText");
+            await Follow(fixture, activity, () => AutomationProperties.GetHelpText(pcLine)
+                .Contains("The microphone also heard this PC's speakers; Martlet left out 1 line of it.", StringComparison.Ordinal));
+        }
+        finally { window.Close(); }
+    });
+
+    // Moves the fixture clock on (and the PC activity monitor with it) until the condition holds.
+    private static async Task Follow(LiveFixture fixture, PcActivityMonitor activity, Func<bool> condition)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        while (!condition())
+        {
+            activity.Tick();
+            fixture.Clock.Advance(TimeSpan.FromMilliseconds(50));
+            await Task.Delay(1, timeout.Token);
+        }
+    }
+
+    // What this PC plays, as the PC activity monitor reads it: a YouTube video in Chrome, always loud.
+    private sealed class AppsFixture : IPcActivitySource
+    {
+        public IReadOnlyList<PcAppLevel> Levels() => [new("chrome", 0.25f)];
+        public IReadOnlyList<PcAppFacts> Facts(IReadOnlyCollection<string> apps) => [new("chrome", Titles: ["Lofi beats - YouTube - Google Chrome"])];
+        public void Dispose() { }
+    }
+
+    [Fact]
     public Task YourOwnVoicePlayedBackOnThisPcIsAnsweredOnce() => DispatcherTest(async () =>
     {
         var pc = new PcSourceFixture();
@@ -2898,7 +3017,7 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal LiveFixture(ControlledDevice? output = null, VoiceIdentity? voiceIdentity = null,
         IPcAudioSourceFactory? pcAudio = null, bool voices = false, bool history = false, bool tools = false, bool echo = false,
         ILocalTranscriber? localListener = null, IEndOfTurnJudge? turnJudge = null, IWindowsVoiceClient? windowsVoice = null,
-        Func<SetupRoute, string?>? listeningStandIn = null)
+        Func<SetupRoute, string?>? listeningStandIn = null, Func<TimeProvider, PcActivityMonitor>? pcActivity = null)
     {
         Store = new(DirectoryPath);
         Memory = new(Store, Clock);
@@ -2920,7 +3039,7 @@ internal sealed class LiveFixture : IAsyncDisposable
             // Echo reduction over the fixture microphone, with speakers whose loopback stays quiet and a canceller that keeps
             // the microphone as it is.
             echoReducer: echo ? new EchoReducer(Capture, new QuietSpeakers(), () => new KeptMicrophone(), Clock) : null,
-            localListener: localListener, turnJudge: turnJudge, listeningStandIn: listeningStandIn);
+            localListener: localListener, turnJudge: turnJudge, listeningStandIn: listeningStandIn, pcActivity: pcActivity?.Invoke(Clock));
         Events.LockedChanged += Controller.SetSessionLocked;
         Llm.Inspect = Tts.Inspect = request =>
         {
@@ -2931,10 +3050,11 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal static async Task<LiveFixture> Create(ControlledDevice? output = null,
         bool legacy = false, VoiceIdentity? voiceIdentity = null, IPcAudioSourceFactory? pcAudio = null, bool voices = false,
         bool history = false, bool tools = false, bool echo = false, ILocalTranscriber? localListener = null,
-        IEndOfTurnJudge? turnJudge = null, IWindowsVoiceClient? windowsVoice = null, Func<SetupRoute, string?>? listeningStandIn = null)
+        IEndOfTurnJudge? turnJudge = null, IWindowsVoiceClient? windowsVoice = null, Func<SetupRoute, string?>? listeningStandIn = null,
+        Func<TimeProvider, PcActivityMonitor>? pcActivity = null)
     {
         var fixture = new LiveFixture(output, voiceIdentity, pcAudio, voices, history, tools, echo, localListener, turnJudge,
-            windowsVoice, listeningStandIn);
+            windowsVoice, listeningStandIn, pcActivity);
         var settings = SetupSettings.Begin(null);
         settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api },
             Audio = AudioSettings.Create() };

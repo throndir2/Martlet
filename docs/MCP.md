@@ -3928,6 +3928,36 @@ quote is kept). `ok` is true when all hold, every sample came out as expected
 and the fixture's Martlet-free source was used. It reads no credentials and
 contacts nothing.
 
+`pc_activity_check` checks [where what this PC plays comes from](CONVERSATION.md#where-it-comes-from-and-what-you-are-doing)
+(optional `seconds`, 1-20, default 3). `live` runs the production
+`PcActivityMonitor` with `WindowsPcActivitySource` on this PC for those seconds
+(the volume mixer's session meters, the apps' windows, the window in front, full
+screen and the GPU Engine counters; nothing is recorded, played, kept or sent,
+so `recorded` is always false, and raw window titles are never returned):
+`ticks`, `averageTickMs`, `problem`, the `summary` and the `note` a reply would
+read (the context board's `activity` note), and `apps`: every app with an audio
+session (`app`, `kind`, `label`, `peak`, `audible`, `foreground`, `fullScreen`,
+`exclusiveFullScreen`, `gpuPercent`, `programKnown`, `windows`). `rehearsal`
+runs FIXTURE apps, levels and lines on a simulated clock: `classify` (the
+production classifier on fixed apps such as Plex full screen, a YouTube video
+or a Twitch stream in a browser, Netflix in a browser, a private window, Discord,
+Zoom, Google Meet, Spotify, a game in a Steam library, an unknown app full screen
+with the graphics card busy, OBS and VLC with a movie or a song; each `scene`,
+`kind`, `label`, `expected`, `ok`), `lines` (a voice chat over a game, the game
+alone, a YouTube video and silence: each fixture line's `[PC audio] From ...:`
+text against `expected` with `mediaOnly`, then the `note` against `expectedNote`), `speakers` (the
+production check `PcEcho.Speakers` on a simulated clock that tells the
+microphone hearing this PC's speakers apart from you: a video or a game line
+the microphone heard at that same moment is the speakers; the same words the
+video said 10 seconds before, your voice played back by a voice changer, a game
+while a voice changer also played, a voice chat repeating you, a short answer,
+common words scattered through a long video, you quoting the video and you
+talking over it are not; each `scene`, `heard`, `played`,
+`playedFrom`, `expected`, `fromSpeakers`, `ok`) and `prompts` (the built-in
+*What this PC plays* and *Always listening* prompts with what they must say,
+and `missing`). `ok` is true when the live look had no problem and every
+fixture came out as expected. It reads no credentials and contacts nothing.
+
 `logs_timeline` reads the logs as the desktop's
 [Diagnostics page](DIAGNOSTICS.md#diagnostics-page-and-shared-logs) shows
 them (optional absolute `dataDirectory`, default the current user's): this PC's
@@ -5872,10 +5902,15 @@ and always listening chosen, the talk window's `LivePcAudio` line (returned)
 says *Also hears this PC once you start listening.*, *Also hearing this PC.*,
 *Hearing this PC play something…* or why it can't hear the PC; its `help` says
 how: *Martlet hears everything this PC plays except its own voice.* or
-*Martlet hears what plays on <your output>, paused while it speaks.*, followed
-by *This PC plays your voice back too; Martlet left out N line(s) of it.* once
+*Martlet hears what plays on <your output>, paused while it speaks.*, then what
+you seem to be doing on the PC (*Now: playing a game (Elden Ring), full screen;
+in a voice chat in Discord.*, from `PcActivityMonitor`), *The microphone also
+heard this PC's speakers; Martlet left out N line(s) of it.* once the
+microphone repeated what a video, show, game or music played, and *This PC
+plays your voice back too; Martlet left out N line(s) of it.* once
 a line the PC played repeated what you said; what the PC played shows in
-`LiveHistory` as *Playing on this PC* bubbles. Pressing `LiveMic` with it on
+`LiveHistory` as *Playing on this PC* bubbles, named after where it came from
+when Martlet can tell (*Playing on this PC: a YouTube video in Chrome*). Pressing `LiveMic` with it on
 records what the PC plays, so leave it off (or don't start listening) when
 verifying on a desktop whose sound must not be captured. Each reply writes a
 *Reply latency* line to the desktop log (see [Latency](#latency)), which

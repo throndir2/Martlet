@@ -140,6 +140,7 @@ public partial class MainWindow : ThemedWindow
                     : new(microphones, new WasapiLoopbackReferenceFactory(), Martlet.EchoCancellation.WebRtcEchoCanceller.Create),
                 pcAudio: simulated is not null ? null : new Martlet.Audio.PcAudioCaptureFactory(discordCalls.Sources(new WasapiPcAudioSourceFactory()),
                     sound: new Martlet.Audio.PcSoundBuffer()),
+                pcActivity: simulated is not null ? null : new PcActivityMonitor(() => new WindowsPcActivitySource()),
                 characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, history: conversationHistory, singing: singing,
                 board: contextBoard, turnJudge: SmartTurnJudge.Bundled(), listeningStandIn: ListeningStandIn);
             conversation.TurnDecided += () => Dispatcher.BeginInvoke(ShowTurnJudge);

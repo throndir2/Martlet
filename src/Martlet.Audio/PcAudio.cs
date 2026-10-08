@@ -84,6 +84,67 @@ public static class PcEcho
         return Common(words, reference) >= Math.Ceiling(words.Count * Share);
     }
 
+    /// <summary>A line the microphone heard needs at least this many words to count as this PC's speakers.</summary>
+    public const int SpeakersWords = 4;
+    /// <summary>At least this share of what the microphone heard, in order and close together, must be in one line the PC
+    /// played for it to count as the speakers (stricter than <see cref="Share"/>: leaving out your own words is worse than
+    /// answering the speakers).</summary>
+    public const double SpeakersShare = 0.7;
+    /// <summary>How far apart in time the microphone may hear words and the PC play them (plus 15% of the PC line's length, as
+    /// its words are placed in it by an even pace of speech) and still be the same sound.</summary>
+    public static TimeSpan SpeakersSlack { get; } = TimeSpan.FromSeconds(1.5);
+    private const int MaximumHeard = 60;
+
+    /// <summary>The microphone heard this PC's speakers, not the user: at least <see cref="SpeakersShare"/> of the words of
+    /// <paramref name="heard"/> (at least <see cref="SpeakersWords"/> of them) are, in order and close together, in a line a
+    /// video, show, game or music on this PC played at that same moment. <paramref name="played"/> are the lines Hear what this
+    /// PC plays heard lately, oldest first; only a line during which every app that made sound was a video, show, game or music
+    /// counts (<see cref="PcHeardFrom.MediaOnly"/>: never a voice chat, a call or an app that may play the user's own voice
+    /// back). <paramref name="start"/> and <paramref name="end"/> are when the microphone's voice began and its recording ended,
+    /// on the same clock as the lines' (<paramref name="frequency"/> ticks a second); where the words sit in the PC's line, at
+    /// an even pace, must be within <see cref="SpeakersSlack"/> of that, so a phrase the video said earlier never counts. Returns
+    /// where the newest such line came from, or null (also when a time is unknown).</summary>
+    public static PcHeardFrom? Speakers(string heard, long start, long end, IEnumerable<PcPlayedLine> played, long frequency)
+    {
+        ArgumentNullException.ThrowIfNull(heard);
+        ArgumentNullException.ThrowIfNull(played);
+        if (start <= 0 || end < start || frequency <= 0) return null;
+        var words = Words(heard);
+        if (words.Count < SpeakersWords) return null;
+        if (words.Count > MaximumHeard) words.RemoveRange(0, words.Count - MaximumHeard);
+        var need = (int)Math.Ceiling(words.Count * SpeakersShare);
+        var slack = (long)(SpeakersSlack.TotalSeconds * frequency);
+        PcHeardFrom? found = null;
+        foreach (var line in played)
+        {
+            if (!line.From.MediaOnly || line.Start <= 0 || line.End < line.Start || start > line.End + slack || end < line.Start - slack)
+                continue;
+            var said = Words(line.Text);
+            if (said.Count > MaximumLine) said.RemoveRange(0, said.Count - MaximumLine);
+            var duration = line.End - line.Start;
+            var room = slack + duration * 15 / 100;
+            foreach (var at in Near(words, said, need))
+            {
+                var from = line.Start + duration * at / said.Count;
+                var to = line.Start + duration * Math.Min(said.Count, at + words.Count) / said.Count;
+                if (start > to + room || end < from - room) continue;
+                found = line.From;
+                break;
+            }
+        }
+        return found;
+    }
+
+    // Where in `line` at least `need` of `words` are found in order within one stretch a few words longer than them, so common
+    // words scattered through a long video never count.
+    private static IEnumerable<int> Near(List<string> words, List<string> line, int need)
+    {
+        var span = words.Count + 3;
+        var firsts = new HashSet<string>(words.Take(words.Count - need + 1), StringComparer.Ordinal);
+        for (var i = 0; i < line.Count; i++)
+            if (firsts.Contains(line[i]) && Common(words, line.GetRange(i, Math.Min(span, line.Count - i))) >= need) yield return i;
+    }
+
     internal static List<string> Words(string text)
     {
         var words = new List<string>();

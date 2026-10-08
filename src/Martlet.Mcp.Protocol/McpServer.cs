@@ -1249,6 +1249,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
         {
             dataDirectory = new { type = "string" }
         }),
+        Tool("pc_activity_check", "Hear what this PC plays: which app plays what Martlet hears and what kind of thing it is (a YouTube " +
+            "video in a browser, a show or movie in Plex or a player, a game, a voice chat in Discord, a call, music), told apart " +
+            "deterministically from the app, the site its browser window shows, where its program is installed (a game library), " +
+            "the window in front and full screen, and how busy it keeps the graphics card. live: the production PcActivityMonitor and " +
+            "WindowsPcActivitySource on this PC for seconds (default 3): every app with an audio session (the volume mixer's meters " +
+            "only; nothing is recorded, played, kept or sent; raw window titles are never returned) with its kind and label, the " +
+            "average tick cost, the summary and the note a reply reads (the context board's activity note). rehearsal (FIXTURE apps, " +
+            "levels and lines on a simulated clock): the classifier on fixed apps, where fixture lines came from as their " +
+            "[PC audio] From ...: labels, the note, the speakers check (PcEcho.Speakers on a simulated clock: a line the microphone " +
+            "heard at the same moment as what only a video, show, game or music played is the speakers; never earlier words, a voice " +
+            "chat, a voice changer or your own voice played back) and the " +
+            "built-in What this PC plays and Always listening prompts. Reads no credentials and contacts nothing.", new
+        {
+            seconds = new { type = "integer", minimum = 1, maximum = 20 }
+        }),
         Tool("sound_digest_check", "Companion > Listening > Describe PC sounds (on by default while Hear what this PC plays is on): the " +
             "saved choices, the desktop's sound-digest.json (on, the active judge: a Thinking pool model that hears or the CPU sound " +
             "tagger; runs, lines, drops and skips; the last line's age and how long judging took; never the line), then a FIXTURE " +
@@ -1909,6 +1924,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     SpeechDirectory(arguments), cancellation),
                 "barge_in_check" => await BargeInCheck.RunAsync(arguments, DataDirectory(arguments), cancellation),
                 "pc_audio_check" => await PcAudioCheck.RunAsync(DataDirectory(arguments), cancellation),
+                "pc_activity_check" => await PcActivityCheck.RunAsync(OptionalInt(arguments, "seconds"), cancellation),
                 "sound_digest_check" => await SoundDigestCheck.RunAsync(DataDirectory(arguments), MartletDirectory(arguments),
                     OptionalString(arguments, "wavFile"), cancellation),
                 "discord_call_check" => await DiscordCallCheck.RunAsync(DataDirectory(arguments), cancellation),
