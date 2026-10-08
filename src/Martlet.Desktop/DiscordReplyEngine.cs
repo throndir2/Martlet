@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.IO;
-using System.Security.Cryptography;
 using System.Text.Json;
 using Martlet.Conversation;
 using Martlet.Core.Contracts;
@@ -41,7 +40,6 @@ internal sealed class DiscordReplyEngine : IDiscordReplyEngine, IAsyncDisposable
     private readonly LorebookStore? lorebooks;
     private readonly Func<bool> localBusy;
     private readonly TimeProvider clock;
-    private readonly Func<int, int> nextStyle;
     private readonly Func<IProviderCredentialSource, TimeProvider, ConversationRuntime>? runtimeFactory;
     private readonly Lane[] lanes;
     private readonly SemaphoreSlim laneGate;
@@ -59,7 +57,7 @@ internal sealed class DiscordReplyEngine : IDiscordReplyEngine, IAsyncDisposable
 
     internal DiscordReplyEngine(ISetupService settings, ICredentialStore vault, string? dataDirectory, Func<bool> localBusy,
         DesktopMemoryService? memory = null, LorebookStore? lorebooks = null, TimeProvider? clock = null,
-        Func<int, int>? nextStyle = null, Func<IProviderCredentialSource, TimeProvider, ConversationRuntime>? runtimeFactory = null,
+        Func<IProviderCredentialSource, TimeProvider, ConversationRuntime>? runtimeFactory = null,
         DiscordReplyOptions? options = null, Func<double>? random = null)
     {
         this.settings = settings;
@@ -69,7 +67,6 @@ internal sealed class DiscordReplyEngine : IDiscordReplyEngine, IAsyncDisposable
         this.memory = memory;
         this.lorebooks = lorebooks;
         this.clock = clock ?? TimeProvider.System;
-        this.nextStyle = nextStyle ?? RandomNumberGenerator.GetInt32;
         this.runtimeFactory = runtimeFactory;
         options ??= new();
         lanes = [.. Enumerable.Range(0, Math.Max(1, options.MaxConcurrent)).Select(_ => new Lane())];
@@ -185,7 +182,6 @@ internal sealed class DiscordReplyEngine : IDiscordReplyEngine, IAsyncDisposable
     {
         var turn = context.Turn;
         var persona = configured.Persona;
-        var style = persona is null ? (ResponseStyle?)null : ResponseStyleSelector.Select(persona.Styles, nextStyle);
         var history = prompt.History.Select(message => new TextHistoryMessage(
             message.FromMartlet ? TextHistoryRole.Assistant : TextHistoryRole.User, Bound(message.Text))).ToArray();
         var recalled = await RecallAsync(configured, turn, token).ConfigureAwait(false);
@@ -193,7 +189,7 @@ internal sealed class DiscordReplyEngine : IDiscordReplyEngine, IAsyncDisposable
         ConversationRequest request;
         try
         {
-            request = configured.Request(new BoundedTextInput(Bound(prompt.Message)), voice: false, style, history, recalled, lore,
+            request = configured.Request(new BoundedTextInput(Bound(prompt.Message)), voice: false, history, recalled, lore,
                 out _, out _, out _, extraInstructions: prompt.Instructions, messageNotes: prompt.Note,
                 closingInstructions: configured.ReplyLength);
         }

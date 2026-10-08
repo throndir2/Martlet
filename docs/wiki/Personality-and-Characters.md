@@ -6,7 +6,7 @@ Martlet's personality comes from personas, prompts, profiles, cards and lorebook
 
 ## Personas
 
-Open **Companion › Personality**. Personas describe who Martlet is and response-style weights such as helpful, sarcastic, silly, distracted or playful teasing.
+Open **Companion › Personality**. Personas describe who Martlet is and how it talks. Write the tone you want (helpful, sarcastic, silly or teasing) in the persona text, as a character card does.
 
 ## Prompts
 

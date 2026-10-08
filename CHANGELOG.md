@@ -16,6 +16,9 @@ Each release's section here is also its notes on GitHub.
 ### Fixed
 - **Show character** no longer says *Couldn't show the character: A task was canceled.* when the Martlet host you picked for lip-sync doesn't answer. The character shows as before, Martlet tells you the host isn't ready, and the mouth follows Martlet's voice until the host answers again. ([#561](https://github.com/throndir2/Martlet/pull/561))
 
+### Removed
+- The **Response style** sliders (Helpful, Sarcastic, Silly, Distracted and Playful teasing) are gone from Personality, along with their style prompts in Companion › Prompts. They only added one randomly picked style line to each message, and no character card has them. Your persona's own text, like a character card's, now sets how Martlet talks. Settings from older versions still load. ([#562](https://github.com/throndir2/Martlet/pull/562))
+
 ## [0.54.0] - 2026-10-07
 
 ### Added

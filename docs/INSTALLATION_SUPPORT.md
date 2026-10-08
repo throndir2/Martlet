@@ -279,14 +279,14 @@ accessible after onboarding, without a reinstall or source-code change:
 
 | Surface | Planned controls and safe application |
 | --- | --- |
-| Companion | Named personas, multiline editor, explicit plain-text import/export, save/duplicate/select, and separate response-style weights; show unsaved/active revision |
+| Companion | Named personas, multiline editor, explicit plain-text import/export and save/duplicate/select; show unsaved/active revision |
 | Participation | Explicit typed/PTT default; opt-in conversational listening, rate/gap/cooldown/context retention and qualified speech interruption; show why unavailable or silent |
 | Models | Independent LLM and VLM adapter/destination/model choices, role limits and readiness; VLM selection never enables screen capture |
 | F5 voice | Reference audio and matching transcript, explicit reload after file replacement, named presets, validation and separately authorized preview; no automatic reference transcription |
 
 Apply at idle or after explicit Stop and owned cleanup, never midway through
-authorized work. Show an actionable error for invalid persona files, all-zero
-style weights, changed/missing reference audio, incompatible models and
+authorized work. Show an actionable error for invalid persona files,
+changed/missing reference audio, incompatible models and
 unqualified barge-in. Preserve prior saved choices without pretending a failed
 Apply succeeded or falling back silently. Save/resume preserves inert choices,
 not listening, spending, preview permission or model readiness. The current

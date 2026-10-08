@@ -10,10 +10,10 @@ using Microsoft.Win32;
 
 namespace Martlet.Desktop;
 
-/// <summary>Personality: the personas Martlet can be, their response styles and where their voice pauses. There is no Save
-/// button: every change saves on its own (shortly after typing or moving a slider stops, at once when a persona is chosen,
-/// added, duplicated, deleted or imported) into the newest saved settings, so nothing synced in from your other computers in
-/// the meantime is overwritten. The footer says whether everything is saved, or why the latest change isn't.</summary>
+/// <summary>Personality: the personas Martlet can be and where their voice pauses. There is no Save button: every change saves
+/// on its own (shortly after typing stops, at once when a persona is chosen, added, duplicated, deleted or imported) into the
+/// newest saved settings, so nothing synced in from your other computers in the meantime is overwritten. The footer says
+/// whether everything is saved, or why the latest change isn't.</summary>
 public partial class CompanionWindow : ThemedWindow
 {
     private readonly ICompanionSettingsService service;
@@ -180,12 +180,6 @@ public partial class CompanionWindow : ThemedWindow
         editingId = persona?.Id;
         PersonaName.Text = persona?.Name ?? "";
         PersonaText.Text = persona?.Text ?? "";
-        HelpfulWeight.Value = persona?.Styles.Helpful ?? 0;
-        SarcasticWeight.Value = persona?.Styles.Sarcastic ?? 0;
-        SillyWeight.Value = persona?.Styles.Silly ?? 0;
-        DistractedWeight.Value = persona?.Styles.Distracted ?? 0;
-        TeasingWeight.Value = persona?.Styles.PlayfulTeasing ?? 0;
-        RenderWeightValues();
         var breaks = persona?.SpokenBreaks ?? SpeechBreaks.Default;
         BreakPeriods.IsChecked = breaks.Periods;
         BreakQuestions.IsChecked = breaks.QuestionMarks;
@@ -195,7 +189,7 @@ public partial class CompanionWindow : ThemedWindow
     }
 
     /// <summary>Choosing a persona makes it the one Martlet uses, saved at once. The persona being left keeps its edits; one
-    /// that can't be saved yet (an empty or duplicate name, no style above zero) must be fixed first.</summary>
+    /// that can't be saved yet (an empty or duplicate name) must be fixed first.</summary>
     private void Persona_Changed(object sender, SelectionChangedEventArgs e)
     {
         if (rendering || companion is null || PersonaChoice.SelectedItem is not PersonaProfile persona) return;
@@ -216,13 +210,6 @@ public partial class CompanionWindow : ThemedWindow
 
     private void Editor_Changed(object sender, TextChangedEventArgs e)
     {
-        if (!rendering) Changed();
-    }
-
-    private void Weight_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (HelpfulValue is null) return;
-        RenderWeightValues();
         if (!rendering) Changed();
     }
 
@@ -258,24 +245,6 @@ public partial class CompanionWindow : ThemedWindow
         RenderState();
     }
 
-    private void RenderWeightValues()
-    {
-        HelpfulValue.Text = ((int)HelpfulWeight.Value).ToString();
-        SarcasticValue.Text = ((int)SarcasticWeight.Value).ToString();
-        SillyValue.Text = ((int)SillyWeight.Value).ToString();
-        DistractedValue.Text = ((int)DistractedWeight.Value).ToString();
-        TeasingValue.Text = ((int)TeasingWeight.Value).ToString();
-    }
-
-    private ResponseStyleWeights Styles() => new()
-    {
-        Helpful = (int)HelpfulWeight.Value,
-        Sarcastic = (int)SarcasticWeight.Value,
-        Silly = (int)SillyWeight.Value,
-        Distracted = (int)DistractedWeight.Value,
-        PlayfulTeasing = (int)TeasingWeight.Value
-    };
-
     /// <summary>Takes the editor's fields into the personas (a name's surrounding spaces are dropped), or records why they can't
     /// be saved in <see cref="problem"/>.</summary>
     private bool ApplyEditor()
@@ -284,7 +253,7 @@ public partial class CompanionWindow : ThemedWindow
         if (editingId is not { } id) return true;
         try
         {
-            companion = companion.Update(id, PersonaName.Text.Trim(), PersonaText.Text, Styles(), Breaks());
+            companion = companion.Update(id, PersonaName.Text.Trim(), PersonaText.Text, Breaks());
             problem = null;
             return true;
         }
@@ -383,7 +352,7 @@ public partial class CompanionWindow : ThemedWindow
     private async void CardUpdate_Click(object sender, RoutedEventArgs e) => await ImportCardAsync(update: true);
 
     /// <summary>Reads a character card and either adds it as a new persona (which Martlet then uses) or puts it into the shown
-    /// persona, which keeps its identity and response-style weights. Either is saved at once.</summary>
+    /// persona, which keeps its identity and where its voice pauses. Either is saved at once.</summary>
     private async Task ImportCardAsync(bool update, string? path = null)
     {
         if (!ReadyForChange()) return;
@@ -410,7 +379,7 @@ public partial class CompanionWindow : ThemedWindow
         {
             var name = UniqueName(companion, persona.Name);
             var added = companion.Add(name);
-            var updated = added.Update(added.ActivePersonaId, name, persona.Text, ResponseStyleWeights.HelpfulOnly());
+            var updated = added.Update(added.ActivePersonaId, name, persona.Text);
             companion = updated;
             var lore = KeepCardLore(card, updated.ActivePersonaId);
             RenderPersonas(updated.ActivePersonaId);
@@ -434,7 +403,7 @@ public partial class CompanionWindow : ThemedWindow
             PersonaText.Text = persona.Text;
             var lore = KeepCardLore(card, id);
             SaveNow();
-            return $"Loaded the card into \"{selected.Name}\". Its response styles are unchanged." + Fitting(card, persona, lore);
+            return $"Loaded the card into \"{selected.Name}\"." + Fitting(card, persona, lore);
         }
         catch (ContractException error) { return error.Message; }
     }

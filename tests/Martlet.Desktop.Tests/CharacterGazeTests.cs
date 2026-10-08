@@ -154,7 +154,7 @@ public sealed class CharacterGazeTests
         var image = new BoundedImage([0xFF, 0xD8, 0xFF, .. new byte[32]], ImageMediaType.Jpeg, 4, 4);
         var gaze = CharacterGaze.Prompt(configuration.Prompts, LiveConversationConfiguration.SilentReply);
         ConversationRequest Glance(int emotes, CharacterActionPrompt? look) => configuration.Request(new("(Screen glance.)"), false,
-            ResponseStyle.Helpful, [], null, null, out _, out _, out _, image, LiveConversationConfiguration.CommentaryInstructions(Chattiness.Normal),
+            [], null, null, out _, out _, out _, image, LiveConversationConfiguration.CommentaryInstructions(Chattiness.Normal),
             LiveConversationConfiguration.SilentReply,
             characterActions: (_, _) => new CharacterActionPrompt("Emote tags.", [.. Enumerable.Range(0, emotes).Select(i => $"{{emote_{i}}}")]),
             gaze: look);

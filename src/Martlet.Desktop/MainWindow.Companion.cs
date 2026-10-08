@@ -192,7 +192,7 @@ public partial class MainWindow
         CompanionTab.LipSync => "Choose what moves the character's mouth.",
         CompanionTab.Profiles => "Switch who Martlet is in one step: each profile sets the character's look, voice and personality together.",
         CompanionTab.Character => "Choose Martlet's character, size, position and motion.",
-        CompanionTab.Personality => "Edit Martlet's personas and response style.",
+        CompanionTab.Personality => "Edit Martlet's personas.",
         CompanionTab.Prompts => "Every instruction Martlet sends to the Thinking model. Edit any of them; your text is used instead of the built-in one.",
         CompanionTab.Lorebook => "Add lore entries Martlet can use when keywords come up.",
         CompanionTab.Memory => "Facts Martlet remembers about you between conversations.",
@@ -1625,31 +1625,14 @@ public partial class MainWindow
 
     // ---------- personality ----------
 
-    /// <summary>A persona's response-style mix in words: "always helpful", or "helpful 70%, silly 30%".</summary>
-    internal static string StyleMix(ResponseStyleWeights styles)
-    {
-        var parts = new (string Name, int Weight)[]
-        {
-            ("helpful", styles.Helpful), ("sarcastic", styles.Sarcastic), ("silly", styles.Silly),
-            ("distracted", styles.Distracted), ("playful teasing", styles.PlayfulTeasing)
-        }.Where(p => p.Weight > 0).OrderByDescending(p => p.Weight).ToArray();
-        var total = parts.Sum(p => p.Weight);
-        return parts.Length switch
-        {
-            0 => "helpful",
-            1 => "always " + parts[0].Name,
-            _ => string.Join(", ", parts.Select(p => $"{p.Name} {Math.Round(100.0 * p.Weight / total):0}%"))
-        };
-    }
-
     private void RenderPersonalityTab(Panel page)
     {
         var companion = homeSettings?.Companion;
         var persona = companion?.ActivePersona;
         var count = companion?.Personas.Count ?? 1;
         page.Children.Add(PageNowCard(persona is null
-            ? "Default persona. Style: helpful."
-            : $"{persona.Name}{(count > 1 ? $", one of {count} personas" : "")}. Style: {StyleMix(persona.Styles)}.", null));
+            ? "Default persona."
+            : $"{persona.Name}{(count > 1 ? $", one of {count} personas" : "")}.", null));
 
         page.Children.Add(Card(Heading("Personas"),
             Note("Create, edit or switch personas. Changes save on their own, and the next message uses the chosen persona.", new Thickness(0, 0, 0, 8)),
