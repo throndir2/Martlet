@@ -212,14 +212,15 @@ public partial class MainWindow
         return row;
     }
 
-    private void SaveSharing(WorkSharingSettings next, string done)
+    /// <summary>Saves Sharing work and shares it with your other computers; false when it couldn't be saved.</summary>
+    private bool SaveSharing(WorkSharingSettings next, string done)
     {
-        if (store is null) return;
+        if (store is null) return false;
         if (!next.Save(store.DataDirectory))
         {
             ActionText.Text = "Couldn't save Sharing work on this PC.";
             RenderWorkSharing();
-            return;
+            return false;
         }
         WorkSharingRoster.Forget();
         ErrorLog.Info("Sharing work: " + done);
@@ -228,5 +229,6 @@ public partial class MainWindow
         conversation?.ReloadThinkingPool();
         // Rebuilt after the click's own event finishes, so the control that changed isn't replaced under it.
         Dispatcher.InvokeAsync(RenderWorkSharing);
+        return true;
     }
 }

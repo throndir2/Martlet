@@ -69,34 +69,11 @@ internal sealed partial class RendererWindow
     private (double X, double Y) Fraction(Point at) => viewport.ActualWidth <= 0 || viewport.ActualHeight <= 0 ? (0.5, 0.5)
         : (Math.Round(Math.Clamp(at.X / viewport.ActualWidth, 0, 1), 4), Math.Round(Math.Clamp(at.Y / viewport.ActualHeight, 0, 1), 4));
 
-    // Unprompted messages to Martlet go out one after another, in order.
-    private Task unprompted = Task.CompletedTask;
-
+    // Unprompted messages to Martlet go out whole, one after another, in order (the request pipe's writer keeps them so).
     private void SendUnprompted<T>(string kind, T data, string what)
     {
         if (!CanRequest) return;
-        var before = unprompted;
-        unprompted = SendAfterAsync(before, kind, data, what);
-    }
-
-    private async Task SendAfterAsync<T>(Task before, string kind, T data, string what)
-    {
-        await before.ConfigureAwait(true);
-        if (!CanRequest) return;
-        try
-        {
-            await requesting.WaitAsync(lifetime.Token);
-            try
-            {
-                await RendererProtocol.WriteAsync(requests!, RendererProtocol.Message(kind, activation, data), lifetime.Token)
-                    .WaitAsync(TimeSpan.FromSeconds(2), lifetime.Token);
-            }
-            finally { requesting.Release(); }
-        }
-        catch (Exception error) when (error is IOException or ObjectDisposedException or OperationCanceledException or TimeoutException)
-        {
-            ErrorLog.Warn($"{what} couldn't reach Martlet.", error);
-        }
+        _ = SendRequestAsync(kind, data, what);
     }
 
     // ---------- stroking a locked character ----------

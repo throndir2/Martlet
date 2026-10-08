@@ -20,7 +20,9 @@ public sealed record RendererCapabilities(string ModelId, RendererParameter[] Pa
 /// ended or replaced), a <c>motion</c> group (played once) or a Martlet <c>gesture</c> (<see cref="CharacterGesture"/>). With
 /// <paramref name="Hold"/> it lingers: a held expression stays on, layered with other held ones, until it is ended
 /// (<c>On=false</c>), and a held gesture or overlay stays until ended too, instead of playing once; another emote doesn't replace
-/// it. The reply says whether the model started it.</summary>
+/// it. Held gestures layer as well: a new held gesture lets go only of the held ones that move a part of the face it moves too
+/// (the eyes, the mouth, the cheeks, the brows or the head), and held overlays all show together. The reply says whether the
+/// model started it; a gesture's reply also says which gesture plays once and every one held (<c>gesture: {playing, held: [...]}</c>).</summary>
 public sealed record RendererAction(string Kind, string Name, bool On = true, bool Hold = false)
 {
     public static IReadOnlyList<string> Kinds { get; } = ["expression", "motion", "gesture"];
@@ -42,6 +44,14 @@ public sealed record RendererVoice(bool Muted);
 /// unlocks it: the overlay's menu can only ask Martlet to lock it. Replied to with the overlay's <see cref="RendererPlacement"/>.
 /// </summary>
 public sealed record RendererLock(bool Locked);
+/// <summary>
+/// Lets every click pass through the character overlay to the windows under it (<paramref name="On"/>), or makes it catch
+/// clicks again. While on, the mouse can't drag, zoom, tap, stroke or right-click the character (also its speech bubble); the
+/// character still follows the mouse with its eyes, talks and moves. The overlay's menu can only ask Martlet to turn it on:
+/// it is turned off in Martlet (Home, Companion › Character or the notification-area menu). The camera view always catches
+/// clicks. Replied to with "ok".
+/// </summary>
+public sealed record RendererClickThrough(bool On);
 /// <summary>The camera view (Martlet in your Discord calls): the character in its own ordinary 16:9 window (titled "Martlet
 /// camera", in the taskbar, not on top) on a solid <paramref name="Background"/> (#RRGGBB) so OBS can capture that window
 /// cleanly and key the color out, then share it as a virtual camera; or, with <paramref name="Picture"/> (the full path of a
@@ -125,6 +135,8 @@ public sealed record RendererLook(string Target, double X, double Y, GazeMode Mo
 /// separate request pipe (never as a command reply): "hide" the character, "open" Martlet's window, "talk" (open the talk
 /// window), show the character's "settings", "lock" its place where it is or "unlock" it (Martlet saves it and sends
 /// <see cref="RendererLock"/>), or "mute" or "unmute" Martlet's voice (Martlet saves it and sends <see cref="RendererVoice"/>).
+/// "click-through-on" lets clicks pass through the character and "click-through-off" makes it catch them again (Martlet saves
+/// it and sends <see cref="RendererClickThrough"/>).
 /// The Eyes menu's "look-personality", "look-mouse", "look-near", "look-ahead" and "look-window" choose the usual gaze, and
 /// "look-free-on" and "look-free-off" whether the character may change where it looks (Martlet saves them and sends
 /// <see cref="RendererGaze"/>).
@@ -136,10 +148,11 @@ public sealed record RendererLook(string Target, double X, double Y, GazeMode Mo
 /// </summary>
 public sealed record RendererRequest(string Action)
 {
-    public const string LookPrefix = "look-", FreeOn = "look-free-on", FreeOff = "look-free-off";
+    public const string LookPrefix = "look-", FreeOn = "look-free-on", FreeOff = "look-free-off",
+        ClickThroughOn = "click-through-on", ClickThroughOff = "click-through-off";
 
     public static IReadOnlyList<string> Actions { get; } = ["hide", "open", "talk", "settings", "lock", "unlock", "mute", "unmute", "placed", "framed", "clear",
-        .. RendererGaze.Choices.Select(choice => LookPrefix + choice), FreeOn, FreeOff];
+        .. RendererGaze.Choices.Select(choice => LookPrefix + choice), FreeOn, FreeOff, ClickThroughOn, ClickThroughOff];
 }
 /// <summary>
 /// The character frame's size in device-independent pixels, its top relative to the top of its screen's work area
@@ -147,11 +160,11 @@ public sealed record RendererRequest(string Action)
 /// sits below the frame's top edge as a fraction of its height (negative when cut off; null until reported), and the
 /// overlay's full drawing width: the frame plus the transparent room beside it the model can move into (null if unknown), and
 /// whether its place is locked (null if unknown). <paramref name="X"/> and <paramref name="Y"/> are where the character's middle
-/// sits as fractions of the drawing's width and height from its center (+x right, +y up), and <paramref name="Camera"/> whether
-/// this is the camera view (null if unknown).
+/// sits as fractions of the drawing's width and height from its center (+x right, +y up), <paramref name="Camera"/> whether
+/// this is the camera view and <paramref name="ClickThrough"/> whether clicks pass through the character now (null if unknown).
 /// </summary>
 public sealed record RendererView(double Width, double Height, double? ScreenTop, double Zoom, double? HeadTop, double? DrawWidth = null,
-    bool? Locked = null, double? X = null, double? Y = null, bool? Camera = null);
+    bool? Locked = null, double? X = null, double? Y = null, bool? Camera = null, bool? ClickThrough = null);
 /// <summary>Over the character's renderer pipe: a picture of the character as it shows now (Discord's bot picture and
 /// <c>/selfie</c>, and touch zones). <paramref name="Portrait"/> crops a square around the head and shoulders, else the whole
 /// character; the longer side is at most <paramref name="Edge"/> pixels (64 to 2048; never larger than the capture, and smaller
@@ -195,17 +208,34 @@ public static class RendererProtocol
     public static T Data<T>(RendererMessage message) =>
         message.Data.Deserialize<T>(Json) ?? throw new InvalidDataException("Renderer payload is missing.");
 
-    public static async Task WriteAsync(Stream pipe, RendererMessage message, CancellationToken token)
+    /// <summary>One whole message as it goes on the pipe: its length (4 bytes, little-endian) and then its JSON.</summary>
+    /// <exception cref="InvalidDataException">The message exceeds <see cref="MaximumMessageBytes"/>.</exception>
+    public static byte[] Frame(RendererMessage message)
     {
         var bytes = JsonSerializer.SerializeToUtf8Bytes(message, Json);
         if (bytes.Length > MaximumMessageBytes) throw new InvalidDataException("Renderer message exceeds its limit.");
-        byte[] header = new byte[4];
-        BinaryPrimitives.WriteInt32LittleEndian(header, bytes.Length);
-        await pipe.WriteAsync(header, token);
-        await pipe.WriteAsync(bytes, token);
+        var frame = new byte[4 + bytes.Length];
+        BinaryPrimitives.WriteInt32LittleEndian(frame, bytes.Length);
+        bytes.CopyTo(frame, 4);
+        return frame;
+    }
+
+    /// <summary>
+    /// Writes one message in one write. On an anonymous pipe a cancelled write can stop part way and leave the reader out of
+    /// step for good, so give a pipe only a token that is cancelled when the pipe is no longer used, or write through
+    /// <see cref="RendererPipeWriter"/>.
+    /// </summary>
+    public static async Task WriteAsync(Stream pipe, RendererMessage message, CancellationToken token)
+    {
+        var frame = Frame(message);
+        await pipe.WriteAsync(frame, token);
         await pipe.FlushAsync(token);
     }
 
+    /// <summary>
+    /// Reads one whole message. On an anonymous pipe a cancelled read can stop part way and leave the rest of the message in
+    /// the pipe, so give a pipe only a token that is cancelled when the pipe is no longer used.
+    /// </summary>
     public static async Task<RendererMessage> ReadAsync(Stream pipe, CancellationToken token)
     {
         byte[] header = new byte[4];

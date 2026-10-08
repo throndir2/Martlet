@@ -182,6 +182,12 @@ internal static class ClusterSync
                 {
                     return new ClusterProbe(host.HostId, true, "", routes);
                 }
+                // It answered with its routes: a late or failed read of its plan copy doesn't make it a host that stopped
+                // answering. Its copy is read again on the next check.
+                catch (Exception error) when (error is OperationCanceledException && !token.IsCancellationRequested || IsHostFailure(error))
+                {
+                    return new ClusterProbe(host.HostId, true, "", routes, null, true);
+                }
             });
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested) { return new(host.HostId, false, "Didn't respond in time."); }

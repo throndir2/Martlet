@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using Martlet.Avatar.Hosting;
 using Martlet.Avatars;
+using Martlet.Core.Settings;
 using Martlet.Mcp.Shared;
 using Martlet.Providers;
 
@@ -22,7 +23,7 @@ internal static class TouchZonesCheck
     internal static async Task<object> RunAsync(string dataDirectory, bool explicitDirectory, string? modelPath, string? modelId, string? answer,
         int? width, int? height, string? crop, string? probe, string? touch, bool save, bool? includeIntimate, string? snapshotPath,
         CancellationToken cancellation, string? temperamentAnswer = null, string? personaId = null, string? personality = null, int? repeats = null,
-        bool detect = false, string? guess = null, string? previewDirectory = null, int? checks = null)
+        bool detect = false, string? guess = null, string? previewDirectory = null, int? checks = null, int? failAt = null)
     {
         CharacterActionCatalog? catalog = null;
         string? problem = null;
@@ -69,7 +70,10 @@ internal static class TouchZonesCheck
             var truth = CharacterTouchZones.Parse(answer, snapshot.Width, snapshot.Height) ??
                 throw new ArgumentException("detect needs answer: the zones a perfect vision model would find, as JSON about the whole snapshot.");
             var first = guess is null ? null : CharacterTouchZones.Parse(guess, snapshot.Width, snapshot.Height);
-            (detection, var found, sent) = await DetectAsync(snapshot, truth, first, TouchZoneDetection.Hints(probed, cropBox), previewDirectory, checks, cancellation);
+            // Include intimate zones is on unless it is turned off, here or in the saved zones: then the intimate zones must be found.
+            var required = (includeIntimate ?? saved?.IncludeIntimate) == false ? [] : TouchZoneDetection.Erogenous;
+            (detection, var found, sent) = await DetectAsync(snapshot, truth, first, TouchZoneDetection.Hints(probed, cropBox), previewDirectory, checks,
+                required, failAt, cancellation);
             detected = found is null ? null : CharacterTouchZones.Detected(saved, id, found, cropBox, probed, DateTimeOffset.Now, whole: true);
         }
         if (detected is not null && includeIntimate is { } intimate) detected = detected with { IncludeIntimate = intimate };
@@ -90,12 +94,14 @@ internal static class TouchZonesCheck
                 (sent is null ? "" : " and the pictures the detection sent") + (snapshotPath is null ? "" : ".");
         }
         var settings = saved ?? detected;
-        // The persona's touch temperament: a simulated Thinking answer, else the one saved for personaId in the data directory.
+        // The persona's touch temperament: a simulated Thinking answer, else the one personaId uses in the data directory's
+        // character-temperaments.json (its own, the built-in reactions or the custom one it uses).
         var persona = Guid.TryParse(personaId, out var parsedPersona) ? parsedPersona : Guid.Empty;
+        var temperaments = CharacterTouchTemperaments.LoadSet(dataDirectory);
         var temperament = temperamentAnswer is not null
             ? CharacterTouchTemperaments.Parse(temperamentAnswer, persona == Guid.Empty ? Guid.NewGuid() : persona,
                 personality is null ? null : CharacterTouchTemperaments.Digest(personality), CharacterTouchTemperament.ByThinking, DateTimeOffset.Now)
-            : persona == Guid.Empty ? null : CharacterTouchTemperaments.Load(dataDirectory, persona);
+            : persona == Guid.Empty ? null : temperaments.For(persona);
         var touches = Math.Max(1, repeats ?? 1);
         object? match = null;
         if (touch is not null)
@@ -159,25 +165,63 @@ internal static class TouchZonesCheck
                     text = personality is null ? null : CharacterTouchTemperaments.DecisionRequest(personality)
                 },
                 vocabulary = CharacterTouchTemperaments.Vocabulary, attitudes = CharacterTouchTemperaments.AttitudeWords,
+                // The categories, each with the zone kinds it covers: every kind is in exactly one.
+                categories = CharacterTouchTemperaments.GroupIds.Select(g => new
+                {
+                    g.Id, g.Label, parts = CharacterTouchTemperaments.KindsIn(g.Id).Select(k => k.Id).ToArray()
+                }).ToArray(),
                 read = temperamentAnswer is null ? (bool?)null : temperament is not null,
                 used = temperament is null ? null : new
                 {
-                    temperament.Source, summary = CharacterTouchTemperaments.Summary(temperament),
+                    temperament.Source, custom = temperament.Custom?.Name, summary = CharacterTouchTemperaments.Summary(temperament),
                     gaze = temperament.Gaze is { } gaze ? CharacterGaze.Word(gaze) : null,
                     groups = temperament.Groups.ToDictionary(g => g.Key, g => Entry(g.Value)),
                     zones = temperament.Zones.ToDictionary(z => z.Key, z => Entry(z.Value)),
                     escalation = temperament.Escalation
-                }
+                },
+                // What character-temperaments.json holds: which temperament each persona uses, and the owner's custom ones.
+                personas = Personas(dataDirectory, temperaments),
+                custom = temperaments.Custom.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase).Select(c => new
+                {
+                    c.Id, c.Name, summary = CharacterTouchTemperaments.Summary(c.For(Guid.Empty)),
+                    groups = c.Groups.ToDictionary(g => g.Key, g => Entry(g.Value)), zones = c.Zones.ToDictionary(z => z.Key, z => Entry(z.Value)),
+                    usedBy = temperaments.UsedBy(c.Id)
+                }).ToArray()
             },
             match
         };
     }
 
+    // Each persona in settings.json (and any other the file names): which temperament it uses (own, built-in or custom) and its own.
+    private static object[] Personas(string dataDirectory, TouchTemperamentSet temperaments)
+    {
+        IReadOnlyList<PersonaProfile> named = [];
+        Guid? active = null;
+        try
+        {
+            var path = Path.Combine(dataDirectory, "settings.json");
+            if (File.Exists(path) && SettingsJson.Read(File.ReadAllBytes(path)).Companion is { } companion)
+                (named, active) = (companion.Personas, companion.ActivePersonaId);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or NotSupportedException or
+            InvalidOperationException or Martlet.Core.Contracts.ContractException) { }
+        var ids = named.Select(p => p.Id).ToHashSet();
+        var others = temperaments.Personas.Select(t => t.PersonaId).Concat(temperaments.Uses.Keys).Where(id => !ids.Contains(id)).Distinct().Order();
+        return named.Select(p => (p.Id, Name: (string?)p.Name)).Concat(others.Select(id => (Id: id, Name: (string?)null))).Select(p => (object)new
+        {
+            personaId = p.Id, name = p.Name, active = p.Id == active,
+            uses = temperaments.UsesBuiltIn(p.Id) ? "built-in" : temperaments.CustomOf(p.Id) is not null ? "custom" : "own",
+            custom = temperaments.CustomOf(p.Id)?.Name,
+            own = temperaments.Own(p.Id) is { } own ? new { own.Source, summary = CharacterTouchTemperaments.Summary(own) } : null
+        }).ToArray();
+    }
+
     // The production detection on a real snapshot, with a FIXTURE - NOT AI stand-in answering from truth (guess answers the
-    // close-ups first, so the checks have something to correct). Every picture is composed and encoded as the desktop sends it.
+    // close-ups first, so the checks have something to correct; at request failAt it fails instead, as a model that stopped
+    // answering). Every picture is composed and encoded as the desktop sends it.
     private static async Task<(object Report, IReadOnlyList<CharacterTouchZone>? Zones, (TouchZoneSent Sent, List<(string File, byte[] Bytes)> Pictures)? Sent)>
         DetectAsync(ZonePixels snapshot, IReadOnlyList<CharacterTouchZone> truth, IReadOnlyList<CharacterTouchZone>? guess, ZoneHints? hints,
-            string? previewDirectory, int? checks, CancellationToken cancellation)
+            string? previewDirectory, int? checks, IReadOnlyList<string> required, int? failAt, CancellationToken cancellation)
     {
         if (previewDirectory is not null) Directory.CreateDirectory(previewDirectory);
         var pictures = new List<(string File, byte[] Bytes)>();
@@ -191,22 +235,24 @@ internal static class TouchZonesCheck
             pictures.Add((file, bytes));
             sentPictures.Add(new(file, ask.Step, ask.Kind.ToString(), image.Width, image.Height, image.ByteCount, image.MimeType));
             if (previewDirectory is not null) await File.WriteAllBytesAsync(Path.Combine(previewDirectory, file), bytes, token);
-            var reply = TouchZoneDetection.Oracle(ask, truth, guess);
+            var fails = pictures.Count == failAt;
+            var reply = fails ? null : TouchZoneDetection.Oracle(ask, truth, guess);
             asked.Add(new
             {
                 ask.Step, kind = ask.Kind.ToString(), picture = $"{image.Width}x{image.Height} {image.MimeType}, {image.ByteCount / 1024} KB", file,
-                marks = ask.Marks.Count, text = ask.Text, answer = reply
+                marks = ask.Marks.Count, text = ask.Text, answer = reply, failed = fails ? "a simulated failure" : null
             });
-            return (reply, (string?)null);
-        }, null, cancellation, new ZoneDetectionOptions { Checks = Math.Clamp(checks ?? 2, 0, 5) });
+            return (reply, fails ? "a simulated failure" : (string?)null);
+        }, null, cancellation, new ZoneDetectionOptions { Checks = Math.Clamp(checks ?? 2, 0, 5), Required = required });
         var found = result.Zones ?? [];
         var errors = found.Select(z => truth.FirstOrDefault(t => t.Id == z.Id) is { } t ? TouchZoneDetection.Moved(z.Box, t.Box) : double.NaN)
             .Where(double.IsFinite).ToArray();
         var report = new
         {
             fixture = "FIXTURE - NOT AI: a stand-in answered from the given zones; no vision request was made",
-            snapshot = new { snapshot.Width, snapshot.Height }, requestCount = result.Requests, result.Steps, asked,
+            snapshot = new { snapshot.Width, snapshot.Height }, requestCount = result.Requests, failure = result.Failure, result.Steps, asked,
             found = found.Count, given = truth.Count, missed = truth.Where(t => found.All(z => z.Id != t.Id)).Select(t => t.Id).ToArray(),
+            required, requiredMissing = required.Where(id => found.All(z => z.Id != id)).ToArray(),
             worstEdge = errors.Length == 0 ? (double?)null : Math.Round(errors.Max(), 4),
             meanEdge = errors.Length == 0 ? (double?)null : Math.Round(errors.Average(), 4),
             zones = found.Select(Describe).ToArray()

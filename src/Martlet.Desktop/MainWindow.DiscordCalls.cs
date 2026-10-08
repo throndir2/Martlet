@@ -363,7 +363,16 @@ public partial class MainWindow
 
     private void RefreshCallCamera()
     {
-        if (discordCalls.CameraOpen) avatar.SetCameraAsync(discordCalls.CameraView, CancellationToken.None).Forget();
+        if (discordCalls.CameraOpen) RefreshCallCameraAsync().Forget();
+    }
+
+    private async Task RefreshCallCameraAsync()
+    {
+        try { await avatar.SetCameraAsync(discordCalls.CameraView, lifetime.Token); }
+        catch (Exception error) when (error is OperationCanceledException || RendererFailures.Is(error, lifetime.Token))
+        {
+            if (!closing && RendererFailures.Is(error, lifetime.Token)) RendererFailures.Log("The camera view couldn't be refreshed", error);
+        }
     }
 
     private string? callDoctor;
@@ -403,8 +412,8 @@ public partial class MainWindow
                 : showing ? "The camera view is open. Capture the \"Martlet camera\" window in OBS."
                 : "The camera view opens as soon as the character shows (Companion › Character).";
         }
-        catch (Exception error) when (error is InvalidOperationException or System.IO.IOException or TimeoutException or
-            Martlet.Core.Contracts.ContractException or OperationCanceledException)
+        catch (Exception error) when (error is Martlet.Core.Contracts.ContractException or OperationCanceledException ||
+            RendererFailures.Is(error, CancellationToken.None))
         {
             ActionText.Text = "Couldn't change the camera view: " + error.Message;
         }
@@ -440,10 +449,10 @@ public partial class MainWindow
             SaveCallFraming(view);
             if (openTab == CompanionTab.Discord && !tabEdited) RenderTab();
         }
-        catch (Exception error) when (error is System.IO.IOException or InvalidOperationException or TimeoutException or
-            OperationCanceledException or ObjectDisposedException or System.IO.InvalidDataException or System.Text.Json.JsonException)
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception error) when (RendererFailures.Is(error, lifetime.Token))
         {
-            if (!closing) ErrorLog.Warn("The camera view's framing couldn't be read to save it.", error);
+            if (!closing) RendererFailures.Log("The camera view's framing couldn't be read to save it", error);
         }
     }
 

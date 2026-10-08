@@ -68,6 +68,15 @@ CPU_FIRST_TOKENS = max(0, int(os.environ.get("MARTLET_CHATTERBOX_CPU_FIRST_TOKEN
 # the audio already sent runs out, beyond the time its decoding is expected to take (_Playback).
 CPU_CHUNK_TOKENS = 25
 CPU_MARGIN_SECONDS = 0.2
+# At the end of every chunk but the last, the CPU stream keeps back up to this many speech tokens' audio until the next chunk
+# decodes them again with what follows. The decoder's attention sees the whole piece, so it decodes the last frames of a chunk
+# as if the speech ended there. Measured with the same tokens and noise decoded whole and in chunks at the chunk points
+# _Playback picks (4 voices, 3 texts, 2 seeds, UTMOS22 against the whole piece): keeping back only the decoder's 3 tokens of
+# lookahead cost 0.26 (0.34 with 3 or more chunks); 8 tokens cost 0.09; 14 cost 0.06, and 2 decoder steps 0.03, but both made
+# pieces start later. Keeping back more leaves less audio to play while the next chunk is made, so each piece keeps back the
+# most, up to this, that doesn't need a later first chunk than 3 would (_Playback.begin_piece): the first audio never comes
+# later for it.
+CPU_HOLD_TOKENS = max(3, int(os.environ.get("MARTLET_CHATTERBOX_CPU_HOLD_TOKENS", "8")))
 SYSFS_DEVICES = Path("/sys/devices")
 
 CONTRACT_ID = "martlet.f5.worker"
@@ -800,11 +809,13 @@ class EngineHost:
                 "ready": self.state == "ready",
                 "state": self.state,
                 # Whether Turbo or Nano speaks each piece as it is made (FastTurbo.streams): on a GPU with the CUDA graph, and
-                # on the CPU with its first chunk after CPU_FIRST_TOKENS speech tokens (first_tokens; 0 is whole pieces), timed
-                # by what this CPU measured (token_ms: T3's time for a speech token; decoding_scale: decodings against the shape).
+                # on the CPU with its first chunk after CPU_FIRST_TOKENS speech tokens (first_tokens; 0 is whole pieces) and
+                # hold_tokens kept back at each chunk end, timed by what this CPU measured (token_ms: T3's time for a speech
+                # token; decoding_scale: decodings against the shape).
                 "streaming": None if self.fast is None else {
                     "decoding_scale": round(self.fast.cpu_speed.scale, 2) if self.fast.on_cpu else None,
-                    "first_tokens": CPU_FIRST_TOKENS if self.fast.on_cpu else None, "on": self.fast.streams,
+                    "first_tokens": CPU_FIRST_TOKENS if self.fast.on_cpu else None,
+                    "hold_tokens": CPU_HOLD_TOKENS if self.fast.on_cpu else 3, "on": self.fast.streams,
                     "token_ms": round(self.fast.cpu_speed.token * 1000, 1) if self.fast.on_cpu else None},
                 "whisper": {"level_db": WHISPER_DB, "parts": self.whispered_parts},
                 "worker": self.identity,
@@ -1649,6 +1660,19 @@ def _expected_speech_tokens(text_tokens: Any) -> int:
     return 7 * (int(text_tokens.shape[1]) - tags) + 25 * tags
 
 
+def _join(old: Any, new: Any) -> Any:
+    """The vocoder's overlap frames where two decodings of a CPU stream meet: from the last decoding's (old) to this one's
+    (new) for the same frames, linearly. Measured with the same tokens and noise against whole pieces, this halved the
+    UTMOS a stream lost when it kept back the decoder's 3 tokens of lookahead, and took medium and long pieces from -0.20 to
+    -0.07 with the holdback _Playback picks; it adds no time. The GPU's schedule gained nothing from it."""
+    import torch  # type: ignore
+
+    if new.shape != old.shape:
+        return old
+    weight = torch.linspace(1.0, 0.0, old.shape[2], device=old.device, dtype=old.dtype).view(1, 1, -1)
+    return old * weight + new.to(old.dtype) * (1.0 - weight)
+
+
 class _CpuSpeed:
     """How fast this CPU draws speech tokens and decodes chunks, measured while it streams and kept across replies (the
     warm-up measures it first). token: seconds T3 takes for a speech token; scale: measured decoding times against
@@ -1670,15 +1694,21 @@ class _Playback:
     - After that, a chunk is due once the audio already sent would run out before a decoding started later could finish,
       with CPU_MARGIN_SECONDS to spare, but never with fewer new tokens than pay for their own drawing and decoding
       (_least): a smaller one only brings the next pause sooner. A piece whose audio isn't needed yet is decoded whole,
-      once, and so is the rest of a piece when this CPU can't keep up at all."""
+      once, and so is the rest of a piece when this CPU can't keep up at all.
+    - Every chunk but the last keeps back its last hold speech tokens' audio for the next decoding (CPU_HOLD_TOKENS): as
+      many, up to most_hold, as still keep up without a later first chunk than the decoder's own 3 would need."""
 
     FIXED, PER_TOKEN, PER_NEW = 0.36, 0.0028, 0.0053
     TOKEN_SECONDS = 0.04
 
-    def __init__(self, first_tokens: int = CPU_FIRST_TOKENS, clock: Any = time.monotonic, speed: _CpuSpeed | None = None) -> None:
+    def __init__(self, first_tokens: int = CPU_FIRST_TOKENS, clock: Any = time.monotonic, speed: _CpuSpeed | None = None,
+                 hold: int = CPU_HOLD_TOKENS) -> None:
         self.first_tokens = first_tokens
         self.clock = clock
         self.speed = speed if speed is not None else _CpuSpeed()
+        # The most speech tokens kept back at the end of every chunk but the last (CPU_HOLD_TOKENS), and this piece's.
+        self.most_hold = max(3, hold)
+        self.hold = self.most_hold
         # When the audio sent so far will have played (None: nothing sent yet).
         self.ends: float | None = None
         # This piece: its expected speech tokens, the tokens before its first chunk and those decoded so far; and the
@@ -1692,19 +1722,26 @@ class _Playback:
     def begin_piece(self, expected: int = 0) -> None:
         self.expected, self.decoded = expected, 0
         self.run = self.latest = None
+        # The first chunk as late as keeping back only the decoder's lookahead needs...
+        self.hold = 3
         self.first = self.first_tokens
         while self.first < self.expected and not self._keeps_up(self.first):
             self.first += 5
+        # ...then the longest holdback, up to most_hold, that still keeps up after it: the first audio never comes later.
+        self.hold = self.most_hold
+        while self.hold > 3 and self.first < self.expected and not self._keeps_up(self.first):
+            self.hold -= 1
 
     def decoding(self, count: int) -> float:
         """The expected seconds to decode a chunk of this piece's first count speech tokens."""
         return self.speed.scale * (self.FIXED + self.PER_TOKEN * count + self.PER_NEW * (count - self.decoded))
 
     def _keeps_up(self, first: int) -> bool:
-        """Whether, after a first chunk of first speech tokens, chunks each as late as playback allows (and no smaller than
-        _least allows) reach the expected end of the piece without the audio running out."""
+        """Whether, after a first chunk of first speech tokens (sending all but the last hold of them), chunks each as late
+        as playback allows (and no smaller than _least allows) reach the expected end of the piece without the audio
+        running out."""
         speed = self.speed
-        decoded, buffer = first, (first - 3) * self.TOKEN_SECONDS
+        decoded, buffer = first, (first - self.hold) * self.TOKEN_SECONDS
         per_new = speed.token + speed.scale * (self.PER_TOKEN + self.PER_NEW)
         while decoded < self.expected:
             new = int((buffer - CPU_MARGIN_SECONDS - speed.scale * (self.FIXED + self.PER_TOKEN * decoded)) / per_new)
@@ -1858,22 +1895,25 @@ class FastTurbo:
         with torch.inference_mode():
             noise = torch.randn(1, 80, 2 * (prompt + 1100), device=model.device, dtype=s3.dtype)
 
-            def mel(tokens: Any, last: bool) -> Any:
-                # The library's finalize=False trims the encoder output but not its mask, so decode everything and hold back the
-                # last 3 tokens' frames until the next chunk brings their lookahead.
-                count = tokens.shape[1]
-                out = S3Token2Mel.forward(s3, tokens, ref_wav=None, ref_sr=None, ref_dict=conds.gen,
-                                          n_cfm_timesteps=self.decoder_steps, finalize=True,
-                                          noised_mels=noise[:, :, :2 * (prompt + count)])
-                return out if last else out[:, :, :2 * (count - 3)]
-
             if self.graph_ready:
                 pieces = self.graph.chunks(conds.t3, tokens_in, cancelled)
                 playback = None
+                hold = 3
             else:
                 playback = playback if playback is not None else _Playback(speed=self.cpu_speed)
                 playback.begin_piece(_expected_speech_tokens(tokens_in))
                 pieces = self._eager_chunks(conds.t3, tokens_in, cancelled, playback.due)
+                hold = playback.hold
+
+            def mel(tokens: Any, last: bool) -> Any:
+                # The library's finalize=False trims the encoder output but not its mask, so decode everything and hold back the
+                # last hold tokens' frames (at least the 3 of the decoder's lookahead) until the next chunk decodes them again.
+                count = tokens.shape[1]
+                out = S3Token2Mel.forward(s3, tokens, ref_wav=None, ref_sr=None, ref_dict=conds.gen,
+                                          n_cfm_timesteps=self.decoder_steps, finalize=True,
+                                          noised_mels=noise[:, :, :2 * (prompt + count)])
+                return out if last else out[:, :, :2 * max(0, count - hold)]
+
             emitted, cache, first = 0, None, True
             for tokens, last in pieces:
                 # A stopped reply frees the model now, not after decoding audio nobody will hear.
@@ -1883,14 +1923,18 @@ class FastTurbo:
                 tokens = tokens[:, tokens[0] < 6561]
                 if last:
                     tokens = torch.cat([tokens, torch.full((1, 3), S3GEN_SIL, device=tokens.device, dtype=tokens.dtype)], dim=1)
-                if not last and tokens.shape[1] <= 3:
+                if not last and tokens.shape[1] <= hold:
                     continue
                 decoding = time.monotonic()
                 spec = mel(tokens, last)
+                joined = emitted
                 fresh = spec[:, :, emitted:]
                 emitted = spec.shape[2]
                 if cache is not None:
-                    fresh = torch.cat([cache["mel"], fresh], dim=2)
+                    # On the CPU the vocoder's overlap frames go from the last decoding's to this one's, so its input doesn't
+                    # jump where they meet (_join).
+                    overlap_mel = _join(cache["mel"], spec[:, :, joined - 8:joined]) if playback is not None else cache["mel"]
+                    fresh = torch.cat([overlap_mel, fresh], dim=2)
                 wav, source = s3.hift_inference(fresh.to(dtype=s3.dtype), cache["source"] if cache is not None else None)
                 wav = wav.float().cpu()
                 if cache is not None:

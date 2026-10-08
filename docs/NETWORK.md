@@ -277,6 +277,23 @@ pairings with their sources. MCP `outside_reachability_check` (with
 `contactHosts: true`) probes every host's home and outside addresses with the
 pinned key and `GET /health/live`, without a credential.
 
+**Kept connections.** Every paired connection to the same host (same home
+origin and pinned key) shares one pool of kept TCP and TLS connections
+(`Audio2FaceHostClient.CreateHttpClient`), so the desktop's regular checks and
+syncs (every 5 to 30 seconds, per host) do not open a new connection each time.
+A kept connection closes after 20 seconds idle (shorter than the gateway's
+30-second keep-alive) and is replaced after 2 minutes, so a host reached from
+outside is reached at home again within about 2 minutes once home answers. At
+most 32 connections to one host are open at the same time (the gateway takes 64
+from all computers together). A response left unread (a reply stopped) closes
+its connection at once, so the host stops that job at once. `HostRoutes` counts
+the connections opened to each host (`HostRouteStatus.Connections`); MCP
+`host_connections_selftest` checks the reuse on loopback. When this PC itself
+runs out of network resources (Windows `NoBufferSpaceAvailable`: no free
+connection ports or socket buffers), the log and the error say so (*This PC ran
+out of network resources ... The host may be fine.*) instead of saying the host
+didn't answer.
+
 **The gateway's guard** (`GatewayGuard.cs`), always on:
 
 - Requests are classed by route: `health` (liveness), `pair` (one-use cards),

@@ -66,13 +66,18 @@ another host** choice.
   model names, flags and stamps only. JSON, snake case, schema 1, at most
   16 KiB, 8 jobs and 32 hosts; unknown fields and newer schemas are rejected.- **Background work across computers** is the speaking computer's own choice,
   not a job in the plan. Companion › Thinking pool may think on several paired
-  computers at once (each one's Thinking pool role, ticked *Join the Thinking pool*,
-  plus the place chosen first: `Pool` in that PC's `deep-thinking.json`, never
-  shared). The computer you talk to keeps answering; each background think goes
+  computers at once (each one with a Thinking model joins by itself: its
+  Thinking pool role, or its Ollama when that doesn't do this PC's Thinking;
+  unticking *In the Thinking pool* keeps one out; `thinking-pool.json` on that
+  PC, never shared). The computer you talk to keeps answering; each background think goes
   to a free one of those computers, the one sharing least with the conversation
   first (one doing none of its jobs before one that also speaks, before the
   computer doing Thinking), so with four computers one speaks and three think
-  about three things at once. Each result comes back to the speaking computer
+  about three things at once. A member whose computer stops answering (the
+  device sync check, or a pool job that can't reach it) gets no new work, and
+  its slots leave the pool until it answers again; work waiting in line then
+  starts there ([Computers that go
+  offline](CONVERSATION.md#computers-that-go-offline)). Each result comes back to the speaking computer
   and is brought into its conversation as usual. Other kinds of background work
   use the same placement (`BackgroundPlaces`; see [Background job
   API](CONVERSATION.md#background-job-api-for-new-kinds-of-background-work)).
@@ -114,6 +119,14 @@ hosts**) the desktop:
    yet, its own saved Setup choice); an open conversation window reloads when
    idle;
 7. merges its copy into every reachable host whose copy differs.
+
+A host counts as not answering only after it misses two consecutive checks
+(about 30 seconds), as for failover: one slow answer from a busy host keeps its
+last status, and a host that answers with its routes but is late with its copy
+of the plan still answers. The desktop log says each change once: `Host gpu-box
+stopped answering: ...` (or `didn't answer` when it never answered since Martlet
+started) when it goes, and `Host gpu-box answers again.` when it is back. MCP
+`host_connections_selftest` rehearses this on loopback.
 
 Changes made on this PC (the Devices page, Setup, forgetting a host, failover
 choices) are recorded immediately, even while sync is off, so turning sync on
@@ -232,6 +245,12 @@ Devices card are checked locally (`WorkSharingTests`,
 the Devices card through `-Desktop`); requests between real hosts are **NOT
 RUN**.
 
+**Recommended setup.** Home's recommended setup for all your computers plans
+who does each job, the Speaking and Listening pools above and the Thinking
+pool from the hardware of every computer. It keeps companion PCs light and
+never adds conversation latency. See
+[Recommended setup for all your computers](RECOMMENDED_SETUPS.md#recommended-setup-for-all-your-computers).
+
 ### Live turn first on a shared graphics card
 
 A host's live work (replies, voices, listening, lip-sync, reading) and its
@@ -269,6 +288,47 @@ ready). Candidates are ranked by fewest other jobs, then most GPU memory
 (from the host's hardware report), then host ID, so desktops that see the same
 hosts pick the same one. The move is stamped with `moved_from` and shared; the
 row says where it came from.
+
+## When a computer goes away or comes back
+
+Device sync's check of every paired host (every 15 seconds while *Keep Martlet
+the same on all my computers* is on) and Thinking pool jobs feed one record of
+which computers answer now (`HostPresence` in the desktop). It marks a host
+offline at the first failed check, so the Thinking pool reacts at once. The
+notices on a companion PC's Home add patience on top of it
+(`PresenceWatch` in `Martlet.Core.Cluster`):
+
+1. A computer that misses one check and then answers says nothing.
+2. A computer that stays silent for 30 seconds (two checks) is **missing**.
+   Home shows a warning, *Working with less: gpu-box isn't answering*, with
+   what it did for you, from the shared plan: the jobs a failover moved
+   ("Martlet moved Speaking to desk-host."), the jobs that stay with it until it
+   is back, the pools it was in (Speaking pool, Listening pool, Thinking pool)
+   and whether they go on with your other computers, and roles no other
+   computer runs. The item ID is `presence-missing-<hostId>`. The Devices map
+   row says *Not answering for N min*.
+3. A computer still missing after the time chosen in **Settings › Your other
+   computers** (*Look for a better setup when a computer is away for N
+   minutes*: 2 to 60 minutes, 10 by default, kept per PC in
+   `node-presence.txt`) has **stayed away**, once per absence.
+4. A missing computer that answers again for 30 seconds is **back**. Home shows
+   *gpu-box is back* with how long it was away and the jobs that a failover
+   moved and that stay where they are. The item ID is `presence-back-<hostId>`.
+   You can dismiss it, and it clears by itself after 10 minutes.
+5. A computer that flaps (answers again for less than 30 seconds, then goes
+   silent again) stays one absence: it is missing once, stays away once and is
+   back once, when it answers for 30 seconds.
+
+Each of these is an event for the recommended setup on the companion PC:
+`MainWindow.PresenceChanged` (`PresenceChange(HostId, Name, Kind, At)`, where
+`Kind` is `WentMissing`, `StayedAway` or `CameBack`), raised on the UI thread
+on a companion PC only. `MainWindow.OfflineFor(hostId)` says how long a
+computer hasn't answered. This PC's own host service is left out, because Home
+has its own item for it. A host PC's Home is the host dashboard and shows none
+of these. The desktop writes `node-presence.json` (host IDs, computer names,
+states and times, and the notices) when a computer's state changes, for the
+`node_presence_status` MCP tool. Nothing here runs on the reply path: a
+5-second timer on the UI thread does nothing while every computer answers.
 
 ## Edge cases
 
@@ -852,3 +912,97 @@ gateway container built from this source (token read with `docker exec`,
 runner on a real host PC (installing an update, `martlet-host` runs, real
 installs side by side), the engine locks on a real Docker-method host, an older
 gateway refusing the `running` list, and two real computers are **NOT RUN**.
+
+## Applying the recommended setup
+
+Home's recommended setup suggests one setup for all your computers. After you
+review it and click **Reconfigure**, Martlet applies it to every computer
+(`SetupExecutor` in `Martlet.Core.Planning`; the desktop's paths are in
+`MainWindow.RecommendedSetupApply.cs`).
+
+Before Reconfigure, the review shows the **preflight**
+(`PrepareRecommendedSetupAsync`). For each role that Martlet installs or
+changes, Martlet reads the role from that computer (`martlet-host describe`,
+the same reading as the install dialogs: `host.describe-role` through Martlet
+on that computer, this PC's own host engine, or SSH). The preflight shows:
+
+- the terms and licenses of each role (its own and those of the variant it
+  uses, for example Parakeet's or Whisper's),
+- each secret that a role needs and that the host does not store yet (for
+  example an NGC API key; the change then needs you),
+- about how much each change downloads,
+- the changes that need someone at that computer, and the changes that Martlet
+  cannot make, each with the reason.
+
+The Reconfigure click accepts the terms that the review showed. Martlet logs
+that acceptance for each install. A change that the review did not show is
+never made. A secret that you enter in the review stays in memory and goes
+only to the host that needs it.
+
+Then Martlet makes the changes in the order of the recommendation (make before
+break: move or change roles, add roles, hand over jobs, share work, then
+remove roles). It uses only the paths that already exist:
+
+| Change | Path |
+| --- | --- |
+| Add a role, change its model, move it to a graphics card | `host.add-role` with `choice.<VAR>` answers through Martlet on that computer; this PC's own host engine; or the SSH runner without questions, as automatic host updates use it. The model selects its choice and its variant (`choice.STT_ENGINE=parakeet` for a Parakeet model). A choice that selects a variant is always sent, with its default when the change names none, so the host installs the variant whose terms the review showed. An installed role keeps what it runs with now. `choice.gpu` is the UUID of the card from the describe output, found by the card's exact name (then a name that contains the other, then its place among the NVIDIA cards). |
+| Remove a role | `host.remove-role`, or `martlet-host remove` on this PC or over SSH |
+| Hand a job to a computer | The shared cluster plan, as *Use for ...* on the Devices map does, with failover on. Without a host, each companion PC uses its own choice again. |
+| Share speaking or listening | Devices › Sharing work (`work-sharing.json`, the `work-sharing` shared setting): the computer is no longer in the job's *never* list, and sharing is on. Leaving puts it on that list. |
+| Join or leave the Thinking pool | Nothing to do. A computer joins the Thinking pool by itself on its next check when it runs the deep-thinking role. Martlet never writes `thinking-pool.json` for this. |
+
+While the run works, Martlet does not install its own update, and closing Martlet asks first. If Martlet closes before the run ends, the next start ends the run record: the changes not made need you.
+
+A failed step does not stop the other steps. Each step keeps your other
+choices: a job that moves to a host keeps the previous route aside, as a
+manual handoff does. After the last step, Martlet checks every host once
+(*Check hosts*), so this PC and every companion PC follow the new plan within
+one check. A job that this PC cannot follow yet (for example, no voice is
+selected for that engine) is reported as a change that needs you.
+
+## Configuring
+
+While Martlet changes a computer, every computer shows that computer as
+**Configuring**:
+
+- **The run record.** The computer that applies a recommended setup publishes
+  a `SetupRun` (`Martlet.Core.Cluster`) as its own shared settings entry,
+  `setup-run.<device ID>`. The record holds the run ID, the device that started
+  it and when, and one entry for each computer: *Pending*, *Configuring*,
+  *Done*, *Failed* or *NeedsAttention*, with the current step in words
+  ("Installing Chatterbox Turbo (2 of 4)"). It also holds the time the run
+  finished. Only that computer writes its entry. Like the `pc.` and `role.`
+  entries, it is not counted as a shared setting, and it leaves first when a
+  copy is full. Every computer reads it on its next settings sync (every 15
+  seconds). A run that has not changed for two hours is no longer shown as
+  active. A finished run stays on Home for ten minutes.
+- **Host role changes.** A host shows Configuring while this PC installs,
+  changes or removes a role on it, or updates it through Martlet on that
+  computer. A host PC shows Configuring while it runs such a command from
+  another computer.
+- **Following a plan change.** A companion PC shows Configuring for a short
+  time while it switches a job to follow the shared plan.
+
+Where it shows:
+
+- **Home.** On a companion PC, the hero shows *Configuring your computers*
+  beside the listening indicator (`HomeConfiguring`, with its text in
+  `HomeConfiguringStatus`). On a host PC, it shows under the host buttons
+  (`HostConfiguring`, `HostConfiguringStatus`). A click opens the Devices map.
+- **The Devices map.** The computer shows the status *Configuring: <step>*
+  over its other statuses (`NodeHealth.Configuring`).
+- **The tray.** The tooltip adds a line, for example *Configuring 2
+  computers*.
+
+This work runs on the settings sync, the node agent and the host runs. Nothing
+of it is on the reply path.
+
+Checked locally: `setup_run_check` (MCP) runs the production executor on a
+fixture recommendation against simulated computers: the preflight, the host
+commands and their arguments, the secret, the plan with failover, Sharing work,
+a failed step, a change missing from the review, and the run record as another
+computer reads it. `setup_run_status` (MCP) reads the published runs, the plan
+and Sharing work from a data directory. The desktop showed a run from another
+computer on Home and on the Devices map (MCP `-Desktop`, disposable data
+directory). Real installs on real hosts, SSH hosts and two real computers are
+**NOT RUN**.

@@ -4,8 +4,8 @@ using Martlet.Core.Contracts;
 
 namespace Martlet.Providers;
 
-/// <summary>One reply segment spoken by a voice that hands back raw 24 kHz mono PCM16 chunks: a paired host's F5 voice or an
-/// installed Windows voice. It checks the same one-use speech disclosure authorization as the cloud adapter, bound to the
+/// <summary>One reply segment spoken by a voice that hands back raw 24 kHz mono PCM16 chunks: a paired host's F5 voice, an
+/// installed Windows voice or ElevenLabs. It checks the same one-use speech disclosure authorization as the cloud adapter, bound to the
 /// voice's exact destination and selection, and re-frames the chunks into the 20 ms frames playback expects.</summary>
 public abstract class PcmChunkSpeechSynthesisStream : ISpeechSynthesisStream
 {
@@ -158,6 +158,7 @@ public abstract class PcmChunkSpeechSynthesisStream : ISpeechSynthesisStream
         try { return (await chunks.MoveNextAsync().ConfigureAwait(false), null, null); }
         catch (HostTextException error) { return (false, SpeechSynthesisOutcome.Failed, error.Code); }
         catch (WindowsVoiceException error) { return (false, SpeechSynthesisOutcome.Failed, error.Code); }
+        catch (ElevenLabsException error) { return (false, SpeechSynthesisOutcome.Failed, error.Code); }
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { return (false, SpeechSynthesisOutcome.Canceled, null); }
         catch (OperationCanceledException) when (timeout.IsCancellationRequested)
         {

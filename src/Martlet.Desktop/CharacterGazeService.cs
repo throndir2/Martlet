@@ -124,12 +124,11 @@ internal sealed class CharacterGazeService
         }
         if (state == Fresh) return;
         try { await target.SendAsync("gaze", new RendererGaze(Mode: state.Mode, Choice: state.Choice, Free: state.Free), token); }
-        catch (Exception error) when (error is IOException or InvalidOperationException or InvalidDataException or TimeoutException or
-            ObjectDisposedException or JsonException)
+        catch (Exception error) when (RendererFailures.Is(error, token))
         {
             // The next change sends it again.
             lock (gate) told = default;
-            ErrorLog.Warn($"The character couldn't be told where to look: {error.Message}");
+            RendererFailures.Log("The character couldn't be told where to look", error);
         }
     }
 
