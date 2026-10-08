@@ -92,20 +92,15 @@ public partial class MainWindow
             busy.Add("A troubleshooting report is waiting for you to export it");
         else if (support.NeedsCleanup)
             busy.Add("Troubleshooting is waiting to clean up its files");
-        if (updateDownloadCancellation is not null)
-            busy.Add(availableUpdate is { } update ? $"Downloading Martlet {update.Version.ToString(3)}" : "Downloading a Martlet update");
-        if (installingParakeet is { } downloading)
-            busy.Add($"Downloading {Martlet.Sherpa.ParakeetModels.Find(downloading)?.Name ?? "Parakeet"} speech recognition");
-        if (hostUpdatesRunning || hostUpdates.Running)
-            busy.Add("Updating Martlet on your hosts");
-        if (setupApplying)
-            busy.Add("Reconfiguring your computers with the recommended setup");
+        // Downloads, host updates, reconfiguring your computers and the changes other computers ask for are background tasks:
+        // their run windows are listed below.
         if (!asked)
-            foreach (var command in NodeCommandsRunning)
+            foreach (var command in NodeCommandsRunning.Where(c => !nodeCommandRuns.ContainsKey(c.Id)))
                 busy.Add($"A command from another computer: {NodeCommandAgent.Describe(command)}");
         foreach (var window in Application.Current?.Windows.OfType<Window>() ?? [])
         {
-            if (window is HostRunWindow { IsRunning: true } run)
+            // The update another computer asked for doesn't wait for its own run.
+            if (window is HostRunWindow { IsRunning: true } run && !(asked && nodeCommandRuns.ContainsValue(run)))
                 busy.Add($"{run.Heading} (in Background tasks)");
             else if (window is PrepareHostWindow { IsBusy: true } prepare)
                 busy.Add(prepare.Heading);

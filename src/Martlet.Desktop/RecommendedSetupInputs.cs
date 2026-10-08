@@ -155,6 +155,45 @@ internal static class RecommendedSetupInputs
         return current with { Pool = [.. order.Where(id => id != host)] };
     }
 
+    /// <summary>FIXTURE, NOT real computers (recommended_setup_status's fixture "network", and the desktop's
+    /// MARTLET_SIMULATE_RECOMMENDED_SETUP): this PC, a companion PC that does all three jobs on its own host service (too much
+    /// for a PC that runs games); gpu-box, a strong Linux host PC with nothing installed; DIVA, another companion PC whose host
+    /// service runs Deep thinking; and old-box, a host that never reported its hardware.</summary>
+    internal static SetupSources Fixture(DateTimeOffset now)
+    {
+        HostHardware Report(string id, string gpu, int vramGb, double ramGb, int threads, string platform, string kernel) =>
+            new(id, $"https://{id}.lan:8443", now, now, "docker", platform == "windows" ? "Windows 11" : "Ubuntu 24.04", kernel,
+                "Fixture processor", threads, ramGb, "docker", "yes", [new HostGpu(gpu, "nvidia", vramGb * 1024, "570")]) { Platform = "linux" };
+        var plan = ClusterPlan.Empty
+            .Assign(ClusterJobs.Thinking, "desk-host", false, true, null, "fixture-desk", now)
+            .Assign(ClusterJobs.Speaking, "desk-host", false, true, null, "fixture-desk", now)
+            .Assign(ClusterJobs.Listening, "desk-host", false, true, null, "fixture-desk", now)
+            .Assign(ClusterJobs.LipSync, null, true, false, null, "fixture-desk", now);
+        return new SetupSources(
+        [
+            new("desk-host", "This PC", NetworkMachineKind.Companion)
+            {
+                Specs = MachineSpecs.ThisPc([new MachineGpu("NVIDIA GeForce RTX 4080", GpuVendor.Nvidia, 16)], 32, 24, diskFreeGb: 400),
+                HasHostService = true, Reachable = true, ThisPc = true,
+                Offers = new Dictionary<string, string> { ["ollama"] = "gemma4:12b", ["chatterbox"] = "chatterbox-turbo", ["stt"] = "whisper-large-v3-turbo" }
+            },
+            new("gpu-box", "gpu-box", NetworkMachineKind.Host)
+            {
+                Hardware = Report("gpu-box", "NVIDIA GeForce RTX 4090", 24, 64, 32, "linux", "6.8.0"), HasHostService = true, Reachable = true,
+                Offers = new Dictionary<string, string>()
+            },
+            new("diva-host", "DIVA", NetworkMachineKind.Companion)
+            {
+                Hardware = Report("diva-host", "NVIDIA GeForce RTX 3080", 10, 32, 16, "windows", "5.15.167.4-microsoft-standard-WSL2"),
+                HasHostService = true, Reachable = true, Offers = new Dictionary<string, string> { ["deep-thinking"] = "gemma4:e4b" }
+            },
+            new("old-box", "old-box", NetworkMachineKind.Host) { HasHostService = true, Reachable = true }
+        ])
+        {
+            Plan = plan, Device = "fixture-desk", ThinkingPool = ["diva-host"], VoiceEngine = SpeechEngines.Chatterbox.HostRoleKind
+        };
+    }
+
 #if !MARTLET_MCP
     /// <summary>The desktop's view of the owner's computers as recommender sources: this PC (its own host service's id when it
     /// runs one, else its device id), every paired host (a companion PC when your Martlet network says that computer is one)

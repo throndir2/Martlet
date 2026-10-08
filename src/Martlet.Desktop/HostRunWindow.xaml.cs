@@ -32,7 +32,12 @@ public partial class HostRunWindow : ThemedWindow
         this.title = title;
         Title = "Martlet - " + title;
         HeadingText.Text = title;
-        Output = new Progress<string>(Append);
+        // A line reported on the UI thread is added at once, in order with the status line; other threads post theirs.
+        Output = new LineSink(line =>
+        {
+            if (Dispatcher.CheckAccess()) Append(line);
+            else Dispatcher.InvokeAsync(() => Append(line));
+        });
         Prompts = new HostShellDialogs(this);
         task = new BackgroundTask(title, RequestCancel) { Window = this };
         Closed += (_, _) => Forget();

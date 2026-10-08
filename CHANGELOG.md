@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+- **Reconfigure** in the recommended setup now runs as a background task. The review closes and a window shows each computer's progress and what its installs print. Hide it and find it again in **Background tasks**, or cancel the changes not made yet. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+- More long jobs now show in **Background tasks**, with their progress and output, and you can cancel them there: downloading a Martlet update, Parakeet or cloudflared, updating your hosts, keeping this PC's host service on Martlet's version, and the installs and updates your other computers ask this PC to make. ([#PR](https://github.com/throndir2/Martlet/pull/PR))
+
 ## [0.57.0] - 2026-10-07
 
 ### Added

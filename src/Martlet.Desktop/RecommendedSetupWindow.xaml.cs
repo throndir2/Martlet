@@ -22,13 +22,13 @@ internal sealed record RecommendedSetupPreflightView(IReadOnlyList<string> Lines
 /// <summary>Home's Recommended setup review: what the recommended setup changes on each computer and why, who does each job,
 /// notes, downloads and what needs someone at a computer, then Reconfigure (which applies it on every computer) or Not now
 /// (this PC doesn't ask about the same setup again). It reads nothing and changes nothing itself: <c>prepare</c> checks what
-/// Reconfigure needs, and <c>apply</c> runs it with progress; both run in Martlet's main window, so closing this window
-/// never stops a reconfiguration.</summary>
+/// Reconfigure needs, and <c>apply</c> starts it as a background task with its own run window (Reconfigure your computers),
+/// after which the review closes; it returns why it couldn't start, if it couldn't.</summary>
 public partial class RecommendedSetupWindow : ThemedWindow
 {
     private readonly RecommendedSetupReview review;
     private readonly Func<CancellationToken, Task<RecommendedSetupPreflightView>>? prepare;
-    private readonly Func<RecommendedSetupPreflightView, IReadOnlyDictionary<string, string>, IProgress<string>, Task<string>>? apply;
+    private readonly Func<Window, RecommendedSetupPreflightView, IReadOnlyDictionary<string, string>, string?>? apply;
     private readonly CancellationTokenSource lifetime = new();
     private readonly Dictionary<string, PasswordBox> secretBoxes = new(StringComparer.Ordinal);
     private RecommendedSetupPreflightView? preflight;
@@ -37,11 +37,11 @@ public partial class RecommendedSetupWindow : ThemedWindow
     /// <summary>The owner chose Not now: the review's fingerprint.</summary>
     internal event Action<string>? Declined;
 
-    /// <summary>Reconfigure finished; its outcome in words.</summary>
+    /// <summary>Reconfigure started (it carries on in Background tasks), in words.</summary>
     internal string? Outcome { get; private set; }
 
     internal RecommendedSetupWindow(RecommendedSetupReview review, Func<CancellationToken, Task<RecommendedSetupPreflightView>>? prepare,
-        Func<RecommendedSetupPreflightView, IReadOnlyDictionary<string, string>, IProgress<string>, Task<string>>? apply)
+        Func<Window, RecommendedSetupPreflightView, IReadOnlyDictionary<string, string>, string?>? apply)
     {
         InitializeComponent();
         this.review = review;
@@ -129,28 +129,29 @@ public partial class RecommendedSetupWindow : ThemedWindow
             : "Ready. Reconfigure changes your computers as listed.";
     }
 
-    private async void Apply_Click(object sender, RoutedEventArgs e)
+    private void Apply_Click(object sender, RoutedEventArgs e)
     {
         if (applying || preflight is not { Ready: true } ready || apply is null) return;
         applying = true;
         ApplyButton.IsEnabled = false;
-        CancelButton.Visibility = Visibility.Collapsed;
-        CloseButton.Visibility = Visibility.Visible;
-        CloseButton.IsCancel = true;
-        StatusText.Text = "Reconfiguring your computers... You can close this window; Martlet carries on and Home shows the progress.";
         var secrets = secretBoxes.Where(s => s.Value.Password.Length > 0).ToDictionary(s => s.Key, s => s.Value.Password, StringComparer.Ordinal);
         foreach (var box in secretBoxes.Values)
         {
             box.Clear();
             box.IsEnabled = false;
         }
-        var progress = new Progress<string>(text => StatusText.Text = text);
-        string outcome;
-        try { outcome = await apply(ready, secrets, progress); }
-        catch (OperationCanceledException) { outcome = "The reconfiguration stopped."; }
-        Outcome = outcome;
-        StatusText.Text = outcome;
+        // The run window takes over: it shows the progress, and Background tasks keeps it after its window is hidden.
+        if (apply(this, ready, secrets) is not { } problem)
+        {
+            Outcome = "Reconfiguring your computers in Background tasks.";
+            Close();
+            return;
+        }
+        StatusText.Text = problem;
         ApplyButton.Visibility = Visibility.Collapsed;
+        CancelButton.Visibility = Visibility.Collapsed;
+        CloseButton.Visibility = Visibility.Visible;
+        CloseButton.IsCancel = true;
         CloseButton.IsDefault = true;
     }
 

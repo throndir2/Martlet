@@ -851,7 +851,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // and load ("RecommendedSetupComputer-0", "RecommendedSetupToday-0", "RecommendedSetupTarget-0", "RecommendedSetupLoad-0",
         // "RecommendedSetupBar-0-vram"), who does each job ("RecommendedSetupJob-0"), the notes, downloads, what needs someone at a
         // computer, what Reconfigure needs first ("RecommendedSetupPreflight-0", "RecommendedSetupSecret-0": the label only, never
-        // what is typed) and the status line with its progress and outcome. Computer names, host IDs, model names and fixed text.
+        // what is typed) and the status line (the preflight state, or why Reconfigure couldn't start; its progress and outcome
+        // show in its run window and Background tasks). Computer names, host IDs, model names and fixed text.
         "RecommendedSetup"];
     private int? processId;
 
