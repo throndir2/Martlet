@@ -66,8 +66,8 @@ function faceReading(id) {
   const anchor = face(), overlays = activeOverlays();
   const width = Math.max(1, canvas.clientWidth), height = Math.max(1, canvas.clientHeight);
   const round = value => Math.round(value * 10000) / 10000;
-  const pinned = adapter?.faceTracking ? { carriers: adapter.faceTracking.carriers, milliseconds: adapter.faceTracking.milliseconds,
-    eyeMilliseconds: adapter.faceTracking.eyeMilliseconds ?? 0 } : null;
+  const pinned = adapter?.faceTracking ? { carriers: adapter.faceTracking.carriers, skin: adapter.faceTracking.skin ?? null,
+    milliseconds: adapter.faceTracking.milliseconds, eyeMilliseconds: adapter.faceTracking.eyeMilliseconds ?? 0 } : null;
   if (!anchor) return { id, found: false, overlays, pinned };
   const cheek = (point, frame) => {
     let hit;

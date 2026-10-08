@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Live2DAdapter, LocalModelBundle, faceFeatures, faceFromBox, faceFromLayout, faceSource, headRoll, pinFace, trackFace,
-  turnFace } from "../dist/index.js";
+import { Live2DAdapter, LocalModelBundle, faceFeatures, faceFromBox, faceFromLayout, faceSkin, faceSource, headRoll, pinFace,
+  trackFace, turnFace } from "../dist/index.js";
 import { environment, files } from "./fixtures.mjs";
 
 test("the face is found from a head hit area, then face or cheek meshes, then the top of the model", () => {
@@ -29,8 +29,9 @@ test("the estimate from the top of the model sits in the head, a little below th
 
 test("the head's roll is a damped, clamped share of ParamAngleZ, not its full degrees", () => {
   assert.equal(headRoll(0), 0);
-  assert.ok(headRoll(30) > 0 && headRoll(30) < 12.0001 * Math.PI / 180, String(headRoll(30)));
-  assert.ok(Math.abs(headRoll(10) - 3.5 * Math.PI / 180) < 1e-9);
+  // A positive ParamAngleZ tips the top of the head toward the viewer's right: clockwise as the viewer sees it, as on Hiyori.
+  assert.ok(headRoll(30) < 0 && headRoll(30) > -12.0001 * Math.PI / 180, String(headRoll(30)));
+  assert.ok(Math.abs(headRoll(10) + 3.5 * Math.PI / 180) < 1e-9);
   assert.equal(headRoll(-90), -headRoll(90));
   assert.equal(headRoll(Number.NaN), 0);
 });
@@ -40,9 +41,9 @@ test("a fixed face follows the head's angles and rolls its features", () => {
   assert.ok(turnFace(face, 30, 0, 0).x > 0.1);
   assert.ok(turnFace(face, 0, 30, 0).y > 0.05);
   const rolled = turnFace(face, 0, 0, 20);
-  assert.ok(rolled.x < 0 && Math.abs(rolled.roll - headRoll(20)) < 1e-9);
+  assert.ok(rolled.x > 0 && Math.abs(rolled.roll - headRoll(20)) < 1e-9, "tipped about the neck, the face goes right");
   const features = faceFeatures(rolled);
-  assert.ok(features.cheekRight.y > features.cheekLeft.y, "a counterclockwise roll lifts the viewer's right cheek");
+  assert.ok(features.cheekRight.y < features.cheekLeft.y, "a clockwise roll lowers the viewer's right cheek");
   const box = faceFromBox("head", { minX: -1, maxX: 1, minY: 0, maxY: 2 });
   assert.equal(box.x, 0);
   assert.ok(box.width < 2 && box.y < 1);
@@ -307,6 +308,113 @@ test("a face found by vision is pinned where the meshes are drawn now, then foll
   const upright = adapter.faceAnchor(), back = -10 * Math.PI / 180;
   assert.ok(near(upright, toCanvas({ x: -0.4 * Math.sin(back), y: 0.8 + 0.4 * Math.cos(back) })), JSON.stringify(upright));
   assert.ok(Math.abs(upright.angle - 10 * Math.PI / 180) < 1e-4, String(upright.angle));
+});
+
+test("the face's skin is the highest drawable showing at rest that holds the face's middle and both cheeks", () => {
+  const face = { x: 0, y: 0, width: 1, roll: 0 };
+  const square = (x0, x1, y0, y1) => new Float32Array([x0, y0, x1, y0, x1, y1, x0, y1]);
+  const meshes = [
+    { vertices: square(-0.8, 0.8, -0.9, 0.9) },
+    { vertices: square(-0.5, 0.5, -0.6, 0.6) },
+    { vertices: square(-0.3, -0.1, -0.1, 0.1) },
+    { vertices: square(-0.5, 0.5, -0.6, 0.6), shown: false },
+    { vertices: square(-5, 5, -5, 5) },
+  ];
+  // Two triangles a square, drawn in the order given unless an order is set.
+  const drawables = list => ({ count: list.length, shown: i => list[i].shown !== false, vertices: i => list[i].vertices,
+    indices: () => new Uint16Array([0, 1, 2, 0, 2, 3]), order: i => list[i].order ?? i });
+  assert.equal(faceSkin(face, drawables(meshes)), 1,
+    "the skin: over the back hair; an eye holds no cheek, a hidden blush doesn't show and an overlay over the whole picture isn't skin");
+  assert.equal(faceSkin(face, drawables(meshes.map((mesh, i) => ({ ...mesh, order: -i })))), 0, "the highest drawn wins");
+  assert.equal(faceSkin(face, drawables(meshes.slice(2))), undefined, "nothing holds the face");
+  assert.equal(faceSkin(face, { ...drawables(meshes), indices: () => new Uint16Array([0, 1, 1]) }), undefined,
+    "flat triangles hold nothing");
+});
+
+// A face drawn in layers that move apart as the head nods and turns, as a VTuber rig draws it: the back hair, the skin and
+// the mouth over it, and an overlay over the whole picture. The head follows ParamFaceAngleX, Y and Z, which the model's
+// physics drives from ParamAngleX, Y and Z (here they are set directly; the angles alone move nothing). Looking down
+// (ParamFaceAngleY -30) moves the skin 0.04 units down, the mouth 0.06 and the back hair 0.02 up. Model units, y up.
+function layered() {
+  const env = environment();
+  for (const parameter of [["ParamAngleX", -30, 30, 0], ["ParamAngleY", -30, 30, 0], ["ParamAngleZ", -30, 30, 0],
+    ["ParamFaceAngleX", -30, 30, 0], ["ParamFaceAngleY", -30, 30, 0], ["ParamFaceAngleZ", -30, 30, 0]]) {
+    env.parameters.push(parameter);
+    env.values.push(parameter[3]);
+  }
+  const value = id => env.values[env.parameters.findIndex(p => p[0] === id)] ?? 0;
+  const grid = (x0, x1, y0, y1, columns, rows) => {
+    const points = [], indices = [];
+    for (let i = 0; i < columns; i++) for (let j = 0; j < rows; j++)
+      points.push(x0 + (x1 - x0) * i / (columns - 1), y0 + (y1 - y0) * j / (rows - 1));
+    for (let i = 0; i + 1 < columns; i++) for (let j = 0; j + 1 < rows; j++) {
+      const a = i * rows + j, b = (i + 1) * rows + j;
+      indices.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+    return { rest: new Float32Array(points), indices: new Uint16Array(indices) };
+  };
+  // Turned (squashed across and moved), nodded, then tipped clockwise as the viewer sees it about the neck (0, 0.8).
+  const head = (shift, nod) => (x, y) => {
+    const fx = value("ParamFaceAngleX") / 30, fy = value("ParamFaceAngleY") / 30, roll = -(10 * Math.PI / 180) * value("ParamFaceAngleZ") / 30;
+    const [px, py] = [x * (1 - 0.1 * Math.abs(fx)) + shift * fx, y + nod * fy];
+    return [px * Math.cos(roll) - (py - 0.8) * Math.sin(roll), 0.8 + px * Math.sin(roll) + (py - 0.8) * Math.cos(roll)];
+  };
+  const meshes = [
+    { id: "D_HAIR_BACK", ...grid(-0.45, 0.45, 0.75, 1.75, 4, 5), pose: head(-0.03, -0.02) },
+    { id: "D_FACE_SKIN", ...grid(-0.3, 0.3, 0.85, 1.55, 7, 8), pose: head(0.06, 0.04) },
+    { id: "D_MOUTH", ...grid(-0.05, 0.05, 0.97, 1.03, 3, 3), pose: head(0.09, 0.06) },
+    { id: "D_OVERLAY", ...grid(-2, 2, -2, 2, 2, 2), pose: (x, y) => [x, y] },
+  ];
+  const current = meshes.map(mesh => Float32Array.from(mesh.rest));
+  Object.assign(env.model, {
+    getDrawableCount: () => meshes.length,
+    getDrawableVertexCount: i => meshes[i].rest.length / 2,
+    getDrawableVertexIndexCount: i => meshes[i].indices.length,
+    getDrawableVertexIndices: i => meshes[i].indices,
+    getDrawableRenderOrders: () => Int32Array.from(meshes.keys()),
+    getDrawableId: i => ({ getString: () => ({ s: meshes[i].id }) }),
+    getDrawableVertices: i => current[i],
+    getParameterValueByIndex: i => env.values[i],
+    update: () => meshes.forEach((mesh, m) => {
+      for (let v = 0; v < mesh.rest.length; v += 2) [current[m][v], current[m][v + 1]] = mesh.pose(mesh.rest[v], mesh.rest[v + 1]);
+    }),
+  });
+  const set = values => { for (const [id, v] of Object.entries(values)) env.values[env.parameters.findIndex(p => p[0] === id)] = v; env.model.update(); };
+  const skin = meshes[1].pose;
+  return { env, set, skin: p => { const [x, y] = skin(p.x, p.y); return { x, y }; } };
+}
+
+test("a face drawn in layers is pinned to its skin, so the blush stays on the cheeks however physics turns the head", async t => {
+  const { env, set, skin } = layered();
+  const adapter = new Live2DAdapter(env.canvas, { sdk: env.sdk, services: env.services, onDiagnostic: () => {} });
+  t.after(() => adapter.dispose());
+  await adapter.load(new LocalModelBundle(files(), "avatar.model3.json"));
+  assert.equal(adapter.faceTracking.skin, "D_FACE_SKIN", "the skin: over the back hair, and the overlay is no face");
+  assert.equal(adapter.faceTracking.carriers, 56, "every vertex of the skin");
+  const rest = adapter.faceAnchor();
+  assert.equal(rest.tracking, "mesh");
+  const toModel = p => ({ x: (p.x / 320 - 1) / 0.375, y: (1 - p.y / 240) / 0.5 });
+  const toCanvas = p => ({ x: (p.x * 0.375 + 1) * 320, y: (1 - 0.5 * p.y) * 240 });
+  const features = ["cheekLeft", "cheekRight", "eyeLeft", "eyeRight", "mouth", "top"];
+
+  // The angles alone move nothing on this model, so nothing Martlet draws moves.
+  set({ ParamAngleX: 30, ParamAngleY: -30, ParamAngleZ: 30 });
+  for (const key of features) assert.ok(near(adapter.faceAnchor()[key], rest[key]), `${key} stays`);
+
+  // Looking down: every point goes down with the skin, 0.04 units (4.8 pixels), not with the mouth or the back hair.
+  set({ ParamAngleX: 0, ParamAngleY: -30, ParamAngleZ: 0, ParamFaceAngleY: -30 });
+  const down = adapter.faceAnchor();
+  for (const key of features) assert.ok(near(down[key], { x: rest[key].x, y: rest[key].y + 4.8 }), `${key}: ${JSON.stringify(down[key])}`);
+
+  // Turned toward the mouse, looking down and tipped: each point lands where the skin took that spot.
+  set({ ParamFaceAngleX: 20, ParamFaceAngleY: -30, ParamFaceAngleZ: 15 });
+  const moved = adapter.faceAnchor();
+  for (const key of features) {
+    const expected = toCanvas(skin(toModel(rest[key])));
+    assert.ok(near(moved[key], expected), `${key}: ${JSON.stringify(moved[key])} vs ${JSON.stringify(expected)}`);
+  }
+  assert.ok(Math.abs(moved.angle - 5 * Math.PI / 180) < 1e-4, `tipped 5° clockwise on screen: ${moved.angle}`);
+  assert.ok(moved.cheekRightFrame.right.y > 0, "the blush tips with the head");
 });
 
 // Canvas pixels (the fixture's 640 by 480 canvas, fitting the model's 4-unit height) from model units, and back.

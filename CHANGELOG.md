@@ -8,6 +8,9 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Fixed
+- Martlet's drawings on a Live2D character's face, such as the blush, tears, sweat drops and symbols over the head, now stay in place when she looks down at your mouse or turns and tilts her head, also on characters whose head moves through their own physics. ([#596](https://github.com/throndir2/Martlet/pull/596))
+
 ## [0.55.0] - 2026-10-07
 
 ### Added
