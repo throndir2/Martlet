@@ -105,14 +105,19 @@ public sealed record CharacterTouchZoneSettings
     public bool Active(CharacterTouchZone zone) => zone.Enabled && (IncludeIntimate || CharacterTouchZones.Kind(zone.Id)?.Intimate != true);
 }
 
-/// <summary>A Live2D drawable's bounds on the renderer page (fractions of the page), from the renderer's zones probe.</summary>
-public sealed record RendererDrawableBox(string Id, double Left, double Top, double Right, double Bottom);
+/// <summary>A Live2D drawable's bounds on the renderer page (fractions of the page), from the renderer's zones probe, and the ID of
+/// the model's part it belongs to (null when the renderer can't say).</summary>
+public sealed record RendererDrawableBox(string Id, double Left, double Top, double Right, double Bottom, string? Part = null);
 /// <summary>A VRM humanoid bone's place on the renderer page (fractions of the page).</summary>
 public sealed record RendererBonePoint(string Bone, double X, double Y);
+/// <summary>A Live2D model's own part (a group of drawables and parts): its ID, the name its DisplayInfo file (*.cdi3.json) gives
+/// it, in any language (null when it gives none), and the ID of the part it belongs to (null for a top part).</summary>
+public sealed record RendererModelPart(string Id, string? Name = null, string? Parent = null);
 /// <summary>The zones probe's reply: where the showing model's drawables (Live2D) or humanoid bones (VRM) are now. A whole
 /// picture's probe also says where the face was in it (<see cref="Face"/>, from the renderer's face anchor), which the eye
-/// measurement crops around.</summary>
-public sealed record RendererZoneProbe(RendererDrawableBox[]? Drawables = null, RendererBonePoint[]? Bones = null, RendererFace? Face = null);
+/// measurement crops around, and a Live2D model's own parts (<see cref="Parts"/>), so its part names can find and check zones.</summary>
+public sealed record RendererZoneProbe(RendererDrawableBox[]? Drawables = null, RendererBonePoint[]? Bones = null, RendererFace? Face = null,
+    RendererModelPart[]? Parts = null);
 
 /// <summary>Which zone a touch landed in and how it was found ("drawable", "bone", "hair", "box" or "coarse").</summary>
 public sealed record TouchZoneMatch(CharacterTouchZone Zone, string How);
@@ -506,6 +511,29 @@ public static class CharacterTouchZones
         Directory.CreateDirectory(folder);
         await File.WriteAllBytesAsync(System.IO.Path.Combine(folder, SentFile), JsonSerializer.SerializeToUtf8Bytes(sent, Json), token);
     }
+
+    /// <summary>What the renderer's probe told of the model when its last detection took its picture, kept with the pictures.</summary>
+    public const string ProbeFile = "probe.json";
+
+    public static async Task SaveProbeAsync(string dataDirectory, string modelId, TouchZoneProbeFile probe, CancellationToken token = default)
+    {
+        var folder = SentFolder(dataDirectory, modelId);
+        Directory.CreateDirectory(folder);
+        await File.WriteAllBytesAsync(System.IO.Path.Combine(folder, ProbeFile), JsonSerializer.SerializeToUtf8Bytes(probe, Json), token);
+    }
+
+    /// <summary>The probe the model's last detection took its picture with (<see cref="ProbeFile"/>), or null.</summary>
+    public static TouchZoneProbeFile? LoadProbe(string dataDirectory, string modelId) => ReadProbe(System.IO.Path.Combine(SentFolder(dataDirectory, modelId), ProbeFile));
+
+    /// <summary>A <see cref="ProbeFile"/>, or null when it is missing or can't be read.</summary>
+    public static TouchZoneProbeFile? ReadProbe(string path)
+    {
+        try
+        {
+            return File.Exists(path) && new FileInfo(path).Length <= MaximumBytes ? JsonSerializer.Deserialize<TouchZoneProbeFile>(File.ReadAllBytes(path), Json) : null;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or NotSupportedException) { return null; }
+    }
     public static async Task SaveSnapshotAsync(string dataDirectory, string modelId, byte[] png, CancellationToken token = default)
     {
         var path = SnapshotPath(dataDirectory, modelId);
@@ -517,6 +545,10 @@ public static class CharacterTouchZones
 /// <summary>One picture the vision model was sent while finding zones: its file in the sent folder, the step, what it asked
 /// (Parts, Zones or Check), its size in pixels and bytes, and its media type.</summary>
 public sealed record TouchZoneSentPicture(string File, string Step, string Kind, int Width, int Height, int Bytes, string MediaType);
+
+/// <summary>Where a detection's snapshot sat on the renderer page (fractions of the page) and what the renderer's probe told of the
+/// model then: its drawables (with their parts), bones and own parts (character-touch-zones\&lt;model&gt;-sent\probe.json).</summary>
+public sealed record TouchZoneProbeFile(TouchZoneBox Crop, RendererZoneProbe Probe);
 
 /// <summary>What a detection sent to the vision model: when, whether a FIXTURE stood in for it, how many requests it made, each
 /// picture, one line per step and whether it saved zones (so its pictures belong to the snapshot under the boxes)

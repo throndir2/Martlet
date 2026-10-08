@@ -23,7 +23,7 @@ internal static class TouchZonesCheck
     internal static async Task<object> RunAsync(string dataDirectory, bool explicitDirectory, string? modelPath, string? modelId, string? answer,
         int? width, int? height, string? crop, string? probe, string? touch, bool save, bool? includeIntimate, string? snapshotPath,
         CancellationToken cancellation, string? temperamentAnswer = null, string? personaId = null, string? personality = null, int? repeats = null,
-        bool detect = false, string? guess = null, string? previewDirectory = null, int? checks = null, int? failAt = null)
+        bool detect = false, string? guess = null, string? previewDirectory = null, int? checks = null, int? failAt = null, string? probePath = null)
     {
         CharacterActionCatalog? catalog = null;
         string? problem = null;
@@ -58,6 +58,18 @@ internal static class TouchZonesCheck
         int w = width ?? 400, h = height ?? 800;
         var cropBox = crop is null ? new TouchZoneBox(0, 0, 1, 1) : Box(crop);
         var probed = probe is null ? null : JsonSerializer.Deserialize<RendererZoneProbe>(probe, Web);
+        if (probePath is not null)
+        {
+            // A probe.json as Detect zones keeps it (where the snapshot sat, and the probe), or a bare probe.
+            using var file = JsonDocument.Parse(await File.ReadAllBytesAsync(probePath, cancellation));
+            if (file.RootElement.TryGetProperty("probe", out var keptProbe))
+            {
+                probed = keptProbe.Deserialize<RendererZoneProbe>(Web);
+                if (crop is null && file.RootElement.TryGetProperty("crop", out var keptCrop)) cropBox = keptCrop.Deserialize<TouchZoneBox>(Web) ?? cropBox;
+            }
+            else probed = file.RootElement.Deserialize<RendererZoneProbe>(Web);
+        }
+        var hints = TouchZoneDetection.Hints(probed, cropBox);
         var parsed = answer is null ? null : CharacterTouchZones.Parse(answer, w, h);
         var saved = CharacterTouchZones.Load(dataDirectory, id);
         CharacterTouchZoneSettings? detected = parsed is null ? null : CharacterTouchZones.Detected(saved, id, parsed, cropBox, probed, DateTimeOffset.Now);
@@ -72,7 +84,7 @@ internal static class TouchZonesCheck
             var first = guess is null ? null : CharacterTouchZones.Parse(guess, snapshot.Width, snapshot.Height);
             // Include intimate zones is on unless it is turned off, here or in the saved zones: then the intimate zones must be found.
             var required = (includeIntimate ?? saved?.IncludeIntimate) == false ? [] : TouchZoneDetection.Erogenous;
-            (detection, var found, sent) = await DetectAsync(snapshot, truth, first, TouchZoneDetection.Hints(probed, cropBox), previewDirectory, checks,
+            (detection, var found, sent) = await DetectAsync(snapshot, truth, first, hints, previewDirectory, checks,
                 required, failAt, cancellation);
             detected = found is null ? null : CharacterTouchZones.Detected(saved, id, found, cropBox, probed, DateTimeOffset.Now, whole: true);
         }
@@ -138,6 +150,7 @@ internal static class TouchZonesCheck
                 extras = TouchZoneDetection.Extras
             },
             parsed = answer is null ? null : parsed?.Select(Describe).ToArray() ?? [],
+            hints = DescribeHints(hints),
             detection,
             detected = detected is null ? null : detected.Zones.Select(Describe).ToArray(),
             wrote,
@@ -148,7 +161,11 @@ internal static class TouchZonesCheck
                     height = Math.Round(at.Height, 4) } : null,
                 snapshot = File.Exists(CharacterTouchZones.SnapshotPath(dataDirectory, id)),
                 sent = CharacterTouchZones.LoadSent(dataDirectory, id) is { } last
-                    ? new { line = last.Describe(), last.Requests, pictures = last.Pictures.Count, last.Fixture, last.Steps } : null,
+                    ? new
+                    {
+                        line = last.Describe(), last.Requests, pictures = last.Pictures.Count, last.Fixture, last.Steps,
+                        probe = CharacterTouchZones.LoadProbe(dataDirectory, id) is { } kept ? DescribeHints(TouchZoneDetection.Hints(kept.Probe, kept.Crop)) : null
+                    } : null,
                 each = settings.Zones.Select(z => new
                 {
                     z.Id, z.Name, z.Enabled, active = settings.Active(z), drawables = z.Drawables.Count, z.Bones,
@@ -240,7 +257,7 @@ internal static class TouchZonesCheck
             asked.Add(new
             {
                 ask.Step, kind = ask.Kind.ToString(), picture = $"{image.Width}x{image.Height} {image.MimeType}, {image.ByteCount / 1024} KB", file,
-                marks = ask.Marks.Count, text = ask.Text, answer = reply, failed = fails ? "a simulated failure" : null
+                region = Edges(ask.Region), marks = ask.Marks.Count, text = ask.Text, answer = reply, failed = fails ? "a simulated failure" : null
             });
             return (reply, fails ? "a simulated failure" : (string?)null);
         }, null, cancellation, new ZoneDetectionOptions { Checks = Math.Clamp(checks ?? 2, 0, 5), Required = required });
@@ -285,6 +302,19 @@ internal static class TouchZonesCheck
     {
         zone.Id, zone.Name, box = new[] { zone.Box.X, zone.Box.Y, zone.Box.Width, zone.Box.Height }.Select(v => Math.Round(v, 4)).ToArray(),
         zone.Drawables, zone.Bones
+    };
+
+    // A box as its left, top, right and bottom edges (fractions of the snapshot), rounded.
+    private static double[] Edges(TouchZoneBox box) => [.. new[] { box.X, box.Y, box.X + box.Width, box.Y + box.Height }.Select(v => Math.Round(v, 4))];
+
+    // What the probe tells of the model's own parts: how many it has and names, the body parts its names place (with the side,
+    // the character's own, for a part that comes in pairs) and the close-ups' windows they give, as edges in the snapshot.
+    private static object? DescribeHints(ZoneHints? hints) => hints is null ? null : new
+    {
+        bones = hints.Bones.Count, hints.ModelParts, hints.NamedModelParts, hints.NamedParts, named = hints.Named,
+        middle = hints.Middle is { } middle ? Math.Round(middle, 4) : (double?)null,
+        areas = hints.Areas.Select(a => new { a.Part, a.Side, a.Drawables, box = Edges(a.Box) }).ToArray(),
+        regions = TouchZoneDetection.Regions.ToDictionary(r => r.Id, r => TouchZoneDetection.NamedRegion(r.Id, hints) is { } box ? Edges(box) : null)
     };
 
     private static TouchZoneBox Box(string text)

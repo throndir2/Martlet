@@ -55,6 +55,21 @@ test("optional asset references are local, present and described for the animato
   assert.deepEqual(inspected.description.motions, { Idle: [{ file: "idle.motion3.json", fadeIn: 0.5 }] });
 });
 
+test("a DisplayInfo file names the model's parts for touch zones, as data only", () => {
+  const input = files({ FileReferences: { Moc: "avatar.moc3", Textures: ["texture.png"], DisplayInfo: "简.cdi3.json" } });
+  const parts = [{ Id: "Part36", Name: "马尾" }, { Id: "Part31", Name: " 右腿\u0007" }, { Id: "Part9", Name: "" }, { Id: "", Name: "x" },
+    { Id: "Long", Name: "髪".repeat(100) }, "junk", { Id: "Part37" }];
+  input.set("简.cdi3.json", new TextEncoder().encode("\uFEFF" + JSON.stringify({ Version: 3, Parameters: [], Parts: parts })));
+  const inspected = new LocalModelBundle(input, "avatar.model3.json");
+  assert.equal(inspected.description.displayInfo, "简.cdi3.json");
+  assert.ok(!inspected.description.diagnostics.some(d => d.code === "INACTIVE_METADATA"));
+  assert.deepEqual([...inspected.partNames()], [["Part36", "马尾"], ["Part31", "右腿"], ["Long", "髪".repeat(LIMITS.partName)]]);
+  // One that can't be read names nothing, and never fails the model.
+  input.set("简.cdi3.json", new TextEncoder().encode("{ not json"));
+  assert.equal(new LocalModelBundle(input, "avatar.model3.json").partNames().size, 0);
+  assert.equal(bundle().partNames().size, 0);
+});
+
 test("strict metadata rejects unknown/plugin fields and malformed groups", () => {
   for (const metadata of [{ Plugin: "code.js" }, { Version: 2 }, { Groups: "bad" },
     { Groups: [{ Target: "Parameter", Name: "LipSync", Ids: ["x", "x"] }] }]) {

@@ -443,7 +443,11 @@ Martlet knows that the model doesn't have yet, the breasts and the groin too.
   3. The model sees the whole character (1024 pixels on its longer side) and
      marks its head, upper body and lower body, and a tail, wings or a held
      item. When it can't, the character's outline (or a VRM's skeleton) gives
-     those parts.
+     those parts. When the Live2D model names its own parts (see below), those
+     parts give the head, upper body and lower body instead, so each close-up
+     holds all of its part. The lower body then starts at the bottom of the
+     upper body, so it always shows the hips and groin, and each close-up
+     reaches a little into the part next to it.
   4. The model sees a close-up of each part, up to four times larger, and marks
      its zones there. Left and right are the character's own.
   5. The model checks its own boxes: they are drawn on the close-up in colors
@@ -464,9 +468,37 @@ Martlet knows that the model doesn't have yet, the breasts and the groin too.
   the character's pixels, swaps left and right back when a pair is the wrong way
   round (facing you, the character's left is on the picture's right), and tells
   the next check what looks wrong (a box over the background, a chin above a
-  nose, a box that misses where a VRM's own skeleton puts the part). A VRM's
+  nose, a box that misses where a VRM's own skeleton puts the part, or one that
+  is off the Live2D model's own named part). A VRM's
   bone positions and a Live2D model's part names (such as `HairFront`) go to
   the model as hints. A box that still misses its VRM bone moves onto it.
+
+  **A Live2D model's own part names.** Many Live2D models name their parts in
+  their DisplayInfo file (`*.cdi3.json`), in any language: 头 or 頭 (head),
+  前发 or 前髪 (front hair), 脖子 (neck), 上半身 (upper body), 腿部 or 太もも
+  (legs), 尾巴 (tail), `Arm L`. Martlet reads those names (and part IDs such
+  as `PartArmL`), and the renderer says which part each drawable belongs to.
+  The longest word in a name decides: 马尾 (a ponytail) is hair, not a tail. A
+  part as tall as three heads, such as a 体 (body) that runs down to the feet,
+  isn't taken for the upper body. Left and right come from where a part lies
+  and which way the character faces, not from the name: rigs disagree on whose
+  left a 左 or L is. The named parts:
+  - go to the model as hints, with their sides (*the character's left arm*);
+  - give the close-ups' windows (above);
+  - correct boxes that clearly miss their part at the end: a neck box on the
+    midriff moves onto the model's neck, lips onto its mouth, a tail box on a
+    ponytail onto its tail, a thigh box on a boot to the top of that leg, a knee
+    to its middle, a foot to its bottom. A box that reaches well past its part
+    (a lips box over the whole chin) is limited to it;
+  - place a missing intimate zone before the zones around it do: the hips go
+    from the bottom of the upper body down to where the legs meet, the groin
+    between the legs, the neck on the model's neck.
+
+  A model whose parts name nothing (or a VRM) works as before. The desktop log
+  says how many named parts Martlet found (*Finding touch zones: ... 0 bones
+  and 12 named parts from the model (39 of its 39 parts named in its
+  DisplayInfo file ...)*).
+
   Detection makes about 7 to 13 requests; **Stop** stops it and keeps the zones
   found until then, and the picture shows the zones as they are found. When a
   request fails (the Thinking model, or the computer it runs on, stops
@@ -482,7 +514,9 @@ Martlet knows that the model doesn't have yet, the breasts and the groin too.
 - To see what Thinking saw, turn on **Show the picture Thinking saw**: the
   picture of the zones then shows the whole character on its backdrop with the
   grid. **Open the pictures** opens the folder with every picture the last
-  detection sent (`character-touch-zones\<model>-sent`, with `sent.json`). The
+  detection sent (`character-touch-zones\<model>-sent`, with `sent.json`, and
+  `probe.json`: where the model's drawables, bones and own named parts were in
+  that picture). The
   line above says how many pictures it sent, how large and what they showed,
   and the desktop log records each one (its step, size and type).
 - Martlet ties each zone to the model's own parts so it follows the character as
