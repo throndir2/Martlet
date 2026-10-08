@@ -15,8 +15,9 @@ using Martlet.Providers;
 namespace Martlet.Desktop;
 
 /// <summary>Companion › Touch › Touch zones: where a left click on the character lands (the hair, an eye, a hand...)
-/// and what the character does then. The Thinking model finds the zones once per model in a snapshot of the character (when it
-/// can see; Detect zones asks again): the default zones (<see cref="TouchZoneDetection.Defaults"/>) and any the owner added with
+/// and what the character does then. The first time the page shows a model with no zones, Martlet draws it off screen and places
+/// a first guess at its zones with no AI (<see cref="TouchZoneDetection.Estimate"/>). The Thinking model then finds the zones in a
+/// snapshot of the character (when it can see; Detect zones asks): the default zones (<see cref="TouchZoneDetection.Defaults"/>) and any the owner added with
 /// Add zone. Martlet binds each to the model's drawables or bones so it follows the model as it moves,
 /// and each zone plays its emotes and gestures, may be noticed by Martlet (the touches go to the Thinking model) and rests a few
 /// seconds. Intimate zones work only with Include intimate zones on (on by default). Edits save as you make them, per model, on this PC.</summary>
@@ -41,7 +42,9 @@ public partial class MainWindow
             if (touchZonesNoticed is not null) touchZonesNoticed.Text = characterTouchZones.Noticed ?? TouchZonesNoticedIdle;
             if (touchZonesNoticedLast is not null) touchZonesNoticedLast.Text = characterTouchZones.NoticedLast ?? "";
             if (closing || openTab != CompanionTab.Touch || CompanionContent.IsKeyboardFocusWithin || tabEdited) return;
-            if (detectingTouchZones || characterTouchZones.Busy || renderedZonesModel != characterTouchZones.ModelId) RenderTab();
+            // While the first guess is placed the page waits: it is drawn again once, when the guess is done.
+            if (detectingTouchZones || characterTouchZones.Busy && !characterTouchZones.Estimating || renderedZonesModel != characterTouchZones.ModelId)
+                RenderTab();
         });
         avatar.TouchRouter = OnCharacterTouched;
         WireCharacterTemperament();
@@ -116,6 +119,9 @@ public partial class MainWindow
 
     private CancellationTokenSource? detectTouchZones;
     private bool showTouchZonesSent;
+    // The models whose first zones the page placed (or tried to) since Martlet started, so drawing the page again doesn't repeat a
+    // try that failed (opening the page again does).
+    private readonly HashSet<string> firstTouchZonesTried = new(StringComparer.Ordinal);
     private const double TouchZonesPictureHeight = 600, TouchZonesPictureWidth = 440;
 
     /// <summary>Touch zones › When you touch Martlet while it talks (<see cref="TalkPreferences.TouchInterrupts"/>, this PC): a
@@ -175,9 +181,35 @@ public partial class MainWindow
         catch (System.ComponentModel.Win32Exception) { }
     }
 
+    /// <summary>The first guess at the shown model's zones (<see cref="CharacterTouchZoneService.EstimateAsync"/>), placed when the
+    /// page opens on a model with no zones and no picture: the character drawn off screen, its zones placed with no AI. The page
+    /// being drawn already shows it is busy (the service is, before its first wait), and it is drawn again once, when the guess
+    /// is done, with the picture and the zones.</summary>
+    private async Task EstimateTouchZonesAsync()
+    {
+        try
+        {
+            await characterTouchZones.EstimateAsync(avatar, async () =>
+            {
+                var profile = avatar.IsShowing && avatar.InspectedProfile is { } shown ? shown : (await SavedCharacterAsync()).Shown;
+                // Only the model the page follows: its zones are saved under its ID.
+                return characterActions.For(profile.ModelPath)?.Inventory.ModelId is { } pictured && pictured == characterTouchZones.ModelId ? profile : null;
+            }, lifetime.Token);
+        }
+        catch (Exception error) when (error is IOException or InvalidOperationException or UnauthorizedAccessException or
+            Martlet.Core.Contracts.ContractException or System.Text.Json.JsonException or OperationCanceledException)
+        {
+            if (!closing && error is not OperationCanceledException) characterTouchZones.Report($"Martlet couldn't read which character to picture: {error.Message}");
+        }
+        finally
+        {
+            if (!closing && openTab == CompanionTab.Touch && !detectingTouchZones) RenderTab();
+        }
+    }
+
     private async Task DetectTouchZonesAsync()
     {
-        if (conversation is null || detectingTouchZones) return;
+        if (conversation is null || detectingTouchZones || characterTouchZones.Estimating) return;
         detectingTouchZones = true;
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         detectTouchZones = stop;
@@ -236,6 +268,11 @@ public partial class MainWindow
         var catalog = characterActions.Current;
         characterTouchZones.Follow(catalog?.Inventory.ModelId);
         renderedZonesModel = characterTouchZones.ModelId;
+        // A model with no zones and no picture gets a first guess at once (drawn off screen, placed with no AI), so the picture and
+        // its zones show before Detect zones. One that couldn't be placed is tried again when the page opens again.
+        if (catalog is not null && !detectingTouchZones && characterTouchZones.NeedsFirstGuess &&
+            (firstTouchZonesTried.Add(catalog.Inventory.ModelId) || openingTab))
+            EstimateTouchZonesAsync().Forget();
         var settings = characterTouchZones.Current;
         var temperament = characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId);
         var stack = new List<UIElement>
@@ -243,7 +280,9 @@ public partial class MainWindow
             Heading("Touch zones"),
             Note("Click the character (a click, not a drag) and it reacts to where you touched it: a pat on the head, a poke on " +
                 "the cheek, holding its hand. With its position locked, drag across it to stroke it: each part you cross reacts, " +
-                "and Martlet hears about it, like your moves and zooms. Detect zones draws the character off screen in its rest pose " +
+                "and Martlet hears about it, like your moves and zooms. The first time this page shows a model, Martlet draws it off " +
+                "screen and places a first guess at its zones from the model's own parts and the body's proportions, with no AI and " +
+                "nothing sent. Detect zones draws the character off screen in its rest pose " +
                 "(so it needn't show, and the one on your desktop never moves) and shows your Thinking model pictures of it (never its " +
                 "files) on a plain backdrop with a grid: first the whole character, to find its head, body and " +
                 "legs, then a close-up of each, to mark its zones. Then the model checks its own boxes, drawn and numbered on the " +
@@ -294,7 +333,8 @@ public partial class MainWindow
         stack.Add(saveState);
 
         var busy = detectingTouchZones || characterTouchZones.Busy;
-        var detect = PageButton(busy ? "Detecting..." : settings is { Zones.Count: > 0 } ? "Detect again" : "Detect zones",
+        var detect = PageButton(busy && !characterTouchZones.Estimating ? "Detecting..."
+            : settings is { Zones.Count: > 0 } && settings.DetectedBy != CharacterTouchZoneSettings.ByEstimate ? "Detect again" : "Detect zones",
             () => DetectTouchZonesAsync().Forget(), id: "TouchZonesDetect");
         // Only a missing model that can see turns it off (the picture is drawn off screen, so the character needn't show), and
         // the note says so.
@@ -478,7 +518,10 @@ public partial class MainWindow
             ? "No zones found yet for this model. Until then a click reacts to the rough part (head, face, body, arm, hand, leg)."
             : $"{settings.Zones.Count} zone{(settings.Zones.Count == 1 ? "" : "s")}, {settings.Zones.Count(settings.Active)} in use" +
               (settings.DetectedBy == CharacterTouchZoneSettings.ByVision && settings.DetectedAt is { } at
-                ? $". Found by the Thinking model on {at.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}." : ". Made by you.");
+                ? $". Found by the Thinking model on {at.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)}."
+                : settings.DetectedBy == CharacterTouchZoneSettings.ByEstimate
+                    ? ". A first guess Martlet placed from the character's own parts and shape, with no AI. Detect zones has your Thinking model find them."
+                    : ". Made by you.");
 
     private void TryTouchZone(CharacterTouchZone zone, CharacterActionCatalog catalog)
     {

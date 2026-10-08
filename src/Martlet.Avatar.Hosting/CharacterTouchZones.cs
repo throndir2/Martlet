@@ -98,8 +98,10 @@ public sealed record CharacterTouchZone
 /// found in sat on the renderer page (fractions of the page), so a zone's box can be compared with a touch.</summary>
 public sealed record CharacterTouchZoneSettings
 {
-    public const string ByVision = "vision", ByOwner = "owner";
+    public const string ByVision = "vision", ByOwner = "owner", ByEstimate = "estimate";
     public required string ModelId { get; init; }
+    /// <summary>Who placed the zones: the Thinking model (<see cref="ByVision"/>), Martlet's first guess from the character's
+    /// picture with no AI (<see cref="ByEstimate"/>), or the owner (<see cref="ByOwner"/>).</summary>
     public string? DetectedBy { get; init; }
     public DateTimeOffset? DetectedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
@@ -380,17 +382,18 @@ public static class CharacterTouchZones
 
     /// <summary>Newly found zones merged with the saved ones: a zone found again keeps the owner's label, choice, reaction and
     /// whether the owner added it. A zone the owner added (<see cref="CharacterTouchZone.Added"/>) that wasn't found again stays
-    /// where it was; any other zone not found again is dropped. <paramref name="whole"/>: the snapshot framed the character
-    /// whole.</summary>
+    /// where it was; any other zone not found again is dropped, unless <paramref name="keepUnfound"/> (a detection still
+    /// running over the first guess: its zones not found yet stay too). <paramref name="whole"/>: the snapshot framed the
+    /// character whole.</summary>
     public static CharacterTouchZoneSettings Detected(CharacterTouchZoneSettings? saved, string modelId, IReadOnlyList<CharacterTouchZone> found,
-        TouchZoneBox? crop, RendererZoneProbe? probe, DateTimeOffset now, bool whole = false)
+        TouchZoneBox? crop, RendererZoneProbe? probe, DateTimeOffset now, bool whole = false, bool keepUnfound = false)
     {
         var bound = Bind(found, crop, probe);
         var merged = bound.Select(zone => saved?.Zones.FirstOrDefault(z => z.Id == zone.Id) is { } old
             ? zone with { Label = old.Label, Enabled = old.Enabled, Reaction = old.Reaction, Added = old.Added } : zone).ToList();
         // Its box was a fraction of the earlier snapshot: it stays on the same place of the page in the new one.
         TouchZoneBox Rebased(TouchZoneBox box) => saved?.Crop is { } was && crop is { } next && was != next ? box.Within(was).Relative(next).Clamped() : box;
-        var kept = saved?.Zones.Where(z => z.Added && merged.All(m => m.Id != z.Id)).Select(z => z with { Box = Rebased(z.Box) }).ToArray() ?? [];
+        var kept = saved?.Zones.Where(z => (z.Added || keepUnfound) && merged.All(m => m.Id != z.Id)).Select(z => z with { Box = Rebased(z.Box) }).ToArray() ?? [];
         merged.AddRange(Bind(kept, crop, probe));
         return new()
         {
@@ -398,6 +401,13 @@ public static class CharacterTouchZones
             IncludeIntimate = saved?.IncludeIntimate ?? true, Crop = crop, Whole = whole, Zones = [.. merged.OrderBy(z => Order(z.Id))]
         };
     }
+
+    /// <summary>A first guess at a model's zones (<see cref="TouchZoneDetection.Estimate"/>, fractions of a snapshot framed whole
+    /// that sat at <paramref name="crop"/> on the page), bound and merged with the saved ones as detected zones are, and marked
+    /// <see cref="CharacterTouchZoneSettings.ByEstimate"/>.</summary>
+    public static CharacterTouchZoneSettings Estimated(CharacterTouchZoneSettings? saved, string modelId, IReadOnlyList<CharacterTouchZone> guessed,
+        TouchZoneBox? crop, RendererZoneProbe? probe, DateTimeOffset now) =>
+        Detected(saved, modelId, guessed, crop, probe, now, whole: true) with { DetectedBy = CharacterTouchZoneSettings.ByEstimate };
 
     /// <summary>Where a zone comes in <see cref="Kinds"/> (a zone Martlet doesn't know comes last).</summary>
     public static int Order(string id)

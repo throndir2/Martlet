@@ -6,10 +6,10 @@ using Martlet.Providers;
 
 namespace Martlet.Desktop;
 
-/// <summary>The touch zones of the character this PC shows (Companion › Touch › Touch zones): found per model by the
-/// Thinking model (when it can see) step by step in a snapshot of the character (<see cref="TouchZoneDetection"/>), bound to the
-/// model's drawables or bones, saved per model in character-touch-zones.json with the pictures the model saw, and what a touch
-/// on each does.</summary>
+/// <summary>The touch zones of the character this PC shows (Companion › Touch › Touch zones): a first guess placed with no AI
+/// when the page opens on a model with none (<see cref="EstimateAsync"/>), then found per model by the Thinking model (when it
+/// can see) step by step in a snapshot of the character (<see cref="TouchZoneDetection"/>), bound to the model's drawables or
+/// bones, saved per model in character-touch-zones.json with the pictures the model saw, and what a touch on each does.</summary>
 internal sealed class CharacterTouchZoneService(string? dataDirectory)
 {
     /// <summary>A file whose zones (JSON as a vision model answers about the whole snapshot) stand in for the vision model: every
@@ -27,7 +27,7 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
     private string? modelId;
     private string? detection;
     private string? lastMatch, noticed, noticedLast;
-    private bool busy;
+    private bool busy, estimating;
 
     /// <summary>Raised (on any thread) when the zones, the detection status or the last touch change.</summary>
     internal event Action? Changed;
@@ -45,6 +45,12 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
     /// <summary>Which reply took the last touches Martlet noticed and what it was told.</summary>
     internal string? NoticedLast => Volatile.Read(ref noticedLast);
     internal bool Busy => Volatile.Read(ref busy);
+    /// <summary>Whether the first guess at the zones is being placed now (<see cref="EstimateAsync"/>; <see cref="Busy"/> too).</summary>
+    internal bool Estimating => Volatile.Read(ref estimating);
+
+    /// <summary>Whether the loaded model has no zones and no picture yet, so the Touch zones page places a first guess
+    /// (<see cref="EstimateAsync"/>).</summary>
+    internal bool NeedsFirstGuess => dataDirectory is not null && ModelId is not null && !Busy && SnapshotPath is null && Current is not { Zones.Count: > 0 };
 
     /// <summary>The snapshot the loaded model's zones were found in (a PNG), or null.</summary>
     internal string? SnapshotPath => dataDirectory is not null && ModelId is { } id && CharacterTouchZones.SnapshotPath(dataDirectory, id) is var path &&
@@ -90,17 +96,82 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
         return null;
     }
 
+    /// <summary>What the Touch zones page says while the first guess is placed.</summary>
+    internal const string FirstGuessDrawing = "Drawing the character to place its first zones (no AI, nothing is sent)...";
+
+    /// <summary>A first guess at the loaded model's zones with no vision model, while it has none and no picture: takes a picture
+    /// of the character (<paramref name="character"/> gives its profile, or null when it isn't the loaded model's; drawn off
+    /// screen in its rest pose, as Detect zones does: <see cref="AvatarController.ZoneSnapshotAsync"/>) and places the zones Detect
+    /// zones looks for from the model's own named parts, its skeleton and the body's proportions
+    /// (<see cref="TouchZoneDetection.Estimate"/>). They are saved with the picture, bound to the model's drawables or bones and
+    /// marked <see cref="CharacterTouchZoneSettings.ByEstimate"/>, so the Touch zones page shows the character and its zones at
+    /// once; Detect zones then has the Thinking model find them. Nothing is sent. <see cref="Busy"/> and <see cref="Estimating"/>
+    /// are set, and <see cref="Detection"/> says so, before this returns its task. Returns what happened.</summary>
+    internal async Task<string> EstimateAsync(AvatarController avatar, Func<Task<AvatarProfile?>> character, CancellationToken token)
+    {
+        if (!NeedsFirstGuess || ModelId is not { } id || dataDirectory is null) return Detection ?? "";
+        Volatile.Write(ref busy, true);
+        Volatile.Write(ref estimating, true);
+        Report(FirstGuessDrawing);
+        const string Again = " Open this page again to try once more, or press Detect zones.";
+        try
+        {
+            if (await character() is not { } profile)
+            {
+                Volatile.Write(ref detection, null);
+                return "";
+            }
+            if (await avatar.ZoneSnapshotAsync(profile, token) is not { } shot)
+                return Report("Martlet couldn't draw the character for its first zones." + Again);
+            ZonePixels snapshot;
+            try { snapshot = await Task.Run(() => TouchZoneImages.Decode(shot.Png), token); }
+            catch (Exception error) when (error is NotSupportedException or FileFormatException or ArgumentException or InvalidOperationException or IOException)
+            {
+                return Report("The character's picture couldn't be used for its first zones." + Again);
+            }
+            var crop = new TouchZoneBox(shot.Picture.CropLeft, shot.Picture.CropTop, shot.Picture.CropWidth, shot.Picture.CropHeight);
+            var hints = TouchZoneDetection.Hints(shot.Probe, crop);
+            var before = Current;
+            var result = await Task.Run(() => TouchZoneDetection.Estimate(snapshot, hints, TouchZoneDetection.For(before)), token);
+            foreach (var step in result.Steps) ErrorLog.Info($"First touch zones: {step}.");
+            // Another model loaded, or zones made, while the picture was taken: those stay as they are.
+            if (ModelId != id || Current is { Zones.Count: > 0 }) return Detection ?? "";
+            if (result.Zones is not { Count: > 0 } zones)
+                return Report("Martlet couldn't place any zones on the character's picture. Press Detect zones to have your Thinking model find them.");
+            try { await CharacterTouchZones.SaveSnapshotAsync(dataDirectory, id, shot.Png, token); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                return Report($"Martlet couldn't keep the character's picture for its first zones: {error.Message}");
+            }
+            if (await SaveAsync(CharacterTouchZones.Estimated(before, id, zones, crop, shot.Probe, DateTimeOffset.Now), token) is { } why)
+                return Report("The first zones were placed but couldn't be saved: " + why);
+            var bound = Current?.Zones.Count(z => z.Drawables.Count > 0 || z.Bones.Count > 0) ?? 0;
+            ErrorLog.Info($"Placed a first guess at {zones.Count} touch zones with no AI ({bound} bound to the model's parts).");
+            return Report($"First zones: Martlet placed {Zones(zones.Count)} at {DateTime.Now:t} from the character's own parts and shape, with no AI " +
+                "and nothing sent. Move a box into place, or press Detect zones and your Thinking model finds them.");
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { return Detection ?? ""; }
+        finally
+        {
+            Volatile.Write(ref estimating, false);
+            Volatile.Write(ref busy, false);
+            Changed?.Invoke();
+        }
+    }
+
     /// <summary>Takes a picture of <paramref name="profile"/>'s character (drawn off screen in its rest pose, so it needn't show:
     /// <see cref="AvatarController.ZoneSnapshotAsync"/>) and finds its zones step by step with the Thinking model (through
     /// <paramref name="ask"/>, one picture each: <see cref="TouchZoneDetection"/>), saving the zones as they are found, bound to
     /// the model's drawables or bones, and keeping every picture sent (<see cref="Sent"/>). It looks for the default zones and the
     /// ones the owner added (<see cref="TouchZoneDetection.For"/>); a zone the owner added that it can't place stays where it was.
-    /// When a request fails part way, finding
+    /// Over a first guess (<see cref="EstimateAsync"/>), the first guess's zones it hasn't found yet stay on the picture until it
+    /// is done, and then its zones replace them. When a request fails part way, finding
     /// zones stops there: the zones from before (and their picture) come back, or, with none before, the zones found until then
     /// are kept. Returns what happened.</summary>
     internal async Task<string> DetectAsync(AvatarController avatar, AvatarProfile profile,
         Func<string, string, string, BoundedImage?, CancellationToken, Task<(string? Answer, string? Failure)>> ask, CancellationToken token)
     {
+        if (Estimating) return Detection ?? "";
         if (ModelId is not { } id) return Report("Martlet is still reading the character. Try again in a moment.");
         Volatile.Write(ref busy, true);
         Report("Taking a picture of the character...");
@@ -147,11 +218,11 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
 
             async Task<(string? Answer, string? Failure)> AskAsync(ZoneAsk zoneAsk, CancellationToken cancel)
             {
-                // The zones found so far show on the picture before the next request.
+                // The zones found so far show on the picture before the next request (with a first guess's others, not found yet).
                 if (latest is { Count: > 0 } found && !ReferenceEquals(found, shown))
                 {
                     shown = found;
-                    await KeepAsync(id, before, found, pictureKept ? null : shot.Png, crop, shot.Probe, cancel);
+                    await KeepAsync(id, before, found, pictureKept ? null : shot.Png, crop, shot.Probe, cancel, partial: true);
                     pictureKept = true;
                 }
                 var image = TouchZoneImages.Encode(zoneAsk.Picture);
@@ -188,8 +259,10 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
                     if (pictureKept && await RestoreAsync(earlier, earlierPicture) is { } lost)
                         return Report(stopped + " The zones from before couldn't be put back: " + lost);
                     pictureKept = false;
-                    return Report(stopped + $" Your {Zones(earlier.Zones.Count)} from before {(earlier.Zones.Count == 1 ? "is" : "are")} kept. " +
-                        "Try again when it answers.");
+                    var n = earlier.Zones.Count;
+                    return Report(stopped + (earlier.DetectedBy == CharacterTouchZoneSettings.ByEstimate
+                        ? $" The {Zones(n)} of the first guess {(n == 1 ? "is" : "are")} kept."
+                        : $" Your {Zones(n)} from before {(n == 1 ? "is" : "are")} kept.") + " Try again when it answers.");
                 }
                 if (result.Zones is not { Count: > 0 } partial) return Report(tag + $"Couldn't ask the Thinking model ({failure}).");
                 if (await KeepAsync(id, before, partial, pictureKept ? null : shot.Png, crop, shot.Probe, token) is { } unsaved)
@@ -229,16 +302,18 @@ internal sealed class CharacterTouchZoneService(string? dataDirectory)
     }
 
     // Saves zones found (so far) in the snapshot, with the owner's choices for each zone from before this detection, and the
-    // snapshot they belong to. Returns why they couldn't be saved, or null.
+    // snapshot they belong to. While the detection runs (partial) over a first guess, the first guess's zones not found yet stay.
+    // Returns why they couldn't be saved, or null.
     private async Task<string?> KeepAsync(string id, CharacterTouchZoneSettings? before, IReadOnlyList<CharacterTouchZone> zones, byte[]? png,
-        TouchZoneBox crop, RendererZoneProbe? probe, CancellationToken token)
+        TouchZoneBox crop, RendererZoneProbe? probe, CancellationToken token, bool partial = false)
     {
         if (dataDirectory is not null && png is not null)
         {
             try { await CharacterTouchZones.SaveSnapshotAsync(dataDirectory, id, png, token); }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException) { ErrorLog.Warn($"Couldn't keep the touch zones' picture: {error.Message}"); }
         }
-        return await SaveAsync(CharacterTouchZones.Detected(before, id, zones, crop, probe, DateTimeOffset.Now, whole: true), token);
+        return await SaveAsync(CharacterTouchZones.Detected(before, id, zones, crop, probe, DateTimeOffset.Now, whole: true,
+            keepUnfound: partial && before?.DetectedBy == CharacterTouchZoneSettings.ByEstimate), token);
     }
 
     // Puts the zones from before a detection back, with the picture they were found in. Returns why they couldn't be, or null.
