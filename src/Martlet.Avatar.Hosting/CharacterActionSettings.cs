@@ -26,8 +26,9 @@ public sealed record CharacterAction
 
 /// <summary>One model's emote and motion settings (Companion › Character › Emotes and motions). <see cref="DetectedBy"/> is
 /// <c>thinking</c> once the Thinking model named them, otherwise <c>names</c> (made from the model's own names).
-/// <see cref="Combos"/> are the owner's combos of its emotes and motions, or null for none (so a file without combos reads and
-/// writes as before).</summary>
+/// <see cref="Combos"/> are the model's combos of its emotes and motions, or null for none (so a file without combos reads and
+/// writes as before). <see cref="GivenCombos"/> are the tags of Martlet's own combos (<see cref="CharacterActions.MartletCombos"/>)
+/// the model was given once, so one the owner removed or renamed doesn't come back (null in files from before them).</summary>
 public sealed record CharacterActionSettings
 {
     public const string ByNames = "names", ByThinking = "thinking";
@@ -37,6 +38,7 @@ public sealed record CharacterActionSettings
     public DateTimeOffset UpdatedAt { get; init; }
     public required IReadOnlyList<CharacterAction> Actions { get; init; }
     public IReadOnlyList<CharacterCombo>? Combos { get; init; }
+    public IReadOnlyList<string>? GivenCombos { get; init; }
 
     public CharacterAction? Find(string id) => Actions.FirstOrDefault(a => a.Id == id);
 }
@@ -296,7 +298,7 @@ public static partial class CharacterActions
 
     /// <summary>Settings for every emote and motion in <paramref name="inventory"/>: the saved ones as they were, defaults
     /// for the rest, tags made unique. The saved combos stay (those the model can still play), and an emote never takes a combo's
-    /// tag.</summary>
+    /// tag. Martlet's own combos the model wasn't given yet come after them (see <see cref="MartletCombos"/>).</summary>
     public static CharacterActionSettings Merge(CharacterActionInventory inventory, CharacterActionSettings? saved)
     {
         var actions = new List<CharacterAction>();
@@ -314,10 +316,11 @@ public static partial class CharacterActions
             }
             actions.Add(action);
         }
+        var (all, given) = GiveCombos(inventory, actions, combos, saved?.GivenCombos);
         return new()
         {
             ModelId = inventory.ModelId, DetectedBy = saved?.DetectedBy ?? CharacterActionSettings.ByNames, DetectedAt = saved?.DetectedAt,
-            UpdatedAt = saved?.UpdatedAt ?? default, Actions = actions, Combos = combos
+            UpdatedAt = saved?.UpdatedAt ?? default, Actions = actions, Combos = all, GivenCombos = given
         };
     }
 

@@ -29,6 +29,23 @@ public sealed class EmoteComboTests
     private static readonly CharacterCombo Flustered = new() { Tag = "flustered", Parts = ["expression:Smile", "expression:Glasses", "motion:Wave"] };
     private static readonly CharacterCombo Agree = new() { Tag = "agree", Parts = ["expression:Smile", "motion:Wave"], Use = "when you agree warmly" };
 
+    // The tags of all Martlet's own combos, as a model given them lists them.
+    private static readonly string[] Given = [.. CharacterActions.MartletCombos.Select(c => c.Tag)];
+
+    // A Live2D model with every parameter Martlet's gestures move, its own heart eyes (爱心眼) and an expression named Shocked.
+    private static CharacterActionInventory Rigged()
+    {
+        var model = Encoding.UTF8.GetBytes("{\"Version\":3,\"FileReferences\":{\"Moc\":\"m.moc3\",\"Textures\":[]," +
+            "\"Expressions\":[{\"Name\":\"爱心眼\",\"File\":\"a.exp3.json\"},{\"Name\":\"Shocked\",\"File\":\"b.exp3.json\"}]}}");
+        var moc = CharacterGestureTests.Moc("ParamAngleX", "ParamAngleY", "ParamAngleZ", "ParamBodyAngleZ", "ParamEyeLSmile", "ParamEyeRSmile",
+            "ParamBrowLY", "ParamBrowRY", "ParamEyeLOpen", "ParamEyeROpen", "ParamEyeBallX", "ParamEyeBallY", "ParamMouthForm", "ParamMouthOpenY");
+        return CharacterActionInventory.From(AvatarRenderer.Live2D, "m.model3.json",
+        [
+            new("m.model3.json", model, "application/json"), new("m.moc3", moc, "application/octet-stream"),
+            new("a.exp3.json", Expression, "application/json"), new("b.exp3.json", Expression, "application/json")
+        ]);
+    }
+
     private static CharacterActionCatalog Catalog(params CharacterCombo[] combos)
     {
         var inventory = Inventory();
@@ -55,11 +72,15 @@ public sealed class EmoteComboTests
                 "\"updated_at\":\"2026-01-01T00:00:00+00:00\",\"actions\":[{\"id\":\"expression:Glasses\",\"tag\":\"glasses\",\"enabled\":true}]}]}");
             var old = CharacterActions.Load(directory, id)!;
             Assert.Null(old.Combos);
+            Assert.Null(old.GivenCombos);
+            // A file from before Martlet's combos gets them once (see Each_model_gets_Martlet_combos_once...).
             var merged = CharacterActions.Merge(inventory, old);
-            Assert.Null(merged.Combos);
-            Assert.Empty(new CharacterActionCatalog(inventory, merged).Combos);
-            await CharacterActions.SaveAsync(directory, merged, DateTimeOffset.Now);
-            Assert.DoesNotContain("combos", File.ReadAllText(CharacterActions.Path(directory)));
+            Assert.Equal(Given, merged.GivenCombos);
+            Assert.NotEmpty(new CharacterActionCatalog(inventory, merged).Combos);
+            // Settings with no combos still write none.
+            await CharacterActions.SaveAsync(directory, merged with { Combos = null }, DateTimeOffset.Now);
+            Assert.DoesNotContain("\"combos\"", File.ReadAllText(CharacterActions.Path(directory)));
+            Assert.Null(CharacterActions.Load(directory, id)!.Combos);
 
             await CharacterActions.SaveAsync(directory, merged with { Combos = [Flustered, Agree with { Enabled = false }] }, DateTimeOffset.Now);
             var text = File.ReadAllText(CharacterActions.Path(directory));
@@ -105,6 +126,8 @@ public sealed class EmoteComboTests
         Assert.Equal("A combo needs a tag and its parts.", Problem(Flustered with { Parts = null! }));
         Assert.Equal($"A model can have at most {CharacterActions.MaximumCombos} combos.",
             Problem([.. Enumerable.Range(0, CharacterActions.MaximumCombos + 1).Select(i => Flustered with { Tag = $"combo_{i}" })]));
+        Assert.Null(CharacterActions.Problem(settings with { GivenCombos = Given }));
+        Assert.Equal("The list of Martlet's combos given to this model is damaged.", CharacterActions.Problem(settings with { GivenCombos = ["Bad Tag"] }));
     }
 
     [Fact]
@@ -154,6 +177,107 @@ public sealed class EmoteComboTests
         var named = CharacterActions.Parse("1: grin | - | when happy", inventory, merged, DateTimeOffset.Now)!;
         Assert.Equal("grin", named.Find("expression:Smile")!.Tag);
         Assert.Equal(new[] { "flustered", "agree" }, named.Combos!.Select(c => c.Tag));
+    }
+
+    [Fact]
+    public async Task Each_model_gets_Martlet_combos_once_with_the_parts_it_can_play()
+    {
+        // Martlet's combos are valid combos of its gestures' tags, and no gesture has a combo's tag.
+        var gestureTags = CharacterActionInventory.AllGestures.Select(g => g.Tag).ToHashSet();
+        Assert.All(CharacterActions.MartletCombos, c =>
+        {
+            Assert.True(CharacterActions.IsTag(c.Tag) && !gestureTags.Contains(c.Tag), c.Tag);
+            Assert.InRange(c.Parts.Count, CharacterActions.MinimumComboParts, CharacterActions.MaximumComboParts);
+            Assert.Equal(c.Parts.Count, c.Parts.Distinct().Count());
+            Assert.All(c.Parts, part => Assert.Contains(part, gestureTags));
+            Assert.InRange(c.Use.Length, 1, CharacterActionCatalog.MaximumUseLength);
+        });
+        Assert.Equal(Given.Length, Given.Distinct().Count());
+
+        var inventory = Rigged();
+        var merged = CharacterActions.Merge(inventory, null);
+        // Every one but {shocked}: the model's own emote has that tag, and keeps it.
+        Assert.Equal(["lovestruck", "flustered", "overheated", "fuming", "heartbroken", "dozing", "starstruck", "ahegao"],
+            merged.Combos!.Select(c => c.Tag));
+        Assert.Equal("shocked", merged.Find("expression:Shocked")!.Tag);
+        Assert.Equal(Given, merged.GivenCombos);
+        Assert.Null(CharacterActions.Problem(merged));
+        // The model's own heart eyes stand in for Martlet's; ahegao starts turned off.
+        var lovestruck = merged.Combos![0];
+        Assert.Equal(["expression:爱心眼", "gesture:hearts", "gesture:blush_deep", "gesture:sway"], lovestruck.Parts);
+        Assert.Equal(CharacterActions.MartletCombos[0].Use, lovestruck.Use);
+        Assert.True(lovestruck.Enabled);
+        var ahegao = merged.Combos![^1];
+        Assert.Equal(["gesture:eyes_up", "gesture:mouth_open", "gesture:tongue_out", "gesture:drool", "gesture:blush_fierce", "expression:爱心眼"],
+            ahegao.Parts);
+        Assert.False(ahegao.Enabled);
+        Assert.All(merged.Combos!.SkipLast(1), c => Assert.True(c.Enabled, c.Tag));
+
+        // Replies get those that are on, after the emotes' lines; {ahegao} once the owner turns it on.
+        var catalog = new CharacterActionCatalog(inventory, merged);
+        var prompt = catalog.Prompt(null, null)!;
+        Assert.Contains("\n{lovestruck} - heart eyes, hearts and a deep blush, for being smitten or madly in love (stays on until you write " +
+            "{/lovestruck})\n", prompt.Instructions);
+        Assert.True(prompt.Instructions.IndexOf("\n{lovestruck} - ", StringComparison.Ordinal) >
+            prompt.Instructions.IndexOf("\n{ellipsis} - ", StringComparison.Ordinal), "the combos come after the emotes");
+        Assert.Contains("{/lovestruck}", prompt.Tags);
+        Assert.DoesNotContain("{ahegao}", prompt.Tags);
+        Assert.DoesNotContain("{ahegao}", prompt.Instructions);
+        var on = catalog with { Settings = merged with { Combos = [.. merged.Combos!.Select(c => c with { Enabled = true })] } };
+        Assert.Contains("\n{ahegao} - eyes rolled up, tongue out and flushed, for being overwhelmed with pleasure (stays on until you write {/ahegao})",
+            on.Prompt(null, null)!.Instructions);
+        Assert.Equal(ahegao.Parts, on.For("{ahegao}").Select(s => s.Id));
+        // The model's own heart eyes are brief, so the off tag turns off the other five.
+        Assert.Equal(ahegao.Parts.SkipLast(1), on.Off("{/ahegao}").Select(s => s.Id));
+
+        // A combo the owner removed or renamed never comes back, even with no combos left.
+        var directory = Directory.CreateTempSubdirectory("martlet-combos-given-").FullName;
+        try
+        {
+            await CharacterActions.SaveAsync(directory, merged with { Combos = [lovestruck with { Tag = "smitten" }, .. merged.Combos!.Skip(1).SkipLast(1)] },
+                DateTimeOffset.Now);
+            Assert.Contains("\"given_combos\": [", File.ReadAllText(CharacterActions.Path(directory)));
+            var again = CharacterActions.Merge(inventory, CharacterActions.Load(directory, inventory.ModelId));
+            Assert.Equal(["smitten", "flustered", "overheated", "fuming", "heartbroken", "dozing", "starstruck"], again.Combos!.Select(c => c.Tag));
+            await CharacterActions.SaveAsync(directory, again with { Combos = null }, DateTimeOffset.Now);
+            Assert.Null(CharacterActions.Merge(inventory, CharacterActions.Load(directory, inventory.ModelId)).Combos);
+        }
+        finally { Directory.Delete(directory, true); }
+
+        // A file from before them keeps the owner's combos first; Martlet's come after, except one whose tag the owner's has.
+        var owner = new CharacterCombo { Tag = "flustered", Parts = ["gesture:blush", "gesture:nod"] };
+        var upgraded = CharacterActions.Merge(inventory, merged with { Combos = [owner], GivenCombos = null });
+        Assert.Equal(["flustered", "lovestruck", "overheated", "fuming", "heartbroken", "dozing", "starstruck", "ahegao"],
+            upgraded.Combos!.Select(c => c.Tag));
+        Assert.Equal(owner.Parts, upgraded.Combos![0].Parts);
+        // A Martlet with more combos gives a model only the new ones, and keeps the tags of combos it doesn't know.
+        var newer = CharacterActions.Merge(inventory, merged with { Combos = null, GivenCombos = ["lovestruck", "flustered", "newer_combo"] });
+        Assert.Equal(["overheated", "fuming", "heartbroken", "dozing", "starstruck", "ahegao"], newer.Combos!.Select(c => c.Tag));
+        Assert.Equal(["lovestruck", "flustered", "newer_combo", .. Given.Except(["lovestruck", "flustered"])], newer.GivenCombos);
+        // Use the model's own names keeps what was given.
+        var reset = CharacterActions.Merge(inventory, new CharacterActionSettings
+        {
+            ModelId = inventory.ModelId, Actions = [], Combos = merged.Combos, GivenCombos = merged.GivenCombos
+        });
+        Assert.Equal(merged.Combos!.Select(c => c.Tag), reset.Combos!.Select(c => c.Tag));
+
+        // A rig that moves nothing still gets the combos of what Martlet draws over it, but no {shocked} (only its exclamation
+        // mark would show); it is given all the same.
+        var bare = CharacterActions.Merge(Inventory(), null);
+        Assert.Equal(["lovestruck", "flustered", "overheated", "fuming", "heartbroken", "dozing", "starstruck", "ahegao"], bare.Combos!.Select(c => c.Tag));
+        Assert.Equal(["gesture:blush_deep", "gesture:sweat"], bare.Combos![1].Parts);
+        Assert.Equal(Given, bare.GivenCombos);
+
+        // A VRM uses its own surprised expression, as Martlet's surprise is Live2D's only; a combo of brief parts has no off tag.
+        var vrm = CharacterActionInventory.From(AvatarRenderer.Vrm, "m.vrm", [new("m.vrm", CharacterGestureTests.Glb(
+            "{\"asset\":{\"version\":\"2.0\"},\"extensions\":{\"VRMC_vrm\":{\"specVersion\":\"1.0\",\"humanoid\":{\"humanBones\":{" +
+            "\"head\":{\"node\":0},\"spine\":{\"node\":1}}},\"expressions\":{\"preset\":{\"surprised\":{}}}}}}"), "model/gltf-binary")]);
+        var vrmCatalog = new CharacterActionCatalog(vrm, CharacterActions.Merge(vrm, null));
+        Assert.Equal(["gesture:exclaim", "gesture:gasp", "expression:surprised"], Assert.Single(vrmCatalog.Combos, c => c.Tag == "shocked").Parts);
+        var vrmPrompt = vrmCatalog.Prompt(null, null)!;
+        Assert.Contains("\n{shocked} - an exclamation mark, a gasp and wide eyes, for a big shock\n", vrmPrompt.Instructions);
+        Assert.Contains("{shocked}", vrmPrompt.Tags);
+        Assert.DoesNotContain("{/shocked}", vrmPrompt.Tags);
     }
 
     [Fact]

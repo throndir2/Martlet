@@ -7,7 +7,7 @@ namespace Martlet.Desktop.Tests;
 
 public sealed class CharacterGestureTests
 {
-    private static byte[] Moc(params string[] ids)
+    internal static byte[] Moc(params string[] ids)
     {
         var bytes = new byte[64 + ids.Length * 64];
         Encoding.ASCII.GetBytes("MOC3").CopyTo(bytes, 0);
@@ -15,7 +15,7 @@ public sealed class CharacterGestureTests
         return bytes;
     }
 
-    private static byte[] Glb(string json)
+    internal static byte[] Glb(string json)
     {
         var text = Encoding.UTF8.GetBytes(json);
         var padded = (text.Length + 3) / 4 * 4;
@@ -48,6 +48,10 @@ public sealed class CharacterGestureTests
     private static string[] Gestures(CharacterActionInventory inventory) =>
         inventory.Sources.Where(s => s.Kind == CharacterActionKind.Gesture).Select(s => s.Name).ToArray();
 
+    // The model's emotes without Martlet's combos, whose lines and tags come after them (EmoteComboTests covers those).
+    private static CharacterActionCatalog WithoutCombos(CharacterActionInventory inventory) =>
+        new(inventory, CharacterActions.Merge(inventory, null) with { Combos = null });
+
     [Fact]
     public void Live2DModelGetsTheGesturesItsParametersAllowAndKeepsItsOwnSmile()
     {
@@ -64,7 +68,7 @@ public sealed class CharacterGestureTests
         Assert.Equal(["nod", "shake", "tilt", "bow", "blush", "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat", "groan", "sniff",
             "shush", "inhale", "exhale", "mumble", "hum", "sneeze", "whistle", "happy", "sarcastic", "fear", "crying", "whispering", "dramatic",
             "shy", "giggle", "flinch", "lean_in", "look_away", "think", .. FirstOverlays, .. Levels, .. LaterOverlays], Gestures(inventory));
-        var prompt = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null)).Prompt(null, null);
+        var prompt = WithoutCombos(inventory).Prompt(null, null);
         Assert.NotNull(prompt);
         Assert.Equal(["{smile}", "{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{blush}", "{shy}", "{giggle}", "{flinch}", "{lean_in}",
             "{look_away}", "{think}", .. Tags(FirstOverlays), .. Tags(Levels), .. Tags(LaterOverlays), "{/shy}", "{/look_away}",
@@ -128,7 +132,7 @@ public sealed class CharacterGestureTests
         var model = Encoding.UTF8.GetBytes("{\"Version\":3,\"FileReferences\":{\"Moc\":\"m.moc3\",\"Textures\":[]}}");
         var inventory = CharacterActionInventory.From(AvatarRenderer.Live2D, "m.model3.json",
             [new("m.model3.json", model, "application/json"), new("m.moc3", moc, "application/octet-stream")]);
-        var catalog = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null));
+        var catalog = WithoutCombos(inventory);
         Assert.Null(CharacterActions.Problem(catalog.Settings));
 
         Assert.Equal(["laugh"], catalog.For("[laugh]").Select(s => s.Name));
@@ -198,7 +202,7 @@ public sealed class CharacterGestureTests
         Assert.Equal(["blush", .. FirstOverlays, .. FaceParts, .. Levels, .. LaterOverlays], Gestures(live2D));
         Assert.Contains("(moves ParamEyeBallY)", live2D.Find("gesture:eyes_up")!.Detail);
         Assert.Contains("(moves ParamMouthOpenY)", live2D.Find("gesture:mouth_open")!.Detail);
-        var prompt = new CharacterActionCatalog(live2D, CharacterActions.Merge(live2D, null)).Prompt(null, null)!;
+        var prompt = WithoutCombos(live2D).Prompt(null, null)!;
         Assert.Equal(["{blush}", .. Tags(FirstOverlays), "{eyes_up}", "{mouth_open}", .. Tags(Levels), .. Tags(LaterOverlays),
             .. FirstHeldOverlays, "{/eyes_up}", "{/mouth_open}", .. HeldLevels, .. LaterHeldOverlays], prompt.Tags);
         Assert.Contains("{eyes_up} - turn just your eyes up, for daydreaming, exasperation or being dazed (stays on until you write {/eyes_up})",
@@ -257,7 +261,7 @@ public sealed class CharacterGestureTests
         Assert.Equal(["blush", .. FirstOverlays.Skip(1), .. Levels, .. LaterOverlays], Gestures(live2D));
         Assert.Equal("Martlet's own gesture: small hearts float up around the head (drawn over the character).",
             live2D.Find("gesture:hearts")!.Detail);
-        var prompt = new CharacterActionCatalog(live2D, CharacterActions.Merge(live2D, null)).Prompt(null, null)!;
+        var prompt = WithoutCombos(live2D).Prompt(null, null)!;
         Assert.Equal(["{sweat}", "{blush}", .. Tags(FirstOverlays.Skip(1)), .. Tags(Levels), .. Tags(LaterOverlays),
             .. FirstHeldOverlays.Skip(1), .. HeldLevels, .. LaterHeldOverlays], prompt.Tags);
         Assert.Contains("{gloom} - gloom lines, for feeling depressed or mortified", prompt.Instructions);
