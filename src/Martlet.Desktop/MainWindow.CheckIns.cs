@@ -218,8 +218,8 @@ public partial class MainWindow
     }
 
     /// <summary>What the check-ins may know now (on the UI thread): the time, the personality, the conversation's newest
-    /// exchanges, how long it and this PC have been quiet, the lingering emotes a reply turned on, a gaze a reply chose, the
-    /// reminders and background work, and the context board's screen and sound notes.</summary>
+    /// exchanges, what Martlet said lately with when, how long it and this PC have been quiet, the lingering emotes a reply
+    /// turned on, a gaze a reply chose, the reminders and background work, and the context board's screen and sound notes.</summary>
     private CheckInState CheckInStateNow()
     {
         var now = DateTimeOffset.Now;
@@ -244,7 +244,8 @@ public partial class MainWindow
             Exchanged = total, Quiet = openConversation?.SinceActivity, Away = TimeSpan.FromSeconds(ReminderIdleSeconds()),
             CharacterShows = showing, Emotes = emotes, Gaze = gaze, Work = CheckInWork(now),
             Screen = board.Notes.FirstOrDefault(n => n.Source == ContextBoard.Screen)?.Text,
-            Sound = board.Notes.FirstOrDefault(n => n.Source == ContextBoard.Sound)?.Text
+            Sound = board.Notes.FirstOrDefault(n => n.Source == ContextBoard.Sound)?.Text,
+            Said = conversation?.RecentSayings(now) ?? []
         };
     }
 
@@ -293,9 +294,10 @@ public partial class MainWindow
                 PageButton("Edit their prompts", () => OpenCompanion(CompanionTab.Prompts), link: true, id: "CheckInsOpenPrompts"))));
         page.Children.Add(Card(Heading("How check-ins work"),
             Note("A check-in is a short question that the Thinking pool answers for Martlet every few minutes, with only the facts " +
-                "it needs: the end of the conversation, the emotes that stay on, where the eyes look, and the reminders and work " +
-                "Martlet started. Martlet then acts on the answer. It turns off an emote, takes the eyes back to their usual gaze, " +
-                "or puts a short reminder in the notes of your next message, so its next reply follows it.", new Thickness(0, 0, 0, 0)),
+                "it needs: the end of the conversation, what Martlet said lately, the emotes that stay on, where the eyes look, " +
+                "and the reminders and work Martlet started. Martlet then acts on the answer. It turns off an emote, takes the " +
+                "eyes back to their usual gaze, or puts a short reminder in the notes of your next message, so its next reply " +
+                "follows it.", new Thickness(0, 0, 0, 0)),
             Note("Check-ins run only on Thinking pool members, never on the conversation's own Thinking model, so replies never " +
                 "wait for them. They wait while you talk and while nobody uses this PC, and they stay on this PC. Their prompts are " +
                 "on Prompts, in Check-ins.", new Thickness(0, 6, 0, 0))));

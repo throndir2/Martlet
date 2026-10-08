@@ -2199,7 +2199,7 @@ public partial class LiveConversationWindow : ThemedWindow
 
     // ---------- what the window shows ----------
 
-    /// <summary>Refresh context: Martlet forgets the exchanges it kept in mind (and its recent screen remarks), so the next
+    /// <summary>Refresh context: Martlet forgets the exchanges it kept in mind (and what it said lately), so the next
     /// reply starts fresh. Listening, vision and the messages on screen carry on unchanged.</summary>
     private void RefreshContext_Click(object sender, RoutedEventArgs e)
     {

@@ -421,7 +421,8 @@ each offer, take and reminder said by id only (`Reminders:`). See
 [Check-ins](CONVERSATION.md#check-ins) aren't a tool the model calls: every few
 minutes a Thinking pool member answers one short question for Martlet (do the
 lingering emotes still fit, does the gaze a reply chose still fit, did the
-character keep its promises, did it stay in character, and the owner's own),
+character keep its promises, did it stay in character, does it keep saying the
+same things, and the owner's own),
 and Martlet acts on the answer. Nothing changes in the conversation's tools or
 instructions. A reminder for the next reply goes in the notes of that one
 message only (context board source `check-in-<id>`), and the desktop log notes
@@ -3664,7 +3665,8 @@ the desktop on a companion PC: `role`, the check-in `running`, `pool` with
 check-in `waiting`, `nextAt`, `runs`, `acted` and `last` with `at`, `result`,
 `acted`, `member` and `ms`; never what was said, answered or reminded) and the
 fixed `rules` (the 15-second look, the 3-minute minimum, the 10-second settle,
-the 10-minute idle wait, the pace choices and `keptPace`, the job kind
+the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
+`saidLatelyMinutes` for Saying the same things, the job kind
 `check-in` at the `Helper` priority, not fast, stopped while the floor is Live).
 Read-only.
 
@@ -3674,16 +3676,35 @@ Read-only.
 rules; `check-ins.json` saved and read back, with a bad pace refused; when each
 built-in check-in waits or runs (a young emote, a hidden character, the pace,
 three times the pace after an answer that kept everything, you talking, nobody
-at the PC, a young gaze, nothing new, no personality, and *Check now* on one
-that is off); the message each one sends, run on a
+at the PC, a young gaze, nothing new, no personality, too little said lately,
+and *Check now* on one that is off); the message each one sends (Saying the
+same things with each thing said and when), run on a
 production job board with a fixture member; the answers read (`OFF {blush}`
-after a `<think>` block, `**USUAL**` after thinking, a `REMIND:` bullet, `OK`,
+after a `<think>` block, `**USUAL**` after thinking, a `REMIND:` bullet, a
+`REMIND:` after a `<think>` block, `OK`,
 `SAY:`) and odd answers that change nothing (`KEEP`, a tag it wasn't asked
 about, chatter, `REMIND: nothing`); and what Martlet does: a reply's emote off
 on a production `HeldEmotes` while the owner's try stays, a reminder on a
 production context board that goes with one request only, and a check-in's
 `SAY:` worded in its own words beside a due reminder. `passed` and each step's
 `passed` and `detail`. No model, network or credentials.
+
+`said_lately_check` rehearses [what Martlet said
+lately](CONVERSATION.md#what-you-said-lately) with the production code
+(`SaidLately`, the prompt, `MomentTurn`, `BoundedTextInput`, `CheckIns`) and
+FIXTURE sayings at fixed times (NOT anything Martlet said): `what is noted`
+(never a `[pass]` or nothing; one line, cut to 160 characters; the newest 10
+within the hour), `lines with when` (`- 10:05 PM (12 min ago): "..."`),
+`the note` (Companion › Prompts › *What you said lately*, your own edit of it,
+and nothing when it is emptied or nothing was said), `which requests carry it`
+(`Look`, `Report` and `PcAudio` do; `User` and `Touch` never, so a reply to you
+starts as fast as before), `sent once, never kept` (the last notes of the
+message, left out of what the conversation keeps, and the talk window's line
+*the picture and 5 things Martlet said lately*) and `the check-in reads the
+same lines` (Saying the same things, and its wait with too little said).
+`passed` and each step's `passed` and `detail`. No model, network or
+credentials. Live looks and replies count it in the desktop log's *Turn took*
+line and the talk window's `LiveTurnInputs`, never what was said.
 
 `think_longer_check` rehearses Thinking longer with the production scheduler
 (`BackgroundJobs`), think runner (`BackgroundThink`), tool texts and request
