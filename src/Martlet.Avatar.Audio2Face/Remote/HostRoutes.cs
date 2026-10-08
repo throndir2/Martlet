@@ -34,6 +34,9 @@ public static class HostRoutes
     public static readonly TimeSpan WrongKeyBackoff = TimeSpan.FromMinutes(5);
 
     private static readonly ConcurrentDictionary<string, Entry> Entries = new(StringComparer.Ordinal);
+    /// <summary>Address-and-key pairs of hosts whose routes are kept apart from other hosts with the same home origin
+    /// (<see cref="KeepApart"/>).</summary>
+    private static readonly ConcurrentDictionary<string, byte> Apart = new(StringComparer.Ordinal);
 
     /// <summary>Raised (on the connecting thread) when a host is reached over another route than before (home or outside, or
     /// another outside address), or when nothing answered; for the desktop log and status.</summary>
@@ -47,13 +50,23 @@ public static class HostRoutes
     {
         if (roster is null) return;
         foreach (var host in roster.Members.Where(m => m.IsHost && m.Origin is not null))
-            Set(host.Origin!, host.Id, host.Removed ? [] : host.Addresses ?? []);
+            Set(host.Origin!, host.Id, host.Removed ? [] : host.Addresses ?? [], host.Spki);
     }
 
-    /// <summary>Sets one host's outside addresses (normalized; invalid ones are dropped).</summary>
-    public static void Set(string origin, string? hostId, IEnumerable<string> outside)
+    /// <summary>Keeps the routes of the host at <paramref name="origin"/> with the pinned key <paramref name="spki"/> apart from
+    /// every other host with the same home origin. A host a friend shares with this PC has its owner's home address, which one
+    /// of this PC's own hosts may also have: neither then changes how the other is reached. Calls that name this key
+    /// (<c>spki</c>) use its own entry.</summary>
+    public static void KeepApart(string origin, string spki)
     {
-        if (Key(origin) is not { } key) return;
+        if (Key(origin) is { } key) Apart.TryAdd(key + " " + spki, 0);
+    }
+
+    /// <summary>Sets one host's outside addresses (normalized; invalid ones are dropped). <paramref name="spki"/>: the host's
+    /// pinned key, which matters only for a host kept apart (<see cref="KeepApart"/>).</summary>
+    public static void Set(string origin, string? hostId, IEnumerable<string> outside, string? spki = null)
+    {
+        if (Key(origin, spki) is not { } key) return;
         var list = outside.Select(NetworkRoster.NormalizeAddress).OfType<string>().Distinct(StringComparer.Ordinal)
             .Take(NetworkRoster.MaximumAddresses).ToArray();
         var entry = Entries.GetOrAdd(key, _ => new Entry(origin));
@@ -67,21 +80,27 @@ public static class HostRoutes
 
     /// <summary>Sets one host's outside addresses from what this PC saved with its pairing, unless it already has some (from the
     /// network roster, which wins).</summary>
-    public static void Prime(string origin, string? hostId, IEnumerable<string> outside)
+    public static void Prime(string origin, string? hostId, IEnumerable<string> outside, string? spki = null)
     {
-        if (Key(origin) is { } key && Entries.TryGetValue(key, out var entry) && entry.Outside.Length > 0) return;
-        Set(origin, hostId, outside);
+        if (Key(origin, spki) is { } key && Entries.TryGetValue(key, out var entry) && entry.Outside.Length > 0) return;
+        Set(origin, hostId, outside, spki);
     }
 
     /// <summary>How this PC last reached each host it knows outside addresses for or has connected to.</summary>
     public static IReadOnlyList<HostRouteStatus> Snapshot() =>
         Entries.Values.Select(e => e.Status()).OrderBy(s => s.HostId ?? s.Origin, StringComparer.Ordinal).ToArray();
 
-    /// <summary>How this PC last reached the host at <paramref name="origin"/>, or null when it never tried.</summary>
-    public static HostRouteStatus? For(string? origin) => Key(origin) is { } key && Entries.TryGetValue(key, out var e) ? e.Status() : null;
+    /// <summary>How this PC last reached the host at <paramref name="origin"/> (with the pinned key <paramref name="spki"/>, for a
+    /// host kept apart), or null when it never tried.</summary>
+    public static HostRouteStatus? For(string? origin, string? spki = null) =>
+        Key(origin, spki) is { } key && Entries.TryGetValue(key, out var e) ? e.Status() : null;
 
     /// <summary>Forgets every route (tests).</summary>
-    internal static void Reset() => Entries.Clear();
+    internal static void Reset()
+    {
+        Entries.Clear();
+        Apart.Clear();
+    }
 
     /// <summary>
     /// Checks one address of a host without a credential: dials <paramref name="address"/> ("name:port"; null for the home
@@ -135,9 +154,9 @@ public static class HostRoutes
 
     /// <summary>The TLS check refused the key a connection to <paramref name="origin"/> presented: if that was the home
     /// address, it is skipped for a while (another network's computer has the same address here).</summary>
-    internal static void KeyRejected(string origin)
+    internal static void KeyRejected(string origin, string? spki = null)
     {
-        if (Key(origin) is not { } key || !Entries.TryGetValue(key, out var entry)) return;
+        if (Key(origin, spki) is not { } key || !Entries.TryGetValue(key, out var entry)) return;
         lock (entry)
         {
             var now = Clock.GetUtcNow();
@@ -152,11 +171,12 @@ public static class HostRoutes
         }
     }
 
-    /// <summary>SocketsHttpHandler.ConnectCallback for host connections.</summary>
-    internal static async ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, CancellationToken token)
+    /// <summary>SocketsHttpHandler.ConnectCallback for connections to a host (<paramref name="spki"/>: its pinned key, or null
+    /// while pairing).</summary>
+    internal static async ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, string? spki, CancellationToken token)
     {
         var target = context.DnsEndPoint;
-        var key = Key(target.Host, target.Port);
+        var key = Key(target.Host, target.Port, spki);
         var entry = key is null ? null : Entries.GetOrAdd(key, k => new Entry(Origin(target.Host, target.Port)));
         if (entry is null) return await DialAsync(target, token).ConfigureAwait(false);
         Interlocked.Increment(ref entry.Connections);
@@ -312,14 +332,18 @@ public static class HostRoutes
         "connection ports or socket buffers). The host may be fine. Martlet tries again by itself; if this keeps happening, close " +
         "programs that open many connections, or restart this PC.";
 
-    private static string? Key(string? origin)
+    private static string? Key(string? origin, string? spki = null)
     {
         if (origin is null || !Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return null;
-        return Key(uri.Host, uri.Port);
+        return Key(uri.Host, uri.Port, spki);
     }
 
-    private static string? Key(string host, int port) =>
-        IPAddress.TryParse(host.Trim('[', ']'), out var address) ? Origin(address.ToString(), port) : null;
+    private static string? Key(string host, int port, string? spki = null)
+    {
+        if (!IPAddress.TryParse(host.Trim('[', ']'), out var address)) return null;
+        var key = Origin(address.ToString(), port);
+        return spki is not null && Apart.ContainsKey(key + " " + spki) ? key + " " + spki : key;
+    }
 
     private static string Origin(string host, int port)
     {

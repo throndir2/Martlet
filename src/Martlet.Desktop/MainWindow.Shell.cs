@@ -31,6 +31,9 @@ public partial class MainWindow
     private AppSettings? homeSettings;
     private AvatarProfile? homeAvatar;
     private IReadOnlyList<PairedHost> homeHosts = [];
+    /// <summary>Hosts friends share with this PC (<see cref="PairedHost.Shared"/>): their engines only, kept apart from
+    /// <see cref="homeHosts"/> so nothing between your own computers ever talks to them.</summary>
+    private IReadOnlyList<PairedHost> sharedHosts = [];
     private bool renderingBoard;
     /// <summary>Settings changes made here take turns (<see cref="ChangeTurns"/>): a change waits for the one saving before
     /// it rather than being refused.</summary>
@@ -421,14 +424,28 @@ public partial class MainWindow
         // Another persona may be in use now, with another usual gaze.
         avatar.Gaze.Refresh();
         var hostIds = string.Join(",", homeHosts.Select(h => h.HostId + "/" + h.Pairing.CredentialId));
-        try { homeHosts = HostRegistry.Load(store.DataDirectory, homeAvatar?.RemoteHost, machine.LanAddress ?? HostSetupCommands.ThisPcAddress()); }
+        var sharedIds = string.Join(",", sharedHosts.Select(h => h.HostId + "/" + h.Pairing.CredentialId));
+        try
+        {
+            var all = HostRegistry.Load(store.DataDirectory, homeAvatar?.RemoteHost, machine.LanAddress ?? HostSetupCommands.ThisPcAddress());
+            // Hosts friends share with this PC are kept apart: none of the syncs between your own computers talks to them.
+            homeHosts = all.Where(h => !h.Shared).ToArray();
+            sharedHosts = all.Where(h => h.Shared).ToArray();
+        }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             homeHosts = [];
+            sharedHosts = [];
             ActionText.Text = error.Message;
         }
         // A pairing made elsewhere (Add a computer) is shared with the Martlet network right away.
         if (hostIds != string.Join(",", homeHosts.Select(h => h.HostId + "/" + h.Pairing.CredentialId))) QueueNetworkSync();
+        // A host a friend just shared with this PC (or one forgotten): read what it offers this PC.
+        if (sharedIds != string.Join(",", sharedHosts.Select(h => h.HostId + "/" + h.Pairing.CredentialId)))
+        {
+            sharedHostsCheckedAt = null;
+            if (started) CheckSharedHostsAsync().Forget();
+        }
         ObserveLocalJobs();
         UpdateNearby();
         RenderHome();
@@ -725,10 +742,10 @@ public partial class MainWindow
     }
 
     /// <summary>The other computers paired with this PC's host service, as it said on the last network sync: members of its
-    /// network or not (such as one still waiting to join). Empty when this PC isn't paired with its own host service, or
-    /// before the first sync.</summary>
+    /// network or not (such as one still waiting to join), never a friend's computer. Empty when this PC isn't paired with its
+    /// own host service, or before the first sync.</summary>
     private IReadOnlyList<HostPairedDevice> PairedComputers() =>
-        ThisPcHost() is { } own && PairedWith(own.HostId) is { } devices ? devices.Where(d => !IsThisDevice(d.DeviceId)).ToArray() : [];
+        ThisPcHost() is { } own && PairedWith(own.HostId) is { } devices ? devices.Where(d => !IsThisDevice(d.DeviceId) && !d.Friend).ToArray() : [];
 
     private HomeStep PairStep(LocalHostServiceState? state)
     {
@@ -1063,7 +1080,7 @@ public partial class MainWindow
 
     private NetworkInputs Inputs() => new(machine, Role, homeSettings, homeAvatar, avatar.IsShowing, hostChecks,
         HardwareStore?.Load() ?? [], homeHosts, hostUpdates.Notes, HostUsers(), clusterEnabled ? clusterPlan : null, OtherComputers(),
-        DeepThinkingHosts(), HostOutsideFacts(), OwnHostTrouble(), ThinkingPoolLeft(), PresenceAway(), ConfiguringMachines());
+        DeepThinkingHosts(), HostOutsideFacts(), OwnHostTrouble(), ThinkingPoolLeft(), PresenceAway(), ConfiguringMachines(), sharedHosts);
 
     /// <summary>The paired computers the owner keeps out of the Thinking pool (unticked), or null.</summary>
     private IReadOnlyCollection<string>? ThinkingPoolLeft() =>
@@ -1110,6 +1127,9 @@ public partial class MainWindow
         RenderDeviceSettings(nodes);
         RenderNetworkCapacity(nodes);
         RenderNetwork();
+        RenderFriends();
+        RenderSharedHosts();
+        RefreshFriendsWhenShown();
         if (nodes.All(n => n.Id != selectedNode)) selectedNode = "this-pc";
         mapNodes = nodes;
         DevicesSummary.Text = DeviceOverview.Summary(nodes);
@@ -1313,6 +1333,19 @@ public partial class MainWindow
     private PairedHost? FindHost(string? hostId) => hostId is null ? null
         : NetworkMap.Hosts(Inputs()).FirstOrDefault(h => h.HostId == hostId);
 
+    /// <summary>A host a friend shares with this PC, or null.</summary>
+    private PairedHost? FindSharedHost(string? hostId) => hostId is null ? null : sharedHosts.FirstOrDefault(h => h.HostId == hostId);
+
+    /// <summary>A shared host's option text in a job's choice: its name, that a friend shares it, and whether it offers the job
+    /// (for Speaking, any voice engine: this PC speaks with the one it runs).</summary>
+    private string SharedOption(PairedHost host, string roleKind)
+    {
+        var check = hostChecks.GetValueOrDefault(host.HostId);
+        var offers = check?.Offers?.Keys.Any(k => k == roleKind || HostRoles.Speaks(roleKind) && HostRoles.Speaks(k)) == true;
+        return $"{host.HostId}, shared by a friend" + (offers ? " (ready)"
+            : check?.Reachable == true ? " (doesn't offer it)" : check?.Reachable == false ? " (not reachable)" : "");
+    }
+
     /// <summary>Who handles lip-sync: this PC, a paired host (installing Audio2Face there if needed) or nobody.</summary>
     private ComboBox LipSyncChoice()
     {
@@ -1353,6 +1386,8 @@ public partial class MainWindow
             Option("host:" + host.HostId, name + (offers ? " (ready for lip-sync)"
                 : check?.Reachable == true ? " (needs lip-sync setup)" : check?.Reachable == false ? " (not reachable)" : ""));
         }
+        // Hosts friends share with this PC: lip-sync on this PC only.
+        foreach (var host in sharedHosts) Option("host:" + host.HostId, SharedOption(host, HostRoles.Audio2Face));
         Option("off", "No one (basic mouth movement)");
         choice.SelectionChanged += (_, _) =>
         {
@@ -1374,16 +1409,29 @@ public partial class MainWindow
             var install = false;
             if (key.StartsWith("host:", StringComparison.Ordinal))
             {
-                host = FindHost(key[5..]) ?? throw new InvalidOperationException("That host is no longer paired.");
+                host = FindHost(key[5..]) ?? FindSharedHost(key[5..]) ?? throw new InvalidOperationException("That host is no longer paired.");
                 ActionText.Text = $"Checking {host.HostId}...";
-                var check = await HostControl.CheckAsync(host.Pairing, HardwareStore, lifetime.Token);
+                var check = await HostControl.CheckAsync(host.Pairing, HardwareStore, lifetime.Token, host.Shared);
                 hostChecks[host.HostId] = check;
                 if (check.Reachable != true)
                 {
                     ActionText.Text = $"Lip-sync stays where it is: {host.HostId} didn't answer ({check.Text})";
                     return;
                 }
-                if (check.Offers?.ContainsKey(HostRoles.Audio2Face) != true)
+                if (host.Shared)
+                {
+                    // A friend's host offers what its owner set up there; this PC can't add roles to it.
+                    if (check.Offers?.ContainsKey(HostRoles.Audio2Face) != true)
+                    {
+                        ActionText.Text = $"Lip-sync stays where it is: {host.HostId} doesn't offer lip-sync to this PC. Only its owner can add it there.";
+                        return;
+                    }
+                    if (!ConfirmationDialog.Confirm(this, $"Use {host.HostId} for lip-sync on this PC? A friend shares it with you: the generated " +
+                            "voice audio goes there and isn't kept. Only this PC uses it; your other computers keep theirs. Its owner's own work " +
+                            "comes first, so lip-sync may pause while it is busy; your voice goes on.", $"Use {host.HostId}"))
+                        return;
+                }
+                else if (check.Offers?.ContainsKey(HostRoles.Audio2Face) != true)
                 {
                     if (CannotHand(host.HostId, HostRoles.Audio2Face, ClusterJobs.LipSync) is { } cannot)
                     {
@@ -1402,7 +1450,7 @@ public partial class MainWindow
             }
             await ApplyLipSyncAsync(host, key == "off");
             tabPlace.Remove(CompanionTab.LipSync);
-            RecordClusterJob(ClusterJobs.LipSync, ClusterSync.Local(ClusterJobs.LipSync, homeSettings, homeAvatar));
+            RecordClusterJob(ClusterJobs.LipSync, ClusterSync.Local(ClusterJobs.LipSync, homeSettings, homeAvatar, shared: SharedHostIds()));
             var who = key == "off" ? "no one (basic mouth movement)" : host?.HostId ?? "this PC";
             var message = $"Lip-sync is now handled by {who}.";
             if (install) LaunchOnHost(host!, HostRoles.Get(HostRoles.Audio2Face).Add);
@@ -1601,16 +1649,19 @@ public partial class MainWindow
         var stranded = new List<string>();
         foreach (var job in HostJob.All.Where(j => NetworkMap.JobHost(homeSettings, j.Role) == host.HostId))
         {
-            if (store is not null && JobSavedRoute.Load(store.DataDirectory, job.SavedFile) is { } saved) await HandBackAsync(job, saved);
+            // A job on a host a friend shared was this PC's own choice: it goes back without changing your shared plan, and
+            // this PC follows the plan again on its next check.
+            if (store is not null && JobSavedRoute.Load(store.DataDirectory, job.SavedFile) is { } saved) await HandBackAsync(job, saved, record: !host.Shared);
             else stranded.Add(job.Job);
         }
         await Pairings().ForgetAsync(host.HostId, token);
         hostChecks.Remove(host.HostId);
         hostReleases.Remove(host.HostId);
-        ForgetClusterHost(host.HostId);
+        // A host a friend shares was never in your shared plan, so forgetting it changes nothing there.
+        if (!host.Shared) ForgetClusterHost(host.HostId);
         if (inCharge)
         {
-            RecordClusterJob(ClusterJobs.LipSync, new(null, false));
+            if (!host.Shared) RecordClusterJob(ClusterJobs.LipSync, new(null, false));
             if (avatar.IsShowing) await avatar.UseHostAsync(null, token);
         }
         return stranded;

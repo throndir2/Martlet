@@ -132,7 +132,8 @@ public partial class MainWindow
         var own = hostId == ThisPcHost()?.HostId;
         return new()
         {
-            HostId = hostId, Paired = paired && FindHost(hostId) is not null, Reachable = reachable, Serves = HostServes(hostId, job, routeId),
+            HostId = hostId, Paired = paired && (FindHost(hostId) ?? FindSharedHost(hostId)) is not null, Reachable = reachable,
+            Serves = HostServes(hostId, job, routeId),
             Engine = engine, SyncOn = clusterEnabled, Failover = failover,
             FailoverTarget = failover ? ClusterSync.FailoverTarget(clusterPlan, job, hostId, clusterProbes.Values, hardware) : null,
             ForegroundOnly = PlatformDevice.FromHost(hostId, hardware.FirstOrDefault(h => h.HostId == hostId)).ForegroundOnly,

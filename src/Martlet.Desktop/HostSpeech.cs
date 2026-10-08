@@ -249,8 +249,8 @@ internal sealed class HostSpeechClient(string dataDirectory) : IHostSpeechClient
         var style = SpeechEngines.ForRoute(target.RouteId) == SpeechEngines.ChatterboxOriginal ? ChatterboxStyle.Load(dataDirectory) : null;
         var targets = Targets(target);
         await using var frames = WorkQueue.Shared.StreamAsync(WorkSharingJobs.Speaking, targets, t => t.HostId,
-                (t, token) => SpeakAsync(t, reference, input, ids, epoch, deadline, style, token), WorkSharingRoster.Classify, deadline, null,
-                cancellationToken)
+                (t, token) => WorkSharingRoster.Watched(t.HostId, "speaking", SpeakAsync(t, reference, input, ids, epoch, deadline, style, token), token),
+                WorkSharingRoster.Classify, deadline, null, cancellationToken)
             .GetAsyncEnumerator(cancellationToken);
         while (await Guard(() => frames.MoveNextAsync().AsTask(), cancellationToken).ConfigureAwait(false))
             yield return frames.Current;

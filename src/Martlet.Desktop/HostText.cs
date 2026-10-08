@@ -55,7 +55,8 @@ internal sealed class HostTextClient : IHostTextClient
                 : WorkSharingRoster.TextTarget(host, target.RouteId) with { Background = target.Background })];
         // Background work on the conversation's route (remembering after a reply) gives way to the live turn.
         await using var deltas = WorkQueue.Shared.StreamAsync(WorkSharingJobs.Thinking, targets, t => t.HostId,
-                (t, token) => ReplyAsync(t, model, input, limits, ids, epoch, deadline, generation, token, false), WorkSharingRoster.Classify,
+                (t, token) => WorkSharingRoster.Watched(t.HostId, "thinking",
+                    ReplyAsync(t, model, input, limits, ids, epoch, deadline, generation, token, false), token), WorkSharingRoster.Classify,
                 deadline, null, cancellationToken, target.Background ? WorkPriority.Background : WorkPriority.Live)
             .GetAsyncEnumerator(cancellationToken);
         while (true)
@@ -143,9 +144,11 @@ internal sealed class HostTextClient : IHostTextClient
         }
     }
 
-    /// <summary>Maps a host gateway, transport or schema error to a provider failure, recording what the host said locally.</summary>
+    /// <summary>Maps a host gateway, transport or schema error to a provider failure, recording what the host said locally. A
+    /// host a friend shares that is busy with its owner's own work is a rate limit: busy now, worth trying again later.</summary>
     internal static HostTextException? Failure(string job, Exception error) => error switch
     {
+        Audio2FaceHostException { OwnerFirst: true } owner => Failed(job, ProviderFailureCode.RateLimited, $"[{owner.Code} {owner.Detail}] {owner.Message}"),
         Audio2FaceHostException host => Failed(job, Map(host.Code), $"[{host.Code}] {host.Message}"),
         HttpRequestException or IOException => Failed(job, ProviderFailureCode.Network, $"{error.GetType().Name}: {error.Message}"),
         JsonException or FormatException or InvalidOperationException =>

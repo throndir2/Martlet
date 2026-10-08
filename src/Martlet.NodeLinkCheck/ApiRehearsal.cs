@@ -357,9 +357,13 @@ internal static class ApiRehearsal
         internal TimeSpan Pause { get; set; }
         internal bool DraftFails { get; set; }
         internal string? DraftTurnedOff { get; private set; }
+        private int chats;
+        /// <summary>How many chat requests reached this fixture.</summary>
+        internal int Chats => Volatile.Read(ref chats);
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            if (request.RequestUri!.AbsolutePath == "/api/chat") Interlocked.Increment(ref chats);
             if (request.RequestUri!.AbsolutePath == "/api/create")
             {
                 using var create = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));

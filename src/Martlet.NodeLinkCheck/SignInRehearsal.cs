@@ -217,15 +217,36 @@ internal static class SignInRehearsal
         });
         using var keyFriend = NetworkKey.Create("lab-friend-pc");
         var friend = new LabDesktop(keyFriend, "FRIEND-PC");
+        await Run("A host too old to share with friends says so: the home PC is asked to update it (signin.friends_unsupported)", async () =>
+        {
+            // Hosts older than friend sharing refuse the unknown "access" field (request.invalid); a field this host doesn't
+            // know gets the same answer here. Allowing one of your own computers sends no "access", so older hosts take it.
+            var change = HostSignInAccess.AllowChange("authentik", "lab-user-42", "Ana", friend: true);
+            change["lab_unknown_field"] = true;
+            string? message = null;
+            string? refused;
+            try
+            {
+                await home.ChangeAsync(host.HostId, change, token);
+                refused = null;
+            }
+            catch (Audio2FaceHostException error)
+            {
+                refused = error.Code;
+                message = error.Message;
+            }
+            var member = HostSignInAccess.AllowChange("authentik", "lab-user-42", "Ana", friend: false);
+            return (refused == "signin.friends_unsupported" && member["access"] is null && message?.Contains("Update it first", StringComparison.Ordinal) == true,
+                $"friend allow refused as {refused ?? "nothing"}: {message}; a member allow sends access: {member["access"] is not null}");
+        });
         await Run("The home PC shares the host with a friend: the OpenID Connect identity is allowed as a friend (this host's engines only)", async () =>
         {
-            var settings = await home.ChangeAsync(host.HostId, new JsonObject
-            {
-                ["action"] = "allow", ["provider"] = "authentik", ["subject"] = "lab-user-42", ["label"] = "Ana", ["access"] = "friend"
-            }, token);
+            var settings = await home.ChangeAsync(host.HostId, HostSignInAccess.AllowChange("authentik", "lab-user-42", "Ana", friend: true), token);
             var saved = System.Text.Encoding.UTF8.GetString(host.SignInBytes ?? []);
-            return (settings.Allowed.Any(a => a.Subject == "lab-user-42") && saved.Contains("\"access\": \"friend\"", StringComparison.Ordinal),
-                $"allowed: {string.Join(", ", settings.Allowed.Select(a => a.Label ?? a.Subject))}; kept as a friend in signin.json: " +
+            // The desktop's client reads the access back too (Sign-in from outside and Devices › Friends show it).
+            var friendRead = settings.Allowed.FirstOrDefault(a => a.Subject == "lab-user-42") is { Friend: true };
+            return (friendRead && saved.Contains("\"access\": \"friend\"", StringComparison.Ordinal),
+                $"allowed: {string.Join(", ", settings.Allowed.Select(a => $"{a.Label ?? a.Subject} ({a.Access})"))}; kept as a friend in signin.json: " +
                 saved.Contains("\"access\": \"friend\"", StringComparison.Ordinal));
         });
         await Run("The friend's computer signs in in the (simulated) browser and gets a friend's credential: it lists the host's engines", async () =>
@@ -235,8 +256,14 @@ internal static class SignInRehearsal
             friend.Keep(pairing, secret);
             var engines = await friend.CanUseAsync(host.HostId, token);
             var access = host.Server.Credentials.PairedDevices().FirstOrDefault(d => d.DeviceId == keyFriend.DeviceId)?.Access;
-            return (engines && access == GatewayAccess.Friend && who.Label == "me@example.net",
-                $"signed in as {who}; host keeps it as {access}; capabilities: {(engines ? "allowed" : "refused")}");
+            // The home PC sees the friend's computer as one: in the sign-in settings and in the host's network answer.
+            var settings = await home.ReadAsync(host.HostId, token);
+            var enrolled = settings.Enrolled.FirstOrDefault(e => e.DeviceId == keyFriend.DeviceId);
+            var view = (await home.SyncAsync(token)).Views.GetValueOrDefault(host.HostId)?.Devices?.FirstOrDefault(d => d.DeviceId == keyFriend.DeviceId);
+            return (engines && access == GatewayAccess.Friend && who.Label == "me@example.net" && who.Friend && enrolled is { Friend: true } &&
+                    view is { Friend: true },
+                $"signed in as {who} with access {who.Access}; host keeps it as {access}; capabilities: {(engines ? "allowed" : "refused")}; " +
+                $"home PC reads it as {enrolled?.Access ?? "absent"} in the sign-in settings and {view?.Access ?? "absent"} in the network answer");
         });
         await Run("Everything else on the host refuses the friend (access.friend), and the friend never joins the network", async () =>
         {
@@ -312,12 +339,16 @@ internal static class SignInRehearsal
         internal const string ClientId = "martlet-lab";
         internal const string ClientSecret = "lab-client-secret";
         private readonly RSA key = RSA.Create(2048);
-        private readonly Dictionary<string, string> nonces = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (string Nonce, string Subject, string Email)> nonces = new(StringComparer.Ordinal);
         internal const string SteamId = "76561198000000042";
         internal bool SecretSeen;
         internal int SteamChecks;
 
-        internal void Browse(string url)
+        internal void Browse(string url) => Browse(url, "lab-user-42", "me@example.net");
+
+        /// <summary>"Signs in" at the authorize URL as <paramref name="subject"/> (with <paramref name="email"/>) and follows the
+        /// redirect to the computer's real loopback listener.</summary>
+        internal void Browse(string url, string subject, string email)
         {
             var uri = new Uri(url);
             var query = uri.Query.TrimStart('?').Split('&').Select(p => p.Split('=', 2)).ToDictionary(p => p[0], p => Uri.UnescapeDataString(p[1]));
@@ -343,7 +374,7 @@ internal static class SignInRehearsal
                 return;
             }
             var code = Base64Url(RandomNumberGenerator.GetBytes(16));
-            lock (nonces) nonces[code] = query["nonce"];
+            lock (nonces) nonces[code] = (query["nonce"], subject, email);
             var back = query["redirect_uri"] + "?code=" + code + "&state=" + Uri.EscapeDataString(query["state"]);
             _ = Task.Run(async () =>
             {
@@ -378,14 +409,15 @@ internal static class SignInRehearsal
                     .ToDictionary(p => Uri.UnescapeDataString(p[0]), p => Uri.UnescapeDataString(p[1]));
                 SecretSeen |= request.Headers.Authorization?.Parameter is { } basic &&
                     System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(basic)) == ClientId + ":" + ClientSecret;
-                string? nonce;
-                lock (nonces) nonces.Remove(form["code"], out nonce);
-                if (nonce is null) return new HttpResponseMessage(HttpStatusCode.BadRequest);
+                (string Nonce, string Subject, string Email) issued;
+                lock (nonces)
+                    if (!nonces.Remove(form["code"], out issued)) return new HttpResponseMessage(HttpStatusCode.BadRequest);
+                var nonce = issued.Nonce;
                 var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 var header = Base64Url(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { alg = "RS256", kid = "lab" }));
                 var claims = Base64Url(System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new
                 {
-                    iss = Issuer, aud = ClientId, sub = "lab-user-42", email = "me@example.net", email_verified = true, iat = now, exp = now + 300, nonce
+                    iss = Issuer, aud = ClientId, sub = issued.Subject, email = issued.Email, email_verified = true, iat = now, exp = now + 300, nonce
                 }));
                 var signature = key.SignData(System.Text.Encoding.ASCII.GetBytes(header + "." + claims), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
                 body = new { access_token = "lab", token_type = "Bearer", id_token = header + "." + claims + "." + Base64Url(signature) };
@@ -499,13 +531,16 @@ internal static class SignInRehearsal
         private X509Certificate2 certificate = null!;
         private GatewayListenerHandle? listener;
         private readonly SignInStore signIn = new();
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> codes = new(StringComparer.Ordinal);
         internal GatewayServer Server { get; private set; } = null!;
         internal string HostId { get; private init; } = "";
         internal string Origin { get; private set; } = "";
         internal string Fingerprint { get; private set; } = "";
         internal byte[]? SignInBytes => signIn.Bytes;
+        /// <summary>How many times the host answered each failure code (its audit), for a lab's status.</summary>
+        internal IReadOnlyDictionary<string, int> Codes => codes;
 
-        internal static async Task<LabHost> StartAsync(string hostId)
+        internal static async Task<LabHost> StartAsync(string hostId, IEnumerable<IGatewayInferenceWorker>? inferenceWorkers = null)
         {
             var host = new LabHost { HostId = hostId };
             try
@@ -515,7 +550,7 @@ internal static class SignInRehearsal
                 var origin = new GatewayOrigin(host.Origin);
                 var identity = GatewayHostIdentity.FromCertificate(hostId, host.certificate);
                 host.Fingerprint = identity.SpkiFingerprint;
-                host.Server = new GatewayServer(identity, origin, [], host);
+                host.Server = new GatewayServer(identity, origin, [], host, inferenceWorkers: inferenceWorkers);
                 host.Server.AttachNetworkStorage(host);
                 host.Server.AttachSignInStorage(host.signIn);
                 host.listener = await host.Server.StartAsync(new GatewayTlsBinding(origin, identity, host.certificate, null), new KestrelGatewayListenerFactory());
@@ -530,7 +565,7 @@ internal static class SignInRehearsal
 
         public byte[]? Load() => null;
         public void Save(byte[] bytes) { }
-        public void Record(GatewayAuditEvent gatewayEvent) { }
+        public void Record(GatewayAuditEvent gatewayEvent) => codes.AddOrUpdate(gatewayEvent.Code, 1, (_, count) => count + 1);
 
         public async ValueTask DisposeAsync()
         {

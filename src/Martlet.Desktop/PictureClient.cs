@@ -228,7 +228,8 @@ internal sealed class GatewayComfyApi(string dataDirectory, string? hostId) : IC
         {
             throw new PictureException(PictureErrorCodes.Unavailable, error.Message, error);
         }
-        foreach (var host in hosts.Where(h => hostId is null || h.HostId == hostId))
+        // Pictures stay the owner's on a host a friend shares (it refuses them), so those hosts are skipped.
+        foreach (var host in hosts.Where(h => !h.Shared && (hostId is null || h.HostId == hostId)))
         {
             Audio2FaceHostConnection? connection = null;
             try

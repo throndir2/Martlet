@@ -173,15 +173,16 @@ public partial class MainWindow
                 "processor, so it never takes the graphics card from the voice or thinking.", new Thickness(0, 0, 0, 4))
         };
         var thisPc = ThisPcHost();
-        var others = NetworkMap.Hosts(Inputs()).Where(h => h.HostId != thisPc?.HostId).ToArray();
-        var reads = others.FirstOrDefault(h => Offers(h, HostRoles.Ocr));
+        // Hosts friends share with this PC read for this PC too, when their owner set Reading up there.
+        var others = NetworkMap.Hosts(Inputs()).Where(h => h.HostId != thisPc?.HostId).Concat(sharedHosts).ToArray();
+        var reads = others.FirstOrDefault(h => !h.Shared && Offers(h, HostRoles.Ocr));
         var shown = readingHost ?? (saved.Place == ReadingPlace.Host && saved.HostId is { } chosen
             ? thisPc?.HostId == chosen ? ReadingThisPc : chosen
             : thisPc is not null && Offers(thisPc, HostRoles.Ocr) ? ReadingThisPc : reads?.HostId ?? ReadingThisPc);
         if (others.Length > 0)
         {
             var pills = new WrapPanel { Margin = new Thickness(0, 2, 0, 2) };
-            foreach (var (id, label) in new[] { (ReadingThisPc, "This PC") }.Concat(others.Select(h => (h.HostId, h.HostId))))
+            foreach (var (id, label) in new[] { (ReadingThisPc, "This PC") }.Concat(others.Select(h => (h.HostId, h.Shared ? $"{h.HostId} (a friend's)" : h.HostId))))
             {
                 var pill = new RadioButton { Content = label, GroupName = "ReadingHost", IsChecked = id == shown };
                 pill.SetResourceReference(StyleProperty, "FilterPill");
@@ -198,12 +199,14 @@ public partial class MainWindow
             stack.Add(pills);
         }
         var onThisPc = shown == ReadingThisPc;
-        var target = onThisPc ? thisPc : FindHost(shown);
+        var target = onThisPc ? thisPc : FindHost(shown) ?? FindSharedHost(shown);
         var where = onThisPc ? "this PC" : shown;
         var ready = target is not null && Offers(target, HostRoles.Ocr);
         var pending = readingPending == shown;
         var inUse = saved.Place == ReadingPlace.Host && target is not null && saved.HostId == target.HostId;
-        var cannot = ready || onThisPc ? null : CannotHand(shown, HostRoles.Ocr, "reading");
+        var cannot = ready || onThisPc ? null
+            : target is { Shared: true } ? $"A friend shares {shown} with this PC; only its owner can set Reading up there."
+            : CannotHand(shown, HostRoles.Ocr, "reading");
         var state = ready ? $"Ready on {where}." + (inUse ? " Martlet reads there." : "")
             : pending ? $"Setting up on {where}..."
             : cannot ?? (readingFailure is { } failed ? $"Setup failed on {where}: {failed}" : $"Not set up on {where} yet.");

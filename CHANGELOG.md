@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- Share your hosts with friends right from the app: **Devices › Friends** lists each person and the hosts you share with them, with **Share** and **Stop sharing**, and **Sign-in from outside** says which sign-ins are your own computers and which are friends'. A friend's Martlet keeps a host you share under **Devices › Hosts shared with this PC** and uses it for thinking, listening, speaking, lip-sync and reading without ever joining your network, and your own work always comes first. ([#625](https://github.com/throndir2/Martlet/pull/625))
 - Companion › Touch › Touch zones can now zoom the character's picture up to 8 times, with **Zoom in**, **Zoom out** and **Reset zoom** or Ctrl+mouse wheel, so you can move and resize small zones such as an eye or the mouth precisely. The boxes' lines and corners stay the same size, so each drag moves a box by a smaller step; zoomed in, drag the picture or scroll to look around it. ([#628](https://github.com/throndir2/Martlet/pull/628))
 - **Detect zones** now also gives your character a touch zone for each thing special to it that your Thinking model sees, such as cat ears, a tail, wings, a halo, a hat, a hair bow or what it holds, named the way the model sees it (*Hair bow*). They react like the other extras, and **Detect again** keeps their names. A tail, wings or animal ears that a Live2D character's own files name get a zone too, even in the first guess. ([#627](https://github.com/throndir2/Martlet/pull/627))
 

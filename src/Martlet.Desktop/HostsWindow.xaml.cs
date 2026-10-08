@@ -64,7 +64,8 @@ public partial class HostsWindow : ThemedWindow
         else if (step == 0) FindNearbyAsync().Forget();
         await ActionAsync("load", async () =>
         {
-            var (hosts, profile) = await pairings.LoadAsync(lifetime.Token);
+            var (all, profile) = await pairings.LoadAsync(lifetime.Token);
+            var hosts = all.Where(h => !h.Shared).ToList();
             paired = paired is { } manage ? hosts.FirstOrDefault(h => h.HostId == manage.HostId) ?? manage
                 : hosts.FirstOrDefault(h => h.HostId == profile?.RemoteHost?.HostId) ?? hosts.LastOrDefault();
             ShowHosts(hosts);
@@ -291,6 +292,8 @@ public partial class HostsWindow : ThemedWindow
 
     private void ShowHosts(IReadOnlyList<PairedHost> hosts)
     {
+        // Hosts friends share with this PC are not yours to set up: Devices › Hosts shared with this PC lists them.
+        hosts = hosts.Where(h => !h.Shared).ToList();
         hostList = hosts;
         showingHosts = true;
         try
@@ -654,7 +657,7 @@ public partial class HostsWindow : ThemedWindow
 
     private static async Task<(PairedHost Host, bool LipSync)> KeepPairingAsync(HostPairings pairings, Audio2FaceHostPairing pairing,
         string secret, HostSetupMethod method, string? ssh, string? sshHostKey, CancellationToken token,
-        IReadOnlyList<string>? outsideAddresses = null)
+        IReadOnlyList<string>? outsideAddresses = null, string? access = null, string? signedInAs = null)
     {
         await pairings.CheckCanKeepAsync(token);
         var store = new WindowsCredentialStore();
@@ -668,7 +671,8 @@ public partial class HostsWindow : ThemedWindow
             Origin = pairing.Origin, HostId = pairing.HostId, SpkiFingerprint = pairing.SpkiFingerprint,
             DeviceId = pairing.DeviceId, CredentialId = pairing.CredentialId
         };
-        return await pairings.AddAsync(remote, method, ssh, token, sshHostKey, outsideAddresses: outsideAddresses);
+        return await pairings.AddAsync(remote, method, ssh, token, sshHostKey, outsideAddresses: outsideAddresses, access: access,
+            signedInAs: signedInAs);
     }
 
     /// <summary>One click sets up Martlet's host service on this PC: offers to install Docker Desktop when it is missing,
@@ -790,19 +794,32 @@ public partial class HostsWindow : ThemedWindow
     {
         if (paired is not { } host) { StatusText.Text = "No Martlet host paired."; return; }
         await pairings.ForgetAsync(host.HostId, lifetime.Token);
-        var (hosts, profile) = await pairings.LoadAsync(lifetime.Token);
+        var (all, profile) = await pairings.LoadAsync(lifetime.Token);
+        var hosts = all.Where(h => !h.Shared).ToList();
         paired = hosts.FirstOrDefault(h => h.HostId == profile?.RemoteHost?.HostId) ?? hosts.LastOrDefault();
         ShowHosts(hosts);
         StatusText.Text = $"Forgot {host.HostId} on this PC. To remove this PC from the host too, revoke {host.Pairing.DeviceId} in the host console.";
     });
 
     /// <summary>Away from home: paste the owner's invite and sign in (<see cref="SignInJoinWindow"/>); the pairing is kept
-    /// like any other.</summary>
+    /// like any other. A friend's host (the sign-in gave friend access) is kept apart as a host shared with this PC: never
+    /// adopted into this PC's network, never in this wizard's list, and only its engines are read.</summary>
     private void JoinWithInvite_Click(object sender, RoutedEventArgs e)
     {
         var device = DeviceIdText.Text.Trim();
-        new SignInJoinWindow(device, async (pairing, secret, outside) =>
+        new SignInJoinWindow(device, async (pairing, secret, outside, who) =>
         {
+            if (who.Friend)
+            {
+                // A friend's host named like one of your own would replace that pairing: keep yours.
+                if ((await pairings.LoadAsync(lifetime.Token)).Hosts.FirstOrDefault(h => h.HostId == pairing.HostId && !h.Shared) is not null)
+                    throw new InvalidOperationException($"{pairing.HostId} is already one of your own hosts on this PC, so Martlet can't keep " +
+                        "a friend's host with the same name here. Ask your friend for an invite to a host with another name.");
+                await KeepPairingAsync(pairings, pairing, secret, HostSetupMethod.Agent, null, null, lifetime.Token, outside,
+                    HostSignInAccess.Friend, who.ToString());
+                StatusText.Text = $"{pairing.HostId} is shared with this PC by a friend. Choose it for a job under Devices › Hosts shared with this PC.";
+                return;
+            }
             var host = await SavePairingAsync(pairing, secret, HostSetupMethod.Agent, null, null, outsideAddresses: outside);
             try { await CheckAsync(host.Pairing, Hardware, _ => { }, lifetime.Token); }
             catch (Exception error) when (error is InvalidOperationException or Audio2FaceHostException) { }

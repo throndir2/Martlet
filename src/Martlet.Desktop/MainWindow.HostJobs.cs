@@ -128,11 +128,55 @@ public partial class MainWindow
             Option("host:" + host.HostId, host.HostId + (model is not null ? " (ready)"
                 : check?.Reachable == true ? " (not installed)" : check?.Reachable == false ? " (not reachable)" : ""));
         }
+        // Hosts friends share with this PC: this job on this PC only, never your network's choice.
+        foreach (var host in sharedHosts) Option("host:" + host.HostId, SharedOption(host, job.HostRoleKind));
         choice.SelectionChanged += (_, _) =>
         {
             if (!renderingBoard && choice.SelectedItem is ComboBoxItem { Tag: string key } && key != current) AssignJobAsync(job, key).Forget();
         };
         return choice;
+    }
+
+    /// <summary>Hands a job to a host a friend shares with this PC, for this PC only (<see cref="LocalJob.Shared"/>): reads only
+    /// the engines it offers (its hardware and roles are its owner's), installs and stops nothing there, and never records the
+    /// choice in your shared plan, so your other computers keep your network's choice. Speaking uses the voice engine it runs.</summary>
+    private async Task AssignSharedJobAsync(HostJob job, PairedHost host)
+    {
+        ActionText.Text = $"Checking {host.HostId}...";
+        var check = await HostControl.CheckAsync(host.Pairing, null, lifetime.Token, shared: true);
+        hostChecks[host.HostId] = check;
+        if (check.Reachable != true)
+        {
+            ActionText.Text = check.Code == "auth.revoked" ? $"{job.Title} wasn't moved: {host.HostId}'s owner stopped sharing it with this PC."
+                : $"{job.Title} wasn't moved. {host.HostId} didn't respond ({check.Text}).";
+            return;
+        }
+        var route = check.Routes?.FirstOrDefault(r => r.RouteId == job.RouteId);
+        // Speaking on a friend's host speaks with the voice engine its owner runs there.
+        if (route is null && job.Role == SetupRole.Tts &&
+            check.Routes?.FirstOrDefault(r => SpeechEngines.ForRoute(r.RouteId) is not null) is { } voiceRoute)
+            (job, route) = (HostJob.SpeakingFor(SpeechEngines.ForRoute(voiceRoute.RouteId)!), voiceRoute);
+        if (route is null)
+        {
+            ActionText.Text = $"{job.Title} wasn't moved. {host.HostId} doesn't offer {job.Job} to this PC; only its owner can add it there.";
+            return;
+        }
+        F5ReferenceSnapshot? voice = null;
+        if (job.RouteType == SetupRouteType.GatewayF5)
+            voice = await F5Voices.DefaultAsync(store!.DataDirectory, route.DestinationId, lifetime.Token, SpeechEngines.ForRoute(job.RouteId));
+        var withVoice = voice is null ? "" : $" using \"{voice.PresetName}\"";
+        if (!ConfirmationDialog.Confirm(this,
+                $"Use {host.HostId} for {job.Job} on this PC? A friend shares it with you. It will {job.Use}{withVoice}. Only this PC uses " +
+                "it: your other computers keep your network's choice. Its owner's own work comes first, so it may turn this PC away while " +
+                "it is busy; then Martlet uses another of your computers that runs it, or tries it again on the next request." +
+                (job.Role == SetupRole.Tts ? " The voice's recording goes with each sentence, and that host keeps nothing." : "") +
+                " " + job.Disclosure, $"Use {host.HostId}"))
+            return;
+        pendingJobHosts.Remove(job.Role);
+        await SaveJobHostAsync(job, host, route, voice);
+        clusterObserved[job.Job] = ObservedJob(job.Job);
+        ErrorLog.Info($"Shared hosts: {job.Job} on this PC now uses {host.HostId}, a host a friend shares (not in the shared plan).");
+        ActionText.Text = $"{job.Title} now uses {host.HostId} on this PC{withVoice}. A friend shares it, so only this PC uses it.{OpenConversationFollows}";
     }
 
     /// <summary>The route this job uses when no host does it: the current one, or the one kept aside while a host does it.</summary>
@@ -162,7 +206,12 @@ public partial class MainWindow
                 await JobBackAsync(job, turn);
                 return;
             }
-            var host = FindHost(key[5..]) ?? throw new InvalidOperationException("That host is no longer paired.");
+            var host = FindHost(key[5..]) ?? FindSharedHost(key[5..]) ?? throw new InvalidOperationException("That host is no longer paired.");
+            if (host.Shared)
+            {
+                await AssignSharedJobAsync(job, host);
+                return;
+            }
             // A voice engine still being stopped there (Speaking just left it) can't take Speaking yet: wait for the stop
             // without holding up other changes, then hand Speaking over through an install as for any engine it doesn't run.
             while (job.Role == SetupRole.Tts && releasingEngines.TryGetValue((host.HostId, job.HostRoleKind), out var stopping))
@@ -342,7 +391,7 @@ public partial class MainWindow
 
     /// <summary>Puts the job back on the route kept aside while a host did it, already confirmed by the caller, and records
     /// it in the shared plan (each computer uses its own choice).</summary>
-    private async Task HandBackAsync(HostJob job, SetupRoute saved)
+    private async Task HandBackAsync(HostJob job, SetupRoute saved, bool record = true)
     {
         var loaded = await setupService!.LoadAsync(lifetime.Token);
         if (loaded.Error is not null) throw new InvalidOperationException(loaded.Error.Summary);
@@ -355,7 +404,8 @@ public partial class MainWindow
         if (!result.Save.Saved) throw new InvalidOperationException(result.Summary);
         homeSettings = next;
         FollowSavedSetup(result.Save.Revision);
-        RecordClusterJob(job.Job, new(null, false));
+        if (record) RecordClusterJob(job.Job, new(null, false));
+        else clusterObserved[job.Job] = ObservedJob(job.Job);
         ActionText.Text = $"{job.Title} now uses {name}.{OpenConversationFollows}" +
             (saved.CredentialId is not null && next.Setup!.Routes.First(r => r.Role == job.Role).CredentialId is null
                 ? " Its key is missing. Save it again in Setup." : "");

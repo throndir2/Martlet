@@ -15,8 +15,9 @@ namespace Martlet.Desktop;
 /// <summary>What this PC does for one job right now: a paired host, its own choice (<see cref="HostId"/> null: its Setup
 /// route, or this PC for lip-sync) or nobody (<see cref="Off"/>, lip-sync only). <see cref="Here"/>: this PC does the job itself
 /// (Thinking with its own Ollama) and <see cref="HostId"/> is its own host service, through which your other computers use this
-/// PC for it; this PC keeps its direct route, so its own replies never take the extra hop.</summary>
-internal readonly record struct LocalJob(string? HostId, bool Off, bool Here = false);
+/// PC for it; this PC keeps its direct route, so its own replies never take the extra hop. <see cref="Shared"/>: <see cref="HostId"/>
+/// is a host a friend shares with this PC, this PC's own choice that your shared plan never records, seeds or moves.</summary>
+internal readonly record struct LocalJob(string? HostId, bool Off, bool Here = false, bool Shared = false);
 
 /// <summary>One background check of a paired host: whether it answered, the routes it offers, its copy of the cluster
 /// plan and whether it can share one at all (<see cref="Shares"/> is false for hosts older than cluster sync).</summary>
@@ -56,19 +57,25 @@ internal static class ClusterSync
 
     /// <param name="ownHost">The host service Martlet runs on this PC, when known: a job this PC does itself (Thinking with its
     /// own Ollama) is then done by this PC for the whole network, through that host service.</param>
-    internal static LocalJob Local(string job, AppSettings? settings, AvatarProfile? avatar, string? ownHost = null) => job switch
+    /// <param name="shared">Hosts friends share with this PC: a job on one is marked <see cref="LocalJob.Shared"/>.</param>
+    internal static LocalJob Local(string job, AppSettings? settings, AvatarProfile? avatar, string? ownHost = null,
+        IReadOnlyCollection<string>? shared = null)
     {
-        ClusterJobs.LipSync => NetworkMap.LipSync(avatar) switch
+        LocalJob local = job switch
         {
-            LipSyncHandler.Loudness => new(null, true),
-            LipSyncHandler.Host => new(avatar!.RemoteHost!.HostId, false),
-            _ => new(null, false)
-        },
-        ClusterJobs.Thinking when ownHost is not null && OwnOllama(settings) is not null => new(ownHost, false, true),
-        ClusterJobs.Thinking => new(NetworkMap.JobHost(settings, SetupRole.Llm), false),
-        ClusterJobs.Listening => new(NetworkMap.JobHost(settings, SetupRole.Stt), false),
-        _ => new(NetworkMap.JobHost(settings, SetupRole.Tts), false)
-    };
+            ClusterJobs.LipSync => NetworkMap.LipSync(avatar) switch
+            {
+                LipSyncHandler.Loudness => new(null, true),
+                LipSyncHandler.Host => new(avatar!.RemoteHost!.HostId, false),
+                _ => new(null, false)
+            },
+            ClusterJobs.Thinking when ownHost is not null && OwnOllama(settings) is not null => new(ownHost, false, true),
+            ClusterJobs.Thinking => new(NetworkMap.JobHost(settings, SetupRole.Llm), false),
+            ClusterJobs.Listening => new(NetworkMap.JobHost(settings, SetupRole.Stt), false),
+            _ => new(NetworkMap.JobHost(settings, SetupRole.Tts), false)
+        };
+        return local.HostId is { } id && !local.Here && shared?.Contains(id) == true ? local with { Shared = true } : local;
+    }
 
     /// <summary>This PC's Thinking route when it is Ollama on this PC itself (enabled), else null.</summary>
     internal static SetupRoute? OwnOllama(AppSettings? settings) =>
@@ -76,15 +83,24 @@ internal static class ClusterSync
         route.Enabled != false ? route : null;
 
     /// <summary>Whether this PC does what the plan says. A job this PC does itself (<see cref="LocalJob.Here"/>) also matches
-    /// "each computer's own choice": the shared settings, not the plan, then move it if the owner's computers chose another route.</summary>
+    /// "each computer's own choice": the shared settings, not the plan, then move it if the owner's computers chose another route.
+    /// A job on a host a friend shares (<see cref="LocalJob.Shared"/>) is this PC's own choice: the plan never moves it.</summary>
     internal static bool Matches(ClusterAssignment assignment, LocalJob local) =>
+        local.Shared ||
         assignment.HostId == local.HostId && assignment.Off == local.Off ||
         local.Here && assignment.HostId is null && !assignment.Off;
 
     /// <summary>Whether this PC records what it does for a job nobody has recorded yet. Only a real choice is recorded (a host
     /// does it, or lip-sync is off): Martlet's default on a computer that just joined never overrides what your other computers
-    /// chose, even when the plan reaches it a check later.</summary>
-    internal static bool Seeds(LocalJob local) => local.HostId is not null || local.Off;
+    /// chose, even when the plan reaches it a check later. A host a friend shares with this PC is never recorded: your other
+    /// computers can't use it.</summary>
+    internal static bool Seeds(LocalJob local) => !local.Shared && (local.HostId is not null || local.Off);
+
+    /// <summary>Whether what this PC does for a job may go into your shared plan: its own choice (no host) or a host of yours
+    /// (<paramref name="own"/>: the hosts paired here that no friend shares, and this PC's own host service). A host a friend
+    /// shares, or one this PC no longer has (a forgotten shared host a job still names), never goes in.</summary>
+    internal static bool Recordable(LocalJob local, IReadOnlyCollection<string> own) =>
+        !local.Shared && (local.HostId is null || own.Contains(local.HostId));
 
     /// <summary>Whether this PC takes <paramref name="job"/> on for every computer, through its own host service: the owner set
     /// the job up on this PC to run here (the shared route, chosen on <paramref name="device"/>, is the one this PC uses and runs

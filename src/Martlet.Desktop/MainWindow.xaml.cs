@@ -197,6 +197,7 @@ public partial class MainWindow : ThemedWindow
         InitializeMemorySync();
         InitializeNetwork();
         InitializeApiKeys();
+        InitializeFriends();
         InitializeNearby();
         InitializeVoiceSync();
         InitializeSpeakingVoices();
@@ -253,6 +254,7 @@ public partial class MainWindow : ThemedWindow
         StartMemorySync();
         StartNetwork();
         StartApiKeys();
+        StartFriends();
         StartVoiceSync();
         StartSpeakingVoices();
         StartCharacterModels();

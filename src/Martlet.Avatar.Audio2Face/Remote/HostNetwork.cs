@@ -20,8 +20,13 @@ public sealed record HostJoinRequest(string HostId, string DeviceId, string Disp
 public sealed record HostSignInRemoval(string HostId, string DeviceId, string? Key, string Provider, string Subject, string? Label, DateTimeOffset At);
 
 /// <summary>A computer paired with a host, as that host reports it: when its current pairing was made and when it last made
-/// a signed request (null when it hasn't since the host's gateway started).</summary>
-public sealed record HostPairedDevice(string HostId, string DeviceId, string DisplayName, DateTimeOffset PairedAt, DateTimeOffset? LastSeen);
+/// a signed request (null when it hasn't since the host's gateway started). <see cref="Access"/> is "friend" for a friend's
+/// computer (that host's engines only, never in the network; <see cref="HostSignInAccess"/>), null for the owner's.</summary>
+public sealed record HostPairedDevice(string HostId, string DeviceId, string DisplayName, DateTimeOffset PairedAt, DateTimeOffset? LastSeen)
+{
+    public string? Access { get; init; }
+    public bool Friend => Access == HostSignInAccess.Friend;
+}
 
 /// <summary>A host's place in the owner's Martlet network: <see cref="State"/> is "unbound", "bound" or "removed", with
 /// the roster it accepted (null when unbound) and, for a member desktop, pending join requests. <see cref="Supported"/>
@@ -142,7 +147,11 @@ public sealed partial class Audio2FaceHostConnection
                         Audio2FaceHostClient.RequireIdentifier(device, "device ID");
                         devices.Add(new(pairing.HostId, device, NetworkRoster.CleanName(item.GetProperty("display_name").GetString(), device),
                             item.GetProperty("paired_at").GetDateTimeOffset(),
-                            item.TryGetProperty("last_seen", out var seen) && seen.ValueKind == JsonValueKind.String ? seen.GetDateTimeOffset() : null));
+                            item.TryGetProperty("last_seen", out var seen) && seen.ValueKind == JsonValueKind.String ? seen.GetDateTimeOffset() : null)
+                        {
+                            Access = item.TryGetProperty("access", out var access) && access.ValueKind == JsonValueKind.String &&
+                                access.GetString() == HostSignInAccess.Friend ? HostSignInAccess.Friend : null
+                        });
                     }
                     catch (Exception error) when (error is KeyNotFoundException or InvalidOperationException or FormatException or Audio2FaceHostException) { }
             }

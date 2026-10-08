@@ -240,11 +240,14 @@ internal static class RecommendedSetupInputs
         foreach (var member in members.Where(m => m.Role != DeviceRole.Host && computers.All(c => c.Name != m.Name && c.Id != m.DeviceId)))
             computers.Add(new SetupComputer(member.DeviceId, member.Name, NetworkMachineKind.Companion));
 
-        // What this PC does for each job it set up (lip-sync always has a handler: this PC, a host or nobody).
+        // What this PC does for each job it set up (lip-sync always has a handler: this PC, a host or nobody). A job on a host a
+        // friend shares with this PC is this PC's own choice, not one of your computers: the setup is planned without it.
         var routes = inputs.Settings?.Setup?.Routes ?? [];
+        var shared = (inputs.SharedHosts ?? []).Select(h => h.HostId).ToHashSet(StringComparer.Ordinal);
         var jobs = ClusterJobs.All.Select(job =>
         {
-            var local = ClusterSync.Local(job, inputs.Settings, inputs.Avatar, ownHostId);
+            var local = ClusterSync.Local(job, inputs.Settings, inputs.Avatar, ownHostId, shared);
+            if (local.Shared) local = new LocalJob(null, false);
             var role = job switch { ClusterJobs.Thinking => SetupRole.Llm, ClusterJobs.Listening => SetupRole.Stt, _ => SetupRole.Tts };
             return job != ClusterJobs.LipSync && local.HostId is null && routes.All(r => r.Role != role) ? null
                 : new JobPlan(job, local.HostId, local.Off);

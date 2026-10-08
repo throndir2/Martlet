@@ -46,9 +46,16 @@ public sealed class Audio2FaceHostException(string code, string message) : Excep
     /// <summary>The detail of a <c>job.busy</c> refusal of pool work while a live turn holds the graphics card.</summary>
     public const string LiveDetail = "live";
 
+    /// <summary>The detail of a <c>job.busy</c> refusal a host gives a friend's request while its owner's work uses the card.</summary>
+    public const string OwnerDetail = "owner";
+
     /// <summary>The host kept its graphics card for a live conversation turn: pool work waits and goes on later, never a failure
     /// (a <c>job.busy</c> with detail live before it started, or <c>job.preempted</c> while it ran).</summary>
     public bool HeldForLive => Code == "job.preempted" || Code == "job.busy" && Detail == LiveDetail;
+
+    /// <summary>A host a friend shares with this PC turned this PC's request away because its owner's own work uses the
+    /// graphics card (<c>job.busy</c> with detail owner): try another computer now, or this one later.</summary>
+    public bool OwnerFirst => Code == "job.busy" && Detail == OwnerDetail;
 }
 
 public sealed record Audio2FaceHostRoute(
@@ -396,7 +403,7 @@ public static class Audio2FaceHostClient
         // Every paired connection to the same host (same home origin, pinned key and clock) shares one pool of kept
         // connections, so the desktop's regular checks and syncs don't open a new TCP and TLS connection each time.
         var handler = Pools.GetOrAdd((origin, spkiFingerprint, clock ?? TimeProvider.System),
-            key => new(() => CreateHandler(key.Origin, presented => presented == key.Spki, key.Clock))).Value;
+            key => new(() => CreateHandler(key.Origin, presented => presented == key.Spki, key.Clock, key.Spki))).Value;
         return new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri(origin + "/"), Timeout = Timeout.InfiniteTimeSpan };
     }
 
@@ -421,7 +428,9 @@ public static class Audio2FaceHostClient
             BaseAddress = new Uri(origin + "/"), Timeout = Timeout.InfiniteTimeSpan
         };
 
-    private static SocketsHttpHandler CreateHandler(string origin, Func<string, bool> accept, TimeProvider now)
+    /// <param name="spki">The pinned key of a paired host, so a host kept apart (<see cref="HostRoutes.KeepApart"/>) is routed on
+    /// its own; null while pairing.</param>
+    private static SocketsHttpHandler CreateHandler(string origin, Func<string, bool> accept, TimeProvider now, string? spki = null)
     {
         var handler = new SocketsHttpHandler
         {
@@ -441,12 +450,12 @@ public static class Audio2FaceHostClient
         handler.SslOptions.RemoteCertificateValidationCallback = (_, certificate, chain, errors) =>
         {
             var valid = ValidateCertificate(certificate, chain, errors, accept, now);
-            if (!valid) HostRoutes.KeyRejected(origin);
+            if (!valid) HostRoutes.KeyRejected(origin, spki);
             return valid;
         };
         // The request keeps the home origin (TLS checks the pinned key, signatures are unchanged); HostRoutes only picks
         // which address the TCP connection dials: home, or an outside address when home doesn't answer.
-        handler.ConnectCallback = HostRoutes.ConnectAsync;
+        handler.ConnectCallback = (context, token) => HostRoutes.ConnectAsync(context, spki, token);
         return handler;
     }
 

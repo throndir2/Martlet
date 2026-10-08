@@ -656,6 +656,8 @@ public partial class MainWindow
     private string? NoteThinkingPoolHost(string hostId)
     {
         if (store is null || closing || hostChecks.GetValueOrDefault(hostId) is not { Reachable: true, Routes: { } routes }) return null;
+        // A host a friend shares with this PC never joins the Thinking pool: background work there is its owner's to allow.
+        if (sharedHosts.Any(h => h.HostId == hostId)) return null;
         var host = homeHosts.FirstOrDefault(h => h.HostId == hostId) ??
             (homeAvatar?.RemoteHost is { } lipSync && lipSync.HostId == hostId ? new PairedHost { Pairing = lipSync } : null);
         if (host is null) return null;

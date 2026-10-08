@@ -81,7 +81,9 @@ internal sealed class HostScreenTextReader(string dataDirectory, string? hostId)
         }
         catch (Audio2FaceHostException error)
         {
-            if (error.Code == "job.busy") throw new ScreenReadException($"{host.HostId}'s Reading role is busy.", busy: true, error);
+            if (error.Code == "job.busy")
+                throw new ScreenReadException(error.OwnerFirst ? $"{host.HostId} is busy with its owner's own work; Martlet reads again in a moment."
+                    : $"{host.HostId}'s Reading role is busy.", busy: true, error);
             Dispose();
             throw new ScreenReadException($"{host.HostId}'s Reading role: {error.Message}", inner: error);
         }
@@ -151,7 +153,8 @@ internal sealed class HostScreenTextReader(string dataDirectory, string? hostId)
         {
             throw new ScreenReadException(error.Message, inner: error);
         }
-        foreach (var host in hosts.Where(h => hostId is null || h.HostId == hostId))
+        // Without a computer named, only your own: a host a friend shares reads only once you chose it in Companion › Reading.
+        foreach (var host in hosts.Where(h => hostId is null ? !h.Shared : h.HostId == hostId))
         {
             Audio2FaceHostConnection? connection = null;
             try

@@ -24,8 +24,8 @@ internal sealed class HostTranscriptionClient : IHostTranscriptionClient
         try
         {
             return await WorkQueue.Shared.RunAsync(WorkSharingJobs.Listening, targets, t => t.Target.HostId,
-                (t, token) => OnceAsync(t.Target, t.Model, pcm16kMono, ids, epoch, deadline, token), WorkSharingRoster.Classify, deadline, null,
-                cancellationToken).ConfigureAwait(false);
+                (t, token) => WorkSharingRoster.WatchedOnce(t.Target.HostId, "listening", OnceAsync(t.Target, t.Model, pcm16kMono, ids, epoch, deadline, token)),
+                WorkSharingRoster.Classify, deadline, null, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception error) when (HostTextClient.Failure("listening", error) is { } failure) { throw failure; }

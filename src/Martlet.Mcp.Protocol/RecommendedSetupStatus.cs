@@ -153,7 +153,8 @@ internal static class RecommendedSetupStatus
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or Martlet.Core.Contracts.ContractException) { return null; }
     }
 
-    // The paired hosts in hosts.json: host ID, how Martlet reaches it and the SSH target (never a secret).
+    // The paired hosts in hosts.json: host ID, how Martlet reaches it and the SSH target (never a secret). A host a friend shares
+    // with this PC isn't one of your computers, so the recommended setup never plans on it (as the desktop's NetworkMap.Hosts).
     private static IReadOnlyList<(string HostId, string? Method, string? SshTarget)> PairedHosts(string directory)
     {
         try
@@ -161,6 +162,7 @@ internal static class RecommendedSetupStatus
             var path = Path.Combine(directory, "hosts.json");
             if (!File.Exists(path) || new FileInfo(path).Length > 65_536) return [];
             return [.. (JsonNode.Parse(File.ReadAllText(path))?["hosts"] as JsonArray ?? []).OfType<JsonObject>()
+                .Where(h => h["access"]?.GetValue<string>() != "friend")
                 .Select(h => (HostId: h["pairing"]?["hostId"]?.GetValue<string>(), Method: h["method"]?.GetValue<string>() ?? "Agent",
                     SshTarget: h["sshTarget"]?.GetValue<string>()))
                 .Where(h => h.HostId is { Length: > 0 }).Select(h => (h.HostId!, (string?)h.Method, h.SshTarget))];

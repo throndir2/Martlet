@@ -862,8 +862,15 @@ the folder is deleted and the real vault is never touched.
 join, each `desktops` and `hosts` entry (`id`, `name`, `removed`, `updatedBy`,
 `changedAt`; hosts also `outsideAddresses`, how many outside addresses the roster
 lists), `adopt` (hosts paired here on purpose, added to the network on
-the next sync), `ignored` (network hosts forgotten here) and `removedFrom`. It
-never returns keys, signatures or host addresses and contacts nothing.
+the next sync), `ignored` (network hosts forgotten here) and `removedFrom`;
+`pairedHosts`, each pairing in `hosts.json` with how many outside addresses are
+kept with it and its `access` (`member` for your own hosts, `friend` for a host
+a friend shares with this PC: its engines only, never in this PC's network);
+and `friends`, what **Devices › Friends** last read from each of your hosts
+(`friends.json`: `checkedAt`, and per host `hostId`, `read`, `problem`, each
+friend's `label`, `provider` and `computers`, and how many are `asking`), or
+null before it read anything. It never returns keys, signatures or host
+addresses and contacts nothing.
 
 `network_selftest` (no arguments) rehearses the network end to end with the
 production code: three real gateways (`lab-host-1..3`: Kestrel, pinned TLS,
@@ -1032,9 +1039,11 @@ let into the network the same way; a Steam account allowed by its SteamID64
 signs in through the simulated browser with an OpenID 2.0 assertion the host
 confirms with (simulated) Steam; the home PC allows the same OpenID Connect
 identity as a friend (`access` `friend`, [sharing a host with
-friends](NETWORK.md#sharing-a-host-with-friends)): FRIEND-PC signs in through
-the simulated browser, the host keeps a friend's credential for it and it lists
-the engines, while 15 other routes (network, hardware, who does what,
+friends](NETWORK.md#sharing-a-host-with-friends)) and the desktop's client reads
+it back as a friend's: FRIEND-PC signs in through the simulated browser, its
+sign-in answer says `friend`, the host keeps a friend's credential for it and
+it lists the engines, and the home PC reads it as a friend's computer in the
+sign-in settings and in the host's network answer (`devices[].access`), while 15 other routes (network, hardware, who does what,
 settings, memories, voices, speaking voices, characters, creations, Home
 Assistant, API keys, commands, GPU priority, security audit, sign-in settings)
 refuse it with `access.friend` and it never asks to join; a sign-in under
@@ -1046,28 +1055,68 @@ and failures and no secret. Not covered: the desktop windows, Windows
 Credential Manager, a host reached over the internet, a real browser and a real
 issuer.
 
-`signin_lab` (`action` `start`, `status` or `stop`; `dataDirectory` filled in
-by the script) runs a live sign-in lab for the desktop on a disposable data
-directory, so **Sign-in from outside** can be driven against a real paired host:
-`src\Martlet.NodeLinkCheck` mode `signin-lab` (`SignInLab.cs`) starts a gateway
-on 127.0.0.1 with an owner account, an OpenID Connect provider (an issuer in
-that process), an allowed identity and an outside address set on the host; it
-pairs the desktop of the data directory (`hosts.json` there, the secret in the
-lab credential folder) and a simulated laptop signs in and keeps syncing.
-`status` returns what the lab sees (`network`, `laptopMember`,
-`laptopWasMember`, `laptopRemoved`, `laptopCanUseHost`, the laptop's network
-events). It needs `Invoke-MartletMcp.ps1 -LabCredentials`, which points
-`MARTLET_LAB_CREDENTIALS` of the desktop and MCP server at a
-`lab-credentials` folder in the data directory, so pairing secrets go there
-(plaintext, thrown away with the folder) instead of Windows Credential Manager.
-Example: start the lab, click `NavHome` (the desktop reads `hosts.json` again),
-poll `network_status` until `"state":"member"`, `signin_lab status` until
-`"laptopMember":true`, open Add a computer › `HostsStepRoles` ›
-`HostSignInSettings`, type `authentik` / `lab-user-42`, click `SignInDisallow`,
-then poll `network_status` until the laptop is `"removed":true` and
-`signin_lab status` until `"laptopRemoved":true`. `network_status` also lists
-`pairedHosts` (each paired host in `hosts.json` and how many outside addresses
-are kept with its pairing).
+`signin_lab` (`action` `start`, `status` or `stop`; `mode` `owner`, the
+default, or `friend` with `start`; `dataDirectory` filled in by the script)
+runs a live sign-in lab for the desktop on a disposable data directory, so
+**Sign-in from outside**, **Devices › Friends** and **Join with an invite** can
+be driven against a real host. Mode `owner`: `src\Martlet.NodeLinkCheck` mode
+`signin-lab` (`SignInLab.cs`) starts a gateway on 127.0.0.1 with an owner
+account, an OpenID Connect provider (an issuer in that process), an allowed
+identity and an outside address set on the host; it pairs the desktop of the
+data directory (`hosts.json` there, the secret in the lab credential folder), a
+simulated laptop signs in and keeps syncing, and a simulated friend's computer
+(`lab-friend-pc`, identity `ana@example.net`, `authentik` subject
+`lab-friend-7`) signs in once and is refused, so it waits under *Signed in but
+not allowed yet* and in **Devices › Friends**; once the owner shares the host
+with it (as a friend) it signs in again. `status` returns what the lab sees
+(`network`, `laptopMember`, `laptopWasMember`, `laptopRemoved`,
+`laptopCanUseHost`, the laptop's network events, and `friend`: `allowedAs`,
+`state`, `access`, `hostKeepsAs`, `canUseEngines`, `failure`,
+`refusedElsewhere` (routes that answered `access.friend`), `otherwiseAnswered`
+and `inRoster`). Mode `friend` (`SignInLab.RunFriendAsync`): the desktop of the
+data directory is the friend. The gateway (`lab-shared-host`) belongs to a
+simulated owner, `lab-owner`, who started their own network with it, set up the
+provider and allowed `lab-user-42` (`me@example.net`) as a friend; it runs a
+fixture Ollama Thinking route (`fixture-model:1b`, canned text, NOT AI). The
+start answer and `status` carry the `invite` to paste in **Join with an
+invite**; the lab's simulated browser answers the desktop's sign-in (the desktop
+writes the sign-in page's address to `signin-browser.url` in the
+`MARTLET_LAB_BROWSER` folder, only in a lab run). `status` returns
+`desktopSignedInAsFriend`, `friendComputers`, `ownersRoster` (the owner's
+network members: never the friend), `askedToJoin`, `refusals` and
+`accessFriendRefusals` (what the host refused, which stays 0 in normal use) and
+`thinkingRequests` (chat requests that reached the fixture). For a locked or
+headless session, where the window can't be driven: `signInDesktop` `true`
+(with `mode` `friend`) has the lab sign the data directory's desktop in as the
+friend itself, under the device ID that desktop names itself by, and keep the
+pairing as **Join with an invite** does (`hosts.json` with `access` `friend`),
+so a desktop started on that data directory afterwards runs with a shared host;
+`shareWithFriend` `true` (with `mode` `owner`) has the lab's own admin desktop
+share the host with the simulated friend from the start, so the friend's
+computer is in the host's network answer from the desktop's first sync. It needs
+`Invoke-MartletMcp.ps1 -LabCredentials`, which points `MARTLET_LAB_CREDENTIALS`
+of the desktop and MCP server at a `lab-credentials` folder in the data
+directory, so pairing secrets go there (plaintext, thrown away with the folder)
+instead of Windows Credential Manager, and `MARTLET_LAB_BROWSER` at a
+`lab-browser` folder there. Example (owner): start the lab, click `NavHome`
+(the desktop reads `hosts.json` again), poll `network_status` until
+`"state":"member"`, `signin_lab status` until `"laptopMember":true`, open Add a
+computer › `HostsStepRoles` › `HostSignInSettings`, type `authentik` /
+`lab-user-42`, click `SignInDisallow`, then poll `network_status` until the
+laptop is `"removed":true` and `signin_lab status` until
+`"laptopRemoved":true`. Sharing with the friend: click `NavDevices`, then
+`FriendsCheck`, and poll `FriendsStatus` until *1 person asked*; click
+`FriendShare-lab-signin-host-authentik-lab-friend-7` and `ConfirmationYes`
+(with `-AllowUiEffects`), then poll `signin_lab status` until
+`"canUseEngines":true` and `network_status` until `friends` lists
+`ana@example.net`. Example (friend): start with `mode` `friend`, open Add a
+computer › `HostsJoinWithInvite`, `ui_set_text` `SignInInvite` with the
+`invite`, click `SignInConnect`, `SignInProvider-authentik` and `SignInSubmit`,
+poll `SignInJoinStatus` until *shared with this PC by a friend*, close the
+windows, then poll `network_status` until `pairedHosts` shows `"access":"friend"`
+and `SharedHostsStatus` until *1 host a friend shares with this PC*, click
+`SharedHostUse-lab-shared-host-thinking` and `ConfirmationYes`, and check
+`signin_lab status`: `"askedToJoin":false` and `"accessFriendRefusals":0`.
 
 `role_lab` (`action` `start`, `status`, `ask` or `stop`; `dataDirectory` filled
 in by the script) runs a live lab for [switching your computers between
@@ -1112,15 +1161,46 @@ outside** (`HostSignInSettings`) opens `SignInSettingsWindow` (status
 `SignInProviderKind`, `SignInProviderId`, `SignInProviderName`,
 `SignInProviderIssuer`, `SignInProviderClientId`, `SignInProviderSecret`,
 `SignInProviderScopes`, `SignInProviderPort`, `SignInProviderSave`,
-`SignInProviderRemove`, `SignInRefusedList`, `SignInRefusedAllow`,
+`SignInProviderRemove`, `SignInRefusedList`, `SignInRefusedAllow` (allow the
+newest as one of your computers), `SignInRefusedAllowFriend` (as a friend),
 `SignInRemovedList` (computers your member PCs still have to remove from the
 network), `SignInOutsideWarning` (outside access paused or about to be),
-`SignInAllowProvider`, `SignInAllowSubject`, `SignInAllowLabel`, `SignInAllow`,
-`SignInDisallow`, `SignInEnrolledList`, `SignInInviteAddress`,
-`SignInInviteMake`, `SignInInviteText`, `SignInInviteCopy`,
-`SignInSettingsClose`). Opening and closing both windows are safe clicks; the
-status lines and lists are safe values. Everything else contacts a host or
-changes it and needs `--allow-ui-effects`.
+`SignInAllowProvider`, `SignInAllowSubject`, `SignInAllowLabel`,
+`SignInAllowAccess` (with `SignInAllowAccess-member` and
+`SignInAllowAccess-friend`), `SignInAllow`, `SignInDisallow`, each allowed
+identity's row `SignInAllowed-<provider>-<subject>` (one of your computers or a
+friend's) with `SignInAccess-<provider>-<subject>` (**Make a friend** or **Make
+one of my computers**) and `SignInRemove-<provider>-<subject>`,
+`SignInEnrolledList` (each computer says whether it is a friend's),
+`SignInInviteAddress`, `SignInInviteMake`, `SignInInviteText`,
+`SignInInviteCopy`, `SignInSettingsClose`); identities in IDs keep letters,
+digits, dots and dashes, anything else becomes `_`. Opening and closing both
+windows are safe clicks; the status lines and lists are safe values. Everything
+else contacts a host or changes it and needs `--allow-ui-effects`.
+
+Sharing hosts with friends on the Devices page (`MainWindow.Friends.cs`):
+**Friends** (`FriendsCard`, shown with paired hosts; status
+`FriendsStatus`, `FriendsCheck` reads each of your hosts' sign-in settings and
+is a safe click) lists each person as `Friend-<provider>-<subject>` (*name
+(provider). Shares gpu-box: their engines only. Their computers: ...*, or that
+they signed in to a host and wait) with `FriendShare-<host>-<provider>-<subject>`
+and `FriendStop-<host>-<provider>-<subject>` (both ask first and change the
+host, so they need `--allow-ui-effects`), and `FriendsHost-<host>` for a host
+it couldn't read. **Hosts shared with this PC** (`SharedHostsCard`, shown when
+a friend shares a host with this PC; status `SharedHostsStatus`; it reads what
+they offer by itself when the Devices page shows) lists each as
+`SharedHost-<host>` (who this PC signed in as, what it offers this PC, what
+this PC uses it for, or that its owner stopped sharing it) with
+`SharedHostsCheck` and `SharedHostCheck-<host>` (read again and, like **Check
+all hosts**, follow a model the owner changed for a job of this PC there),
+`SharedHostUse-<host>-<job>` (`thinking`, `listening`, `speaking`, `lip-sync`,
+`reading`) and `SharedHostForget-<host>`; all of them need
+`--allow-ui-effects`. In *Your Martlet network* a friend's computer
+is `NetworkFriend-<device ID>` (*a friend's computer: it signed in to gpu-box as
+a friend and uses only that host's engines*), never `NetworkPaired-`. The job
+choices (`ThinkingOwner`, `ListeningOwner`, `SpeakingOwner`, `LipSyncOwner`)
+and Companion's computer cards (`HostChoice-<job>-<host>`,
+`SetupUseHost-<job>-<host>`) list a shared host as *shared by a friend*.
 
 `api_selftest` (no arguments) rehearses API keys for software outside the
 network end to end with the production code: two real gateways
