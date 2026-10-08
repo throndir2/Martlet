@@ -138,7 +138,8 @@ internal static class RecommendedSetupStatus
         return new SetupSources(computers)
         {
             Plan = plan, LocalJobs = jobs, Sharing = WorkSharingSettings.Load(directory), Device = device, ThinkingPool = pool,
-            PoolOptOut = poolSettings.LeftByOwner, VoiceEngine = voice.HostRoleKind, ConfiguredProviders = providers
+            PoolOptOut = poolSettings.LeftByOwner, VoiceEngine = voice.HostRoleKind, ConfiguredProviders = providers,
+            OfflineGrace = TimeSpan.FromMinutes(NodePresenceSettings.AwayMinutes(directory))
         };
     }
 

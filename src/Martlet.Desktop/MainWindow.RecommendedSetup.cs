@@ -24,6 +24,13 @@ public partial class MainWindow
     private (string Reason, DateTimeOffset At)? recommendedPending;
     private DispatcherTimer? recommendedTimer;
 
+    /// <summary>Checks again in the background when a computer comes back or stays away (going missing has its own notice).</summary>
+    private void InitializeRecommendedSetup() => PresenceChanged += change =>
+    {
+        if (change.Kind is PresenceChangeKind.CameBack or PresenceChangeKind.StayedAway)
+            AutoScanRecommendedSetupAsync($"{change.Name} {(change.Kind == PresenceChangeKind.CameBack ? "came back" : "stayed away")}").Forget();
+    };
+
     private void RecommendedSetup_Click(object sender, RoutedEventArgs e) => OpenRecommendedSetupAsync().Forget();
 
     /// <summary>Home's Recommended setup button and the notice's Review: in a Martlet network, a fresh recommendation in the
@@ -75,8 +82,9 @@ public partial class MainWindow
         var poolSettings = ThinkingPoolSettings.Load(directory);
         var pool = poolSettings.Places.Places.Where(p => p.OnHostRole && p.HostId is not null).Select(p => p.HostId!).ToArray();
         return RecommendedSetupInputs.Sources(inputs, NetworkMap.Build(inputs), ClusterDevice, OwnHostId(), ThisPcDiskFreeGb(),
-            offlineFor: null, sharing: directory is null ? null : WorkSharingSettings.Load(directory), thinkingPool: pool,
-            poolOptOut: poolSettings.LeftByOwner, voiceEngine: SpeakingEngineChoice.Current.HostRoleKind, configuredProviders: ConfiguredProviders());
+            offlineFor: OfflineFor, sharing: directory is null ? null : WorkSharingSettings.Load(directory), thinkingPool: pool,
+            poolOptOut: poolSettings.LeftByOwner, voiceEngine: SpeakingEngineChoice.Current.HostRoleKind, configuredProviders: ConfiguredProviders(),
+            offlineGrace: directory is null ? null : TimeSpan.FromMinutes(NodePresenceSettings.AwayMinutes(directory)));
     }
 
     private void ShowRecommendedSetup(SetupRequestBuild build, NetworkRecommendation recommendation)

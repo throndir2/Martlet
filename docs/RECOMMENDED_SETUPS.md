@@ -41,7 +41,8 @@ and shows its progress. **Not now** closes the review, and this PC doesn't ask
 about the same setup again. Nothing changes before Reconfigure. On a PC that is
 in no Martlet network, the button runs **Set it all up for me** instead: the same
 recommendation for one PC, with one confirmation. When a computer comes back,
-or stays away longer than the time set for it, each companion PC checks again
+or stays away longer than the time chosen in Settings › Your other computers (10
+minutes by default), each companion PC checks again
 in the background. It never checks while Martlet replies or hears you. When the
 setup is already right, or only minor changes would help, nothing shows (one
 log line). Otherwise the companion PC someone used in the last 10 minutes shows
