@@ -116,8 +116,7 @@ public partial class MainWindow
             if (lasting.Any(s => avatar.Held.Holds(s.Id))) await avatar.StopComboAsync(tag, lasting, "a try", lifetime.Token);
             else await avatar.PlayComboAsync(tag, parts, "a try", null, lifetime.Token);
         }
-        catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
-            InvalidDataException or TimeoutException)
+        catch (Exception error) when (error is OperationCanceledException || RendererFailures.Is(error, lifetime.Token))
         {
             if (characterActionsLast is not null) characterActionsLast.Text = $"The character couldn't play the combo {{{tag}}} right now.";
         }

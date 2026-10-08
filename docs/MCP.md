@@ -4706,6 +4706,29 @@ the lower-right of the main screen even when locked (it stays locked there)
 and save that; hidden, they forget the saved place so it next shows at its
 default spot, unlocked (`placement.state` `none`).
 
+**When the character's renderer fails a command** (its pipe breaks, it sends
+something unreadable or it runs out of time): only the work that draws the
+character ends. A sentence's lip-sync (loudness mouth or Audio2Face frames), a
+song's mouth, a gaze, an emote or saving where the character is stops, and the
+voice goes on. `ToggleCharacter` (*Hide character*) always finishes, and no
+*Martlet recovered from an unexpected error* dialog shows. Each kind of failure
+gets one short desktop log line a minute, without a stack trace, for example
+*The character's new position couldn't be read to save it: Renderer message
+length is invalid (InvalidDataException).*; the next line for the same failure
+adds *(N more like it in the minute before weren't logged.)*. To check this
+without a broken renderer, set `MARTLET_SIMULATE_RENDERER_FAILURE` to the
+renderer commands to fail, comma-separated (for example `where,lock,zoom`),
+before launching the desktop (`-Desktop` passes the environment on). FIXTURE,
+never a real failure: the shown character's renderer fails those commands the
+way a broken pipe does (*Renderer message length is invalid (simulated by
+MARTLET_SIMULATE_RENDERER_FAILURE).*), and the desktop log says so each time
+the character shows (*FIXTURE: the character renderer fails its ... commands*).
+The renderer still starts, draws and closes normally. Commands include `where`
+(saving its place after `ui_move`), `lock` (`ToggleCharacterLock`), `zoom`
+(`ResetCharacterZoom`), `home` (`ResetCharacterPosition`), `mouth` (the
+loudness mouth), `reset` and `apply` (Audio2Face frames), `gaze`, `action`
+(emotes and motions), `say` (speech bubbles), `theme` and `camera`.
+
 The same page's *Speech bubbles and subtitles* card has the checkboxes
 `SetupCharacterSpeechBubbles` (on by default) and `SetupCharacterSubtitles`
 (off by default); snapshots return their states, and `SetupCharacterSpeechDisplay`
