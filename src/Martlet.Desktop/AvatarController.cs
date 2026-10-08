@@ -131,7 +131,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 {
                     // A look tag (a gaze, or a screen glance's ninth of the picture) turns the eyes; it is never an emote.
                     if (CharacterGaze.IsLookTag(cue.Tag)) _ = LookLaterAsync(line, cue);
-                    else if (catalog?.Off(cue.Tag) is { } off) _ = StopLaterAsync(off, line, cue);
+                    else if (catalog?.Off(cue.Tag) is { Count: > 0 } off) _ = StopLaterAsync(off, line, cue, catalog);
                     else if (catalog?.For(cue.Tag) is { Count: > 0 } sources) _ = ActLaterAsync(sources, line, cue, catalog);
                 }
             }
@@ -160,15 +160,20 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 return;
             }
             // A reply's {tag} turns a lingering emote on until {/tag}; a voice's sound or tone only ever plays it a moment.
-            foreach (var source in sources)
-                await PlayActionAsync(source, cue.Tag, line.Finished, cueLifetime.Token, hold: cue.Tag.StartsWith('{') && catalog.Lingers(source))
-                    .ConfigureAwait(false);
+            if (catalog.Combo(cue.Tag) is { } combo)
+                await PlayComboAsync(combo.Tag, [.. sources.Select(source => (source, catalog.Lingers(source)))], "a reply", line.Finished,
+                    cueLifetime.Token).ConfigureAwait(false);
+            else
+                foreach (var source in sources)
+                    await PlayActionAsync(source, cue.Tag, line.Finished, cueLifetime.Token, hold: cue.Tag.StartsWith('{') && catalog.Lingers(source))
+                        .ConfigureAwait(false);
         }
         catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
             InvalidDataException or TimeoutException or ObjectDisposedException) { }
     }
 
-    private async Task StopLaterAsync(CharacterActionSource source, CharacterCueLine line, CharacterCue cue)
+    private async Task StopLaterAsync(IReadOnlyList<CharacterActionSource> sources, CharacterCueLine line, CharacterCue cue,
+        CharacterActionCatalog catalog)
     {
         try
         {
@@ -177,7 +182,9 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 Dropped(cue);
                 return;
             }
-            await StopActionAsync(source, cue.Tag, cueLifetime.Token).ConfigureAwait(false);
+            if (catalog.Combo(cue.Tag) is { } combo) await StopComboAsync(combo.Tag, sources, "a reply", cueLifetime.Token).ConfigureAwait(false);
+            else
+                foreach (var source in sources) await StopActionAsync(source, cue.Tag, cueLifetime.Token).ConfigureAwait(false);
         }
         catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
             InvalidDataException or TimeoutException or ObjectDisposedException) { }
