@@ -129,6 +129,13 @@ internal static class BackgroundTasks
         if (tasks.RemoveAll(task => !task.IsRunning) > 0) Notify();
     }
 
+    /// <summary>Drops one finished task that changed nothing (an automatic host update that found the host busy and tries again
+    /// a few minutes later), so the retries don't fill the list; host-runs.log keeps its output. One whose window is open stays.</summary>
+    internal static void Discard(BackgroundTask task)
+    {
+        if (!task.IsRunning && task.Window is null && tasks.Remove(task)) Notify();
+    }
+
     /// <summary>Forgets every task, without stopping any (tests).</summary>
     internal static void Reset()
     {

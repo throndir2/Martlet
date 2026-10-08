@@ -10,13 +10,26 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 - Companion › Touch › Touch zones now shows your character and a first guess at its touch zones as soon as you open it, so clicks on the character react right away. Martlet places the guess from the character's own parts and shape, with no AI and nothing sent. Press **Detect zones** and your Thinking model then finds the zones, replacing the first guess as it goes. ([#621](https://github.com/throndir2/Martlet/pull/621))
+- Character profiles now also remember, on each computer, where your character stands and how big it is, where it looks, and which touches stop it while it talks. Switch back to a profile, here or on another computer, and they come back; Companion › Profiles shows what each one keeps on this PC. ([#620](https://github.com/throndir2/Martlet/pull/620))
+- A new starter voice, **Jenny (Dioco)**: Jenny is a professional Irish voice-over artist who recorded her voice for speech synthesis, so it sounds clean and natural. It joins your voice list on all your computers once; pick it with **Use** in Companion › Voice › Voices, or remove it like any other voice. ([#619](https://github.com/throndir2/Martlet/pull/619))
+- Share a host with a friend: on a Linux host, `martlet-host owner-signin-allow ... --access friend` lets a friend sign in with their own account and use only that host's thinking, listening, speaking, lip-sync and reading, never your network, settings or anything else of yours. Your own requests always come first. ([#618](https://github.com/throndir2/Martlet/pull/618))
 - New in Companion › Check-ins: **Saying the same things** reads what Martlet said in the last hour, and when, and when it keeps saying the same thing again and again, it reminds Martlet in its next reply to say something new. ([#613](https://github.com/throndir2/Martlet/pull/613))
 - Settings › What this PC is for now lists **Your other computers**: each one says whether it is a companion PC or a host PC, with a button to make it a host PC or a companion PC again from where you are. It is the same switch the Devices map has, now easy to find. ([#612](https://github.com/throndir2/Martlet/pull/612))
 
 ### Changed
+- **Reconfigure** in the recommended setup now runs as a background task. The review closes and a window shows each computer's progress and what its installs print. Hide it and find it again in **Background tasks**, or cancel the changes not made yet. ([#616](https://github.com/throndir2/Martlet/pull/616))
+- More long jobs now show in **Background tasks**, with their progress and output, and you can cancel them there: downloading a Martlet update, Parakeet or cloudflared, updating your hosts, keeping this PC's host service on Martlet's version, and the installs and updates your other computers ask this PC to make. ([#616](https://github.com/throndir2/Martlet/pull/616))
 - Martlet repeats itself less. Before it speaks up on its own about your screen, what your PC plays, a due reminder or finished work, it now looks at what it said in the last hour, and when, and says something again only when it's worth it. Edit how in Companion › Prompts › **What you said lately**; replies to what you say, type or touch never wait for it. ([#613](https://github.com/throndir2/Martlet/pull/613))
 - When you make a host PC your companion PC again, from that PC or from another one, Martlet there brings the character back and starts listening and watching again as it was before it became a host, instead of waiting for Martlet to restart. ([#612](https://github.com/throndir2/Martlet/pull/612))
 - When you switch another computer between companion and host PC, the computer you are at now tells you when it has switched. A host PC that has no host service yet now says so, instead of looking like it works for your other computers. ([#612](https://github.com/throndir2/Martlet/pull/612))
+
+### Fixed
+- A computer that signs in to one of your hosts from outside home can no longer take over the pairing of another of your computers there, or act as it. Your hosts also now let each signed-in computer do only what its sign-in allows. ([#618](https://github.com/throndir2/Martlet/pull/618))
+- While Martlet starts Docker Desktop on a host PC, for example right after you make a companion PC a host PC, the host dashboard's Docker Desktop button is now greyed out and says **Starting Docker Desktop...** instead of offering to start it again. The step ticks as soon as Docker Desktop runs. ([#615](https://github.com/throndir2/Martlet/pull/615))
+- **Manage memory** now shows what Martlet remembers the moment it opens, even while Martlet is answering you, and it keeps up on its own: facts Martlet remembers, changes or forgets while it's open show up right away, with no need to press **Refresh**. ([#614](https://github.com/throndir2/Martlet/pull/614))
+
+### Removed
+- The two "cute anime girl" voices are gone, because their raised pitch sounded artificial. Martlet now starts with **Annie (cute, chatty)**, and if Martlet spoke with an anime voice it switches to your chosen or first voice on all your computers. ([#617](https://github.com/throndir2/Martlet/pull/617))
 
 ## [0.57.0] - 2026-10-07
 

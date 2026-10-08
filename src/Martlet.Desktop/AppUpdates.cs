@@ -76,9 +76,10 @@ internal static class AppUpdateInstaller
 {
     internal static string UpdatesDirectory(string dataDirectory) => Path.Combine(dataDirectory, "updates");
 
-    /// <summary>Returns the verified installer, reusing an earlier complete download of the same asset.</summary>
+    /// <summary>Returns the verified installer, reusing an earlier complete download of the same asset; <paramref name="received"/>
+    /// gets the bytes a new download has so far.</summary>
     internal static async Task<string> DownloadAsync(GitHubReleaseClient client, GitHubUpdate update, string dataDirectory,
-        CancellationToken token)
+        CancellationToken token, IProgress<long>? received = null)
     {
         var directory = UpdatesDirectory(dataDirectory);
         Directory.CreateDirectory(directory);
@@ -88,7 +89,7 @@ internal static class AppUpdateInstaller
             if (await MatchesAsync(path, update, token)) return path;
             File.Delete(path);
         }
-        await client.DownloadAsync(update, path, token);
+        await client.DownloadAsync(update, path, token, received);
         return path;
     }
 

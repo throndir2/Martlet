@@ -65,7 +65,9 @@ internal sealed class GitHubReleaseClient(HttpClient client)
         }
     }
 
-    internal async Task DownloadAsync(GitHubUpdate update, string destination, CancellationToken token)
+    /// <summary>Downloads <paramref name="update"/>'s installer to <paramref name="destination"/> and checks it against GitHub's
+    /// SHA-256 digest; <paramref name="received"/> gets the bytes downloaded so far, about once per percent.</summary>
+    internal async Task DownloadAsync(GitHubUpdate update, string destination, CancellationToken token, IProgress<long>? received = null)
     {
         ArgumentNullException.ThrowIfNull(update);
         ArgumentException.ThrowIfNullOrWhiteSpace(destination);
@@ -103,6 +105,7 @@ internal sealed class GitHubReleaseClient(HttpClient client)
                     using var digest = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
                     var buffer = new byte[81920];
                     long total = 0;
+                    var percent = -1L;
                     while (true)
                     {
                         var read = await input.ReadAsync(buffer, token);
@@ -112,6 +115,11 @@ internal sealed class GitHubReleaseClient(HttpClient client)
                             throw new InvalidDataException("The update download was larger than expected.");
                         digest.AppendData(buffer, 0, read);
                         await output.WriteAsync(buffer.AsMemory(0, read), token);
+                        if (received is not null && total * 100 / Math.Max(1, update.Bytes) is var now && now != percent)
+                        {
+                            percent = now;
+                            received.Report(total);
+                        }
                     }
                     if (total != update.Bytes ||
                         !Convert.ToHexString(digest.GetHashAndReset()).Equals(update.Sha256, StringComparison.OrdinalIgnoreCase))

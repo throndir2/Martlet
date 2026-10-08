@@ -58,7 +58,8 @@ internal static partial class HostLocal
         // one starts it (and gets Windows ready for it) and the others wait for that one.
         await SharedSteps.RunAsync(SharedSteps.DockerStart, run.Heading, "starting Docker Desktop", async () =>
         {
-            await StartDockerAsync(run, resume);
+            if (SimulatedDockerStart.Active) await SimulatedDockerStart.StartAsync(run);
+            else await StartDockerAsync(run, resume);
             return true;
         }, run.Status, run.Output, run.Token);
     }

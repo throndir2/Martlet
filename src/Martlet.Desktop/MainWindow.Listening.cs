@@ -300,21 +300,42 @@ public partial class MainWindow
             installingParakeet = model.Id;
             parakeetProgress = null;
             RenderTab();
+            string? problem = null;
+            BackgroundTask? task = null;
             try
             {
-                await SherpaComponents.InstallParakeetAsync(root, model, new Progress<SherpaProgress>(p =>
+                // A background task (Background tasks lists it); this page shows its progress too.
+                var done = await HostRunWindow.RunAsync(this, $"Download {model.Name}", async run =>
                 {
-                    parakeetProgress = $"Downloading: {p.Received * 100 / Math.Max(1, p.Total)}% of {SherpaComponents.Megabytes(p.Total)}...";
-                    ActionText.Text = $"{model.Name}: {parakeetProgress}";
-                    if (parakeetState is { } line) line.Text = $"{model}. {ParakeetChoice(model).About} {parakeetProgress}";
-                }), lifetime.Token);
-            }
-            catch (OperationCanceledException) { return false; }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or
-                System.Net.Http.HttpRequestException or InvalidOperationException)
-            {
-                ActionText.Text = $"Couldn't download {model.Name}. " + error.Message + " Listening didn't change.";
-                return false;
+                    task = run.BackgroundTask;
+                    run.Status($"Downloading {model} ({size})...");
+                    run.Output.Report($"Downloading {model} ({size}) from Hugging Face into {root}.");
+                    using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, run.Token);
+                    try
+                    {
+                        await SherpaComponents.InstallParakeetAsync(root, model, new Progress<SherpaProgress>(p =>
+                        {
+                            parakeetProgress = $"Downloading: {p.Received * 100 / Math.Max(1, p.Total)}% of {SherpaComponents.Megabytes(p.Total)}...";
+                            run.Status($"{model.Name}: {parakeetProgress}");
+                            ActionText.Text = $"{model.Name}: {parakeetProgress}";
+                            if (parakeetState is { } line) line.Text = $"{model}. {ParakeetChoice(model).About} {parakeetProgress}";
+                        }), cancellation.Token);
+                    }
+                    catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or
+                        System.Net.Http.HttpRequestException or InvalidOperationException)
+                    {
+                        problem = error.Message;
+                        throw;
+                    }
+                    return $"{model} is downloaded.";
+                });
+                if (done is null)
+                {
+                    if (!closing)
+                        ActionText.Text = task?.State == BackgroundTaskState.Canceled ? $"The download of {model.Name} was canceled. Listening didn't change."
+                            : $"Couldn't download {model.Name}. {problem ?? task?.Status} Listening didn't change.";
+                    return false;
+                }
             }
             finally
             {

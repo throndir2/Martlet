@@ -478,7 +478,10 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "a reused code and a forged pin, signs in, asks to join and is let in by the home PC on the host's sign-in attestation " +
             "with no check number; then an OpenID Connect provider (an issuer in this process, a simulated browser and the desktop's " +
             "real loopback redirect) is refused until the home PC allows the identity it saw, and joins the same way; a Steam " +
-            "assertion is confirmed by the host; a non-member can't change sign-in and removing the owner account revokes the " +
+            "assertion is confirmed by the host; the home PC shares the host with a friend (that identity allowed as a friend): the " +
+            "friend's computer signs in and lists the host's engines, every other route refuses it (access.friend) and it never " +
+            "joins the network, a sign-in under HOME-PC's ID is refused (signin.device_taken), and stopping sharing revokes it at " +
+            "once with no network removal; a non-member can't change sign-in and removing the owner account revokes the " +
             "laptop. Reports " +
             "each step; loopback only, writes nothing to disk or the credential vault.", new { }),
         Tool("nearby_status", "Read whether this PC lets Martlet on the owner's other computers find it and ask to use its hosts " +
@@ -616,8 +619,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "speaking-voices.json and recordings) and two simulated desktops with real F5 voice stores in a temporary folder, using the " +
             "desktop's paired client and Martlet.F5's reconcile engine. Checks the starter voices, sharing the list and recordings, " +
             "speaking by recording SHA-256 alone, the one-time fallback that sends a recording a host lacks, a new desktop taking every " +
-            "voice from a host, the shared choice, removal everywhere (host and desktop copies deleted), stale copies, a host restart and " +
-            "upload checks. Loopback only; the temporary folder is deleted and the credential vault is not touched.", new { }),
+            "voice from a host, the shared choice, removal everywhere (host and desktop copies deleted), stale copies, retired starter " +
+            "voices leaving an older list, a new starter voice joining an older list once, a host restart and upload checks. Loopback " +
+            "only; the temporary folder is deleted and the credential vault is not touched.", new { }),
         Tool("character_models", "Read the shared character models from a data directory (character-models.json and the copies in " +
             "character-models, docs/CLUSTER.md \"The shared character models\"): live characters and tombstones, total size, and for " +
             "each character its key (first 16 hex digits of its ID, as in CharacterModelState-<key>), renderer, files, pieces, size, " +
@@ -630,9 +634,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("character_profiles", "Read the character profiles (Companion > Profiles) from a data directory: each profile's key (first " +
             "8 hex digits of its ID, as in CharacterProfileState-<key>), whether its personality is saved, what its look is (keep, " +
             "builtin, a listed character whose copy is ready or still copying here, or missing) and its voice (keep, listed or " +
-            "missing); the profile switched to last; and which profile matches what Martlet uses now (the active persona, the look " +
-            "in avatar.json and the voice the speaking route keeps or the shared list chose). Never returns names. Read-only; " +
-            "contacts nothing.", new
+            "missing); the profile switched to last; which profile matches what Martlet uses now (the active persona, the look " +
+            "in avatar.json and the voice the speaking route keeps or the shared list chose); and what each profile keeps on this " +
+            "PC (character-profiles-local.json: its place, size, monitor and lock, its usual gaze and whether replies may change " +
+            "it, and which touches stop it while it talks) with the profile whose choices this PC uses. Never returns names. " +
+            "Read-only; contacts nothing.", new
         {
             dataDirectory = new { type = "string" }
         }),
@@ -3139,6 +3145,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             ? reference.ReferenceRevision : voices.ChosenVoice?.Id;
         var current = companion?.CurrentCharacter(modelNow, voiceNow);
         var profiles = companion?.CharacterList ?? [];
+        var (hereState, hereInUse, here) = ProfilesHere(directory);
         return new
         {
             state = settings is null ? "no-settings" : profiles.Count == 0 ? "none" : "loaded",
@@ -3148,6 +3155,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             look = modelNow is null ? "model-file-outside-list" : modelNow == Martlet.Core.Settings.CharacterProfile.BuiltInModel ? "builtin"
                 : "shared:" + Martlet.Avatar.Hosting.SharedCharacterModels.Key(modelNow),
             voiceChosen = voiceNow is not null,
+            hereState,
+            hereInUse = profiles.FirstOrDefault(c => c.Id == hereInUse)?.Key,
             profiles = profiles.Select(p => new
             {
                 key = p.Key,
@@ -3162,9 +3171,61 @@ internal sealed class McpServer(DesktopAutomation desktop)
                         : "missing"
                 },
                 voice = p.VoiceId is null ? "keep" : voices.Find(p.VoiceId) is { Removed: false } ? "listed" : "missing",
-                inUse = p.Id == current?.Id
+                inUse = p.Id == current?.Id,
+                here = here.GetValueOrDefault(p.Id)
             }).ToArray()
         };
+    }
+
+    /// <summary>character-profiles-local.json in a data directory (Martlet.Desktop's CharacterProfileLocalStore): the profile whose
+    /// choices this PC uses (InUse) and what each character profile keeps on this PC, by profile ID: its place (device-independent
+    /// pixels, the monitor and whether it is locked; null without one), its usual gaze (<c>personality</c> or a gaze's word),
+    /// whether replies may change it, and which touches stop it while it talks (<c>any</c>, <c>intimate</c> or <c>never</c>). No
+    /// file means no profile keeps anything here.</summary>
+    private static (string State, Guid? InUse, Dictionary<Guid, object> Profiles) ProfilesHere(string directory)
+    {
+        var path = Path.Combine(directory, "character-profiles-local.json");
+        if (!File.Exists(path)) return ("none", null, []);
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllBytes(path));
+            if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                !document.RootElement.TryGetProperty("Profiles", out var saved) || saved.ValueKind != JsonValueKind.Object)
+                return ("unreadable", null, []);
+            Guid? inUse = document.RootElement.TryGetProperty("InUse", out var used) && used.ValueKind == JsonValueKind.String &&
+                Guid.TryParse(used.GetString(), out var usedId) ? usedId : null;
+            var profiles = new Dictionary<Guid, object>();
+            foreach (var entry in saved.EnumerateObject())
+            {
+                if (!Guid.TryParse(entry.Name, out var id) || entry.Value.ValueKind != JsonValueKind.Object) continue;
+                var kept = entry.Value;
+                object? place = null;
+                if (kept.TryGetProperty("Placement", out var at) && at.ValueKind == JsonValueKind.Object)
+                {
+                    double? Number(string name) => at.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number &&
+                        value.TryGetDouble(out var number) ? number : null;
+                    place = new
+                    {
+                        locked = at.TryGetProperty("Locked", out var locked) && locked.ValueKind == JsonValueKind.True,
+                        left = Number("Left"), top = Number("Top"), width = Number("Width"), height = Number("Height"),
+                        screen = at.TryGetProperty("Screen", out var screen) && screen.ValueKind == JsonValueKind.String ? screen.GetString() : null
+                    };
+                }
+                profiles[id] = new
+                {
+                    place,
+                    gaze = kept.TryGetProperty("GazeUsual", out var usual) && usual.ValueKind == JsonValueKind.String ? usual.GetString() : "personality",
+                    gazeFree = !(kept.TryGetProperty("GazeFree", out var free) && free.ValueKind == JsonValueKind.False),
+                    touchInterrupts = kept.TryGetProperty("TouchInterrupts", out var touches) && touches.ValueKind == JsonValueKind.String
+                        ? touches.GetString() : "any"
+                };
+            }
+            return ("loaded", inUse, profiles);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return ("unreadable", null, []);
+        }
     }
 
     /// <summary>The shared character models as the desktop keeps them in a data directory (Martlet.Avatar.Hosting's
@@ -3286,11 +3347,16 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 return new { key = voice.Key, name = voice.Name, valid = false, problem = error.Failure.ToString() };
             }
         }).ToArray();
+        // A starter voice's key, a retired recording's key (retired-sample, retired-librivox-annie-anime...) or "own".
         static string Kind(string sha256) => Martlet.F5.F5BundledVoices.ForAudio(sha256)?.Key ??
-            (Martlet.F5.F5BundledVoices.IsRetiredSample(sha256) ? "retired-sample" : "own");
-        // A voice's ID is its reference revision, so a starter voice's ID is known even after only its tombstone remains.
-        var starterIds = Martlet.F5.F5BundledVoices.All.ToDictionary(
-            voice => Martlet.Core.Voices.SpeakingVoiceLibrary.ReferenceId(voice.AudioSha256, voice.Transcript), voice => voice.Key);
+            Martlet.F5.F5BundledVoices.RetiredForAudio(sha256)?.Key ?? "own";
+        static bool Retired(string kind) => Martlet.F5.F5BundledVoices.Retired.Any(voice => voice.Key == kind);
+        // A voice's ID is its reference revision, so a starter voice's ID is known even after only its tombstone remains, and so
+        // is a former starter voice's.
+        var starterIds = Martlet.F5.F5BundledVoices.All.Select(voice => (voice.Key, voice.AudioSha256, voice.Transcript))
+            .Concat(Martlet.F5.F5BundledVoices.Retired.Where(voice => voice.Transcript is not null)
+                .Select(voice => (voice.Key, voice.AudioSha256, Transcript: voice.Transcript!)))
+            .ToDictionary(voice => Martlet.Core.Voices.SpeakingVoiceLibrary.ReferenceId(voice.AudioSha256, voice.Transcript), voice => voice.Key);
         string KindOfId(string id) => starterIds.GetValueOrDefault(id) ?? "own";
         // The shared list (speaking-voices.json, the file Martlet.Desktop's F5Voices keeps; absent until a voice is first used,
         // changed or shared). Own voices are counted, never named.
@@ -3306,7 +3372,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 library = new
                 {
                     state = "loaded", voices = live.Count, revision = shared.Revision,
-                    starters = live.Select(v => KindOfId(v.Id)).Where(kind => kind != "own").ToArray(),
+                    starters = live.Select(v => KindOfId(v.Id)).Where(kind => kind != "own" && !Retired(kind)).ToArray(),
+                    // Former starter voices still listed (an older Martlet's list, until this desktop next brings its voices in step).
+                    retired = live.Select(v => KindOfId(v.Id)).Where(Retired).ToArray(),
                     own = live.Count(v => KindOfId(v.Id) == "own"),
                     removed = shared.Voices.Count(v => v.Removed),
                     removedStarters = shared.Voices.Where(v => v.Removed).Select(v => KindOfId(v.Id)).Where(kind => kind != "own").ToArray(),
@@ -3345,8 +3413,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 list = new
                 {
                     state = "loaded", voices = latest.Length,
-                    starters = latest.Where(p => p.Kind is not ("own" or "retired-sample")).Select(p => p.Kind).Distinct().ToArray(),
-                    own = latest.Count(p => p.Kind == "own"), retiredSample = latest.Any(p => p.Kind == "retired-sample"),
+                    starters = latest.Where(p => p.Kind != "own" && !Retired(p.Kind)).Select(p => p.Kind).Distinct().ToArray(),
+                    own = latest.Count(p => p.Kind == "own"),
+                    retired = latest.Where(p => Retired(p.Kind)).Select(p => p.Kind).Distinct().ToArray(),
                     applied = latest.Where(p => p.Id == inspection.AppliedPresetId).Select(p => p.Kind).FirstOrDefault()
                 };
             }
@@ -3410,7 +3479,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
         return new
         {
             @default = fallback.Key, defaultName = fallback.Name, defaultFemale = fallback.Female, defaultCute = fallback.Cute,
-            cute = Martlet.F5.F5BundledVoices.All.Where(voice => voice.Cute).Select(voice => voice.Key).ToArray(), starters, library, list, speaking,
+            cute = Martlet.F5.F5BundledVoices.All.Where(voice => voice.Cute).Select(voice => voice.Key).ToArray(), starters,
+            retired = Martlet.F5.F5BundledVoices.Retired.Select(voice => new { key = voice.Key, name = voice.Name }).ToArray(), library, list, speaking,
             engines, otherVoices, chosenEngine = Martlet.Core.Settings.SpeechEngines.ForKey(chosen)?.Key ?? Martlet.Core.Settings.SpeechEngines.Default.Key,
             // Chatterbox Original's General and Expressive style as Companion › Voice saved it (Resemble's suggestions until then).
             chatterboxStyle = ChatterboxStyleReport(directory)

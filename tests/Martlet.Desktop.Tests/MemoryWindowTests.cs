@@ -100,7 +100,71 @@ public sealed class MemoryWindowTests
         finally
         {
             window.Close();
-            await Until(() => !runner.IsRunning);
+            await Until(() => !runner.IsRunning && window.Settled);
+        }
+    });
+
+    [Fact]
+    public Task WindowShowsFactsAtOnceAndFollowsChangesMadeElsewhereWhileAReplyHoldsTheSetupSlot() =>
+        OnDispatcher(async () =>
+    {
+        using var scope = new Scope();
+        var store = new SettingsStore(scope.Data);
+        var initial = SetupSettings.Begin(null);
+        var saved = await store.SaveAsync(initial, null);
+        Assert.True(saved.Saved);
+        using var memory = new DesktopMemoryService(store);
+        var configured = await memory.SaveConfigurationAsync(initial, saved.Revision, enabled: true,
+            policy: MemoryStoragePolicy.AppLocalData, customDirectory: null);
+        var revision = configured.Settings.Memory!.ConfigurationRevision;
+        await memory.SaveFactAsync(revision, "Server region is west.", MemoryRetention.UntilDeleted());
+        var runner = new SetupOperationRunner();
+        // A reply holds the shared setup slot while Martlet answers.
+        var reply = new TaskCompletionSource<SetupWorkResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.NotNull(runner.TryStart(_ => reply.Task));
+        var window = new MemoryWindow(memory, runner) { ShowActivated = false, ShowInTaskbar = false };
+        window.Show();
+        try
+        {
+            // The facts show the moment the window opens: no waiting for the reply and no Refresh.
+            var list = Control<ListBox>(window, "FactsList");
+            await Until(() => list.Items.Count == 1 && Text(window, "FactStatus") == "1 fact remembered.",
+                () => $"status={Text(window, "ConfigurationStatus")}; facts={Text(window, "FactStatus")}");
+            Assert.True(runner.IsRunning);
+            Assert.Equal("Memory is on.", Text(window, "ConfigurationStatus"));
+            Assert.True(Control<Button>(window, "ReloadButton").IsEnabled);
+            Assert.False(Control<Button>(window, "SaveFactButton").IsEnabled);
+
+            // What a conversation remembers and what the reply model's manage_memories adds show up on their own.
+            await memory.RememberAsync(revision, [],
+                [new MemoryCaptureOperation(MemoryCaptureKind.Remember, Content: "Has a cat called Tom.")]);
+            await Until(() => list.Items.Count == 2 && Text(window, "FactStatus") == "2 facts remembered.");
+            var tool = await MemoryTools.RunAsync(memory, revision, """{"action":"remember","fact":"Likes jazz.","person":"everyone"}""",
+                null, null, CancellationToken.None);
+            Assert.False(tool.Result.IsError, tool.Result.Output);
+            await Until(() => list.Items.Count == 3 && Text(window, "FactStatus") == "3 facts remembered.");
+
+            // A fact forgotten elsewhere goes from the list too.
+            var cat = list.Items.Cast<MemoryWindow.FactItem>().Single(item => item.Fact.Content == "Has a cat called Tom.").Fact;
+            await memory.DeleteFactAsync(revision, cat);
+            await Until(() => list.Items.Count == 2 && Text(window, "FactStatus") == "2 facts remembered.");
+
+            // Once the reply ends, the buttons come back without a click.
+            reply.SetResult(new(SetupWorkOutcome.Completed));
+            await Until(() => !runner.IsRunning && Control<Button>(window, "SaveFactButton").IsEnabled);
+
+            // An action here still says what it did; the change it raised doesn't read over that.
+            Control<TextBox>(window, "FactContent").Text = "Prefers tea.";
+            Click(window, "MemorySaveFact");
+            await Until(() => !runner.IsRunning && list.Items.Count == 3);
+            await Task.Delay(300);
+            Assert.Equal("Fact added. 3 facts remembered.", Text(window, "FactStatus"));
+        }
+        finally
+        {
+            reply.TrySetResult(new(SetupWorkOutcome.Completed));
+            window.Close();
+            await Until(() => !runner.IsRunning && window.Settled);
         }
     });
 
@@ -164,9 +228,38 @@ public sealed class MemoryWindowTests
         finally
         {
             window.Close();
-            await Until(() => !runner.IsRunning);
+            await Until(() => !runner.IsRunning && window.Settled);
         }
     });
+
+    [Fact]
+    public async Task FactsChangedFollowsWorkThatCanChangeFactsButNotReads()
+    {
+        using var scope = new Scope();
+        var store = new SettingsStore(scope.Data);
+        var initial = SetupSettings.Begin(null);
+        var saved = await store.SaveAsync(initial, null);
+        using var memory = new DesktopMemoryService(store);
+        var configured = await memory.SaveConfigurationAsync(initial, saved.Revision, enabled: true,
+            policy: MemoryStoragePolicy.AppLocalData, customDirectory: null);
+        var revision = configured.Settings.Memory!.ConfigurationRevision;
+        var changed = 0;
+        memory.FactsChanged += () => Interlocked.Increment(ref changed);
+
+        var fact = (await memory.SaveFactAsync(revision, "Server region is west.", MemoryRetention.UntilDeleted())).Fact;
+        Assert.Equal(1, changed);
+        await memory.InspectAsync(revision);
+        using (await memory.CreateExportPreviewAsync(revision)) { }
+        await memory.KnownFactsAsync(configured.Settings.Memory, "server region", 5);
+        await memory.UseStoreAsync(revision, changes: false, (owned, token) => owned.InspectAsync(token));
+        Assert.Equal(1, changed);
+
+        await memory.RememberAsync(revision, [],
+            [new MemoryCaptureOperation(MemoryCaptureKind.Remember, Content: "Has a cat called Tom.")]);
+        await memory.UseStoreAsync(revision, changes: true, (owned, token) => owned.InspectAsync(token));
+        await memory.DeleteFactAsync(revision, fact);
+        Assert.Equal(4, changed);
+    }
 
     [Fact]
     public async Task UnsafeNetworkConfigurationIsRejectedWithoutStoreAccessOrSettingsMutation()
@@ -300,7 +393,7 @@ public sealed class MemoryWindowTests
             memory.RetryCleanup();
             window.Close();
             reopened?.Close();
-            await Until(() => !runner.IsRunning);
+            await Until(() => !runner.IsRunning && window.Settled && reopened?.Settled != false);
         }
     });
 

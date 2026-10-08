@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.Json.Serialization;
 
 namespace Martlet.Gateway;
 
@@ -20,7 +21,9 @@ internal sealed record StoredGatewayCredential(
     GatewayCredentialLifetime Lifetime,
     long RemainingTicks,
     string? RotatedToCredentialId,
-    StoredGatewayNonce[] Nonces);
+    StoredGatewayNonce[] Nonces,
+    // Only a friend's credential stores its access, so stores without friends stay exactly as before.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] GatewayAccess? Access = null);
 
 internal sealed record GatewayCheckpoint(
     DateTimeOffset ObservedAt,

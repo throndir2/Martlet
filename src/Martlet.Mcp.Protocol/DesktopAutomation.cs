@@ -288,8 +288,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // how many facts Martlet remembers, on how many hosts they are the same, when checked and how many were taken from or
         // forgotten on other computers (never a fact). MemoryFactStatus (the Memory window): how many facts it remembers, how
         // many belong to people Martlet knows by voice or to forgotten voices, how many the Show choice lists, and what the
-        // last action did (never a fact or a name).
-        "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus", "MemoryFactStatus",
+        // last action did (never a fact or a name). MemoryStatus (the Memory window's bottom line): whether memory is on, saving
+        // or why it can't be (fixed text, never a fact or a folder).
+        "SettingsSyncStatus", "SettingsSyncWaiting", "MemorySyncStatus", "MemoryFactStatus", "MemoryStatus",
         // Companion › Memory › Conversation history: whether Martlet keeps a record and may search it, and what the record holds
         // (conversations, exchanges, since when, per app); the history window's status line (counts, or what a search found) and
         // its line on changes waiting for Telegram and Discord (counts, apps and the last problem). Never what was said: the
@@ -777,6 +778,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Ana by voice"). Never a token.
         "DiscordFriend-",
         "HostChoice",
+        // Home's fixes for this PC's own host service ("HealthFix-host-service-repair-0" reads "Start Docker Desktop: This PC's
+        // host service isn't working", or "Starting Docker Desktop...: ..." and is disabled while a run starts it). Fixed text
+        // only; clicking one starts or sets up software, so it needs --allow-ui-effects.
+        "HealthFix-host-service-",
         "HealthIssue-", "HealthCheck-", "LogEntry-", "LogSource-", "NearbyItem-", "NetworkMember-", "NetworkJoin-", "NetworkPaired-", "OtherRole-", "ApiKeyRow-", "SmartHomeFound-", "SmartHomeHost-",
         "SmartHomeDevice-", "SmartHomeUpdate-", "DiscordRule-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-", "DeviceFilter-",
         // The selected device's resource bars ("DeviceResource-vram" reads "Graphics memory: 14 of 32 GB planned (44%), 15 GB
@@ -834,8 +839,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // "Cancel: Set up gpu-pc").
         "TaskTitle-", "TaskState-", "TaskShow-", "TaskCancel-",
         // Companion › Profiles: each profile's state ("CharacterProfileState-3f2a9c1b" reads "In use.", "Ready." or why a part
-        // can't switch here, such as "Its look is still copying to this PC. Using it switches the rest."; never a name).
-        "CharacterProfileState-",
+        // can't switch here, such as "Its look is still copying to this PC. Using it switches the rest."; never a name) and what
+        // it keeps on this PC ("CharacterProfileHere-3f2a9c1b" reads "On this PC: its own spot and size (420 × 560, locked) ·
+        // Eyes: Follow your mouse · While it talks: any touch stops it."; sizes and fixed labels only).
+        "CharacterProfileState-", "CharacterProfileHere-",
         // Devices › Sharing work: each job's line ("WorkSharingJob-speaking" reads "Speaking. When the computer doing it is busy
         // ..."), each computer in its order ("WorkSharingPlace-speaking-diva-host" reads "1. diva-host. this PC's own; does it for
         // this PC now."), each computer's keep line ("WorkSharingHost-diva-host" reads "diva-host. Kept for desk-1.") and its
@@ -854,7 +861,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // and load ("RecommendedSetupComputer-0", "RecommendedSetupToday-0", "RecommendedSetupTarget-0", "RecommendedSetupLoad-0",
         // "RecommendedSetupBar-0-vram"), who does each job ("RecommendedSetupJob-0"), the notes, downloads, what needs someone at a
         // computer, what Reconfigure needs first ("RecommendedSetupPreflight-0", "RecommendedSetupSecret-0": the label only, never
-        // what is typed) and the status line with its progress and outcome. Computer names, host IDs, model names and fixed text.
+        // what is typed) and the status line (the preflight state, or why Reconfigure couldn't start; its progress and outcome
+        // show in its run window and Background tasks). Computer names, host IDs, model names and fixed text.
         "RecommendedSetup"];
     private int? processId;
 
