@@ -139,7 +139,7 @@ public partial class MainWindow : ThemedWindow
                 pcAudio: simulated is not null ? null : new Martlet.Audio.PcAudioCaptureFactory(discordCalls.Sources(new WasapiPcAudioSourceFactory()),
                     sound: new Martlet.Audio.PcSoundBuffer()),
                 characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, history: conversationHistory, singing: singing,
-                board: contextBoard, turnJudge: SmartTurnJudge.Bundled());
+                board: contextBoard, turnJudge: SmartTurnJudge.Bundled(), listeningStandIn: ListeningStandIn);
             conversation.TurnDecided += () => Dispatcher.BeginInvoke(ShowTurnJudge);
             conversation.EarlyDecided += () => Dispatcher.BeginInvoke(ShowEarlyReplies);
             audioSessionEvents.LockedChanged += conversation.SetSessionLocked;
@@ -750,7 +750,9 @@ public partial class MainWindow : ThemedWindow
             UnauthorizedAccessException or System.ComponentModel.Win32Exception or Martlet.Core.Contracts.ContractException or
             OperationCanceledException)
         {
-            if (!closing) ActionText.Text = $"Couldn't show the character: {error.Message}";
+            if (closing) return;
+            ErrorLog.Warn("The character couldn't be shown.", error);
+            ActionText.Text = $"Couldn't show the character: {error.Message}";
         }
         finally { UpdateCharacterButton(); }
     }

@@ -1369,6 +1369,100 @@ public sealed class LiveConversationTests
     }
 
     [Fact]
+    public async Task ParakeetOnThisPcHearsWhatListeningsOwnRouteCouldNot()
+    {
+        // OpenAI refuses the transcription; Parakeet on this PC (FIXTURE words) hears the same recording and the reply goes on.
+        var heard = 0;
+        var asked = new List<string>();
+        await using var fixture = await LiveFixture.Create(localListener: new FixtureWords(() => Interlocked.Increment(ref heard), "Heard on this PC."),
+            listeningStandIn: route => { asked.Add(route.ModelId); return LocalSpeechSetup.Parakeet110mEnglishModelId; });
+        fixture.Stt.Respond = (_, _) => Task.FromResult(ProviderFixtures.Json("{}", 401));
+        fixture.Capture.Packets.Enqueue(new byte[3200]);
+        var operation = fixture.Start(microphone: true);
+        await Until(() => operation.Capture?.Snapshot.CanonicalSamples > 0);
+        operation.ReleasePress();
+        await fixture.Finish(operation);
+        Assert.Equal((1, 1, 1), (fixture.Stt.Calls, heard, fixture.Llm.Calls));
+        Assert.Equal(["gpt-transcribe"], asked);
+        Assert.Equal(LocalSpeechSetup.Parakeet110mEnglishModelId, operation.StandIn);
+        Assert.Equal("Heard on this PC.", operation.Transcription!.Text);
+        Assert.Contains("Heard on this PC.", Encoding.UTF8.GetString(fixture.Llm.Body));
+        Assert.Equal(ConversationState.Completed, operation.Turn!.Snapshot.State);
+        // OpenAI itself still failed: Home says so, and that Parakeet heard it instead, until OpenAI answers again.
+        var failure = Assert.Single(fixture.Controller.RecentFailures);
+        Assert.Equal(SetupRole.Stt, failure.Role);
+        Assert.StartsWith("outcome Failed, provider Authentication; Parakeet parakeet-tdt-110m-en on this PC heard it instead in ", failure.Outcome,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AStandInThatFailsTooLeavesTheRoutesOwnFailureAndNoReply()
+    {
+        await using var fixture = await LiveFixture.Create(localListener: new BrokenWords(),
+            listeningStandIn: _ => LocalSpeechSetup.Parakeet110mEnglishModelId);
+        fixture.Stt.Respond = (_, _) => Task.FromResult(ProviderFixtures.Json("{}", 401));
+        fixture.Capture.Packets.Enqueue(new byte[3200]);
+        var operation = fixture.Start(microphone: true);
+        await Until(() => operation.Capture?.Snapshot.CanonicalSamples > 0);
+        operation.ReleasePress();
+        await fixture.Finish(operation);
+        Assert.Equal((1, 0), (fixture.Stt.Calls, fixture.Llm.Calls));
+        Assert.Equal(("stt.Failed", ProviderFailureCode.Authentication), (operation.Status.Code, operation.Status.ProviderFailure));
+        Assert.Contains("; Parakeet parakeet-tdt-110m-en on this PC couldn't hear it either (outcome Failed, provider Server, ",
+            Assert.Single(fixture.Controller.RecentFailures).Outcome, StringComparison.Ordinal);
+        Assert.Equal(0, operation.Capture!.Snapshot.RetainedPcmBytes);
+        // A stand-in that can't hear either never keeps the next turn from the route.
+        fixture.Capture.Packets.Enqueue(new byte[3200]);
+        var next = fixture.Start(microphone: true);
+        await Until(() => next.Capture?.Snapshot.CanonicalSamples > 0);
+        next.ReleasePress();
+        await fixture.Finish(next);
+        Assert.Equal(2, fixture.Stt.Calls);
+    }
+
+    private sealed class BrokenWords : ILocalTranscriber
+    {
+        public Task<LocalTranscript> TranscribeAsync(string modelId, ReadOnlyMemory<byte> pcm16kMono, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("The fixture model can't load.");
+    }
+
+    [Fact]
+    public async Task AfterListeningsOwnRouteFailsParakeetHearsAtOnceUntilTheRouteIsAskedAgain()
+    {
+        var heard = 0;
+        await using var fixture = await LiveFixture.Create(localListener: new FixtureWords(() => Interlocked.Increment(ref heard), "Heard on this PC."),
+            listeningStandIn: _ => LocalSpeechSetup.Parakeet110mEnglishModelId);
+        fixture.Stt.Respond = (_, _) => Task.FromResult(ProviderFixtures.Json("{}", 401));
+        async Task<LiveConversationOperation> Say()
+        {
+            fixture.Capture.Packets.Enqueue(new byte[3200]);
+            var operation = fixture.Start(microphone: true);
+            await Until(() => operation.Capture?.Snapshot.CanonicalSamples > 0);
+            operation.ReleasePress();
+            await fixture.Finish(operation);
+            Assert.Equal(ConversationState.Completed, operation.Turn!.Snapshot.State);
+            return operation;
+        }
+        await Say();
+        Assert.Equal((1, 1), (fixture.Stt.Calls, heard));
+        // Moments later the route isn't asked again: a computer that is off would make every turn wait for it to time out.
+        var second = await Say();
+        Assert.Equal((1, 2), (fixture.Stt.Calls, heard));
+        Assert.Equal(LocalSpeechSetup.Parakeet110mEnglishModelId, second.StandIn);
+        Assert.Equal("Heard on this PC.", second.Transcription!.Text);
+        Assert.Single(fixture.Controller.RecentFailures);
+        // After StandInFor the route is asked again; once it answers, Home clears and the next turns go to it.
+        fixture.Clock.Advance(LiveConversationController.StandInFor);
+        fixture.Stt.Respond = (_, _) => Task.FromResult(ProviderFixtures.Json());
+        var third = await Say();
+        Assert.Equal((2, 2), (fixture.Stt.Calls, heard));
+        Assert.Null(third.StandIn);
+        Assert.Empty(fixture.Controller.RecentFailures);
+        await Say();
+        Assert.Equal((3, 2), (fixture.Stt.Calls, heard));
+    }
+
+    [Fact]
     public async Task PolicyRejectsExactPunctuationInputBeforeAnyCredentialOrProvider()
     {
         await using var fixture = await LiveFixture.Create();
@@ -2810,7 +2904,8 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal LiveConversationController Controller { get; }
     internal LiveFixture(ControlledDevice? output = null, Func<int, int>? nextStyle = null, VoiceIdentity? voiceIdentity = null,
         IPcAudioSourceFactory? pcAudio = null, bool voices = false, bool history = false, bool tools = false, bool echo = false,
-        ILocalTranscriber? localListener = null, IEndOfTurnJudge? turnJudge = null, IWindowsVoiceClient? windowsVoice = null)
+        ILocalTranscriber? localListener = null, IEndOfTurnJudge? turnJudge = null, IWindowsVoiceClient? windowsVoice = null,
+        Func<SetupRoute, string?>? listeningStandIn = null)
     {
         Store = new(DirectoryPath);
         Memory = new(Store, Clock);
@@ -2833,7 +2928,7 @@ internal sealed class LiveFixture : IAsyncDisposable
             // Echo reduction over the fixture microphone, with speakers whose loopback stays quiet and a canceller that keeps
             // the microphone as it is.
             echoReducer: echo ? new EchoReducer(Capture, new QuietSpeakers(), () => new KeptMicrophone(), Clock) : null,
-            localListener: localListener, turnJudge: turnJudge);
+            localListener: localListener, turnJudge: turnJudge, listeningStandIn: listeningStandIn);
         Events.LockedChanged += Controller.SetSessionLocked;
         Llm.Inspect = Tts.Inspect = request =>
         {
@@ -2844,10 +2939,10 @@ internal sealed class LiveFixture : IAsyncDisposable
     internal static async Task<LiveFixture> Create(ControlledDevice? output = null, Func<int, int>? nextStyle = null,
         bool legacy = false, VoiceIdentity? voiceIdentity = null, IPcAudioSourceFactory? pcAudio = null, bool voices = false,
         bool history = false, bool tools = false, bool echo = false, ILocalTranscriber? localListener = null,
-        IEndOfTurnJudge? turnJudge = null, IWindowsVoiceClient? windowsVoice = null)
+        IEndOfTurnJudge? turnJudge = null, IWindowsVoiceClient? windowsVoice = null, Func<SetupRoute, string?>? listeningStandIn = null)
     {
         var fixture = new LiveFixture(output, nextStyle, voiceIdentity, pcAudio, voices, history, tools, echo, localListener, turnJudge,
-            windowsVoice);
+            windowsVoice, listeningStandIn);
         var settings = SetupSettings.Begin(null);
         settings = settings with { Profile = settings.Profile with { Kind = ProfileKind.Api },
             Audio = AudioSettings.Create() };

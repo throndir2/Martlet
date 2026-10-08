@@ -303,6 +303,64 @@ public sealed class AvatarIntegrationTests
         await controller.StopAsync();
     }
 
+    // A paired lip-sync host that accepts the connection but never answers, like a busy or stuck host gateway.
+    private static (System.Net.Sockets.TcpListener Silent, AvatarRemoteHost Remote) SilentHost()
+    {
+        var silent = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        silent.Start();
+        return (silent, new AvatarRemoteHost
+        {
+            Origin = $"https://127.0.0.1:{((System.Net.IPEndPoint)silent.LocalEndpoint).Port}", HostId = "gpu-host",
+            SpkiFingerprint = "sha256:" + new string('a', 64), DeviceId = "desktop-test", CredentialId = new string('A', 22)
+        });
+    }
+
+    private static IAvatarHostLink GatewayLink(AvatarRemoteHost host) => new GatewayAvatarHostLink(
+        new Martlet.Avatar.Audio2Face.Remote.Audio2FaceHostConnection(GatewayAvatarHostLink.Pairing(host), new string('A', 43)));
+
+    [Fact]
+    public async Task Character_shows_with_loudness_lip_sync_when_the_paired_host_does_not_answer()
+    {
+        var closed = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        closed.Start();
+        var port = ((System.Net.IPEndPoint)closed.LocalEndpoint).Port;
+        closed.Stop();
+        var (silent, remote) = SilentHost();
+        try
+        {
+            using var scope = new AvatarHostingTests.Scope();
+            var renderer = new Renderer { Parameters = [new("aa", 0, 1, 0, ["Mouth"])] };
+            await using var controller = new AvatarController(createRenderer: () => renderer, allowControlledClock: true,
+                openHost: GatewayLink);
+            await controller.ShowAsync(scope.Profile($"http://127.0.0.1:{port}/") with { RemoteHost = remote }, default);
+            Assert.True(controller.IsShowing);
+            Assert.Contains($"Host {new Uri(remote.Origin).Authority} isn't ready", controller.Status, StringComparison.Ordinal);
+            var device = new ControlledDevice { AutoConsume = false };
+            await using var harness = new Harness(device, generatedSpeech: controller.Observer);
+            harness.Answer("Actual generated PCM test.");
+            var turn = harness.Start();
+            await Harness.Until(() => renderer.Messages.Any(m => m.Kind == "mouth" && RendererProtocol.Data<MouthLevel>(m).Level > 0));
+            Assert.DoesNotContain(renderer.Messages, m => m.Kind == "apply");
+            device.AutoConsume = true;
+            Assert.Equal(ConversationState.Completed, (await Harness.Finish(turn)).State);
+            await controller.StopAsync();
+        }
+        finally { silent.Stop(); }
+    }
+
+    [Fact]
+    public async Task Paired_host_readiness_check_still_stops_when_the_caller_cancels()
+    {
+        var (silent, remote) = SilentHost();
+        try
+        {
+            using var link = GatewayLink(remote);
+            using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => link.ReadyAsync(cancel.Token));
+        }
+        finally { silent.Stop(); }
+    }
+
     [Fact]
     public async Task Hundred_activation_stop_schedules_never_reuse_old_renderer_identity_or_authorization()
     {

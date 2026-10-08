@@ -31,6 +31,10 @@ public sealed class ReplyTimeline
     /// the reply is one of them, promoted, and how many started and were let go. Copied with the timeline.</summary>
     public EarlyStarts? Early { get { lock (gate) return early; } set { lock (gate) early = value; } }
     private EarlyStarts? early;
+    /// <summary>The model on this PC that transcribed the turn because Listening's own route failed (its stand-in), or null.
+    /// Copied with the timeline.</summary>
+    public string? StandIn { get { lock (gate) return standIn; } set { lock (gate) standIn = value; } }
+    private string? standIn;
 
     public void Mark(string step, long? at = null)
     {
@@ -60,7 +64,7 @@ public sealed class ReplyTimeline
     {
         lock (gate)
         {
-            var copy = new ReplyTimeline(Clock, origin, originAt) { early = early };
+            var copy = new ReplyTimeline(Clock, origin, originAt) { early = early, standIn = standIn };
             copy.steps.AddRange(steps);
             return copy;
         }

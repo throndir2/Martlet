@@ -215,6 +215,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "folder) includes the voice recognition runtime and models, whether any Parakeet model is downloaded (parakeet) and, in " +
             "parakeetModels, each model Companion > Listening > Parakeet in Martlet offers (id, name, languages, download size, " +
             "downloaded, its NOTICE, recommended for Windows' display language, in use), the Listening route and its Parakeet model, " +
+            "the Parakeet model that hears you on this PC's processor when that route (a paired host or OpenAI) fails, or why none " +
+            "(standIn), " +
             "and counts of known voices (never names, voiceprints or audio), including how many go by a name of the companion's own " +
             "(from the saved personas) or a placeholder such as \"no name yet\", and the most names one voice has; and clips: whether " +
             "People keeps the last few clips of voices not named yet (voice-clips.txt) and how many clips over how many voices (never " +
@@ -265,7 +267,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "a Windows voice says (System.Speech rendered to memory, never played; optional phrases, up to 8 English sentences). Per " +
             "model: loadMs, memoryMb (process memory it added), each phrase's transcript, word errors and transcribeMs, the word " +
             "error rate and the median time; ok when every model ran with at most 20% word errors. Also returns voices_status's " +
-            "Parakeet part. Nothing is downloaded, recorded or played; nothing leaves this PC.", new
+            "Parakeet part, with standIn: the model that hears you here when Listening's own route fails. Nothing is downloaded, " +
+            "recorded or played; nothing leaves this PC.", new
         {
             dataDirectory = new { type = "string" },
             martletDirectory = new { type = "string" },

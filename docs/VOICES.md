@@ -225,6 +225,50 @@ it keeps listening as before and *Settings for all devices* says which model
 to download in Companion › Listening (nothing downloads by itself), and a
 model a newer Martlet added waits for the update.
 
+### When Listening's own choice can't hear you
+
+When Listening uses a paired host (whisper or Parakeet on another computer) or
+OpenAI, and that route fails for an utterance, Parakeet on this PC hears the
+same utterance on the processor, so the turn goes on. Examples: the host is off
+or asleep, its service is down, the OpenAI key was removed, or the route took
+too long. The audio is still in memory. Nothing is sent anywhere and nothing
+costs money. A route that answers is never held up: the stand-in runs only
+after the route failed (`LiveConversationController.TranscribeAsync`, with a
+second, local-only permission from `ConversationAuthorization.AuthorizeStandIn`).
+
+- **Which model** (`LocalSpeechSetup.ListeningStandIn`): a Parakeet model that
+  is downloaded on this PC. The model already loaded comes first when it fits.
+  For an English Windows display language the next is the fastest one
+  downloaded (110M, then v2, then v3). For one of v3's 25 languages only v3
+  fits. For any other display language no Parakeet stands in, because none
+  hears it.
+- **Nothing downloads by itself.** The Listening *Now* card says what stands in
+  (*If gpu-pc can't hear you, Parakeet TDT 110M (English) hears you on this
+  PC's processor instead.*). When nothing does, it offers **Download Parakeet
+  TDT 110M (477 MB)** (v3 for other languages). That button downloads the
+  model after one confirmation and does not change Listening. The model loads
+  the first time the route fails, not before.
+- **Speed.** The first stand-in loads the model: about 1-2 s. After that, a
+  short turn takes about 50-100 ms. For 60 s after the route failed
+  (`StandInFor`), the next turns go straight to Parakeet. They don't wait for
+  the route to fail again, because a computer that is off takes up to 5 s to
+  time out. After that the route is asked again. Once it answers, turns go
+  back to it. Measured through MCP on this repository's development PC: the
+  first turn's speech-to-text took 1,244 ms (the model loaded), the next turn's
+  53 ms, with first audio 517 ms after the end of speech.
+- **What you see.** Home keeps *The last transcription failed* until the route
+  answers again, and it says that Parakeet heard you instead. While a
+  Listening host doesn't answer, Home and Devices say that listening works in
+  a reduced way (Parakeet hears you meanwhile), not that Martlet can't hear
+  you. The desktop log says *Transcription failed (outcome ...; Parakeet
+  &lt;model&gt; on this PC heard it instead in N ms)* when the route failed,
+  and *Listening: Parakeet &lt;model&gt; on this PC heard it instead in N ms,
+  without asking Listening's own route ...* while the route is skipped. The
+  reply latency line names *speech-to-text &lt;model&gt; on this PC, standing
+  in for &lt;route model&gt;*.
+- **Not covered.** Discord voice and filling in a recording's words still use
+  only Listening's own choice when it is a paired host.
+
 ## Limits
 
 Voice recognition is a convenience, not authentication: recordings, similar
