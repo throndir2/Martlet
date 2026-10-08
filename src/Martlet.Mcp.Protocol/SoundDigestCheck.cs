@@ -3,7 +3,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using Martlet.Audio;
+using Martlet.Conversation;
 using Martlet.Core.Contracts;
+using Martlet.Core.Settings;
 using Martlet.Sherpa;
 
 namespace Martlet.Mcp;
@@ -27,11 +29,13 @@ internal static class SoundDigestCheck
     {
         var saved = Saved(dataDirectory);
         var status = Status(dataDirectory);
+        var judges = await JudgesAsync(dataDirectory, cancellation);
         var included = SoundTagger.Included(martletDirectory);
         if (!included)
             return new
             {
-                ok = false, saved, status, tagger = new { included, martletDirectory, runtime = SherpaComponents.RuntimeDirectory(martletDirectory) is not null }
+                ok = false, saved, status, judges,
+                tagger = new { included, martletDirectory, runtime = SherpaComponents.RuntimeDirectory(martletDirectory) is not null }
             };
         using var judge = new CpuSoundJudge(new SoundTagger(martletDirectory));
         var watch = Stopwatch.StartNew();
@@ -80,6 +84,7 @@ internal static class SoundDigestCheck
             ok,
             saved,
             status,
+            judges,
             tagger = new { included, judge = judge.Name, model = "Zipformer small AudioSet tagger (k2-fsa, Apache-2.0), int8, 1 thread", loadMs },
             rehearsal = new
             {
@@ -101,6 +106,22 @@ internal static class SoundDigestCheck
     }
 
     private sealed record Choices(bool HearPc, bool DescribePcSounds, string Source);
+
+    // Which judges describe PC sounds, in order, as the desktop picks them (LiveConversationController.SoundJudge): the audio model
+    // of its own while it takes recordings (sense-models.json, the audio path Described), then a Thinking pool member that hears,
+    // then the CPU sound tagger. Reads settings.json, sense-models.json and model-abilities.json; never a key.
+    private static async Task<object> JudgesAsync(string directory, CancellationToken cancellation)
+    {
+        var loaded = await new SettingsStore(directory).LoadAsync(cancellation);
+        var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var (senses, file) = SenseModels.Read(directory);
+        var audio = SenseRouting.For(SenseKind.Audio, senses, thinking, ModelAbilities.Load(directory));
+        return new
+        {
+            audioRoute = new { file, path = audio.Path.ToString(), model = audio.Model?.Describe(), unknown = audio.Unknown, why = audio.Why },
+            order = audio.Described ? new[] { "audiomodel", "pool", "cpu" } : ["pool", "cpu"]
+        };
+    }
 
     // talk-preferences.json (Martlet.Desktop's TalkPreferences): HearPc is off and DescribePcSounds on unless saved otherwise.
     private static Choices Saved(string directory)

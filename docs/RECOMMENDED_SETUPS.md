@@ -357,12 +357,26 @@ The planner uses these rules, in this order of importance:
 5. **The live jobs come first.** A Thinking pool model goes on a card that no
    live job (thinking, listening, the voice, lip-sync) uses, when one exists
    ([Live turn first](CLUSTER.md#live-turn-first-on-a-shared-graphics-card)).
+   Needed jobs always come before optional extras, in this order:
+   1. Thinking (Martlet can't reply without it).
+   2. The voice, listening and lip-sync (the rest of a conversation).
+   3. Optional extras: Deep thinking, singing and pictures.
+
+   Each needed job goes on a graphics card first and on the processor when no
+   card has room, so Martlet never needs a provider that you must sign up for.
+   Singing and pictures keep only the room that the needed jobs leave. When a
+   needed job needs their card, they go (Required), and the change says that
+   they are optional. A new role that nothing needs, such as a pool place,
+   never pushes them out.
 6. **Companion PCs stay light.** They often run games, so they run only the
    parts inside Martlet while a host can do the work. A companion PC takes a
    job only when no host can do it and Martlet needs it (Thinking without a
    hosted provider, your voice engine). Then the companion PC with the most
    free hardware takes it. One companion PC alone uses its own card, as the
-   welcome setup does.
+   welcome setup does. Computers that stay away longer than the grace time
+   don't count, so a companion PC whose hosts are gone plans like one alone:
+   Thinking in its own Ollama, then the voice and lip-sync on its card, and
+   listening in the app (on the card when room is left).
 7. **No added latency.** A live job never moves to a model with a later first
    word or to a busier card than today's. The only exceptions are a computer
    that stays away and a card that is too full. New jobs get the fastest
@@ -372,7 +386,12 @@ The planner uses these rules, in this order of importance:
 8. **Your choices stay.** The planner keeps a hosted Thinking provider that you
    chose (unless you keep everything local), your voice engine, loudness
    lip-sync and your hosting preference. It changes where things run, not
-   what runs.
+   what runs. With no saved provider key, Home plans everything on your
+   computers. With a saved key (for example a free NVIDIA Build key), the
+   voice, listening and lip-sync get the cards first. Thinking then uses that
+   hosted model only when no card has room for a local one, so the card goes
+   to the voice and the face. A local model with room stays, because its first
+   word comes sooner.
 9. **Pools after the main jobs.** Your voice engine and listening go on more
    hosts for the Speaking and Listening pools, up to one place for each
    companion PC, least loaded first. Then each host with a free card gets a

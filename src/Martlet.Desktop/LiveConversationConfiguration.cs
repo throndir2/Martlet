@@ -778,9 +778,16 @@ internal sealed class LiveConversationConfiguration
         $"{(ability.Source is "a test request" or "a refused recording" or "a refused picture" ? "found by " + ability.Source : ability.Source + " says so")}, " +
         $"checked {ability.CheckedAt.LocalDateTime:d MMM}";
 
-    /// <summary>Whether the Thinking model can hear your voice, and what to change when it can't.</summary>
-    internal static string HearingAdvice(SetupRoute? route, ModelAbilities? abilities = null)
+    /// <summary>Whether the Thinking model can hear your voice, and what to change when it can't. With an audio model of its own
+    /// (<paramref name="audio"/> has one), where your recording goes instead (docs/SENSE_MODELS.md).</summary>
+    internal static string HearingAdvice(SetupRoute? route, ModelAbilities? abilities = null, SenseRoute? audio = null)
     {
+        if (audio is { Model: not null } own)
+            return own.Described
+                ? $"Your recording goes to {own.Name}, the audio model, which describes how you sound for Thinking; Thinking gets the " +
+                  "transcript, never the recording, and a reply never waits for the audio model." +
+                  (own.Unknown ? " Martlet can't tell whether it hears; it tries, and a refused recording is remembered." : "")
+                : own.Why;
         if (route is null) return "Set up Thinking before letting it hear your voice.";
         var ability = abilities?.Find(route.Origin, route.ModelId) is { Hears: not null } known ? known : null;
         var found = ability is null ? "" : $" ({Said(ability)})";
@@ -802,9 +809,17 @@ internal sealed class LiveConversationConfiguration
         };
     }
 
-    /// <summary>What letting Thinking hear your voice sends, and where: shown in Companion › Listening before it is turned on.</summary>
-    internal static string HearingDisclosure(SetupRoute? route) =>
-        "When this is on and the Thinking model can hear, the recording of what you say (up to " +
+    /// <summary>What letting a model hear your voice sends, and where: shown in Companion › Listening before it is turned on. With
+    /// an audio model of its own (<paramref name="audio"/> has one), the recording goes to it, never to Thinking.</summary>
+    internal static string HearingDisclosure(SetupRoute? route, SenseRoute? audio = null) => audio is { Model: not null } own
+        ? "When this is on and the audio model can hear, the recording of what you say (up to " +
+          $"{BoundedTextInput.HardMaxAudioSeconds:0} seconds a message) goes to {own.Name}, the audio model, with the last lines of the " +
+          "conversation. It describes how you sound (tone, laughter, sighs, other voices, background sounds) in words for Thinking, " +
+          "which gets the transcript and those words, never the recording. With the audio model in Ollama on this PC (not a cloud " +
+          "model) it is on unless you turn it off, since the recording never leaves this PC; anywhere else (another server here " +
+          "included) it stays off until you tick it. Speech-to-text still runs for every message. Recordings are never saved, added " +
+          "to Memory or sent to Thinking. Audio may use more quota or cost more than text."
+        : "When this is on and the Thinking model can hear, the recording of what you say (up to " +
         $"{BoundedTextInput.HardMaxAudioSeconds:0} seconds a message) also goes to {(route is null ? "the Thinking model" : LlmDestinationName(route))}, " +
         "straight away on its own or with the transcript (When Thinking can hear you), so it hears your tone as well as your " +
         "words. With Thinking in Ollama on this PC (not a cloud model) it is on unless you turn it off, " +
@@ -813,9 +828,24 @@ internal sealed class LiveConversationConfiguration
         "every message. Recordings are never saved, added to Memory or sent to the Thinking " +
         "fallback, which gets the transcript. Audio may use more quota or cost more than text.";
 
-    /// <summary>Which applies to Let Thinking hear my voice (Companion › Listening): your own choice, or, never chosen, on because
-    /// the recording stays on this PC or off until you tick it because it would leave it.</summary>
-    internal static string HearVoiceChoice(bool? choice, SetupRoute? thinking) => choice switch
+    /// <summary>Which applies to Let ... hear my voice (Companion › Listening): your own choice, or, never chosen, on because the
+    /// recording stays on this PC or off until you tick it because it would leave it. It goes to Thinking, or with an audio model
+    /// of its own (<paramref name="audio"/> has one) to that model.</summary>
+    internal static string HearVoiceChoice(bool? choice, SetupRoute? thinking, SenseRoute? audio = null) => audio is { Model: { } own }
+        ? choice switch
+        {
+            true => "On: you turned it on.",
+            false => "Off: you turned it off, so Thinking gets only the transcript.",
+            _ when VoiceNotes.StaysOnThisPc(own) =>
+                "On: your voice stays on this PC (the audio model runs here), so the audio model hears it unless you turn this off.",
+            _ when own.OnThisPc =>
+                $"Off until you tick it: your recording would go to {own.Describe()}, an app that may pass it on " +
+                "(only Ollama on this PC hears you without the tick).",
+            _ => $"Off until you tick it: your recording would leave this PC for {own.Describe()}."
+        }
+        : ThinkingHearVoiceChoice(choice, thinking);
+
+    private static string ThinkingHearVoiceChoice(bool? choice, SetupRoute? thinking) => choice switch
     {
         true => "On: you turned it on.",
         false => "Off: you turned it off, so Thinking gets only the transcript.",

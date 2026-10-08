@@ -30,6 +30,9 @@ public static class PromptCatalog
     public const string Voices = "voices";
     public const string HeardVoice = "heard_voice";
     public const string HeardVoiceOnly = "heard_voice_only";
+    public const string HeardVoiceDescribed = "heard_voice_described";
+    public const string HeardVoiceNote = "heard_voice_note";
+    public const string VoiceDescription = "voice_description";
     public const string Lorebook = "lorebook";
     public const string MemoryRecall = "memory_recall";
     public const string PastConversations = "past_conversations";
@@ -97,6 +100,7 @@ public static class PromptCatalog
     public const string BackgroundGroup = "After a reply";
     public const string CheckInGroup = "Check-ins";
     public const string HomeGroup = "Smart home";
+    public const string AudioModelGroup = "Audio model";
 
     public const string DefaultToolInstructions =
         "You can use tools on the user's PC: the functions you were given come from MCP servers the user set up, Martlet's own " +
@@ -466,6 +470,22 @@ public static class PromptCatalog
             "to it for what they said and how they said it (tone, emotion, emphasis, laughter, hesitation), and answer that. Answer in " +
             "text as usual, without mentioning the recording.",
             []),
+        new(HeardVoiceDescribed, ConversationGroup, "Your voice, described by the audio model",
+            "Added to every reply while an audio model of its own describes your voice (Companion › Listening › Audio model): " +
+            "Thinking gets the transcript, never the recording, and the audio model's words about how you sounded come in a note " +
+            "(How you sounded). It is the same in every reply, so the start of every request stays the same.",
+            "The user talks to you by voice and you get the transcript. A separate audio model also listens to their recording " +
+            "and notes what the words miss: tone and emotion, laughing, sighing, hesitation, whispering or shouting, other voices " +
+            "and background sounds. Its note starts with \"How the user sounded\" and comes with the message, or with a later one " +
+            "when it was late. Take it into account as if you heard them yourself, and never mention the note or the audio model.",
+            []),
+        new(HeardVoiceNote, ConversationGroup, "How you sounded",
+            "Goes in the notes of one request only (never kept in the conversation) when the audio model described your voice. " +
+            "{when} says which message it is about (\"saying this message\", or \"in what they said before this message\" when " +
+            "it came late) and {voice} is what the audio model said. The conversation keeps only a short line after the message, " +
+            "such as (voice: sighs, sounds tired). Empty it to send nothing.",
+            "How the user sounded {when}, as the audio model heard it: {voice}",
+            ["when", "voice"]),
         new(Tools, ConversationGroup, "Tools", "Added when a reply is offered tools: MCP servers', Martlet's own (think_longer, and " +
             "search_conversations when Companion › Memory lets Martlet search past conversations) and the terminal (Companion › Tools).",
             DefaultToolInstructions, []),
@@ -865,7 +885,19 @@ public static class PromptCatalog
             "so nothing was sent to Home Assistant. Acknowledge briefly that you left it alone.", []),
         new(HomeUnreachable, HomeGroup, "Home: unreachable", "Martlet couldn't reach Home Assistant.",
             CannotAct + " Martlet couldn't reach Home Assistant just now, so nothing in the home changed. Only if they asked about their home, tell them " +
-            "you couldn't reach it. Otherwise ignore this note.", [])
+            "you couldn't reach it. Otherwise ignore this note.", []),
+
+        new(VoiceDescription, AudioModelGroup, "Describing your voice",
+            "The instructions the audio model gets with the recording of each thing you say, while an audio model of its own " +
+            "describes your voice for Thinking (Companion › Listening › Audio model). The last lines of the conversation follow, " +
+            "so it knows what matters. Its first line goes after your message in the conversation (How you sounded); none means " +
+            "nothing stood out. Empty it and the audio model gets no recordings of your voice.",
+            "You listen to a short recording of a user talking to their desktop companion. The companion only reads the " +
+            "transcript, so describe only what the words miss: tone and emotion, laughing, sighing, hesitation, whispering or " +
+            "shouting, other voices and background sounds. Answer with one short line of at most 20 words, then, only when it " +
+            "helps, one more line of details. Never transcribe, repeat or answer what was said. If nothing stands out, answer " +
+            "exactly: none",
+            [])
     ];
 
     private static readonly Dictionary<string, PromptDefinition> ById = All.ToDictionary(p => p.Id, StringComparer.Ordinal);

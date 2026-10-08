@@ -48,8 +48,8 @@ internal sealed record BargeInRecord(DateTimeOffset At, BargeInSource Source, Ba
 internal sealed record ShownPicture(string Key, string Title, byte[] Image, bool Fixture);
 
 // HandsFree: voice activity endpoints each utterance. RequireVoiceId: only the enrolled voice is uploaded. Hear: the recording
-// is kept for a Thinking model that hears (Companion › Listening › Let Thinking hear my voice); HearLocalOnly: only because it
-// was never chosen, so only while the recording stays on this PC (checked again for each message). Straight: with Hear, what was
+// may go to a Thinking model that hears, or to the audio model of its own (Companion › Listening › Let ... hear my voice);
+// HearLocalOnly: only because it was never chosen, so only while the recording stays on this PC (checked again for each message). Straight: with Hear, what was
 // said goes straight to a Thinking model that hears as the recording alone, and speech-to-text runs beside the reply
 // (Companion › Listening › When Thinking can hear you). BargeIn: talking over a reply with real words (BargeInPolicy) stops
 // it; without it, always listening still listens while Martlet speaks whenever echo reduction works, and what it hears waits
@@ -75,9 +75,9 @@ internal sealed record ListeningOptions(bool HandsFree, VoiceActivitySettings Ac
     /// <summary>Companion › Listening › Start replies early, as the talk window passed it (off when it didn't).</summary>
     internal EarlyReplyOptions EarlyReplies => Early ?? EarlyReplyOptions.Off;
 
-    /// <summary>Thinking may hear the recording with this configuration: Hear, and, when that is only the never-chosen default,
-    /// the recording stays on this PC.</summary>
-    internal bool HearsWith(LiveConversationConfiguration configuration) => Hear && (!HearLocalOnly || configuration.RecordingStaysOnThisPc());
+    /// <summary>The recording may go where it would go (Thinking, or the audio model of its own): Hear, and, when that is only the
+    /// never-chosen default, the recording stays on this PC (<paramref name="staysOnThisPc"/>, checked again for each message).</summary>
+    internal bool HearsWith(bool staysOnThisPc) => Hear && (!HearLocalOnly || staysOnThisPc);
 
     /// <summary>Listening to what this PC plays: the default voice activity (a video's sound, not the user's microphone).</summary>
     internal static ListeningOptions PcAudio { get; } = new(true, new VoiceActivitySettings(), RequireVoiceId: false, Pc: true);
@@ -178,6 +178,15 @@ internal sealed class LiveConversationOperation
     [JsonIgnore] internal BoundedWaveAudio? Recording { get; set; }
     /// <summary>The reply's request carried the user's recording with the transcript.</summary>
     internal bool VoiceSent { get; set; }
+    /// <summary>An utterance the audio model of its own hears beside speech-to-text (the audio path is Described): its words about
+    /// how the user sounded, which the reply to it may take (<see cref="VoiceNote"/>).</summary>
+    [JsonIgnore] internal VoiceNote? VoiceNote { get; set; }
+    /// <summary>A reply to what the audio model heard: each answered utterance's <see cref="VoiceNote"/>, in order.</summary>
+    [JsonIgnore] internal IReadOnlyList<VoiceNote>? VoiceNotes { get; set; }
+    /// <summary>How many of <see cref="VoiceNotes"/> were ready when the request was built and went with it.</summary>
+    internal int VoiceNotesTaken { get; set; }
+    /// <summary>Martlet doesn't answer this message (the participation policy turned it down before its request).</summary>
+    internal bool Declined { get; set; }
     /// <summary>An utterance that goes straight to Thinking: its words, which speech-to-text makes beside the reply.</summary>
     [JsonIgnore] internal SpokenWords? Words { get; set; }
     /// <summary>A reply to what went straight to Thinking (the recording alone): the words of each utterance it answers, in order.</summary>
@@ -822,8 +831,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         this.runtimeFactory = runtimeFactory;
         this.dataDirectory = dataDirectory;
         if (pcAudio?.Sound is { } sound)
+            // The audio model of its own judges first while it takes recordings, then a Thinking pool member that hears.
             soundDigest = new PcSoundDigest(sound, () => pcAudio.WithoutMartlet != true && Speaking is not null,
-                () => PoolSoundJudge.For(ThinkingPool), Board, dataDirectory, held: () => PoolSoundJudge.Held(ThinkingPool));
+                SoundJudge, Board, dataDirectory, held: SoundJudgeHeld);
         // What makes sound on this PC is followed only while Martlet hears the PC; its clock must be this controller's, which
         // times each utterance.
         if (pcAudio is not null && pcActivity is not null)
@@ -1025,7 +1035,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         BoundedWaveAudio? recording = null, SeenScreen? seen = null, bool pcAudio = false, string? userWords = null,
         ReplyTimeline? timeline = null, PlaybackMode playback = PlaybackMode.Reply, ChattinessChoice? chattiness = null,
         IReadOnlyList<SpokenWords>? words = null, bool hearLocalOnly = false, bool remote = false, bool bringUp = false,
-        AttentionSignal? attention = null, bool look = false, bool discordCall = false, HistorySource? origin = null, string? originSpeaker = null)
+        AttentionSignal? attention = null, bool look = false, bool discordCall = false, HistorySource? origin = null, string? originSpeaker = null,
+        IReadOnlyList<VoiceNote>? voiceNotes = null)
     {
         if (!approved || microphone && (!localCaptureApproved || !uploadApproved))
             throw new LiveActionException("conversation.permission_required");
@@ -1044,7 +1055,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         // A reply started early for exactly this ask (Companion › Listening › Start replies early) is taken as the reply: no
         // second request. One for anything else is let go, and this reply starts once it has left the app slot.
         if (TryTakeEarly(text, voice, microphone, listening, spoken, heard, confidence, recording, seen, pcAudio, userWords, timeline,
-                playback, chattiness, words, hearLocalOnly, remote, bringUp, attention, look, discordCall) is { } early)
+                playback, chattiness, words, hearLocalOnly, remote, bringUp, attention, look, discordCall, voiceNotes) is { } early)
             return early;
         // What goes straight to Thinking is the recording alone; its text only marks it until the words come.
         BoundedTextInput? input = microphone ? null : new(words is not null ? LiveConversationConfiguration.VoiceOnlyText : text ?? "");
@@ -1062,9 +1073,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             long acceptedRevision = revision = checked(revision + 1);
             // Vision being on is the permission for its pictures; a text-only Thinking model never gets one.
             if (selected.Vision() == VisionSupport.Unsupported) seen = null;
-            // Hearing that is on only because it was never chosen holds only while the recording stays on this PC.
-            var hear = microphone ? listening?.HearsWith(selected) == true
-                : recording is not null && (!hearLocalOnly || selected.RecordingStaysOnThisPc());
+            // Hearing that is on only because it was never chosen holds only while the recording stays on this PC; an audio model
+            // of its own takes recordings in Thinking's place, so then Thinking never gets one (docs/SENSE_MODELS.md).
+            var stays = RecordingStaysOnThisPc(selected);
+            var hear = (microphone ? listening?.HearsWith(stays) == true : recording is not null && (!hearLocalOnly || stays)) &&
+                ThinkingTakesVoice(selected);
             if (!hear) recording = null;
             var authorization = new ConversationAuthorization(selected, voice, microphone, clock,
                 () => Volatile.Read(ref revision) == acceptedRevision, settings.LoadAsync, vault, caller,
@@ -1074,6 +1087,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 MemoryRequested = memory is not null && selected.Memory is { Enabled: true },
                 Listening = listening, Voiceprint = voiceprint, Spoken = spoken, Heard = spoken ? heard : null,
                 SpokenConfidence = spoken ? confidence : null, Recording = recording, Seen = seen, StraightWords = words,
+                VoiceNotes = spoken && voiceNotes is { Count: > 0 } ? voiceNotes : null,
                 PcAudio = pcAudio, DiscordCall = discordCall && spoken, UserWords = string.IsNullOrWhiteSpace(userWords) ? null : userWords.Trim(), Playback = playback,
                 BringUp = bringUp, Attention = seen is null ? null : attention, Look = look,
                 Origin = remote ? origin : null, OriginSpeaker = remote ? originSpeaker : null, Remote = remote,
@@ -1389,17 +1403,20 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         utterance.SpeakerCheck, utterance.Voiceprint, utterance.Status.Code == "listen.heard" ? utterance.Recording : null,
         utterance.LatencyTimeline, utterance.Status.Code == "listen.ignored" ? utterance.Ignored : null,
         utterance.Status.Code == "listen.heard" ? utterance.Interrupts : null, utterance.SpeechStartedAt,
-        utterance.Status.Code == "listen.heard" ? utterance.Words : null, utterance.SpeechEndedAt);
+        utterance.Status.Code == "listen.heard" ? utterance.Words : null, utterance.SpeechEndedAt,
+        utterance.Status.Code == "listen.heard" ? utterance.VoiceNote : null);
 
     /// <summary>Whether what was just heard goes straight to Thinking as the recording alone, with speech-to-text beside the
-    /// reply: Thinking may hear it and the straight path is chosen (Companion › Listening), the Thinking model hears and hasn't
+    /// reply: Thinking may hear it and the straight path is chosen (Companion › Listening), no audio model of its own takes
+    /// recordings, the Thinking model hears and hasn't
     /// refused a recording this session, Home Assistant's Assist doesn't need the words first, and it wasn't said over Martlet
     /// while it speaks without a quick check deciding (its words decide whether that stops Martlet).</summary>
     private bool GoesStraight(ListeningOptions options, LiveConversationOperation utterance)
     {
         if (options is not { Straight: true, Hear: true, Pc: false }) return false;
         var configured = utterance.Authorization.Configuration;
-        if (!options.HearsWith(configured) || configured.Hearing() != HearingSupport.Supported) return false;
+        if (!ThinkingTakesVoice(configured)) return false;
+        if (!options.HearsWith(RecordingStaysOnThisPc(configured)) || configured.Hearing() != HearingSupport.Supported) return false;
         lock (gate)
             if (deafModels.Contains(configured.ToolModelKey())) return false;
         if (smartHome is { ControlEnabled: true, ModelToolsEnabled: false }) return false;
@@ -1437,6 +1454,9 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 wordsTail = Task.Run(() => TranscribeWordsAsync(before, listening, utterance, audio, spokenWords, token), CancellationToken.None);
                 return;
             }
+            // An audio model of its own hears it beside speech-to-text and puts what the words miss into words (never on the
+            // reply's path: the reply takes them only if they are ready in time).
+            utterance.VoiceNote = StartVoiceNote(utterance, audio);
             // Never longer than the upload's own 30 s deadline, even if a native boundary ignores it.
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(35), clock);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);
@@ -1486,7 +1506,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 singing?.Heard(result.Text ?? "");
             utterance.Heard = await HeardAsync(utterance, linked.Token).ConfigureAwait(false);
             if (utterance.Recognition is not null) utterance.LatencyTimeline?.Mark("voice recognition");
-            if (listening.Options.HearsWith(utterance.Authorization.Configuration)) utterance.Recording = audio;
+            var heardBy = utterance.Authorization.Configuration;
+            if (listening.Options.HearsWith(RecordingStaysOnThisPc(heardBy)) && ThinkingTakesVoice(heardBy)) utterance.Recording = audio;
             utterance.Publish(new("listen.heard", Finished: true));
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -1515,6 +1536,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // What always listening heard was let go (not words, another voice, a failure): a reply started early for it goes too.
             if (utterance.EarlyStarted is { } early && utterance.Status.Code != "listen.heard")
                 LetGoEarly(early, EarlyReplyRecord.Changed, "what you said was let go");
+            // Nobody needs the audio model's words about what was let go.
+            if (utterance.Status.Code != "listen.heard") utterance.VoiceNote?.Cancel();
         }
     }
 
@@ -1564,6 +1587,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         saidLately.Clear();
         lastCache = null;
         conversationId = Guid.NewGuid();
+        // The audio model's late words were about messages the conversation no longer keeps.
+        Board.Clear(VoiceNotes.BoardSource);
     }
 
     /// <summary>The user's Refresh context: forget the kept exchanges and what Martlet said lately; nothing else stops.</summary>
@@ -1917,9 +1942,14 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 var audio = await CaptureAsync(operation).ConfigureAwait(false);
                 if (audio is null) return new(SetupWorkOutcome.Completed);
                 operation.LatencyTimeline?.Mark("recording");
+                // An audio model of its own hears it beside speech-to-text (never on the reply's path).
+                if (StartVoiceNote(operation, audio) is { } note) operation.VoiceNotes = [note];
                 var result = await TranscribeAsync(operation, audio, transcription, worker).ConfigureAwait(false);
                 if (result is null)
+                {
+                    CancelVoiceNotes(operation);
                     return new(operation.Transcription?.Outcome == TranscriptionOutcome.NoSpeech ? SetupWorkOutcome.Completed : SetupWorkOutcome.Failed);
+                }
                 operation.LatencyTimeline?.Mark("speech-to-text");
                 operation.Heard = await HeardAsync(operation, worker).ConfigureAwait(false);
                 if (operation.Recognition is not null) operation.LatencyTimeline?.Mark("voice recognition");
@@ -1965,6 +1995,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             operation.Authorization.Check(worker);
             ConversationTurn turn;
             ContextBoardSnapshot board = ContextBoardSnapshot.Empty;
+            (string? Note, string? Kept, VoiceNote[] Ready) heardHow = (null, null, []);
             PersonaProfile? persona;
             IReadOnlyList<TextHistoryMessage> history, sentHistory;
             long historyStart;
@@ -1984,6 +2015,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         // Martlet won't answer it: what was heard no longer holds the live floor (after the lock). Before the turn
                         // ends, that is for the turn's own reply to say.
                         dismissed = early is null && Dismisses(reason);
+                        // The audio model's words about it go to the next request (EndVoiceNotes, after the lock).
+                        operation.Declined = early is null;
                         return new(SetupWorkOutcome.Completed);
                     }
                     lease = committed;
@@ -2137,6 +2170,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     : operation.Report ? MomentTrigger.Report : MomentTrigger.PcAudio;
                 var (lately, latelyCount) = SaidLately.Carries(trigger) ? SaidLatelyLocked(prompts) : (null, 0);
                 operation.SaidLately = latelyCount;
+                // An audio model of its own puts the user's voice into words (the audio path is Described): every reply is told
+                // what its notes are, the same way each time, and its words about how the user sounded go with this request only
+                // when they are ready now (never waited for).
+                var described = DescribesVoice(configured) ? PromptSettings.Fill(prompts, PromptCatalog.HeardVoiceDescribed) : null;
+                heardHow = VoiceNow(operation, prompts);
                 ConversationRequest Ask(SeenScreen? picture, string? recalled, out int keptHistory, out int keptFacts, out int keptEntries) =>
                     operation.Authorization.Configuration.Request(
                         input!, operation.Authorization.Voice, sentHistory, memoryResult, lore,
@@ -2149,6 +2187,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                                 : operation.PcAudio ? LiveConversationConfiguration.PcAudio(prompts) : null,
                             decides ? LiveConversationConfiguration.ChattinessDecides(prompts) : null,
                             recording is null ? null : PromptSettings.Fill(prompts, straight ? PromptCatalog.HeardVoiceOnly : PromptCatalog.HeardVoice),
+                            described,
                             picture is null ? null : PromptSettings.Fill(prompts, PromptCatalog.SeenWithMessage, ("source", picture.Describe())),
                             picture is null ? null : SeenTags.Instructions(prompts, LiveConversationConfiguration.SilentReply)),
                         voices: VoicePromptContext.Block(operation.Heard),
@@ -2163,7 +2202,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                         // The program in front and the window's title change as the user switches windows: they go with the
                         // picture in the notes that are sent but not kept, never in the instructions, and only when the
                         // conversation's latest [Screen] line doesn't already say them.
-                        board: Join(board.Text, picture?.Active(prompts, sentHistory), lately), backup: backup);
+                        board: Join(heardHow.Note, board.Text, picture?.Active(prompts, sentHistory), lately), backup: backup);
                 ConversationRequest request;
                 int usedHistory, usedMemory, usedLore;
                 var picture = seen;
@@ -2223,13 +2262,15 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // The request is sent: the board's consume-on-read notes go with this reply only.
             BoardSent(board);
             operation.BoardNotes = board.Notes.Count;
-            operation.BoardKept = board.KeptText;
+            // The audio model's words it carried leave a short line after the message in the conversation, before the board's.
+            operation.BoardKept = heardHow.Kept is null ? board.KeptText : board.KeptText is null ? heardHow.Kept : heardHow.Kept + "\n" + board.KeptText;
+            SentVoiceNotes(operation, heardHow.Ready);
             // What this reply took (MomentTurn): the talk window's LiveTurnInputs line and the desktop log, after the request
             // started so the first words never wait for it.
             operation.Inputs = MomentTurn.Describe(own is not null || straight,
                 operation.PcAudio ? input!.UserText.Split('\n').Count(line => line.StartsWith(LiveConversationConfiguration.PcAudioMarker, StringComparison.Ordinal)) : 0,
                 operation.ScreenSent, operation.ScreenSent ? operation.Attention?.Plain : null, operation.Delivery?.Jobs.Count ?? 0, operation.Report,
-                operation.Touches?.Touches ?? 0, operation.BoardNotes, operation.SaidLately);
+                operation.Touches?.Touches ?? 0, operation.BoardNotes, operation.SaidLately, operation.VoiceNotesTaken > 0);
             if (operation.Touches is { } carriedTouches)
             {
                 ErrorLog.Info($"Touches: {carriedTouches.Count} went to Thinking " +
@@ -2431,6 +2472,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // Whatever happened to the reply, the words of what it carried are transcribed now.
             if (operation.StraightWords is { } spoken)
                 foreach (var words in spoken) words.Release();
+            // And the audio model may hear what it carried now (or its words go to the next request when Martlet didn't answer).
+            EndVoiceNotes(operation);
             if (operation.Turn is { } turn)
             {
                 await turn.StopAsync().ConfigureAwait(false);

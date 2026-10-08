@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- With an audio model of your own (Companion › Listening › Audio model), Martlet hears how you say things even when your Thinking model reads only text: the audio model listens beside speech-to-text and tells Thinking what the words miss (your tone, a laugh or a sigh, other voices, sounds around you), and it describes the sounds your PC plays too. Your recording never goes to Thinking then, and a reply never waits for the audio model. Never chosen, it hears you only while it runs in Ollama on this PC; anywhere else, tick **Let the audio model hear my voice**. ([#637](https://github.com/throndir2/Martlet/pull/637))
 - Detect zones and Measure the eyes can use the image model you chose for pictures when no Thinking pool member can see, so they work with a Thinking model that reads only text. ([#635](https://github.com/throndir2/Martlet/pull/635))
 - Use the model app you already run on your PC for Thinking: Companion › Thinking › This PC › **A model app you already use** finds LM Studio, llama.cpp, KoboldCpp, Jan, vLLM, Lemonade, GPT4All, Docker Model Runner and other OpenAI-compatible apps, lists their models, tests one and switches to it, with no cloud wording and no key unless the app asks for one. Any other app works by typing the address it shows, such as `localhost:5001`, and Home tells you when the app stops answering. The macOS and Linux app gets **Find model apps**. ([#633](https://github.com/throndir2/Martlet/pull/633))
 
@@ -21,6 +22,7 @@ Each release's section here is also its notes on GitHub.
 - Companion › Thinking › This PC › Ollama now says that any Ollama model works, including a Hugging Face GGUF or a model you made yourself. ([#633](https://github.com/throndir2/Martlet/pull/633))
 
 ### Fixed
+- Recommended setup now gives Thinking, the voice, listening and lip-sync your graphics card before optional extras such as Singing. A PC whose other computers are gone now gets its own Thinking model instead of keeping Singing, and with a free provider key saved, Thinking uses the free model when the card has no room for a local one. ([#638](https://github.com/throndir2/Martlet/pull/638))
 - The welcome tour's suggested setup now names the right Companion page for each part's backup, instead of always saying Companion › Thinking. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
 - When always listening can't use your microphone, Martlet no longer opens and drops it every 5 seconds. It tries again after 1 second, then waits longer each time (up to 30 seconds), Home says how often it tries, and the log says why the microphone failed. ([#632](https://github.com/throndir2/Martlet/pull/632))
 

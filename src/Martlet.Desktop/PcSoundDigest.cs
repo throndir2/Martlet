@@ -8,8 +8,9 @@ namespace Martlet.Desktop;
 
 /// <summary>Companion › Listening › Describe PC sounds: while Martlet hears what this PC plays, the sound digest describes its
 /// non-speech sound (music and its mood, game or video sounds, laughter, applause, alarms) in one short line about every ten
-/// seconds, for the reply to read beside the transcript. The judge is an audio-capable model in the Thinking pool when there is
-/// one, else the small sound tagger on this PC's processor. The last seconds of sound stay in memory only
+/// seconds, for the reply to read beside the transcript. The judge is the audio model of its own when it takes recordings
+/// (Companion › Listening › Audio model), else an audio-capable model in the Thinking pool when there is one, else the small
+/// sound tagger on this PC's processor. The last seconds of sound stay in memory only
 /// (<see cref="PcSoundBuffer"/>); the line goes to the context board as source "sound" for
 /// <see cref="SoundDigestOptions.MaximumAge"/>, never into the conversation's history or memory, and a reply never waits for
 /// it. <see cref="StatusFile"/> keeps the state, the judge, counts and times for MCP, never a line or a sound.</summary>
@@ -26,7 +27,7 @@ internal sealed class PcSoundDigest : IDisposable
 
     /// <param name="buffer">What the PC capture keeps for the digest.</param>
     /// <param name="martletAudible">Martlet's own voice may be in what the PC plays right now.</param>
-    /// <param name="pool">An audio-capable Thinking pool member's judge, or null when the pool has none.</param>
+    /// <param name="pool">The audio model's judge or an audio-capable Thinking pool member's, or null when neither hears.</param>
     /// <param name="board">Where each line goes for the next reply (the context board, source "sound").</param>
     /// <param name="held">The live conversation needs the pool judge's hardware now (the live floor): the digest skips its turn.</param>
     internal PcSoundDigest(PcSoundBuffer buffer, Func<bool> martletAudible, Func<ISoundJudge?>? pool = null,
@@ -81,9 +82,11 @@ internal sealed class PcSoundDigest : IDisposable
     /// <summary>The note the reply reads: what plays on the PC besides words, as the judge described it.</summary>
     internal static string Note(string line) => $"Sound playing on this PC besides speech: {line.TrimEnd('.')}.";
 
-    /// <summary>Which judge describes the sound, for Companion: the pool model or the CPU sound tagger, or why there is none.</summary>
+    /// <summary>Which judge describes the sound, for Companion: the audio model, the pool model or the CPU sound tagger, or why
+    /// there is none.</summary>
     internal static string JudgeText(string? judge, SoundJudgeKind? kind) => kind switch
     {
+        SoundJudgeKind.AudioModel => $"{judge}, the audio model, hears a short clip.",
         SoundJudgeKind.Pool => $"{judge} in the Thinking pool hears a short clip.",
         SoundJudgeKind.Cpu => "The CPU sound tagger on this PC names what it hears (no Thinking pool model can hear).",
         _ => "No judge: no Thinking pool model can hear, and the CPU sound tagger is missing from Martlet's folder. Reinstall Martlet."

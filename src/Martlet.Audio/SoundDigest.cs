@@ -6,9 +6,9 @@ namespace Martlet.Audio;
 /// <summary>One label a sound tagger heard, with its score from 0 to 1 (AudioSet display names, such as "Music" or "Laughter").</summary>
 public sealed record SoundTag(string Name, double Score);
 
-/// <summary>Which kind of judge describes the PC's sound: an audio-capable model in the Thinking pool, or the small sound tagger
-/// on this PC's processor.</summary>
-public enum SoundJudgeKind { Pool, Cpu }
+/// <summary>Which kind of judge describes the PC's sound: the audio model of its own (Companion › Listening › Audio model), an
+/// audio-capable model in the Thinking pool, or the small sound tagger on this PC's processor.</summary>
+public enum SoundJudgeKind { Pool, Cpu, AudioModel }
 
 /// <summary>What turns a clip of what this PC played (16 kHz mono, -1 to 1) into one short line about its non-speech sound, or
 /// null when there is none worth saying (only speech, or silence).</summary>
