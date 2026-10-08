@@ -9,8 +9,9 @@ namespace Martlet.Desktop;
 
 /// <summary>Companion › Character › Emotes and motions: every emote (expression) and motion of the character this PC shows,
 /// plus Martlet's own nod and shake, with the tag replies write for each ({blush}), when to use it, the voice cue that also
-/// sets it off ([laugh] with Chatterbox Turbo, (laughs) with Dia) and whether it is used. The Thinking model names them once
-/// for each new model (Name them with Thinking asks again); edits save as you type, per model, on this PC.</summary>
+/// sets it off ([laugh] with Chatterbox Turbo, (laughs) with Dia) and whether it is used, then the owner's combos of them
+/// (MainWindow.CharacterCombos.cs). The Thinking model names them once for each new model (Name them with Thinking asks
+/// again); edits save as you type, per model, on this PC.</summary>
 public partial class MainWindow
 {
     private readonly CharacterActionService characterActions;

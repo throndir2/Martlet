@@ -101,7 +101,7 @@ public sealed partial record CharacterActionCatalog(CharacterActionInventory Inv
     /// <summary>The reply instructions (Companion › Prompts › Character emotes and motions) and the tags they offer, or null
     /// when none are offered or the owner emptied the prompt. A lingering emote's line says it stays on until its off tag
     /// (<c>{/blush}</c>), which is offered too. The owner's combos come after the emotes' lines (so those, and prompt caches, stay
-    /// the same), as many as the tags a request may carry allow. <paramref name="showing"/> are the lingering emotes the character
+    /// the same), as many as the tags a request may carry allow beside the emotes' and the look tags. <paramref name="showing"/> are the lingering emotes the character
     /// shows now: they become <see cref="CharacterActionPrompt.Showing"/>, a short note for the newest message (never the
     /// instructions, so the request's start stays the same and prompt caches keep working).</summary>
     public CharacterActionPrompt? Prompt(SpeechEngine? engine, PromptSettings? prompts, IReadOnlyList<HeldEmote>? showing = null,
@@ -109,8 +109,10 @@ public sealed partial record CharacterActionCatalog(CharacterActionInventory Inv
     {
         var offered = Offered(engine);
         var lingering = offered.Where(e => CharacterActions.Lingers(e.Source, e.Action)).ToArray();
-        var combos = PromptCombos(MaximumTags - offered.Count -
-            lingering.Select(e => e.Action.Tag!).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        // Combos get the room the emotes' tags leave, less the look tags (where the character looks and a screen glance's
+        // ninths), so they never push the gaze out of a request.
+        var combos = PromptCombos(MaximumTags - offered.Count - lingering.Select(e => e.Action.Tag!).Distinct(StringComparer.OrdinalIgnoreCase).Count() -
+            CharacterGaze.ModeTags.Count - CharacterGaze.Tags.Count);
         if (offered.Count == 0 && combos.Count == 0) return null;
         var tags = offered.Select(e => "{" + e.Action.Tag + "}").Concat(combos.Select(c => "{" + c.Combo.Tag + "}")).ToList();
         var example = tags[0];

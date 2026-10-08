@@ -182,9 +182,12 @@ public sealed class EmoteComboTests
         Assert.DoesNotContain("{flustered}", none.Tags);
         Assert.DoesNotContain("flustered", none.Instructions);
 
-        // Only the combos whose tags fit beside the emotes' are offered (each of these takes two: its tag and its off tag).
+        // Only the combos whose tags fit beside the emotes' and the look tags are offered (each of these takes two: its tag and
+        // its off tag), so the gaze still joins in.
         var crowded = Catalog([.. Enumerable.Range(0, 100).Select(i => Flustered with { Tag = $"combo_{i}" })]).Prompt(null, null)!;
-        Assert.InRange(crowded.Tags.Count, CharacterActionCatalog.MaximumTags - 1, CharacterActionCatalog.MaximumTags);
+        var looks = CharacterGaze.ModeTags.Count + CharacterGaze.Tags.Count;
+        Assert.InRange(crowded.Tags.Count, CharacterActionCatalog.MaximumTags - looks - 1, CharacterActionCatalog.MaximumTags - looks);
+        Assert.Contains("{look usual}", CharacterGaze.Join(crowded, CharacterGaze.ReplyPrompt(null, GazeMode.Mouse), null)!.Tags);
         var offered = crowded.Tags.Where(t => t.StartsWith("{combo_", StringComparison.Ordinal)).ToArray();
         Assert.Equal(crowded.Tags.Count(t => t.StartsWith("{/combo_", StringComparison.Ordinal)), offered.Length);
         Assert.All(offered, tag => Assert.Contains("\n" + tag + " - ", crowded.Instructions));

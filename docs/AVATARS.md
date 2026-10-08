@@ -99,7 +99,7 @@ what each one is.
   `character-actions.json`, which is the same on all your computers (the
   `character-actions` [shared setting](CLUSTER.md#one-martlet-on-every-computer)):
   a model the Thinking model named on one computer is named on all of them.
-  **Use the model's own names** goes back to the defaults.
+  **Use the model's own names** goes back to the defaults (your combos stay).
 - **Voice cues**: a voice cue links an emote or motion to a sound or tone the
   voice engine performs, by meaning across engines (`laugh` is Chatterbox
   Turbo's `[laugh]` and Dia's `(laughs)`). When the voice speaks that tag, the
@@ -159,6 +159,33 @@ what each one is.
   settings. **Clear emotes** on the character's right-click menu (or in Emotes
   and motions) turns all of them off. For a lingering row, **Try** turns the
   emote on, and the button then shows **Turn off**.
+- **Combos**: the owner can give one tag of their own to 2 to 6 of a model's
+  emotes, motions and gestures. Emotes and motions › **Combos** has, for each
+  combo, a tag, its parts' tags (such as `blush hearts nod`), *When to use* and
+  an on box. A reply's `{flustered}` sets off each part that is on at once, as
+  the part's own tag would: a lingering part turns on and stays, and a brief
+  part shows a moment. `{/flustered}` turns the combo's lingering parts off. A
+  part that is turned off is skipped. When a combo holds two of Martlet's
+  gestures, the renderer's rules for held gestures apply (see
+  *Global gestures*).
+  - Replies are offered each combo that is on and has a part that is on. The
+    combo lines come after the emotes' lines, so those lines stay the same and
+    prompt caches keep working. An example:
+    `{flustered} - a combination of {blush}, {hearts} and {nod} (stays on until you write {/flustered})`.
+  - The hint is the combo's *When to use*, or what it combines while that box
+    is empty. Only a combo with a lingering part gets the *stays on* note and
+    its off tag. Combos are offered only while their tags fit in the tags a
+    request may carry, next to the emotes' tags. Room always stays for the
+    tags that move the character's eyes, so combos never push them out.
+  - Combos are saved with the model's settings in `character-actions.json`
+    (`combos`: `tag`, `parts` as IDs, `use`, `enabled`), at most 16 for each
+    model. A combo's tag must be a valid tag that no emote and no other combo
+    of the model has. A file without combos reads and writes as before.
+  - **Try** sets a combo off on the showing character. While one of its
+    lingering parts is on, the button shows **Turn off**. **Use the model's own
+    names** keeps the combos. A Martlet that doesn't have a part (an older
+    version without a new gesture) leaves that part out.
+  - Martlet has no combos of its own: combos are the owner's, for each model.
 - **Renderer protocol**: `RendererAction(Kind, Name, On, Hold)`. With `Hold`,
   an expression, gesture or overlay stays on until the same action comes with
   `On` set to false.

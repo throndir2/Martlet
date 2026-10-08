@@ -1269,7 +1269,15 @@ would show now (`["glasses", "blush:12"]`, minutes after the colon),
 showing {blush} (12 min), ...*); it never goes in the instructions. With `voiceTag`, a voice's tag such as `[laugh]` or
 `(sighs)` or a reply tag such as `{nod}` or `{/blush}`, `setsOff` lists what it sets off
 (`kind`, `name` and `holds`, whether it lingers, such as the `laugh` voice emote; one expression and one
-motion picked at random when several share a cue) and `turnsOff` the lingering emote an off tag turns off. With `answer`, a simulated Thinking reply such as
+motion picked at random when several share a cue; for a combo's tag such as `{flustered}`, each of its parts that is on)
+and `turnsOff` lists what an off tag turns off (the lingering emote, or a combo's lingering parts); `combo` is the combo
+the tag names, or null. `combos` lists the owner's [combos](AVATARS.md#emotes-and-motions) for the model: each one's `n`
+as in `CharacterComboTag-<n>`, `tag`, `parts` (each part's `id`, `kind`, `name`, `tag`, `enabled` and `mode`; `kind`
+is `missing` for a part the model doesn't have), `use`, `hint` (what replies get next to the tag), `enabled`, `lingers`
+(a part that is on lingers, so `{/tag}` is offered too) and `offered`. With `combos`, strings such as
+`flustered: blush hearts nod | when flattered` read the way the Combos section's boxes are read, those combos replace
+the saved ones; when they can't be saved, `combosProblem` says why (such as *no emote has the tag 'wave'.*) and the
+saved ones stay. With `answer`, a simulated Thinking reply such as
 `1: blush | - | stays | when shy` (the mode may be left out), `parsed` shows what the production parser makes of
 it (`read`, `problem`, `actions`, `prompt`). Model-authored names only, never
 the model's path; it reads and contacts nothing else.
@@ -4584,10 +4592,35 @@ are on.*); `CharacterActionsLast` then reads *Turned on the expression ...* or
 *Turned off ...*, and `logs_tail` `desktop` *Character expression 'Glasses' held
 for a try.* `CharacterActionsClear` (*Clear emotes*) and the character overlay
 menu's `CharacterClearEmotes` turn every lingering emote off (*Cleared 2
-lingering emotes for Clear emotes ...*). Editing a row
-saves `character-actions.json`, `CharacterActionsDetect` (*Name them with
+lingering emotes for Clear emotes ...*).
+
+The card ends with **Combos**. `CharacterCombosStatus` reads how many combos
+the model has and which tags replies get (*1 combo. Replies can use 1:
+{flustered}.* or *No combos yet.*). `CharacterCombosAdd` (*Add a combo*,
+passive) adds an empty row; nothing is saved until the row has a tag and parts.
+Row `<n>` (as in `character_actions`' `combos`) has `CharacterComboOn-<n>`
+(check box), `CharacterComboName-<n>` (*{flustered} · combo*, or *New combo*;
+a status field), `CharacterComboState-<n>` (a status field: what it sets off,
+such as *Turns on "hearts" until {/flustered}; plays "blush" and "nod" once.*,
+or why its parts can't be read, such as *No emote has the tag 'wave'.*),
+`CharacterComboTag-<n>`, `CharacterComboParts-<n>` (the parts' tags, such as
+`blush hearts nod`), `CharacterComboUse-<n>` (the When to use box),
+`CharacterComboHint-<n>` (the grey hint in that box while it is empty, such as
+*a combination of {blush}, {hearts} and {nod}*), `CharacterComboTry-<n>` (its
+label, a status field, reads *Turn off* while one of its lingering parts is
+on) and `CharacterComboRemove-<n>`. A part's tag that names no emote reads
+*Not saved: no emote has the tag 'wave'.* in `CharacterActionsSaveState`. After
+Try, `CharacterActionsLast` reads *Combo {flustered} for a try at 6:22:47 PM:
+turned on "hearts"; played "blush" and "nod".* (*Combo {/flustered} for a try
+...: turned off "hearts".* after Turn off, and *for a reply* when a reply's tag
+set it off), and `logs_tail` `desktop` has a line for each part and *Character
+combo {flustered} for a try: 1 turned on, 0 kept on, 2 played, 0 failed.* Typing
+in a combo's boxes, its check box and Remove save, and Try and Turn off change
+the overlay, so they need `--allow-ui-effects`.
+
+Editing an emote's row saves `character-actions.json`, `CharacterActionsDetect` (*Name them with
 Thinking*) sends the model's emote and motion names and details to the Thinking
-model, `CharacterActionsReset` goes back to the model's own names, and Try,
+model, `CharacterActionsReset` goes back to the model's own names (the combos stay), and Try,
 Turn off and Clear emotes change the overlay, so all of them need `--allow-ui-effects`. The first time a model
 shows with a Thinking model set up, Martlet names its emotes once on its own.
 `character_actions` reads the same settings headlessly.
