@@ -40,6 +40,11 @@ internal sealed class DesktopMemoryService : IDisposable
 
     internal Action<DesktopMemoryPoint, CancellationToken>? TestHook { get; set; }
     internal bool HasPendingCleanup { get { lock (gate) return cleanupRetry is not null; } }
+
+    /// <summary>Raised off the dispatcher, once the store is free again, after work that can add, change or delete facts used
+    /// it: the Memory window, remembering after a reply, the reply model's manage_memories tool, removing expired facts or the
+    /// memory sync. The Memory window reads the facts again, so it always shows what Martlet remembers now.</summary>
+    internal event Action? FactsChanged;
     internal string DefaultDirectory =>
         Path.Combine(settings.DataDirectory, MemorySettings.AppLocalDirectoryName);
 
@@ -107,7 +112,7 @@ internal sealed class DesktopMemoryService : IDisposable
                 Provenance = MemoryProvenance.UserEntry(Guid.NewGuid(), CurrentUtc()),
                 Retention = retention,
                 VoiceId = voiceId
-            }, operationToken), token);
+            }, operationToken), token, changes: true);
     }
 
     /// <param name="voiceId">Whose fact it is after the edit; pass the fact's own to keep it.</param>
@@ -130,7 +135,7 @@ internal sealed class DesktopMemoryService : IDisposable
                 Provenance = MemoryProvenance.UserEntry(Guid.NewGuid(), CurrentUtc()),
                 Retention = retention,
                 VoiceId = voiceId
-            }, operationToken), token);
+            }, operationToken), token, changes: true);
     }
 
     internal Task<MemoryDeleteReceipt> DeleteFactAsync(
@@ -146,7 +151,7 @@ internal sealed class DesktopMemoryService : IDisposable
                 Id = fact.Id,
                 ExpectedRevision = fact.Revision,
                 ConsentId = Guid.NewGuid()
-            }, operationToken), token);
+            }, operationToken), token, changes: true);
     }
 
     /// <summary>Deletes all of <paramref name="facts"/> in one commit; facts already gone are skipped.</summary>
@@ -163,7 +168,7 @@ internal sealed class DesktopMemoryService : IDisposable
                 Id = fact.Id,
                 ExpectedRevision = fact.Revision,
                 ConsentId = Guid.NewGuid()
-            }).ToArray(), operationToken), token);
+            }).ToArray(), operationToken), token, changes: true);
     }
 
     /// <summary>Runs <paramref name="action"/> with the store (the reply model's manage_memories tool). Pass
@@ -172,7 +177,7 @@ internal sealed class DesktopMemoryService : IDisposable
         Func<MemoryStore, CancellationToken, Task<T>> action, CancellationToken token = default)
     {
         if (changes) Invalidate();
-        return WithStoreAsync(expectedConfigurationRevision, action, token);
+        return WithStoreAsync(expectedConfigurationRevision, action, token, changes: changes);
     }
 
     internal DateTimeOffset UtcNow => CurrentUtc();
@@ -183,7 +188,7 @@ internal sealed class DesktopMemoryService : IDisposable
     {
         Invalidate();
         return WithStoreAsync(expectedConfigurationRevision,
-            (store, operationToken) => store.PurgeExpiredAsync(operationToken), token);
+            (store, operationToken) => store.PurgeExpiredAsync(operationToken), token, changes: true);
     }
 
     internal Task<MemoryExportPreview> CreateExportPreviewAsync(
@@ -353,7 +358,7 @@ internal sealed class DesktopMemoryService : IDisposable
                 }
             }
             return (IReadOnlyList<MemoryCaptureChange>)changes;
-        }, token);
+        }, token, changes: true);
     }
 
     private static DesktopMemoryException Invalidated() => new("memory.retrieval_invalidated",
@@ -371,7 +376,8 @@ internal sealed class DesktopMemoryService : IDisposable
         if (HasPendingCleanup) return (false, "busy", default);
         try
         {
-            return (true, null, await WithStoreAsync(memory.ConfigurationRevision, action, token, TimeSpan.Zero).ConfigureAwait(false));
+            return (true, null, await WithStoreAsync(memory.ConfigurationRevision, action, token, TimeSpan.Zero, changes: true)
+                .ConfigureAwait(false));
         }
         catch (DesktopMemoryException error) when (error.Code is "memory.busy" or "memory.disabled" or "memory.configuration_changed")
         {
@@ -392,11 +398,14 @@ internal sealed class DesktopMemoryService : IDisposable
         CancelAndDisposeAsync(previous).Forget();
     }
 
+    /// <param name="changes">The action can add, change or delete facts: <see cref="FactsChanged"/> is raised once the store is
+    /// free again, even when the action failed partway (what it committed before stays).</param>
     private async Task<T> WithStoreAsync<T>(
         Guid expectedConfigurationRevision,
         Func<MemoryStore, CancellationToken, Task<T>> action,
         CancellationToken token,
-        TimeSpan? wait = null)
+        TimeSpan? wait = null,
+        bool changes = false)
     {
         EnsureOpen();
         token.ThrowIfCancellationRequested();
@@ -446,6 +455,7 @@ internal sealed class DesktopMemoryService : IDisposable
             store.Dispose();
             lock (gate) cleanupRetry = null;
             storeGate.Release();
+            if (changes) FactsChanged?.Invoke();
         }
     }
 
