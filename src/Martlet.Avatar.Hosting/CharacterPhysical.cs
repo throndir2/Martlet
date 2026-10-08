@@ -113,4 +113,72 @@ public static class CharacterPhysicalWords
     /// each pass, at most 8, so the ledger says "stroked your hair slowly 4 times".</summary>
     public static (string? Detail, int Times) Stroke(StrokeSummary summary) =>
         (summary.Pace switch { "slow" => "slowly", "quick" => "quickly", _ => null }, Math.Clamp(summary.Passes, 1, 8));
+
+    /// <summary>At most this many places are named on a stroke's path: the first ones and the last.</summary>
+    public const int MaximumStrokePlaces = 8;
+
+    // A left and a right zone of one kind, said together.
+    private static readonly Dictionary<string, string> Pairs = new(StringComparer.Ordinal)
+    {
+        ["cheek"] = "cheeks", ["ear"] = "ears", ["shoulder"] = "shoulders", ["breast"] = "breasts", ["upper_arm"] = "upper arms",
+        ["forearm"] = "forearms", ["hand"] = "hands", ["thigh"] = "thighs", ["inner_thigh"] = "inner thighs", ["knee"] = "knees",
+        ["calf"] = "calves", ["foot"] = "feet"
+    };
+
+    /// <summary>How a stroke across <paramref name="zones"/> (the zones Martlet notices that it crossed, in the order it first
+    /// crossed them) is said. On one zone it is that zone ("your hair"). Across several it is the path: which way it went, from
+    /// the first over the others to the last ("down from your chest over your stomach to your thighs"), or, when it turned back,
+    /// "up and down over" (sideways, "back and forth over") them all. A left and a right zone of one kind crossed one after the
+    /// other are said together ("your thighs"). Null when it crossed none.</summary>
+    public static StrokeWords? Stroke(StrokeSummary summary, IReadOnlyList<CharacterTouchZone> zones)
+    {
+        var (pace, times) = Stroke(summary);
+        var path = Places(zones.DistinctBy(z => z.Id).ToArray());
+        if (path.Count == 0) return null;
+        if (path.Count > MaximumStrokePlaces) path = [.. path.Take(MaximumStrokePlaces - 1), path[^1]];
+        var label = string.Join(" → ", path.Select(p => p.Label));
+        if (path.Count == 1) return new(path[0].Part, label, pace, times, path[0].Zone is { } zone ? CharacterTouchZones.Narration(zone) : null);
+        var parts = path.Select(p => p.Part).ToArray();
+        var where = summary.Passes > 1 ? (summary.Sideways ? "back and forth over " : "up and down over ") + List(parts)
+            : (summary.Way is { } way ? way + " " : "") + "from " + parts[0] + (parts.Length > 2 ? " over " + List(parts[1..^1]) : "") +
+              " to " + parts[^1];
+        return new(where, label, pace, times, null);
+    }
+
+    // Each zone as the character hears it and its short name; a left and a right zone of one kind next to each other on the
+    // path are one place ("your thighs").
+    private static List<(string Part, string Label, CharacterTouchZone? Zone)> Places(IReadOnlyList<CharacterTouchZone> zones)
+    {
+        var places = new List<(string Part, string Label, CharacterTouchZone? Zone)>();
+        for (var i = 0; i < zones.Count; i++)
+        {
+            if (i + 1 < zones.Count && Pair(zones[i], zones[i + 1]) is { } both)
+            {
+                places.Add(("your " + both, both, null));
+                i++;
+            }
+            else places.Add((CharacterTouchZones.Part(zones[i]), zones[i].Name.ToLowerInvariant(), zones[i]));
+        }
+        return places;
+    }
+
+    // "thighs" when one is the left and the other the right zone of one kind (neither renamed by the owner), else null.
+    private static string? Pair(CharacterTouchZone one, CharacterTouchZone other)
+    {
+        if (one.Label is not null || other.Label is not null) return null;
+        var kind = one.Id.EndsWith("_left", StringComparison.Ordinal) ? one.Id[..^5]
+            : one.Id.EndsWith("_right", StringComparison.Ordinal) ? one.Id[..^6] : null;
+        return kind is not null && other.Id != one.Id && (other.Id == kind + "_left" || other.Id == kind + "_right") &&
+            Pairs.TryGetValue(kind, out var both) ? both : null;
+    }
+
+    private static string List(IReadOnlyList<string> items) =>
+        items.Count == 1 ? items[0] : string.Join(", ", items.Take(items.Count - 1)) + " and " + items[^1];
 }
+
+/// <summary>How a stroke is said (<see cref="CharacterPhysicalWords.Stroke(StrokeSummary, IReadOnlyList{CharacterTouchZone})"/>):
+/// <paramref name="Where"/> for the character ("down from your chest over your stomach to your thighs"), <paramref name="Label"/>
+/// for the conversation's history ("chest → stomach → thighs"), its <paramref name="Pace"/> ("slowly", "quickly" or null), how
+/// many times the touch ledger records it (<paramref name="Times"/>: once for each pass, at most 8) and, on one zone, the
+/// owner's own words for it (<paramref name="Hint"/>).</summary>
+public sealed record StrokeWords(string Where, string Label, string? Pace, int Times, string? Hint);

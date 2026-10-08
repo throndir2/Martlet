@@ -8,6 +8,19 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Added
+- Martlet now reacts when you move your desktop character around, not only when you touch it: drag it somewhere new or to another monitor and it says something about it a moment later, unless you talk or type first. ([#597](https://github.com/throndir2/Martlet/pull/597))
+- Your character now starts with ready-made combos that show several emotes at once: lovestruck, flustered, overheated, fuming, heartbroken, dozing, starstruck and shocked, and ahegao, which stays off until you turn it on. Change, turn off or remove any of them in Companion › Character › Emotes and motions › Combos; one you remove doesn't come back. A character can now have 24 combos. ([#596](https://github.com/throndir2/Martlet/pull/596))
+
+### Changed
+- Martlet no longer puts its own whisper effect on the Chatterbox voices, which could sound creepy. When a reply asks to whisper, Chatterbox Turbo and Nano whisper only the way the voice model itself does, which is now and then, and Chatterbox Original speaks normally. Update your host to get it. ([#599](https://github.com/throndir2/Martlet/pull/599))
+- Martlet now notices touches on every touch zone by default, so your pokes, pats and strokes reach your Thinking model and Martlet answers them out loud, not only with a blush. Characters whose zones you never turned **Martlet notices** on for get it on once; turn it off for any zone in Companion › Character › Touch zones. ([#597](https://github.com/throndir2/Martlet/pull/597))
+- When you touch Martlet without saying anything, it now always says a sentence or two about it, and its reaction builds when you keep going. When you touch it while you talk, it answers you first and then reacts to the touch too. ([#597](https://github.com/throndir2/Martlet/pull/597))
+- A stroke across several parts of your character now reaches Martlet as one path in order, such as *They slowly stroked down from your chest over your stomach to your thighs*, with every part it crossed (not only the first three), which way it went, and left and right sides said together. ([#597](https://github.com/throndir2/Martlet/pull/597))
+
+### Fixed
+- Martlet's drawings on a Live2D character's face, such as the blush, tears, sweat drops and symbols over the head, now stay in place when she looks down at your mouse or turns and tilts her head, also on characters whose head moves through their own physics. ([#598](https://github.com/throndir2/Martlet/pull/598))
+
 ## [0.55.0] - 2026-10-07
 
 ### Added

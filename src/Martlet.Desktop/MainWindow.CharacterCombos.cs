@@ -6,9 +6,10 @@ using Martlet.Avatar.Hosting;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Character › Emotes and motions › Combos: the owner's own combos of the shown model's emotes, motions and
-/// gestures. Each ties a tag to 2 to 6 of them: a reply's {tag} sets off every part at once and {/tag} turns its lingering parts
-/// off. They save with the model's emote settings (the card's own autosave), so they are the same on all the owner's computers.</summary>
+/// <summary>Companion › Character › Emotes and motions › Combos: the shown model's combos of its emotes, motions and gestures
+/// (Martlet's own, given once, and the owner's). Each ties a tag to 2 to 6 of them: a reply's {tag} sets off every part at once
+/// and {/tag} turns its lingering parts off. They save with the model's emote settings (the card's own autosave), so they are the
+/// same on all the owner's computers.</summary>
 public partial class MainWindow
 {
     private TextBlock? characterCombosStatus;
@@ -27,7 +28,9 @@ public partial class MainWindow
         section.Children.Add(heading);
         section.Children.Add(Note("A combo sets off several emotes, motions and gestures at once with a tag of your own. Write the tags " +
             "of 2 to 6 of them, such as blush hearts nod. A reply's {tag} sets off each part that is on: a part that stays on stays " +
-            "until the reply writes {/tag}, and the others show a moment. Combos are yours, for this model.", new Thickness(0, 0, 0, 4)));
+            "until the reply writes {/tag}, and the others show a moment. Each model starts with Martlet's own combos, such as " +
+            "{lovestruck}, {flustered} and {ahegao} (off until you turn it on). Change, turn off or remove any of them; a removed " +
+            "one doesn't come back. Combos are yours, for this model.", new Thickness(0, 0, 0, 4)));
         characterCombosStatus = Note(CombosStatus(catalog), new Thickness(0, 0, 0, 4));
         AutomationProperties.SetAutomationId(characterCombosStatus, "CharacterCombosStatus");
         AutomationProperties.SetLiveSetting(characterCombosStatus, AutomationLiveSetting.Polite);

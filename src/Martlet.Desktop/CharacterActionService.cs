@@ -87,11 +87,11 @@ internal sealed class CharacterActionService(string? dataDirectory)
     }
 
     /// <summary>Goes back to the names from the model's own files, forgetting the owner's edits and the Thinking model's names.
-    /// The owner's combos stay.</summary>
+    /// The model's combos stay, and Martlet's combos the owner removed stay removed.</summary>
     internal Task<string?> ResetAsync(CancellationToken token) => Current is { } current
         ? SaveAsync(CharacterActions.Merge(current.Inventory, new CharacterActionSettings
         {
-            ModelId = current.Inventory.ModelId, Actions = [], Combos = current.Settings.Combos
+            ModelId = current.Inventory.ModelId, Actions = [], Combos = current.Settings.Combos, GivenCombos = current.Settings.GivenCombos
         }), token)
         : Task.FromResult<string?>("No character is loaded.");
 

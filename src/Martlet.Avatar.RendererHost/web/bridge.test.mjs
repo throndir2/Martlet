@@ -330,6 +330,7 @@ test("the face Martlet draws over is read unprompted for MCP: how it is followed
     endGesture() {}
     get gestureState() { return {}; }
     hitTest(x) { return x < 0.5 ? { bone: "head", mesh: "Face" } : undefined; }
+    get faceTracking() { return { carriers: 413, skin: "ArtMesh166", milliseconds: 3, eyeMilliseconds: 59 }; }
     faceAnchor() { return { x: 250, y: 100, width: 80, angle: Math.PI / 18, tracking: "bones",
       cheekLeft: { x: 230, y: 115 }, cheekRight: { x: 270, y: 115 }, eyeLeft: { x: 234, y: 100 }, eyeRight: { x: 266, y: 100 },
       mouth: { x: 250, y: 130 },
@@ -351,6 +352,8 @@ test("the face Martlet draws over is read unprompted for MCP: how it is followed
   assert.deepEqual([reading.eyeLeft, reading.eyeRight, reading.mouth, reading.top],
     [{ x: 0.468, y: 0.2 }, { x: 0.532, y: 0.2 }, { x: 0.5, y: 0.26 }, null], "where the eye and mouth emotes sit");
   assert.deepEqual(reading.overlays, ["blush"]);
+  assert.deepEqual(reading.pinned, { carriers: 413, skin: "ArtMesh166", milliseconds: 3, eyeMilliseconds: 59 },
+    "the vertices the face rides on and the skin drawable they belong to");
   assert.ok(!posts.some(post => post.error));
 });
 

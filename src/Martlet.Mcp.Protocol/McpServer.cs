@@ -206,7 +206,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "of its height; null when unknown) and eyeLeftShape and eyeRightShape (the eye's visible opening now: points, " +
             "triangles (null for an outline), its box left, top, right, bottom, and irisInside, whether the iris's middle is in " +
             "it; 0 points when the eye is closed or hidden), the overlays showing and pinned (Live2D: carriers, the mesh vertices " +
-            "the face rides on, milliseconds, how long finding them took at load, and eyeMilliseconds, how long finding the eyes' " +
+            "the face rides on; skin, the ID of the face's skin drawable when they are its vertices (the highest-drawn drawable " +
+            "that holds the face's middle and both cheeks at rest), else null for the vertices that ride the head; " +
+            "milliseconds, how long finding them took at load, and eyeMilliseconds, how long finding the eyes' " +
             "meshes took). summary says which tracking was used, how far the face moved (x, y, width, tilt), per cheek the share " +
             "of readings over the character, what it was mostly over and for what share, the least it showed and its across " +
             "range, eyesFrom (the sources seen) and per eye (eyeLeft, eyeRight) the share of readings with an iris, how far the " +
@@ -628,12 +630,14 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "(Martlet.Avatar.Hosting CharacterStrokes and CharacterPhysicalWords with Martlet.Conversation's TouchLedger), headless, " +
             "with no desktop and no model request. stroke is a JSON CharacterStroke {\"id\",\"phase\":\"end\",\"aspect\",\"samples\":" +
             "[{\"x\",\"y\",\"ms\",\"touch\":CharacterTouch or null}]} summarized against the touch zones saved for modelId in dataDirectory " +
-            "(or the rough zones before any were found): zones crossed, main zone, ms, length, speed, pace (slow, steady or quick) and " +
-            "passes. changes is a JSON array of RendererPhysical {\"kind\":\"moved|home|zoomed|zoom_reset|panned\",\"dx\",\"dy\"," +
+            "(or the rough zones before any were found): zones crossed, main zone, ms, length, speed, pace (slow, steady or quick), " +
+            "passes, dx and dy (where it ended from where it began, page heights), sideways and way (down, up or null), and words: how " +
+            "the ledger says its whole path (where, such as \"down from your chest over your stomach to your thighs\", label, pace, " +
+            "times). changes is a JSON array of RendererPhysical {\"kind\":\"moved|home|zoomed|zoom_reset|panned\",\"dx\",\"dy\"," +
             "\"screenWidth\",\"fromScreen\",\"toScreen\",\"zoomFrom\",\"zoomTo\",\"focus\"}. Returns each change's ledger kind and words, " +
             "the plain line the next reply would carry (\"They slowly stroked your hair 4 times, then moved you to their other " +
-            "monitor.\"), the history line and whether it would start a reply on its own. noticeAll (default true) treats every zone as " +
-            "having Martlet notices on; false uses the zones' own setting.", new
+            "monitor.\"), the history line and whether it would start a reply on its own (touches, strokes and moves do). noticeAll " +
+            "(default true) treats every zone as having Martlet notices on; false uses the zones' own setting.", new
         {
             dataDirectory = new { type = "string" }, modelId = new { type = "string" }, stroke = new { type = "string" },
             changes = new { type = "string" }, noticeAll = new { type = "boolean" }
@@ -826,10 +830,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "gpt-sovits 50082, dia 50084) through the production " +
             "path: the engine's own gateway relay inside a real gateway on 127.0.0.1 (pinned TLS, pairing) and the desktop's paired " +
             "client, with a starter voice as the reference (nothing played or recorded). Returns the service's /status before and " +
-            "after (state, error, model, device, runtime versions such as torch and CUDA, Chatterbox's whispered parts, Chatterbox " +
+            "after (state, error, model, device, runtime versions such as torch and CUDA, Chatterbox " +
             "Original's style), the audio length, time to " +
             "first audio, total time, real-time factor, peak and RMS level, how much of it is voiced (voicedShare: near 0 for a " +
-            "whisper, so text starting with [whispering] shows Chatterbox whispering), or the failure code and message. For " +
+            "whisper, so text starting with [whispering] shows whether the Chatterbox model itself whispered; Martlet adds no " +
+            "whisper of its own), or the failure code and message. For " +
             "chatterbox-original it sends the General and Expressive style saved in dataDirectory (chatterbox-style.json, as " +
             "Companion › Voice saves it), else Resemble's suggestions, and returns it as style. Loopback only; runs " +
             "Martlet.NodeLinkCheck.", new
@@ -2808,6 +2813,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 offered = reply?.Tags.Contains("{" + c.Tag + "}") == true
             }).ToArray(),
             combosProblem,
+            // Martlet's own combos: whether the model was given each one, and its row in combos while one has its tag.
+            martletCombos = Martlet.Avatar.Hosting.CharacterActions.MartletCombos.Select(m => new
+            {
+                tag = m.Tag, parts = m.Parts, use = m.Use, startsOn = m.Enabled, given = catalog.Settings.GivenCombos?.Contains(m.Tag) == true,
+                n = catalog.Combos.Select((c, i) => (c.Tag, i)).Where(c => string.Equals(c.Tag, m.Tag, StringComparison.OrdinalIgnoreCase))
+                    .Select(c => (int?)c.i).FirstOrDefault()
+            }).ToArray(),
             voiceTag, setsOff = voiceTag is null ? null
                 : catalog.For(voiceTag).Select(s => new
                 {

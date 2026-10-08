@@ -60,14 +60,22 @@ false and the renderer page draws the level over the face instead.
 
 `faceAnchor()` says where the face is now, for Martlet's drawings over it
 (`lib/face.ts`). At load the adapter finds the face at rest, then pins its
-eyes, cheeks, mouth and top to nearby mesh vertices that ride the head
+eyes, cheeks, mouth and top to nearby mesh vertices. A Live2D face is drawn in
+layers that move apart as the head turns (the back hair, the skin, the eyes,
+nose and mouth over it), so it first looks for the face's skin (`faceSkin`):
+of the drawables that show, the one drawn highest whose triangles hold the
+face's middle and both cheeks, and no more than three face widths across or
+high. The face is pinned to every vertex of the skin, which needs no parameter
+probe and follows a head that the model's physics turns. Without such a
+drawable, it pins the face to the vertices that ride the head
 rigidly: it moves each of `ParamAngleX`/`Y`/`Z` to find the vertices that turn
 with the head, then every other parameter to its maximum and minimum to drop
 those that deform on their own, and puts every parameter back
-(`faceTracking` reports how many vertices and how long it took). Each frame
+(`faceTracking` reports how many vertices, the skin drawable's ID as `skin`
+when they are its vertices, and how long finding them took). Each frame
 the pinned points follow those vertices as Core deformed them (moving least
 squares), with each cheek's surface (`cheekLeftFrame`, `cheekRightFrame`), and
-`tracking` is `"mesh"`. Without enough such vertices, `tracking` is
+`tracking` is `"mesh"`. Without either, `tracking` is
 `"estimate"`: the face moved with the head angles, as before.
 
 `faceAnchor()` also gives each eye's iris and its visible opening, for drawings

@@ -592,7 +592,8 @@ Companion › Voice shows) and `abilities`, the rundown Companion › Voice show
 `Emotions`, each with `level` `Yes`, `Partly` or `No`, a `note` when partly, its
 `help` sentence and the `tags` that do it) and `summary` ("Voice cloning: yes.
 Laughs & sighs: yes. Emotions: whispering only." for Chatterbox Turbo, whose
-tones other than `[whispering]` don't change the voice). `otherVoices` gives the
+tones other than `[whispering]` don't change the voice and whose `[whispering]`
+the model itself whispers only now and then). `otherVoices` gives the
 same `abilities` and `runsOn` for the `windows` (CPU) and `openai` (online)
 voices, neither of which clones, laughs or shows emotions. Each starter
 voice adds `engines` (the engines that can clone it) and `language` (`en` or
@@ -1310,10 +1311,13 @@ showing {blush} (12 min), ...*); it never goes in the instructions. With `voiceT
 (`kind`, `name` and `holds`, whether it lingers, such as the `laugh` voice emote; one expression and one
 motion picked at random when several share a cue; for a combo's tag such as `{flustered}`, each of its parts that is on)
 and `turnsOff` lists what an off tag turns off (the lingering emote, or a combo's lingering parts); `combo` is the combo
-the tag names, or null. `combos` lists the owner's [combos](AVATARS.md#emotes-and-motions) for the model: each one's `n`
+the tag names, or null. `combos` lists the model's [combos](AVATARS.md#emotes-and-motions) (Martlet's own and the owner's): each one's `n`
 as in `CharacterComboTag-<n>`, `tag`, `parts` (each part's `id`, `kind`, `name`, `tag`, `enabled` and `mode`; `kind`
 is `missing` for a part the model doesn't have), `use`, `hint` (what replies get next to the tag), `enabled`, `lingers`
-(a part that is on lingers, so `{/tag}` is offered too) and `offered`. With `combos`, strings such as
+(a part that is on lingers, so `{/tag}` is offered too) and `offered`. `martletCombos` lists each of Martlet's own
+combos: `tag`, `parts` (gesture tags), `use`, `startsOn` (false for `ahegao`), `given` (whether the model was given
+it; `given_combos` in `character-actions.json`) and `n` (its row in `combos` while one has its tag, otherwise null,
+such as after the owner removed it). With `combos`, strings such as
 `flustered: blush hearts nod | when flattered` read the way the Combos section's boxes are read, those combos replace
 the saved ones; when they can't be saved, `combosProblem` says why (such as *no emote has the tag 'wave'.*) and the
 saved ones stay. With `answer`, a simulated Thinking reply such as
@@ -2013,8 +2017,7 @@ on the CPU (`threads`, PyTorch's threads, at most 8 and never more than the
 performance cores, and `pinned_cpus`, the CPUs of the performance cores it is
 pinned to on native Linux, empty when not pinned, as always on Docker Desktop; null on a GPU)
 and `idleCheck` (`checks`, `every_seconds`, `fastest_ms`, `last_ms` of its
-[idle check](CHATTERBOX_VOICE.md#how-it-runs)), `whisper` (`level_db` and
-the `parts` it has [whispered](CHATTERBOX_VOICE.md#tags)) and, for Chatterbox
+[idle check](CHATTERBOX_VOICE.md#how-it-runs)) and, for Chatterbox
 Original, `style` (`default`, `expressive_parts` and `last`, the style the last
 reply asked for, so the owner's values can be checked at the service), or why
 it could not be read), `seconds` of 24 kHz audio, `firstAudioMs`,
@@ -2025,7 +2028,8 @@ audio arrives after everything before it has played, and all pauses together;
 `voicedShare` (the share of the loud 40 ms frames that have a pitch between 70
 and 400 Hz, from `Martlet.Core.Audio.Voicing`; about 0.6-0.9 for ordinary
 speech and nearly 0 for a whisper, so a `text` that starts with `[whispering]`
-shows if Chatterbox whispers), and `failure`
+shows if the Chatterbox model itself whispered; Martlet adds no
+[whisper of its own](CHATTERBOX_VOICE.md#tags)), and `failure`
 and `problem` (the client's error code and message, for example
 `worker.unavailable` when nothing answers or the model could not load). A
 loading model can take minutes, so the tool allows six; pass
@@ -4818,11 +4822,16 @@ test of the one before. With Companion › Character › Touch zones showing,
 (`TouchZonesLast`). Without `x`, `y` or `taps` it only reads the last tap, as
 does `MoveAvatar`'s `value` in `ui_snapshot`.
 
-**Touches reach the Thinking model** for zones with *Martlet notices* on: a
+**Touches reach the Thinking model** for zones with *Martlet notices* on (on
+by default; a `character-touch-zones.json` of version 1 where no zone of a model
+had it on loads with it on for all of that model's zones, and saves as version
+2): a
 reply to what you say or type carries the touch line in its notes (the desktop
 log's *Touches: 3 went to Thinking in the notes of your message.*), and touches
 on their own start a short reply of their own (*... as a short reply of their
 own.*; the talk window's `LiveTurnInputs` reads *Last reply took 2 touches.*).
+Its message (Companion › Prompts › *Touched*) asks for a sentence or two out
+loud, never only an emote, a sound or `[pass]`.
 Without a Thinking setup `TouchZonesNoticed` says the touches wait for your next
 message.
 
@@ -4835,10 +4844,16 @@ pipe (`move` batches while the stroke goes on, then `end`). Martlet matches
 each sample to a touch zone: each zone the stroke enters plays its reaction
 (unless it is resting), and the first zone's first emote or gesture is held
 until the stroke ends. At the end Martlet summarizes the stroke (zones crossed
-in order, pace `slow`, `steady` or `quick`, passes back and forth, seconds)
+in order, pace `slow`, `steady` or `quick`, passes back and forth, seconds,
+where it ended from where it began and its main direction)
 and, for the crossed zones with *Martlet notices* on (like a tap there),
-records it in the touch ledger once for each pass (at most 8), so the next
-reply hears *They slowly stroked your hair 4 times*; a stroke, like a tap, can
+records it in the touch ledger once for each pass (at most 8) with its whole
+path (`CharacterPhysicalWords.Stroke`: every zone in the order first crossed,
+at most 8 named, a left and a right zone crossed one after the other said
+together), so the next reply hears *They slowly stroked your hair 4 times* or
+*They slowly stroked down from your chest over your stomach to your thighs
+once* (*up and down over* or *back and forth over* the zones when it turned
+back); a stroke, like a tap, can
 start a touch-only reply. Ctrl+drag or middle-drag still pans a zoomed view,
 and an unlocked drag still moves the character. `character_stroke` strokes it
 through UI Automation (`MoveAvatar`'s value, `"stroke:ms;x,y;x,y;..."`) along
@@ -4854,14 +4869,22 @@ summary.
 without a blush of its own, and `blush_deep` and `blush_fierce` on every model,
 over its own blush) and the overlay emotes are drawn around the face each time
 the renderer page draws a frame. A Live2D model's face is pinned to its own
-face meshes. When the model loads, the page moves each head angle
-(`ParamAngleX`, `ParamAngleY`, `ParamAngleZ`) to find the mesh vertices that
-turn with the head. Then it moves every other parameter to its limits, to drop
-the vertices that change shape on their own (hair physics, eyelids, eyes,
-mouth, brows), and puts every parameter back. In each frame the eyes, cheeks,
+face meshes. Live2D draws a face in layers that move apart as the head nods and
+turns (the back hair, the skin, the eyes, nose and mouth over it), so when the
+model loads, the page first looks for the face's skin: of the drawables that
+show, the one drawn highest whose triangles hold the face's middle and both
+cheeks (one more than three face widths across or high is not skin). The face
+is then pinned to every vertex of the skin, so the blush stays on the cheeks,
+also on a model whose physics turns its head (head angles that only feed
+parameters such as `ParamFaceAngleX`). A model without such a drawable is
+pinned to the vertices that turn with the head instead: the page moves each
+head angle (`ParamAngleX`, `ParamAngleY`, `ParamAngleZ`) to find them, then
+moves every other parameter to its limits, to drop the vertices that change
+shape on their own (hair physics, eyelids, eyes, mouth, brows), and puts every
+parameter back. In each frame the eyes, cheeks,
 mouth and top of the head move with those vertices, so they follow idle
 motions, body sway, breathing, the mouse, a look at a point and gestures as
-the model draws them. A model without the standard angle parameters uses the
+the model draws them. A model with neither uses the
 earlier estimate from its head angles. A VRM's face follows its posed head
 bone. Each blush lies on its cheek's surface: a turned head shows the near
 cheek wider and the far cheek narrower, and the far cheek fades out as it
@@ -4879,6 +4902,8 @@ renderer has none; an eye with a known iris has its point at the eye's
 middle), `overlays` (the overlays showing, such as
 `["blush_deep"]`; one fading out is listed until it is gone) and
 `pinned` (Live2D: `carriers`, how many mesh vertices the face rides on,
+`skin`, the ID of the face's skin drawable when they are its vertices, or
+`null` when they are the vertices that turn with the head,
 `milliseconds`, how long finding them took at load, and `eyeMilliseconds`, how
 long finding the eyes' meshes took). The eyes for drawings over them come with
 each reading: `eyesFrom` (`mesh`: a Live2D model's iris and eye-white meshes;
@@ -4951,8 +4976,9 @@ monitors before and after, the character's size before and after, and the
 renderer page's hit test of what a zoom closed in on or a pan centers on).
 Martlet records it in the touch ledger with Locked, Unlocked, Hidden and Shown
 (from its own buttons and the overlay menu): *They moved you to their other
-monitor*, *They zoomed in on your face*. These never start a reply on their
-own; they go with the next one. `MoveAvatar`'s value carries the last one as
+monitor*, *They zoomed in on your face*. A move (`moved` or `home`) starts a
+short reply of its own like a touch (`TouchZonesNoticed` says when); the
+others never do and go with the next one. `MoveAvatar`'s value carries the last one as
 `physical` (`kind`, `dx`, `dy`, `from`, `to`, `zoomFrom`, `zoomTo`, `focus`),
 and `CharacterPhysicalLast` shows the ledger's words. The camera view's own
 framing is not reported.
@@ -4962,9 +4988,14 @@ desktop and no model request: `stroke` (a JSON `CharacterStroke` with its
 hit-tested samples) is summarized against the touch zones saved for `modelId`
 (or the rough zones before any were found), `changes` (a JSON array of
 `RendererPhysical`) are worded, and both go into a touch ledger. It returns the
-stroke's zones, pace and passes, each change's ledger kind and words, the plain
+stroke's zones, pace, passes, `dx` and `dy` (where it ended from where it
+began, page heights), `sideways`, `way` (`down`, `up` or null) and `words`
+(`where`, `label`, `pace`, `times` and `hint`: how the ledger says its whole
+path), each change's ledger kind, words and `startsTurn` (true for touches,
+strokes and moves), the plain
 `line` the next reply would carry, the `history` line and `startsTurn`.
-`noticeAll` (default true) treats every zone as having *Martlet notices* on.
+`noticeAll` (default true) treats every zone as having *Martlet notices* on;
+false uses the zones' own setting.
 
 **Locking the character's position**: Home's `ToggleCharacterLock`
 (*Lock character position*, shown while the character shows or is locked),
@@ -5221,11 +5252,14 @@ menu's `CharacterClearEmotes` turn every lingering emote off (*Cleared 2
 lingering emotes for Clear emotes ...*).
 
 The card ends with **Combos**. `CharacterCombosStatus` reads how many combos
-the model has and which tags replies get (*1 combo. Replies can use 1:
-{flustered}.* or *No combos yet.*). `CharacterCombosAdd` (*Add a combo*,
+the model has and which tags replies get (*9 combos. Replies can use 8:
+{lovestruck} {flustered} {overheated} {fuming} {heartbroken} {dozing}
+{starstruck} {shocked}.* for the built-in character, which has all of
+Martlet's combos with `{ahegao}` off, or *No combos yet.*). `CharacterCombosAdd` (*Add a combo*,
 passive) adds an empty row; nothing is saved until the row has a tag and parts.
 Row `<n>` (as in `character_actions`' `combos`) has `CharacterComboOn-<n>`
-(check box), `CharacterComboName-<n>` (*{flustered} · combo*, or *New combo*;
+(check box: its `checkedState`, and `ui_toggle` turns it on or off),
+`CharacterComboName-<n>` (*{flustered} · combo*, or *New combo*;
 a status field), `CharacterComboState-<n>` (a status field: what it sets off,
 such as *Turns on "hearts" until {/flustered}; plays "blush" and "nod" once.*,
 or why its parts can't be read, such as *No emote has the tag 'wave'.*),

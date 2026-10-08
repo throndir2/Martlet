@@ -3,8 +3,8 @@ import { boundedInteger, Diagnostic, finite, Live2DError, requireCondition } fro
 import { type EyeFields, eyeFrame, type EyeHint, type EyesFrom, eyeShape, hintEye, hintMiddle, irisBox, meshEyes, type MeshEye,
   pinEye, readEyeHint } from "./eyes.js";
 import { type Carrier, type CheekFrame, type Face, faceFeatures, type FaceFeatures, faceFromBox, faceFromHint, faceFromLayout,
-  type FaceHint, faceSource, type FaceSource, bounds, HEAD_ANGLES, headRoll, type Pin, pinFace, type PinnedFace, type Point,
-  POSE_PARAMETERS, trackFace, turnFace } from "./face.js";
+  type FaceHint, faceSkin, faceSource, type FaceSource, bounds, HEAD_ANGLES, headRoll, type Pin, pinFace, type PinnedFace,
+  type Point, POSE_PARAMETERS, skinCarriers, trackFace, turnFace } from "./face.js";
 import { BLUSH_PARAMETERS, type Gesture, GesturePlayer, type GestureState, isBlush, isGesture, supportedGestures } from "./gestures.js";
 import { Capabilities, ChannelMapping, inspectParameters, MappingPlan, Parameter } from "./mapping.js";
 import { checkRuntime, type Animator, type AnimatorAssets, CubismMoc, CubismModel, CubismRenderer, SdkModules } from "./sdk.js";
@@ -179,6 +179,8 @@ export class Live2DAdapter {
   #faceSource: FaceSource | undefined;
   #faceHint: Face | undefined;
   #carriers: readonly Carrier[] = [];
+  /** The ID of the drawable the face is pinned to when it is the face's skin (see faceSkin). */
+  #skin: string | undefined;
   #pinned: PinnedFace | undefined;
   #hintPinned: PinnedFace | undefined;
   #faceProbeMilliseconds = 0;
@@ -369,11 +371,13 @@ export class Live2DAdapter {
     this.#hintPinned = this.#faceHint ? pinFace(this.#faceHint, now) : undefined;
   }
 
-  /** How many mesh vertices the face is pinned to (0: it follows the head's angles instead), how long finding them took when
-   *  the model loaded, and how long finding the eyes' meshes took then. */
-  get faceTracking(): { readonly carriers: number; readonly milliseconds: number; readonly eyeMilliseconds: number } {
-    return { carriers: this.#carriers.length, milliseconds: Math.round(this.#faceProbeMilliseconds),
-      eyeMilliseconds: Math.round(this.#eyes.milliseconds) };
+  /** How many mesh vertices the face is pinned to (0: it follows the head's angles instead), the ID of the drawable they
+   *  belong to when they are the face's skin (`skin`, see faceSkin; absent when they are the vertices that ride the head),
+   *  how long finding them took when the model loaded, and how long finding the eyes' meshes took then. */
+  get faceTracking(): { readonly carriers: number; readonly skin?: string; readonly milliseconds: number;
+    readonly eyeMilliseconds: number } {
+    return { carriers: this.#carriers.length, ...(this.#skin !== undefined ? { skin: this.#skin } : {}),
+      milliseconds: Math.round(this.#faceProbeMilliseconds), eyeMilliseconds: Math.round(this.#eyes.milliseconds) };
   }
 
   /**
@@ -405,8 +409,9 @@ export class Live2DAdapter {
   /**
    * Where the face is now, in the canvas's drawing-buffer pixels (y down), for drawings over it: its middle, width, roll
    * (radians, clockwise), the cheeks, eyes and mouth (left and right as the viewer sees them) and the top of the head.
-   * Pinned to the model's meshes (`tracking` "mesh", with each cheek's surface: one face width across and down it), so it
-   * follows whatever moves the head; otherwise estimated from the head's angles ("estimate"). Each eye with an iris (from the
+   * Pinned to the model's meshes (`tracking` "mesh", with each cheek's surface: one face width across and down it): to the
+   * face's skin when one drawable holds it (see `faceTracking`), else to the vertices that ride the head, so it follows
+   * whatever moves the head; otherwise estimated from the head's angles ("estimate"). Each eye with an iris (from the
    * model's meshes or the eye hint, see `eyesFrom`) adds its iris (`irisLeft`, `irisRight`: middle and radii across and down
    * the face) and its opening (`eyeLeftShape`, `eyeRightShape`), and puts `eyeLeft`/`eyeRight` at the eye's middle.
    * Undefined before a model shows.
@@ -605,9 +610,14 @@ export class Live2DAdapter {
       this.#faceSource = this.#findFace(model, bundle);
       const rest = this.#restFace(model);
       const started = this.#services.now();
-      this.#carriers = rest ? this.#findCarriers(model, rest) : [];
+      // Pinned to the face's skin when a drawable holds the face, else to the vertices that ride the head.
+      const skin = rest ? this.#findSkin(model, rest) : undefined, onSkin = rest && skin ? pinFace(rest, skin.carriers) : undefined;
+      if (skin && onSkin) [this.#carriers, this.#skin, this.#pinned] = [skin.carriers, skin.id, onSkin];
+      else {
+        this.#carriers = rest ? this.#findCarriers(model, rest) : [];
+        this.#pinned = rest ? pinFace(rest, this.#carriers) : undefined;
+      }
       this.#faceProbeMilliseconds = this.#services.now() - started;
-      this.#pinned = rest ? pinFace(rest, this.#carriers) : undefined;
       this.#eyes = rest ? this.#findEyesSafely(model, rest) : NO_EYES;
       return this.#plan.capabilities;
     } catch (error) {
@@ -900,6 +910,24 @@ export class Live2DAdapter {
   }
 
   /**
+   * The face's skin around `face` (see faceSkin): its ID and every vertex of it as carriers, which the face then follows as
+   * Core deforms the skin, whatever moves the head (its angles, or parameters that physics drives from them). Undefined when
+   * no drawable holds the face.
+   */
+  #findSkin(model: CubismModel, face: Face): { id: string; carriers: Carrier[] } | undefined {
+    const orders = model.getDrawableRenderOrders();
+    const skin = faceSkin(face, {
+      count: model.getDrawableCount(),
+      shown: i => model.getDrawableDynamicFlagIsVisible(i) && model.getDrawableOpacity(i) >= 0.05,
+      vertices: i => model.getDrawableVertices(i),
+      indices: i => model.getDrawableVertexIndices(i),
+      order: i => orders[i] ?? i,
+    });
+    return skin === undefined ? undefined
+      : { id: model.getDrawableId(skin).getString().s, carriers: skinCarriers(skin, model.getDrawableVertices(skin)) };
+  }
+
+  /**
    * The vertices around `face` that ride the head rigidly. Live2D reports every mesh as it deforms it, so the model is asked:
    * each head angle is moved in turn (what moves is the head), then every other parameter at once to its maximum and to its
    * minimum (what moves then deforms on its own: hair physics, blinking, the eyes' gaze, the mouth, the brows). Every
@@ -1093,6 +1121,7 @@ export class Live2DAdapter {
     this.#faceSource = undefined;
     this.#faceHint = undefined;
     this.#carriers = [];
+    this.#skin = undefined;
     this.#pinned = undefined;
     this.#hintPinned = undefined;
     this.#faceProbeMilliseconds = 0;

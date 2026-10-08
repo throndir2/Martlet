@@ -136,13 +136,15 @@ public static class PromptCatalog
         "remind them naturally and in character (\"...oh, and by the way, ...\"), without mentioning notes or tools.";
 
     public const string DefaultTouchedInstructions =
-        "(Martlet's note, not said by the user: the user just touched you, their desktop character, without saying anything.) " +
-        "{touches} React in character, briefly, the way you would to being touched like that: one short line, a sound or a " +
-        "fitting emote is enough. Don't mention notes.";
+        "(Martlet's note, not said by the user: the user just touched you, their desktop character, or moved you around, without " +
+        "saying anything.) {touches} React to it out loud and in character, the way you really would to being touched or handled " +
+        "like that: say one or two short sentences about how it feels or what you think of it, with a fitting emote if you like. " +
+        "Treat it like being spoken to: always say something, never only an emote, a sound or [{silent}]. When they keep doing " +
+        "it, let your reaction build. Don't mention notes.";
 
     public const string DefaultTouchedNotesInstructions =
-        "While talking, the user also touched you, their desktop character: {touches} Answer what they said first; react to the " +
-        "touch only briefly and only if it fits.";
+        "While talking, the user also touched you, their desktop character, or moved you around: {touches} Answer what they said " +
+        "first, then react to it too, briefly and in character.";
 
     public const string DefaultSingingInstructions =
         "You can sing: sing_song makes a song in your own voice in the background (a few minutes). When the user asks you to sing " +
@@ -380,10 +382,11 @@ public static class PromptCatalog
             "into its answer. {reminders} lists each due reminder.",
             DefaultReminderDueNotesInstructions, ["reminders"]),
         new(Touched, ConversationGroup, "Touched",
-            "The message of the short reply Martlet starts on its own when you touch the desktop character (a zone with Martlet " +
-            "notices on, Companion › Character › Touch zones) and say nothing: about 1.2 seconds after the last touch, at most once " +
-            "every 4 seconds. {touches} says what you did, such as They patted the top of your head 3 times over 2 seconds.",
-            DefaultTouchedInstructions, ["touches"]),
+            "The message of the short reply Martlet starts on its own when you touch or stroke the desktop character (on zones " +
+            "with Martlet notices on, Companion › Character › Touch zones) or move it around, and say nothing: about 1.2 seconds " +
+            "after the last touch, at most once every 4 seconds. {touches} says what you did, such as They slowly stroked down " +
+            "from your chest over your stomach to your thighs once. {silent} is the word the model answers to stay quiet.",
+            DefaultTouchedInstructions, ["touches", "silent"]),
         new(TouchedNotes, ConversationGroup, "Touched, with your message",
             "Goes in the notes of your next message instead, when you touched the character just before or while you talked or " +
             "typed. {touches} says what you did.",
