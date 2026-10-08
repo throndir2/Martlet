@@ -17,15 +17,34 @@ public sealed record ZoneAsk(ZoneAskKind Kind, string Step, string Instructions,
 /// <summary>A point the model itself measured (a VRM humanoid bone), as fractions of the snapshot.</summary>
 public sealed record ZoneHintPoint(string Name, double X, double Y);
 
-/// <summary>Where the model's own parts named for a body part lie (Live2D drawables whose IDs name hair, a face, hands...), as
-/// fractions of the snapshot.</summary>
-public sealed record ZoneHintArea(string Part, TouchZoneBox Box, int Drawables);
+/// <summary>Where the model's own parts named for a body part lie (Live2D drawables whose IDs name hair, a face, hands..., or the
+/// drawables in the parts its DisplayInfo file names so, such as 头, 前发 or 右腿), as fractions of the snapshot, and for a part
+/// that comes in pairs which side it is on: the character's own "left" or "right" (null for both or the middle).</summary>
+public sealed record ZoneHintArea(string Part, TouchZoneBox Box, int Drawables, string? Side = null);
+
+/// <summary>A drawable of a Live2D model in parts the model's own part names call body parts (from its DisplayInfo file, else the
+/// part IDs), as fractions of the snapshot: its box, those body parts (nearest part first: an eye's drawable in 左眼 inside 头 is
+/// eyes, then head) and, for a part that comes in pairs, its side, the character's own "left" or "right", told by where it lies
+/// and which way the character faces (a name's 左 or L only groups a limb's drawables; null in the middle).</summary>
+public sealed record ZoneHintPiece(TouchZoneBox Box, IReadOnlyList<string> Parts, string? Side);
 
 /// <summary>What the renderer's probe says about the character in the snapshot: its VRM bones and its named Live2D parts, and
 /// whether it faces the viewer (its left on the picture's right; null when that can't be told).</summary>
 public sealed record ZoneHints(IReadOnlyList<ZoneHintPoint> Bones, IReadOnlyList<ZoneHintArea> Areas, bool? FacesViewer)
 {
     public bool Empty => Bones.Count == 0 && Areas.Count == 0;
+    /// <summary>The drawables in the parts the model's own part names call body parts; empty for a model whose part names say
+    /// nothing (or a VRM). With them, the close-ups hold their parts and boxes that miss their part move onto it.</summary>
+    public IReadOnlyList<ZoneHintPiece> Pieces { get; init; } = [];
+    /// <summary>The middle of the character's body from left to right (a fraction of the snapshot), from its named head, neck or
+    /// upper body; null without <see cref="Pieces"/>.</summary>
+    public double? Middle { get; init; }
+    /// <summary>How many parts the Live2D model has, and how many its DisplayInfo file names.</summary>
+    public int ModelParts { get; init; }
+    public int NamedModelParts { get; init; }
+    public bool Named => Pieces.Count > 0;
+    /// <summary>How many body parts the model's own names place (hair, face, arms...).</summary>
+    public int NamedParts => Areas.Select(a => a.Part).Distinct(StringComparer.Ordinal).Count();
 }
 
 /// <summary>How a detection goes: the longer side of each picture sent, how far a close-up may zoom in, how many check rounds
@@ -212,9 +231,10 @@ public static partial class TouchZoneDetection
         if (points.Length > 0)
             lines.Add("Measured from the model's own skeleton (exact points, fractions of this picture): " + string.Join("; ", points) + ".");
         var areas = hints.Areas.Select(a => (a, Seen: Clip(a.Box.Relative(crop)))).Where(a => a.Seen is not null)
-            .Select(a => $"{a.a.Part} {Point(a.Seen!.X, a.Seen.Y)} to {Point(a.Seen.X + a.Seen.Width, a.Seen.Y + a.Seen.Height)}").ToArray();
+            .Select(a => $"{AreaName(a.a)} {Point(a.Seen!.X, a.Seen.Y)} to {Point(a.Seen.X + a.Seen.Width, a.Seen.Y + a.Seen.Height)}").ToArray();
         if (areas.Length > 0)
-            lines.Add("The model's own parts named for these lie here (fractions of this picture; the names can mislead): " + string.Join("; ", areas) + ".");
+            lines.Add("The model's own parts, by the names in its files, lie here (fractions of this picture; a name can mislead): " +
+                string.Join("; ", areas) + ".");
         return lines.Count == 0 ? "" : "\n" + string.Join("\n", lines);
     }
 

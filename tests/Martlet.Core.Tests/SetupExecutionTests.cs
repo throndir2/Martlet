@@ -275,6 +275,62 @@ public sealed class SetupExecutionTests
         Assert.Equal(0, targets.Checks);
     }
 
+    [Fact]
+    public async Task A_job_no_host_does_next_switches_this_PCs_route_or_says_where_the_owner_chooses_it()
+    {
+        var targets = new Targets();
+        // Thinking's option is on the change only (S1's SetupChange.OptionId); the others on the target plan.
+        var target = new NetworkSetup([], [new JobPlan(ClusterJobs.Thinking, null),
+            new JobPlan(ClusterJobs.Listening, null, OptionId: "hosted:openai-transcribe"), new JobPlan(ClusterJobs.LipSync, null, OptionId: "loudness-lipsync")]);
+        var current = new NetworkSetup([], [new JobPlan(ClusterJobs.Listening, "gpu-box")]);
+        SetupChange[] changes =
+        [
+            new(SetupChangeKind.AssignJob, "", "Think with Gemma 4 E2B on each companion PC.", "w") { Job = ClusterJobs.Thinking, OptionId = "gemma4:e2b" },
+            new(SetupChangeKind.AssignJob, "", "Listen with OpenAI.", "w") { Job = ClusterJobs.Listening },
+            new(SetupChangeKind.AssignJob, "", "Lip-sync by loudness.", "w") { Job = ClusterJobs.LipSync, FromMachineId = "gpu-box" },
+            new(SetupChangeKind.RemoveRole, "gpu-box", "Remove Listening from gpu-box.", "w") { RoleKind = "stt" },
+            new(SetupChangeKind.RemoveRole, "gpu-box", "Remove lip-sync from gpu-box.", "w") { RoleKind = "audio2face" }
+        ];
+        var recommendation = new NetworkRecommendation(current, target, changes);
+        var preflight = await SetupExecutor.PrepareAsync(recommendation, targets, default);
+        Assert.Equal([SetupStepVerdict.Ready, SetupStepVerdict.NeedsOwner, SetupStepVerdict.Ready, SetupStepVerdict.NeedsOwner, SetupStepVerdict.Ready],
+            preflight.Items.Select(i => i.Verdict));
+        Assert.Equal("Ollama downloads gemma4:e2b from ollama.com.", preflight.Items[0].Terms);
+        Assert.Contains("Choose hosted:openai-transcribe", preflight.Items[1].Text);
+        // gpu-box still listens until the owner chooses OpenAI: its Listening role stays.
+        Assert.Contains("stays until listening moves off gpu-box", preflight.Items[3].Text);
+        Assert.False(preflight.Items[1].Applies);
+        Assert.False(preflight.Items[3].Applies);
+
+        var outcome = await SetupExecutor.ApplyAsync(recommendation, preflight, targets, null, default);
+        Assert.Equal(["thinking=gemma4:e2b"], targets.Routes);
+        Assert.Equal(["lip-sync=(each PC) off"], targets.Assigned);
+        Assert.Equal(["audio2face"], targets.Commands.Select(c => c.RoleKind));
+        Assert.Equal([SetupMachineState.Done, SetupMachineState.NeedsAttention, SetupMachineState.Done, SetupMachineState.NeedsAttention,
+            SetupMachineState.Done], outcome.Steps.Select(s => s.State));
+        Assert.Contains("thinking@", targets.Accepted);
+        Assert.False(outcome.Succeeded);
+    }
+
+    [Fact]
+    public async Task A_handover_that_fails_keeps_the_role_its_job_still_uses()
+    {
+        var targets = new Targets { FailAssign = true };
+        SetupChange[] changes =
+        [
+            new(SetupChangeKind.AssignJob, "desk-host", "Think with desk-host.", "w") { Job = ClusterJobs.Thinking, FromMachineId = "gpu-box" },
+            new(SetupChangeKind.RemoveRole, "gpu-box", "Remove Thinking from gpu-box.", "w") { RoleKind = "ollama" }
+        ];
+        var recommendation = new NetworkRecommendation(new([], []), new([], [new JobPlan(ClusterJobs.Thinking, "desk-host")]), changes);
+        var preflight = await SetupExecutor.PrepareAsync(recommendation, targets, default);
+        Assert.All(preflight.Items, i => Assert.Equal(SetupStepVerdict.Ready, i.Verdict));
+        var outcome = await SetupExecutor.ApplyAsync(recommendation, preflight, targets, null, default);
+        Assert.Equal(SetupMachineState.Failed, outcome.Steps[0].State);
+        Assert.Equal(SetupMachineState.NeedsAttention, outcome.Steps[1].State);
+        Assert.StartsWith("Kept ollama on gpu-box: thinking still uses it", outcome.Steps[1].Text, StringComparison.Ordinal);
+        Assert.Empty(targets.Commands);
+    }
+
     private sealed class Collect(List<SetupRun> runs) : IProgress<SetupRun>
     {
         public void Report(SetupRun value) => runs.Add(value);
@@ -322,14 +378,33 @@ public sealed class SetupExecutionTests
 
         public Task<SetupStepResult> AssignJobAsync(string job, string? hostId, bool off, CancellationToken cancel)
         {
-            Assigned.Add($"{job}={hostId ?? "(each PC)"}");
+            if (FailAssign) return Task.FromResult(SetupStepResult.Failed("Couldn't save the plan."));
+            Assigned.Add($"{job}={hostId ?? "(each PC)"}{(off ? " off" : "")}");
             return Task.FromResult(SetupStepResult.Done("assigned"));
         }
+
+        internal bool FailAssign { get; init; }
 
         public Task<SetupStepResult> ShareAsync(string job, string machineId, bool join, CancellationToken cancel)
         {
             Shared.Add($"{job}{(join ? "+" : "-")}{machineId}");
             return Task.FromResult(SetupStepResult.Done("shared"));
+        }
+
+        internal List<string> Routes { get; } = [];
+
+        public Task<SetupRouteReading> ReadRouteAsync(string job, string optionId, CancellationToken cancel) => Task.FromResult(optionId switch
+        {
+            "gemma4:e2b" => new SetupRouteReading(SetupStepVerdict.Ready, "Thinking uses Gemma 4 E2B in Ollama on this PC.")
+                { Terms = "Ollama downloads gemma4:e2b from ollama.com." },
+            "hosted:nvidia-build" => new SetupRouteReading(SetupStepVerdict.Ready, "Thinking already uses NVIDIA Build on this PC.") { InUse = true },
+            _ => new SetupRouteReading(SetupStepVerdict.NeedsOwner, $"Choose {optionId} for {job} in Companion › Thinking.")
+        });
+
+        public Task<SetupStepResult> UseRouteAsync(string job, string optionId, CancellationToken cancel)
+        {
+            Routes.Add($"{job}={optionId}");
+            return Task.FromResult(SetupStepResult.Done($"{job} uses {optionId}."));
         }
 
         public Task<IReadOnlyDictionary<string, string>> CheckAsync(CancellationToken cancel)
@@ -345,6 +420,6 @@ public sealed class SetupExecutionTests
             return Task.CompletedTask;
         }
 
-        void ISetupTargets.Accepted(SetupPreflightItem item) => Accepted.Add($"{item.Change.RoleKind}@{item.Change.MachineId}");
+        void ISetupTargets.Accepted(SetupPreflightItem item) => Accepted.Add($"{item.Change.RoleKind ?? item.Change.Job}@{item.Change.MachineId}");
     }
 }

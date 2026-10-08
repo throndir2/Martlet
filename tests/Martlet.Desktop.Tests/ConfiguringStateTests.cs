@@ -43,6 +43,45 @@ public sealed class ConfiguringStateTests
     }
 
     [Fact]
+    public void A_job_no_host_does_next_is_switched_here_only_where_the_Companion_page_can_and_otherwise_says_where()
+    {
+        static Martlet.Core.Settings.SetupRoute Route(Martlet.Core.Settings.SetupRole role, Martlet.Core.Settings.SetupRouteType type, string origin, string model) => new()
+        {
+            Role = role, RouteType = type, ProviderAlias = "test", Origin = origin, ModelId = model, ConfigurationRevision = Guid.NewGuid()
+        };
+        var openAi = Route(Martlet.Core.Settings.SetupRole.Llm, Martlet.Core.Settings.SetupRouteType.OpenAi, "https://api.openai.com/v1", "gpt-5");
+        var facts = new SetupRouteFacts(false, openAi, OllamaMissing: false, ParakeetInstalled: _ => false, WindowsVoice: "Microsoft Zira");
+
+        // Thinking: from OpenAI to Gemma 4 E2B in this PC's Ollama, with the download's terms; nothing to do when it already runs.
+        var local = SetupRoutes.Read("thinking", "gemma4:e2b", facts);
+        Assert.Equal(SetupStepVerdict.Ready, local.Verdict);
+        Assert.False(local.InUse);
+        Assert.Contains("from ollama.com", local.Terms);
+        var ollama = Route(Martlet.Core.Settings.SetupRole.Llm, Martlet.Core.Settings.SetupRouteType.ChatCompletions, MainWindow.LocalOllamaBaseUrl, "gemma4:e2b");
+        Assert.True(SetupRoutes.Read("thinking", "gemma4:e2b", facts with { Route = ollama }).InUse);
+        Assert.Equal(SetupStepVerdict.NeedsOwner, SetupRoutes.Read("thinking", "gemma4:e2b", facts with { OllamaMissing = true }).Verdict);
+
+        // A hosted provider: only when this PC uses it already; otherwise the owner chooses it (with a key) in Companion.
+        Assert.True(SetupRoutes.Read("thinking", "hosted:openai", facts).InUse);
+        var nvidia = SetupRoutes.Read("thinking", "hosted:nvidia-build", facts);
+        Assert.Equal(SetupStepVerdict.NeedsOwner, nvidia.Verdict);
+        Assert.Contains("Companion › Thinking", nvidia.Text);
+
+        // Listening with Parakeet (the catalog's v3 is the int8 download), and a Windows voice.
+        var parakeet = SetupRoutes.Read("listening", "parakeet-tdt-0.6b-v3-cpu", facts with { Route = null });
+        Assert.Equal(SetupStepVerdict.Ready, parakeet.Verdict);
+        Assert.Contains("CC BY 4.0", parakeet.Terms);
+        Assert.Null(SetupRoutes.Read("listening", "parakeet-tdt-0.6b-v3-cpu", facts with { Route = null, ParakeetInstalled = _ => true }).Terms);
+        Assert.Equal(SetupStepVerdict.CannotApply, SetupRoutes.Read("listening", "parakeet-tdt-0.6b-v3-cpu", facts with { ParakeetInstalled = null }).Verdict);
+        Assert.Contains("Microsoft Zira", SetupRoutes.Read("speaking", "windows-speech", facts with { Route = null }).Text);
+        Assert.Equal(SetupStepVerdict.NeedsOwner, SetupRoutes.Read("speaking", "windows-speech", facts with { Route = null, WindowsVoice = null }).Verdict);
+        Assert.Contains("Companion › Voice", SetupRoutes.Read("speaking", "hosted:openai-tts", facts with { Route = null }).Text);
+
+        // A host PC uses no jobs.
+        Assert.Contains("on your companion PC", SetupRoutes.Read("thinking", "gemma4:e2b", facts with { HostPc = true }).Text);
+    }
+
+    [Fact]
     public void A_host_change_shows_while_it_runs_and_ends_with_it()
     {
         var changes = 0;

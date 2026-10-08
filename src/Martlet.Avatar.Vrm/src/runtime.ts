@@ -3,6 +3,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { VRM, VRMHumanBoneList, VRMLoaderPlugin } from "@pixiv/three-vrm";
 import { blinkPresets, finite, gazePresets, inspectVrm, integer, mouthPresets, object, requireValid, VrmError,
   type VrmCapabilities } from "./inspect.js";
+import { type EyeFields, type EyeHint, type EyesFrom, type FaceFrame, VrmEyes } from "./eyes.js";
 import { hitTestVrm, type VrmHit } from "./touch.js";
 
 type BoneName = Parameters<VRM["humanoid"]["getNormalizedBoneNode"]>[0];
@@ -487,6 +488,7 @@ export class VrmRuntime {
   private readonly faceRestore = new Map<string, number>();
   private hipsRest: number | undefined;
   private faceWidth = 0.14;
+  private eyes: VrmEyes | undefined;
 
   get capabilities(): VrmCapabilities | undefined { return this.inspected; }
   get scene(): THREE.Group | undefined { return this.model?.scene; }
@@ -673,6 +675,23 @@ export class VrmRuntime {
       mouth: point(0, -0.42, 0.1), top: point(0, 0.75, -0.1) };
   }
 
+  /** Uses eyes measured by vision (see EyeHint in eyes.ts) for what the model's eye bones and meshes can't give; undefined
+   *  clears them. Returns where the eyes come from now. */
+  setEyeHint(hint: EyeHint | undefined): EyesFrom {
+    this.loaded();
+    return this.eyes?.setHint(hint) ?? "estimate";
+  }
+
+  /** Where the eyes' irises and openings come from (see EyesFrom in eyes.ts). */
+  get eyesFrom(): EyesFrom { return this.eyes?.from ?? "estimate"; }
+
+  /** Each eye's iris, opening and middle for the face now (`face`, see faceGeometry) as `project` (world to canvas pixels)
+   *  shows it, and where they came from (see VrmEyes.fields); eyes that can't be read now are only left out. */
+  eyeFields(face: FaceFrame, project: (world: THREE.Vector3) => { x: number; y: number }): EyeFields {
+    try { return this.eyes?.fields(face, project) ?? { eyesFrom: "estimate" }; }
+    catch { return { eyesFrom: this.eyesFrom }; }
+  }
+
   /** The playing gesture and how far into it, advanced by `deltaSeconds`; undefined once it is over. */
   private advanceGesture(deltaSeconds: number): { name: VrmGesture; t: number; weight: number } | undefined {
     const gesture = this.gesture;
@@ -838,6 +857,8 @@ export class VrmRuntime {
       // A face is about a twelfth as wide as the figure is tall.
       const box = new THREE.Box3().setFromObject(result.vrm.scene);
       this.faceWidth = box.isEmpty() ? 0.14 : Math.max(0.01, 0.09 * (box.max.y - box.min.y));
+      // Measured now, while the model is at rest; a model that breaks it only gets no eyes from its bones and meshes.
+      try { this.eyes = new VrmEyes(result.vrm); } catch { this.eyes = undefined; }
       return result.capabilities;
     } finally { this.pending = false; }
   }
@@ -1066,6 +1087,7 @@ export class VrmRuntime {
       releaseResources(this.model.scene);
     }
     this.model = undefined; this.inspected = undefined; this.selection = undefined; this.revision = undefined; this.inputMode = undefined;
+    this.eyes = undefined;
     this.actions.clear(); this.heldExpressions.clear(); this.gesture = undefined; this.held = []; this.blush = undefined; this.hipsRest = undefined;
     this.talk = 0;
   }

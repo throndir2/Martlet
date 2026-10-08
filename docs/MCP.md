@@ -1332,9 +1332,18 @@ the whole picture: JSON boxes as fractions or named edges (`left`, `top`,
 `right`, `bottom`), pixels of a `width` × `height` picture, 400 × 800 by
 default, or Qwen-style 0..1000 `bbox_2d` grounding; an answer cut off part way
 keeps the zones it finished), `detected` (those zones
-bound to `probe`, a simulated renderer zones probe of Live2D `drawables` and
-VRM `bones` in page fractions, with `crop`, `"left,top,width,height"` where
-the snapshot sat on the page), `saved` (the model's zones in
+bound to `probe`, a simulated renderer zones probe of Live2D `drawables` (each
+with the `part` it belongs to) and VRM `bones` in page fractions, and a Live2D
+model's own `parts` (`id`, its DisplayInfo `name`, such as 头 or 右腿, and its
+`parent`), with `crop`, `"left,top,width,height"` where
+the snapshot sat on the page; `probePath` reads the `probe.json` that *Detect
+zones* keeps with the pictures it sent, crop and all, or a bare probe), `hints`
+(what the probe tells: how many parts the model has (`modelParts`) and names
+(`namedModelParts`), the body parts its names place (`namedParts`; each of
+`areas` with its `part`, the character's own `side` for one that comes in pairs
+and its `box` as left, top, right and bottom fractions of the snapshot) and the
+close-ups' windows they give (`regions`: head, upper_body and lower_body, or
+null), `saved` (the model's zones in
 `character-touch-zones.json`: how many, how many are `active`, who found them,
 whether they were found with the character framed `whole`, the `crop` (where
 the picture sat on the page with the character framed whole, as `left`, `top`,
@@ -1342,7 +1351,8 @@ the picture sat on the page with the character framed whole, as `left`, `top`,
 zoomed out to show parts the model draws past its own canvas, such as legs),
 whether a snapshot
 is kept, what the last detection `sent` (its plain `line`, `requests`,
-`pictures` and `steps`), and each zone's parts, `plays`, whether Martlet `notices` it and the owner's `hint`) and,
+`pictures`, `steps` and, from its `probe.json`, the `probe`'s hints as above) and
+each zone's parts, `plays`, whether Martlet `notices` it and the owner's `hint`) and,
 with `touch` (a `CharacterTouch` object as JSON; `wholeX` and `wholeY` are where
 it lands with the character framed whole), `match`: the zone it lands
 in, `how` (`drawable`, `bone`, `hair`, `box` or `coarse`), its rough `coarse`
@@ -1362,8 +1372,13 @@ on unless it or the saved zones turn it off) the intimate zones
 (`TouchZoneDetection.Erogenous`: neck, lips, ears, chest, breasts, waist, hips,
 groin, buttocks and inner thighs) must be found: the ones the close-ups miss are
 asked for again on the whole character (the `missing` step), then worked out
-from the zones around them. `detection` then reports each request
-(`asked`: its `step`, `kind`, picture size and type, `marks`, the message,
+from the zones around them. With a probe whose parts name body parts, the
+close-ups' windows come from them and boxes that clearly miss their named part
+are moved onto it (the `steps` say *took head, upper_body, lower_body from the
+model's own named parts* and *moved neck onto the model's own neck*).
+`detection` then reports each request
+(`asked`: its `step`, `kind`, picture size and type, its `region` in the
+snapshot, `marks`, the message,
 the stand-in's answer and whether it `failed`), the `steps` (what each found,
 swapped, moved, removed, added or worked out), `requestCount`, the `failure` it
 stopped at (null when none), what it `missed`, the `required` zones and those
@@ -1438,7 +1453,10 @@ rest pose and closes; the character on the desktop (`SetupCharacterNow`,
 loaded off screen for its touch zones picture* and *Finding touch zones: a ...
 picture of the character in its rest pose, drawn off screen*, with *zoomed out
 to 0.94x to show the parts drawn past the model's own canvas* when the model
-draws past its own canvas. `TouchZonesStop` (shown while it runs; a passive click)
+draws past its own canvas, and how many bones and named parts the model gives
+(*0 bones and 12 named parts from the model (39 of its 39 parts named in its
+DisplayInfo file, so the close-ups hold their parts and boxes that miss their
+part move onto it)*). `TouchZonesStop` (shown while it runs; a passive click)
 stops it and keeps the zones found until then, `TouchZonesSentView` (*Show the
 picture Thinking saw*, a check box) shows the whole character as Thinking saw
 it under the boxes, `TouchZonesSentOpen` opens the folder of pictures in
@@ -1466,6 +1484,69 @@ zones* is on without a model that can see). With it, setting
 makes the stand-in fail that request instead of answering, as a model whose
 computer stopped answering: *Detect zones* then stops there and keeps the zones
 from before (FIXTURE - NOT AI in `TouchZonesDetection`).
+
+`character_eyes` rehearses Companion › Character › Touch zones › [Eyes](AVATARS.md#eyes)
+with no vision request: `request` (the close-up's `edge`, 768 pixels, and its
+width in `faceWidths`, 1.6, with the `instructions`, the first `text`, the
+`check` message that goes with the boxes drawn and numbered, and the `again`
+message after an answer Martlet couldn't use), `closeUp` (the picture's
+`width` and `height`, the `area` it cuts from the snapshot and the `face` in
+the snapshot's pixels with its `rollDegrees`), `measurement` (with `answer`, a
+simulated vision reply about the close-up such as
+`{"left":{"iris":{"left":0.34,"top":0.46,"right":0.41,"bottom":0.52},"eye":{...}},"right":{...}}`,
+as fractions, pixels or the 0..1000 grid, or flat keys such as `left_iris`;
+and `second`, the answer to the second request when the first can't be read
+or fails Martlet's checks: the `steps`, each request `asked` (its `step`,
+`kind` `Eyes`, `Check` or `Again`, picture, `marks`, message and answer), the
+four `boxes` as fractions of the close-up, the `problems` the checks found,
+the `failure`, and the `hint` the renderer gets: each eye's `iris` (`x`, `y`,
+`r`) and opening (`eye`: `x`, `y`, `rx`, `ry`) in face widths from the face's
+middle, roll removed), `checks` (the limits the checks use, in face widths),
+`saved` (the model's measurement in `character-eyes.json`: who measured it,
+when, the `hint`, the pictures kept, whether the picture of its boxes is kept
+and its plain `line`) and, with `eyesFrom` (`mesh`, `bones`, `vision` or
+`estimate`, what the renderer says the eyes use), the `status` line the
+section shows. Without `snapshotPath` the close-up is exactly 1.6 face widths
+around an upright face; with `snapshotPath` (a PNG of the character,
+transparent around it) and `face` (`"x,y,width[,rollDegrees]"`, the face's
+middle and width as fractions of the snapshot) the production close-up is
+composed and encoded as the desktop sends it (`previewDirectory` keeps the
+pictures). `save` (an explicit, disposable `dataDirectory` only) writes the
+measurement for the model (`modelPath`, `modelId` or the one the
+`dataDirectory`'s `avatar.json` shows) with its pictures, marked FIXTURE - NOT
+AI, as *Measure the eyes* would; `forget` removes it. Never the model's path;
+it contacts nothing.
+
+The Eyes rows (in the Touch zones card) read through `CharacterEyesStatus`
+(where the shown model's eyes come from: *From the model's own meshes.*,
+*From the model's own eye bones and meshes.*, *Measured with vision at 3:12
+PM.* or *Estimated: Martlet guesses where the eyes are from the face...*; while
+the character is hidden, the saved measurement or *Show the character to see
+where its eyes come from.*), `CharacterEyesProgress` (how measuring goes or
+went: each step while it runs, the result or why it failed, such as *Couldn't
+ask the Thinking model (...)* or *The Thinking model's eyes didn't pass
+Martlet's checks: ...*) and `CharacterEyesNote` (shown only when no model can
+see pictures: *Measure the eyes is off: ...*). `CharacterEyesMeasure` (*Measure
+the eyes*) sends a close-up of the character's face to Thinking and
+`CharacterEyesForget` (*Forget the measurement*) deletes it, so both need
+`--allow-ui-effects`; `CharacterEyesPicture` is the close-up Thinking saw with
+its four numbered boxes. The measurement uses the same off-screen still
+renderer as *Detect zones*, whose picture now also carries the face anchor; the
+desktop log records *Measuring the eyes: a ... picture of the character in its
+rest pose, drawn off screen, with its face ... pixels wide*, each picture sent
+and each step. When a renderer reports `eyesFrom` `estimate` and a model that
+can see is set up, the desktop measures the model once on its own (once per
+model each time Martlet starts, and never again after *Forget the
+measurement* until it starts again). The hint goes to the renderer (`eyes`)
+after each model load and after each measurement; the desktop log records
+*The character's eyes got Martlet's vision measurement; they use ...*.
+Setting `MARTLET_EYES_FIXTURE` to a text file before launching the desktop
+makes a FIXTURE - NOT AI stand-in answer every request of the measurement with
+that file's text (JSON about the close-up, as `answer` above; shown in
+`CharacterEyesProgress` and `CharacterEyesStatus`, and saved with `by`
+`fixture`) after taking the real snapshot and composing and keeping every
+picture, so the whole path runs with no vision request (and *Measure the eyes*
+is on without a model that can see).
 
 Touch temperament (below Touch zones) reads through `TouchTemperamentStatus`
 (for which persona and who decided it: built-in reactions, the Thinking model,
@@ -3263,14 +3344,15 @@ back notice's Dismiss (`HealthOpen-presence-back-<hostId>-dismiss`) is passive.
 user's) reads the desktop's `helper-jobs.json`: for each helper job kind
 (`memory`: remembering and learning names after a reply; `action_naming`:
 naming a character's emotes; `temperament`: deciding its touch temperament;
-`touch_zones`: finding its touch zones) the last
+`touch_zones`: finding its touch zones; `eyes`: measuring its eyes) the last
 `route` (`pool` with the `member` that ran it and its model, or `fallback`: the
 conversation's own Thinking model after the reply finished speaking),
 `priority`, `outcome` (`answered`, `no answer` or `failed: <why>`), `at` and
 `waitedMs` (how long the fallback waited for the reply). It never holds a prompt
 or an answer. `state` is `none` until the desktop runs a helper job with that
 data directory. The jobs go to the [Thinking pool](CONVERSATION.md#the-thinking-pool) as its
-Memory, Naming and TouchZones kinds; `thinking_pool_status` shows the pool itself.
+Memory, Naming and TouchZones kinds (the eyes as a TouchZones job at the helpers'
+low priority); `thinking_pool_status` shows the pool itself.
 `helper_jobs_check` (no arguments) rehearses the desktop's production router
 (`HelperJobs`) with a fixture pool and fixture answers (NOT AI): memory and
 naming go to a free text member, touch zones wait for a running reply and fall
@@ -3388,11 +3470,16 @@ old-box (Martlet can't reach it) and laptop (no host service). The preflight:
 Chatterbox Turbo's terms with the RTX 4090 by UUID, Parakeet chosen as the stt
 variant with that variant's terms only, moving Thinking keeping its model, Audio2Face
 showing and sending its default engine's terms, an NGC key the owner enters, old-box needing someone there, laptop unable to run
-host roles, the Thinking pool joining by itself and the downloads added up.
+host roles, the Thinking pool joining by itself, thinking moving to each companion
+PC's own Ollama (ready, with the download's terms), a hosted provider the owner
+must choose in Companion (never made here) and the role still doing that job
+kept until it moves, and the downloads added up.
 The run: the host commands in order with their arguments (nothing for skipped
 changes), the key only to Audio2Face and never in text, the terms recorded as
 accepted, speaking on gpu-box with failover and thinking back to each PC's
-choice in the plan, Sharing work, one cluster check, a failed removal that
+choice in the plan, thinking switched through the Companion path, the hosted
+provider reported as needing the owner with its plan unchanged, loudness
+lip-sync off in the plan, the role whose job didn't move kept, Sharing work, one cluster check, a failed removal that
 doesn't stop the others, a job this PC can't follow yet reported, the run
 record (all waiting, then *Configuring* with the step and its count, then how
 each computer ended) read back from the shared settings as
@@ -4753,16 +4840,52 @@ has `n`, `found`, `tracking` (`mesh`, `bones` or `estimate`), `x`, `y` and
 `width` (fractions of the overlay's drawing, +y down), `tilt` (degrees,
 clockwise), `cheekLeft` and `cheekRight` (`x`, `y`, `visible` from 0 to 1,
 `across`, the cheek's width against the face's width, and the hit test there:
-`hit`, `drawables`, `bone`, `mesh`), `overlays` (the overlays showing, such as
+`hit`, `drawables`, `bone`, `mesh`), `eyeLeft`, `eyeRight`, `mouth` and `top`
+(`x`, `y`: the eye and mouth points the overlay emotes such as `tears` or
+`tongue_out` are drawn from, and the top of the head; left out when the
+renderer has none; an eye with a known iris has its point at the eye's
+middle), `overlays` (the overlays showing, such as
 `["blush_deep"]`; one fading out is listed until it is gone) and
-`pinned` (Live2D: `carriers`, how many mesh vertices the face rides on, and
-`milliseconds`, how long finding them took at load). `summary` gives the
+`pinned` (Live2D: `carriers`, how many mesh vertices the face rides on,
+`milliseconds`, how long finding them took at load, and `eyeMilliseconds`, how
+long finding the eyes' meshes took). The eyes for drawings over them come with
+each reading: `eyesFrom` (`mesh`: a Live2D model's iris and eye-white meshes;
+`bones`: a VRM's eye bones with its iris and eye-white meshes; `vision`: eyes
+measured by vision fill what the model can't give; `estimate`: an eye has
+neither, so its iris and opening are left out), `irisLeft` and `irisRight`
+(`x`, `y`, `rx`, `ry`: the iris's middle and radii across and down the face;
+`x` and `rx` are fractions of the drawing's width, `y` and `ry` of its height;
+`null` when unknown), and `eyeLeftShape` and `eyeRightShape` (the eye's visible
+opening now: `points`, `triangles`, `null` for an outline, its box `left`,
+`top`, `right`, `bottom`, and `irisInside`, whether the iris's middle is in
+it; 0 `points` when the eye is closed or hidden). `summary` gives the
 `tracking` used, how far the face `moved` (`x`, `y`, `width`, `tilt`) and, for
 each cheek, `onCharacter` (the share of readings over the character),
 `mostlyOver` and `mostlyOverShare` (the topmost drawable, mesh or bone there
 most often, and for what share of readings), `visibleLeast` and `across`
-(`least`, `most`). `MoveAvatar`'s value in `ui_snapshot` shows the last
-reading as `face`.
+(`least`, `most`). It also gives `eyesFrom` (the sources seen) and, for
+`eyeLeft` and `eyeRight`, `iris` (the share of readings with an iris),
+`irisMoved` (`x`, `y`: how far the iris's middle moved), `irisInside` (the
+share of open readings with the iris inside its opening), `opening` (`least`,
+`most`: the opening's height, which a blink closes) and `closed` (the share of
+readings with no opening). Sample several times to see the irises follow the
+gaze and the openings close on a blink. `MoveAvatar`'s value in `ui_snapshot`
+shows the last reading as `face`.
+
+`character_picture` takes a picture of the showing character as it shows now
+(`MoveAvatar`'s value `"picture"`). It is the renderer's own capture of the
+overlay's page, so Martlet's drawings over the face are in it, such as the
+blush glow and overlay emotes like heart eyes. It is cropped to the character
+with a little room. Zoom the character first (`SetupCharacterZoomIn`) to see
+small parts such as the eyes larger. It returns `taken`, `picture` and `saved`.
+`picture` has `n`, `path` (the renderer's PNG file in the temp folder, replaced
+each time), `width` and `height` in pixels, and `left`, `top`, `cropWidth` and
+`cropHeight`: where it sits on the overlay's drawing, as fractions like
+`character_face`'s positions. When the picture can't be taken, `picture` has
+`error`. `saved` is the copy at `outputPath` (a full path to a `.png` file)
+when given. It changes nothing on the character, so it needs no
+`--allow-ui-effects`. `MoveAvatar`'s value then shows the last picture as
+`picture`.
 
 **The character's idle body**: while it shows, a VRM stands in a relaxed pose
 (arms hanging close to the body, elbows softly bent, fingers and thumbs
@@ -6030,7 +6153,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `work_sharing_status`, `reminders_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

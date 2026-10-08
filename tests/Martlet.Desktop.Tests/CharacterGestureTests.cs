@@ -30,9 +30,15 @@ public sealed class CharacterGestureTests
         return glb;
     }
 
-    private static readonly string[] HeldOverlays = ["{/sweat}", "{/hearts}", "{/gloom}", "{/sleepy}"];
+    // The overlay emotes before the held face parts and blush levels (eyes_up ... blush_fierce), and those after them.
+    private static readonly string[] FirstOverlays = ["sweat", "anger", "hearts", "sparkles", "tears", "gloom", "question", "exclaim", "sleepy", "music"];
+    private static readonly string[] LaterOverlays = ["heart_eyes", "star_eyes", "tongue_out", "drool", "steam", "dizzy", "idea", "ellipsis"];
+    private static readonly string[] Overlays = [.. FirstOverlays, .. LaterOverlays];
 
-    private static readonly string[] Overlays = ["sweat", "anger", "hearts", "sparkles", "tears", "gloom", "question", "exclaim", "sleepy", "music"];
+    private static readonly string[] FirstHeldOverlays = ["{/sweat}", "{/hearts}", "{/gloom}", "{/sleepy}"];
+    private static readonly string[] LaterHeldOverlays = ["{/heart_eyes}", "{/star_eyes}", "{/tongue_out}", "{/drool}", "{/steam}", "{/dizzy}"];
+
+    private static string[] Tags(IEnumerable<string> names) => [.. names.Select(n => "{" + n + "}")];
 
     // The stronger blush levels every model gets, after the rest; both linger by default.
     private static readonly string[] Levels = ["blush_deep", "blush_fierce"];
@@ -57,12 +63,12 @@ public sealed class CharacterGestureTests
 
         Assert.Equal(["nod", "shake", "tilt", "bow", "blush", "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat", "groan", "sniff",
             "shush", "inhale", "exhale", "mumble", "hum", "sneeze", "whistle", "happy", "sarcastic", "fear", "crying", "whispering", "dramatic",
-            "shy", "giggle", "flinch", "lean_in", "look_away", "think", .. Overlays, .. Levels], Gestures(inventory));
+            "shy", "giggle", "flinch", "lean_in", "look_away", "think", .. FirstOverlays, .. Levels, .. LaterOverlays], Gestures(inventory));
         var prompt = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null)).Prompt(null, null);
         Assert.NotNull(prompt);
         Assert.Equal(["{smile}", "{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{blush}", "{shy}", "{giggle}", "{flinch}", "{lean_in}",
-            "{look_away}", "{think}", .. Overlays.Select(o => "{" + o + "}"), .. Levels.Select(l => "{" + l + "}"), "{/shy}", "{/look_away}",
-            .. HeldOverlays, .. HeldLevels], prompt.Tags);
+            "{look_away}", "{think}", .. Tags(FirstOverlays), .. Tags(Levels), .. Tags(LaterOverlays), "{/shy}", "{/look_away}",
+            .. FirstHeldOverlays, .. HeldLevels, .. LaterHeldOverlays], prompt.Tags);
         Assert.Contains("{tilt_head} - tilt your head, for curiosity or confusion", prompt.Instructions);
         Assert.Contains("ParamAngleZ", inventory.Find("gesture:tilt")!.Detail);
         Assert.Contains("(moves ParamCheek)", inventory.Find("gesture:blush")!.Detail);
@@ -79,8 +85,8 @@ public sealed class CharacterGestureTests
 
         Assert.Equal(["nod", "shake", "tilt", "bow", "sway", "blush", "wave", "bounce", "laugh", "chuckle", "sigh", "gasp", "cough", "clear_throat",
             "groan", "sniff", "shush", "inhale", "exhale", "mumble", "hum", "sneeze", "whistle", "sarcastic", "angry", "fear", "crying",
-            "whispering", "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy", .. Overlays,
-            "mouth_open", .. Levels], Gestures(inventory));
+            "whispering", "wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy", .. FirstOverlays,
+            "mouth_open", .. Levels, .. LaterOverlays], Gestures(inventory));
         var prompt = new CharacterActionCatalog(inventory, CharacterActions.Merge(inventory, null)).Prompt(null, null);
         Assert.NotNull(prompt);
         Assert.Contains("{wave}", prompt.Tags);
@@ -134,8 +140,8 @@ public sealed class CharacterGestureTests
         // Voice emotes follow the voice and never lengthen the reply instructions; the reply gestures stay offered, the holdable ones with off tags.
         var silent = catalog.Prompt(null, null)!.Tags;
         Assert.Equal(["{nod}", "{shake_head}", "{tilt_head}", "{bow}", "{smile}", "{blush}", "{surprised}", "{shy}", "{giggle}", "{flinch}",
-            "{lean_in}", "{look_away}", "{think}", .. Overlays.Select(o => "{" + o + "}"), .. Levels.Select(l => "{" + l + "}"), "{/shy}",
-            "{/look_away}", .. HeldOverlays, .. HeldLevels], silent);
+            "{lean_in}", "{look_away}", "{think}", .. Tags(FirstOverlays), .. Tags(Levels), .. Tags(LaterOverlays), "{/shy}",
+            "{/look_away}", .. FirstHeldOverlays, .. HeldLevels, .. LaterHeldOverlays], silent);
         Assert.Contains("draws a pink glow on the cheeks", inventory.Find("gesture:blush")!.Detail);
         var chatterbox = catalog.Prompt(Martlet.Core.Settings.SpeechEngines.Chatterbox, null)!.Tags;
         Assert.DoesNotContain("{surprised}", chatterbox);
@@ -154,8 +160,8 @@ public sealed class CharacterGestureTests
         var names = CharacterActionInventory.AllGestures.Select(g => g.Name).ToArray();
         string[] added = ["wink", "pout", "shy", "giggle", "flinch", "lean_in", "look_away", "think", "eye_roll", "drowsy"];
         Assert.Equal(added, names.Where(n => !Overlays.Contains(n) && !FaceParts.Contains(n) && !Levels.Contains(n)).ToArray()[^added.Length..]);
-        Assert.Equal(["pout", "shy", "look_away", "drowsy", "sweat", "hearts", "gloom", "sleepy", .. FaceParts, .. Levels],
-            CharacterActionInventory.AllGestures.Where(g => g.Holdable).Select(g => g.Name));
+        Assert.Equal(["pout", "shy", "look_away", "drowsy", "sweat", "hearts", "gloom", "sleepy", .. FaceParts, .. Levels, "heart_eyes", "star_eyes",
+            "tongue_out", "drool", "steam", "dizzy"], CharacterActionInventory.AllGestures.Where(g => g.Holdable).Select(g => g.Name));
         Assert.All(CharacterActionInventory.AllGestures, g => Assert.True(CharacterActions.IsTag(g.Tag) &&
             g.Use.Length <= CharacterActionCatalog.MaximumUseLength, g.Name));
         Assert.Equal(names.Length, names.Distinct().Count());
@@ -164,18 +170,19 @@ public sealed class CharacterGestureTests
         var model = Encoding.UTF8.GetBytes("{\"Version\":3,\"FileReferences\":{\"Moc\":\"m.moc3\",\"Textures\":[]}}");
         var inventory = CharacterActionInventory.From(AvatarRenderer.Live2D, "m.model3.json",
             [new("m.model3.json", model, "application/json"), new("m.moc3", moc, "application/octet-stream")]);
-        Assert.Equal(["blush", "wink", "pout", "eye_roll", "drowsy", .. Overlays, "eyes_up", .. Levels], Gestures(inventory));
+        Assert.Equal(["blush", "wink", "pout", "eye_roll", "drowsy", .. FirstOverlays, "eyes_up", .. Levels, .. LaterOverlays], Gestures(inventory));
     }
 
     private static readonly string[] FaceParts = ["eyes_up", "mouth_open"];
 
     [Fact]
-    public void TheHeldFacePartsComeAfterTheOverlaysLingerAndGoToModelsWithTheirParameterOrEyeBones()
+    public void TheHeldFacePartsComeAfterTheFirstOverlaysLingerAndGoToModelsWithTheirParameterOrEyeBones()
     {
-        // After the overlay emotes (only the blush levels come after them), so the reply instructions' earlier lines (and prompt
-        // caches) stay the same.
+        // After the first overlay emotes (only the blush levels and the later overlay emotes come after them): each group was added
+        // at the end, so the reply instructions' earlier lines (and prompt caches) stay the same.
         var names = CharacterActionInventory.AllGestures.Select(g => g.Name).ToArray();
-        Assert.Equal([.. Overlays, .. FaceParts, .. Levels], names[^(Overlays.Length + FaceParts.Length + Levels.Length)..]);
+        Assert.Equal([.. FirstOverlays, .. FaceParts, .. Levels, .. LaterOverlays],
+            names[^(Overlays.Length + FaceParts.Length + Levels.Length)..]);
         Assert.All(FaceParts.Select(n => CharacterActionInventory.Gesture("gesture:" + n)!), g =>
         {
             Assert.True(g.Holdable);
@@ -188,12 +195,12 @@ public sealed class CharacterGestureTests
         var model = Encoding.UTF8.GetBytes("{\"Version\":3,\"FileReferences\":{\"Moc\":\"m.moc3\",\"Textures\":[]}}");
         var live2D = CharacterActionInventory.From(AvatarRenderer.Live2D, "m.model3.json",
             [new("m.model3.json", model, "application/json"), new("m.moc3", Moc("ParamEyeBallY", "ParamMouthOpenY"), "application/octet-stream")]);
-        Assert.Equal(["blush", .. Overlays, .. FaceParts, .. Levels], Gestures(live2D));
+        Assert.Equal(["blush", .. FirstOverlays, .. FaceParts, .. Levels, .. LaterOverlays], Gestures(live2D));
         Assert.Contains("(moves ParamEyeBallY)", live2D.Find("gesture:eyes_up")!.Detail);
         Assert.Contains("(moves ParamMouthOpenY)", live2D.Find("gesture:mouth_open")!.Detail);
         var prompt = new CharacterActionCatalog(live2D, CharacterActions.Merge(live2D, null)).Prompt(null, null)!;
-        Assert.Equal(["{blush}", .. Overlays.Select(o => "{" + o + "}"), "{eyes_up}", "{mouth_open}", .. Levels.Select(l => "{" + l + "}"),
-            .. HeldOverlays, "{/eyes_up}", "{/mouth_open}", .. HeldLevels], prompt.Tags);
+        Assert.Equal(["{blush}", .. Tags(FirstOverlays), "{eyes_up}", "{mouth_open}", .. Tags(Levels), .. Tags(LaterOverlays),
+            .. FirstHeldOverlays, "{/eyes_up}", "{/mouth_open}", .. HeldLevels, .. LaterHeldOverlays], prompt.Tags);
         Assert.Contains("{eyes_up} - turn just your eyes up, for daydreaming, exasperation or being dazed (stays on until you write {/eyes_up})",
             prompt.Instructions);
         Assert.True(prompt.Instructions.IndexOf("{mouth_open} - ", StringComparison.Ordinal) >
@@ -247,12 +254,12 @@ public sealed class CharacterGestureTests
             new("m.model3.json", model, "application/json"), new("m.moc3", Moc("ParamSweat"), "application/octet-stream"),
             new("sweat.exp3.json", expression, "application/json")
         ]);
-        Assert.Equal(["blush", .. Overlays.Skip(1), .. Levels], Gestures(live2D));
+        Assert.Equal(["blush", .. FirstOverlays.Skip(1), .. Levels, .. LaterOverlays], Gestures(live2D));
         Assert.Equal("Martlet's own gesture: small hearts float up around the head (drawn over the character).",
             live2D.Find("gesture:hearts")!.Detail);
         var prompt = new CharacterActionCatalog(live2D, CharacterActions.Merge(live2D, null)).Prompt(null, null)!;
-        Assert.Equal(["{sweat}", "{blush}", .. Overlays.Skip(1).Select(o => "{" + o + "}"), .. Levels.Select(l => "{" + l + "}"),
-            .. HeldOverlays.Skip(1), .. HeldLevels], prompt.Tags);
+        Assert.Equal(["{sweat}", "{blush}", .. Tags(FirstOverlays.Skip(1)), .. Tags(Levels), .. Tags(LaterOverlays),
+            .. FirstHeldOverlays.Skip(1), .. HeldLevels, .. LaterHeldOverlays], prompt.Tags);
         Assert.Contains("{gloom} - gloom lines, for feeling depressed or mortified", prompt.Instructions);
 
         // A VRM needs the head bone its face is found from.
@@ -263,6 +270,40 @@ public sealed class CharacterGestureTests
         var vrm = CharacterActionInventory.From(AvatarRenderer.Vrm, "m.vrm", [new("m.vrm", Glb(Vrm("head")), "model/gltf-binary")]);
         Assert.Equal(Overlays, Gestures(vrm).Intersect(Overlays));
         Assert.EndsWith("(drawn over the character).", vrm.Find("gesture:tears")!.Detail);
+    }
+
+    [Fact]
+    public void TheEyeAndMouthOverlaysComeLastAndLingerAndAModelsOwnReplacesThem()
+    {
+        // Appended last, so the reply instructions' earlier lines (and prompt caches) stay the same.
+        var model = Encoding.UTF8.GetBytes("{\"Version\":3,\"FileReferences\":{\"Moc\":\"m.moc3\",\"Textures\":[]}}");
+        var plain = CharacterActionInventory.From(AvatarRenderer.Live2D, "m.model3.json",
+            [new("m.model3.json", model, "application/json"), new("m.moc3", Moc("ParamAngleX"), "application/octet-stream")]);
+        var prompt = new CharacterActionCatalog(plain, CharacterActions.Merge(plain, null)).Prompt(null, null)!;
+        Assert.Contains("(stays on until you write {/blush_fierce})\n" +
+            "{heart_eyes} - heart eyes, for being smitten or adoring (stays on until you write {/heart_eyes})\n" +
+            "{star_eyes} - starry eyes, for being starstruck or thrilled (stays on until you write {/star_eyes})\n" +
+            "{tongue_out} - stick your tongue out, for a playful tease (stays on until you write {/tongue_out})\n" +
+            "{drool} - drool, for craving something tasty or dozing off (stays on until you write {/drool})\n" +
+            "{steam} - steam puffs, for fuming or being overheated (stays on until you write {/steam})\n" +
+            "{dizzy} - swirly eyes, for being dizzy or dazed (stays on until you write {/dizzy})\n" +
+            "{idea} - a light bulb, for a sudden idea\n" +
+            "{ellipsis} - an ellipsis, for being speechless or an awkward silence\n", prompt.Instructions);
+
+        // A model whose own expressions are named 爱心眼 (heart eyes) and 吐舌 (tongue out) keeps them for those tags.
+        var named = Encoding.UTF8.GetBytes("{\"Version\":3,\"FileReferences\":{\"Moc\":\"m.moc3\",\"Textures\":[]," +
+            "\"Expressions\":[{\"Name\":\"爱心眼\",\"File\":\"a.exp3.json\"},{\"Name\":\"吐舌\",\"File\":\"b.exp3.json\"}]}}");
+        var expression = Encoding.UTF8.GetBytes("{\"Type\":\"Live2D Expression\",\"Parameters\":[{\"Id\":\"ParamEyeForm\",\"Value\":1}]}");
+        var own = CharacterActionInventory.From(AvatarRenderer.Live2D, "m.model3.json",
+        [
+            new("m.model3.json", named, "application/json"), new("m.moc3", Moc("ParamEyeForm"), "application/octet-stream"),
+            new("a.exp3.json", expression, "application/json"), new("b.exp3.json", expression, "application/json")
+        ]);
+        Assert.Equal(["blush", .. FirstOverlays, .. Levels, .. LaterOverlays.Except(["heart_eyes", "tongue_out"])], Gestures(own));
+        var tags = new CharacterActionCatalog(own, CharacterActions.Merge(own, null)).Prompt(null, null)!.Tags;
+        Assert.Equal(["{heart_eyes}", "{tongue_out}"], tags.Take(2));
+        Assert.Single(tags, "{heart_eyes}");
+        Assert.Contains("{star_eyes}", tags);
     }
 
     [Fact]

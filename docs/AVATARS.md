@@ -148,9 +148,10 @@ what each one is.
     blush, an angry or sad face, tears, a dark face, an outfit or accessory).
 
   Martlet's holdable gestures (pout, shy, look_away, drowsy, eyes_up and
-  mouth_open, the overlay emotes sweat, hearts, gloom and sleepy, and the blush
-  levels blush_deep and blush_fierce) also stay on by default. Held gestures
-  layer (see *Layers*); every blush level is the cheeks, so a new level
+  mouth_open, the overlay emotes sweat, hearts, gloom, sleepy, heart_eyes,
+  star_eyes, tongue_out, drool, steam and dizzy, and the blush levels
+  blush_deep and blush_fierce) also stay on by default. Held gestures layer
+  (see *Layers*); every blush level is the cheeks, so a new level
   replaces the one before. A gesture that the renderer cannot hold plays once.
   Motions and the other gestures are brief by default. The Thinking model's
   naming also gives `stays` or `brief` for each item.
@@ -287,6 +288,24 @@ what each one is.
   cheek too. The Live2D adapter's
   `setFaceHint` lets a face found by vision refine the estimate, pinned the
   same way. Martlet's MCP `character_face` reads where they are drawn.
+
+  **The eyes.** Drawings over the eyes (such as heart eyes) cover only each
+  iris and stay inside the eye. For them the face also has each eye's iris (its
+  middle and size) and its visible opening between the eyelids, as the model
+  draws them in each frame. A Live2D model gives them from its own meshes. When
+  it loads, Martlet moves `ParamEyeBallX` and `ParamEyeBallY` to find the
+  drawables they move: the largest in each eye is its iris, the smaller ones its
+  highlights. The iris's clipping mask is the eye white, and its triangles are
+  the opening, which closes as the model blinks. A VRM's eye bones place each
+  eye, and the iris turns with its bone. The model's iris and eye-white meshes
+  give the iris's size and the opening: VRoid's `EyeIris` and `EyeWhite`
+  materials, or names with iris, pupil, hitomi, 瞳 or 白目. For an eye the model
+  can't give, eyes measured by vision give a sized iris that follows the gaze
+  and an outline that closes on a blink. `eyesFrom` says where they came from:
+  `mesh` (Live2D meshes), `bones` (VRM bones and meshes), `vision`, or
+  `estimate` while an eye has neither. Then that eye's iris and opening are left
+  out, and drawings over the eyes use their own estimate. The bundled Hiyori
+  gets `mesh`.
 - **Voice emotes**: every sound and tone a voice engine makes has a global emote
   of its own, linked to that voice cue from the start, so any character reacts
   when the voice laughs, sighs or turns angry, even before it is named. The
@@ -309,10 +328,19 @@ what each one is.
   the overlay layer (`web/effects/manpu.mjs` in `Martlet.Avatar.RendererHost`),
   so every Live2D model gets them and every VRM with a `head` bone. They follow
   the face (its position, size, zoom and head tilt), pop in with a little bounce
-  and fade out after 2 to 4 seconds; sweat, hearts, gloom and sleepy linger
-  (keep going until `{/tag}`) by default.
+  and fade out after 2 to 4 seconds; sweat, hearts, gloom, sleepy, heart_eyes,
+  star_eyes, tongue_out, drool, steam and dizzy linger (keep going until
+  `{/tag}`) by default.
   Their colours are fixed and outlined, so they read on any desktop. The tag is
-  the name; a model's own emote with the same tag replaces it:
+  the name; a model's own emote with the same tag replaces it (a model's
+  `爱心眼` expression becomes its own `heart_eyes`). Tears fall from the eye
+  points, and tongue_out and drool hang from the mouth point. The hearts, stars
+  and swirls of heart_eyes, star_eyes and dizzy sit on each iris, sized to fit
+  inside it, and are clipped to the eye's visible opening, so they never go
+  outside the eye and the eyelid cuts them as it closes. They use the iris and
+  the eye opening the renderer finds, and nothing shows on an eye it reports as
+  closed or hidden; without them, they are iris-sized at the eye points and
+  clipped to an eye-sized ellipse:
 
   | Overlay emote (tag) | What it draws | When to use |
   | --- | --- | --- |
@@ -326,6 +354,14 @@ what each one is.
   | `exclaim` | an exclamation mark popping up | startled, realizing |
   | `sleepy` | a floating Zzz | sleepy, bored |
   | `music` | music notes floating up | humming, happy |
+  | `heart_eyes` | pink hearts pulsing in the eyes | smitten, adoring |
+  | `star_eyes` | twinkling stars in the eyes | starstruck, thrilled |
+  | `tongue_out` | a little tongue poking out below the mouth | a playful tease |
+  | `drool` | a drop of drool running from a corner of the mouth | craving something tasty, dozing off |
+  | `steam` | puffs of steam blowing out from the head | fuming, overheated |
+  | `dizzy` | swirls spinning in the eyes, little stars circling the head | dizzy, dazed |
+  | `idea` | a light bulb lighting up above the head | a sudden idea |
+  | `ellipsis` | three dots appearing one by one beside the head | speechless, an awkward silence |
 
   A voice emote plays when the voice speaks its tag (Chatterbox Turbo's
   `[laugh]`, Dia's `(laughs)`), alongside any of the model's own emotes on the
@@ -421,7 +457,11 @@ Martlet knows that the model doesn't have yet, the breasts and the groin too.
   3. The model sees the whole character (1024 pixels on its longer side) and
      marks its head, upper body and lower body, and a tail, wings or a held
      item. When it can't, the character's outline (or a VRM's skeleton) gives
-     those parts.
+     those parts. When the Live2D model names its own parts (see below), those
+     parts give the head, upper body and lower body instead, so each close-up
+     holds all of its part. The lower body then starts at the bottom of the
+     upper body, so it always shows the hips and groin, and each close-up
+     reaches a little into the part next to it.
   4. The model sees a close-up of each part, up to four times larger, and marks
      its zones there. Left and right are the character's own.
   5. The model checks its own boxes: they are drawn on the close-up in colors
@@ -442,9 +482,37 @@ Martlet knows that the model doesn't have yet, the breasts and the groin too.
   the character's pixels, swaps left and right back when a pair is the wrong way
   round (facing you, the character's left is on the picture's right), and tells
   the next check what looks wrong (a box over the background, a chin above a
-  nose, a box that misses where a VRM's own skeleton puts the part). A VRM's
+  nose, a box that misses where a VRM's own skeleton puts the part, or one that
+  is off the Live2D model's own named part). A VRM's
   bone positions and a Live2D model's part names (such as `HairFront`) go to
   the model as hints. A box that still misses its VRM bone moves onto it.
+
+  **A Live2D model's own part names.** Many Live2D models name their parts in
+  their DisplayInfo file (`*.cdi3.json`), in any language: 头 or 頭 (head),
+  前发 or 前髪 (front hair), 脖子 (neck), 上半身 (upper body), 腿部 or 太もも
+  (legs), 尾巴 (tail), `Arm L`. Martlet reads those names (and part IDs such
+  as `PartArmL`), and the renderer says which part each drawable belongs to.
+  The longest word in a name decides: 马尾 (a ponytail) is hair, not a tail. A
+  part as tall as three heads, such as a 体 (body) that runs down to the feet,
+  isn't taken for the upper body. Left and right come from where a part lies
+  and which way the character faces, not from the name: rigs disagree on whose
+  left a 左 or L is. The named parts:
+  - go to the model as hints, with their sides (*the character's left arm*);
+  - give the close-ups' windows (above);
+  - correct boxes that clearly miss their part at the end: a neck box on the
+    midriff moves onto the model's neck, lips onto its mouth, a tail box on a
+    ponytail onto its tail, a thigh box on a boot to the top of that leg, a knee
+    to its middle, a foot to its bottom. A box that reaches well past its part
+    (a lips box over the whole chin) is limited to it;
+  - place a missing intimate zone before the zones around it do: the hips go
+    from the bottom of the upper body down to where the legs meet, the groin
+    between the legs, the neck on the model's neck.
+
+  A model whose parts name nothing (or a VRM) works as before. The desktop log
+  says how many named parts Martlet found (*Finding touch zones: ... 0 bones
+  and 12 named parts from the model (39 of its 39 parts named in its
+  DisplayInfo file ...)*).
+
   Detection makes about 7 to 13 requests; **Stop** stops it and keeps the zones
   found until then, and the picture shows the zones as they are found. When a
   request fails (the Thinking model, or the computer it runs on, stops
@@ -460,7 +528,9 @@ Martlet knows that the model doesn't have yet, the breasts and the groin too.
 - To see what Thinking saw, turn on **Show the picture Thinking saw**: the
   picture of the zones then shows the whole character on its backdrop with the
   grid. **Open the pictures** opens the folder with every picture the last
-  detection sent (`character-touch-zones\<model>-sent`, with `sent.json`). The
+  detection sent (`character-touch-zones\<model>-sent`, with `sent.json`, and
+  `probe.json`: where the model's drawables, bones and own named parts were in
+  that picture). The
   line above says how many pictures it sent, how large and what they showed,
   and the desktop log records each one (its step, size and type).
 - Martlet ties each zone to the model's own parts so it follows the character as
@@ -503,6 +573,48 @@ Martlet knows that the model doesn't have yet, the breasts and the groin too.
   pan, reset the zoom, lock or unlock it, or hide or show it: *They zoomed in on
   your face*. These go with your next message; only touches and strokes can
   start a reply of their own.
+
+### Eyes
+
+Some overlay emotes are drawn over the eyes (heart eyes, star eyes, the dizzy
+swirls). They should cover only the iris and never go outside the eye, so the
+renderer must know where each eye is. A model's own data says so when it can:
+a Live2D model's iris meshes, or a VRM's eye bones and meshes. For a model
+without that data, the Thinking model measures the eyes once with its vision.
+Companion › Character › Touch zones › **Eyes** says where the shown model's
+eyes come from: *From the model's own meshes.*, *From the model's own eye
+bones and meshes.*, *Measured with vision at 3:12 PM.* or *Estimated: ...*.
+
+- **Measure the eyes** draws the character off screen in its rest pose, in the
+  same still renderer as **Detect zones** (no idle motion, so no blink: the
+  eyes are open and look straight ahead, and no emote shows). The renderer
+  also says where its face anchor puts the face in that picture. Martlet cuts a
+  square about 1.6 face widths wide around the face, enlarges it to about 768
+  pixels on a plain backdrop with a grid of tenths, and asks the Thinking model
+  for two boxes per eye, as the viewer sees them: the iris (the colored part
+  with the pupil) and the eye's opening (the white and the iris between the
+  eyelids). The picture goes to a free Thinking pool member that can see, else
+  to the Thinking model after any reply, as a low-priority
+  [helper job](MEMORY.md#helper-jobs-on-the-thinking-pool). It is never on a
+  reply's path, and nothing is sent until a model that can see is set up.
+- Martlet then checks the boxes: both eyes are there, each iris lies mostly
+  inside its eye, the sizes fit the face, the eyes are open, apart and level.
+  It puts left and right back the right way round by where the eyes are. When
+  the first answer can't be read or fails a check, Martlet asks once more: with
+  the four boxes drawn and numbered on the close-up and the problems listed, or
+  with the question again. Two failed answers save nothing.
+- The boxes become the eye hint: each iris's middle and radius, and each
+  opening's middle, half width and half height, in face widths from the face
+  anchor's middle (x toward the viewer's right, y down, with the face's roll
+  taken out). It is saved per model in `character-eyes.json`, with the pictures
+  sent and the close-up with its boxes in `character-eyes\<model>\` (shown
+  under the buttons). The renderer gets it after each model load and after each
+  measurement, and replies with what the eyes use. The model's own data always
+  comes first.
+- Martlet measures a model on its own, once each time it starts, when the
+  renderer says its eyes are only estimated and a model that can see is set up.
+  **Forget the measurement** deletes the measurement and its pictures; Martlet
+  then doesn't measure that model on its own until it starts again.
 
 ### Touch temperament
 

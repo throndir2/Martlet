@@ -197,14 +197,35 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "VRM's head bone; estimate: a Live2D model's head angles, when no face meshes were found), x, y and width (fractions of " +
             "the character overlay's drawing, +y down), tilt (degrees, clockwise), cheekLeft and cheekRight (x, y; visible, 0 to " +
             "1 as the cheek turns away; across, the cheek's width against the face's, below 1 on a turned head's far cheek; and " +
-            "the renderer's hit test there: hit, drawables, bone, mesh), the overlays showing and pinned (Live2D: carriers, the " +
-            "mesh vertices the face rides on, and milliseconds, how long finding them took at load). summary says which tracking " +
-            "was used, how far the face moved (x, y, width, tilt) and, per cheek, the share of readings over the character, " +
-            "what it was mostly over and for what share, the least it showed and its across range. Reading changes nothing, so " +
-            "it needs no --allow-ui-effects.", new
+            "the renderer's hit test there: hit, drawables, bone, mesh), eyeLeft, eyeRight, mouth and top (x, y: the eye and mouth " +
+            "points the overlay emotes such as tears or tongue_out are drawn from, and the top of the head; an eye with a known " +
+            "iris has its point at the eye's middle), the eyes for drawings over them: eyesFrom (mesh: a Live2D " +
+            "model's iris and eye-white meshes; bones: a VRM's eye bones with its iris and eye-white meshes; vision: eyes measured " +
+            "by vision fill what the model can't give; estimate: an eye has neither, so its iris and opening are left out), " +
+            "irisLeft and irisRight (x, y, rx, ry: the iris's middle and radii, x and rx fractions of the drawing's width, y and ry " +
+            "of its height; null when unknown) and eyeLeftShape and eyeRightShape (the eye's visible opening now: points, " +
+            "triangles (null for an outline), its box left, top, right, bottom, and irisInside, whether the iris's middle is in " +
+            "it; 0 points when the eye is closed or hidden), the overlays showing and pinned (Live2D: carriers, the mesh vertices " +
+            "the face rides on, milliseconds, how long finding them took at load, and eyeMilliseconds, how long finding the eyes' " +
+            "meshes took). summary says which tracking was used, how far the face moved (x, y, width, tilt), per cheek the share " +
+            "of readings over the character, what it was mostly over and for what share, the least it showed and its across " +
+            "range, eyesFrom (the sources seen) and per eye (eyeLeft, eyeRight) the share of readings with an iris, how far the " +
+            "iris moved (irisMoved x, y), the share of open readings with the iris inside its opening, the opening's least and " +
+            "most height (a blink closes it) and the share of readings it was closed. Reading changes nothing, so it needs no " +
+            "--allow-ui-effects.", new
         {
             samples = new { type = "integer", minimum = 1, maximum = DesktopAutomation.MaximumFaceSamples },
             gapMs = new { type = "integer", minimum = 0, maximum = 5000 }
+        }),
+        Tool("character_picture", "Take a picture of the showing character as it shows now: the renderer's own capture of the " +
+            "overlay's page (WebView2), so Martlet's drawings over the face (its blush glow and overlay emotes such as heart eyes) " +
+            "are in it, cropped to the character with a little room. Zoom the character first (SetupCharacterZoomIn) to see small " +
+            "parts such as the eyes larger. Returns taken, picture (n, path: the renderer's PNG file in the temp folder, replaced " +
+            "each time; width and height in pixels; left, top, cropWidth and cropHeight: where it sits on the overlay's drawing, " +
+            "as fractions like character_face's positions; or error) and saved, the copy at outputPath (a full path to a .png " +
+            "file) when given. Taking it changes nothing on the character, so it needs no --allow-ui-effects.", new
+        {
+            outputPath = new { type = "string" }
         }),
         Tool("character_pose", "Read what the showing character's idle body does, samples times (1 to 60, default 1) gapMs apart (0 to " +
             "5000, default 250), as each frame is drawn. A VRM rests in a relaxed pose (arms hanging close to the body, elbows " +
@@ -580,7 +601,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "mumble, hum, sneeze, whistle, happy, sarcastic, angry, fear, crying, whispering, dramatic; and the overlay emotes drawn over the face of any " +
             "Live2D model or VRM with a head: sweat, anger, hearts, sparkles, tears, gloom, question, exclaim, sleepy, music; then the held face parts " +
             "eyes_up (Live2D ParamEyeBallY, VRM eye bones) and mouth_open (Live2D ParamMouthOpenY, a VRM's oh or aa mouth), which stay on with held " +
-            "gestures that move other parts of the face) with what it changes, its tag, voice cue, when to use it (use: the owner's or the Thinking model's text, null when empty; hint: what the reply prompt says, which is Martlet's own hint while use is null), whether " +
+            "gestures that move other parts of the face; and last more overlay emotes: heart_eyes, star_eyes, tongue_out, drool, steam, dizzy, idea, " +
+            "ellipsis) with what it changes, its tag, voice cue, when to use it (use: the owner's or the Thinking model's text, null when empty; hint: what the reply prompt says, which is Martlet's own hint while use is null), whether " +
             "it is on, its mode (brief, or lingering: stays on after {tag} until {/tag}; modeSaved false when it is the default, " +
             "vtsToggle when a VTube Studio ToggleExpression hotkey turns it on) and whether replies are offered it for engine (a voice engine key; \"none\" or absent: a voice without tags); the " +
             "saved settings (character-actions.json in dataDirectory) or the defaults from the model's names; " +
@@ -621,8 +643,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "requests (parts on the whole character, zones on each close-up, checks of the numbered boxes), what the production parser makes " +
             "of answer (a simulated vision reply about the whole picture: JSON boxes as fractions or named edges, pixels of a width x height " +
             "picture or Qwen-style 0..1000 bbox_2d grounding) bound to probe (a simulated renderer zones probe: {\"drawables\":[{\"id\",\"left\"," +
-            "\"top\",\"right\",\"bottom\"}],\"bones\":[{\"bone\",\"x\",\"y\"}]} in page fractions) with crop (\"left,top,width,height\": where the " +
-            "snapshot sat on the page), the zones saved for the model (modelPath, modelId or the model dataDirectory's avatar.json shows) in " +
+            "\"top\",\"right\",\"bottom\",\"part\"}],\"bones\":[{\"bone\",\"x\",\"y\"}],\"parts\":[{\"id\",\"name\",\"parent\"}]} in page fractions, " +
+            "parts being a Live2D model's own parts with their DisplayInfo names, such as 头 or 右腿; or probePath, a probe.json as Detect zones " +
+            "keeps it with the pictures it sent, which also gives crop) with crop (\"left,top,width,height\": where the " +
+            "snapshot sat on the page); hints shows what the probe's part names place (areas, with the character's own side) and the " +
+            "close-ups' windows they give; the zones saved for the model (modelPath, modelId or the model dataDirectory's avatar.json shows) in " +
             "character-touch-zones.json with what its last detection sent, and with touch (a CharacterTouch: {\"x\",\"y\",\"hitAreas\"," +
             "\"drawables\",\"bone\",\"node\",\"hair\",\"mesh\",\"material\",\"wholeX\",\"wholeY\"}) the zone it lands in, how it was found, what it " +
             "plays and what it tells the character. detect runs the production detection on snapshotPath (a PNG of the character, transparent " +
@@ -647,7 +672,27 @@ internal sealed class McpServer(DesktopAutomation desktop)
             temperament = new { type = "string" }, personaId = new { type = "string" }, personality = new { type = "string" },
             repeats = new { type = "integer", minimum = 1 }, detect = new { type = "boolean" }, guess = new { type = "string" },
             previewDirectory = new { type = "string" }, checks = new { type = "integer", minimum = 0, maximum = 5 },
-            failAt = new { type = "integer", minimum = 1 }
+            failAt = new { type = "integer", minimum = 1 }, probePath = new { type = "string" }
+        }),
+        Tool("character_eyes", "Companion > Character > Touch zones > Eyes (Martlet.Avatar.Hosting CharacterEyes; docs/AVATARS.md \"Eyes\") " +
+            "with NO vision request: the request the vision model gets (a close-up of the face, 1.6 face widths square, about 768 pixels " +
+            "with a grid; its instructions, message, the check message and the message after an unreadable answer), what the production " +
+            "parser, checks and conversion make of answer (a simulated vision reply about the close-up: {\"left\":{\"iris\":{\"left\",\"top\"," +
+            "\"right\",\"bottom\"},\"eye\":{...}},\"right\":{...}} as fractions, pixels or 0..1000, or flat keys such as left_iris) and, when it " +
+            "fails, of second (the answer to the check with its boxes drawn and numbered, or to the question again): the steps, the four " +
+            "boxes, the problems Martlet's checks found and the renderer's eye hint (each eye's iris {x,y,r} and opening {x,y,rx,ry} in " +
+            "face widths from the face's middle, roll removed). Without snapshotPath the close-up is exactly 1.6 face widths around an " +
+            "upright face; with snapshotPath (a PNG of the character, transparent around it) and face (\"x,y,width[,rollDegrees]\", the " +
+            "face's middle and width as fractions of the snapshot) the production close-up is composed and encoded as the desktop sends " +
+            "it (previewDirectory keeps the pictures). save writes the measurement (with the pictures and the picture of its boxes) for " +
+            "the model (modelPath, modelId or the model dataDirectory's avatar.json shows) into an explicit, disposable dataDirectory, as " +
+            "Measure the eyes would (marked FIXTURE - NOT AI); forget removes it. eyesFrom (mesh, bones, vision or estimate: what the " +
+            "renderer says the eyes use) shows the status line the section shows. Contacts nothing; never returns the model's path.", new
+        {
+            dataDirectory = new { type = "string" }, modelPath = new { type = "string" }, modelId = new { type = "string" },
+            answer = new { type = "string" }, second = new { type = "string" }, snapshotPath = new { type = "string" }, face = new { type = "string" },
+            previewDirectory = new { type = "string" }, save = new { type = "boolean" }, forget = new { type = "boolean" },
+            eyesFrom = new { type = "string", @enum = new[] { "mesh", "bones", "vision", "estimate" } }
         }),
         Tool("character_gaze", "Where the character looks (Companion > Character > Where the character looks, the overlay's Eyes " +
             "menu and Companion > Vision > Glances at your screen; docs/SCREEN_COMMENTARY.md \"Where the character looks\"): usual " +
@@ -1748,6 +1793,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 OptionalInt(arguments, "settleMs")),
                 "character_stroke" => await desktop.StrokeCharacterAsync(StrokePoints(arguments), OptionalInt(arguments, "stepMs") ?? 40),
                 "character_face" => await desktop.FaceCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
+                "character_picture" => await desktop.PictureCharacterAsync(OptionalString(arguments, "outputPath")),
                 "character_pose" => await desktop.PoseCharacterAsync(OptionalInt(arguments, "samples"), OptionalInt(arguments, "gapMs")),
                 "ui_tray" => desktop.Tray(OptionalString(arguments, "action") ?? "status", OptionalInt(arguments, "x"), OptionalInt(arguments, "y")),
                 "voices_status" => VoicesStatus(arguments),
@@ -1799,7 +1845,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalBool(arguments, "save") ?? false, OptionalBool(arguments, "includeIntimate"), OptionalString(arguments, "snapshotPath"),
                     cancellation, OptionalString(arguments, "temperament"), OptionalString(arguments, "personaId"), OptionalString(arguments, "personality"),
                     OptionalInt(arguments, "repeats"), OptionalBool(arguments, "detect") ?? false, OptionalString(arguments, "guess"),
-                    OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt")),
+                    OptionalString(arguments, "previewDirectory"), OptionalInt(arguments, "checks"), OptionalInt(arguments, "failAt"),
+                    OptionalString(arguments, "probePath")),
+                "character_eyes" => await CharacterEyesCheck.RunAsync(DataDirectory(arguments), OptionalString(arguments, "dataDirectory") is not null,
+                    OptionalString(arguments, "modelPath"), OptionalString(arguments, "modelId"), OptionalString(arguments, "answer"),
+                    OptionalString(arguments, "second"), OptionalString(arguments, "snapshotPath"), OptionalString(arguments, "face"),
+                    OptionalString(arguments, "previewDirectory"), OptionalBool(arguments, "save") ?? false, OptionalBool(arguments, "forget") ?? false,
+                    OptionalString(arguments, "eyesFrom"), cancellation),
                 "character_theme" => await CharacterThemeCheck.RunAsync(OptionalString(arguments, "modelPath"), OptionalString(arguments, "dataDirectory"),
                     OptionalString(arguments, "previewDirectory"), OptionalString(arguments, "label"), cancellation),
                 "character_models_selftest" => await NodeLinkCheckAsync(cancellation, "characters"),

@@ -51,15 +51,23 @@ public static partial class TouchZoneDetection
         var parts = ReadBoxes(answer, picture.Width, picture.Height, PartId);
         foreach (var extra in Extras)
             if (parts.TryGetValue(extra, out var box)) zones[extra] = box;
-        var regions = Regions.Select(r => (Region: r, Found: parts.TryGetValue(r.Id, out var b) && Sensible(b, figure),
-            Box: parts.TryGetValue(r.Id, out var c) && Sensible(c, figure) ? c : Fallback(r.Id, figure, hints))).ToArray();
+        // The model's own named parts give a close-up's window when they can: it then holds all of that part, whatever the vision
+        // model saw.
+        var regions = Regions.Select(r =>
+        {
+            var found = parts.TryGetValue(r.Id, out var b) && Sensible(b, figure);
+            var named = NamedRegion(r.Id, hints);
+            return (Region: r, Found: found || named is not null, Box: named ?? (found ? b! : Fallback(r.Id, figure, hints)), Named: named is not null);
+        }).ToArray();
         var tidy = Tidy(zones, snapshot, faces);
         steps.Add($"parts: found {string.Join(", ", parts.Keys)}" + (parts.Count == 0 ? "nothing" : "") +
-            (regions.Any(r => !r.Found) ? $"; guessed {string.Join(", ", regions.Where(r => !r.Found).Select(r => r.Region.Id))} from the character's outline" : "") + Notes(tidy));
+            (regions.Any(r => !r.Found) ? $"; guessed {string.Join(", ", regions.Where(r => !r.Found).Select(r => r.Region.Id))} from the character's outline" : "") +
+            (regions.Any(r => r.Named) ? $"; took {string.Join(", ", regions.Where(r => r.Named).Select(r => r.Region.Id))} from the model's own named parts" : "") +
+            Notes(tidy));
 
         // 2. Each part close up: its zones, then the model checks them.
         var number = 1;
-        foreach (var (region, _, box) in regions)
+        foreach (var (region, _, box, _) in regions)
         {
             number++;
             var crop = Crop(box, snapshot);
@@ -100,7 +108,7 @@ public static partial class TouchZoneDetection
         var finished = Finish(zones, snapshot, hints);
         if (finished.Length > 0) steps.Add("finally: " + string.Join("; ", finished));
         // The zones that must be found and still aren't are worked out from the zones around them.
-        if (failure is null && Derive(zones, options.Required, snapshot, faces, regions.ToDictionary(r => r.Region.Id, r => (r.Box, r.Found)), figure)
+        if (failure is null && Derive(zones, options.Required, snapshot, faces, regions.ToDictionary(r => r.Region.Id, r => (r.Box, r.Found)), figure, hints)
             is { Count: > 0 } derived)
             steps.Add("worked out " + string.Join("; ", derived));
         var result = Zones(zones);

@@ -108,6 +108,7 @@ public partial class MainWindow : ThemedWindow
         avatar.Gaze.Decides = Talk.DecideGaze;
         characterActions = new(store?.DataDirectory);
         characterTouchZones = new(store?.DataDirectory);
+        characterEyes = new(store?.DataDirectory);
         characterTemperaments = new(store?.DataDirectory);
         // The character's usual gaze: your choice, else what the active persona's temperament decided.
         avatar.Gaze.Personality = () => characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId)?.Gaze;
@@ -163,6 +164,7 @@ public partial class MainWindow : ThemedWindow
             if (!started) return;
             FollowCharacterActions();
             FollowCharacterTheme();
+            TickCharacterEyes();
         };
         characterTimer.Start();
         DataPathText.Text = "Settings are stored on this PC.";

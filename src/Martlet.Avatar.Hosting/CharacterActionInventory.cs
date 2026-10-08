@@ -59,7 +59,8 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
     /// After the reply gestures come the voice emotes, one for each sound and tone a voice engine makes (except
     /// <c>surprised</c>, which the surprise gesture follows), then the touch and mood gestures, then the overlay emotes,
     /// anime symbols drawn over the face (a sweat drop, an anger vein, hearts...), then the held face parts (the eyes
-    /// turned up, an open mouth), and last the stronger blush levels (<see cref="BlushLevels"/>).</summary>
+    /// turned up, an open mouth), the stronger blush levels (<see cref="BlushLevels"/>) and last more overlay emotes (heart
+    /// eyes, a tongue sticking out, a light bulb...).</summary>
     public static readonly IReadOnlyList<CharacterGesture> AllGestures =
     [
         new("nod", "nod", "nod, for yes or agreement", "nods the head twice", ["ParamAngleY"], Head),
@@ -143,12 +144,21 @@ public sealed record CharacterActionInventory(string ModelId, AvatarRenderer Ren
             "turns only the eyes up and keeps them there; the head doesn't move", ["ParamEyeBallY"], ["leftEye", "rightEye"], Holdable: true),
         new("mouth_open", "mouth_open", "keep your mouth open, for awe, shock or being out of breath",
             "keeps the mouth open; the voice still moves it while it speaks", ["ParamMouthOpenY"], Head, Holdable: true),
-        // Stronger blush levels, last so the reply instructions' earlier lines (and prompt caches) stay the same. Like the blush,
-        // every model gets them (see BlushLevels).
+        // Stronger blush levels, after the rest so the reply instructions' earlier lines (and prompt caches) stay the same. Like
+        // the blush, every model gets them (see BlushLevels).
         new("blush_deep", "blush_deep", "a deep blush, for strong embarrassment", "blushes deeply: redder and wider, with more lines",
             [], Head, Holdable: true),
         new("blush_fierce", "blush_fierce", "a fierce flush across the face, for being overwhelmed or flustered",
-            "flushes fiercely: deep red across both cheeks and the nose, densely lined", [], Head, Holdable: true)
+            "flushes fiercely: deep red across both cheeks and the nose, densely lined", [], Head, Holdable: true),
+        // More overlay emotes, last for the same reason.
+        Overlay("heart_eyes", "heart eyes, for being smitten or adoring", "pink hearts pulse in the eyes", holdable: true),
+        Overlay("star_eyes", "starry eyes, for being starstruck or thrilled", "stars twinkle in the eyes", holdable: true),
+        Overlay("tongue_out", "stick your tongue out, for a playful tease", "a little tongue pokes out below the mouth", holdable: true),
+        Overlay("drool", "drool, for craving something tasty or dozing off", "a drop of drool runs from a corner of the mouth", holdable: true),
+        Overlay("steam", "steam puffs, for fuming or being overheated", "puffs of steam blow out from the head", holdable: true),
+        Overlay("dizzy", "swirly eyes, for being dizzy or dazed", "swirls spin in the eyes and little stars circle the head", holdable: true),
+        Overlay("idea", "a light bulb, for a sudden idea", "a light bulb lights up above the head"),
+        Overlay("ellipsis", "an ellipsis, for being speechless or an awkward silence", "three dots appear one by one beside the head")
     ];
 
     /// <summary>Martlet's blush levels, faintest first. One shows at a time: a new level lets the one before go. Every model

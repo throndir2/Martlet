@@ -1,7 +1,7 @@
 import { Live2DAdapter, LocalModelBundle } from "../../Martlet.Avatar.Live2D/lib/index.ts";
 import { VrmAvatarAdapter } from "../../Martlet.Avatar.Vrm/src/index.ts";
-import { activeOverlays, attachOverlay, BLUSH_LEVELS, clearOverlays, hasOverlay, heldOverlays, registerBlush, registerOverlay,
-  renderOverlay, startOverlay, stopOverlay, toCssAnchor } from "./overlay.js";
+import { activeOverlays, attachOverlay, BLUSH_LEVELS, clearOverlays, hasOverlay, heldOverlays, insideEyeShape, registerBlush,
+  registerOverlay, renderOverlay, startOverlay, stopOverlay, toCssAnchor } from "./overlay.js";
 import { registerManpu } from "./effects/manpu.mjs";
 
 const canvas = document.getElementById("avatar");
@@ -60,12 +60,14 @@ function replaceBlush(name) {
 }
 // Where Martlet draws over the face now, as fractions of the canvas (+y down, like a tap) for Martlet's MCP: how the face is
 // followed, its middle, width and tilt, and at each cheek how much of it shows, how wide it is for its face width and what of
-// the character is there (the page's own hit test), with the overlays showing.
+// the character is there (the page's own hit test), the eye and mouth points and the top of the head the overlay emotes are
+// drawn from, with the overlays showing; and the eyes' irises and openings (see eyeReading).
 function faceReading(id) {
   const anchor = face(), overlays = activeOverlays();
   const width = Math.max(1, canvas.clientWidth), height = Math.max(1, canvas.clientHeight);
   const round = value => Math.round(value * 10000) / 10000;
-  const pinned = adapter?.faceTracking ? { carriers: adapter.faceTracking.carriers, milliseconds: adapter.faceTracking.milliseconds } : null;
+  const pinned = adapter?.faceTracking ? { carriers: adapter.faceTracking.carriers, milliseconds: adapter.faceTracking.milliseconds,
+    eyeMilliseconds: adapter.faceTracking.eyeMilliseconds ?? 0 } : null;
   if (!anchor) return { id, found: false, overlays, pinned };
   const cheek = (point, frame) => {
     let hit;
@@ -74,10 +76,29 @@ function faceReading(id) {
       across: frame ? round(Math.hypot(frame.right.x, frame.right.y) / anchor.width) : null, hit: !!hit,
       drawables: hit?.drawables?.slice(0, 3) ?? [], bone: hit?.bone ?? null, mesh: hit?.mesh ?? null };
   };
+  const at = point => point ? { x: round(point.x / width), y: round(point.y / height) } : null;
   return { id, found: true, tracking: anchor.tracking ?? "estimate", x: round(anchor.x / width), y: round(anchor.y / height),
     width: round(anchor.width / width), tilt: Math.round(anchor.angle * 1800 / Math.PI) / 10,
     cheekLeft: cheek(anchor.cheekLeft, anchor.cheekLeftFrame), cheekRight: cheek(anchor.cheekRight, anchor.cheekRightFrame),
-    overlays, pinned };
+    eyeLeft: at(anchor.eyeLeft), eyeRight: at(anchor.eyeRight), mouth: at(anchor.mouth), top: at(anchor.top), overlays, pinned,
+    ...eyeReading(anchor, width, height, round) };
+}
+// The eyes in a face reading: where they came from, each iris (x, y, rx, ry as fractions of the canvas: rx of its width, ry
+// of its height) and each opening's box, how many points and triangles it has and whether its iris's middle is inside it
+// (not every point).
+function eyeReading(anchor, width, height, round) {
+  const reading = { eyesFrom: anchor.eyesFrom ?? "estimate" };
+  for (const [iris, shape] of [["irisLeft", "eyeLeftShape"], ["irisRight", "eyeRightShape"]]) {
+    const i = anchor[iris], s = anchor[shape];
+    reading[iris] = i ? { x: round(i.x / width), y: round(i.y / height), rx: round(i.rx / width), ry: round(i.ry / height) } : null;
+    if (!s) { reading[shape] = null; continue; }
+    const xs = s.points.map(p => p.x), ys = s.points.map(p => p.y);
+    reading[shape] = { points: s.points.length, triangles: s.triangles ? s.triangles.length / 3 : null,
+      ...(s.points.length ? { left: round(Math.min(...xs) / width), top: round(Math.min(...ys) / height),
+        right: round(Math.max(...xs) / width), bottom: round(Math.max(...ys) / height) } : {}),
+      irisInside: i ? insideEyeShape(s, i) : null };
+  }
+  return reading;
 }
 // Which gesture plays once and every one held: the model's held gestures, then the held drawings.
 function gestureState() {
@@ -100,22 +121,33 @@ function poseReading(id) {
 }
 // A picture of the whole character for touch zones, drawn on the canvas and read back in the same task, so it never shows on
 // screen: `width` by `height` pixels in the framing `zoom`, `x`, `y` of a frame `frame` of its width (see setView), in the
-// pose the model has now (its rest pose in a still renderer). The PNG (a data URL) and where the drawables (Live2D) or the
-// humanoid bones (VRM) are in it, as fractions of the picture; nothing when it can't be drawn. The canvas then goes back to
-// its own size and framing, drawn again at once, so a showing character never changes.
+// pose the model has now (its rest pose in a still renderer). The PNG (a data URL), where the drawables (Live2D, each with the
+// ID of its part) or the humanoid bones (VRM) are in it, with a Live2D model's own parts (their names from its DisplayInfo file,
+// and their parents; none when they can't be read), and where the face anchor puts the face (`face`: its middle, its width as a
+// fraction of the picture's width and its roll; Martlet's eye measurement crops around it), as fractions of the picture;
+// nothing when it can't be drawn. The canvas then goes back to its own size and framing, drawn again at once, so a showing
+// character never changes.
 function picture({ width, height, zoom, x, y, frame }) {
   const size = [canvas.width, canvas.height];
   const resize = (w, h) => { if (renderer === "Vrm") adapter.resize(w, h); else { canvas.width = w; canvas.height = h; } };
   const round = value => Math.round(value * 10000) / 10000;
+  const parts = () => { try { return adapter.modelParts?.() ?? []; } catch { return []; } };
   try {
     resize(Number(width), Number(height));
     adapter.setView(Number(zoom), Number(x), Number(y), Number(frame));
     adapter.update(0);
     const png = canvas.toDataURL("image/png");
+    let face;
+    try {
+      const anchor = adapter.faceAnchor?.();
+      if (anchor && [anchor.x, anchor.y, anchor.width].every(Number.isFinite) && anchor.width > 0)
+        face = { x: round(anchor.x / canvas.width), y: round(anchor.y / canvas.height), width: round(anchor.width / canvas.width),
+          angle: round(Number.isFinite(anchor.angle) ? anchor.angle : 0), ...(typeof anchor.tracking === "string" ? { tracking: anchor.tracking } : {}) };
+    } catch { face = undefined; }
     return renderer === "Live2D"
       ? { png, drawables: adapter.drawableBounds().map(d => ({ id: d.id, left: round(d.left), top: round(d.top), right: round(d.right),
-          bottom: round(d.bottom) })) }
-      : { png, bones: adapter.bonePoints().map(b => ({ bone: b.bone, x: round(b.x), y: round(b.y) })) };
+          bottom: round(d.bottom), ...(d.part ? { part: d.part } : {}) })), parts: parts(), ...(face ? { face } : {}) }
+      : { png, bones: adapter.bonePoints().map(b => ({ bone: b.bone, x: round(b.x), y: round(b.y) })), ...(face ? { face } : {}) };
   } catch { return {}; }
   finally {
     try {
@@ -176,6 +208,16 @@ window.chrome.webview.addEventListener("message", async ({ data: message }) => {
     let reading = { id, found: false };
     try { if (active && !failed) reading = poseReading(id); } catch { }
     post({ poseReading: reading });
+    return;
+  }
+  if (message.kind === "eyes") {
+    // The eyes measured by vision ({left, right}, see the adapters' setEyeHint) or null to clear them. Answered with where the
+    // eyes come from now ({eyesFrom}; null while no model shows); a hint the adapter can't use is ignored and never fails the
+    // renderer.
+    let eyesFrom = null;
+    try { if (active && !failed && adapter?.setEyeHint) eyesFrom = adapter.setEyeHint(message.data ?? undefined) ?? null; } catch { }
+    try { if (eyesFrom === null && active && !failed) eyesFrom = adapter?.eyesFrom ?? null; } catch { }
+    post({ eyesFrom });
     return;
   }
   try {

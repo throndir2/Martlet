@@ -397,6 +397,13 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Show the picture Thinking saw is a check box and the rest save, so those need --allow-ui-effects.
         "TouchZonesStatus", "TouchZonesVision", "TouchZonesDetection", "TouchZonesLast", "TouchZonesSaveState", "TouchZonesSent",
         "TouchZonesDetectNote",
+        // Companion › Character › Touch zones › Eyes: where the shown model's eyes come from (the model's own meshes or eye bones,
+        // the vision measurement and when it was taken, or an estimate), how measuring went (each step while it runs, or why it
+        // failed) and, only when no model can see pictures, why Measure the eyes is off. Fixed text, times and counts only.
+        // Measure the eyes (CharacterEyesMeasure) sends a close-up of the character's face to Thinking and Forget the measurement
+        // (CharacterEyesForget) deletes it, so they need --allow-ui-effects; CharacterEyesPicture (the close-up with its boxes)
+        // isn't a value.
+        "CharacterEyesStatus", "CharacterEyesProgress", "CharacterEyesNote",
         // Companion › Character › Touch temperament: who decided the active persona's temperament (built-in, the Thinking model,
         // FIXTURE - NOT AI or the owner) or which custom temperament or built-in reactions it uses instead; its help text is the
         // whole temperament in words: "head loves, torso hates, ..., intimate loves", its eyes and the parts whose touch turns them to
@@ -1187,11 +1194,47 @@ internal sealed class DesktopAutomation(bool allowEffects)
 
     internal const int MaximumFaceSamples = 60;
 
+    /// <summary>Takes a picture of the showing character as it shows now through MoveAvatar's UI Automation value ("picture"):
+    /// the renderer's own capture of the overlay's page, so Martlet's drawings over the face (the blush glow, overlay emotes
+    /// such as heart eyes) are in it, cropped to the character. It changes nothing on the character, so it needs no
+    /// --allow-ui-effects. The renderer writes the PNG to its file in the temp folder; with <paramref name="outputPath"/> (a full
+    /// path to a .png file) it is copied there. Returns the picture's reading: the file, its size and the crop of the overlay's
+    /// page it shows (fractions, like character_face's positions).</summary>
+    internal async Task<object> PictureCharacterAsync(string? outputPath)
+    {
+        if (outputPath is not null && (!System.IO.Path.IsPathFullyQualified(outputPath) ||
+            !outputPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase)))
+            throw new ArgumentException("outputPath is a full path to a .png file.");
+        var element = Find("MoveAvatar");
+        if (!element.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern))
+            throw new InvalidOperationException("The character overlay can't be read through UI Automation.");
+        var value = (ValuePattern)pattern;
+        if (value.Current.IsReadOnly) throw new InvalidOperationException("The character's picture can't be taken until it has loaded.");
+        static System.Text.Json.JsonElement? Picture(string text) => string.IsNullOrEmpty(text) ? null :
+            System.Text.Json.JsonDocument.Parse(text).RootElement is { ValueKind: System.Text.Json.JsonValueKind.Object } root &&
+            root.TryGetProperty("picture", out var picture) ? picture.Clone() : null;
+        var before = Picture(value.Current.Value)?.GetRawText();
+        value.SetValue("picture");
+        var waited = Stopwatch.StartNew();
+        System.Text.Json.JsonElement? after;
+        while ((after = Picture(value.Current.Value))?.GetRawText() == before && waited.Elapsed < TimeSpan.FromSeconds(10)) await Task.Delay(50);
+        if (after is not { } read || read.GetRawText() == before)
+            return new { taken = false, note = "The renderer didn't take the picture within 10 seconds." };
+        var taken = !read.TryGetProperty("error", out _);
+        string? saved = null;
+        if (taken && outputPath is not null && read.TryGetProperty("path", out var path) && path.GetString() is { } file && System.IO.File.Exists(file))
+        {
+            System.IO.File.Copy(file, outputPath, overwrite: true);
+            saved = outputPath;
+        }
+        return new { taken, picture = read, saved };
+    }
+
     /// <summary>Reads where Martlet draws over the showing character's face (the blush levels and overlay emotes)
     /// <paramref name="samples"/> times, <paramref name="gapMs"/> apart, through MoveAvatar's UI Automation value ("face"). It
     /// changes nothing, so it needs no --allow-ui-effects. Returns each reading (fractions of the overlay's drawing, +y down)
-    /// and a summary: how the face is followed, how far it moved, turned and tilted, and what of the character is under each
-    /// cheek.</summary>
+    /// and a summary: how the face is followed, how far it moved, turned and tilted, what of the character is under each
+    /// cheek, and where the eyes came from, how each iris moved and how far each eye's opening closed.</summary>
     internal async Task<object> FaceCharacterAsync(int? samples, int? gapMs)
     {
         var count = samples ?? 1;
@@ -1221,8 +1264,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
     }
 
     // How the readings went together: the tracking used, how far the face moved, scaled and tilted (fractions of the drawing,
-    // degrees), and per cheek the share of readings it was over the character, what it was mostly over (the topmost drawable,
-    // mesh or bone) and for what share, how much of it showed at least and how wide it was against the face.
+    // degrees), per cheek the share of readings it was over the character, what it was mostly over (the topmost drawable,
+    // mesh or bone) and for what share, how much of it showed at least and how wide it was against the face, where the eyes
+    // came from and per eye how its iris moved and sat in its opening and how far the opening closed.
     internal static object FaceSummary(IReadOnlyList<System.Text.Json.JsonElement> faces)
     {
         static bool Is(System.Text.Json.JsonElement owner, string key, System.Text.Json.JsonValueKind kind) =>
@@ -1248,6 +1292,28 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 visibleLeast = visible.Length == 0 ? (double?)null : visible.Min(),
                 across = across.Length == 0 ? null : new { least = across.Min(), most = across.Max() } };
         }
+        // Per eye: the share of readings with an iris, how far its middle moved, the share of readings with an opening whose
+        // iris was inside it, the least and most the opening's box was high (a blink closes it) and the share it was closed.
+        object Eye(string iris, string shape)
+        {
+            var irises = found.Where(face => Is(face, iris, System.Text.Json.JsonValueKind.Object)).Select(face => face.GetProperty(iris)).ToArray();
+            var shapes = found.Where(face => Is(face, shape, System.Text.Json.JsonValueKind.Object)).Select(face => face.GetProperty(shape)).ToArray();
+            static int Points(System.Text.Json.JsonElement opening) =>
+                Is(opening, "points", System.Text.Json.JsonValueKind.Number) && opening.GetProperty("points").TryGetInt32(out var count) ? count : 0;
+            static double Part(int part, int of) => of == 0 ? 0 : Math.Round((double)part / of, 2);
+            var open = shapes.Where(opening => Points(opening) >= 3 && (Is(opening, "irisInside", System.Text.Json.JsonValueKind.True) ||
+                Is(opening, "irisInside", System.Text.Json.JsonValueKind.False))).ToArray();
+            var heights = shapes.Where(opening => Is(opening, "top", System.Text.Json.JsonValueKind.Number) && Is(opening, "bottom", System.Text.Json.JsonValueKind.Number))
+                .Select(opening => Math.Round(opening.GetProperty("bottom").GetDouble() - opening.GetProperty("top").GetDouble(), 4)).ToArray();
+            return new
+            {
+                iris = Part(irises.Length, found.Length),
+                irisMoved = new { x = Spread(Numbers(irises, "x")), y = Spread(Numbers(irises, "y")) },
+                irisInside = open.Length == 0 ? (double?)null : Part(open.Count(opening => Is(opening, "irisInside", System.Text.Json.JsonValueKind.True)), open.Length),
+                opening = heights.Length == 0 ? null : new { least = heights.Min(), most = heights.Max() },
+                closed = Part(shapes.Count(opening => Points(opening) == 0), shapes.Length)
+            };
+        }
         return new
         {
             found = found.Length,
@@ -1255,7 +1321,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
                 .Select(face => face.GetProperty("tracking").GetString()).Distinct().ToArray(),
             moved = new { x = Spread(Numbers(found, "x")), y = Spread(Numbers(found, "y")), width = Spread(Numbers(found, "width")),
                 tilt = Spread(Numbers(found, "tilt")) },
-            cheekLeft = Cheek("cheekLeft"), cheekRight = Cheek("cheekRight")
+            cheekLeft = Cheek("cheekLeft"), cheekRight = Cheek("cheekRight"),
+            eyesFrom = found.Where(face => Is(face, "eyesFrom", System.Text.Json.JsonValueKind.String))
+                .Select(face => face.GetProperty("eyesFrom").GetString()).Distinct().ToArray(),
+            eyeLeft = Eye("irisLeft", "eyeLeftShape"), eyeRight = Eye("irisRight", "eyeRightShape")
         };
     }
 

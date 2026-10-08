@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Live2DAdapter, browserServices, checkRuntime } from "../dist/index.js";
-import { bundle, environment, identity, mouthMapping } from "./fixtures.mjs";
+import { Live2DAdapter, LocalModelBundle, browserServices, checkRuntime } from "../dist/index.js";
+import { bundle, environment, files, identity, mouthMapping } from "./fixtures.mjs";
 
 const code = expected => error => error.code === expected;
 const create = env => new Live2DAdapter(env.canvas, {
@@ -370,4 +370,25 @@ test("drawableBounds reports each visible drawable's bounds as canvas fractions 
   assert.ok(mesh.top >= 0 && mesh.top < mesh.bottom && mesh.bottom <= 1, JSON.stringify(mesh));
   // The head (model y 1.5) is above the feet (model y -2) on the canvas.
   assert.ok(mesh.bottom - mesh.top > 0.5);
+  // Without the SDK's part API there are no parts to tell.
+  assert.equal(mesh.part, undefined);
+  assert.deepEqual(adapter.modelParts(), []);
+});
+
+test("each drawable names its part, and modelParts gives the model's own parts with their DisplayInfo names", async t => {
+  const env = environment();
+  Object.assign(env.model, {
+    getDrawableParentPartIndex: () => 1,
+    getPartCount: () => 3,
+    getPartId: i => ({ getString: () => ({ s: ["Part", "Part31", "Part37"][i] }) }),
+    getPartParentPartIndices: () => new Int32Array([-1, 0, -1]),
+  });
+  const input = files({ FileReferences: { Moc: "avatar.moc3", Textures: ["texture.png"], DisplayInfo: "avatar.cdi3.json" } });
+  input.set("avatar.cdi3.json", new TextEncoder().encode(JSON.stringify({ Version: 3, Parts: [{ Id: "Part31", Name: "右腿" }, { Id: "Part", Name: "立绘" }] })));
+  const adapter = create(env);
+  t.after(() => adapter.dispose());
+  await adapter.load(new LocalModelBundle(input, "avatar.model3.json"));
+
+  assert.equal(adapter.drawableBounds()[0].part, "Part31");
+  assert.deepEqual(adapter.modelParts(), [{ id: "Part", name: "立绘" }, { id: "Part31", name: "右腿", parent: "Part" }, { id: "Part37" }]);
 });

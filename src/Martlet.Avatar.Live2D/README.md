@@ -70,6 +70,27 @@ squares), with each cheek's surface (`cheekLeftFrame`, `cheekRightFrame`), and
 `tracking` is `"mesh"`. Without enough such vertices, `tracking` is
 `"estimate"`: the face moved with the head angles, as before.
 
+`faceAnchor()` also gives each eye's iris and its visible opening, for drawings
+over the eyes (`lib/eyes.ts`). At load, after the face is pinned, the adapter
+moves `ParamEyeBallX` and `ParamEyeBallY` to their far ends in turn and puts
+them back. The visible drawables near the face that move as a whole are the
+irises and their highlights; the largest in each eye is its iris. The iris's
+clipping masks (`getDrawableMasks()` and `getDrawableMaskCounts()`, in the
+structural port in `lib/sdk.ts`) are its eye white. Each frame the iris is the
+box of its drawable's vertices across and down the face. The opening is the eye
+white's triangles, which close as the model blinks; a mask hidden now that
+showed at rest gives an empty opening. Each eye's middle is pinned to the face
+like its other features. An eye is dropped when its iris has no masks or isn't
+plausible for the face's width. `setEyeHint(hint)` gives eyes measured by vision
+(face widths from the face's middle, rest pose) for an eye the meshes can't
+give: its iris moves with `ParamEyeBallX`/`Y` through the room the eye leaves
+around it, and its outline closes with `ParamEyeLOpen` or `ParamEyeROpen`
+(`ParamEyeLOpen` is the character's left eye, on the viewer's right).
+`eyesFrom` is `"mesh"` when the meshes give both eyes, `"vision"` when the hint
+fills the rest, otherwise `"estimate"`. `faceTracking.eyeMilliseconds` says how
+long finding the eyes took (about 8 ms for the bundled Hiyori, which gets
+`"mesh"`).
+
 Licenses: Core is under the Live2D Proprietary Software License (redistributable
 file only, inside Martlet), the Framework under the Live2D Open Software License,
 Hiyori under the Free Material License / Sample Data Terms (design unmodified,

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { activeOverlays, BLUSH_LEVELS, blushDrawing, clearOverlays, drawBlush, drawOverlays, hasOverlay, overlayNames, registerBlush,
-  registerOverlay, startOverlay, stopOverlay, toCssAnchor } from "./overlay.js";
+import { activeOverlays, BLUSH_LEVELS, blushDrawing, clearOverlays, drawBlush, drawOverlays, EYE_SHAPE_POINTS, EYE_SHAPE_TRIANGLES,
+  hasOverlay, insideEyeShape, overlayNames, registerBlush, registerOverlay, startOverlay, stopOverlay, toCssAnchor } from "./overlay.js";
 
 const anchor = { x: 100, y: 100, width: 80, angle: 0, cheekLeft: { x: 80, y: 115 }, cheekRight: { x: 120, y: 115 } };
 
@@ -98,6 +98,37 @@ test("the blush lies on each cheek's surface: wider on a turned head's near chee
   const [a, b, c, d] = transforms[0];
   assert.ok([a - Math.cos(0.2), b - Math.sin(0.2), c + Math.sin(0.2), d - Math.cos(0.2)].every(e => Math.abs(e) < 1e-12),
     "without frames it turns with the face's roll");
+});
+
+test("each eye's iris and opening become CSS pixels, and shapes that aren't finite or break the caps are dropped", () => {
+  const square = (x, y, r) => [{ x: x - r, y: y - r }, { x: x + r, y: y - r }, { x: x + r, y: y + r }, { x: x - r, y: y + r }];
+  const css = toCssAnchor({ ...anchor, eyesFrom: "mesh", eyeLeft: { x: 84, y: 100 },
+    irisLeft: { x: 86, y: 100, rx: 6, ry: 8 }, irisRight: { x: 116, y: 100, rx: 0, ry: 8 },
+    eyeLeftShape: { points: square(84, 100, 10), triangles: [0, 1, 2, 0, 2, 3] },
+    eyeRightShape: { points: square(116, 100, 10) } }, 0.5, 0.5);
+  assert.equal(css.eyesFrom, "mesh");
+  assert.deepEqual(css.irisLeft, { x: 43, y: 50, rx: 3, ry: 4 });
+  assert.equal(css.irisRight, undefined, "an iris without a size isn't one");
+  assert.deepEqual(css.eyeLeft, { x: 42, y: 50 });
+  assert.deepEqual(css.eyeLeftShape.points[0], { x: 37, y: 45 });
+  assert.deepEqual(css.eyeLeftShape.triangles, [0, 1, 2, 0, 2, 3]);
+  assert.equal(css.eyeRightShape.triangles, undefined, "an outline stays an outline");
+  assert.ok(insideEyeShape(css.eyeLeftShape, css.irisLeft) && insideEyeShape(css.eyeRightShape, { x: 58, y: 50 }));
+  assert.ok(!insideEyeShape(css.eyeLeftShape, { x: 60, y: 50 }) && !insideEyeShape(css.eyeRightShape, { x: 70, y: 50 }));
+  assert.ok(!insideEyeShape({ points: [], triangles: [] }, { x: 0, y: 0 }), "a closed eye has nothing inside");
+
+  const many = Array.from({ length: EYE_SHAPE_POINTS + 1 }, (_, i) => ({ x: i, y: i % 2 }));
+  for (const [shape, why] of [
+    [{ points: many }, "too many points"],
+    [{ points: square(0, 0, 1), triangles: Array.from({ length: 3 * EYE_SHAPE_TRIANGLES + 3 }, () => 0) }, "too many triangles"],
+    [{ points: square(0, 0, 1), triangles: [0, 1, 4] }, "an index past the points"],
+    [{ points: square(0, 0, 1), triangles: [0, 1] }, "a partial triangle"],
+    [{ points: [{ x: 0, y: Number.NaN }] }, "a point that isn't finite"],
+    [{ points: "none" }, "no points"],
+  ]) assert.equal(toCssAnchor({ ...anchor, eyeLeftShape: shape }, 1, 1).eyeLeftShape, undefined, why);
+  assert.deepEqual(toCssAnchor({ ...anchor, eyeLeftShape: { points: [], triangles: [] } }, 1, 1).eyeLeftShape, { points: [], triangles: [] },
+    "an empty shape is a closed eye, kept");
+  assert.equal(toCssAnchor({ ...anchor, eyesFrom: "guess" }, 1, 1).eyesFrom, undefined);
 });
 
 test("every blush level is registered, the blush first, and each lasts like the blush or stays while held", () => {
