@@ -22,6 +22,8 @@ public sealed class VoiceAbilitiesTests
         var abilities = SpeechEngines.Chatterbox.Abilities;
         var emotions = abilities.Items[2];
         Assert.Equal(AbilityLevel.Partly, emotions.Level);
+        // The whisper is the voice model's own, which it makes only now and then; Martlet adds none.
+        Assert.StartsWith("The voice model itself whispers where the reply asks, but only now and then.", emotions.Help);
         // The tones it reads but doesn't perform ([angry], [happy]...) are not offered as emotions.
         Assert.Equal(["[whispering]"], abilities.TagsFor(emotions, SpeechEngines.Chatterbox.Tags).Select(tag => tag.Text));
         Assert.Equal(9, abilities.TagsFor(abilities.Items[1], SpeechEngines.Chatterbox.Tags).Count);
@@ -80,7 +82,7 @@ public sealed class VoiceAbilitiesTests
         Assert.Equal("Voice cloning: yes. Laughs & sighs: yes. Emotions: whispering only.", Rundown(SpeechEngines.ChatterboxNano));
         Assert.Equal("Voice cloning: yes. Laughs & sighs: no. Emotions: calm or expressive.", Rundown(SpeechEngines.ChatterboxOriginal));
         var original = SpeechEngines.ChatterboxOriginal.Abilities;
-        Assert.Equal(["[expressive]", "[whispering]"], original.TagsFor(original.Items[2], SpeechEngines.ChatterboxOriginal.Tags).Select(t => t.Text));
+        Assert.Equal(["[expressive]"], original.TagsFor(original.Items[2], SpeechEngines.ChatterboxOriginal.Tags).Select(t => t.Text));
         Assert.Equal(["chatterbox", "chatterbox-original", "chatterbox-nano"], SpeechEngines.All.Take(3).Select(e => e.Key));
         Assert.All(SpeechEngines.All.Take(3), engine => Assert.True(SpeechEngines.IsChatterbox(engine)));
         Assert.False(SpeechEngines.IsChatterbox(SpeechEngines.F5));

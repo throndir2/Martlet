@@ -830,10 +830,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "gpt-sovits 50082, dia 50084) through the production " +
             "path: the engine's own gateway relay inside a real gateway on 127.0.0.1 (pinned TLS, pairing) and the desktop's paired " +
             "client, with a starter voice as the reference (nothing played or recorded). Returns the service's /status before and " +
-            "after (state, error, model, device, runtime versions such as torch and CUDA, Chatterbox's whispered parts, Chatterbox " +
+            "after (state, error, model, device, runtime versions such as torch and CUDA, Chatterbox " +
             "Original's style), the audio length, time to " +
             "first audio, total time, real-time factor, peak and RMS level, how much of it is voiced (voicedShare: near 0 for a " +
-            "whisper, so text starting with [whispering] shows Chatterbox whispering), or the failure code and message. For " +
+            "whisper, so text starting with [whispering] shows whether the Chatterbox model itself whispered; Martlet adds no " +
+            "whisper of its own), or the failure code and message. For " +
             "chatterbox-original it sends the General and Expressive style saved in dataDirectory (chatterbox-style.json, as " +
             "Companion › Voice saves it), else Resemble's suggestions, and returns it as style. Loopback only; runs " +
             "Martlet.NodeLinkCheck.", new

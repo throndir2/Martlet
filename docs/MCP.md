@@ -592,7 +592,8 @@ Companion › Voice shows) and `abilities`, the rundown Companion › Voice show
 `Emotions`, each with `level` `Yes`, `Partly` or `No`, a `note` when partly, its
 `help` sentence and the `tags` that do it) and `summary` ("Voice cloning: yes.
 Laughs & sighs: yes. Emotions: whispering only." for Chatterbox Turbo, whose
-tones other than `[whispering]` don't change the voice). `otherVoices` gives the
+tones other than `[whispering]` don't change the voice and whose `[whispering]`
+the model itself whispers only now and then). `otherVoices` gives the
 same `abilities` and `runsOn` for the `windows` (CPU) and `openai` (online)
 voices, neither of which clones, laughs or shows emotions. Each starter
 voice adds `engines` (the engines that can clone it) and `language` (`en` or
@@ -2016,8 +2017,7 @@ on the CPU (`threads`, PyTorch's threads, at most 8 and never more than the
 performance cores, and `pinned_cpus`, the CPUs of the performance cores it is
 pinned to on native Linux, empty when not pinned, as always on Docker Desktop; null on a GPU)
 and `idleCheck` (`checks`, `every_seconds`, `fastest_ms`, `last_ms` of its
-[idle check](CHATTERBOX_VOICE.md#how-it-runs)), `whisper` (`level_db` and
-the `parts` it has [whispered](CHATTERBOX_VOICE.md#tags)) and, for Chatterbox
+[idle check](CHATTERBOX_VOICE.md#how-it-runs)) and, for Chatterbox
 Original, `style` (`default`, `expressive_parts` and `last`, the style the last
 reply asked for, so the owner's values can be checked at the service), or why
 it could not be read), `seconds` of 24 kHz audio, `firstAudioMs`,
@@ -2028,7 +2028,8 @@ audio arrives after everything before it has played, and all pauses together;
 `voicedShare` (the share of the loud 40 ms frames that have a pitch between 70
 and 400 Hz, from `Martlet.Core.Audio.Voicing`; about 0.6-0.9 for ordinary
 speech and nearly 0 for a whisper, so a `text` that starts with `[whispering]`
-shows if Chatterbox whispers), and `failure`
+shows if the Chatterbox model itself whispered; Martlet adds no
+[whisper of its own](CHATTERBOX_VOICE.md#tags)), and `failure`
 and `problem` (the client's error code and message, for example
 `worker.unavailable` when nothing answers or the model could not load). A
 loading model can take minutes, so the tool allows six; pass
