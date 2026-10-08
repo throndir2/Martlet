@@ -300,19 +300,13 @@ execution.
 
 ## Desktop and evidence limits
 
-The status and pipeline text boxes are focusable/read-only, support keyboard
-navigation and screen-reader names, and expose Mic/VAD/STT/policy/LLM/TTS/playback
-and optional host states without relying on color or animation. Every node uses
-the actual report result with provenance/freshness/age and next-action ID; the
-details include the full remedy. A separate polite activity announcement avoids
-announcing the entire aging report every second. Refresh is asynchronous;
-Stop signals cancellation; overlap is disabled. Generation checks prevent
-post-close updates. A one-second UI timer ages existing evidence but never runs
-probes or auto-repairs.
+Settings › Tools › Troubleshooting shows the status report. The report text box
+is focusable and read-only, and has a screen-reader name. Every check shows the
+actual report result with provenance/freshness/age and the full remedy.
+*Refresh status* runs the checks again asynchronously; overlap is disabled.
+Generation checks prevent post-close updates. A one-second UI timer ages
+existing evidence but never runs probes or auto-repairs.
 
-The explicit first-run create-unconfigured-profile button remains the sole
-settings write. It is disabled while diagnosing/saving and for loaded/invalid/
-newer/inaccessible settings. Save uses the original atomic SettingsStore API.
 Close cancels work, stops the age timer, waits at most 250 ms for callback
 cleanup, queues the final close on a subsequent dispatcher turn (including
 startup-error and synchronous-cleanup paths), then WPF's main-window shutdown
@@ -330,15 +324,12 @@ deadlines, caller cancellation, spontaneous cancellation, callback faults,
 invalid evidence, blocking cancellation handlers, non-cooperative outstanding
 work, eventual completion, late-result discard, duplicate refresh and shutdown.
 Configuration smoke preserves malformed Unicode, invalid UTF-8, newer settings
-and inaccessible-path behavior and original bytes. Desktop smoke also invokes
-real refresh/profile creation, verifies accessible pipeline keyboard focus,
-and asserts startup-error display plus clean exit for an invalid relative data
-directory. Idle/no-active-work windows also close without reentering WPF's
-original closing event.
+and inaccessible-path behavior and original bytes. Idle/no-active-work windows
+also close without reentering WPF's original closing event.
 Slow Stop/cancellation races are deterministic model tests, not injected fake
 audio/network UI activity.
 
-Both smoke scripts optionally accept `-ExecutablePath` selecting an existing
+`Smoke-Doctor.ps1` optionally accepts `-ExecutablePath` selecting an existing
 `.exe` (launched directly) or `.dll` (launched with dotnet). The path is resolved
 and validated, and cleanup targets only that launched PID. Without this option,
 the existing Configuration-derived repository output is used, preserving the
@@ -347,5 +338,4 @@ For an intentionally relocated build, pass its actual binary explicitly:
 
 ```powershell
 .\scripts\Smoke-Doctor.ps1 -ExecutablePath (Join-Path $artifacts 'bin\Martlet.Doctor\release\Martlet.Doctor.exe')
-.\scripts\Smoke-Desktop.ps1 -ExecutablePath (Join-Path $artifacts 'bin\Martlet.Desktop\release\Martlet.Desktop.exe')
 ```

@@ -211,8 +211,9 @@ guard and a held real-import regression address it.
 
 Repeat with `dotnet test` on `tests\Martlet.Core.Tests`,
 `tests\Martlet.Desktop.Tests` and `tests\Martlet.F5.Tests`, Release, `CI=true`,
-and a chosen local C: `--artifacts-path`. Run `scripts\Smoke-Desktop.ps1`
-against that build's actual Desktop executable. Keep artifacts out of source.
+and a chosen local C: `--artifacts-path`. Drive the desktop app through
+Martlet's MCP server (`scripts\Invoke-MartletMcp.ps1 -Desktop`).
+Keep artifacts out of source.
 Voice quality, actual inference/training, decoder conversion, GPU/CPU
 latency/VRAM, host lifecycle and novice setup qualification remain **NOT RUN**.
 

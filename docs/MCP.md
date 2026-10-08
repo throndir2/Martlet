@@ -3786,7 +3786,13 @@ built-in four-computer network instead (**NOT real computers**): this PC, a
 companion PC with an RTX 4080 that runs Thinking, Speaking and Listening on its
 own host service; `gpu-box`, a Linux host PC with an RTX 4090 and nothing
 installed; `DIVA`, a companion PC whose host service runs Deep thinking; and
-`old-box`, a host without a hardware report. The result has:
+`old-box`, a host without a hardware report. Give `fixture: "offline"` to plan
+the built-in offline network (**NOT real computers**): this PC, a companion PC
+with no graphics card, 4 GB memory and 4 threads, and two hosts, `MIKU` and
+`IMOUTO`, that haven't answered for 155 minutes (MIKU ran Thinking, Speaking
+and Lip-sync, IMOUTO ran Listening), with no API key saved. Its recommended
+setup has nobody doing Thinking, so the desktop's review shows its "Martlet
+can't reply" problem. The result has:
 
 - `source` and `computers`: each computer's `id` (the cluster plan's host ID,
   else the device ID), `name`, `kind` (`Companion` or `Host`), `thisPc`,
@@ -3810,8 +3816,15 @@ It is read-only, contacts nothing and reads no keys. On the desktop, Home's
 `HomeRecommendedSetup` is in `SafeClicks`. In a Martlet network it opens the
 review window (`RecommendedSetupWindow`). On a PC alone, it opens Set it all up
 for me's question (`DefaultSetupQuestion`). In the review, `ui_snapshot` reads
-every `RecommendedSetup*` text: `RecommendedSetupTitle`,
-`RecommendedSetupSummary`, `RecommendedSetupChange-<n>` (its name is the
+every `RecommendedSetup*` text: `RecommendedSetupBannerTitle` and
+`RecommendedSetupBannerText` (at the top: *No computer can do thinking, so
+Martlet can't reply* when nobody does Thinking in the recommended setup, else
+*Add a free API key* while no hosted provider has a saved key; hidden
+otherwise), `RecommendedSetupTitle`,
+`RecommendedSetupSummary`, `RecommendedSetupOffline` (one sentence about the
+computers that stay away, such as *MIKU and IMOUTO haven't answered for 2
+hours, so Martlet plans without them.*; each change's why then leaves those
+words out), `RecommendedSetupChange-<n>` (its name is the
 benefit, the summary and why), `RecommendedSetupComputer-<n>`,
 `RecommendedSetupComputerKind-<n>`, `RecommendedSetupToday-<n>`,
 `RecommendedSetupTarget-<n>`, `RecommendedSetupLoad-<n>`,
@@ -3822,7 +3835,17 @@ benefit, the summary and why), `RecommendedSetupComputer-<n>`,
 is never read), `RecommendedSetupNote-<n>` and `RecommendedSetupStatus` (the
 preflight state, or why Reconfigure couldn't start, such as *Martlet is already
 reconfiguring your computers. Background tasks shows its progress.*).
-`RecommendedSetupClose` only closes the window. `RecommendedSetupApply`
+`RecommendedSetupClose` only closes the window. The banner's
+`RecommendedSetupFreeKeyAdd` (*Add your key*, or *Open Thinking* when a key is
+saved) is in `SafeClicks`: it closes the review and opens Companion ›
+Thinking with NVIDIA Build chosen for the key. When Martlet can't reply, the
+key goes to Thinking itself (A cloud provider: `SetupCloudKeyStatus-Thinking`
+reads *Paste your NVIDIA Build API key...*); else to If Thinking fails
+(`FallbackKeyStatus` reads the same), so a local model still answers first.
+The status line (`Settings action result`) says which box to fill. Its `RecommendedSetupFreeKeyGet` (*Get
+a free key*) opens NVIDIA Build in the browser, so it is not a safe click.
+After a key is saved, Home plans again and opens the review with the new setup
+when the review sent the owner there. `RecommendedSetupApply`
 (Reconfigure: it changes every computer) and `RecommendedSetupCancel` (Not now:
 it saves `recommended-setup.json`) need `--allow-ui-effects`. Reconfigure
 closes the review and starts the background task *Reconfigure your computers*
@@ -3838,14 +3861,29 @@ Reconfigure without your computers, set `MARTLET_SIMULATE_RECOMMENDED_SETUP` to 
 number of seconds (1-600) before launching the desktop (FIXTURE, **NOT real
 computers**): Home's Recommended setup then plans the fixture network that
 `recommended_setup_status` plans with `fixture: "network"` (also on a PC
-alone), and Reconfigure applies it to simulated computers. Each role change
+alone), and Reconfigure applies it to simulated computers. Also set
+`MARTLET_SIMULATE_RECOMMENDED_SETUP_NETWORK` to `offline` to plan the
+`fixture: "offline"` network instead. Each role change
 takes that many seconds and writes `FIXTURE` lines; nothing is installed,
 contacted, saved or shared, and the run shows on this PC's Home
 (`HomeConfiguringStatus`) only. When an automatic
 check finds a better setup, Home shows `HealthIssue-recommended-setup`. Its
 Review (`HealthOpen-recommended-setup-review`) opens the review, and its Not now
 (`HealthFix-recommended-setup-decline`) saves `recommended-setup.json`, so it
-needs `--allow-ui-effects`.
+needs `--allow-ui-effects`. When nobody does Thinking in that setup, the issue
+is a warning titled *No computer can do thinking, so Martlet can't reply*.
+Without a saved key its fixes are `HealthOpen-recommended-setup-free-key`
+(*Add your key*: Thinking itself, A cloud provider with NVIDIA Build),
+`HealthFix-recommended-setup-free-key-get` (opens the browser), Review and Not
+now; with a key, `HealthOpen-recommended-setup-thinking` (*Open Thinking*). While no hosted provider has a saved key, Home's
+Thinking problems (`HealthIssue-thinking-setup` and
+`HealthIssue-job-thinking`) add *A free API key from NVIDIA Build keeps
+Martlet able to reply when your computers can't.* and the passive
+`HealthOpen-<issue>-free-key` (*Add your key*), and Companion › Thinking shows
+the same tip (`FreeKeyTip-Thinking`) with `FreeKeyAdd-Thinking` (in
+`SafeClicks`) and `FreeKeyGet-Thinking` (opens the browser) until a key is
+saved or A cloud provider is chosen. `SetupCloudGetKey-Thinking` (*Get a free
+key*) shows under A cloud provider while NVIDIA Build has no saved key.
 
 `network_recommendation_check` runs the production network recommender
 (`NetworkRecommender`, Home's
@@ -4681,8 +4719,8 @@ top-left corner as that scale would shrink it, which `workArea` does not show
 `[0, 0, 1920, 999]`).
 Every read-only text box has a Copy button `Copy-<box ID>` (the box's
 automation ID, or its `x:Name` when it has none: `Copy-HostRunOutput`,
-`Copy-PrepareOutput`, `Copy-SupportReport`, `Copy-LogDetail`,
-`Copy-FoundationStatus`) above its top-right corner (its `bounds` sit above the
+`Copy-PrepareOutput`, `Copy-SupportReport`, `Copy-LogDetail`) above its
+top-right corner (its `bounds` sit above the
 box's text and scroll bar, which keep the box's full width), shown only while
 the box has text. Snapshots return
 its label (*Copy*, or *Copied*/*Couldn't copy* for about three seconds after a
@@ -4715,8 +4753,11 @@ its `bounds`. Scrolling changes only what shows, so `ui_scroll` needs no
 `--allow-ui-effects`. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
 `NavDevices`, `NavCompanion`, `NavCreations`, `NavTasks`, `NavDiagnostics` or `NavSettings` first (for example
-`NavCompanion` before `CompanionTab-Listening`). On Settings, click `DiagnosticsSection` to
-expand the pipeline and status fields. On a fresh data directory, the welcome wizard shows
+`NavCompanion` before `CompanionTab-Listening`). Settings › Tools'
+`OpenTroubleshooting` opens Troubleshooting: `SupportReport` returns the status
+report (each check's state and remedy, and the last conversation activity),
+`SupportRefresh` runs the read-only status checks again and `SupportClose`
+closes it. On a fresh data directory, the welcome wizard shows
 ([WELCOME_WIZARD.md](WELCOME_WIZARD.md)): `TourSkip` dismisses it, and `TourBegin`
 and `TourBack` step through it. Step 1's `WizardNewNetwork` and
 `WizardJoinNetwork` save the device role, so they need `--allow-ui-effects`;

@@ -9,6 +9,7 @@ Each release's section here is also its notes on GitHub.
 ## [Unreleased]
 
 ### Added
+- While no online provider key is saved, the Recommended setup window, Home's Thinking problems and Companion › Thinking offer a free API key: **Get a free key** opens NVIDIA Build, and **Add your key** opens the right box with NVIDIA Build already chosen. The key keeps Martlet able to reply when your computers are offline or have no room for thinking, and the recommended setup plans again with it. ([#643](https://github.com/throndir2/Martlet/pull/643))
 - Martlet can see with a separate image model: when you choose one, it describes your screen or camera in words for your Thinking model, so even a Thinking model that only reads text knows what you see. The image model describes the newest picture while you talk or type, a reply takes its description only when it's ready and never waits for it, and looks describe their picture first. The screen summary over time uses it too, and Companion › Vision and the talk window say where your pictures go. ([#640](https://github.com/throndir2/Martlet/pull/640))
 - With an audio model of your own (Companion › Listening › Audio model), Martlet hears how you say things even when your Thinking model reads only text: the audio model listens beside speech-to-text and tells Thinking what the words miss (your tone, a laugh or a sigh, other voices, sounds around you), and it describes the sounds your PC plays too. Your recording never goes to Thinking then, and a reply never waits for the audio model. Never chosen, it hears you only while it runs in Ollama on this PC; anywhere else, tick **Let the audio model hear my voice**. ([#637](https://github.com/throndir2/Martlet/pull/637))
 - Detect zones and Measure the eyes can use the image model you chose for pictures when no Thinking pool member can see, so they work with a Thinking model that reads only text. They pause while your conversation needs that model, and go on after. ([#635](https://github.com/throndir2/Martlet/pull/635), [#641](https://github.com/throndir2/Martlet/pull/641))
@@ -16,6 +17,8 @@ Each release's section here is also its notes on GitHub.
 
 ### Changed
 - When no computer has room for your voice engine, Martlet now speaks with Chatterbox Nano: on a graphics card when one has room, otherwise on the processor. A hosted voice is used only when you saved its key. When no computer can run a voice, Home says Martlet can't speak yet and how to set up the Martlet host service, instead of going quiet. Your own voice engine comes back when a computer has room for it again. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+- The Recommended setup window now shows at the top when no computer can do thinking, so Martlet can't reply, with a way to fix it. It says once which computers haven't answered, instead of on every change. ([#643](https://github.com/throndir2/Martlet/pull/643))
+- Companion › Thinking › A cloud provider no longer warns that NVIDIA Build's free key may cost money, and the key box now says whose key it wants, such as **Your NVIDIA Build key**. ([#643](https://github.com/throndir2/Martlet/pull/643))
 - The setup advisor's **Balanced** plan now keeps Thinking on your own computers, on the graphics card first or the processor when none is free, so a working Martlet needs no account or sign-up. Only **Smartest answers** uses an online model. ([#639](https://github.com/throndir2/Martlet/pull/639))
 - Companion's side list now starts with the parts Martlet needs, in order: Thinking, Listening, Voice and Lip-sync. The Thinking pool, Singing, Pictures, Vision and Reading moved to a new **Optional extras** group, and each page says it's optional. ([#639](https://github.com/throndir2/Martlet/pull/639))
 - Singing has its own page, Companion › Singing, instead of a card at the bottom of the Voice page. ([#639](https://github.com/throndir2/Martlet/pull/639))
@@ -30,6 +33,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Removed
 - Windows voices are gone: Martlet speaks with a voice engine such as Chatterbox Nano instead, which also runs without a graphics card. If you used a Windows voice, pick a voice engine in Companion › Voice. Discord voice calls now speak only with a voice engine on one of your computers. ([#PRNUM](https://github.com/throndir2/Martlet/pull/PRNUM))
+- Settings no longer has the old Diagnostics section. Its status report is still in Settings › Tools › Troubleshooting, and Martlet creates your settings by itself when you first save a choice. ([#642](https://github.com/throndir2/Martlet/pull/642))
 
 ## [0.59.0] - 2026-10-08
 

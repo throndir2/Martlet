@@ -47,7 +47,6 @@ public partial class MainWindow : ThemedWindow
     private readonly DispatcherTimer ageTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly CancellationTokenSource lifetime = new();
     private readonly DispatcherTimer characterTimer = new() { Interval = TimeSpan.FromMilliseconds(100) };
-    private bool saving;
     private bool closing;
     private bool mayClose;
     private CancellationTokenSource? updateCheckCancellation;
@@ -168,11 +167,8 @@ public partial class MainWindow : ThemedWindow
             TickCharacterEyes();
         };
         characterTimer.Start();
-        DataPathText.Text = "Settings are stored on this PC.";
         var processor = Martlet.Core.Platforms.MachineArchitecture.Current;
         ThisPcArchitectureText.Text = "This PC: " + processor.Describe() + (processor.WindowsOnArmNote is { } arm ? " " + arm : "");
-        StatusText.Text = "Loading local status...";
-        AudioStatusText.Text = AudioSetupDiagnostics.Describe(null);
         if (store is not null)
         {
             model = new(new FoundationStatusService(store).Executor);
@@ -182,7 +178,6 @@ public partial class MainWindow : ThemedWindow
         }
         else
         {
-            PipelineText.Text = "Status is unavailable until Martlet can use its data folder.";
             ConversationButton.IsEnabled = AutomaticUpdateCheck.IsEnabled = CheckForUpdatesButton.IsEnabled = PrimaryStageButton.IsEnabled =
                 AutomaticHostUpdate.IsEnabled = UpdateHostsButton.IsEnabled = false;
         }
@@ -272,18 +267,14 @@ public partial class MainWindow : ThemedWindow
         FollowOwnHostAsync().Forget();
         if (!closing) await StartUpdatesAsync();
     }
-    private async void Refresh_Click(object sender, RoutedEventArgs e) => await RefreshAsync();
-
     private async Task RefreshAsync()
     {
         if (model is null)
         {
-            StatusText.Text = startupError;
             ActionText.Text = startupError ?? "";
-            RefreshButton.IsEnabled = false;
             return;
         }
-        if (!saving && !closing)
+        if (!closing)
         {
             await model.RefreshAsync();
             support.ObserveReport(model.Report, record: true);
@@ -295,60 +286,14 @@ public partial class MainWindow : ThemedWindow
     {
         if (closing || model is null)
             return;
-        StatusText.Text = model.Text;
         support.ObserveReport(model.Report);
-        PipelineText.Text = string.Join(Environment.NewLine, model.Pipeline.Select(node => node.Description));
-        ActivityText.Text = setupOperations.IsRunning ? "A setup task is still finishing. Try again in a moment."
-            : model.Activity;
-        CreateButton.IsEnabled = !saving && !setupOperations.IsRunning && model.CanCreateProfile;
-        ConversationButton.IsEnabled = PrimaryStageButton.IsEnabled = !saving && !model.IsRunning;
-        RefreshButton.IsEnabled = !saving && model.CanRefresh;
-        StopButton.IsEnabled = !saving && model.IsRunning;
-    }
-
-    private async void Create_Click(object sender, RoutedEventArgs e)
-    {
-        if (store is null || model is null)
-        {
-            ActionText.Text = startupError;
-            return;
-        }
-        if (saving || closing || setupOperations.IsRunning || !model.CanCreateProfile)
-            return;
-        saving = true;
-        Render();
-        try
-        {
-            var backend = store;
-            var initial = AppSettings.CreateUnconfigured();
-            var worker = setupOperations.TryStart(async token => new(SetupWorkOutcome.Completed,
-                Saved: new(await backend.SaveAsync(initial, expectedRevision: null, token).ConfigureAwait(false), initial)));
-            if (worker is null) return;
-            if (await Task.WhenAny(worker.Completion, Task.Delay(TimeSpan.FromSeconds(5), lifetime.Token)) != worker.Completion)
-            {
-                worker.RequestCancellation();
-                if (!closing) ActionText.Text = "Saving is still finishing. Refresh in a moment.";
-                return;
-            }
-            var completed = await worker.Completion;
-            var result = completed.Saved?.Save;
-            if (!closing)
-                ActionText.Text = result is null ? "Couldn't create the profile. Refresh and try again."
-                    : result.Saved
-                    ? "Profile created."
-                    : $"{result.Error!.Summary} {DiagnosticCatalog.Remedy(result.Error.ActionId).Guidance}";
-        }
-        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-        finally { saving = false; }
-        if (!closing)
-            await RefreshAsync();
+        ConversationButton.IsEnabled = PrimaryStageButton.IsEnabled = !model.IsRunning;
     }
 
     private async void AudioSetup_Click(object sender, RoutedEventArgs e)
     {
-        if (store is null || closing || saving || model?.IsRunning == true) return;
-        new AudioSetupWindow(setupService!, setupOperations, audioSetup,
-            observe: text => { if (!closing) AudioStatusText.Text = text; }, sessionEvents: audioSessionEvents)
+        if (store is null || closing || model?.IsRunning == true) return;
+        new AudioSetupWindow(setupService!, setupOperations, audioSetup, sessionEvents: audioSessionEvents)
             { Owner = this, Troubleshooting = OpenTroubleshooting }.ShowDialog();
         // Closing can leave its last save or device listing finishing; a refresh now would be skipped and show stale status.
         for (var i = 0; i < 50 && setupOperations.IsRunning && !closing; i++) await Task.Delay(100);
@@ -359,7 +304,7 @@ public partial class MainWindow : ThemedWindow
 
     private async Task OpenCompanionWindowAsync(bool importCard)
     {
-        if (companionService is null || closing || saving || model?.IsRunning == true) return;
+        if (companionService is null || closing || model?.IsRunning == true) return;
         var personalities = homeSettings?.Companion?.Personas.ToDictionary(p => p.Id, p => p.Text);
         new CompanionWindow(companionService, setupOperations, importCardOnOpen: importCard, lorebooks: lorebooks) { Owner = this }.ShowDialog();
         homeLore = null;
@@ -371,7 +316,7 @@ public partial class MainWindow : ThemedWindow
 
     private async Task OpenLorebooksAsync(bool import = false)
     {
-        if (lorebooks is null || closing || saving || model?.IsRunning == true) return;
+        if (lorebooks is null || closing || model?.IsRunning == true) return;
         new LorebookWindow(lorebooks, homeSettings?.Companion, importOnOpen: import) { Owner = this }.ShowDialog();
         homeLore = null;
         await RefreshAsync();
@@ -383,7 +328,7 @@ public partial class MainWindow : ThemedWindow
     /// <summary>Opens Memory, showing the facts of <paramref name="person"/> (a voice ID, from People) when given.</summary>
     private async Task OpenMemoryAsync(string? person = null)
     {
-        if (memory is null || closing || saving || model?.IsRunning == true) return;
+        if (memory is null || closing || model?.IsRunning == true) return;
         memoryWindowOpen = true;
         try { new MemoryWindow(memory, setupOperations, voices: () => localVoices.Roster, person: person) { Owner = this }.ShowDialog(); }
         finally { memoryWindowOpen = false; }
@@ -875,7 +820,7 @@ public partial class MainWindow : ThemedWindow
     }
     private void OpenRecovery(Window owner)
     {
-        if (recovery is null || closing || saving) return;
+        if (recovery is null || closing) return;
         avatar.Revoke();
         new ConfigurationRecoveryWindow(recovery) { Owner = owner }.ShowDialog();
     }
@@ -891,8 +836,6 @@ public partial class MainWindow : ThemedWindow
         troubleshooting = next;
         previous?.CloseForPresentationTransfer();
     }
-
-    private void Stop_Click(object sender, RoutedEventArgs e) => model?.Stop();
 
     private void Exit_Click(object sender, RoutedEventArgs e) => ExitMartlet();
 }

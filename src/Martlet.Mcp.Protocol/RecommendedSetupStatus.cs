@@ -19,6 +19,7 @@ namespace Martlet.Mcp;
 internal static class RecommendedSetupStatus
 {
     internal const string FixtureName = "network";
+    internal const string OfflineFixtureName = "offline";
 
     internal static async Task<object> RunAsync(string? dataDirectory, string? fixture, CancellationToken cancellation)
     {
@@ -26,11 +27,20 @@ internal static class RecommendedSetupStatus
         string source;
         if (fixture is not null)
         {
-            if (fixture != FixtureName) throw new ArgumentException($"fixture must be \"{FixtureName}\".");
-            sources = RecommendedSetupInputs.Fixture(DateTimeOffset.UtcNow);
-            source = "fixture network (NOT real computers): this PC (a companion PC with an RTX 4080 that runs Thinking, Speaking and " +
-                "Listening on its own host service), gpu-box (a Linux host PC with an RTX 4090 and nothing installed), DIVA (a companion " +
-                "PC whose host service runs Deep thinking) and old-box (a host that hasn't reported its hardware)";
+            if (fixture == FixtureName)
+            {
+                sources = RecommendedSetupInputs.Fixture(DateTimeOffset.UtcNow);
+                source = "fixture network (NOT real computers): this PC (a companion PC with an RTX 4080 that runs Thinking, Speaking and " +
+                    "Listening on its own host service), gpu-box (a Linux host PC with an RTX 4090 and nothing installed), DIVA (a companion " +
+                    "PC whose host service runs Deep thinking) and old-box (a host that hasn't reported its hardware)";
+            }
+            else if (fixture == OfflineFixtureName)
+            {
+                sources = RecommendedSetupInputs.OfflineFixture(DateTimeOffset.UtcNow);
+                source = "fixture offline (NOT real computers): this PC (a companion PC without a graphics card) and two hosts, MIKU and " +
+                    "IMOUTO, that haven't answered for 155 minutes; MIKU ran Thinking, Speaking and Lip-sync, IMOUTO ran Listening; no API key is saved";
+            }
+            else throw new ArgumentException($"fixture must be \"{FixtureName}\" or \"{OfflineFixtureName}\".");
         }
         else
         {

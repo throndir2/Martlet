@@ -73,7 +73,7 @@ dotnet build Martlet.slnx --no-restore -c Release "-p:NodeExecutable=$((Get-Comm
 .\scripts\Test-Martlet.ps1 -List          # what your change touches, without running anything
 .\scripts\Test-Martlet.ps1 -Project Martlet.Core.Tests -Filter 'FullyQualifiedName~Settings'   # targeted tests
 .\scripts\Smoke-Doctor.ps1
-.\scripts\Smoke-Desktop.ps1
+.\scripts\Invoke-MartletMcp.ps1 -Desktop -Calls '[{"name":"ui_snapshot"}]'   # drive the desktop UI (docs/MCP.md)
 ```
 
 Run with a disposable data folder while developing, never your real profile:
@@ -133,9 +133,9 @@ validation** (owner policy, 2026-10-03).
   ordinary source locks, and are not release reproducibility evidence.
 - `Martlet.slnx` lists the main projects for the IDE; `Test-Martlet.ps1` finds
   every test project under `tests\` itself.
-- `Smoke-Desktop.ps1` needs an interactive Windows desktop and exits the app
-  after reading its accessible status. Both smoke scripts use unique temporary
-  data paths, never the real user profile.
+- `Smoke-Doctor.ps1` and `Invoke-MartletMcp.ps1` use unique temporary data
+  paths, never the real user profile. `Invoke-MartletMcp.ps1 -Desktop` needs
+  an interactive Windows desktop.
 - Without `--data-directory`, the desktop and Doctor read
   `%LocalAppData%\Martlet\settings.json`. Launch never creates a profile or
   starts capture/networking. Malformed, newer or inaccessible files are reported

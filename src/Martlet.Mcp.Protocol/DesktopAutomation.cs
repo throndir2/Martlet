@@ -13,10 +13,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Martlet for Linux and macOS (Martlet.Companion) on a Windows dev run: its three tabs (passive navigation).
         "TalkTab", "SettingsTab", "ComputerTab",
         "OpenTroubleshooting", "OpenAudioSetup", "OpenLiveConversation",
-        "OpenConfigurationRecovery", "RefreshDiagnostics",
+        "OpenConfigurationRecovery",
+        // Troubleshooting › Refresh status: the same read-only status probes Martlet runs at start.
+        "SupportRefresh",
         "AudioClose", "CloseLive", "SupportClose",
         "RecoveryClose", "SupportFreeze", "SupportClear",
-        "NavHome", "NavDevices", "NavCompanion", "NavCreations", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack", "DiagnosticsSection",
+        "NavHome", "NavDevices", "NavCompanion", "NavCreations", "NavDiagnostics", "NavSettings", "TourSkip", "TourBegin", "TourBack",
         // The welcome wizard: Look again only asks the local network which Martlet desktops answer (as Add a computer's Find
         // again does), Enter an address opens Add a computer, Next on the hardware step and the two preference cards only move
         // on and show the suggestion. Choosing a network saves the device role, Join asks the other computer, Use these
@@ -71,6 +73,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // The review's Close only closes it. Reconfigure (RecommendedSetupApply) changes every computer, Not now
         // (RecommendedSetupCancel) saves recommended-setup.json, and Set it up installs, so they need --allow-ui-effects.
         "HomeRecommendedSetup", "RecommendedSetupClose",
+        // The free API key prompt (FreeKeyPrompt): Add your key (the review's RecommendedSetupFreeKeyAdd, Companion › Thinking's
+        // FreeKeyAdd-Thinking, Home's HealthOpen-recommended-setup-free-key) only opens Companion › Thinking at A cloud provider
+        // with NVIDIA Build chosen; the review's button closes the review first. Get a free key (RecommendedSetupFreeKeyGet,
+        // FreeKeyGet-Thinking, SetupCloudGetKey-Thinking, HealthFix-recommended-setup-free-key-get) opens the browser, so it is
+        // not here and needs --allow-ui-effects.
+        "RecommendedSetupFreeKeyAdd", "FreeKeyAdd-Thinking",
         // The notification-area menu (ui_tray "menu"): Open Martlet only shows the window, Talk to Martlet opens the talk window
         // like OpenLiveConversation, Pause Martlet only stops work, Stop listening and Stop watching only stop listening or
         // watching, and End the conversation closes the talk window like CloseLive. Start listening, Start watching, Resume
@@ -213,7 +221,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // their reasons, local-model warnings, the key-storage note and the chosen engines.
         "StatusLine", "CharacterState", "CompanionStatus", "Refusals", "NotOffered", "ThinkingWarnings", "KeyNote", "ThinkingEngine", "ListeningEngine",
         "SpeakingEngine",
-        "FoundationStatus", "PipelineStatus", "LocalAudioStatus",
+        // Troubleshooting: the status report (each check's state and remedy) and the last conversation activity. No secrets.
+        "SupportReport",
         // Settings › Tools: this PC's processor type and whether Martlet runs under x64 emulation (Windows on Arm), with what
         // that means. Fixed wording.
         "ThisPcArchitecture",
@@ -331,6 +340,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // the sign-in window, which changes nothing until its own buttons are used.
         "OutsideAccessBlockedReason",
         "VisionStatus", "VisionDisclosure", "TalkHearVoiceStatus", "SetupCloudHint-Thinking", "SetupLocalRecommendation", "F5VoicesStatus",
+        // Companion › Thinking's free API key tip (fixed text, or why the browser couldn't open) and its buttons' labels.
+        "FreeKeyTip-Thinking", "FreeKeyAdd-Thinking", "FreeKeyGet-Thinking", "SetupCloudGetKey-Thinking",
         // Companion › Vision's Now line: whether vision is on (the default) and what Martlet looks at (your whole screen by
         // default, your active window, or a camera's name or host without its path or password) and how often it comments.
         // The VisionSource-<kind> choices are radio buttons (ui_snapshot's selected) and VisionToggle's label says what it does
@@ -910,7 +921,10 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // "RecommendedSetupBar-0-vram"), who does each job ("RecommendedSetupJob-0"), the notes, downloads, what needs someone at a
         // computer, what Reconfigure needs first ("RecommendedSetupPreflight-0", "RecommendedSetupSecret-0": the label only, never
         // what is typed) and the status line (the preflight state, or why Reconfigure couldn't start; its progress and outcome
-        // show in its run window and Background tasks). Computer names, host IDs, model names and fixed text.
+        // show in its run window and Background tasks). Computer names, host IDs, model names and fixed text. The banner at the
+        // top ("RecommendedSetupBanner", "RecommendedSetupBannerTitle", "RecommendedSetupBannerText": Martlet can't reply, or the
+        // free API key tip), the line on computers that haven't answered ("RecommendedSetupOffline") and the free key buttons'
+        // labels ("RecommendedSetupFreeKeyAdd", "RecommendedSetupFreeKeyGet") read through the same prefix.
         "RecommendedSetup"];
     private int? processId;
 
