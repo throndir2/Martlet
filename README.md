@@ -50,13 +50,13 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.54.0
+## 🆕 What's new in 0.55.0
 
-- ⚡ **Replies start sooner**: Martlet starts its reply in the short pause after you speak, and each spoken reply begins with a few words, so its voice starts right away.
-- 🥇 **Your conversation comes first**: screen summaries, remembering and other background work wait while you talk, and Martlet hosts keep their graphics cards free for your reply.
-- 👀 **Choose where the character looks**: its eyes can follow your mouse, look straight ahead or watch the window you use, or its personality decides.
-- 🗣️ **Two more Chatterbox voices**: Chatterbox Original speaks calmly or expressively, and Chatterbox Nano runs even without a graphics card. Companion › Voice shows what each voice can do.
-- 🎯 **Better touch zones**: Detect zones finds your character's head, body and other parts much more accurately, and checks its own work.
+- 🧭 **Recommended setup for all your computers**: Home works out the best use of all your computers and sets them all up for you with **Reconfigure**. It also tells you what goes on when one of them is away.
+- 😍 **More faces for your character**: heart eyes, star eyes, dizzy swirls and five more emotes that fit each character's own eyes, three strengths of blush, and combos that show several at once.
+- 💬 **Fewer silent waits**: Martlet can say a quick "Hmm..." while a slow reply starts, ask a backup Thinking model, and hear you with Parakeet on this PC when the computer you listen with is away.
+- 🖱️ **Click-through character**: let your clicks pass through your character while you play, and its eyes still follow your mouse.
+- 🧍 **Natural VRM characters**: VRM characters stand relaxed, breathe and sway, and their touch zones react to the part you touch.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
