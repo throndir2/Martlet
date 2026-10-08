@@ -274,7 +274,7 @@ public sealed class RecommendedSetupTests
             Target = recommendation.Target with { Machines = [.. recommendation.Target.Machines.Select(m => m.MachineId == "gpu-box" ? m with { Usage = usage } : m)] }
         };
         var gpu = RecommendedSetupReview.From(recommendation, build).Computers.Single(c => c.Id == "gpu-box");
-        Assert.Equal("Recommended load: 46% graphics memory, 9% memory, 12% processor.", gpu.Load);
+        Assert.StartsWith("Recommended load: 46% graphics memory, 9% memory, 12% processor (today: ", gpu.Load);
         Assert.Equal([CapacityResource.GraphicsMemory, CapacityResource.Memory, CapacityResource.Processor], gpu.Bars.Select(b => b.Resource));
         Assert.Equal(11, gpu.Bars[0].Planned);
     }
