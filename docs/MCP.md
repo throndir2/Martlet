@@ -3254,6 +3254,47 @@ from a data directory's `shared-settings.json` (optional absolute
 *Done*, *Cancel* or *Missed*, `by` and `at`), plus the `reminders` `tool`
 exactly as the model gets it. Read-only.
 
+`setup_run_status` shows how applying the recommended setup to all your
+computers stands ([Applying the recommended setup](CLUSTER.md#applying-the-recommended-setup),
+[Configuring](CLUSTER.md#configuring)), from a data directory (optional
+absolute `dataDirectory`): `state` (*none* without `shared-settings.json`,
+*no-runs*, *loaded*), every computer's published run (`setup-run.<device>`
+entries: `runId`, `startedBy`, `startedAt`, `updatedAt`, `finishedAt`,
+`active`, `shown`, `summary` and each computer's `machineId`, `state`
+*Pending*, *Configuring*, *Done*, *Failed* or *NeedsAttention*, `step`, `done`
+and `steps`; an entry a newer Martlet wrote is `readable: false`), `plan` (who
+does each job in `cluster.json`, with `failover` and `movedFrom`) and `sharing`
+(Sharing work: each job's `shares`, `order` and `never`). Machine IDs, role
+names and counts only. Read-only.
+
+`setup_run_check` rehearses applying a recommended setup with the production
+executor (`SetupExecutor`) on a fixture recommendation against simulated
+computers (FIXTURE, NOT real hosts): gpu-box with two NVIDIA cards (through
+Martlet there), desk-host (this PC's own host service), linux-box (SSH),
+old-box (Martlet can't reach it) and laptop (no host service). The preflight:
+Chatterbox Turbo's terms with the RTX 4090 by UUID, Parakeet chosen as the stt
+variant with that variant's terms only, moving Thinking keeping its model, Audio2Face
+showing and sending its default engine's terms, an NGC key the owner enters, old-box needing someone there, laptop unable to run
+host roles, the Thinking pool joining by itself and the downloads added up.
+The run: the host commands in order with their arguments (nothing for skipped
+changes), the key only to Audio2Face and never in text, the terms recorded as
+accepted, speaking on gpu-box with failover and thinking back to each PC's
+choice in the plan, Sharing work, one cluster check, a failed removal that
+doesn't stop the others, a job this PC can't follow yet reported, the run
+record (all waiting, then *Configuring* with the step and its count, then how
+each computer ended) read back from the shared settings as
+`setup-run.<device>`, a per-computer entry, and a change missing from the
+review skipped. `passed` and each step's `passed` and `detail`. In-process; no
+network, model or credential.
+
+Home's `HomeConfiguring` (on a host PC `HostConfiguring`; passive: it opens
+the Devices map) and `HomeConfiguringStatus` (`HostConfiguringStatus`) show
+the newest run from any computer, for example *Configuring your computers: 1
+of 3 finished. gpu-box: Installing Chatterbox Turbo (2 of 4). Started on
+desk-b.*, then for ten minutes how it ended (*Your computers were reconfigured
+at 6:30 PM: 2 done, 1 needs you.*), or a host role this PC changes now.
+Hidden when nothing is configured.
+
 `reminders_check` rehearses reminders with the production code (`Reminders`,
 `ReminderBoard`, `BackgroundJobs`, `SharedSettings`) on two simulated companion
 PCs whose entries merge through the shared settings: set in minutes and at a
@@ -3724,6 +3765,24 @@ comes back from a power cut without its newest lines (it restarts from an older
 saved `logs.json`) is read from the start again and gets them back; an unsigned
 request is refused. Synthetic lines; loopback only; the folder is deleted.
 
+`host_connections_selftest` (no arguments) rehearses how the desktop connects
+to a paired host and reports its status (`src\Martlet.NodeLinkCheck`, mode
+`host-connections`, `HostConnectionRehearsal.cs`; returns `{exitCode, report}`).
+One real gateway (`lab-connections`; Kestrel, pinned TLS, signed requests) runs
+on 127.0.0.1 behind a loopback TCP forwarder that the check stops and starts at
+the same address. A simulated desktop checks the host as the 15-second sync does
+(a new `Audio2FaceHostConnection` per check: routes, then the plan copy) and
+logs through the desktop's status tracker (`HostAnswers`). Its steps: twelve
+checks share one kept TCP and TLS connection (`HostRoutes` connections dialed
+and connections the forwarder accepted are both 0 after the first); the host
+stops and one missed check logs nothing, the second logs `Host lab-connections
+stopped answering: ...` once, later misses log nothing, and the route status
+says the home address didn't answer (refused); the host comes back and the next
+check logs `Host lab-connections answers again.` once over one new connection;
+a host that misses every other check logs nothing. The report's `log` holds the
+lines. Loopback only; writes nothing. Windows running out of ports
+(`NoBufferSpaceAvailable`) is not simulated; unit tests check its wording.
+
 To drive the visible desktop, start `Martlet.Desktop.exe` yourself in the **same
 interactive Windows session** (ideally with a disposable `--data-directory`).
 Call `ui_connect` with that process ID. `ui_snapshot` returns window accessible names,
@@ -3879,7 +3938,14 @@ or `DIVA, desktop-diva · diva-host. Connected. Runs: Martlet host PC, Speaking,
 so one snapshot shows the whole map. The map fits up to six devices on each
 side of This PC; the rest fold into a `Node-more:computers` (or
 `Node-more:services`) card, *44 more computers* with how many need attention,
-whose click opens the list. `DevicesViewMap` and `DevicesViewList` switch
+whose click opens the list.
+A device that Martlet changes now (a recommended setup applied from any of
+your computers, a host role this PC changes, a host PC running a role command
+from another computer, this PC following a plan change) shows the status
+*Configuring: <step>* on its card and in `SelectedDeviceHealth`, for example
+*Configuring: Installing Chatterbox Turbo (2 of 4)*
+([Configuring](CLUSTER.md#configuring)).
+`DevicesViewMap` and `DevicesViewList` switch
 between the map and the list (passive); the list shows by itself once the map
 can't fit every device. The list shows every device as a `Node-<id>` card (This
 PC, then those needing attention, then by name) with `DeviceFilter-all`,

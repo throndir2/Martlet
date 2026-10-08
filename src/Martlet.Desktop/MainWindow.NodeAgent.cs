@@ -181,7 +181,12 @@ public partial class MainWindow
         {
             if (!closing) ShowNodeAgentStatus($"Could not reach {host?.HostId ?? "this PC's host service"}: {error.Message}");
         }
-        finally { nodeAgentBusy = false; }
+        finally
+        {
+            nodeAgentBusy = false;
+            // Role changes and updates other computers asked for show this PC as Configuring while they run.
+            if (!closing) ShowConfiguring();
+        }
     }
 
     /// <summary>A command from another computer ended here, or continues later (an update that waits, or one Martlet restarts

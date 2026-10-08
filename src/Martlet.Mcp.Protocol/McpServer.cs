@@ -83,6 +83,13 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "host that was down catching up, a host that lost its newest lines in a power cut getting them back, the copy of everyone's " +
             "lines surviving a restart, Save logs to share holding every computer " +
             "and an unsigned request refused. Synthetic lines only; loopback only; the folder is deleted.", new { }),
+        Tool("host_connections_selftest", "Rehearse how the desktop connects to a paired host and reports its status, with the " +
+            "production code: one real gateway on 127.0.0.1 (pinned TLS, signed requests) behind a loopback TCP forwarder stopped and " +
+            "started at the same address, and a simulated desktop checking it as the 15-second sync does (a new paired connection per " +
+            "check) and logging through the desktop's status tracker. Checks that twelve checks share one kept TCP and TLS connection " +
+            "(connections dialed and accepted are counted), that one missed check is not reported, that a host that stops is logged " +
+            "once as stopped answering with the refused address named, and once as answering again when it is back, and that a host " +
+            "missing every other check is never reported. Returns the log lines. Loopback only; writes nothing.", new { }),
         Tool("latency_report", "Summarize voice latency from the desktop log's reply latency lines: for the newest replies, how long " +
             "from when you stopped talking (or sent your message) to the first audio, each step's milliseconds (end of speech, " +
             "speech-to-text, preparing, Thinking connection, hidden reasoning, first sentence, voice synthesis, speakers...), the " +
@@ -1347,6 +1354,21 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "canceling one, who says a due reminder (both offer, the PC used most recently takes it, the other stays quiet), the " +
             "conversation's wording through BackgroundJobs (on its own as soon as Martlet is free, or in the notes of the next " +
             "message), a PC alone taking it at once and one far too late let go. No model, network or credentials.", new { }),
+        Tool("setup_run_status", "Applying the recommended setup to all your computers and the Configuring state (docs/CLUSTER.md), " +
+            "from a data directory: every computer's published run (shared-settings.json, setup-run.<device>: who started it and when, " +
+            "whether it is active, its summary, each computer's state Pending/Configuring/Done/Failed/NeedsAttention with its step " +
+            "and step count, when it finished), who does each job in cluster.json (with failover) and Sharing work (work-sharing.json). " +
+            "Machine IDs, role names and counts only. Read-only.", new
+        {
+            dataDirectory = new { type = "string" }
+        }),
+        Tool("setup_run_check", "Rehearse applying a recommended setup with the production executor (SetupExecutor) on a fixture " +
+            "recommendation against simulated computers (FIXTURE, NOT real hosts): the preflight (a role's terms and variant terms, " +
+            "a graphics card by UUID, an NGC key the owner enters, a change that needs someone there, a computer without a host " +
+            "service, the Thinking pool joining by itself, downloads), then the run: the host commands sent in order with their " +
+            "arguments and the secret only to its role, terms recorded as accepted, the plan assignments with failover, Sharing work, " +
+            "one cluster check, a failed step that doesn't stop the others, a change missing from the review skipped, and the run " +
+            "record's states as every computer reads it from the shared settings. In-process; no network, model or credential.", new { }),
         Tool("helper_jobs_status", "Where Martlet's helper jobs ran last, from a data directory's helper-jobs.json (written by the " +
             "desktop): for each kind (memory: remembering and learning names after a reply; action_naming: naming a character's " +
             "emotes; touch_zones: finding its touch zones in one picture) its priority, whether it ran on a Thinking pool member " +
@@ -1674,6 +1696,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalString(arguments, "source")),
                 "logs_export" => LogTimeline.Export(OptionalString(arguments, "dataDirectory"), RequiredString(arguments, "outputPath")),
                 "logs_share_selftest" => await NodeLinkCheckAsync(cancellation, "logs"),
+                "host_connections_selftest" => await NodeLinkCheckAsync(cancellation, "host-connections"),
                 "latency_report" => LatencyReport.Read(OptionalString(arguments, "dataDirectory"), OptionalInt(arguments, "replies")),
 
                 "ui_connect" => desktop.Connect(RequiredInt(arguments, "pid")),
@@ -1821,6 +1844,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                     OptionalBool(arguments, "live") ?? false, cancellation),
                 "reminders_status" => await RemindersCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "reminders_check" => await RemindersCheck.RunAsync(cancellation),
+                "setup_run_status" => await SetupRunCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "setup_run_check" => await SetupRunCheck.RunAsync(cancellation),
                 "think_longer_status" => await ThinkLongerCheck.StatusAsync(DataDirectory(arguments), cancellation),
                 "helper_jobs_status" => HelperJobsCheck.Status(DataDirectory(arguments)),
                 "helper_jobs_check" => await HelperJobsCheck.RunAsync(cancellation),
