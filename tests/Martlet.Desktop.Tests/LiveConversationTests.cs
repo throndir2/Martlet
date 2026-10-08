@@ -1328,6 +1328,8 @@ public sealed class LiveConversationTests
         await fixture.Finish(fixture.Start("Hi again.", voice: true));
         Assert.DoesNotContain(shortFirst, Instructions());
         Assert.EndsWith(LiveConversationConfiguration.ReplyLengthInstructions, Instructions());
+        // MainWindow's statics need WPF's pack: scheme, which a test that shows no window hasn't registered yet.
+        _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
         Assert.Contains("Spoken replies don't start with a short first sentence.", MainWindow.DescribeGeneration(new() { ShortFirstSentence = false }));
         Assert.Contains("Spoken replies start with a short first sentence.", MainWindow.DescribeGeneration(null));
     }

@@ -159,6 +159,8 @@ public sealed class TouchTurnTests
         await fixture.Finish(fixture.Controller.StartTouch(voice: false));
         Assert.Equal(first, Instructions(fixture.Llm.Body));
         Assert.Contains("under 18", adult, StringComparison.Ordinal);
+        // MainWindow's statics need WPF's pack: scheme, which a test that shows no window hasn't registered yet.
+        _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
         Assert.Contains("Adult content is on.", MainWindow.DescribeGeneration(new() { AdultContent = true }));
         Assert.DoesNotContain("Adult content", MainWindow.DescribeGeneration(null));
     }
