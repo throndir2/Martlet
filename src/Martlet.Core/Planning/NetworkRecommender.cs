@@ -29,7 +29,7 @@ namespace Martlet.Core.Planning;
 /// keep only the room those leave, and new roles nothing needs never push them out.</item>
 /// <item>Companion PCs stay light (they often run games): no host roles there while a host can take the work. Only what no
 /// host can run and Martlet needs (Thinking without a hosted provider, the owner's voice engine) goes to the companion PC with
-/// the most free hardware. A network of one companion PC alone (computers away past the grace don't count) uses its card as
+/// the most free hardware. A network of one companion PC alone (computers that aren't answering don't count) uses its card as
 /// <see cref="PlacementEngine"/> does.</item>
 /// <item>Never add conversation latency (AGENTS.md): a live job never moves to an option with a later first word
 /// (<see cref="ComponentOption.FirstWordMs"/>) or to a busier card than today's, unless its computer stays away or its card
@@ -39,8 +39,9 @@ namespace Martlet.Core.Planning;
 /// <item>Pools after the primaries: the voice engine and listening on more hosts (useful up to the number of companion PCs),
 /// then Deep thinking on every host with a card free (the Thinking pool; more is better; never on a host the owner left out).
 /// Thinking's own job has no pool (its prompt cache; docs/CLUSTER.md).</item>
-/// <item>A computer offline for less than <see cref="NetworkSetupRequest.OfflineGrace"/> is planned as if it were back,
-/// with no changes there; one away longer is planned without, and its jobs and pool places move (Required).</item>
+/// <item>A computer that isn't answering (<see cref="NetworkMachine.Online"/> false) is not part of the network: the
+/// recommendation plans without it, changes nothing there, and its jobs and pool places move (Required). Martlet's presence
+/// notices decide when a computer that stays away is worth a new automatic check (docs/CLUSTER.md).</item>
 /// <item>Stability: what runs stays where it runs unless the gain matters; tidy-ups are Minor; today's setup equal to the
 /// recommended one gives no changes. Ties break by computer id. <see cref="NetworkRecommendation.Fingerprint"/> hashes the
 /// sorted target.</item>
@@ -93,7 +94,7 @@ public static partial class NetworkRecommender
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())))[..16];
     }
 
-    private enum Presence { Here, Away, Gone }
+    private enum Presence { Here, Gone }
 
     private enum Problem { None, NoRoom, SharesModel, SharesVoice }
 
@@ -251,6 +252,10 @@ public static partial class NetworkRecommender
 
     private static string FirstWord(ComponentOption? option) =>
         option?.FirstWordMs is { } ms ? $" (first word in about {Seconds(ms)})" : "";
+
+    /// <summary>"isn't answering", or "hasn't answered for 7 minutes" once that is a minute or more.</summary>
+    private static string Absence(NetworkMachine machine) => machine.OfflineFor is { TotalMinutes: >= 1 } away
+        ? $"hasn't answered for {Minutes(away)}" : "isn't answering";
 
     private static string Minutes(TimeSpan? away) => away is { } time
         ? time.TotalMinutes < 1.5 ? "a minute" : $"{Math.Round(time.TotalMinutes).ToString(CultureInfo.InvariantCulture)} minutes"

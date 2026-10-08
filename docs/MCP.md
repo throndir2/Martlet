@@ -3862,8 +3862,10 @@ builder (`RecommendedSetupInputs`) and runs the production recommender
 user's; the script gives a disposable one) to plan from that directory's
 `hosts.json`, `host-hardware.json`, `cluster.json`, `settings.json`,
 `work-sharing.json`, `thinking-pool.json` and `speaking-engine.txt`. A data
-directory has no live host checks: every host counts as online, and its roles
-are the shared plan's record. This PC's hardware is its own host service's
+directory has no live host checks: a host that `node-presence.json` (the
+desktop's presence report) last saw not answering counts as offline, as the
+desktop plans it, and every other host counts as online. Its roles are the
+shared plan's record. This PC's hardware is its own host service's
 report (the desktop reads this PC live). Give `fixture: "network"` to plan the
 built-in four-computer network instead (**NOT real computers**): this PC, a
 companion PC with an RTX 4080 that runs Thinking, Speaking and Listening on its
@@ -3884,11 +3886,11 @@ can't reply" problem. The result has:
 - `notes`: why a computer is left as it is.
 - `today`: each job's `host`, `off`, `option` and `pool` (the other computers
   that take its requests when the one in charge is busy, in Sharing work
-  order), `thinkingPool`, `thinkingPoolOptOut`, `voiceEngine`, `preference` and
-  `offlineGraceMinutes`.
+  order), `thinkingPool`, `thinkingPoolOptOut`, `voiceEngine` and
+  `preference`.
 - `recommendation`: `alreadyOptimal`, `worthAsking`, `fingerprint`, the
   `changes` (`kind`, `computer`, `summary`, `why`, `away` (the sentence in
-  `why` about a computer that stays away, which the review leaves out),
+  `why` about a computer that isn't answering, which the review leaves out),
   `benefit`, `roleKind`, `model`, `job`, `needsSomeoneThere`, `downloadGb`),
   each computer's recommended `roles`, `why` and `load` (percent of graphics
   memory, memory and processor), the `jobs`, the `thinkingPool`, `cannotReply`
@@ -3896,7 +3898,8 @@ can't reply" problem. The result has:
   has room for a Thinking model, and no free API key is saved.*),
   `cannotSpeak` and `cannotSpeakNote` (no computer and no hosted voice with a
   saved key can speak, and how to give Martlet a voice), `offline`
-  (each computer that stays away: `computer`, `minutes` and its `note`) and
+  (each computer that isn't answering, so the plan leaves it out: `computer`,
+  `minutes` and its `note`) and
   `notes`. The review window reads `cannotReply` and `offline`, not the
   sentences in `notes`.
 - `companionInUseAsks`: what a companion PC someone uses would do after an
@@ -3913,9 +3916,10 @@ Martlet can't reply* when nobody does Thinking in the recommended setup, else
 *Add a free API key* while no hosted provider has a saved key; hidden
 otherwise), `RecommendedSetupTitle`,
 `RecommendedSetupSummary`, `RecommendedSetupOffline` (one sentence about the
-computers that stay away, such as *MIKU and IMOUTO haven't answered for 2
+computers that aren't answering, such as *MIKU and IMOUTO haven't answered for 2
 hours, so Martlet plans without them.*; each change's why then leaves those
-words out), `RecommendedSetupChange-<n>` (its name is the
+words out; their `RecommendedSetupTarget-<n>` reads *Recommended: left out while
+it isn't answering*), `RecommendedSetupChange-<n>` (its name is the
 benefit, the summary and why), `RecommendedSetupComputer-<n>`,
 `RecommendedSetupComputerKind-<n>`, `RecommendedSetupToday-<n>`,
 `RecommendedSetupTarget-<n>`, `RecommendedSetupLoad-<n>`,
@@ -3998,8 +4002,9 @@ model and the voice and lip-sync get the card); heavy roles on a companion PC
 (they move to the host, Improvement); Thinking on a companion PC's card with
 only a processor host (it stays: no added latency); hosted Thinking that the
 owner chose (it stays, unless everything is kept local); a host left out of
-the Thinking pool; the voice host away 4 and 25 minutes (no change, then
-Speaking moves as Required); and the applied recommendation (no changes and the
+the Thinking pool; the voice host not answering just now, for 4 and for 25
+minutes (Speaking moves as Required each time, and nothing changes on that
+host); and the applied recommendation (no changes and the
 same fingerprint in any order). Four `voice` steps check the fallback when no
 computer has room for the owner's voice engine: Chatterbox Nano on a 4 GB card;
 Chatterbox Nano on the processor (about 8 threads) with no card; the hosted

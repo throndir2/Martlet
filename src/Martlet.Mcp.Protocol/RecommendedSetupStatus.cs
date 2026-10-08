@@ -14,8 +14,10 @@ namespace Martlet.Mcp;
 /// settings.json, work-sharing.json, thinking-pool.json, speaking-engine.txt) or from the built-in fixture network, runs the
 /// production recommender (<see cref="NetworkRecommender"/>) and lists the computers, today's jobs, the recommended changes
 /// and whether a companion PC in use would ask (SetupAskRule, with this data directory's declined setups). Read-only: it
-/// contacts nothing, and it reads no keys. A data directory has no live host checks, so every host counts as online and its
-/// roles are the shared plan's record; this PC's own hardware is its host service's report (the desktop reads it live).</summary>
+/// contacts nothing, and it reads no keys. A data directory has no live host checks: a host the presence report
+/// (node-presence.json, written by the desktop) last saw not answering counts as offline, as the desktop plans it; every
+/// other host counts as online, and its roles are the shared plan's record. This PC's own hardware is its host service's
+/// report (the desktop reads it live).</summary>
 internal static class RecommendedSetupStatus
 {
     internal const string FixtureName = "network";
@@ -73,8 +75,7 @@ internal static class RecommendedSetupStatus
                 thinkingPool = build.Request.CurrentThinkingPool,
                 thinkingPoolOptOut = build.Request.ThinkingPoolOptOut,
                 voiceEngine = build.Request.VoiceEngine,
-                preference = build.Request.Preference.ToString(),
-                offlineGraceMinutes = build.Request.OfflineGrace.TotalMinutes
+                preference = build.Request.Preference.ToString()
             },
             recommendation = new
             {
@@ -114,6 +115,11 @@ internal static class RecommendedSetupStatus
         var plan = Plan(directory);
         var hosts = PairedHosts(directory);
         var own = hosts.FirstOrDefault(h => h.Method == "ThisPcDocker").HostId;
+        var presence = NodePresenceReport.Load(directory);
+        TimeSpan? Away(string hostId) => presence?.Hosts.FirstOrDefault(h => h.HostId == hostId) is
+            { State: not (NodePresenceState.Answering or NodePresenceState.Returning or NodePresenceState.Back) } away
+            ? away.AwayFor ?? (away.Since is { } since ? presence.UpdatedAt - since : TimeSpan.Zero)
+            : null;
         var computers = new List<SetupComputer>
         {
             new(own ?? device, "This PC", NetworkMachineKind.Companion)
@@ -125,9 +131,10 @@ internal static class RecommendedSetupStatus
         {
             var report = hardware.FirstOrDefault(h => h.HostId == host.HostId);
             var reachable = host.Method is "ThisPcDocker" or "Agent" || host.Method is "SshDocker" or "SshNative" && host.SshTarget is { Length: > 0 };
-            computers.Add(new(host.HostId, host.HostId, NetworkMachineKind.Host)
+            var away = Away(host.HostId);
+            computers.Add(new(host.HostId, presence?.Hosts.FirstOrDefault(h => h.HostId == host.HostId)?.Name ?? host.HostId, NetworkMachineKind.Host)
             {
-                Hardware = report, HasHostService = true,
+                Hardware = report, HasHostService = true, Reachable = away is null ? null : false, OfflineFor = away,
                 Manageable = reachable && PlatformCatalog.ManagesRolesRemotely(PlatformDevice.FromHost(host.HostId, report))
             });
         }
@@ -151,8 +158,7 @@ internal static class RecommendedSetupStatus
         return new SetupSources(computers)
         {
             Plan = plan, LocalJobs = jobs, Sharing = WorkSharingSettings.Load(directory), Device = device, ThinkingPool = pool,
-            PoolOptOut = poolSettings.LeftByOwner, VoiceEngine = voice.HostRoleKind, ConfiguredProviders = providers,
-            OfflineGrace = TimeSpan.FromMinutes(NodePresenceSettings.AwayMinutes(directory))
+            PoolOptOut = poolSettings.LeftByOwner, VoiceEngine = voice.HostRoleKind, ConfiguredProviders = providers
         };
     }
 

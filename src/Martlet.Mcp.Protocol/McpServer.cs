@@ -1897,7 +1897,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "nothing set up, a host with two NVIDIA cards, a Windows host whose voice shares its card, a crowded network, Deep " +
             "thinking beside the voice, a companion PC with Singing whose hosts are gone (no key, then a saved free key), heavy " +
             "roles on a companion PC, Thinking with only a processor host, hosted Thinking the owner " +
-            "chose, a host left out of the Thinking pool, the voice host away 4 and 25 minutes, and the applied recommendation. Each " +
+            "chose, a host left out of the Thinking pool, the voice host not answering (just now, 4 and 25 minutes), and the applied recommendation. Each " +
             "step names its rule (1-12), passed and the change list, target roles, jobs, pools and notes. In-process; reads nothing.", new { }),
         Tool("node_presence_status", "When your other computers go away or come back, from a data directory: the per-PC away time " +
             "(node-presence.txt; Settings > Your other computers, default 10 minutes), the rules (missing after 30 seconds without " +

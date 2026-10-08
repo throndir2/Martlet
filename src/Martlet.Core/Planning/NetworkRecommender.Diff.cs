@@ -137,7 +137,7 @@ public static partial class NetworkRecommender
             {
                 var node = NodeOf(member);
                 var (benefit, why) = member == decision.HostId ? (SetupChangeBenefit.Minor, $"{NameOf(member)} does {Lower(job)} itself now.")
-                    : node is { Presence: Presence.Gone } ? (SetupChangeBenefit.Required, Away($"{node.Name} hasn't answered for {Minutes(node.Machine.OfflineFor)}."))
+                    : node is { Presence: Presence.Gone } ? (SetupChangeBenefit.Required, Away($"{node.Name} {Absence(node.Machine)}."))
                     : node?.Today.FirstOrDefault(r => r.Kind == kind)?.Leave is { } leave ? leave
                     : (SetupChangeBenefit.Minor, $"{NameOf(member)} doesn't run {Lower(job)}'s engine.");
                 changes.Add(new SetupChange(SetupChangeKind.LeavePool, member, $"{NameOf(member)} leaves the {Title(job)} pool.", why)
@@ -153,14 +153,11 @@ public static partial class NetworkRecommender
             foreach (var node in nodes.Where(n => n.Presence == Presence.Gone))
             {
                 var worked = (request.CurrentJobs ?? []).Any(j => j?.HostId == node.Id || j?.Pool.Contains(node.Id) == true);
-                var note = $"{node.Name} hasn't answered for {Minutes(node.Machine.OfflineFor)}, so Martlet plans without it" +
+                var note = $"{node.Name} {Absence(node.Machine)}, so Martlet plans without it" +
                     (worked ? " and its jobs move." : ".");
                 first.Add(note);
                 offline.Add(new OfflineComputer(node.Id, node.Machine.OfflineFor ?? TimeSpan.Zero, note));
             }
-            foreach (var node in nodes.Where(n => n.Presence == Presence.Away))
-                first.Add((node.Machine.OfflineFor is null ? $"{node.Name} isn't answering" : $"{node.Name} hasn't answered for {Minutes(node.Machine.OfflineFor)}") +
-                    "; Martlet plans as if it were back and changes nothing there.");
             notes.InsertRange(0, first);
             foreach (var node in nodes.Where(n => n.Presence == Presence.Here && n.OnWindows))
                 foreach (var voice in node.Roles.Where(r => IsVoice(r.Kind) && r.Card is not null))

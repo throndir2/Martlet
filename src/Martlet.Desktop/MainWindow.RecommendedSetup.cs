@@ -94,8 +94,7 @@ public partial class MainWindow
         var pool = poolSettings.Places.Places.Where(p => p.OnHostRole && p.HostId is not null).Select(p => p.HostId!).ToArray();
         return RecommendedSetupInputs.Sources(inputs, NetworkMap.Build(inputs), ClusterDevice, OwnHostId(), ThisPcDiskFreeGb(),
             offlineFor: OfflineFor, sharing: directory is null ? null : WorkSharingSettings.Load(directory), thinkingPool: pool,
-            poolOptOut: poolSettings.LeftByOwner, voiceEngine: SpeakingEngineChoice.Current.HostRoleKind, configuredProviders: ConfiguredProviders(),
-            offlineGrace: directory is null ? null : TimeSpan.FromMinutes(NodePresenceSettings.AwayMinutes(directory)));
+            poolOptOut: poolSettings.LeftByOwner, voiceEngine: SpeakingEngineChoice.Current.HostRoleKind, configuredProviders: ConfiguredProviders());
     }
 
     private void ShowRecommendedSetup(SetupRequestBuild build, NetworkRecommendation recommendation)

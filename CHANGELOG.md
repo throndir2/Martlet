@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Fixed
+
+- Recommended setup no longer counts a computer that isn't answering: turn your other computers off and it plans for the PC you use right away, instead of keeping their jobs for 10 minutes. A Thinking model a host names like `gemma4-e4b` is now known, so it moves to your PC properly. (PR link to come)
+
 ## [0.60.0] - 2026-10-08
 
 ### Added

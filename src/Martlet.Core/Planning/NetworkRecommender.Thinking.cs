@@ -22,8 +22,7 @@ public static partial class NetworkRecommender
                 ? $"sooner (about {Seconds(after)} instead of {Seconds(before)})"
                 : "as soon";
 
-        private string Gone(Node node, string job) =>
-            Away($"{node.Name} hasn't answered for {Minutes(node.Machine.OfflineFor)}, so {Lower(job)} moves.");
+        private string Gone(Node node, string job) => Away($"{node.Name} {Absence(node.Machine)}, so {Lower(job)} moves.");
 
         /// <summary>A sentence about a computer that stays away, remembered so each change can say which of its words they are.</summary>
         private string Away(string sentence)
@@ -38,8 +37,8 @@ public static partial class NetworkRecommender
             : [now, .. catalog.Options.Where(o => o != now && o.IsLocal && o.HostRoleKind == kind && Same(o.ModelId, now.ModelId))
                 .OrderBy(o => o.UsesGpu ? 0 : 1).ThenBy(o => o.FirstWordMs ?? int.MaxValue).ThenBy(o => o.Id, StringComparer.Ordinal)];
 
-        /// <summary>A job that stays exactly as today: its part isn't wanted, or its computer isn't answering (within the grace)
-        /// or has no report (rule 10; S4 leaves a host without a hardware report out of the request).</summary>
+        /// <summary>A job that stays exactly as today: its part isn't wanted, or its computer has no report (S4 leaves a host
+        /// without a hardware report out of the request). A computer that isn't answering is planned without (rule 10).</summary>
         private bool Settled(string job)
         {
             var today = TodayJob(job);
@@ -49,15 +48,9 @@ public static partial class NetworkRecommender
                 return true;
             }
             if (today?.HostId is not { } id) return false;
-            var host = NodeOf(id);
-            if (host is null)
-            {
-                Freeze(job, today, $"{id} does it today; Martlet has no report from {id}, so it stays as it is.");
-                notes.Add($"{id} does {Lower(job)} today, but Martlet has no report from it, so it stays as it is.");
-                return true;
-            }
-            if (host.Presence != Presence.Away) return false;
-            Freeze(job, today, $"{host.Name} isn't answering now; it keeps {Lower(job)} unless it stays away for more than {Minutes(request.OfflineGrace)}.");
+            if (NodeOf(id) is not null) return false;
+            Freeze(job, today, $"{id} does it today; Martlet has no report from {id}, so it stays as it is.");
+            notes.Add($"{id} does {Lower(job)} today, but Martlet has no report from it, so it stays as it is.");
             return true;
         }
 
@@ -295,7 +288,9 @@ public static partial class NetworkRecommender
         private bool ThinkHere(ComponentOption? now, SetupChangeBenefit benefit, string reason, int? most, bool strict, bool gpu = true)
         {
             const string job = ClusterJobs.Thinking;
-            var order = ThinkingOrder(now).Where(o => o.UsesGpu == gpu);
+            // Thinking inside this PC needs a model the catalog knows (Martlet sets it up by its option); a model sized only from
+            // its name can still move to a host role, which installs it by name.
+            var order = ThinkingOrder(now).Where(o => o.UsesGpu == gpu && (!singlePc || Known(o) is not null));
             var slot = singlePc
                 ? FindSlot(order, new Query(ThinkingRole) { Native = true, Companions = true, MaxMs = most })
                 : FindSlot(order, new Query(ThinkingRole) { MaxMs = most, StrictWindows = strict });

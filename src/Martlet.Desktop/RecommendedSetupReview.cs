@@ -35,8 +35,8 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
         string Name(string? id) => id is null or "" ? "your companion PCs" : build.Names.GetValueOrDefault(id)
             ?? request.Machines.FirstOrDefault(m => m.Specs.Id == id)?.Specs.Name ?? id;
 
-        // Computers that stay away (past the grace): one sentence says so, so each change's reason (SetupChange.Detail) and the
-        // notes leave it out.
+        // Computers that aren't answering: one sentence says so, so each change's reason (SetupChange.Detail) and the notes
+        // leave it out.
         var ids = request.Machines.Select(m => m.Specs.Id).ToList();
         var gone = recommendation.Offline.OrderBy(o => ids.IndexOf(o.Id)).ToArray();
         var cannotReply = recommendation.CannotReply;
@@ -64,7 +64,8 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
                 load = load.Length == 0 ? char.ToUpperInvariant(before[0]) + before[1..] : $"{load} ({before})";
             computers.Add(new ReviewComputer(id, Name(id), kind,
                 "Today: " + Roles(today, machine),
-                "Recommended: " + (Same(today, planned) ? "no change" : Roles(planned, machine)),
+                "Recommended: " + (!machine.Online ? "left out while it isn't answering"
+                    : Same(today, planned) ? "no change" : Roles(planned, machine)),
                 load.Length == 0 ? "" : load + ".", bars, recommendation.Changes.Any(c => c.MachineId == id)));
         }
 
@@ -109,12 +110,14 @@ internal sealed record RecommendedSetupReview(string Title, string Summary, IRea
     }
 
     /// <summary>"MIKU and IMOUTO haven't answered for 2 hours, so Martlet plans without them.", or null when every computer
-    /// answers (or comes back within the grace).</summary>
+    /// answers. A computer that isn't answering is never part of the plan, however short the time.</summary>
     internal static string? OfflineSentence(IReadOnlyList<(string Name, TimeSpan Away)> gone)
     {
         if (gone.Count == 0) return null;
         var times = gone.Select(g => Minutes(g.Away)).ToArray();
         var them = gone.Count == 1 ? "it" : "them";
+        if (gone.All(g => g.Away.TotalMinutes < 1))
+            return $"{Join(gone.Select(g => g.Name).ToArray())} {(gone.Count == 1 ? "isn't" : "aren't")} answering, so Martlet plans without {them}.";
         if (times.Distinct(StringComparer.Ordinal).Count() == 1)
             return $"{Join(gone.Select(g => g.Name).ToArray())} {(gone.Count == 1 ? "hasn't" : "haven't")} answered for {times[0]}, so Martlet plans without {them}.";
         return $"{Join(gone.Select((g, i) => $"{g.Name} ({times[i]})").ToArray())} haven't answered, so Martlet plans without {them}.";

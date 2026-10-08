@@ -33,11 +33,6 @@ public static partial class NetworkRecommender
                     notes.Add($"{id} is in the {Title(job)} pool today, but Martlet has no report from it, so it stays as it is.");
                     continue;
                 }
-                if (node.Presence == Presence.Away)
-                {
-                    if (node.Roles.Any(r => r.Kind == kind)) members.Add(id);
-                    continue;
-                }
                 if (node.Presence == Presence.Gone || node.Pending.FirstOrDefault(r => r.Kind == kind && !r.Native && r.Leave is null) is not { } role) continue;
                 if (node.Companion && !singlePc)
                 {

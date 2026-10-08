@@ -358,27 +358,113 @@ public sealed class NetworkRecommenderTests
     }
 
     [Fact]
-    public void AComputerAwayWithinTheGracePeriodIsPlannedAsIfItWereBack()
+    public void AComputerThatJustStoppedAnsweringIsPlannedWithout()
     {
-        var request = Network(Companion("c1"), Host("h1", Nvidia(12)) with
+        foreach (var away in new TimeSpan?[] { null, TimeSpan.FromSeconds(40), TimeSpan.FromMinutes(4) })
         {
-            Online = false, OfflineFor = TimeSpan.FromMinutes(4), Roles = [Role("chatterbox", "chatterbox-turbo")]
-        }, Host("h2", Nvidia(12))) with
+            var request = Network(Companion("c1"), Host("h1", Nvidia(12)) with
+            {
+                Online = false, OfflineFor = away, Roles = [Role("chatterbox", "chatterbox-turbo")]
+            }, Host("h2", Nvidia(12))) with
+            {
+                CurrentJobs = [new JobPlan(ClusterJobs.Speaking, "h1", OptionId: "chatterbox-turbo")],
+                Wanted = [PlanComponent.Voice]
+            };
+
+            var recommendation = NetworkRecommender.Recommend(request);
+
+            Assert.Equal("h2", recommendation.Target.Job(ClusterJobs.Speaking)!.HostId);
+            var move = recommendation.Changes.Single(c => c.Kind == SetupChangeKind.AssignJob);
+            Assert.Equal(SetupChangeBenefit.Required, move.Benefit);
+            Assert.Equal("h1", move.FromMachineId);
+            Assert.DoesNotContain(recommendation.Changes, c => c.MachineId == "h1");
+            Assert.True(recommendation.WorthAsking);
+            Assert.Equal("h1", Assert.Single(recommendation.Offline).Id);
+            var words = away is { TotalMinutes: >= 1 } ? "h1 hasn't answered for 4 minutes" : "h1 isn't answering";
+            Assert.Contains(recommendation.Notes, n => n.StartsWith(words + ", so Martlet plans without it", StringComparison.Ordinal));
+            Assert.Null(recommendation.Target.Machine("h1")!.Usage);
+        }
+    }
+
+    /// <summary>The owner's report (2026-10-08): DIVA, a companion PC with an RTX 4070 whose host service runs Singing and
+    /// Whisper, was a host for the others; MIKU (Thinking, the voice and lip-sync) and IMOUTO (a companion PC with Listening and
+    /// a Thinking pool model) were turned off 7 minutes ago. DIVA alone takes every job at once.</summary>
+    [Fact]
+    public void OneCompanionPcLeftAloneMinutesAgoTakesEveryJob()
+    {
+        var request = Network(
+            Companion("diva-host", true, Nvidia(12, "NVIDIA GeForce RTX 4070")) with
+            {
+                OnWindows = true, Roles = [Role("singing", "ace-step-v15-soulx-svc"), Role("stt", "large-v3-turbo")]
+            },
+            Companion("imouto-host", true, Nvidia(16)) with
+            {
+                Online = false, OfflineFor = TimeSpan.FromMinutes(7), Roles = [Role("deep-thinking", "gemma4-e2b"), Role("stt", "parakeet-tdt-110m-en")]
+            },
+            Host("miku-host", Nvidia(16)) with
+            {
+                Online = false, OfflineFor = TimeSpan.FromMinutes(7),
+                Roles = [Role("audio2face", "claire"), Role("chatterbox", "chatterbox-turbo"), Role("ollama", "gemma4-e4b")]
+            }) with
         {
-            CurrentJobs = [new JobPlan(ClusterJobs.Speaking, "h1", OptionId: "chatterbox-turbo")],
-            Wanted = [PlanComponent.Voice]
+            CurrentJobs =
+            [
+                new JobPlan(ClusterJobs.Thinking, "miku-host"),
+                new JobPlan(ClusterJobs.Speaking, "miku-host"),
+                new JobPlan(ClusterJobs.Listening, "imouto-host"),
+                new JobPlan(ClusterJobs.LipSync, "miku-host")
+            ],
+            CurrentThinkingPool = ["imouto-host"],
+            Preference = HostingPreference.PreferLocal
         };
 
         var recommendation = NetworkRecommender.Recommend(request);
 
-        Assert.Equal("h1", recommendation.Target.Job(ClusterJobs.Speaking)!.HostId);
-        Assert.DoesNotContain(recommendation.Changes, c => c.MachineId == "h1" || c.FromMachineId == "h1");
-        Assert.True(recommendation.AlreadyOptimal);
-        Assert.Contains(recommendation.Notes, n => n.Contains("h1 hasn't answered for 4 minutes", StringComparison.Ordinal));
+        Assert.False(recommendation.AlreadyOptimal);
+        Assert.True(recommendation.WorthAsking);
+        Assert.Equal(["imouto-host", "miku-host"], recommendation.Offline.Select(o => o.Id));
+        foreach (var job in ClusterJobs.All)
+        {
+            var next = recommendation.Target.Job(job)!;
+            Assert.True(next.HostId is null or "diva-host", $"{job} stays on {next.HostId}");
+            Assert.False(next.Off && job != ClusterJobs.LipSync);
+        }
+        Assert.Contains(recommendation.Changes, c => c is { Kind: SetupChangeKind.AssignJob, Job: ClusterJobs.Thinking, Benefit: SetupChangeBenefit.Required });
+        Assert.Contains(recommendation.Changes, c => c is { Kind: SetupChangeKind.AssignJob, Job: ClusterJobs.Speaking, Benefit: SetupChangeBenefit.Required });
+        Assert.Contains(recommendation.Changes, c => c is { Kind: SetupChangeKind.AssignJob, Job: ClusterJobs.Listening, Benefit: SetupChangeBenefit.Required });
+        Assert.Contains(RolesOf(recommendation, "diva-host"), r => r.Kind == "chatterbox");
+        // Thinking moves to this PC with a model Martlet can set up (MIKU's route names it "gemma4-e4b", the tag gemma4:e4b).
+        var thinking = recommendation.Target.Job(ClusterJobs.Thinking)!;
+        Assert.Equal("gemma4:e4b", FootprintCatalog.Default.Find(thinking.OptionId!)?.ModelId);
+        Assert.DoesNotContain(recommendation.Changes, c => c.Summary.StartsWith("Nobody does", StringComparison.Ordinal));
+        Assert.Empty(recommendation.Target.ThinkingPool);
+        Assert.DoesNotContain(recommendation.Changes, c => c.MachineId is "imouto-host" or "miku-host");
+        Assert.DoesNotContain(recommendation.Notes, n => n.Contains("No computer can run a Thinking model", StringComparison.Ordinal));
+        AssertOneModelPerCard(recommendation);
+        AssertWithinCapacity(recommendation);
+        var again = NetworkRecommender.Recommend(Apply(request, recommendation));
+        Assert.True(again.AlreadyOptimal, string.Join("\n", again.Changes.Select(c => c.Summary)));
     }
 
     [Fact]
-    public void AComputerAwayLongerThanTheGracePeriodLosesItsJobs()
+    public void AThinkingModelARouteNamesByItsAliasIsTheCatalogsModel()
+    {
+        // Host routes name an Ollama tag with '-' for ':' ("gemma4-e4b"); the recommender reads it as the catalog's gemma4:e4b.
+        var request = Network(Companion("c1"), Host("h1", Nvidia(16)) with { Roles = [Role("ollama", "gemma4-e4b"), Role("deep-thinking", "gemma4-e2b")] }) with
+        {
+            CurrentJobs = [new JobPlan(ClusterJobs.Thinking, "h1")],
+            Wanted = [PlanComponent.Thinking, PlanComponent.DeepThinking]
+        };
+
+        var today = NetworkRecommender.Today(request);
+
+        var usage = today.Machine("h1")!.Usage!;
+        Assert.Contains(usage.Items, i => i.OptionId == "gemma4:e4b");
+        Assert.Contains(usage.Items, i => i.OptionId == "deep-thinking:gemma4:e2b");
+    }
+
+    [Fact]
+    public void AComputerThatStaysAwayLosesItsJobs()
     {
         var request = Network(Companion("c1"), Companion("c2"), Host("h1", Nvidia(12)) with
         {

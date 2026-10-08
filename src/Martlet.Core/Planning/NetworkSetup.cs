@@ -17,7 +17,8 @@ public sealed record HostedRolePlacement(string Kind, string? Model, int? GpuInd
 /// (its host service's host id when it has one, else the Martlet device id).</summary>
 public sealed record NetworkMachine(MachineSpecs Specs, NetworkMachineKind Kind)
 {
-    /// <summary>It answered its last check.</summary>
+    /// <summary>It answered its last check. A computer that isn't answering is not part of the network for the
+    /// recommendation: it is planned without, and its jobs move.</summary>
     public bool Online { get; init; } = true;
     /// <summary>How long it has not answered, when it is offline and that is known.</summary>
     public TimeSpan? OfflineFor { get; init; }
@@ -82,9 +83,6 @@ public sealed record NetworkSetupRequest(IReadOnlyList<NetworkMachine> Machines)
     /// <summary>The voice engine the owner chose (a host role kind such as "chatterbox"); its voices are made for it, so the
     /// recommender keeps it unless it cannot run anywhere.</summary>
     public string? VoiceEngine { get; init; }
-    /// <summary>A computer that has not answered for less than this is planned as if it were back (it may only be slow to
-    /// answer); one that stays away longer is planned without, and its jobs move.</summary>
-    public TimeSpan OfflineGrace { get; init; } = TimeSpan.FromMinutes(10);
     /// <summary>Hosts the owner left out of the Thinking pool (ThinkingPoolSettings.LeftByOwner): the recommender never plans
     /// a Deep thinking role for the pool there.</summary>
     public IReadOnlyCollection<string> ThinkingPoolOptOut { get; init; } = [];
@@ -96,7 +94,7 @@ public sealed record NetworkSetupRequest(IReadOnlyList<NetworkMachine> Machines)
 /// (<see cref="SetupChange.Job"/>), or background thinks (Job null: the Thinking pool).</summary>
 public enum SetupChangeKind { AddRole, RemoveRole, ChangeModel, MoveToGpu, AssignJob, JoinPool, LeavePool }
 
-/// <summary>How much a change matters. Required: something is missing, overfilled or on a computer that stays away.
+/// <summary>How much a change matters. Required: something is missing, overfilled or on a computer that isn't answering.
 /// Improvement: faster replies, a better model, or more computers sharing the work. Minor: tidier, but nobody would notice.
 /// Automatic checks only ask the owner about Required and Improvement changes.</summary>
 public enum SetupChangeBenefit { Required, Improvement, Minor }
@@ -138,8 +136,8 @@ public sealed record SetupChange(SetupChangeKind Kind, string MachineId, string 
         : Why;
 }
 
-/// <summary>A computer that hasn't answered for longer than the offline grace: the recommendation plans without it.
-/// <see cref="Note"/> is its sentence in <see cref="NetworkRecommendation.Notes"/>.</summary>
+/// <summary>A computer that isn't answering: the recommendation plans without it. <see cref="For"/> is how long it hasn't
+/// answered (zero when not known). <see cref="Note"/> is its sentence in <see cref="NetworkRecommendation.Notes"/>.</summary>
 public sealed record OfflineComputer(string Id, TimeSpan For, string Note);
 
 /// <summary>The recommended setup for all the owner's computers and the changes that get there from today's.
@@ -150,7 +148,7 @@ public sealed record NetworkRecommendation(NetworkSetup Current, NetworkSetup Ta
     public string Fingerprint { get; init; } = "";
     /// <summary>Plain sentences about the whole network ("gpu-box hasn't answered for 12 minutes, so its jobs move.").</summary>
     public IReadOnlyList<string> Notes { get; init; } = [];
-    /// <summary>The computers the recommendation plans without (away past the grace), in the order of their ids.</summary>
+    /// <summary>The computers the recommendation plans without (they aren't answering), in the order of their ids.</summary>
     public IReadOnlyList<OfflineComputer> Offline { get; init; } = [];
     /// <summary>The note in <see cref="Notes"/> that says Martlet can't reply ("No computer has room for a Thinking model, and
     /// no free API key is saved. ..."), or null when it can.</summary>
