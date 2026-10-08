@@ -99,6 +99,33 @@ test("a picture taken by a showing character's renderer draws the canvas again a
   assert.deepEqual(calls.slice(3), [["resize", 500, 500], ["view", 2, 0.1, -0.2, 0.5], ["update", 0]]);
 });
 
+test("a picture says where the face anchor put the face, as fractions of the picture, and a face it can't read is only missing", async () => {
+  const posts = [];
+  let failing = false;
+  class Renderer {
+    load() { return Promise.resolve({ expressions: [] }); }
+    startIdle() {}
+    resize() {}
+    setView() {}
+    update() {}
+    bonePoints() { return []; }
+    faceAnchor() {
+      if (failing) throw new Error("controlled face failure");
+      return { x: 250, y: 100, width: 80, angle: 0.0872665, tracking: "bones", cheekLeft: { x: 230, y: 115 }, cheekRight: { x: 270, y: 115 } };
+    }
+    dispose() {}
+  }
+  const { send } = await page(Renderer, posts);
+  await send({ kind: "load", data: { renderer: "Vrm", resourceRevision: "a".repeat(64), modelFile: "model.vrm", still: true } });
+  await send({ kind: "picture", data: { width: 500, height: 500, zoom: 1, x: 0, y: 0, frame: 1 } });
+  assert.deepEqual(JSON.parse(JSON.stringify(posts.at(-1))).face, { x: 0.5, y: 0.2, width: 0.16, angle: 0.0873, tracking: "bones" });
+  failing = true;
+  await send({ kind: "picture", data: { width: 500, height: 500, zoom: 1, x: 0, y: 0, frame: 1 } });
+  assert.equal(posts.at(-1).png, "data:image/png;base64,AAAA");
+  assert.equal(posts.at(-1).face, undefined);
+  assert.ok(!posts.some(post => post.error), "and it never fails the renderer");
+});
+
 test("a blush the model can't show is drawn over the face, held until turned off", async () => {
   const posts = [];
   const played = [];

@@ -109,8 +109,10 @@ public sealed record CharacterTouchZoneSettings
 public sealed record RendererDrawableBox(string Id, double Left, double Top, double Right, double Bottom);
 /// <summary>A VRM humanoid bone's place on the renderer page (fractions of the page).</summary>
 public sealed record RendererBonePoint(string Bone, double X, double Y);
-/// <summary>The zones probe's reply: where the showing model's drawables (Live2D) or humanoid bones (VRM) are now.</summary>
-public sealed record RendererZoneProbe(RendererDrawableBox[]? Drawables = null, RendererBonePoint[]? Bones = null);
+/// <summary>The zones probe's reply: where the showing model's drawables (Live2D) or humanoid bones (VRM) are now. A whole
+/// picture's probe also says where the face was in it (<see cref="Face"/>, from the renderer's face anchor), which the eye
+/// measurement crops around.</summary>
+public sealed record RendererZoneProbe(RendererDrawableBox[]? Drawables = null, RendererBonePoint[]? Bones = null, RendererFace? Face = null);
 
 /// <summary>Which zone a touch landed in and how it was found ("drawable", "bone", "hair", "box" or "coarse").</summary>
 public sealed record TouchZoneMatch(CharacterTouchZone Zone, string How);

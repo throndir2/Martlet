@@ -1379,8 +1379,13 @@ internal sealed partial class RendererWindow : Window
             while (!lifetime.IsCancellationRequested)
             {
                 message = await RendererProtocol.ReadAsync(input, lifetime.Token);
-                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "gaze" or "where" or "camera" or "snapshot" or "zones"))
+                if (message.Activation != activation || message.Kind is not ("configure" or "reset" or "apply" or "stop" or "theme" or "mouth" or "motion" or "action" or "home" or "zoom" or "say" or "lock" or "voice" or "gaze" or "where" or "camera" or "snapshot" or "zones" or "eyes"))
                     throw new InvalidDataException("Renderer command is invalid.");
+                if (message.Kind == "eyes")
+                {
+                    await ReplyAsync("eyes", await EyesAsync(message));
+                    continue;
+                }
                 if (message.Kind == "camera")
                 {
                     UseCamera(RendererProtocol.Data<RendererCamera>(message));
@@ -1492,6 +1497,21 @@ internal sealed partial class RendererWindow : Window
         return result;
     }
 
+    /// <summary>Gives the page the eye hint (<see cref="RendererEyes"/>; without both eyes it clears it) and says what the eyes
+    /// use now. The page takes it beside the touch and face readings, so a hint it can't use never fails the character; a
+    /// hint that isn't valid clears it.</summary>
+    private async Task<RendererEyesFrom> EyesAsync(RendererMessage message)
+    {
+        var hint = message.Data.ValueKind == JsonValueKind.Object ? RendererProtocol.Data<RendererEyes>(message) : new RendererEyes();
+        if (!hint.IsValid)
+        {
+            ErrorLog.Warn("Martlet sent an eye hint that isn't valid; the character's eyes use the model's own data or an estimate.");
+            hint = new();
+        }
+        var answer = await BrowserAsync<object?>("eyes", hint.Clears ? null : new { left = hint.Left, right = hint.Right });
+        return new(answer.TryGetProperty("eyesFrom", out var from) && from.ValueKind == JsonValueKind.String ? RendererEyesFrom.Read(from.GetString()) : null);
+    }
+
     /// <summary>A picture of the character, cropped to its opaque pixels (a head-and-shoulders square for a portrait), scaled
     /// down and encoded as a PNG small enough for one message. A portrait or an ordinary picture is WebView2's capture of the page
     /// as it shows now. A whole picture (touch zones) is drawn by the page itself (<see cref="PictureAsync"/>), never on screen:
@@ -1585,8 +1605,8 @@ internal sealed partial class RendererWindow : Window
 
     /// <summary>The page draws the character on its canvas, PictureWidth by PictureHeight pixels in the framing
     /// <paramref name="zoom"/>, <paramref name="x"/>, <paramref name="y"/>, and reads it back in the same step, so it never shows
-    /// on screen (in a still renderer, in the model's rest pose). Also where its drawables or bones are in that picture, as
-    /// fractions of it (null when the page can't say).</summary>
+    /// on screen (in a still renderer, in the model's rest pose). Also where its drawables or bones and its face are in that
+    /// picture, as fractions of it (null when the page can't say).</summary>
     private async Task<(PageCapture Shot, RendererZoneProbe? Probe)> PictureAsync(double zoom, double x, double y)
     {
         const string Prefix = "data:image/png;base64,";
@@ -1599,10 +1619,21 @@ internal sealed partial class RendererWindow : Window
         try
         {
             probe = new(drawn.TryGetProperty("drawables", out var drawables) ? drawables.Deserialize<RendererDrawableBox[]>(RendererProtocol.Json) : null,
-                drawn.TryGetProperty("bones", out var bones) ? bones.Deserialize<RendererBonePoint[]>(RendererProtocol.Json) : null);
+                drawn.TryGetProperty("bones", out var bones) ? bones.Deserialize<RendererBonePoint[]>(RendererProtocol.Json) : null,
+                drawn.TryGetProperty("face", out var face) ? Face(face) : null);
         }
         catch (JsonException error) { ErrorLog.Warn($"Couldn't read where the character's parts are: {error.Message}"); }
         return (Decode(bytes), probe);
+    }
+
+    // The face anchor the page read while drawing a picture (fractions of it), or null when it isn't one.
+    private static RendererFace? Face(JsonElement face)
+    {
+        double? Number(string name) => face.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number ? value.GetDouble() : null;
+        if (face.ValueKind != JsonValueKind.Object || Number("x") is not { } x || Number("y") is not { } y || Number("width") is not { } width) return null;
+        var read = new RendererFace(x, y, width, Number("angle") ?? 0,
+            face.TryGetProperty("tracking", out var tracking) && tracking.ValueKind == JsonValueKind.String ? tracking.GetString() : null);
+        return read.IsValid ? read : read with { Tracking = null } is { IsValid: true } plain ? plain : null;
     }
 
     // A picture of the page as Bgra32 pixels, with the box of the character's opaque pixels in it.

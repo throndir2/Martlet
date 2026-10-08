@@ -25,13 +25,16 @@ internal enum HelperJobKind
     /// <summary>Finding a character's touch zones in one picture of it.</summary>
     TouchZones,
     /// <summary>Deciding a character's touch temperament from its personality.</summary>
-    Temperament
+    Temperament,
+    /// <summary>Measuring a character's eyes in one close-up of its face (vision, low priority).</summary>
+    Eyes
 }
 
 /// <summary>What a pool member must do to take a helper job: read text, or also see one picture.</summary>
 internal enum HelperCapability { Text, Vision }
 
-/// <summary>How soon the pool takes a helper job. Memory and naming wait behind other work; the owner waits for touch zones.</summary>
+/// <summary>How soon the pool takes a helper job. Memory, naming and measuring the eyes wait behind other work; the owner waits
+/// for touch zones.</summary>
 internal enum HelperJobPriority { Low, Normal }
 
 /// <summary>One helper job posted to the Thinking pool: its kind, the log's name for it and the one request it makes.</summary>
@@ -94,6 +97,7 @@ internal sealed class HelperJobs(Func<IHelperJobPool?> pool, Func<bool> replyBus
         HelperJobKind.Memory => "memory",
         HelperJobKind.ActionNaming => "action_naming",
         HelperJobKind.Temperament => "temperament",
+        HelperJobKind.Eyes => "eyes",
         _ => "touch_zones"
     };
 

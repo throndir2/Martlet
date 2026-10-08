@@ -138,6 +138,16 @@ public sealed class HelperJobsTests
         Assert.Equal(Martlet.Conversation.ThinkingJobKind.Naming, ThinkingPoolHelpers.Kind(HelperJobKind.ActionNaming));
         Assert.Equal(Martlet.Conversation.ThinkingJobKind.TouchZones, ThinkingPoolHelpers.Kind(HelperJobKind.TouchZones));
 
+        // Measuring the eyes needs vision, like touch zones, but waits at the helpers' low priority.
+        var image = new BoundedImage([0xFF, 0xD8, 0xFF, .. new byte[32]], ImageMediaType.Jpeg, 4, 4);
+        var measured = await adapter.TryRunAsync(new(HelperJobKind.Eyes, "Measuring the eyes", new BoundedTextInput("face", "measure", image: image)), CancellationToken.None);
+        Assert.Equal("answer from Vision PC", measured!.Answer);
+        var eyeJob = posted.Last();
+        Assert.Equal(Martlet.Conversation.ThinkingJobKind.TouchZones, eyeJob.Kind);
+        Assert.Equal(Martlet.Conversation.ThinkingPriority.Helper, eyeJob.Priority);
+        Assert.Equal(HelperJobPriority.Low, HelperJobs.PriorityOf(HelperJobKind.Eyes));
+        Assert.Equal("eyes", HelperJobs.Name(HelperJobKind.Eyes));
+
         fail = true;
         Assert.Null(await adapter.TryRunAsync(new(HelperJobKind.Memory, "Remembering", new BoundedTextInput("a", "b")), CancellationToken.None));
         members.Clear();

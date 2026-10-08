@@ -918,6 +918,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
             next.Stroked += stroke => { if (ReferenceEquals(Volatile.Read(ref renderer), next) && IsShowing) Stroked?.Invoke(stroke); };
             next.Physical += change => { if (ReferenceEquals(Volatile.Read(ref renderer), next) && IsShowing) PhysicalChanged?.Invoke(change); };
             renderer = next;
+            ForgetEyes();
             await next.StartAsync(selected, snapshot.Revision, Placement, VoiceMuted, attempt.Token);
             // A camera view that was open stays open when the character shows again.
             if (Camera is { } view) await next.SendAsync("camera", view, attempt.Token);
@@ -925,6 +926,9 @@ internal sealed partial class AvatarController : IAsyncDisposable
             await RestoreHeldAsync(next, selected.ModelPath, attempt.Token);
             // The overlay starts following the mouse; its usual gaze and Eyes menu follow Martlet's.
             await Gaze.RestoreAsync(next, attempt.Token);
+            // The eyes' vision measurement for this model, if one is saved; the answer says what the eyes use (the model's own
+            // data comes first), and Martlet measures them when they are only estimated.
+            await SendEyesAsync(next, Volatile.Read(ref eyesFor)?.Invoke(selected.ModelPath), attempt.Token);
             lock (stateGate)
             {
                 CheckAttempt(attempt, version);

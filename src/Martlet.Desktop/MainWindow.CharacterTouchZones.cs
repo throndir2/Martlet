@@ -44,6 +44,7 @@ public partial class MainWindow
         });
         avatar.TouchRouter = OnCharacterTouched;
         WireCharacterTemperament();
+        WireCharacterEyes();
     }
 
     private string? renderedZonesModel;
@@ -287,6 +288,7 @@ public partial class MainWindow
                 stack.Add(Row(open));
             }
         }
+        AddCharacterEyes(stack, catalog);
         if (catalog is null) return Card([.. stack]);
 
         var modelId = catalog.Inventory.ModelId;
