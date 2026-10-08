@@ -50,11 +50,13 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 </tr>
 </table>
 
-## 🆕 What's new in 0.60.1
+## 🆕 What's new in 0.61.0
 
-- 🖥️ **Recommended setup leaves out computers that are off**: turn your other computers off, and the PC you use gets a setup of its own right away, with thinking, the voice and the face moving to it.
-- 🧠 **Your Thinking model comes with it**: the model your host used for Thinking now moves to your PC.
-- 📋 **A clearer review**: a computer that isn't answering shows *left out while it isn't answering*, and Martlet still checks again by itself when it stays away or comes back.
+- 📋 **Every part, in priority order**: Recommended setup now lists all of Martlet's parts, from Thinking down to Pictures. It shows what each needs, where it runs, and which are optional.
+- ⭕ **Off is a real choice**: tick **Off** on an optional part (advanced lip-sync, Deep thinking, singing, pictures) and Martlet plans without it. Parts with no room show as Off, with the reason.
+- 🧠 **Thinking first on your PC**: with no API key and your other computers off, your PC's graphics card goes to a local Thinking model first. Then comes Chatterbox Turbo, or Chatterbox Nano when Turbo doesn't fit. Everything else runs on the processor.
+- 🔧 **Reconfigure in the right order**: it frees the graphics card first, sets up Thinking before anything else, then the rest by priority.
+- 🖥️ **Computers that are off are left out** of the recommendation right away.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
