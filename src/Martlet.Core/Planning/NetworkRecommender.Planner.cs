@@ -13,9 +13,11 @@ public static partial class NetworkRecommender
         private readonly List<Node> nodes;
         private readonly HashSet<string> voiceKinds;
         private readonly HashSet<string> optOut;
-        /// <summary>The voice engine every computer uses (a host role kind), or null when the owner speaks with a Windows or
-        /// hosted voice.</summary>
+        /// <summary>The voice engine every computer uses (a host role kind), or null when the owner speaks with a hosted voice.</summary>
         private readonly string? engine;
+        /// <summary>The voice engine Speaking uses in the plan: <see cref="engine"/>, or Chatterbox Nano while no computer has
+        /// room for it.</summary>
+        private string? voice;
         /// <summary>One companion PC alone: it may use its own card as the placement engine does.</summary>
         private readonly bool singlePc;
         private readonly int companions;
@@ -40,6 +42,7 @@ public static partial class NetworkRecommender
             singlePc = present.Count == 1 && present[0].Companion && nodes.All(n => n.Companion);
             companions = nodes.Count(n => n.Companion && n.Presence != Presence.Gone);
             engine = Engine();
+            voice = engine;
             foreach (var node in nodes) Resolve(node);
             Current = BuildCurrent();
         }
@@ -187,9 +190,9 @@ public static partial class NetworkRecommender
 
         private bool IsVoice(string kind) => voiceKinds.Contains(kind);
 
-        /// <summary>A role a step may still need: not a voice engine other than the network's, and not one a step already
-        /// decided to remove.</summary>
-        private bool Useful(Role role) => role.Leave is null && (!IsVoice(role.Kind) || role.Kind == engine);
+        /// <summary>A role a step may still need: not a voice engine other than the owner's or the plan's fallback, and not one
+        /// a step already decided to remove.</summary>
+        private bool Useful(Role role) => role.Leave is null && (!IsVoice(role.Kind) || role.Kind == engine || role.Kind == voice);
 
         private bool MatchesJob(string job, string kind) => job switch
         {
@@ -225,7 +228,7 @@ public static partial class NetworkRecommender
 
         /// <summary>The voice engine for every computer: the owner's (<see cref="NetworkSetupRequest.VoiceEngine"/>), else the
         /// one Speaking's host runs, else Martlet's default when Speaking isn't set up; null when the owner speaks with a
-        /// Windows or hosted voice.</summary>
+        /// hosted voice.</summary>
         private string? Engine()
         {
             if (request.VoiceEngine is { } chosen && voiceKinds.Contains(chosen)) return chosen;

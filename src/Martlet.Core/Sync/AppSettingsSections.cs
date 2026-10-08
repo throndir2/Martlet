@@ -9,7 +9,8 @@ namespace Martlet.Core.Sync;
 
 /// <summary>A job's route as it travels between computers: the provider and model (and voice), never a credential ID or a
 /// paired host. <see cref="Type"/> is "openai", "chat-completions" (OpenRouter, NVIDIA Build, any OpenAI-compatible server,
-/// Ollama on the computer itself), "windows-stt", "windows-tts" or "parakeet". Routes to a paired host travel in the
+/// Ollama on the computer itself), "windows-stt" or "parakeet". "windows-tts" (a Windows voice) is retired: an older Martlet
+/// can still send it, and this one asks the owner to choose a voice instead. Routes to a paired host travel in the
 /// who-does-what plan instead, and this is the route a computer uses when no host does the job.</summary>
 public sealed record SharedRoute
 {
@@ -30,7 +31,6 @@ public sealed record SharedRoute
         null or SetupRouteType.OpenAi => new() { Type = OpenAi, Model = route.ModelId, Voice = route.VoiceId },
         SetupRouteType.ChatCompletions => new() { Type = ChatCompletions, Origin = route.Origin, Model = route.ModelId },
         SetupRouteType.LocalWindowsStt => new() { Type = WindowsStt, Model = route.ModelId },
-        SetupRouteType.LocalWindowsTts => new() { Type = WindowsTts, Model = route.ModelId, Voice = route.VoiceId },
         SetupRouteType.LocalParakeet => new() { Type = Parakeet, Model = route.ModelId },
         _ => null
     };
@@ -44,8 +44,6 @@ public sealed record SharedRoute
             (OpenAi, _) => Route(SetupRouteType.OpenAi, role, OpenAiSetup.Alias(role), OpenAiSetup.Origin, Model, role == SetupRole.Tts ? Voice : null),
             (ChatCompletions, SetupRole.Llm) => Route(SetupRouteType.ChatCompletions, role, ChatCompletionsSetup.Alias, Origin ?? "", Model, null),
             (WindowsStt, SetupRole.Stt) => Route(SetupRouteType.LocalWindowsStt, role, WindowsSpeechSetup.SttAlias, SelfHostSetup.LocalOrigin, Model, null),
-            (WindowsTts, SetupRole.Tts) => Route(SetupRouteType.LocalWindowsTts, role, WindowsSpeechSetup.TtsAlias, SelfHostSetup.LocalOrigin,
-                WindowsSpeechSetup.TtsModelId, Voice),
             // A Parakeet model a newer Martlet added waits for this PC's update, like any route this Martlet doesn't know.
             (Parakeet, SetupRole.Stt) when LocalSpeechSetup.IsParakeetModel(Model) =>
                 Route(SetupRouteType.LocalParakeet, role, LocalSpeechSetup.ParakeetAlias, SelfHostSetup.LocalOrigin, Model, null),
@@ -89,8 +87,7 @@ public sealed class AppSettingsSections
     private (string? Revision, SharedLocal? Local)? lore;
 
     /// <param name="savedRoute">The route a job returns to while a paired host does it (kept aside on this computer).</param>
-    /// <param name="available">Why this computer can't use a route yet (a Windows voice not installed, a model not downloaded),
-    /// or null when it can.</param>
+    /// <param name="available">Why this computer can't use a route yet (a model not downloaded), or null when it can.</param>
     public AppSettingsSections(ISetupService setup, ICredentialStore vault, string dataDirectory, LorebookStore? lorebooks,
         Func<SetupRole, SetupRoute?>? savedRoute = null, Func<SetupRole, SharedRoute, CancellationToken, Task<string?>>? available = null)
     {
@@ -218,6 +215,8 @@ public sealed class AppSettingsSections
         bool fromHost = false)
     {
         var shared = Read<SharedRoute>(setting.Value);
+        if (shared.Type == SharedRoute.WindowsTts)
+            return SharedApply.Waiting("Windows voices were removed from Martlet. Choose a voice for this PC in Companion › Voice.");
         if (await available(role, shared, token).ConfigureAwait(false) is { } why) return SharedApply.Waiting(why);
         var (settings, revision, problem) = await EditAsync(token).ConfigureAwait(false);
         if (settings is null) return SharedApply.Waiting(problem!);

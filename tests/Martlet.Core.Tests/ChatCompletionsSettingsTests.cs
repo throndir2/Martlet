@@ -190,10 +190,8 @@ public sealed class ChatCompletionsSettingsTests : IDisposable
     public async Task Local_windows_routes_roundtrip_exact_ids_without_provider_credentials_and_restore_off()
     {
         const string recognizer = @"HKEY_LOCAL_MACHINE\Speech\Recognizers\Installed English";
-        const string voice = @"HKEY_LOCAL_MACHINE\Speech\Voices\Installed Voice";
-        var settings = WindowsSpeechSetup.SelectTts(WindowsSpeechSetup.SelectStt(Settings, recognizer), voice);
+        var settings = WindowsSpeechSetup.SelectStt(Settings, recognizer);
         settings = SetupSettings.SetRouteEnabled(settings, SetupRole.Stt, true, true);
-        settings = SetupSettings.SetRouteEnabled(settings, SetupRole.Tts, true, true);
         var local = settings.Setup!.Routes.Where(route => route.Role != SetupRole.Llm).ToArray();
         Assert.All(local, route =>
         {
@@ -205,7 +203,6 @@ public sealed class ChatCompletionsSettingsTests : IDisposable
         });
         var roundtrip = SettingsJson.Read(ContractJson.Write(settings));
         Assert.Equal(recognizer, roundtrip.Setup!.Routes.Single(route => route.Role == SetupRole.Stt).ModelId);
-        Assert.Equal(voice, roundtrip.Setup.Routes.Single(route => route.Role == SetupRole.Tts).VoiceId);
         Assert.True((await Store.SaveAsync(settings, null)).Saved);
         var backup = Path.Combine(directory, "local.martlet-config");
         await Store.CreateConfigurationSnapshotAsync(backup);
@@ -220,8 +217,8 @@ public sealed class ChatCompletionsSettingsTests : IDisposable
     {
         using var native = new FakeCredentialNative();
         var service = new SetupService(Store, new WindowsCredentialStore(native));
-        var settings = WindowsSpeechSetup.SelectTts(WindowsSpeechSetup.SelectStt(Settings, "installed recognizer"), "installed voice");
-        foreach (var role in Enum.GetValues<SetupRole>())
+        var settings = WindowsSpeechSetup.SelectStt(Settings, "installed recognizer");
+        foreach (var role in new[] { SetupRole.Stt })
             Assert.Equal(CredentialError.None, service.CheckCredential(settings, role));
         Assert.Empty(native.Events);
         var openAi = SetupSettings.SelectRoute(settings, SetupRole.Llm, "gpt-4.1-mini-2025-04-14", null);

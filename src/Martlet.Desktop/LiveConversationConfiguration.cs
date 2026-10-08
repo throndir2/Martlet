@@ -100,8 +100,8 @@ internal sealed class LiveConversationConfiguration
     internal static bool InNetwork(SetupRoute? route) =>
         MainWindow.IsLocalOllama(route) || ContextBudget.IsInNetwork(route?.RouteType, route?.Origin);
 
-    /// <summary>Martlet's voice is a cloud provider's (OpenAI speech, paid per use) rather than this PC's Windows voice or a
-    /// paired Martlet host's engine.</summary>
+    /// <summary>Martlet's voice is a cloud provider's (OpenAI speech, paid per use) rather than a paired Martlet host's
+    /// engine.</summary>
     internal bool CloudVoice => Routes.SingleOrDefault(r => r.Role == SetupRole.Tts) is { RouteType: SetupRouteType.OpenAi };
 
     /// <summary>Thinking runs on this PC (Ollama or another OpenAI-compatible server on loopback). Such a server keeps only a
@@ -220,7 +220,6 @@ internal sealed class LiveConversationConfiguration
     private static bool IsChat(SetupRoute? route) => route?.RouteType == SetupRouteType.ChatCompletions;
     private static bool IsHost(SetupRoute? route) => route?.RouteType == SetupRouteType.GatewayOllama;
     private static bool IsHostVoice(SetupRoute? route) => route?.RouteType == SetupRouteType.GatewayF5;
-    private static bool IsWindowsVoice(SetupRoute? route) => route?.RouteType == SetupRouteType.LocalWindowsTts;
     private static bool IsElevenLabs(SetupRoute? route) => route?.RouteType == SetupRouteType.ElevenLabs;
 
     internal TextModelSelection TextSelection()
@@ -293,25 +292,18 @@ internal sealed class LiveConversationConfiguration
                 reference.PresetId, reference.ReferenceRevision, route.GatewaySnapshot?.RouteId ?? SelfHostSetup.F5RouteId)
             : null;
 
-    /// <summary>The installed Windows voice that speaks on this PC, when Its voice uses the Windows voice.</summary>
-    internal WindowsVoiceTarget? WindowsVoiceTarget() => WindowsVoiceTargetOf(Route(SetupRole.Tts));
-
-    internal static WindowsVoiceTarget? WindowsVoiceTargetOf(SetupRoute? route) =>
-        IsWindowsVoice(route) && route!.VoiceId is { } voice ? new(voice) : null;
-
     /// <summary>The owner's cloned ElevenLabs voice that speaks replies, when Its voice uses ElevenLabs.</summary>
     internal ElevenLabsVoiceTarget? ElevenLabsVoiceTarget() => ElevenLabsVoiceTargetOf(Route(SetupRole.Tts));
 
     internal static ElevenLabsVoiceTarget? ElevenLabsVoiceTargetOf(SetupRoute? route) =>
         IsElevenLabs(route) && route!.VoiceId is { } voice ? new(voice, route.ModelId) : null;
 
-    /// <summary>The speech selection a voice action authorizes: the OpenAI model and voice, the installed Windows voice, the
+    /// <summary>The speech selection a voice action authorizes: the OpenAI model and voice, the
     /// ElevenLabs model and cloned voice, or the host's F5 model and the applied reference voice (its preset ID; the voice itself
     /// stays in the local F5 preset store).</summary>
     internal SpeechSynthesisSelection SpeechSelection()
     {
         var route = Route(SetupRole.Tts);
-        if (WindowsVoiceTarget() is { } windows) return WindowsVoiceSynthesisStream.Selection(windows);
         if (ElevenLabsVoiceTarget() is { } cloned) return ElevenLabsSpeechSynthesisStream.Selection(cloned);
         return IsHostVoice(route)
             ? new(SelfHostSetup.GatewayF5Alias, route.ModelId, route.Reference?.PresetId.ToString("N") ?? "none",
@@ -354,12 +346,6 @@ internal sealed class LiveConversationConfiguration
                 if (route.Consent != route.Selection()) return "Review the Voice host on Devices.";
                 if (HostSpeechTarget() is null || route.GatewaySnapshot is null)
                     return "Reconnect the Voice host on Devices.";
-                continue;
-            }
-            if (role == SetupRole.Tts && IsWindowsVoice(route) && route.Enabled == true)
-            {
-                if (route.Consent != route.Selection()) return "Choose the Windows voice again in Companion › Voice.";
-                if (WindowsVoiceTarget() is null) return "Choose a Windows voice in Companion › Voice.";
                 continue;
             }
             if (role == SetupRole.Tts && IsElevenLabs(route) && route.Enabled == true)
@@ -442,9 +428,7 @@ internal sealed class LiveConversationConfiguration
         if (voice)
         {
             var tts = Routes.SingleOrDefault(r => r.Role == SetupRole.Tts);
-            if (IsWindowsVoice(tts))
-                lines.Add($"Replies are spoken by Windows on this PC through {Audio.Output.DisplayName}.");
-            else if (IsElevenLabs(tts))
+            if (IsElevenLabs(tts))
                 lines.Add($"Reply text goes to ElevenLabs, which speaks it with your cloned voice. Audio plays through {Audio.Output.DisplayName}.");
             else if (!IsHostVoice(tts) || tts!.Gateway is not { } gateway)
                 lines.Add($"Reply text goes to OpenAI for speech. Audio plays through {Audio.Output.DisplayName}.");
@@ -533,7 +517,6 @@ internal sealed class LiveConversationConfiguration
                     return new(prompted,
                         TextSelection(), TextLimits, Turn(tools is not null),
                         voice ? new(SpeechSelection(), SpeechOutput(), SpeechLimits) : null, ChatTarget(), HostTarget(), voice ? HostSpeechTarget() : null, silentReply,
-                        voice ? WindowsVoiceTarget() : null,
                         // A model that refused the Thinking steps choice this session gets its own default.
                         withoutReasoning ? GenerationSettings.WithoutReasoning(ReplyGeneration) : ReplyGeneration, tools, TextFallback(),
                         imageOptional && image is not null,
@@ -616,7 +599,7 @@ internal sealed class LiveConversationConfiguration
             .Where(text => text is not null).Select(text => (Text: Clean(text!), At: earlier.LastIndexOf(Clean(text!), StringComparison.Ordinal)))
             .Where(found => found.At >= 0).OrderByDescending(found => found.At).Select(found => found.Text).FirstOrDefault();
 
-    /// <summary>The voice engine that speaks replies: a self-hosted one, ElevenLabs, or null for OpenAI, Windows or no voice.</summary>
+    /// <summary>The voice engine that speaks replies: a self-hosted one, ElevenLabs, or null for OpenAI or no voice.</summary>
     internal SpeechEngine? SpeakingEngine() =>
         Routes.SingleOrDefault(r => r.Role == SetupRole.Tts) is not { } tts ? null
         : IsElevenLabs(tts) ? SpeechEngines.ElevenLabs

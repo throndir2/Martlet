@@ -11,7 +11,6 @@ public sealed class ConversationRuntime : IAsyncDisposable
     internal OpenAiTextGenerationAdapter Text { get; }
     internal IHostTextClient? HostText { get; private init; }
     internal IHostSpeechClient? HostSpeech { get; private init; }
-    internal IWindowsVoiceClient? WindowsVoice { get; private init; }
     internal IElevenLabsSpeechClient? ElevenLabs { get; private init; }
     internal OpenAiSpeechSynthesisAdapter? Speech { get; }
     internal PcmPlaybackSink? Sink { get; }
@@ -57,7 +56,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
     public static ConversationRuntime Create(IProviderCredentialSource credentials,
         IPlaybackDeviceFactory? devices = null, PlaybackOptions? playbackOptions = null, TimeProvider? clock = null,
         GeneratedSpeechObserver? generatedSpeech = null, IHostTextClient? hostText = null, IHostSpeechClient? hostSpeech = null,
-        SpokenTextFeed? spokenText = null, IWindowsVoiceClient? windowsVoice = null, CharacterCueFeed? characterCues = null,
+        SpokenTextFeed? spokenText = null, CharacterCueFeed? characterCues = null,
         IElevenLabsSpeechClient? elevenLabs = null)
     {
         ArgumentNullException.ThrowIfNull(credentials);
@@ -67,7 +66,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
         return new(OpenAiTextGenerationAdapter.Create(credentials, time),
             devices is null ? null : OpenAiSpeechSynthesisAdapter.Create(credentials, time), sink, options, time,
             target => ChatCompletionsTextGenerationAdapter.Create(target.BaseUrl, target.Keyless ? null : credentials, time))
-            { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech, SpokenText = spokenText, WindowsVoice = windowsVoice,
+            { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech, SpokenText = spokenText,
                 CharacterCues = characterCues, ElevenLabs = elevenLabs ?? new ElevenLabsDialogueClient(credentials, clock: time) };
     }
 
@@ -75,28 +74,24 @@ public sealed class ConversationRuntime : IAsyncDisposable
         OpenAiSpeechSynthesisAdapter? speech, IPlaybackDeviceFactory? devices, PlaybackOptions options, TimeProvider clock,
         GeneratedSpeechObserver? generatedSpeech = null,
         Func<ChatCompletionsTarget, ChatCompletionsTextGenerationAdapter>? chat = null, IHostTextClient? hostText = null,
-        IHostSpeechClient? hostSpeech = null, IWindowsVoiceClient? windowsVoice = null, SpokenTextFeed? spokenText = null,
+        IHostSpeechClient? hostSpeech = null, SpokenTextFeed? spokenText = null,
         CharacterCueFeed? characterCues = null, IElevenLabsSpeechClient? elevenLabs = null)
     {
         return new(text, speech, devices is null ? null : new(devices, options, clock), options, clock, chat)
-            { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech, WindowsVoice = windowsVoice,
+            { GeneratedSpeech = generatedSpeech, HostText = hostText, HostSpeech = hostSpeech,
                 SpokenText = spokenText, CharacterCues = characterCues, ElevenLabs = elevenLabs };
     }
 
-    // The saved TTS destination: a paired Martlet host's F5 voice, an installed Windows voice, the owner's cloned ElevenLabs
-    // voice or the OpenAI speech adapter.
+    // The saved TTS destination: a paired Martlet host's voice engine, the owner's cloned ElevenLabs voice or the OpenAI
+    // speech adapter.
     internal ISpeechSynthesisStream StreamSpeech(ProviderRequestContext context, ConversationRequest request,
         BoundedSpeechInput input, SpeechDisclosureAuthorization consent, CancellationToken caller) =>
-        StreamSpeech(context, request.Speech!, request.HostSpeech, request.WindowsVoice, input, consent, caller, request.ElevenLabsVoice);
+        StreamSpeech(context, request.Speech!, request.HostSpeech, input, consent, caller, request.ElevenLabsVoice);
 
     private ISpeechSynthesisStream StreamSpeech(ProviderRequestContext context, SpeechOutput voice, HostSpeechTarget? hostSpeech,
-        WindowsVoiceTarget? windowsVoice, BoundedSpeechInput input, SpeechDisclosureAuthorization consent, CancellationToken caller,
+        BoundedSpeechInput input, SpeechDisclosureAuthorization consent, CancellationToken caller,
         ElevenLabsVoiceTarget? elevenLabs = null)
     {
-        if (windowsVoice is { } windows)
-            return new WindowsVoiceSynthesisStream(WindowsVoice ?? throw new InvalidOperationException(
-                "This runtime was not composed with a Windows voice client."), windows, context, voice.Selection,
-                input, voice.Limits, consent, Clock, caller);
         if (hostSpeech is { } host)
             return new HostSpeechSynthesisStream(HostSpeech ?? throw new InvalidOperationException(
                 "This runtime was not composed with a Martlet host speech client."), host, context, voice.Selection,
@@ -110,12 +105,12 @@ public sealed class ConversationRuntime : IAsyncDisposable
     }
 
     /// <summary>Says <paramref name="text"/> once with a reply's voice into memory, never to the speakers: 24 kHz mono 16-bit
-    /// PCM. It goes to the same voice as a reply's pieces (<paramref name="voice"/> with <paramref name="hostSpeech"/> or
-    /// <paramref name="windowsVoice"/>, as a reply's request has them) under the same one-use permission: piece
+    /// PCM. It goes to the same voice as a reply's pieces (<paramref name="voice"/> with <paramref name="hostSpeech"/>, as a
+    /// reply's request has it) under the same one-use permission: piece
     /// <paramref name="segment"/>, counted from 1, of <paramref name="authorization"/>'s action, so a paid voice is used only when
     /// the caller allows it. Martlet's quick sounds are made this way, once per voice. Throws when the voice isn't authorized or
     /// fails.</summary>
-    public async Task<byte[]> SynthesizeAsync(SpeechOutput voice, HostSpeechTarget? hostSpeech, WindowsVoiceTarget? windowsVoice,
+    public async Task<byte[]> SynthesizeAsync(SpeechOutput voice, HostSpeechTarget? hostSpeech,
         string text, int segment, IConversationAuthorizationSource authorization, CancellationToken cancellationToken,
         ElevenLabsVoiceTarget? elevenLabs = null)
     {
@@ -129,7 +124,7 @@ public sealed class ConversationRuntime : IAsyncDisposable
             cancellationToken).ConfigureAwait(false);
         if (permission?.Authorization is not { } consent) throw new InvalidOperationException("The voice wasn't authorized.");
         var stream = StreamSpeech(context with { Deadline = consent.ExpiresAt < context.Deadline ? consent.ExpiresAt : context.Deadline },
-            voice, hostSpeech, windowsVoice, input, consent, cancellationToken, elevenLabs);
+            voice, hostSpeech, input, consent, cancellationToken, elevenLabs);
         using var pcm = new MemoryStream();
         await foreach (var frame in stream.WithCancellation(cancellationToken).ConfigureAwait(false)) pcm.Write(frame.Data.Span);
         if (stream.Result is not { Outcome: SpeechSynthesisOutcome.Completed })

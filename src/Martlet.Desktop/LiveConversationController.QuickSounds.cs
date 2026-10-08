@@ -28,7 +28,7 @@ internal sealed partial class LiveConversationController
     internal QuickSoundGate QuickGate => LazyInitializer.EnsureInitialized(ref quickGate, () => new QuickSoundGate(clock));
 
     /// <summary>Companion › Voice › Quick sounds while Martlet thinks (off by default). Turning it on makes the clips for the
-    /// current voice when they are missing and the voice is free to use (this PC's Windows voice or a paired host's).</summary>
+    /// current voice when they are missing and the voice is free to use (a paired host's).</summary>
     internal QuickSoundOptions QuickSounds
     {
         get => QuickGate.Options;
@@ -137,7 +137,7 @@ internal sealed partial class LiveConversationController
             foreach (var phrase in phrases)
             {
                 while (Replying) await Task.Delay(TimeSpan.FromMilliseconds(200), clock, token).ConfigureAwait(false);
-                var pcm = await QuickRuntime().SynthesizeAsync(output, configured.HostSpeechTarget(), configured.WindowsVoiceTarget(),
+                var pcm = await QuickRuntime().SynthesizeAsync(output, configured.HostSpeechTarget(),
                     phrase, ++segment, authorization, token, configured.ElevenLabsVoiceTarget()).ConfigureAwait(false);
                 if (QuickSoundAudio.Prepare(pcm) is { Length: > 0 } clip) clips.Add(new(phrase, clip));
             }
@@ -184,7 +184,7 @@ internal sealed partial class LiveConversationController
             var credentials = quickCredentials ??= new(() => Volatile.Read(ref quickAuthorization));
             return quickRuntime ??= runtimeFactory?.Invoke(credentials, clock) ??
                 ConversationRuntime.Create(credentials, playbackDevices, clock: clock,
-                    hostSpeech: dataDirectory is null ? null : new HostSpeechClient(dataDirectory), windowsVoice: new WindowsVoiceClient());
+                    hostSpeech: dataDirectory is null ? null : new HostSpeechClient(dataDirectory));
         }
     }
 

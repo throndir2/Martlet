@@ -238,8 +238,7 @@ internal static class NetworkMap
 
     private static string RouteDetail(SetupRoute route)
     {
-        var text = route.RouteType == SetupRouteType.LocalWindowsTts ? WindowsVoices.DisplayName(route.VoiceId)
-            : route.ClonedVoice is { } cloned ? $"Voice {cloned.Name}, cloned"
+        var text = route.ClonedVoice is { } cloned ? $"Voice {cloned.Name}, cloned"
             : route.VoiceId is { } voice ? $"Voice {voice}"
             : route.Reference is { } reference ? $"Voice {reference.PresetName}"
             // The model is what tells two setups of one provider apart (the cloud model every computer uses, say).
@@ -263,12 +262,11 @@ internal static class NetworkMap
     private static bool IsGatewayRoute(SetupRouteType? type) =>
         type is SetupRouteType.GatewayOllama or SetupRouteType.GatewayF5 or SetupRouteType.GatewayStt;
 
-    /// <summary>A shared route that runs on each companion PC itself (a Windows voice, Parakeet, a local server), in words for
+    /// <summary>A shared route that runs on each companion PC itself (Parakeet, a local server), in words for
     /// another computer's row; null for a cloud or host route.</summary>
     private static string? OnEachPc(SetupRoute route) => route.RouteType switch
     {
         SetupRouteType.LocalWindowsStt => "Windows speech recognition on that PC",
-        SetupRouteType.LocalWindowsTts => "Windows voice on that PC: " + RouteDetail(route),
         SetupRouteType.LocalWhisper or SetupRouteType.LocalParakeet => "Speech recognition on that PC: " + RouteDetail(route),
         SetupRouteType.ChatCompletions when Uri.TryCreate(route.Origin, UriKind.Absolute, out var endpoint) && IsLoopback(endpoint.Host) =>
             "A local server on that PC: " + RouteDetail(route),
@@ -310,7 +308,6 @@ internal static class NetworkMap
         SetupRouteType.GatewayF5 => "Your Martlet host",
         SetupRouteType.GatewayStt => "Your Martlet host",
         SetupRouteType.LocalWindowsStt => "Windows speech",
-        SetupRouteType.LocalWindowsTts => "Windows voice",
         SetupRouteType.LocalWhisper => "Speech recognition on this PC",
         SetupRouteType.LocalParakeet => "Speech recognition on this PC",
         SetupRouteType.ElevenLabs => "ElevenLabs",
@@ -346,7 +343,7 @@ internal static class NetworkMap
         var shared = inputs.Plan;
         var plan = inputs.Role == DeviceRole.Host ? shared : null;
         string? Planned(string job) => plan?.For(job) is { HostId: { } id, Off: false } ? id : null;
-        // Jobs that run on each companion PC itself (a Windows voice, Parakeet): shown on your other companion PCs too.
+        // Jobs that run on each companion PC itself (Parakeet, a local server): shown on your other companion PCs too.
         var onEachPc = new List<HostedRole>();
         Draft HostDraft(string hostId)
         {
@@ -385,9 +382,9 @@ internal static class NetworkMap
             Draft target;
             switch (route.RouteType)
             {
-                case SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts:
+                case SetupRouteType.LocalWindowsStt:
                     target = thisPc;
-                    role = role with { Detail = (route.RouteType == SetupRouteType.LocalWindowsTts ? "Windows voice: " : "Windows speech: ") + RouteDetail(route) };
+                    role = role with { Detail = "Windows speech: " + RouteDetail(route) };
                     break;
                 case SetupRouteType.LocalWhisper:
                     target = thisPc;
@@ -730,7 +727,7 @@ internal static class NetworkMap
             };
             node.Roles.Insert(0, new(chip, name, $"{computer.DeviceId}. {does}{standing}{Asked(computer)}", DeviceComponent.Member));
             if (RoleCommand(computer) is { } switching) node.Commands.Add(switching);
-            // The jobs every companion PC does itself (a Windows voice, Parakeet) show on each companion PC; a friend's has its own.
+            // The jobs every companion PC does itself (Parakeet, a local server) show on each companion PC; a friend's has its own.
             if (computer.Standing is not (ComputerStanding.Asking or ComputerStanding.Friend) &&
                 (computer.Role == DeviceRole.Companion || computer.Role is null && hosting is null))
                 node.Roles.AddRange(onEachPc);

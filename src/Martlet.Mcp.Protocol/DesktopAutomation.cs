@@ -767,7 +767,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// "VoiceEngineRunsOn-chatterbox" "Runs on an NVIDIA GPU: about 3.7 GB of graphics memory, up to 4.2 GB (6 GB+ card).",
     /// "VoiceEngineFeatures-chatterbox" "Docker, 5 s+ samples, English", "VoiceEngineState-chatterbox"
     /// "Ready on this PC." or why it can't run there, and its button "VoiceEngineUse-chatterbox" "Set up and use Chatterbox
-    /// Turbo"; key "windows" for a Windows voice; clicking a button needs --allow-ui-effects) and its computer pills
+    /// Turbo"; "VoiceEngineNone" says when no engine can run there; clicking a button needs --allow-ui-effects) and its computer pills
     /// ("SpeakingHost-gpu-pc" reads "gpu-pc · speaking");
     /// each character's detail line in Companion › Character › Your characters
     /// ("CharacterModelState-builtin" reads "Live2D. Part of Martlet on every computer. Shown on this PC.",

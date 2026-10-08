@@ -96,7 +96,7 @@ public partial class MainWindow : ThemedWindow
         voiceIdentity.Load();
         localVoices = new(store?.DataDirectory);
         parakeet = store is null ? null : new(LocalVoices.SpeechRoot(store.DataDirectory));
-        // Discord calls transcribe on this PC or a paired computer and speak with a host or Windows voice; never the cloud.
+        // Discord calls transcribe on this PC or a paired computer and speak with a host's voice engine; never the cloud.
         discord.Speech = new DiscordSpeech(() => homeSettings?.Setup?.Routes, parakeet, store?.DataDirectory, () => conversation?.Replying == true);
         recovery = store is null ? null : new(store, setupOperations, () => !support.HasResources);
         captions = new(avatar, store?.DataDirectory);

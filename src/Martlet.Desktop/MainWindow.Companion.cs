@@ -88,7 +88,6 @@ public partial class MainWindow
     private LocalModelTestOutcome? localModelTest;
     private Action? showLocalTest;
     private bool testingLocalModel;
-    private IReadOnlyList<WindowsVoice>? windowsVoices;
     private readonly Dictionary<CompanionTab, JobPlace> tabPlace = [];
 
     /// <summary>The setup job a page sets up, or null for a page that isn't one of Setup's jobs.</summary>
@@ -273,7 +272,6 @@ public partial class MainWindow
     {
         if (IsLocalOllama(route)) return "Ollama on this PC";
         if (IsLocalServer(route)) return Capitalized($"{LocalServerName(route.Origin)} on this PC");
-        if (route.RouteType == SetupRouteType.LocalWindowsTts) return "Windows voice on this PC";
         if (route.RouteType == SetupRouteType.LocalParakeet) return "Speech recognition on this PC";
         if (SelfHostSetup.IsGateway(route.RouteType) && route.Gateway is { } gateway)
         {
@@ -453,11 +451,10 @@ public partial class MainWindow
     // ---------- job pages ----------
 
     /// <summary>Routes that run on this PC without Martlet's host service: Ollama or another model app on this PC for thinking,
-    /// installed Windows speech and native whisper.cpp.</summary>
+    /// installed Windows speech recognition, Parakeet and native whisper.cpp.</summary>
     private static bool RunsHereWithoutHost(SetupRoute route) =>
         IsLocalOllama(route) || IsLocalServer(route) ||
-        route.RouteType is SetupRouteType.LocalWindowsTts or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWhisper or
-            SetupRouteType.LocalParakeet;
+        route.RouteType is SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWhisper or SetupRouteType.LocalParakeet;
 
     private void RenderJobTab(Panel page, CompanionTab section)
     {
@@ -481,7 +478,8 @@ public partial class MainWindow
             {
                 SetupRole.Llm => "Run a local model here with Ollama or a model app you already use, such as LM Studio or llama.cpp. " +
                     "Conversations stay on this PC, with no per-request cost.",
-                SetupRole.Tts => "Run a voice engine here, or use a Windows voice. Audio stays on this PC.",
+                SetupRole.Tts => "Run a voice engine here: a graphics card makes it fastest, and Chatterbox Nano also runs on the " +
+                    "processor. Audio stays on this PC.",
                 _ => "Turn your speech into text on this PC. Your voice stays here."
             }),
             (JobPlace.Computer, "Another of your computers",
@@ -551,18 +549,18 @@ public partial class MainWindow
         if (OldKeysCard(section, role) is { } oldKeys) page.Children.Add(oldKeys);
     }
 
-    /// <summary>The voice a route speaks with, in words: ", voice Zira (en-US)", ", voice Mia (cloned on ElevenLabs)", or nothing.</summary>
+    /// <summary>The voice a route speaks with, in words: ", voice alloy", ", voice Mia (cloned on ElevenLabs)", or nothing.</summary>
     private static string VoiceSuffix(SetupRoute route) =>
         route.Reference is { } reference ? $", voice {reference.PresetName}"
         : route.ClonedVoice is { } cloned ? $", voice {cloned.Name} (cloned on ElevenLabs)"
-        : route.VoiceId is { } voice ? $", voice {(route.RouteType == SetupRouteType.LocalWindowsTts ? WindowsVoices.DisplayName(voice) : voice)}"
+        : route.VoiceId is { } voice ? $", voice {voice}"
         : "";
 
     /// <summary>What the job uses now, first on every setup page, with any problem that stops it.</summary>
     private Border JobNowCard(CompanionTab section, HostJob job, SetupRoute? route)
     {
         var problem = coverage.FirstOrDefault(c => c.Job == job.Job && c.IsProblem);
-        var routeName = route is null ? "" : route.RouteType == SetupRouteType.LocalWindowsTts ? "Windows voice on this PC"
+        var routeName = route is null ? ""
             : route.RouteType == SetupRouteType.LocalParakeet ? $"{PlaceName(route)}: {ParakeetName(route.ModelId)}"
             : route.RouteType == SetupRouteType.LocalWhisper ? PlaceName(route)
             : $"{PlaceName(route)}: {HostInputDialog.OptionText(route.ModelId)}";
@@ -985,7 +983,7 @@ public partial class MainWindow
         catch (OperationCanceledException) { return null; }
     }
 
-    // ---------- this PC: a Windows voice (the voice engines are in MainWindow.VoiceEngines.cs) ----------
+    // ---------- option rows (the voice engines are in MainWindow.VoiceEngines.cs) ----------
 
     private static TextBlock OptionTitle(string title, string? tag, double size = 16)
     {
@@ -1010,69 +1008,6 @@ public partial class MainWindow
         return option;
     }
 
-    /// <summary>Asks Windows (on request, locally) which voices are installed.</summary>
-    private async Task<IReadOnlyList<WindowsVoice>?> FindWindowsVoicesAsync()
-    {
-        ActionText.Text = "Looking for the voices installed in Windows...";
-        try
-        {
-            windowsVoices = await WindowsVoices.ListAsync(lifetime.Token);
-            ActionText.Text = windowsVoices.Count == 0 ? "No voices are installed in Windows on this PC."
-                : $"Windows has {windowsVoices.Count} installed {(windowsVoices.Count == 1 ? "voice" : "voices")}.";
-            return windowsVoices;
-        }
-        catch (OperationCanceledException) { return null; }
-        catch (InvalidOperationException error)
-        {
-            ActionText.Text = error.Message;
-            return null;
-        }
-        finally
-        {
-            if (!closing && openTab == CompanionTab.Voice) RenderTab();
-        }
-    }
-
-    /// <summary>Makes Martlet speak with a Windows voice: <paramref name="voiceId"/>, or the one in this PC's language. A voice
-    /// engine Speaking leaves on a host stops there afterwards (asked first).</summary>
-    private async Task UseWindowsVoiceAsync(string? voiceId)
-    {
-        var voices = windowsVoices is { Count: > 0 } known && voiceId is not null ? known : await FindWindowsVoicesAsync();
-        if (voices is null || closing) return;
-        var voice = voiceId is null ? WindowsVoices.Recommended(voices) : voices.FirstOrDefault(v => v.Id == voiceId);
-        if (voice is null)
-        {
-            ActionText.Text = "No voices are installed in Windows on this PC. Add a language with its voice in Windows Settings, then try again.";
-            return;
-        }
-        var leaving = LeavingEngine(null, null);
-        if (leaving is not null && !ConfirmationDialog.Confirm(this, $"Speak with the Windows voice {voice} on this PC?" + LeavingNote(leaving),
-                "Use a Windows voice"))
-            return;
-        var saved = await SaveSectionRouteAsync(HostJob.Speaking, settings => WindowsSpeechSetup.SelectTts(settings, voice.Id), key: null,
-            $"Martlet now speaks with the Windows voice {voice} on this PC. Audio stays on this PC.");
-        if (!saved || closing || leaving is null) return;
-        ActionText.Text += await StopLeftVoiceEngineAsync(leaving);
-    }
-
-    private async Task PreviewWindowsVoiceAsync(string voiceId)
-    {
-        try
-        {
-            ActionText.Text = "Playing a short sample...";
-            await WindowsVoices.PreviewAsync(voiceId, lifetime.Token);
-            ActionText.Text = "Sample played.";
-        }
-        catch (OperationCanceledException) { }
-        catch (WindowsVoiceException) { ActionText.Text = "That Windows voice is no longer installed. Choose another one."; }
-        catch (InvalidOperationException error) { ActionText.Text = error.Message; }
-    }
-
-    private void OpenWindowsSpeechSettings()
-    {
-        try { Process.Start(new ProcessStartInfo("ms-settings:speech") { UseShellExecute = true })?.Dispose(); }
-        catch (Exception error) when (error is Win32Exception or InvalidOperationException) { ActionText.Text = error.Message; }
-    }
     // ---------- another of your computers ----------
 
     private Border ComputersCard(HostJob job, SetupRoute? route, PairedHost? exclude) =>

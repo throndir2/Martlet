@@ -84,16 +84,7 @@ public partial class MainWindow
         try
         {
             var word = ModelHearingTest.Words[Random.Shared.Next(ModelHearingTest.Words.Count)];
-            var voices = await WindowsVoices.ListAsync(lifetime.Token);
-            // The test words are English.
-            if ((voices.FirstOrDefault(v => v.Culture.StartsWith("en", StringComparison.OrdinalIgnoreCase)) ?? WindowsVoices.Recommended(voices))
-                is not { } voice)
-            {
-                hearingTestResult = "Test hearing needs a Windows voice to say the test word, and this PC has none installed.";
-                return;
-            }
-            var pcm = await Task.Run(() => WindowsVoices.Synthesize(voice.Id, ModelHearingTest.Spoken(word), DateTimeOffset.UtcNow.AddSeconds(30),
-                lifetime.Token), lifetime.Token);
+            var pcm = await WindowsTestSpeech.SayAsync(ModelHearingTest.Spoken(word), lifetime.Token);
             var clip = BoundedWaveAudio.FromPcm(new PcmFormat { SampleRate = 24_000, Channels = 1, Encoding = PcmEncoding.Signed16LittleEndian }, pcm);
             var key = local ? null : await Task.Run(() => RouteKey(thinking), lifetime.Token);
             using var client = ModelContextProbe.CreateClient(local);
@@ -106,7 +97,7 @@ public partial class MainWindow
                     CheckedAt = DateTimeOffset.UtcNow });
         }
         catch (OperationCanceledException) { }
-        catch (Exception error) when (error is InvalidOperationException or Martlet.Core.Contracts.ContractException or WindowsVoiceException)
+        catch (Exception error) when (error is InvalidOperationException or Martlet.Core.Contracts.ContractException)
         {
             hearingTestResult = "Couldn't test hearing: " + error.Message;
         }

@@ -22,7 +22,7 @@ public sealed record NetworkMachine(MachineSpecs Specs, NetworkMachineKind Kind)
     /// <summary>How long it has not answered, when it is offline and that is known.</summary>
     public TimeSpan? OfflineFor { get; init; }
     /// <summary>It has a host service (a paired Martlet gateway) that can run host roles. A companion PC without one runs
-    /// only the parts inside the app (the character, Parakeet, Windows voices).</summary>
+    /// only the parts inside the app (the character, Parakeet).</summary>
     public bool HasHostService { get; init; }
     /// <summary>Martlet can change its host service from another computer (through Martlet on that computer, or this PC's
     /// own host service). False: a change there needs someone at that computer.</summary>

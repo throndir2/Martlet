@@ -104,6 +104,14 @@ public sealed record AppSettings : IContract
         settings.SchemaVersion < MemoryOnByDefaultSchemaVersion && settings.Memory is { Enabled: false } memory
             ? settings with { Memory = memory with { Enabled = true } }
             : settings;
+
+    /// <summary>Windows voices were removed from Martlet: a saved Windows voice reads as "Speaking isn't set up", so Home and
+    /// Companion › Voice offer a voice engine (Chatterbox Nano runs on the processor too). The route type stays readable so
+    /// older files still load.</summary>
+    internal static AppSettings DropWindowsVoice(AppSettings settings) =>
+        settings.Setup is { } setup && setup.Routes.Any(r => r.RouteType == SetupRouteType.LocalWindowsTts)
+            ? settings with { Setup = setup with { Routes = [.. setup.Routes.Where(r => r.RouteType != SetupRouteType.LocalWindowsTts)] } }
+            : settings;
 }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]

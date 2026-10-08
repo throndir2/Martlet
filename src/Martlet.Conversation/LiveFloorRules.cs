@@ -65,8 +65,7 @@ public sealed record LiveResources(IReadOnlyList<LiveResource> Items)
                     HostId = gateway.HostId, RouteId = routeId
                 });
             }
-            else if (route.RouteType is SetupRouteType.LocalWhisper or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalWindowsTts or
-                SetupRouteType.LocalParakeet)
+            else if (route.RouteType is SetupRouteType.LocalWhisper or SetupRouteType.LocalWindowsStt or SetupRouteType.LocalParakeet)
                 items.Add(new(job, ThisPc, []));
             else if (route.RouteType == SetupRouteType.ChatCompletions)
                 items.Add(new(job, MachineOf(route.Origin), []));

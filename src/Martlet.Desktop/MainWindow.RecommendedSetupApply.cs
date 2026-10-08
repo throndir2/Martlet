@@ -362,16 +362,14 @@ public partial class MainWindow
                 ? SetupStepResult.Done(done) : SetupStepResult.Failed("Couldn't save Sharing work on this PC."));
         }
 
-        public async Task<SetupRouteReading> ReadRouteAsync(string job, string optionId, CancellationToken cancel)
+        public Task<SetupRouteReading> ReadRouteAsync(string job, string optionId, CancellationToken cancel)
         {
             var role = SetupRoutes.Role(job);
-            // Windows voices are only listed when the option is one (Windows says which are installed, locally).
-            var voice = optionId == FootprintCatalog.WindowsVoiceId && window.Role != DeviceRole.Host
-                ? WindowsVoices.Recommended(await WindowsVoices.ListAsync(cancel))?.ToString() : null;
             var parakeet = window.parakeet;
-            return SetupRoutes.Read(job, optionId, new(window.Role == DeviceRole.Host, window.homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == role),
-                Prerequisites.IsMissing(Prerequisites.Ollama), parakeet is null ? null : parakeet.Installed, voice,
-                LocalChatModels.FirstOrDefault(m => m.Id == FootprintCatalog.Default.Find(optionId)?.ModelId)?.Size));
+            return Task.FromResult(SetupRoutes.Read(job, optionId, new(window.Role == DeviceRole.Host,
+                window.homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == role),
+                Prerequisites.IsMissing(Prerequisites.Ollama), parakeet is null ? null : parakeet.Installed,
+                LocalChatModels.FirstOrDefault(m => m.Id == FootprintCatalog.Default.Find(optionId)?.ModelId)?.Size)));
         }
 
         public async Task<SetupStepResult> UseRouteAsync(string job, string optionId, CancellationToken cancel)
@@ -382,15 +380,13 @@ public partial class MainWindow
             if (reading.InUse) return await AssignJobAsync(job, null, false, cancel) is { State: SetupMachineState.Done } ? SetupStepResult.Done(reading.Text)
                 : SetupStepResult.Attention(reading.Text + " Who does it on your other computers didn't change: Keep in sync is off.");
             var option = FootprintCatalog.Default.Find(optionId)!;
+            // A voice engine runs in the host service, never in the app, so Speaking is never a route this PC makes itself.
+            if (job is not (ClusterJobs.Thinking or ClusterJobs.Listening))
+                return SetupStepResult.Attention($"Choose {option.DisplayName} for {job} in Companion › Voice.");
             // The Companion page's own paths, already confirmed by Reconfigure (they save the route and record the plan).
-            var saved = job switch
-            {
-                ClusterJobs.Thinking => await window.SaveLocalThinkingAsync(option.ModelId!, confirmed: true),
-                ClusterJobs.Listening => await window.UseParakeetAsync(SetupRoutes.Parakeet(option.ModelId!)!, confirmed: true),
-                _ => WindowsVoices.Recommended(await WindowsVoices.ListAsync(cancel)) is { } voice &&
-                     await window.SaveSectionRouteAsync(HostJob.Speaking, settings => WindowsSpeechSetup.SelectTts(settings, voice.Id), key: null,
-                         $"Martlet now speaks with the Windows voice {voice} on this PC. Audio stays on this PC.")
-            };
+            var saved = job == ClusterJobs.Thinking
+                ? await window.SaveLocalThinkingAsync(option.ModelId!, confirmed: true)
+                : await window.UseParakeetAsync(SetupRoutes.Parakeet(option.ModelId!)!, confirmed: true);
             return saved ? SetupStepResult.Done(reading.Text)
                 : SetupStepResult.Failed($"{SetupRoutes.Title(job)} didn't change on this PC: {window.ActionText.Text}");
         }
@@ -614,13 +610,12 @@ internal static class SetupRoleReading
 
 /// <summary>What this PC knows when it reads how it would do a job no host does next (<see cref="SetupRoutes.Read"/>): whether
 /// it is a host PC (it uses no jobs), its route for the job now, whether Ollama is missing, which Parakeet models it has (null:
-/// Parakeet can't run here), the Windows voice it would speak with (null: none, or not asked) and the download size of the Ollama
-/// model named, when known.</summary>
+/// Parakeet can't run here) and the download size of the Ollama model named, when known.</summary>
 internal sealed record SetupRouteFacts(bool HostPc, SetupRoute? Route, bool OllamaMissing, Func<string, bool>? ParakeetInstalled,
-    string? WindowsVoice, string? OllamaModelSize = null);
+    string? OllamaModelSize = null);
 
 /// <summary>How this PC does a job that no host does next, for the recommended setup: the Companion page's own choices it
-/// makes itself (a model in this PC's Ollama, Parakeet, a Windows voice) and, for everything else (a hosted provider that
+/// makes itself (a model in this PC's Ollama, Parakeet) and, for everything else (a hosted provider that
 /// needs your key), where you choose it. Reads nothing itself.</summary>
 internal static class SetupRoutes
 {
@@ -673,12 +668,6 @@ internal static class SetupRoutes
                     Terms = installed(parakeet.Id) ? null
                         : $"{parakeet} (NVIDIA, CC BY 4.0) downloads from Hugging Face ({Martlet.Sherpa.SherpaComponents.Megabytes(parakeet.DownloadBytes)})."
                 };
-            case (ClusterJobs.Speaking, { Id: FootprintCatalog.WindowsVoiceId }):
-                if (route?.RouteType == SetupRouteType.LocalWindowsTts)
-                    return new(SetupStepVerdict.Ready, "Speaking already uses a Windows voice on this PC.") { InUse = true };
-                return facts.WindowsVoice is { } voice
-                    ? new(SetupStepVerdict.Ready, $"Martlet speaks with the Windows voice {voice} on this PC. Audio stays on this PC.{Others}")
-                    : new(SetupStepVerdict.NeedsOwner, "No Windows voice is installed on this PC. Add one in Windows Settings › Time & language › Speech, then check again.");
             case (_, { IsLocal: false, ProviderId: { } provider }):
                 if (route is { RouteType: null or SetupRouteType.OpenAi or SetupRouteType.ChatCompletions } && Provider(route) == provider)
                     return new(SetupStepVerdict.Ready, $"{Title(job)} already uses {name} on this PC.") { InUse = true };

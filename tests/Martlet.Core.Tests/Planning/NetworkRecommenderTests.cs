@@ -213,14 +213,15 @@ public sealed class NetworkRecommenderTests
     [Fact]
     public void NewRolesNeverPushTodaysThinkingOffItsCard()
     {
-        // Thinking runs on h1's 8 GB card. The voice engine (planned first) has no room beside it, so Thinking stays and the
-        // Windows voice stands in, instead of Thinking moving to a hosted provider the owner never chose.
+        // Thinking runs on h1's 8 GB card. The voice engine (planned first) has no room beside it, so Thinking stays and
+        // Chatterbox Nano stands in, instead of Thinking moving to a hosted provider the owner never chose. Speaking names the
+        // retired Windows voices option, as an older plan can.
         var request = Network(Companion("c1"), Host("h1", Nvidia(8)) with { Roles = [Role("ollama", "gemma4:e2b")] }) with
         {
             CurrentJobs =
             [
                 new JobPlan(ClusterJobs.Thinking, "h1", OptionId: "gemma4:e2b"),
-                new JobPlan(ClusterJobs.Speaking, null, OptionId: FootprintCatalog.WindowsVoiceId)
+                new JobPlan(ClusterJobs.Speaking, null, OptionId: "windows-voices")
             ],
             Wanted = [PlanComponent.Thinking, PlanComponent.Voice]
         };
@@ -240,7 +241,7 @@ public sealed class NetworkRecommenderTests
             CurrentJobs =
             [
                 new JobPlan(ClusterJobs.Thinking, null, OptionId: "gemma4:e2b"),
-                new JobPlan(ClusterJobs.Speaking, null, OptionId: FootprintCatalog.WindowsVoiceId)
+                new JobPlan(ClusterJobs.Speaking, null, OptionId: "windows-voices")
             ],
             Wanted = [PlanComponent.Thinking, PlanComponent.Voice]
         };
@@ -273,7 +274,7 @@ public sealed class NetworkRecommenderTests
     }
 
     [Fact]
-    public void KeepingEverythingLocalBesideAWindowsVoiceIsStable()
+    public void KeepingEverythingLocalBesideAWindowsHostIsStable()
     {
         var request = Network(Companion("c1"), WindowsHost("win-box", Nvidia(12)), Host("amd-box", new MachineGpu("RX 7800 XT", GpuVendor.Amd, 16))) with
         {
@@ -315,7 +316,7 @@ public sealed class NetworkRecommenderTests
             CurrentJobs =
             [
                 new JobPlan(ClusterJobs.Thinking, null, OptionId: "gemma4:e2b"),
-                new JobPlan(ClusterJobs.Speaking, null, OptionId: FootprintCatalog.WindowsVoiceId)
+                new JobPlan(ClusterJobs.Speaking, null, OptionId: "windows-voices")
             ],
             Wanted = [PlanComponent.Thinking, PlanComponent.Voice]
         };

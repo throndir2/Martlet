@@ -21,7 +21,7 @@ internal static class Prerequisites
     internal static Prerequisite Microphone { get; } = new("Microphone", "Let desktop apps use the microphone",
         "Needed for push-to-talk. Opens Windows Settings, where you turn it on.");
     internal static Prerequisite WindowsSpeech { get; } = new("WindowsSpeech", "Windows offline speech for your language",
-        "Adds Windows speech recognition and voices. Windows may ask for administrator approval.");
+        "Adds Windows speech recognition for your language. Windows may ask for administrator approval.");
     internal static Prerequisite Ollama { get; } = new("Ollama", "Ollama",
         "Runs a local conversation model on this PC.");
     internal static Prerequisite DockerDesktop { get; } = new("DockerDesktop", "WSL 2 and Docker Desktop",

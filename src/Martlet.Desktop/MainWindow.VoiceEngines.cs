@@ -16,15 +16,11 @@ namespace Martlet.Desktop;
 /// when one is added, and Martlet stops leftovers when it switches to one already installed), and the engine Speaking
 /// leaves on another computer stops there once Speaking has moved (<see cref="LeavingEngine"/>), unless failover keeps
 /// the same engine as a backup. Rows read as <c>VoiceEngine-&lt;key&gt;</c> (title and badge),
-/// <c>VoiceEngineFeatures-&lt;key&gt;</c>, <c>VoiceEngineState-&lt;key&gt;</c> and <c>VoiceEngineUse-&lt;key&gt;</c>
-/// (key "windows" for a Windows voice); under Another of your computers, <c>SpeakingHost-&lt;host&gt;</c> picks the computer.</summary>
+/// <c>VoiceEngineFeatures-&lt;key&gt;</c>, <c>VoiceEngineState-&lt;key&gt;</c> and <c>VoiceEngineUse-&lt;key&gt;</c>;
+/// <c>VoiceEngineNone</c> says when no engine can run on the shown computer. Under Another of your computers,
+/// <c>SpeakingHost-&lt;host&gt;</c> picks the computer.</summary>
 public partial class MainWindow
 {
-    internal const string WindowsVoiceKey = "windows";
-
-    internal static readonly IReadOnlyList<string> WindowsVoiceFeatures =
-        ["No Docker or download", "Built-in Windows voices"];
-
     /// <summary>The computer Another of your computers' engine list sets up (null: the one that speaks, else the first).</summary>
     private string? voiceEngineHost;
 
@@ -71,16 +67,22 @@ public partial class MainWindow
 
         var where = onThisPc ? "this PC" : target!.HostId;
         var spots = SpeechEngines.All.Select(engine => (Engine: engine, Spot: Spot(engine, target, onThisPc, route, where))).ToList();
-        var windowsInUse = onThisPc && route?.RouteType == SetupRouteType.LocalWindowsTts;
-        var anyInUse = windowsInUse || spots.Any(s => s.Spot.InUse);
-        // The first engine for the graphics card that can run here; on a computer without one a Windows voice stays the
-        // suggestion, though Chatterbox Nano can run on its processor.
-        var recommended = spots.FirstOrDefault(s => s.Spot.Cannot is null && s.Engine.NeedsGpu).Engine;
+        var anyInUse = spots.Any(s => s.Spot.InUse);
+        // The first engine for the graphics card that can run here; on a computer without one, Chatterbox Nano on its processor.
+        var recommended = spots.FirstOrDefault(s => s.Spot.Cannot is null && s.Engine.NeedsGpu).Engine ??
+            spots.FirstOrDefault(s => s.Spot.Cannot is null && s.Engine == SpeechEngines.ChatterboxNano).Engine;
 
         var rows = new List<UIElement>();
+        if (!anyInUse && spots.All(s => s.Spot.Cannot is not null))
+        {
+            var none = Note($"No voice engine can run on {where}, so Martlet can't speak there. Pick another of your computers, " +
+                "or use OpenAI's voice below.", new Thickness(0, 4, 0, 6));
+            none.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+            AutomationProperties.SetAutomationId(none, "VoiceEngineNone");
+            rows.Add(none);
+        }
         foreach (var (engine, spot) in spots.Where(s => s.Spot.Cannot is null))
             rows.Add(EngineRow(engine, spot, target, onThisPc, !anyInUse && engine == recommended));
-        if (onThisPc) rows.Add(WindowsVoiceRow(route, windowsInUse, recommend: !anyInUse && recommended is null));
         foreach (var (engine, spot) in spots.Where(s => s.Spot.Cannot is not null))
             rows.Add(EngineRow(engine, spot, target, onThisPc, recommend: false));
         stack.AddRange(rows);
@@ -206,44 +208,7 @@ public partial class MainWindow
             spot.InUse ? "in use" : recommend ? "recommended" : null, spot.State, warn: spot.Cannot is not null, spot.InUse, button);
     }
 
-    private Border WindowsVoiceRow(SetupRoute? route, bool inUse, bool recommend)
-    {
-        var none = windowsVoices is { Count: 0 };
-        var state = inUse && windowsVoices is null ? $"Speaking with {WindowsVoices.DisplayName(route!.VoiceId!)}."
-            : none ? "No voices are installed in Windows. Add a language with its voice in Windows Settings."
-            : null;
-        var label = inUse ? "In use" : none ? "Try again" : "Use";
-        var button = PageButton(label, () => UseWindowsVoiceAsync(null).Forget(), primary: recommend, id: "VoiceEngineUse-" + WindowsVoiceKey);
-        AutomationProperties.SetName(button, $"{label} Windows voice");
-        button.IsEnabled = !inUse;
-        var extra = new List<UIElement>();
-        if (none) extra.Add(Row(PageButton("Open Windows speech settings", OpenWindowsSpeechSettings, id: "SetupWindowsSpeechSettings")));
-        else if (inUse && windowsVoices is null)
-            extra.Add(Row(
-                PageButton("Change Windows voice", () => FindWindowsVoicesAsync().Forget(), id: "SetupChangeWindowsVoice"),
-                PageButton("Hear it", () => PreviewWindowsVoiceAsync(route!.VoiceId!).Forget(), id: "SetupHearWindowsVoice")));
-        else if (inUse)
-        {
-            var voiceId = route!.VoiceId!;
-            var choice = new ComboBox { ItemsSource = windowsVoices, MinHeight = 30, MaxWidth = 420, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left,
-                SelectedItem = windowsVoices!.FirstOrDefault(v => v.Id == voiceId), Margin = new Thickness(0, 8, 0, 0) };
-            AutomationProperties.SetName(choice, "Windows voice");
-            AutomationProperties.SetAutomationId(choice, "SetupWindowsVoice");
-            choice.SelectionChanged += (_, _) =>
-            {
-                if (choice.SelectedItem is WindowsVoice picked && picked.Id != voiceId) UseWindowsVoiceAsync(picked.Id).Forget();
-            };
-            extra.Add(choice);
-            extra.Add(Row(PageButton("Hear it", () => PreviewWindowsVoiceAsync((choice.SelectedItem as WindowsVoice)?.Id ?? voiceId).Forget(),
-                id: "SetupHearWindowsVoice")));
-        }
-        return EngineRow(WindowsVoiceKey, "Windows voice", "Simple and light; nothing to set up.", VoiceAbilities.WindowsVoice, [],
-            RunsOnText(Martlet.Core.Planning.FootprintCatalog.WindowsVoiceId), WindowsVoiceFeatures, null, inUse ? "in use" : recommend ? "recommended" : null,
-            state, warn: none, inUse, button, extra);
-    }
-
-    /// <summary>Where a voice that isn't an engine runs, from its footprint (<see cref="Martlet.Core.Planning.FootprintCatalog.WindowsVoiceId"/>,
-    /// <see cref="Martlet.Core.Planning.FootprintCatalog.OpenAiVoiceId"/>).</summary>
+    /// <summary>Where a voice that isn't an engine runs, from its footprint (<see cref="Martlet.Core.Planning.FootprintCatalog.OpenAiVoiceId"/>).</summary>
     internal static string RunsOnText(string footprintId) => Martlet.Core.Planning.FootprintCatalog.Default.Find(footprintId)?.WhereItRuns ?? "";
 
     /// <summary>One engine: its name with a badge, its strength in a few words, the rundown of what it can do

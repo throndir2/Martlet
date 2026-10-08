@@ -840,7 +840,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         runtime = runtimeFactory?.Invoke(credentials, this.clock) ??
             ConversationRuntime.Create(credentials, playbackDevices, clock: this.clock, generatedSpeech: generatedSpeech,
                 hostText: new HostTextClient(), hostSpeech: dataDirectory is null ? null : new HostSpeechClient(dataDirectory),
-                spokenText: spokenText, windowsVoice: new WindowsVoiceClient(), characterCues: characterCues);
+                spokenText: spokenText, characterCues: characterCues);
         transcription = transcriptionFactory?.Invoke(credentials, this.clock) ??
             OpenAiTranscriptionAdapter.Create(credentials, this.clock);
         var listenCredentials = new ConversationCredentialSource(() => Volatile.Read(ref transcribing)?.Authorization);

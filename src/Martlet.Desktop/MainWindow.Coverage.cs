@@ -46,8 +46,6 @@ public partial class MainWindow
                 StandIn = job.Role == SetupRole.Stt && ListeningStandIn(route) is { } standIn ? ParakeetName(standIn) : null
             };
         }
-        if (route.RouteType == SetupRouteType.LocalWindowsTts)
-            return new() { Job = job.Job, Doer = JobDoer.ThisDevice, DoerName = name, Enabled = enabled, Reviewed = reviewed };
         if (route.RouteType == SetupRouteType.LocalParakeet)
             return new()
             {

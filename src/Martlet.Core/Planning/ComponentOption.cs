@@ -53,7 +53,7 @@ public sealed record ComponentOption
     /// <summary>Thinking: hears recordings itself (an omni model), so replies need no transcript first.</summary>
     public bool HearsAudio { get; init; }
     public bool SeesImages { get; init; }
-    /// <summary>Runs inside the Martlet app, so only on the PC the user talks to (Parakeet, Windows voices, the character).</summary>
+    /// <summary>Runs inside the Martlet app, so only on the PC the user talks to (Parakeet, the character).</summary>
     public bool RunsInApp { get; init; }
     /// <summary>Platforms it runs on (windows, linux, macos); null means any.</summary>
     public IReadOnlyList<string>? Platforms { get; init; }

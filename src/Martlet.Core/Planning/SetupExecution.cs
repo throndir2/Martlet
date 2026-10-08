@@ -165,7 +165,7 @@ public sealed record SetupStepResult(SetupMachineState State, string Text)
 }
 
 /// <summary>Whether this PC can make a job that no host does next use one way of doing it (a FootprintCatalog option such as
-/// "gemma4:e2b" in this PC's Ollama, Parakeet, a Windows voice or a hosted provider), through the Companion page's own path.
+/// "gemma4:e2b" in this PC's Ollama, Parakeet or a hosted provider), through the Companion page's own path.
 /// Ready: Martlet switches it (<see cref="Terms"/>: a download or license the owner accepts with Reconfigure). NeedsOwner or
 /// CannotApply: <see cref="Text"/> says where the owner chooses it. <see cref="InUse"/>: this PC already uses it.</summary>
 public sealed record SetupRouteReading(SetupStepVerdict Verdict, string Text)

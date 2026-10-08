@@ -8,16 +8,19 @@ public static partial class NetworkRecommender
     {
         // ---------- Speaking ----------
 
-        private IReadOnlyList<ComponentOption> EngineOptions() => catalog.For(PlanComponent.Voice)
-            .Where(o => o.IsLocal && o.HostRoleKind == engine).OrderBy(o => o.UsesGpu ? 0 : 1)
+        /// <summary>The local options of the voice engine <paramref name="kind"/>: on a graphics card first, then the quickest.</summary>
+        private IReadOnlyList<ComponentOption> VoiceOptions(string? kind) => kind is null ? [] : catalog.For(PlanComponent.Voice)
+            .Where(o => o.IsLocal && o.HostRoleKind == kind).OrderBy(o => o.UsesGpu ? 0 : 1)
             .ThenBy(o => o.FirstWordMs ?? int.MaxValue).ThenBy(o => o.Id, StringComparer.Ordinal).ToArray();
 
-        private string EngineName => Label(EngineOptions().FirstOrDefault(), engine ?? "");
+        /// <summary>The options of the voice engine Speaking uses in the plan (the owner's, or the fallback).</summary>
+        private IReadOnlyList<ComponentOption> EngineOptions() => VoiceOptions(voice);
 
-        /// <summary>Speaking fell back to a Windows voice for lack of room (benefit, reason, preferred computer).</summary>
-        private (SetupChangeBenefit Benefit, string Reason, string? Prefer)? starvedVoice;
+        private string EngineName => Label(VoiceOptions(engine).FirstOrDefault(), engine ?? "");
 
-        private string StarvedNote => $"No computer has room for {EngineName}: Martlet speaks with a Windows voice until one does.";
+        /// <summary>No computer has room for the owner's engine (benefit, reason, preferred computer), the note that says so,
+        /// and how to take back the fallback's place.</summary>
+        private (SetupChangeBenefit Benefit, string Reason, string? Prefer, string Note, Action? Undo)? starvedVoice;
 
         /// <summary>Rule 11: the voice engine tries again once a later step frees the room that today's roles held (Thinking
         /// moved to a host, listening off a companion PC), so applying the recommendation never leads to another.</summary>
@@ -25,8 +28,10 @@ public static partial class NetworkRecommender
         {
             if (starvedVoice is not { } starved) return;
             starvedVoice = null;
-            notes.Remove(StarvedNote);
+            notes.Remove(starved.Note);
             decisions.Remove(ClusterJobs.Speaking);
+            starved.Undo?.Invoke();
+            voice = engine;
             ChooseVoice(starved.Benefit, starved.Reason, starved.Prefer);
         }
 
@@ -54,31 +59,83 @@ public static partial class NetworkRecommender
                 return;
             }
             // Rule 8 before rule 7: the owner's voice engine (their voices are made for it) replaces another engine, or a
-            // Windows voice that only stands in until it is ready, even though a Windows voice starts sooner.
+            // hosted voice that only stands in until it is ready, even though a hosted voice may start sooner.
             var why = now is null ? $"{EngineName} speaks your replies in the voices you made for it."
                 : now.HostRoleKind is { } kind && IsVoice(kind) ? $"{EngineName} is your voice engine, and every computer speaks with the same one; it replaces {Label(now)}."
                 : $"{EngineName} is your voice engine; {Label(now)} only stands in until it is ready.";
             ChooseVoice(SetupChangeBenefit.Improvement, why, host is { Presence: Presence.Here } ? host.Id : null);
         }
 
+        /// <summary>The best place for the voice engine <paramref name="kind"/>: a host (where Speaking runs today when all else
+        /// is equal), else the companion PC with the most room.</summary>
+        private Slot? VoiceSlot(string kind, string? prefer)
+        {
+            var options = VoiceOptions(kind);
+            return FindSlot(options, new Query(kind) { Prefer = prefer })
+                ?? FindSlot(options, new Query(kind) { Hosts = false, Companions = true, MostRoom = true });
+        }
+
+        /// <summary>Places the owner's voice engine. When no computer has room for it, Speaking falls back to Chatterbox Nano
+        /// (on a graphics card, else on the processor), then to a hosted voice whose key is saved; with neither, Martlet can't
+        /// speak yet and a note says how to set up a computer for Nano. A fallback tries the owner's engine again after each
+        /// later step (rule 11).</summary>
         private void ChooseVoice(SetupChangeBenefit benefit, string reason, string? prefer)
         {
             const string job = ClusterJobs.Speaking;
-            var options = EngineOptions();
-            var slot = FindSlot(options, new Query(engine!) { Prefer = prefer })
-                ?? FindSlot(options, new Query(engine!) { Hosts = false, Companions = true, MostRoom = true });
-            if (slot is null)
+            if (VoiceSlot(engine!, prefer) is { } slot)
             {
-                Decide(job, null, catalog.Find(FootprintCatalog.WindowsVoiceId)?.Id,
-                    $"{reason} No computer has room for {EngineName}, so Martlet speaks with a Windows voice until one does.", benefit);
-                starvedVoice = (benefit, reason, prefer);
-                notes.Add(StarvedNote);
+                var why = $"{reason} {Plain(slot.Option)} on {CardText(slot)}{FirstWord(slot.Option)}" +
+                    (slot.Node.Companion && !singlePc ? ", because no host can run it." : ".");
+                Place(slot, engine!, job, benefit, why);
+                Decide(job, slot.Node.Id, slot.Option.Id, why, benefit);
                 return;
             }
-            var why = $"{reason} {Plain(slot.Option)} on {CardText(slot)}{FirstWord(slot.Option)}" +
-                (slot.Node.Companion && !singlePc ? ", because no host can run it." : ".");
-            Place(slot, engine!, job, benefit, why);
-            Decide(job, slot.Node.Id, slot.Option.Id, why, benefit);
+            const string nano = FootprintCatalog.FallbackVoiceKind;
+            var room = $"No computer has room for {EngineName}";
+            if (engine != nano && VoiceSlot(nano, prefer) is { } fallback)
+            {
+                var node = fallback.Node;
+                var old = node.Pending.FirstOrDefault(r => r.Kind == nano && !r.Native);
+                var stay = node.Pending.Where(r => IsVoice(r.Kind) && r.Leave is null).ToList();
+                var where = $"{Plain(fallback.Option)} on {CardText(fallback)}";
+                var why = $"{reason} {room}, so Martlet speaks with {where}{FirstWord(fallback.Option)}.";
+                var role = Place(fallback, nano, job, benefit, why);
+                voice = nano;
+                Decide(job, node.Id, fallback.Option.Id, why, benefit);
+                Starve(benefit, reason, prefer, $"{room}: Martlet speaks with {where} instead. To use {EngineName} again, free room " +
+                    $"on a computer for it, then choose it in Companion › Voice.", () =>
+                    {
+                        node.Roles.Remove(role);
+                        if (old is not null) node.Pending.Add(old);
+                        foreach (var other in stay) other.Leave = null;
+                    });
+                return;
+            }
+            var nanoText = engine == nano ? "" : " or Chatterbox Nano";
+            var now = TodayOption(job);
+            if ((now is { IsLocal: false } ? now : catalog.For(PlanComponent.Voice).FirstOrDefault(o => !o.IsLocal && Configured(o))) is { } hosted)
+            {
+                Decide(job, null, hosted.Id, $"{reason} {room}{nanoText}, so {hosted.DisplayName} speaks with your saved key.", benefit);
+                Starve(benefit, reason, prefer, $"{room}{nanoText}: {hosted.DisplayName} speaks with your saved key instead.", null);
+                return;
+            }
+            // Nowhere to speak: Speaking stays with a computer that is away (it speaks again when that one answers), else
+            // nobody does it. Martlet says so instead of going quiet.
+            var setUp = "To give Martlet a voice, set up the Martlet host service (it needs Docker) on a computer with an NVIDIA " +
+                "card with 4 GB or more, or about 8 free processor threads, so it can run Chatterbox Nano.";
+            var today = TodayJob(job);
+            if (NodeOf(today?.HostId) is { Presence: Presence.Gone } gone)
+                Decide(job, gone.Id, today!.OptionId, $"{room}{nanoText}, so {Lower(job)} stays with {gone.Name} until it answers again.", benefit);
+            else
+                Decide(job, null, null, $"{reason} {room}{nanoText}, so Martlet can't speak yet. {setUp}", benefit);
+            Starve(benefit, reason, prefer, $"Martlet can't speak yet: no computer has room for {EngineName}{nanoText}. {setUp}", null);
+        }
+
+        /// <summary>Speaking fell back: the note says so, and later steps let the owner's engine try again.</summary>
+        private void Starve(SetupChangeBenefit benefit, string reason, string? prefer, string note, Action? undo)
+        {
+            starvedVoice = (benefit, reason, prefer, note, undo);
+            notes.Add(note);
         }
 
         // ---------- Listening ----------
