@@ -29,8 +29,8 @@ internal static class F5Voices
     // Earlier versions staged bundled voices' clips and the retired F5-TTS example clip here.
     private static readonly string[] RetiredDirectoryNames = ["f5-bundled-voices", "f5-sample-voice"];
 
-    /// <summary>The F5-TTS example clip earlier versions bundled; Martlet no longer ships it or starts with it.</summary>
-    internal static bool IsRetiredSample(F5ReferenceSnapshot snapshot) => F5BundledVoices.IsRetiredSample(snapshot.AudioSha256);
+    /// <summary>A recording earlier versions shipped and this one does not (the F5-TTS example clip, the "anime" voices).</summary>
+    internal static bool IsRetired(F5ReferenceSnapshot snapshot) => F5BundledVoices.IsRetired(snapshot.AudioSha256);
 
     internal static string Directory(string dataDirectory) => Path.Combine(dataDirectory, DirectoryName);
 
@@ -44,9 +44,11 @@ internal static class F5Voices
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or ContractException) { return null; }
     }
 
-    /// <summary>The list as it is, or as it would start (the starter voices) when this PC has none yet.</summary>
-    internal static SpeakingVoiceLibrary View(string dataDirectory) =>
-        LoadLibrary(dataDirectory) ?? SpeakingVoiceLibrary.Empty.Seed(F5SharedVoices.Starters);
+    /// <summary>The list as it is, without recordings Martlet no longer ships and with starter voices it never had, or as it
+    /// would start (the starter voices) when this PC has none yet.</summary>
+    internal static SpeakingVoiceLibrary View(string dataDirectory) => LoadLibrary(dataDirectory) is { } saved
+        ? F5SharedVoices.WithStarters(F5SharedVoices.WithoutRetired(saved, HostSetupCommands.SuggestedDeviceId(), DateTimeOffset.UtcNow))
+        : SpeakingVoiceLibrary.Empty.Seed(F5SharedVoices.Starters);
 
     /// <summary>Merges <paramref name="library"/> into the saved list (so a change saved meanwhile is never lost) and returns
     /// what was saved. An unchanged list is not written again.</summary>
@@ -87,9 +89,10 @@ internal static class F5Voices
     }
 
     /// <summary>The voice to speak with on <paramref name="destination"/> when the owner has not picked one there: the voice
-    /// chosen on all computers, else the one applied here, else the first in the list. Never the retired F5-TTS example clip,
-    /// nor a recording <paramref name="engine"/> cannot clone (GPT-SoVITS needs 3-10 seconds). The choice is shared when none
-    /// was. Throws <see cref="InvalidOperationException"/> when no voice can be used.</summary>
+    /// chosen on all computers, else the one applied here, else the first in the list. Never a recording Martlet no longer
+    /// ships (the F5-TTS example clip, the "anime" voices), nor a recording <paramref name="engine"/> cannot clone (GPT-SoVITS
+    /// needs 3-10 seconds). The choice is shared when none was, or when the chosen voice left the list. Throws
+    /// <see cref="InvalidOperationException"/> when no voice can be used.</summary>
     internal static async Task<F5ReferenceSnapshot> DefaultAsync(string dataDirectory, string destination, CancellationToken token,
         SpeechEngine? engine = null)
     {
@@ -105,12 +108,12 @@ internal static class F5Voices
             ?? throw new InvalidOperationException(engine is null || result.Local.Count == 0
                 ? "Add a voice under Companion > Voice > Voices first."
                 : $"None of your voices suits {engine.Name}. Add a recording it can use under Companion > Voice > Voices.");
-        if (library.Chosen is null) Commit(dataDirectory, library.Choose(F5SharedVoices.Id(voice), by, DateTimeOffset.UtcNow));
+        if (library.ChosenVoice is null) Commit(dataDirectory, library.Choose(F5SharedVoices.Id(voice), by, DateTimeOffset.UtcNow));
         return voice;
     }
 
     /// <summary>This PC's recording of each voice for <paramref name="destination"/> (by voice ID) and the applied voice's
-    /// snapshot (which may be the retired F5-TTS example clip, never in the list). Reads nothing when this PC has no
+    /// snapshot (which may be a recording Martlet no longer ships, never in the list). Reads nothing when this PC has no
     /// recordings yet.</summary>
     internal static (IReadOnlyDictionary<string, F5ReferenceSnapshot> Local, F5ReferenceSnapshot? Applied) Local(string dataDirectory, string destination)
     {
@@ -120,7 +123,7 @@ internal static class F5Voices
         return (F5SharedVoices.Snapshots(inspection, destination), AppliedOf(inspection));
     }
 
-    /// <summary>The applied voice's snapshot, including the retired F5-TTS example clip (which is never in the list).</summary>
+    /// <summary>The applied voice's snapshot, including a recording Martlet no longer ships (which is never in the list).</summary>
     internal static F5ReferenceSnapshot? Applied(string dataDirectory)
     {
         if (!System.IO.Directory.Exists(Directory(dataDirectory))) return null;

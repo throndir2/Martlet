@@ -348,7 +348,8 @@ internal sealed partial class GatewayHttpApplication
             }).ToArray(),
             Devices = Network.Devices().Select(d => new PairedDeviceDocument
             {
-                DeviceId = d.DeviceId, DisplayName = d.DisplayName, PairedAt = d.PairedAt, LastSeen = d.LastSeen
+                DeviceId = d.DeviceId, DisplayName = d.DisplayName, PairedAt = d.PairedAt, LastSeen = d.LastSeen,
+                Access = d.Access == GatewayAccess.Friend ? GatewaySignInDocument.FriendAccess : null
             }).ToArray(),
             SignInRemovals = member ? SignIn.Removals(roster).Select(r => new SignInRemovalDocument
             {
@@ -426,6 +427,8 @@ internal sealed partial class GatewayHttpApplication
         public required string DisplayName { get; init; }
         public required DateTimeOffset PairedAt { get; init; }
         public DateTimeOffset? LastSeen { get; init; }
+        /// <summary>"friend" for a friend's computer (this host's engines only, never in the network); absent for the owner's.</summary>
+        public string? Access { get; init; }
     }
 
     private sealed record JoinRequestDocument

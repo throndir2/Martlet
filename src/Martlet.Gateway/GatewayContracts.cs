@@ -12,6 +12,17 @@ public enum GatewayRole
     Memory
 }
 
+/// <summary>What a paired device may use on this host, fixed when its credential is issued. <see cref="Full"/>: the owner's own
+/// computers (pairing, member pairing, the owner account and identities allowed as the owner's computers). <see cref="Friend"/>:
+/// a computer of someone the owner shares the host with (an identity allowed as a friend): it reaches only the routes that
+/// admit friends (the host's engines, cancel, version, capabilities and status), never joins the network, and the owner's own
+/// requests stop its work.</summary>
+public enum GatewayAccess
+{
+    Full,
+    Friend
+}
+
 public enum GatewayWorkerKind
 {
     OllamaLlm,

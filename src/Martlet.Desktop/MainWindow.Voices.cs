@@ -21,7 +21,7 @@ namespace Martlet.Desktop;
 public partial class MainWindow
 {
     private SoundPlayer? voicePlayer;
-    private bool retiredSampleChecked;
+    private bool retiredVoiceChecked;
 
     /// <summary>One voice in the list: its ID (reference revision), name, where it comes from (<paramref name="Note"/>), this
     /// PC's recording of it (null while it is still being copied here, or for a starter voice not used yet) and its automation
@@ -122,7 +122,7 @@ public partial class MainWindow
                 () => PlayVoiceAsync(item), () => UseVoiceAsync(item.Id, destination),
                 used || item.Id == chosenId ? null : () => RemoveVoiceAsync(item, destination), cannot, item.Available));
         }
-        // A voice still in use here that is not in the list (removed on another computer, or the retired F5-TTS sample).
+        // A voice still in use here that is not in the list (removed on another computer, or a recording Martlet no longer ships).
         if (inUseId is not null && inUse is null)
         {
             var name = f5?.Reference?.PresetName ?? applied?.PresetName ?? "Previous voice";
@@ -292,20 +292,20 @@ public partial class MainWindow
         return true;
     }
 
-    /// <summary>Earlier versions started F5 with the F5-TTS example clip, a male voice Martlet no longer ships, and kept it on
-    /// the speaking route. A route still speaking with it, or a store that still applies it, moves to the voice
+    /// <summary>Earlier versions shipped voices this one does not (<see cref="F5BundledVoices.Retired"/>): the F5-TTS example
+    /// clip and the "anime" voices. A route still speaking with one, or a store that still applies one, moves to the voice
     /// <see cref="F5Voices.DefaultAsync"/> picks; a voice the owner picked is left alone. Returns the saved settings when the
     /// route moved, otherwise null.</summary>
-    private async Task<AppSettings?> LeaveRetiredSampleAsync(SettingsLoadResult loaded, CancellationToken token)
+    private async Task<AppSettings?> LeaveRetiredVoiceAsync(SettingsLoadResult loaded, CancellationToken token)
     {
         if (store is null || setupService is null || closing || changes.Busy || loaded.Settings is not { } settings)
             return null;
         var route = settings.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Tts);
         var f5 = route is { RouteType: SetupRouteType.GatewayF5, GatewaySnapshot: not null } ? route : null;
-        var speaking = f5?.Reference is { } used && F5BundledVoices.IsRetiredSample(used.AudioSha256);
+        var speaking = f5?.Reference is { } used && F5BundledVoices.IsRetired(used.AudioSha256);
         // Without a speaking route the store's applied voice is the chosen one; read it once per run.
-        if (!speaking && (f5?.Reference is not null || retiredSampleChecked)) return null;
-        retiredSampleChecked = true;
+        if (!speaking && (f5?.Reference is not null || retiredVoiceChecked)) return null;
+        retiredVoiceChecked = true;
         if (!speaking && !System.IO.Directory.Exists(F5Voices.Directory(store.DataDirectory))) return null;
         var destination = f5?.GatewaySnapshot!.DestinationId ?? F5Destination;
         if (changes.TryTake() is not { } turn) return null;
@@ -314,35 +314,38 @@ public partial class MainWindow
             if (!speaking)
             {
                 var applied = F5Voices.Applied(store.DataDirectory);
-                if (applied is null || !F5Voices.IsRetiredSample(applied)) return null;
+                if (applied is null || !F5Voices.IsRetired(applied)) return null;
             }
             var voice = await F5Voices.DefaultAsync(store.DataDirectory, destination, token,
                 SpeechEngines.ForRoute(f5?.GatewaySnapshot!.RouteId));
             var reference = await F5Voices.ApplyAsync(store.DataDirectory, voice, token);
-            var moved = $"An old sample voice is no longer used. Martlet now speaks with '{voice.PresetName}'. " +
-                "Pick another under Companion › Voice › Voices.";
-            if (!speaking)
+            AppSettings? next = null;
+            if (speaking)
             {
-                ActionText.Text = moved;
-                return null;
+                next = SetupSettings.ApplyF5Reference(settings, reference);
+                var saved = await setupService.SaveAsync(next, loaded.Revision, token);
+                if (!saved.Save.Saved) throw new InvalidOperationException(saved.Summary);
             }
-            var next = SetupSettings.ApplyF5Reference(settings, reference);
-            var saved = await setupService.SaveAsync(next, loaded.Revision, token);
-            if (!saved.Save.Saved) throw new InvalidOperationException(saved.Summary);
-            ActionText.Text = moved;
-            openConversation?.ReloadWhenIdle("Martlet's voice changed.");
+            // Nothing speaks with the retired recording now: this PC's copy goes (a later pass retries if the store is busy), and
+            // the paired computers get the change.
+            try { await F5Voices.ReconcileAsync(store.DataDirectory, destination, ClusterDevice, null, null, token); }
+            catch (Exception error) when (F5SharedVoices.IsFailure(error)) { }
+            QueueSpeakingVoiceSync();
+            ActionText.Text = $"Martlet no longer includes the voice it spoke with. It now speaks with '{voice.PresetName}'. " +
+                "Pick another under Companion › Voice › Voices.";
+            if (next is not null) openConversation?.ReloadWhenIdle("Martlet's voice changed.");
             return next;
         }
         catch (OperationCanceledException) { return null; }
         catch (F5Exception error)
         {
-            ActionText.Text = "Couldn't switch from the old sample voice: " + F5Voices.Describe(error);
+            ActionText.Text = "Couldn't switch from the voice Martlet no longer includes: " + F5Voices.Describe(error);
             return null;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or
             ContractException or JsonException)
         {
-            ActionText.Text = "Couldn't switch from the old sample voice: " + error.Message;
+            ActionText.Text = "Couldn't switch from the voice Martlet no longer includes: " + error.Message;
             return null;
         }
         finally { turn.Dispose(); }

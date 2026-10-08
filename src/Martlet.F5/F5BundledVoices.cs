@@ -2,10 +2,10 @@ using System.Security.Cryptography;
 
 namespace Martlet.F5;
 
-/// <summary>A starter voice: a short recording Martlet adds to a new voice list, public domain (or CC0) or under CMU ARCTIC's
-/// free-for-any-use terms, with its exact transcript. Once added it is an ordinary voice the owner can remove like any
-/// other. Sources, modifications and notices are in BundledVoices\NOTICES.txt; scripts\Build-F5BundledVoices.py rebuilds
-/// the clips.</summary>
+/// <summary>A starter voice: a short recording Martlet adds to a new voice list, public domain (or CC0), under CMU ARCTIC's
+/// free-for-any-use terms or under the Jenny TTS dataset's (free for any use, the voice credited as "Jenny (Dioco)"), with its
+/// exact transcript. Once added it is an ordinary voice the owner can remove like any other. Sources, modifications and
+/// notices are in BundledVoices\NOTICES.txt; scripts\Build-F5BundledVoices.py rebuilds the clips.</summary>
 public sealed class F5BundledVoice
 {
     private readonly Lazy<byte[]> audio;
@@ -33,7 +33,7 @@ public sealed class F5BundledVoice
     /// <summary>Whether the speaker is a woman, so F5 copying the clip sounds feminine.</summary>
     public bool Female { get; }
 
-    /// <summary>Whether this is one of the cute, high-pitched (anime-like) voices Martlet adds first and starts with.</summary>
+    /// <summary>Whether this is one of the cute voices Martlet adds first and starts with.</summary>
     public bool Cute { get; }
 
     public string Description { get; }
@@ -69,41 +69,40 @@ public sealed class F5BundledVoice
     }
 }
 
-/// <summary>The seven starter voices Martlet adds to a new voice list (<see cref="Martlet.Core.Voices.SpeakingVoiceLibrary"/>):
-/// the four cute, high-pitched voices first, then a female narrator and a US female and a US male voice. The first is the
-/// voice Martlet starts speaking with. Nothing marks them afterwards: they are shared, chosen and removed like any voice.</summary>
+/// <summary>A recording an earlier Martlet shipped and this one does not (<see cref="F5BundledVoices.Retired"/>):
+/// <paramref name="Key"/> is how diagnostics name it, and <paramref name="Transcript"/> (null for the F5-TTS example clip,
+/// which was never in a shared voice list) gives a former starter voice's ID in a shared voice list.</summary>
+public sealed record F5RetiredVoice(string Key, string Name, string AudioSha256, string? Transcript);
+
+/// <summary>The six starter voices Martlet adds to a new voice list (<see cref="Martlet.Core.Voices.SpeakingVoiceLibrary"/>):
+/// the two cute voices first, then Jenny (an Irish voice-over artist recorded for speech synthesis), a female narrator and a
+/// US female and a US male voice. The first is the voice Martlet starts speaking with. A starter voice added in an update
+/// joins an existing list once (<see cref="F5SharedVoices.WithStarters"/>). Nothing marks them afterwards: they are shared,
+/// chosen and removed like any voice.</summary>
 public static class F5BundledVoices
 {
     private const string Arctic = "CMU ARCTIC speech database, Carnegie Mellon University";
     private const string ArcticLicence = "CMU ARCTIC licence: free for any use, notice kept";
     private const string ArcticTranscript =
         "I came for information more out of curiosity than anything else. The ship should be in within a week or ten days.";
-    private const string WoollyBeeAnime =
-        "You do get so attached to things like that, don't you? Is there a brook anywhere near Green Gables? I forgot to ask Mrs. Spencer that.";
     private const string AnnieAnne =
         "But am I talking too much? People are always telling me I do. Would you rather I didn't talk? If you say so, I'll stop.";
 
-    /// <summary>SHA-256 of the F5-TTS example clip ("F5 sample voice (English)") that earlier versions bundled and stored
-    /// in the voice list. It is a male voice and is no longer shipped because where its recording comes from could not be
-    /// confirmed; the desktop moves anything still speaking with it to the chosen (or first) voice, and it never joins the
-    /// shared voice list.</summary>
-    public const string RetiredSampleSha256 = "6a7c5fb9068fa23762af51544c8de76b2dbf6f54a65a44e3b2f9e2ad11899aa2";
-
     public static IReadOnlyList<F5BundledVoice> All { get; } =
     [
-        new("librivox-annie-anime", "Annie (cute anime girl)", true, true,
-            "Annie Coleman Rothenberg's chatty Anne of Green Gables for LibriVox, lifted to a high anime pitch. Public domain.",
-            "Public domain", AnnieAnne, "fff92da85f9126c6887a3ed264d9490513a64b6bd0c89f3828292b8777d02380"),
         new("librivox-annie", "Annie (cute, chatty)", true, true,
             "Annie Coleman Rothenberg's chatty Anne of Green Gables for LibriVox, as read. Public domain.", "Public domain", AnnieAnne,
             "d6726dc5b0b57825fe603d03159c4a41f11288842e4364f68d312446202e8a88"),
-        new("librivox-woollybee-anime", "Bee (cute anime girl)", true, true,
-            "WoollyBee's Anne of Green Gables for LibriVox, lifted to a high, bright anime pitch. Public domain (CC0).",
-            "Public domain (CC0)", WoollyBeeAnime, "3aaf7c78e363e5c3d1a6e8f2a2c2574e1d92a6185e5326180c45be819eef0c9f"),
         new("librivox-woollybee", "Bee (cute, bubbly)", true, true,
             "WoollyBee's high, bubbly Anne of Green Gables for LibriVox, as read. Public domain (CC0).", "Public domain (CC0)",
             "It isn't heavy. I've got all my worldly goods in it, but it isn't heavy. And if it isn't carried in just a certain way the handle pulls out, so I'd better keep it because I know the exact knack of it.",
             "5996d313f84e4db81b999f2ef97c7a014952f9bd0e759738d2ed7a2f1991475e"),
+        // The Jenny TTS dataset's terms: the voice must be referred to as "Jenny", where practical as "Jenny (Dioco)".
+        new("jenny-dioco", "Jenny (Dioco)", true, false,
+            "Jenny, an Irish voice-over artist, as Meg in Little Women, recorded for speech synthesis (Jenny TTS dataset by Dioco). Free to use.",
+            "Jenny TTS dataset licence: free for any use, the voice credited as Jenny (Dioco)",
+            "Well, I am happy, and I won't fret, but it does seem as if the more one gets the more one wants, doesn't it?",
+            "de9c565485e471336cf73513af4ed2657afa7dfdd3624514d0984b820c4a802c"),
         new("lj-speech", "LJ (female narrator)", true, false, "Female narrator from the LJ Speech dataset, a LibriVox reading. Public domain.",
             "Public domain", "Printing, then, for our purpose, may be considered as the art of making books by means of movable types.",
             "d54f23016ad2cd288c276960b3366fe09e3bd3983a2089ede0d09e57ff3fedf4"),
@@ -113,8 +112,22 @@ public static class F5BundledVoices
             "bbde73d09e93d123600c52851d173bad474d75712737690adbf4dd68552c0002")
     ];
 
-    /// <summary>The voice Martlet speaks with until the owner chooses another: the first cute, female voice (Annie, the anime
-    /// one), so the default sounds high and cute.</summary>
+    /// <summary>Recordings earlier versions shipped and this one does not. The F5-TTS example clip ("F5 sample voice
+    /// (English)") is a male voice whose source could not be confirmed. The two "anime" voices were the cute voices with pitch
+    /// and formants raised, which sounded artificial. A voice list drops them on every computer (they never join it again),
+    /// anything still speaking with one moves to the chosen (or first) voice, and this PC's copy is deleted once nothing
+    /// speaks with it.</summary>
+    public static IReadOnlyList<F5RetiredVoice> Retired { get; } =
+    [
+        new("retired-sample", "F5 sample voice (English)", "6a7c5fb9068fa23762af51544c8de76b2dbf6f54a65a44e3b2f9e2ad11899aa2", null),
+        new("retired-librivox-annie-anime", "Annie (cute anime girl)", "fff92da85f9126c6887a3ed264d9490513a64b6bd0c89f3828292b8777d02380",
+            AnnieAnne),
+        new("retired-librivox-woollybee-anime", "Bee (cute anime girl)", "3aaf7c78e363e5c3d1a6e8f2a2c2574e1d92a6185e5326180c45be819eef0c9f",
+            "You do get so attached to things like that, don't you? Is there a brook anywhere near Green Gables? I forgot to ask Mrs. Spencer that.")
+    ];
+
+    /// <summary>The voice Martlet speaks with until the owner chooses another: the first cute, female voice (Annie, cute and
+    /// chatty).</summary>
     public static F5BundledVoice Default { get; } = All.First(voice => voice is { Cute: true, Female: true });
 
     public static F5BundledVoice? Find(string key) => All.FirstOrDefault(voice => voice.Key == key);
@@ -124,6 +137,9 @@ public static class F5BundledVoices
     public static F5BundledVoice? ForAudio(string audioSha256) =>
         All.FirstOrDefault(voice => string.Equals(voice.AudioSha256, audioSha256, StringComparison.OrdinalIgnoreCase));
 
-    public static bool IsRetiredSample(string audioSha256) =>
-        string.Equals(audioSha256, RetiredSampleSha256, StringComparison.OrdinalIgnoreCase);
+    /// <summary>The retired recording whose SHA-256 is <paramref name="audioSha256"/>, or null.</summary>
+    public static F5RetiredVoice? RetiredForAudio(string audioSha256) =>
+        Retired.FirstOrDefault(voice => string.Equals(voice.AudioSha256, audioSha256, StringComparison.OrdinalIgnoreCase));
+
+    public static bool IsRetired(string audioSha256) => RetiredForAudio(audioSha256) is not null;
 }

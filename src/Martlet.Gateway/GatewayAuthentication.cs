@@ -180,10 +180,17 @@ internal sealed class GatewayRequestAuthenticator(
 {
     private static readonly byte[] EmptyBodyHash = System.Security.Cryptography.SHA256.HashData([]);
 
-    internal GatewayPrincipal Authenticate(HttpRequest request)
-        => Authenticate(request, EmptyBodyHash);
+    /// <summary>Whether a friend's credential is still allowed here (its sign-in still allows that identity as a friend). Set by
+    /// the gateway; while it is unset, no friend gets in.</summary>
+    internal Func<GatewayPrincipal, bool>? FriendAllowed { get; set; }
 
-    internal GatewayPrincipal Authenticate(HttpRequest request, ReadOnlySpan<byte> bodyHash)
+    internal GatewayPrincipal Authenticate(HttpRequest request, bool friends = false)
+        => Authenticate(request, EmptyBodyHash, friends);
+
+    /// <summary>Checks a paired device's signed request. Deny by default: a friend's credential (<see cref="GatewayAccess.Friend"/>)
+    /// gets <c>access.friend</c> unless <paramref name="friends"/> says the route admits friends, and <c>auth.revoked</c> once
+    /// its sign-in no longer allows it.</summary>
+    internal GatewayPrincipal Authenticate(HttpRequest request, ReadOnlySpan<byte> bodyHash, bool friends = false)
     {
         // Endpoints that admit API keys route them to GatewayApiKeyStore first; the rest are for paired devices only.
         if (GatewayApiKeyStore.IsBearer(request)) throw new GatewayProtocolException("key.scope");
@@ -224,7 +231,7 @@ internal sealed class GatewayRequestAuthenticator(
             timestamp,
             nonce,
             bodyHash);
-        return credentials.Authenticate(new()
+        var principal = credentials.Authenticate(new()
         {
             CredentialId = parts[0],
             Signature = signature,
@@ -234,6 +241,12 @@ internal sealed class GatewayRequestAuthenticator(
             CanonicalBytes = canonical,
             CancellationToken = request.HttpContext.RequestAborted
         });
+        if (principal.Access == GatewayAccess.Friend)
+        {
+            GatewayRules.Require(FriendAllowed?.Invoke(principal) == true, "auth.revoked");
+            GatewayRules.Require(friends, "access.friend");
+        }
+        return principal;
     }
 
     private static string SingleHeader(HttpRequest request, string name, int maximum, string missingCode)

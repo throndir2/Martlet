@@ -38,7 +38,12 @@ internal sealed partial class GatewayHttpApplication
     internal void InitializeSignIn(GatewayCredentialStore credentials)
     {
         var providers = new GatewaySignInProviders(clock);
-        signIn = new(credentials, clock, crypto, (level, message) => Logs.Own(level, message)) { Providers = providers.Create };
+        signIn = new(credentials, clock, crypto, (level, message) => Logs.Own(level, message))
+        {
+            Providers = providers.Create,
+            IsMember = deviceId => Network.Roster?.Desktop(deviceId) is { Removed: false }
+        };
+        authenticator.FriendAllowed = principal => SignIn.FriendAllowed(principal.CredentialId);
     }
 
     private static bool IsSignInTarget(string rawTarget) =>
@@ -97,7 +102,8 @@ internal sealed partial class GatewayHttpApplication
                 ProtocolVersion = GatewayProtocolVersion.Current, HostId = identity.HostId, CredentialId = credential.CredentialId,
                 CredentialSecret = credential.Secret.Reveal(), DeviceId = credential.DeviceId, Roles = credential.Roles,
                 Lifetime = credential.Lifetime,
-                SignedIn = new() { Provider = who.Provider, Subject = who.Subject, Label = who.Label }
+                SignedIn = new() { Provider = who.Provider, Subject = who.Subject, Label = who.Label },
+                Access = credential.Access == GatewayAccess.Friend ? GatewaySignInDocument.FriendAccess : "member"
             }).ConfigureAwait(false);
         }
         catch (GatewayProtocolException error) when (error.Failure.Code.StartsWith("signin.", StringComparison.Ordinal))
@@ -147,10 +153,14 @@ internal sealed partial class GatewayHttpApplication
                 Id = p.Id, Kind = p.Kind, Name = p.Name, Issuer = p.Issuer, ClientId = p.ClientId, Scopes = p.Scopes,
                 RedirectPort = p.RedirectPort, HasClientSecret = p.ClientSecret is not null
             }).ToArray(),
-            Allowed = current.Allowed.Select(a => new SignInAllowedDocument { Provider = a.Provider, Subject = a.Subject, Label = a.Label, AddedAt = a.AddedAt }).ToArray(),
+            Allowed = current.Allowed.Select(a => new SignInAllowedDocument
+            {
+                Provider = a.Provider, Subject = a.Subject, Label = a.Label, AddedAt = a.AddedAt, Access = a.Access ?? "member"
+            }).ToArray(),
             Enrolled = current.Enrolled.Select(e => new SignInEnrolledDocument
             {
-                DeviceId = e.DeviceId, Provider = e.Provider, Subject = e.Subject, Label = e.Label, EnrolledAt = e.EnrolledAt
+                DeviceId = e.DeviceId, Provider = e.Provider, Subject = e.Subject, Label = e.Label, EnrolledAt = e.EnrolledAt,
+                Access = e.Access ?? "member"
             }).ToArray(),
             RemovedFromNetwork = current.Removed.Select(r => new SignInEnrolledDocument
             {
@@ -233,6 +243,8 @@ internal sealed partial class GatewayHttpApplication
         public required IReadOnlyList<GatewayRole> Roles { get; init; }
         public required GatewayCredentialLifetime Lifetime { get; init; }
         public required SignedInDocument SignedIn { get; init; }
+        /// <summary>"member": one of the owner's computers (it joins the network next). "friend": this host's engines only.</summary>
+        public required string Access { get; init; }
     }
 
     private sealed record SignedInDocument
@@ -288,6 +300,8 @@ internal sealed partial class GatewayHttpApplication
         public required string Subject { get; init; }
         public string? Label { get; init; }
         public DateTimeOffset AddedAt { get; init; }
+        /// <summary>"member" (the owner's computers, which join the network) or "friend" (this host's engines only).</summary>
+        public string? Access { get; init; }
     }
 
     private sealed record SignInEnrolledDocument
@@ -297,5 +311,7 @@ internal sealed partial class GatewayHttpApplication
         public required string Subject { get; init; }
         public string? Label { get; init; }
         public DateTimeOffset EnrolledAt { get; init; }
+        /// <summary>For computers that signed in: "member" or "friend", the access their sign-in gave.</summary>
+        public string? Access { get; init; }
     }
 }

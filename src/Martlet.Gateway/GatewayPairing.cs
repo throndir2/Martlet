@@ -55,6 +55,8 @@ public sealed record IssuedDeviceCredential
     public required IReadOnlyList<GatewayRole> Roles { get; init; }
     public required GatewaySecret Secret { get; init; }
     public required GatewayCredentialLifetime Lifetime { get; init; }
+    /// <summary>What the device may use here (<see cref="GatewayAccess"/>); fixed for the credential's life.</summary>
+    public GatewayAccess Access { get; init; }
 
     public override string ToString() => nameof(IssuedDeviceCredential);
 }
@@ -69,11 +71,13 @@ public sealed record GatewayDeviceRegistration
     public required GatewayCredentialLifetime Lifetime { get; init; }
     public required bool Revoked { get; init; }
     public string? RotatedToCredentialId { get; init; }
+    public GatewayAccess Access { get; init; }
 }
 
 /// <summary>A computer paired with this host: its name and newest live pairing, and when it last made a signed request
-/// (null when it has not since the gateway started; this is kept in memory only).</summary>
-public sealed record GatewayPairedDevice(string DeviceId, string DisplayName, DateTimeOffset PairedAt, DateTimeOffset? LastSeen);
+/// (null when it has not since the gateway started; this is kept in memory only), and what that pairing may use.</summary>
+public sealed record GatewayPairedDevice(string DeviceId, string DisplayName, DateTimeOffset PairedAt, DateTimeOffset? LastSeen,
+    GatewayAccess Access = GatewayAccess.Full);
 
 public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewayAdmissionStatus, IGatewayPrincipalAuthority
 {
@@ -149,7 +153,8 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
                     Lifetime = saved.Lifetime,
                     RotatedToCredentialId = saved.RotatedToCredentialId,
                     StartedAt = lastTimestamp!.Value,
-                    RemainingTicks = (long)remaining
+                    RemainingTicks = (long)remaining,
+                    Access = saved.Access ?? GatewayAccess.Full
                 };
                 foreach (var nonce in saved.Nonces.Where(item => item.ExpiresAt > now))
                     record.Nonces.Add(nonce.Nonce, nonce.ExpiresAt);
@@ -164,12 +169,12 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
     }
 
     internal IssuedDeviceCredential Issue(string deviceId, string displayName, GatewayRole[] roles,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, GatewayAccess access = GatewayAccess.Full)
     {
         lock (gate)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var result = IssueLocked(deviceId, displayName, roles, ObserveTimeLocked(clock));
+            var result = IssueLocked(deviceId, displayName, roles, ObserveTimeLocked(clock), access);
             CommitLocked(cancellationToken);
             try { EnsureIssuedStillLiveLocked(result.CredentialId); }
             catch
@@ -196,7 +201,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
             if (!credentials.TryGetValue(credentialId, out var current) ||
                 current.Revoked || ExpiredLocked(current, now))
                 throw new GatewayProtocolException("auth.invalid");
-            var replacement = IssueLocked(current.DeviceId, current.DisplayName, current.Roles, now);
+            var replacement = IssueLocked(current.DeviceId, current.DisplayName, current.Roles, now, current.Access);
             var remainingOverlap = current.Lifetime is RetiringCredentialLifetime
                 ? Math.Min(RemainingLocked(current, now), overlap.Ticks) : overlap.Ticks;
             var retirement = now + overlap;
@@ -282,7 +287,8 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
                     IssuedAt = value.IssuedAt,
                     Lifetime = value.Lifetime,
                     Revoked = value.Revoked,
-                    RotatedToCredentialId = value.RotatedToCredentialId
+                    RotatedToCredentialId = value.RotatedToCredentialId,
+                    Access = value.Access
                 }).ToList());
         }
     }
@@ -301,7 +307,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
                 {
                     var newest = group.OrderByDescending(value => value.IssuedAt).First();
                     return new GatewayPairedDevice(group.Key, newest.DisplayName, newest.IssuedAt,
-                        lastSeen.TryGetValue(group.Key, out var seen) ? seen : null);
+                        lastSeen.TryGetValue(group.Key, out var seen) ? seen : null, newest.Access);
                 })
                 .OrderBy(device => device.DeviceId, StringComparer.Ordinal)
                 .ToArray();
@@ -363,7 +369,8 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
                 DeviceId = credential.DeviceId,
                 Role = request.Role,
                 CredentialLifetime = credential.Lifetime,
-                Authority = this
+                Authority = this,
+                Access = credential.Access
             };
         }
     }
@@ -383,7 +390,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
             GatewayRules.Require(!credential!.Revoked, "auth.revoked");
             GatewayRules.Require(!ExpiredLocked(credential, now), "auth.expired");
             GatewayRules.Require(credential.DeviceId == principal.DeviceId &&
-                credential.Roles.Contains(principal.Role), "auth.role");
+                credential.Roles.Contains(principal.Role) && credential.Access == principal.Access, "auth.role");
             return operation();
         }
     }
@@ -392,8 +399,10 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
         string deviceId,
         string displayName,
         GatewayRole[] roles,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        GatewayAccess access = GatewayAccess.Full)
     {
+        GatewayRules.Defined(access);
         SweepInactiveLocked(now);
         GatewayRules.Require(credentials.Count < MaximumRegistrations, "auth.capacity");
         string? credentialId = null;
@@ -422,7 +431,8 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
             IssuedAt = now,
             Lifetime = new PairedDeviceLifetime(),
             StartedAt = lastTimestamp ?? 0,
-            RemainingTicks = 0
+            RemainingTicks = 0,
+            Access = access
         });
         return new()
         {
@@ -430,7 +440,8 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
             DeviceId = deviceId,
             Roles = Array.AsReadOnly(roles.ToArray()),
             Secret = new(secretText),
-            Lifetime = new PairedDeviceLifetime()
+            Lifetime = new PairedDeviceLifetime(),
+            Access = access
         };
     }
 
@@ -522,7 +533,8 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
             record.Verifier.ToArray(), record.IssuedAt, record.Lifetime,
             RemainingLocked(record, now), record.RotatedToCredentialId,
             record.Nonces.Where(item => item.Value > now)
-                .Select(item => new StoredGatewayNonce(item.Key, item.Value)).ToArray())).ToArray(),
+                .Select(item => new StoredGatewayNonce(item.Key, item.Value)).ToArray(),
+            record.Access == GatewayAccess.Friend ? GatewayAccess.Friend : null)).ToArray(),
             lastTimestamp!.Value, frequency);
     }
 
@@ -690,6 +702,7 @@ public sealed class GatewayCredentialStore : IGatewayRequestCredentials, IGatewa
         internal string? RotatedToCredentialId { get; set; }
         internal long StartedAt { get; set; }
         internal long RemainingTicks { get; set; }
+        internal GatewayAccess Access { get; init; }
         internal Dictionary<string, DateTimeOffset> Nonces { get; } = new(StringComparer.Ordinal);
     }
 }
@@ -1011,8 +1024,10 @@ public sealed record GatewayPrincipal
         (Authority ?? throw new GatewayProtocolException("auth.invalid")).WithAuthority(this, operation);
     /// <summary>The API key this principal presented; null for a paired device's signed request.</summary>
     internal Martlet.Core.Access.ApiKey? Key { get; init; }
-    /// <summary>Who made the request, for logs: the device ID or the API key's name.</summary>
-    internal string Caller => Key is { } key ? $"API key \"{key.Name}\"" : DeviceId;
+    /// <summary>Who made the request, for logs: the device ID (marked when it is a friend's) or the API key's name.</summary>
+    internal string Caller => Key is { } key ? $"API key \"{key.Name}\"" : Access == GatewayAccess.Friend ? $"friend {DeviceId}" : DeviceId;
+    /// <summary>What the credential may use here; a friend's reaches only the routes that admit friends.</summary>
+    public GatewayAccess Access { get; init; }
 
     public required string HostId { get; init; }
     public required string CredentialId { get; init; }
