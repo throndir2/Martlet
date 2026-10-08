@@ -50,7 +50,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
         Func<AvatarRemoteHost, IAvatarHostLink?>? openHost = null, TimeProvider? gazeClock = null,
         Func<IAvatarRenderer>? createStillRenderer = null)
     {
-        this.createRenderer = createRenderer ?? (() => new AvatarRendererProcess());
+        this.createRenderer = createRenderer ?? SimulatedRendererFailure.Wrap(() => new AvatarRendererProcess(),
+            Environment.GetEnvironmentVariable(SimulatedRendererFailure.Variable));
         this.createStillRenderer = createStillRenderer ?? (() => new AvatarRendererProcess(still: true));
         this.allowControlledClock = allowControlledClock;
         this.openHost = openHost ?? GatewayAvatarHostLink.Open;
@@ -168,8 +169,10 @@ internal sealed partial class AvatarController : IAsyncDisposable
                     await PlayActionAsync(source, cue.Tag, line.Finished, cueLifetime.Token, hold: cue.Tag.StartsWith('{') && catalog.Lingers(source))
                         .ConfigureAwait(false);
         }
-        catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
-            InvalidDataException or TimeoutException or ObjectDisposedException) { }
+        catch (Exception error) when (error is OperationCanceledException || RendererFailures.Is(error, cueLifetime.Token))
+        {
+            if (RendererFailures.Is(error, cueLifetime.Token)) RendererFailures.Log($"Character cue {cue.Tag} wasn't acted", error);
+        }
     }
 
     private async Task StopLaterAsync(IReadOnlyList<CharacterActionSource> sources, CharacterCueLine line, CharacterCue cue,
@@ -186,8 +189,10 @@ internal sealed partial class AvatarController : IAsyncDisposable
             else
                 foreach (var source in sources) await StopActionAsync(source, cue.Tag, cueLifetime.Token).ConfigureAwait(false);
         }
-        catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
-            InvalidDataException or TimeoutException or ObjectDisposedException) { }
+        catch (Exception error) when (error is OperationCanceledException || RendererFailures.Is(error, cueLifetime.Token))
+        {
+            if (RendererFailures.Is(error, cueLifetime.Token)) RendererFailures.Log($"Character cue {cue.Tag} wasn't acted", error);
+        }
     }
 
     private static void Dropped(CharacterCue cue) =>
@@ -318,8 +323,10 @@ internal sealed partial class AvatarController : IAsyncDisposable
             if (!target.HasExited)
                 return (await target.SendAsync("action", new RendererAction(KindOf(source), source.Name, false, true), token).ConfigureAwait(false)).Data;
         }
-        catch (Exception error) when (error is IOException or InvalidOperationException or InvalidDataException or TimeoutException or
-            ObjectDisposedException) { }
+        catch (Exception error) when (RendererFailures.Is(error, token))
+        {
+            RendererFailures.Log($"The character's {KindOf(source)} \"{source.Name}\" couldn't be turned off", error);
+        }
         return default;
     }
 
@@ -342,8 +349,9 @@ internal sealed partial class AvatarController : IAsyncDisposable
                         value.ValueKind == System.Text.Json.JsonValueKind.True;
                     if (held.Source.Kind == CharacterActionKind.Gesture) heldGestures = HeldGesturesOf(reply.Data) ?? heldGestures;
                 }
-                catch (Exception error) when (error is IOException or InvalidOperationException or InvalidDataException or TimeoutException)
+                catch (Exception error) when (RendererFailures.Is(error, token))
                 {
+                    RendererFailures.Log($"The character's lingering {KindOf(held.Source)} \"{held.Source.Name}\" couldn't come back", error);
                     keep = false;
                 }
             if (!keep) Held.Remove(held.Source.Id);
@@ -392,8 +400,10 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 hold.Token.ThrowIfCancellationRequested();
                 if (!target.HasExited) await target.SendAsync("action", new RendererAction("expression", name, false), hold.Token).ConfigureAwait(false);
             }
-            catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or
-                InvalidDataException or TimeoutException or ObjectDisposedException) { }
+            catch (Exception error) when (error is OperationCanceledException || RendererFailures.Is(error, hold.Token))
+            {
+                if (RendererFailures.Is(error, hold.Token)) RendererFailures.Log($"The character's expression \"{name}\" couldn't be turned off", error);
+            }
             finally
             {
                 lock (stateGate) if (expressionHold == hold) expressionHold = null;
@@ -695,7 +705,12 @@ internal sealed partial class AvatarController : IAsyncDisposable
         }
         if (running is not null)
             try { await running.WaitAsync(TimeSpan.FromSeconds(3)); }
-            catch (Exception error) when (error is OperationCanceledException or TimeoutException or IOException or InvalidOperationException) { }
+            catch (TimeoutException) { ErrorLog.Observe(running, "Character lip-sync after it was stopped"); }
+            catch (Exception error) when (!ErrorLog.IsFatal(error))
+            {
+                // Stopping the character always finishes: the run reports its own sentences, so this is never a renderer's failure.
+                if (error is not OperationCanceledException) ErrorLog.Error("Character lip-sync had failed before it was stopped.", error);
+            }
         if (running is null || running.IsCompleted) lifetime.Dispose();
     }
 
@@ -731,9 +746,24 @@ internal sealed partial class AvatarController : IAsyncDisposable
         static async Task Settle(Task task)
         {
             try { await task; }
-            catch (Exception error) when (error is OperationCanceledException or IOException or InvalidOperationException or TimeoutException) { }
+            catch (Exception error) when (!ErrorLog.IsFatal(error)) { SentenceFailed(error); }
         }
     }
+
+    /// <summary>One sentence's lip-sync ended with <paramref name="error"/>: a cancellation says nothing, a renderer failure one
+    /// short line, anything else (a bug) a full entry. It never ends the character's lip-sync for the next sentences.</summary>
+    private static void SentenceFailed(Exception error)
+    {
+        if (error is OperationCanceledException) return;
+        if (RendererFailures.Is(error, CancellationToken.None))
+            RendererFailures.Log("The character's lip-sync stopped for a sentence", error is CharacterRendererException { InnerException: { } inner } ? inner : error);
+        else ErrorLog.Error("The character's lip-sync failed for a sentence.", error);
+    }
+
+    // A sentence that ends early (canceled or failed) may leave its other parts running: their end is still observed and reported.
+    private static void ObserveSentence(Task? part) =>
+        part?.ContinueWith(static ended => SentenceFailed(ended.Exception!.GetBaseException()), CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 
     private long lastAudio2FaceApply;
     private bool Audio2FaceAnimating =>
@@ -757,10 +787,12 @@ internal sealed partial class AvatarController : IAsyncDisposable
             relay = new PcmAccumulator();
         else if (mono && await Audio2FaceProbe.IsListeningAsync(automatic!.Options, TimeSpan.FromMilliseconds(250), token))
             stream = new GeneratedSpeechStream(snapshot.Ids, snapshot.Epoch, segment.Format, 0, 0, segment.Format.SampleRate * 90L, 128);
+        Task? tee = null, present = null;
+        var joined = false;
         try
         {
-            var tee = TeeAsync(segment, meter, stream, relay, token);
-            var present = LoudnessLipSync.PresentAsync(segment, meter,
+            tee = TeeAsync(segment, meter, stream, relay, token);
+            present = LoudnessLipSync.PresentAsync(segment, meter,
                 level => target.SendAsync("mouth", new { level }, token), () => Audio2FaceAnimating, token);
             if (automatic is not null && (stream is not null || relay is not null))
             {
@@ -772,6 +804,12 @@ internal sealed partial class AvatarController : IAsyncDisposable
                         : RemoteFramesAsync(segment, relay!, host!, token);
                     await ApplyFramesAsync(segment, frames, automatic, target, where, token);
                 }
+                catch (CharacterRendererException failure) when (!token.IsCancellationRequested)
+                {
+                    // The character renderer failed, not Audio2Face: this sentence's frames end, and the voice's loudness mouth
+                    // (if the renderer still answers) goes on.
+                    RendererFailures.Log("Audio2Face lip-sync stopped for a sentence", failure.InnerException ?? failure);
+                }
                 catch (Exception error) when (!token.IsCancellationRequested && error is Audio2FaceException or
                     Audio2FaceHostException or ContractException or IOException or InvalidOperationException or
                     OperationCanceledException or TimeoutException)
@@ -782,9 +820,18 @@ internal sealed partial class AvatarController : IAsyncDisposable
                         "service or mapping failure")}. Mouth movement follows Martlet's voice.");
                 }
             }
+            joined = true;
             await Task.WhenAll(tee, present);
         }
-        finally { stream?.Dispose(); }
+        finally
+        {
+            stream?.Dispose();
+            if (!joined)
+            {
+                ObserveSentence(tee);
+                ObserveSentence(present);
+            }
+        }
     }
 
     private static async Task TeeAsync(GeneratedSpeechObservation segment, LoudnessMeter meter,
@@ -878,6 +925,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
         var halt = StopSegmentAsync(segment, stop, target.Exited);
         AvatarComposition? composition = null;
         var started = false;
+        var rendererFailed = false;
         // This sentence's frames own the face while they play (a song's mouth waits for them).
         var owner = new object();
         try
@@ -907,7 +955,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 }
                 if (!started)
                 {
-                    await FaceAsync(owner, () => target.SendAsync("reset", identity, token), token);
+                    await FaceAsync(owner, () => RendererCommandAsync(() => target.SendAsync("reset", identity, token), token), token);
                     started = true;
                 }
                 PlaybackPosition? position;
@@ -931,12 +979,18 @@ internal sealed partial class AvatarController : IAsyncDisposable
                     throw new AvatarOperationException("frame cannot be synchronized: " + composed.Disposition);
                 var parameters = automatic.Targets.ToDictionary(t => t.Id,
                     t => composed.Parameters.TryGetValue(t.Id, out var value) ? value : t.Neutral, StringComparer.Ordinal);
-                await FaceAsync(owner, () => target.SendAsync("apply", new RendererParameters(identity, frame.Sequence, frame.SampleOffset,
-                    position.SampleOffset, automatic.Config.ModelRevision, automatic.Config.MappingRevision, parameters), stop.Token), stop.Token);
+                await FaceAsync(owner, () => RendererCommandAsync(() => target.SendAsync("apply", new RendererParameters(identity,
+                    frame.Sequence, frame.SampleOffset, position.SampleOffset, automatic.Config.ModelRevision, automatic.Config.MappingRevision,
+                    parameters), stop.Token), stop.Token), stop.Token);
                 if (Volatile.Read(ref lastAudio2FaceApply) == 0 || !Audio2FaceAnimating)
                     Publish($"Lip-sync is using Audio2Face at {where}.");
                 Volatile.Write(ref lastAudio2FaceApply, Stopwatch.GetTimestamp());
             }
+        }
+        catch (CharacterRendererException)
+        {
+            rendererFailed = true;
+            throw;
         }
         finally
         {
@@ -944,11 +998,20 @@ internal sealed partial class AvatarController : IAsyncDisposable
             await stop.CancelAsync();
             try { await halt; }
             catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
-            if (started && !target.HasExited && !token.IsCancellationRequested)
+            // A renderer that just failed isn't asked again: the stop would only wait for its time limit.
+            if (started && !rendererFailed && !target.HasExited && !token.IsCancellationRequested)
                 try { await target.SendAsync("stop", new { }, token); }
-                catch (Exception error) when (error is IOException or InvalidOperationException or OperationCanceledException or TimeoutException) { }
+                catch (Exception error) when (error is OperationCanceledException || RendererFailures.Is(error, token)) { }
             await ReleaseFaceAsync(owner);
         }
+    }
+
+    /// <summary>One character renderer command for a sentence's Audio2Face frames: a failure of the renderer (not a cancellation
+    /// by <paramref name="caller"/>) becomes a <see cref="CharacterRendererException"/>, so only this sentence's frames end.</summary>
+    private static async Task RendererCommandAsync(Func<Task<RendererMessage>> send, CancellationToken caller)
+    {
+        try { await send().ConfigureAwait(false); }
+        catch (Exception error) when (RendererFailures.Is(error, caller)) { throw new CharacterRendererException(error); }
     }
 
     internal async Task InspectAsync(AvatarProfile selected, CancellationToken token)
@@ -1121,8 +1184,8 @@ internal sealed partial class AvatarController : IAsyncDisposable
                 if (!observer.Segments.TryRead(out var segment)) continue;
                 if (current != Volatile.Read(ref generation)) return;
                 try { await AnimateAsync(segment, settings, targets, config, ownedRenderer, token); }
-                catch (Exception error) when (error is Audio2FaceException or ContractException or IOException or
-                    InvalidOperationException or OperationCanceledException or TimeoutException)
+                catch (Exception error) when (error is Audio2FaceException or ContractException or OperationCanceledException ||
+                    RendererFailures.Is(error, token))
                 {
                     if (token.IsCancellationRequested) break;
                     Publish($"Audio2Face couldn't animate this speech: {(error is Audio2FaceException a ? a.Failure.ToString() :
@@ -1138,8 +1201,9 @@ internal sealed partial class AvatarController : IAsyncDisposable
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
-        catch (Exception error) when (error is IOException or InvalidOperationException or OperationCanceledException or TimeoutException)
+        catch (Exception error) when (RendererFailures.Is(error, token))
         {
+            RendererFailures.Log("Audio2Face lip-sync stopped", error);
             Publish("Character lip-sync stopped. Voice continues; inspect again before retrying.");
             runtimeFailed = true;
             observer.Disable();
@@ -1152,7 +1216,7 @@ internal sealed partial class AvatarController : IAsyncDisposable
             {
                 using var clear = new CancellationTokenSource(TimeSpan.FromSeconds(2));
                 try { await ownedRenderer.SendAsync("stop", new { }, clear.Token); }
-                catch (Exception error) when (error is IOException or InvalidOperationException or OperationCanceledException)
+                catch (Exception error) when (RendererFailures.Is(error, CancellationToken.None))
                 {
                     Publish("Couldn't reset the character, so Martlet stopped the renderer. Voice continues.");
                     await ownedRenderer.DisposeAsync();
@@ -1327,9 +1391,12 @@ internal sealed partial class AvatarController : IAsyncDisposable
         {
             // A worker that already ended (even with an error) is finished; only a still-running one blocks cleanup.
             try { await running.WaitAsync(TimeSpan.FromSeconds(3)); }
+            catch (OperationCanceledException) when (running.IsCompleted) { }
             catch (Exception error) when (running.IsCompleted)
             {
-                ErrorLog.Warn("Avatar lip-sync analysis had ended with an error before it was stopped.", error);
+                if (RendererFailures.Is(error, CancellationToken.None))
+                    RendererFailures.Log("Avatar lip-sync analysis had ended before it was stopped", error);
+                else ErrorLog.Warn("Avatar lip-sync analysis had ended with an error before it was stopped.", error);
             }
         }
         worker = null;

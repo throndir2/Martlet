@@ -104,7 +104,7 @@ public partial class MainWindow
     private async Task UpdateCharacterOverlayThemeAsync()
     {
         try { await avatar.UpdateThemeAsync(lifetime.Token); }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException or OperationCanceledException or TimeoutException or InvalidDataException)
+        catch (Exception ex) when (ex is OperationCanceledException || RendererFailures.Is(ex, lifetime.Token))
         {
             if (!closing)
                 AppearanceStatus.Text += " The character could not update its colors. Restart it to apply the theme.";
