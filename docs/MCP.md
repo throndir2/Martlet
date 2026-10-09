@@ -4659,7 +4659,12 @@ IntimateTouch*; and its `toolSets` (set IDs such as *next-reply*)), `desktop` fr
 the desktop on a companion PC: `role`, the check-in `running` and the
 triggered one `runningTriggered`, `touches` with `settling` (touches wait to
 settle), `settleMs` and `lastFired` (`triggers`, `at` and `what` in counts
-only, such as *3 touches, an intimate one*), `pool` with
+only, such as *3 touches, an intimate one* or *2 exchanges*), `afterExchange` (the
+reply tools [Act on what was said](CONVERSATION.md#act-on-what-was-said) takes over:
+`poolCallsTools`, whether the configured Thinking pool has a member that takes
+check-ins and calls tools; `handedOff`, each `tool` with its `checkIn` and `set`;
+`why` in plain words; and `lastProblem`, what the last run after an exchange
+couldn't do, or null), `pool` with
 `canRun` and the `member` and `model` that take them first, and for each
 check-in `needs`, `canRun` (a member that handles what it needs), `screenshot`,
 `recording`, `recordingSeconds`, `script`, `triggers`, `pending` (the trigger
@@ -4685,7 +4690,7 @@ the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
 (each set's `id`, `name`, `does`, `tools` and `replaces`: the reply tools it
 takes over, such as `manage_memories` for `memory`), the job kind
 `check-in` at the `Helper` priority, not fast, stopped while the floor is Live,
-and for triggers the `triggers` offered, `triggerAgeSeconds`,
+and for triggers the `triggers` offered, `triggerAgeSeconds`, `exchangeAgeSeconds` (600),
 `touchesSettleMs`, `strokeZones`, `oftenTouches` and `oftenWindowMinutes`).
 Read-only.
 
@@ -4734,7 +4739,7 @@ after the prompt when it is ticked but not placed, and that facts past
 `intimate`, `often`), `filled` and the FIXTURE message. Three
 `triggers:` steps check [check-in triggers](CONVERSATION.md#check-in-triggers)
 with FIXTURE touches: `triggers: saved and read back` (an own and a built-in
-check-in's triggers, an unknown trigger refused, only Describe touches has one by default),
+check-in's triggers, an unknown trigger refused, and by default Describe touches starts on `TouchesEnded`, How I react on every touch trigger and Act on what was said on `ExchangeEnded`),
 `triggers: fixture touches fire them` (on a production `TouchLedger`, a poke
 and a stroke from the tail over the buttocks to the groin, after 5 earlier
 touches there, fire all four triggers once they settle; the ledger still holds
@@ -4742,7 +4747,17 @@ every touch; a pat alone fires only `TouchesEnded`; a zoom fires nothing) and
 `triggers: when a triggered check-in waits` (only on its own triggers, not
 after 2 minutes, at most once per its pace, never held by a busy
 conversation, still off, still waiting while nobody is at the PC, *Check now*
-with no trigger, and a paced check-in still waiting for a busy conversation). Three
+with no trigger, and a paced check-in still waiting for a busy conversation).
+Three `after each exchange:` steps check [Act on what was
+said](CONVERSATION.md#act-on-what-was-said): `the built-in check-in and its
+trigger` (on, *Its tools act*, every minute at most, `ExchangeEnded`, its tool
+sets are every set that replaces reply tools; two exchanges that end while it
+waits count as *2 exchanges*; it keeps the trigger 10 minutes; a touch never
+starts it), `it reads what was said since it last ran` (`{exchange}` holds the
+exchanges since its last run, or the newest one, with the work list) and `the
+reply hands tools off` (the tools the sets replace, only while it is on and the
+configured pool calls tools, the pool asked only when needed, and the *Things
+done after the reply* line). Three
 `context:` steps check *Adds to what Martlet knows*: `context: asked and read`
 (an own check-in's message asks for a `KNOW:` line or `OK`, and a fixture
 member's `KNOW:` bullet after a `<think>` block is read on a production job

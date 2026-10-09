@@ -63,7 +63,7 @@ internal sealed partial class LiveConversationController
 
     // Leaves out the tools handed off and adds what the reply is told instead (guidance). Null when no tool and nothing to say is
     // left; without hand-offs, null when there are no tools (as before hand-offs existed).
-    private static BuiltInTools? WithoutHandedOff(BuiltInTools tools, IReadOnlyList<CheckInHandOff> handed, string? guidance)
+    internal static BuiltInTools? WithoutHandedOff(BuiltInTools tools, IReadOnlyList<CheckInHandOff> handed, string? guidance)
     {
         if (handed.Count == 0) return tools.Tools.Count == 0 && tools.Guidance is null ? null : tools;
         var names = handed.Select(h => h.Tool).ToHashSet(StringComparer.Ordinal);

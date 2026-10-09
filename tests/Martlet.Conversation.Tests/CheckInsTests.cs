@@ -419,7 +419,7 @@ public sealed partial class CheckInsTests
         Assert.Equal("text and recordings", CheckIns.Describe(ThinkingCapability.Text | ThinkingCapability.Audio));
         Assert.Equal("text, pictures and recordings", CheckIns.Describe(CheckIns.Of(Inputs()).Needs));
         // Built-in check-ins need text only, but How I react, which calls its tools.
-        Assert.All(CheckIns.All(null), c => Assert.Equal(c.Id == CheckIns.Reactions ? ThinkingCapability.Text | ThinkingCapability.Tools
+        Assert.All(CheckIns.All(null), c => Assert.Equal(c.Id is CheckIns.Reactions or CheckIns.Actions ? ThinkingCapability.Text | ThinkingCapability.Tools
             : ThinkingCapability.Text, c.Needs));
     }
 
