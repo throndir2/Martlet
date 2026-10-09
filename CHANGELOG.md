@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- When Ollama on your PC keeps stopping, Home and Companion › Thinking now show Ollama's own error instead of "Ollama isn't running". If the cause is a models folder that was moved to another drive and linked back (Ollama 0.40.1 and later refuse that link), Martlet points Ollama at the real folder by itself, backs up Ollama's settings first and tells you what it changed. ([#669](https://github.com/throndir2/Martlet/pull/669))
 - Already run a chat model in Ollama, LM Studio, llama.cpp or vLLM on your PC? Recommended setup and **Set it all up for me** now find it and think with it when it fits beside the voice, so nothing downloads. Untick **Use models your apps already run** to keep Martlet's own fast model. ([#665](https://github.com/throndir2/Martlet/pull/665))
 - Recommended setup has a new **Prefer models your hosts already have** choice. Tick it, and Martlet thinks with the best model your hosts already run or keep downloaded instead of downloading a new one. ([#666](https://github.com/throndir2/Martlet/pull/666))
 - Check-ins can now run every minute, and your own check-ins can record the last whole minute of the microphone or of what your PC plays. Gemma 4 and Gemma 3n hear only the first 30 seconds of a recording; Gemini, OpenAI's audio models and Voxtral hear the whole minute. ([#667](https://github.com/throndir2/Martlet/pull/667))
@@ -22,6 +23,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Fixed
 
+- **Read my screen now** and screen reading while Martlet watches now read all the text on your screen, not just a word or two. Martlet reads a full-size copy of the screen, and **Read my screen now** shows its size. ([#670](https://github.com/throndir2/Martlet/pull/670))
 - Thinking in Ollama on one of your computers now hears your voice when its model can hear, such as Gemma 4 E4B, instead of saying the model doesn't hear recordings. **Test hearing** works there too. Update Martlet on that computer as well. ([#668](https://github.com/throndir2/Martlet/pull/668))
 
 ## [0.62.1] - 2026-10-08

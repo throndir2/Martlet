@@ -60,6 +60,9 @@ internal sealed class ScreenFrame(byte[] pixels, int width, int height, string t
     /// <summary>A copy of the pixels (BGRA32, top-down) for reading the text on them off the UI thread; null once cleared.</summary>
     internal byte[]? CopyPixels() => Volatile.Read(ref pixels) is { } owned ? (byte[])owned.Clone() : null;
 
+    /// <summary>The pixels themselves, handed over (the frame is cleared); the taker zeroes them. Null once cleared.</summary>
+    internal byte[]? TakePixels() => Interlocked.Exchange(ref pixels, null);
+
     internal void Clear()
     {
         if (Interlocked.Exchange(ref pixels, null) is { } owned) Array.Clear(owned);
@@ -77,6 +80,9 @@ internal sealed record GlanceResult(ScreenFrame? Frame, GlanceSkip Skip, string?
 internal interface IScreenGlancer
 {
     GlanceResult Capture(ScreenScope scope);
+    /// <summary>The same look at full size, for reading its text (OCR can't read text the downscaled look shrank to a few
+    /// pixels). It changes nothing <see cref="Capture"/> remembers between looks.</summary>
+    GlanceResult CaptureText(ScreenScope scope) => Capture(scope);
     TimeSpan UserIdle { get; }
     /// <summary>Frees the screen capture resources (the open duplications and their frame copies) when watching stops.</summary>
     void Release();
@@ -90,10 +96,13 @@ internal interface IScreenGlancer
 /// windows, password managers and private browsing windows are painted over wherever they show; a minimized window or a
 /// password manager / private window in front is never captured; protected video and windows that exclude themselves from
 /// capture read back black and are skipped. Each screenshot also names the program in front and says whether its window
-/// fills its monitor (<see cref="ActiveApp"/>).</summary>
+/// fills its monitor (<see cref="ActiveApp"/>). <see cref="CaptureText"/> takes the same look at full size (at most
+/// <see cref="TextMaximumEdge"/>) for reading the text on it.</summary>
 internal sealed class ScreenGlancer : IScreenGlancer
 {
     internal const int MaximumEdge = 1024;
+    /// <summary>A text picture is full size up to this long edge (Windows OCR reads pictures up to 10000 pixels).</summary>
+    internal const int TextMaximumEdge = 8192;
     private const int SignatureWidth = 16, SignatureHeight = 9;
     private static readonly string[] PrivateTitles =
     [
@@ -136,7 +145,11 @@ internal sealed class ScreenGlancer : IScreenGlancer
         return PrivateTitles.Any(lower.Contains);
     }
 
-    public GlanceResult Capture(ScreenScope scope)
+    public GlanceResult Capture(ScreenScope scope) => Capture(scope, text: false);
+
+    public GlanceResult CaptureText(ScreenScope scope) => Capture(scope, text: true);
+
+    private GlanceResult Capture(ScreenScope scope, bool text)
     {
         var old = SetThreadDpiAwarenessContext(PerMonitorAwareV2);
         try
@@ -155,7 +168,7 @@ internal sealed class ScreenGlancer : IScreenGlancer
                     window = WindowBehind(window, own);
                 }
             }
-            return scope == ScreenScope.ActiveScreen ? CaptureScreen(window, behind, own) : CaptureWindow(window, behind, own);
+            return scope == ScreenScope.ActiveScreen ? CaptureScreen(window, behind, own, text) : CaptureWindow(window, behind, own, text);
         }
         catch (Exception error) when (error is ExternalException or OutOfMemoryException or ArgumentException)
         {
@@ -167,7 +180,7 @@ internal sealed class ScreenGlancer : IScreenGlancer
         }
     }
 
-    private GlanceResult CaptureWindow(nint window, bool behind, uint own)
+    private GlanceResult CaptureWindow(nint window, bool behind, uint own, bool text)
     {
         if (window == 0) return new(null, behind ? GlanceSkip.MartletInFront : GlanceSkip.NoWindow);
         if (IsIconic(window)) return new(null, GlanceSkip.Minimized);
@@ -180,18 +193,18 @@ internal sealed class ScreenGlancer : IScreenGlancer
             return new(null, GlanceSkip.CaptureFailed);
         var area = NativeRect.Intersect(bounds, monitor.rcMonitor);
         if (area.Width < 64 || area.Height < 64) return new(null, GlanceSkip.NoWindow);
-        var scale = Math.Min(1.0, (double)MaximumEdge / Math.Max(area.Width, area.Height));
+        var scale = Math.Min(1.0, (double)(text ? TextMaximumEdge : MaximumEdge) / Math.Max(area.Width, area.Height));
         int width = Math.Max(1, (int)Math.Round(area.Width * scale)), height = Math.Max(1, (int)Math.Round(area.Height * scale));
-        Keep([monitorHandle]);
+        if (!text) Keep([monitorHandle]);
         string? note = null;
         var protectedContent = false;
         var pixels = GrabMonitor(monitorHandle, area, width, height, ref note, ref protectedContent);
         if (pixels is null) return new(null, GlanceSkip.CaptureFailed, note);
-        return Finish(pixels, width, height, area, title, own, window, note, protectedContent, behind, 1, ActiveApp.Of(window));
+        return Finish(pixels, width, height, area, title, own, window, note, protectedContent, behind, 1, ActiveApp.Of(window), text);
     }
 
     // Every monitor in one picture, laid out as Windows arranges them; areas no monitor covers stay black.
-    private GlanceResult CaptureScreen(nint window, bool behind, uint own)
+    private GlanceResult CaptureScreen(nint window, bool behind, uint own, bool text)
     {
         var title = window == 0 ? "" : WindowTitle(window);
         // A private window in front (or behind Martlet) means you are busy with something private: no look at all.
@@ -203,9 +216,10 @@ internal sealed class ScreenGlancer : IScreenGlancer
             area = new() { Left = Math.Min(area.Left, rect.Left), Top = Math.Min(area.Top, rect.Top),
                 Right = Math.Max(area.Right, rect.Right), Bottom = Math.Max(area.Bottom, rect.Bottom) };
         var largest = monitors.Max(m => Math.Max(m.Area.Width, m.Area.Height));
-        var scale = Math.Min(1.0, Math.Min((double)MaximumEdge / largest, (double)BoundedImage.HardMaxEdge / Math.Max(area.Width, area.Height)));
+        var scale = text ? Math.Min(1.0, (double)TextMaximumEdge / Math.Max(area.Width, area.Height))
+            : Math.Min(1.0, Math.Min((double)MaximumEdge / largest, (double)BoundedImage.HardMaxEdge / Math.Max(area.Width, area.Height)));
         int width = Math.Max(1, (int)Math.Round(area.Width * scale)), height = Math.Max(1, (int)Math.Round(area.Height * scale));
-        Keep(monitors.Select(m => m.Handle));
+        if (!text) Keep(monitors.Select(m => m.Handle));
         var pixels = new byte[width * height * 4];
         string? note = null;
         bool protectedContent = false, captured = false;
@@ -229,13 +243,13 @@ internal sealed class ScreenGlancer : IScreenGlancer
             return new(null, GlanceSkip.CaptureFailed, note, Monitors: monitors.Count);
         }
         return Finish(pixels, width, height, area, title, own, window, note, protectedContent, behind, monitors.Count,
-            window == 0 ? ("", false) : ActiveApp.Of(window));
+            window == 0 ? ("", false) : ActiveApp.Of(window), text);
     }
 
     // The black check, painting over Martlet's own and private windows, and the change score. The program in front and whether
-    // it fills its monitor go with the picture.
+    // it fills its monitor go with the picture. A text picture keeps the looks' own change score and gaze grid as they were.
     private GlanceResult Finish(byte[] pixels, int width, int height, NativeRect area, string title, uint own, nint target,
-        string? note, bool protectedContent, bool behind, int monitors, (string Name, bool FullScreen) app)
+        string? note, bool protectedContent, bool behind, int monitors, (string Name, bool FullScreen) app, bool text)
     {
         var signature = Signature(pixels, width, height);
         if (signature.Max() < 10)
@@ -249,6 +263,10 @@ internal sealed class ScreenGlancer : IScreenGlancer
             Array.Clear(pixels);
             return new(null, GlanceSkip.MartletInFront, note, BehindMartlet: behind, Monitors: monitors);
         }
+        if (text)
+            return new(new(pixels, width, height, title.Length > 80 ? title[..80] : title, 0,
+                new ScreenRect(area.Left, area.Top, area.Width, area.Height), app: app.Name, fullScreen: app.FullScreen),
+                GlanceSkip.None, note, protectedContent, behind, monitors);
         signature = Signature(pixels, width, height);
         var change = previous is null ? 1.0 : signature.Zip(previous, (a, b) => Math.Abs(a - b)).Average() / 255.0;
         previous = signature;

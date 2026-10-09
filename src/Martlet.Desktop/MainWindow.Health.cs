@@ -60,6 +60,7 @@ public partial class MainWindow
         };
         ErrorLog.ErrorRecorded += QueueHealth;
         ErrorLog.PreviousRunDescribed += QueueHealth;
+        LocalOllamaRecovery.Changed += OllamaRecoveryChanged;
         if (conversation is not null) conversation.FailuresChanged += QueueHealth;
     }
 
@@ -67,9 +68,20 @@ public partial class MainWindow
     {
         ErrorLog.ErrorRecorded -= QueueHealth;
         ErrorLog.PreviousRunDescribed -= QueueHealth;
+        LocalOllamaRecovery.Changed -= OllamaRecoveryChanged;
         if (conversation is not null) conversation.FailuresChanged -= QueueHealth;
         healthTimer?.Stop();
     }
+
+    /// <summary>Why Ollama doesn't answer, or Martlet's repair of it, changed (any thread): shows it, and checks Ollama again after
+    /// a repair made elsewhere (a run window, the talk window) so Home doesn't keep saying it isn't running.</summary>
+    private void OllamaRecoveryChanged() => Dispatcher.BeginInvoke(() =>
+    {
+        if (closing) return;
+        QueueHealth();
+        if (!LocalOllamaRecovery.Repairing && LocalOllamaRecovery.LastRepair is { Repaired: true } && ollamaState == LocalOllamaState.NotRunning)
+            CheckLocalServicesAsync().Forget();
+    });
 
     /// <summary>Re-renders Home's health at most once a second after something changed on another thread.</summary>
     private void QueueHealth() => Dispatcher.BeginInvoke(() =>
@@ -157,8 +169,14 @@ public partial class MainWindow
                 try { models = await LocalOllama.ModelsAsync(TimeSpan.FromSeconds(2), lifetime.Token); }
                 catch (OperationCanceledException) { return; }
                 state = models is null
-                    ? Prerequisites.IsMissing(Prerequisites.Ollama) ? LocalOllamaState.NotInstalled : LocalOllamaState.NotRunning
+                    ? Prerequisites.IsMissing(Prerequisites.Ollama) && !SimulatedOllamaCrashLoop.Active ? LocalOllamaState.NotInstalled : LocalOllamaState.NotRunning
                     : LocalOllama.Serves(models, thinking.ModelId) ? LocalOllamaState.Ready : LocalOllamaState.ModelMissing;
+                // Why it doesn't answer, from Ollama's own logs (its app, processes and models folder too); reads only.
+                if (state == LocalOllamaState.NotRunning)
+                {
+                    try { await LocalOllamaRecovery.DiagnoseAsync(lifetime.Token); }
+                    catch (OperationCanceledException) { return; }
+                }
             }
             string? serverProblem = null;
             if (IsLocalServer(thinking) && thinking!.Enabled != false)
@@ -173,6 +191,96 @@ public partial class MainWindow
             localServerProblem = serverProblem;
         } while (localCheckAgain);
         RenderHealth();
+        // Ollama keeps stopping because of its linked models folder: point it at the real folder now, once by itself.
+        if (ollamaState == LocalOllamaState.NotRunning && LocalOllamaRecovery.RepairsAutomatically(LocalOllamaRecovery.Last))
+            RepairOllamaAsync(automatic: true).Forget();
+    }
+
+    /// <summary>Points Ollama at its real models folder when it keeps stopping because of a link (see
+    /// <see cref="LocalOllamaRecovery"/>). <paramref name="automatic"/>: Martlet found it by itself (once for each cause in a
+    /// run); otherwise you asked, so it reads Ollama's state again first.</summary>
+    private async Task RepairOllamaAsync(bool automatic)
+    {
+        var trouble = LocalOllamaRecovery.Last;
+        try
+        {
+            if (!automatic)
+            {
+                ActionText.Text = "Checking Ollama on this PC again...";
+                trouble = await LocalOllamaRecovery.DiagnoseAsync(lifetime.Token);
+            }
+            if (closing) return;
+            if (trouble is not { CanRepair: true })
+            {
+                if (!automatic)
+                {
+                    ActionText.Text = trouble is null || trouble.Kind == OllamaTroubleKind.Answering
+                        ? "Ollama answers on this PC now." : $"{trouble.Message} {trouble.Guidance}".Trim();
+                    await CheckLocalServicesAsync();
+                }
+                return;
+            }
+            ActionText.Text = "Ollama keeps stopping because of its linked models folder. Martlet is pointing it at the real folder...";
+            var running = LocalOllamaRecovery.RepairAsync(trouble, automatic, lifetime.Token);
+            RenderHealth();
+            var result = await running;
+            if (closing || result is null) return;
+            ActionText.Text = result.Summary;
+            await CheckLocalServicesAsync();
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    /// <summary>What to say when Ollama on this PC doesn't answer: why, in Ollama's own words when its logs have them, after
+    /// Martlet repaired the known cause by itself (once in a run). <paramref name="then"/> ends the general advice ("check
+    /// again"). Repaired is true when Ollama answers after the repair.</summary>
+    private async Task<(string Text, bool Repaired)> OllamaNotAnsweringAsync(string then)
+    {
+        var general = $"Ollama didn't answer on this PC. Start Ollama from the Start menu, then {then}.";
+        OllamaDiagnosis trouble;
+        try
+        {
+            // A repair running now (Home's, by itself) stops and starts Ollama: its result says more than Ollama's state meanwhile.
+            if (LocalOllamaRecovery.Repairing)
+            {
+                await LocalOllamaRecovery.WaitForRepairAsync(lifetime.Token);
+                if (LocalOllamaRecovery.LastRepair is { Repaired: true } repaired) return (repaired.Summary, true);
+            }
+            trouble = await LocalOllamaRecovery.DiagnoseAsync(lifetime.Token);
+        }
+        catch (OperationCanceledException) { return (general, false); }
+        if (trouble.Kind == OllamaTroubleKind.Answering) return ("", true);
+        if (!trouble.Stops) return (general, false);
+        if (LocalOllamaRecovery.RepairsAutomatically(trouble))
+        {
+            ActionText.Text = "Ollama keeps stopping because of its linked models folder. Martlet is pointing it at the real folder...";
+            OllamaRepairResult? result;
+            try { result = await LocalOllamaRecovery.RepairAsync(trouble, automatic: true, lifetime.Token); }
+            catch (OperationCanceledException) { return (general, false); }
+            if (result is { Repaired: true }) return (result.Summary, true);
+            if (result is not null) return ($"{trouble.Message} Martlet tried to fix it: {result.Summary}", false);
+        }
+        return ($"{trouble.Message} {trouble.Guidance}".Trim(), false);
+    }
+
+    /// <summary>Home's item while Thinking uses Ollama on this PC and it doesn't answer: its title and detail, with Ollama's own
+    /// words and what Martlet does about them when its logs say why (<paramref name="trouble"/>), the repair running
+    /// (<paramref name="repairing"/>) and the last one Martlet tried (<paramref name="repair"/>).</summary>
+    internal static (string Title, string Detail) OllamaHealthText(string model, OllamaDiagnosis? trouble,
+        bool repairing, OllamaRepairResult? repair)
+    {
+        if (trouble is not { Stops: true }) return ("Ollama isn't running on this PC", $"Thinking uses {model} on this PC, but Ollama isn't running.");
+        var looping = trouble.Kind == OllamaTroubleKind.CrashLoop;
+        var title = looping ? "Ollama keeps stopping on this PC" : "Ollama stops when it starts on this PC";
+        var starts = trouble.Facts?.Log.FailedStarts ?? 0;
+        var opening = looping ? $"Ollama keeps stopping{(starts > 1 ? $" ({starts} failed starts in its log)" : "")}"
+            : "Ollama stopped the last time it started";
+        var tried = repair is { Repaired: false } && repair.After?.RepairKey == trouble.RepairKey;
+        var next = repairing ? $"Martlet is pointing Ollama at {trouble.RealPath} now..."
+            : tried ? $"Martlet tried to fix it: {repair!.Summary}"
+            : trouble.CanRepair ? $"Choose Fix Ollama's models folder to point Ollama at {trouble.RealPath}."
+            : trouble.Guidance ?? "";
+        return (title, $"Thinking uses {model} on this PC, but {opening}. {trouble.Explanation} {next}".TrimEnd());
     }
 
     private void StartOllama()
@@ -193,9 +301,13 @@ public partial class MainWindow
             await Task.Delay(TimeSpan.FromSeconds(2), lifetime.Token);
             await CheckLocalServicesAsync();
             if (ollamaState != LocalOllamaState.NotRunning) break;
+            // It started and keeps stopping: waiting longer won't help (Home says why, and repairs the known cause).
+            if (LocalOllamaRecovery.Last is { Kind: OllamaTroubleKind.CrashLoop }) break;
         }
-        if (!closing && ollamaState == LocalOllamaState.NotRunning)
-            ActionText.Text = "Ollama didn't start. Start it from the Start menu, then press Check again.";
+        if (!closing && ollamaState == LocalOllamaState.NotRunning && !LocalOllamaRecovery.Repairing)
+            ActionText.Text = LocalOllamaRecovery.Last is { Stops: true } trouble
+                ? $"{trouble.Message} {(trouble.CanRepair ? "" : trouble.Guidance)}".TrimEnd()
+                : "Ollama didn't start. Start it from the Start menu, then press Check again.";
     }
 
     private async Task PullThinkingModelAsync(string model)
@@ -219,6 +331,11 @@ public partial class MainWindow
     private void OpenLogsFolder()
     {
         if (!ErrorLog.OpenFolder()) ActionText.Text = "The logs folder isn't available. Check access to Martlet's data folder.";
+    }
+
+    private void OpenOllamaLogs()
+    {
+        if (!LocalOllamaRecovery.OpenLogs()) ActionText.Text = "Ollama's logs folder isn't available on this PC.";
     }
 
     private void OpenMicrophonePrivacy()
@@ -315,9 +432,18 @@ public partial class MainWindow
                          Open(CompanionTab.Thinking, "Change thinking")], "Martlet can't reply right now");
                     break;
                 case LocalOllamaState.NotRunning:
-                    Add("ollama", HealthLevel.Problem, "Ollama isn't running on this PC",
-                        $"Thinking uses {model} on this PC, but Ollama isn't running.",
-                        [new("start", "Start Ollama", StartOllama), Open(CompanionTab.Thinking, "Change thinking")], "Martlet can't reply right now");
+                    var ollamaTrouble = LocalOllamaRecovery.Last;
+                    var repairing = LocalOllamaRecovery.Repairing;
+                    var (ollamaTitle, ollamaDetail) = OllamaHealthText(model, ollamaTrouble, repairing, LocalOllamaRecovery.LastRepair);
+                    var tried = LocalOllamaRecovery.LastRepair is { Repaired: false } failed && failed.After?.RepairKey == ollamaTrouble?.RepairKey;
+                    Add("ollama", HealthLevel.Problem, ollamaTitle, ollamaDetail,
+                        [.. ollamaTrouble is { Stops: true, CanRepair: true }
+                            ? [new HealthFix("repair", repairing ? "Fixing Ollama..." : tried ? "Try the fix again" : "Fix Ollama's models folder",
+                                () => RepairOllamaAsync(automatic: false).Forget(), Enabled: !repairing)]
+                            : Array.Empty<HealthFix>(),
+                         .. ollamaTrouble is { Kind: OllamaTroubleKind.CrashLoop } ? Array.Empty<HealthFix>() : [new HealthFix("start", "Start Ollama", StartOllama)],
+                         .. ollamaTrouble is { Stops: true } ? [new HealthFix("ollama-logs", "Open Ollama's logs", OpenOllamaLogs)] : Array.Empty<HealthFix>(),
+                         Open(CompanionTab.Thinking, "Change thinking")], "Martlet can't reply right now");
                     break;
                 case LocalOllamaState.ModelMissing:
                     Add("ollama", HealthLevel.Problem, $"{model} isn't downloaded",
@@ -331,6 +457,11 @@ public partial class MainWindow
                     [new("recheck", "Check again", () => CheckLocalServicesAsync().Forget()), Open(CompanionTab.Thinking, "Change thinking")],
                     "Martlet can't reply right now");
         }
+        // Ollama on this PC kept stopping and Martlet fixed it: it changed Ollama's own settings, so it says what and where the
+        // backup is.
+        if (LocalOllamaRecovery.LastRepair is { Repaired: true, Changes.Count: > 0 } ollamaFixed)
+            Add("ollama-fixed", HealthLevel.Notice, "Martlet fixed Ollama on this PC",
+                ollamaFixed.Summary + " Each change is in the local log.", [Logs(), Dismiss("ollama-fixed")]);
 
         // Jobs that were chosen but don't work: from coverage (hosts, keys, consent, unsupported routes). Jobs this PC's own
         // host service can't do are folded into its own item below, which names the cause and the step that fixes it.

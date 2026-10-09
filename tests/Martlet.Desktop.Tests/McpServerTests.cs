@@ -609,6 +609,27 @@ public sealed class McpServerTests(ITestOutputHelper output)
         Assert.Contains(result.GetProperty("apps").EnumerateArray(), app => app.GetProperty("Id").GetString() == "lm-studio");
     }
 
+    [Fact]
+    public async Task OllamaRecoveryRehearsesTheRepairOnFixturesAndOnlyReadsThisPc()
+    {
+        var result = ToolResult((await SendAsync(
+            """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ollama_recovery","arguments":{"fixture":true}}}"""))[0]);
+        var fixture = result.GetProperty("fixture");
+        output.WriteLine(fixture.ToString());
+        Assert.True(fixture.GetProperty("passed").GetBoolean());
+        var scenarios = fixture.GetProperty("scenarios").EnumerateArray().ToArray();
+        Assert.Equal(["Linked", "UnknownSettings", "OtherError", "Answering"], scenarios.Select(s => s.GetProperty("scenario").GetString()));
+        var linked = scenarios[0];
+        Assert.True(linked.GetProperty("repair").GetProperty("Repaired").GetBoolean());
+        Assert.Equal("stop", linked.GetProperty("events")[0].GetString());
+        Assert.StartsWith("<fixture>", linked.GetProperty("savedModels").GetString(), StringComparison.Ordinal);
+        // This PC's own Ollama is only read: its state, never a path under the user's folders.
+        var thisPc = result.GetProperty("thisPc");
+        Assert.Contains(thisPc.GetProperty("kind").GetString(), new[] { "Answering", "NotInstalled", "NotRunning", "StopsOnStart", "CrashLoop" });
+        Assert.DoesNotContain(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), thisPc.GetRawText().Replace(@"\\", @"\", StringComparison.Ordinal),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
     private static JsonElement ToolResult(JsonElement message)
     {
         var text = message.GetProperty("result").GetProperty("content")[0].GetProperty("text").GetString()!;

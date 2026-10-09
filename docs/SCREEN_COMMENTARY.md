@@ -465,7 +465,10 @@ into the game. Martlet deliberately does not do that.)
 
 The duplication stays open only while watching (one per monitor for the whole
 screen). Each look copies the newest frame on the GPU and downscales it, which
-takes about 15 ms at 1080p on the test machine, every 3 seconds. Unlike a GDI
+takes about 15 ms at 1080p on the test machine, every 3 seconds. When
+Companion › Reading reads the screen, Martlet copies the same frame again at
+full size for text recognition, because the downscaled look makes normal text
+too small to read ([Reading](READING.md)). Unlike a GDI
 screen read, it does not stall the game's rendering. A fresh duplication's
 first frame can be black on some drivers, so Martlet waits for a second frame
 when it opens the duplication.

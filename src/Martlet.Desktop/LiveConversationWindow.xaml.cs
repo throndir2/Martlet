@@ -442,7 +442,7 @@ public partial class LiveConversationWindow : ThemedWindow
             LocalModelState.Loading when status.Elapsed >= TimeSpan.FromSeconds(1) =>
                 $"Starting local model {local.Model}… the first reply may take a moment.",
             _ when !problems => null,
-            LocalModelState.NotRunning => "Start Ollama, then try again.",
+            LocalModelState.NotRunning => LocalOllamaRecovery.Short() ?? "Start Ollama, then try again.",
             LocalModelState.MissingModel => $"Download {local.Model} in Companion › Thinking.",
             LocalModelState.Failed => $"Couldn't start {local.Model}: {status.Detail}. Choose a smaller model in " +
                 "Companion › Thinking, or close programs that use a lot of memory.",
@@ -2605,11 +2605,13 @@ public partial class LiveConversationWindow : ThemedWindow
     }
 
     /// <summary>Reads the newest screenshot when Companion › Reading's reader is free and the picture changed (or a while
-    /// passed). The read's text change feeds the pacer once it is done; nothing waits for it.</summary>
+    /// passed): the same look again at full size, off the UI thread, because the downscaled look is too small for OCR. The
+    /// read's text change feeds the pacer once it is done; nothing waits for it.</summary>
     private void ReadScreen(ScreenFrame frame)
     {
         if (ReadingWritten(controller.DataDirectory) != readingFile) StartReading();
-        if (reader?.Offer(frame) is not { } reading) return;
+        var scope = watchSource.Scope;
+        if (reader?.Offer(frame, () => glancer.CaptureText(scope).Frame) is not { } reading) return;
         ReadDoneAsync(reader, reading).Forget();
     }
 
