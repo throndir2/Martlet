@@ -1434,9 +1434,20 @@ Point at a fact or a condition on the page to see what it does:
 | What changed on screen | Martlet's newest words about what changed on the screen, while it watches. Not a screenshot. | `{screen}` |
 | What the PC plays | Martlet's newest words about what this PC plays, while it hears it. Not a recording. | `{sound}` |
 | Whether you're at the PC | Whether someone uses this PC now, or how long since someone last did. | `{presence}` |
+| How you touched the character | What you did to the character on the desktop in the last 10 minutes (pokes, pats, holds, strokes with their path and direction, moves), oldest first, each with when; which touches were intimate, how the personality feels about them and the places you keep coming back to. | `{touches}` |
 
 A placeholder puts that fact where you write it in the prompt; `{name}` and
 `{time}` work too. The facts you tick that the prompt doesn't name go after it.
+
+*How you touched the character* (`CheckInFacts.Touches`) uses the same words
+as the touch reaction's own request (`TouchWording`, with each stroke's path
+and the personality's feeling), so "you" is the character. The desktop reads
+it from the conversation's touch ledger with `TouchLedger.History`: a bounded
+log of the last 10 minutes (`OftenWindow`, at most 24 runs) that a reply's
+`Drain` leaves. Reading it never takes or changes the touches the next reply
+gets, and nothing is added to a reply's request. Like the other facts, it goes
+only to the pool member with the check, never to the log, the status file or
+MCP output.
 
 What happens with its answer:
 

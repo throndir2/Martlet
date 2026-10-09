@@ -62,14 +62,6 @@ internal sealed partial class AvatarController
         });
     }
 
-    /// <summary>The model's motion group for a tap on <paramref name="zone"/>, matched ignoring case and punctuation: Tap or
-    /// Touch followed by the zone, then by Head (for the head, hair and face) or Body (elsewhere), then plain Tap or Touch.</summary>
-    internal static string? TouchMotion(IReadOnlyList<string> groups, string zone)
-    {
-        static string Plain(string name) => new(name.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
-        var part = zone is "head" or "hair" or "face" ? "head" : "body";
-        foreach (var wanted in new[] { "tap" + zone, "touch" + zone, "tap" + part, "touch" + part, "tap", "touch" })
-            if (groups.FirstOrDefault(group => Plain(group) == wanted) is { } found) return found;
-        return null;
-    }
+    /// <summary>The model's motion group for a tap on <paramref name="zone"/> (<see cref="CharacterTouchZones.TouchMotion"/>).</summary>
+    internal static string? TouchMotion(IReadOnlyList<string> groups, string zone) => CharacterTouchZones.TouchMotion(groups, zone);
 }
