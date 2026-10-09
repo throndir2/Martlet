@@ -226,6 +226,26 @@ the Thinking pool role joins with its slots, an Ollama-only host joins unless it
 does this PC's Thinking, a member on Ollama moves to the role, and a computer
 kept out, one Sharing work never uses, a full pool and a host PC are skipped.
 
+`thinking_pool_status` gives the line's rules from `thinking-pool.json` as
+`line` (`preemptLowerPriority`, `raiseAfterStops`, `retries`). The `priority`
+steps of `thinking_pool_check` use one member with one slot (a sequential
+local model) and set these rules on each board:
+
+- `priority stop`: a barge-in judge that finds the slot busy stops research.
+  The judge runs, and research runs again later at its priority. With
+  `preemptLowerPriority` off, the judge waits for research to end.
+- The stopped job goes to the front of the line for its priority, before a
+  job of the same priority that waited before. A digest stopped for priority
+  waits again and is not dropped.
+- `priority raise` (`raiseAfterStops` 2): research stopped twice goes from
+  priority 10 to 11. Then a job of priority 11 no longer stops it.
+- `retries`: a job that failed or timed out is tried again at its priority.
+  A job raised to 11 and then failed is tried again at 11. With `retries` 0
+  the job fails.
+
+The report's `priority` section gives each job's outcome (`priorityStops`,
+`retries`, final `priority`), the order the member ran the jobs, and the
+board's `stoppedForPriority`, `raised` and `retried` counters.
 On the desktop, the page's *Machines* card is one list. It reads through
 `DeepThinkingNow`, `DeepThinkingParallel`, `ThinkingPoolSummary`,
 `ThinkingPoolConversation` (the conversation's own model: never in the pool, so
