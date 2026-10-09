@@ -358,6 +358,54 @@ public sealed class ThinkingPoolTests
     }
 
     [Fact]
+    public async Task An_external_member_gets_pictures_and_recordings_only_when_allowed()
+    {
+        const ThinkingCapability Sees = ThinkingCapability.Text | ThinkingCapability.Vision;
+        const ThinkingCapability Hears = ThinkingCapability.Text | ThinkingCapability.Audio;
+        BackgroundPlace cloud = new("endpoint:cloud", "cloud") { Can = Sees | Hears, Media = false };
+        var asked = 0;
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [cloud], (m, _, _) =>
+        {
+            Interlocked.Increment(ref asked);
+            return Task.FromResult(ThinkingAnswer.Done(m.Name));
+        });
+        Assert.False(board.CanRun(ThinkingJobKind.CheckIn, Sees));
+        Assert.False(board.CanRun(ThinkingJobKind.Digest, Hears));
+        Assert.Null(board.Find(ThinkingJobKind.Digest, Sees));
+        Assert.True(board.CanRun(ThinkingJobKind.CheckIn));
+        var picture = await board.RunAsync(Job(ThinkingJobKind.CheckIn, Sees), CancellationToken.None);
+        Assert.Equal(ThinkingJobOutcome.NoMember, picture.Outcome);
+        Assert.Contains("may not receive pictures and recordings", picture.Problem);
+        Assert.Equal(0, asked);
+        Assert.Equal("cloud", (await board.RunAsync(Job(ThinkingJobKind.CheckIn), CancellationToken.None)).Member);
+        Assert.Contains(board.Status().Guidance, g => g.Contains("No member may receive pictures or recordings") && g.Contains("cloud"));
+
+        // A member on this PC or a paired computer takes the picture job instead; the external one still gets none.
+        BackgroundPlace home = new("host:diva", "diva") { Can = Sees | Hears, Rank = 3 };
+        var mixed = new ThinkingJobBoard(new BackgroundPlaces(), () => [cloud, home], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)));
+        Assert.Equal("diva", (await mixed.RunAsync(Job(ThinkingJobKind.CheckIn, Sees), CancellationToken.None)).Member);
+        Assert.DoesNotContain(mixed.Status().Guidance, g => g.Contains("may receive pictures", StringComparison.OrdinalIgnoreCase));
+
+        var allowed = new ThinkingJobBoard(new BackgroundPlaces(), () => [cloud with { Media = true }], (m, _, _) => Task.FromResult(ThinkingAnswer.Done(m.Name)));
+        Assert.Equal("cloud", (await allowed.RunAsync(Job(ThinkingJobKind.CheckIn, Sees), CancellationToken.None)).Member);
+    }
+
+    [Fact]
+    public void Pool_places_follow_the_media_box()
+    {
+        var cloud = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = "https://api.example.com/v1", ModelId = "gpt-fixture" };
+        var local = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = "http://127.0.0.1:11434/v1", ModelId = "gemma3" };
+        var pool = new ThinkingPoolSettings().Add(cloud).Add(local);
+        var plan = pool.Plan([]);
+        bool Media(ThinkingPoolSettings? choices, DeepThinkingSettings member) =>
+            ThinkLonger.Places(plan, choices: choices).Single(p => p.Id == member.Key).Media;
+        Assert.False(Media(pool, cloud));
+        Assert.False(Media(null, cloud));
+        Assert.True(Media(pool, local));
+        Assert.True(Media(pool.WithMedia(cloud.Key, true), cloud));
+    }
+
+    [Fact]
     public async Task Each_kind_goes_only_to_a_member_ticked_for_it()
     {
         BackgroundPlace big = new("host:big", "big") { QuickJobs = false }, fast = new("endpoint:fast", "fast") { LongJobs = false };

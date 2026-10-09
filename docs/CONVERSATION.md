@@ -518,6 +518,19 @@ cloud provider) and *Offline*. Each member has three boxes:
 - *Backup for slow replies* (`ThinkingPoolAnswers-<n>`, see
   [Backup Thinking](#backup-thinking-a-hedged-request)).
 
+An external member (an OpenAI-compatible endpoint that is not on this PC: a
+computer on the home network or a cloud provider) has a fourth box, *May
+receive pictures and recordings* (`ThinkingPoolMedia-<n>`), off by default.
+Check-ins, screen and sound summaries and other pool jobs can carry a
+screenshot or a recording (`ThinkingJob.Image`, `ThinkingJob.Audio`). The job
+board passes over an external member without this box for such jobs, as it
+passes over a member that can't see pictures; text-only jobs still go to it.
+When no other member can take such a job, the job gets *no member* with that
+reason, and the pool's guidance says so. This PC and paired Martlet computers
+always may receive them and show no box. Ticking the box saves the key in
+`MediaAllowed` in `thinking-pool.json` (a file without this list reads as
+empty); removing the member clears it.
+
 Quick jobs and Long jobs are on for every member. Unticking one saves the key
 in `NoQuickJobs` or `NoLongJobs` in `thinking-pool.json` (a file without these
 lists reads as every member taking every job). Removing a member clears its

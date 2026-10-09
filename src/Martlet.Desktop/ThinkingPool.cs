@@ -359,7 +359,9 @@ internal sealed partial class LiveConversationController
                 // Whether its computer answers now (HostPresence), and since when it doesn't.
                 online = m.Online, offlineSince = HostOf(m.Id) is { } host ? HostPresence.OfflineSince(host) : null,
                 // The owner's Quick jobs and Long jobs boxes on Companion › Thinking pool.
-                quickJobs = settings.TakesQuickJobs(m.Id), longJobs = settings.TakesLongJobs(m.Id)
+                quickJobs = settings.TakesQuickJobs(m.Id), longJobs = settings.TakesLongJobs(m.Id),
+                // Whether it may receive pictures and recordings (an external member only when the owner ticked it).
+                mayReceiveMedia = m.Media
             }),
             // The slots of the members that answer now, and of every member (when all answer).
             slots = status.Slots, free = status.Free, configuredSlots = status.ConfiguredSlots, keepsFastSlot = status.KeepsFastSlot,
