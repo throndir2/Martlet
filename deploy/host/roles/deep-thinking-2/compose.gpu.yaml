@@ -1,0 +1,11 @@
+# Added by martlet-host: the Thinking pool model on graphics card 2 always runs on an NVIDIA GPU (needs Docker's NVIDIA
+# support); with two or more cards martlet-host also sets CUDA_VISIBLE_DEVICES to the one card it runs on.
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]

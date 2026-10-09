@@ -269,7 +269,7 @@ public static class NodePresenceNotices
     private static string? Group(string kind) => kind switch
     {
         "stt" => "Listening pool",
-        "deep-thinking" => "Thinking pool",
+        "deep-thinking" or "deep-thinking-2" or "deep-thinking-3" or "deep-thinking-4" => "Thinking pool",
         "audio2face" => "Lip-sync",
         "singing" => "Singing",
         "pictures" => "Pictures",

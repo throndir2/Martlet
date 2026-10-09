@@ -514,8 +514,10 @@ internal static class NetworkMap
                     target.Roles.Add(new(role.Chip, role.Name, (plan is not null ? "Handles lip-sync for your companion PCs. " : "Handles lip-sync. ") +
                         (check?.Text ?? "Use Check connection to see whether it's ready."), DeviceComponent.LipSync));
                 // The Thinking pool is this PC's own: a computer with its role joins by itself unless the owner keeps it out.
-                else if (role.Kind == HostRoles.DeepThinking && model is not null)
-                    target.Roles.Add(new(role.Chip, role.Name, companion && inputs.DeepThinkingHosts?.Contains(paired.HostId) == true
+                else if (SelfHostSetup.DeepThinkingCardOfRole(role.Kind) is { } card && model is not null)
+                    target.Roles.Add(new(role.Chip, role.Name, card > 1
+                        ? $"Ready on graphics card {card} ({model}). It is a Thinking pool member of its own, beside the host's other cards."
+                        : companion && inputs.DeepThinkingHosts?.Contains(paired.HostId) == true
                         ? $"Thinks things over in the background for this PC ({model})."
                         : inputs.ThinkingPoolLeft?.Contains(paired.HostId) == true
                         ? $"Ready ({model}). You keep it out of the Thinking pool: tick it in Companion > Thinking pool to add it again."
@@ -625,10 +627,13 @@ internal static class NetworkMap
             if (companion && inputs.DeepThinkingHosts?.Contains(id) != true && check?.Offers?.ContainsKey(HostRoles.DeepThinking) == true)
                 target.Commands.Add(new(NodeAction.Companion, inputs.ThinkingPoolLeft?.Contains(id) == true ? "Add it to the Thinking pool" : "Show the Thinking pool",
                     Argument: nameof(CompanionTab.DeepThinking), Component: Ready(HostRoles.DeepThinking)));
+            var nvidiaCards = HostRoles.NvidiaCards(inputs.HostHardware?.FirstOrDefault(h => h.HostId == id));
             foreach (var role in HostRoles.All)
             {
                 var offered = check?.Offers?.ContainsKey(role.Kind) == true;
                 if (!managed) continue;
+                // A Thinking pool model for an extra graphics card is offered only on a host with that many NVIDIA cards.
+                if (!HostRoles.OfferedOn(role, nvidiaCards, offered)) continue;
                 if (!offered && PlatformCatalog.EngineForHostRole(role.Kind) is { } engine &&
                     PlatformCatalog.Check(engine, PlatformSide.Host, device) is { Allowed: false } cannot)
                 {

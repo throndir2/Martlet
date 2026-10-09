@@ -50,6 +50,9 @@ internal static class ThinkingPoolCheck
                 {
                     key = m.Key, where = m.Describe(), place = m.Place.ToString(), model = m.ModelId, hostId = m.HostId,
                     hostRole = m.OnHostRole, slots = m.ThinksAtOnce, ownKey = m.CredentialId is not null,
+                    // A paired computer's graphics card (1, or 2-4 for a Thinking pool model on an extra card, a member of its own)
+                    // and the route it thinks on.
+                    card = m.Place == DeepThinkingPlace.Host ? m.Card : (int?)null, route = m.Place == DeepThinkingPlace.Host ? m.HostRoute : null,
                     text = true, vision = can.HasFlag(ThinkingCapability.Vision), audio = can.HasFlag(ThinkingCapability.Audio),
                     tools = can.HasFlag(ThinkingCapability.Tools),
                     available = spot?.Plan.Available ?? false, rank = spot?.Plan.Rank, why = spot?.Plan.Why,
@@ -352,6 +355,46 @@ internal static class ThinkingPoolCheck
                 $"{left.Why} {never.Why} {ninth.Why} {hostPc.Why}");
         }
 
+        // 8b. One Thinking pool member per graphics card (the production rule): a host with a Thinking pool model on each of two
+        // cards joins with two members (host:diva and host:diva#gpu2), each with its own slots; the second card's member leaves
+        // when the host no longer runs a model there; taking the computer out removes both; the member on a card of its own
+        // isn't warned about sharing Thinking's card, and the board places work there first. Sample hosts only, NOT models.
+        {
+            static ThinkingPoolHost Seen(string id, params ThinkingPoolOffer[] offers) =>
+                new(id, $"https://{id}.local:9443", "sha256/fixture", "desk-pc", Guid.NewGuid(), offers);
+            ThinkingPoolOffer card1 = new(SelfHostSetup.DeepThinkingRouteId, "qwen3:8b", 2), card2 = new(SelfHostSetup.DeepThinkingRouteIdFor(2), "qwen3:8b", 1);
+            var now = DateTimeOffset.UtcNow;
+            var both = ThinkingPoolAutoJoin.For(new(), Seen("diva", card1, card2), null, now: now);
+            var keys = both.Pool.Members.Select(m => m.Key).ToArray();
+            var again = ThinkingPoolAutoJoin.For(both.Pool, Seen("diva", card1, card2), null, now: now);
+            var gone = ThinkingPoolAutoJoin.For(both.Pool, Seen("diva", card1), null, now: now);
+            var later = ThinkingPoolAutoJoin.For(gone.Pool, Seen("diva", card1, card2), null, now: now);
+            var takenOut = both.Pool.TakeOut("diva");
+            Check("per GPU: a host with a model on each of two cards joins as two members with their own slots",
+                both.Change == ThinkingPoolHostChange.Joined && keys.SequenceEqual(["host:diva", "host:diva#gpu2"]) &&
+                both.Pool.Members.Select(m => m.ThinksAtOnce).SequenceEqual([2, 1]) && both.Pool.Members.All(m => m.OnHostRole) &&
+                DeepThinkingSettings.HostOfKey("host:diva#gpu2") == "diva" && !again.Changed, both.Why);
+            Check("per GPU: a card that stops running a model leaves, comes back by itself, and taking the computer out removes every card",
+                gone is { Change: ThinkingPoolHostChange.CardRemoved } && gone.Pool.Members.Count == 1 &&
+                later is { Change: ThinkingPoolHostChange.Joined, Member.Card: 2 } && takenOut.Members.Count == 0 && takenOut.Left("diva"),
+                $"{gone.Why} {later.Why}");
+
+            var thinking = new SetupRoute
+            {
+                RouteType = SetupRouteType.GatewayOllama, Role = SetupRole.Llm, ProviderAlias = SelfHostSetup.GatewayOllamaAlias,
+                Origin = "https://diva.local:9443", ModelId = "gemma4-e4b", ConfigurationRevision = Guid.NewGuid(), Enabled = true,
+                Gateway = new() { SchemaVersion = 1, HostId = "diva", Origin = "https://192.168.1.2:9443", SpkiFingerprint = "sha256:" + new string('0', 64), DeviceRole = SelfHostSetup.GatewayRole }
+            };
+            IReadOnlyList<string> Cards(string host, string route) => route == SelfHostSetup.DeepThinkingRouteIdFor(2) ? ["GPU-b"] : ["GPU-a"];
+            var plan = both.Pool.Plan([thinking]);
+            var warnings = ThinkingPoolWarnings.For(plan, [thinking], Cards);
+            var ownCard = ThinkingPoolWarnings.OwnCard(both.Pool.Members[1], thinking, Cards);
+            var sharesCard = ThinkingPoolWarnings.OwnCard(both.Pool.Members[0], thinking, Cards);
+            Check("per GPU: only the member on Thinking's own card is warned about sharing it",
+                ownCard && !sharesCard && warnings.Count(w => w.Contains("Thinking model", StringComparison.Ordinal)) == 1 &&
+                warnings.Any(w => w.StartsWith("diva's Thinking pool (", StringComparison.Ordinal)),
+                string.Join(" ", warnings));
+        }
         // 9. Presence: a member's computer goes offline and answers again (the desktop's HostPresence feeds the broker's Reachable).
         {
             var thinkingRoute = new SetupRoute
@@ -368,7 +411,7 @@ internal static class ThinkingPoolCheck
             };
             var settings = new ThinkingPoolSettings().Add(Role("diva", 2)).Add(Role("ripley", 1));
             var offline = new System.Collections.Concurrent.ConcurrentDictionary<string, bool>(StringComparer.Ordinal);
-            var places = new BackgroundPlaces { Reachable = place => !(place.Id.StartsWith("host:", StringComparison.Ordinal) && offline.ContainsKey(place.Id[5..])) };
+            var places = new BackgroundPlaces { Reachable = place => DeepThinkingSettings.HostOfKey(place.Id) is not { } host || !offline.ContainsKey(host) };
             // The members the board reads: every configured member, whether its computer answers or not (as the desktop's PoolMembers).
             var configured = ThinkLonger.Places(settings.Plan(routes));
             var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

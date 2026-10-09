@@ -161,6 +161,9 @@ public static partial class NetworkRecommender
         /// catalog doesn't know is sized from its name ("qwen3-vl:8b"); another unknown model counts as the role's biggest.</summary>
         private ComponentOption? OptionFor(string kind, string? model, Node node)
         {
+            // A Thinking pool model on an extra graphics card (deep-thinking-2...) has the deep-thinking role's footprint. The
+            // recommender keeps such a role where it runs and counts its card as used; it doesn't add or move one itself.
+            if (Settings.SelfHostSetup.DeepThinkingCardOfRole(kind) is > 1) kind = DeepThinkingRole;
             var ofKind = catalog.Options.Where(o => o.IsLocal && o.HostRoleKind == kind).ToList();
             if (ofKind.Count == 0) return null;
             var named = model is null ? ofKind : ofKind.Where(o => Names(o, model)).ToList();

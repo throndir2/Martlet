@@ -66,6 +66,39 @@ public static class SelfHostSetup
     /// <summary>The most thinks a host's Deep thinking role runs at once (its Ollama's <c>OLLAMA_NUM_PARALLEL</c>, advertised as
     /// the route's maximum concurrency); each one beyond the first takes another context's worth of graphics memory.</summary>
     public const int DeepThinkingMaximumSlots = 4;
+    /// <summary>The most graphics cards of one host that each run a Thinking pool model of their own: card 1 is the
+    /// deep-thinking role (<see cref="DeepThinkingRouteId"/>), cards 2 to 4 are the deep-thinking-2 to deep-thinking-4 roles,
+    /// each a separate Ollama pinned to its own card (CUDA_VISIBLE_DEVICES) on a route of its own.</summary>
+    public const int DeepThinkingMaximumCards = 4;
+    private const string DeepThinkingRoutePrefix = "martlet.gateway.deep-thinking-", DeepThinkingRouteSuffix = "-chat.v1";
+
+    /// <summary>The route of the Thinking pool model on a host's card <paramref name="card"/> (1 to
+    /// <see cref="DeepThinkingMaximumCards"/>): <see cref="DeepThinkingRouteId"/> for card 1.</summary>
+    public static string DeepThinkingRouteIdFor(int card) => card == 1 ? DeepThinkingRouteId
+        : card is > 1 and <= DeepThinkingMaximumCards ? $"{DeepThinkingRoutePrefix}{card}{DeepThinkingRouteSuffix}"
+        : throw new ArgumentOutOfRangeException(nameof(card));
+
+    /// <summary>The gateway path of card <paramref name="card"/>'s Thinking pool route.</summary>
+    public static string DeepThinkingPathFor(int card) => card == 1 ? DeepThinkingPath
+        : card is > 1 and <= DeepThinkingMaximumCards ? $"/martlet/v1/inference/deep-thinking-{card}-chat"
+        : throw new ArgumentOutOfRangeException(nameof(card));
+
+    /// <summary>The host role kind of card <paramref name="card"/>'s Thinking pool model: deep-thinking, deep-thinking-2...</summary>
+    public static string DeepThinkingRoleKind(int card) => card == 1 ? "deep-thinking"
+        : card is > 1 and <= DeepThinkingMaximumCards ? $"deep-thinking-{card}" : throw new ArgumentOutOfRangeException(nameof(card));
+
+    /// <summary>The card of a Thinking pool route (1 for <see cref="DeepThinkingRouteId"/>), or null for any other route.</summary>
+    public static int? DeepThinkingCard(string? routeId) =>
+        routeId is null ? null : Enumerable.Range(1, DeepThinkingMaximumCards).Select(card => (int?)card)
+            .FirstOrDefault(card => DeepThinkingRouteIdFor(card!.Value) == routeId);
+
+    /// <summary>The card of a Thinking pool host role kind (1 for deep-thinking), or null for any other kind.</summary>
+    public static int? DeepThinkingCardOfRole(string? kind) =>
+        kind is null ? null : Enumerable.Range(1, DeepThinkingMaximumCards).Select(card => (int?)card)
+            .FirstOrDefault(card => DeepThinkingRoleKind(card!.Value) == kind);
+
+    /// <summary>Whether <paramref name="routeId"/> is one of a host's Thinking pool routes (any card).</summary>
+    public static bool IsDeepThinkingRoute(string? routeId) => DeepThinkingCard(routeId) is not null;
     public const string F5RouteId = "martlet.gateway.f5-synthesis.v1";
     public const string SttRouteId = "martlet.gateway.transcription.v1";
     public const string OllamaContractId = "ollama-native-chat-v034-text";

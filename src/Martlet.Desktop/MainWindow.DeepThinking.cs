@@ -135,7 +135,7 @@ public partial class MainWindow
         }).Where(m => m.Slots > 0)])), new Thickness(0, 4, 0, 4));
         AutomationProperties.SetAutomationId(guidance, "ThinkingPoolGuidance");
         stack.Add(guidance);
-        var warnings = ThinkingPoolWarnings.For(plan, routes);
+        var warnings = ThinkingPoolWarnings.For(plan, routes, HostRouteGpus.For);
         var warning = Note(string.Join(" ", warnings), new Thickness(0, 4, 0, 4));
         warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         warning.Visibility = warnings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -197,6 +197,11 @@ public partial class MainWindow
         var key = member.Key;
         var name = member.Describe();
         var hostId = member is { Place: DeepThinkingPlace.Host, HostId: { } id } ? id : null;
+        // A host with a Thinking pool model on each of several graphics cards has one member per card; its first row carries the
+        // computer's In the pool box and the button that adds a model on its next card.
+        var card = member.Card;
+        var suffix = card > 1 ? $"-gpu{card}" : "";
+        var first = hostId is not null && pool.Members.First(m => m.Place == DeepThinkingPlace.Host && m.HostId == hostId).Key == key;
         var host = hostId is null ? null : hosts.FirstOrDefault(h => h.HostId == hostId);
         var check = hostId is null ? null : hostChecks.GetValueOrDefault(hostId);
         var offline = hostId is not null && HostPresence.IsOffline(hostId);
@@ -207,6 +212,7 @@ public partial class MainWindow
         var detail = $"Reads {(reads.Length == 1 ? reads[0] : string.Join(", ", reads[..^1]) + " and " + reads[^1])}; writes text" +
             $"{(can.HasFlag(ThinkingCapability.Tools) ? " and calls tools" : "")}. " +
             $"{slots} slot{(slots == 1 ? "" : "s")}{(member.OnHostRole && hostId is not null ? $", set on {hostId}" : "")}." +
+            (card > 1 ? $" Runs on {hostId}'s graphics card {card}, as a member of its own." : "") +
             (plan.Find(key) is { Plan.Available: false } spot ? $" Can't run now: {spot.Plan.Why}" : "") +
             // A paired computer that stopped answering stays a member: its slots come back by themselves.
             (offline ? $" Offline now: its slot{(slots == 1 ? "" : "s")} come{(slots == 1 ? "s" : "")} back when it answers again." : "") +
@@ -230,14 +236,14 @@ public partial class MainWindow
         AutomationProperties.SetName(badgeLine, $"{name}: {badgeLine.Text}");
         AutomationProperties.SetAutomationId(badgeLine, $"ThinkingPoolBadges-{i}");
         text.Children.Add(badgeLine);
-        // One graphics card for each Thinking model: the pool role beside this computer's Thinking shares its card.
+        // One graphics card for each Thinking model: a pool model on the card of this computer's Thinking shares it.
         if (hostId is not null && check?.Reachable == true &&
-            DeepThinkingFit.SharedCard(hostId, HardwareStore?.Find(hostId), check.Offers) is { } shared)
+            DeepThinkingFit.SharedCard(member, HardwareStore?.Find(hostId), check) is { } shared)
         {
             var warning = Note(shared, new Thickness(0, 2, 0, 0));
             warning.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
             AutomationProperties.SetName(warning, $"{hostId}: {shared}");
-            AutomationProperties.SetAutomationId(warning, "DeepThinkingShare-" + hostId);
+            AutomationProperties.SetAutomationId(warning, "DeepThinkingShare-" + hostId + suffix);
             text.Children.Add(warning);
         }
 
@@ -279,14 +285,26 @@ public partial class MainWindow
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         if (member.OnHostRole && hostId is not null)
         {
-            // Its Thinking pool role's model and slots: the role's settings on that computer.
-            if (host is not null && check is { Reachable: true } && check.Offers?.GetValueOrDefault(HostRoles.DeepThinking) is { } own && ChangesRolesOn(host))
+            // Its Thinking pool role's model and slots: the role's settings on that computer (card 2's role for card 2...).
+            var role = SelfHostSetup.DeepThinkingRoleKind(card);
+            if (host is not null && check is { Reachable: true } && check.Offers?.GetValueOrDefault(role) is { } own && ChangesRolesOn(host))
             {
-                var change = PageButton("Change model", () => LaunchOnHost(host, HostAction.Change(HostRoles.DeepThinking)),
-                    id: "DeepThinkingChangeModel-" + hostId);
-                AutomationProperties.SetName(change, $"Change the Thinking pool model and slots on {hostId} (now {own})");
+                var change = PageButton("Change model", () => LaunchOnHost(host, HostAction.Change(role)),
+                    id: "DeepThinkingChangeModel-" + hostId + suffix);
+                AutomationProperties.SetName(change, $"Change the Thinking pool model and slots on {hostId}" +
+                    $"{(card > 1 ? $"'s graphics card {card}" : "")} (now {own})");
                 change.Margin = new Thickness(0, 0, 8, 0);
                 buttons.Children.Add(change);
+            }
+            // One Thinking pool model per graphics card: a host with a card no Thinking pool model uses yet offers the next one.
+            if (first && host is not null && check is { Reachable: true } && ChangesRolesOn(host) &&
+                NextCard(hostId, check) is { } next && CannotHand(hostId, SelfHostSetup.DeepThinkingRoleKind(next), "deep thinking") is null)
+            {
+                var add = PageButton($"Add a model on card {next}", () => AddDeepRoleAsync(host, next).Forget(), id: "DeepThinkingAddCard-" + hostId);
+                AutomationProperties.SetName(add, $"Add a Thinking pool model on {hostId}'s graphics card {next}, as a member of its own");
+                add.ToolTip = "One Thinking model per graphics card: each card thinks over its own jobs at full speed.";
+                add.Margin = new Thickness(0, 0, 8, 0);
+                buttons.Children.Add(add);
             }
         }
         else
@@ -303,9 +321,10 @@ public partial class MainWindow
             };
             buttons.Children.Add(choice);
         }
-        if (hostId is not null)
+        if (hostId is not null && first)
         {
-            // In the pool: unticking keeps the computer out until it is ticked again (it would join again by itself).
+            // In the pool: unticking keeps the computer out (every card of it) until it is ticked again (it would join again by
+            // itself).
             var inPool = new CheckBox
             {
                 Content = "In the pool", IsChecked = true, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 0, 0),
@@ -317,7 +336,7 @@ public partial class MainWindow
             if (host is not null) inPool.Checked += (_, _) => UseDeepHostAsync(host, alsoHere: true).Forget();
             buttons.Children.Add(inPool);
         }
-        else
+        else if (hostId is null)
         {
             var remove = PageButton("Remove", () => RemovePoolMemberAsync(key, name).Forget(), id: $"ThinkingPoolRemove-{i}");
             AutomationProperties.SetName(remove, $"Remove {name} from the Thinking pool");
@@ -815,17 +834,29 @@ public partial class MainWindow
     }
 
     /// <summary>Installs the Deep thinking role on a paired computer (its own run window, with the model choice) and, once it
-    /// runs, thinks there.</summary>
-    private async Task AddDeepRoleAsync(PairedHost host)
+    /// runs, thinks there. With <paramref name="card"/> 2 to 4 it installs the Thinking pool model for that graphics card
+    /// (deep-thinking-2...), which joins as a member of its own.</summary>
+    private async Task AddDeepRoleAsync(PairedHost host, int card = 1)
     {
         if (closing) return;
-        if (CannotHand(host.HostId, HostRoles.DeepThinking, "deep thinking") is { } cannot)
+        var kind = SelfHostSetup.DeepThinkingRoleKind(card);
+        if (CannotHand(host.HostId, kind, "deep thinking") is { } cannot)
         {
             ActionText.Text = $"The Thinking pool role can't be set up on {host.HostId}: {cannot}";
             return;
         }
-        if (await RunHostActionAsync(host, HostRoles.Get(HostRoles.DeepThinking).Add) is null || closing) return;
+        if (await RunHostActionAsync(host, HostRoles.Get(kind).Add) is null || closing) return;
         await UseDeepHostAsync(host);
+    }
+
+    /// <summary>The next graphics card of <paramref name="hostId"/> without a Thinking pool model (2 to 4), when the host reports
+    /// that many NVIDIA cards; null when every card has one, or it reports fewer.</summary>
+    private int? NextCard(string hostId, HostCheck check)
+    {
+        var cards = HostRoles.NvidiaCards(HardwareStore?.Find(hostId)) ?? 0;
+        return Enumerable.Range(2, SelfHostSetup.DeepThinkingMaximumCards - 1)
+            .Where(card => card <= cards && check.Offers?.ContainsKey(SelfHostSetup.DeepThinkingRoleKind(card)) != true)
+            .Select(card => (int?)card).FirstOrDefault();
     }
 
     /// <summary>A check saw <paramref name="hostId"/> answer: a paired computer with a Thinking model joins the Thinking pool by
@@ -859,7 +890,7 @@ public partial class MainWindow
         conversation?.ReloadThinkingPool();
         ErrorLog.Info("Thinking pool: " + result.Why);
         if (openTab == CompanionTab.DeepThinking && !tabEdited) RenderTab();
-        if (result.Change == ThinkingPoolHostChange.SlotsChanged) return null;
+        if (result.OnlySlots) return null;
         ActionText.Text = result.Why;
         return result.Why;
     }
@@ -869,7 +900,7 @@ public partial class MainWindow
     /// <summary><paramref name="host"/> and the Thinking routes it offers now, as <see cref="ThinkingPoolAutoJoin"/> reads them.</summary>
     private static ThinkingPoolHost PoolHost(PairedHost host, IReadOnlyList<HostRoute> routes) => new(host.HostId, host.Pairing.Origin,
         host.Pairing.SpkiFingerprint, host.Pairing.DeviceId, HostPairingCredential.ToGuid(host.Pairing.CredentialId),
-        [.. routes.Where(r => r.RouteId is HostRoute.DeepThinkingRouteId or HostRoute.OllamaChatRouteId)
+        [.. routes.Where(r => r.RouteId == HostRoute.OllamaChatRouteId || SelfHostSetup.IsDeepThinkingRoute(r.RouteId))
             .Select(r => new ThinkingPoolOffer(r.RouteId, r.ModelId, r.MaximumConcurrency))]);
 
     /// <summary>Thinks on <paramref name="host"/>: in place of where it thinks now, or with <paramref name="alsoHere"/> as one more
@@ -909,6 +940,14 @@ public partial class MainWindow
                 return;
             }
             var next = ThinkingPoolAutoJoin.Member(seen, route, DateTimeOffset.Now);
+            // A host with a Thinking pool model on each of several graphics cards joins with one member per card.
+            if (store is not null && ThinkingPoolAutoJoin.Members(seen, NetworkMap.ThinkingHost(homeSettings), DateTimeOffset.Now) is { Count: > 1 } all)
+            {
+                var pool = all.Aggregate(ThinkingPoolSettings.Load(store.DataDirectory), (p, m) =>
+                    p.Members.Any(x => x.Key == m.Key) || p.Members.Count < DeepThinkingSettings.MaxPlaces ? p.Add(m) : p);
+                try { pool.Save(store.DataDirectory); }
+                catch (ContractException) { }
+            }
             await SaveDeepThinkingAsync(next, null, next.OnHostRole ? $"{host.HostId}'s Thinking pool role ({route.ModelId}) joined the Thinking pool."
                 : $"{host.HostId} ({route.ModelId}) joined the Thinking pool.");
         }
