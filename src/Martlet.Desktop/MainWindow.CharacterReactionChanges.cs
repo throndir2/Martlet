@@ -48,9 +48,9 @@ public partial class MainWindow
         var stack = new List<UIElement>
         {
             Heading("Changes the character made"),
-            Note("The How I react check-in lets the character change how it reacts to your touches for a while, for example when " +
+            HelpTip.Explain("The How I react check-in lets the character change how it reacts to your touches for a while, for example when " +
                 "it gets angry with you or warms up to you. Its changes never edit your zones or temperament, and each one ends on its " +
-                "own. Undo a change to end it now. Turn the check-in off on Companion › Check-ins.", new Thickness(0, 0, 0, 10))
+                "own. Undo a change to end it now. Turn the check-in off on Companion › Check-ins.", new Thickness(0, 0, 0, 10), "CharacterReactionChanges", "reaction changes")
         };
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(status, "ReactionChangesStatus");
