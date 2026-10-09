@@ -15,6 +15,9 @@ public sealed record ReactionToolContext
     public CharacterTouchZoneSettings? Zones { get; init; }
     public CharacterActionCatalog? Catalog { get; init; }
     public string? CheckInId { get; init; }
+    /// <summary>The voice sounds a zone can play now (the active voice's, <see cref="Martlet.Core.Settings.VoiceSounds.Supported"/>);
+    /// null: every sound some voice makes.</summary>
+    public IReadOnlyList<string>? Sounds { get; init; }
     public required DateTimeOffset Run { get; init; }
     public required DateTimeOffset Now { get; init; }
 }
@@ -115,8 +118,9 @@ public static class CharacterReactionTools
                 text.Append("- ").Append(source.Id).Append(" - ").Append(source.Name).Append(", ").Append(source.Kind.ToString().ToLowerInvariant()).Append('\n');
             if (playable.Count > MaximumListed) text.Append("(and ").Append(playable.Count - MaximumListed).Append(" more)\n");
         }
-        text.Append("A zone can also play a voice sound: ").Append(CharacterReactionChanges.SoundPrefix).Append("<sound>, one of: ")
-            .Append(string.Join(", ", SoundCues)).Append(".\n");
+        var sounds = context.Sounds ?? SoundCues;
+        text.Append(sounds.Count == 0 ? "The character's voice makes no sounds now, so a zone can't play one.\n"
+            : $"A zone can also play a voice sound: {CharacterReactionChanges.SoundPrefix}<sound>, one of: {string.Join(", ", sounds)}.\n");
         text.Append("\nReaction words, for change_touch_feeling: ").Append(string.Join(", ", CharacterTouchTemperaments.Vocabulary))
             .Append(", or none for no reaction.\n");
         text.Append("\nYour changes in effect (id: what, until when; why):\n");
@@ -245,7 +249,7 @@ public static class CharacterReactionTools
         foreach (var item in plays.EnumerateArray())
         {
             var text = item.ValueKind == JsonValueKind.String ? item.GetString()?.Trim() ?? "" : item.ToString();
-            if (Entry(text, context.Catalog) is { } entry) { if (!entries.Contains(entry)) entries.Add(entry); }
+            if (Entry(text, context.Catalog, context.Sounds) is { } entry) { if (!entries.Contains(entry)) entries.Add(entry); }
             else unknown.Add(text);
         }
         if (unknown.Count > 0) return Fail($"The shown character can't play: {string.Join(", ", unknown)}. Use ids from read_touch_reactions.");
@@ -261,21 +265,20 @@ public static class CharacterReactionTools
         return Saved(context, saved, change, longer + note);
     }
 
-    /// <summary>The voice sounds a zone can play (the cues of the sound tags Martlet's voices make: laugh, sigh...).</summary>
-    public static IReadOnlyList<string> SoundCues { get; } =
-        [.. Martlet.Core.Settings.VoiceTags.Known.Where(t => t.Kind == Martlet.Core.Settings.VoiceTagKind.Sound).Select(t => t.Cue).Distinct(StringComparer.Ordinal)];
+    /// <summary>Every voice sound some voice makes alone (laugh, sigh...; <see cref="Martlet.Core.Settings.VoiceSounds.AllCues"/>).</summary>
+    public static IReadOnlyList<string> SoundCues => Martlet.Core.Settings.VoiceSounds.AllCues;
 
     /// <summary>A zone's reaction list entry for what the model wrote: a voice sound ("sound:laugh", one of
-    /// <see cref="SoundCues"/>), or an emote, motion or gesture of the model that is turned on, by its ID, its tag or its name;
-    /// null when there is nothing of that name.</summary>
-    public static string? Entry(string? text, CharacterActionCatalog? catalog)
+    /// <paramref name="sounds"/>, by default <see cref="SoundCues"/>), or an emote, motion or gesture of the model that is turned
+    /// on, by its ID, its tag or its name; null when there is nothing of that name.</summary>
+    public static string? Entry(string? text, CharacterActionCatalog? catalog, IReadOnlyList<string>? sounds = null)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
         text = text.Trim();
         if (text.StartsWith(CharacterReactionChanges.SoundPrefix, StringComparison.OrdinalIgnoreCase))
         {
             var cue = text[CharacterReactionChanges.SoundPrefix.Length..].Trim().ToLowerInvariant().Replace(' ', '_');
-            return SoundCues.Contains(cue) ? CharacterReactionChanges.SoundPrefix + cue : null;
+            return (sounds ?? SoundCues).Contains(cue) ? CharacterReactionChanges.SoundPrefix + cue : null;
         }
         var playable = catalog?.Entries.Where(e => e.Action.Enabled).ToArray() ?? [];
         var bare = text.Trim('{', '}');

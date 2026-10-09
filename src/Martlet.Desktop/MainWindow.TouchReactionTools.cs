@@ -21,6 +21,7 @@ public partial class MainWindow
             Who = homeSettings?.Companion?.Personas.FirstOrDefault(p => p.Id == personaId)?.Name is { Length: > 0 } name ? name : "Martlet",
             Temperament = characterTemperaments.For(personaId), Zones = characterTouchZones.Current,
             Catalog = characterActions.For(avatar.InspectedProfile?.ModelPath) ?? characterActions.Current,
+            Sounds = [.. Martlet.Core.Settings.VoiceSounds.Supported(TouchVoice().Engine).Select(tag => tag.Cue)],
             CheckInId = context.CheckInId, Run = context.Now, Now = DateTimeOffset.Now
         });
         var answer = await characterReactionChanges.CallAsync(call.Name, call.ArgumentsJson, state, token);

@@ -1757,7 +1757,7 @@ The built-in **How I react** check-in (`reactions`, on) does this with the
   `change_touch_feeling` (how it feels about one category or zone, and which
   reaction words play there) or `change_zone_reactions` (exactly what one zone
   plays, by the emote, motion and gesture IDs the read lists, and
-  `sound:<sound>` for one of the voices' sounds). `undo_touch_change` ends its
+  `sound:<sound>` for one of the sounds the active voice makes). `undo_touch_change` ends its
   own changes, for example after it calmed down. Each change needs a short
   reason in its own words. Its answer is only a short line for the log.
 - **Limits** (`CharacterReactionChanges`). At most 4 changes in one run and 12

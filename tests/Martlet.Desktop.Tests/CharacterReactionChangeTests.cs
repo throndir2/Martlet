@@ -144,6 +144,11 @@ public sealed class CharacterReactionChangeTests
         Assert.Equal(["sound:laugh"], Call(CharacterReactionTools.React, "{\"zone\":\"hand_left\",\"plays\":[\"sound:laugh\"],\"why\":\"Ha.\"}", [], context).Saved.Single().Reactions);
         Assert.Contains("laugh", CharacterReactionTools.SoundCues);
         Assert.True(Call(CharacterReactionTools.React, "{\"zone\":\"hand_left\",\"plays\":[\"sound:moo\"],\"why\":\"x\"}", [], context).Answer.Failed);
+        // Only the sounds the active voice makes: none for a voice that says words only.
+        var wordsOnly = context with { Sounds = [] };
+        Assert.True(Call(CharacterReactionTools.React, "{\"zone\":\"hand_left\",\"plays\":[\"sound:laugh\"],\"why\":\"x\"}", [], wordsOnly).Answer.Failed);
+        Assert.Contains("voice makes no sounds now", CharacterReactionTools.Describe(wordsOnly, []));
+        Assert.Contains("one of: gasp.", CharacterReactionTools.Describe(context with { Sounds = ["gasp"] }, []));
         var unknown = Call(CharacterReactionTools.React, "{\"zone\":\"hand_left\",\"plays\":[\"dance\"],\"why\":\"x\"}", [], context).Answer;
         Assert.True(unknown.Failed);
         Assert.Contains("can't play: dance", unknown.Result);
