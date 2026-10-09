@@ -651,7 +651,29 @@ thinks and research count against the same slots:
    `ThinkingJobResult` reports `PriorityStops`, `Retries` and the final
    `Priority`; `ThinkingPoolStatus` reports the `Policy` and the
    `StoppedForPriority`, `Raised` and `Retried` counts.
-7. Long kinds never take the last free slot that takes quick jobs while the
+7. A member whose provider limits requests (HTTP 429 from any member, a 5xx
+   such as 503 overloaded from an endpoint member, or a paired computer busy
+   with its owner's work) gives `ThinkingAnswer.Limited`. This is not a
+   failure: the job does not count that member as tried and uses no retry.
+   `ThinkingPoolLimits` puts only that member on a cooldown: the provider's
+   `Retry-After` when it gives one (at most 1 hour), else 5 s that doubles on
+   each further limit up to 5 minutes and starts again after a success. A
+   cooling member gets no new job (`BackgroundPlaces.SlotLimit` is 0 for it),
+   and the job waits in line for it or takes another member while its timeout
+   allows. A stale job that only cooling members could take, and whose wait
+   ends after the job's time, ends at once as `NoMember`, so the caller's
+   fallback runs. Each limit also halves the member's live slot limit (at
+   least 1); every 5 successes in a row raise it by one, back up to its
+   configured slots (the owner's choice: *Slots*, 4 by default for a cloud
+   endpoint, 1 for a member that must go one job at a time). After 5 limits
+   in one job (`ThinkingJobBoard.MaxLimitedAnswers`) that member counts as
+   failed for the job. `ThinkingPoolStatus.Cooling`, each member's `SlotsNow`
+   and `CoolsUntil`, the guidance, `thinking-pool-status.json` (`cooling`,
+   `slotsNow`, `coolsUntil`) and the page (*Limiting requests*) show it. An
+   OpenAI-compatible endpoint such as NVIDIA Build
+   (`https://integrate.api.nvidia.com/v1`) works as an endpoint member this way.
+   None of this touches the conversation's own Thinking route.
+8. Long kinds never take the last free slot that takes quick jobs while the
    pool has two or more slots: that slot stays for fast kinds (`BargeInJudge`,
    `EndOfTurnJudge`, `Digest`). Only the slots of members that answer and take
    quick jobs count. A long job on a member without *Quick jobs* never takes

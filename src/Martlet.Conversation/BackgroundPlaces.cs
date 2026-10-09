@@ -230,6 +230,22 @@ public sealed class BackgroundPlaces
     /// <summary>Whether <paramref name="place"/>'s computer answers now (<see cref="Reachable"/>).</summary>
     public bool Answers(BackgroundPlace place) => Reachable?.Invoke(place) ?? true;
 
+    private Func<BackgroundPlace, int>? slotLimit;
+
+    /// <summary>How many of a place's slots new work may use now (the Thinking pool's <see cref="ThinkingPoolLimits"/>): 0 while
+    /// its provider asks Martlet to wait, fewer than <see cref="BackgroundPlace.Slots"/> after it limited requests; null: every
+    /// slot. Work already running carries on. Called under the broker's lock, so it must be quick and must not call back into the
+    /// broker. Setting it doesn't apply it to work waiting in line (the board sets it while it is made, before any limit); call
+    /// <see cref="Reconsider"/> when a limit goes up, so work waiting in line starts.</summary>
+    public Func<BackgroundPlace, int>? SlotLimit
+    {
+        get => Volatile.Read(ref slotLimit);
+        set => Volatile.Write(ref slotLimit, value);
+    }
+
+    /// <summary>How many of <paramref name="place"/>'s slots new work may use now (<see cref="SlotLimit"/>).</summary>
+    public int Room(BackgroundPlace place) => Math.Clamp(SlotLimit?.Invoke(place) ?? place.Slots, 0, place.Slots);
+
     /// <summary>Every place held now, oldest first.</summary>
     public IReadOnlyList<BackgroundPlaceLease> Leases { get { lock (gate) return [.. leases]; } }
 
@@ -430,9 +446,9 @@ public sealed class BackgroundPlaces
         var whole = demand is { KeepLastFree: true } ? demand.Pool ?? pool : null;
         var current = obey ? Rules : null;
         var candidates = pool.Select((place, order) => (place, order, used: Used(place)))
-            .Where(c => Answers(c.place) && (current is null || current.MayStart(c.place, demand?.Kind)) &&
+            .Where(c => Answers(c.place) && Room(c.place) > 0 && (current is null || current.MayStart(c.place, demand?.Kind)) &&
                 (whole is null || LeavesFastSlot(whole, c.place))).ToArray();
-        var free = candidates.Where(c => c.used < c.place.Slots)
+        var free = candidates.Where(c => c.used < Room(c.place))
             .OrderBy(c => current?.Avoid(c.place) == true ? 1 : 0)
             .ThenBy(c => c.place.Standing).ThenBy(c => c.used).ThenBy(c => c.order).Select(c => c.place).FirstOrDefault();
         if (free is not null || !share) return free;
@@ -452,8 +468,8 @@ public sealed class BackgroundPlaces
     {
         if (!place.QuickJobs) return true;
         var distinct = whole.DistinctBy(p => p.Id).Where(Answers).ToArray();
-        if (distinct.Sum(p => p.Slots) < 2) return true;
-        return distinct.Where(p => p.QuickJobs).Sum(p => Math.Max(0, p.Slots - Used(p))) >= 2;
+        if (distinct.Sum(Room) < 2) return true;
+        return distinct.Where(p => p.QuickJobs).Sum(p => Math.Max(0, Room(p) - Used(p))) >= 2;
     }
 
     /// <summary>What holds the places of <paramref name="pool"/> now, in words: "think-1 on diva and think-2 on ripley".</summary>

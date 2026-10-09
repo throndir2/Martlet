@@ -336,6 +336,20 @@ public sealed class IntegrationTests
     }
 
     [Fact]
+    public async Task A_rate_limited_reply_keeps_the_providers_retry_after()
+    {
+        await using var h = new Harness();
+        h.Llm.Respond = (_, _) =>
+        {
+            var limited = new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new StringContent("{}") };
+            limited.Headers.RetryAfter = new(TimeSpan.FromSeconds(30));
+            return Task.FromResult(limited);
+        };
+        var result = await Harness.Finish(h.Start());
+        Assert.Equal((ProviderFailureCode.RateLimited, TimeSpan.FromSeconds(30)), (result.ProviderFailure, result.ProviderRetryAfter));
+    }
+
+    [Fact]
     public async Task A_voice_that_fails_on_the_first_sentence_never_cuts_the_rest_of_the_reply()
     {
         await using var h = new Harness();

@@ -60,6 +60,7 @@ internal sealed partial class LiveConversationController
             Policy = () => ThinkingPoolPolicy.From(Volatile.Read(ref thinkingPool))
         };
         board.Rested += PoolMemberRested;
+        board.Limited += PoolMemberLimited;
         return new(board);
     }
 
@@ -72,6 +73,17 @@ internal sealed partial class LiveConversationController
             "to the same Martlet version.");
         Task.Run(WritePoolStatus).Forget();
     }
+
+    // Said each time a member's provider limits a request, in plain words; thinking-pool-status.json shows it until it ends. Never
+    // on the reply's path: pool jobs never use the conversation's own Thinking route.
+    private void PoolMemberLimited(ThinkingPoolCooling cooling)
+    {
+        ErrorLog.Info($"Thinking pool: {cooling.Problem}. {cooling.Describe(clock.GetUtcNow())}; its jobs wait in line instead of failing.");
+        Task.Run(WritePoolStatus).Forget();
+    }
+
+    /// <summary>The pool members whose providers limit requests now (none before the pool is made).</summary>
+    internal IReadOnlyList<ThinkingPoolCooling> PoolCooling() => pool?.Status().Cooling ?? [];
 
     private int poolRead;
 
@@ -291,6 +303,12 @@ internal sealed partial class LiveConversationController
             // computers' Martlet versions agree, so the pool rests it for such jobs instead of asking it again and again.
             if (outcome.Result is null && member.Place == DeepThinkingPlace.Host && terminal.ProviderFailure == ProviderFailureCode.RequestRejected)
                 return ThinkingAnswer.Rejected($"{place.Name} refused the request as invalid (request.invalid)");
+            // Its provider is busy (HTTP 429, a paired computer busy with its owner's work, or a cloud endpoint's 5xx such as 503
+            // overloaded): the member cools down and the job waits in line instead of failing (ThinkingPoolLimits).
+            if (outcome.Result is null && (terminal.ProviderFailure == ProviderFailureCode.RateLimited ||
+                member.Place == DeepThinkingPlace.Endpoint && terminal.ProviderFailure == ProviderFailureCode.Server))
+                return ThinkingAnswer.Limited(terminal.ProviderFailure == ProviderFailureCode.RateLimited
+                    ? $"{place.Name} is limiting requests" : $"{place.Name} is busy (server error)", terminal.ProviderRetryAfter);
             // Its computer didn't answer: offline at once, so the board's next try (and the next job) goes to another member.
             if (outcome.Result is null && terminal.ProviderFailure == ProviderFailureCode.Network)
                 NoteUnreachable(member, $"a {ThinkingJobKinds.Name(job.Kind)} job");
@@ -362,6 +380,8 @@ internal sealed partial class LiveConversationController
                 route = settings.Members.FirstOrDefault(p => p.Key == m.Id) is { Place: DeepThinkingPlace.Host } routed ? routed.HostRoute : null,
                 gpus = members.FirstOrDefault(p => p.Id == m.Id)?.Gpus ?? [],
                 slots = m.Slots, used = m.Used, rank = m.Rank,
+                // How many jobs it may start at once now: 0 while its provider asks Martlet to wait, fewer after it limited requests.
+                slotsNow = m.SlotsNow, coolsUntil = m.CoolsUntil,
                 vision = m.Can.HasFlag(ThinkingCapability.Vision), audio = m.Can.HasFlag(ThinkingCapability.Audio),
                 // Whether it may take jobs that call tools (check-ins with tool sets): endpoint members only.
                 tools = m.Can.HasFlag(ThinkingCapability.Tools),
@@ -391,6 +411,13 @@ internal sealed partial class LiveConversationController
             },
             // Members whose computer refused a request as invalid: no such jobs go there until the time shown.
             resting = status.Resting.Select(r => new { id = r.Id, name = r.Name, needs = ThinkingJobResult.Describe(r.Needs), until = r.Until }),
+            // Members whose providers limited requests: no new job until coolsUntil (null: it takes jobs again), and slotsNow of
+            // slots at once until a run of successes raises it again.
+            cooling = status.Cooling.Select(c => new
+            {
+                id = c.Id, name = c.Name, coolsUntil = c.Until, slotsNow = c.SlotsNow, slots = c.Slots, times = c.Times, problem = c.Problem,
+                says = c.Describe(clock.GetUtcNow())
+            }),
             warnings = ThinkingPoolWarnings.For(plan, Configuration?.Routes ?? [], HostRouteGpus.For),
             // Backup Thinking: its choices, the automatic delay from recent replies and how it ended lately (never what was said).
             backup = BackupStatus(settings)

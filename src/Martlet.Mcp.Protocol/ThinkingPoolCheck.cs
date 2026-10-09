@@ -96,7 +96,9 @@ internal static class ThinkingPoolCheck
             {
                 slots = file["slots"]?.GetValue<int>(), free = file["free"]?.GetValue<int>(), configuredSlots = file["configuredSlots"]?.GetValue<int>(),
                 offline = (file["members"] as JsonArray)?.Where(m => m?["online"]?.GetValue<bool>() == false).Select(m => m!["name"]?.GetValue<string>()).ToArray() ?? [],
-                conversationModelStandsIn = file["conversationModelStandsIn"]?.GetValue<bool>(), updated = file["updated"]?.GetValue<DateTimeOffset>()
+                conversationModelStandsIn = file["conversationModelStandsIn"]?.GetValue<bool>(), updated = file["updated"]?.GetValue<DateTimeOffset>(),
+                // Members whose providers limit requests: in plain words, when each tries again and how many jobs it runs at once.
+                limiting = (file["cooling"] as JsonArray)?.Select(c => c?["says"]?.GetValue<string>()).ToArray() ?? []
             },
             desktop
         };
@@ -801,6 +803,42 @@ internal static class ThinkingPoolCheck
                 after.Succeeded && allowed.Remove(cloud.Key).MediaAllowed.Count == 0,
                 $"picture job before ticking: {picture.Outcome} ({picture.Problem}); text job {text.Outcome}; {asked} request(s); after " +
                 $"ticking: {after.Outcome} on {after.Member}");
+        }
+
+        // 17. Rate limits: an OpenAI-compatible cloud endpoint (NVIDIA Build's address, simulated: no request leaves this PC) answers
+        // 429 with Retry-After 1 s. The member cools down and runs fewer jobs at once; the job waits for it instead of failing
+        // (with no retries on failure allowed), and a job that another member can take goes there at once.
+        {
+            BackgroundPlace nvidia = new("endpoint:https://integrate.api.nvidia.com/v1", "NVIDIA") { Slots = 4 };
+            var calls = 0;
+            ThinkingPoolCooling? said = null;
+            var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [nvidia], (m, _, _) =>
+                Task.FromResult(Interlocked.Increment(ref calls) == 1 ? ThinkingAnswer.Limited("NVIDIA is limiting requests", TimeSpan.FromSeconds(1))
+                    : ThinkingAnswer.Done(m.Name)))
+            {
+                Policy = () => new ThinkingPoolPolicy(PreemptLowerPriority: false, Retries: 0)
+            };
+            board.Limited += cooling => said = cooling;
+            var watchLimit = System.Diagnostics.Stopwatch.StartNew();
+            var waited = await board.RunAsync(Job(ThinkingJobKind.Memory), cancellation);
+            var waitedFor = watchLimit.Elapsed;
+            var status = board.Status();
+            var member = status.Members.Single();
+            Check("rate limits: a limited endpoint member cools down, runs fewer jobs at once, and the job waits for it instead of failing",
+                waited.Succeeded && waited.Attempts == 2 && waitedFor >= TimeSpan.FromSeconds(0.9) && said is { SlotsNow: 2, Slots: 4, Times: 1 } &&
+                member.SlotsNow == 2 && status.Cooling.Count == 1 && status.Cooling[0].Until is null &&
+                status.Guidance.Any(g => g.Contains("NVIDIA runs 2 of 4 jobs at once", StringComparison.Ordinal)),
+                $"{waited.Outcome} on {waited.Member} after {waited.Attempts} attempts and {waitedFor.TotalSeconds:0.0} s; then {member.SlotsNow} of " +
+                $"{member.Slots} slots; said \"{said?.Describe(DateTimeOffset.UtcNow)}\"");
+
+            BackgroundPlace busy = new("endpoint:https://integrate.api.nvidia.com/v1", "NVIDIA") { Slots = 4 }, local = new("host:diva", "diva", Rank: 1);
+            var other = new ThinkingJobBoard(new BackgroundPlaces(), () => [busy, local], (m, _, _) =>
+                Task.FromResult(m.Id == busy.Id ? ThinkingAnswer.Limited("NVIDIA is limiting requests", TimeSpan.FromMinutes(1)) : ThinkingAnswer.Done(m.Name)));
+            var moved = await other.RunAsync(Job(ThinkingJobKind.Memory), cancellation);
+            var cooling = other.Status().Cooling;
+            Check("rate limits: while a member cools down, its jobs go to another member and it gets none",
+                moved.Succeeded && moved.Member == "diva" && cooling is [{ Until: not null }] && other.Find(ThinkingJobKind.Memory)?.Name == "diva",
+                $"{moved.Outcome} on {moved.Member}; {string.Join("; ", cooling.Select(c => c.Describe(DateTimeOffset.UtcNow)))}");
         }
 
         return new

@@ -87,6 +87,7 @@ public sealed class ConversationTurn
     private ConversationState state = ConversationState.Authorizing;
     private ConversationFailure failure, speechFailure;
     private ProviderFailureCode? providerFailure;
+    private TimeSpan? providerRetryAfter;
     private ProviderRole? failedProvider;
     private SequenceIssueInfo? sequenceFailure;
     private EvidenceProvenance? textProvenance, speechProvenance;
@@ -377,7 +378,7 @@ public sealed class ConversationTurn
     }
 
     private void Fail(ConversationFailure reason, ProviderFailureCode? provider = null, SequenceIssue? sequence = null,
-        ProviderRole? failedRole = null)
+        ProviderRole? failedRole = null, TimeSpan? retryAfter = null)
     {
         lock (Sync)
         {
@@ -389,6 +390,7 @@ public sealed class ConversationTurn
             if (invalidated || workFinished) return;
             failure = reason;
             providerFailure = provider;
+            providerRetryAfter = provider is null ? null : retryAfter;
             failedProvider = provider is null ? null : failedRole;
             sequenceFailure = sequence is { } issue ? new(issue) : null;
             Invalidate();
@@ -473,7 +475,7 @@ public sealed class ConversationTurn
     }
 
     private sealed record RoundResult(RoundEnd End, string Text, IReadOnlyList<TextToolCall> Calls,
-        ProviderFailureCode? Failure = null, SequenceIssue? Issue = null, string? Refusal = null);
+        ProviderFailureCode? Failure = null, SequenceIssue? Issue = null, string? Refusal = null, TimeSpan? RetryAfter = null);
 
     // The words of a message sent as the user's recording alone, once speech-to-text running beside the reply has them.
     private string? spokenWords;
@@ -618,7 +620,7 @@ public sealed class ConversationTurn
                         continue;
                     }
                     Fail(result.End == RoundEnd.Failed ? ConversationFailure.ProviderFailed : ConversationFailure.InvalidStream,
-                        result.Failure, result.Issue, ProviderRole.Llm);
+                        result.Failure, result.Issue, ProviderRole.Llm, result.RetryAfter);
                     return;
                 }
                 if (result.End == RoundEnd.Refused)
@@ -759,11 +761,13 @@ public sealed class ConversationTurn
                     if (!moved) break;
                     var update = run.Validator.Accept(run.Events.Current);
                     if (update.Snapshot.Result?.Outcome == TurnOutcome.Failed)
-                        return new(RoundEnd.Failed, said.ToString(), [], run.Stream.Result?.Failure?.Code, update.Snapshot.Issue);
+                        return new(RoundEnd.Failed, said.ToString(), [], run.Stream.Result?.Failure?.Code, update.Snapshot.Issue,
+                            RetryAfter: run.Stream.Result?.Failure?.RetryAfter);
                 }
                 else if (step == RunStep.Ended) break;
                 else if (step == RunStep.Failed)
-                    return new(RoundEnd.Failed, said.ToString(), [], run.Stream.Result?.Failure?.Code, run.Validator.Snapshot.Issue);
+                    return new(RoundEnd.Failed, said.ToString(), [], run.Stream.Result?.Failure?.Code, run.Validator.Snapshot.Issue,
+                        RetryAfter: run.Stream.Result?.Failure?.RetryAfter);
                 step = RunStep.None;
                 while (run.Validator.TryReadText(out var chunk))
                 {
@@ -1738,6 +1742,6 @@ public sealed class ConversationTurn
                 pauses, resumes, pausedTime + (paused ? Clock.GetElapsedTime(pausedAt) : TimeSpan.Zero), hold is not null, releasedAfter,
                 quickSoundAfter),
             inputTokens, cachedInputTokens,
-            reasoningRejected, voiceMuted, backupResult);
+            reasoningRejected, voiceMuted, backupResult) { ProviderRetryAfter = providerRetryAfter };
     }
 }
