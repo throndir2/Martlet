@@ -153,7 +153,7 @@ public sealed class OptionalExtrasTests
         Assert.Equal("with Thinking's request, to Ollama on this PC", Fact(on[1], "data"));
         Assert.Equal("nowhere: they stay on this PC", Fact(on[3], "data"));
         // The cloud's cost names the catalog's providers (NVIDIA Build has a free tier) and the others.
-        Assert.Equal("Free or paid", on[4].Facts.Single(f => f.Key == "cost").Short);
+        Assert.Equal("free or paid", on[4].Facts.Single(f => f.Key == "cost").Short);
         Assert.Contains("NVIDIA Build (free endpoint): a free tier", Fact(on[4], "cost"));
         // Ollama on this PC: a second model's graphics memory, from the catalog's image models.
         var local = FootprintCatalog.Default.For(PlanComponent.Vision).Where(o => o.IsLocal && !o.UsesThinking).ToArray();

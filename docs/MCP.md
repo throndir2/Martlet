@@ -546,7 +546,7 @@ captures the real screen.
 Desktop automation: Companion › Reading's main choice is an option picker:
 `Picker-Reading-Off`, `Picker-Reading-ThisPc` and `Picker-Reading-Host` only show
 that option's details (with its facts, such as `PickerFacts-Reading-ThisPc`:
-*Processor (Windows) · No download · 0.015 s a read*), and the
+*Processor (in Martlet) · 0.1 GB RAM · 0.02 s to read the screen*), and the
 `ReadingHost-<host>` pills in the role's details are passive clicks too.
 `ReadingNow`, `ReadingLast`, `ReadingTestState`, `ReadingWindowsState`,
 `ReadingHostState` and the labels of `ReadingSetUp`, `ReadingUseHost`,

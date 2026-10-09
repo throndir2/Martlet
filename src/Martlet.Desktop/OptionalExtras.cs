@@ -81,7 +81,7 @@ internal static class OptionalExtras
                 new("song", "Song time", "about 1 to 2 minutes for a 30-second song (measured on an RTX 4070)", "1-2 min a song",
                     "How long a song takes to make; it plays when it is ready, and the conversation goes on meanwhile."),
                 new("needs", "Needs", "Docker and an NVIDIA graphics card with 6 GB or more, shared with the voice and listening", null),
-                new("cost", "Cost", "free", "Free"),
+                new("cost", "Cost", "free", "free"),
                 new("data", "Your data", "the lyrics, the style and your voice's recording go to the computer that sings", null),
                 new("license", "License", "ACE-Step 1.5 MIT, SoulX-Singer Apache-2.0: you may use songs as you like", null))
         }
@@ -135,7 +135,7 @@ internal static class OptionalExtras
                 Facts(PicturesRole, [],
                     new("picture", "Per picture", "a few seconds; a 12 GB+ card is faster", "Seconds a picture"),
                     new("size", "Picture size", "about 1 megapixel: 1024x1024, or a wide or tall shape", null),
-                    new("cost", "Cost", "free", "Free"),
+                    new("cost", "Cost", "free", "free"),
                     new("data", "Your data", "descriptions stay on your computers", null),
                     new("license", "License", "Z-Image Turbo Apache-2.0, ComfyUI GPL-3.0", null)), recommended: true),
             Place(Martlet.Core.Pictures.PicturePlace.ComfyUi, "My own ComfyUI",
@@ -146,14 +146,14 @@ internal static class OptionalExtras
                     new("download", "Download", "nothing from Martlet: it uses the models your ComfyUI has", "No download"),
                     new("picture", "Per picture", "depends on your model and card", null),
                     new("size", "Picture size", "Z-Image Turbo and XL models about 1024 pixels, others 512-768", null),
-                    new("cost", "Cost", "free", "Free"),
+                    new("cost", "Cost", "free", "free"),
                     new("data", "Your data", "descriptions go to your ComfyUI's address (it has no password: only on your own network)", null)
                 ]),
             Place(Martlet.Core.Pictures.PicturePlace.OpenRouter, "OpenRouter", "Many image models in the cloud. Each picture costs money.",
                 Facts(PicturesOpenRouter, [new("runs-on", "Runs on", "online: nothing runs on your computers", "Online")],
                     new("picture", "Per picture", "seconds, by the model", null),
                     new("size", "Picture size", "about 1K, in the shape Martlet picks", null),
-                    new("cost", "Cost", "paid: each picture costs money (an OpenRouter key)", "Paid"),
+                    new("cost", "Cost", "paid: each picture costs money (an OpenRouter key)", "paid"),
                     new("data", "Your data", "descriptions go to OpenRouter and the model's provider", null),
                     new("models", "Models", "any OpenRouter model that draws (default google/gemini-3.1-flash-image)", null))),
             Place(Martlet.Core.Pictures.PicturePlace.NvidiaBuild, "NVIDIA Build", "FLUX models in NVIDIA's cloud with your NVIDIA API key.",
@@ -193,7 +193,7 @@ internal static class OptionalExtras
                 new("download", "Download", "none: it is built into Windows", "No download"),
                 new("languages", "Languages", "your Windows languages that include text recognition", null),
                 new("game-fonts", "Game fonts", "fair: the Reading role is often better with stylized fonts", null),
-                new("cost", "Cost", "free", "Free"),
+                new("cost", "Cost", "free", "free"),
                 new("data", "Your data", "nothing leaves this PC", null))
         },
         new(nameof(Martlet.Core.Reading.ReadingPlace.Host), "Martlet's Reading role",
@@ -212,7 +212,7 @@ internal static class OptionalExtras
                 ],
                 new("languages", "Languages", "Chinese and English letters, digits and symbols (PaddleOCR PP-OCRv4)", null),
                 new("game-fonts", "Game fonts", "good: often better than Windows OCR", null),
-                new("cost", "Cost", "free", "Free"),
+                new("cost", "Cost", "free", "free"),
                 new("data", "Your data", "screenshots go to that computer; it reads them in memory and doesn't keep them", null),
                 new("license", "License", "RapidOCR and PaddleOCR models Apache-2.0", null))
         }
@@ -244,7 +244,7 @@ internal static class OptionalExtras
                     new("vram", "Graphics memory", $"on that computer: {vram}", null),
                     new("download", "Download", $"on that computer: {download}", null),
                     new("conversation", "The conversation", "keeps full speed: the work runs on another computer", "No slowdown"),
-                    new("cost", "Cost", "free", "Free"),
+                    new("cost", "Cost", "free", "free"),
                     new("data", "Your data", "a job's text goes to that computer through its paired, pinned connection", null)
                 ]
             },
@@ -257,7 +257,7 @@ internal static class OptionalExtras
                     new("vram", "Graphics memory", $"{vram}, more than Thinking's; it thinks only while both fit", null),
                     new("download", "Download", download, null),
                     new("conversation", "The conversation", "shares the graphics card: replies may start a little later while it thinks", "Shares the GPU"),
-                    new("cost", "Cost", "free", "Free"),
+                    new("cost", "Cost", "free", "free"),
                     new("data", "Your data", "stays on this PC", null)
                 ]
             },
@@ -270,7 +270,7 @@ internal static class OptionalExtras
                     new("runs-on", "Runs on", "online: nothing runs on your computers", "Online"),
                     new("conversation", "The conversation", "keeps full speed: they never wait for each other", "No slowdown"),
                     new("quality", "Quality", "strong reasoning models you can't run at home", null),
-                    new("cost", "Cost", "NVIDIA Build has free endpoints; other providers charge for each request", "Free or paid"),
+                    new("cost", "Cost", "NVIDIA Build has free endpoints; other providers charge for each request", "free or paid"),
                     new("data", "Your data", "a job's text (for a think, the recent conversation and the task) goes to the provider", null)
                 ]
             }
@@ -359,7 +359,7 @@ internal static class OptionalExtras
                     new("vram", "Graphics memory", $"{vram}; it works only while both fit", vramShort),
                     new("download", "Download", download, null),
                     new("delay", "Reply delay", "none: it describes in the background, and a reply never waits", null),
-                    new("cost", "Cost", "free", "Free"),
+                    new("cost", "Cost", "free", "free"),
                     new("data", image ? "Pictures go" : "Recordings go", "nowhere: they stay on this PC", null)
                 ]),
             Choice(MainWindow.SenseChoice.Cloud, "A cloud provider or server",
@@ -368,7 +368,7 @@ internal static class OptionalExtras
                 [
                     new("runs-on", "Runs on", "online, or a model app or server you choose", "Online"),
                     new("delay", "Reply delay", "none: it describes in the background, and a reply never waits", null),
-                    new("cost", "Cost", cloudCost, hosted.Any(o => o.FreeTier) ? "Free or paid" : "May cost money"),
+                    new("cost", "Cost", cloudCost, hosted.Any(o => o.FreeTier) ? "free or paid" : "may cost money"),
                     new("data", image ? "Pictures go" : "Recordings go", "to the provider or server you choose", null)
                 ])
         };
@@ -379,7 +379,7 @@ internal static class OptionalExtras
                     new("runs-on", "Runs on", "a graphics card on another of your computers", "Another PC's GPU"),
                     new("vram", "Graphics memory", "none on this PC: that computer's model uses its own card", "None here"),
                     new("delay", "Reply delay", "none: it describes in the background, and waits while a reply needs that computer", null),
-                    new("cost", "Cost", "free", "Free"),
+                    new("cost", "Cost", "free", "free"),
                     new("data", "Pictures go", "to that computer through its paired, pinned connection", null)
                 ]));
         if (thinking is null)
