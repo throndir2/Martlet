@@ -259,6 +259,14 @@ public partial class MainWindow
             allow => SavePoolAsync(p => p.WithAnswers(key, allow), allow
                 ? $"{name} may answer for the conversation when a reply is slow to start."
                 : $"{name} no longer answers for the conversation.").Forget()));
+        // Only an external member asks first: this PC and paired computers always may receive pictures and recordings.
+        if (ThinkingPoolSettings.IsExternal(member))
+            rules.Children.Add(Rule("ThinkingPoolMedia", "May receive pictures and recordings", pool.MayReceiveMedia(member),
+                "Check-ins, screen and sound summaries and other pool jobs can include a screenshot or a recording. This machine is " +
+                    "outside this PC and your paired computers, so it gets them only when this is ticked. Text-only jobs go to it either way.",
+                allow => SavePoolAsync(p => p.WithMedia(key, allow), allow
+                    ? $"{name} may now receive pictures and recordings."
+                    : $"{name} no longer receives pictures and recordings: jobs with them go to other machines or use their simple rules.").Forget()));
         text.Children.Add(rules);
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
