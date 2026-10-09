@@ -84,7 +84,7 @@ internal sealed class HostTextClient : IHostTextClient
         // Which graphics cards serve each route, for the live floor (when the host says).
         HostRouteGpus.Note(target.HostId, routes);
         var route = routes.FirstOrDefault(r => r.RouteId == target.RouteId && r.ModelId == model.UpstreamModelId) ??
-            throw Failed("reply", ProviderFailureCode.ModelNotFound, target.RouteId == HostRoute.DeepThinkingRouteId
+            throw Failed("reply", ProviderFailureCode.ModelNotFound, Martlet.Core.Settings.SelfHostSetup.IsDeepThinkingRoute(target.RouteId)
                 ? $"the host's Deep thinking role doesn't run model {model.UpstreamModelId}"
                 : $"the host offers no Ollama chat route for model {model.UpstreamModelId}");
         var history = input.History.Select(m => new HostChatMessage(m.Role == TextHistoryRole.Assistant, m.Text)).ToArray();

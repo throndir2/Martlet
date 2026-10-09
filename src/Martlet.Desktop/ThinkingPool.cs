@@ -100,9 +100,15 @@ internal sealed partial class LiveConversationController
     // whose computers are offline stay in the list: the broker passes over them (Answers), and their slots come back with them.
     private IReadOnlyList<BackgroundPlace> PoolMembers()
     {
-        var plan = PoolPlan(Configuration?.Routes ?? []);
+        var routes = Configuration?.Routes ?? [];
+        var plan = PoolPlan(routes);
+        var thinking = routes.FirstOrDefault(r => r.Role == SetupRole.Llm && r.Enabled != false);
+        // A member on a graphics card of its own beside the Thinking model's card (one Thinking pool model per card of a host)
+        // shares only the computer, so it goes before a member on Thinking's own card.
         return [.. ThinkLonger.Places(plan, BackgroundDuties.Of(dataDirectory), PoolCan, HostRouteGpus.For, Volatile.Read(ref thinkingPool))
-            .Where(place => place.Id != "thinking")];
+            .Where(place => place.Id != "thinking")
+            .Select(place => place.Rank == 2 && thinking is not null && plan.Find(place.Id)?.Settings is { } member &&
+                ThinkingPoolWarnings.OwnCard(member, thinking, HostRouteGpus.For) ? place with { Rank = 1 } : place)];
     }
 
     /// <summary>The pool's plan for <paramref name="routes"/>. Without <paramref name="live"/> every computer counts as online: the
@@ -125,11 +131,9 @@ internal sealed partial class LiveConversationController
         new([.. live.Usable.Where(spot => !spot.Settings.Separate),
             .. configured.Spots.Where(spot => spot.Settings.Separate && spot.Plan.Available && live.Find(spot.Key)?.Plan is { Available: true } or { Offline: true })]);
 
-    /// <summary>The host a place runs on (<c>host:diva</c> is diva), or null for an endpoint or the conversation model.</summary>
-    internal static string? HostOf(string placeId) =>
-        placeId.StartsWith(HostKey, StringComparison.Ordinal) ? placeId[HostKey.Length..] : null;
-
-    private const string HostKey = "host:";
+    /// <summary>The host a place runs on (<c>host:diva</c> and its card 2's <c>host:diva#gpu2</c> are diva), or null for an
+    /// endpoint or the conversation model.</summary>
+    internal static string? HostOf(string placeId) => DeepThinkingSettings.HostOfKey(placeId);
 
     // Whether a place's computer answers now, for the broker: a paired computer that a check found offline doesn't.
     private static bool Answers(BackgroundPlace place) => HostOf(place.Id) is not { } host || !HostPresence.IsOffline(host);
@@ -352,6 +356,11 @@ internal sealed partial class LiveConversationController
             members = status.Members.Select(m => new
             {
                 id = m.Id, name = m.Name, model = members.FirstOrDefault(p => p.Id == m.Id)?.Model,
+                // A paired computer's member: the computer, its graphics card (1, or 2-4 for a Thinking pool model on an extra
+                // card, a member of its own), its route and the cards the host said serve that route.
+                host = HostOf(m.Id), card = settings.Members.FirstOrDefault(p => p.Key == m.Id) is { Place: DeepThinkingPlace.Host } own ? own.Card : (int?)null,
+                route = settings.Members.FirstOrDefault(p => p.Key == m.Id) is { Place: DeepThinkingPlace.Host } routed ? routed.HostRoute : null,
+                gpus = members.FirstOrDefault(p => p.Id == m.Id)?.Gpus ?? [],
                 slots = m.Slots, used = m.Used, rank = m.Rank,
                 vision = m.Can.HasFlag(ThinkingCapability.Vision), audio = m.Can.HasFlag(ThinkingCapability.Audio),
                 // Whether it may take jobs that call tools (check-ins with tool sets): endpoint members only.
@@ -382,7 +391,7 @@ internal sealed partial class LiveConversationController
             },
             // Members whose computer refused a request as invalid: no such jobs go there until the time shown.
             resting = status.Resting.Select(r => new { id = r.Id, name = r.Name, needs = ThinkingJobResult.Describe(r.Needs), until = r.Until }),
-            warnings = ThinkingPoolWarnings.For(plan, Configuration?.Routes ?? []),
+            warnings = ThinkingPoolWarnings.For(plan, Configuration?.Routes ?? [], HostRouteGpus.For),
             // Backup Thinking: its choices, the automatic delay from recent replies and how it ended lately (never what was said).
             backup = BackupStatus(settings)
         }, new JsonSerializerOptions { WriteIndented = true });

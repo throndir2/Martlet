@@ -19,8 +19,8 @@ public sealed partial class GatewayInferenceRoute
     /// "cpu" for a worker that runs on the processor. Empty: the host doesn't know, which counts as the whole host.</summary>
     public IReadOnlyList<string> Gpus => gpus;
 
-    /// <summary><see cref="GatewayLane.Pool"/> for Deep thinking's chat route, <see cref="GatewayLane.Live"/> for every other.</summary>
-    public GatewayLane Lane => RouteId == Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId ? GatewayLane.Pool : GatewayLane.Live;
+    /// <summary><see cref="GatewayLane.Pool"/> for a Thinking pool chat route (any card), <see cref="GatewayLane.Live"/> for every other.</summary>
+    public GatewayLane Lane => Martlet.Core.Settings.SelfHostSetup.IsDeepThinkingRoute(RouteId) ? GatewayLane.Pool : GatewayLane.Live;
 
     /// <summary>Records where the route's worker runs, from the host's configuration (the role's CUDA_VISIBLE_DEVICES or device
     /// setting). Once, before the route is registered; an empty list leaves it unknown (the whole host).</summary>
@@ -88,7 +88,10 @@ internal static class GatewayGpus
     /// <summary>The host role a route serves, in the words the owner sees in Martlet.</summary>
     internal static string RouteName(GatewayInferenceRoute route) => route.Kind switch
     {
-        GatewayInferenceKind.OllamaChat => route.Lane == GatewayLane.Pool ? "Thinking pool (Deep thinking)" : "Thinking",
+        GatewayInferenceKind.OllamaChat => route.Lane == GatewayLane.Pool
+            ? Martlet.Core.Settings.SelfHostSetup.DeepThinkingCard(route.RouteId) is > 1 and var card
+                ? $"Thinking pool (Deep thinking, card {card})" : "Thinking pool (Deep thinking)"
+            : "Thinking",
         GatewayInferenceKind.F5Synthesis => "Speaking",
         GatewayInferenceKind.Transcription => "Listening",
         GatewayInferenceKind.Audio2Face => "Lip-sync",

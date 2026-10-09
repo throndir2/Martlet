@@ -116,6 +116,12 @@ internal static class HostRoles
             HostRoute.DeepThinkingRouteId, "deep thinking",
             "Joins the Thinking pool: background jobs (thinking longer, research, summaries) run on that host with a model of its own, beside Thinking's, while the " +
             "conversation carries on. A job's text (for a think, the task and the conversation so far) goes there."),
+        .. Enumerable.Range(2, SelfHostSetup.DeepThinkingMaximumCards - 1).Select(card => new HostRoleInfo(SelfHostSetup.DeepThinkingRoleKind(card),
+            "Thinking pool", $"Thinking pool (card {card})", $"a host with at least {card} NVIDIA graphics cards",
+            SelfHostSetup.DeepThinkingRouteIdFor(card), "deep thinking",
+            $"Runs one more Thinking pool model on that host's graphics card {card}, as a Thinking pool member of its own: one model on " +
+            "each graphics card, so the host thinks over several jobs at full speed at once. Pinned to a card no other role uses. " +
+            "A job's text (for a think, the task and the conversation so far) goes there.")),
         new(Stt, "Listens", "Listening", "Docker; an NVIDIA GPU is recommended",
             Audio2FaceHostConnection.TranscriptionRouteId, "listening",
             "Turns speech into text on that host. Your recorded speech goes there and is not stored."),
@@ -165,6 +171,15 @@ internal static class HostRoles
         throw new InvalidOperationException($"Unknown host role '{kind}'.");
 
     internal static HostRoleInfo? ForRoute(string routeId) => All.FirstOrDefault(r => r.RouteId == routeId);
+
+    /// <summary>Whether <paramref name="role"/> is offered on a host with <paramref name="nvidiaCards"/> NVIDIA graphics cards
+    /// (null: not reported): every role is, except a Thinking pool model for an extra card (deep-thinking-2...), which needs
+    /// that many cards. A role the host runs already is always listed, so it can be changed or removed.</summary>
+    internal static bool OfferedOn(HostRoleInfo role, int? nvidiaCards, bool installed = false) =>
+        installed || SelfHostSetup.DeepThinkingCardOfRole(role.Kind) is not { } card || card <= 1 || nvidiaCards >= card;
+
+    /// <summary>How many NVIDIA graphics cards <paramref name="hardware"/> reports, or null when it doesn't report any hardware.</summary>
+    internal static int? NvidiaCards(HostHardware? hardware) => hardware?.Gpus.Count(g => g.IsNvidia);
 }
 
 /// <summary>Every Martlet host this desktop is paired with, in hosts.json next to the other local preferences. Which host

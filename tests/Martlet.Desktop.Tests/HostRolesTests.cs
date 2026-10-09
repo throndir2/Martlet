@@ -278,6 +278,62 @@ public sealed class HostRolesTests
     }
 
     [Fact]
+    public void Extra_graphics_card_Thinking_pool_roles_mirror_the_first_and_are_offered_only_on_hosts_with_that_many_cards()
+    {
+        static string[] Lines(string kind) => File.ReadAllLines(Path.Combine(RolesDirectory(), kind, "role.conf"));
+        static string Values(string[] conf, string prefix) => conf.Single(l => l.StartsWith(prefix, StringComparison.Ordinal)).Split('|')[2];
+        var first = Lines(HostRoles.DeepThinking);
+        for (var card = 2; card <= SelfHostSetup.DeepThinkingMaximumCards; card++)
+        {
+            var kind = SelfHostSetup.DeepThinkingRoleKind(card);
+            var conf = Lines(kind);
+            // The same models, suggestions and slots as card 1, on its own port and volume, only with that many NVIDIA cards.
+            Assert.Equal(Values(first, "choice=OLLAMA_MODEL|"), Values(conf, "choice=OLLAMA_MODEL|"));
+            Assert.Equal(first.Single(l => l.StartsWith("choice_by_vram=", StringComparison.Ordinal)), conf.Single(l => l.StartsWith("choice_by_vram=", StringComparison.Ordinal)));
+            Assert.Equal(Values(first, "choice=OLLAMA_NUM_PARALLEL|"), Values(conf, "choice=OLLAMA_NUM_PARALLEL|"));
+            Assert.Contains("slots_from=OLLAMA_NUM_PARALLEL", conf);
+            Assert.Contains($"port={11434 + card}", conf);
+            Assert.Contains($"min_gpus={card}", conf);
+            Assert.Contains("gpu=required|compose.gpu.yaml", conf);
+            var compose = File.ReadAllText(Path.Combine(RolesDirectory(), kind, "compose.yaml"));
+            Assert.Contains($"OLLAMA_HOST: 127.0.0.1:{11434 + card}", compose);
+            Assert.Contains($"name: martlet-deep-thinking-{card}-models", compose);
+            Assert.Contains(System.Text.RegularExpressions.Regex.Match(File.ReadAllText(Path.Combine(RolesDirectory(), HostRoles.DeepThinking, "compose.yaml")),
+                @"ollama/ollama:[0-9.]+").Value, compose);
+
+            var role = HostRoles.Get(kind);
+            Assert.Equal(SelfHostSetup.DeepThinkingRouteIdFor(card), role.RouteId);
+            Assert.False(HostRoles.OfferedOn(role, card - 1));
+            Assert.False(HostRoles.OfferedOn(role, null));
+            Assert.True(HostRoles.OfferedOn(role, card));
+            Assert.True(HostRoles.OfferedOn(role, 0, installed: true));
+        }
+        Assert.True(HostRoles.OfferedOn(HostRoles.Get(HostRoles.DeepThinking), 0));
+
+        // The Devices map offers card 2's role only on a host that reports two NVIDIA cards, and lists it once it runs.
+        static Martlet.Core.Installation.HostHardware Report(string id, int cards) => new(id, $"https://{id}.local:9443", DateTimeOffset.UnixEpoch,
+            DateTimeOffset.UnixEpoch, "docker", "Ubuntu 24.04", "6.8.0", "AMD", 16, 64, "docker", "yes",
+            [.. Enumerable.Range(0, cards).Select(_ => new Martlet.Core.Installation.HostGpu("NVIDIA GeForce RTX 4090", "nvidia", 24_564, "580"))]);
+        var hosts = new[]
+        {
+            new PairedHost { Pairing = Remote("one-card", "192.168.1.20"), Method = HostSetupMethod.SshDocker, SshTarget = "me@one-card" },
+            new PairedHost { Pairing = Remote("two-cards", "192.168.1.30"), Method = HostSetupMethod.SshDocker, SshTarget = "me@two-cards" }
+        };
+        var checks = new Dictionary<string, HostCheck>
+        {
+            ["one-card"] = new(true, "Reachable.", new Dictionary<string, string> { ["deep-thinking"] = "qwen3-8b" }),
+            ["two-cards"] = new(true, "Reachable.", new Dictionary<string, string> { ["deep-thinking"] = "qwen3-8b", ["deep-thinking-2"] = "gemma4-e4b" })
+        };
+        NetworkNode Node(string id) => NetworkMap.Build(new(MachineInfo.Unknown, DeviceRole.Companion, null, null, false, checks, Hosts: hosts,
+            HostHardware: [Report("one-card", 1), Report("two-cards", 2)])).Single(n => n.Id == "host:" + id);
+        Assert.DoesNotContain(Node("one-card").Commands, c => c.Argument == "one-card/deep-thinking-2");
+        var two = Node("two-cards");
+        Assert.Contains(two.Roles, r => r.Name == "Thinking pool (card 2)" && r.Detail.StartsWith("Ready on graphics card 2 (gemma4-e4b).", StringComparison.Ordinal));
+        Assert.Contains(two.Commands, c => c.Action == NodeAction.ChangeRole && c.Argument == "two-cards/deep-thinking-2");
+        Assert.DoesNotContain(two.Commands, c => c.Argument == "two-cards/deep-thinking-3");
+    }
+
+    [Fact]
     public void Every_routed_host_role_is_listed_where_roles_are_added()
     {
         // HostRoles feeds the host dashboard's Add roles step, the Devices map's Install commands and Martlet hosts' role cards.

@@ -814,7 +814,8 @@ public partial class MainWindow
             ? ClusterJobs.All.Where(j => clusterPlan.For(j)?.HostId == self).Select(j => (Job: j, Kind: ClusterSync.RoleKind(j)))
                 .Where(n => !installed.Contains(n.Kind, StringComparer.Ordinal)).ToList()
             : [];
-        var missing = HostRoles.All.Where(r => !installed.Contains(r.Kind, StringComparer.Ordinal))
+        var nvidiaCards = machine.Gpus.Count(g => g.IsNvidia);
+        var missing = HostRoles.All.Where(r => !installed.Contains(r.Kind, StringComparer.Ordinal) && HostRoles.OfferedOn(r, nvidiaCards))
             .OrderBy(r => needed.Any(n => n.Kind == r.Kind) ? 0 : 1).ToList();
         IReadOnlyList<StepCommand> commands =
         [
@@ -1585,9 +1586,10 @@ public partial class MainWindow
             var recommended = answers is null && action.Verb == HostVerb.Add && action.Role == HostRoles.Stt
                 ? ListeningAdvisor.HostAnswers(HardwareStore?.Find(host.HostId), System.Globalization.CultureInfo.CurrentUICulture,
                     local ? (await ListeningAdviceAsync()).Answers() : null)
-                // Deep thinking's thinks at once: what fits on its graphics card beside the host's other roles, for each model.
-                : answers is null && action.Verb == HostVerb.Add && action.Role == HostRoles.DeepThinking
-                ? DeepThinkingFit.Recommend(HardwareStore?.Find(host.HostId), hostChecks.GetValueOrDefault(host.HostId)?.Offers)
+                // Deep thinking's thinks at once: what fits on its graphics card beside the host's other roles, for each model (a
+                // Thinking pool model on an extra card has that card to itself).
+                : answers is null && action.Verb == HostVerb.Add && SelfHostSetup.DeepThinkingCardOfRole(action.Role) is { } card
+                ? DeepThinkingFit.Recommend(HardwareStore?.Find(host.HostId), hostChecks.GetValueOrDefault(host.HostId)?.Offers, card)
                 : null;
             var done = await HostActions.RunAsync(this, store.DataDirectory, host.Target(Version), host.SshHostKey, action, answers, recommended,
                 host.Pairing, confirmed);
