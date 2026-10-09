@@ -50,7 +50,9 @@ internal static class CheckInsCheck
                     needs = c.Needs.ToString(), screenshot = c.Screenshot, recording = c.Recording.ToString(),
                     recordingSeconds = c.Recording == CheckInRecording.None ? (int?)null : c.RecordingSeconds,
                     // Whether it runs a script and how long it is; never the script (the owner's own words).
-                    script = c.RunsScript, scriptCharacters = c.Script?.Length ?? 0, toolSets = c.ToolSets
+                    script = c.RunsScript, scriptCharacters = c.Script?.Length ?? 0,
+                    hours = c.Conditions.HasFlag(CheckInConditions.Between) ? $"{CheckIns.Clock(c.FromHour)}-{CheckIns.Clock(c.UntilHour)}" : null,
+                    mostPerHour = c.MostPerHour == 0 ? (int?)null : c.MostPerHour, toolSets = c.ToolSets
                 }).ToArray()
             },
             desktop,
@@ -70,6 +72,9 @@ internal static class CheckInsCheck
         maximumScriptOutputCharacters = CheckIns.MaximumScriptOutputCharacters, scriptTimeoutSeconds = CheckIns.ScriptTimeout.TotalSeconds,
         jobKind = ThinkingJobKinds.Name(ThinkingJobKind.CheckIn), priority = ThinkingJobKinds.Priority(ThinkingJobKind.CheckIn).ToString(),
         fast = ThinkingJobKinds.IsFast(ThinkingJobKind.CheckIn), stoppedWhenLive = LiveFloorRules.Stops(ThinkingJobKind.CheckIn),
+        signalWindowMinutes = CheckIns.SignalWindow.TotalMinutes, unansweredAfterMinutes = CheckIns.UnansweredAfter.TotalMinutes,
+        unansweredWithinMinutes = CheckIns.UnansweredWithin.TotalMinutes, peopleWindowMinutes = CheckIns.PeopleWindow.TotalMinutes,
+        mostPerHourChoices = CheckIns.MostPerHourChoices,
         maximumToolRounds = CheckIns.MaximumToolRounds, maximumToolCalls = CheckIns.MaximumToolCalls,
         maximumToolResultCharacters = CheckIns.MaximumToolResultCharacters,
         toolSets = CheckInToolSets.All.Select(s => new { id = s.Id, name = s.Name, does = s.Does, tools = s.Tools.Select(t => t.Name).ToArray() }).ToArray()
@@ -111,7 +116,7 @@ internal static class CheckInsCheck
                 all.Single(c => c.Id == CheckIns.Gaze) is { On: false, EveryMinutes: 10 } && all.Single(c => c.Id == "c1") is { Custom: true, Outcome: CheckInOutcome.Say } &&
                 all.Single(c => c.Id == CheckIns.Promises) is { EveryMinutes: 1, Outcome: CheckInOutcome.Say, Facts: CheckInFacts.Conversation | CheckInFacts.Said } promises &&
                 promises.Conditions == CheckIns.BuiltIn.Single(c => c.Id == CheckIns.Promises).Conditions &&
-                CheckIns.All(new CheckInSettings()).All(c => c.On) && refused,
+                CheckIns.All(new CheckInSettings()).All(c => c.On == !Signaled(c.Id)) && refused,
                 new
                 {
                     state, checkIns = all.Select(c => $"{c.Id}: {(c.On ? "on" : "off")}, every {c.EveryMinutes} min, {c.Outcome}, facts {c.Facts}, when {c.Conditions}"),
@@ -192,7 +197,11 @@ internal static class CheckInsCheck
             [CheckIns.Character] = "OK",
             [CheckIns.Repeats] = "<think>The boss remark came three times.</think>\nREMIND: You said the boss was almost down three times in " +
                 "30 minutes; don't bring it up again unless something changes, and talk about something new.",
-            ["c1"] = "SAY: They've been at it for hours; suggest a short stretch break."
+            ["c1"] = "SAY: They've been at it for hours; suggest a short stretch break.",
+            [CheckIns.Welcome] = "SAY: Welcome back! Your trip plan finished while you were away.",
+            [CheckIns.Unanswered] = "SAY: No pressure, but I'm still curious what you think!",
+            [CheckIns.Call] = "REMIND: They just joined a call; stay quiet and keep any reply very short until it ends.",
+            [CheckIns.Others] = "REMIND: Someone else is here; don't share private things about the user."
         };
         var places = new BackgroundPlaces();
         BackgroundPlace member = new("endpoint:fixture", "FIXTURE member") { Slots = 2, Model = "fixture-model" };
@@ -268,7 +277,7 @@ internal static class CheckInsCheck
             facts, facts with { CharacterShows = false }, facts with { Persona = null }, facts with { Said = [] }, facts with { Gaze = null },
             facts with { Emotes = [] }, facts with { Exchanges = [], Exchanged = 0 }, facts with { Quiet = TimeSpan.FromMinutes(45) }
         ];
-        foreach (var builtIn in CheckIns.BuiltIn)
+        foreach (var builtIn in CheckIns.BuiltIn.Select(b => b with { On = true }))
         {
             var copy = CheckIns.Of(new CustomCheckIn
             {
@@ -331,11 +340,134 @@ internal static class CheckInsCheck
         await OwnInputsAsync(Step, now, facts, cancellation);
         TouchesFact(Step, now, facts);
         await ContextAsync(Step, now, facts, cancellation);
+        Signals(Step, now, facts);
         await ToolsAsync(Step, facts, cancellation);
         return new { passed = ok, steps };
     }
 
-    /// <summary>9. Tool sets: a check-in calls its sets' tools in a bounded loop, only on a member whose model can call tools
+    // The built-in check-ins that wait for a signal: off until the owner turns them on.
+    private static bool Signaled(string id) => id is CheckIns.Welcome or CheckIns.Unanswered or CheckIns.Call or CheckIns.Others;
+
+    /// <summary>9. Signals (FIXTURE facts, canned answers, NOT AI): each signal condition waits and runs on the production
+    /// <see cref="CheckIns.Wait"/>, the new facts are worded as the check reads them, the four signal check-ins ask and read their
+    /// answers, the hours and the per-hour cap save and read back (a bad one refused), and a script whose output didn't change is
+    /// told apart by its hash.</summary>
+    private static void Signals(Action<string, bool, object?> step, DateTimeOffset now, CheckInState facts)
+    {
+        CheckIn Built(string id) => CheckIns.All(null).Single(c => c.Id == id) with { On = true };
+        CheckIn Own(CheckInConditions when, string task = "FIXTURE", string script = "") =>
+            CheckIns.Of(new CustomCheckIn { Id = "c6", Name = "FIXTURE signal", On = true, EveryMinutes = 1, Task = task, Conditions = when, Script = script });
+        var ran = new CheckInRun(now.AddMinutes(-3), 4, "nothing to bring up", false) { Recent = [now.AddMinutes(-40), now.AddMinutes(-3)] };
+        var question = facts with
+        {
+            Said = [.. facts.Said, new(now.AddMinutes(-8), "FIXTURE: {smile} So, which boss is next?")], Quiet = TimeSpan.FromMinutes(8)
+        };
+        var state = facts with
+        {
+            CameBackAt = now.AddMinutes(-1), WasAway = TimeSpan.FromMinutes(25), Activity = "in a call in Discord", OnCall = true,
+            ActivityChangedAt = now.AddMinutes(-1), ActivityBefore = "playing a game (FIXTURE Quest), full screen",
+            AttentionAt = now.AddMinutes(-1), SongEndedAt = now.AddMinutes(-1),
+            Voices = [new("FIXTURE Owner", true, now.AddMinutes(-2)) { Id = "v1" }, new(null, false, now.AddMinutes(-1)) { Id = "v2" }],
+            OwnerVoiceKnown = true, WhileAway = ["Thinking longer finished: FIXTURE trip plan"]
+        };
+        var waits = new Dictionary<string, string?>
+        {
+            ["came back"] = CheckIns.Wait(Built(CheckIns.Welcome), state, null),
+            ["came back: before the last run"] = CheckIns.Wait(Built(CheckIns.Welcome), state with { CameBackAt = now.AddMinutes(-40) }, ran with { At = now.AddMinutes(-35) }),
+            ["on a call"] = CheckIns.Wait(Own(CheckInConditions.NotOnCall), state, null),
+            ["not on a call"] = CheckIns.Wait(Own(CheckInConditions.NotOnCall), state with { OnCall = false }, null),
+            ["activity changed"] = CheckIns.Wait(Built(CheckIns.Call), state, null),
+            ["activity same since the last run"] = CheckIns.Wait(Built(CheckIns.Call), state with { ActivityChangedAt = now.AddMinutes(-4) }, ran with { Recent = [] }),
+            ["between 8 AM and 10 PM at 10:17 PM"] = CheckIns.Wait(Own(CheckInConditions.Between), state, null),
+            ["between 10 PM and 6 AM at 10:17 PM"] = CheckIns.Wait(Own(CheckInConditions.Between) with { FromHour = 22, UntilHour = 6 }, state, null),
+            ["unanswered"] = CheckIns.Wait(Built(CheckIns.Unanswered), question, null),
+            ["unanswered: no question"] = CheckIns.Wait(Built(CheckIns.Unanswered), facts, null),
+            ["unanswered: followed up"] = CheckIns.Wait(Built(CheckIns.Unanswered), question, ran with { At = now.AddMinutes(-6) }),
+            ["attention"] = CheckIns.Wait(Own(CheckInConditions.Attention), state, null),
+            ["no attention"] = CheckIns.Wait(Own(CheckInConditions.Attention), facts, null),
+            ["song ended"] = CheckIns.Wait(Own(CheckInConditions.SongEnded), state, null),
+            ["someone else"] = CheckIns.Wait(Built(CheckIns.Others), state, null),
+            ["only the owner"] = CheckIns.Wait(Built(CheckIns.Others), state with { Voices = [state.Voices[0]] }, null),
+            ["script changed: no script"] = CheckIns.Wait(Own(CheckInConditions.ScriptChanged), state, null),
+            ["at most 2 an hour"] = CheckIns.Wait(Own(CheckInConditions.None) with { MostPerHour = 2 }, state, ran)
+        };
+        var hash = CheckIns.ScriptHash("FIXTURE 42");
+        var scripted = Own(CheckInConditions.ScriptChanged, script: "Write-Output 42");
+        var unchanged = CheckIns.ScriptUnchanged(scripted, hash, ran with { ScriptHash = hash }, now: false);
+        var changed = CheckIns.ScriptUnchanged(scripted, CheckIns.ScriptHash("FIXTURE 43"), ran with { ScriptHash = hash }, now: false);
+        var checkNow = CheckIns.ScriptUnchanged(scripted, hash, ran with { ScriptHash = hash }, now: true);
+        step("signals: when they wait", waits["came back"] is null && waits["came back: before the last run"]?.StartsWith("it waits for you to come back", StringComparison.Ordinal) == true &&
+            waits["on a call"] == "you're on a call" && waits["not on a call"] is null && waits["activity changed"] is null &&
+            waits["activity same since the last run"] == "what you do hasn't changed since the last check" &&
+            waits["between 8 AM and 10 PM at 10:17 PM"] == "it runs only between 8 AM and 10 PM" && waits["between 10 PM and 6 AM at 10:17 PM"] is null &&
+            waits["unanswered"] is null && waits["unanswered: no question"] == "Martlet's last remark didn't ask anything" &&
+            waits["unanswered: followed up"] == "it already followed up on Martlet's last question" &&
+            waits["attention"] is null && waits["no attention"]?.StartsWith("no taskbar button", StringComparison.Ordinal) == true &&
+            waits["song ended"] is null && waits["someone else"] is null && waits["only the owner"] == "Martlet heard nobody else lately" &&
+            waits["script changed: no script"] == "it has no script whose output could change" &&
+            waits["at most 2 an hour"]?.StartsWith("it ran 2 times in the last hour", StringComparison.Ordinal) == true &&
+            unchanged && !changed && !checkNow,
+            new { waits = waits.ToDictionary(w => w.Key, w => w.Value ?? "runs"), scriptUnchanged = unchanged, scriptChanged = !changed, checkNowAsksAnyway = !checkNow });
+
+        var messages = new Dictionary<string, string>
+        {
+            [CheckIns.Welcome] = CheckIns.Message(Built(CheckIns.Welcome), state, null) ?? "",
+            [CheckIns.Unanswered] = CheckIns.Message(Built(CheckIns.Unanswered), question with { Activity = "" }, null) ?? "",
+            [CheckIns.Call] = CheckIns.Message(Built(CheckIns.Call), state, null) ?? "",
+            [CheckIns.Others] = CheckIns.Message(Built(CheckIns.Others), state, null) ?? ""
+        };
+        var verdicts = new[] { CheckIns.Welcome, CheckIns.Unanswered, CheckIns.Call, CheckIns.Others }
+            .ToDictionary(id => id, id => CheckIns.Read(Built(id), id switch
+            {
+                CheckIns.Welcome => "SAY: Welcome back!", CheckIns.Unanswered => "OK", CheckIns.Call => "REMIND: Stay quiet during the call.",
+                _ => "REMIND: Someone else is here; keep private things private."
+            }, state));
+        step("signals: the facts and the check-ins", messages[CheckIns.Welcome].Contains("after 25 min away", StringComparison.Ordinal) &&
+            messages[CheckIns.Welcome].Contains("- Thinking longer finished: FIXTURE trip plan", StringComparison.Ordinal) &&
+            messages[CheckIns.Welcome].Contains("starts with SAY:", StringComparison.Ordinal) &&
+            messages[CheckIns.Unanswered].Contains("So, which boss is next?", StringComparison.Ordinal) &&
+            messages[CheckIns.Unanswered].Contains("doesn't seem to be doing anything with sound", StringComparison.Ordinal) &&
+            messages[CheckIns.Call].Contains("in a call in Discord", StringComparison.Ordinal) &&
+            messages[CheckIns.Call].Contains("before, they were playing a game (FIXTURE Quest)", StringComparison.Ordinal) &&
+            messages[CheckIns.Call].Contains("starts with REMIND:", StringComparison.Ordinal) &&
+            messages[CheckIns.Others].Contains("- FIXTURE Owner (the user's own voice), 2 min ago", StringComparison.Ordinal) &&
+            messages[CheckIns.Others].Contains("- a voice Martlet doesn't know, 1 min ago", StringComparison.Ordinal) &&
+            messages[CheckIns.Others].Contains("Someone other than the user seems to be here.", StringComparison.Ordinal) &&
+            verdicts[CheckIns.Welcome] is { Act: true } && verdicts[CheckIns.Unanswered] is { Act: false, Readable: true } &&
+            verdicts[CheckIns.Call] is { Act: true } && verdicts[CheckIns.Others] is { Act: true } &&
+            CheckIns.Placed("{activity} {people} {away}") == (CheckInFacts.Activity | CheckInFacts.People | CheckInFacts.WhileAway),
+            new { messages, verdicts = verdicts.ToDictionary(v => v.Key, v => new { v.Value.Act, v.Value.Readable }) });
+
+        var folder = Path.Combine(Path.GetTempPath(), "Martlet.CheckIns." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var saved = new CheckInSettings()
+                .With(CheckIns.Welcome, new CheckInChoice(true, 30) { Conditions = CheckInConditions.CameBack | CheckInConditions.Between, FromHour = 7, UntilHour = 23, MostPerHour = 2 })
+                .With(new CustomCheckIn { Id = "c6", Name = "FIXTURE night", Conditions = CheckInConditions.Between, FromHour = 22, UntilHour = 6, MostPerHour = 1 });
+            var wrote = saved.Save(folder);
+            var (read, loaded) = CheckInSettings.Read(folder);
+            var all = CheckIns.All(read);
+            bool Refused(CheckInSettings bad)
+            {
+                try { bad.Validate(); return false; }
+                catch (Martlet.Core.Contracts.ContractException) { return true; }
+            }
+            var refused = Refused(new CheckInSettings().With(new CustomCheckIn { Id = "c6", Name = "FIXTURE", FromHour = 9, UntilHour = 9 })) &&
+                Refused(new CheckInSettings().With(new CustomCheckIn { Id = "c6", Name = "FIXTURE", MostPerHour = 5 })) &&
+                Refused(new CheckInSettings().With(new CustomCheckIn { Id = "c6", Name = "FIXTURE", Conditions = (CheckInConditions)(1 << 20) }));
+            step("signals: hours and the per-hour cap saved and read back", wrote && loaded == "loaded" &&
+                all.Single(c => c.Id == CheckIns.Welcome) is { On: true, FromHour: 7, UntilHour: 23, MostPerHour: 2 } &&
+                all.Single(c => c.Id == "c6") is { FromHour: 22, UntilHour: 6, MostPerHour: 1 } && refused,
+                new { state = loaded, badHoursCapOrConditionRefused = refused });
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); }
+            catch (IOException) { }
+        }
+    }
+
+    /// <summary>10. Tool sets: a check-in calls its sets' tools in a bounded loop, only on a member whose model can call tools
     /// (FIXTURE handlers and calls; NOT AI).</summary>
     private static async Task ToolsAsync(Action<string, bool, object?> step, CheckInState facts, CancellationToken cancellation)
     {
@@ -477,7 +609,7 @@ internal static class CheckInsCheck
         }), state, null) ?? "";
         var none = CheckIns.Touches(facts with { Touches = null });
         var refused = false;
-        try { new CheckInSettings().With(new CustomCheckIn { Id = "c7", Name = "FIXTURE", Facts = (CheckInFacts)1024 }).Validate(); }
+        try { new CheckInSettings().With(new CustomCheckIn { Id = "c7", Name = "FIXTURE", Facts = (CheckInFacts)(1 << 20) }).Validate(); }
         catch (Martlet.Core.Contracts.ContractException) { refused = true; }
         var accepted = true;
         try { new CheckInSettings().With(new CustomCheckIn { Id = "c7", Name = "FIXTURE", Facts = CheckInFacts.Touches }).Validate(); }
