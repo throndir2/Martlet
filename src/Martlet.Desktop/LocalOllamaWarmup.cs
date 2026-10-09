@@ -121,7 +121,9 @@ internal sealed class LocalOllamaWarmup : IDisposable
             ErrorLog.Info($"Ollama on this PC loaded {Model} in {took.TotalSeconds:0.0} s.");
         else if (result is LocalModelState.MissingModel or LocalModelState.Failed)
             ErrorLog.Warn($"Ollama on this PC couldn't load {Model} ({result}): {why}.");
-        if (result == LocalModelState.Ready) await RecordContextAsync().ConfigureAwait(false);
+        // Why it doesn't answer comes from Ollama's own logs, in the background; the known cause is repaired once by itself.
+        else if (result == LocalModelState.NotRunning) LocalOllamaRecovery.NoticeNotAnswering();
+        if (result == LocalModelState.Ready && !SimulatedOllamaCrashLoop.Active) await RecordContextAsync().ConfigureAwait(false);
     }
 
     /// <summary>Keeps the context Ollama gave the loaded model (its context length setting) in model-limits.json when it changed,
@@ -148,6 +150,11 @@ internal sealed class LocalOllamaWarmup : IDisposable
 
     private async Task<(LocalModelState State, string? Why, bool DraftFailed)> RequestLoadAsync(CancellationToken token)
     {
+        // FIXTURE (MARTLET_SIMULATE_OLLAMA_CRASH_LOOP): the simulated Ollama answers or doesn't; the real one is never asked.
+        if (SimulatedOllamaCrashLoop.Active)
+            return await LocalOllamaRecovery.Control.AnswersAsync(token).ConfigureAwait(false)
+                ? (LocalModelState.Ready, null, false)
+                : throw new HttpRequestException("FIXTURE: the simulated Ollama doesn't answer.");
         using var content = new StringContent(JsonSerializer.Serialize(new { model = Model }), Encoding.UTF8, "application/json");
         using var response = await client.PostAsync(Endpoint, content, token).ConfigureAwait(false);
         if (response.IsSuccessStatusCode) return (LocalModelState.Ready, null, false);

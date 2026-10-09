@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using Martlet.Core.Installation;
 using Martlet.Core.Settings;
 using Martlet.Logging;
 using Martlet.Providers.Ollama;
@@ -25,6 +26,7 @@ internal static class LocalOllama
 
     private static async Task<bool> AnswersAsync(HttpClient client, CancellationToken token)
     {
+        if (SimulatedOllamaCrashLoop.Active) return await LocalOllamaRecovery.Control.AnswersAsync(token);
         try
         {
             using var limit = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -36,9 +38,16 @@ internal static class LocalOllama
         catch (HttpRequestException) { return false; }
     }
 
-    /// <summary>Starts Ollama on this PC (its tray app, or a hidden server); false when it isn't installed or won't start.</summary>
+    /// <summary>Starts Ollama on this PC (its tray app, or a hidden server); false when it isn't installed or won't start. While
+    /// Martlet repairs Ollama (<see cref="LocalOllamaRecovery"/>) it starts nothing: the repair starts Ollama itself.</summary>
     internal static bool Start()
     {
+        if (LocalOllamaRecovery.Repairing) return true;
+        if (SimulatedOllamaCrashLoop.Active)
+        {
+            try { LocalOllamaRecovery.Control.Start(null); return true; }
+            catch (InvalidOperationException) { return false; }
+        }
         if (Executable() is not { } ollama) return false;
         var app = Path.Combine(Path.GetDirectoryName(ollama)!, "ollama app.exe");
         try
@@ -51,8 +60,19 @@ internal static class LocalOllama
     }
 
     /// <summary>The models this PC's Ollama serves, or null when nothing answers on its loopback port within
-    /// <paramref name="timeout"/>. Reads only; contacts nothing beyond this PC.</summary>
+    /// <paramref name="timeout"/>. Reads only; contacts nothing beyond this PC. An answer clears the last known Ollama problem
+    /// (<see cref="LocalOllamaRecovery"/>).</summary>
     internal static async Task<IReadOnlyList<string>?> ModelsAsync(TimeSpan timeout, CancellationToken token)
+    {
+        var models = SimulatedOllamaCrashLoop.Active
+            ? await LocalOllamaRecovery.Control.ModelsAsync(token)
+            : await ServedModelsAsync(timeout, token);
+        if (models is not null) LocalOllamaRecovery.Answered();
+        return models;
+    }
+
+    /// <summary>What Ollama's <c>/api/tags</c> lists on this PC's loopback port, or null when nothing answers.</summary>
+    internal static async Task<IReadOnlyList<string>?> ServedModelsAsync(TimeSpan timeout, CancellationToken token)
     {
         try
         {
@@ -74,26 +94,67 @@ internal static class LocalOllama
         string.Equals(name, model, StringComparison.OrdinalIgnoreCase) ||
         !model.Contains(':', StringComparison.Ordinal) && string.Equals(name, model + ":latest", StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Makes sure Ollama answers on this PC, starting its tray app (or a hidden server) when it does not.</summary>
+    /// <summary>Makes sure Ollama answers on this PC, starting its tray app (or a hidden server) when it does not. When Ollama
+    /// stops as it starts, says why in Ollama's own words, and repairs the known cause first (<see cref="LocalOllamaRecovery"/>).
+    /// While <see cref="SimulatedOllamaCrashLoop"/> is active, stops afterwards so no request goes to the real Ollama.</summary>
     private static async Task EnsureRunningAsync(HttpClient client, Action<string> status, IProgress<string> output, CancellationToken token)
     {
+        await EnsureAnsweringAsync(client, status, output, token);
+        SimulatedOllamaCrashLoop.StopRequest();
+    }
+
+    private static async Task EnsureAnsweringAsync(HttpClient client, Action<string> status, IProgress<string> output, CancellationToken token)
+    {
+        // A repair running now stops and starts Ollama itself: wait for it rather than start Ollama in the middle of it.
+        if (LocalOllamaRecovery.Repairing)
+        {
+            status("Waiting while Martlet fixes Ollama's models folder...");
+            await LocalOllamaRecovery.WaitForRepairAsync(token);
+        }
         if (await AnswersAsync(client, token)) return;
-        var ollama = Executable() ?? throw new InvalidOperationException("Ollama isn't installed on this PC. Install it first.");
-        var app = Path.Combine(Path.GetDirectoryName(ollama)!, "ollama app.exe");
+        // Already running but stopping again and again (its tray app restarts it every second): starting it again won't help.
+        if (await LocalOllamaRecovery.DiagnoseAsync(token) is { Kind: OllamaTroubleKind.CrashLoop, Facts.AppRunning: true } looping)
+        {
+            await RecoverAsync(looping, status, output, token);
+            return;
+        }
+        if (!SimulatedOllamaCrashLoop.Active && Executable() is null)
+            throw new InvalidOperationException("Ollama isn't installed on this PC. Install it first.");
         status("Starting Ollama on this PC...");
         output.Report("Starting Ollama...");
-        try
-        {
-            if (File.Exists(app)) Process.Start(new ProcessStartInfo(app) { UseShellExecute = true })?.Dispose();
-            else Process.Start(new ProcessStartInfo(ollama, "serve") { UseShellExecute = false, CreateNoWindow = true })?.Dispose();
-        }
-        catch (System.ComponentModel.Win32Exception error) { throw new InvalidOperationException("Couldn't start Ollama: " + error.Message); }
+        if (!Start()) throw new InvalidOperationException("Couldn't start Ollama. Start it from the Start menu, then try again.");
         for (var attempt = 0; attempt < 30; attempt++)
         {
             await Task.Delay(TimeSpan.FromSeconds(1), token);
             if (await AnswersAsync(client, token)) return;
+            // Every few seconds: has it already stopped with an error? Then waiting longer won't help.
+            if (attempt % 5 == 4 && await LocalOllamaRecovery.DiagnoseAsync(token) is { Kind: OllamaTroubleKind.CrashLoop } stopping)
+            {
+                await RecoverAsync(stopping, status, output, token);
+                return;
+            }
         }
-        throw new InvalidOperationException("Ollama didn't start. Start it from the Start menu, then try again.");
+        var trouble = await LocalOllamaRecovery.DiagnoseAsync(token);
+        if (trouble.Stops) await RecoverAsync(trouble, status, output, token);
+        else if (trouble.Kind != OllamaTroubleKind.Answering)
+            throw new InvalidOperationException("Ollama didn't start. Start it from the Start menu, then try again.");
+    }
+
+    /// <summary>Ollama stops when it starts: repairs the known cause (once by itself in a run) and returns when Ollama answers
+    /// afterwards; otherwise throws what Ollama said and what to do.</summary>
+    private static async Task RecoverAsync(OllamaDiagnosis trouble, Action<string> status, IProgress<string> output, CancellationToken token)
+    {
+        output.Report(trouble.Message);
+        if (LocalOllamaRecovery.RepairsAutomatically(trouble))
+        {
+            status("Fixing Ollama's models folder...");
+            if (await LocalOllamaRecovery.RepairAsync(trouble, automatic: true, token, output) is { } result)
+            {
+                if (result.Repaired) return;
+                throw new InvalidOperationException("Martlet tried to fix Ollama: " + result.Summary);
+            }
+        }
+        throw new InvalidOperationException(trouble.Message + (trouble.Guidance is { } guidance ? " " + guidance : ""));
     }
 
     /// <summary>Downloads <paramref name="model"/> into this PC's Ollama, reporting each step and its progress.</summary>

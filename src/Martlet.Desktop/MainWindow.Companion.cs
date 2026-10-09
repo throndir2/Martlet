@@ -718,6 +718,8 @@ public partial class MainWindow
 
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8), FontWeight = FontWeights.SemiBold,
             Text = (!installed ? "Ollama isn't installed on this PC yet."
+                : ollamaModels is null && LocalOllamaRecovery.Last is { Stops: true, OllamaError: { } said }
+                    ? $"Ollama is installed, but it stops when it starts. Ollama says: \"{said.TrimEnd('.')}\". Check Ollama shows what to do."
                 : ollamaModels is null ? "Ollama is installed. Check it to see which models are downloaded."
                 : ollamaModels.Count == 0 ? "Ollama is running, but no model is downloaded yet."
                 : $"Ollama is running with: {string.Join(", ", ollamaModels)}.") +
@@ -891,32 +893,33 @@ public partial class MainWindow
     }
 
     /// <summary>Asks the local Ollama (loopback only) which models it has. <paramref name="quiet"/>: the Thinking tab's own
-    /// check when it opens, which leaves the status line and a model being typed alone.</summary>
+    /// check when it opens, which leaves the status line and a model being typed alone. Otherwise, when Ollama doesn't answer,
+    /// the status line says why in Ollama's own words, after Martlet repaired the known cause (<see cref="OllamaNotAnsweringAsync"/>).</summary>
     private async Task CheckOllamaAsync(bool quiet = false)
     {
-        try
+        IReadOnlyList<string>? models;
+        try { models = await LocalOllama.ModelsAsync(TimeSpan.FromSeconds(4), lifetime.Token); }
+        catch (OperationCanceledException) { return; }
+        if (closing) return;
+        string? said = null;
+        if (models is null && !quiet && !Prerequisites.IsMissing(Prerequisites.Ollama))
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
-            using var response = await client.GetAsync(new Uri("http://127.0.0.1:11434/api/tags"), lifetime.Token);
-            response.EnsureSuccessStatusCode();
-            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(lifetime.Token));
-            ollamaModels = document.RootElement.TryGetProperty("models", out var models)
-                ? models.EnumerateArray().Select(m => m.TryGetProperty("name", out var name) ? name.GetString() : null)
-                    .OfType<string>().Where(name => name.Length is > 0 and <= 128).Take(50).ToArray()
-                : [];
-            if (!quiet)
-                ActionText.Text = ollamaModels.Count == 0 ? "Ollama is running on this PC, with no model downloaded yet."
-                    : $"Ollama is running on this PC with {ollamaModels.Count} {(ollamaModels.Count == 1 ? "model" : "models")}.";
+            var (text, repaired) = await OllamaNotAnsweringAsync("check again");
+            if (closing) return;
+            said = text;
+            if (repaired)
+            {
+                try { models = await LocalOllama.ModelsAsync(TimeSpan.FromSeconds(4), lifetime.Token); }
+                catch (OperationCanceledException) { return; }
+                if (models is not null && said.Length > 0) said += " ";
+            }
         }
-        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { return; }
-        catch (Exception error) when (error is HttpRequestException or OperationCanceledException or JsonException or InvalidOperationException)
-        {
-            ollamaModels = null;
-            if (!quiet)
-                ActionText.Text = Prerequisites.IsMissing(Prerequisites.Ollama)
-                    ? "Ollama isn't installed on this PC yet. Install it first."
-                    : "Ollama didn't answer on this PC. Start Ollama from the Start menu, then check again.";
-        }
+        ollamaModels = models?.Take(50).ToArray();
+        if (!quiet)
+            ActionText.Text = ollamaModels is null
+                ? said ?? "Ollama isn't installed on this PC yet. Install it first."
+                : said + (ollamaModels.Count == 0 ? "Ollama is running on this PC, with no model downloaded yet."
+                    : $"Ollama is running on this PC with {ollamaModels.Count} {(ollamaModels.Count == 1 ? "model" : "models")}.");
         if (!closing && openTab == CompanionTab.Thinking && !(quiet && tabEdited)) RenderTab();
     }
 
@@ -967,8 +970,15 @@ public partial class MainWindow
             if (closing) return false;
             if (models is null)
             {
-                ActionText.Text = "Ollama didn't answer on this PC. Start Ollama from the Start menu, then try again. Thinking didn't change.";
-                return false;
+                var (text, repaired) = await OllamaNotAnsweringAsync("try again");
+                if (closing) return false;
+                if (repaired) models = await LocalOllama.ModelsAsync(TimeSpan.FromSeconds(3), token);
+                if (closing) return false;
+                if (models is null)
+                {
+                    ActionText.Text = (text.Length > 0 ? text : "Ollama didn't answer on this PC.") + " Thinking didn't change.";
+                    return false;
+                }
             }
             ollamaModels = models;
             var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);

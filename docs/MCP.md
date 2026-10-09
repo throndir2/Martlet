@@ -3270,6 +3270,67 @@ Martlet.Companion, `LocalModelsFound` reads what *Find model apps*
 (`FindLocalModels`, which fills the unsaved Thinking fields, so it needs
 `--allow-ui-effects`) found.
 
+`ollama_recovery` says why Ollama on this PC doesn't answer, the way Home and
+Companion › Thinking find it (the production `OllamaRecovery` diagnosis). It
+reads only: whether Ollama answers on 127.0.0.1:11434, whether its tray app
+(`ollama app.exe`) and server run, the end of its `server.log` and `app.log`
+(`log`: `Starts`, `FailedStarts`, `LastStartFailed`, `ListeningVersion`, the
+`modelsPath` of the last start, the `lastError` line and the app's
+`appReason`), the model location in its app database (`app`: `db.sqlite`
+`settings.models`, read through Windows' own SQLite, with `KnownShape`), the
+user's `OLLAMA_MODELS` and each models folder (`modelsFolders`: `Linked`,
+`linkPath`, `linkTarget`, `realPath`, `RealPathUsable`). `thisPc.kind` is
+`Answering`, `NotInstalled`, `NotRunning`, `StopsOnStart` (the last start
+stopped with an error) or `CrashLoop` (it keeps stopping: the log changed in
+the last 10 minutes and the tray app runs or two starts failed). `knownCause`
+means Ollama refuses its models folder because the folder is reached through a
+junction or symbolic link (Ollama 0.40.1 and later: *mkdir ...: ensure path
+elements are traversable*, and the app's *The path cannot be traversed because
+it contains an untrusted mount point*). `canRepair` means Martlet can point
+Ollama at the real folder. `message` and `guidance` are what Home shows. Paths
+under the user's folders read as `%LOCALAPPDATA%` and `%USERPROFILE%`. It never
+stops, starts or changes Ollama, its folders, its settings or `OLLAMA_MODELS`.
+`fixture: true` also runs the production diagnosis and repair on FIXTURE
+folders in the temporary folder (`OllamaRecoveryFixture`: a junction made with
+`mklink /J`, a `db.sqlite` made with Windows' SQLite, Ollama's own log lines
+and a stand-in for its processes), and deletes them afterwards. The scenarios
+are `Linked` (repaired: `events` is `stop`, `set OLLAMA_MODELS=...`,
+`start OLLAMA_MODELS=...`; `modelsWhenStopped` is still the junction, so the
+database changed only after Ollama stopped; `savedModels` is the real folder;
+`repair.backup` holds the old database), `UnknownSettings` (no `models` column:
+guidance, `databaseUnchanged`), `OtherError` (Ollama's own words, nothing
+changed) and `Answering` (nothing stopped). `fixture.passed` needs all of them.
+
+When Thinking uses Ollama on this PC and it doesn't answer, Home's
+`HealthIssue-ollama` reads Ollama's own error when its logs have one: *Problem:
+Ollama keeps stopping on this PC. Thinking uses fixture-model:1b on this PC,
+but Ollama keeps stopping (5 failed starts in its log). Ollama says: "..."*. For the known cause,
+Martlet points Ollama at the real folder by itself, once for each cause in a
+run: it stops Ollama's tray app and servers, backs up `db.sqlite` into
+`%LOCALAPPDATA%\Ollama\martlet-backup-<time>`, sets `settings.models` (only when
+it is empty or the linked folder) and the user's `OLLAMA_MODELS` (only when it
+isn't set or is the linked folder) to the real folder, starts Ollama and checks
+that it answers. Then `HealthIssue-ollama-fixed` reads *Good to know: Martlet
+fixed Ollama on this PC. ...* with the backup folder, and the local log has
+each change. While it works, the item says so and `HealthFix-ollama-repair` is
+disabled (*Fixing Ollama...*). Otherwise `HealthFix-ollama-repair` (*Fix
+Ollama's models folder*, or *Try the fix again*) runs it again and
+`HealthFix-ollama-ollama-logs` opens Ollama's log folder; both need
+`--allow-ui-effects`. Companion › Thinking's *Check Ollama* (`SetupCheckOllama`),
+*Use Ollama on this PC* and the Test, Load and Download run windows say the same
+and repair the same way, and `SetupOllamaStatus` reads *Ollama is installed,
+but it stops when it starts. Ollama says: ...*. To exercise this without the
+real Ollama, set `MARTLET_SIMULATE_OLLAMA_CRASH_LOOP` to `linked`,
+`unknown-settings` or `other-error` before launching the desktop (FIXTURE,
+`SimulatedOllamaCrashLoop` in `LocalOllamaRecovery.cs`). Martlet then uses an
+`OllamaRecoveryFixture` in the data directory's `ollama-fixture` folder for
+Ollama's logs, app database, models folder, processes and `OLLAMA_MODELS`,
+and the local log says *FIXTURE (MARTLET_SIMULATE_OLLAMA_CRASH_LOOP=...)*.
+Test, Load and Download stop with a FIXTURE message, so no request goes to the
+real Ollama. Seed the data directory's `settings.json` with Thinking on
+Ollama on this PC (`fixture-model:1b`, the model the fixture lists once it
+answers) to see Home's item.
+
 `spoken_reply_check` rehearses a spoken reply whose voice fails partway, end to
 end with the production conversation runtime (`ConversationRuntime`, the Chat
 Completions adapter, the Martlet host voice stream and the playback sink). A
