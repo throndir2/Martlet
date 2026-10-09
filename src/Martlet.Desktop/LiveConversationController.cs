@@ -918,6 +918,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         jobs = new(this.clock);
         StartLiveFloor();
         StartPresence();
+        StartRequests();
         // The image and audio models this PC uses (docs/SENSE_MODELS.md), before anything can send them work, and what models were
         // found to hear and see, which routes them before a talk window loads the settings.
         senseModels = SenseModels.Load(dataDirectory);
@@ -993,6 +994,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // A settings change continues the conversation: what was said so far stays as context for the next reply.
             if (configuration?.Revision != next?.Revision) CancelCapturesLocked();
             configuration = next;
+            NameRequests(next);
             stop = RevokeLocked();
             stopListening = RevokeListeningLocked();
         }
@@ -2921,8 +2923,16 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     operation.Heard?.Speaker?.Voice, MemoryTools.Name, null, token)));
         }
         // reminders after it, on a PC that keeps reminders (always the same text, so the start of every request stays the same).
-        if (configured.SupportsTools && RemindersTool is { } remind)
-            own.Add((Reminders.Definition, (call, token) => RemindAsync(remind, call, token)));
+        // While an After each exchange check-in takes it over, the reply only lists them (list_reminders) in the same place.
+        if (configured.SupportsTools && RemindersTool is not null)
+        {
+            if (HandedOffReplyTools(configured).Contains(Reminders.ToolName))
+            {
+                own.Add((Reminders.ListDefinition, (call, token) => ListRemindersAsync(token)));
+                guidance = Join(guidance, Reminders.AfterReply);
+            }
+            else own.Add((Reminders.Definition, (call, token) => ReplyRemindAsync(call, token)));
+        }
         // call_on_discord after them while Martlet can call a Discord friend (saved choices only, so it doesn't come and go with the
         // connection). While the After each exchange check-in takes it over, the reply only says it will call.
         if (configured.SupportsTools && DiscordCaller is { CanCall: true } caller)
@@ -3008,19 +3018,36 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// the main window. Null where reminders can't be kept (no data folder).</summary>
     internal Func<string, CancellationToken, Task<Reminders.ToolOutcome>>? RemindersTool { get; set; }
 
-    private async ValueTask<ConversationToolResult> RemindAsync(Func<string, CancellationToken, Task<Reminders.ToolOutcome>> remind,
-        TextToolCall call, CancellationToken token)
+    private async ValueTask<ConversationToolResult> ReplyRemindAsync(TextToolCall call, CancellationToken token) =>
+        (await RemindAsync(Reminders.ToolName, call.ArgumentsJson, null, token).ConfigureAwait(false)).Result;
+
+    /// <summary>list_reminders: the reply's read-only reminders tool while a check-in sets and cancels them.</summary>
+    private async ValueTask<ConversationToolResult> ListRemindersAsync(CancellationToken token)
+    {
+        var outcome = await RemindAsync(Reminders.ListToolName, Reminders.ListArgumentsJson, null, token).ConfigureAwait(false);
+        return outcome.Result;
+    }
+
+    /// <summary>Runs one reminders call for the reply or, with <paramref name="checkIn"/>'s name, for a check-in: the same
+    /// reminders, the same tool log line and the same log entry, so a reminder a check-in sets shows like one the reply set.
+    /// A reminders call that can't run gives a failed outcome.</summary>
+    internal async Task<Reminders.ToolOutcome> RemindAsync(string tool, string argumentsJson, string? checkIn, CancellationToken token)
     {
         Reminders.ToolOutcome outcome;
-        try { outcome = await remind(call.ArgumentsJson, token).ConfigureAwait(false); }
-        catch (Exception error) when (!token.IsCancellationRequested && error is IOException or UnauthorizedAccessException or
-            ContractException or InvalidOperationException or TaskCanceledException)
+        if (RemindersTool is not { } remind) outcome = new(new("Reminders can't be kept on this PC.", true), "unavailable", null);
+        else
         {
-            outcome = new(new("Reminders can't be changed right now. Tell the user briefly.", true), "failed", null);
+            try { outcome = await remind(argumentsJson, token).ConfigureAwait(false); }
+            catch (Exception error) when (!token.IsCancellationRequested && error is IOException or UnauthorizedAccessException or
+                ContractException or InvalidOperationException or TaskCanceledException)
+            {
+                outcome = new(new("Reminders can't be changed right now. Tell the user briefly.", true), "failed", null);
+            }
         }
-        tools?.Record("Martlet", Reminders.ToolName, outcome.Outcome, "", outcome.Result.IsError);
-        if (outcome.Own is not null) ErrorLog.Info($"Reminders: {Reminders.ToolName} {outcome.Outcome}.");
-        return outcome.Result;
+        tools?.Record(checkIn is null ? "Martlet" : "Check-in " + checkIn, tool, outcome.Outcome, "", outcome.Result.IsError);
+        if (outcome.Own is not null)
+            ErrorLog.Info($"Reminders: {Reminders.ToolName} {outcome.Outcome}{(checkIn is null ? "" : " by the check-in " + checkIn)}.");
+        return outcome;
     }
 
     /// <summary>Brings a due reminder into this conversation: a finished notice job that Martlet brings up on its own as soon as
@@ -5535,6 +5562,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             playing = pcListener;
         }
         owned?.Cancel("conversation.closed");
+        StopRequests();
         Cancel(stopListening);
         echoReducer?.Forget();
         soundDigest?.Dispose();

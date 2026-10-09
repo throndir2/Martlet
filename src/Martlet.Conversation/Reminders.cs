@@ -180,6 +180,24 @@ public static class Reminders
 
     public static TextToolDefinition Definition { get; } = new(ToolName, Description, ParametersJson);
 
+    /// <summary>The read-only tool the reply gets instead of <see cref="Definition"/> while an After each exchange check-in
+    /// takes the reminders tool over (<see cref="CheckInToolSets.ReminderSet"/>): it only lists the reminders waiting.</summary>
+    public const string ListToolName = "list_reminders";
+
+    public const string ListDescription =
+        "Lists the user's reminders that are waiting, with their ids and when each is due.";
+
+    /// <summary>The reply's guidance while the reminders tool is handed off: it agrees, and the check-in does it after the reply.</summary>
+    public const string AfterReply =
+        "When the user asks you to set or cancel a reminder, agree briefly in your own words; Martlet does it right after your " +
+        "reply, so don't promise an exact time.";
+
+    /// <summary>The reminders call <see cref="ListDefinition"/> makes, whatever arguments the model passes.</summary>
+    public const string ListArgumentsJson = """{"action":"list"}""";
+
+    public static TextToolDefinition ListDefinition { get; } =
+        new(ListToolName, ListDescription, """{"type":"object","properties":{},"additionalProperties":false}""");
+
     // ---------- deciding who says a due reminder ----------
 
     /// <summary>What <paramref name="me"/> should do about each due reminder on <paramref name="board"/> at <paramref name="now"/>:

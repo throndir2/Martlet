@@ -1778,7 +1778,23 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "rule counts only computers that answer, every computer offline lets the conversation model stand in) and answering " +
             "again (its slots come back and a job waiting in line starts there), while the think_longer tool text stays " +
             "byte-identical; and quick and long jobs: each kind goes only to a member ticked for it, a long job on a member that " +
-            "takes no quick jobs keeps no slot free, and a member that leaves takes its boxes with it. In-process; reads nothing.", new { }),
+            "takes no quick jobs keeps no slot free, and a member that leaves takes its boxes with it; and the request journal " +
+            "(ThinkingRequests, which the Thinking requests page and thinking-requests.json show): a success, a retry on another " +
+            "member (two tries) and a stale drop recorded with plausible timings and counted in the totals by kind. In-process; " +
+            "reads nothing.", new { }),
+        Tool("thinking_requests", "The Thinking requests page from a data directory: the desktop's thinking-requests.json (every " +
+            "request for the Thinking pool's slots it keeps, waiting and running first, then the newest ended ones: id, kind, " +
+            "source, task, companion, priority, state and note, line position, each try's member, model, start, end and ending, " +
+            "retries, stops for the conversation, how long it waited and ran in ms, the answer's length; and the totals by kind " +
+            "since Martlet started). Never a request's text, answer or topic. state is none (no file yet), unreadable or loaded. " +
+            "Filters: state (active, done, problems or one state such as succeeded or stale), kind (a job kind such as memory) " +
+            "and limit (1-200, default 50). Read-only.", new
+        {
+            dataDirectory = new { type = "string" },
+            state = new { type = "string", @enum = ThinkingPoolCheck.RequestStates },
+            kind = new { type = "string", @enum = ThinkingPoolCheck.RequestKinds },
+            limit = new { type = "integer", minimum = 1, maximum = 200 }
+        }),
         Tool("sense_models_status", "Companion > Vision > Image model and Companion > Listening > Audio model from a data directory " +
             "(docs/SENSE_MODELS.md): sense-models.json (this PC's choice: the same model as the text model, the same model as the other " +
             "kind, or a model of its own: Ollama on this PC, an OpenAI-compatible endpoint or a paired computer's model; never a key), " +
@@ -2319,6 +2335,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "helper_jobs_status" => HelperJobsCheck.Status(DataDirectory(arguments)),
                 "helper_jobs_check" => await HelperJobsCheck.RunAsync(cancellation),
                 "thinking_pool_status" => await ThinkingPoolCheck.StatusAsync(DataDirectory(arguments), cancellation),
+                "thinking_requests" => ThinkingPoolCheck.Requests(DataDirectory(arguments), OptionalString(arguments, "state"),
+                    OptionalString(arguments, "kind"), OptionalInt(arguments, "limit")),
                 "quick_sounds_status" => QuickSoundCheck.Status(DataDirectory(arguments)),
                 "quick_sounds_check" => await QuickSoundCheck.RunAsync(OptionalString(arguments, "scenario"), OptionalInt(arguments, "delayMs"), cancellation),
                 "voice_sounds_status" => VoiceSoundCheck.Status(DataDirectory(arguments)),

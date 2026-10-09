@@ -25,6 +25,7 @@ internal sealed class PoolScreenDigestThinker(Func<ThinkingPool> pool) : IScreen
         var result = await pool().RunAsync(new ThinkingJob
         {
             Kind = ThinkingJobKind.Digest,
+            Label = "Summary of the screen",
             Instructions = Instructions,
             Text = job.Message,
             Image = job.Picture,

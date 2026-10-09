@@ -31,6 +31,7 @@ internal sealed class PoolSoundJudge(ThinkingPool pool, BackgroundPlace member) 
             var result = await pool.RunAsync(new ThinkingJob
             {
                 Kind = ThinkingJobKind.Digest,
+                Label = "Description of a sound on this PC",
                 Instructions = "You describe the sound of short audio clips in one line.",
                 Text = SoundDigest.Prompt,
                 Audio = BoundedWaveAudio.FromWave(wave),

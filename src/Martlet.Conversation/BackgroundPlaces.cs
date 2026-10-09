@@ -188,6 +188,13 @@ public sealed class BackgroundPlaces
     private readonly List<Waiter> waiters = [];
     private IPlaceRules? rules;
 
+    /// <param name="clock">The clock the request journal (<see cref="Requests"/>) times requests with.</param>
+    public BackgroundPlaces(TimeProvider? clock = null) => Requests = new(clock);
+
+    /// <summary>Every request for these places' slots with its timings, for the Thinking requests page: Thinking pool jobs and
+    /// the conversation's background work (<see cref="ThinkingRequests"/>).</summary>
+    public ThinkingRequests Requests { get; }
+
     /// <summary>Raised on any thread when a place is taken or released, or the line changes.</summary>
     public event Action? Changed;
 
