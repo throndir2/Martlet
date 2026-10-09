@@ -235,7 +235,8 @@ internal static class GatewayInferenceJson
         string? audio = null;
         if (fields.TryGetValue("audio", out var audioElement))
         {
-            // One recording for a model that hears: a canonical mono PCM16 WAV of at most 30 seconds.
+            // One recording for a model that hears: a canonical mono PCM16 WAV within MaximumAudioBytes (30 seconds at 48 kHz) and
+            // HardMaxAudioSeconds (a check-in's minute at 16 kHz fits both).
             var encoded = Text(audioElement, GatewayOllamaChatPayload.MaximumAudioBase64Characters);
             var decoded = Convert.FromBase64String(encoded);
             GatewayRules.Require(Convert.ToBase64String(decoded) == encoded, "request.invalid");

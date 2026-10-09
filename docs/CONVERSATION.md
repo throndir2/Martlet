@@ -2055,7 +2055,7 @@ as an `input_audio` WAV part, so only an OpenAI-compatible (Chat
 Completions) endpoint takes it. **Ollama on this PC** does too, for models it
 says hear (Ollama 0.35 and later; Gemma 4 E2B, E4B and 12B). **Ollama on one of
 your computers** (a paired host) does too: the recording goes through its
-pinned gateway, which checks it is one WAV of at most 30 seconds, and the host's
+pinned gateway, which checks it is one WAV recording within its size limit, and the host's
 Ollama gets it with your message. That host must run this Martlet version or
 later. An older host's route has no room for a recording, so Martlet sends the
 transcript only and says *update Martlet on that computer*, without marking the

@@ -159,14 +159,14 @@ public sealed class OllamaRelayTests
         Assert.False(messages[1].TryGetProperty("images", out _));
         Assert.Equal(new[] { jpeg, wave }, messages[^1].GetProperty("images").EnumerateArray().Select(i => i.GetString()!).ToArray());
 
-        // Not a WAV, or longer than 30 seconds: rejected at the gateway before it reaches Ollama.
+        // Not a WAV, or longer than a check-in's minute: rejected at the gateway before it reaches Ollama.
         var notWave = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
         {
             await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30),
                 null, [], "(Voice message.)", 0.7, 64, 4_096, null, null, audio: Convert.ToBase64String(new byte[64]))) { }
         });
         Assert.Equal("request.invalid", notWave.Code);
-        var tooLong = Martlet.Providers.BoundedWaveAudio.FromPcm(format with { SampleRate = 16_000 }, new byte[16_000 * 2 * 31]).ToBase64();
+        var tooLong = Martlet.Providers.BoundedWaveAudio.FromPcm(format with { SampleRate = 16_000 }, new byte[16_000 * 2 * 61]).ToBase64();
         var tooLarge = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
         {
             await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 3, host.Clock.GetUtcNow().AddSeconds(30),
