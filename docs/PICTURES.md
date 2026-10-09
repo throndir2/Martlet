@@ -10,6 +10,14 @@ full size), keeps it in **Creations** on all your Martlet computers, and shows i
 Companion › Pictures › *Where it draws* is this PC's own choice (`pictures.json` in the data folder; never shared, since
 which machine is free to draw depends on the computer you talk to). The pictures themselves are shared.
 
+The page has the standard order: **Now** (where Martlet draws, with **Check** and **Draw a test picture**), then *Where
+it draws* as an option picker: **Off** (Martlet doesn't draw pictures; pictures it drew stay in Creations) and the
+places below. Each place's row shows its key facts, and **Compare them** shows them side by side: where it runs, the
+graphics memory and download (from the footprint catalog for the Pictures role), how long a picture takes, the picture
+size, the cost and where the description goes. Choosing a row shows its details: the computer and **Set up** for the
+role, the address and workflow for your own ComfyUI, the model ID, key and consent for a cloud provider, and the button
+that uses it.
+
 | Place | What it is | Cost and privacy |
 | --- | --- | --- |
 | **Martlet's Pictures role** (recommended) | ComfyUI with [Z-Image Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo) on this PC or another of your computers with an NVIDIA graphics card (8 GB+, 12 GB+ is faster). **Set up** installs it with the same `martlet-host add` flow as every role and Martlet reaches it through that computer's gateway ([host role details](PICTURES_HOST.md)). | Free and private. About 20 GB of downloads. |

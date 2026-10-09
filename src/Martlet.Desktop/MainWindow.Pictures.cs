@@ -15,17 +15,19 @@ using Martlet.Providers.Pictures;
 namespace Martlet.Desktop;
 
 /// <summary>
-/// Companion › Pictures (docs/PICTURES.md): where Martlet draws when you ask (draw_picture), this PC's own choice
-/// (pictures.json): off, Martlet's <c>pictures</c> host role (ComfyUI with Z-Image Turbo, set up on this PC or another of your
-/// computers with the same martlet-host flow as every role, reached through its gateway), a ComfyUI you run at an address (any
-/// computer; Z-Image Turbo, one of its checkpoints or your own workflow exported with Export (API)), OpenRouter or NVIDIA Build
-/// (paid; Pictures' own key or Thinking's for the same provider). Check and Draw a test picture try the saved choice. Automation
-/// IDs: <c>PicturesNow</c>, <c>PicturesPlace-&lt;place&gt;</c>, <c>PicturesHost-&lt;host&gt;</c>, <c>PicturesHostState</c>,
-/// <c>PicturesSetUp</c>, <c>PicturesUseHost</c>, <c>PicturesComfyAddress</c>, <c>PicturesComfyConnect</c>,
-/// <c>PicturesComfyState</c>, <c>PicturesWorkflow</c>, <c>PicturesCheckpoint</c>, <c>PicturesLoadWorkflow</c>,
-/// <c>PicturesUseComfy</c>, <c>PicturesModel</c>, <c>PicturesKey</c>, <c>PicturesKeyStatus</c>, <c>PicturesConsent</c>,
-/// <c>PicturesUseCloud</c>, <c>PicturesTurnOff</c>, <c>PicturesCheck</c>, <c>PicturesTest</c>, <c>PicturesTestState</c> and
-/// <c>PicturesTestImage</c>.
+/// Companion › Pictures (docs/PICTURES.md, an optional extra): where Martlet draws when you ask (draw_picture), this PC's own
+/// choice (pictures.json). In the standard order: Now (with Check and Draw a test picture, which try the saved choice), then the
+/// main choice as an option picker: Off, Martlet's <c>pictures</c> host role (ComfyUI with Z-Image Turbo, set up on this PC or
+/// another of your computers with the same martlet-host flow as every role, reached through its gateway), a ComfyUI you run at an
+/// address (any computer; Z-Image Turbo, one of its checkpoints or your own workflow exported with Export (API)), OpenRouter or
+/// NVIDIA Build (paid; Pictures' own key or Thinking's for the same provider). Each option's details hold what it needs (the
+/// computer, the address and workflow, the model and key) and the button that uses it. Automation IDs: <c>PicturesNow</c>,
+/// <c>Picker-Pictures-&lt;Off|Host|ComfyUi|OpenRouter|NvidiaBuild&gt;</c>, <c>PicturesHost-&lt;host&gt;</c>,
+/// <c>PicturesHostState</c>, <c>PicturesSetUp</c>, <c>PicturesUseHost</c>, <c>PicturesComfyAddress</c>,
+/// <c>PicturesComfyConnect</c>, <c>PicturesComfyState</c>, <c>PicturesWorkflow</c>, <c>PicturesCheckpoint</c>,
+/// <c>PicturesLoadWorkflow</c>, <c>PicturesUseComfy</c>, <c>PicturesModel</c>, <c>PicturesKey</c>, <c>PicturesKeyStatus</c>,
+/// <c>PicturesConsent</c>, <c>PicturesUseCloud</c>, <c>PicturesTurnOff</c>, <c>PicturesCheck</c>, <c>PicturesTest</c>,
+/// <c>PicturesTestState</c> and <c>PicturesTestImage</c>.
 /// </summary>
 public partial class MainWindow
 {
@@ -33,16 +35,12 @@ public partial class MainWindow
     internal const string PicturesTestPrompt =
         "A small songbird with a bright red breast perched on a mossy branch at sunrise, soft watercolour, warm light";
 
-    internal static readonly IReadOnlyList<string> PicturesFeatures =
-        ["NVIDIA GPU 8 GB+, shared", "Docker", "Z-Image Turbo, Apache-2.0", "A few seconds per picture", "Frees the card when idle"];
-
     private const string PicturesTerms =
         "It builds a container with ComfyUI (GPL-3.0) and PyTorch, then downloads about 20 GB of pinned Z-Image Turbo files from " +
         "huggingface.co/Comfy-Org/z_image_turbo (Apache-2.0): the diffusion model, its Qwen3 4B text encoder and the VAE. The " +
         "descriptions Martlet writes go to that computer. Don't use it for anything illegal or harmful or to depict real people " +
         "without their consent, and say pictures are AI-generated when you share them.";
 
-    private PicturePlace? picturesShown;
     private string? picturesHost;
     private string? picturesPending;
     private string? picturesFailure;
@@ -56,7 +54,6 @@ public partial class MainWindow
     private void RenderPicturesTab(Panel page)
     {
         var saved = store is null ? new PicturesSettings() : PicturesSettings.Load(store.DataDirectory);
-        var place = picturesShown ?? saved.Place;
 
         var now = new TextBlock { Text = PicturesNow(saved), FontSize = 15, TextWrapping = TextWrapping.Wrap };
         AutomationProperties.SetAutomationId(now, "PicturesNow");
@@ -73,43 +70,27 @@ public partial class MainWindow
             Row(saved.On || PictureClient.Fixture ? PageButton("Check", () => CheckPicturesAsync(test: false).Forget(), id: "PicturesCheck") : null,
                 saved.On || PictureClient.Fixture ? PageButton("Draw a test picture", () => CheckPicturesAsync(test: true).Forget(), id: "PicturesTest") : null)));
 
-        var where = new StackPanel();
-        where.Children.Add(Heading("Where it draws"));
-        where.Children.Add(Note("Pictures are drawn where you choose. This choice stays on this PC; the pictures are shared with all your computers.",
-            new Thickness(0, 0, 0, 10)));
-        foreach (var (value, label, detail) in new (PicturePlace, string, string)[]
+        // The main choice: Off, or where it draws. Each option's details hold what it needs, with the button that uses it.
+        var options = OptionalExtras.PicturesChoices(saved.Place).Select(option => Enum.Parse<PicturePlace>(option.Key) switch
         {
-            (PicturePlace.Off, "Off", "Martlet doesn't offer to draw."),
-            (PicturePlace.Host, "Martlet's Pictures role (recommended)", "ComfyUI with Z-Image Turbo on this PC or another of your computers with an NVIDIA graphics card. Private and free."),
-            (PicturePlace.ComfyUi, "My own ComfyUI", "A ComfyUI you already run, on this PC or another machine, at its address. Use its models or your own workflow."),
-            (PicturePlace.OpenRouter, "OpenRouter", "Many image models in the cloud. Each picture costs money."),
-            (PicturePlace.NvidiaBuild, "NVIDIA Build", "FLUX models in NVIDIA's cloud with your NVIDIA API key.")
-        })
-        {
-            var option = Choice("PicturesPlace", label + (value == saved.Place ? "  \u00b7  in use" : ""), detail, value == place, "PicturesPlace-" + value);
-            option.Checked += (_, _) =>
+            PicturePlace.Host => option with { Details = () => PicturesHostPanel(saved) },
+            PicturePlace.ComfyUi => option with { Details = () => PicturesComfyPanel(saved) },
+            PicturePlace.OpenRouter => option with { Details = () => PicturesCloudPanel(saved, PicturePlace.OpenRouter) },
+            PicturePlace.NvidiaBuild => option with { Details = () => PicturesCloudPanel(saved, PicturePlace.NvidiaBuild) },
+            _ => option with
             {
-                picturesShown = value;
-                RenderTab();
-            };
-            where.Children.Add(option);
-        }
-        page.Children.Add(Card(where));
-
-        page.Children.Add(place switch
-        {
-            PicturePlace.Host => PicturesHostCard(saved),
-            PicturePlace.ComfyUi => PicturesComfyCard(saved),
-            PicturePlace.OpenRouter or PicturePlace.NvidiaBuild => PicturesCloudCard(saved, place),
-            _ => Card(Heading("Off"), Note("Martlet won't offer to draw pictures. Pictures it drew before stay in Creations.", new Thickness(0, 0, 0, 0)),
-                Row(saved.Place == PicturePlace.Off ? null
-                    : PageButton("Turn pictures off", () => SavePictures(new PicturesSettings(), "Pictures are off."), primary: true, id: "PicturesTurnOff")))
-        });
+                Details = () => [Note("Pictures it drew before stay in Creations.", new Thickness(0, 0, 0, 0))],
+                Action = saved.Place == PicturePlace.Off ? null
+                    : () => PageButton("Turn pictures off", () => SavePictures(new PicturesSettings(), "Pictures are off."), primary: true, id: "PicturesTurnOff")
+            }
+        }).ToList();
+        page.Children.Add(OptionPicker("Pictures", "Where it draws",
+            "Pictures are drawn where you choose. This choice stays on this PC; the pictures are shared with all your computers.", options));
     }
 
     private static string PicturesNow(PicturesSettings saved) => PictureClient.Fixture
         ? "FIXTURE - NOT AI: pictures come from the test picture maker (MARTLET_PICTURES_FIXTURE)."
-        : saved.On ? $"Martlet draws on {saved.Describe()}." : "Off. Martlet doesn't offer to draw pictures.";
+        : saved.On ? $"Martlet draws on {saved.Describe()}." : $"Off. {OptionalExtras.OffMeans(CompanionTab.Pictures)}.";
 
     /// <summary>Saves this PC's choice; the next reply offers draw_picture (or stops offering it).</summary>
     private bool SavePictures(PicturesSettings next, string done)
@@ -124,7 +105,7 @@ public partial class MainWindow
             ActionText.Text = error.Message;
             return false;
         }
-        picturesShown = null;
+        ForgetPicker("Pictures");
         picturesCheck = null;
         picturesTestImage = null;
         ErrorLog.Info($"Pictures: now {next.Describe()}.");
@@ -135,14 +116,14 @@ public partial class MainWindow
 
     // ---------- Martlet's Pictures role ----------
 
-    private Border PicturesHostCard(PicturesSettings saved)
+    /// <summary>The Pictures role's details: the computer pills (with other computers paired), where it stands on the shown
+    /// computer, Set up there, and Draw there once it is ready.</summary>
+    private List<UIElement> PicturesHostPanel(PicturesSettings saved)
     {
         var stack = new List<UIElement>
         {
-            Heading("Martlet's Pictures role"),
-            Note("ComfyUI with Z-Image Turbo (Apache-2.0), set up by Martlet in Docker like its other roles. It shares the graphics card " +
-                "with the voice and listening, uses it only while drawing and frees it a few minutes after the last picture.",
-                new Thickness(0, 0, 0, 4))
+            Note("Set up by Martlet in Docker like its other roles. It shares the graphics card with the voice and listening, uses it " +
+                "only while drawing and frees it a few minutes after the last picture.", new Thickness(0, 0, 0, 4))
         };
         var thisPc = ThisPcHost();
         var others = NetworkMap.Hosts(Inputs()).Where(h => h.HostId != thisPc?.HostId).ToArray();
@@ -179,46 +160,31 @@ public partial class MainWindow
         var state = ready ? $"Ready on {where}." + (inUse ? " Martlet draws there." : "")
             : pending ? $"Setting up on {where}..."
             : cannot ?? (picturesFailure is { } failed ? $"Setup failed on {where}: {failed}" : $"Not set up on {where} yet.");
-        var title = OptionTitle("Pictures", ready ? "ready" : null, 15);
-        AutomationProperties.SetAutomationId(title, "PicturesEngine");
-        var chips = Chips("pictures", PicturesFeatures, feature => feature switch
-        {
-            "NVIDIA GPU 8 GB+, shared" => "12 GB or more is faster. It doesn't need a card of its own: it uses the card only while drawing.",
-            "Z-Image Turbo, Apache-2.0" => "ComfyUI itself is GPL-3.0.",
-            _ => null
-        });
-        AutomationProperties.SetAutomationId(chips, "PicturesFeatures");
         var stateLine = Note(state, new Thickness(0, 4, 0, 0));
         if (cannot is not null || picturesFailure is not null && !pending && !ready) stateLine.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         AutomationProperties.SetAutomationId(stateLine, "PicturesHostState");
-        var setUp = PageButton(ready ? "Ready" : pending ? "Setting up..." : "Set up", () => SetUpPicturesAsync(onThisPc ? null : target).Forget(),
-            primary: !ready, id: "PicturesSetUp");
-        setUp.IsEnabled = !ready && !pending && cannot is null && picturesPending is null;
+        stack.Add(stateLine);
+        if (ready)
+        {
+            if (!inUse)
+                stack.Add(Row(PageButton($"Draw on {where}", () => SavePictures(new PicturesSettings
+                {
+                    Place = PicturePlace.Host, HostId = target!.HostId, Workflow = PictureWorkflow.ZImageTurbo, ChosenAt = DateTimeOffset.Now
+                }, $"Martlet now draws on {where}. Ask it to draw you something."), primary: true, id: "PicturesUseHost")));
+            return stack;
+        }
+        var setUp = PageButton(pending ? "Setting up..." : "Set up", () => SetUpPicturesAsync(onThisPc ? null : target).Forget(),
+            primary: true, id: "PicturesSetUp");
+        setUp.IsEnabled = !pending && cannot is null && picturesPending is null;
         if (cannot is not null)
         {
             setUp.ToolTip = cannot;
             ToolTipService.SetShowOnDisabled(setUp, true);
             AutomationProperties.SetHelpText(setUp, cannot);
         }
-        var text = new StackPanel { Children = { title, chips, stateLine } };
-        setUp.VerticalAlignment = VerticalAlignment.Top;
-        setUp.Margin = new Thickness(12, 0, 0, 0);
-        var row = new DockPanel();
-        DockPanel.SetDock(setUp, Dock.Right);
-        row.Children.Add(setUp);
-        row.Children.Add(text);
-        var option = new Border { Child = row, BorderThickness = new Thickness(ready ? 2 : 1), CornerRadius = new CornerRadius(12),
-            Padding = new Thickness(14, 12, 14, 12), Margin = new Thickness(0, 8, 0, 0) };
-        option.SetResourceReference(Border.BorderBrushProperty, ready ? "AccentBrush" : "BorderBrush");
-        stack.Add(option);
-        if (ready && !inUse)
-            stack.Add(Row(PageButton($"Draw on {where}", () => SavePictures(new PicturesSettings
-            {
-                Place = PicturePlace.Host, HostId = target!.HostId, Workflow = PictureWorkflow.ZImageTurbo, ChosenAt = DateTimeOffset.Now
-            }, $"Martlet now draws on {where}. Ask it to draw you something."), primary: true, id: "PicturesUseHost")));
-        return Card([.. stack]);
+        stack.Add(Row(setUp));
+        return stack;
     }
-
     /// <summary>Why this PC can't run the Pictures role: no NVIDIA graphics card, or one with less than 8 GB; null when it can or
     /// Martlet hasn't read this PC's hardware yet.</summary>
     private string? ThisPcCannotDraw()
@@ -345,7 +311,7 @@ public partial class MainWindow
 
     // ---------- the owner's ComfyUI ----------
 
-    private Border PicturesComfyCard(PicturesSettings saved)
+    private List<UIElement> PicturesComfyPanel(PicturesSettings saved)
     {
         var mine = saved.Place == PicturePlace.ComfyUi ? saved : null;
         var address = new TextBox { MaxLength = 512, Width = 420, HorizontalAlignment = HorizontalAlignment.Left,
@@ -381,7 +347,7 @@ public partial class MainWindow
         }
         Show();
         workflow.SelectionChanged += (_, _) => { tabEdited = true; Show(); };
-        return Card(Heading("My own ComfyUI"),
+        return [
             Note("Martlet sends ComfyUI the workflow and the description through ComfyUI's own API and fetches the picture. Start ComfyUI " +
                 "with --listen so other computers can reach it (it has no password, so only on your own network).", new Thickness(0, 0, 0, 8)),
             new Label { Content = "_Address", Target = address, Padding = new Thickness(0, 0, 0, 4) }, address, state,
@@ -405,7 +371,7 @@ public partial class MainWindow
                     }, $"Martlet now draws with ComfyUI at {url}. Ask it to draw you something.");
                 }
                 catch (ContractException error) { ActionText.Text = error.Message; }
-            }, primary: true, id: "PicturesUseComfy")));
+            }, primary: true, id: "PicturesUseComfy"))];
 
         IReadOnlyList<string> Checkpoints() =>
             picturesComfyStatus?["models"]?["checkpoints"] is JsonArray files ? [.. files.Select(f => f?.ToString()).OfType<string>()] : [];
@@ -468,7 +434,7 @@ public partial class MainWindow
 
     // ---------- cloud providers ----------
 
-    private Border PicturesCloudCard(PicturesSettings saved, PicturePlace place)
+    private List<UIElement> PicturesCloudPanel(PicturesSettings saved, PicturePlace place)
     {
         var name = place == PicturePlace.OpenRouter ? "OpenRouter" : "NVIDIA Build";
         var mine = saved.Place == place ? saved : null;
@@ -490,14 +456,14 @@ public partial class MainWindow
         AutomationProperties.SetAutomationId(consent, "PicturesConsent");
         model.TextChanged += (_, _) => { if (model.IsKeyboardFocusWithin) { tabEdited = true; consent.IsChecked = false; } };
         key.PasswordChanged += (_, _) => tabEdited = true;
-        return Card(Heading(name),
+        return [
             Note(place == PicturePlace.OpenRouter
                 ? "Any OpenRouter model that draws (openrouter.ai/models, output: image). Martlet asks for one picture at about 1K in the shape it chose."
                 : "NVIDIA's FLUX models (build.nvidia.com), with the same nvapi- key as NVIDIA Build's chat models.", new Thickness(0, 0, 0, 8)),
             new Label { Content = "_Model ID", Target = model, Padding = new Thickness(0, 0, 0, 4) }, model,
             new Label { Content = "API _key", Target = key, Padding = new Thickness(0, 8, 0, 4) }, key, keyStatus, consent,
             Row(PageButton($"Draw with {name}", () => SavePicturesCloudAsync(place, model.Text.Trim(), key, consent.IsChecked == true, mine, thinking).Forget(),
-                primary: true, id: "PicturesUseCloud")));
+                primary: true, id: "PicturesUseCloud"))];
     }
 
     private async Task SavePicturesCloudAsync(PicturePlace place, string model, PasswordBox keyBox, bool consent, PicturesSettings? saved, SetupRoute? thinking)

@@ -5,8 +5,17 @@ This is OCR (optical character recognition). Martlet uses it together with the
 vision model. The vision model sees the whole picture. OCR reads small text
 exactly: a health value, a score, a kill feed, "VICTORY", a chat line.
 
-Set it up in **Companion › Reading**. The choice stays on this PC
-(`reading.json` in Martlet's data folder).
+Set it up in **Companion › Reading**, an optional extra. The choice stays on
+this PC (`reading.json` in Martlet's data folder).
+
+The page has the standard order: **Now** (what Martlet reads with, the newest
+read and **Read my screen now**), then *Where it reads* as an option picker:
+**Off**, **Windows OCR on this PC** and **Martlet's Reading role**. Each row
+shows its key facts, and **Compare them** shows them side by side: where it
+runs, the download, the read time, the processor threads, the languages, how
+it reads game fonts, the cost and where screenshots go. Choosing a row shows its
+details and the button that uses it (for the Reading role, the computer and
+**Set up**).
 
 ## Where Martlet reads
 
