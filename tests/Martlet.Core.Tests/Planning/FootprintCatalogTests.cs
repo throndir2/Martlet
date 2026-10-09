@@ -35,8 +35,39 @@ public sealed class FootprintCatalogTests
         {
             Assert.False(string.IsNullOrWhiteSpace(option.Source), option.Id);
             if (!option.IsLocal) Assert.Equal(ResourceUse.Zero, option.Reserve);
-            else Assert.True(option.Peak.DiskGb > 0 || option.Id == "loudness-lipsync" || option.Id == "windows-speech", option.Id);
+            else Assert.True(option.Peak.DiskGb > 0 || option.UsesThinking || option.Id is "loudness-lipsync" or "windows-speech" or "reading:windows-ocr",
+                option.Id);
         }
+    }
+
+    [Fact]
+    public void AnOptionThatUsesThinkingIsAnImageOrAudioModelAndTakesNothing()
+    {
+        var itself = Options.Where(o => o.UsesThinking).ToList();
+        Assert.Equal(["hearing:thinking", "vision:thinking"], itself.Select(o => o.Id).Order(StringComparer.Ordinal));
+        Assert.All(itself, o => Assert.Equal(ResourceUse.Zero, o.Reserve));
+        Assert.All(itself, o => Assert.Equal(GpuRequirement.None, o.Gpu));
+        Assert.StartsWith("Runs with Thinking", FootprintCatalog.Default.Find("vision:thinking")!.WhereItRuns, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EveryHostRoleThatDoesAPartHasAnOption()
+    {
+        // The audit in docs/RECOMMENDED_SETUPS.md#every-way-to-extend-martlet: every host role in deploy/host/roles takes compute,
+        // so the planner knows its footprint.
+        var roles = Directory.GetDirectories(Path.Combine(RepositoryRoot(), "deploy", "host", "roles")).Select(Path.GetFileName).ToList();
+        Assert.NotEmpty(roles);
+        foreach (var role in roles)
+            Assert.True(Options.Any(o => o.IsLocal && o.HostRoleKind == role), $"No catalog option runs the {role} host role.");
+        Assert.Equal(PlanComponent.Reading, Options.Single(o => o.HostRoleKind == "ocr").Component);
+        Assert.Equal(PlanComponent.SmartHome, Options.Single(o => o.HostRoleKind == "home-assistant").Component);
+    }
+
+    private static string RepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
+            if (Directory.Exists(Path.Combine(directory.FullName, "deploy", "host", "roles"))) return directory.FullName;
+        throw new DirectoryNotFoundException("The repository root (deploy/host/roles) was not found above the test's folder.");
     }
 
     [Fact]

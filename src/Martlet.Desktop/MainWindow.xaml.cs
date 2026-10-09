@@ -117,7 +117,9 @@ public partial class MainWindow : ThemedWindow
         {
             // MARTLET_SIMULATE_MICROPHONE / MARTLET_SIMULATE_SPEAKERS: fixture devices for MCP verification (never real audio).
             var simulated = SimulatedAudio.Microphone();
-            ICaptureDeviceFactory microphones = simulated is null ? new WasapiCaptureDeviceFactory() : simulated;
+            // The microphone keeps its last seconds in memory only while a check-in that is on asks for them.
+            ICaptureDeviceFactory microphones = new Martlet.Audio.KeptCaptureDeviceFactory(
+                simulated is null ? new WasapiCaptureDeviceFactory() : simulated, checkInMicrophone);
             IPlaybackDeviceFactory speakers = SimulatedAudio.Speakers() is { } silent ? silent : new WasapiDeviceFactory();
             // Martlet sings through the same output as its voice; the character's mouth follows the vocals. (The FIXTURE song
             // maker's songs play into a silent output, so automated checks never sound.) Songs are kept as creations.
@@ -138,7 +140,7 @@ public partial class MainWindow : ThemedWindow
                 echoReducer: simulated is not null ? null
                     : new(microphones, new WasapiLoopbackReferenceFactory(), Martlet.EchoCancellation.WebRtcEchoCanceller.Create),
                 pcAudio: simulated is not null ? null : new Martlet.Audio.PcAudioCaptureFactory(discordCalls.Sources(new WasapiPcAudioSourceFactory()),
-                    sound: new Martlet.Audio.PcSoundBuffer()),
+                    sound: checkInPcSound),
                 pcActivity: simulated is not null ? null : new PcActivityMonitor(() => new WindowsPcActivitySource()),
                 characterCues: avatar.Cues, characterActions: CharacterActionPromptFor, history: conversationHistory, singing: singing,
                 board: contextBoard, turnJudge: SmartTurnJudge.Bundled(), listeningStandIn: ListeningStandIn);

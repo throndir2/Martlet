@@ -4,6 +4,7 @@ using Martlet.Avatar.Hosting;
 using Martlet.Core.Cluster;
 using Martlet.Core.Installation;
 using Martlet.Core.Planning;
+using Martlet.Core.Settings;
 using Martlet.Desktop;
 
 namespace Martlet.Desktop.Tests;
@@ -448,11 +449,77 @@ public sealed class RecommendedSetupTests
         var parts = RecommendedSetupReview.From(recommendation, build).Parts;
 
         Assert.Equal("1. Thinking (needed): Gemma 4 E2B in Ollama on This PC's RTX 4080.", parts[0].Text);
-        Assert.False(parts[0].CanBeOff);
+        Assert.False(parts[0].OffChoice);
         Assert.Equal("7. Singing (optional): Off: Martlet doesn't sing.", parts[1].Text);
-        Assert.True(parts[1].CanBeOff);
+        Assert.True(parts[1].OffChoice);
         Assert.True(parts[1].OwnerOff);
         Assert.Equal("Singing", parts[1].Key);
+    }
+
+    [Fact]
+    public void A_part_set_on_its_Companion_page_is_optional_but_has_no_Off_in_the_review()
+    {
+        var build = Build(Plan());
+        var recommendation = Recommendation(build) with
+        {
+            Components =
+            [
+                new ComponentStatus(PlanComponent.Reading, 7, ComponentNecessity.Optional, true, "Windows OCR inside Martlet on this PC's processor",
+                    "It is fast and free, and nothing leaves this PC.")
+            ]
+        };
+
+        var part = RecommendedSetupReview.From(recommendation, build).Parts.Single();
+
+        Assert.Equal("7. Reading (optional): Windows OCR inside Martlet on this PC's processor.", part.Text);
+        Assert.False(part.OffChoice);
+        // The review's Off never keeps a part this PC sets on its page.
+        Assert.Empty(new RecommendedSetupMemory().WithOff(PlanComponent.Reading, true).WithOff(PlanComponent.Vision, true).OffParts);
+        var sources = RecommendedSetupInputs.Sources(Network(Plan()), null, "desktop-desk", "desk-host", 400, off: [PlanComponent.SmartHome, PlanComponent.Pictures]);
+        Assert.Equal([PlanComponent.Pictures], RecommendedSetupInputs.Request(sources).Request.Off);
+    }
+
+    [Fact]
+    public void This_PCs_page_choices_reach_the_request()
+    {
+        var senses = new SenseModels
+        {
+            Image = new SenseModel
+            {
+                Source = SenseSource.Own,
+                Own = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = "http://127.0.0.1:11434/v1", ModelId = "qwen2.5vl:7b" }
+            },
+            Audio = new SenseModel
+            {
+                Source = SenseSource.Own,
+                Own = new DeepThinkingSettings { Place = DeepThinkingPlace.Endpoint, Origin = "https://api.example.com/v1", ModelId = "omni-1" }
+            }
+        };
+        var choices = RecommendedSetupInputs.Choices(watch: true, hearVoice: null, senses,
+            new Martlet.Core.Reading.ReadingSettings { Place = Martlet.Core.Reading.ReadingPlace.Host, HostId = "cpu-box" },
+            "http://homeassistant.local:8123").ToDictionary(c => c.Component);
+
+        Assert.Equal([PlanComponent.Vision, PlanComponent.Reading, PlanComponent.Hearing, PlanComponent.SmartHome], choices.Keys);
+        Assert.Equal("vision:qwen2.5vl:7b", choices[PlanComponent.Vision].OptionId);
+        Assert.True(choices[PlanComponent.Hearing].On);
+        Assert.Null(choices[PlanComponent.Hearing].OptionId);
+        Assert.Equal("omni-1, online (api.example.com)", choices[PlanComponent.Hearing].Where);
+        Assert.Equal("reading:rapidocr", choices[PlanComponent.Reading].OptionId);
+        Assert.Equal("cpu-box", choices[PlanComponent.Reading].HostId);
+        Assert.Equal("Your own Home Assistant at homeassistant.local", choices[PlanComponent.SmartHome].Where);
+
+        var defaults = RecommendedSetupInputs.Choices(watch: false, hearVoice: false, new SenseModels(), new Martlet.Core.Reading.ReadingSettings(), "")
+            .ToDictionary(c => c.Component);
+        Assert.False(defaults[PlanComponent.Vision].On);
+        Assert.Equal("vision:thinking", defaults[PlanComponent.Vision].OptionId);
+        Assert.False(defaults[PlanComponent.Hearing].On);
+        Assert.Equal("reading:windows-ocr", defaults[PlanComponent.Reading].OptionId);
+        Assert.False(defaults[PlanComponent.SmartHome].On);
+
+        var sources = RecommendedSetupInputs.Sources(Network(Plan()), null, "desktop-desk", "desk-host", 400, choices: [.. choices.Values]);
+        var request = RecommendedSetupInputs.Request(sources).Request;
+        Assert.Equal(4, request.Choices.Count);
+        Assert.True(request.CompanionPcs >= 1);
     }
 
     [Fact]

@@ -25,6 +25,7 @@ namespace Martlet.Desktop;
 public partial class MainWindow
 {
     private const string CharacterKey = "character", TalkKey = "talk", SpeechDisplayKey = "speech-display", AppearanceKey = "appearance",
+        AppearanceCustomKey = "appearance-custom",
         CharacterActionsKey = "character-actions", TouchTemperamentKey = "touch-temperament", VoiceRecognitionKey = "voice-recognition", VoiceIdKey = "voice-id",
         SmartHomeKey = "smart-home", UpdatesKey = "updates", ModelAbilitiesKey = "model-abilities";
     private static readonly JsonSerializerOptions SharedJson = new()
@@ -143,6 +144,7 @@ public partial class MainWindow
         TalkKey => "how you talk",
         SpeechDisplayKey => "speech bubbles and subtitles",
         AppearanceKey => "the theme",
+        AppearanceCustomKey => "your custom palette",
         CharacterActionsKey => "emotes and motions",
         TouchTemperamentKey => "touch temperaments",
         VoiceRecognitionKey => "recognizing voices",
@@ -339,6 +341,20 @@ public partial class MainWindow
             return Task.FromResult(captions.Update(captions.Preferences with { SpeechBubbles = value.SpeechBubbles, Subtitles = value.Subtitles })
                 ? SharedApply.Done : SharedApply.Waiting("They couldn't be saved on this PC."));
         });
+        // The owner's custom palette travels before the theme, so a computer that switches to Custom has its colors.
+        yield return new DelegateSection(AppearanceCustomKey, "Custom palette", _ =>
+        {
+            var colors = Appearance.LoadCustom(directory);
+            return Task.FromResult<SharedLocal?>(colors is null ? null
+                : new(Appearance.ShareCustom(colors), null, false, FileTime(Appearance.CustomPath(directory))));
+        }, (setting, _) =>
+        {
+            if (Appearance.ParseCustom(setting.Value) is not { } colors)
+                return Task.FromResult(SharedApply.Waiting("It was made on a newer Martlet. Update this PC to use it."));
+            Appearance.SaveCustom(directory, colors);
+            FollowCustomTheme(colors);
+            return Task.FromResult(SharedApply.Done);
+        });
         yield return new DelegateSection(AppearanceKey, "Theme", _ =>
         {
             var path = Path.Combine(directory, "appearance.txt");
@@ -351,7 +367,8 @@ public partial class MainWindow
                 return Task.FromResult(SharedApply.Waiting("It was chosen on a newer Martlet. Update this PC to use it."));
             Appearance.Save(directory, theme);
             if (IsLoaded) ThemeChoice.SelectedIndex = (int)theme;
-            else (Application.Current as App)?.ApplyTheme(theme, characterThemes.Colors(theme));
+            else (Application.Current as App)?.ApplyTheme(theme,
+                theme == AppearanceTheme.Custom ? Appearance.LoadColors(directory, theme) : characterThemes.Colors(theme));
             return Task.FromResult(SharedApply.Done);
         });
         yield return new DelegateSection(CharacterActionsKey, "Emotes and motions", _ =>

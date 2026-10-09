@@ -78,6 +78,19 @@ internal sealed record CapacityBar(CapacityResource Resource, double? Total, dou
 
     /// <summary>"Graphics memory: 12-14 of 24 GB planned (50-58%), 10 GB free. In use now: 9.5 GB (40%)."</summary>
     internal string Text => DeviceCapacity.BarText(this);
+
+    /// <summary>The hover breakdown: a row per job (in segment order), then what is free, kept for the system and in use now.</summary>
+    internal IReadOnlyList<CapacityRow> Breakdown => DeviceCapacity.Breakdown(this);
+}
+
+/// <summary>What a row of a bar's hover breakdown shows: a job's part, what is free, what the jobs need beyond what the device
+/// can give, what is kept for the system or what the device reports in use now.</summary>
+internal enum CapacityRowKind { Job, Free, Short, Kept, Live }
+
+/// <summary>One row of a bar's hover breakdown: "Singing (ACE-Step + SoulX): 5-7.2 GB (42-60%)".</summary>
+internal sealed record CapacityRow(CapacityRowKind Kind, string Label, string Amount)
+{
+    public override string ToString() => $"{Label}: {Amount}";
 }
 
 /// <summary>Another component that also fits in what a device (or the whole network) has left: <paramref name="Noun"/> is
@@ -190,6 +203,40 @@ internal static class DeviceCapacity
         if (bar.Live is { } used) text += $" In use now: {Amount(bar.Resource, used)} ({Pct(bar.LivePercent!.Value)}).";
         return text;
     }
+
+    /// <summary>"Graphics memory (12 GB)", the hover breakdown's heading.</summary>
+    internal static string BreakdownTitle(CapacityBar bar) =>
+        $"{Label(bar.Resource)} ({(bar.Total is > 0 ? Amount(bar.Resource, bar.Total.Value) : "not reported")})";
+
+    /// <summary>A bar's hover breakdown: what each job takes (what it usually holds, then the most), then what is free for
+    /// Martlet (or how much more the jobs need than the device can give), what is kept for the system and what is in use now.</summary>
+    internal static IReadOnlyList<CapacityRow> Breakdown(CapacityBar bar)
+    {
+        var resource = bar.Resource;
+        var rows = bar.Shares.Select(s => new CapacityRow(CapacityRowKind.Job, s.Component.Name,
+            AmountRange(resource, s.Component.Usual(resource), s.Component.Need.Of(resource)) +
+            (bar.Total is > 0 ? $" ({PctRange(s.UsualPercent, s.Percent)})" : ""))).ToList();
+        if (bar.Total is not { } total || total <= 0) return rows;
+        var limit = bar.Limit!.Value;
+        var room = bar.Usable ?? total;
+        var free = bar.Usable is null ? "Free" : "Free for Martlet";
+        if (bar.Over)
+            rows.Add(new(CapacityRowKind.Short, "More than it can give", AmountRange(resource, bar.Usual - limit, bar.Planned - limit)));
+        else if (bar.Tight)
+            rows.Add(new(CapacityRowKind.Short, "More than it can give at their busiest", Amount(resource, bar.Planned - limit)));
+        else if (bar.Planned > room)
+            rows.Add(new(CapacityRowKind.Free, free, "none: shared, as jobs rarely work at the same moment"));
+        else
+            rows.Add(new(CapacityRowKind.Free, free, $"{Amount(resource, bar.Headroom!.Value)} ({Pct(Percent(bar.Headroom.Value, total))})"));
+        if (bar.Usable is { } usable && total - usable >= 0.05)
+            rows.Add(new(CapacityRowKind.Kept, "Kept for the system", Amount(resource, total - usable)));
+        if (bar.Live is { } used) rows.Add(new(CapacityRowKind.Live, "In use now", $"{Amount(resource, used)} ({Pct(bar.LivePercent!.Value)})"));
+        return rows;
+    }
+
+    /// <summary>The hover breakdown as plain lines (the bar's accessible help text): the heading, then one row a line.</summary>
+    internal static string BreakdownText(CapacityBar bar) =>
+        string.Join(Environment.NewLine, [BreakdownTitle(bar), .. Breakdown(bar).Select(r => r.ToString())]);
 
     /// <summary>"Voice (Dia): 37-82% graphics memory, 5-6% memory, 2% processor." (the resources it takes on this device: what it
     /// usually holds and the most it takes, when they differ).</summary>

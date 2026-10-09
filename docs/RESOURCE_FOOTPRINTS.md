@@ -261,6 +261,32 @@ holds its own copy.
   ([Thunder Compute guide](https://www.thundercompute.com/blog/z-image-turbo-comfyui)).
   Martlet frees it a few minutes after the last picture. Not measured.
 
+### Vision, Reading, Hearing and Smart home
+
+| Option id | GPU | VRAM steady / peak | RAM | CPU | Disk | Speed | Evidence |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `vision:thinking`, `hearing:thinking` | none of its own | 0 | 0 | 0 | 0 | | Thinking's own model takes the pictures or recordings |
+| `vision:gemma4:e2b`, `hearing:gemma4:e2b` | any | **3.3** / 3.3 M | 1.5-2 E | 1-2 E | 7.5 S | not measured | M (as Thinking) |
+| `vision:qwen3.5:4b` | any | **4.1** / 4.1 M | 0.5-1 E | 1-2 E | 4.0 S | not measured | M (as Thinking) |
+| `hearing:gemma4:e4b` | any | **4.9** / 4.9 M | 2.5-3 E | 1-2 E | 9.5 S | not measured | M (as Thinking) |
+| `vision:qwen2.5vl:7b` | any | 7 / 7.5 E | 1-1.5 E | 1-2 E | 6.0 S | not measured | E |
+| `reading:windows-ocr` | CPU (in Martlet, Windows) | 0 | 0.05-0.1 E | 1 E while it reads | 0 (built in) | ~15 ms per 1024 x 576 screenshot ([Reading](READING.md)) | E |
+| `reading:rapidocr` | CPU (`ocr` role) | 0 | 0.4-0.6 E | 4 S ([OCR host](OCR_HOST.md)) | 0.5 E (15 MB models + image) | **0.9 s** M on a 24-thread processor | E |
+| `smart-home:home-assistant` | CPU (`home-assistant` role, Linux Docker Engine) | 0 | 0.5-1 E | 0.2 / 1 E | 2 E (image) | | E |
+
+- **Image and audio models** run in Ollama (on this PC, or a paired
+  computer's for pictures), not in a host role of their own. Their numbers are
+  the same models' numbers as Thinking at 8,192 tokens; a picture or a
+  recording adds buffers that nobody measured. Qwen2.5-VL 7B is the ollama.com
+  download (6.0 GB) plus its KV cache at 8,192 tokens (about 0.5 GB: 28
+  layers, 4 KV heads, 57 KiB a token) and a picture's buffers. Description
+  times are not measured, so the catalog has none.
+- **Reading:** Windows OCR is built into Windows; the time is from
+  [Reading](READING.md). The Reading role's read time was measured there; its
+  memory and image are estimates.
+- **Home Assistant** asks for 2 GB of memory for a whole Home Assistant OS;
+  the container alone with a few integrations takes less. Not measured.
+
 ### Always on in the app (not catalog options)
 
 Measured on the i7-13700K the same way as Parakeet:
@@ -275,7 +301,8 @@ Measured on the i7-13700K the same way as Parakeet:
 ### Hosted options
 
 `hosted:*` options (NVIDIA Build, OpenRouter, OpenAI, OpenAI voice and
-transcription) use no local resources beyond the app's network request.
+transcription, the online image, audio and picture models) use no local
+resources beyond the app's network request.
 
 ## What could not be measured here
 

@@ -11,8 +11,8 @@ public static class PlacementEngine
     public const double GpuReserveGb = 0.8;
     /// <summary>Processor threads may be shared up to this factor: components rarely work at the same moment.</summary>
     public const double CpuOversubscription = 1.5;
-    /// <summary>Score bonus for doing audio-path work (voice, listening, lip-sync, character) locally: no per-turn
-    /// network delay, no cost, nothing leaves the network.</summary>
+    /// <summary>Score bonus for doing audio-path work (voice, listening, lip-sync, character) and what reads your screen or hears
+    /// your voice (vision, reading, hearing) locally: no per-turn network delay, no cost, nothing leaves the network.</summary>
     private const int LocalAudioBonus = 20;
 
     public static PlacementPlan Plan(PlanRequest request, FootprintCatalog? catalog = null)
@@ -124,7 +124,7 @@ public static class PlacementEngine
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(option);
-        if (!option.IsLocal) return 0;
+        if (!option.IsLocal || option.UsesThinking) return 0;
         var count = 0;
         foreach (var machine in plan.Machines.Where(m => machineId is null || m.MachineId == machineId))
         {
@@ -279,7 +279,11 @@ public static class PlacementEngine
                     case PlanStep.ThinkingPrimary: ThinkingPrimary(); break;
                     case PlanStep.ThinkingFallback: ThinkingFallback(); break;
                     case PlanStep.ListeningUpgrade: ListeningUpgrade(); break;
+                    case PlanStep.Vision: Sense(PlanComponent.Vision); break;
+                    case PlanStep.Reading: InAppFirst(PlanComponent.Reading); break;
+                    case PlanStep.Hearing: Sense(PlanComponent.Hearing); break;
                     case PlanStep.DeepThinking: Simple(PlanComponent.DeepThinking); break;
+                    case PlanStep.SmartHome: Simple(PlanComponent.SmartHome); break;
                     case PlanStep.Singing: Simple(PlanComponent.Singing); break;
                     case PlanStep.Pictures: Simple(PlanComponent.Pictures); break;
                 }
@@ -303,9 +307,9 @@ public static class PlacementEngine
                     continue;
                 }
                 var role = seen.Add(current.Component) ? AssignmentRole.Primary : AssignmentRole.Fallback;
-                if (!option.IsLocal)
+                if (!option.IsLocal || option.UsesThinking)
                 {
-                    assignments.Add(new(current.Component, option, null, null, role, "Runs today."));
+                    assignments.Add(new(current.Component, option, option.IsLocal ? current.MachineId : null, null, role, "Runs today."));
                     continue;
                 }
                 var node = nodes.FirstOrDefault(n => n.Spec.Id == current.MachineId);
@@ -370,6 +374,7 @@ public static class PlacementEngine
             if (option.IsLocal)
             {
                 score += option.Component is PlanComponent.Voice or PlanComponent.Listening or PlanComponent.LipSync or PlanComponent.Character
+                    or PlanComponent.Vision or PlanComponent.Reading or PlanComponent.Hearing
                     ? LocalAudioBonus
                     : Preference == HostingPreference.PreferHosted ? 0 : 5;
             }
@@ -443,7 +448,7 @@ public static class PlacementEngine
         private void Unplace(Assignment assignment)
         {
             assignments.Remove(assignment);
-            if (assignment.MachineId is null) return;
+            if (assignment.MachineId is null || assignment.Option.UsesThinking) return;
             var node = nodes.First(n => n.Spec.Id == assignment.MachineId);
             var item = node.Items.First(i => i.Component == assignment.Component && i.OptionId == assignment.Option.Id);
             node.Items.Remove(item);
@@ -476,7 +481,7 @@ public static class PlacementEngine
                 return;
             }
             var candidates = catalog.For(component)
-                .Where(o => o.IsLocal ? gpu || !o.UsesGpu : ExternalAllowed(o))
+                .Where(o => !o.UsesThinking && (o.IsLocal ? gpu || !o.UsesGpu : ExternalAllowed(o)))
                 .OrderByDescending(Score).ThenBy(o => o.IsLocal ? 0 : 1).ThenBy(o => o.GpuGb).ToList();
             var chosen = candidates.FirstOrDefault(Fits);
             if (chosen is null)
@@ -489,9 +494,43 @@ public static class PlacementEngine
             if (!chosen.IsLocal && chosen.NeedsSignup && !Configured(chosen)) SignUp(chosen);
         }
 
+        /// <summary>Vision or Hearing: Thinking's own model when it sees (or hears), so nothing more runs and it takes no room;
+        /// otherwise an image or audio model of its own, as <see cref="Simple"/> picks one.</summary>
+        private void Sense(PlanComponent component)
+        {
+            if (!request.Wants(component))
+            {
+                Simple(component);
+                return;
+            }
+            var thinking = assignments.FirstOrDefault(a => a.Component == PlanComponent.Thinking && a.Role == AssignmentRole.Primary);
+            var vision = component == PlanComponent.Vision;
+            if (thinking is not null && (vision ? thinking.Option.SeesImages : thinking.Option.HearsAudio) &&
+                catalog.For(component).FirstOrDefault(o => o.UsesThinking) is { } itself)
+            {
+                assignments.Add(new(component, itself, thinking.MachineId, thinking.GpuIndex, AssignmentRole.Primary,
+                    $"{thinking.Option.DisplayName}, Thinking's own model, {(vision ? "sees" : "hears")} itself, so nothing more runs."));
+                return;
+            }
+            Simple(component);
+        }
+
+        /// <summary>Reading: inside Martlet on the PC you talk to first (Windows OCR: fast, free and nothing leaves the PC), else
+        /// as <see cref="Simple"/> picks (the Reading role on a processor).</summary>
+        private void InAppFirst(PlanComponent component)
+        {
+            if (request.Wants(component) &&
+                catalog.For(component).FirstOrDefault(o => o.IsLocal && o.RunsInApp && Fits(o)) is { } inApp)
+            {
+                Place(inApp, AssignmentRole.Primary, $"{inApp.DisplayName} inside Martlet on the processor: fast, free, and nothing leaves this PC.");
+                return;
+            }
+            Simple(component);
+        }
+
         private DropReason DropReasonFor(PlanComponent component)
         {
-            var local = catalog.For(component).Where(o => o.IsLocal).ToList();
+            var local = catalog.For(component).Where(o => o.IsLocal && !o.UsesThinking).ToList();
             if (local.Count > 0 && local.All(o => o.Gpu == GpuRequirement.Nvidia) && !nodes.Any(n => n.Spec.HasNvidia && !n.Spec.KeepGpuForGames))
                 return DropReason.NeedsNvidia;
             if (Preference == HostingPreference.PreferLocal && catalog.For(component).Any(o => !o.IsLocal)) return DropReason.KeptLocal;
@@ -501,7 +540,7 @@ public static class PlacementEngine
         private string WhyNothingFits(PlanComponent component)
         {
             var name = ComponentRanking.Name(component);
-            var smallest = catalog.For(component).Where(o => o.IsLocal).OrderBy(o => o.GpuGb).ThenBy(o => o.Peak.RamGb).FirstOrDefault();
+            var smallest = catalog.For(component).Where(o => o.IsLocal && !o.UsesThinking).OrderBy(o => o.GpuGb).ThenBy(o => o.Peak.RamGb).FirstOrDefault();
             var need = smallest is null ? "" : smallest.UsesGpu
                 ? $" {smallest.DisplayName} needs {(smallest.Gpu == GpuRequirement.Nvidia ? "an NVIDIA" : "a")} graphics card with about {Gb(smallest.GpuGb)} GB free."
                 : $" {smallest.DisplayName} needs about {Gb(smallest.Peak.RamGb)} GB of free memory.";
@@ -630,9 +669,11 @@ public static class PlacementEngine
             foreach (var assignment in assignments.Where(a => a.Role == AssignmentRole.Primary).ToList())
             {
                 var option = assignment.Option;
+                // Thinking's own model sees or hears: a model of its own would only add work.
+                if (option.UsesThinking) continue;
                 // Thinking: a smarter local model that hears, when it fits beside everything else in place of the current one.
                 var better = catalog.For(assignment.Component)
-                    .Where(o => o.IsLocal && o.QualityTier > option.QualityTier &&
+                    .Where(o => o.IsLocal && !o.UsesThinking && o.QualityTier > option.QualityTier &&
                         (assignment.Component != PlanComponent.Thinking || o.HearsAudio || !option.HearsAudio))
                     .OrderBy(o => o.QualityTier).ToList();
                 if (better.Count == 0) continue;

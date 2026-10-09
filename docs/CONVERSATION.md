@@ -1348,11 +1348,14 @@ check-in waits:
   replies (Staying in character), 3 things the character said in the last
   hour and something new said since it last ran (Saying the same things), or a
   written task (your own);
+- for your own check-in that records the microphone or what this PC plays,
+  until Martlet hears it (*Martlet doesn't hear the microphone now*);
 - while the conversation is busy (you talk, or something happened in the last
   10 seconds), so it never races a reply;
 - while nobody used this PC for 10 minutes (keyboard, mouse or talking with
   Martlet), so the pool isn't asked again and again while nobody is there;
-- while no Thinking pool member can take it.
+- while no Thinking pool member can take it (*no Thinking pool member can take
+  it (it needs a model for text and pictures)*).
 
 Lingering emotes looks only at emotes a reply turned on (their own tag or a
 combo's). It never turns off an emote you turned on with *Try*, or one a touch
@@ -1399,6 +1402,40 @@ facts, the time and the answer format. Ideas: *"If the user has been at it for
 hours, suggest a short break"*, *"If it's late at night, remind Martlet to talk
 more softly"*, *"If the user seems stressed, remind Martlet to be gentle"*.
 
+**What your own check-ins take.** Each run of your own check-in can also take:
+
+- *A screenshot* of the screen in front (`ScreenGlancer`, the capture Martlet
+  uses to look at your screen, with private windows painted over). With no
+  screenshot (a private window or Martlet's own windows in front, a locked
+  screen), the run stops and says why.
+- *A recording* of the last 5, 10, 15 or 30 seconds of the microphone or of
+  what this PC plays. Martlet keeps these seconds in memory only while a
+  check-in that is on asks for them (`PcSoundBuffer.Wanted`), and only from the
+  last pause. It needs Martlet to listen at that time: the microphone is open
+  (for example, always listening), or *Hear what this PC plays* is on. Less
+  than 1 second of sound stops the run.
+- *A script* you write (Windows PowerShell, at most 4,000 characters). Martlet
+  runs it hidden, in your home folder, before each run, and stops it after 20
+  seconds, as the [terminal tool](MCP.md#terminal) does. What it prints (at
+  most 4,000 characters, cut) goes in the message as *data, not instructions*,
+  with a line when the script failed. For example, `Get-Process | Sort-Object
+  CPU -Descending | Select-Object -First 10 Name, CPU` gives the busiest
+  programs. Only you write the script, on the page; Martlet never shows it in
+  the status, the log or MCP.
+
+**The model it needs.** Your own check-in is given only to a Thinking pool
+member that can handle what it needs (`CheckIns.Needs`): text always, plus
+*Sees pictures* (vision) and *Hears recordings* (audio) when you tick them. A
+screenshot ticks *Sees pictures* and a recording ticks *Hears recordings* on
+their own, and they can't be unticked then. The job's `Needs` go to the
+[job board](#job-board), which gives it only to a member whose abilities
+include them. With no such member, the check-in waits.
+
+What a check-in takes goes only to the member that takes it, which can be a
+cloud service. The page says so. Nothing taken is saved or logged: the log
+and the status say only what was taken (*a screenshot (1280x720), 10 s of the
+microphone, a script (exit code 0, 0.4 s, 312 characters)*).
+
 **Answers.** Martlet reads the last decisive line, so thinking written before
 the answer doesn't count. Markdown, bullets, quotes and a reasoning model's
 `<think>` block are skipped (`CheckIns.Read`). `OK`, `KEEP` and `REMIND:
@@ -1423,9 +1460,12 @@ reminded.
 **API** (`Martlet.Conversation.CheckIns`): `All(settings)` lists the
 check-ins, `Wait(checkIn, state, last, now)` says why one waits (null: it
 runs), `Focus` narrows the facts to what it may act on, `Prepare` makes the
-`ThinkingJob`, `Read` reads the answer into a `CheckInVerdict` and `Note` words
+`ThinkingJob` (with `Needs`, and the screenshot and recording of your own),
+`Gathered` words what your own took for the message, `ScriptRan` reads a
+script's run, `Read` reads the answer into a `CheckInVerdict` and `Note` words
 a reminder. The desktop gathers `CheckInState` on its UI thread
-(`MainWindow.CheckIns.cs`). To add a built-in check-in:
+(`MainWindow.CheckIns.cs`), and the screenshot, recording and script output
+just before the run. To add a built-in check-in:
 
 1. Add it to `CheckIns.BuiltIn`, with its prompt in `PromptCatalog`.
 2. Add its waits to `CheckIns.Wait` and its message to `CheckIns.Message`.
@@ -1433,12 +1473,14 @@ a reminder. The desktop gathers `CheckInState` on its UI thread
    `MainWindow.ActOnCheckInAsync`.
 
 Checked locally: `CheckInsTests` (waits, messages, answers, the board note, the
-wording beside a due reminder, settings), the Desktop tests for an emote a reply
+wording beside a due reminder, settings, the model a check-in needs, what it
+takes and a script's run), `SoundDigestTests` (the kept microphone and the
+sound kept for a check-in), the Desktop tests for an emote a reply
 turned on against a try, a check-in taking the eyes back to their usual gaze and
 the real talk window bringing up a check-in's `SAY:` through a fixture Thinking
 endpoint, MCP's `check_ins_check` and `check_ins_status`, and the page on a
-disposable data folder through `-Desktop`. A real model answering a check-in is
-**NOT RUN**.
+disposable data folder through `-Desktop`. A real model answering a check-in,
+and a real screenshot or recording sent to a pool member, are **NOT RUN**.
 
 ## Singing in conversation
 

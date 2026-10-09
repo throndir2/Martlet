@@ -219,7 +219,7 @@ public partial class RecommendedSetupWindow : ThemedWindow
     private FrameworkElement PartRow(ReviewPart part)
     {
         var row = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
-        if (part.CanBeOff)
+        if (part.OffChoice)
         {
             var off = new CheckBox
             {
@@ -311,6 +311,7 @@ public partial class RecommendedSetupWindow : ThemedWindow
             var text = new TextBlock { Text = bar.Text, TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 4, 0, 0) };
             text.SetResourceReference(StyleProperty, "Muted");
             AutomationProperties.SetAutomationId(text, $"RecommendedSetupBar-{index}-{DeviceCapacity.Key(bar.Resource)}");
+            AutomationProperties.SetHelpText(text, DeviceCapacity.BreakdownText(bar));
             panel.Children.Add(text);
             panel.Children.Add(MainWindow.BarVisual(bar));
         }

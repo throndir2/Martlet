@@ -29,7 +29,7 @@ public sealed record RendererAction(string Kind, string Name, bool On = true, bo
 }
 /// <summary>Starts the renderer. A saved <paramref name="Placement"/> puts the overlay back where it was last left, on the same
 /// screen when that screen is still connected (else where it was, when that spot is still on a screen), and locks it again
-/// when it was locked. <paramref name="ThemeColors"/> are a character palette's colors by role
+/// when it was locked. <paramref name="ThemeColors"/> are a character or custom palette's colors by role
 /// (#RRGGBB; null for Martlet's own palette of that lightness). <paramref name="VoiceMuted"/>: Martlet's voice is muted (its
 /// replies aren't spoken), so the overlay's menu offers to unmute it (see <see cref="RendererVoice"/>).</summary>
 public sealed record RendererLoad(AvatarProfile Profile, string ResourceRevision, bool DarkTheme, RendererPlacement? Placement = null,

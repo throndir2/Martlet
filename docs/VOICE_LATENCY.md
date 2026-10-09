@@ -909,7 +909,7 @@ about the 95th percentile keeps the extra requests to about 1 in 20.
   replies' first words (never under 900 ms; 1.5 s until 3 replies are known),
   or a fixed 0.5 s to 3 s.
 - Then the same request also goes to the first Thinking pool member the owner
-  ticked *May answer for the conversation* that shares no hardware with the
+  ticked *Backup for slow replies* that shares no hardware with the
   conversation and can take the request as it is. A paid cloud member is asked
   only when ticked, and only for a reply that is taken.
 - The stream with words first gives the reply; the other is stopped at once,

@@ -1276,7 +1276,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// sound is let go like a cough), or the microphone is the FIXTURE one that hears only its clips. Echo reduction that is off,
     /// couldn't start or was lost can't tell Martlet's voice from yours: listening would hear Martlet and answer its own words.</summary>
     private bool ListensOverMartlet(ListeningOptions options, EchoTimeline? echo = null) =>
-        options.BargeIn || captureDevices is SimulatedMicrophone || options.ReduceEcho && echoReducer?.Works(echo) == true;
+        options.BargeIn || captureDevices is SimulatedMicrophone or KeptCaptureDeviceFactory { Inner: SimulatedMicrophone } ||
+        options.ReduceEcho && echoReducer?.Works(echo) == true;
 
     /// <summary>Always listening holds off while other setup work (a microphone test, Voice ID enrollment) owns the app slot,
     /// and, when it can't tell Martlet's own voice from yours (<paramref name="overMartlet"/> false), while Martlet speaks (a

@@ -227,7 +227,10 @@ to bottom: the **map**, the **selected device** with what it does, and
     (*12-14 of 24 GB*). When the usual amounts fit but the most does not, the
     bar is *tight*: its lighter parts take the warning color and the text says
     the jobs can slow down or fail at their busiest. When even the usual
-    amounts do not fit, the whole bar takes the warning color. Under
+    amounts do not fit, the whole bar takes the warning color. Hovering a bar
+    shows its breakdown: what each job takes (with a swatch in its segment's
+    shade, and the job under the mouse in bold), what is free for Martlet,
+    what is kept for the system and what is in use now. Under
     the bars: each job's share in words, what is left free for Martlet and
     *Room for ...* lines from the engine (*Room for another Deep thinking
     model (Gemma 4 12B) here.*), which count only room for the most a job
@@ -455,20 +458,60 @@ window ends it unless Martlet is listening or watching, which only hides it.
        your characters. The character window has one
        *Show character*/*Hide character (Esc)* button at the top and saves
        each choice on its own; a showing character switches at once.
-    10. *Speech bubbles*: speech bubbles and subtitles, and where the bubble
-        goes.
-    11. *Emotes and motions*: what replies can play on the character, and
-        combos of them.
-    12. *Eyes*: where the character looks, and where its eyes are.
-    13. *Touch*: touch zones and the touch temperament.
+    10. *Speech bubbles*: Now, then where Martlet's words show (speech
+        bubbles, subtitles, both or Off), then where the bubble goes.
+    11. *Emotes and motions*: Now (how many emotes, motions and combos are
+        on), then what replies can play on the character, and combos of them.
+    12. *Eyes*: Now, then where the character looks (the main choice), and
+        where its eyes are.
+    13. *Touch*: Now, then touch zones and the touch temperament.
   - **What it does**: how it answers and acts: *Replies* (generation
     settings, and *Thinking steps*: whether a reasoning model thinks before it
-    answers, Off by default), *Tools* (the MCP servers Martlet may call while you talk, whether
-    each runs without asking, and recent tool use) and *Smart home*.
+    answers, Off by default), *Tools* (Now, then the terminal, on or Off, then
+    the MCP servers Martlet may call while you talk, whether
+    each runs without asking, and recent tool use), *Smart home* (Now, then
+    Home Assistant or Off in an option picker, then connecting and installing
+    Home Assistant, then what Martlet may do, the devices and sharing),
+    *Discord* (Now, then connecting the bot or Off, then its setup) and
+    *Messaging* (Now, then On or Off for each app, then each app's setup).
+    *People* (in *Who it is*) has Now, then recognizing voices or Off, then
+    the voices.
 
   A page gets its own entry only if it has its own **Where it runs** choice,
   its own consent or data destination, or its own list to edit; anything else
   is a card on an existing page.
+
+  **Every page has the same order** (the standard Companion page layout):
+
+  1. **Now**: what the page uses now, and any problem stopping it. Every page
+     starts with it, also pages that aren't jobs. It is one line built from
+     what Martlet already knows (opening a page fetches nothing), such as
+     *Tools: 3 MCP servers on, the terminal off.*
+  2. **The main choice**: the place, technology or model the page is about
+     (where it runs, the engine, the model, the provider). An optional page
+     (*Optional extras*, and Lip-sync's advanced lip-sync) always has an
+     explicit **Off** choice here, and it says what Off means. So does every
+     other page whose feature can be off (speech bubbles and subtitles,
+     recognizing voices, the terminal, Discord and each messaging app): the
+     feature's choice first, then *Off*.
+  3. **Configuration**: the cards that only apply to the chosen option, then
+     the page's other settings.
+
+  **Lists of choices use the option picker** (`MainWindow.OptionPicker.cs`),
+  so a list that keeps growing stays short. Each option is one compact row:
+  its name, a badge (*in use*, *recommended*) and its key facts in one line,
+  for example *NVIDIA GPU · 4.2 GB VRAM · 0.45 s to first audio*. Choosing a
+  row shows that option's details under the list: what it is good at, every
+  fact, where it stands on the shown computer, its own lines (abilities,
+  license) and its button. **Compare them** opens a table of the facts that
+  differ between the options. Options that can't run here are listed last, with
+  why. The facts come from the footprint catalog (`OptionFacts` in
+  `Martlet.Core.Planning`), so every page describes an option in the same
+  words: where it runs (graphics card, processor, inside Martlet or online),
+  graphics memory, memory, processor threads, download size, how soon its
+  first word comes (first sentence, first audio or transcript), quality,
+  whether a Thinking model hears or sees, cost online and whether the numbers
+  were measured.
 
   Every page starts with **Now**: what it uses and any problem stopping it.
   Cards appear only when they apply to the chosen place: Voices (the F5 voice
@@ -618,7 +661,7 @@ Every window, menu and the character overlay are drawn with twelve brushes
 buttons, selection, links, icons, headings; also used as text), `OnAccent`,
 `Focus` (focus and hover rings), `Success`, `Warning` and `Glow` (the halos
 behind the mascot), plus the mascot itself, whose badge takes the accent's hue
-in a character palette (Martlet's pink otherwise). Everything refers to them as
+in a character or custom palette (Martlet's pink otherwise). Everything refers to them as
 `DynamicResource`, so a palette swaps at once.
 The character's speech bubble is drawn wholly in them too, like a piece of
 Martlet's window floating beside the character: a `Surface` card with an
@@ -627,10 +670,12 @@ Martlet's window floating beside the character: a `Surface` card with an
 alike.
 Windows' high contrast always wins.
 
-Settings › Appearance offers *Pink light*, *Rose dark* and two palettes made by
-Martlet's rules from the character this PC shows: **Character light** and
-**Character dark**. They follow the character: choosing or showing another
-character recolors Martlet within a moment, and the last colors are kept in
+Settings › Appearance offers *Pink light*, *Rose dark*, two palettes made by
+Martlet's rules from the character this PC shows, **Character light** and
+**Character dark**, and the owner's own **Custom** palette (see
+[Custom palette](#custom-palette)). The character palettes follow the
+character: choosing or showing another character recolors Martlet within a
+moment, and the last colors are kept in
 `appearance-colors.json` so Martlet starts in them. Under the choice the page
 shows the character's main colors and a small picture of Martlet's window in
 each of the two palettes. (The *by Thinking* palettes an older Martlet offered
@@ -673,6 +718,28 @@ Verified looks (2026-10-03, `character_theme` previews and the desktop): the
 rules give calm, readable palettes for all ten models tried (the Live2D samples
 Hiyori, Haru, Mao, Mark, Natori, Ren and Rice, the VRM samples Seed-san and
 Constraint Twist, and a VTube Studio model).
+
+### Custom palette
+
+**Custom** (`MainWindow.CustomTheme.cs`) is the owner's own twelve colors,
+kept in `appearance-custom.json` and shared with the owner's other computers
+(the `appearance-custom` shared setting). The first time it is chosen, it is a
+copy of the palette in use until then; *Start from* and *Use its colors*
+replace it with another palette's colors later (after a question when the
+owner changed them). The editor lists the parts by plain names
+(`CustomThemeParts`: *Window background* for `Canvas`, *Buttons and side bar*
+for `Soft`, *Quiet text* for `Muted`...). The selected part takes a color code,
+hue, saturation and lightness sliders on color scales (the `ColorSlider`
+style) or one of the character's main colors. Every window takes a change
+within 40 ms and the file is written after a 0.7 s pause, so dragging a slider
+stays smooth.
+
+A custom palette is dark when light text reads better on its `Canvas` than
+dark text; the overlay and the readability rules use that. The editor checks
+the [rules every palette keeps](#character-palettes) and names what breaks one
+(*Text on window background: 1.3:1 (needs 7:1)*). It does not enforce them:
+*Make it easy to read* runs `CharacterThemeRules.Repair` when the owner asks.
+Windows' high contrast still wins.
 
 ## Motion system
 
