@@ -56,7 +56,7 @@ computer, on a beefier PC down the hall, or with your favorite cloud AI.
 - 🖐️ **Touches it can put into words**: right after your touches end, Martlet describes what you have been doing, true to the character, and its next reply can draw on it.
 - 😆 **Sounds in Martlet's own voice**: touch zones can laugh, gasp, sigh or giggle with the voices that can make those sounds.
 - 🧰 **Check-ins that act**: a check-in can now use tools such as emotes and gaze, Martlet's next words or reminders, and it can start when you touch the character instead of every few minutes.
-- ⌨️ **No more stray key presses**: a letter key no longer starts listening or watching by itself.
+- 📖 **Sharper screen reading**: Martlet can read your screen with PP-OCRv5, which reads small text that Windows OCR misses.
 
 [Full changelog](CHANGELOG.md) · [All releases](https://github.com/throndir2/Martlet/releases)
 
