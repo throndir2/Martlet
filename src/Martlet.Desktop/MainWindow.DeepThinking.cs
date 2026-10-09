@@ -14,18 +14,17 @@ using Martlet.Providers.Ollama;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Thinking pool: one list of the machines that do Martlet's background work (thinking longer, research,
-/// screen and sound summaries, the judges and other helpers). Each machine shows what it reads and writes, its slots and its rules
-/// (Quick jobs, Long jobs, Backup for slow replies); paired computers that aren't in the pool show why and In the pool. Then how
-/// to add a machine (a paired computer joins by itself; Ollama on this PC or a cloud provider are added here) and the rules for
-/// the whole pool: Thinking longer (on or off, saved with the reply settings, so your computers share it), Web research and
-/// Backup for slow replies. The members are this PC's own choice (thinking-pool.json). The conversation keeps its own Thinking
-/// model, which is never a member, so its replies start as fast as they can (<see cref="DeepThinkingPlan"/>).</summary>
+/// <summary>Companion › Thinking pool (an optional extra): one list of the machines that do Martlet's background work (thinking
+/// longer, research, screen and sound summaries, the judges and other helpers). In the standard order: Now (whether Martlet may
+/// think longer, and where), the main choice as an option picker (<c>Picker-DeepThinking-&lt;Off|Computer|ThisPc|Cloud&gt;</c>:
+/// Off, saved with the reply settings so your computers share it, or where a machine thinks: another of your computers, which
+/// joins by itself, a second model in Ollama on this PC or a cloud provider, each added in its details), then the configuration:
+/// the machine list (each machine's reads and writes, slots and rules: Quick jobs, Long jobs, Backup for slow replies; paired
+/// computers that aren't in the pool show why and In the pool), Thinking longer, Web research and Backup for slow replies. The
+/// members are this PC's own choice (thinking-pool.json). The conversation keeps its own Thinking model, which is never a member,
+/// so its replies start as fast as they can (<see cref="DeepThinkingPlan"/>).</summary>
 public partial class MainWindow
 {
-    private enum DeepPlace { ThisPc, Cloud }
-
-    private DeepPlace? deepPlaceShown;
     private SideBySideFit? deepLocalFit;
     private string? deepLocalFitModel;
     private static readonly ThinkEffort[] ThinkEfforts = [ThinkEffort.Medium, ThinkEffort.High];
@@ -51,10 +50,34 @@ public partial class MainWindow
         var on = ThinkLongerSettings.Of(homeSettings?.Generation).On;
         var hosts = NetworkMap.Hosts(Inputs());
 
+        var now = new TextBlock { Text = DeepThinkingNow(longJobs, route, plan, on), FontSize = 15, TextWrapping = TextWrapping.Wrap };
+        AutomationProperties.SetAutomationId(now, "DeepThinkingNow");
+        var why = Note(on ? plan.Why : "Thinking longer is off. Turn it on by choosing where it thinks below.", new Thickness(0, 4, 0, 0));
+        if (on && !plan.Available) why.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
+        AutomationProperties.SetAutomationId(why, "DeepThinkingParallel");
+        page.Children.Add(Card(Heading("Now"), now, why));
+
+        // The main choice: Off, or where a machine thinks. Each option's details add machines there.
+        var options = OptionalExtras.ThinkingPoolChoices(on, poolSettings.Members).Select(option => option.Key switch
+        {
+            "Computer" => option with { Details = () => DeepComputersPanel(poolSettings, hosts) },
+            "ThisPc" => option with { Details = () => DeepLocalPanel(poolSettings.Places, route) },
+            "Cloud" => option with { Details = () => DeepCloudPanel(poolSettings.Places, route) },
+            _ => option with
+            {
+                Details = () => [Note("Your computers share it. The machines in the pool stay on this PC, so turning it on again uses them.",
+                    new Thickness(0, 0, 0, 0))],
+                Action = !on ? null : () => PageButton("Turn the Thinking pool off", () => TurnDeepThinkingAsync(false, "Thinking longer is off.").Forget(),
+                    primary: true, id: "DeepThinkingTurnOff")
+            }
+        }).ToList();
+        page.Children.Add(OptionPicker("DeepThinking", "Where it thinks",
+            "The Thinking pool is one shared set of Thinking models for background work: thinking longer, research, screen and sound " +
+            "summaries and other helpers. Each job goes to a free machine that takes it. The conversation keeps its own Thinking " +
+            "model, so it keeps talking at full speed. Off applies to all your computers; the machines in the pool stay on this PC.",
+            options));
+
         page.Children.Add(MachinesCard(poolSettings, poolPlan, longJobs, plan, routes, route, hosts, on));
-        page.Children.Add(AddMachineCard(poolSettings, hosts));
-        if (deepPlaceShown is { } shown)
-            page.Children.Add(shown == DeepPlace.ThisPc ? DeepLocalCard(poolSettings.Places, route) : DeepCloudCard(poolSettings.Places, route));
         page.Children.Add(ThinkLongerCard(homeSettings?.Generation?.ThinkLonger, route, plan, on));
         page.Children.Add(WebResearchCard(ThinkLongerSettings.Of(homeSettings?.Generation), route, plan));
         page.Children.Add(BackupThinkingCard(poolSettings));
@@ -73,13 +96,6 @@ public partial class MainWindow
                 "other helpers. Each job goes to a free machine that takes it, the one that shares least with the conversation " +
                 "first. Tick what each machine may do.", new Thickness(0, 0, 0, 8))
         };
-        var now = new TextBlock { Text = DeepThinkingNow(longJobs, route, longPlan, on), FontSize = 15, TextWrapping = TextWrapping.Wrap };
-        AutomationProperties.SetAutomationId(now, "DeepThinkingNow");
-        stack.Add(now);
-        var why = Note(on ? longPlan.Why : "Thinking longer is off. Turn it on under Thinking longer below.", new Thickness(0, 4, 0, 8));
-        if (on && !longPlan.Available) why.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
-        AutomationProperties.SetAutomationId(why, "DeepThinkingParallel");
-        stack.Add(why);
 
         var places = ThinkLonger.Places(plan, BackgroundDuties.Of(store?.DataDirectory), choices: pool).Where(p => p.Id != "thinking").ToArray();
         var members = pool.Members.Select(m => new ThinkingPoolMemberStatus(m.Key, m.Computer(null), m.ThinksAtOnce, 0,
@@ -369,15 +385,15 @@ public partial class MainWindow
         return row;
     }
 
-    /// <summary>How a machine joins the pool: a paired computer with a Thinking model joins by itself; Ollama on this PC and a
-    /// cloud provider are added here, each with its own card below.</summary>
-    private Border AddMachineCard(ThinkingPoolSettings pool, IReadOnlyList<PairedHost> hosts)
+    /// <summary>One of your computers' details: a paired computer with a Thinking model joins the pool by itself (its row in the
+    /// machine list below has In the pool), Add a computer or Check computers, and what goes there.</summary>
+    private List<UIElement> DeepComputersPanel(ThinkingPoolSettings pool, IReadOnlyList<PairedHost> hosts)
     {
-        var stack = new List<UIElement> { Heading("Add a machine") };
+        var stack = new List<UIElement>();
         var left = pool.LeftByOwner;
         var automatic = Note("Your paired computers with a Thinking model join the pool by themselves: their Thinking pool role, or " +
-            "their Ollama when it doesn't do this PC's Thinking. Untick In the pool to keep one out; tick it again to add it back." +
-            (left.Count == 0 ? "" : $" Kept out now: {string.Join(", ", left)}."), new Thickness(0, 0, 0, 8));
+            "their Ollama when it doesn't do this PC's Thinking. Untick In the pool in the machine list to keep one out; tick it again " +
+            "to add it back." + (left.Count == 0 ? "" : $" Kept out now: {string.Join(", ", left)}."), new Thickness(0, 0, 0, 8));
         AutomationProperties.SetAutomationId(automatic, "DeepThinkingAutoJoin");
         stack.Add(automatic);
         if (hosts.Count == 0)
@@ -388,26 +404,6 @@ public partial class MainWindow
         }
         stack.Add(Row(hosts.Count == 0 ? PageButton("Add a computer", () => RunNodeAction(NodeAction.AddComputer), primary: true, id: "DeepThinkingAddComputer")
             : PageButton("Check computers", () => RunNodeAction(NodeAction.CheckHost), id: "DeepThinkingCheckHosts")));
-        foreach (var (value, label, detail) in new (DeepPlace, string, string)[]
-        {
-            (DeepPlace.ThisPc, "Ollama on this PC", "A second model beside Thinking's, when both fit on the graphics card."),
-            (DeepPlace.Cloud, "A cloud provider or server", "OpenRouter, OpenAI, NVIDIA Build or another compatible server. Requests may cost money.")
-        })
-        {
-            var option = new RadioButton { GroupName = "DeepPlace", IsChecked = value == deepPlaceShown, Margin = new Thickness(0, 6, 0, 4) };
-            var optionText = new StackPanel();
-            optionText.Children.Add(new TextBlock { Text = label, FontSize = 15, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-            optionText.Children.Add(Note(detail, new Thickness(0, 2, 0, 0)));
-            option.Content = optionText;
-            AutomationProperties.SetName(option, $"{label}: {detail}");
-            AutomationProperties.SetAutomationId(option, "DeepPlace-" + value);
-            option.Checked += (_, _) =>
-            {
-                deepPlaceShown = value;
-                RenderTab();
-            };
-            stack.Add(option);
-        }
         stack.Add(Note("A job's text (for a think, the conversation so far that fits in 16 KiB and the task) goes to the machine " +
             "that runs it; to a paired computer through its paired, pinned connection. While it works there, Thinking, the voice and " +
             "listening keep working here at full speed. The Thinking pool role is an Ollama of its own, so it works even on the " +
@@ -415,9 +411,8 @@ public partial class MainWindow
             "also does Thinking for the conversation can't join. Adding the role asks which model it runs and how many slots; " +
             "Change model switches them later. A computer's model can only work as long as its Martlet allows: update it to this " +
             "version for jobs over a minute.", new Thickness(0, 8, 0, 0)));
-        return Card([.. stack]);
+        return stack;
     }
-
     /// <summary>Backup for slow replies (Backup Thinking, off by default): when a reply's Thinking model has no words after a short wait, the same request
     /// also goes to a member that may answer for the conversation, and the first to start gives the reply.</summary>
     private Border BackupThinkingCard(ThinkingPoolSettings pool)
@@ -826,7 +821,7 @@ public partial class MainWindow
 
     /// <summary>A second model in Ollama on this PC, beside Thinking's: Ollama runs each model in its own process, so it thinks in
     /// parallel with the conversation while both fit on the graphics card (checked here, and before each think).</summary>
-    private Border DeepLocalCard(DeepThinkingSettings deep, SetupRoute? thinking)
+    private List<UIElement> DeepLocalPanel(DeepThinkingSettings deep, SetupRoute? thinking)
     {
         var beside = IsLocalOllama(thinking) ? thinking!.ModelId : null;
         var choices = (ollamaModels ?? []).Concat(LocalChatModels.Select(m => m.Id)).Distinct(StringComparer.Ordinal).ToArray();
@@ -870,7 +865,7 @@ public partial class MainWindow
         shared.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         shared.Visibility = shared.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         AutomationProperties.SetAutomationId(shared, "DeepThinkingLocalShare");
-        return Card(Heading("Ollama on this PC"),
+        return [
             Note("A second model can think here while Thinking's answers you, such as a larger one beside a small, fast one. Ollama runs " +
                 "each model in its own process, so they answer at the same time, but only while both fit on the graphics card: Martlet " +
                 "checks before each think and doesn't think it over when they don't. They share the graphics card, so replies may start " +
@@ -897,7 +892,7 @@ public partial class MainWindow
                 {
                     deepLocalFitModel = null;
                     CheckOllamaAsync().Forget();
-                }, id: "DeepThinkingCheckOllama")));
+                }, id: "DeepThinkingCheckOllama"))];
     }
 
     /// <summary>Checks whether <paramref name="deep"/> fits beside Thinking's <paramref name="thinking"/> in Ollama on this PC
@@ -915,7 +910,7 @@ public partial class MainWindow
         catch (OperationCanceledException) { }
     }
     /// <summary>A cloud provider or any OpenAI-compatible server (HTTPS, or a server on this PC), with its own key or Thinking's.</summary>
-    private Border DeepCloudCard(DeepThinkingSettings deep, SetupRoute? thinking)
+    private List<UIElement> DeepCloudPanel(DeepThinkingSettings deep, SetupRoute? thinking)
     {
         var saved = deep.Place == DeepThinkingPlace.Endpoint && deep.Origin != LocalOllamaBaseUrl ? deep : null;
         var provider = new ComboBox { ItemsSource = DeepThinkingProviders, MinHeight = 30, MaxWidth = 420, MinWidth = 300, HorizontalAlignment = HorizontalAlignment.Left };
@@ -961,14 +956,14 @@ public partial class MainWindow
         baseUrl.TextChanged += (_, _) => { if (!baseUrl.IsKeyboardFocusWithin) return; tabEdited = true; consent.IsChecked = false; };
         model.TextChanged += (_, _) => { if (!model.IsKeyboardFocusWithin) return; tabEdited = true; consent.IsChecked = false; };
         key.PasswordChanged += (_, _) => tabEdited = true;
-        return Card(Heading("A cloud provider or server"),
+        return [
             Note("A strong reasoning model (for example on OpenRouter) thinks while your Thinking model keeps talking, even one on this " +
                 "PC: they never wait for each other.", new Thickness(0, 0, 0, 8)),
             new Label { Content = "_Provider", Target = provider, Padding = new Thickness(0, 0, 0, 4) }, provider, baseUrlPanel,
             new Label { Content = "_Model ID", Target = model, Padding = new Thickness(0, 8, 0, 4) }, model,
             new Label { Content = "API _key", Target = key, Padding = new Thickness(0, 8, 0, 4) }, key, keyStatus, consent,
             Row(PageButton("Add to the Thinking pool", () => SaveDeepCloudAsync(Selected(), Url(), model.Text.Trim(), key, consent.IsChecked == true,
-                saved, thinking).Forget(), primary: true, id: "DeepThinkingSaveCloud")));
+                saved, thinking).Forget(), primary: true, id: "DeepThinkingSaveCloud"))];
     }
 
     private async Task SaveDeepCloudAsync(CloudProvider provider, string url, string model, PasswordBox keyBox, bool consent,
@@ -1034,7 +1029,7 @@ public partial class MainWindow
                     var oldBinding = gone.Binding(profile, gone.CredentialId!.Value);
                     await Task.Run(() => vault.Delete(oldBinding), CancellationToken.None);
                 }
-            deepPlaceShown = null;
+            ForgetPicker("DeepThinking");
             conversation?.ReloadThinkingPool();
             var plan = pool.Plan(homeSettings?.Setup?.Routes ?? [], WorkSharingRoster.Settings(store?.DataDirectory), WorkSharingRoster.Device).Plan;
             ErrorLog.Info($"Thinking pool: now {pool.Places.DescribeAll()}; {(plan.Available ? "in parallel with the conversation" : "can't run there")}. {plan.Why}");
@@ -1061,7 +1056,7 @@ public partial class MainWindow
         if (closing) return;
         if (await SetThinkLongerAsync(on))
         {
-            deepPlaceShown = null;
+            ForgetPicker("DeepThinking");
             ErrorLog.Info($"Thinking pool: thinking longer turned {(on ? "on" : "off")}.");
             ActionText.Text = done + " Reload an open conversation to use it.";
         }

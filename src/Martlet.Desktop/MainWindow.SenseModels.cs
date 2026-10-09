@@ -13,20 +13,20 @@ using Martlet.Providers.Ollama;
 
 namespace Martlet.Desktop;
 
-/// <summary>Companion › Vision › Image model and Companion › Listening › Audio model (docs/SENSE_MODELS.md): which model takes
-/// pictures and which takes recordings. Thinking, the text model, always writes the reply, and by default it also takes both
-/// itself (an omni model). A model of its own (Ollama on this PC, a cloud provider or server, or for pictures one of your
-/// computers) instead puts what it sees or hears into words for Thinking, and each kind may use the same model as the other. The
-/// choice is this PC's own (sense-models.json); a model's own key is in Windows Credential Manager. Choosing a model asks its
-/// server what it takes, and Test vision and Test hearing find out (MainWindow.ModelAbilities.cs). Companion › Thinking says
-/// where pictures and recordings go.</summary>
+/// <summary>Companion › Vision's and Companion › Hearing's main choice (docs/SENSE_MODELS.md): which model takes pictures and
+/// which takes recordings, or Off. Thinking, the text model, always writes the reply, and by default it also takes both itself
+/// (an omni model). A model of its own (Ollama on this PC, a cloud provider or server, or for pictures one of your computers)
+/// instead puts what it sees or hears into words for Thinking, and each kind may use the same model as the other. The choice is
+/// this PC's own (sense-models.json); a model's own key is in Windows Credential Manager. Choosing a model asks its server what it
+/// takes, and Test vision and Test hearing find out (MainWindow.ModelAbilities.cs). Companion › Thinking says where pictures and
+/// recordings go. Each page shows the lines of <see cref="SenseNowLines"/> in its Now card and <see cref="SenseChoiceCard"/> as
+/// its main choice: an option picker (<c>Picker-Vision-&lt;choice&gt;</c>, <c>Picker-Hearing-&lt;choice&gt;</c>) whose details show
+/// the chosen option's panel.</summary>
 public partial class MainWindow
 {
-    /// <summary>A card's choices ("Place-ImageModel-ThisPc"): each only shows its panel, whose own button saves.</summary>
+    /// <summary>A main choice's options after Off ("Picker-Vision-ThisPc"): choosing one only shows its panel, whose own button saves.</summary>
     internal enum SenseChoice { Thinking, OtherSense, ThisPc, Cloud, Computer }
 
-    /// <summary>The choice each card shows until a save.</summary>
-    private readonly Dictionary<SenseKind, SenseChoice> senseShown = [];
     /// <summary>The model picked under Ollama on this PC on each card.</summary>
     private readonly Dictionary<SenseKind, string> senseLocalPicked = [];
     /// <summary>The last check of whether a model fits beside Thinking's in Ollama on this PC.</summary>
@@ -38,12 +38,10 @@ public partial class MainWindow
     internal static string SenseWord(SenseKind kind) => kind == SenseKind.Image ? "image" : "audio";
     private static string SenseInputs(SenseKind kind) => kind == SenseKind.Image ? "pictures" : "recordings";
 
-    /// <summary>The image model's cards (<paramref name="kind"/> Image, on Vision) or the audio model's (Audio, on Listening): what
-    /// takes that kind now, what it is known to do and what is sent where, Test vision or Test hearing; then the choice and the
-    /// chosen option's panel.</summary>
-    private StackPanel SenseModelCards(SenseKind kind)
+    /// <summary>The Now card's lines about the model that takes <paramref name="kind"/>: what takes it now, where it goes and
+    /// why, what the model is known to do, what is sent where, and Test vision or Test hearing.</summary>
+    private List<UIElement> SenseNowLines(SenseKind kind)
     {
-        var image = kind == SenseKind.Image;
         var id = SenseId(kind);
         var (senses, state) = SenseModels.Read(store?.DataDirectory);
         var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
@@ -51,24 +49,12 @@ public partial class MainWindow
         var route = SenseRouting.For(kind, senses, thinking, abilities);
         var place = senses.Place(kind);
         var own = place is not null && !SenseRouting.IsThinking(place, thinking) ? place : null;
-
-        var status = new List<UIElement>
-        {
-            Heading(image ? "Image model" : "Audio model"),
-            Note(image
-                ? "Thinking, the text model, writes every reply. Choose what looks at the pictures of your screen and camera: the text " +
-                    "model itself (an omni model such as Gemma 4 E2B sees them), or an image model of its own that describes them in " +
-                    "words for Thinking. A reply never waits for the image model."
-                : "Thinking, the text model, writes every reply. Choose what hears the recordings of your voice and of what this PC " +
-                    "plays: the text model itself (an omni model such as Gemma 4 E2B hears them), or an audio model of its own that " +
-                    "describes them in words for Thinking. Speech-to-text above still writes down what you say, and a reply never " +
-                    "waits for the audio model.", new Thickness(0, 0, 0, 8))
-        };
+        var lines = new List<UIElement>();
         void Line(string lineId, string text, bool problem = false)
         {
             var line = problem ? Warning(text) : Note(text, new Thickness(0, 0, 0, 6));
             AutomationProperties.SetAutomationId(line, lineId);
-            status.Add(line);
+            lines.Add(line);
         }
         Line(id + "Now", SenseNow(kind, senses, thinking));
         Line(id + "Route", route.Why, problem: route.Path == SensePath.None && thinking is not null);
@@ -76,37 +62,49 @@ public partial class MainWindow
         // Only a model that takes this kind gets anything sent to it.
         if (own is not null && route.Described) Line(id + "Sent", SenseSent(kind, own));
         if (state == "unreadable")
-            status.Add(Warning("Martlet can't read sense-models.json (a newer Martlet's, or a damaged file), so the text model takes " +
+            lines.Add(Warning("Martlet can't read sense-models.json (a newer Martlet's, or a damaged file), so the text model takes " +
                 "pictures and recordings. Choosing a model here replaces the file."));
-        status.AddRange(SenseTestControls(kind, own, thinking, route));
+        lines.AddRange(SenseTestControls(kind, own, thinking, route));
+        return lines;
+    }
 
-        var inUse = ChoiceOf(senses.For(kind));
-        var shown = senseShown.TryGetValue(kind, out var picked) ? picked : inUse;
-        var choose = new List<UIElement> { Heading(image ? "Choose the image model" : "Choose the audio model") };
-        foreach (var (value, label, detail) in SenseOptions(kind, senses, thinking))
+    /// <summary>A sense page's main choice: Off (<paramref name="turnOff"/>, shown while the part is <paramref name="on"/>), then
+    /// what takes <paramref name="kind"/> (<see cref="OptionalExtras.SenseChoices"/>), each option's details showing its panel. The
+    /// saved option, while the part is off, offers <paramref name="turnOn"/>; <paramref name="offState"/> says why it is off.</summary>
+    private Border SenseChoiceCard(SenseKind kind, bool on, Func<Button> turnOff, Func<Button?> turnOn, string offState)
+    {
+        var image = kind == SenseKind.Image;
+        var senses = SenseModels.Load(store?.DataDirectory);
+        var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
+        var abilities = SavedModelAbilities();
+        var saved = ChoiceOf(senses.For(kind));
+        var options = OptionalExtras.SenseChoices(kind, senses, thinking, abilities, on, thinking is null ? null : PlaceName(thinking), offState)
+            .Select(Wire).ToList();
+        PickerOption Wire(PickerOption option)
         {
-            var text = new StackPanel();
-            text.Children.Add(new TextBlock { Text = label + (value == inUse ? "  \u00b7  in use" : ""), FontSize = 15,
-                FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-            text.Children.Add(Note(detail, new Thickness(0, 2, 0, 0)));
-            var option = new RadioButton { Content = text, GroupName = "Place-" + id, IsChecked = value == shown, Margin = new Thickness(0, 0, 0, 10) };
-            AutomationProperties.SetName(option, $"{label}: {detail}");
-            AutomationProperties.SetAutomationId(option, $"Place-{id}-{value}");
-            option.Checked += (_, _) =>
+            if (option.IsOff) return option with { Action = on ? turnOff : null };
+            var choice = Enum.Parse<SenseChoice>(option.Key);
+            return option with
             {
-                senseShown[kind] = value;
-                RenderTab();
+                Details = () => [choice switch
+                {
+                    SenseChoice.Thinking or SenseChoice.OtherSense => SameModelPanel(kind, choice, choice == saved, senses, thinking),
+                    SenseChoice.ThisPc => SenseLocalPanel(kind, senses, thinking),
+                    SenseChoice.Cloud => SenseCloudPanel(kind, senses, thinking),
+                    _ => SenseComputersPanel(senses, abilities)
+                }],
+                Action = choice == saved && !on ? turnOn : null
             };
-            choose.Add(option);
         }
-        choose.Add(shown switch
-        {
-            SenseChoice.Thinking or SenseChoice.OtherSense => SameModelPanel(kind, shown, shown == inUse, senses, thinking),
-            SenseChoice.ThisPc => SenseLocalPanel(kind, senses, thinking),
-            SenseChoice.Cloud => SenseCloudPanel(kind, senses, thinking),
-            _ => SenseComputersPanel(senses, abilities)
-        });
-        return new StackPanel { Children = { Card([.. status]), Card([.. choose]) } };
+        return OptionPicker(OptionalExtras.SensePickerId(kind), image ? "How Martlet sees" : "How Martlet hears your tone",
+            image
+                ? "Off, or the model that looks at the pictures of your screen and camera: the text model itself (an omni model such as " +
+                  "Gemma 4 E2B sees them), or an image model of its own that describes them in words for Thinking. A reply never waits " +
+                  "for the image model."
+                : "Off, or the model that hears the recordings of your voice and of what this PC plays: the text model itself (an omni " +
+                  "model such as Gemma 4 E2B hears them), or an audio model of its own that describes them in words for Thinking. " +
+                  "Speech-to-text on Listening still writes down what you say, and a reply never waits for the audio model.",
+            options);
     }
 
     /// <summary>The saved choice as a card's option.</summary>
@@ -118,24 +116,6 @@ public partial class MainWindow
         { Source: SenseSource.Own } => SenseChoice.Cloud,
         _ => SenseChoice.Thinking
     };
-
-    private static IEnumerable<(SenseChoice Value, string Label, string Detail)> SenseOptions(SenseKind kind, SenseModels senses, SetupRoute? thinking)
-    {
-        var image = kind == SenseKind.Image;
-        yield return (SenseChoice.Thinking, "Use the same model as the text model", thinking is null ? "Thinking isn't set up yet."
-            : $"Thinking ({thinking.ModelId}) takes the {SenseInputs(kind)} itself. Recommended with an omni model such as Gemma 4 E2B: " +
-                "nothing changes in a conversation.");
-        yield return (SenseChoice.OtherSense, $"Use the same model as the {SenseWord(SenseModels.Other(kind))} model",
-            $"The {SenseWord(SenseModels.Other(kind))} model is now {OtherNow(kind, senses)}.");
-        yield return (SenseChoice.ThisPc, "Ollama on this PC", $"A second model beside Thinking's, such as {(image ? "Qwen2.5-VL" : "Gemma 4 E2B")}. " +
-            $"It describes {SenseInputs(kind)} only while both fit on the graphics card.");
-        yield return (SenseChoice.Cloud, "A cloud provider or server", "OpenRouter, OpenAI, NVIDIA Build, a model app on this PC or another " +
-            "OpenAI-compatible server. A cloud provider may charge for each request.");
-        if (image)
-            yield return (SenseChoice.Computer, "One of your computers", "A paired computer's model: its Thinking pool role, or its Ollama " +
-                "when it doesn't do Thinking for this PC.");
-    }
-
     // ---------- the status lines (MCP SafeValues) ----------
 
     /// <summary>The card's Now line, the choice in words ("ImageModelNow").</summary>
@@ -219,7 +199,7 @@ public partial class MainWindow
             _ => kind == SenseKind.Image ? "no model, so Martlet can't see" : "no model, so Thinking gets the transcript only"
         };
         return $"Thinking is the text model: it writes every reply. Pictures go to {Goes(SenseKind.Image)} (Companion › Vision), and " +
-            $"recordings go to {Goes(SenseKind.Audio)} (Companion › Listening).";
+            $"recordings go to {Goes(SenseKind.Audio)} (Companion › Hearing).";
     }
 
     /// <summary>Companion › Thinking's Now card: the text model writes every reply, and where pictures and recordings go, with links
@@ -229,7 +209,7 @@ public partial class MainWindow
         var line = Note(TextModelText(SenseModels.Load(store?.DataDirectory), thinking, SavedModelAbilities()), new Thickness(0, 6, 0, 0));
         AutomationProperties.SetAutomationId(line, "ThinkingSenses");
         var links = Row(PageButton("Image model", () => OpenCompanion(CompanionTab.Vision), link: true, id: "ThinkingOpenImageModel"),
-            PageButton("Audio model", () => OpenCompanion(CompanionTab.Listening), link: true, id: "ThinkingOpenAudioModel"));
+            PageButton("Audio model", () => OpenCompanion(CompanionTab.Hearing), link: true, id: "ThinkingOpenAudioModel"));
         links.Margin = new Thickness(0, 2, 0, 0);
         return new StackPanel { Children = { line, links } };
     }
@@ -437,13 +417,13 @@ public partial class MainWindow
     private async Task CheckSenseOllamaAsync(bool quiet)
     {
         await CheckOllamaAsync(quiet);
-        if (!closing && openTab is CompanionTab.Vision or CompanionTab.Listening && !(quiet && tabEdited)) RenderTab();
+        if (!closing && openTab is CompanionTab.Vision or CompanionTab.Hearing && !(quiet && tabEdited)) RenderTab();
     }
 
     private async Task PullSenseModelAsync(string model)
     {
         await PullOllamaModelAsync(model);
-        if (!closing && openTab is CompanionTab.Vision or CompanionTab.Listening && !tabEdited) RenderTab();
+        if (!closing && openTab is CompanionTab.Vision or CompanionTab.Hearing && !tabEdited) RenderTab();
     }
 
     private void UseSenseLocal(SenseKind kind, string model)
@@ -569,7 +549,7 @@ public partial class MainWindow
     private async Task LookForSenseServersAsync()
     {
         await LookForLocalServersAsync(quiet: true);
-        if (!closing && openTab is CompanionTab.Vision or CompanionTab.Listening && !tabEdited) RenderTab();
+        if (!closing && openTab is CompanionTab.Vision or CompanionTab.Hearing && !tabEdited) RenderTab();
     }
 
     private async Task SaveSenseCloudAsync(SenseKind kind, CloudProvider provider, string url, string model, PasswordBox keyBox, bool consent)
@@ -723,12 +703,17 @@ public partial class MainWindow
                     var binding = gone.Binding(profile, gone.CredentialId!.Value);
                     await Task.Run(() => vault.Delete(binding), CancellationToken.None);
                 }
-            senseShown.Remove(kind);
+            // The page keeps showing the option just saved (also while the part is off, where it offers to turn it on).
+            pickerShown[OptionalExtras.SensePickerId(kind)] = ChoiceOf(after.For(kind)).ToString();
             conversation?.ReloadSenseModels();
             var thinking = homeSettings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
             var route = SenseRouting.For(kind, after, thinking, SavedModelAbilities());
             ErrorLog.Info($"{(kind == SenseKind.Image ? "Image" : "Audio")} model: {SenseNow(kind, after, thinking)} {route.Why}");
-            ActionText.Text = $"{done} {route.Why}";
+            // Choosing a model on Vision or Hearing and pressing its button uses it: the part turns on again if it was off.
+            // Hearing goes back to its usual rule (on while the recording stays on this PC, else until you tick it).
+            var turnedOn = kind == SenseKind.Image ? !Talk.Watch : Talk.HearVoice == false;
+            if (turnedOn) SaveTalk(kind == SenseKind.Image ? Talk with { Watch = true } : Talk with { HearVoice = null });
+            ActionText.Text = $"{done} {route.Why}" + (!turnedOn ? "" : kind == SenseKind.Image ? " Vision is on." : " Hearing is on again.");
             if (after.For(kind).Own is { Place: DeepThinkingPlace.Endpoint } chosen) CheckChosenModelAsync(chosen, thinking).Forget();
         }
         catch (OperationCanceledException) { }
@@ -740,7 +725,7 @@ public partial class MainWindow
         finally
         {
             if (written is { } orphan) vault.Delete(orphan);
-            if (!closing && openTab is CompanionTab.Vision or CompanionTab.Listening)
+            if (!closing && openTab is CompanionTab.Vision or CompanionTab.Hearing)
             {
                 tabEdited = false;
                 RenderTab();

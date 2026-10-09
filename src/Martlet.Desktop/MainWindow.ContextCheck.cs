@@ -115,7 +115,7 @@ public partial class MainWindow
         {
             ErrorLog.Info($"Couldn't ask about {own.Describe()}: {error.Message}");
         }
-        if (!closing && openTab is CompanionTab.Vision or CompanionTab.Listening && !tabEdited) RenderTab();
+        if (!closing && openTab is CompanionTab.Vision or CompanionTab.Listening or CompanionTab.Hearing && !tabEdited) RenderTab();
     }
 
     /// <summary>Companion › Replies' Check model limit: asks, says what it found and shows the context line again.</summary>

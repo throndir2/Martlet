@@ -170,14 +170,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // apps answer (GET of their model lists), and Find models only asks the address typed there (on this PC only) for its
         // models. Neither saves, sends a prompt or starts anything.
         "LocalServersScan", "LocalServerFind",
-        // Companion › Thinking's Image model and Audio model links (beside ThinkingSenses) only open Vision or Listening.
-        "ThinkingOpenImageModel", "ThinkingOpenAudioModel",
+        // Companion › Thinking's Image model and Audio model links (beside ThinkingSenses) only open Vision or Hearing, and
+        // Listening's link to Hearing only opens it.
+        "ThinkingOpenImageModel", "ThinkingOpenAudioModel", "ListeningOpenHearing",
         "DiscordCallCheck"
     };
     /// <summary>Choosing a Companion page in its side list only shows that page; Devices map nodes ("Node-this-pc",
     /// "Node-host:gpu-1") and the problem card's Show buttons only select a device and show its details; a job's
-    /// "Where it runs" options ("Place-Voice-Computer") and the Image model and Audio model choices on Vision and Listening
-    /// ("Place-ImageModel-ThisPc", "Place-AudioModel-OtherSense") only show that place's choices, which their own buttons commit, and
+    /// "Where it runs" options ("Place-Voice-Computer") only show that place's choices, which their own buttons commit, and
     /// Voice engine's computer pills ("SpeakingHost-gpu-pc") and Singing's ("SingingHost-this-pc") only show that computer's engines. Home's
     /// Health tiles ("HealthCheck-thinking") and its passive fixes ("HealthOpen-voice-setup-open-voice", "HealthOpen-crash-dismiss")
     /// only open the page where something changes, or hide the item. Diagnostics' filters ("LogLevel-errors", "LogSource-all",
@@ -199,20 +199,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // A finished task's Show result in the talk window's task list ("LiveJobResultToggle-think-1") only shows or hides
         // what it found (LiveJobResult-<id>, which isn't a readable value).
         "LiveJobResultToggle-",
-        // Companion › Thinking pool › Add a machine's options ("DeepPlace-ThisPc", "DeepPlace-Cloud") only show that place's
-        // card; its own Use button commits (and needs --allow-ui-effects).
-        "DeepPlace-",
         // Companion › Thinking › This PC's "Model app" options ("LocalApp-Ollama", "LocalApp-Other") only show that app's card;
         // its own Use button commits (and needs --allow-ui-effects).
         "LocalApp-",
         // Companion › Check-ins: a check-in's Edit its prompt ("CheckInPrompt-emotes") only opens Prompts.
         "CheckInPrompt-",
-        // Companion › Pictures' "Where it draws" options ("PicturesPlace-Host", "PicturesPlace-ComfyUi") and its computer pills
-        // ("PicturesHost-this-pc") only show that place's card; its own buttons commit.
-        "PicturesPlace-", "PicturesHost-",
-        // Companion › Reading's "Where it reads" options ("ReadingPlace-ThisPc", "ReadingPlace-Host") and its computer pills
-        // ("ReadingHost-this-pc") only show that place's card; its own buttons commit.
-        "ReadingPlace-", "ReadingHost-",
+        // Companion › Pictures' and Reading's computer pills ("PicturesHost-this-pc", "ReadingHost-this-pc"), in their role's
+        // details, only show where it stands on that computer; their own buttons commit.
+        "PicturesHost-", "ReadingHost-",
         // People's "What Martlet remembers about them" ("PeopleMemories-3") only opens Memory showing that voice's facts.
         "PeopleMemories-",
         // Creations: choosing a creation in the list ("Creation-3f2a9c1b7d04", its short id) only shows its text and details.
@@ -360,10 +354,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "FreeKeyTip-Thinking", "FreeKeyAdd-Thinking", "FreeKeyGet-Thinking", "SetupCloudGetKey-Thinking",
         // Companion › Vision's Now line: whether vision is on (the default) and what Martlet looks at (your whole screen by
         // default, your active window, or a camera's name or host without its path or password) and how often it comments.
-        // The VisionSource-<kind> choices are radio buttons (ui_snapshot's selected) and VisionToggle's label says what it does
-        // (clicking it saves talk-preferences.json, so it needs --allow-ui-effects).
+        // The VisionSource-<kind> choices are radio buttons (ui_snapshot's selected). VisionToggle is Turn vision off in the Off
+        // choice's details (Picker-Vision-Off) while vision is on, and Turn vision on in the saved image model's details while it
+        // is off; clicking it saves talk-preferences.json, so it needs --allow-ui-effects.
         "VisionNow", "VisionToggle",
-        // Companion › Listening › Let Thinking hear my voice: which applies (you turned it on or off, or never chosen: on while the
+        // Companion › Hearing's Now line (HearingNow: off and why, or what hears your voice), and HearingToggle: Turn hearing off in
+        // the Off choice's details (Picker-Hearing-Off) while a model hears you, Turn hearing on in the saved audio model's details
+        // after you turned it off; clicking it saves talk-preferences.json, so it needs --allow-ui-effects.
+        "HearingNow", "HearingToggle",
+        // Companion › Hearing › Let Thinking hear my voice: which applies (you turned it on or off, or never chosen: on while the
         // recording stays on this PC, off until you tick it when it would leave). Fixed wording; no model names beyond the
         // Thinking destination the page already shows.
         "TalkHearVoiceChoice",
@@ -376,11 +375,11 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // while Martlet watches: pictures kept, the last summary's age and time taken. Its help text is the last summary
         // (one or two lines on what changed on the screen, never a window title on its own).
         "VisionScreenSummary", "VisionScreenSummaryStatus", "LiveScreenSummary",
-        // Companion › Listening › Hear how you say it: what Test hearing does (and whether it stays on this PC) or what the last test
+        // Companion › Hearing › Hear how you say it: what Test hearing does (and whether it stays on this PC) or what the last test
         // found (the model's one-word answer, never anything said). Clicking TalkHearVoiceTest sends the Thinking model a test
         // recording (a provider request), so it needs --allow-ui-effects and a model on this PC.
         "TalkHearVoiceTestStatus",
-        // Companion › Vision › Image model and Companion › Listening › Audio model (MainWindow.SenseModels.cs): the choice in words
+        // Companion › Vision's and Companion › Hearing's Now card (MainWindow.SenseModels.cs): the image or audio model in words
         // (ImageModelNow: "Use the same model as the text model (Thinking: gemma4:e2b)." or "A model of its own: Ollama on this PC
         // (qwen2.5vl:7b), chosen on 10/8/2026."), where pictures or recordings go now and why (ImageModelRoute: the routing's
         // words), what the model that takes them is known to do and where that came from (ImageModelKnown), what is sent to a
@@ -390,7 +389,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // beside Thinking's on the graphics card (ImageModelLocalFit). Under A cloud provider or server: the provider picked
         // (ImageModelProvider) and what the key box will do (ImageModelKeyStatus; never the key, base URL or model ID typed). Under
         // One of your computers: ImageModelHosts when none is paired, and each computer's line in SafeValuePrefixes. The same with
-        // AudioModel. The Place-ImageModel-<choice> options only show a panel; ImageModelUseThinking, ImageModelUseOther,
+        // AudioModel. The Picker-Vision-<choice> and Picker-Hearing-<choice> options only show a panel; ImageModelUseThinking, ImageModelUseOther,
         // ImageModelUseLocal, ImageModelSaveCloud (with ImageModelConsent) and ImageModelUseHost-<host> save sense-models.json,
         // ImageModelPullModel downloads a model, ImageModelCheckOllama and ImageModelCheckHosts ask Ollama or the paired computers,
         // and ImageModelTest sends a test request, so they need --allow-ui-effects. Companion › Thinking's line on where pictures
@@ -400,7 +399,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "AudioModelNow", "AudioModelRoute", "AudioModelKnown", "AudioModelSent", "AudioModelTestStatus", "AudioModelLocalModel",
         "AudioModelLocalStatus", "AudioModelLocalKnown", "AudioModelLocalFit", "AudioModelProvider", "AudioModelKeyStatus",
         "ThinkingSenses",
-        // Companion › Listening › When Thinking can hear you (shown while Thinking hears your voice): which way your voice goes
+        // Companion › Hearing › When Thinking can hear you (shown while Thinking hears your voice): which way your voice goes
         // (straight, or transcribed first) and what that means. Fixed text. TalkVoicePathStraight and TalkVoicePathTranscribeFirst
         // are radio buttons (ui_snapshot's selected); choosing one saves talk-preferences.json, so it needs --allow-ui-effects.
         "TalkVoicePathStatus",
@@ -429,30 +428,32 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // ("F5AddVoiceRecording", then "F5AddVoiceRecording-2" and so on in SafeValuePrefixes), and its intro, which names the
         // speech-to-text that fills in the words (or how to get one). Each recording's F5AddVoiceHeard line reads through the
         // prefix below.
-        // Companion › Singing (under Optional extras): the role on the shown computer (title with its badge, chips, where it stands: not set up,
-        // setting up, ready with the voice matches set up there, failed with the reason, or why that computer can't sing), the
-        // Set up button's label, whether it needs a graphics card of its own (SingingGpu, fixed text) and the saved quality and
-        // voice match; with VevoSing chosen where it isn't set up, that it isn't (or is being added) and the Add VevoSing there
-        // button's label. Set up and Add VevoSing there need --allow-ui-effects. Songs are only performed in conversation
+        // Companion › Singing (under Optional extras): whether and where Martlet sings (SingingNow), and in the Singing role's
+        // details (Picker-Singing-Role) where it stands on the shown computer (not set up, setting up, ready with the voice
+        // matches set up there, failed with the reason, or why that computer can't sing), whether it needs a graphics card of
+        // its own (SingingGpu, fixed text) and the buttons' labels (Set up, Sing on <computer>, Turn singing off in the Off
+        // choice's details); the saved quality; with VevoSing chosen where it isn't set up (Picker-SingingVoiceMatch-VevoSing),
+        // that it isn't (or is being added) and the Add VevoSing there button's label. Set up, Sing on, Turn singing off, Use
+        // SoulX-Singer or VevoSing and Add VevoSing there need --allow-ui-effects. Songs are only performed in conversation
         // (singing_check exercises them headlessly).
-        "SingingEngine", "SingingFeatures", "SingingState", "SingingSetUp", "SingingGpu", "SingingQuality", "SingingVoiceMatch",
-        "SingingVoiceMatchState", "SingingSetUpVevo",
+        "SingingNow", "SingingState", "SingingSetUp", "SingingUse", "SingingTurnOff", "SingingGpu", "SingingQuality",
+        "SingingUseSoulX", "SingingUseVevoSing", "SingingVoiceMatchState", "SingingSetUpVevo",
         // Every Companion page: its group in the side list ("HOW IT WORKS", "OPTIONAL EXTRAS", ...) and its fixed intro, which
         // starts with "Optional." on a page Martlet works without.
         "CompanionGroupTitle", "CompanionIntro",
         // Companion › Pictures: where Martlet draws now (PicturesNow), what Check or Draw a test picture found (PicturesTestState:
-        // ready, why not, or the test picture's size, place and seconds), the Pictures role on the shown computer (title, chips,
-        // where it stands, the Set up button), the ComfyUI address and what Connect found (version, checkpoints, whether
+        // ready, why not, or the test picture's size, place and seconds), the Pictures role on the shown computer (where it
+        // stands, the Set up button), the ComfyUI address and what Connect found (version, checkpoints, whether
         // Z-Image Turbo is there), the chosen workflow, a cloud provider's model ID and whether a key is saved or Thinking's is
         // used (never the key), and the buttons' labels. Pictures themselves are never returned.
-        "PicturesNow", "PicturesTestState", "PicturesEngine", "PicturesFeatures", "PicturesHostState", "PicturesSetUp", "PicturesUseHost",
+        "PicturesNow", "PicturesTestState", "PicturesHostState", "PicturesSetUp", "PicturesUseHost",
         "PicturesComfyAddress", "PicturesComfyState", "PicturesComfyConnect", "PicturesWorkflow", "PicturesLoadWorkflow", "PicturesUseComfy",
         "PicturesModel", "PicturesKeyStatus", "PicturesUseCloud", "PicturesTurnOff", "PicturesCheck", "PicturesTest",
         // Companion › Reading: where Martlet reads the text on the screen (ReadingNow), the newest read while watching and the
         // Read my screen now result (ReadingLast, ReadingTestState: how many lines, which engine, milliseconds and when, or why
-        // it couldn't), whether Windows can read text here, the Reading role on the shown computer (title, chips, where it
-        // stands) and the buttons' labels. The text read from a real screen (ReadingTestText) is never returned.
-        "ReadingNow", "ReadingLast", "ReadingTestState", "ReadingWindowsState", "ReadingEngine", "ReadingFeatures", "ReadingHostState",
+        // it couldn't), whether Windows can read text here, the Reading role on the shown computer (where it stands) and the
+        // buttons' labels. The text read from a real screen (ReadingTestText) is never returned.
+        "ReadingNow", "ReadingLast", "ReadingTestState", "ReadingWindowsState", "ReadingHostState",
         "ReadingSetUp", "ReadingUseHost", "ReadingUseThisPc", "ReadingTurnOff", "ReadingTest",
         "F5VoicesShared", "F5AddVoiceProblem", "F5AddVoiceRecordings", "F5AddVoiceRecording", "F5AddVoiceAbout",
         // Companion › Character › Your characters: how many characters of the owner's own and what this PC shows (never a

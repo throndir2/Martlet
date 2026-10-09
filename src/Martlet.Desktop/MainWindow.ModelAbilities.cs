@@ -54,7 +54,7 @@ public partial class MainWindow
         conversation?.ReloadAbilities();
         // Where pictures and recordings go follows at once (the desktop's status file and log say it again).
         conversation?.ReloadSenseModels();
-        if (!closing && openTab is CompanionTab.Listening or CompanionTab.Vision && !tabEdited) RenderTab();
+        if (!closing && openTab is CompanionTab.Listening or CompanionTab.Vision or CompanionTab.Hearing && !tabEdited) RenderTab();
         QueueSettingsSync();
     }
 
@@ -127,7 +127,7 @@ public partial class MainWindow
     // A test started or ended: the open Listening or Vision page shows it.
     private void ShowModelTest()
     {
-        if (!closing && openTab is CompanionTab.Listening or CompanionTab.Vision && !tabEdited) RenderTab();
+        if (!closing && openTab is CompanionTab.Listening or CompanionTab.Vision or CompanionTab.Hearing && !tabEdited) RenderTab();
     }
 
     private async Task TestHearingAsync(ModelProbe probe)
