@@ -2926,7 +2926,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         // While an After each exchange check-in takes it over, the reply only lists them (list_reminders) in the same place.
         if (configured.SupportsTools && RemindersTool is not null)
         {
-            if (HandedOffReplyTools(configured).Contains(Reminders.ToolName))
+            if (handedOff.Contains(Reminders.ToolName))
             {
                 own.Add((Reminders.ListDefinition, (call, token) => ListRemindersAsync(token)));
                 guidance = Join(guidance, Reminders.AfterReply);
