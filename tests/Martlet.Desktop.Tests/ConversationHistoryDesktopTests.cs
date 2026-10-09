@@ -159,6 +159,37 @@ public sealed class ConversationHistoryDesktopTests
     }
 
     [Fact]
+    public async Task ACheckInSetsRemindersLikeTheReplyAndTheToolLogSaysWhich()
+    {
+        await using var fixture = await LiveFixture.Create(history: true, tools: true);
+        var own = ReminderEntry.Empty;
+        fixture.Controller.RemindersTool = (arguments, token) =>
+        {
+            var outcome = Reminders.Run(arguments, new ReminderBoard(new Dictionary<string, ReminderEntry> { ["desktop-a"] = own }),
+                "desktop-a", own, DateTimeOffset.UtcNow, TimeZoneInfo.Utc, () => "r-1");
+            if (outcome.Own is not null) own = outcome.Own;
+            return Task.FromResult(outcome);
+        };
+
+        var set = await fixture.Controller.RemindAsync(Reminders.ToolName, """{"action":"set","text":"do the dishes","in_minutes":60}""",
+            "Actions", default);
+        Assert.Equal("set", set.Outcome);
+        Assert.Single(own.Reminders);
+        var listed = await fixture.Controller.RemindAsync(Reminders.ListToolName, Reminders.ListArgumentsJson, null, default);
+        Assert.Equal("listed 1", listed.Outcome);
+        Assert.Null(listed.Own);
+
+        var log = fixture.ToolService!.Log;
+        Assert.Equal(("Martlet", Reminders.ListToolName, "listed 1"), (log[0].Server, log[0].Tool, log[0].Outcome));
+        Assert.Equal(("Check-in Actions", Reminders.ToolName, "set"), (log[1].Server, log[1].Tool, log[1].Outcome));
+        Assert.DoesNotContain(log, l => l.Outcome.Contains("dishes", StringComparison.Ordinal));
+
+        fixture.Controller.RemindersTool = null;
+        var none = await fixture.Controller.RemindAsync(Reminders.ToolName, Reminders.ListArgumentsJson, "Actions", default);
+        Assert.True(none.Result.IsError);
+    }
+
+    [Fact]
     public async Task SearchingTheRecordTellsTheModelWhatWasFoundOrWhatWasWrong()
     {
         var directory = Path.Combine(Path.GetTempPath(), "Martlet.History.Desktop." + Guid.NewGuid().ToString("N"));

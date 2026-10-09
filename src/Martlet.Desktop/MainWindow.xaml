@@ -48,6 +48,19 @@
                             <TextBlock Text="Background tasks" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                         </DockPanel>
                     </RadioButton>
+                    <!-- Thinking requests: every request for the Thinking pool's slots, with its timings; its count shows how many
+                         wait or run now (MainWindow.ThinkingRequests.cs). -->
+                    <RadioButton x:Name="NavThinkingRequests" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE82F;"
+                                 Checked="Nav_Checked" AutomationProperties.AutomationId="NavThinkingRequests" AutomationProperties.Name="Thinking requests">
+                        <DockPanel>
+                            <Border x:Name="NavThinkingRequestsBadge" DockPanel.Dock="Right" Visibility="Collapsed" Background="{DynamicResource AccentBrush}"
+                                    CornerRadius="9" MinWidth="20" Height="18" Padding="6,0" Margin="8,0,0,0" VerticalAlignment="Center">
+                                <TextBlock x:Name="NavThinkingRequestsCount" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource OnAccentBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" AutomationProperties.AutomationId="NavThinkingRequestsCount"/>
+                            </Border>
+                            <TextBlock Text="Thinking requests" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+                    </RadioButton>
                     <RadioButton x:Name="NavDiagnostics" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE9D9;" Content="Diagnostics"
                                  Checked="Nav_Checked" AutomationProperties.AutomationId="NavDiagnostics"/>
                     <RadioButton x:Name="NavSettings" GroupName="Nav" Style="{DynamicResource NavItem}" Tag="&#xE713;" Content="Settings"
@@ -631,6 +644,141 @@
                     <StackPanel x:Name="TasksList" AutomationProperties.Name="Background tasks, newest first" AutomationProperties.AutomationId="TasksList"/>
                 </StackPanel>
             </ScrollViewer>
+
+            <!-- Thinking requests: every request for the Thinking pool's slots (judges, summaries, check-ins, memory, naming, touch
+                 zones, thinking longer, research): what it is for, the companion it is for, where it runs, its tries and how long it
+                 waited and ran (MainWindow.ThinkingRequests.cs, ThinkingRequests.cs). -->
+            <Grid x:Name="ThinkingRequestsPage" Visibility="Collapsed" Margin="36,30,36,16" AutomationProperties.AutomationId="ThinkingRequestsPage">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*" MinHeight="120"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <DockPanel Margin="0,0,0,12">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+                        <Button x:Name="ThinkingRequestsCopyButton" Content="_Copy shown" Click="ThinkingRequestsCopy_Click" Margin="0,0,10,0"
+                                AutomationProperties.AutomationId="ThinkingRequestsCopy" AutomationProperties.Name="Copy the shown requests with their timings"/>
+                        <Button x:Name="ThinkingRequestsClearButton" Content="C_lear finished" Click="ThinkingRequestsClear_Click"
+                                AutomationProperties.AutomationId="ThinkingRequestsClear" AutomationProperties.Name="Clear finished requests from the list"/>
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="Thinking requests" Style="{DynamicResource PageTitle}"/>
+                        <TextBlock Style="{DynamicResource Muted}" Margin="0,4,12,0" TextWrapping="Wrap"
+                                   Text="Everything your companions ask the Thinking pool to do: what it is for, where it runs, and how long it waits and runs."/>
+                    </StackPanel>
+                </DockPanel>
+                <StackPanel Grid.Row="1" Margin="0,0,0,10">
+                    <TextBlock x:Name="ThinkingRequestsSummary" TextWrapping="Wrap" FontWeight="SemiBold"
+                               AutomationProperties.AutomationId="ThinkingRequestsSummary" AutomationProperties.LiveSetting="Polite"/>
+                    <TextBlock x:Name="ThinkingRequestsPool" Style="{DynamicResource Muted}" TextWrapping="Wrap" Margin="0,2,0,0"
+                               AutomationProperties.AutomationId="ThinkingRequestsPool"/>
+                </StackPanel>
+                <Expander Grid.Row="2" x:Name="ThinkingRequestsTimingExpander" Header="_Timing by type" Margin="0,0,0,10" IsExpanded="False"
+                          AutomationProperties.AutomationId="ThinkingRequestsTimingExpander" AutomationProperties.Name="Timing by type since Martlet started">
+                    <Border Style="{DynamicResource CardStyle}" Padding="16,10" Margin="0,6,0,0">
+                        <StackPanel>
+                            <TextBlock Style="{DynamicResource Muted}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,6"
+                                       Text="Every request that ended since Martlet started, by type. Wait is the time in line; run is the time on a computer."/>
+                            <TextBlock x:Name="ThinkingRequestsTiming" FontFamily="Consolas" FontSize="12" TextWrapping="NoWrap"
+                                       AutomationProperties.AutomationId="ThinkingRequestsTiming"/>
+                        </StackPanel>
+                    </Border>
+                </Expander>
+                <DockPanel Grid.Row="3" Margin="0,0,0,6">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Label Content="T_ype" Target="{Binding ElementName=ThinkingRequestsKind}" Padding="0,0,8,0" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="ThinkingRequestsKind" Width="170" SelectionChanged="ThinkingRequestsFilter_Changed"
+                                  AutomationProperties.AutomationId="ThinkingRequestsKind" AutomationProperties.Name="Show requests of type"/>
+                    </StackPanel>
+                    <WrapPanel x:Name="ThinkingRequestsFilters" VerticalAlignment="Center" AutomationProperties.Name="Show">
+                        <RadioButton x:Name="ThinkingRequestsShowAll" GroupName="ThinkingRequestsShow" Content="_All" IsChecked="True" Margin="0,0,16,0"
+                                     Checked="ThinkingRequestsFilter_Changed" AutomationProperties.AutomationId="ThinkingRequestsFilter-all"/>
+                        <RadioButton x:Name="ThinkingRequestsShowActive" GroupName="ThinkingRequestsShow" Content="Waiting or _running" Margin="0,0,16,0"
+                                     Checked="ThinkingRequestsFilter_Changed" AutomationProperties.AutomationId="ThinkingRequestsFilter-active"/>
+                        <RadioButton x:Name="ThinkingRequestsShowProblems" GroupName="ThinkingRequestsShow" Content="_Problems and retries"
+                                     Checked="ThinkingRequestsFilter_Changed" AutomationProperties.AutomationId="ThinkingRequestsFilter-problems"/>
+                    </WrapPanel>
+                </DockPanel>
+                <Grid Grid.Row="4">
+                    <ListBox x:Name="ThinkingRequestsList" SelectionChanged="ThinkingRequestsList_SelectionChanged" BorderThickness="1"
+                             VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             AutomationProperties.AutomationId="ThinkingRequestsList" AutomationProperties.Name="Thinking requests: waiting and running first, then the newest">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                <Setter Property="Padding" Value="8,4"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="AutomationProperties.AutomationId" Value="{Binding AutomationId}"/>
+                                <Setter Property="AutomationProperties.Name" Value="{Binding Spoken}"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="22"/>
+                                        <ColumnDefinition Width="150"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="70"/>
+                                        <ColumnDefinition Width="70"/>
+                                        <ColumnDefinition Width="44"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="Glyph" Text="{Binding Glyph}" Style="{DynamicResource Icon}" FontSize="13" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                                        <TextBlock Text="{Binding Kind}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock x:Name="State" Text="{Binding State}" FontSize="11.5" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource MutedBrush}"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Margin="0,0,10,0">
+                                        <TextBlock Text="{Binding Task}" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Where}" FontSize="11.5" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource MutedBrush}"/>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="3" Text="{Binding Origin}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="0,0,8,0"
+                                               ToolTip="The companion it is for"/>
+                                    <TextBlock Grid.Column="4" Text="{Binding Waited}" VerticalAlignment="Center" ToolTip="Time in line"/>
+                                    <TextBlock Grid.Column="5" Text="{Binding Ran}" VerticalAlignment="Center" ToolTip="Time on a computer"/>
+                                    <TextBlock Grid.Column="6" Text="{Binding Tries}" VerticalAlignment="Center" HorizontalAlignment="Right" ToolTip="Tries"/>
+                                </Grid>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Severity}" Value="0">
+                                        <Setter TargetName="Glyph" Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Severity}" Value="1">
+                                        <Setter TargetName="Glyph" Property="Foreground" Value="{DynamicResource SuccessBrush}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Severity}" Value="2">
+                                        <Setter TargetName="Glyph" Property="Foreground" Value="{DynamicResource WarningBrush}"/>
+                                        <Setter TargetName="State" Property="Foreground" Value="{DynamicResource WarningBrush}"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Severity}" Value="3">
+                                        <Setter TargetName="Glyph" Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <Border x:Name="ThinkingRequestsEmptyCard" Style="{DynamicResource CardStyle}" Padding="26,22" VerticalAlignment="Top" Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="40" Height="40" CornerRadius="20" Background="{DynamicResource SoftBrush}" Margin="0,0,14,0" VerticalAlignment="Center">
+                                <TextBlock Style="{DynamicResource Icon}" FontSize="18" Text="&#xE82F;" Foreground="{DynamicResource AccentBrush}"/>
+                            </Border>
+                            <TextBlock x:Name="ThinkingRequestsEmpty" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="15"
+                                       AutomationProperties.AutomationId="ThinkingRequestsEmpty"
+                                       Text="Requests show here as soon as a companion asks the Thinking pool for something."/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+                <StackPanel Grid.Row="5" x:Name="ThinkingRequestDetailPanel" Visibility="Collapsed" Margin="0,8,0,0">
+                    <TextBlock x:Name="ThinkingRequestTopic" TextWrapping="Wrap" Margin="0,0,0,4" Visibility="Collapsed"
+                               AutomationProperties.AutomationId="ThinkingRequestTopic"/>
+                    <TextBox x:Name="ThinkingRequestDetail" IsReadOnly="True" TextWrapping="Wrap" Height="190"
+                             VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12"
+                             AutomationProperties.AutomationId="ThinkingRequestDetail" AutomationProperties.Name="The selected request in full"/>
+                </StackPanel>
+            </Grid>
 
             <!-- Diagnostics: every part's activity, warnings and errors from every computer of the owner's Martlet network, shared between them all (MainWindow.Logs.cs) -->
             <Grid x:Name="DiagnosticsPage" Visibility="Collapsed" Margin="36,30,36,16" AutomationProperties.AutomationId="DiagnosticsPage">

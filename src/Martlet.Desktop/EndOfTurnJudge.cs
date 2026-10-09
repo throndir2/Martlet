@@ -100,7 +100,7 @@ internal sealed class PoolTurnJudge(Func<ThinkingPool?> pool) : IEndOfTurnJudge
         var result = await members.RunAsync(new ThinkingJob
         {
             Kind = ThinkingJobKind.EndOfTurnJudge, Instructions = Instructions, Text = words, Timeout = left, DropWhenStale = true,
-            MaxOutputTokens = 4, Reasoning = false
+            MaxOutputTokens = 4, Reasoning = false, Label = "Has the user finished talking?"
         }, cancellationToken).ConfigureAwait(false);
         if (!result.Succeeded) throw new InvalidOperationException(result.Problem ?? result.Outcome.ToString());
         return Parse(result.Text) ?? throw new InvalidOperationException("the answer was neither COMPLETE nor INCOMPLETE");

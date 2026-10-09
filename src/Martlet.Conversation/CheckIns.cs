@@ -535,7 +535,7 @@ public static partial class CheckIns
         var offered = tools?.Tools ?? [];
         return new()
         {
-            Kind = ThinkingJobKind.CheckIn, Instructions = PromptSettings.Fill(prompts, PromptCatalog.CheckIn) ?? "", Text = text,
+            Kind = ThinkingJobKind.CheckIn, Label = $"Check-in: {checkIn.Name}", Instructions = PromptSettings.Fill(prompts, PromptCatalog.CheckIn) ?? "", Text = text,
             Needs = ThinkingCapability.Text | checkIn.Needs,
             Image = checkIn.Screenshot ? state.Screenshot : null,
             Audio = checkIn.Recording != CheckInRecording.None ? state.Recording : null,

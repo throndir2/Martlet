@@ -302,6 +302,77 @@ each place `offline`.
 .\scripts\Invoke-MartletMcp.ps1 -Calls '[{"name":"thinking_pool_check"},{"name":"thinking_pool_status"}]'
 ```
 
+### Thinking requests
+
+The **Thinking requests** page (the side menu's `NavThinkingRequests`) lists
+every request for the Thinking pool's slots since Martlet started: Thinking
+pool jobs (the judges, summaries, check-ins, memory, naming and touch zones)
+and the conversation's background work on the same slots (thinking longer and
+research). The requests that wait or run come first, then the newest ended
+ones. The journal (`ThinkingRequests`) keeps every request that has not ended
+and the last 200 that ended, plus totals by kind. It keeps no request's text
+or answer.
+
+`thinking_requests` (`dataDirectory`, and the optional filters `state`, `kind`
+and `limit`) reads the desktop's `thinking-requests.json` in that data
+directory. The desktop writes this file about one second after a change. The
+result's `state` is `none` (no file yet), `unreadable` (the file is not valid
+JSON or is larger than 4 MiB) or `loaded`. A loaded result gives `updated`,
+`active` (how many wait, run or are paused), `kept`, the `totals` by kind
+(`count`, `succeeded`, `problems`, `retries`, `preemptions`, and the average and
+maximum wait and run in ms) and the `requests` that match the filters. Each
+request gives its `id` (`tr-<n>`), `kind`, `source` (`Pool`, `Conversation` or
+`Simulated`), `task`, `origin` (the companion), `priority`, `fast`, `needs`,
+`state` and `note`, its `position` in line and `waitingForConversation`, the
+`posted`, `started` and `finished` times, `firstWaitMs`, `waitedMs`, `ranMs`
+and `totalMs`, and each try in `attempts` (`member`, `model`, `started`,
+`ended`, `ms` and `ending`). It also gives `retries`, `preemptions`,
+`answerCharacters`, `cut` and the request's limits. The filters are:
+
+- `state`: `active` (waiting, running or paused), `done`, `problems` (ended
+  other than succeeded or canceled, or with a retry or a stop for the
+  conversation), or one state (`waiting`, `running`, `paused`, `succeeded`,
+  `failed`, `timedout`, `stale`, `nomember`, `preempted` or `canceled`).
+- `kind`: one job kind, such as `memory` or `barge-in-judge`.
+- `limit`: 1 to 200 requests (50 by default). `matched` gives how many
+  requests match and `shown` how many are returned.
+
+On the desktop, `ThinkingRequestsSummary` reads, for example, *1 running, 0
+waiting. 5 ended since Martlet started (1 with a problem): they waited 2.0 s
+and ran 2.0 s on average.* `ThinkingRequestsPool` gives the pool's slots now,
+`ThinkingRequestsEmpty` the empty state, and `NavThinkingRequestsCount` how
+many requests wait or run (shown only when some do). Each row
+`ThinkingRequest-tr-<n>` is a safe click: it only selects the request, and
+`ThinkingRequestDetail` then gives the request in full (type, task, companion,
+needs, times, timings, tries, limits and the answer's length). The filters
+`ThinkingRequestsFilter-all`, `-active` and `-problems`, the
+`ThinkingRequestsTimingExpander` (*Timing by type*) and `ThinkingRequestsKind`
+(it only opens) are safe clicks. `ThinkingRequestsTiming` is a safe value.
+Choosing a type in `ThinkingRequestsKind` is `ui_select`, which always needs
+`--allow-ui-effects`. `ThinkingRequestsClear` (*Clear finished*: it forgets the
+ended requests, the totals stay) and `ThinkingRequestsCopy` (the clipboard)
+need `--allow-ui-effects`. `ThinkingRequestTopic` is what the conversation asked
+for (private): MCP never returns it.
+
+Setting `MARTLET_SIMULATE_THINKING_REQUESTS` to a number (1-50) before you
+launch the desktop posts that number of simulated requests once the window
+shows. They wait, run on made-up members (*gpu-box (simulated)* and *laptop
+(simulated)*), retry, fail and end over about half a minute. No model is asked
+and nothing is sent. The desktop log says *Posting N simulated Thinking
+requests*.
+
+The `requests` steps of `thinking_pool_check` run the production job board with
+simulated members (NOT models). They check that the journal records a success
+(one try, with its run time), a retry (a failed member, then a member that
+answers: two tries) and a stale judge dropped after its wait (no try), each
+with plausible timings. They also check that `Requests.Totals` counts the
+three by kind.
+
+```powershell
+$env:MARTLET_SIMULATE_THINKING_REQUESTS = '6'
+.\scripts\Invoke-MartletMcp.ps1 -Desktop -Calls '[{"name":"ui_click","arguments":{"id":"TourSkip"}},{"name":"ui_click","arguments":{"id":"NavThinkingRequests"},"waitMs":25000},{"name":"ui_click","arguments":{"id":"ThinkingRequest-tr-2"}},{"name":"ui_snapshot","arguments":{"idPrefix":"ThinkingRequest"}},{"name":"thinking_requests","arguments":{"state":"problems"}}]'
+```
+
 **Backup Thinking** ([a hedged request](CONVERSATION.md#backup-thinking-a-hedged-request),
 off by default): when the reply's Thinking model has no first words after the
 wait, the same request also goes to a member that may answer for the
@@ -4597,7 +4668,9 @@ from a data directory's `shared-settings.json` (optional absolute
 `setOn`, `state` (*Pending*, *Done*, *Canceled*, *Missed*), `settledBy`,
 `settledAt`, `dueIn` and `marks` (`kind` *Bid* with `idleSeconds`, *Claim*,
 *Done*, *Cancel* or *Missed*, `by` and `at`), plus the `reminders` `tool`
-exactly as the model gets it. Read-only.
+exactly as the model gets it and `handOff`: the check-in tool set that takes
+it over (`checkInToolSet`, `replaces`) and the read-only `replyTool`
+(`list_reminders`) the reply gets then. Read-only.
 
 `setup_run_status` shows how applying the recommended setup to all your
 computers stands ([Applying the recommended setup](CLUSTER.md#applying-the-recommended-setup),
@@ -4652,8 +4725,9 @@ local time on one, listed and canceled on the other, a refused call, both
 offering when it is due, the PC used most recently (5 s against 10 minutes
 idle) taking it while the other stays quiet, the conversation's message when
 Martlet brings it up on its own and the notes when the user talks first, said
-once and settled everywhere, a PC alone taking it at once and one far too late
-let go. `passed` and each step's `passed` and `detail`. No model, network or
+once and settled everywhere, a PC alone taking it at once, one far too late
+let go, and the reply's read-only `list_reminders` call listing without
+changing anything while the *Reminders* set replaces `reminders`. `passed` and each step's `passed` and `detail`. No model, network or
 credentials.
 
 `check_ins_status` shows Martlet's [check-ins](CONVERSATION.md#check-ins) from a
@@ -5422,7 +5496,7 @@ each way (-1 when it can't scroll that way) and which part of its content shows
 its `bounds`. Scrolling changes only what shows, so `ui_scroll` needs no
 `--allow-ui-effects`. The main window is split into pages, and a
 page's controls are only visible after you open it: click `NavHome`,
-`NavDevices`, `NavCompanion`, `NavConversations`, `NavCreations`, `NavTasks`, `NavDiagnostics` or `NavSettings` first (for example
+`NavDevices`, `NavCompanion`, `NavConversations`, `NavCreations`, `NavTasks`, `NavThinkingRequests`, `NavDiagnostics` or `NavSettings` first (for example
 `NavCompanion` before `CompanionTab-Listening`). Many pages keep their longer
 explanations behind a small round *?* (`Help-<id>`, such as `Help-CheckInsAbout`):
 `ui_snapshot` returns its name as `value` (*About check-ins*) and the whole
@@ -7911,7 +7985,7 @@ call fails or an `until` is not met.
   path to a JSON file.
 - `voices_status`, `voices_engine_check`, `utterance_filter_check`, `parakeet_check`, `sound_digest_check`, `straight_voice_check`, `discord_voice_check` and `turn_judge_check` calls without a `martletDirectory`
   use this checkout's Desktop build when it is built.
-- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
+- Doctor, `voices_status`, `voices_naming_check`, `f5_voices`, `cluster_status`, `network_status`, `nearby_status`, `logs_tail`, `logs_timeline`, `logs_export`, `latency_report`, `virtualization_status`, `mcp_servers_status`, `api_keys_status`, `smart_home_status`, `messaging_status`, `discord_status`, `discord_check`, `terminal_status`, `terminal_check`, `think_longer_status`, `helper_jobs_status`, `thinking_pool_status`, `thinking_requests`, `sense_models_status`, `image_model_check`, `work_sharing_status`, `reminders_status`, `check_ins_status`, `discord_reply_status`, `discord_reply_check`, `conversation_history_status`, `creations_status`, `songs_status`, `prompts_status`, `settings_sync_status`, `memory_sync_status`, `memory_status`, `character_status`, `hearing_check`, `audio_model_check`, `model_ability_check`, `echo_check`, `pc_audio_check`, `discord_call_check`, `chattiness_status`, `discord_text_check`, `discord_companion_check`, `vision_history_check`, `active_app_check`, `utterance_filter_check`, `barge_in_check`, `parakeet_check`, `context_check`, `context_board`, `thinking_steps_check`, `character_models`, `character_profiles`, `character_actions`, `character_gaze`, `character_touch_zones`, `character_reaction_changes`, `character_eyes`, `character_physical_check`, `character_theme`, `singing_status`, `gpu_priority_status`, `live_floor_status`, `quick_sounds_status`, `voice_sounds_status`, `node_presence_status`, `recommended_setup_status` and `sound_digest_check` calls without a `dataDirectory` get the script's disposable data
   directory, which `-Desktop` also uses, so Doctor sees the desktop's settings
   and `logs_tail` its logs. The directory and the desktop are removed at the end.
 - `-KeepDesktop` leaves the desktop running and prints its `-DesktopProcessId`

@@ -10,6 +10,7 @@ Each release's section here is also its notes on GitHub.
 
 ### Added
 
+- A new **Thinking requests** page in the side menu shows everything your companions ask the Thinking pool to do: what each request is for, which companion asked, its type and priority, where it runs, its retries, and how long it waited and ran. **Timing by type** sums up wait and run times since Martlet started. ([#690](https://github.com/throndir2/Martlet/pull/690))
 - Thinking pool machines outside this PC and your paired computers (a cloud provider or another computer's endpoint) now get check-ins and summaries with a screenshot or a recording only after you tick **May receive pictures and recordings** for them on Companion › Thinking pool. Text-only jobs still go to them. ([#698](https://github.com/throndir2/Martlet/pull/698))
 - Check-ins have a new tool set, **Discord calls and camera**: after a reply, the Thinking pool can call the Discord friend you asked for or change Martlet's webcam background in your Discord call, so the reply itself doesn't stop to do it. ([#696](https://github.com/throndir2/Martlet/pull/696))
 - Check-ins can now change Martlet's memory with the new **Memory** tool set: they find, remember, correct, give to someone else and forget facts after a reply, so Martlet can hand that work off and answer sooner. Martlet can still look up what it remembers while it replies. ([#697](https://github.com/throndir2/Martlet/pull/697))
@@ -19,6 +20,7 @@ Each release's section here is also its notes on GitHub.
 ### Changed
 
 - Pages are shorter and easier to scan. Long explanations now sit behind a small **?**: point at it to read, or click it to keep the text open. On Companion › Check-ins, each check-in shows only its switch, how often it runs, its answer and its status, and the rest waits under **More settings**. ([#701](https://github.com/throndir2/Martlet/pull/701))
+- When an after-each-exchange check-in has the **Reminders** tools, Martlet sets and cancels your reminders on the Thinking pool right after it answers, so its reply starts sooner. It can still tell you which reminders are waiting. ([#700](https://github.com/throndir2/Martlet/pull/700))
 
 ## [0.64.0] - 2026-10-09
 
