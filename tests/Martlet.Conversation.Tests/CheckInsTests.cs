@@ -241,6 +241,52 @@ public sealed class CheckInsTests
         Assert.Null(CheckIns.Note(new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.CheckInNote] = "" } }, "x"));
     }
 
+    [Theory]
+    [InlineData("KNOW: Her tail is still curled from the long stroke down her back.", "Her tail is still curled from the long stroke down her back.")]
+    [InlineData("<think>Touches on the tail and hips.</think>\n- **KNOW:** \"She leans into the touch.\"", "She leans into the touch.")]
+    [InlineData("OK", null)]
+    [InlineData("KNOW: nothing to add.", null)]
+    [InlineData("KNOW: nothing", null)]
+    public void ReadsWhatACheckInAddsToWhatMartletKnows(string answer, string? expected)
+    {
+        var describes = CheckIns.Of(new() { Id = "c1", Name = "Describes", Task = "Describe the moment.", Outcome = CheckInOutcome.Context });
+        var verdict = CheckIns.Read(describes, answer, State());
+        Assert.True(verdict.Readable);
+        Assert.Equal(expected, verdict.Text);
+        Assert.Equal(expected is not null, verdict.Act);
+        Assert.False(CheckIns.Read(describes, "REMIND: Be gentle.", State()).Act);
+        Assert.False(CheckIns.Read(describes, "It all looks calm.", State()).Readable);
+        Assert.False(CheckIns.Read(Built(CheckIns.Promises), "KNOW: She leans into the touch.", State()).Act);
+    }
+
+    [Fact]
+    public void ACheckInsContextAsksForAKnowLineAndGoesWithOneFreshRequestOnly()
+    {
+        var describes = CheckIns.Of(new() { Id = "c1", Name = "Describes", Task = "Describe the moment.", Outcome = CheckInOutcome.Context });
+        Assert.Contains("adds to what Martlet knows", describes.Does);
+        var message = CheckIns.Message(describes, State(), null)!;
+        Assert.Contains("If there is nothing worth adding, write only: OK", message);
+        Assert.Contains("one line that starts with KNOW: and describes what is happening, briefly and vividly, as background Mira", message);
+        Assert.DoesNotContain("REMIND:", message);
+
+        var context = CheckIns.Context(null, "She leans into the touch.")!;
+        Assert.Contains("What is happening now, from your own check-in, for you only: She leans into the touch.", context);
+        Assert.Contains("not a reminder to follow", context);
+        var board = new ContextBoard();
+        board.Post(CheckIns.Source("c1"), context, Now, CheckIns.ContextAge, consume: true);
+        var sent = board.Snapshot(Now.AddMinutes(1));
+        Assert.Contains("check-in-c1", sent.Sources);
+        board.MarkSent(sent);
+        Assert.DoesNotContain("check-in-c1", board.Snapshot(Now.AddMinutes(1.5)).Sources);
+        board.Post(CheckIns.Source("c1"), context, Now, CheckIns.ContextAge, consume: true);
+        Assert.DoesNotContain("check-in-c1", board.Snapshot(Now + CheckIns.ContextAge + TimeSpan.FromSeconds(1)).Sources);
+        Assert.True(CheckIns.ContextAge < CheckIns.NoteAge);
+        Assert.Null(CheckIns.Context(new PromptSettings { Overrides = new Dictionary<string, string> { [PromptCatalog.CheckInContext] = "" } }, "x"));
+        new CheckInSettings().With(CheckIns.Promises, new CheckInChoice(true, 5) { Outcome = CheckInOutcome.Context })
+            .With(new CustomCheckIn { Id = "c1", Name = "Describes", Outcome = CheckInOutcome.Context }).Validate();
+        Assert.Equal(4, (int)CheckInOutcome.Context);
+    }
+
     [Fact]
     public async Task WhatACheckInBringsUpIsWordedAsItsOwnBesideADueReminder()
     {
@@ -326,8 +372,12 @@ public sealed class CheckInsTests
     {
         string[] ids = [PromptCatalog.CheckIn, PromptCatalog.CheckInEmotes, PromptCatalog.CheckInGaze, PromptCatalog.CheckInPromises,
             PromptCatalog.CheckInCharacter, PromptCatalog.CheckInRepeats, PromptCatalog.CheckInCustom, PromptCatalog.CheckInNote,
+<<<<<<< 356fbeea5b0843622af2892392a0a6f4e749af1e
             PromptCatalog.CheckInDue, PromptCatalog.CheckInDueNotes, PromptCatalog.CheckInAdultOn, PromptCatalog.CheckInAdultOff,
             PromptCatalog.CheckInTouches];
+=======
+            PromptCatalog.CheckInContext, PromptCatalog.CheckInDue, PromptCatalog.CheckInDueNotes];
+>>>>>>> origin/main
         foreach (var id in ids)
         {
             var prompt = PromptCatalog.Find(id)!;

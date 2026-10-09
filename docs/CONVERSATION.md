@@ -1417,6 +1417,19 @@ with `consume`, so it goes with exactly one request, in the notes after your
 words. It is never kept in the conversation, so the start of every request
 stays the same. It waits at most 30 minutes for a message.
 
+**What a check-in adds to what Martlet knows.** A `KNOW:` answer is
+descriptive context, not an instruction: a short, vivid description of what is
+happening, which the next reply may draw on. It goes on the context board as
+source `check-in-<id>`, filled into Companion › Prompts › *Check-in: adds to
+what Martlet knows*: *What is happening now, from your own check-in, for you
+only: ... This is background you may draw on in this reply where it fits, not
+a reminder to follow. Never repeat it word for word and don't mention it.* It
+is posted with `consume`, so it goes with exactly one request, in the notes
+after your words, and never in the conversation or its instructions. It
+describes the moment, so it waits at most 3 minutes (`CheckIns.ContextAge`).
+`OK` or `KNOW: nothing to add` changes nothing. No reply waits for it, so the
+time to first words and the start of every request stay the same.
+
 **Your own check-ins.** *Add a check-in* adds one (off, at most 8), and *Copy
 as your own* adds a copy of any check-in. Each has a name, what it checks (your
 words, up to 8,192 characters), how often it runs, what it gets to know, when
@@ -1467,6 +1480,8 @@ What happens with its answer:
   message*). Where no conversation runs, Martlet starts one without the talk
   window, as for a reminder. A notice kind's own prompts are its
   `BackgroundJobKind.Wording`; due reminders keep theirs and come first.
+- *Adds to what Martlet knows*: a `KNOW:` line, a short description of what is
+  happening, goes on the context board for the next reply, as above.
 - *Turns off the emotes it names*: `OFF` lines with the tags of lingering
   emotes, as Lingering emotes does (tick *Emotes and gaze*).
 - *Takes the eyes back to their usual*: `USUAL`, as Where the character looks
@@ -1520,8 +1535,8 @@ microphone, a script (exit code 0, 0.4 s, 312 characters)*).
 
 **Answers.** Martlet reads the last decisive line, so thinking written before
 the answer doesn't count. Markdown, bullets, quotes and a reasoning model's
-`<think>` block are skipped (`CheckIns.Read`). `OK`, `KEEP` and `REMIND:
-nothing` change nothing, and so does an answer Martlet can't read (the status
+`<think>` block are skipped (`CheckIns.Read`). `OK`, `KEEP`, `REMIND:
+nothing` and `KNOW: nothing to add` change nothing, and so does an answer Martlet can't read (the status
 says so).
 
 **Prompts.** Each built-in check-in's card on Companion › Check-ins has its
@@ -1532,7 +1547,7 @@ prompts you typed there, into the newest saved settings, so edits to other
 prompts stay. Companion › Prompts › *Check-ins* also lists every check-in
 prompt: the instructions every check-in gets, one for each built-in check-in,
 *Check-ins: each check* (the wrapper of every check), the reminder for the next
-reply and the two prompts
+reply, what adds to what Martlet knows and the two prompts
 for what is brought up. Empty a built-in check-in's prompt and it doesn't run.
 
 **What you see.** Companion › Check-ins shows how many are on and the member

@@ -111,13 +111,16 @@ public partial class MainWindow
     [
         (CheckInOutcome.Note, "Reminds Martlet in its next reply"),
         (CheckInOutcome.Say, "Martlet brings it up"),
+        (CheckInOutcome.Context, "Adds to what Martlet knows"),
         (CheckInOutcome.EmotesOff, "Turns off the emotes it names"),
         (CheckInOutcome.GazeUsual, "Takes the eyes back to their usual")
     ];
 
     private const string CheckInOutcomeHelp = "Martlet adds the answer format to the prompt. A reminder: a REMIND: line goes in " +
         "the notes of your next message, so Martlet's next reply follows it. Brings it up: a SAY: line, which Martlet says on its " +
-        "own as soon as it's free. Turns off emotes: OFF lines with the tags of lingering emotes to turn off (tick Emotes and " +
+        "own as soon as it's free. Adds to what Martlet knows: a KNOW: line, a short description of what is happening, goes in " +
+        "the notes of your next message (within a few minutes) as background Martlet may draw on, not a reminder to follow. " +
+        "Turns off emotes: OFF lines with the tags of lingering emotes to turn off (tick Emotes and " +
         "gaze). Takes the eyes back: USUAL ends the gaze a reply chose. OK or KEEP changes nothing.";
 
     private const string CheckInPlaceholderHelp = "Placeholders put a fact where you want it: {name}, {time}, {adult} (whether " +
@@ -343,6 +346,7 @@ public partial class MainWindow
                 CheckInOutcome.EmotesOff => "every emote still fits",
                 CheckInOutcome.GazeUsual => "the gaze still fits",
                 CheckInOutcome.Say => "nothing to bring up",
+                CheckInOutcome.Context => "nothing to add to what Martlet knows",
                 _ => "nothing to remind Martlet of"
             }, false);
         switch (checkIn.Outcome)
@@ -375,6 +379,15 @@ public partial class MainWindow
                 try { contextBoard.Post(CheckIns.Source(checkIn.Id), note, DateTimeOffset.Now, CheckIns.NoteAge, consume: true); }
                 catch (InvalidOperationException) { return ("the context board is full, so nothing went to the conversation", false); }
                 return ($"a reminder waits for the next reply ({verdict.Text!.Length} characters)", true);
+            }
+            case CheckInOutcome.Context:
+            {
+                if (CheckIns.Context(prompts, verdict.Text!) is not { } context)
+                    return ("the Check-in: adds to what Martlet knows prompt is empty, so nothing went to the conversation", false);
+                try { contextBoard.Post(CheckIns.Source(checkIn.Id), context, DateTimeOffset.Now, CheckIns.ContextAge, consume: true); }
+                catch (InvalidOperationException) { return ("the context board is full, so nothing went to the conversation", false); }
+                return ($"background for the next reply waits {CheckIns.ContextAge.TotalMinutes:0} minutes at most " +
+                    $"({verdict.Text!.Length} characters)", true);
             }
             default:
                 return ConversationSession()?.BringUp(checkIn.Name, verdict.Text!) is null

@@ -788,11 +788,15 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "wanted ones it couldn't place and the steps (what placed each). save writes " +
             "the parsed (or detected, or estimated) zones (or, with add alone, the zones with the ones added) (and " +
             "snapshotPath as their picture, and with detect the pictures sent; includeIntimate sets Include intimate zones) into an explicit, " +
-            "disposable dataDirectory as Detect zones would. temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
+            "disposable dataDirectory as Detect zones would, each zone with no reaction list yet given the one a new zone gets (as " +
+            "the desktop saves them). Each saved zone reports reactions (its reaction list as saved, in play order: emote, gesture and " +
+            "motion IDs and sound:<cue> voice sounds, every entry kept; null when not filled yet), seed (the list a new zone gets: " +
+            "Defaults), plays (what it plays on the model) and sounds (the cues of its voice sounds). temperament (a simulated Thinking answer for Touch temperament: {\"groups\":{\"head\":" +
             "{\"attitude\":2,\"reactions\":[\"hearts\",\"blush\"],\"linger\":3}},\"zones\":{...},\"escalation\":{\"after\":3,...}}) or " +
             "personaId (the temperament that persona uses in the dataDirectory's character-temperaments.json: its own, the built-in " +
-            "reactions or a custom one) decides what the touch plays when the zone has no pick of its own, with repeats (touches in a " +
-            "row, for escalation); personality shows the request Thinking gets. The result's temperament also lists the categories with " +
+            "reactions or a custom one) seeds the list of a zone not filled yet and gives every zone its attitude, linger, look and, " +
+            "with repeats (touches in a " +
+            "row), escalation; personality shows the request Thinking gets. The result's temperament also lists the categories with " +
             "the zone kinds each covers (intimate holds every intimate kind), the custom temperaments and which temperament each persona " +
             "uses. Contacts nothing; never returns the model's path.", new
         {

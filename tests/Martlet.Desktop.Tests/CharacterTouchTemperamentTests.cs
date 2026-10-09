@@ -104,10 +104,14 @@ public sealed class CharacterTouchTemperamentTests
         Assert.Equal(TouchReactionPlan.FromDefault, CharacterTouchZones.React(hand, catalog, loves, 1).From);
         Assert.Equal(["lean_in", "smile"], CharacterTouchZones.React(HeadPat, catalog, null, 1).Actions.Select(s => s.Name));
         Assert.Equal(["lean_in", "smile"], CharacterTouchZones.Plan(HeadPat, catalog).Select(s => s.Name));
-        // The owner's pick for the zone wins over the temperament.
-        var picked = CharacterTouchZones.React(HeadPat with { Reaction = new() { Actions = ["gesture:nod"] } }, catalog, hates, 4);
-        Assert.Equal((TouchReactionPlan.FromOwner, "hates"), (picked.From, picked.Attitude));
+        // The zone's reaction list is what plays; the temperament still gives its feeling, and escalates a hated zone touched again
+        // and again.
+        var picked = CharacterTouchZones.React(HeadPat with { Reaction = new() { Actions = ["gesture:nod"] } }, catalog, hates, 1);
+        Assert.Equal((TouchReactionPlan.FromOwner, "hates", false), (picked.From, picked.Attitude, picked.Escalated));
         Assert.Equal(["nod"], picked.Actions.Select(s => s.Name));
+        var again = CharacterTouchZones.React(HeadPat with { Reaction = new() { Actions = ["gesture:nod"] } }, catalog, hates, 4);
+        Assert.Equal(["anger", "look_away", "nod"], again.Actions.Select(s => s.Name));
+        Assert.True(again.Escalated);
         Assert.Equal("loves", CharacterTouchTemperaments.Attitude(loves, "hair"));
         Assert.Null(CharacterTouchTemperaments.Attitude(loves, "foot_left"));
     }

@@ -96,6 +96,7 @@ public static class PromptCatalog
     public const string CheckInTouches = "check_in_touches";
     public const string CheckInCustom = "check_in_custom";
     public const string CheckInNote = "check_in_note";
+    public const string CheckInContext = "check_in_context";
     public const string CheckInDue = "check_in_due";
     public const string CheckInDueNotes = "check_in_due_notes";
     public const string CheckInAdultOn = "check_in_adult_on";
@@ -226,6 +227,10 @@ public static class PromptCatalog
 
     public const string DefaultCheckInNoteInstructions =
         "A reminder from your own check-in, for you only: {reminder} Follow it in this reply where it fits, without mentioning it.";
+
+    public const string DefaultCheckInContextInstructions =
+        "What is happening now, from your own check-in, for you only: {context} This is background you may draw on in this reply " +
+        "where it fits, not a reminder to follow. Never repeat it word for word and don't mention it.";
 
     public const string DefaultCheckInDueInstructions =
         "(Martlet's note, not said by the user: your own check-in came up with something to bring up.)\n{items}\n\n" +
@@ -907,12 +912,18 @@ public static class PromptCatalog
             "filled in, {facts} the facts ticked that the prompt doesn't name and what was gathered for this run, {time} the day " +
             "and time, and {answer} the answer format of what happens with the answer: OFF lines or KEEP (turn off emotes), USUAL " +
             "or KEEP (move the eyes), a REMIND: line or OK (a reminder for the next reply), a SAY: line or OK (Martlet brings it " +
-            "up). Emptied, each check sends only its prompt and facts, so the prompt must then ask for the answer format itself.",
+            "up), a KNOW: line or OK (adds to what Martlet knows). Emptied, each check sends only its prompt and facts, so the " +
+            "prompt must then ask for the answer format itself.",
             DefaultCheckInCustomInstructions, ["task", "facts", "time", "answer"]),
         new(CheckInNote, CheckInGroup, "Check-in: reminder for the next reply",
             "Goes in the notes of the next message when a check-in answers with a REMIND: line, once, never in the instructions, " +
             "so prompt caches keep working. {reminder} is that line's text.",
             DefaultCheckInNoteInstructions, ["reminder"]),
+        new(CheckInContext, CheckInGroup, "Check-in: adds to what Martlet knows",
+            "Goes in the notes of the next message when a check-in that adds to what Martlet knows answers with a KNOW: line, once " +
+            "and only within a few minutes, never in the conversation or its instructions, so prompt caches keep working. " +
+            "{context} is that line's text: a short description of what is happening, which the reply may draw on.",
+            DefaultCheckInContextInstructions, ["context"]),
         new(CheckInDue, CheckInGroup, "Check-in: brought up on its own",
             "The message of the reply Martlet starts on its own as soon as it is free, when one of your own check-ins that brings " +
             "things up answers with a SAY: line. {items} is what it said to bring up.",
