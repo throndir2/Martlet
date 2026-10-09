@@ -455,16 +455,24 @@ window ends it unless Martlet is listening or watching, which only hides it.
        your characters. The character window has one
        *Show character*/*Hide character (Esc)* button at the top and saves
        each choice on its own; a showing character switches at once.
-    10. *Speech bubbles*: speech bubbles and subtitles, and where the bubble
-        goes.
-    11. *Emotes and motions*: what replies can play on the character, and
-        combos of them.
-    12. *Eyes*: where the character looks, and where its eyes are.
-    13. *Touch*: touch zones and the touch temperament.
+    10. *Speech bubbles*: Now, then where Martlet's words show (speech
+        bubbles, subtitles, both or Off), then where the bubble goes.
+    11. *Emotes and motions*: Now (how many emotes, motions and combos are
+        on), then what replies can play on the character, and combos of them.
+    12. *Eyes*: Now, then where the character looks (the main choice), and
+        where its eyes are.
+    13. *Touch*: Now, then touch zones and the touch temperament.
   - **What it does**: how it answers and acts: *Replies* (generation
     settings, and *Thinking steps*: whether a reasoning model thinks before it
-    answers, Off by default), *Tools* (the MCP servers Martlet may call while you talk, whether
-    each runs without asking, and recent tool use) and *Smart home*.
+    answers, Off by default), *Tools* (Now, then the terminal, on or Off, then
+    the MCP servers Martlet may call while you talk, whether
+    each runs without asking, and recent tool use), *Smart home* (Now, then
+    Home Assistant or Off in an option picker, then connecting and installing
+    Home Assistant, then what Martlet may do, the devices and sharing),
+    *Discord* (Now, then connecting the bot or Off, then its setup) and
+    *Messaging* (Now, then On or Off for each app, then each app's setup).
+    *People* (in *Who it is*) has Now, then recognizing voices or Off, then
+    the voices.
 
   A page gets its own entry only if it has its own **Where it runs** choice,
   its own consent or data destination, or its own list to edit; anything else
@@ -473,11 +481,16 @@ window ends it unless Martlet is listening or watching, which only hides it.
   **Every page has the same order** (the standard Companion page layout):
 
   1. **Now**: what the page uses now, and any problem stopping it. Every page
-     starts with it, also pages that aren't jobs.
+     starts with it, also pages that aren't jobs. It is one line built from
+     what Martlet already knows (opening a page fetches nothing), such as
+     *Tools: 3 MCP servers on, the terminal off.*
   2. **The main choice**: the place, technology or model the page is about
      (where it runs, the engine, the model, the provider). An optional page
      (*Optional extras*, and Lip-sync's advanced lip-sync) always has an
-     explicit **Off** choice here, and it says what Off means.
+     explicit **Off** choice here, and it says what Off means. So does every
+     other page whose feature can be off (speech bubbles and subtitles,
+     recognizing voices, the terminal, Discord and each messaging app): the
+     feature's choice first, then *Off*.
   3. **Configuration**: the cards that only apply to the chosen option, then
      the page's other settings.
 
