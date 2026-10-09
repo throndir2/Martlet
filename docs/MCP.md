@@ -4550,7 +4550,9 @@ from a data directory's `shared-settings.json` (optional absolute
 `setOn`, `state` (*Pending*, *Done*, *Canceled*, *Missed*), `settledBy`,
 `settledAt`, `dueIn` and `marks` (`kind` *Bid* with `idleSeconds`, *Claim*,
 *Done*, *Cancel* or *Missed*, `by` and `at`), plus the `reminders` `tool`
-exactly as the model gets it. Read-only.
+exactly as the model gets it and `handOff`: the check-in tool set that takes
+it over (`checkInToolSet`, `replaces`) and the read-only `replyTool`
+(`list_reminders`) the reply gets then. Read-only.
 
 `setup_run_status` shows how applying the recommended setup to all your
 computers stands ([Applying the recommended setup](CLUSTER.md#applying-the-recommended-setup),
@@ -4605,8 +4607,9 @@ local time on one, listed and canceled on the other, a refused call, both
 offering when it is due, the PC used most recently (5 s against 10 minutes
 idle) taking it while the other stays quiet, the conversation's message when
 Martlet brings it up on its own and the notes when the user talks first, said
-once and settled everywhere, a PC alone taking it at once and one far too late
-let go. `passed` and each step's `passed` and `detail`. No model, network or
+once and settled everywhere, a PC alone taking it at once, one far too late
+let go, and the reply's read-only `list_reminders` call listing without
+changing anything while the *Reminders* set replaces `reminders`. `passed` and each step's `passed` and `detail`. No model, network or
 credentials.
 
 `check_ins_status` shows Martlet's [check-ins](CONVERSATION.md#check-ins) from a

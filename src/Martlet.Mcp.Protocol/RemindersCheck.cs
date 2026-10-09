@@ -10,7 +10,8 @@ namespace Martlet.Mcp;
 /// computer did about it (offered, took, said, canceled, let go). The check rehearses the production code end to end on two
 /// simulated companion PCs whose entries merge through <see cref="SharedSettings"/>: setting one with the tool, the other
 /// listing and canceling, who says a due one (the PC used most recently, after both offered), a PC alone saying it at once,
-/// one far too late let go, and the conversation's wording through <see cref="BackgroundJobs"/>: on its own as soon as Martlet
+/// one far too late let go, the read-only list_reminders the reply gets while a check-in takes the tool over, and the
+/// conversation's wording through <see cref="BackgroundJobs"/>: on its own as soon as Martlet
 /// is free, or in the notes of the next message. No model, network or credential is used.</summary>
 internal static class RemindersCheck
 {
@@ -18,7 +19,7 @@ internal static class RemindersCheck
     {
         cancellation.ThrowIfCancellationRequested();
         if (!File.Exists(Path.Combine(dataDirectory, SharedSettingsState.FileName)))
-            return Task.FromResult<object>(new { state = "none", why = "No shared-settings.json in this data directory yet." });
+            return Task.FromResult<object>(new { state = "none", why = "No shared-settings.json in this data directory yet.", handOff = HandOff() });
         var (document, _) = SharedSettingsState.Load(dataDirectory);
         var entries = new Dictionary<string, ReminderEntry>(StringComparer.Ordinal);
         var unreadable = new List<string>();
@@ -40,9 +41,21 @@ internal static class RemindersCheck
                 dueIn = r.Settled ? null : r.Reminder.Due > now ? Reminders.Span(r.Reminder.Due - now) : "due now",
                 marks = board.Marks(r.Reminder.Id).Select(m => new { kind = m.Mark.Kind.ToString(), by = m.By, at = m.Mark.At, idleSeconds = m.Mark.Idle })
             }).ToArray(),
-            tool = new { name = Reminders.ToolName, description = Reminders.Description, parameters = JsonNode.Parse(Reminders.ParametersJson) }
+            tool = new { name = Reminders.ToolName, description = Reminders.Description, parameters = JsonNode.Parse(Reminders.ParametersJson) },
+            handOff = HandOff()
         });
     }
+
+    /// <summary>The check-in tool set that takes the reminders tool over and the read-only tool the reply gets instead.</summary>
+    private static object HandOff() => new
+    {
+        checkInToolSet = CheckInToolSets.ReminderSet.Id, replaces = CheckInToolSets.ReminderSet.Replaces,
+        replyTool = new
+        {
+            name = Reminders.ListToolName, description = Reminders.ListDescription,
+            parameters = JsonNode.Parse(Reminders.ListDefinition.ParametersJson)
+        }
+    };
 
     internal static async Task<object> RunAsync(CancellationToken cancellation)
     {
@@ -83,6 +96,10 @@ internal static class RemindersCheck
         var canceled = Reminders.Run("""{"action":"cancel","id":"def456"}""", Board(), "desktop-b", Own("desktop-b"), now.AddSeconds(3), zone);
         Write("desktop-b", canceled.Own!, now.AddSeconds(3));
         Step("canceled on desktop-b", Board().Find("def456")?.State == ReminderState.Canceled, canceled.Result.Output);
+        var readOnly = Reminders.Run(Reminders.ListArgumentsJson, Board(), "desktop-b", Own("desktop-b"), now.AddSeconds(4), zone);
+        Step("the reply's list_reminders only lists", readOnly.Own is null && readOnly.Result.Output.Contains("abc123") &&
+            !readOnly.Result.Output.Contains("def456") && CheckInToolSets.ReminderSet.Replaces.Contains(Reminders.ToolName),
+            new { replaces = CheckInToolSets.ReminderSet.Replaces, outcome = readOnly.Outcome });
         Step("bad call refused", Reminders.Run("""{"action":"set","text":"x","at":"someday"}""", Board(), "desktop-a", Own("desktop-a"), now, zone).Result.IsError);
 
         // Due: both offer, desktop-b (used 5 s ago) beats desktop-a (idle 10 minutes) and says it; desktop-a stays quiet.

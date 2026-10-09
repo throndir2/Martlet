@@ -1278,6 +1278,17 @@ up to a year ahead), `list` and `cancel` with an `id`. Set answers with the id
 and when it is due, so Martlet confirms it with the right time without a clock
 of its own.
 
+**Set after the reply.** The *Reminders* check-in tool set takes this tool
+over (`CheckInToolSet.Replaces`) when an [After each exchange](#check-in-tool-sets)
+check-in that is on ticks it and the Thinking pool has a member that calls
+tools. Then the reply gets the read-only `list_reminders` in its place (same
+place, always the same text), so it can still answer *what reminders do I
+have?*, and it agrees briefly in its own words. The check-in sets or cancels
+the reminder on the Thinking pool after the reply, with the same code, on this
+PC's own reminders entry. Companion › Tools › *Recent tool use* shows it as
+*Check-in <name> › reminders* with the outcome only, and the desktop log says
+which check-in changed it.
+
 **When it is due**, Martlet brings it up the way it brings up finished
 background work, whatever *When it shares the result* says for Thinking longer:
 
@@ -1709,7 +1720,7 @@ does and its tools. Martlet offers:
 | --- | --- | --- |
 | Emotes and gaze (`character`) | `turn_off_emote`, `look_usual` | Turn off one lingering emote a reply turned on (never a try or a touch's), or take the eyes back to their usual gaze. |
 | Martlet's next words (`next-reply`) | `remind_next_reply`, `bring_up` | Put a reminder in the notes of the next message, or have Martlet bring something up on its own, as the `REMIND:` and `SAY:` answers do. |
-| Reminders (`reminders`) | `reminders` | Set, list and cancel your reminders, as Martlet does in a conversation. Offered only while a conversation's reminders run. |
+| Reminders (`reminders`) | `reminders` | Set, list and cancel your reminders, as Martlet does in a conversation. Offered only while a conversation's reminders run. Takes over the reply's `reminders`; the reply then gets the read-only `list_reminders` ([Reminders](#reminders)). |
 | Touch reactions (`touch-reactions`) | `read_touch_reactions`, `set_touch_mood`, `change_touch_feeling`, `change_zone_reactions`, `undo_touch_change` | Read and change how the character reacts to your touches for a while, as itself ([How I react](#how-i-react)). |
 
 **How a run calls tools.** The job offers the tools of the chosen sets that

@@ -8,6 +8,10 @@ Each release's section here is also its notes on GitHub.
 
 ## [Unreleased]
 
+### Changed
+
+- When an after-each-exchange check-in has the **Reminders** tools, Martlet sets and cancels your reminders on the Thinking pool right after it answers, so its reply starts sooner. It can still tell you which reminders are waiting. ([#694](https://github.com/throndir2/Martlet/pull/694))
+
 ### Added
 
 - Conversations now has its own page in the side menu, right after Companion, so you can read, search, edit and delete every conversation without opening a separate window. Companion › Memory › **Open conversations** takes you there too. ([#689](https://github.com/throndir2/Martlet/pull/689))
