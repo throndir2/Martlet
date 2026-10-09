@@ -154,9 +154,11 @@ public sealed record ThinkingPoolSettings
         };
     }
 
-    /// <summary>The pool without <paramref name="hostId"/>'s member, with the computer kept out so it doesn't join again by
-    /// itself (the owner unticked In the Thinking pool).</summary>
-    public ThinkingPoolSettings TakeOut(string hostId) => Remove("host:" + hostId).KeepOut(hostId, true);
+    /// <summary>The pool without <paramref name="hostId"/>'s members (one for each of its graphics cards with a Thinking pool
+    /// model), with the computer kept out so it doesn't join again by itself (the owner unticked In the Thinking pool).</summary>
+    public ThinkingPoolSettings TakeOut(string hostId) =>
+        Members.Where(m => m.Place == DeepThinkingPlace.Host && m.HostId == hostId).Select(m => m.Key).Append(DeepThinkingSettings.KeyOf(hostId))
+            .Distinct(StringComparer.Ordinal).Aggregate(this, (pool, key) => pool.Remove(key)).KeepOut(hostId, true);
 
     /// <summary>The members as one place with its pool (the first member and the others), as Martlet's planner reads them. An
     /// empty pool reads as the conversation model (Same as Thinking).</summary>
@@ -298,10 +300,13 @@ public sealed record ThinkingPoolSettings
 
 /// <summary>Plain-words warnings about likely slowdowns in the Thinking pool: a member on the same computer, graphics card or
 /// Ollama server as the conversation's Thinking model, or on the same computer as the voice. Pool jobs may run on every
-/// graphics card; these are guidance, never a block. A member that can't run says why.</summary>
+/// graphics card; these are guidance, never a block. A member that can't run says why. With <c>gpus</c> (the graphics cards a
+/// paired computer said serve a route: host ID, route ID), a member on a card of its own beside the Thinking model's card isn't
+/// warned about sharing it.</summary>
 public static class ThinkingPoolWarnings
 {
-    public static IReadOnlyList<string> For(DeepThinkingPool pool, IReadOnlyList<SetupRoute> routes)
+    public static IReadOnlyList<string> For(DeepThinkingPool pool, IReadOnlyList<SetupRoute> routes,
+        Func<string, string, IReadOnlyList<string>>? gpus = null)
     {
         ArgumentNullException.ThrowIfNull(pool);
         ArgumentNullException.ThrowIfNull(routes);
@@ -319,7 +324,7 @@ public static class ThinkingPoolWarnings
             SetupRoute[] shared = member.Place == DeepThinkingPlace.Host
                 ? [.. live.Where(r => SelfHostSetup.IsGateway(r.RouteType) && r.Gateway?.HostId == member.HostId)]
                 : member.OnThisPc ? [.. live.Where(IsThisPc)] : [];
-            if (shared.FirstOrDefault(r => r.Role == SetupRole.Llm) is { } thinking)
+            if (shared.FirstOrDefault(r => r.Role == SetupRole.Llm) is { } thinking && !OwnCard(member, thinking, gpus))
                 warnings.Add(SameServer(member, thinking)
                     ? $"{name} runs in the same Ollama server as the conversation's Thinking model ({thinking.ModelId}): replies may start later while it works, and Martlet checks both fit first."
                     : $"{name} shares {(member.Place == DeepThinkingPlace.Host ? member.HostId : "this PC")} and its graphics card with the conversation's Thinking model: replies may start later while it works.");
@@ -337,4 +342,17 @@ public static class ThinkingPoolWarnings
         member.Place == DeepThinkingPlace.Endpoint && thinking.RouteType == SetupRouteType.ChatCompletions &&
         Uri.TryCreate(thinking.Origin, UriKind.Absolute, out var a) && Uri.TryCreate(member.Origin, UriKind.Absolute, out var b) &&
         a.Authority == b.Authority;
+
+    /// <summary>Whether a member on a paired computer runs on graphics cards its host named, none of which serve the
+    /// conversation's Thinking route there (both known; "cpu" is no card).</summary>
+    public static bool OwnCard(DeepThinkingSettings member, SetupRoute thinking, Func<string, string, IReadOnlyList<string>>? gpus)
+    {
+        ArgumentNullException.ThrowIfNull(member);
+        ArgumentNullException.ThrowIfNull(thinking);
+        if (gpus is null || member is not { Place: DeepThinkingPlace.Host, HostId: { } host } || thinking.Gateway?.HostId != host) return false;
+        var mine = gpus(host, member.HostRoute);
+        var theirs = gpus(host, thinking.GatewaySnapshot?.RouteId ?? SelfHostSetup.OllamaRouteId);
+        return mine.Count > 0 && theirs.Count > 0 && !mine.Contains("cpu", StringComparer.Ordinal) &&
+            !mine.Any(card => theirs.Contains(card, StringComparer.Ordinal));
+    }
 }

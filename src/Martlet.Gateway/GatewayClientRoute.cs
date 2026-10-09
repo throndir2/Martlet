@@ -11,9 +11,10 @@ public sealed partial class GatewayInferenceRoute
         ArgumentNullException.ThrowIfNull(capability);
         var expected = capability.Kind switch
         {
-            // The conversation model and the deep-thinking role's second Ollama share the native-chat contract.
-            GatewayInferenceKind.OllamaChat when capability.RouteId == Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId =>
-                (Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId, Martlet.Core.Settings.SelfHostSetup.DeepThinkingPath,
+            // The conversation model and the Thinking pool roles' own Ollama servers (one per graphics card) share the native-chat
+            // contract.
+            GatewayInferenceKind.OllamaChat when Martlet.Core.Settings.SelfHostSetup.DeepThinkingCard(capability.RouteId) is { } card =>
+                (Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteIdFor(card), Martlet.Core.Settings.SelfHostSetup.DeepThinkingPathFor(card),
                     OllamaChatAdapter.Protocol, "1.0"),
             GatewayInferenceKind.OllamaChat => (Martlet.Core.Settings.SelfHostSetup.OllamaRouteId,
                 Martlet.Core.Settings.SelfHostSetup.OllamaPath, OllamaChatAdapter.Protocol, "1.0"),
@@ -32,7 +33,7 @@ public sealed partial class GatewayInferenceRoute
         GatewayRules.Require(capability.RequiredRole == GatewayRole.Voice &&
             capability.RouteId == expected.Item1 && capability.Path == expected.Item2 &&
             capability.ContractId == expected.Item3 && capability.ContractVersion == expected.Item4 &&
-            (capability.MaximumConcurrency == 1 || capability.RouteId == Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId &&
+            (capability.MaximumConcurrency == 1 || Martlet.Core.Settings.SelfHostSetup.IsDeepThinkingRoute(capability.RouteId) &&
                 capability.MaximumConcurrency is > 1 and <= Martlet.Core.Settings.SelfHostSetup.DeepThinkingMaximumSlots) &&
             capability.Streaming &&
             capability.MaximumDurationMilliseconds > 0 &&

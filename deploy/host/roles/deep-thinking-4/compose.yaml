@@ -1,0 +1,21 @@
+# Martlet Thinking pool model on graphics card 4, loopback-only behind the Martlet gateway.
+# Official ollama/ollama image (MIT), pinned like the deep-thinking role's, but a server of its own: it listens only on
+# 127.0.0.1:11438 (host loopback natively, the gateway's network namespace in Docker), keeps its models in the
+# Martlet-managed martlet-deep-thinking-4-models volume and runs on the one graphics card "martlet-host add deep-thinking-4"
+# pins it to (compose.gpu.yaml with CUDA_VISIBLE_DEVICES), so each card runs its own Thinking pool model at full speed.
+
+services:
+  ollama:
+    image: ollama/ollama:0.34.4
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 127.0.0.1:11438
+      OLLAMA_KEEP_ALIVE: "-1"
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-1}
+    volumes:
+      - models:/root/.ollama
+    network_mode: ${MARTLET_ROLE_NETWORK:?set by martlet-host}
+
+volumes:
+  models:
+    name: martlet-deep-thinking-4-models

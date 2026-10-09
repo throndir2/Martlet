@@ -898,22 +898,29 @@ role_uses_gpu() {
 }
 
 # For martlet-host status: the gateway gives live turns first claim on a graphics card and stops Deep thinking's work on a card
-# that a live role uses. Says which roles deep-thinking shares a card with, and how to give it one of its own.
+# that a live role uses. Says which roles each Thinking pool role (deep-thinking, and deep-thinking-2... on extra cards) shares
+# a card with, and how to give it one of its own.
 gpu_sharing_note() {
-  [[ -f "$(installed_file deep-thinking)" ]] || return 0
-  local deep other place shared=()
-  deep="$(role_place deep-thinking)"
-  while IFS= read -r other; do
-    [[ -n "${other}" && "${other}" != deep-thinking ]] || continue
-    role_uses_gpu "${other}" || continue
-    place="$(role_place "${other}")"
-    [[ "${place}" != cpu && "${deep}" != cpu ]] || continue
-    if [[ -z "${deep}" || "${deep}" == all || -z "${place}" || "${place}" == all || "${place}" == "${deep}" ]]; then shared+=("${other}"); fi
-  done < <(installed_roles)
-  (( ${#shared[@]} > 0 )) || return 0
-  say "Graphics card sharing"
-  note "deep-thinking shares a graphics card with ${shared[*]}. Live turns go first there: a live request or a desktop's hold stops its thinks, and Martlet runs them on another computer or later."
-  note "On a host with two or more NVIDIA cards, pin each Ollama server to its own GPU (CUDA_VISIBLE_DEVICES): add deep-thinking again in Martlet and choose a card that no live role uses."
+  local pool deep other place shared said=0
+  for pool in deep-thinking deep-thinking-2 deep-thinking-3 deep-thinking-4; do
+    [[ -f "$(installed_file "${pool}")" ]] || continue
+    shared=()
+    deep="$(role_place "${pool}")"
+    while IFS= read -r other; do
+      # The Thinking pool roles are all pool work: they never stop each other.
+      [[ -n "${other}" && ! "${other}" =~ ^deep-thinking(-[0-9])?$ ]] || continue
+      role_uses_gpu "${other}" || continue
+      place="$(role_place "${other}")"
+      [[ "${place}" != cpu && "${deep}" != cpu ]] || continue
+      if [[ -z "${deep}" || "${deep}" == all || -z "${place}" || "${place}" == all || "${place}" == "${deep}" ]]; then shared+=("${other}"); fi
+    done < <(installed_roles)
+    (( ${#shared[@]} > 0 )) || continue
+    (( said )) || say "Graphics card sharing"
+    said=1
+    note "${pool} shares a graphics card with ${shared[*]}. Live turns go first there: a live request or a desktop's hold stops its thinks, and Martlet runs them on another computer or later."
+  done
+  (( said )) || return 0
+  note "On a host with two or more NVIDIA cards, pin each Ollama server to its own GPU (CUDA_VISIBLE_DEVICES): change deep-thinking in Martlet and choose a card that no live role uses, and add deep-thinking-2 (one Thinking pool model per card) for each further card."
 }
 
 # What installed role $1 runs with now, from its .env: "choice|<VAR>|<value>" for each role.conf choice that holds one of
@@ -951,17 +958,24 @@ gpu_users() {
   printf '%s' "${users[*]:-}"
 }
 
-# The card for role $1 when nothing was chosen: the one it already runs on, else a card no other role is pinned to,
-# else any card, preferring the most memory free right now.
+# The card for role $1 when nothing was chosen: the one it already runs on, else a card no other role is pinned to, else (for
+# a Thinking model: ollama, deep-thinking...) a card no other Thinking model is pinned to, else any card, preferring the most
+# memory free right now.
 automatic_gpu() {
-  local role="$1" current i best="" best_free=-1 free pass
+  local role="$1" current i best="" best_free=-1 free pass user thinker
   current="$(role_gpu "${role}")"
   # Installed on the GPU without a card of its own: it runs on every card and keeps doing so.
   if [[ -z "${current}" && -f "$(installed_file "${role}")" && -f "${PROJECTS}/${role}/compose.gpu.yaml" ]]; then printf 'all'; return; fi
   for i in "${!NVIDIA_IDS[@]}"; do [[ "${NVIDIA_IDS[i]}" == "${current}" ]] && { printf '%s' "${current}"; return; }; done
-  for pass in free any; do
+  for pass in free nothink any; do
+    [[ "${pass}" != nothink || "${role}" =~ ^(ollama|deep-thinking(-[0-9])?)$ ]] || continue
     for i in "${!NVIDIA_IDS[@]}"; do
-      [[ "${pass}" == any || -z "$(gpu_users "${role}" "${NVIDIA_IDS[i]}")" ]] || continue
+      if [[ "${pass}" == free ]]; then [[ -z "$(gpu_users "${role}" "${NVIDIA_IDS[i]}")" ]] || continue; fi
+      if [[ "${pass}" == nothink ]]; then
+        thinker=0
+        for user in $(gpu_users "${role}" "${NVIDIA_IDS[i]}"); do [[ "${user}" =~ ^(ollama|deep-thinking(-[0-9])?)$ ]] && thinker=1; done
+        (( ! thinker )) || continue
+      fi
       free=$(( NVIDIA_MBS[i] - NVIDIA_USED[i] ))
       if (( free > best_free )); then best_free=${free}; best="${NVIDIA_IDS[i]}"; fi
     done
@@ -2319,6 +2333,16 @@ cmd_add() {
       fi
     fi
     env_lines+=("MARTLET_ACCELERATOR=${accelerator}")
+  fi
+
+  # min_gpus=N: a role that needs N NVIDIA graphics cards on this host (the Thinking pool model for card N, deep-thinking-N,
+  # which would otherwise share a card that a Thinking model uses already).
+  local min_gpus; min_gpus="$(conf_value "${conf}" min_gpus)"
+  if [[ -n "${min_gpus}" ]]; then
+    [[ "${min_gpus}" =~ ^[1-8]$ ]] || fail "Invalid min_gpus in role.conf."
+    (( ${#NVIDIA_IDS[@]} > 0 )) || detect_nvidia
+    (( ${#NVIDIA_IDS[@]} >= min_gpus )) ||
+      fail "${role} needs a host with at least ${min_gpus} NVIDIA graphics cards usable by containers; this host has ${#NVIDIA_IDS[@]}."
   fi
 
   # Suggested choice values by GPU memory: choice_by_vram=VAR|<MiB>@<value> ... (ascending, 0 = CPU).

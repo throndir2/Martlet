@@ -450,6 +450,60 @@ public sealed class OllamaRelayTests
     }
 
     [Fact]
+    public async Task Each_graphics_cards_Thinking_pool_model_has_a_route_of_its_own_with_its_own_slots()
+    {
+        await using var first = await FakeOllama.StartAsync(200,
+            "{\"message\":{\"role\":\"assistant\",\"content\":\"Card one.\"},\"done\":true,\"done_reason\":\"stop\"}");
+        await using var second = await FakeOllama.StartAsync(200,
+            "{\"message\":{\"role\":\"assistant\",\"content\":\"Card two.\"},\"done\":true,\"done_reason\":\"stop\"}");
+        await using var card1 = OllamaRelayWorker.DeepThinking(first.Endpoint, "qwen3:8b", slots: 2);
+        await using var card2 = OllamaRelayWorker.DeepThinking(second.Endpoint, "qwen3:8b", card: 2);
+        card1.Route.PlaceOn(["GPU-aaaa-0000"]);
+        card2.Route.PlaceOn(["GPU-bbbb-1111"]);
+        // Card 1 keeps the route every host had; card 2 has its own route, path, destination and worker, on the pool lane too.
+        Assert.Equal((Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteIdFor(2), "/martlet/v1/inference/deep-thinking-2-chat",
+                "deep-thinking-2-host", "deep-thinking-2-relay", GatewayLane.Pool, 1),
+            (card2.Route.RouteId, card2.Route.Path, card2.Route.DestinationId, card2.Route.WorkerId, card2.Route.Lane, card2.Route.MaximumConcurrency));
+        Assert.Equal(Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteId, card1.Route.RouteId);
+        var capability = GatewayInferenceRouteCapability.From(card2.Route);
+        Assert.Equal(card2.Route.RouteId, GatewayInferenceRoute.FromCapability(capability).RouteId);
+        Assert.Equal(3, GatewayInferenceRoute.FromCapability(capability with { MaximumConcurrency = 3 }).MaximumConcurrency);
+        // A card's route with another card's path, or a card beyond the bound, is refused.
+        Assert.Throws<GatewayProtocolException>(() => GatewayInferenceRoute.FromCapability(capability with
+            { Path = Martlet.Core.Settings.SelfHostSetup.DeepThinkingPath }));
+        Assert.Throws<GatewayProtocolException>(() => GatewayInferenceRoute.FromCapability(capability with
+            { RouteId = "martlet.gateway.deep-thinking-5-chat.v1", Path = "/martlet/v1/inference/deep-thinking-5-chat" }));
+        Assert.Throws<GatewayProtocolException>(() => OllamaRelayWorker.DeepThinking(second.Endpoint, "qwen3:8b",
+            card: Martlet.Core.Settings.SelfHostSetup.DeepThinkingMaximumCards + 1));
+
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [card1, card2]);
+        var pairingCard = host.OpenPairing(GatewayRole.Voice, "desktop-test");
+        var (pairing, secret) = await Audio2FaceHostClient.PairAsync(host.Origin.CanonicalOrigin, pairingCard.HostId,
+            pairingCard.SpkiFingerprint, "desktop-test", pairingCard.PairingId, pairingCard.Token.Reveal());
+        using var connection = new Audio2FaceHostConnection(pairing, secret, host.Clock);
+        var routes = await connection.ReadRoutesAsync();
+        var one = Assert.Single(routes, r => r.RouteId == HostRoute.DeepThinkingRouteId);
+        var two = Assert.Single(routes, r => r.RouteId == Martlet.Core.Settings.SelfHostSetup.DeepThinkingRouteIdFor(2));
+        Assert.Equal((2, 1), (one.MaximumConcurrency, two.MaximumConcurrency));
+        Assert.Equal(["GPU-aaaa-0000"], one.Gpus);
+        Assert.Equal(["GPU-bbbb-1111"], two.Gpus);
+        Assert.Equal((HostRoute.PoolLane, HostRoute.PoolLane), (one.Lane, two.Lane));
+        Assert.True(two.CarriesAudio);
+        var text = new List<string>();
+        await foreach (var delta in connection.StreamChatAsync(two, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30), null, [],
+            "Think on card two.", 0.7, 256, 8_192))
+            text.Add(delta);
+        Assert.Equal(["Card two."], text);
+        Assert.Single(second.Requests);
+        Assert.Empty(first.Requests);
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+        {
+            await foreach (var _ in connection.StreamChatAsync(two with { Path = HostRoute.DeepThinkingPath }, NewIds(), 2,
+                host.Clock.GetUtcNow().AddSeconds(30), null, [], "Hello", 0.7, 64, 4_096)) { }
+        });
+    }
+
+    [Fact]
     public async Task Deep_thinking_role_with_slots_runs_that_many_thinks_at_once_and_turns_one_more_away()
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

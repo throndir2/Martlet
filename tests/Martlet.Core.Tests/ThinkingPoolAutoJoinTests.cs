@@ -109,6 +109,58 @@ public sealed class ThinkingPoolAutoJoinTests
     }
 
     [Fact]
+    public void A_host_with_a_host_role_on_each_of_two_cards_joins_with_one_member_per_card()
+    {
+        var card2 = new ThinkingPoolOffer(SelfHostSetup.DeepThinkingRouteIdFor(2), "qwen3:8b", 3);
+        var result = ThinkingPoolAutoJoin.For(new(), Host("diva", Ollama, Role, card2), conversationThinkingHost: "diva", now: Now);
+
+        Assert.Equal(ThinkingPoolHostChange.Joined, result.Change);
+        Assert.Equal(["host:diva", "host:diva#gpu2"], result.Pool.Members.Select(m => m.Key));
+        Assert.Equal([1, 2], result.Pool.Members.Select(m => m.Card));
+        Assert.Equal([2, 3], result.Pool.Members.Select(m => m.ThinksAtOnce));
+        Assert.All(result.Pool.Members, m => { Assert.True(m.OnHostRole); m.Validate(); });
+        Assert.Equal(2, result.Changes.Count);
+        Assert.Equal("diva joined the Thinking pool by itself with 2 graphics cards (card 1: qwen3:8b, 2 slots; card 2: qwen3:8b, 3 slots). " +
+            "Untick it in Companion › Thinking pool to keep it out.", result.Why);
+        Assert.Equal("diva's Thinking pool, card 2 (qwen3:8b)", result.Pool.Members[1].Describe());
+        // Every member saved before cards had members of their own keeps its key: card 1 is host:diva.
+        Assert.Equal("host:diva", DeepThinkingSettings.KeyOf("diva"));
+        Assert.Equal("diva", DeepThinkingSettings.HostOfKey("host:diva#gpu2"));
+        Assert.Equal("diva", DeepThinkingSettings.HostOfKey("host:diva"));
+        Assert.Null(DeepThinkingSettings.HostOfKey("endpoint:https://x|m"));
+        Assert.False(ThinkingPoolAutoJoin.For(result.Pool, Host("diva", Ollama, Role, card2), "diva", now: Now).Changed);
+    }
+
+    [Fact]
+    public void A_card_joins_later_follows_its_slots_leaves_when_its_role_goes_and_taking_the_computer_out_removes_every_card()
+    {
+        var card2 = new ThinkingPoolOffer(SelfHostSetup.DeepThinkingRouteIdFor(2), "qwen3:8b");
+        var one = ThinkingPoolAutoJoin.For(new(), Host("diva", Role), null, now: Now).Pool.WithJobs("host:diva", quick: false);
+
+        var later = ThinkingPoolAutoJoin.For(one, Host("diva", Role, card2), null, now: Now);
+        Assert.Equal(ThinkingPoolHostChange.Joined, later.Change);
+        Assert.Equal(2, later.Member?.Card);
+        Assert.Equal("diva's graphics card 2 joined the Thinking pool by itself (qwen3:8b, 1 slot), as a member of its own beside its other cards.", later.Why);
+        // Per-member rules stay on their own key.
+        Assert.False(later.Pool.TakesQuickJobs("host:diva"));
+        Assert.True(later.Pool.TakesQuickJobs("host:diva#gpu2"));
+
+        var slots = ThinkingPoolAutoJoin.For(later.Pool, Host("diva", Role, card2 with { MaximumConcurrency = 2 }), null, now: Now);
+        Assert.Equal(ThinkingPoolHostChange.SlotsChanged, slots.Change);
+        Assert.True(slots.OnlySlots);
+        Assert.Equal(2, slots.Pool.Members.Single(m => m.Card == 2).Slots);
+
+        var gone = ThinkingPoolAutoJoin.For(slots.Pool, Host("diva", Role), null, now: Now);
+        Assert.Equal(ThinkingPoolHostChange.CardRemoved, gone.Change);
+        Assert.Equal(["host:diva"], gone.Pool.Members.Select(m => m.Key));
+
+        var taken = slots.Pool.TakeOut("diva");
+        Assert.Empty(taken.Members);
+        Assert.True(taken.Left("diva"));
+        Assert.False(ThinkingPoolAutoJoin.For(taken, Host("diva", Role, card2), null, now: Now).Changed);
+    }
+
+    [Fact]
     public void A_host_with_an_incomplete_pairing_does_not_join()
     {
         var plain = Host("diva", Role) with { Origin = "http://diva.local:9443" };

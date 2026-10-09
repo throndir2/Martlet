@@ -606,7 +606,7 @@ public partial class MainWindow
             var seen = check is { Reachable: true, Routes: { } routes } ? PoolHost(host, routes) : null;
             var offer = seen is null ? null : ThinkingPoolAutoJoin.Route(seen, thinkingHost);
             var detail = offer is not null
-                ? $"{(offer.RouteId == SelfHostSetup.DeepThinkingRouteId ? "Its Thinking pool role runs" : "Its Ollama runs")} {offer.ModelId}: " +
+                ? $"{(SelfHostSetup.IsDeepThinkingRoute(offer.RouteId) ? "Its Thinking pool role runs" : "Its Ollama runs")} {offer.ModelId}: " +
                     (Said(VisionModelCatalog.ForRoute(host.Pairing.Origin, offer.ModelId, abilities)) switch
                     {
                         true => "it sees pictures.",

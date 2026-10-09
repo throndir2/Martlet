@@ -41,7 +41,7 @@ public sealed record HostRoute(
 
     /// <summary>Whether the host's conversation model route takes the user's recording (a host of this version or later
     /// advertises room for one); an older host's route has room for a screen image only.</summary>
-    public bool CarriesAudio => RouteId is OllamaChatRouteId or DeepThinkingRouteId &&
+    public bool CarriesAudio => (RouteId == OllamaChatRouteId || SelfHostSetup.IsDeepThinkingRoute(RouteId)) &&
         MaximumRequestBytes >= SelfHostSetup.OllamaRequestBytes;
 
     /// <summary>The route as this PC saves it when a job moves to the host: its advertised identity and limits, observed now.</summary>
@@ -90,7 +90,7 @@ public sealed partial class Audio2FaceHostConnection
         ArgumentNullException.ThrowIfNull(history);
         ids.Validate();
         if (!(route.RouteId == HostRoute.OllamaChatRouteId && route.Path == HostRoute.OllamaChatPath ||
-                route.RouteId == HostRoute.DeepThinkingRouteId && route.Path == HostRoute.DeepThinkingPath))
+                SelfHostSetup.DeepThinkingCard(route.RouteId) is { } card && route.Path == SelfHostSetup.DeepThinkingPathFor(card)))
             throw new ArgumentException("The route is not one of the host's conversation models.", nameof(route));
         var now = clock.GetUtcNow();
         var latest = now + route.MaximumDuration - TimeSpan.FromSeconds(1);

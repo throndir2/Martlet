@@ -274,7 +274,9 @@ between programs on one card, so the host's gateway keeps it
   work or holds.
 - Pool work on a card of its own keeps running. On a host with two or more
   NVIDIA cards, pin each Ollama server to its own GPU (CUDA_VISIBLE_DEVICES):
-  add the Deep thinking role again and choose a card that no live role uses.
+  add the Deep thinking role again and choose a card that no live role uses,
+  and give each further card a Thinking pool model of its own
+  ([One Thinking pool model per graphics card](#one-thinking-pool-model-per-graphics-card)).
   `martlet-host status`, the host log and `GET /martlet/v1/priority` say when
   Deep thinking shares a card with live roles.
 
@@ -282,6 +284,45 @@ between programs on one card, so the host's gateway keeps it
 locally (`GpuPriorityTests`, MCP `gpu_priority_selftest` with fixture Ollama
 servers on loopback); a real GPU, a real Ollama stopping mid-token and a host
 with two or more cards are **NOT RUN**.
+
+### One Thinking pool model per graphics card
+
+One Ollama server keeps one copy of its model on one graphics card. Its slots
+(`OLLAMA_NUM_PARALLEL`) are parallel streams of that one copy, so a second
+card stays idle. A host with two or more NVIDIA cards therefore runs one
+Thinking pool model per card, and each card is a Thinking pool member of its
+own:
+
+| Card | Host role | Route | Port | Member key |
+| --- | --- | --- | --- | --- |
+| 1 | `deep-thinking` | `martlet.gateway.deep-thinking-chat.v1` | 11435 | `host:<id>` |
+| 2 to 4 | `deep-thinking-<n>` | `martlet.gateway.deep-thinking-<n>-chat.v1` | 11434 + n | `host:<id>#gpu<n>` |
+
+- Each extra-card role is a separate Ollama with its own models volume. It
+  needs at least that many NVIDIA cards (`min_gpus`), and `martlet-host`
+  pins it to a card that no other Thinking model uses (`CUDA_VISIBLE_DEVICES`).
+  Martlet offers *Thinking pool (card 2)* only on a host that reports two or
+  more NVIDIA cards. On Companion › Thinking pool, the host's first row has
+  *Add a model on card 2*.
+- The host's gateway gives each card's route its own slots, its cards (`gpus`)
+  and the `pool` lane. A live turn stops pool work only on the card it uses.
+- Each card joins the pool by itself (`ThinkingPoolAutoJoin`) with its own
+  slots, and it leaves when the host no longer runs a model there. *In the
+  pool* on the host's first row keeps every card of the computer out.
+- The board places work on each card on its own. A card that doesn't serve the
+  conversation's Thinking route ranks before the card that does. Only the member
+  on the Thinking model's card gets the "shares its graphics card" warning.
+- Card 1 keeps the key and route that every host had before, so saved members
+  and the per-member choices (Quick jobs, Long jobs, Backup for slow replies)
+  stay as they are. A one-card host is unchanged.
+
+The recommended setup keeps an extra card's model where it runs and counts its
+card as used. It doesn't add or move one by itself.
+
+**Qualification:** routes, auto-join, the page and the warnings are checked
+locally (`OllamaRelayTests`, `ConfigurationTests`, `ThinkingPoolAutoJoinTests`,
+`HostRolesTests`, MCP `thinking_pool_check` *per GPU* steps). A real host with
+two NVIDIA cards and two Ollama servers is **NOT RUN**.
 
 ## Failover
 

@@ -230,6 +230,16 @@ run the production rule (`ThinkingPoolAutoJoin`) on sample hosts: a host with
 the Thinking pool role joins with its slots, an Ollama-only host joins unless it
 does this PC's Thinking, a member on Ollama moves to the role, and a computer
 kept out, one Sharing work never uses, a full pool and a host PC are skipped.
+Its `per GPU` steps run the same rule for a host with a Thinking pool model on
+each of two graphics cards: it joins as two members (`host:diva` and
+`host:diva#gpu2`) with their own slots, the second card's member leaves when
+the host no longer runs a model there and comes back by itself, taking the
+computer out removes every card, and only the member on the Thinking model's
+own card is warned about sharing it (`ThinkingPoolWarnings.OwnCard`, from the
+cards the host names for each route). `thinking_pool_status` gives each member
+on a paired computer its `card` (1, or 2 to 4 for a Thinking pool model on an
+extra card) and `route`; `thinking-pool-status.json` gives each member `host`,
+`card`, `route` and `gpus` (the cards the host said serve that route).
 
 `thinking_pool_status` gives the line's rules from `thinking-pool.json` as
 `line` (`preemptLowerPriority`, `raiseAfterStops`, `retries`). The `priority`
@@ -275,7 +285,15 @@ that may receive them, and `thinking-pool-status.json` gives each member
 `mayReceiveMedia`. The `thinking_pool_check` step *pictures and recordings*
 checks the gate with the production board. A paired computer's
 Thinking pool role sets its slots on that computer: its row has
-`DeepThinkingChangeModel-<host>` and no slot choice. Other members have
+`DeepThinkingChangeModel-<host>` and no slot choice. A host with a Thinking pool
+model on each of several graphics cards has one row per card: the extra cards'
+rows say *Runs on diva's graphics card 2, as a member of its own* and have
+`DeepThinkingChangeModel-<host>-gpu<n>` and `DeepThinkingShare-<host>-gpu<n>`
+(the shared-card warning, shown only when that card runs the host's Thinking
+model too). Only the host's first row has `DeepThinkingPool-<host>` (*In the
+pool*, for every card of it) and, when the host reports more NVIDIA cards than
+it runs Thinking pool models on, `DeepThinkingAddCard-<host>` (*Add a model on
+card 2*, which installs the `deep-thinking-2` role). Other members have
 `ThinkingPoolSlots-<n>` and `ThinkingPoolRemove-<n>`. *Add a machine* reads
 through `DeepThinkingAutoJoin` (computers with a Thinking model join by
 themselves, and which ones are kept out). The conversation row's
