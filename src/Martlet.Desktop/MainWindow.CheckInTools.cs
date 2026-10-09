@@ -22,6 +22,10 @@ public partial class MainWindow
         };
         // Only a PC that keeps reminders (a data folder) runs the reminders tool.
         if (conversation?.RemindersTool is not null) handlers[CheckInToolSets.RemindersId] = ReminderToolAsync;
+        // Only while memory is on does the memory tool set run.
+        if (conversation?.Configuration?.Memory is { Enabled: true })
+            handlers[MemoryToolSet.Id] = (call, context, token) => conversation is { } live
+                ? live.CheckInMemoryAsync(call, context.CheckInName, token) : new(new ConversationToolResult("Memory: off.\nMemory is off.", true));
         return handlers;
     }
 

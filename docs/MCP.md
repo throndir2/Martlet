@@ -4649,7 +4649,8 @@ the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
 `unansweredAfterMinutes`, `unansweredWithinMinutes`, `peopleWindowMinutes` and
 `mostPerHourChoices` for the signals, `maximumToolRounds` (4),
 `maximumToolCalls` (8), `maximumToolResultCharacters` (120) and `toolSets`
-(each set's `id`, `name`, `does` and `tools`), the job kind
+(each set's `id`, `name`, `does`, `tools` and `replaces`: the reply tools it
+takes over, such as `manage_memories` for `memory`), the job kind
 `check-in` at the `Helper` priority, not fast, stopped while the floor is Live,
 and for triggers the `triggers` offered, `triggerAgeSeconds`,
 `touchesSettleMs`, `strokeZones`, `oftenTouches` and `oftenWindowMinutes`).
