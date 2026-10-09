@@ -2260,8 +2260,12 @@ an explicit, disposable `dataDirectory`. `at` sets the time (ISO 8601) and
 
 The card's `ReactionChangesStatus` says how many changes of the active persona
 are in effect. `ReactionChange-<n>` is each change in effect (what it does,
-until when, when it was made, and why), `ReactionChangeEnded-<n>` each of the
-newest five that ended, and `ReactionChangesState` what the last **Undo** did.
+until when, and when and by which check-in it was made),
+`ReactionChangeEnded-<n>` each of the newest five that ended (and who ended
+it), and `ReactionChangesState` what the last **Undo** did. The character's
+reasons (`ReactionChangeWhy-<n>`, `ReactionChangeEndedWhy-<n>`) come from the
+conversation, so they aren't values MCP reads; `character_reaction_changes`
+shows `why` and `read` only for an explicit `dataDirectory`.
 `ReactionChangeUndo-<n>` and `ReactionChangesUndoAll` end changes, so they need
 `--allow-ui-effects`.
 

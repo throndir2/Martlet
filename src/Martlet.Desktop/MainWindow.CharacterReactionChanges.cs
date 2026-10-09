@@ -99,10 +99,16 @@ public partial class MainWindow
             var what = CharacterReactionChanges.Describe(change, zones, catalog);
             var line = new TextBlock
             {
-                Text = $"{what}, {CharacterReactionChanges.Until(change, now)}. Made {Made(change, now)}. Why: {change.Why}",
-                TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center
+                Text = $"{what}, {CharacterReactionChanges.Until(change, now)}. Made {Made(change, now)}.",
+                TextWrapping = TextWrapping.Wrap
             };
             AutomationProperties.SetAutomationId(line, $"ReactionChange-{n}");
+            // The character's reason comes from the conversation: shown, but not a value Martlet's MCP reads.
+            var why = Note("Why: " + change.Why, new Thickness(0, 2, 0, 0));
+            AutomationProperties.SetAutomationId(why, $"ReactionChangeWhy-{n}");
+            var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+            text.Children.Add(line);
+            text.Children.Add(why);
             var undo = PageButton("Undo", () => EndAsync(change.Id, $"Undid \"{what}\".").Forget(), id: $"ReactionChangeUndo-{n}");
             AutomationProperties.SetName(undo, "Undo " + what);
             undo.Margin = new Thickness(10, 0, 0, 0);
@@ -110,7 +116,7 @@ public partial class MainWindow
             var row = new DockPanel { Margin = new Thickness(0, 6, 0, 0) };
             DockPanel.SetDock(undo, Dock.Right);
             row.Children.Add(undo);
-            row.Children.Add(line);
+            row.Children.Add(text);
             stack.Add(row);
         }
         if (active.Length > 1)
@@ -124,9 +130,12 @@ public partial class MainWindow
             foreach (var change in ended)
             {
                 n++;
-                var line = Note($"{CharacterReactionChanges.Describe(change, zones, catalog)}: {Ended(change)}. Why: {change.Why}", new Thickness(0, 4, 0, 0));
+                var line = Note($"{CharacterReactionChanges.Describe(change, zones, catalog)}. {Ended(change)}.", new Thickness(0, 4, 0, 0));
                 AutomationProperties.SetAutomationId(line, $"ReactionChangeEnded-{n}");
                 stack.Add(line);
+                var why = Note("Why: " + change.Why, new Thickness(12, 0, 0, 0));
+                AutomationProperties.SetAutomationId(why, $"ReactionChangeEndedWhy-{n}");
+                stack.Add(why);
             }
         }
         stack.Add(state);
@@ -145,11 +154,11 @@ public partial class MainWindow
         var at = (change.EndedAt ?? change.Until).ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
         return change.EndedBy switch
         {
-            CharacterReactionChange.ByOwner => $"you undid it on {at}",
-            CharacterReactionChange.ByCharacter => $"the character undid it on {at}",
-            CharacterReactionChange.ByReplaced => $"a newer change replaced it on {at}",
-            CharacterReactionChange.ByReset => $"undone by Reset on {at}",
-            _ => $"ended on {at}"
+            CharacterReactionChange.ByOwner => $"You undid it on {at}",
+            CharacterReactionChange.ByCharacter => $"The character undid it on {at}",
+            CharacterReactionChange.ByReplaced => $"A newer change replaced it on {at}",
+            CharacterReactionChange.ByReset => $"Reset undid it on {at}",
+            _ => $"It ended on {at}"
         };
     }
 }

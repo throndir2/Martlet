@@ -511,6 +511,12 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // level needs --allow-ui-effects; Reset (TouchZonesReset) opens the question and its ConfirmationYes resets, so they need
         // --allow-ui-effects too.
         "TouchZonesResetLevel", "TouchZonesResetNote", "TouchZonesResetState", "TouchZonesResetQuestion",
+        // Companion › Touch › Changes the character made: how many changes of its own the active persona has in effect and what
+        // the last Undo did; ReactionChange-<n> (each change in effect: what it does, until when, when and by which check-in it was
+        // made) and ReactionChangeEnded-<n> (the newest that ended, and who ended them) read through SafeValuePrefixes. The
+        // character's reasons (ReactionChangeWhy-<n>, ReactionChangeEndedWhy-<n>) come from the conversation and aren't values.
+        // Undo (ReactionChangeUndo-<n>) and Undo all (ReactionChangesUndoAll) end changes, so they need --allow-ui-effects.
+        "ReactionChangesStatus", "ReactionChangesState",
         // Companion › Eyes › Where the eyes are: where the shown model's eyes come from (the model's own meshes or eye bones,
         // the vision measurement and when it was taken, or an estimate), how measuring went (each step while it runs, or why it
         // failed) and, only when no model can see pictures, why Measure the eyes is off. Fixed text, times and counts only.
@@ -894,7 +900,7 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // 4.2 GB VRAM · 0.45 s to first audio"), the shown option's details ("PickerDetail-", "PickerFact-", "PickerState-") and the
         // compare table's cells ("PickerCell-VoiceEngine-chatterbox-vram").
         "PickerFacts-", "PickerDetail-", "PickerFact-", "PickerState-", "PickerCell-", "PickerSummary-",
-        "PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "TouchZoneReactionItem-", "TouchZoneReactionNone-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchTemperamentParts-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
+        "PeopleClips-", "DeviceComponent-", "DeviceComponentDetail-", "F5VoiceRow-", "F5VoiceDetail-", "F5AddVoiceRecording-", "F5AddVoiceHeard", "CharacterModelState-", "CharacterActionName-", "CharacterActionTry-", "CharacterActionHint-", "CharacterComboName-", "CharacterComboState-", "CharacterComboHint-", "CharacterComboTry-", "TouchZoneState-", "ReactionChange-", "ReactionChangeEnded-", "TouchZoneReactionItem-", "TouchZoneReactionNone-", "TouchTemperamentAttitude-", "TouchTemperamentReaction-", "TouchTemperamentReaction2-", "TouchTemperamentLinger-", "TouchTemperamentLook-", "TouchTemperamentParts-", "TouchZoneNotices-", "VoiceEngine", "ChatterboxStyleValue-", "SpeakingHost-", "SingingHost-",
         "StepDetail-", "StepState-", "Step-",
         // Prepare this computer's GPU power lines: each slider's watts ("PreparePower-0"), the chosen limit
         // ("PreparePowerValue-0" reads "300 W") and the GPU's limits ("PreparePowerDetail-0" reads "Now 370 W, default

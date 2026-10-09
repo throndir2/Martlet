@@ -62,7 +62,12 @@ internal static class ReactionChangesCheck
                 after = changed;
                 if (save) after = await CharacterReactionChanges.UpdateAsync(dataDirectory, _ => changed, cancellation);
             }
-            call = new { tool, result = answer.Result, failed = answer.Failed, changed = answer.Changes is not null, saved = save && answer.Changes is not null };
+            call = new
+            {
+                tool, result = tool == CharacterReactionTools.Read && !explicitDirectory
+                    ? "(read_touch_reactions holds the character's reasons: give an explicit, disposable dataDirectory to see it)" : answer.Result,
+                failed = answer.Failed, changed = answer.Changes is not null, saved = save && answer.Changes is not null
+            };
         }
         if (undo is not null)
         {
@@ -113,12 +118,13 @@ internal static class ReactionChangesCheck
             undo = undo is null ? null : new { undo, saved = save },
             changes = after.Select(c => new
             {
-                c.Id, persona = c.PersonaId, c.Kind, c.Target, what = CharacterReactionChanges.Describe(c, zones, catalog), c.Why,
-                at = c.At, until = c.Until, active = c.ActiveAt(now), c.EndedBy, by = c.By
+                c.Id, persona = c.PersonaId, c.Kind, c.Target, what = CharacterReactionChanges.Describe(c, zones, catalog),
+                // The character's reasons come from the conversation: only from an explicit (disposable) data directory.
+                why = explicitDirectory ? c.Why : null, at = c.At, until = c.Until, active = c.ActiveAt(now), c.EndedBy, by = c.By
             }).ToArray(),
             before = Effect(before),
             after = Effect(after),
-            read = persona is { } p ? CharacterReactionTools.Describe(new()
+            read = persona is { } p && explicitDirectory ? CharacterReactionTools.Describe(new()
                 {
                     PersonaId = p, Who = "the character", Temperament = temperament, Zones = zones, Catalog = catalog, CheckInId = checkInId ?? "reactions",
                     Run = now, Now = now
