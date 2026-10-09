@@ -58,6 +58,42 @@ public sealed class ContextBoardReplyTests
         Assert.Contains(delivered.First().Notes, n => n.Source == ContextBoard.Touch);
     }
 
+    [Fact]
+    public async Task What_a_check_in_adds_goes_after_the_words_once_and_leaves_the_instructions_alone()
+    {
+        await using var fixture = await LiveFixture.Create();
+        var bodies = new ConcurrentQueue<string>();
+        fixture.Llm.Respond = (_, _) =>
+        {
+            bodies.Enqueue(Encoding.UTF8.GetString(fixture.Llm.Body));
+            return Task.FromResult(TextRecordingHandler.Sse(Harness.Trace("Fixture reply.")));
+        };
+        var context = CheckIns.Context(null, "Her tail is still curled from the long stroke down her back.")!;
+        fixture.Controller.Board.Post(CheckIns.Source("c1"), context, fixture.Clock.GetLocalNow(), CheckIns.ContextAge, consume: true);
+
+        var first = fixture.Start("First message.");
+        await fixture.Finish(first);
+        var second = fixture.Start("Second message.");
+        await fixture.Finish(second);
+
+        Assert.Equal(2, bodies.Count);
+        var one = UserTexts(bodies.ElementAt(0));
+        var two = UserTexts(bodies.ElementAt(1));
+        Assert.StartsWith("First message.", one[^1]);
+        Assert.EndsWith(context + "\n[/MARTLET_NOTES]", one[^1]);
+        Assert.Equal("your words and 1 context note", first.Inputs);
+        Assert.Equal("First message.", two[^2]);
+        Assert.DoesNotContain(two, text => text.Contains("tail is still curled", StringComparison.Ordinal));
+        Assert.Equal(Instructions(bodies.ElementAt(0)), Instructions(bodies.ElementAt(1)));
+        Assert.DoesNotContain("tail is still curled", Instructions(bodies.ElementAt(0)));
+    }
+
+    private static string Instructions(string body)
+    {
+        using var document = JsonDocument.Parse(body);
+        return document.RootElement.GetProperty("instructions").GetString()!;
+    }
+
     // The user messages of a Responses request, in order.
     private static string[] UserTexts(string body)
     {
