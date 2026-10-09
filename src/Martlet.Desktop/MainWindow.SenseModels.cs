@@ -152,8 +152,8 @@ public partial class MainWindow
                 : Said(SenseRouting.Hears(own, abilities)));
         }
         if (thinking is null) return null;
-        if (!image && thinking.RouteType != SetupRouteType.ChatCompletions)
-            return $"{thinking.ModelId} gets no recordings on this route: only an OpenAI-compatible endpoint takes them.";
+        if (!image && !HearingModelCatalog.CarriesAudio(thinking.RouteType))
+            return $"{thinking.ModelId} gets no recordings on this route: only an OpenAI-compatible endpoint or one of your computers takes them.";
         return ModelKnown(kind, thinking.ModelId, abilities.Find(thinking.Origin, thinking.ModelId),
             image ? Said(SenseRouting.ThinkingSees(thinking, abilities)) : Said(SenseRouting.ThinkingHears(thinking, abilities)));
     }

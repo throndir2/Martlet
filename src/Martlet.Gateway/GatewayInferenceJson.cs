@@ -182,7 +182,7 @@ internal static class GatewayInferenceJson
         var fields = Object(
             element,
             ["input", "temperature", "maximum_output_tokens", "maximum_context_tokens"],
-            ["system", "history", "images", "top_p", "top_k", "min_p", "repeat_penalty", "frequency_penalty",
+            ["system", "history", "images", "audio", "top_p", "top_k", "min_p", "repeat_penalty", "frequency_penalty",
                 "presence_penalty", "context_tokens", "think"]);
         var input = Text(fields, "input", BoundedTextInput.HardMaxUtf8Bytes, allowNewLines: true);
         string? system = fields.TryGetValue("system", out var systemElement)
@@ -232,8 +232,19 @@ internal static class GatewayInferenceJson
                 images.Add(encoded);
             }
         }
+        string? audio = null;
+        if (fields.TryGetValue("audio", out var audioElement))
+        {
+            // One recording for a model that hears: a canonical mono PCM16 WAV of at most 30 seconds.
+            var encoded = Text(audioElement, GatewayOllamaChatPayload.MaximumAudioBase64Characters);
+            var decoded = Convert.FromBase64String(encoded);
+            GatewayRules.Require(Convert.ToBase64String(decoded) == encoded, "request.invalid");
+            var wave = BoundedWaveAudio.FromWave(decoded);
+            GatewayRules.Require(wave.Duration.TotalSeconds <= BoundedTextInput.HardMaxAudioSeconds, "request.too_large");
+            audio = encoded;
+        }
         return new(input, temperature, outputTokens, contextTokens, system, history, images,
-            ParseSampling(fields, outputTokens, contextTokens));
+            ParseSampling(fields, outputTokens, contextTokens), audio);
     }
 
     // Optional Ollama sampling options, each bounded like the client's settings; absent ones keep Ollama's defaults.

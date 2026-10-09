@@ -608,6 +608,7 @@ internal static class GatewayClientJson
                 ["text"] = message.Text
             }).ToArray();
         if (ollama.Images.Count > 0) payload["images"] = ollama.Images.ToArray();
+        if (ollama.Audio is { } audio) payload["audio"] = audio;
         var sampling = ollama.Sampling;
         if (sampling.TopP is { } topP) payload["top_p"] = topP;
         if (sampling.TopK is { } topK) payload["top_k"] = topK;

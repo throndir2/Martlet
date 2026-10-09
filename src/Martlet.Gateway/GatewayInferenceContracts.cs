@@ -191,8 +191,9 @@ public sealed partial class GatewayInferenceRoute
                 selection.RequestModel,
                 modelRevision,
                 modelSha256),
-            // Room for JSON escaping of the bounded persona, history and user text, plus one base64 screen image.
-            maximumRequestBytes: 96 * 1024 + GatewayOllamaChatPayload.MaximumImageBase64Characters + 1024,
+            // Room for JSON escaping of the bounded persona, history and user text, plus one base64 screen image and one base64
+            // recording. A client sends a recording only to a route this large (an older host advertises less).
+            maximumRequestBytes: Martlet.Core.Settings.SelfHostSetup.OllamaRequestBytes,
             maximumInputBytes: capabilities.MaxInputBytes,
             maximumOutputBytes: 64 * 1024,
             maximumEventBytes: 64 * 1024,
@@ -758,6 +759,9 @@ public sealed class GatewayOllamaChatPayload : GatewayInferencePayload
     /// <summary>At most one image (base64 JPEG/PNG) rides with the current user input.</summary>
     public const int MaximumImages = 1;
     public const int MaximumImageBase64Characters = (Martlet.Providers.BoundedImage.HardMaxBytes + 2) / 3 * 4;
+    /// <summary>The largest recording: a canonical mono PCM16 WAV of at most 30 seconds at up to 48 kHz.</summary>
+    public const int MaximumAudioBytes = 44 + 48_000 * 2 * 30;
+    public const int MaximumAudioBase64Characters = (MaximumAudioBytes + 2) / 3 * 4;
 
     internal GatewayOllamaChatPayload(
         string input,
@@ -767,8 +771,10 @@ public sealed class GatewayOllamaChatPayload : GatewayInferencePayload
         string? system = null,
         IReadOnlyList<Martlet.Providers.TextHistoryMessage>? history = null,
         IReadOnlyList<string>? images = null,
-        GatewayOllamaSampling? sampling = null)
+        GatewayOllamaSampling? sampling = null,
+        string? audio = null)
     {
+        Audio = audio;
         Input = input;
         Temperature = temperature;
         MaximumOutputTokens = maximumOutputTokens;
@@ -789,6 +795,9 @@ public sealed class GatewayOllamaChatPayload : GatewayInferencePayload
     public IReadOnlyList<Martlet.Providers.TextHistoryMessage> History { get; }
     /// <summary>Base64 JPEG/PNG images attached to the current input (a screen glance); empty for plain chat.</summary>
     public IReadOnlyList<string> Images { get; }
+    /// <summary>The user's recording (base64 canonical mono PCM16 WAV) for a model that hears, such as Gemma 4 E2B or E4B; null
+    /// for the words only. A host older than it refuses the field as <c>request.invalid</c>.</summary>
+    public string? Audio { get; }
     /// <summary>Optional Ollama sampling options and context window; unset values keep the host's defaults.</summary>
     public GatewayOllamaSampling Sampling { get; }
     internal override void Clear() { }

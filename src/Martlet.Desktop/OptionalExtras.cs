@@ -388,8 +388,12 @@ internal static class OptionalExtras
             options[1] = options[1] with
             {
                 Warn = true,
-                State = $"{thinking.ModelId} {(image ? "doesn't see pictures" : "doesn't hear recordings")}. Choose a model of its own, " +
-                    "or a Thinking model that " + (image ? "sees." : "hears.") + (options[1].State is { } off ? " " + off : "")
+                // A route that carries no recordings (OpenAI's Responses) says so; it doesn't blame the model.
+                State = (!image && !HearingModelCatalog.CarriesAudio(thinking.RouteType)
+                        ? $"Thinking's route takes no recordings, so {thinking.ModelId} gets the transcript. Choose a model of its own, " +
+                          "or a Thinking route and model that hears."
+                        : $"{thinking.ModelId} {(image ? "doesn't see pictures" : "doesn't hear recordings")}. Choose a model of its own, " +
+                          "or a Thinking model that " + (image ? "sees." : "hears.")) + (options[1].State is { } off ? " " + off : "")
             };
         else if (takes == true && saved != MainWindow.SenseChoice.Thinking)
             options[1] = options[1] with { Badge = "recommended" };

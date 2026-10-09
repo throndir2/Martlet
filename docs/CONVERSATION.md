@@ -2031,8 +2031,14 @@ what you said goes to the Thinking model, when the model hears: straight away on
 its own, or with the transcript ([Straight to Thinking](#straight-to-thinking)),
 as an `input_audio` WAV part, so only an OpenAI-compatible (Chat
 Completions) endpoint takes it. **Ollama on this PC** does too, for models it
-says hear (Ollama 0.35 and later; Gemma 4 E2B, E4B and 12B). A paired host's
-Ollama and OpenAI's own route don't. Vision works the same way with pictures.
+says hear (Ollama 0.35 and later; Gemma 4 E2B, E4B and 12B). **Ollama on one of
+your computers** (a paired host) does too: the recording goes through its
+pinned gateway, which checks it is one WAV of at most 30 seconds, and the host's
+Ollama gets it with your message. That host must run this Martlet version or
+later. An older host's route has no room for a recording, so Martlet sends the
+transcript only and says *update Martlet on that computer*, without marking the
+model as deaf. OpenAI's own route doesn't take recordings. Vision works the
+same way with pictures.
 [Hosted Thinking](HOSTED_THINKING.md) lists the cloud models that hear (Gemini,
 NVIDIA Build's Nemotron 3 Nano Omni), their free tiers and terms.
 
@@ -2067,7 +2073,8 @@ Martlet finds out what a model takes instead of guessing from its name:
   and asks which word it heard, with Thinking steps off. Saying the word means
   it hears; another answer, or the server refusing the audio, means it
   doesn't. On this PC it stays local; a cloud model asks first, since it is one
-  small request with your key.
+  small request with your key. Ollama on one of your computers gets the test
+  through that computer's paired, pinned connection, with no question.
 - **A refused recording.** When a model rejects a reply's recording, Martlet
   asks again with the transcript only and remembers that the model can't hear.
 

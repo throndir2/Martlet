@@ -149,8 +149,9 @@ Each kind of input takes one of three paths (`SensePath`):
 
 1. When the kind's model is the text model, the path is Thinking when Thinking
    takes it. Pictures go to a Thinking model that Martlet can't tell about (it
-   tries, as before). Recordings go only to a Thinking model known to hear, as
-   before. Otherwise the path is None.
+   tries, as before). Recordings go only to a Thinking model known to hear, on
+   a route that takes them: an OpenAI-compatible endpoint, or Ollama on one of
+   your computers (through its gateway). Otherwise the path is None.
 2. When the kind has a model of its own, the path is Described when that model
    sees (or hears), or when Martlet can't tell: it tries, and a refusal is
    remembered. The path is None when the model is known not to see (or hear),

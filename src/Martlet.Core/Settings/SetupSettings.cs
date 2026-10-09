@@ -55,6 +55,10 @@ public static class SelfHostSetup
     public const string RegistryVersion = "1.0";
     public const string OllamaRouteId = "martlet.gateway.ollama-chat.v1";
     public const string OllamaPath = "/martlet/v1/inference/ollama-chat";
+    /// <summary>The request bound of a host's Ollama routes: the bounded persona, history and words with JSON escaping, one base64
+    /// screen image and one base64 recording (30 seconds of mono PCM16 WAV at up to 48 kHz) for a model that hears. A host older
+    /// than recordings advertises less (room for the image only), so this PC sends it no recording.</summary>
+    public const int OllamaRequestBytes = 5_400_000;
     /// <summary>The deep-thinking host role's route: a second Ollama of its own on the host (Deep thinking's model), with the same
     /// native-chat contract as <see cref="OllamaRouteId"/>, so a host can think things over beside the conversation's model.</summary>
     public const string DeepThinkingRouteId = "martlet.gateway.deep-thinking-chat.v1";

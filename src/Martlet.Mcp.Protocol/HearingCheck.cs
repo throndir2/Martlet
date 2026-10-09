@@ -32,8 +32,8 @@ internal static partial class HearingCheck
         var thinking = loaded.Settings?.Setup?.Routes.FirstOrDefault(r => r.Role == SetupRole.Llm);
         var model = modelId ?? thinking?.ModelId ?? "gemini-2.5-flash";
         var modelHearing = HearingModelCatalog.Classify(model);
-        // The production decision (HearingModelCatalog.ForRoute): only Chat Completions routes take audio (OpenAI's Responses
-        // route and a host's Ollama don't), then what model-abilities.json says, then the name.
+        // The production decision (HearingModelCatalog.ForRoute): Chat Completions routes and a paired computer's Ollama take audio
+        // (OpenAI's Responses route doesn't), then what model-abilities.json says, then the name.
         var abilities = ModelAbilities.Load(dataDirectory);
         var saved = thinking is null || modelId is not null ? null : abilities.Find(thinking.Origin, thinking.ModelId);
         var routeHearing = modelId is not null || thinking is null ? (HearingSupport?)null

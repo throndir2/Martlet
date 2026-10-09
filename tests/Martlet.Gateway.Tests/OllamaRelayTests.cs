@@ -131,6 +131,123 @@ public sealed class OllamaRelayTests
     }
 
     [Fact]
+    public async Task Relay_forwards_a_recording_to_the_hosts_ollama_on_the_current_message()
+    {
+        await using var ollama = await FakeOllama.StartAsync(200,
+            "{\"message\":{\"role\":\"assistant\",\"content\":\"Banana.\"},\"done\":true,\"done_reason\":\"stop\"}");
+        await using var worker = new OllamaRelayWorker(ollama.Endpoint, "gemma4:e4b");
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        var (connection, route) = await ConnectAsync(host);
+        using var owned = connection;
+        Assert.True(route.CarriesAudio);
+        // The longest recording Martlet sends (30 seconds at 48 kHz) fits the route next to a screen image.
+        var format = new Martlet.Core.Audio.PcmFormat
+        {
+            SampleRate = 48_000, Channels = 1, Encoding = Martlet.Core.Audio.PcmEncoding.Signed16LittleEndian
+        };
+        var wave = Martlet.Providers.BoundedWaveAudio.FromPcm(format, new byte[48_000 * 2 * 30]).ToBase64();
+        var jpeg = Convert.ToBase64String(new byte[] { 0xFF, 0xD8, 0xFF }.Concat(new byte[64]).ToArray());
+
+        var text = new List<string>();
+        await foreach (var delta in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30),
+            "Answer with the word only.", [new(false, "Hi"), new(true, "Hey!")], "(Voice message.)", 0, 32, 4_096, [jpeg],
+            new() { Reasoning = false }, audio: wave))
+            text.Add(delta);
+
+        Assert.Equal(["Banana."], text);
+        var messages = Assert.Single(ollama.Requests).RootElement.GetProperty("messages").EnumerateArray().ToArray();
+        Assert.False(messages[1].TryGetProperty("images", out _));
+        Assert.Equal(new[] { jpeg, wave }, messages[^1].GetProperty("images").EnumerateArray().Select(i => i.GetString()!).ToArray());
+
+        // Not a WAV, or longer than 30 seconds: rejected at the gateway before it reaches Ollama.
+        var notWave = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        {
+            await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30),
+                null, [], "(Voice message.)", 0.7, 64, 4_096, null, null, audio: Convert.ToBase64String(new byte[64]))) { }
+        });
+        Assert.Equal("request.invalid", notWave.Code);
+        var tooLong = Martlet.Providers.BoundedWaveAudio.FromPcm(format with { SampleRate = 16_000 }, new byte[16_000 * 2 * 31]).ToBase64();
+        var tooLarge = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        {
+            await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 3, host.Clock.GetUtcNow().AddSeconds(30),
+                null, [], "(Voice message.)", 0.7, 64, 4_096, null, null, audio: tooLong)) { }
+        });
+        Assert.Equal("request.too_large", tooLarge.Code);
+        Assert.Single(ollama.Requests);
+    }
+
+    [Theory]
+    [InlineData(400, "{\"error\":\"this model is missing data required for image input\"}", "request.invalid")]
+    [InlineData(500, "{\"error\":\"model does not support audio input\"}", "request.invalid")]
+    [InlineData(400, "{\"error\":\"\\\"qwen3:8b\\\" does not support thinking\"}", "worker.failed")]
+    [InlineData(500, "{\"error\":\"out of memory\"}", "worker.failed")]
+    public async Task Relay_reports_a_refused_recording_so_the_desktop_sends_the_words_alone(int status, string body, string code)
+    {
+        await using var ollama = await FakeOllama.StartAsync(status, body);
+        await using var worker = new OllamaRelayWorker(ollama.Endpoint, "qwen3:8b");
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        var (connection, route) = await ConnectAsync(host);
+        using var owned = connection;
+        var format = new Martlet.Core.Audio.PcmFormat
+        {
+            SampleRate = 16_000, Channels = 1, Encoding = Martlet.Core.Audio.PcmEncoding.Signed16LittleEndian
+        };
+        var wave = Martlet.Providers.BoundedWaveAudio.FromPcm(format, new byte[3_200]).ToBase64();
+
+        var failure = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        {
+            await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30),
+                null, [], "(Voice message.)", 0.7, 64, 4_096, null, null, audio: wave)) { }
+        });
+        Assert.Equal(code, failure.Code);
+    }
+
+    [Fact]
+    public async Task Relay_reports_a_recording_refused_in_the_stream_as_invalid()
+    {
+        await using var ollama = await FakeOllama.StartAsync(200, "{\"error\":\"audio input is not supported by this model\"}");
+        await using var worker = new OllamaRelayWorker(ollama.Endpoint, "qwen3:8b");
+        await using var host = await GatewayTestHost.StartAsync(inferenceWorkers: [worker]);
+        var (connection, route) = await ConnectAsync(host);
+        using var owned = connection;
+        var format = new Martlet.Core.Audio.PcmFormat
+        {
+            SampleRate = 16_000, Channels = 1, Encoding = Martlet.Core.Audio.PcmEncoding.Signed16LittleEndian
+        };
+        var wave = Martlet.Providers.BoundedWaveAudio.FromPcm(format, new byte[3_200]).ToBase64();
+
+        var failure = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        {
+            await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 1, host.Clock.GetUtcNow().AddSeconds(30),
+                null, [], "(Voice message.)", 0.7, 64, 4_096, null, null, audio: wave)) { }
+        });
+        Assert.Equal("request.invalid", failure.Code);
+        // Without a recording the same error is the model's own failure.
+        var plain = await Assert.ThrowsAsync<Audio2FaceHostException>(async () =>
+        {
+            await foreach (var _ in connection.StreamChatAsync(route, NewIds(), 2, host.Clock.GetUtcNow().AddSeconds(30),
+                null, [], "Hello", 0.7, 64, 4_096)) { }
+        });
+        Assert.Equal("worker.failed", plain.Code);
+    }
+
+    [Fact]
+    public void Only_a_current_hosts_conversation_routes_carry_a_recording()
+    {
+        static HostRoute Route(string id, int bytes) =>
+            new(id, "/x", "martlet.ollama-chat", "1", "ollama", "ollama", "1", "gemma4-e4b", "1", new string('0', 64),
+                new string('0', 64), bytes, 98_304, 65_536, 4_096, 4_096, 1_048_576, TimeSpan.FromMinutes(5), "request_abort");
+        Assert.True(Route(HostRoute.OllamaChatRouteId, Martlet.Core.Settings.SelfHostSetup.OllamaRequestBytes).CarriesAudio);
+        Assert.True(Route(HostRoute.DeepThinkingRouteId, Martlet.Core.Settings.SelfHostSetup.OllamaRequestBytes).CarriesAudio);
+        // An older host advertised room for one screen image only.
+        Assert.False(Route(HostRoute.OllamaChatRouteId, 1_497_432).CarriesAudio);
+        Assert.False(Route(HostRoute.F5RouteId, Martlet.Core.Settings.SelfHostSetup.OllamaRequestBytes).CarriesAudio);
+        Assert.True(OllamaRelayWorker.RefusesAudio("model does not support audio"));
+        Assert.False(OllamaRelayWorker.RefusesAudio("\"qwen3:8b\" does not support thinking"));
+        Assert.False(OllamaRelayWorker.RefusesAudio("out of memory"));
+    }
+
+    [Fact]
     public async Task Relay_forwards_optional_sampling_settings_and_context_size_to_the_hosts_ollama()
     {
         await using var ollama = await FakeOllama.StartAsync(200,

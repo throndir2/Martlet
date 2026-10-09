@@ -1165,7 +1165,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "(ModelHearingTest) and Test vision (ModelVisionTest, with the desktop's own picture of one word drawn on this PC) against a " +
             "fixture Chat Completions endpoint that answers the test word only when the request carries the recording or the picture (it " +
             "is told the word: NOT AI), a model that ignores audio or pictures, one that refuses them and a wrong key; the " +
-            "hearing and vision decisions replies use (decisions) and the shared value's round trip (shared). With baseUrl (an http:// " +
+            "hearing and vision decisions replies use (decisions), whether a paired computer's Thinking route takes a recording " +
+            "(hostRoute) and the shared value's round trip (shared). With baseUrl (an http:// " +
             "server on this PC only, for example Ollama's http://127.0.0.1:11434/v1 or a llama.cpp server) and modelId it also asks that " +
             "real server what the model takes (real.metadata); test=true sends it the real Test hearing request (one word said by Windows " +
             "speech, never microphone audio, nothing played) and testVision=true the real Test vision request (one word drawn on this PC, " +

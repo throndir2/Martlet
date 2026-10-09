@@ -109,7 +109,8 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
                 var spoke = false;
                 while (true)
                 {
-                    var (text, done, error) = await NextAsync(reader, stop.Token).ConfigureAwait(false);
+                    var (text, done, error) = await NextAsync(reader, payload.Audio is not null && !spoke, stop.Token)
+                        .ConfigureAwait(false);
                     stop.Token.ThrowIfCancellationRequested();
                     if (error is not null)
                     {
@@ -157,11 +158,13 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
             writer.WriteStartObject();
             writer.WriteString("role", "user");
             writer.WriteString("content", payload.Input);
-            // Ollama's native chat takes base64 images on the message; text-only models answer with an error.
-            if (payload.Images.Count > 0)
+            // Ollama's native chat takes base64 images on the message; text-only models answer with an error. A recording rides
+            // there too: Ollama finds the WAV among the images and a model that hears (Gemma 4 E2B or E4B) hears it.
+            if (payload.Images.Count > 0 || payload.Audio is not null)
             {
                 writer.WriteStartArray("images");
                 foreach (var image in payload.Images) writer.WriteStringValue(image);
+                if (payload.Audio is { } audio) writer.WriteStringValue(audio);
                 writer.WriteEndArray();
             }
             writer.WriteEndObject();
@@ -189,7 +192,8 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
         var bytes = body.ToArray();
         var response = await PostAsync(chat, bytes, token).ConfigureAwait(false);
         if (response is null) return (null, "worker.unavailable");
-        if (response.StatusCode != HttpStatusCode.OK && await DraftFailedAsync(response, token).ConfigureAwait(false))
+        var error = response.StatusCode == HttpStatusCode.OK ? "" : await ErrorAsync(response, token).ConfigureAwait(false);
+        if (OllamaDraftHead.FailedToLoad(error))
         {
             // Gemma 4's bundled draft model didn't fit next to it on the GPU: save draft_num_predict 0 on the model and retry.
             response.Dispose();
@@ -198,14 +202,29 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
                 if (repair is not { IsSuccessStatusCode: true }) return (null, "worker.failed");
             response = await PostAsync(chat, bytes, token).ConfigureAwait(false);
             if (response is null) return (null, "worker.unavailable");
+            error = response.StatusCode == HttpStatusCode.OK ? "" : await ErrorAsync(response, token).ConfigureAwait(false);
         }
         if (response.StatusCode == HttpStatusCode.OK) return (response, null);
-        // 404 is Ollama's "model not found": the model was removed or never pulled on this host.
-        var failure = response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.ServiceUnavailable
-            ? "worker.unavailable" : "worker.failed";
+        var status = response.StatusCode;
         response.Dispose();
-        return (null, failure);
+        // A model that doesn't hear refuses the recording: request.invalid tells the client to send the words alone. Ollama's
+        // 400 "does not support thinking" is about Thinking steps, not the recording.
+        if (payload.Audio is not null && (RefusesAudio(error) ||
+            status == HttpStatusCode.BadRequest && !error.Contains("think", StringComparison.OrdinalIgnoreCase)))
+            return (null, "request.invalid");
+        // 404 is Ollama's "model not found": the model was removed or never pulled on this host.
+        return (null, status is HttpStatusCode.NotFound or HttpStatusCode.ServiceUnavailable
+            ? "worker.unavailable" : "worker.failed");
     }
+
+    /// <summary>Whether Ollama's error says the model can't take the recording (an audio, image or modality refusal).</summary>
+    public static bool RefusesAudio(string error) =>
+        !error.Contains("think", StringComparison.OrdinalIgnoreCase) && (
+        error.Contains("audio", StringComparison.OrdinalIgnoreCase) ||
+        error.Contains("modalit", StringComparison.OrdinalIgnoreCase) ||
+        error.Contains("multimodal", StringComparison.OrdinalIgnoreCase) ||
+        error.Contains("image", StringComparison.OrdinalIgnoreCase) ||
+        error.Contains("does not support", StringComparison.OrdinalIgnoreCase));
 
     private async Task<HttpResponseMessage?> PostAsync(Uri target, byte[] body, CancellationToken token)
     {
@@ -222,14 +241,15 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
         }
     }
 
-    private static async Task<bool> DraftFailedAsync(HttpResponseMessage response, CancellationToken token)
+    // The start of Ollama's error body, read once (the draft repair and the refused-recording check both look at it).
+    private static async Task<string> ErrorAsync(HttpResponseMessage response, CancellationToken token)
     {
         try
         {
             var text = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);
-            return OllamaDraftHead.FailedToLoad(text.Length <= MaximumLineBytes ? text : text[..MaximumLineBytes]);
+            return text.Length <= MaximumLineBytes ? text : text[..MaximumLineBytes];
         }
-        catch (Exception error) when (error is HttpRequestException or IOException) { return false; }
+        catch (Exception error) when (error is HttpRequestException or IOException) { return ""; }
     }
 
     private static void Message(Utf8JsonWriter writer, string role, string content)
@@ -241,7 +261,9 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
     }
 
     // Reads one NDJSON chunk of Ollama's /api/chat stream: {"message":{"content":"..."},"done":false} or {"error":"..."}.
-    private static async Task<(string? Text, bool Done, string? Error)> NextAsync(LineReader reader, CancellationToken token)
+    // With a recording (audio), an error that refuses it is request.invalid, so the client sends the words alone.
+    private static async Task<(string? Text, bool Done, string? Error)> NextAsync(
+        LineReader reader, bool audio, CancellationToken token)
     {
         byte[]? line;
         try { line = await reader.ReadLineAsync(token).ConfigureAwait(false); }
@@ -258,7 +280,9 @@ public sealed class OllamaRelayWorker : IOllamaGatewayInferenceWorker, IAsyncDis
             using var document = JsonDocument.Parse(line, new JsonDocumentOptions { MaxDepth = 16 });
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object) return (null, false, "worker.failed");
-            if (root.TryGetProperty("error", out _)) return (null, false, "worker.failed");
+            if (root.TryGetProperty("error", out var refusal))
+                return (null, false, audio && refusal.ValueKind == JsonValueKind.String && RefusesAudio(refusal.GetString() ?? "")
+                    ? "request.invalid" : "worker.failed");
             string? text = null;
             if (root.TryGetProperty("message", out var message) && message.ValueKind == JsonValueKind.Object &&
                 message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String)

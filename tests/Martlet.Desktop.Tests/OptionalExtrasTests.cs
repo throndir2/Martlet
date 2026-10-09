@@ -189,6 +189,25 @@ public sealed class OptionalExtrasTests
     }
 
     [Fact]
+    public void Hearing_with_thinking_on_one_of_your_computers_does_not_blame_a_model_that_hears()
+    {
+        var host = new SetupRoute
+        {
+            Role = SetupRole.Llm, RouteType = SetupRouteType.GatewayOllama, ProviderAlias = SelfHostSetup.GatewayOllamaAlias,
+            Origin = "https://miku-host.local:9443", ModelId = "gemma4-e4b", ConfigurationRevision = Guid.NewGuid()
+        };
+        var choices = OptionalExtras.SenseChoices(SenseKind.Audio, new(), host, null, on: true, null, "");
+        Assert.False(choices[1].Warn);
+        Assert.Equal(new[] { "Thinking" }, choices.Where(o => o.InUse).Select(o => o.Key));
+
+        // A route that takes no recordings says so; it doesn't say the model doesn't hear.
+        var openAi = host with { RouteType = SetupRouteType.OpenAi, ProviderAlias = "openai", Origin = "https://api.openai.com", ModelId = "gpt-4.1-mini" };
+        var refused = OptionalExtras.SenseChoices(SenseKind.Audio, new(), openAi, null, on: true, null, "");
+        Assert.True(refused[1].Warn);
+        Assert.StartsWith("Thinking's route takes no recordings, so gpt-4.1-mini gets the transcript.", refused[1].State);
+    }
+
+    [Fact]
     public void Hearing_now_says_why_it_is_off()
     {
         var none = new Martlet.Conversation.SenseRoute(SenseKind.Audio, Martlet.Conversation.SensePath.None, null, "");
