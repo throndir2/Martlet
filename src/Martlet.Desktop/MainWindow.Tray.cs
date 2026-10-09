@@ -153,31 +153,31 @@ public partial class MainWindow
         menu.Items.Add(new Separator());
         menu.Items.Add(TrayItem("TrayOpen", "_Open Martlet", ShowFromTray, bold: true));
         if (companion || talk is not null)
-            menu.Items.Add(TrayItem("TrayTalk", talk is null ? "_Talk to Martlet" : "Show the _talk window", TrayTalk,
+            menu.Items.Add(TrayItem("TrayTalk", talk is null ? "Talk to Martlet" : "Show the talk window", TrayTalk,
                 enabled: talk is not null || canTalk));
         // Always listening starts only from Start listening, here or on Home; it runs without the talk window.
         if (talk is { HandsFree: true, ListeningStarted: true })
-            menu.Items.Add(TrayItem("TrayStopListening", "Stop _listening", () => { talk.ToggleListening(); UpdateTray(); }));
+            menu.Items.Add(TrayItem("TrayStopListening", "Stop listening", () => { talk.ToggleListening(); UpdateTray(); }));
         else if (companion && (talk?.HandsFree ?? Talk.HandsFree))
-            menu.Items.Add(TrayItem("TrayStartListening", "Start _listening", TrayStartListening, enabled: talk is not null || canTalk));
+            menu.Items.Add(TrayItem("TrayStartListening", "Start listening", TrayStartListening, enabled: talk is not null || canTalk));
         // Watching starts only from Start watching, here, on Home or in the talk window; it runs without the talk window too.
         if (talk is { WatchingStarted: true })
-            menu.Items.Add(TrayItem("TrayStopWatching", "Stop w_atching", () => { talk.StopWatchingNow(); UpdateTray(); }));
+            menu.Items.Add(TrayItem("TrayStopWatching", "Stop watching", () => { talk.StopWatchingNow(); UpdateTray(); }));
         else if (companion && (talk?.VisionOn ?? Talk.Watch))
-            menu.Items.Add(TrayItem("TrayStartWatching", "Start w_atching", TrayStartWatching, enabled: talk is not null || canTalk));
+            menu.Items.Add(TrayItem("TrayStartWatching", "Start watching", TrayStartWatching, enabled: talk is not null || canTalk));
         if (talk is not null)
         {
             menu.Items.Add(talk.Paused
-                ? TrayItem("TrayResume", "_Resume Martlet", () => { talk.Resume(); UpdateTray(); })
-                : TrayItem("TrayPause", "_Pause Martlet", () => { talk.Pause(); UpdateTray(); }));
-            menu.Items.Add(TrayItem("TrayEndTalk", "_End the conversation", talk.End));
+                ? TrayItem("TrayResume", "Resume Martlet", () => { talk.Resume(); UpdateTray(); })
+                : TrayItem("TrayPause", "Pause Martlet", () => { talk.Pause(); UpdateTray(); }));
+            menu.Items.Add(TrayItem("TrayEndTalk", "End the conversation", talk.End));
         }
         if (companion || avatar.IsShowing)
-            menu.Items.Add(TrayItem("TrayCharacter", avatar.IsShowing ? "Hide the _character" : "Show the _character",
+            menu.Items.Add(TrayItem("TrayCharacter", avatar.IsShowing ? "Hide the character" : "Show the character",
                 () => Character_Click(this, new RoutedEventArgs()), enabled: !blocked && setupService is not null));
         // Click-through can't be turned off on the character itself, so it is here too (also while the character is hidden).
         if (companion && (avatar.IsShowing || avatar.ClickThrough))
-            menu.Items.Add(TrayCheck("TrayCharacterClickThrough", "Let clicks pass thro_ugh the character", avatar.ClickThrough,
+            menu.Items.Add(TrayCheck("TrayCharacterClickThrough", "Let clicks pass through the character", avatar.ClickThrough,
                 on => SetCharacterClickThroughAsync(on).Forget()));
         if (companion && TrayCharacterProfiles(menu, enabled: !blocked && setupService is not null) is { } profiles)
             menu.Items.Add(profiles);

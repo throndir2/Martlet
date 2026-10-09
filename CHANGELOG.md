@@ -12,6 +12,11 @@ Each release's section here is also its notes on GitHub.
 
 - Check-ins can now use tools. On a check-in's card, tick the tool sets it may use under **It may use these tools**: **Emotes and gaze**, **Martlet's next words** or **Reminders**. Choose **Its tools act** to make the tools what it does. The card shows which tools the last run called and what came of each. It needs a Thinking pool model that calls tools, such as an OpenAI-compatible endpoint, and it makes at most 8 calls in one run. ([#678](https://github.com/throndir2/Martlet/pull/678))
 - A check-in can now start when you touch the character, instead of every few minutes: when your touches end, after an intimate touch, after a stroke across 3 zones, or when you keep coming back to one place. Tick them under **It starts when** on its card. It runs on the Thinking pool a moment after your touches stop, at most once per its **Every**, so replies never wait for it. ([#677](https://github.com/throndir2/Martlet/pull/677))
+
+### Fixed
+
+- Pressing a letter key no longer starts listening or watching by itself. Before, an **L** or **W** on Home pressed **Start listening** or **Start watching**. The buttons that talk, listen, watch or show the character have no keyboard shortcut now, and every other underlined-letter shortcut needs Alt, so a stray key can't press **Exit Martlet** either. ([#684](https://github.com/throndir2/Martlet/pull/684))
+
 ## [0.63.0] - 2026-10-09
 
 ### Added

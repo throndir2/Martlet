@@ -578,7 +578,7 @@ public partial class MainWindow
         var profiles = homeSettings?.Companion?.CharacterList ?? [];
         if (profiles.Count == 0) return null;
         var current = CharacterNow().Current;
-        var parent = new MenuItem { Header = "C_haracter profile", IsEnabled = enabled };
+        var parent = new MenuItem { Header = "Character profile", IsEnabled = enabled };
         AutomationProperties.SetAutomationId(parent, "TrayCharacterProfiles");
         foreach (var profile in profiles)
         {

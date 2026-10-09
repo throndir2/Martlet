@@ -2305,7 +2305,7 @@ public partial class LiveConversationWindow : ThemedWindow
         PttButton.Visibility = pushToTalk || held ? Visibility.Visible : Visibility.Collapsed;
         // Keep a held button enabled until release; disabling it would lose capture and discard the recording.
         PttButton.IsEnabled = held || pushToTalk;
-        var talkLabel = held || Recording ? "Release to send" : "Hold to _talk";
+        var talkLabel = held || Recording ? "Release to send" : "Hold to talk";
         if (!Equals(PttButton.Content, talkLabel)) PttButton.Content = talkLabel;
 
         // Always listening starts and stops here (it is off when the window opens); the dot and the name say how it is going.
