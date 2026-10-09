@@ -2,19 +2,20 @@ using System.Globalization;
 
 namespace Martlet.Core.Planning;
 
-/// <summary>One fact about an option, for comparing options side by side: <see cref="Key"/> is stable ("runs-on", "vram",
-/// "ram", "cpu", "download", "speed", "quality", "hears", "sees", "cost", "evidence"; for one part's options also "fits",
-/// "tools", "context", "cloning", "sounds", "emotions", "streams", "languages", "samples", "license", "accuracy", "key",
-/// "data", "reliability"), <see cref="Label"/> and
+/// <summary>One fact about an option, for comparing options side by side: <see cref="Key"/> is stable ("runs-on", "needs",
+/// "vram", "ram", "cpu", "download", "speed", "quality", "hears", "sees", "cost", "evidence"; for one part's options also
+/// "fits", "tools", "context", "cloning", "sounds", "emotions", "streams", "languages", "samples", "license", "accuracy",
+/// "key", "data", "reliability"), <see cref="Label"/> and
 /// <see cref="Value"/> are words ("Graphics memory", "about 3.7 GB, up to 4.2 GB"), <see cref="Short"/> is the few words a
 /// compact row shows ("4.2 GB VRAM"), null when the fact isn't worth a compact row, and <see cref="Help"/> says what it means.</summary>
 public sealed record OptionFact(string Key, string Label, string Value, string? Short = null, string? Help = null);
 
 /// <summary>The facts every option list in Martlet shows, from the footprint catalog (<see cref="ComponentOption"/>): where it
-/// runs (graphics card, processor, inside Martlet or online), the graphics memory, memory, processor threads and download it
-/// takes, how soon its first word comes (named for its part: a first sentence for Thinking, first audio for the voice, a
-/// transcript for listening), how good it is within its part, whether a Thinking model hears or sees, its cost when online,
-/// and whether the numbers were measured. Pure: one option's facts in the same words on every page.</summary>
+/// runs (graphics card, processor, inside Martlet, with Thinking's own model or online), what a host role needs (Docker, or
+/// Linux), the graphics memory, memory, processor threads and download it takes, how soon it answers (named for its part: a
+/// first sentence for Thinking, first audio for the voice, a transcript for listening, a read for Reading, a description for
+/// Vision and Hearing), how good it is within its part, whether a Thinking model hears or sees, its cost when online, and
+/// whether the numbers were measured. Pure: one option's facts in the same words on every page.</summary>
 public static class OptionFacts
 {
     /// <summary>Every fact about <paramref name="option"/>, in the order a details panel shows them.</summary>
@@ -22,6 +23,7 @@ public static class OptionFacts
     {
         ArgumentNullException.ThrowIfNull(option);
         var facts = new List<OptionFact> { RunsOn(option) };
+        if (Needs(option) is { } needs) facts.Add(needs);
         if (option.IsLocal)
         {
             if (option.UsesGpu)
@@ -47,7 +49,7 @@ public static class OptionFacts
         if (option.FirstWordMs is { } ms)
             facts.Add(new("speed", SpeedLabel(option.Component), $"about {Seconds(ms)}", $"{Seconds(ms)} {SpeedShort(option.Component)}",
                 SpeedHelp(option.Component)));
-        facts.Add(new("quality", "Quality", QualityWord(option.QualityTier), null,
+        facts.Add(new("quality", "Quality", option.UsesThinking ? "the same as your Thinking model" : QualityWord(option.QualityTier), null,
             "How good it is compared with the other choices for the same part, from 1 (basic) to 5 (best)."));
         if (option.Component is PlanComponent.Thinking or PlanComponent.DeepThinking)
         {
@@ -87,7 +89,8 @@ public static class OptionFacts
     {
         ArgumentNullException.ThrowIfNull(option);
         // A model that doesn't hear says so in a compact row too: its replies wait for the transcript.
-        var facts = Of(option).Where(f => f.Key != "evidence")
+        // Ollama runs natively on this PC, so the host service's Docker need is left out.
+        var facts = Of(option).Where(f => f.Key is not ("evidence" or "needs"))
             .Select(f => f.Key == "hears" && f.Short is null ? f with { Short = "transcript" } : f).ToList();
         if (callsTools is { } tools)
             facts.Add(new("tools", "Calls tools", tools ? "yes: it can use Martlet's tools while you talk" : "no",
@@ -240,6 +243,8 @@ public static class OptionFacts
     private static OptionFact RunsOn(ComponentOption option)
     {
         if (!option.IsLocal) return new("runs-on", "Runs on", "online: nothing runs on your computers", "Online");
+        if (option.UsesThinking)
+            return new("runs-on", "Runs on", "with Thinking: Thinking's own model does it, so nothing more runs", "With Thinking");
         if (option.RunsInApp && !option.UsesGpu)
             return new("runs-on", "Runs on", "the processor, inside Martlet on the PC you talk to", "Processor (in Martlet)");
         return option.Gpu switch
@@ -250,11 +255,25 @@ public static class OptionFacts
         };
     }
 
+    /// <summary>What a host role needs on the computer that runs it: Docker, and on Linux only for a role such as Home
+    /// Assistant (Docker Engine with the computer's own network). Null for other options.</summary>
+    private static OptionFact? Needs(ComponentOption option)
+    {
+        if (!option.IsLocal || option.HostRoleKind is null) return null;
+        var linuxOnly = option.Platforms is { Count: 1 } only && string.Equals(only[0], "linux", StringComparison.OrdinalIgnoreCase);
+        return linuxOnly
+            ? new("needs", "Needs", "a Linux computer with Docker Engine and Martlet's host service", "Linux",
+                "What the computer that runs it must have.")
+            : new("needs", "Needs", "Martlet's host service in Docker, on Windows or Linux", null, "What the computer that runs it must have.");
+    }
+
     private static string SpeedLabel(PlanComponent component) => component switch
     {
         PlanComponent.Thinking or PlanComponent.DeepThinking => "First sentence",
         PlanComponent.Voice => "First audio",
         PlanComponent.Listening => "Transcript",
+        PlanComponent.Reading => "Read time",
+        PlanComponent.Vision or PlanComponent.Hearing => "Description",
         _ => "Response"
     };
 
@@ -263,6 +282,8 @@ public static class OptionFacts
         PlanComponent.Thinking or PlanComponent.DeepThinking => "to first sentence",
         PlanComponent.Voice => "to first audio",
         PlanComponent.Listening => "to transcript",
+        PlanComponent.Reading => "to read the screen",
+        PlanComponent.Vision or PlanComponent.Hearing => "to describe",
         _ => "to respond"
     };
 
@@ -271,6 +292,9 @@ public static class OptionFacts
         PlanComponent.Thinking or PlanComponent.DeepThinking => "About how long until the model writes its first sentence.",
         PlanComponent.Voice => "About how long from a sentence to the first audio you hear.",
         PlanComponent.Listening => "About how long from the end of your speech to the transcript.",
+        PlanComponent.Reading => "About how long it takes to read the text of one screenshot. A reply never waits for it.",
+        PlanComponent.Vision => "About how long it takes to put one picture into words. A reply never waits for it.",
+        PlanComponent.Hearing => "About how long it takes to describe how you sounded. A reply never waits for it.",
         _ => "About how long until it responds."
     };
 

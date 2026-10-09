@@ -218,7 +218,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "Creation-",
         // Background tasks: a task's Show or Show output ("TaskShow-3") only shows its run window again, or a finished task's
         // kept output.
-        "TaskShow-"];
+        "TaskShow-",
+        // Settings › Appearance › Custom: choosing a part ("CustomThemeRole-Accent") only shows its color in the editor.
+        "CustomThemeRole-"];
     // Read-only status text. Text blocks and buttons have no value, so their accessible name (a text block's text) is returned.
     private static readonly HashSet<string> SafeValues = new(StringComparer.Ordinal)
     {
@@ -260,7 +262,14 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // setup ("Configuring your computers: 1 of 3 finished. gpu-box: Installing Chatterbox Turbo (2 of 4).", or how it
         // ended), a host role this PC changes or this PC following a plan change. Machine IDs, role names and counts only.
         "HomeConfiguring", "HomeConfiguringStatus", "HostConfiguring", "HostConfiguringStatus",
-        "PeopleStatus", "PeopleSyncStatus", "PeopleVoiceCount", "SetupCharacterView", "SetupCharacterSpeechDisplay",
+        "PeopleNow", "PeopleNowProblem", "PeopleSyncStatus", "PeopleVoiceCount", "SetupCharacterView", "SetupCharacterSpeechDisplay",
+        // The Now line (what the page uses now, in one line) and its problem (what stops it) of Companion › Speech bubbles,
+        // Emotes and motions, Eyes, Touch, Tools, Smart home, Discord and Messaging ("SmartHomeNow" reads "Smart home: connected
+        // to Home at http://homeassistant.local:8123; Martlet may control lights, ..."). Counts, names, addresses and fixed
+        // wording; never a token or what was said.
+        "SpeechBubblesNow", "SpeechBubblesNowProblem", "EmotesNow", "EmotesNowProblem", "EyesNow", "EyesNowProblem", "TouchNow",
+        "TouchNowProblem", "ToolsNow", "ToolsNowProblem", "SmartHomeNow", "SmartHomeNowProblem", "DiscordNow", "DiscordNowProblem",
+        "MessagingNow", "MessagingNowProblem",
         // Where the character's speech bubble goes: following the character or in one place, and its pixel offsets.
         "SetupCharacterBubblePlacement", "SetupCharacterBubbleOffsetX", "SetupCharacterBubbleOffsetY",
         "SetupCharacterNow", "SetupCharacterNowProblem",
@@ -730,10 +739,18 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // host service): whether Martlet keeps this PC awake because it is a Martlet host PC, or because that host service serves other computers (host ID and
         // computer names) or lets it sleep, or why Windows refused. Fixed text, names and host IDs only.
         "BackgroundStatus", "TrayStatus", "StayAwakeStatus",
-        // Settings › Appearance: the palette (Pink light, Rose dark, Character light or Character dark; menus and every window
+        // Settings › Appearance: the palette (Pink light, Rose dark, Character light, Character dark or Custom; menus and every window
         // follow it) and its status line, and the character's colors (how many and where the accent comes from, or why they
         // couldn't be read; never its name). AppearanceColor-<n> and AppearancePreview-<id> read through the prefixes below.
         "AppearanceTheme", "AppearanceStatus", "AppearanceCharacterStatus",
+        // Settings › Appearance › Custom (shown while the Custom palette is chosen): the palette Start from names, the selected
+        // part's name, help, color code (#RRGGBB) and the hint shown when a typed code isn't a color, its hue (degrees),
+        // saturation and lightness (%), whether every color is easy to read or what may be hard to read (CustomThemeCheck), the
+        // Make it easy to read button (shown only then) and the question Use its colors asks before it replaces colors the owner
+        // chose. Each part reads through CustomThemeRole- below. Changing a color (the code, a slider, a CustomThemePick-<n>,
+        // CustomThemeStartFrom or CustomThemeFix) saves appearance-custom.json, so it needs --allow-ui-effects.
+        "CustomThemeBase", "CustomThemeRoleName", "CustomThemeRoleHelp", "CustomThemeHex", "CustomThemeHexHint", "CustomThemeHue",
+        "CustomThemeSaturation", "CustomThemeLightness", "CustomThemeCheck", "CustomThemeFix", "CustomThemeStartFromQuestion",
         // What this PC is for: the navigation rail's "Companion PC" or "Host PC", and Settings' line describing that role; and
         // under it, Your other computers: what the list offers (or why it is empty or can't switch them). Each computer's row reads
         // through OtherRole- below; its OtherRoleSwitch- button asks that computer to switch, so it needs --allow-ui-effects.
@@ -874,7 +891,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         "SmartHomeDevice-", "SmartHomeUpdate-", "DiscordRule-", "HostInput-choice.", "HostInputTerms-", "PromptState-", "Copy-", "Node-", "DeviceFilter-",
         // The selected device's resource bars ("DeviceResource-vram" reads "Graphics memory: 14 of 32 GB planned (44%), 15 GB
         // free for Martlet."; a range such as "11-14 of 32 GB planned (34-44%)" when jobs grow while they work, with ", tight: ..."
-        // when only the usual amounts fit; keys vram, ram, cpu, disk), each job's share ("DeviceShare-deep-thinking-gemma4-12b" reads
+        // when only the usual amounts fit; keys vram, ram, cpu, disk; its help text is the bar's hover breakdown, a line per job,
+        // then free, kept for the system and in use now), each job's share ("DeviceShare-deep-thinking-gemma4-12b" reads
         // "Deep thinking (Gemma 4 12B): 25% graphics memory, 3% memory, 6% processor.") and what else fits there
         // ("DeviceAlsoFits-0" reads "Room for another Deep thinking model (Gemma 4 12B) here.").
         "DeviceResource-", "DeviceShare-", "DeviceAlsoFits-",
@@ -917,6 +935,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Settings › Appearance: each of the character's main colors ("AppearanceColor-0" reads "#2B3440 31% dark grayish blue") and
         // each character palette's colors by role ("AppearancePreview-rules-dark" reads "Character dark: Canvas #1B1F26, ...").
         "AppearanceColor-", "AppearancePreview-",
+        // Settings › Appearance › Custom: each part of the custom palette with its color ("CustomThemeRole-Accent" reads "Accent:
+        // #A52D64") and the character's colors it can take ("CustomThemePick-0" reads "Use #2B3440 dark grayish blue").
+        "CustomThemeRole-", "CustomThemePick-",
         // Companion › Listening › This PC: the speech recognizers are an option picker (Picker-Listening-parakeet-tdt-110m-en,
         // Picker-Listening-whisper-gpu...); while a Parakeet model downloads, its details read the progress
         // ("ListenParakeetModelState-parakeet-tdt-110m-en": "Downloading: 40% of 477 MB..."). Its SetupListenParakeet-<model>

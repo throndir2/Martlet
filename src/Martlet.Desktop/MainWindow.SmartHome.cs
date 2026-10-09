@@ -30,16 +30,20 @@ public partial class MainWindow
     private string? homeManageStatus, homeDevicesStatus, homeManageLoadedFor;
     private bool homeManageBusy;
 
+    /// <summary>Companion › Smart home, in the standard page order: Now; the main choice (Home Assistant, or Off: Martlet doesn't
+    /// control your smart home); connecting to Home Assistant, setting one up and installing it on a Martlet host; then what
+    /// Martlet may do, the devices, managing Home Assistant, sharing it with your other computers and the recent actions.</summary>
     private void RenderSmartHomeTab(Panel page)
     {
         var saved = smartHome.Preferences;
         var connected = smartHome.Connected;
         var hosts = NetworkMap.Hosts(Inputs());
 
+        page.Children.Add(PageNowCard(SmartHomeNow(saved, connected), null, "SmartHomeNow"));
+        page.Children.Add(SmartHomeChoiceCard(saved, connected));
         page.Children.Add(ConnectionCard(saved, connected, hosts.Count > 0));
         if (homeSetupTarget is { } target) page.Children.Add(SetupCard(target, hosts.Count > 0));
         if (hosts.Count > 0) page.Children.Add(HostsCard(hosts, saved, connected));
-        if (hosts.Count > 0) page.Children.Add(ShareCard(saved, connected));
 
         page.Children.Add(PermissionsCard(saved, connected));
         if (connected)
@@ -48,6 +52,7 @@ public partial class MainWindow
             page.Children.Add(ManageCard(saved, hosts));
             if (homeManageLoadedFor != saved.Address && !homeManageBusy) RefreshHomeManagementAsync().Forget();
         }
+        if (hosts.Count > 0) page.Children.Add(ShareCard(saved, connected));
 
         var recent = smartHome.RecentActions;
         var log = new List<UIElement> { Heading("Recent actions") };
@@ -58,6 +63,42 @@ public partial class MainWindow
             foreach (var action in recent)
                 log.Add(Note($"{action.At:t}  {action.Summary}", new Thickness(0, 0, 0, 4)));
         page.Children.Add(Card([.. log]));
+    }
+
+    // ---------- the main choice ----------
+
+    /// <summary>Smart home's main choice in an option picker: Home Assistant (its button turns on "Use Home Assistant when I ask"
+    /// once it is connected) or Off (Martlet doesn't control your smart home). More smart-home systems join this list.</summary>
+    private Border SmartHomeChoiceCard(HomePreferences saved, bool connected)
+    {
+        var inUse = connected && saved.Control;
+        var where = (saved.LocationName.Length > 0 ? saved.LocationName : "Home Assistant") + (saved.Address.Length > 0 ? $" at {saved.Address}" : "");
+        var homeAssistant = new PickerOption("HomeAssistant", "Home Assistant",
+            "Martlet answers questions about your home and controls the devices you expose to voice assistants in Home Assistant, when you ask.")
+        {
+            Badge = inUse ? "in use" : connected ? "connected" : null,
+            InUse = inUse,
+            Facts =
+            [
+                new("runs-on", "Runs on", "Your Home Assistant: on your home network, or installed by Martlet on a Linux Martlet host with Docker",
+                    "Your Home Assistant"),
+                new("this-pc", "On this PC", "Nothing extra: Martlet only sends Home Assistant short requests", "Nothing extra on this PC"),
+                new("needs", "Needs", "A Home Assistant you sign in to (or a long-lived access token)", "A sign-in"),
+                new("sends", "Sends", "Your requests only to your Home Assistant; with flexible requests on, also the exposed devices' names, " +
+                    "areas and states to your Thinking model"),
+                new("cost", "Cost", "Free", "Free")
+            ],
+            State = connected ? $"Connected to {where}." + (inUse ? " Martlet uses it when you ask." : "")
+                : "Not connected yet. Connect it under Home Assistant below, then choose it here.",
+            Warn = !connected,
+            Action = () => !inUse && connected
+                ? PageButton("Use Home Assistant when I ask", () => SaveSmartHomeControl(true, false, saved.ModelTools), primary: true, id: "SmartHomeControl")
+                : null
+        };
+        var off = PickerOption.Off("Martlet doesn't control your smart home", !inUse,
+            () => inUse ? PageButton("Turn smart home off", () => SaveSmartHomeControl(false, false, false), id: "SmartHomeControlOff") : null);
+        return OptionPicker("SmartHome", "Smart home", "Choose what Martlet controls your home with. Status questions and actions work only " +
+            "with a smart-home system chosen here.", [homeAssistant, off]);
     }
 
     // ---------- connecting ----------
@@ -245,7 +286,7 @@ public partial class MainWindow
     {
         var text = smartHome.ControlEnabled
             ? $"Connected to {info.LocationName}."
-            : $"Connected to {info.LocationName}. Turn on \"Use Home Assistant when I ask\" to use it.";
+            : $"Connected to {info.LocationName}. Choose Home Assistant at the top of this page and press \"Use Home Assistant when I ask\" to use it.";
         if (clusterEnabled && NetworkMap.Hosts(Inputs()).Count > 0 && await ShareHomeAssistantAsync())
             text += " " + ActionText.Text;
         ActionText.Text = text;
@@ -452,16 +493,10 @@ public partial class MainWindow
 
     private UIElement PermissionsCard(HomePreferences saved, bool connected)
     {
-        var control = new CheckBox
-        {
-            IsChecked = saved.Control && connected, IsEnabled = connected, Margin = new Thickness(0, 4, 0, 6),
-            Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = "Use Home Assistant when I ask" }
-        };
-        AutomationProperties.SetAutomationId(control, "SmartHomeControl");
         var sensitive = new CheckBox
         {
             IsChecked = saved.AllowSensitive && saved.Control && connected, IsEnabled = connected && saved.Control,
-            Margin = new Thickness(24, 0, 0, 6),
+            Margin = new Thickness(0, 4, 0, 6),
             Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = "Allow locks, doors and alarms" }
         };
         AutomationProperties.SetAutomationId(sensitive, "SmartHomeSensitive");
@@ -472,8 +507,6 @@ public partial class MainWindow
             Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = "Allow flexible smart-home requests" }
         };
         AutomationProperties.SetAutomationId(modelTools, "SmartHomeModelTools");
-        control.Checked += (_, _) => SaveSmartHomeControl(true, false, saved.ModelTools);
-        control.Unchecked += (_, _) => SaveSmartHomeControl(false, false, false);
         sensitive.Checked += (_, _) => SaveSmartHomeControl(true, true, saved.ModelTools);
         sensitive.Unchecked += (_, _) => SaveSmartHomeControl(true, false, saved.ModelTools);
         modelTools.Checked += (_, _) => SaveSmartHomeControl(true, saved.AllowSensitive, true);
@@ -481,7 +514,6 @@ public partial class MainWindow
 
         var panel = new StackPanel();
         panel.Children.Add(Card(Heading("What Martlet may do"),
-            control,
             sensitive,
             Note("• Status questions always work.\n" +
                 "• Lights, switches, climate, media, scenes and blinds run right away.\n" +
@@ -507,6 +539,7 @@ public partial class MainWindow
     {
         var current = smartHome.Preferences;
         if (current.Control == control && current.AllowSensitive == allowSensitive && current.ModelTools == modelTools) return;
+        ForgetPicker("SmartHome");
         var saved = smartHome.SetControl(control, allowSensitive, modelTools);
         if (saved) QueueSettingsSync();
         if (saved && modelTools && control) mcpTools.EnsureStarted(retry: true);

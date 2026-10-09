@@ -139,4 +139,46 @@ public sealed class OptionFactsTests
         Assert.Equal(["speed", "runs-on"], led.Take(2).Select(f => f.Key));
         Assert.Equal(facts.Count, led.Count);
     }
+
+    [Fact]
+    public void ThinkingsOwnModelTakesNothingAndIsAsGoodAsThinking()
+    {
+        var facts = OptionFacts.Of(Option("vision:thinking")).ToDictionary(f => f.Key);
+
+        Assert.Equal("With Thinking", facts["runs-on"].Short);
+        Assert.Equal("the same as your Thinking model", facts["quality"].Value);
+        Assert.DoesNotContain("vram", facts.Keys);
+        Assert.DoesNotContain("ram", facts.Keys);
+        Assert.DoesNotContain("download", facts.Keys);
+        Assert.Contains("runs-on", OptionFacts.CompareKeys([Option("vision:thinking"), Option("vision:qwen2.5vl:7b")]));
+        Assert.Equal("GPU \u00b7 7.5 GB VRAM", OptionFacts.Short(Option("vision:qwen2.5vl:7b")));
+    }
+
+    [Fact]
+    public void ReadingAndSmartHomeSayTheyRunOnAProcessorAndWhatTheyNeed()
+    {
+        var windows = OptionFacts.Of(Option("reading:windows-ocr")).ToDictionary(f => f.Key);
+        Assert.Equal("Processor (in Martlet)", windows["runs-on"].Short);
+        Assert.Equal("Read time", windows["speed"].Label);
+        Assert.EndsWith("to read the screen", windows["speed"].Short, StringComparison.Ordinal);
+        Assert.DoesNotContain("needs", windows.Keys);
+
+        var rapid = OptionFacts.Of(Option("reading:rapidocr")).ToDictionary(f => f.Key);
+        Assert.Equal("Processor", rapid["runs-on"].Short);
+        Assert.Contains("Docker", rapid["needs"].Value, StringComparison.Ordinal);
+        Assert.Equal("4 threads", rapid["cpu"].Short);
+        Assert.Equal("0.9 s to read the screen", rapid["speed"].Short);
+
+        var home = OptionFacts.Of(Option("smart-home:home-assistant")).ToDictionary(f => f.Key);
+        Assert.Equal("Linux", home["needs"].Short);
+        Assert.StartsWith("Processor \u00b7 Linux", OptionFacts.Short(Option("smart-home:home-assistant")), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnOnlineAudioModelSaysItIsFreeAndNeedsAnAccount()
+    {
+        var facts = OptionFacts.Of(Option("hosted:nvidia-build-hearing")).ToDictionary(f => f.Key);
+        Assert.Equal("Online", facts["runs-on"].Short);
+        Assert.Equal("free tier, needs a free account and key", facts["cost"].Value);
+    }
 }

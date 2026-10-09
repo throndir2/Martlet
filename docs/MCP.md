@@ -892,7 +892,7 @@ user's): `sync` as above, `state` (`none` before the first sync, else `loaded`),
 the copy's `revision` and `count`, and for each shared setting its `key`
 (`thinking`, `listening`, `speaking`, `thinking-fallback`, `companion`,
 `replies`, `prompts`, `memory`, `lorebooks`, `character`, `character-actions`,
-`talk`, `speech-display`, `appearance`, `voice-recognition`, `voice-id`,
+`talk`, `speech-display`, `appearance`, `appearance-custom`, `voice-recognition`, `voice-id`,
 `smart-home`, `updates`, a computer's own `pc.<device ID>`, a computer's
 `role.<device ID>` (`companion` or `host`: written by that computer, or by
 another one asking it to switch), or a newer
@@ -902,7 +902,8 @@ Martlet's), `updatedBy`, `updatedAt`,
 it can't follow it yet (or changed it since), `unknown` when it never had the
 setting. `value` is shown only for non-personal settings: each job's route
 (`type`, `origin`, `model`, `voice`), the fallback's `origin` and `model`,
-memory, how you talk, speech bubbles and subtitles, the theme, recognizing
+memory, how you talk, speech bubbles and subtitles, the theme and the custom
+palette's colors (`Colors` by role), recognizing
 voices (`on`), what Martlet may do with Home Assistant (`control`,
 `allow_sensitive`, `model_tools`), app updates (`checks`,
 `interval_minutes`, `auto_install`, `auto_update_hosts`) and each computer's
@@ -2838,10 +2839,12 @@ delivers messages and whether cloudflared is on this PC); the codes themselves
 fields are not. The Cancel buttons (`MessagingPairCancel`,
 `MessagingWhatsAppPairCancel`) only withdraw the code and are safe clicks;
 Connect, Pair a chat, Open BotFather, Open in Telegram, Remove, Disconnect and
-the check boxes, and WhatsApp's `MessagingWhatsAppConnect`,
+the check boxes, the *Answer messages* main choice (the radio buttons
+`MessagingTelegramOn`, `MessagingTelegramOff`, `MessagingWhatsAppOn` and
+`MessagingWhatsAppOff`; an app's On is disabled until it is set up), and WhatsApp's `MessagingWhatsAppConnect`,
 `MessagingWhatsAppGetCloudflared` (a download, after its confirmation), Meta
-links, `MessagingWhatsAppPairOpen`, `MessagingWhatsAppDisconnect`,
-`MessagingWhatsAppOn` and `MessagingWhatsAppSpeak` need
+links, `MessagingWhatsAppPairOpen`, `MessagingWhatsAppDisconnect` and
+`MessagingWhatsAppSpeak` need
 `--allow-ui-effects`. `ui_set_text` fills `MessagingWhatsAppToken`,
 `MessagingWhatsAppSecret`, `MessagingWhatsAppPhoneId`,
 `MessagingWhatsAppAccountId` and `MessagingWhatsAppAddress`. To verify WhatsApp
@@ -3861,7 +3864,10 @@ builder (`RecommendedSetupInputs`) and runs the production recommender
 (`NetworkRecommender`). Give an absolute `dataDirectory` (default the current
 user's; the script gives a disposable one) to plan from that directory's
 `hosts.json`, `host-hardware.json`, `cluster.json`, `settings.json`,
-`work-sharing.json`, `thinking-pool.json` and `speaking-engine.txt`. A data
+`work-sharing.json`, `thinking-pool.json` and `speaking-engine.txt`, and this
+PC's page choices from `talk-preferences.json` (vision on, Let ... hear my
+voice), `sense-models.json`, `reading.json` and `smart-home.json` (its address
+only, never the token). A data
 directory has no live host checks: a host that `node-presence.json` (the
 desktop's presence report) last saw not answering counts as offline, as the
 desktop plans it, and every other host counts as online. Its roles are the
@@ -3886,14 +3892,19 @@ can't reply" problem. The result has:
 - `notes`: why a computer is left as it is.
 - `today`: each job's `host`, `off`, `option` and `pool` (the other computers
   that take its requests when the one in charge is busy, in Sharing work
-  order), `thinkingPool`, `thinkingPoolOptOut`, `voiceEngine`, `preference` and
+  order), `thinkingPool`, `thinkingPoolOptOut`, `voiceEngine`, `preference`,
   `off` (the optional parts turned off in the review on this PC, from
-  `recommended-setup.json`).
+  `recommended-setup.json`) and `choices` (this PC's choice for each part set
+  on its Companion page: `part` (Vision, Reading, Hearing or Smart home),
+  `on`, `option` (the catalog option, such as `vision:thinking`,
+  `reading:windows-ocr`), `model`, `where` and `host`).
 - `recommendation`: `alreadyOptimal`, `worthAsking`, `fingerprint`,
   `components` (every part in priority order: `rank`, `part`, `need`
   (`needed` or `optional`), `on`, `where` (*Gemma 4 E4B in Ollama on This PC's
-  NVIDIA GeForce RTX 4070*, or *Off: Martlet doesn't sing.*), `why`, `canBeOff`
-  and `ownerOff`), the
+  NVIDIA GeForce RTX 4070*, or *Off: Martlet doesn't sing.*), `why`, `canBeOff`,
+  `ownerOff`, `offInReview` (the review has an Off box for it; false for the
+  parts this PC sets on their Companion page) and `page` (*Companion ›
+  Vision*)), the
   `changes` in the order Reconfigure makes them (`kind`, `computer`, `summary`, `why`, `away` (the sentence in
   `why` about a computer that isn't answering, which the review leaves out),
   `benefit`, `roleKind`, `model`, `job`, `needsSomeoneThere`, `downloadGb`,
@@ -3926,8 +3937,8 @@ otherwise), `RecommendedSetupTitle`,
 `RecommendedSetupPart-Thinking` reads *1. Thinking (needed): Gemma 4 E4B in
 Ollama on This PC's NVIDIA GeForce RTX 4070.* and an optional part that is off
 *7. Singing (optional): Off: Martlet doesn't sing.*, with why; parts are
-`Thinking`, `Voice`, `Listening`, `Character`, `LipSync`, `DeepThinking`,
-`Singing` and `Pictures`), `RecommendedSetupOffline` (one sentence about the
+`Thinking`, `Voice`, `Listening`, `Character`, `LipSync`, `Vision`, `Reading`,
+`Hearing`, `DeepThinking`, `SmartHome`, `Singing` and `Pictures`), `RecommendedSetupOffline` (one sentence about the
 computers that aren't answering, such as *MIKU and IMOUTO haven't answered for 2
 hours, so Martlet plans without them.*; each change's why then leaves those
 words out; their `RecommendedSetupTarget-<n>` reads *Recommended: left out while
@@ -3935,7 +3946,8 @@ it isn't answering*), `RecommendedSetupChange-<n>` (its name is the
 benefit, the summary and why), `RecommendedSetupComputer-<n>`,
 `RecommendedSetupComputerKind-<n>`, `RecommendedSetupToday-<n>`,
 `RecommendedSetupTarget-<n>`, `RecommendedSetupLoad-<n>`,
-`RecommendedSetupBar-<n>-<vram|ram|cpu>`, `RecommendedSetupJob-<n>`,
+`RecommendedSetupBar-<n>-<vram|ram|cpu>` (its `help` is the bar's hover
+breakdown, as for `DeviceResource-<key>` on Devices), `RecommendedSetupJob-<n>`,
 `RecommendedSetupManual-<n>`, `RecommendedSetupDownloads`,
 `RecommendedSetupPreflight-<n>`, `RecommendedSetupTerms-<n>`,
 `RecommendedSetupSecret-<n>` (the label only; the key box `SetupSecretInput-<n>`
@@ -3957,7 +3969,8 @@ when the review sent the owner there. `RecommendedSetupApply`
 it saves `recommended-setup.json`) and each optional part's Off checkbox
 `RecommendedSetupOff-<Part>` (`ui_toggle`: it saves the part as off, or on
 again, in `recommended-setup.json`, and the review opens again planned that
-way) need `--allow-ui-effects`. Reconfigure
+way; Vision, Reading, Hearing and Smart home have none, because their
+Companion page turns them off) need `--allow-ui-effects`. Reconfigure
 closes the review and starts the background task *Reconfigure your computers*
 in its run window: `HostRunStatus` and `TaskState-<id>` read the progress
 (*Configuring your computers: 0 of 2 finished. gpu-box: Installing Chatterbox
@@ -4016,7 +4029,12 @@ card is only for Thinking and the voice, and Singing goes first as Required
 because it is optional; with a saved free key on an 8 GB card, Thinking uses
 the free hosted model and the voice gets the card); the parts the owner turned
 off (step 13: every part in priority order, and Singing, Deep thinking and
-advanced lip-sync off with their roles removed); heavy roles on a companion PC
+advanced lip-sync off with their roles removed); every way to extend Martlet
+(step 13: Vision, Reading, Hearing and Smart home have their own lines with
+Off on their Companion page; Vision on Thinking's own model, Hearing's model
+of its own on a companion PC's card with a note, Reading off on this PC so its
+`ocr` role goes, but not with a second companion PC, and Home Assistant stays
+while Smart home is off); heavy roles on a companion PC
 (they move to the host, Improvement); the setup order (step 12: job by job,
 Thinking first, each job make before break); Thinking on a companion PC's card with
 only a processor host (it stays: no added latency); hosted Thinking that the
@@ -4907,8 +4925,9 @@ so it needs `--allow-ui-effects` (as do `HealthFix-thinking-setup-defaults` on
 Home and `HealthFix-listening-setup-defaults` / `HealthFix-voice-setup-defaults`
 for one job). `ConfirmationNo` changes nothing. Companion's side list items (`CompanionTab-<Page>`,
 for example `CompanionTab-People`) and `OpenPeople` (on Listening) are passive
-navigation too. People shows `PeopleStatus` (on, off, or that the installation
-lacks the voice recognition files), `PeopleSyncStatus` and
+navigation too. People shows `PeopleNow` (its Now line: *Voice recognition on: 3 voices known, 2 with a name.*,
+*Off: Martlet doesn't check who is talking.*) and `PeopleNowProblem` (the
+installation lacks the voice recognition files, or the voices couldn't be read), `PeopleSyncStatus` and
 `PeopleVoiceCount`, and Listening shows `ListenParakeetStatus` (*Parakeet in
 Martlet* with *in use*, *downloading* or *no Docker*) and, for each Parakeet
 model, `ListenParakeetModel-<model ID>` (what it is for, with *recommended*
@@ -4924,7 +4943,8 @@ clip *i*, newest first), `PeopleOwner-3` (*This is me*),
 `PeopleMergeTarget-3` with `PeopleMerge-3` (enabled once a voice is chosen)
 and `PeopleForget-3`; names save at once, then sync. `PeopleClips-3` reads
 *Hear them (N):* while voice 3 has clips (a passive value). Like
-`PeopleRecognize` (ticked by default; a shared setting), `PeopleKeepClips`
+the main choice's radio buttons `PeopleRecognize` (*Recognize voices in conversations*, the default; a shared setting)
+and `PeopleRecognizeOff` (*Off*; saved voices are kept), `PeopleKeepClips`
 (ticked by default; this PC only; unticking deletes every clip),
 `PeopleSync`, `PeopleForgetAll` and `SetupListenParakeet-<model ID>` (*Download
 and use* asks one confirmation, `ConfirmationYes`, then downloads that model
@@ -4992,7 +5012,14 @@ then the most they take (*Graphics memory: 11-14 of 32 GB planned (34-44%), ...*
 When the usual amount fits but the most does not, the bar is tight (*..., tight:
 at their busiest the jobs can need 2 GB more than it can give, and slow down or
 fail.*); when even the usual amount does not fit, it is over (*..., 1-3 GB more
-than it can give.*). One
+than it can give.*). Hovering a bar (or its line) shows its breakdown, and each
+`DeviceResource-<key>` returns that breakdown as its `help`, one line each: the
+heading (*Graphics memory (12 GB)*), a line per job in segment order
+(*Singing (ACE-Step + SoulX): 5-7.2 GB (42-60%)*), then *Free for Martlet: 1.1 GB
+(9%)* (or *More than it can give: ...* when it is tight or over), *Kept for the
+system: 1.2 GB* when Martlet leaves room for the system, and *In use now: 27 GB
+(84%)* where the device reports it. Hovering one job's segment shows the same
+breakdown with that job in bold. One
 `DeviceShare-<option>` per job (*Deep thinking (Gemma 4 12B): 16-25% graphics
 memory, 3% memory, 6% processor.*; one number when the job does not grow),
 `DeviceHeadroom` (*Left free: ...*, then *Tight on graphics memory: ...* or
@@ -5508,6 +5535,23 @@ how long each Companion page took to show when it opens, such as *Companion ›
 Touch drew in 62 ms (21 ms to build, 41 ms to lay out), 919 elements.*, and,
 for a page whose rows join in batches, *Companion › Touch showed all 43 rows
 in 8 batches, 290 ms after it opened.*
+
+Every Companion page starts with its *Now* card. On the pages that aren't jobs or
+optional extras, its line and problem are readable values named for the page:
+`SpeechBubblesNow` (*Speech bubbles: beside the character; subtitles off.*),
+`EmotesNow` (*12 emotes and 4 motions on, 2 combos.*, with Martlet's own
+gestures when the model gets them), `EyesNow` (*Where it looks: follow your
+mouse, as the personality decides; replies may change it. Eyes: from the
+model's own meshes.*), `TouchNow` (*12 touch zones on, found by the Thinking
+model; a touch stops Martlet mid-sentence.*), `PeopleNow`, `ToolsNow` (*Tools: 3
+MCP servers on, the terminal off.*), `SmartHomeNow` (*Smart home: connected to
+Home at http://homeassistant.local:8123; Martlet may control lights, ...*),
+`DiscordNow` (*Discord: the bot Martlet is connected to 2 servers.*) and
+`MessagingNow` (*Telegram: answering @martlet_bot (1 paired chat); WhatsApp:
+off.*). Each has a `<Page>NowProblem` value (for example `TouchNowProblem`,
+*The character is hidden, so touches do nothing until it shows.*) while
+something stops the page's feature. The lines come from what Martlet already
+knows; opening a page fetches nothing.
 
 For the desktop character, open `CompanionTab-Character`; with
 `--allow-ui-effects`, `SetupCharacterToggle` shows or hides it and
@@ -6062,12 +6106,14 @@ profile's place when you switch profiles), `mouth` (the
 loudness mouth), `reset` and `apply` (Audio2Face frames), `gaze`, `action`
 (emotes and motions), `say` (speech bubbles), `theme` and `camera`.
 
-Companion › Speech bubbles (`CompanionTab-SpeechBubbles`) has the *Speech bubbles and subtitles* card with the checkboxes
-`SetupCharacterSpeechBubbles` (on by default) and `SetupCharacterSubtitles`
-(off by default); snapshots return their states, and `SetupCharacterSpeechDisplay`
+Companion › Speech bubbles (`CompanionTab-SpeechBubbles`) starts with its Now line, `SpeechBubblesNow`, then
+the main choice, *Where Martlet's words show*: the radio buttons
+`SetupCharacterSpeechBubbles` (*Speech bubbles*, the default), `SetupCharacterSubtitles`
+(*Subtitles*), `SetupCharacterSpeechBoth` (*Speech bubbles and subtitles*) and
+`SetupCharacterSpeechOff` (*Off*); snapshots return which one is `selected`, and `SetupCharacterSpeechDisplay`
 returns whether each is on and whether bubbles show now (character showing) or
-once it is. Ticking either saves `speech-display.json` (the same choices as the
-character window's `SpeechBubbleChoice` and `SubtitleChoice`), so `ui_toggle`
+once it is. Choosing one with `ui_click` saves `speech-display.json` (the same choices as the
+character window's `SpeechBubbleChoice` and `SubtitleChoice`), so it
 needs `--allow-ui-effects`. With the character showing,
 `SetupCharacterPreviewBubble` (also `--allow-ui-effects`) sends a sample bubble
 to the overlay for a few seconds; `SetupCharacterSpeechDisplay` then says
@@ -6410,17 +6456,18 @@ the image build, the service starting and each model file's download, for exampl
 `--allow-ui-effects`. There is no play button: songs are only performed by Martlet
 in conversation, so make and inspect real songs headlessly with `singing_check`.
 
-On Companion › Tools (`CompanionTab-Tools`), the Terminal card comes first:
-`ToolsTerminalOn` (*Let Martlet run terminal commands*, off by default) and
-`ToolsTerminalAskFirst` (*Ask before every command*, on by default) report their
+On Companion › Tools (`CompanionTab-Tools`), the Now line `ToolsNow` comes first, then the Terminal card with
+the page's main choice: the radio buttons `ToolsTerminalOn` (*Let Martlet run terminal commands*) and
+`ToolsTerminalOff` (*Off*, the default) report which one is `selected`, and
+`ToolsTerminalAskFirst` (*Ask before every command*, on by default) reports its
 state as `checkedState`; `ToolsTerminalStatus` reads the state in words (*Off.
 Martlet can't run commands on this PC.*, *On. Windows PowerShell, asks before
 every command, stops a command after 30 seconds.*, or what keeps it from working:
 the shell isn't installed, the start folder is gone, Thinking isn't set up or
 can't use tools, or the model turned tools down); `ToolsTerminalShell` and
 `ToolsTerminalTimeLimit` return the chosen shell and time limit. Everything
-there saves `terminal.json`, so it needs `--allow-ui-effects`: `ui_toggle` on the
-check boxes, `ui_select` on `ToolsTerminalShell` (*Windows PowerShell*,
+there saves `terminal.json`, so it needs `--allow-ui-effects`: `ui_click` on the
+radio buttons, `ui_toggle` on the check box, `ui_select` on `ToolsTerminalShell` (*Windows PowerShell*,
 *PowerShell 7*, *Command Prompt*, with *(not installed)* when missing) and
 `ToolsTerminalTimeLimit` (*15 seconds*, *30 seconds*, *1 minute*),
 `ToolsTerminalHome` (*Use my home folder*, shown only for a chosen folder) and
@@ -6466,7 +6513,15 @@ fields and the `McpDirectoryRuns` preview are not returned; `mcp_directory_plan`
 shows the same plan headlessly and `mcp_servers_status` what was installed. A
 running server shows in Home's `HealthCheck-tools` (*1 of 1 server ready*).
 
-Companion › Smart home (`CompanionTab-SmartHome`): `SmartHomeFind` (*Find on my
+Companion › Smart home (`CompanionTab-SmartHome`) starts with its Now line,
+`SmartHomeNow`, then the main choice in an option picker (`Picker-SmartHome-HomeAssistant`
+and `Picker-SmartHome-Off` only show that option's details, so they are passive):
+*Home Assistant*'s details have `SmartHomeControl` (*Use Home Assistant when I
+ask*, shown once Home Assistant is connected and not in use yet) and *Off*'s
+(*Martlet doesn't control your smart home*) have `SmartHomeControlOff` (*Turn
+smart home off*, shown while Home Assistant is in use); both save
+`smart-home.json`, so they need `--allow-ui-effects`. `PickerState-SmartHome`
+reads whether Home Assistant is connected. `SmartHomeFind` (*Find on my
 network*) is passive: it only sends one mDNS question for Home Assistant's
 service type and lists who answers; `SmartHomeSetupCancel` only hides the setup
 form. Everything else needs `--allow-ui-effects` and a disposable Home Assistant:
@@ -6503,7 +6558,9 @@ the browser; `DiscordToken` (a password box, never returned) with
 `DiscordTokenSave` saves the token in Windows Credential Manager and connects
 (a token that isn't one shows *That isn't a Discord bot token...* in
 `DiscordTokenStatus` and saves nothing); `DiscordForget` asks first
-(`ConfirmationYes`) and removes it; `DiscordEnabled` (on/off) and
+(`ConfirmationYes`) and removes it; the main choice's radio buttons `DiscordEnabled`
+(*Connect Martlet to Discord whenever Martlet runs*, disabled until a bot token is saved) and
+`DiscordEnabledOff` (*Off*), and
 `DiscordReconnect` connect or disconnect the bot; `DiscordServerChat`,
 `DiscordDirectChat` and `DiscordVoiceChat` (*Off*, *Only when mentioned*,
 *Sometimes*, *Always*; `ui_select`), `DiscordDirectFromAnyone`, the channel
@@ -7038,14 +7095,31 @@ see the character overlay above), the checkable
 current choice) and `TrayExit`. The menu, like text boxes' Cut/Copy/Paste
 menus, is drawn in Martlet's palette (Themes\Controls.xaml), with no light icon
 column in the dark palettes; `ui_snapshot` returns the palette as `AppearanceTheme`
-(*Pink light*, *Rose dark*, *Character light* or *Character dark*; choosing one with
+(*Pink light*, *Rose dark*, *Character light*, *Character dark* or *Custom*; choosing one with
 `ui_select` saves `appearance.txt`, so it needs `--allow-ui-effects`) and
 Settings' line about it as `AppearanceStatus`. Settings › Appearance also has
 `AppearanceCharacterStatus` (the character's colors: how many and where the
 accent comes from, or why they couldn't be read; never its name),
 `AppearanceColor-<n>` (each main color: *#2B3440 31% dark grayish blue*),
 and `AppearancePreview-rules-<light|dark>` (each character palette's colors by
-role). The
+role). While *Custom* is chosen, the custom palette's editor shows:
+`CustomThemeRole-<role>` (each of the twelve parts with its color, for example
+*Accent: #A52D64*; clicking one only selects it, so it needs no
+`--allow-ui-effects`), `CustomThemeRoleName` and `CustomThemeRoleHelp` (the
+selected part), `CustomThemeHex` (its color code), `CustomThemeHue`,
+`CustomThemeSaturation` and `CustomThemeLightness` (sliders: degrees and
+percent), `CustomThemeHexHint` (shown when the typed code isn't a color),
+`CustomThemePick-<n>` (the character's colors: *Use #6F92D1 blue*),
+`CustomThemeBase` (the palette *Start from* names), `CustomThemeCheck` (*Easy
+to read: ...* or what may be hard to read, such as *Text on window background:
+1.3:1 (needs 7:1)*) and `CustomThemeFix` (*Make it easy to read*, shown only
+when something is hard to read). `ui_set_text` on `CustomThemeHex`,
+`ui_set_range` on a slider and `ui_click` on a `CustomThemePick-<n>`,
+`CustomThemeFix` or `CustomThemeStartFrom` change the palette and save
+`appearance-custom.json`, so they need `--allow-ui-effects`.
+`CustomThemeStartFrom` asks `CustomThemeStartFromQuestion` first when the
+colors were changed from every other palette (`ConfirmationYes` replaces them).
+The
 desktop log records *Read N colors from the character's textures.* and
 *Applied the Character dark palette (#D194AE accent on #161E24).*
 `character_theme` makes the same colors and palettes headlessly.

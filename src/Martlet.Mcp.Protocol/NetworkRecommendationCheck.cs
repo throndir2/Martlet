@@ -193,6 +193,42 @@ internal static class NetworkRecommendationCheck
             turnedOff.Changes.Single(c => c.RoleKind == "singing").Why.StartsWith("You turned", StringComparison.Ordinal),
             parts.Select(p => $"{p.Rank}. {p.Name}{(p.CanBeOff ? " (optional)" : "")}: {p.Where}"));
 
+        // Every way to extend Martlet (docs/RECOMMENDED_SETUPS.md): Vision, Reading, Hearing and Smart home are this PC's choices on
+        // their Companion pages. Each has its line in priority order; Reading's role goes when Reading is off and no other
+        // companion PC may use it; Home Assistant always stays, because it runs the owner's home.
+        NetworkSetupRequest Extended(params NetworkMachine[] companions) => Network([.. companions,
+            Host("cpu-box") with { Roles = [Role("ocr", "rapidocr-ppocrv4"), Role("home-assistant")] }, Host("gpu-box", Nvidia(16, "RTX 4080"))]) with
+        {
+            Choices =
+            [
+                new PartChoice(PlanComponent.Vision, true) { OptionId = "vision:thinking" },
+                new PartChoice(PlanComponent.Reading, false) { OptionId = "reading:rapidocr", HostId = "cpu-box" },
+                new PartChoice(PlanComponent.Hearing, true) { OptionId = "hearing:gemma4:e4b" },
+                new PartChoice(PlanComponent.SmartHome, false)
+            ]
+        };
+        var extended = NetworkRecommender.Recommend(Extended(Companion("desk-1")));
+        var shared = NetworkRecommender.Recommend(Extended(Companion("desk-1"), Companion("desk-2")));
+        ComponentStatus Part(PlanComponent component) => extended.Components.Single(p => p.Component == component);
+        Step("13", "Every way to extend Martlet: Vision, Reading, Hearing and Smart home have their own lines (Off on their Companion page); " +
+            "Reading's role goes when Reading is off and no other companion PC uses it; Home Assistant stays",
+            extended.Components.Select(p => p.Component).SequenceEqual(ComponentRanking.All.Select(i => i.Component)) &&
+            Part(PlanComponent.Vision) is { On: true } vision && vision.Where.Contains("Thinking's own model", StringComparison.Ordinal) &&
+            Part(PlanComponent.Reading) is { On: false, OwnerOff: true, OffInReview: false } &&
+            Part(PlanComponent.Hearing) is { On: true } hearing && hearing.Where.Contains("Gemma 4 E4B in Ollama on this PC", StringComparison.Ordinal) &&
+            hearing.Why.Contains("companion PC's graphics card", StringComparison.Ordinal) &&
+            Part(PlanComponent.SmartHome) is { On: false } home && home.Why.Contains("still runs your home", StringComparison.Ordinal) &&
+            extended.Changes.Any(c => c.Kind == SetupChangeKind.RemoveRole && c.RoleKind == "ocr" && c.Benefit == SetupChangeBenefit.Improvement) &&
+            !extended.Changes.Any(c => c.RoleKind == "home-assistant") &&
+            extended.Target.Machine("cpu-box")?.Roles.Any(r => r.Kind == "home-assistant") == true &&
+            !shared.Changes.Any(c => c.RoleKind == "ocr"),
+            new
+            {
+                parts = extended.Components.Select(p => $"{p.Rank}. {p.Name}{(p.OffInReview ? " (Off in the review)" : p.CanBeOff ? $" (Off on {p.Page})" : "")}: {p.Where} {p.Why}"),
+                changes = extended.Changes.Select(c => $"{c.Kind} {c.MachineId} {c.RoleKind ?? c.Job}: {c.Why}"),
+                twoCompanionPcs = shared.Changes.Select(c => $"{c.Kind} {c.MachineId} {c.RoleKind ?? c.Job}")
+            });
+
         // Rule 6: heavy roles on a companion PC move to a host.
         var heavy = Network(Companion("desk-1", true, Nvidia(12, "RTX 4070")) with
         {

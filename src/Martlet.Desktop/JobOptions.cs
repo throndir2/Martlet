@@ -285,7 +285,7 @@ internal static class JobOptions
             Facts = With(OptionFacts.SpeechRecognizer(gpuFootprint, whisperLanguages, "very good, also in noisy rooms", streams: false)
                     .Select(f => f.Key == "languages" ? f with { Short = "99 languages" } : f),
                 new("model", "Model", advice?.GpuModel ?? "large-v3-turbo, or small when the card is busy", null),
-                new("setup", "Set up by", "Martlet, in Docker on this PC", "Docker")),
+                new("setup", "Set up by", "Martlet, in one run window", "Docker")),
             State = advice is null ? "Checking this PC's graphics card..." : null,
             Unavailable = advice?.GpuBlocked
         });
@@ -296,7 +296,7 @@ internal static class JobOptions
             Facts = With(OptionFacts.SpeechRecognizer(FootprintCatalog.Default.Find("whisper-small-cpu")!, whisperLanguages, "good", streams: false)
                     .Select(f => f.Key == "languages" ? f with { Short = "99 languages" } : f),
                 new("model", "Model", cpuModel, null),
-                new("setup", "Set up by", "Martlet, in Docker on this PC", "Docker"))
+                new("setup", "Set up by", "Martlet, in one run window", "Docker"))
         });
         return options;
     }
@@ -320,7 +320,7 @@ internal static class JobOptions
                 Badge = notInstalled ? "chosen, not installed yet" : audio2FaceInUse ? InUse : fits && cannot is null ? Recommended : null,
                 InUse = audio2FaceInUse,
                 Facts = With(OptionFacts.Of(catalog.Find("audio2face-3d")!),
-                    new("setup", "Set up by", "Martlet, in Docker on this PC", "Docker"),
+                    new("setup", "Set up by", "Martlet, in one run window", "Docker"),
                     new("data", "Your data", "Martlet's voice stays on this PC", null)),
                 Unavailable = cannot
             },
