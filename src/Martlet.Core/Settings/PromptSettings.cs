@@ -218,7 +218,7 @@ public static class PromptCatalog
     public const string DefaultCheckInTouchesInstructions =
         "{name} is the user's desktop character, and the user has been touching it.\n{touches}\n\n{conversation}\n\n" +
         "{name}'s personality:\n{persona}\n\nThe emotes {name} shows now:\n{emotes}\n\n" +
-        "Describe in two to four vivid sentences what the user has been doing to {name} and how it feels, as the story so far: " +
+        "Describe in two or three short, vivid sentences (at most 300 characters) what the user has been doing to {name} and how it feels, as the story so far: " +
         "where their hands went and how they moved, the places they keep coming back to, and how it builds, true to {name}'s " +
         "personality, to how it feels about being touched there and to what was said. Write it to {name} as \"you\", like the " +
         "touch lines above. Don't list each touch again or copy those lines; tell it as one moment {name} can draw on in its " +
