@@ -36,9 +36,10 @@ public partial class MainWindow
     private void WireCharacterTouchZones()
     {
         // Zones saved before reaction lists, and zones just found, get the list they play now once the model's emotes (and the
-        // active persona, for its temperament) are known.
-        characterTouchZones.Fill = settings => homeSettings is { } home && TouchZonesCatalog(settings.ModelId) is { } catalog
-            ? CharacterTouchZones.Filled(settings, catalog, characterTemperaments.For(home.Companion?.ActivePersonaId)) : settings;
+        // active persona, for its temperament: the settings are read) are known.
+        characterTouchZones.Fill = settings => homeSettingsState is SettingsLoadState.FirstRun or SettingsLoadState.Loaded &&
+            TouchZonesCatalog(settings.ModelId) is { } catalog
+            ? CharacterTouchZones.Filled(settings, catalog, characterTemperaments.For(homeSettings?.Companion?.ActivePersonaId)) : settings;
         characterActions.Changed += () =>
         {
             characterTouchZones.Follow(characterActions.Current?.Inventory.ModelId);
