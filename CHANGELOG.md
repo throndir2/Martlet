@@ -11,6 +11,11 @@ Each release's section here is also its notes on GitHub.
 ### Added
 
 - Touch zones can make sounds in Martlet's own voice: add a laugh, a gasp, a sigh or a giggle to a zone's list with **Add a reaction...**, and press **▶** to hear it. Only the sounds your voice can make are offered (Chatterbox Turbo and Nano, Dia and ElevenLabs make them). A sound never plays while Martlet speaks or you talk, and Martlet's replies never wait for one. ([#681](https://github.com/throndir2/Martlet/pull/681))
+- A check-in can now start when you touch the character, instead of every few minutes: when your touches end, after an intimate touch, after a stroke across 3 zones, or when you keep coming back to one place. Tick them under **It starts when** on its card. It runs on the Thinking pool a moment after your touches stop, at most once per its **Every**, so replies never wait for it. ([#677](https://github.com/throndir2/Martlet/pull/677))
+
+### Fixed
+
+- Pressing a letter key no longer starts listening or watching by itself. Before, an **L** or **W** on Home pressed **Start listening** or **Start watching**. The buttons that talk, listen, watch or show the character have no keyboard shortcut now, and every other underlined-letter shortcut needs Alt, so a stray key can't press **Exit Martlet** either. ([#684](https://github.com/throndir2/Martlet/pull/684))
 
 ## [0.63.0] - 2026-10-09
 

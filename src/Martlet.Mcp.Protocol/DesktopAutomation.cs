@@ -48,7 +48,8 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Replies' Open Deep thinking only opens that page.
         "RepliesOpenDeepThinking",
         // Companion › Check-ins: Open Thinking pool only opens that page. Each check-in's On box, Every and Its answer choices,
-        // the fact and condition boxes (CheckInFact-<id>-<fact>, CheckInWhen-<id>-<condition>), the name and task boxes, a
+        // the fact, condition and trigger boxes (CheckInFact-<id>-<fact>, CheckInWhen-<id>-<condition>,
+        // CheckInTrigger-<id>-<trigger>), the name and task boxes, a
         // built-in check-in's prompt box (CheckInPrompt-<id>) and its Use built-in settings (CheckInReset-<id>), Copy as your
         // own (CheckInCopy-<id>), Add a check-in and Remove save check-ins.json or the prompts, and Check now
         // (CheckInRun-<id>) sends the check to a Thinking pool member, which may be a paid provider, so they need
@@ -759,10 +760,15 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // one's computer, how many were busy and how long it waited. Job names and host IDs only.
         "WorkSharingStatus",
         // Settings › Startup and closing (what closing does and whether Windows starts Martlet), and the notification-area menu's
-        // status line (Martlet is running, listening, paused or watching). StayAwakeStatus (shown only when this PC runs its own
+        // status line (Martlet is running, listening, paused or watching), and the menu's items, which read as their fixed labels
+        // (Talk to Martlet or Show the talk window, Start listening or Stop listening, Pause Martlet or Resume Martlet...).
+        // StayAwakeStatus (shown only when this PC runs its own
         // host service): whether Martlet keeps this PC awake because it is a Martlet host PC, or because that host service serves other computers (host ID and
         // computer names) or lets it sleep, or why Windows refused. Fixed text, names and host IDs only.
         "BackgroundStatus", "TrayStatus", "StayAwakeStatus",
+        "TrayOpen", "TrayTalk", "TrayStartListening", "TrayStopListening", "TrayStartWatching", "TrayStopWatching", "TrayPause",
+        "TrayResume", "TrayEndTalk", "TrayCharacter", "TrayCharacterClickThrough", "TrayCharacterProfiles", "TrayCloseToTray",
+        "TrayStartWithWindows", "TrayExit",
         // Settings › Appearance: the palette (Pink light, Rose dark, Character light, Character dark or Custom; menus and every window
         // follow it) and its status line, and the character's colors (how many and where the accent comes from, or why they
         // couldn't be read; never its name). AppearanceColor-<n> and AppearancePreview-<id> read through the prefixes below.
@@ -932,15 +938,16 @@ internal sealed class DesktopAutomation(bool allowEffects)
         // Companion › Check-ins: each check-in's line ("CheckInStatus-emotes" reads "Waits: next in 3 min. Last at 10:31 PM on
         // diva (qwen3:8b): turned off {blush}. 2 runs since Martlet started, 1 acted on."), and for every check-in, built-in or
         // the owner's own, its On box and Every choice ("CheckInOn-emotes", "CheckInEvery-emotes"), its Its answer choice
-        // ("CheckInOutcome-emotes"), its fact and condition boxes ("CheckInFact-c1-Said", "CheckInWhen-emotes-EmoteShown"), the
+        // ("CheckInOutcome-emotes"), its fact and condition boxes ("CheckInFact-c1-Said", "CheckInWhen-emotes-EmoteShown"), what
+        // starts it at once ("CheckInTrigger-c1-TouchesEnded"), the
         // model it needs ("CheckInNeeds-c1-Vision"), its screenshot box ("CheckInScreenshot-c1"), its recording and length
         // choices ("CheckInRecording-c1", "CheckInSeconds-c1"), and for a built-in one its prompt's state
-        // ("CheckInPromptState-emotes" reads "Edited. About 180 tokens."). Each fact and condition box, the answer and the
+        // ("CheckInPromptState-emotes" reads "Edited. About 180 tokens."). Each fact, condition and trigger box, the answer and the
         // length choice carry what they mean as "help". The hours and cap choices ("CheckInFrom-welcome" reads "8 AM",
         // "CheckInUntil-welcome" "10 PM", "CheckInMostPerHour-c1" "Once an hour") carry theirs too. Changing any of them saves
         // check-ins.json, so it needs --allow-ui-effects; the name, task, prompt and script boxes (the owner's own words) aren't read here.
         "CheckInStatus-", "CheckInOn-", "CheckInEvery-", "CheckInOutcome-", "CheckInFact-", "CheckInWhen-",
-        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-", "CheckInPromptState-",
+        "CheckInNeeds-", "CheckInScreenshot-", "CheckInRecording-", "CheckInSeconds-", "CheckInPromptState-", "CheckInTrigger-",
         "CheckInFrom-", "CheckInUntil-", "CheckInMostPerHour-",
         // Companion › Thinking pool › Machines: each paired computer's line ("DeepThinkingHost-diva" reads "diva: Ollama runs
         // gemma4:27b. It joins the pool by itself at its next check.") and, for one without the Thinking pool role, its Add
