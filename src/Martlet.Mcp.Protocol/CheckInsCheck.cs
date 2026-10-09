@@ -760,6 +760,16 @@ internal static class CheckInsCheck
             catch (IOException) { }
         }
 
+        // Background work: the check-in's think_longer and research take the reply's arguments and take those reply tools over;
+        // cancel_thinking stays on the reply.
+        var work = CheckInToolSets.Find(BackgroundWorkTools.SetId);
+        step("tools: background work takes over the reply's think_longer and research",
+            work is not null && work.Replaces.SequenceEqual([ThinkLonger.Name, WebResearch.Name]) && !work.Replaces.Contains(ThinkLonger.CancelName) &&
+            work.Tools.Single(t => t.Name == ThinkLonger.Name).ParametersJson == ThinkLonger.Definitions(new()).First().ParametersJson &&
+            work.Tools.Single(t => t.Name == WebResearch.Name).ParametersJson == WebResearch.Definition.ParametersJson &&
+            BackgroundWorkTools.NotStarted("Web research is off.") == "Not started: Web research is off.",
+            new { set = work?.Id, tools = work?.Tools.Select(t => t.Name), replaces = work?.Replaces });
+
         // The job offers the tools of its sets that have a handler on this PC, for a bounded number of rounds.
         var checkIn = CheckIns.Of(custom);
         var reminded = new List<string>();
