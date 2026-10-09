@@ -328,7 +328,7 @@ internal static class JobOptions
                 "Advanced lip-sync off: the mouth opens and closes with Martlet's voice. Any character and graphics card, nothing to install.")
             {
                 Badge = loudnessInUse ? InUse : !fits || cannot is not null ? Recommended : null, InUse = loudnessInUse,
-                Facts = With(OptionFacts.Of(catalog.Find("loudness-lipsync")!), new("setup", "Set up by", "nothing: it is built in", "built in"))
+                Facts = With(OptionFacts.Of(catalog.Find("loudness-lipsync")!), new OptionFact("setup", "Set up by", "nothing: it is built in", "built in"))
             },
             new(OwnService, "Your own Audio2Face service",
                 $"Advanced: an Audio2Face service you already run at {endpoint}. The mouth follows voice loudness whenever it doesn't answer.")

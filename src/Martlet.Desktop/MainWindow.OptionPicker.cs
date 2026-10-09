@@ -52,6 +52,8 @@ public partial class MainWindow
     private readonly Dictionary<string, string> pickerShown = new(StringComparer.Ordinal);
     /// <summary>The pickers whose Compare table is open.</summary>
     private readonly HashSet<string> pickerCompare = new(StringComparer.Ordinal);
+    /// <summary>A fact value this long or shorter shares its line in the details with another short one.</summary>
+    private const int PickerShortFact = 30;
 
     /// <summary>Forgets which option picker <paramref name="id"/> shows, so it shows the one in use again (after a save).</summary>
     private void ForgetPicker(string id) => pickerShown.Remove(id);
@@ -127,15 +129,25 @@ public partial class MainWindow
         }
         var shortFacts = option.Unavailable is { } why ? "Can't run here: " + why
             : string.Join(" \u00b7 ", option.Facts.Select(f => f.Short).OfType<string>().Take(3));
-        var facts = new TextBlock { Text = shortFacts, TextWrapping = TextWrapping.Wrap, FontSize = 12.5, Margin = new Thickness(0, 1, 0, 0) };
+        var facts = new TextBlock { Text = shortFacts, TextWrapping = TextWrapping.Wrap, FontSize = 12.5, Margin = new Thickness(12, 1, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center };
         facts.SetResourceReference(StyleProperty, "Muted");
         if (option.Unavailable is not null) facts.SetResourceReference(TextBlock.ForegroundProperty, "WarningBrush");
         AutomationProperties.SetAutomationId(facts, $"PickerFacts-{id}-{option.Key}");
-        var content = new StackPanel();
+        // The name and its facts share one line, so a long list stays short; the facts wrap beside the name when narrow.
+        var content = new Grid();
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        line.VerticalAlignment = VerticalAlignment.Center;
+        line.MaxWidth = 300;
         content.Children.Add(line);
-        if (shortFacts.Length > 0) content.Children.Add(facts);
-        var row = new RadioButton { Content = content, GroupName = "Picker-" + id, IsChecked = isShown, Margin = new Thickness(0, 0, 0, 6),
-            Opacity = option.Unavailable is null ? 1 : 0.75, ToolTip = option.Summary };
+        if (shortFacts.Length > 0)
+        {
+            Grid.SetColumn(facts, 1);
+            content.Children.Add(facts);
+        }
+        var row = new RadioButton { Content = content, GroupName = "Picker-" + id, IsChecked = isShown, Margin = new Thickness(0, 0, 0, 5),
+            Opacity = option.Unavailable is null ? 1 : 0.75, ToolTip = option.Summary, HorizontalContentAlignment = HorizontalAlignment.Stretch };
         AutomationProperties.SetName(row, $"{option.Name}{(option.Badge is null ? "" : " · " + option.Badge)}: {shortFacts}");
         AutomationProperties.SetAutomationId(row, $"Picker-{id}-{option.Key}");
         row.Checked += (_, _) =>
@@ -161,20 +173,30 @@ public partial class MainWindow
         stack.Children.Add(summary);
         if (option.Facts.Count > 0)
         {
+            // Short facts sit two to a line and long ones take a whole line, so a long list of facts stays short.
             var grid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var right = false;
             foreach (var fact in option.Facts)
             {
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                var label = new TextBlock { Text = fact.Label, Margin = new Thickness(0, 1, 14, 1), ToolTip = fact.Help };
+                var wide = fact.Value.Length > PickerShortFact;
+                var column = right && !wide ? 2 : 0;
+                if (column == 0) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                right = column == 0 && !wide;
+                var row = grid.RowDefinitions.Count - 1;
+                var label = new TextBlock { Text = fact.Label, Margin = new Thickness(column == 0 ? 0 : 10, 1, 12, 1), ToolTip = fact.Help };
                 label.SetResourceReference(StyleProperty, "Muted");
-                Grid.SetRow(label, grid.RowDefinitions.Count - 1);
+                Grid.SetRow(label, row);
+                Grid.SetColumn(label, column);
                 var value = new TextBlock { Text = fact.Value, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 1), ToolTip = fact.Help };
                 AutomationProperties.SetName(value, $"{fact.Label}: {fact.Value}");
                 AutomationProperties.SetAutomationId(value, $"PickerFact-{id}-{fact.Key}");
-                Grid.SetRow(value, grid.RowDefinitions.Count - 1);
-                Grid.SetColumn(value, 1);
+                Grid.SetRow(value, row);
+                Grid.SetColumn(value, column + 1);
+                if (wide) Grid.SetColumnSpan(value, 3);
                 grid.Children.Add(label);
                 grid.Children.Add(value);
             }

@@ -554,7 +554,7 @@
                                     AutomationProperties.Name="Companion pages" AutomationProperties.AutomationId="CompanionNav"/>
                     </ScrollViewer>
                 </Border>
-                <ScrollViewer x:Name="CompanionScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer x:Name="CompanionScroll" AutomationProperties.AutomationId="CompanionScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto">
                     <StackPanel x:Name="CompanionContent" Margin="32,30,32,24" MaxWidth="1000" AutomationProperties.AutomationId="CompanionPage"/>
                 </ScrollViewer>
             </Grid>

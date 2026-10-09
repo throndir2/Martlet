@@ -707,10 +707,9 @@ public partial class MainWindow
 
         var recommended = RecommendedLocalModel(machine.BestGpu?.MemoryGb);
         var smartest = LargestLocalModel(machine.BestGpu?.MemoryGb);
-        var suggestion = Note((machine.BestGpu is { } best ? $"This PC has {best.Describe()}. " : "No dedicated graphics card was found; small models still run on the processor. ") +
-            $"Recommended: {recommended.Id}, the fastest. " +
-            (smartest.Id != recommended.Id ? $"Bigger models are smarter but slower; this card fits up to {smartest.Id}. " : "Bigger models are smarter but slower. ") +
-            "Each leaves room on the graphics card for a game and Martlet's character.", new Thickness(0, 0, 0, 8));
+        var suggestion = Note((machine.BestGpu is { } best ? $"This PC has {best.Describe()}" : "No dedicated graphics card was found, so models run on the processor") +
+            (smartest.Id != recommended.Id ? $": it fits up to {smartest.Id} with room for a game and Martlet's character. " : ". ") +
+            $"Recommended: {recommended.Id}, the fastest. Bigger models are smarter but slower.", new Thickness(0, 0, 0, 8));
         AutomationProperties.SetAutomationId(suggestion, "SetupLocalRecommendation");
 
         return Card(Heading("Ollama on this PC"),
