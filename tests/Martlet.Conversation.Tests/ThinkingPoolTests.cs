@@ -546,4 +546,135 @@ public sealed class ThinkingPoolTests
         var failed = await board2.RunAsync(Job(ThinkingJobKind.Memory), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal((ThinkingJobOutcome.Failed, "diva failed", 1), (failed.Outcome, failed.Problem, failed.Attempts));
     }
+
+    [Fact]
+    public async Task A_limited_member_cools_down_and_its_job_waits_for_it_instead_of_failing()
+    {
+        var clock = new RuntimeClock();
+        var places = new BackgroundPlaces();
+        BackgroundPlace nvidia = new("endpoint:https://integrate.api.nvidia.com/v1", "NVIDIA") { Slots = 4 };
+        var calls = 0;
+        List<ThinkingPoolCooling> said = [];
+        var board = new ThinkingJobBoard(places, () => [nvidia], (m, _, _) =>
+            Task.FromResult(Interlocked.Increment(ref calls) == 1 ? ThinkingAnswer.Limited("NVIDIA is limiting requests") : ThinkingAnswer.Done(m.Name)),
+            clock) { Policy = () => new ThinkingPoolPolicy(PreemptLowerPriority: false, Retries: 0) };
+        board.Limited += said.Add;
+
+        var job = board.RunAsync(Job(ThinkingJobKind.Memory), CancellationToken.None);
+        await Until(() => said.Count == 1 && places.WaitingKinds.Count == 1);
+        Assert.False(job.IsCompleted);
+        var cooling = Assert.Single(board.Status().Cooling);
+        Assert.Equal((clock.GetUtcNow() + ThinkingPoolLimits.FirstWait, 2, 4, 1), (cooling.Until, cooling.SlotsNow, cooling.Slots, cooling.Times));
+        Assert.Equal("NVIDIA is limiting requests; tries again in 5 s, then runs 2 of 4 jobs at once for a while", cooling.Describe(clock.GetUtcNow()));
+        Assert.Equal(0, Assert.Single(board.Status().Members).SlotsNow);
+        Assert.False(board.MayStartNow(ThinkingJobKind.Memory));
+
+        clock.Advance(ThinkingPoolLimits.FirstWait);
+        var result = await job.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal((ThinkingJobOutcome.Succeeded, 2, 0), (result.Outcome, result.Attempts, result.Retries));
+        var after = board.Status();
+        Assert.Equal(2, Assert.Single(after.Members).SlotsNow);
+        Assert.Contains("NVIDIA runs 2 of 4 jobs at once for now, because it limited requests.", after.Guidance);
+    }
+
+    [Fact]
+    public void A_limited_member_backs_off_and_runs_fewer_jobs_until_successes_raise_them_again()
+    {
+        var clock = new RuntimeClock();
+        var wakes = 0;
+        using var limits = new ThinkingPoolLimits(() => Interlocked.Increment(ref wakes), clock);
+        BackgroundPlace member = new("endpoint:x", "x") { Slots = 4 };
+        TimeSpan Wait(TimeSpan? retryAfter)
+        {
+            var cooling = limits.Limited(member, retryAfter, "x is limiting requests");
+            var wait = cooling.Until!.Value - clock.GetUtcNow();
+            clock.Advance(wait);
+            return wait;
+        }
+        Assert.Equal([TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(40)],
+            new[] { Wait(null), Wait(null), Wait(null), Wait(TimeSpan.FromSeconds(40)) });
+        Assert.Equal(4, wakes);
+        Assert.Equal(1, limits.SlotsNow(member));
+        // A wait never goes past MaxWait, and a Retry-After past MaxRetryAfter counts as that long.
+        for (var i = 0; i < 10; i++) Wait(null);
+        Assert.Equal(ThinkingPoolLimits.MaxWait, Wait(null));
+        Assert.Equal(ThinkingPoolLimits.MaxRetryAfter, Wait(TimeSpan.FromDays(1)));
+
+        // A success resets the wait; every RaiseAfter successes in a row add one job at once, up to the configured slots.
+        Assert.False(limits.Succeeded(member));
+        Assert.Equal(ThinkingPoolLimits.FirstWait, Wait(null));
+        for (var i = 0; i < ThinkingPoolLimits.RaiseAfter * 3; i++) limits.Succeeded(member);
+        Assert.Equal(4, limits.SlotsNow(member));
+        Assert.Empty(limits.Now([member]));
+        // The configured slots stay the owner's choice: fewer configured slots cap the live limit at once.
+        limits.Limited(member with { Slots = 2 }, TimeSpan.FromSeconds(1), "x");
+        clock.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(1, limits.SlotsNow(member with { Slots = 2 }));
+    }
+
+    [Fact]
+    public async Task While_a_member_cools_down_its_jobs_go_to_another_member()
+    {
+        var clock = new RuntimeClock();
+        BackgroundPlace nvidia = new("endpoint:https://integrate.api.nvidia.com/v1", "NVIDIA") { Slots = 4 }, diva = new("host:diva", "diva", Rank: 1);
+        List<string> asked = [];
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [nvidia, diva], (m, _, _) =>
+        {
+            lock (asked) asked.Add(m.Name);
+            return Task.FromResult(m == nvidia ? ThinkingAnswer.Limited("NVIDIA is limiting requests", TimeSpan.FromSeconds(30)) : ThinkingAnswer.Done(m.Name));
+        }, clock);
+        Assert.Equal("NVIDIA", board.Find(ThinkingJobKind.Memory)?.Name);
+        var first = await board.RunAsync(Job(ThinkingJobKind.Memory), CancellationToken.None);
+        Assert.Equal((ThinkingJobOutcome.Succeeded, "diva", 2), (first.Outcome, first.Member, first.Attempts));
+        Assert.Equal("diva", board.Find(ThinkingJobKind.Memory)?.Name);
+        var second = await board.RunAsync(Job(ThinkingJobKind.Memory), CancellationToken.None);
+        Assert.Equal(("diva", 1), (second.Member, second.Attempts));
+        Assert.Equal(["NVIDIA", "diva", "diva"], asked);
+    }
+
+    [Fact]
+    public async Task A_stale_job_that_only_cooling_members_could_take_ends_at_once_for_the_callers_fallback()
+    {
+        var clock = new RuntimeClock();
+        BackgroundPlace nvidia = new("endpoint:https://integrate.api.nvidia.com/v1", "NVIDIA") { Slots = 4 };
+        var asked = 0;
+        var board = new ThinkingJobBoard(new BackgroundPlaces(), () => [nvidia], (_, _, _) =>
+        {
+            Interlocked.Increment(ref asked);
+            return Task.FromResult(ThinkingAnswer.Limited("NVIDIA is limiting requests", TimeSpan.FromSeconds(40)));
+        }, clock);
+        var first = board.RunAsync(Job(ThinkingJobKind.EndOfTurnJudge, timeout: TimeSpan.FromSeconds(2), stale: true), CancellationToken.None);
+        await Until(() => Volatile.Read(ref asked) == 1);
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var stale = await first.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(ThinkingJobOutcome.Stale, stale.Outcome);
+        Assert.Contains("NVIDIA kept limiting requests", stale.Problem);
+
+        var next = await board.RunAsync(Job(ThinkingJobKind.EndOfTurnJudge, timeout: TimeSpan.FromSeconds(2), stale: true), CancellationToken.None);
+        Assert.Equal((ThinkingJobOutcome.NoMember, 0, 1), (next.Outcome, next.Attempts, asked));
+        Assert.Equal("NVIDIA is limiting requests; tries again in 38 s, then runs 2 of 4 jobs at once for a while", next.Problem);
+    }
+
+    [Fact]
+    public async Task A_member_that_keeps_limiting_one_jobs_requests_counts_as_failed_for_it()
+    {
+        var clock = new RuntimeClock();
+        var places = new BackgroundPlaces();
+        BackgroundPlace nvidia = new("endpoint:https://integrate.api.nvidia.com/v1", "NVIDIA");
+        var asked = 0;
+        var board = new ThinkingJobBoard(places, () => [nvidia], (_, _, _) =>
+        {
+            Interlocked.Increment(ref asked);
+            return Task.FromResult(ThinkingAnswer.Limited("NVIDIA is limiting requests"));
+        }, clock);
+        var job = board.RunAsync(Job(ThinkingJobKind.Research), CancellationToken.None);
+        for (var i = 1; i < ThinkingJobBoard.MaxLimitedAnswers; i++)
+        {
+            await Until(() => Volatile.Read(ref asked) == i && places.WaitingKinds.Count == 1);
+            clock.Advance(ThinkingPoolLimits.MaxWait);
+        }
+        var result = await job.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal((ThinkingJobOutcome.Failed, "NVIDIA kept limiting requests", ThinkingJobBoard.MaxLimitedAnswers),
+            (result.Outcome, result.Problem, result.Attempts));
+    }
 }

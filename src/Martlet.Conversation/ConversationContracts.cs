@@ -272,6 +272,9 @@ public sealed record ConversationSnapshot(
     ConversationFailure SpeechFailure = ConversationFailure.None, ConversationTimings? Timings = null, long? InputTokens = null,
     long? CachedInputTokens = null, bool ReasoningRejected = false, bool VoiceMuted = false, ThinkingBackupResult? Backup = null)
 {
+    /// <summary>How long the provider asked Martlet to wait before it asks again (its Retry-After), when the reply failed with
+    /// <see cref="ProviderFailure"/> and the provider said so; the Thinking pool uses it to rest a member that limits requests.</summary>
+    public TimeSpan? ProviderRetryAfter { get; init; }
     public decimal? EstimatedCost => null;
     public long? AudibleSamples => null;
     /// <summary>The share of <see cref="InputTokens"/> (what the providers reported this reply's requests read) that came
