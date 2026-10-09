@@ -618,7 +618,7 @@ Every window, menu and the character overlay are drawn with twelve brushes
 buttons, selection, links, icons, headings; also used as text), `OnAccent`,
 `Focus` (focus and hover rings), `Success`, `Warning` and `Glow` (the halos
 behind the mascot), plus the mascot itself, whose badge takes the accent's hue
-in a character palette (Martlet's pink otherwise). Everything refers to them as
+in a character or custom palette (Martlet's pink otherwise). Everything refers to them as
 `DynamicResource`, so a palette swaps at once.
 The character's speech bubble is drawn wholly in them too, like a piece of
 Martlet's window floating beside the character: a `Surface` card with an
@@ -627,10 +627,12 @@ Martlet's window floating beside the character: a `Surface` card with an
 alike.
 Windows' high contrast always wins.
 
-Settings › Appearance offers *Pink light*, *Rose dark* and two palettes made by
-Martlet's rules from the character this PC shows: **Character light** and
-**Character dark**. They follow the character: choosing or showing another
-character recolors Martlet within a moment, and the last colors are kept in
+Settings › Appearance offers *Pink light*, *Rose dark*, two palettes made by
+Martlet's rules from the character this PC shows, **Character light** and
+**Character dark**, and the owner's own **Custom** palette (see
+[Custom palette](#custom-palette)). The character palettes follow the
+character: choosing or showing another character recolors Martlet within a
+moment, and the last colors are kept in
 `appearance-colors.json` so Martlet starts in them. Under the choice the page
 shows the character's main colors and a small picture of Martlet's window in
 each of the two palettes. (The *by Thinking* palettes an older Martlet offered
@@ -673,6 +675,28 @@ Verified looks (2026-10-03, `character_theme` previews and the desktop): the
 rules give calm, readable palettes for all ten models tried (the Live2D samples
 Hiyori, Haru, Mao, Mark, Natori, Ren and Rice, the VRM samples Seed-san and
 Constraint Twist, and a VTube Studio model).
+
+### Custom palette
+
+**Custom** (`MainWindow.CustomTheme.cs`) is the owner's own twelve colors,
+kept in `appearance-custom.json` and shared with the owner's other computers
+(the `appearance-custom` shared setting). The first time it is chosen, it is a
+copy of the palette in use until then; *Start from* and *Use its colors*
+replace it with another palette's colors later (after a question when the
+owner changed them). The editor lists the parts by plain names
+(`CustomThemeParts`: *Window background* for `Canvas`, *Buttons and side bar*
+for `Soft`, *Quiet text* for `Muted`...). The selected part takes a color code,
+hue, saturation and lightness sliders on color scales (the `ColorSlider`
+style) or one of the character's main colors. Every window takes a change
+within 40 ms and the file is written after a 0.7 s pause, so dragging a slider
+stays smooth.
+
+A custom palette is dark when light text reads better on its `Canvas` than
+dark text; the overlay and the readability rules use that. The editor checks
+the [rules every palette keeps](#character-palettes) and names what breaks one
+(*Text on window background: 1.3:1 (needs 7:1)*). It does not enforce them:
+*Make it easy to read* runs `CharacterThemeRules.Repair` when the owner asks.
+Windows' high contrast still wins.
 
 ## Motion system
 
