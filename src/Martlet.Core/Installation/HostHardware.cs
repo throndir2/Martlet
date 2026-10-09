@@ -22,6 +22,10 @@ public sealed record HostGpu(string Name, string Vendor, int? MemoryMb, string? 
     }
 }
 
+/// <summary>A model that host role <paramref name="Role"/> ran on the host and whose download the host keeps: turning the
+/// role back on, or switching back to the model, downloads nothing.</summary>
+public sealed record HostDownload(string Role, string Model);
+
 /// <summary>What a paired Martlet host reported about itself (collected by martlet-host on that machine and
 /// served over the pinned, paired connection). Host-reported facts, not measurements or qualification.</summary>
 public sealed record HostHardware(
@@ -40,6 +44,8 @@ public sealed record HostHardware(
     public string? Architecture { get; init; }
     /// <summary>Reported device features such as apple-intelligence or foreground-only (Martlet.Core.Platforms.PlatformFeatures).</summary>
     public IReadOnlyList<string>? Features { get; init; }
+    /// <summary>The downloads the host keeps for its roles (also for roles that are off); null when the host doesn't report them.</summary>
+    public IReadOnlyList<HostDownload>? Downloads { get; init; }
 
     [JsonIgnore] public HostGpu? BestGpu => Gpus.OrderByDescending(g => g.IsNvidia).ThenByDescending(g => g.MemoryMb ?? 0).FirstOrDefault();
 

@@ -371,9 +371,17 @@ public static partial class NetworkRecommender
                 .Sum(r => r.Option is { IsLocal: true } o ? o.Peak.RamGb : 0);
             if (node.RamCapacity - node.RamUsed - reservedRam + Epsilon < ram) return false;
             if (node.CpuCapacity * PlacementEngine.CpuOversubscription - node.CpuUsed + Epsilon < option.Steady.CpuThreads) return false;
-            var downloaded = node.Pending.Any(r => r.Kind == query.Kind && (r.Option == option || Same(r.Model, option.ModelId)));
+            var downloaded = node.Pending.Any(r => r.Kind == query.Kind && (r.Option == option || Same(r.Model, option.ModelId))) ||
+                !query.Native && KeptOnDisk(node, query.Kind, option);
             return downloaded || node.DiskCapacity <= 0 || node.DiskCapacity - node.DiskUsed + Epsilon >= option.Peak.DiskGb;
         }
+
+        /// <summary>Whether <paramref name="node"/>'s host service keeps <paramref name="option"/>'s model downloaded from a role of
+        /// <paramref name="kind"/> it turned off (<see cref="NetworkMachine.Downloaded"/>), so turning it back on downloads nothing.
+        /// An option without a model (lip-sync) matches any kept download of its kind.</summary>
+        private static bool KeptOnDisk(Node node, string kind, ComponentOption option) =>
+            (node.Machine.Downloaded ?? []).Any(d => d?.Kind == kind && d.Model is { Length: > 0 } model &&
+                (option.ModelId is null || Names(option, model)));
 
         /// <summary>How good a valid place is (lower is better), or null when a soft rule of <paramref name="query"/> rules it
         /// out: hosts before companion PCs; not pushing out what runs today; a voice alone on a Windows card; the idlest card;
@@ -389,7 +397,9 @@ public static partial class NetworkRecommender
                 (node.Companion ? CompanionLoad : 0);
             if (query.MaxContention is { } most && contention > most) return null;
             var mine = node.Pending.FirstOrDefault(r => r.Kind == query.Kind && r.Native == query.Native);
-            var reuse = mine is null ? 2 : mine.Option == option || Same(mine.Model, option.ModelId) ? 0 : 1;
+            var reuse = mine is not null && (mine.Option == option || Same(mine.Model, option.ModelId)) ? 0
+                : !query.Native && KeptOnDisk(node, query.Kind, option) ? 0.5
+                : mine is null ? 2 : 1;
             var room = card is { } c ? node.Free(c) - option.GpuGb
                 : node.CpuCapacity * PlacementEngine.CpuOversubscription - node.CpuUsed - option.Steady.CpuThreads;
             return
@@ -482,6 +492,7 @@ public static partial class NetworkRecommender
             var role = new Role
             {
                 Kind = kind, Option = slot.Option, Card = slot.Card, Native = slot.Native, Was = old?.Was,
+                OnDisk = !slot.Native && !sameModel && KeptOnDisk(node, kind, slot.Option),
                 Model = sameModel ? old!.Model : slot.Option.ModelId, Purpose = purpose, Benefit = benefit, Why = why
             };
             node.Roles.Add(role);

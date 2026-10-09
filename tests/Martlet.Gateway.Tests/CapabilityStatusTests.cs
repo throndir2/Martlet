@@ -115,6 +115,30 @@ public sealed class CapabilityStatusTests
     }
 
     [Fact]
+    public void Kept_downloads_parse_and_unsafe_ones_are_refused()
+    {
+        // martlet-host collect_machine with the kept downloads: Ollama kept Gemma 4 E2B after switching to E4B, and the
+        // turned-off voice engine kept its model.
+        const string written =
+            "{\"collected_at\":\"2026-10-12T09:00:00Z\",\"method\":\"docker\",\"platform\":\"linux\",\"architecture\":\"x64\"," +
+            "\"operating_system\":\"Docker Desktop\",\"kernel\":null,\"processor\":null,\"processor_threads\":16,\"memory_gb\":31.9," +
+            "\"container_runtime\":\"Docker 29.8.1\",\"nvidia_containers\":\"yes\",\"cuda\":null,\"gpus\":[],\"features\":[]," +
+            "\"downloads\":[{\"role\":\"ollama\",\"model\":\"gemma4:e2b\"},{\"role\":\"ollama\",\"model\":\"gemma4:e4b\"}," +
+            "{\"role\":\"chatterbox\",\"model\":\"chatterbox-turbo\"}]}\n";
+        var report = GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(written));
+        Assert.NotNull(report);
+        Assert.Equal(new[] { "ollama:gemma4:e2b", "ollama:gemma4:e4b", "chatterbox:chatterbox-turbo" },
+            report!.Downloads!.Select(d => $"{d.Role}:{d.Model}"));
+
+        Assert.Null(GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(written.Replace("gemma4:e2b", "gemma4 e2b", StringComparison.Ordinal))));
+        Assert.Null(GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(written.Replace("\"chatterbox\",", "\"Chatter Box\",", StringComparison.Ordinal))));
+        Assert.Null(GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(written.Replace("\"gemma4:e4b\"", "\"-gemma4\"", StringComparison.Ordinal))));
+        var tooMany = string.Join(",", Enumerable.Range(0, 65).Select(i => $"{{\"role\":\"ollama\",\"model\":\"m{i}\"}}"));
+        Assert.Null(GatewayMachineReport.Parse(Encoding.UTF8.GetBytes(
+            written[..written.IndexOf("\"downloads\"", StringComparison.Ordinal)] + "\"downloads\":[" + tooMany + "]}")));
+    }
+
+    [Fact]
     public async Task Private_worker_failure_is_redacted_with_an_exact_remedy()
     {
         var worker = new UnavailableWorker(GatewayTestHost.Capabilities(

@@ -29,6 +29,8 @@ internal sealed record SetupComputer(string Id, string Name, NetworkMachineKind 
     public bool? Reachable { get; init; }
     public TimeSpan? OfflineFor { get; init; }
     public IReadOnlyDictionary<string, string>? Offers { get; init; }
+    /// <summary>The downloads its host service keeps (its machine report); null: <see cref="Hardware"/>'s, if any.</summary>
+    public IReadOnlyList<HostDownload>? Downloads { get; init; }
     public bool ThisPc { get; init; }
 }
 
@@ -113,6 +115,7 @@ internal static class RecommendedSetupInputs
                 HasHostService = computer.HasHostService,
                 Manageable = computer.Manageable,
                 Roles = computer.HasHostService ? Roles(computer, sources.Plan) : [],
+                Downloaded = computer.HasHostService ? Downloaded(computer) : [],
                 OnWindows = computer.HasHostService ? SharedGpu.OnWindows(computer.ThisPc, computer.Hardware) : null
             });
         }
@@ -192,6 +195,12 @@ internal static class RecommendedSetupInputs
         return [.. roles.OrderBy(r => r.Kind, StringComparer.Ordinal)
             .Select(r => new HostedRolePlacement(r.Kind, string.IsNullOrWhiteSpace(r.Model) ? null : r.Model, null))];
     }
+
+    /// <summary>The role models a host service keeps downloaded, so turning a role back on there downloads nothing.</summary>
+    private static IReadOnlyList<HostedRolePlacement> Downloaded(SetupComputer computer) =>
+        [.. (computer.Downloads ?? computer.Hardware?.Downloads ?? [])
+            .Where(d => !string.IsNullOrWhiteSpace(d.Role) && !string.IsNullOrWhiteSpace(d.Model))
+            .Select(d => new HostedRolePlacement(d.Role, d.Model, null)).Distinct()];
 
     /// <summary>Who does <paramref name="job"/> today (the shared plan, else this PC's own choice; null when nobody set it up) and,
     /// for a job a host does, the other computers that take its requests when that host is busy, in the order this PC tries them
@@ -320,6 +329,7 @@ internal static class RecommendedSetupInputs
             Reachable = ownCheck?.Reachable,
             OfflineFor = ownHostId is null ? null : offlineFor?.Invoke(ownHostId),
             Offers = ownCheck?.Offers,
+            Downloads = ownHostId is null ? null : inputs.HostHardware?.FirstOrDefault(h => h.HostId == ownHostId)?.Downloads,
             ThisPc = true
         });
         foreach (var host in NetworkMap.Hosts(inputs).Where(h => h.HostId != ownHostId))

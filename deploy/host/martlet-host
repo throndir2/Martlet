@@ -6,7 +6,8 @@
 #   martlet-host describe <role> print a role's terms, secrets and choices (machine-readable, no secret values)
 #   martlet-host add <role>     install a role service and publish it through the gateway (or report a route-less feature);
 #                               a voice engine replaces the one already installed (role.conf exclusive=voice)
-#   martlet-host remove <role>  stop a role and unpublish it (keeps its data)
+#   martlet-host remove <role>  turn a role off: stop it and unpublish it (keeps its downloads and data, so adding it again
+#                               downloads nothing; the machine report lists the kept downloads)
 #   martlet-host pair           pair a Martlet desktop: shows this host's address and a one-use code (like K7QM-4XPA) to
 #                               type in Martlet (Devices > Add a computer > Enter a pairing code); the code has no
 #                               deadline: it waits until a desktop uses it, you type cancel (or Ctrl+C) or stdin ends
@@ -1520,6 +1521,58 @@ nvidia_gpus_json() {
   done
 }
 
+# Kept downloads: the models each route role ran on this host, one file for each role, newest last (16 at most).
+# Removing a role or switching its model keeps its downloads (compose down keeps the data volumes), so the machine report
+# lists them and Martlet's recommended setup turns a role back on, or switches back, without downloading it again.
+DOWNLOADS_DIR="${CONF}/downloads"
+DOWNLOAD_MODEL='^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$'
+DOWNLOAD_ROLE='^[a-z0-9][a-z0-9-]{0,31}$'
+
+record_downloads() {
+  local role record model file
+  while IFS= read -r role; do
+    [[ "${role}" =~ ${DOWNLOAD_ROLE} ]] || continue
+    record="$(installed_file "${role}")"
+    model="$(conf_value "${record}" model)"
+    [[ -n "$(conf_value "${record}" kind)" && "${model}" =~ ${DOWNLOAD_MODEL} ]] || continue
+    file="${DOWNLOADS_DIR}/${role}"
+    [[ "$(tail -n 1 "${file}" 2>/dev/null || true)" != "${model}" ]] || continue
+    mkdir -p "${DOWNLOADS_DIR}"
+    ( umask 077
+      { grep -vxF -- "${model}" "${file}" 2>/dev/null || true; printf '%s\n' "${model}"; } | tail -n 16 > "${file}.tmp"
+      mv -f "${file}.tmp" "${file}" )
+  done < <(installed_roles)
+}
+
+# The kept downloads as JSON objects ({"role":...,"model":...}, 64 at most). A role whose data volumes were all deleted
+# (docker volume rm) has nothing kept; when Docker can't list volumes (no access without a password), the record is used.
+downloads_json() {
+  [[ -d "${DOWNLOADS_DIR}" ]] || return 0
+  local docker=("${DOCKER[@]}") volumes="" checked=0 file role wanted volume have model count=0
+  [[ "${docker[0]}" != sudo ]] || docker=(sudo -n "${docker[@]:1}")
+  if volumes="$(timeout 20 "${docker[@]}" volume ls -q 2>/dev/null)"; then checked=1; fi
+  for file in "${DOWNLOADS_DIR}"/*; do
+    role="$(basename "${file}")"
+    [[ -f "${file}" && "${role}" =~ ${DOWNLOAD_ROLE} ]] || continue
+    if [[ ${checked} == 1 ]]; then
+      wanted="$(sed -n 's/^[[:space:]]*name:[[:space:]]*\(martlet-[A-Za-z0-9._-]*\)[[:space:]]*$/\1/p' "${ROLES_DIR}/${role}/compose.yaml" 2>/dev/null || true)"
+      if [[ -n "${wanted}" ]]; then
+        have=0
+        while IFS= read -r volume; do
+          if grep -qxF -- "${volume}" <<< "${volumes}"; then have=1; break; fi
+        done <<< "${wanted}"
+        [[ ${have} == 1 ]] || continue
+      fi
+    fi
+    while IFS= read -r model; do
+      [[ "${model}" =~ ${DOWNLOAD_MODEL} && ${count} -lt 64 ]] || continue
+      [[ ${count} == 0 ]] || printf ','
+      printf '{"role":"%s","model":"%s"}' "${role}" "${model}"
+      count=$((count + 1))
+    done < "${file}"
+  done
+}
+
 collect_machine() {
   local os="" kernel="" cpu="" threads="" memory="" runtime="" nvidia_containers="unknown" cuda="" arch="" gpus=() features=() line
   local query=(--query-gpu=name,memory.total,driver_version,persistence_mode,power.limit,power.default_limit --format=csv,noheader,nounits)
@@ -1569,18 +1622,20 @@ collect_machine() {
       fi
     done
   fi
-  local joined features_joined
+  local joined features_joined downloads_joined
   joined="$(IFS=,; printf '%s' "${gpus[*]:-}")"
   mapfile -t features < <(machine_features)
   features_joined="$(json_string_array "${features[@]}")"
+  record_downloads
+  downloads_joined="$(downloads_json)"
   # The roles always run on Linux (natively or in Docker containers), whatever computer Docker runs on.
   case "${arch}" in x86_64|amd64) arch="x64" ;; aarch64|arm64) arch="arm64" ;; *) arch="" ;; esac
   mkdir -p "${GW_CONF_DIR}"; chmod 700 "${GW_CONF_DIR}"
   ( umask 077
-    printf '{"collected_at":"%s","method":"%s","platform":"linux","architecture":%s,"operating_system":%s,"kernel":%s,"processor":%s,"processor_threads":%s,"memory_gb":%s,"container_runtime":%s,"nvidia_containers":"%s","cuda":%s,"gpus":[%s],"features":[%s]}\n' \
+    printf '{"collected_at":"%s","method":"%s","platform":"linux","architecture":%s,"operating_system":%s,"kernel":%s,"processor":%s,"processor_threads":%s,"memory_gb":%s,"container_runtime":%s,"nvidia_containers":"%s","cuda":%s,"gpus":[%s],"features":[%s],"downloads":[%s]}\n' \
       "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${MODE}" "$(json_opt "${arch}")" "$(json_text "${os:-Linux}")" "$(json_opt "${kernel}")" "$(json_opt "${cpu}")" \
       "$(json_num "${threads}")" "$(json_num "${memory}")" "$(json_opt "${runtime}")" "${nvidia_containers}" "$(json_opt "${cuda}")" "${joined}" "${features_joined}" \
-      > "${MACHINE_FILE}.tmp" )
+      "${downloads_joined}" > "${MACHINE_FILE}.tmp" )
   # The same machine as last time keeps its report (and the time it was collected), so the gateway serving it needn't restart;
   # "fresh" (martlet-host machine) always takes the new one.
   if [[ "${1:-}" != fresh && -f "${MACHINE_FILE}" ]] &&
@@ -2094,6 +2149,7 @@ release_roles() {
 
 unpublish_roles() {
   local role="$1" other; shift
+  record_downloads
   for other in "$@"; do
     rm -f "$(installed_file "${other}")"
     journal "stopped ${other} for ${role} (one engine of its group per host)"
@@ -2120,7 +2176,9 @@ publish_role() {
 }
 
 # Unpublishes role $1 (its gateway route when it had kind $2, otherwise its feature). Runs holding the gateway lock.
+# Its downloads stay listed in the machine report (record_downloads), so adding it again downloads nothing new.
 unpublish_role() {
+  record_downloads
   rm -f "$(installed_file "$1")"
   collect_machine
   if [[ -n "$2" ]]; then apply_config; else publish_machine_report; fi
@@ -2474,7 +2532,7 @@ cmd_remove() {
   local record; record="$(installed_file "${role}")"
   [[ -f "${record}" ]] || fail "Role ${role} is not installed."
   local had_kind; had_kind="$(conf_value "${record}" kind)"
-  ask "Stop ${role} and remove it from the gateway (its data volumes are kept)?" || exit 0
+  ask "Turn off ${role}: stop it and remove it from the gateway (its downloads and data volumes are kept)?" || exit 0
   require_docker
   role_compose "${role}" down || true
   # Every variant, also one an interrupted switch left running.
@@ -2483,7 +2541,7 @@ cmd_remove() {
     if [[ -n "${variant}" ]]; then ROLE_PROFILES="${variant}" role_compose "${role}" down >/dev/null 2>&1 || true; fi
   done 3< <(role_variants "$(role_dir "${role}")/role.conf")
   with_gateway unpublish_role "${role}" "${had_kind}"
-  say "Role ${role} removed."
+  say "Role ${role} is off. Its downloads are kept, so 'martlet-host add ${role}' turns it back on without downloading them again."
 }
 
 cmd_machine() {

@@ -105,7 +105,8 @@ public static partial class NetworkRecommender
                 var name = Label(role.Option, role.Kind);
                 if (was is null)
                 {
-                    var summary = $"Install {name} on {CardText(node, role.Card)}." +
+                    var summary = (role.OnDisk ? $"Start {name} again on {CardText(node, role.Card)}. It is already downloaded there."
+                        : $"Install {name} on {CardText(node, role.Card)}.") +
                         (role.Kind == DeepThinkingRole ? $" {node.Name} then joins the Thinking pool by itself." : "");
                     changes.Add(RoleChange(SetupChangeKind.AddRole, node, role, summary, role.Benefit, role.Why) with
                     {
@@ -115,7 +116,8 @@ public static partial class NetworkRecommender
                 }
                 if (role.Model is not null && !Same(role.Model, was.Model))
                 {
-                    var summary = $"Switch {node.Name}'s {KindName(role.Kind)} from {was.Model ?? "its model"} to {name}.";
+                    var summary = $"Switch {node.Name}'s {KindName(role.Kind)} from {was.Model ?? "its model"} to {name}." +
+                        (role.OnDisk ? " It is already downloaded there." : "");
                     changes.Add(RoleChange(SetupChangeKind.ChangeModel, node, role, summary, role.Benefit, role.Why) with
                     {
                         Model = role.Model, FromModel = was.Model, DownloadGb = Download(role), OnProcessor = processor
@@ -134,7 +136,8 @@ public static partial class NetworkRecommender
             {
                 var role = node.Today.FirstOrDefault(r => !r.Native && r.Kind == was.Kind);
                 var (benefit, why) = role?.Leave ?? (SetupChangeBenefit.Minor, "Nothing uses it.");
-                changes.Add(new SetupChange(SetupChangeKind.RemoveRole, node.Id, $"Remove {Label(role?.Option, was.Kind)} from {node.Name}.", why)
+                changes.Add(new SetupChange(SetupChangeKind.RemoveRole, node.Id,
+                    $"Turn off {Label(role?.Option, was.Kind)} on {node.Name}. Its downloads stay, so turning it back on is quick.", why)
                 {
                     Benefit = benefit, RoleKind = was.Kind, Model = was.Model, NeedsSomeoneThere = !node.Machine.Manageable
                 });
@@ -144,7 +147,8 @@ public static partial class NetworkRecommender
         private static SetupChange RoleChange(SetupChangeKind kind, Node node, Role role, string summary, SetupChangeBenefit benefit, string why) =>
             new(kind, node.Id, summary, Reason(why, summary)) { Benefit = benefit, RoleKind = role.Kind, NeedsSomeoneThere = !node.Machine.Manageable };
 
-        private static double? Download(Role role) => role.Option?.Peak.DiskGb is > 0 and var gb ? Math.Round(gb, 1) : null;
+        /// <summary>About how much a new role or model downloads: none when its computer keeps it downloaded already.</summary>
+        private static double? Download(Role role) => !role.OnDisk && role.Option?.Peak.DiskGb is > 0 and var gb ? Math.Round(gb, 1) : null;
 
         /// <summary>Rule 1: on a computer with two or more NVIDIA cards every role is pinned to one card.</summary>
         private static (SetupChangeBenefit, string) PinReason(Node node) =>

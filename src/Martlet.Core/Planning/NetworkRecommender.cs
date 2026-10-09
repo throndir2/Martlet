@@ -125,6 +125,8 @@ public static partial class NetworkRecommender
         public bool Fixed { get; init; }
         /// <summary>Today's role it continues (null: new).</summary>
         public HostedRolePlacement? Was { get; init; }
+        /// <summary>Its model stays downloaded on the computer from a role turned off there before, so it downloads nothing.</summary>
+        public bool OnDisk { get; init; }
         public string Purpose { get; set; } = Kept;
         public SetupChangeBenefit Benefit { get; set; } = SetupChangeBenefit.Minor;
         public string Why { get; set; } = "";
@@ -167,7 +169,7 @@ public static partial class NetworkRecommender
         public double RamUsed => Roles.Sum(r => r.Option is { IsLocal: true } option
             ? option.Peak.RamGb + (r.Card is { } card && Spec.Gpus[card].UnifiedMemory ? r.Gb : 0) : 0);
         public double CpuUsed => Roles.Sum(r => r.Option is { IsLocal: true } option ? option.Steady.CpuThreads : 0);
-        public double DiskUsed => Roles.Where(r => r.Was is null).Sum(r => r.Option?.Peak.DiskGb ?? 0);
+        public double DiskUsed => Roles.Where(r => r.Was is null && !r.OnDisk).Sum(r => r.Option?.Peak.DiskGb ?? 0);
         /// <summary>The live jobs and pool places it has, for "least loaded first".</summary>
         public int Load => Roles.Count(r => !r.Fixed && r.Purpose != Kept);
 
