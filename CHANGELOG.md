@@ -19,6 +19,10 @@ Each release's section here is also its notes on GitHub.
 - Each built-in check-in now shows its prompt right on its card in Companion › Check-ins, so you can change it there like your own check-ins, and **Use built-in text** puts Martlet's own back. Point at each "It gets to know" choice to see what it gives the check-in. ([#667](https://github.com/throndir2/Martlet/pull/667))
 - Reconfigure never deletes models when your computers switch jobs. It now says it **turns a part off** and that its downloads stay, and a model your computer already has (such as Gemma 4) is turned back on without downloading it again or needing more disk space. Recommended setup also prefers a computer that already has the model. ([#664](https://github.com/throndir2/Martlet/pull/664))
 
+### Fixed
+
+- Thinking in Ollama on one of your computers now hears your voice when its model can hear, such as Gemma 4 E4B, instead of saying the model doesn't hear recordings. **Test hearing** works there too. Update Martlet on that computer as well. ([#668](https://github.com/throndir2/Martlet/pull/668))
+
 ## [0.62.1] - 2026-10-08
 
 ### Changed

@@ -46,6 +46,7 @@ internal static class ModelAbilityCheck
             },
             fixture = await FixtureAsync(cancellation),
             decisions = Decisions(),
+            hostRoute = HostRouteAudio(),
             shared = Shared(),
             real = real is null ? null : await RealAsync(real.AbsoluteUri.TrimEnd('/'), modelId!, test, testVision, cancellation)
         };
@@ -53,12 +54,14 @@ internal static class ModelAbilityCheck
 
     private static object Decisions()
     {
-        const string ollama = GenerationSupport.LocalOllamaChatBaseUrl, openRouter = ChatCompletionsEndpointCatalog.OpenRouterBaseUrl;
+        const string ollama = GenerationSupport.LocalOllamaChatBaseUrl, openRouter = ChatCompletionsEndpointCatalog.OpenRouterBaseUrl,
+            host = "https://gpu-pc.local:8443";
         var at = DateTimeOffset.UtcNow;
         var found = new ModelAbilities()
             .With(new() { Origin = ollama, ModelId = "gemma4:12b", Hears = true, Sees = true, Source = "Ollama on this PC", CheckedAt = at })
             .With(new() { Origin = openRouter, ModelId = "x-ai/grok-4.3", Hears = false, Sees = true, Source = "OpenRouter's model list", CheckedAt = at })
-            .With(new() { Origin = ollama, ModelId = "qwen3:8b", Hears = false, Sees = false, Source = "Ollama on this PC", CheckedAt = at });
+            .With(new() { Origin = ollama, ModelId = "qwen3:8b", Hears = false, Sees = false, Source = "Ollama on this PC", CheckedAt = at })
+            .With(new() { Origin = host, ModelId = "gemma4-e2b", Hears = false, Source = "a refused recording", CheckedAt = at });
         string Hear(SetupRouteType? type, string origin, string model, ModelAbilities? abilities) =>
             HearingModelCatalog.ForRoute(type, origin, model, abilities).ToString();
         var rows = new
@@ -67,7 +70,10 @@ internal static class ModelAbilityCheck
             ollamaGemma4_12bByName = Hear(SetupRouteType.ChatCompletions, ollama, "gemma4:12b", null),
             ollamaGemma4_12bFound = Hear(SetupRouteType.ChatCompletions, ollama, "gemma4:12b", found),
             openRouterGrokFound = Hear(SetupRouteType.ChatCompletions, openRouter, "x-ai/grok-4.3", found),
+            // Thinking in Ollama on a paired computer takes recordings through its gateway, decided like any other model.
             hostOllamaGemma4E2b = Hear(SetupRouteType.GatewayOllama, "gpu-pc", "gemma4:e2b", found),
+            hostOllamaGemma4E4bAlias = Hear(SetupRouteType.GatewayOllama, host, "gemma4-e4b", found),
+            hostOllamaRefusedFound = Hear(SetupRouteType.GatewayOllama, host, "gemma4-e2b", found),
             openAiResponses = Hear(SetupRouteType.OpenAi, "https://api.openai.com", "gpt-4.1-mini-2025-04-14", found),
             retired = HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, ollama, "gemma4:e2b", found, retired: true).ToString(),
             ollamaQwen3SeesFound = VisionModelCatalog.ForRoute(ollama, "qwen3:8b", found).ToString(),
@@ -76,10 +82,31 @@ internal static class ModelAbilityCheck
         var ok = rows is
         {
             ollamaGemma4E2bByName: "Supported", ollamaGemma4_12bByName: "Unsupported", ollamaGemma4_12bFound: "Supported",
-            openRouterGrokFound: "Unsupported", hostOllamaGemma4E2b: "Unsupported", openAiResponses: "Unsupported", retired: "Unsupported",
+            openRouterGrokFound: "Unsupported", hostOllamaGemma4E2b: "Supported", hostOllamaGemma4E4bAlias: "Supported",
+            hostOllamaRefusedFound: "Unsupported", openAiResponses: "Unsupported", retired: "Unsupported",
             ollamaQwen3SeesFound: "Unsupported", ollamaGemma4_12bSeesFound: "Supported"
         };
         return new { ok, rows };
+    }
+
+    /// <summary>Whether a paired computer's Thinking route takes a recording (<see cref="Martlet.Avatar.Audio2Face.Remote.HostRoute.CarriesAudio"/>):
+    /// a host of this version advertises room for one; an older host's route (room for a screen image only) gets the transcript and
+    /// should be updated.</summary>
+    private static object HostRouteAudio()
+    {
+        const int olderBytes = 1_497_432;
+        static Martlet.Avatar.Audio2Face.Remote.HostRoute Route(string id, string path, int bytes) =>
+            new(id, path, "martlet.ollama-chat", "1", "ollama", "ollama", "1", "gemma4-e4b", "1", new string('0', 64),
+                new string('0', 64), bytes, 98_304, 65_536, 4_096, 4_096, 1_048_576, TimeSpan.FromMinutes(5), "request_abort");
+        var rows = new
+        {
+            requestBytes = SelfHostSetup.OllamaRequestBytes,
+            thisVersion = Route(SelfHostSetup.OllamaRouteId, SelfHostSetup.OllamaPath, SelfHostSetup.OllamaRequestBytes).CarriesAudio,
+            deepThinking = Route(SelfHostSetup.DeepThinkingRouteId, SelfHostSetup.DeepThinkingPath, SelfHostSetup.OllamaRequestBytes).CarriesAudio,
+            olderHost = Route(SelfHostSetup.OllamaRouteId, SelfHostSetup.OllamaPath, olderBytes).CarriesAudio,
+            voiceRoute = Route("martlet.gateway.f5-synthesis.v1", "/martlet/v1/inference/f5-synthesis", SelfHostSetup.OllamaRequestBytes).CarriesAudio
+        };
+        return new { ok = rows is { thisVersion: true, deepThinking: true, olderHost: false, voiceRoute: false }, rows };
     }
 
     private static object Shared()

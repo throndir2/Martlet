@@ -32,7 +32,8 @@ public sealed class HostTextTests
         "sha256:" + new string('a', 64), "desktop-test", Guid.NewGuid());
     private static readonly TextModelSelection Model = new(SelfHostSetup.GatewayOllamaAlias, "llama3.2-3b");
 
-    private static async Task<(ConversationSnapshot Snapshot, ConversationTurn Turn)> RunAsync(FakeHost host, Uri origin)
+    private static async Task<(ConversationSnapshot Snapshot, ConversationTurn Turn)> RunAsync(FakeHost host, Uri origin,
+        BoundedWaveAudio? audio = null)
     {
         var clock = new RuntimeClock();
         var permissions = new FixturePermissions(clock)
@@ -41,15 +42,28 @@ public sealed class HostTextTests
             {
                 var until = clock.GetUtcNow().AddSeconds(30);
                 return ValueTask.FromResult<AuthorizedTextOperation?>(new(new(new(origin, ProviderRole.Llm, Model.UpstreamModelId),
-                    action.Model, action.Context.Ids, action.Context.Epoch, action.Limits, until, true, true), new(action.Budget, until)));
+                    action.Model, action.Context.Ids, action.Context.Epoch, action.Limits, until, true, true,
+                    allowAudioDisclosure: audio is not null), new(action.Budget, until)));
             }
         };
         await using var runtime = ConversationRuntime.ForFixture(
             OpenAiTextGenerationAdapter.CreateForFixture(new TextRecordingHandler(), new FixtureCredentials(), clock),
             null, null, new(), clock, hostText: host);
-        var turn = runtime.Start(new ConversationRequest(new BoundedTextInput("Hi", "Be brief."), Model, new(), new(), host: Target),
+        var turn = runtime.Start(new ConversationRequest(new BoundedTextInput("Hi", "Be brief.", audio: audio), Model, new(), new(), host: Target),
             permissions);
         return (await Harness.Finish(turn, clock), turn);
+    }
+
+    [Fact]
+    public async Task Host_route_sends_the_recording_to_the_paired_hosts_model()
+    {
+        var host = new FakeHost("You sound happy.");
+        var recording = BoundedWaveAudio.FromPcm(new() { SampleRate = 16_000, Channels = 1, Encoding = Martlet.Core.Audio.PcmEncoding.Signed16LittleEndian },
+            new byte[3_200]);
+        var (snapshot, turn) = await RunAsync(host, new Uri(Target.Origin), recording);
+        Assert.Equal(ConversationState.Completed, snapshot.State);
+        Assert.Equal("You sound happy.", turn.Content.Text);
+        Assert.Same(recording, host.Input!.Audio);
     }
 
     [Fact]

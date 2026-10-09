@@ -762,9 +762,9 @@ internal sealed class LiveConversationConfiguration
         };
     }
 
-    /// <summary>Whether the Thinking model can hear the user's recording: only Chat Completions endpoints take audio (the
-    /// <c>input_audio</c> content part; OpenAI's Responses route and a host's Ollama take none), then what was found out about
-    /// the model (its server's metadata, Test hearing or a refused recording), then its name.</summary>
+    /// <summary>Whether the Thinking model can hear the user's recording: Chat Completions endpoints (the <c>input_audio</c>
+    /// content part) and a paired computer's Ollama take audio (OpenAI's Responses route takes none), then what was found out
+    /// about the model (its server's metadata, Test hearing or a refused recording), then its name.</summary>
     internal HearingSupport Hearing() => Hearing(Routes.SingleOrDefault(r => r.Role == SetupRole.Llm), Abilities);
 
     internal static HearingSupport Hearing(SetupRoute? thinking, ModelAbilities? abilities = null) =>
@@ -792,10 +792,13 @@ internal sealed class LiveConversationConfiguration
         var found = ability is null ? "" : $" ({Said(ability)})";
         return Hearing(route, abilities) switch
         {
+            HearingSupport.Supported when IsHost(route) && HostAudio.IsOld(route.Gateway?.HostId) =>
+                $"This Thinking model can hear{found}, but {route.Gateway?.HostId ?? "the paired computer"} runs an older Martlet that " +
+                "takes no recordings, so only the transcript is sent. Update Martlet on that computer.",
             HearingSupport.Supported => $"This Thinking model can hear{found}. Your recording goes to {LlmDestinationName(route)}.",
             HearingSupport.Unsupported when IsHost(route) =>
-                "A host's Ollama can't take audio from Martlet, so only the transcript is sent. Choose a model that hears in Companion › Thinking, " +
-                "for example Gemma 4 E2B or E4B in Ollama on this PC, or gemini-2.5-flash.",
+                $"This Thinking model can't hear audio{found}, so only the transcript is sent. Choose a model that hears in Companion › Thinking, " +
+                "for example Gemma 4 E2B or E4B in Ollama on that computer or on this PC, or gemini-2.5-flash.",
             HearingSupport.Unsupported when !IsChat(route) =>
                 "This OpenAI model can't take audio, so only the transcript is sent. Choose an OpenAI-compatible endpoint and a model that hears in Companion › Thinking, for example gpt-4o-audio-preview or gemini-2.5-flash.",
             HearingSupport.Unsupported when ability is not null =>

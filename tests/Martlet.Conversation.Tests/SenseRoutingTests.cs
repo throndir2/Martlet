@@ -121,6 +121,26 @@ public sealed class SenseRoutingTests
     }
 
     [Fact]
+    public void Thinking_on_a_paired_computer_hears_when_its_model_does()
+    {
+        SetupRoute OnHost(string model) => new()
+        {
+            RouteType = SetupRouteType.GatewayOllama, Role = SetupRole.Llm, ProviderAlias = SelfHostSetup.GatewayOllamaAlias,
+            Origin = "https://miku-host.local:9443", ModelId = model, ConfigurationRevision = Guid.NewGuid(), Enabled = true,
+            Gateway = new() { SchemaVersion = 1, Origin = "https://miku-host.local:9443", HostId = "miku-host", SpkiFingerprint = "sha256:" + new string('0', 64), DeviceRole = SelfHostSetup.GatewayRole }
+        };
+        Assert.Equal(HearingSupport.Supported, SenseRouting.ThinkingHears(OnHost("gemma4-e4b"), null));
+        Assert.Equal(SensePath.Thinking, SenseRouting.For(SenseKind.Audio, new(), OnHost("gemma4-e4b"), null).Path);
+        Assert.Equal(SensePath.None, SenseRouting.For(SenseKind.Audio, new(), OnHost("qwen3:8b"), null).Path);
+        // A refused recording there is remembered by the computer's gateway origin.
+        var refused = new ModelAbilities().With(new()
+        {
+            Origin = "https://miku-host.local:9443", ModelId = "gemma4-e4b", Hears = false, Source = "a refused recording", CheckedAt = DateTimeOffset.UtcNow
+        });
+        Assert.Equal(SensePath.None, SenseRouting.For(SenseKind.Audio, new(), OnHost("gemma4-e4b"), refused).Path);
+    }
+
+    [Fact]
     public void What_martlet_found_out_wins_over_names_and_an_unknown_model_is_tried()
     {
         var abilities = new ModelAbilities()

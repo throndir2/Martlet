@@ -86,6 +86,9 @@ public sealed class SenseModelCardsTests
         // A route that takes no recordings says so, not a name.
         Assert.Contains("gets no recordings on this route",
             MainWindow.SenseKnown(SenseKind.Audio, new(), Thinking("https://api.openai.com", "gpt-4.1-mini", SetupRouteType.OpenAi), abilities));
+        // Ollama on one of the user's computers takes recordings: Gemma 4 E4B there hears by its name.
+        Assert.Equal("By its name, gemma4-e4b hears recordings. Test hearing makes sure.",
+            MainWindow.SenseKnown(SenseKind.Audio, new(), Thinking("https://miku-host.local:9443", "gemma4-e4b", SetupRouteType.GatewayOllama), abilities));
     }
 
     [Fact]

@@ -3183,9 +3183,16 @@ Thinking steps off and the word only in the picture; `picture` is the drawing
 (640 x 240 PNG, its bytes and `darkShare`, the part the letters cover).
 `decisions` are the hearing and vision decisions
 replies use (Gemma 4 E2B in Ollama on this PC hears by name, Gemma 4 12B only
-once Ollama says so, OpenRouter's grok-4.3 doesn't when its list says so, a
-host's Ollama and OpenAI's Responses route never, a retired model never), and
-`shared` checks the shared value's round trip (`roundTrip`, `keptBoth`: a list
+once Ollama says so, OpenRouter's grok-4.3 doesn't when its list says so,
+Thinking in Ollama on a paired computer is decided like any other model:
+`hostOllamaGemma4E2b` and `hostOllamaGemma4E4bAlias` hear by name and
+`hostOllamaRefusedFound` doesn't after a refused recording; OpenAI's Responses
+route never, a retired model never). `hostRoute` checks whether a paired
+computer's Thinking route takes a recording (`HostRoute.CarriesAudio`): a
+route of this version (`requestBytes`, room for a 30-second recording) and the
+Deep thinking route do, an older host's route (`olderHost`, room for a screen
+image only, so it gets the transcript and should be updated) and a voice route
+don't. `shared` checks the shared value's round trip (`roundTrip`, `keptBoth`: a list
 that says only what a model sees doesn't erase a test's answer,
 `newerRefused`). Each has `ok`. With `baseUrl` (an `http://` server on this PC
 only, for example `http://127.0.0.1:11434/v1` or a llama.cpp server) and
@@ -3200,7 +3207,9 @@ Listening, `TalkHearVoiceTestStatus` reads what Test hearing does (and whether
 it stays on this PC) or the last result (the model's one-word answer and how
 long it took). The `TalkHearVoiceTest` button sends the Thinking model a test
 recording (a provider request; a cloud model asks first, with
-`ConfirmationYes`/`ConfirmationNo`), so it needs `--allow-ui-effects`. The
+`ConfirmationYes`/`ConfirmationNo`; Thinking in Ollama on a paired computer
+gets it through that computer's paired, pinned gateway), so it needs
+`--allow-ui-effects`. The
 Image model and Audio model cards' `ImageModelTest` and `AudioModelTest` do the
 same for the model that takes pictures and for an audio model of its own
 ([Image and audio models](#image-and-audio-models)).

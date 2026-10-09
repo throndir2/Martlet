@@ -91,10 +91,59 @@ public partial class MainWindow
         return key;
     }
 
-    /// <summary>Companion › Listening's Test hearing for the Thinking model: the button, what it does and what the last test found.</summary>
-    private UIElement[] HearingTestControls(SetupRoute? thinking) =>
-        ModelTestControls(SenseKind.Audio, ThinkingProbe(thinking), "TalkHearVoiceTest", "TalkHearVoiceTestStatus",
-            "Only an OpenAI-compatible endpoint (Ollama on this PC included) can take a recording, so there is nothing to test.");
+    /// <summary>Companion › Listening's Test hearing for the Thinking model: the button, what it does and what the last test found.
+    /// Thinking on a paired computer is asked through its gateway.</summary>
+    private UIElement[] HearingTestControls(SetupRoute? thinking)
+    {
+        if (thinking is not null && LiveConversationConfiguration.Target(thinking, SetupRouteType.GatewayOllama) is { } host)
+        {
+            var test = TestOf(SenseKind.Audio, thinking.Origin, thinking.ModelId);
+            var running = modelTestsRunning.Contains(test);
+            var button = new Button
+            {
+                Content = running ? "Testing hearing..." : "Test hearing", HorizontalAlignment = HorizontalAlignment.Left,
+                Margin = new Thickness(0, 0, 0, 6), IsEnabled = !running
+            };
+            AutomationProperties.SetAutomationId(button, "TalkHearVoiceTest");
+            button.Click += (_, _) => TestHostHearingAsync(thinking, host).Forget();
+            var line = Note(modelTestResults.GetValueOrDefault(test) ??
+                $"Sends {thinking.ModelId} one short recording of a single word, made by Windows speech (never your voice), through " +
+                $"{host.HostId}'s paired, pinned connection, and asks which word it heard.", new Thickness(0, 0, 0, 6));
+            AutomationProperties.SetAutomationId(line, "TalkHearVoiceTestStatus");
+            return [button, line];
+        }
+        return ModelTestControls(SenseKind.Audio, ThinkingProbe(thinking), "TalkHearVoiceTest", "TalkHearVoiceTestStatus",
+            "Only an OpenAI-compatible endpoint (Ollama on this PC included) or Ollama on a paired computer can take a recording, so " +
+            "there is nothing to test.");
+    }
+
+    /// <summary>Test hearing for Thinking on a paired computer (<see cref="HostHearingTest"/>). What it finds is kept by the
+    /// computer's gateway origin, as a refused recording is.</summary>
+    private async Task TestHostHearingAsync(SetupRoute thinking, HostTextTarget host)
+    {
+        var test = TestOf(SenseKind.Audio, thinking.Origin, thinking.ModelId);
+        if (closing || !modelTestsRunning.Add(test)) return;
+        modelTestResults[test] = $"Asking {thinking.ModelId} on {host.HostId} which word it hears...";
+        ShowModelTest();
+        try
+        {
+            var word = ModelHearingTest.Words[Random.Shared.Next(ModelHearingTest.Words.Count)];
+            var pcm = await WindowsTestSpeech.SayAsync(ModelHearingTest.Spoken(word), lifetime.Token);
+            var clip = BoundedWaveAudio.FromPcm(new PcmFormat { SampleRate = 24_000, Channels = 1, Encoding = PcmEncoding.Signed16LittleEndian }, pcm);
+            var report = await Task.Run(() => HostHearingTest.RunAsync(host, thinking.ModelId, clip, word, lifetime.Token), lifetime.Token);
+            modelTestResults[test] = report.Summary + (report.Milliseconds is { } ms ? $" It answered in {ms:N0} ms." : "");
+            ErrorLog.Info($"Test hearing: {report.Summary}");
+            if (report.Hears is { } hears)
+                RecordModelAbility(new() { Origin = thinking.Origin, ModelId = thinking.ModelId, Hears = hears, Source = "a test request",
+                    CheckedAt = DateTimeOffset.UtcNow });
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (error is InvalidOperationException or Martlet.Core.Contracts.ContractException)
+        {
+            modelTestResults[test] = "Couldn't test hearing: " + error.Message;
+        }
+        finally { EndModelTest(test); }
+    }
 
     /// <summary>Test hearing (<paramref name="kind"/> Audio) or Test vision (Image) for <paramref name="probe"/>: the button, what
     /// it does and what the last test of that model found; <paramref name="unavailable"/> says why there is nothing to test.</summary>

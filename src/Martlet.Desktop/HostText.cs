@@ -88,6 +88,14 @@ internal sealed class HostTextClient : IHostTextClient
                 ? $"the host's Deep thinking role doesn't run model {model.UpstreamModelId}"
                 : $"the host offers no Ollama chat route for model {model.UpstreamModelId}");
         var history = input.History.Select(m => new HostChatMessage(m.Role == TextHistoryRole.Assistant, m.Text)).ToArray();
+        // A recording rides only to a host that takes it; an older host gets the words alone (the turn sends them again) and
+        // should be updated, so the model isn't remembered as deaf.
+        if (input.Audio is not null && !route.CarriesAudio)
+        {
+            HostAudio.NoteOld(target.HostId);
+            throw Failed("reply", ProviderFailureCode.RequestRejected,
+                $"Martlet host {target.HostId} is older than recordings; update it so Thinking there hears your voice");
+        }
         // A host older than background thinks takes at most 4,096 output tokens and a minute a request (its route says how long):
         // a think there is held to that, and the host should be updated.
         var outputTokens = limits.MaxOutputTokens;
@@ -102,7 +110,7 @@ internal sealed class HostTextClient : IHostTextClient
         if (deadline > longest) deadline = longest;
         await using var deltas = connection.StreamChatAsync(route, ids, epoch, deadline, input.PersonalityWithNotes, history, input.UserText,
             generation?.Temperature ?? HostTextGenerationStream.Temperature, outputTokens, limits.MaxContextTokens,
-            input.Image is { } image ? [image.ToBase64()] : null, generation, cancellationToken)
+            input.Image is { } image ? [image.ToBase64()] : null, generation, cancellationToken, input.Audio?.ToBase64())
             .GetAsyncEnumerator(cancellationToken);
         while (await (guarded ? Guard(() => deltas.MoveNextAsync().AsTask(), cancellationToken, target.HostId) : deltas.MoveNextAsync().AsTask())
             .ConfigureAwait(false))
@@ -176,6 +184,74 @@ internal sealed class HostTextClient : IHostTextClient
         "stream.invalid" or "response.invalid" => ProviderFailureCode.ResponseSchema,
         _ => ProviderFailureCode.Server
     };
+}
+
+/// <summary>Paired hosts found older than recordings: their conversation route has no room for one, so a recording sent there is
+/// refused before it leaves this PC. A refused recording on such a host says nothing about the model, which may hear.</summary>
+internal static class HostAudio
+{
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> Old = new(StringComparer.Ordinal);
+
+    internal static void NoteOld(string hostId) => Old[hostId] = 0;
+
+    /// <summary>Whether <paramref name="hostId"/> refused a recording because it is older than recordings.</summary>
+    internal static bool IsOld(string? hostId) => hostId is not null && Old.ContainsKey(hostId);
+}
+
+/// <summary>Companion › Listening › Test hearing for Thinking on a paired computer: one short recording of a single word (made
+/// by Windows speech, never anyone's voice) goes through the host's paired, pinned gateway to its conversation model, which is
+/// asked which word it says. Thinking steps are asked Off, so the answer is quick.</summary>
+internal static class HostHearingTest
+{
+    internal static async Task<HearingTestReport> RunAsync(HostTextTarget target, string modelId, BoundedWaveAudio clip, string word,
+        CancellationToken token)
+    {
+        var server = $"Martlet on {target.HostId}";
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            using var connection = HostTextClient.Connect(target);
+            var routes = await connection.ReadRoutesAsync(token).ConfigureAwait(false);
+            var route = routes.FirstOrDefault(r => r.RouteId == target.RouteId && r.ModelId == modelId);
+            if (route is null) return new(null, $"{server} doesn't run {modelId} for Thinking now, so there is nothing to test.", true);
+            if (!route.CarriesAudio)
+            {
+                HostAudio.NoteOld(target.HostId);
+                return new(null, $"{server} is older than recordings, so it can't take the test. Update Martlet on {target.HostId}, " +
+                    "then test again.", true);
+            }
+            var ids = new CorrelationIds { SessionId = Guid.NewGuid(), TurnId = Guid.NewGuid(), RequestId = Guid.NewGuid() };
+            var reply = new System.Text.StringBuilder();
+            await foreach (var delta in connection.StreamChatAsync(route, ids, 1, DateTimeOffset.UtcNow.AddSeconds(90),
+                "This is a test of whether you can hear a recording. Answer with only the word you hear.", [], ModelHearingTest.Question,
+                0, 32, 4_096, null, new GenerationSettings { Reasoning = false }, token, clip.ToBase64()).ConfigureAwait(false))
+            {
+                reply.Append(delta);
+                if (reply.Length > 1_024) break;
+            }
+            return ModelHearingTest.Read(reply.ToString(), word, modelId, server, watch.ElapsedMilliseconds);
+        }
+        catch (Audio2FaceHostException error) when (error.Code == "request.invalid")
+        {
+            return new(false, $"{server} refused the recording for {modelId}, so it can't hear.", true, null, watch.ElapsedMilliseconds);
+        }
+        catch (Audio2FaceHostException error) when (error.Code is "job.busy" or "job.preempted")
+        {
+            return new(null, $"{server} is busy now; test again in a moment.", true);
+        }
+        catch (Audio2FaceHostException error)
+        {
+            return new(null, $"{server} answered {error.Code}, so Martlet can't tell whether {modelId} hears.", true);
+        }
+        catch (HostTextException)
+        {
+            return new(null, $"Martlet couldn't read the pairing with {target.HostId} from Windows Credential Manager; pair it again.", false);
+        }
+        catch (Exception error) when (error is HttpRequestException or IOException)
+        {
+            return new(null, $"Couldn't reach {server}.", false);
+        }
+    }
 }
 
 /// <summary>When each paired host last kept its graphics card for a live conversation turn (its own companion PC's or another's)

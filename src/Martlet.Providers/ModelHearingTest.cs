@@ -50,17 +50,7 @@ public static class ModelHearingTest
             var took = started.ElapsedMilliseconds;
             var code = (int)response.StatusCode;
             if (response.IsSuccessStatusCode)
-            {
-                var reply = ReplyOf(text);
-                if (reply is null)
-                    return new(null, $"{serverName} answered, but not with a reply Martlet could read, so it can't tell whether {modelId} hears.", true,
-                        null, took);
-                var shown = Shorten(reply);
-                return Letters(reply).Contains(Letters(word), StringComparison.Ordinal)
-                    ? new(true, $"{modelId} heard the test word (it said \"{shown}\").", true, shown, took)
-                    : new(false, $"{modelId} answered \"{shown}\" instead of the test word, so it doesn't seem to hear recordings. Test again to be sure.",
-                        true, shown, took);
-            }
+                return Read(ReplyOf(text), word, modelId, serverName, took);
             if (code is 401 or 403)
                 return new(null, $"{serverName} refused the test (error {code}); check the API key.", true, null, took);
             if (code is 400 or 404 or 415 or 422 or 500 or 501 && RefusesAudio(WithoutModel(text, modelId)))
@@ -84,6 +74,20 @@ public static class ModelHearingTest
             })}.", false);
         }
         catch (IOException) { return new(null, $"The connection to {serverName} dropped.", false); }
+    }
+
+    /// <summary>What the model's answer to the test says: it heard the test word, or answered something else. Also used for
+    /// Thinking on a paired computer, whose answer comes through its gateway.</summary>
+    public static HearingTestReport Read(string? reply, string word, string modelId, string serverName, long? milliseconds = null)
+    {
+        if (reply is null)
+            return new(null, $"{serverName} answered, but not with a reply Martlet could read, so it can't tell whether {modelId} hears.", true,
+                null, milliseconds);
+        var shown = Shorten(reply);
+        return Letters(reply).Contains(Letters(word), StringComparison.Ordinal)
+            ? new(true, $"{modelId} heard the test word (it said \"{shown}\").", true, shown, milliseconds)
+            : new(false, $"{modelId} answered \"{shown}\" instead of the test word, so it doesn't seem to hear recordings. Test again to be sure.",
+                true, shown, milliseconds);
     }
 
     /// <summary>The test request: the question and the recording, Thinking steps Off the way <paramref name="baseUrl"/>'s server

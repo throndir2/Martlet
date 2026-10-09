@@ -2417,10 +2417,18 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             {
                 lock (gate) deafModels.Add(configured.ToolModelKey());
                 var thinking = configured.Route(SetupRole.Llm);
-                RecordAbility(new() { Origin = thinking.Origin, ModelId = thinking.ModelId, Hears = false, Source = "a refused recording",
-                    CheckedAt = DateTimeOffset.UtcNow });
-                ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected the request with your recording; " +
-                    "Martlet asked again with the transcript only and sends it only the transcript from now on.");
+                // A paired computer older than recordings refused it before it left this PC: the model may hear, so update that
+                // computer instead of remembering the model as deaf.
+                if (thinking.RouteType == SetupRouteType.GatewayOllama && HostAudio.IsOld(thinking.Gateway?.HostId))
+                    ErrorLog.Info($"Martlet on {thinking.Gateway?.HostId} is older than recordings, so the Thinking model " +
+                        $"{thinking.ModelId} got the transcript only; update the Martlet host so Thinking hears your voice.");
+                else
+                {
+                    RecordAbility(new() { Origin = thinking.Origin, ModelId = thinking.ModelId, Hears = false, Source = "a refused recording",
+                        CheckedAt = DateTimeOffset.UtcNow });
+                    ErrorLog.Info($"The Thinking model {thinking.ModelId} rejected the request with your recording; " +
+                        "Martlet asked again with the transcript only and sends it only the transcript from now on.");
+                }
             }
             if (terminal.ImageRejected)
                 ErrorLog.Info($"The Thinking model {configured.Route(SetupRole.Llm).ModelId} rejected the picture of your screen sent " +

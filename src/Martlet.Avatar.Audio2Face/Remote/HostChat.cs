@@ -39,6 +39,11 @@ public sealed record HostRoute(
     /// <summary>The route's lane: <see cref="LiveLane"/>, <see cref="PoolLane"/>, or empty when the host doesn't say.</summary>
     public string Lane { get; init; } = "";
 
+    /// <summary>Whether the host's conversation model route takes the user's recording (a host of this version or later
+    /// advertises room for one); an older host's route has room for a screen image only.</summary>
+    public bool CarriesAudio => RouteId is OllamaChatRouteId or DeepThinkingRouteId &&
+        MaximumRequestBytes >= SelfHostSetup.OllamaRequestBytes;
+
     /// <summary>The route as this PC saves it when a job moves to the host: its advertised identity and limits, observed now.</summary>
     public GatewayRouteSnapshot Snapshot(SetupRouteType routeType) => new()
     {
@@ -72,11 +77,13 @@ public sealed partial class Audio2FaceHostConnection
     /// Only text deltas are yielded; failures throw <see cref="Audio2FaceHostException"/> with the gateway's code.
     /// <paramref name="images"/> (base64 JPEG/PNG, at most one) ride with the current input for a vision model.
     /// <paramref name="sampling"/> adds the optional Ollama sampling settings; unset values are not sent, so a request
-    /// without any keeps the shape older hosts accept.</summary>
+    /// without any keeps the shape older hosts accept. <paramref name="audio"/> (a base64 mono PCM16 WAV) is the user's recording
+    /// for a model that hears; send it only to a route that takes it (<see cref="HostRoute.CarriesAudio"/>).</summary>
     public async IAsyncEnumerable<string> StreamChatAsync(HostRoute route, CorrelationIds ids, long epoch,
         DateTimeOffset deadline, string? system, IReadOnlyList<HostChatMessage> history, string input, double temperature,
         int maximumOutputTokens, int maximumContextTokens, IReadOnlyList<string>? images = null,
-        GenerationSettings? sampling = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        GenerationSettings? sampling = null, [EnumeratorCancellation] CancellationToken cancellationToken = default,
+        string? audio = null)
     {
         ArgumentNullException.ThrowIfNull(route);
         ArgumentNullException.ThrowIfNull(ids);
@@ -109,6 +116,7 @@ public sealed partial class Audio2FaceHostConnection
                 ["role"] = message.Assistant ? "assistant" : "user", ["text"] = ChatText(message.Text)
             }).ToArray();
         if (images is { Count: > 0 }) payload["images"] = images.ToArray();
+        if (audio is not null) payload["audio"] = audio;
         if (sampling is not null)
         {
             if (sampling.TopP is { } topP) payload["top_p"] = topP;
@@ -133,7 +141,9 @@ public sealed partial class Audio2FaceHostConnection
             ["payload"] = payload
         }, ChatJson);
         if (body.Length > route.MaximumRequestBytes)
-            throw new Audio2FaceHostException("request.too_large", images is { Count: > 0 }
+            throw new Audio2FaceHostException("request.too_large", audio is not null
+                ? "The recording is too large for the host's model route; update the host so it takes recordings."
+                : images is { Count: > 0 }
                 ? "The screen image is too large for the host's model route; update the host so it accepts screen images."
                 : "The conversation is too long for the host's model route.");
         using var request = new HttpRequestMessage(HttpMethod.Post, pairing.Origin + route.Path)

@@ -33,7 +33,8 @@ public sealed record SenseRoute(SenseKind Kind, SensePath Path, DeepThinkingSett
 /// <summary>Which model takes pictures and recordings (docs/SENSE_MODELS.md). The text model (Thinking) always writes the reply.
 /// A kind whose model is the text model (the default, or a model of its own that is exactly Thinking's endpoint and model) goes
 /// in Thinking's own request when Thinking takes it, else nowhere. A kind with a model of its own goes to that model to be put
-/// into words, when it takes it: a paired computer's gateway takes no recordings, and a model known not to see or hear takes
+/// into words, when it takes it: an audio model of its own on a paired computer takes no recordings (only Thinking there does),
+/// and a model known not to see or hear takes
 /// nothing. A model Martlet can't tell about is tried; a refusal is remembered in model-abilities.json.</summary>
 public static class SenseRouting
 {
@@ -74,7 +75,7 @@ public static class SenseRouting
                 _ => new(kind, SensePath.None, place, $"{name} doesn't see pictures, so Martlet can't see. Choose an image model that sees.")
             };
         if (place.Place != DeepThinkingPlace.Endpoint)
-            return new(kind, SensePath.None, place, $"{name} is on a paired computer, whose gateway takes no recordings, so Thinking gets the transcript only.");
+            return new(kind, SensePath.None, place, $"{name} is on a paired computer, which takes recordings only for Thinking, so Thinking gets the transcript only.");
         return Hears(place, abilities) switch
         {
             HearingSupport.Supported => new(kind, SensePath.Described, place, $"{name} describes recordings in words for the text model (Thinking)."),
@@ -94,7 +95,8 @@ public static class SenseRouting
     public static VisionSupport ThinkingSees(SetupRoute? thinking, ModelAbilities? abilities) =>
         thinking is null ? VisionSupport.Unknown : VisionModelCatalog.ForRoute(thinking.Origin, thinking.ModelId, abilities, Retired(thinking));
 
-    /// <summary>Whether the Thinking route's model hears, as the desktop decides it (only a Chat Completions route takes audio).</summary>
+    /// <summary>Whether the Thinking route's model hears, as the desktop decides it (a Chat Completions route or a paired
+    /// computer's Ollama carries audio; <see cref="HearingModelCatalog.CarriesAudio"/>).</summary>
     public static HearingSupport ThinkingHears(SetupRoute? thinking, ModelAbilities? abilities) =>
         thinking is null ? HearingSupport.Unknown
         : HearingModelCatalog.ForRoute(thinking.RouteType, thinking.Origin, thinking.ModelId, abilities, Retired(thinking));

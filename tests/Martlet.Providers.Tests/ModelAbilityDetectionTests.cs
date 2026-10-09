@@ -72,7 +72,11 @@ public sealed class ModelAbilityDetectionTests
         Assert.Equal(HearingSupport.Supported, HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions,
             "https://example.test/v1", "google/gemini-2.5-flash", found));
         var hears = Found("gpu-pc", "gemma4:e2b", true, true);
-        Assert.Equal(HearingSupport.Unsupported, HearingModelCatalog.ForRoute(SetupRouteType.GatewayOllama, "gpu-pc", "gemma4:e2b", hears));
+        // A paired computer's Ollama takes recordings through its gateway, so what was found there counts as anywhere else.
+        Assert.Equal(HearingSupport.Supported, HearingModelCatalog.ForRoute(SetupRouteType.GatewayOllama, "gpu-pc", "gemma4:e2b", hears));
+        Assert.Equal(HearingSupport.Unsupported, HearingModelCatalog.ForRoute(SetupRouteType.GatewayOllama, "gpu-pc", "gemma4:e2b",
+            Found("gpu-pc", "gemma4:e2b", false, null)));
+        Assert.Equal(HearingSupport.Supported, HearingModelCatalog.ForRoute(SetupRouteType.GatewayOllama, "https://miku-host:9443", "gemma4-e4b", null));
         Assert.Equal(HearingSupport.Unsupported, HearingModelCatalog.ForRoute(SetupRouteType.OpenAi, "gpu-pc", "gemma4:e2b", hears));
         Assert.Equal(HearingSupport.Unsupported, HearingModelCatalog.ForRoute(null, "gpu-pc", "gemma4:e2b", hears));
         Assert.Equal(HearingSupport.Unsupported, HearingModelCatalog.ForRoute(SetupRouteType.ChatCompletions, Ollama, "gemma4:e2b", null, retired: true));
