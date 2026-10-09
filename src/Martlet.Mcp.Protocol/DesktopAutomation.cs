@@ -838,7 +838,9 @@ internal sealed class DesktopAutomation(bool allowEffects)
     /// each home or host-dashboard step's detail line ("StepDetail-docker" says whether Docker Desktop runs, or why it can't start);
     /// the paired computers a job can be handed to ("HostChoice-listening-gpu-pc" reads "gpu-pc: Runs speech recognition (small).")
     /// and why none are listed or which can't run it ("HostChoices-listening", "HostChoicesUnable-listening"); Home's items
-    /// ("HealthIssue-ollama" reads "Problem: Ollama isn't running on this PC. ...") and Health tiles ("HealthCheck-microphone"
+    /// ("HealthIssue-ollama" reads "Problem: Ollama isn't running on this PC. ..." or, from Ollama's own logs, "Problem: Ollama keeps
+    /// stopping on this PC. ... Ollama says: ..."; "HealthIssue-ollama-fixed" reads "Good to know: Martlet fixed Ollama on this PC. ...")
+    /// and Health tiles ("HealthCheck-microphone"
     /// reads "Microphone: OK. Windows default"); Diagnostics' shown lines, newest first ("LogEntry-0" reads
     /// "21:04:11.532 WARN This PC · App: Host gpu-box stopped answering: ...") and its computer filters ("LogSource-desktop-diva"
     /// reads "From: This PC (desktop-diva, diva-host)"); the Martlet desktops found on the network in

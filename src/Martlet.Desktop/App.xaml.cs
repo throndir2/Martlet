@@ -64,6 +64,7 @@ public partial class App : Application
                 _ => throw new ArgumentException("Invalid launch arguments.")
             };
             store = new SettingsStore(directory);
+            SimulatedOllamaCrashLoop.DataDirectory = store.DataDirectory;
             if (args.Length == 2) DataDirectoryArgument = directory;
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or InvalidOperationException)

@@ -1209,6 +1209,22 @@ internal sealed class McpServer(DesktopAutomation desktop)
             test = new { type = "boolean" },
             fixture = new { type = "boolean" }
         }),
+        Tool("ollama_recovery", "Why Ollama on this PC doesn't answer, headless, as the desktop's Home and Companion > Thinking find it " +
+            "(the production OllamaRecovery diagnosis): whether it answers on 127.0.0.1:11434, its tray app and server processes, the " +
+            "end of its server.log and app.log (failed starts, the last Error: line, the models path of the last start, why the app " +
+            "couldn't use its model location), its app database's model location (db.sqlite settings.models, read-only through " +
+            "Windows' SQLite), the user's OLLAMA_MODELS and whether a models folder is reached through a junction or symbolic link. " +
+            "kind is Answering, NotInstalled, NotRunning, StopsOnStart or CrashLoop; knownCause means Ollama refuses its linked " +
+            "models folder; canRepair means the desktop would point Ollama at the real folder. Never stops, starts or changes Ollama, " +
+            "its folders, its settings or OLLAMA_MODELS; paths under the user's folders read as %LOCALAPPDATA% and %USERPROFILE%. " +
+            "fixture=true also runs the production diagnosis and repair on FIXTURE folders (a junction made with mklink /J, a " +
+            "db.sqlite made with Windows' SQLite, Ollama's own log lines, a stand-in for its processes): Linked (repaired: stopped " +
+            "before the backup and the change, model location and OLLAMA_MODELS set to the real folder, started, answers), " +
+            "UnknownSettings (guidance, nothing changed), OtherError (Ollama's own words, nothing changed) and Answering (nothing " +
+            "stopped); passed is all of them.", new
+        {
+            fixture = new { type = "boolean" }
+        }),
         Tool("spoken_reply_check", "Rehearse a spoken reply whose voice fails partway, end to end with the production conversation " +
             "runtime (Chat Completions adapter, Martlet host voice stream, playback sink): a fixture endpoint on 127.0.0.1 streams a " +
             "canned four-sentence reply (NOT AI) a sentence at a time, like OpenRouter; a fixture host voice (a quiet tone, NOT AI) " +
@@ -2199,6 +2215,7 @@ internal sealed class McpServer(DesktopAutomation desktop)
                 "local_model_servers" => await LocalModelServersCheck.RunAsync(OptionalString(arguments, "address"),
                     OptionalString(arguments, "model"), OptionalBool(arguments, "test") ?? false, OptionalBool(arguments, "fixture") ?? false,
                     cancellation),
+                "ollama_recovery" => await OllamaRecoveryCheck.RunAsync(OptionalBool(arguments, "fixture") ?? false, cancellation),
                 "spoken_reply_check" => await SpokenReplyCheck.RunAsync(OptionalString(arguments, "voiceFailure"),
                     OptionalInt(arguments, "failAt"), cancellation, OptionalInt(arguments, "reasoningMs"),
                     OptionalInt(arguments, "voiceDelayMs"), OptionalString(arguments, "reply"),
