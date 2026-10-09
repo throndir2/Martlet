@@ -57,6 +57,8 @@ public partial class MainWindow
     private void RenderMessagingTab(Panel page)
     {
         var saved = messaging.Preferences;
+        page.Children.Add(MessagingNowCard(saved));
+        page.Children.Add(MessagingChoiceCard(saved));
         page.Children.Add(TelegramCard(saved.Telegram, messaging.Status(MessagingApp.Telegram), saved.Telegram.Connected));
         if (saved.Telegram.Connected) page.Children.Add(ChatsCard(MessagingApp.Telegram, saved.Telegram));
         page.Children.Add(WhatsAppCard(saved.WhatsApp, messaging.Status(MessagingApp.WhatsApp)));
@@ -99,7 +101,7 @@ public partial class MainWindow
         children.Add(Note("Martlet checks the token with Telegram, keeps it in Windows Credential Manager on this PC and sends it only to Telegram.",
             new Thickness(0, 4, 0, 0)));
         children.Add(Row(connect, botFather, disconnect));
-        children.AddRange(ChannelChecks(MessagingApp.Telegram, saved, "MessagingTelegram", "Answer Telegram messages on this PC"));
+        children.Add(SpeakRepliesCheck(MessagingApp.Telegram, saved, "MessagingTelegram"));
         return Card([.. children]);
     }
 
@@ -171,7 +173,7 @@ public partial class MainWindow
         children.Add(Note("Martlet checks the token and secret with Meta, keeps them in Windows Credential Manager on this PC and sends them only " +
             "to Meta. Messages Meta delivers are checked against the app secret, so nobody else can post to Martlet's address.", new Thickness(0, 4, 0, 0)));
         children.Add(Row(connect, disconnect));
-        children.AddRange(ChannelChecks(MessagingApp.WhatsApp, saved, "MessagingWhatsApp", "Answer WhatsApp messages on this PC"));
+        children.Add(SpeakRepliesCheck(MessagingApp.WhatsApp, saved, "MessagingWhatsApp"));
         return Card([.. children]);
     }
 
@@ -214,34 +216,18 @@ public partial class MainWindow
         return new Grid { Width = 420, HorizontalAlignment = HorizontalAlignment.Left, Children = { box, mark } };
     }
 
-    private IEnumerable<UIElement> ChannelChecks(MessagingApp app, ChannelPreferences saved, string prefix, string label)
+    /// <summary>Whether replies to the app's messages are also said aloud on this PC. Whether Martlet answers the app at all is the
+    /// page's main choice (<see cref="MessagingChoiceCard"/>).</summary>
+    private CheckBox SpeakRepliesCheck(MessagingApp app, ChannelPreferences saved, string prefix)
     {
-        var name = MessagingService.Name(app);
-        var on = new CheckBox
-        {
-            IsChecked = saved.Enabled && saved.Connected, IsEnabled = saved.Connected, Margin = new Thickness(0, 12, 0, 4),
-            Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = label }
-        };
-        AutomationProperties.SetAutomationId(on, prefix + "On");
-        on.Click += (_, _) =>
-        {
-            if (Role == DeviceRole.Host && on.IsChecked == true)
-            {
-                ActionText.Text = HostHasNoCompanionText;
-                on.IsChecked = false;
-                return;
-            }
-            messaging.SetEnabled(app, on.IsChecked == true);
-            ActionText.Text = on.IsChecked == true ? $"Martlet answers {saved.Handle} on this PC." : $"Martlet stopped answering {name} on this PC.";
-        };
         var speak = new CheckBox
         {
-            IsChecked = saved.SpeakReplies, IsEnabled = saved.Connected, Margin = new Thickness(0, 0, 0, 4),
+            IsChecked = saved.SpeakReplies, IsEnabled = saved.Connected, Margin = new Thickness(0, 12, 0, 4),
             Content = new TextBlock { TextWrapping = TextWrapping.Wrap, Text = "Also say replies aloud on this PC (never while Windows is locked)" }
         };
         AutomationProperties.SetAutomationId(speak, prefix + "Speak");
         speak.Click += (_, _) => messaging.SetSpeakReplies(app, speak.IsChecked == true);
-        return [on, speak];
+        return speak;
     }
 
     /// <summary>Companion › Messaging's status line: whether Martlet answers the app on this PC now, or why not.</summary>
