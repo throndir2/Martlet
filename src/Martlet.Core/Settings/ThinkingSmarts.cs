@@ -59,6 +59,7 @@ public sealed record ThinkingRunsOn
     };
 
     /// <summary>The mode's name in status files: any, prefer-smart, smart-only, members.</summary>
+    [JsonIgnore]
     public string Name => Mode switch
     {
         ThinkingRunsOnMode.PreferSmart => "prefer-smart",

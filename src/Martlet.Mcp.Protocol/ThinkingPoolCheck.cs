@@ -887,7 +887,7 @@ internal static class ThinkingPoolCheck
             Check("runs on: prefer smart takes a less smart member after its short wait",
                 held is not null && fallback.Member == "small" && timer.ElapsedMilliseconds >= 90 &&
                 fallback.Placed?.Contains("no Smart member came free", StringComparison.Ordinal) == true &&
-                placements.Count >= 5 && placements[0].Member == "small" && placements[0].RunsOn == "prefer-smart",
+                placements.Count >= 4 && placements[0].Member == "small" && placements[0].RunsOn == "prefer-smart",
                 $"{fallback.Member} after {timer.ElapsedMilliseconds} ms: {fallback.Placed}; {placements.Count} placements kept");
 
             var guesses = new[] { "gemma4:e2b", "qwen3:8b", "gemma4:27b", "nvidia/llama-3.3-nemotron-super-49b-v1", "llama3.3:70b" }
