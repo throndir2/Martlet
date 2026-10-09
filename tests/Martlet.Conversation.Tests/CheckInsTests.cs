@@ -821,6 +821,9 @@ public sealed partial class CheckInsTests
         Assert.NotEqual(new CheckInToolSetIds(["a", "b"]), new CheckInToolSetIds(["b", "a"]));
         Assert.All(CheckInToolSets.All, s => Assert.True(CheckInToolSets.IsId(s.Id)));
         Assert.Equal(CheckInToolSets.All.SelectMany(s => s.Tools).Count(), CheckInToolSets.All.SelectMany(s => s.Tools).Select(t => t.Name).Distinct().Count());
+        // A reply tool is taken over by one set at most.
+        Assert.Equal(CheckInToolSets.All.SelectMany(s => s.Replaces).Count(), CheckInToolSets.All.SelectMany(s => s.Replaces).Distinct().Count());
+        Assert.Empty(new CheckInToolSet("x", "X", "Does x.", []).Replaces);
     }
 
     [Fact]
