@@ -67,7 +67,8 @@ public sealed record BackgroundJobOutcome(string? Result, string? Problem = null
 
 /// <summary>How a finished job reaches the conversation: <see cref="Pending"/> until Martlet brings it up (a reply of its own as
 /// soon as it is free, or with the user's next message), <see cref="Reserved"/> while a reply carries it, then
-/// <see cref="Delivered"/>; <see cref="Dropped"/> when the conversation it belonged to ended.</summary>
+/// <see cref="Delivered"/>; <see cref="Dropped"/> when the conversation it belonged to ended, or a notice was too old or out of date
+/// to say (<see cref="UnpromptedSpeech.Recheck"/>).</summary>
 public enum BackgroundDeliveryState { NotFinished, Pending, Reserved, Delivered, Dropped }
 
 /// <summary>One piece of background work. Only its runner and <see cref="BackgroundJobs"/> change it; everything here is safe
@@ -547,6 +548,19 @@ public sealed class BackgroundJobs : IDisposable
         }
         if (taken is not null) Notify();
         return taken;
+    }
+
+    /// <summary>Drops the finished jobs waiting to be brought up that <paramref name="stale"/> picks: they are never brought up
+    /// (state <see cref="BackgroundDeliveryState.Dropped"/>). Returns the jobs dropped, oldest first.</summary>
+    public IReadOnlyList<BackgroundJob> Drop(Func<BackgroundJob, bool> stale)
+    {
+        ArgumentNullException.ThrowIfNull(stale);
+        BackgroundJob[] dropped;
+        lock (gate)
+            dropped = [.. jobs.Where(job => job.Delivery == BackgroundDeliveryState.Pending).OrderBy(job => job.FinishedUtc)
+                .Where(job => stale(job) && job.MoveDelivery(BackgroundDeliveryState.Pending, BackgroundDeliveryState.Dropped))];
+        if (dropped.Length > 0) Notify();
+        return dropped;
     }
 
     internal void Notify() => Changed?.Invoke();

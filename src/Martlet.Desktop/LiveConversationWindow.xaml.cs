@@ -709,8 +709,12 @@ public partial class LiveConversationWindow : ThemedWindow
     /// to them with the finished work in its notes), the newest picture and a look that is due.</summary>
     private bool TryReport()
     {
+        // Just before Martlet says what waits on its own: a check-in that is too old, or that the conversation moved on from, is
+        // dropped (UnpromptedSpeech; local rules only). What is left waits while you talk or the live floor is Live.
+        if (!closed && Available) controller.DropStaleNotices();
         if (closed || !Available || !JobsWaiting || UserBusy || operations.IsRunning || owned is { OwnershipReleased: false } ||
-            commentary is { OwnershipReleased: false } || activityAt != 0 && clock.GetElapsedTime(activityAt) < ReportQuiet)
+            commentary is { OwnershipReleased: false } || activityAt != 0 && clock.GetElapsedTime(activityAt) < ReportQuiet ||
+            controller.LiveFloor.Level == LiveFloorLevel.Live)
             return false;
         return StartMoment(MomentTurn.Plan(MomentTrigger.Report, PcWaiting, jobsWaiting: true, LookDue));
     }
@@ -1480,6 +1484,8 @@ public partial class LiveConversationWindow : ThemedWindow
     /// began to the stop), why, and how it knew (never what you said).</summary>
     private void LogBargeIn(TalkOverResult? quick, (BargeInDecision Decision, long StartedAt)? said)
     {
+        // A remark Martlet started on its own and dropped: the controller logged why already.
+        if (quick?.Dropped == true) return;
         var startedAt = quick?.StartedAt ?? said?.StartedAt ?? 0;
         if (startedAt == 0) return;
         var stopped = controller.Clock.GetElapsedTime(startedAt);
@@ -1511,6 +1517,13 @@ public partial class LiveConversationWindow : ThemedWindow
         };
         return $"Talked over at {at}: {what} ({verdict}: {record.Reason}; {by}).";
     }
+
+    /// <summary>The talk window's LiveUnprompted line: how many things Martlet meant to say on its own were dropped and why, and
+    /// the newest (its ID and kind, never its text): "Dropped on its own: 2 (1 too old, 1 the conversation moved on, 0 talked
+    /// over). Last: checkin-3 (a check-in) at 14:02:11: too old: ...". Empty before the first drop.</summary>
+    internal static string UnpromptedLine(LiveConversationController.UnpromptedDrops drops) => drops.Total == 0 ? ""
+        : $"Dropped on its own: {drops.Total} ({drops.TooOld} too old, {drops.MovedOn} the conversation moved on, " +
+          $"{drops.TalkedOver} talked over). Last: {drops.Last}.";
 
     // A sound always listening ignored shows as a muted note; ignored sounds in a row share one.
     private void ShowIgnored(string line)
@@ -2391,6 +2404,10 @@ public partial class LiveConversationWindow : ThemedWindow
         var bargeInLine = controller.BargeIns is [.., var lastBargeIn] ? BargeInLine(lastBargeIn) : "";
         BargeInText.Text = bargeInLine;
         BargeInText.Visibility = available && preferences.BargeIn && bargeInLine.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        // What Martlet meant to say on its own but dropped (never what it would have said).
+        var drops = controller.DroppedOnItsOwn;
+        UnpromptedText.Text = UnpromptedLine(drops);
+        UnpromptedText.Visibility = available && drops.Total > 0 ? Visibility.Visible : Visibility.Collapsed;
         var (turns, contextTokens) = controller.ContextUse;
         var contextBudget = controller.Configuration?.Context;
         ContextText.Text = ContextLine(turns, contextTokens, contextBudget);

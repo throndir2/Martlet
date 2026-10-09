@@ -81,6 +81,7 @@ public static class PromptCatalog
     public const string Touched = "touched";
     public const string TouchedNotes = "touched_notes";
     public const string TouchedCutIn = "touched_cut_in";
+    public const string CutOff = "cut_off";
     public const string AdultContent = "adult_content";
     public const string Singing = "singing";
     public const string WhileSinging = "while_singing";
@@ -245,6 +246,11 @@ public static class PromptCatalog
     public const string DefaultTouchedCutInInstructions =
         "They did it while you were talking, so you stopped mid-sentence.{said}{answering} Decide for yourself how to go on: " +
         "react to it first, then pick up where you left off, change course, or leave the rest unsaid, as you would.";
+
+    public const string DefaultCutOffInstructions =
+        "They stopped you while you were talking, so they heard your last reply only up to where it ends with \"—\". Don't " +
+        "repeat what you said. If the rest still fits what they say now, you may pick it up (\"as I was saying...\"); " +
+        "otherwise drop it. What you hadn't said yet: \"{unsaid}\"";
 
     public const string DefaultAdultContentInstructions =
         "Adult content is on: the user is an adult and chose to allow sexual and explicit content with you. If you are an adult, " +
@@ -543,6 +549,12 @@ public static class PromptCatalog
             "Touch › Touch zones › When you touch Martlet while it talks). {said} is a sentence with what Martlet had said " +
             "aloud before it stopped and {answering} one with your message it was answering; each is empty when there is none.",
             DefaultTouchedCutInInstructions, ["said", "answering"]),
+        new(CutOff, ConversationGroup, "Cut off: what you hadn't said",
+            "Goes in the notes of the next request only (never kept in the conversation) after you stopped Martlet while it was " +
+            "talking: you talked over it, pressed Stop or Esc, or a touch stopped it. The conversation keeps only what Martlet " +
+            "said aloud, ending with \"—\". {unsaid} is the rest of the reply that it hadn't said (its start, at most " +
+            "400 characters). Empty it to send nothing.",
+            DefaultCutOffInstructions, ["unsaid"]),
         new(AdultContent, ConversationGroup, "Adult content",
             "Added to the instructions of every reply and screen remark while Companion › Replies › Adult content is on (off by " +
             "default; never in a Discord call, where others can hear), right after the One moment prompt. It allows sexual and " +

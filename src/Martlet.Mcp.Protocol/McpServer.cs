@@ -1245,7 +1245,9 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "latency line saying it paused and resumed (with characterTags, also no cue acted while paused: a cue that falls in " +
             "the pause waits for it); stopped has the user stop the reply (Stop, or talking over it) as the failAt-th piece starts " +
             "playing, and ok then needs the reply canceled and no cue acted after the stop (character.stoppedAtMs; the cues still " +
-            "waiting are dropped); text-only sends the reply with no voice at all (Speak " +
+            "waiting are dropped) and cutOff right: what the conversation keeps (kept: only saidAloud, ending with the cut-off " +
+            "marker) and the rest it hadn't said (unsaid, with the note that goes once in the next request's notes, Companion > " +
+            "Prompts > Cut off: what you hadn't said), which together are the reply's words; text-only sends the reply with no voice at all (Speak " +
             "Martlet's replies aloud off), so every sentence goes to the captions; a fixture speaker opens no " +
             "device and plays nothing. Returns the reply's state and whether its whole text arrived, how far the voice got and why " +
             "it stopped, and the captions (speech bubble and subtitles): each line with when it was shown and whether it was " +
@@ -1405,7 +1407,11 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "deadline, and one in time must be used. holds: what a pause does on a simulated clock (quiet after notForMe plays on; " +
             "talking on past 1.5 s stops; interrupt stops; no verdict plays on at the pause's limit). modelJudge: the Thinking pool's model " +
             "judge with fixture answers (NOT AI): a verdict is used, no pool member lets the rules decide at once, an answer without " +
-            "a verdict lets them decide. Also returns the saved choice " +
+            "a verdict lets them decide. unprompted: what Martlet says on its own (UnpromptedSpeech): words over a screen or camera " +
+            "remark drop it at once; notForMe over a reminder plays on, over finished work or a check-in plays on only after a short " +
+            "pause (resumeWithinMs), else drops it; and a waiting check-in and reminder checked again just before they are said on a " +
+            "simulated clock (say, wait while you are mid-utterance or the live floor is Live, drop a check-in that is too old or that " +
+            "the conversation moved on from; a reminder is never dropped). Also returns the saved choice " +
             "(behavior PauseAndDecide or StopAtOnce from talk-preferences.json, bargeIn, wordCheck) and the timings. ok when every " +
             "expectation held. Nothing is recorded or played; nothing leaves this PC.", new
         {

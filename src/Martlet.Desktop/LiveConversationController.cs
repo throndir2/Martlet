@@ -21,13 +21,16 @@ internal sealed record LiveConversationStatus(string Code, bool Finished = false
     PolicyReason? Policy = null, ProviderFailureCode? ProviderFailure = null, ErrorCode? AudioFailure = null);
 
 /// <summary>Talking over Martlet stopped it: why (<see cref="BargeInPolicy"/>), how long after the user's voice began that was
-/// decided, how many quick checks of their words it took and when (controller clock) their voice began.</summary>
+/// decided, how many quick checks of their words it took and when (controller clock) their voice began. <paramref name="Dropped"/>:
+/// it was a remark Martlet started on its own, dropped (<see cref="UnpromptedSpeech"/>) rather than stopped for words meant for it.</summary>
 internal sealed record TalkOverResult(BargeInDecision Decision, TimeSpan After, int Checks, long StartedAt,
-    BargeInRuling? Ruling = null, TimeSpan? Paused = null);
+    BargeInRuling? Ruling = null, TimeSpan? Paused = null, bool Dropped = false);
 
 /// <summary>A reply paused because the user talked over it (Pause and decide): the pause's state, the paused turn, what the
-/// quick check decided, when the user's voice began and after how many checks. Finished once (stop or play on).</summary>
-internal sealed class HeldReply(BargeInHold hold, ConversationTurn turn, BargeInDecision decision, long startedAt, int checks)
+/// quick check decided, when the user's voice began and after how many checks, and what Martlet said on its own when it wasn't a
+/// reply (<see cref="UnpromptedKind"/>; null for a reply). Finished once (stop or play on).</summary>
+internal sealed class HeldReply(BargeInHold hold, ConversationTurn turn, BargeInDecision decision, long startedAt, int checks,
+    UnpromptedKind? remark = null)
 {
     private int finished;
     internal BargeInHold Hold { get; } = hold;
@@ -35,6 +38,7 @@ internal sealed class HeldReply(BargeInHold hold, ConversationTurn turn, BargeIn
     internal BargeInDecision Decision { get; } = decision;
     internal long StartedAt { get; } = startedAt;
     internal int Checks { get; } = checks;
+    internal UnpromptedKind? Remark { get; } = remark;
     internal bool Finished => Volatile.Read(ref finished) != 0;
     internal bool TryFinish() => Interlocked.Exchange(ref finished, 1) == 0;
 }
@@ -264,6 +268,11 @@ internal sealed class LiveConversationOperation
     internal bool Touch { get; init; }
     /// <summary>Martlet started this reply on its own (a report or a reaction to being touched), not an answer to the user.</summary>
     internal bool OnItsOwn => Report || Touch;
+    /// <summary>What Martlet says here on its own, without the user asking (<see cref="UnpromptedSpeech"/>): a report's reminder,
+    /// finished work or check-in, or a screen or camera remark. Null for a reply (to the user, to what this PC played or to a
+    /// touch, which answers what the user did).</summary>
+    internal UnpromptedKind? Unprompted => Commentary ? UnpromptedKind.Remark
+        : Report ? UnpromptedSpeech.Of(Delivery?.Jobs.Select(job => job.Kind) ?? []) : null;
     /// <summary>A message from a paired messaging chat (or another remote ask): text in, text out.</summary>
     internal bool Remote { get; init; }
     /// <summary>What the user did to the desktop character that this reply carries (its message for a touch-only reply, its
@@ -378,6 +387,12 @@ internal sealed class LiveConversationOperation
     [JsonIgnore] internal AttentionSignal? Attention { get; init; }
     /// <summary>The glance ended in silence: the model answered [pass].</summary>
     internal bool Passed { get; set; }
+    /// <summary>Keeps this reply's exchange when the user stops it while Martlet says it (<see cref="LiveConversationController.Stop"/>
+    /// with the context kept): the message and only what was said aloud. Set once the reply's turn starts; run under the
+    /// controller's gate.</summary>
+    [JsonIgnore] internal Action? KeepCutOff { get; set; }
+    /// <summary>What the conversation kept of this reply when the user stopped it while Martlet said it, or null.</summary>
+    [JsonIgnore] internal CutOffKept? CutOff { get; set; }
     /// <summary>The glance offered the Thinking model the look tags that turn the character's eyes (Martlet decides where the
     /// character looks).</summary>
     internal bool LookOffered { get; set; }
@@ -458,6 +473,10 @@ internal sealed class LiveConversationOperation
     }
     public override string ToString() => nameof(LiveConversationOperation);
 }
+
+/// <summary>What the conversation kept of a reply the user stopped while Martlet said it: how many characters were said aloud
+/// and kept, how many it hadn't said, and whether those went to the next request's notes.</summary>
+internal sealed record CutOffKept(int SaidCharacters, int UnsaidCharacters, bool Noted);
 
 // App-lifetime owner; setup, fixture and live work all reserve the SAME reviewed operation runner.
 internal sealed partial class LiveConversationController : IAsyncDisposable
@@ -1645,6 +1664,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         pictures?.Forget();
         // The audio model's late words were about messages the conversation no longer keeps.
         Board.Clear(VoiceNotes.BoardSource);
+        // And the rest of a reply cut off belongs to a reply it no longer keeps.
+        Board.Clear(CutOffReply.BoardSource);
     }
 
     /// <summary>The user's Refresh context: forget the kept exchanges and what Martlet said lately; nothing else stops.</summary>
@@ -1920,6 +1941,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             if (!ReferenceEquals(operation, active)) return;
             memory?.Invalidate();
             if (!keepContext) ClearContextLocked();
+            // Stopped while Martlet said it: the conversation keeps what was said aloud before the next reply is built.
+            else operation.KeepCutOff?.Invoke();
             if (operation.OwnershipReleased || operation.ExecutionFinished) return;
             RevokeLocked();
         }
@@ -2156,10 +2179,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             // played when Martlet may bring it up on its own.
             if (!operation.Report && operation.Delivery is null)
             {
-                if (own is not null || straight) operation.Delivery = jobs.Take(onItsOwn: false);
+                if (own is not null || straight) operation.Delivery = TakeJobs(onItsOwn: false);
                 // A due reminder comes up as soon as Martlet is free even when other finished work waits for the user's next message.
                 else if (operation.BringUp)
-                    operation.Delivery = jobs.Take(onItsOwn: true, noticesOnly: configured.ThinkLonger.When != ThinkDelivery.WhenFree);
+                    operation.Delivery = TakeJobs(onItsOwn: true, noticesOnly: configured.ThinkLonger.When != ThinkDelivery.WhenFree);
             }
             var builtIns = BuiltIns(operation, configured, conversation);
             // A message carrying finished work gets the tools a report gets, so a later tool can act on the user's yes.
@@ -2397,6 +2420,27 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                 if (early is null && QuickCheck(operation)) CheckWordsBesideAsync(operation, turn).Forget();
             }
             else if (operation.VoiceSent) ErrorLog.Info("Voice path: transcribe first (your recording with the transcript).");
+            // A message that came with a picture keeps where it was from and what the reply saw in it (its [seen: ...] words), on
+            // a line after the message; the picture itself is never kept. In place of the picture, the image model's description:
+            // its first line is what Martlet saw. The touches that came with a message stay noted after it too ("(touch: top of
+            // head pat x3)"), so later replies know; a touch-only reply's message is that line itself.
+            string? SawLine(ConversationSnapshot snapshot)
+            {
+                var line = operation.ScreenSent && !snapshot.ImageRejected && operation.Seen is { } pictured
+                    ? pictured.HistoryLine(SeenTags.Description(turn.Controls), message: true)
+                    : operation.Described is { } words && operation.Seen is { } shown
+                    ? (shown with { Title = words.Shot.Title, App = words.Shot.App, FullScreen = words.Shot.FullScreen }).HistoryLine(words.Summary, message: true)
+                    : null;
+                if (!operation.Touch && operation.Touches?.HistoryLine is { Length: > 0 } touchLine)
+                    line = line is null ? touchLine : line + "\n" + touchLine;
+                return line;
+            }
+            // The user may stop the reply while Martlet says it (talking over it, Stop, Esc, a touch): Stop runs this under the
+            // gate, before the next reply's request is built, so the conversation has the message and what was said aloud.
+            if (!operation.OnItsOwn && turn.Spoken)
+                operation.KeepCutOff = () => KeepCutOffLocked(operation, configured, conversation, turn, straight, sawLine: SawLine(turn.Snapshot),
+                    said: straight ? null : operation.PcAudio ? input!.UserText : VoicePromptContext.Prefix(operation.Heard) + input!.UserText,
+                    recorded: straight ? null : operation.PcAudio ? operation.UserWords : input!.UserText);
             var terminal = await turn.Completion.ConfigureAwait(false);
             // Touches a reply took but never answered (it was stopped or failed) wait for the next reply.
             if (terminal.State != ConversationState.Completed && operation.Touches is { } unanswered) touches.Restore(unanswered);
@@ -2456,22 +2500,11 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             {
                 lock (gate)
                 {
-                    if (ReferenceEquals(active, operation) && !operation.Authorization.IsCanceled)
+                    if (ReferenceEquals(active, operation) && !operation.Authorization.IsCanceled && operation.CutOff is null)
                     {
                         var earlier = context.Snapshot();
                         var kept = passed ? $"[{LiveConversationConfiguration.SilentReply}]" : turn.Content.Text;
-                        // A message that came with a picture keeps where it was from and what the reply saw in it (its [seen: ...]
-                        // words), on a line after the message; the picture itself is never kept.
-                        var sawLine = operation.ScreenSent && !terminal.ImageRejected && operation.Seen is { } pictured
-                            ? pictured.HistoryLine(SeenTags.Description(turn.Controls), message: true)
-                            // In place of the picture, the image model's description: its first line is what Martlet saw.
-                            : operation.Described is { } words && operation.Seen is { } shown
-                            ? (shown with { Title = words.Shot.Title, App = words.Shot.App, FullScreen = words.Shot.FullScreen }).HistoryLine(words.Summary, message: true)
-                            : null;
-                        // The touches that came with a message stay noted after it too ("(touch: top of head pat x3)"), so later
-                        // replies know; a touch-only reply's message is that line itself.
-                        if (!operation.Touch && operation.Touches?.HistoryLine is { Length: > 0 } touchLine)
-                            sawLine = sawLine is null ? touchLine : sawLine + "\n" + touchLine;
+                        var sawLine = SawLine(terminal);
                         string? Saw(string? text) => text is null || sawLine is null ? text : VisionHistory.After(text, sawLine);
                         string? said = null;
                         if (straight)
@@ -2513,6 +2546,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                                 (passed ? " (it stayed quiet about it)." : "."));
                         }
                         if (!operation.OnItsOwn) lastAsked = (operation.Spoken, operation.Heard, operation.BackgroundChattiness);
+                        // The conversation moved on: a check-in made before this exchange is out of date (UnpromptedSpeech).
+                        if (!operation.Report) Interlocked.Exchange(ref lastExchangeTicks, clock.GetUtcNow().UtcTicks);
                         // The note about the last song is in the conversation now.
                         if (songNote is not null) singing?.NoteDelivered(songNote);
                         // Memory and learning names only ever read what the user said themselves, never what the PC played.
@@ -2676,9 +2711,58 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         LiveConversationConfiguration.WithoutMarked(history.LastOrDefault(message => message.Role == TextHistoryRole.User)?.Text) ?? "";
 
     private sealed record StraightExchange(LiveConversationOperation Operation, LiveConversationConfiguration Configured, Guid Conversation,
-        IReadOnlyList<TextHistoryMessage> Earlier, object Exchange, string Reply, bool Passed, string? SawLine = null)
+        IReadOnlyList<TextHistoryMessage> Earlier, object Exchange, string Reply, bool Passed, string? SawLine = null, bool Cut = false)
     {
         public override string ToString() => nameof(StraightExchange);
+    }
+
+    // The user stopped the reply while Martlet said it (under the gate, from Stop): the conversation keeps the message and only
+    // what was said aloud, cut off (CutOffReply), so the next reply never thinks they heard the rest. The rest goes once in the
+    // notes of the next request, which may pick it up or drop it. A reply that finished, said nothing aloud or is no longer the
+    // active one keeps nothing here. said: the message as the conversation keeps it (null when it went straight to Thinking).
+    private void KeepCutOffLocked(LiveConversationOperation operation, LiveConversationConfiguration configured, Guid conversation,
+        ConversationTurn turn, bool straight, string? sawLine, string? said, string? recorded)
+    {
+        if (operation.CutOff is not null || !ReferenceEquals(active, operation) || operation.Authorization.IsCanceled ||
+            turn.Completion.IsCompleted) return;
+        var aloud = turn.SaidAloud;
+        if (CutOffReply.Kept(aloud) is not { } kept) return;
+        var reply = turn.Content.Text;
+        var unsaid = CutOffReply.Unsaid(reply, aloud);
+        string? Saw(string? text) => text is null || sawLine is null ? text : VisionHistory.After(text, sawLine);
+        var hostless = configured.HostTarget() is null;
+        if (straight)
+        {
+            // Its words replace what stands in for them once speech-to-text has them, as for any reply.
+            var earlier = context.Snapshot();
+            var exchange = context.Add(Saw(VoicePromptContext.Prefix(operation.Heard) + LiveConversationConfiguration.VoiceOnlyText)!,
+                kept, hostless ? Saw(operation.WithBoardKept(operation.Sent?.KeptUserText)) : null);
+            ConversationContextBuffer.Pending(exchange,
+                KeepWordsAsync(new(operation, configured, conversation, earlier, exchange, kept, Passed: false, sawLine, Cut: true)));
+        }
+        else
+        {
+            context.Add(Saw(said)!, kept, hostless ? Saw(operation.WithBoardKept(operation.Sent?.KeptUserText)) : null);
+            // The record of conversations keeps the user's own words (never what the PC played) and what was said aloud.
+            if (history is { } historyRecord && historyRecord.Active(configured.Memory) &&
+                recorded is { } recordedWords)
+                historyRecord.Record(conversation, operation.Spoken || operation.Authorization.Microphone ? HistoryInputKind.Spoken : HistoryInputKind.Typed,
+                    recordedWords, kept, operation.OriginSpeaker ?? (operation.Heard?.Speaker?.Voice is { Named: true } namedVoice ? namedVoice.DisplayName : null),
+                    operation.Origin);
+        }
+        saidLately.Add(clock.GetLocalNow(), kept);
+        var noted = false;
+        if (CutOffReply.Note(configured.Prompts, unsaid) is { } note)
+        {
+            try { noted = Board.Post(CutOffReply.BoardSource, note, clock.GetLocalNow(), CutOffReply.NoteAge, consume: true) is not null; }
+            catch (InvalidOperationException) { }
+        }
+        else Board.Clear(CutOffReply.BoardSource);
+        operation.CutOff = new(aloud.Trim().Length, unsaid?.Length ?? 0, noted);
+        // Sizes only, never the words.
+        ErrorLog.Info($"Cut off: you stopped Martlet while it talked; the conversation keeps what it said aloud ({operation.CutOff.SaidCharacters} " +
+            $"of {reply.Length} characters, marked as cut off)" + (noted ? $" and the {operation.CutOff.UnsaidCharacters} characters it hadn't said go once with the next request."
+                : unsaid is null ? "; nothing was left unsaid." : "; the Cut off prompt is empty, so the rest is dropped."));
     }
 
     /// <summary>Once speech-to-text beside the reply has the words of what went straight to Thinking: they replace what stood in
@@ -2707,7 +2791,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     operation.Heard?.Speaker?.Voice is { Named: true } namedVoice ? namedVoice.DisplayName : null);
                 recorded = true;
             }
-            if (!keep.Passed && real && current)
+            // A reply the user stopped while Martlet said it isn't remembered from.
+            if (!keep.Passed && !keep.Cut && real && current)
             {
                 var remember = operation.MemoryRequested;
                 var heard = operation.Heard is { Known.Count: > 0 } known && voices is { Active: true } &&
@@ -3619,7 +3704,7 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     internal LiveConversationOperation? StartReport(bool voice, bool noticesOnly = false, SeenScreen? seen = null,
         AttentionSignal? attention = null, bool look = false)
     {
-        var delivery = jobs.Take(onItsOwn: true, noticesOnly);
+        var delivery = TakeJobs(onItsOwn: true, noticesOnly);
         if (delivery is null) return null;
         var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         LiveConversationOperation operation;
@@ -4898,6 +4983,8 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
                     }
                 }
                 if (!decision.Interrupt) return;
+                // A screen or camera remark Martlet started on its own is dropped at once: whatever the verdict, it wouldn't play on.
+                if (!decision.Cue && mode == PlaybackMode.Reply && DropAtOnce(operation, decision, startedAt, checks)) return;
                 // Pause and decide: words that aren't a clear cue pause the reply at once, and a judge decides.
                 if (!decision.Cue && options.BargeInStyle == BargeInBehavior.PauseAndDecide && mode == PlaybackMode.Reply &&
                     Hold(operation, decision, startedAt, checks) is { } paused)
@@ -4946,6 +5033,67 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     /// <summary>A paused reply that is to stop now, taken once by the talk window.</summary>
     internal TalkOverResult? TakeHeldStop() => Interlocked.Exchange(ref heldStop, null);
 
+    // ---------- speak, wait or drop for what Martlet says on its own (UnpromptedSpeech) ----------
+
+    /// <summary>How many things Martlet meant to say on its own were dropped in this conversation, and why (counts and words only,
+    /// never what they said): too old, the conversation moved on, or the user talked over them. <see cref="Last"/> describes the
+    /// newest drop.</summary>
+    internal sealed record UnpromptedDrops(int TooOld, int MovedOn, int TalkedOver, string? Last)
+    {
+        internal int Total => TooOld + MovedOn + TalkedOver;
+    }
+
+    private UnpromptedDrops unpromptedDrops = new(0, 0, 0, null);
+    // When the last exchange that wasn't Martlet's own was kept (UTC ticks; 0: none yet), for "the conversation moved on".
+    private long lastExchangeTicks;
+
+    /// <summary>What Martlet dropped of what it meant to say on its own (<see cref="UnpromptedSpeech"/>).</summary>
+    internal UnpromptedDrops DroppedOnItsOwn => Volatile.Read(ref unpromptedDrops);
+
+    /// <summary>When the last exchange that wasn't Martlet's own (a reply to the user, to what this PC played or to a touch) was
+    /// kept in the conversation, or null.</summary>
+    internal DateTimeOffset? LastExchange => Interlocked.Read(ref lastExchangeTicks) is > 0 and var ticks ? new DateTimeOffset(ticks, TimeSpan.Zero) : null;
+
+    private void NoteDropped(UnpromptedKind kind, string code, string why, string? id = null)
+    {
+        var at = clock.GetLocalNow().ToString("T", System.Globalization.CultureInfo.CurrentCulture);
+        var last = $"{id ?? UnpromptedSpeech.Describe(kind)}{(id is null ? "" : " (" + UnpromptedSpeech.Describe(kind) + ")")} at {at}: {why}";
+        UnpromptedDrops before, after;
+        do
+        {
+            before = Volatile.Read(ref unpromptedDrops);
+            after = code switch
+            {
+                "too_old" => before with { TooOld = before.TooOld + 1, Last = last },
+                "moved_on" => before with { MovedOn = before.MovedOn + 1, Last = last },
+                _ => before with { TalkedOver = before.TalkedOver + 1, Last = last }
+            };
+        }
+        while (!ReferenceEquals(Interlocked.CompareExchange(ref unpromptedDrops, after, before), before));
+    }
+
+    /// <summary>Checks the notices that wait again (<see cref="UnpromptedSpeech.DropStale"/>) and drops a check-in that is too old
+    /// or that the conversation moved on from, before Martlet says what waits on its own or with the user's next message. Local
+    /// rules only: no request and no wait. Each drop goes to the desktop log with its ID, kind and why (never its text).</summary>
+    internal int DropStaleNotices()
+    {
+        var dropped = UnpromptedSpeech.DropStale(jobs, clock.GetUtcNow(), LastExchange);
+        foreach (var (job, check) in dropped)
+        {
+            var kind = UnpromptedSpeech.Of(job.Kind);
+            NoteDropped(kind, check.Code, check.Why, job.Id);
+            ErrorLog.Info($"Said on its own: Martlet dropped {job.Id} ({UnpromptedSpeech.Describe(kind)}) before saying it: {check.Why}.");
+        }
+        return dropped.Count;
+    }
+
+    // The finished background work and notices one reply takes, after stale notices were dropped.
+    private BackgroundDelivery? TakeJobs(bool onItsOwn, bool noticesOnly = false)
+    {
+        DropStaleNotices();
+        return jobs.Take(onItsOwn, noticesOnly);
+    }
+
     private void Remember(BargeInRecord record)
     {
         lock (bargeIns)
@@ -4965,15 +5113,48 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
     private HeldReply? Hold(LiveConversationOperation operation, BargeInDecision decision, long startedAt, int checks)
     {
         ConversationTurn? turn;
+        UnpromptedKind? remark;
         lock (gate)
-            turn = active is { Worker: not null, Playback: PlaybackMode.Reply } reply && !reply.OwnershipReleased ? reply.Turn : null;
+        {
+            var reply = active is { Worker: not null, Playback: PlaybackMode.Reply } speaking && !speaking.OwnershipReleased ? speaking : null;
+            turn = reply?.Turn;
+            remark = reply?.Unprompted;
+        }
         if (turn is null || !turn.Pause()) return null;
-        var held = new HeldReply(new BargeInHold(clock), turn, decision, startedAt, checks);
+        var held = new HeldReply(new BargeInHold(clock), turn, decision, startedAt, checks, remark);
         operation.Held = held;
-        ErrorLog.Info($"Barge-in: Martlet paused its reply {clock.GetElapsedTime(startedAt).TotalMilliseconds:0} ms after you started " +
+        ErrorLog.Info($"Barge-in: Martlet paused its {(remark is { } kind ? "remark (" + UnpromptedSpeech.Describe(kind) + ")" : "reply")} " +
+            $"{clock.GetElapsedTime(startedAt).TotalMilliseconds:0} ms after you started " +
             $"talking over it ({decision.Reason}); the {CurrentJudge().Name} judge decides whether it stops or plays on.");
         Task.Run(() => WatchHoldAsync(operation, held)).Forget();
         return held;
+    }
+
+    // What Martlet is saying on its own right now (UnpromptedSpeech), or null for a reply or when it isn't speaking.
+    private UnpromptedKind? ActiveRemark()
+    {
+        lock (gate)
+            return active is { Worker: not null, Playback: PlaybackMode.Reply } speaking && !speaking.OwnershipReleased ? speaking.Unprompted : null;
+    }
+
+    // A remark that is never paused for the judge (a screen or camera remark: UnpromptedSpeech.Judged) is dropped at once when
+    // real words are said over it, whatever they were. The talk window stops it as it stops a reply (TakeHeldStop). False when
+    // Martlet isn't saying such a remark.
+    private bool DropAtOnce(LiveConversationOperation operation, BargeInDecision decision, long startedAt, int checks)
+    {
+        if (ActiveRemark() is not { } remark || UnpromptedSpeech.Judged(remark)) return false;
+        // A later quick check of the same words, before the talk window stopped it: dropped already.
+        if (operation.TalkOver is { Dropped: true }) return true;
+        var why = $"{UnpromptedSpeech.Describe(remark)} is dropped when you talk over it";
+        Remember(new(clock.GetUtcNow(), BargeInSource.Judge, BargeInVerdict.Interrupt, $"{decision.Reason}; {why}", "none", TimeSpan.Zero,
+            null, "dropped"));
+        NoteDropped(remark, "talked over", "you talked over it");
+        ErrorLog.Info($"Barge-in: Martlet dropped its remark ({UnpromptedSpeech.Describe(remark)}) " +
+            $"{clock.GetElapsedTime(startedAt).TotalMilliseconds:0} ms after you started talking over it ({decision.Reason}; no judge: {why}).");
+        var result = new TalkOverResult(decision, clock.GetElapsedTime(startedAt), checks, startedAt, Dropped: true);
+        operation.TalkOver = result;
+        Volatile.Write(ref heldStop, result);
+        return true;
     }
 
     // The judge rules on what was said so far (within BargeInJudging.Deadline, or the local rules decide); the pause then stops
@@ -5027,18 +5208,33 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
         var source = hold.Source ?? BargeInSource.Limit;
         var judged = ruling is null ? "no verdict" : ruling.Source == BargeInSource.Cue ? "a clear cue"
             : $"the {ruling.Judge} judge in {ruling.JudgeTime.TotalMilliseconds:0} ms";
+        // Words not for Martlet over what it said on its own: a reminder plays on, a report or check-in only after a short pause,
+        // a remark never (UnpromptedSpeech.AfterNotForMe). The rest is dropped; a report's news waits for the next message.
+        var drop = outcome == BargeInOutcome.Resume && held.Remark is { } remark &&
+            UnpromptedSpeech.AfterNotForMe(remark, hold.Paused) == UnpromptedAfterTalkOver.Drop;
         Remember(new(clock.GetUtcNow(), source, outcome == BargeInOutcome.Stop ? BargeInVerdict.Interrupt : BargeInVerdict.NotForMe,
-            why, ruling?.Judge ?? "none", ruling?.JudgeTime ?? TimeSpan.Zero, hold.Paused, outcome == BargeInOutcome.Stop ? "stopped" : "resumed"));
-        if (outcome == BargeInOutcome.Resume)
+            why, ruling?.Judge ?? "none", ruling?.JudgeTime ?? TimeSpan.Zero, hold.Paused,
+            outcome == BargeInOutcome.Stop ? "stopped" : drop ? "dropped" : "resumed"));
+        if (outcome == BargeInOutcome.Resume && !drop)
         {
             held.Turn.Resume();
-            ErrorLog.Info($"Barge-in: Martlet resumed its reply after a {hold.Paused.TotalMilliseconds:0} ms pause: what you said " +
+            ErrorLog.Info($"Barge-in: Martlet resumed its {(held.Remark is { } kind ? "remark (" + UnpromptedSpeech.Describe(kind) + ")" : "reply")} " +
+                $"after a {hold.Paused.TotalMilliseconds:0} ms pause: what you said " +
                 $"wasn't for it ({why}; {(source == BargeInSource.Limit ? "the pause reached its limit" : judged)}; " +
                 $"{hold.Voice.TotalMilliseconds:0} ms of your voice during the pause).");
             return;
         }
+        if (drop)
+        {
+            NoteDropped(held.Remark!.Value, "talked over", "you talked over it");
+            ErrorLog.Info($"Barge-in: Martlet dropped its remark ({UnpromptedSpeech.Describe(held.Remark.Value)}) after a " +
+                $"{hold.Paused.TotalMilliseconds:0} ms pause: what you said wasn't for it ({why}; " +
+                $"{(source == BargeInSource.Limit ? "the pause reached its limit" : judged)}), but " +
+                (held.Remark == UnpromptedKind.Remark ? "a remark never plays on after you talked over it)."
+                    : $"it plays on only after a pause of at most {UnpromptedSpeech.ResumeWithin.TotalMilliseconds:0} ms)."));
+        }
         var result = new TalkOverResult(held.Decision with { Reason = why }, clock.GetElapsedTime(held.StartedAt), held.Checks,
-            held.StartedAt, ruling, hold.Paused);
+            held.StartedAt, ruling, hold.Paused, drop);
         operation.TalkOver = result;
         Volatile.Write(ref heldStop, result);
     }
@@ -5058,8 +5254,10 @@ internal sealed partial class LiveConversationController : IAsyncDisposable
             return utterance.TalkOver?.Decision;
         }
         if (!decision.Interrupt) return null;
+        var spokeAt = utterance.SpeechStartedAt == 0 ? clock.GetTimestamp() : utterance.SpeechStartedAt;
+        if (!decision.Cue && mode == PlaybackMode.Reply && DropAtOnce(utterance, decision, spokeAt, 0)) return decision;
         if (!decision.Cue && options.BargeInStyle == BargeInBehavior.PauseAndDecide && mode == PlaybackMode.Reply &&
-            Hold(utterance, decision, utterance.SpeechStartedAt == 0 ? clock.GetTimestamp() : utterance.SpeechStartedAt, 0) is { } paused)
+            Hold(utterance, decision, spokeAt, 0) is { } paused)
         {
             paused.Hold.Ended();
             await JudgeHeldAsync(utterance, paused, text, words, options, confidence).ConfigureAwait(false);
