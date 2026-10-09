@@ -19,7 +19,10 @@ public enum CheckInOutcome
     Say,
     /// <summary>Puts the answer's "KNOW:" line (a short description of what is happening) in the notes of the next message, once,
     /// as background the conversation model may draw on, not an instruction (<see cref="CheckIns.ContextAge"/>).</summary>
-    Context = 4
+    Context = 4,
+    /// <summary>Its tool calls are the action (<see cref="CheckIn.ToolSets"/>); the answer is only a short line that says what it
+    /// did. The value is fixed, so other outcomes can take the values before it.</summary>
+    Tools = 5
 }
 
 /// <summary>What a check-in gets to know besides the day and time. A fact whose placeholder the prompt names ({conversation},
@@ -126,8 +129,16 @@ public sealed partial record CheckIn(string Id, string Name, string Does, CheckI
     public CheckInFacts Facts { get; init; }
     public CheckInConditions Conditions { get; init; }
     /// <summary>What a Thinking pool member must handle to take the check-in: text, and pictures or recordings when the owner
-    /// asks for them or the check-in sends a screenshot or a recording.</summary>
-    public ThinkingCapability Needs { get; init; } = ThinkingCapability.Text;
+    /// asks for them or the check-in sends a screenshot or a recording, and tool calls when it has <see cref="ToolSets"/>.</summary>
+    public ThinkingCapability Needs
+    {
+        get => needs | (ToolSets.Count > 0 ? ThinkingCapability.Tools : ThinkingCapability.None);
+        init => needs = value;
+    }
+    private readonly ThinkingCapability needs = ThinkingCapability.Text;
+    /// <summary>The tool sets it may call (<see cref="CheckInToolSets"/> IDs); empty: none. Compared by value.</summary>
+    public IReadOnlyList<string> ToolSets { get => toolSets; init => toolSets = value is null ? CheckInToolSetIds.Empty : new(value); }
+    private readonly CheckInToolSetIds toolSets = CheckInToolSetIds.Empty;
     /// <summary>A screenshot goes with each run.</summary>
     public bool Screenshot { get; init; }
     /// <summary>A recording of the last <see cref="RecordingSeconds"/> goes with each run.</summary>
@@ -214,6 +225,8 @@ public sealed partial record CheckInRun(DateTimeOffset At, long Exchanged, strin
     public TimeSpan? Took { get; init; }
     public bool Kept { get; init; }
     public string? Gathered { get; init; }
+    /// <summary>The tool calls it made, in order (none without tool sets).</summary>
+    public IReadOnlyList<CheckInToolUse> Tools { get; init; } = [];
     /// <summary>What started this run, in a few words (<see cref="CheckInTrigger.What"/>), or null when its pace or Check now did.</summary>
     public string? Trigger { get; init; }
 }
@@ -280,6 +293,11 @@ public static partial class CheckIns
     public const int MaximumScriptCharacters = 4_000, MaximumScriptOutputCharacters = 4_000;
     /// <summary>How long the owner's script may run before Martlet stops it.</summary>
     public static TimeSpan ScriptTimeout => TimeSpan.FromSeconds(20);
+    /// <summary>A run with tool sets: at most this many tool rounds (requests that call tools) before the model must answer, and
+    /// at most this many calls in all; later calls get an error.</summary>
+    public const int MaximumToolRounds = 4, MaximumToolCalls = 8;
+    /// <summary>How much of a tool's answer the run record keeps (its first line).</summary>
+    public const int MaximumToolResultCharacters = 120;
 
     /// <summary>The built-in check-ins with their defaults: the first five on, every 5 minutes (Saying the same things every 10,
     /// Staying in character every 15); Welcome back, Unanswered question, On a call and Someone else is here off until the owner
@@ -369,7 +387,7 @@ public static partial class CheckIns
             RecordingSeconds = choice.RecordingSeconds ?? checkIn.RecordingSeconds, Script = choice.Script ?? checkIn.Script,
             Triggers = choice.Triggers ?? checkIn.Triggers,
             FromHour = choice.FromHour ?? checkIn.FromHour, UntilHour = choice.UntilHour ?? checkIn.UntilHour,
-            MostPerHour = choice.MostPerHour ?? checkIn.MostPerHour
+            MostPerHour = choice.MostPerHour ?? checkIn.MostPerHour, ToolSets = choice.ToolSets ?? checkIn.ToolSets
         };
         return changed with { Needs = Needs(choice.Needs ?? checkIn.Needs, changed.Screenshot, changed.Recording) };
     }
@@ -381,6 +399,7 @@ public static partial class CheckIns
             CheckInOutcome.Say => "Your own check-in: Martlet brings up what it says, on its own.",
             CheckInOutcome.EmotesOff => "Your own check-in: Martlet turns off the lingering emotes it names.",
             CheckInOutcome.GazeUsual => "Your own check-in: Martlet takes the eyes back to their usual when it says so.",
+            CheckInOutcome.Tools => "Your own check-in: Martlet lets it use its tools.",
             CheckInOutcome.Context => "Your own check-in: what it describes adds to what Martlet knows in its next reply.",
             _ => "Your own check-in: what it says reminds Martlet in its next reply."
         }, custom.Outcome, custom.On, custom.EveryMinutes)
@@ -388,12 +407,13 @@ public static partial class CheckIns
             Custom = true, Task = custom.Task, Facts = custom.Facts, Conditions = custom.Conditions, Needs = Needs(custom),
             Screenshot = custom.Screenshot, Recording = custom.Recording, RecordingSeconds = custom.RecordingSeconds, Script = custom.Script,
             Triggers = custom.Triggers,
-            FromHour = custom.FromHour, UntilHour = custom.UntilHour, MostPerHour = custom.MostPerHour
+            FromHour = custom.FromHour, UntilHour = custom.UntilHour, MostPerHour = custom.MostPerHour, ToolSets = custom.ToolSets
         };
 
     /// <summary>What a Thinking pool member must handle to take <paramref name="custom"/>: text, what the owner chose, pictures
-    /// for a screenshot and recordings for a recording.</summary>
-    public static ThinkingCapability Needs(CustomCheckIn custom) => Needs(custom.Needs, custom.Screenshot, custom.Recording);
+    /// for a screenshot, recordings for a recording and tool calls for tool sets.</summary>
+    public static ThinkingCapability Needs(CustomCheckIn custom) => Needs(custom.Needs, custom.Screenshot, custom.Recording) |
+        (custom.ToolSets.Count > 0 ? ThinkingCapability.Tools : ThinkingCapability.None);
 
     /// <summary>What a member must handle: text, what the owner <paramref name="chose"/>, pictures for a screenshot and recordings
     /// for a recording.</summary>
@@ -402,12 +422,14 @@ public static partial class CheckIns
         (screenshot ? ThinkingCapability.Vision : ThinkingCapability.None) |
         (recording != CheckInRecording.None ? ThinkingCapability.Audio : ThinkingCapability.None);
 
-    /// <summary>What a member must handle, in plain words: "text", "text and pictures", "text, pictures and recordings".</summary>
+    /// <summary>What a member must handle, in plain words: "text", "text and pictures", "text, pictures and recordings", "text and
+    /// tool calls".</summary>
     public static string Describe(ThinkingCapability needs)
     {
         var parts = new List<string> { "text" };
         if (needs.HasFlag(ThinkingCapability.Vision)) parts.Add("pictures");
         if (needs.HasFlag(ThinkingCapability.Audio)) parts.Add("recordings");
+        if (needs.HasFlag(ThinkingCapability.Tools)) parts.Add("tool calls");
         return parts.Count == 1 ? parts[0] : string.Join(", ", parts.SkipLast(1)) + " and " + parts[^1];
     }
 
@@ -435,6 +457,7 @@ public static partial class CheckIns
             return "next in " + Reminders.Span(last.At + pace - state.Now);
         if (!now && state.Away is { } away && away > Idle) return $"nobody used this PC for {Reminders.Span(Idle)}";
         if (string.IsNullOrWhiteSpace(Template(checkIn, prompts))) return "its prompt is empty";
+        if (checkIn.Outcome == CheckInOutcome.Tools && checkIn.ToolSets.Count == 0) return "it has no tools to use";
         var when = checkIn.Conditions;
         if (when.HasFlag(CheckInConditions.CharacterShows) && !state.CharacterShows) return "the character isn't showing";
         if (when.HasFlag(CheckInConditions.EmoteShown) && state.Emotes.Count == 0) return "no emote a reply turned on is showing";
@@ -481,19 +504,30 @@ public static partial class CheckIns
 
     /// <summary>The Thinking pool job for <paramref name="checkIn"/> with <paramref name="state"/> (narrowed with
     /// <see cref="Focus"/>), or null when its prompt is empty. It needs what <see cref="CheckIn.Needs"/> says and carries the
-    /// screenshot and the recording gathered in the state.</summary>
-    public static ThinkingJob? Prepare(CheckIn checkIn, CheckInState state, PromptSettings? prompts)
+    /// screenshot and the recording gathered in the state. With <paramref name="tools"/> (its tool sets' host) the member's model
+    /// may call their tools for up to <see cref="MaximumToolRounds"/> rounds.</summary>
+    public static ThinkingJob? Prepare(CheckIn checkIn, CheckInState state, PromptSettings? prompts, CheckInToolHost? tools = null)
     {
         if (Message(checkIn, state, prompts) is not { } text) return null;
+        var offered = tools?.Tools ?? [];
         return new()
         {
             Kind = ThinkingJobKind.CheckIn, Instructions = PromptSettings.Fill(prompts, PromptCatalog.CheckIn) ?? "", Text = text,
             Needs = ThinkingCapability.Text | checkIn.Needs,
             Image = checkIn.Screenshot ? state.Screenshot : null,
             Audio = checkIn.Recording != CheckInRecording.None ? state.Recording : null,
-            Timeout = Timeout, DropWhenStale = true, MaxOutputTokens = MaximumOutputTokens, Reasoning = false
+            Timeout = Timeout, DropWhenStale = true, MaxOutputTokens = MaximumOutputTokens, Reasoning = false,
+            Tools = offered, ToolHost = offered.Count > 0 ? tools : null, MaxToolRounds = offered.Count > 0 ? MaximumToolRounds : 0
         };
     }
+
+    /// <summary>What a run's tool calls did, in a few words for the card and the log: "turn_off_emote: Turned off {blush}.;
+    /// look_usual (failed): ...". Empty without calls.</summary>
+    public static string ToolsText(IReadOnlyList<CheckInToolUse> uses) =>
+        string.Join("; ", uses.Select(u => $"{u.Tool}{(u.Failed ? " (failed)" : "")}{(u.Result.Length > 0 ? ": " + Sentence(u.Result) : "")}"));
+
+    // A tool's answer without its own final period, so the line around it adds one; "..." (a cut answer) stays.
+    private static string Sentence(string text) => text.EndsWith('.') && !text.EndsWith("...", StringComparison.Ordinal) ? text[..^1] : text;
 
     /// <summary>The prompt <paramref name="checkIn"/> sends: a built-in one's (as edited on its card), or what the owner wrote.</summary>
     public static string? Template(CheckIn checkIn, PromptSettings? prompts) =>
@@ -547,12 +581,15 @@ public static partial class CheckIns
             CheckInOutcome.GazeUsual => "Write only USUAL to take the eyes back to their usual, or KEEP to leave them.",
             CheckInOutcome.Say => "If nothing needs doing now, write only: OK\nOtherwise write one line that starts with SAY: and " +
                 $"says what {who} should bring up with the user now.",
+            CheckInOutcome.Tools => "Use your tools for what needs doing. When you are done, write one short line that says what " +
+                "you did and why, or only OK when nothing needed doing.",
             CheckInOutcome.Context => "If there is nothing worth adding, write only: OK\nOtherwise write one line that starts with KNOW: " +
                 $"and describes what is happening, briefly and vividly, as background {who} can draw on in its next reply. " +
                 $"Describe it; don't tell {who} what to do or say.",
             _ => $"If nothing needs doing now, write only: OK\nOtherwise write one line to {who} that starts with REMIND: and says " +
                 "what to keep in mind or do in its next reply."
         };
+        if (checkIn.Outcome != CheckInOutcome.Tools && checkIn.ToolSets.Count > 0) answer = "You may call your tools first if they help.\n" + answer;
         var text = PromptSettings.Fill(prompts, PromptCatalog.CheckInCustom, ("task", task), ("facts", facts), ("time", time),
             ("answer", answer), ("name", who)) ?? task + (facts.Length > 0 ? "\n\n" + facts : "");
         return string.IsNullOrWhiteSpace(text) ? null : ExtraLines().Replace(text.Trim(), "\n\n");
@@ -568,6 +605,9 @@ public static partial class CheckIns
         var lines = Lines(answer);
         switch (checkIn.Outcome)
         {
+            // The tool calls were the action; the answer only says what it did.
+            case CheckInOutcome.Tools:
+                return CheckInVerdict.Nothing;
             case CheckInOutcome.EmotesOff:
             {
                 var tags = new List<string>();

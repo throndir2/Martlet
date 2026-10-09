@@ -669,6 +669,131 @@ public sealed partial class CheckInsTests
         }
     }
 
+    private static CheckInToolHost Host(CheckIn checkIn, IReadOnlyDictionary<string, CheckInToolHandler> handlers) =>
+        new(checkIn.ToolSets, new(checkIn.Id, checkIn.Name, null, Now), handlers);
+
+    private static CustomCheckIn WithTools(params string[] sets) => new()
+    {
+        Id = "c4", Name = "Tools", On = true, EveryMinutes = 30, Task = "If the user seems upset, remind Martlet to be gentle.",
+        Facts = CheckInFacts.Conversation, Outcome = CheckInOutcome.Tools, ToolSets = sets
+    };
+
+    [Fact]
+    public void ACheckInWithToolSetsNeedsAMemberThatCallsToolsAndOffersOnlyItsSetsTools()
+    {
+        var checkIn = CheckIns.Of(WithTools(CheckInToolSets.NextReplyId, CheckInToolSets.RemindersId));
+        Assert.Equal(ThinkingCapability.Text | ThinkingCapability.Tools, checkIn.Needs);
+        Assert.Equal("text and tool calls", CheckIns.Describe(checkIn.Needs));
+        // Reminders has no handler here, so only the next reply's tools are offered.
+        var host = Host(checkIn, new Dictionary<string, CheckInToolHandler>
+        {
+            [CheckInToolSets.NextReplyId] = (_, _, _) => ValueTask.FromResult(new ConversationToolResult("Done."))
+        });
+        Assert.Equal(new[] { CheckInToolSets.RemindNextReply, CheckInToolSets.BringUp }, host.Tools.Select(t => t.Name));
+        var job = CheckIns.Prepare(checkIn, CheckIns.Focus(checkIn, State()), null, host)!;
+        Assert.Same(host, job.ToolHost);
+        Assert.Equal(CheckIns.MaximumToolRounds, job.MaxToolRounds);
+        Assert.True(job.Required.HasFlag(ThinkingCapability.Tools));
+        job.Validate();
+        // Without handlers it offers nothing, and a job with no tools has no host and no rounds.
+        var bare = CheckIns.Prepare(checkIn, CheckIns.Focus(checkIn, State()), null, Host(checkIn, new Dictionary<string, CheckInToolHandler>()))!;
+        Assert.Empty(bare.Tools);
+        Assert.Null(bare.ToolHost);
+        Assert.Equal(0, bare.MaxToolRounds);
+        Assert.Equal(ThinkingCapability.Text, CheckIns.Of(WithTools()).Needs);
+        Assert.Throws<ContractException>(() => (job with { ToolHost = null }).Validate());
+    }
+
+    [Fact]
+    public async Task TheToolHostKeepsEachCallAndStopsAtTheMostCallsARunMayMake()
+    {
+        var checkIn = CheckIns.Of(WithTools(CheckInToolSets.NextReplyId, CheckInToolSets.CharacterId));
+        var seen = new List<(string Tool, string? Text, CheckInToolContext Context)>();
+        var host = Host(checkIn, new Dictionary<string, CheckInToolHandler>
+        {
+            [CheckInToolSets.NextReplyId] = (call, context, _) =>
+            {
+                seen.Add((call.Name, CheckInToolSets.Argument(call, "text"), context));
+                return ValueTask.FromResult(new ConversationToolResult(new string('x', 200) + "\nprivate second line"));
+            },
+            [CheckInToolSets.CharacterId] = (_, _, _) => throw new InvalidOperationException("boom")
+        });
+        var said = await host.CallAsync(new("1", CheckInToolSets.RemindNextReply, """{"text":"  Be gentle.  "}"""), CancellationToken.None);
+        var unknown = await host.CallAsync(new("2", "delete_files", "{}"), CancellationToken.None);
+        var failed = await host.CallAsync(new("3", CheckInToolSets.LookUsual, "{}"), CancellationToken.None);
+        for (var i = 3; i < CheckIns.MaximumToolCalls; i++) await host.CallAsync(new("x" + i, CheckInToolSets.BringUp, "{}"), CancellationToken.None);
+        var over = await host.CallAsync(new("9", CheckInToolSets.RemindNextReply, "{}"), CancellationToken.None);
+
+        Assert.False(said.IsError);
+        Assert.Equal(("remind_next_reply", "Be gentle."), (seen[0].Tool, seen[0].Text));
+        Assert.Equal(("c4", "Tools", Now), (seen[0].Context.CheckInId, seen[0].Context.CheckInName, seen[0].Context.Now));
+        Assert.Equal(("This check-in has no tool called delete_files.", true), (unknown.Output, unknown.IsError));
+        Assert.Equal(("The tool failed.", true), (failed.Output, failed.IsError));
+        Assert.True(over.IsError);
+        Assert.StartsWith("This check-in already made 8 tool calls", over.Output);
+        var uses = host.Uses;
+        Assert.Equal(CheckIns.MaximumToolCalls + 1, uses.Count);
+        Assert.Equal(new CheckInToolUse(CheckInToolSets.NextReplyId, CheckInToolSets.RemindNextReply, new string('x', 117) + "...", false), uses[0]);
+        Assert.Equal(new CheckInToolUse("", "delete_files", "This check-in has no tool called delete_files.", true), uses[1]);
+        Assert.Equal(new CheckInToolUse(CheckInToolSets.CharacterId, CheckInToolSets.LookUsual, "The tool failed.", true), uses[2]);
+        Assert.DoesNotContain(uses, u => u.Result.Contains("private", StringComparison.Ordinal));
+        Assert.Equal(CheckIns.MaximumToolCalls - 2, seen.Count);
+        Assert.StartsWith("remind_next_reply: xxx", CheckIns.ToolsText(uses));
+        Assert.Contains("; delete_files (failed): This check-in has no tool called delete_files;", CheckIns.ToolsText(uses));
+    }
+
+    [Fact]
+    public void AToolsCheckInsToolCallsAreTheActionAndOthersMayCallToolsFirst()
+    {
+        var checkIn = CheckIns.Of(WithTools(CheckInToolSets.NextReplyId));
+        var message = CheckIns.Message(checkIn, CheckIns.Focus(checkIn, State()), null)!;
+        Assert.Contains("Use your tools for what needs doing.", message);
+        Assert.DoesNotContain("REMIND:", message);
+        Assert.Same(CheckInVerdict.Nothing, CheckIns.Read(checkIn, "REMIND: be gentle", State()));
+        Assert.Equal("it has no tools to use", CheckIns.Wait(CheckIns.Of(WithTools()), State(), null));
+        var note = CheckIns.Of(WithTools(CheckInToolSets.RemindersId) with { Outcome = CheckInOutcome.Note });
+        var noteMessage = CheckIns.Message(note, CheckIns.Focus(note, State()), null)!;
+        Assert.Contains("You may call your tools first if they help.\nIf nothing needs doing now, write only: OK", noteMessage);
+        Assert.True(CheckIns.Read(note, "REMIND: be gentle", State()).Act);
+        Assert.DoesNotContain("You may call your tools", CheckIns.Message(CheckIns.Of(WithTools() with { Outcome = CheckInOutcome.Note }), State(), null)!);
+    }
+
+    [Fact]
+    public void ToolSetsSaveAndReadBackByValueAndUnknownSetsAreRefused()
+    {
+        var custom = WithTools(CheckInToolSets.NextReplyId, CheckInToolSets.CharacterId);
+        var settings = new CheckInSettings().With(custom)
+            .With(CheckIns.Promises, new CheckInChoice(true, 30) { ToolSets = [CheckInToolSets.RemindersId] });
+        settings.Validate();
+        var folder = Path.Combine(Path.GetTempPath(), "Martlet.CheckIns.Tests." + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Assert.True(settings.Save(folder));
+            var (read, state) = CheckInSettings.Read(folder);
+            Assert.Equal("loaded", state);
+            Assert.Equal(custom, read.Custom.Single());
+            Assert.Equal(settings.Choice(CheckIns.Promises), read.Choice(CheckIns.Promises));
+            var promises = CheckIns.All(read).Single(c => c.Id == CheckIns.Promises);
+            Assert.Equal(new[] { CheckInToolSets.RemindersId }, promises.ToolSets);
+            Assert.True(promises.Needs.HasFlag(ThinkingCapability.Tools));
+            // A choice that keeps Martlet's own tool sets writes none.
+            Assert.True(new CheckInSettings().With(CheckIns.Gaze, false, 10).Save(folder));
+            Assert.DoesNotContain("ToolSets", File.ReadAllText(Path.Combine(folder, CheckInSettings.FileName)));
+        }
+        finally
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        }
+        Assert.Throws<ContractException>(() => new CheckInSettings().With(WithTools("delete-everything")).Validate());
+        Assert.Throws<ContractException>(() => new CheckInSettings().With(WithTools(CheckInToolSets.NextReplyId, CheckInToolSets.NextReplyId)).Validate());
+        Assert.Throws<ContractException>(() => new CheckInSettings()
+            .With(CheckIns.Emotes, new CheckInChoice(true, 5) { ToolSets = ["nope"] }).Validate());
+        Assert.Equal(new CheckInToolSetIds(["a", "b"]), new CheckInToolSetIds(["a", "b"]));
+        Assert.NotEqual(new CheckInToolSetIds(["a", "b"]), new CheckInToolSetIds(["b", "a"]));
+        Assert.All(CheckInToolSets.All, s => Assert.True(CheckInToolSets.IsId(s.Id)));
+        Assert.Equal(CheckInToolSets.All.SelectMany(s => s.Tools).Count(), CheckInToolSets.All.SelectMany(s => s.Tools).Select(t => t.Name).Distinct().Count());
+    }
+
     [Fact]
     public void TouchesFireTheirTriggersOnceTheySettleAndNeverTakeFromTheLedger()
     {

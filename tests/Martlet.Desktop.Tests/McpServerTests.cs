@@ -99,6 +99,7 @@ public sealed class McpServerTests(ITestOutputHelper output)
         Assert.Contains("the check-in reads the same lines", steps);
         var checkInSteps = ToolResult(messages[1]).GetProperty("steps").EnumerateArray().Select(s => s.GetProperty("name").GetString()).ToArray();
         Assert.Contains("built-in ones recreated as your own", checkInSteps);
+        Assert.Contains("tools: only a member that calls tools runs them", checkInSteps);
         Assert.Contains("context: goes with one request", checkInSteps);
         Assert.Contains("signals: when they wait", checkInSteps);
         Assert.Contains("signals: the facts and the check-ins", checkInSteps);
