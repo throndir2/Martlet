@@ -636,7 +636,8 @@ each offer, take and reminder said by id only (`Reminders:`). See
 minutes a Thinking pool member answers one short question for Martlet (do the
 lingering emotes still fit, does the gaze a reply chose still fit, did the
 character keep its promises, did it stay in character, does it keep saying the
-same things, and the owner's own),
+same things, the four that wait for a signal (welcome back, an unanswered
+question, a call, someone else here) and the owner's own),
 and Martlet acts on the answer. Nothing changes in the conversation's tools or
 instructions. A reminder for the next reply, or what a check-in adds to what
 Martlet knows, goes in the notes of that one
@@ -651,9 +652,15 @@ waits, its last run, runs and actions since Martlet started). Every check-in,
 built-in or the owner's own, has the same editor: `CheckInOn-<id>`,
 `CheckInEvery-<id>`, `CheckInOutcome-<id>`, `CheckInFact-<id>-<fact>` (what it
 gets to know: `Conversation`, `Persona`, `Replies`, `Said`, `Character`,
-`Work`, `Screen`, `Sound`, `Presence`, `Touches`), `CheckInWhen-<id>-<condition>` (when it
-runs: `CharacterShows`, `EmoteShown`, `GazeChosen`, `Talked`, `SomethingNew`,
-`Persona`, `Replies`, `NewReplies`, `Sayings`, `SlowWhenKept`), the model it
+`Work`, `Screen`, `Sound`, `Presence`, `Touches`, `Activity`, `People`, `WhileAway`),
+`CheckInWhen-<id>-<condition>` (when it runs: `CharacterShows`, `EmoteShown`,
+`GazeChosen`, `Talked`, `SomethingNew`, `Persona`, `Replies`, `NewReplies`,
+`Sayings`, `SlowWhenKept`, `CameBack`, `NotOnCall`, `ActivityChanged`,
+`Between`, `Unanswered`, `Attention`, `SongEnded`, `ScriptChanged`,
+`SomeoneElse`), its hours (`CheckInFrom-<id>` and `CheckInUntil-<id>`, such
+as *8 AM* and *10 PM*, used with `Between`) and its cap
+(`CheckInMostPerHour-<id>`: *No limit*, *Once an hour* or *2*, *3*, *4*, *6* or
+*12 times an hour*), the model it
 needs (`CheckInNeeds-<id>-Text`, `-Vision` and `-Audio`: checked, and disabled
 when an input forces it) and what each run takes (`CheckInScreenshot-<id>`,
 `CheckInRecording-<id>` and `CheckInSeconds-<id>`). Each fact and condition
@@ -4489,21 +4496,28 @@ EmoteShown, SlowWhenKept*), `changed` (a built-in one with more than On and
 Every changed on its card), and what it `does`; for every check-in the `needs` (*Text*, or
 *Text, Vision, Audio*), the `screenshot`, the `recording` (*None*,
 *Microphone* or *PcSound*), `recordingSeconds` (null without a recording),
-whether it runs a `script` and `scriptCharacters`, never the script itself), `desktop` from `check-ins-status.json` (written by
+whether it runs a `script` and `scriptCharacters`, never the script itself;
+`hours` such as *8 AM-10 PM* with `Between`, else null; `mostPerHour`, null
+without a cap), `desktop` from `check-ins-status.json` (written by
 the desktop on a companion PC: `role`, the check-in `running`, `pool` with
 `canRun` and the `member` and `model` that take them first, and for each
 check-in `needs`, `canRun` (a member that handles what it needs), `screenshot`,
-`recording`, `recordingSeconds`, `script`, `waiting`, `nextAt`, `runs`, `acted`
-and `last` with `at`, `result`, `acted`, `member`, `gathered` (what the run
+`recording`, `recordingSeconds`, `script`, `waiting`, `hours`, `mostPerHour`,
+`lastHour` (its runs in the last hour), `nextAt`, `runs`, `acted` and `last` with `at`, `result`, `acted`, `member`, `gathered` (what the run
 took in a few words, such as *a screenshot (1280x720), 10 s of the
 microphone*) and `ms`; `sound` with `microphoneKept`, `microphoneHeard`,
-`pcKept` and `pcHeard`; never what was said, answered, reminded, taken or
-printed) and the
+`pcKept` and `pcHeard`; `signals` with `attentionWatched` (Martlet watches
+for flashing taskbar buttons and notifications because a check-in that is on
+waits for them), `activityKnown`, `cameBackMinutesAgo` and `voicesLately` (a
+count); never what was said, answered, reminded, taken or printed, what the
+user does or who spoke) and the
 fixed `rules` (the 15-second look, the 3-minute minimum, the 10-second settle,
 the 10-minute idle wait, the pace choices and `keptPace`, `repeatsSayings` and
 `saidLatelyMinutes` for Saying the same things, `recordingChoices`,
 `maximumScriptCharacters`, `maximumScriptOutputCharacters` and
-`scriptTimeoutSeconds` for the owner's inputs, the job kind
+`scriptTimeoutSeconds` for the owner's inputs, `signalWindowMinutes`,
+`unansweredAfterMinutes`, `unansweredWithinMinutes`, `peopleWindowMinutes` and
+`mostPerHourChoices` for the signals, the job kind
 `check-in` at the `Helper` priority, not fast, stopped while the floor is Live).
 Read-only.
 
@@ -4556,8 +4570,20 @@ board), `context: goes with one request` (the description, wrapped in
 `check-in-c7` with one request only, is dropped after
 `CheckIns.ContextAge` (3 minutes) and is not posted when that prompt is
 emptied) and `context: nothing changes nothing` (`KNOW: nothing to add`, `OK`,
-a `REMIND:` line and chatter post nothing). `passed` and
-each step's `passed` and `detail`. No model, network or credentials.
+a `REMIND:` line and chatter post nothing). Three `signals:` steps check the
+signal conditions and facts with FIXTURE facts: `signals: when they wait` (each
+condition waits for its signal since the last run and runs on it: you came
+back, a call, a change in what you do, the hours past midnight, an unanswered
+question asked once, a flashing taskbar button, a song that ended, someone
+else's voice, a check-in with no script to compare, the per-hour cap, and a
+script whose output hash didn't change, which *Check now* still asks),
+`signals: the facts and the check-ins` (Welcome back, Unanswered question, On a
+call and Someone else is here send `{away}`, `{activity}` and `{people}` and
+read `SAY:`, `REMIND:` and `OK`) and `signals: hours and the per-hour cap saved
+and read back` (equal hours, a cap of 5 and an unknown condition refused).
+The settings step also checks that these four built-in check-ins are off by
+default. `passed` and each step's `passed` and `detail`. No model, network or
+credentials.
 
 `said_lately_check` rehearses [what Martlet said
 lately](CONVERSATION.md#what-you-said-lately) with the production code
