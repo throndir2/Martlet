@@ -94,17 +94,22 @@ internal sealed partial class LiveConversationController
     private IReadOnlyList<BackgroundPlace> PoolMembers()
     {
         var plan = PoolPlan(Configuration?.Routes ?? []);
-        return [.. ThinkLonger.Places(plan, BackgroundDuties.Of(dataDirectory), PoolCan, HostRouteGpus.For).Where(place => place.Id != "thinking")];
+        return [.. ThinkLonger.Places(plan, BackgroundDuties.Of(dataDirectory), PoolCan, HostRouteGpus.For, Volatile.Read(ref thinkingPool))
+            .Where(place => place.Id != "thinking")];
     }
 
     /// <summary>The pool's plan for <paramref name="routes"/>. Without <paramref name="live"/> every computer counts as online: the
     /// tools a reply offers (think_longer and its "Up to N at once", research) come from that plan, so the start of every Thinking
     /// request stays the same while computers come and go. With it, members on computers that don't answer now
     /// (<see cref="HostPresence"/>) can't run, and the conversation model stands in when none can and that is allowed: for
-    /// placing work, status and the log.</summary>
-    private DeepThinkingPool PoolPlan(IReadOnlyList<SetupRoute> routes, bool live = false) =>
-        Volatile.Read(ref thinkingPool).Plan(routes, WorkSharingRoster.Settings(dataDirectory), WorkSharingRoster.Device,
+    /// placing work, status and the log. With <paramref name="longJobs"/> only the members whose Long jobs box is ticked count:
+    /// thinking longer, research and lyrics run on those.</summary>
+    private DeepThinkingPool PoolPlan(IReadOnlyList<SetupRoute> routes, bool live = false, bool longJobs = false)
+    {
+        var pool = Volatile.Read(ref thinkingPool);
+        return (longJobs ? pool.ForLongJobs() : pool).Plan(routes, WorkSharingRoster.Settings(dataDirectory), WorkSharingRoster.Device,
             live ? HostPresence.Offline : null);
+    }
 
     /// <summary>Where background thinking (a think, research, a song's lyrics) may be placed: what can run now
     /// (<paramref name="live"/>), and the members that would run but whose computers are offline. The broker passes over those,
@@ -161,7 +166,7 @@ internal sealed partial class LiveConversationController
                 $"({status.ConfiguredSlots} when all answer).";
         else
         {
-            var plan = PoolPlan(Configuration?.Routes ?? [], live: true).Plan;
+            var plan = PoolPlan(Configuration?.Routes ?? [], live: true, longJobs: true).Plan;
             now = $"no pool computer answers now ({status.ConfiguredSlots} slot{(status.ConfiguredSlots == 1 ? "" : "s")} when all answer); " +
                 (plan.Available ? "thinking longer and research use the conversation model meanwhile, and other pool jobs use their own fallbacks."
                     : "pool jobs use their own fallbacks until one answers again.");
@@ -342,12 +347,15 @@ internal sealed partial class LiveConversationController
                 slots = m.Slots, used = m.Used, rank = m.Rank,
                 vision = m.Can.HasFlag(ThinkingCapability.Vision), audio = m.Can.HasFlag(ThinkingCapability.Audio),
                 // Whether its computer answers now (HostPresence), and since when it doesn't.
-                online = m.Online, offlineSince = HostOf(m.Id) is { } host ? HostPresence.OfflineSince(host) : null
+                online = m.Online, offlineSince = HostOf(m.Id) is { } host ? HostPresence.OfflineSince(host) : null,
+                // The owner's Quick jobs and Long jobs boxes on Companion › Thinking pool.
+                quickJobs = settings.TakesQuickJobs(m.Id), longJobs = settings.TakesLongJobs(m.Id)
             }),
             // The slots of the members that answer now, and of every member (when all answer).
             slots = status.Slots, free = status.Free, configuredSlots = status.ConfiguredSlots, keepsFastSlot = status.KeepsFastSlot,
             // Thinking longer and research use the conversation model because every member that would run is offline.
-            conversationModelStandsIn = settings.Members.Count > 0 && plan.Spots[0] is { Settings.Separate: false, Plan.Available: true },
+            conversationModelStandsIn = settings.Members.Count > 0 &&
+                PoolPlan(Configuration?.Routes ?? [], live: true, longJobs: true).Spots is [{ Settings.Separate: false, Plan.Available: true }, ..],
             running = status.Running, waiting = status.Waiting, guidance = status.Guidance,
             // The live floor: its level, jobs waiting only for the conversation (held), and jobs it stopped this turn and in all.
             floor = status.Floor, waitingForConversation = status.Held, stoppedThisTurn = status.StoppedNow, stopped = status.Stopped,

@@ -1705,11 +1705,12 @@ internal sealed class McpServer(DesktopAutomation desktop)
         Tool("thinking_pool_status", "Companion > Thinking pool from a data directory: thinking-pool.json (or what Martlet would make " +
             "from the older deep-thinking.json, without writing it): each member (a paired computer's Thinking pool role or Ollama, " +
             "a model in Ollama on this PC or an OpenAI-compatible endpoint; never a key) with its slots, whether it sees pictures " +
-            "or hears recordings, whether it can run and why; Use the conversation model when the pool is empty; the usable slots " +
+            "or hears recordings, whether it can run and why, and its Quick jobs and Long jobs boxes; whether thinking longer " +
+            "and research use the conversation model when no member takes long jobs; the usable slots " +
             "and whether one is kept free for fast jobs (judges and summaries); each job kind's priority, whether it is fast and " +
-            "whether a member can run it (the cheap CanRun answer); guidance (such as 1 slot: long thinking can delay screen and " +
+            "whether a member that takes that kind can run it (the cheap CanRun answer); guidance (such as 1 slot: long thinking can delay screen and " +
             "sound summaries); warnings about likely slowdowns (a member beside the conversation's Thinking model or the voice); " +
-            "Backup Thinking's choices (on or off, the delay or automatic, each member's May answer for the conversation and whether " +
+            "Backup Thinking's choices (on or off, the delay or automatic, each member's Backup for slow replies box and whether " +
             "it is a paid cloud provider) and the member it would ask now for a reply that is taken; " +
             "and the desktop's thinking-pool-status.json (running and waiting jobs by kind, never a job's text; Backup Thinking's " +
             "automatic delay, recent replies and how it ended lately). From that file, each member's online state (whether its " +
@@ -1727,7 +1728,8 @@ internal sealed class McpServer(DesktopAutomation desktop)
             "member's computer going offline (its slots leave the pool, jobs go to the others and wait for it, the last-free-slot " +
             "rule counts only computers that answer, every computer offline lets the conversation model stand in) and answering " +
             "again (its slots come back and a job waiting in line starts there), while the think_longer tool text stays " +
-            "byte-identical. In-process; reads nothing.", new { }),
+            "byte-identical; and quick and long jobs: each kind goes only to a member ticked for it, a long job on a member that " +
+            "takes no quick jobs keeps no slot free, and a member that leaves takes its boxes with it. In-process; reads nothing.", new { }),
         Tool("sense_models_status", "Companion > Vision > Image model and Companion > Listening > Audio model from a data directory " +
             "(docs/SENSE_MODELS.md): sense-models.json (this PC's choice: the same model as the text model, the same model as the other " +
             "kind, or a model of its own: Ollama on this PC, an OpenAI-compatible endpoint or a paired computer's model; never a key), " +

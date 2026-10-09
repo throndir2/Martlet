@@ -95,6 +95,48 @@ public sealed class ThinkingPoolSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Quick_and_long_jobs_are_ticked_per_member_saved_and_cleared_when_it_leaves()
+    {
+        var pool = new ThinkingPoolSettings().Add(Role("diva")).Add(Role("ripley"));
+        Assert.True(pool.TakesQuickJobs("host:diva") && pool.TakesLongJobs("host:diva"));
+        Assert.Same(pool, pool.ForLongJobs());
+
+        pool = pool.WithJobs("host:diva", quick: false).WithJobs("host:ripley", @long: false).WithJobs("host:ripley", @long: false);
+        Assert.False(pool.TakesQuickJobs("host:diva"));
+        Assert.True(pool.TakesLongJobs("host:diva"));
+        Assert.True(pool.TakesQuickJobs("host:ripley"));
+        Assert.Equal(["host:ripley"], pool.NoLongJobs);
+        // Long jobs (thinking longer, research, lyrics) see only the members that take them.
+        Assert.Equal(["host:diva"], pool.ForLongJobs().Members.Select(m => m.Key));
+        Assert.Equal(2, pool.Members.Count);
+        Assert.Empty(pool.WithJobs("host:ripley", @long: true).NoLongJobs);
+
+        Assert.True(pool.Save(directory));
+        var (loaded, state) = ThinkingPoolSettings.Read(directory);
+        Assert.Equal("loaded", state);
+        Assert.Equal(["host:diva"], loaded.NoQuickJobs);
+        Assert.Equal(["host:ripley"], loaded.NoLongJobs);
+
+        var left = loaded.Remove("host:diva").TakeOut("ripley");
+        Assert.Empty(left.NoQuickJobs);
+        Assert.Empty(left.NoLongJobs);
+        Assert.Throws<ContractException>(() => new ThinkingPoolSettings { NoLongJobs = ["bad\nkey"] }.Validate());
+    }
+
+    [Fact]
+    public void An_older_file_without_the_job_lists_reads_as_every_member_taking_every_job()
+    {
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, ThinkingPoolSettings.FileName),
+            """{ "SchemaVersion": 1, "Members": [], "UseConversationModelWhenEmpty": true, "NoQuickJobs": null }""");
+        var (loaded, state) = ThinkingPoolSettings.Read(directory);
+        Assert.Equal("loaded", state);
+        Assert.Empty(loaded.NoQuickJobs);
+        Assert.Empty(loaded.NoLongJobs);
+        Assert.True(loaded.TakesQuickJobs("host:diva") && loaded.TakesLongJobs("host:diva"));
+    }
+
+    [Fact]
     public void An_older_file_without_the_kept_out_list_reads_as_empty()
     {
         Directory.CreateDirectory(directory);
