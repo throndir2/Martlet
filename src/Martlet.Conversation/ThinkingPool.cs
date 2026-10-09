@@ -66,8 +66,33 @@ public static class ThinkingJobKinds
 /// (null: the places it may run on).</summary>
 public sealed record ThinkingDemand(ThinkingJobKind Kind, int Priority, bool KeepLastFree, IReadOnlyList<BackgroundPlace>? Pool = null)
 {
+    /// <summary>When no slot is free, the broker stops a running preemptible Thinking pool job of lower priority on a place of
+    /// this demand's pool to make space (<see cref="ThinkingPoolPolicy.PreemptLowerPriority"/>).</summary>
+    public bool PreemptsLower { get; init; }
+    /// <summary>Waits at the front of the line for its priority (a job that was stopped for higher-priority work).</summary>
+    public bool Front { get; init; }
+
     public static ThinkingDemand For(ThinkingJobKind kind, IReadOnlyList<BackgroundPlace>? pool = null, ThinkingPriority? priority = null) =>
         new(kind, (int)(priority ?? ThinkingJobKinds.Priority(kind)), !ThinkingJobKinds.IsFast(kind), pool);
+}
+
+/// <summary>How the Thinking pool's line treats priority and failures (Companion › Thinking pool, from
+/// <see cref="ThinkingPoolSettings"/>). <see cref="PreemptLowerPriority"/>: a job that finds no free slot stops a running job of
+/// lower priority; the stopped job keeps its priority and waits at the front of the line for it. After every
+/// <see cref="RaiseAfterStops"/> such stops, the stopped job's priority goes up by one. <see cref="Retries"/>: how many more
+/// times a job that failed or timed out on every member it could use is tried again, at the priority it had then.</summary>
+public sealed record ThinkingPoolPolicy(bool PreemptLowerPriority = true, int RaiseAfterStops = ThinkingPoolSettings.DefaultRaiseAfterStops,
+    int Retries = ThinkingPoolSettings.DefaultRetries)
+{
+    public static ThinkingPoolPolicy Default { get; } = new();
+
+    public static ThinkingPoolPolicy From(ThinkingPoolSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return new(settings.PreemptLowerPriority,
+            Math.Clamp(settings.RaisePriorityAfterStops, ThinkingPoolSettings.MinRaiseAfterStops, ThinkingPoolSettings.MaxRaiseAfterStops),
+            Math.Clamp(settings.RetriesOnFailure, 0, ThinkingPoolSettings.MaxRetries));
+    }
 }
 
 /// <summary>One job for the Thinking pool: instructions (the system text), the text to work on and optionally one picture and
@@ -146,6 +171,12 @@ public sealed record ThinkingJobResult(ThinkingJobOutcome Outcome, string? Text,
     public string? Model { get; init; }
     /// <summary>How many times the live conversation stopped it (or a member held its graphics card for one) before it ended.</summary>
     public int Preemptions { get; init; }
+    /// <summary>How many times higher-priority work stopped it (part of <see cref="Preemptions"/>).</summary>
+    public int PriorityStops { get; init; }
+    /// <summary>How many times it was tried again after it failed or timed out (<see cref="ThinkingPoolPolicy.Retries"/>).</summary>
+    public int Retries { get; init; }
+    /// <summary>The priority it had when it ended: its first priority, plus one for each raise after stops.</summary>
+    public int Priority { get; init; }
     public static ThinkingJobResult NoMember(ThinkingCapability needs) =>
         new(ThinkingJobOutcome.NoMember, null, null, null, $"the Thinking pool has no member that can do {Describe(needs)}", 0);
 
@@ -194,6 +225,13 @@ public sealed record ThinkingPoolStatus(IReadOnlyList<ThinkingPoolMemberStatus> 
     public IReadOnlyList<string> SharesLive { get; init; } = [];
     /// <summary>The members the board passes over for a while because their computer refused a request as invalid.</summary>
     public IReadOnlyList<ThinkingPoolRest> Resting { get; init; } = [];
+    /// <summary>The line's rules now (<see cref="ThinkingJobBoard.Policy"/>).</summary>
+    public ThinkingPoolPolicy Policy { get; init; } = ThinkingPoolPolicy.Default;
+    /// <summary>Since the board started: jobs stopped for higher-priority work, priority raises after stops, and retries after a
+    /// failure.</summary>
+    public int StoppedForPriority { get; init; }
+    public int Raised { get; init; }
+    public int Retried { get; init; }
 }
 
 /// <summary>The Thinking pool's job board: one in-process board for every Thinking pool job. Members are places
@@ -239,6 +277,13 @@ public sealed class ThinkingJobBoard
     }
 
     public BackgroundPlaces Places { get; }
+
+    /// <summary>The line's rules (read on each job and each try, so a settings change takes effect at once).</summary>
+    public Func<ThinkingPoolPolicy> Policy { get; set; } = () => ThinkingPoolPolicy.Default;
+
+#pragma warning disable CS0649 // Assigned by the scheduler (in progress).
+    private int stoppedForPriority, raised, retried;
+#pragma warning restore CS0649
 
     /// <summary>Every member, whether its computer answers now or not.</summary>
     public IReadOnlyList<BackgroundPlace> Members => members();
@@ -409,6 +454,8 @@ public sealed class ThinkingJobBoard
         var now = clock.GetUtcNow();
         return Describe(pool, Places) with
         {
+            Policy = Policy(),
+            StoppedForPriority = Volatile.Read(ref stoppedForPriority), Raised = Volatile.Read(ref raised), Retried = Volatile.Read(ref retried),
             Resting = [.. rests.Values.Where(rest => rest.Until > now && pool.Any(member => member.Id == rest.Id)).OrderBy(rest => rest.Id, StringComparer.Ordinal)]
         };
     }
